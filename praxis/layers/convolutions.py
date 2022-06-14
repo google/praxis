@@ -1,0 +1,489 @@
+# coding=utf-8
+# Copyright 2022 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Convolutional layers."""
+
+from typing import Optional, Sequence, Tuple
+
+import jax
+from jax import numpy as jnp
+from praxis import base_layer
+from praxis import py_utils
+from praxis import pytypes
+from praxis.layers import activations
+from praxis.layers import linears
+from praxis.layers import normalizations
+from praxis.layers import stochastics
+
+NestedMap = py_utils.NestedMap
+WeightInit = base_layer.WeightInit
+WeightHParams = base_layer.WeightHParams
+sub_config_field = base_layer.sub_config_field
+
+JTensor = pytypes.JTensor
+
+BaseHParams = base_layer.BaseLayer.HParams
+
+
+class Conv2D(base_layer.BaseLayer):
+  """Conv2D with support of SAME/VALID paddings."""
+
+  class HParams(BaseHParams):
+    """Associated hyperparams for this layer class.
+
+    Attributes:
+    filter_shape: Filter shape. Must be a sequence of length 4. Elements are in
+      the order of height (time), width (frequency), in_channel, out_channel.
+      filter_stride: Filter stride to use. Must be a pair of ints. The first int
+        specifies the stride on the height dimension. The second int specifies
+        the stride on the width dimension.
+      dilations: An optional list of ints. Defaults to (1, 1). 1-D tensor of
+        length 2. The dilation factor for each dimension of input. If set to k >
+        1, there will be k-1 skipped cells between each filter element on that
+        dimension.
+      bias: Whether or not to apply a bias before activation.
+      bias_init: Bias initializer to use if bias is to be applied.
+      padding: The type of padding to use.
+      tf_equivalent_padding: Whether to make it equivalent to tf. By default we
+        apply extra padding that is different than tf conv when stride > 1. This
+        is mainly used for multimodal which leads to better accuracy.
+      is_causal: Whether this is a causal convolution. This assumes the first
+        dimension of filter is time and if is_causal=True, each position would
+        not observe any positions in the right. This is achieved by adding
+        extra padding in the left to shift the whole convolution.
+    """
+    filter_shape: Sequence[int] = (0, 0, 0, 0)
+    filter_stride: Sequence[int] = (0, 0)
+    dilations: Sequence[int] = (1, 1)
+    bias: bool = False
+    bias_init: WeightInit = WeightInit.Constant(0.0)
+    padding: str = 'SAME'
+    tf_equivalent_padding: bool = False
+    is_causal: bool = False
+
+  def setup(self) -> None:
+    p = self.hparams
+    assert p.name
+    assert p.padding in ['SAME', 'VALID']
+    assert len(p.filter_shape) == 4
+    assert len(p.filter_stride) == 2
+    assert len(p.dilations) == 2
+    assert all(x > 0 for x in p.filter_stride)
+
+    # error if is_causal but not tf_equivalent_padding
+    if p.is_causal and (not p.tf_equivalent_padding):
+      raise Exception(
+          'Causal convolution is only supported for tf equivalent padding')
+
+    # error if is_causal but padding == 'valid'
+    if p.is_causal and p.padding == 'VALID':
+      raise NotImplementedError(
+          'Causal convlution doesn\'t support valid padding')
+
+    wp = p.weight_split_dims_mapping
+    self.create_variable(
+        'w',
+        WeightHParams(
+            shape=p.filter_shape,
+            mesh_shape=p.mesh_shape,
+            tensor_split_dims_mapping=wp.wt))
+    if p.bias:
+      self.create_variable(
+          'b', WeightHParams(shape=[p.filter_shape[-1]], init=p.bias_init))
+
+  def fprop(self, inputs: JTensor) -> JTensor:
+    """FProp that supports strided, dilated convolution, depthwise convolution.
+
+    Args:
+      inputs: Input sequence of shape [B, H, W, D_in], also known more popularly
+        as NHWC format.
+
+    Returns:
+      Output sequence after applying convolutions of shape [B, H', W', D_out].
+      Note that if the padding is SAME and there is no dilation and striding,
+      then H' = H and W' = W.
+    """
+    p = self.hparams
+    # Check if the feature_group_count is compatible with the inputs and filter
+    # For more information see XLA docs on ConvWithGeneralPadding below
+    # https://www.tensorflow.org/xla/operation_semantics#convwithgeneralpadding_convolution
+    # feature group count is D_in // filter input dim
+    feature_group_count = inputs.shape[3] // p.filter_shape[2]
+    if p.filter_shape[3] % feature_group_count != 0:
+      raise ValueError(f'Filter output dim {p.filter_shape[3]} must be a '
+                       f'multiple of feature group count {feature_group_count} '
+                       f'(Input shape: {inputs.shape}, '
+                       f'filter_shape: {p.filter_shape})')
+    if not p.tf_equivalent_padding:
+      if p.padding == 'SAME':
+        pad_height_total = p.filter_shape[0] - 1
+        pad_height_beg = pad_height_total // 2
+        pad_height_end = pad_height_total - pad_height_beg
+        pad_width_total = p.filter_shape[1] - 1
+        pad_width_beg = pad_width_total // 2
+        pad_width_end = pad_width_total - pad_width_beg
+      else:
+        assert p.padding == 'VALID', p.padding
+        pad_height_beg = 0
+        pad_height_end = 0
+        pad_width_beg = 0
+        pad_width_end = 0
+      padding = [(pad_height_beg, pad_height_end),
+                 (pad_width_beg, pad_width_end)]
+    else:
+      if not p.is_causal:
+        padding = p.padding
+      else:
+        # Compute padding for causal convolution
+        # Reference:
+        # https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2
+        filter_height = (p.filter_shape[0] - 1) * p.dilations[0] + 1
+        filter_width = (p.filter_shape[1] - 1) * p.dilations[1] + 1
+        if inputs.shape[1] % p.filter_stride[0] == 0:
+          pad_height_total = max(filter_height - p.filter_stride[0], 0)
+        else:
+          pad_height_total = max(
+              filter_height - (inputs.shape[1] % p.filter_stride[0]), 0)
+        if inputs.shape[2] % p.filter_stride[1] == 0:
+          pad_width_total = max(filter_width - p.filter_stride[1], 0)
+        else:
+          pad_width_total = max(
+              filter_width - (inputs.shape[2] % p.filter_stride[1]), 0)
+
+        # first dimension is causal
+        pad_height_beg = pad_height_total
+        pad_height_end = 0
+        pad_width_beg = pad_width_total // 2
+        pad_width_end = pad_width_total - pad_width_beg
+
+        padding = [(pad_height_beg, pad_height_end),
+                   (pad_width_beg, pad_width_end)]
+    # The `dimension_numbers=('NHWC', 'HWIO', 'NHWC')` is to be consistent
+    # with tf.conv2d, see e.g., see
+    # https://github.com/google/jax/blob/main/jax/_src/lax/lax.py#L622
+    outputs = jax.lax.conv_general_dilated(
+        lhs=inputs,
+        rhs=self.theta.w,
+        window_strides=p.filter_stride,
+        padding=padding,
+        rhs_dilation=p.dilations,
+        dimension_numbers=('NHWC', 'HWIO', 'NHWC'),
+        feature_group_count=feature_group_count)
+    if p.bias:
+      outputs += jnp.reshape(self.theta.b, (1,) * (outputs.ndim - 1) + (-1,))
+    return outputs
+
+
+class ConvBNAct(Conv2D):
+  """A block of conv-bn-activation layers used for image encoders.
+
+  By default, we use cross-replica sum on TPUs.
+  """
+
+  class HParams(Conv2D.HParams):
+    """Associated hyper-params for this layer class.
+
+    Attributes:
+      batch_norm_tpl: The batchnorm layer template.
+      activation: Activation function to use. Options are RELU, RELU6,
+        LEAKY_RELU, SIGMOID, TANH, GELU, NONE.
+      negative_slope: Negative slope of LEAKY_RELU convolution activation.
+    """
+    batch_norm_tpl: Optional[BaseHParams] = sub_config_field(
+        normalizations.BatchNorm.HParams)
+    activation: str = 'RELU'
+    negative_slope: Optional[float] = None
+
+  def setup(self) -> None:
+    super().setup()
+    p = self.hparams
+    if p.batch_norm_tpl is not None:
+      bn = p.batch_norm_tpl.clone()
+      bn.dim = p.filter_shape[3]
+      bn.use_moving_avg_in_training = False
+      self.create_child('bn', bn)
+    act_p = activations.Activation.HParams(
+        activation=p.activation, negative_slope=p.negative_slope)
+    self.create_child('activation', act_p)
+
+  def fprop(self, inputs: JTensor) -> JTensor:
+    """Forward prop which applies conv-bn-activation.
+
+    Args:
+      inputs: Input sequence of shape [B, H, W, D_in], also known more popularly
+        as NHWC format.
+
+    Returns:
+      Output sequence after applying convolutions of shape [B, H', W', D_out].
+      Note that if the padding is SAME and there is no dilation and striding,
+      then H' = H and W' = W.
+    """
+    p = self.hparams
+    outputs = super().fprop(inputs)
+    if p.batch_norm_tpl is not None:
+      outputs = self.bn.fprop(outputs)
+    outputs = self.activation.fprop(outputs)
+    return outputs
+
+  def fprop_with_padding(self, inputs: JTensor,
+                         paddings: JTensor) -> Tuple[JTensor, JTensor]:
+    """Forward prop with time paddings.
+
+    Args:
+      inputs: Input sequence of shape [B, H, W, D_in], also known more popularly
+        as NHWC format.
+      paddings: Input sequence of shape [B, H], where H is the time dimension.
+
+    Returns:
+      Output sequence after applying convolutions of shape [B, H', W', D_out].
+      Note that if the padding is SAME and there is no dilation and striding,
+      then H' = H and W' = W.
+      Output padding after applying convolutions.
+    """
+    p = self.hparams
+
+    outputs = self.fprop(inputs)
+
+    if p.filter_stride[0] == 1 and p.padding == 'SAME':
+      return outputs, paddings
+    if p.padding == 'SAME':
+      input_length = paddings.shape[1]
+      stride = p.filter_stride[0]
+
+      pad_len = (input_length + stride - 1) // stride * stride - input_length
+      out_padding = jax.lax.conv_general_dilated(
+          lhs=paddings[:, :, None],
+          rhs=jnp.ones([1, 1, 1]),
+          window_strides=p.filter_stride[:1],
+          padding=[(0, pad_len)],
+          rhs_dilation=p.dilations[:1],
+          dimension_numbers=('NHC', 'HIO', 'NHC'))
+      out_padding = jnp.squeeze(out_padding, axis=-1)
+    else:
+
+      def rolling_window(arr: JTensor, window: int, stride: int):
+        idx = jnp.arange(0, arr.shape[1] - window + 1,
+                         stride)[:, None] + jnp.arange(window)[None, :]
+        return arr[:, idx]
+
+      window = p.filter_shape[0]
+      stride = p.filter_stride[0]
+      out_padding = rolling_window(paddings, window, stride)
+      out_padding = out_padding.min(axis=-1, keepdims=False)
+    outputs = outputs * (1.0 -
+                         jnp.expand_dims(jnp.expand_dims(out_padding, -1), -1))
+    return outputs, out_padding
+
+
+# TODO(nanxinchen): add Depthwise Conv2D support
+class DepthwiseConv1D(base_layer.BaseLayer):
+  """Depthwise 1D convolution based on lax implementation."""
+
+  class HParams(BaseHParams):
+    """Associated hyper-params for this layer class.
+
+    Attributes:
+      filter_shape: Filter shape. Must be a sequence of length 3. Elements are
+        in the order of kernel_size, in_channels, channel_multipliers.
+      bias:         Whether or not to apply a bias before activation.
+      bias_init:    Bias initializer to use if bias is to be applied.
+      is_causal:    Whether this is a causal layer.
+      use_2d_conv_weight_shape: Whether to use 2d conv weight shape. This is for
+        checkpoint compatibility with old models.
+      rhs_dilation_rate: The dilation rate in atrous convolution.
+    """
+    filter_shape: Sequence[int] = (0, 0, 0)
+    bias: bool = False
+    bias_init: WeightInit = WeightInit.Constant(0.0)
+    is_causal: bool = False
+    use_2d_conv_weight_shape: bool = False
+    rhs_dilation_rate: int = 1
+
+  def setup(self) -> None:
+    p = self.hparams
+    assert len(p.filter_shape) == 3
+    assert p.rhs_dilation_rate > 0
+
+    w_shape = [p.filter_shape[0], 1, p.filter_shape[1] * p.filter_shape[2]]
+    if p.use_2d_conv_weight_shape:
+      w_shape = w_shape + [1]
+    self.create_variable('w', WeightHParams(shape=w_shape))
+    if p.bias:
+      self.create_variable('b', WeightHParams(shape=[p.dim], init=p.bias_init))
+
+  def get_w(self) -> JTensor:
+    p = self.hparams
+    if p.use_2d_conv_weight_shape:
+      return jnp.squeeze(self.theta.w, -1)
+    else:
+      return self.theta.w
+
+  def fprop(self, inputs: JTensor, paddings: JTensor) -> JTensor:
+    """Depthwise convolution layer.
+
+    Args:
+      inputs: Input sequence JTensor of shape [B, T, H].
+      paddings: Input paddings JTensor of shape [B, T].
+
+    Returns:
+      The depthwise conv output with shape [B, T, H].
+    """
+    p = self.hparams
+
+    # Applying padding.
+    inputs = inputs * (1.0 - jnp.expand_dims(paddings, axis=-1))
+
+    dn = jax.lax.conv_dimension_numbers(inputs.shape,
+                                        self.get_w().shape,
+                                        ('NHC', 'HIO', 'NHC'))
+
+    if p.is_causal:
+      causal_pad_size = p.filter_shape[0] - 1
+      padding = [(causal_pad_size, 0)]
+    else:
+      padding = 'SAME'
+
+    out = jax.lax.conv_general_dilated(
+        lhs=inputs,
+        rhs=self.get_w(),
+        window_strides=(1,),
+        padding=padding,
+        lhs_dilation=(1,),
+        rhs_dilation=(p.rhs_dilation_rate,),
+        dimension_numbers=dn,
+        feature_group_count=p.filter_shape[1])
+    if p.bias:
+      out = out + self.theta.b
+    return out
+
+
+class LightConv1D(base_layer.BaseLayer):
+  """Lightweight conv layer.
+
+  architecture::
+
+  input-ln()-ff()-glu()-depthwise_conv1d()-norm()-act()-ff()-dropout()-+-output
+    |__________________________________________________________________|
+
+  """
+
+  # TODO(nanxinchen): add causal support
+  # TODO(nanxinchen): add SPMD partitioning support
+
+  class HParams(BaseHParams):
+    """Associated hyper-params for this layer class.
+
+    Attributes:
+      input_dims:      Input and (in fact,) output dimension.
+      kernel_size:     Kernel size of 1d deptwise conv.
+      conv_activation: Activation after normalization.
+      negative_slope:  Negative slope of LEAKY_RELU convolution activation.
+      dropout_prob:    Dropout probability.
+      ln_tpl:          Parameterization of input layer normalization.
+      linear_start_tpl:     Parameterization of linear start layer.
+      depthwise_conv_tpl:   Parameterization of depthwise conv layer.
+      conv_norm_layer_tpl:  Parameterization of normalization layer after conv.
+      linear_end_tpl:       Parameterization of linear end layer.
+      dropout_tpl:          Parameterization of residual dropout layer.
+      is_causal:            Whether this is a causal layer.
+      use_2d_conv_norm:     Whether to expand the input to conv_norm to 2d. This
+        is for compatibility with with old models trained in TF lingvo.
+    """
+    input_dims: Optional[int] = None
+    kernel_size: Optional[int] = None
+    conv_activation: str = 'SWISH'
+    negative_slope: Optional[float] = None
+    dropout_prob: float = 0.0
+    ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
+    linear_start_tpl: BaseHParams = linears.FeedForward.HParams(
+        activation='NONE')
+    depthwise_conv_tpl: BaseHParams = sub_config_field(DepthwiseConv1D.HParams)
+    conv_norm_layer_tpl: BaseHParams = sub_config_field(
+        normalizations.BatchNorm.HParams)
+    linear_end_tpl: BaseHParams = linears.FeedForward.HParams(activation='NONE')
+    dropout_tpl: BaseHParams = sub_config_field(stochastics.Dropout.HParams)
+    is_causal: bool = False
+    use_2d_conv_norm: bool = False
+
+  def setup(self) -> None:
+    p = self.hparams
+
+    ln_p = p.ln_tpl.clone().set(name='ln', dim=p.input_dims)
+    self.create_child('ln', ln_p)
+
+    linear_start_act_p = p.linear_start_tpl.clone().set(
+        input_dims=p.input_dims, output_dims=p.input_dims)
+    linear_start_gated_p = p.linear_start_tpl.clone().set(
+        input_dims=p.input_dims, output_dims=p.input_dims)
+    self.create_child('linear_start_act', linear_start_act_p)
+    self.create_child('linear_start_gated', linear_start_gated_p)
+
+    depthwise_conv_p = p.depthwise_conv_tpl.clone().set(
+        filter_shape=(p.kernel_size, p.input_dims, 1), is_causal=p.is_causal)
+    self.create_child('depthwise_conv1d', depthwise_conv_p)
+
+    norm_p = p.conv_norm_layer_tpl.clone().set(dim=p.input_dims)
+    self.create_child('conv_norm', norm_p)
+
+    self.create_child(
+        'conv_activation',
+        activations.Activation.HParams(
+            activation=p.conv_activation, negative_slope=p.negative_slope))
+
+    linear_end_p = p.linear_end_tpl.clone().set(
+        input_dims=p.input_dims, output_dims=p.input_dims)
+    self.create_child('linear_end', linear_end_p)
+
+    dropout_p = p.dropout_tpl.clone().set(keep_prob=1. - p.dropout_prob)
+    self.create_child('dropout', dropout_p)
+
+  def _conv_norm(self, inputs: JTensor, paddings: JTensor) -> JTensor:
+    p = self.hparams
+    if p.use_2d_conv_norm:
+      # BTH -> BT1H
+      inputs = jnp.expand_dims(inputs, 2)
+    inputs = self.conv_norm.fprop(inputs, paddings)
+    if p.use_2d_conv_norm:
+      # BT1H -> BTH
+      inputs = jnp.squeeze(inputs, 2)
+    return inputs
+
+  def fprop(self, inputs: JTensor, paddings: JTensor) -> JTensor:
+    """Lightweight conv layer.
+
+    Args:
+      inputs: Input sequence JTensor of shape [B, T, H].
+      paddings: Input paddings JTensor of shape [B, T].
+
+    Returns:
+      The lconv output with shape [B, T, H].
+    """
+    unnormalized_inputs = inputs
+
+    inputs = self.ln.fprop(inputs)
+    act_inputs = self.linear_start_act.fprop(inputs)
+    gated_inputs = self.linear_start_gated.fprop(inputs)
+    inputs = act_inputs * jax.nn.sigmoid(gated_inputs)
+
+    inputs = self.depthwise_conv1d.fprop(inputs, paddings)
+
+    inputs = self._conv_norm(inputs, paddings)
+    inputs = self.conv_activation.fprop(inputs)
+
+    inputs = self.linear_end.fprop(inputs)
+    inputs = self.dropout.fprop(inputs)
+
+    output = inputs + unnormalized_inputs
+    return output
