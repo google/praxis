@@ -27,9 +27,9 @@ setup(
     packages=find_packages(),
     python_requires='>=3.7',
     install_requires=[
-        'protobuf', 'absl-py', 'fiddle', 'numpy', 'tensorflow', 'lingvo',
+        'protobuf', 'absl-py', 'fiddle-config', 'numpy', 'tensorflow', 'lingvo',
         'flax', 'jax', 'optax', 'optax-shampoo', 'jax-bitempered-loss',
-        'einops', 'flaxformer', 'fiddle', 't5x', 'clu'
+        'einops', 't5x', 'clu'
     ],
     url='https://github.com/google/praxis',
     license='Apache-2.0',

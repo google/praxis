@@ -4,7 +4,7 @@ What is Praxis?
 Praxis is the layer library for [Pax](https://github.com/google/paxml/). While Praxis is optimized for ML at scale, Praxis has a goal to be usable by other JAX-based ML projects.
 
 
-Some examples of layers to be folded into Praxis are in the [praxis/layers/](https://github.com/google/praxis/praxis/layers/) directory.
+Some examples of layers to be folded into Praxis are in the [praxis/layers/](https://github.com/google/praxis/tree/main/praxis/layers) directory.
 
 
     Copyright 2022 Google LLC
