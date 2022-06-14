@@ -84,6 +84,10 @@ class Embedding(base_layer.BaseLayer):
 
   def emb_lookup(self, ids: JTensor) -> JTensor:
     p = self.hparams
+
+    assert jnp.all(ids >= 0)
+    assert jnp.all(ids < p.num_classes)
+
     if p.lookup_style == 'index':
       embs = jnp.asarray(self.theta.emb_var)[(ids,)]
     elif p.lookup_style == 'matmul':
