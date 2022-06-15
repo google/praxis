@@ -61,6 +61,31 @@ class DecoderUtilsTest(test_utils.TestCase):
     output_ids = decoder_utils.gather_output_id(long_output_ids, topk_indices)
     self.assertArraysEqual(output_ids, np.array([[0, 2, 1, 3]], dtype=np.int32))
 
+  def test_right_align_tensors(self):
+    long_output_ids = jnp.array(
+        [[5, 3, 2, 5, 0, 0], [0, 6, 7, 0, 0, 0], [1, 3, 9, 5, 6, 2]],
+        dtype=np.int32)
+    seq_lengths = jnp.array([4, 3, 6])
+    output_ids = decoder_utils.right_align_tensors(long_output_ids, seq_lengths)
+    self.assertArraysEqual(
+        output_ids,
+        np.array([[0, 0, 5, 3, 2, 5], [0, 0, 0, 0, 6, 7], [1, 3, 9, 5, 6, 2]],
+                 dtype=np.int32))
+
+  def test_right_align_states(self):
+    decode_cache = jnp.array(
+        [[[[0.1, 0.1], [0.2, 0.3]], [[0.2, 0.3], [0.4, 0.5]],
+          [[0, 0.1], [0.1, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]],
+        dtype=np.float32)
+    seq_lengths = jnp.array([3])
+    right_align_decode_cache = decoder_utils.right_align_state_fn(seq_lengths)(
+        decode_cache, batch_dim=0, time_dim=1)
+    self.assertArraysEqual(
+        right_align_decode_cache,
+        np.array([[[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0.1, 0.1], [0.2, 0.3]],
+                   [[0.2, 0.3], [0.4, 0.5]], [[0, 0.1], [0.1, 0]]]],
+                 dtype=np.float32))
+
 
 if __name__ == '__main__':
   absltest.main()

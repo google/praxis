@@ -141,3 +141,61 @@ def batch_broadcast_state_fn(
     return jnp.repeat(x, multiplier, axis=batch_dim)
 
   return _broadcast_state_fn
+
+
+def right_align_tensors(x: JTensor,
+                        lengths: JTensor,
+                        align_dim: int = 1) -> JTensor:
+  """Aligns a tensor with padding to the right.
+
+  x could have the following left align format:
+  |---max_length---|
+  [P, P, 0, 0, 0, 0]
+  where lengths = 2, there are 4 paddings.
+
+  After right align, x will have the following format:
+  |---max_length---|
+  [0, 0, 0, 0, P, P]
+
+  Args:
+    x: Tensors to right align with paddings on the right.
+    lengths: JTensor [batch_size] with dtype jnp.int32, length of x without
+      padding.
+    align_dim: Dim to align, align_dim < len(x.shape).
+
+  Returns:
+    Right align x with shape [batch_size, seq_len].
+  """
+  if align_dim >= len(x.shape):
+    raise ValueError(f'The align_dim: {align_dim} should be smaller than '
+                     f'x.rank: {len(x.shape)}.')
+  seq_len = x.shape[align_dim]
+
+  def _align_one(x: JTensor, length: JTensor) -> JTensor:
+    """Aligns a single tensor to the right, moving paddings to the left."""
+    # Pad the tensor one the first dimension.
+    paddings = [[0, 0]] * len(x.shape)
+    paddings[0] = [seq_len, 0]
+    padded = jnp.pad(x, paddings)
+
+    # Slice out the right align tensor.
+    start_indices = [0] * len(x.shape)
+    start_indices[0] = length
+    sizes = list(x.shape)
+    sizes[0] = seq_len
+    return jax.lax.dynamic_slice(padded, start_indices, sizes)
+
+  return jax.vmap(_align_one)(x, lengths)
+
+
+def right_align_state_fn(
+    seq_lengths: JTensor) -> base_layer.DecodeStateTransformFn:
+  """Returns a function that is used to right align attention states."""
+
+  def _right_align_state_fn(x, batch_dim, time_dim):
+    del batch_dim
+    if time_dim < 0:
+      return x
+    return right_align_tensors(x, seq_lengths, time_dim)
+
+  return _right_align_state_fn

@@ -221,11 +221,8 @@ def right_align_prefix_ids(prefix_ids: JTensor, prefix_lengths: JTensor,
   """
   max_prefix_len = prefix_ids.shape[-1]
 
-  def _align_one(x, length):
-    padded = jnp.pad(x, [[max_prefix_len, 0]])
-    return jax.lax.dynamic_slice(padded, [length], [max_prefix_len])
-
-  right_align_ids = jax.vmap(_align_one)(prefix_ids, prefix_lengths)
+  right_align_ids = decoder_utils.right_align_tensors(prefix_ids,
+                                                      prefix_lengths)
   prefix_lengths = prefix_lengths[:, jnp.newaxis]
   prefix_iota = jax.lax.iota(dtype=jnp.int32, size=max_prefix_len)
   prefix_iota = prefix_iota - (max_prefix_len - prefix_lengths)
