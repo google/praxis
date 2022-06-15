@@ -188,6 +188,7 @@ class LearnersTest(test_utils.TestCase):
 
     learner_p.auxiliary_optimizers = [aux_p1, aux_p2]
     learner_p.auxiliary_regex = ['.*ngram', '.*transformer']
+    learner_p.auxiliary_names = ['ngram', 'transformer']
     learner_instance = instantiate(learner_p)
 
     grads = NestedMap()
@@ -270,6 +271,7 @@ class LearnersTest(test_utils.TestCase):
 
     learner_p.auxiliary_optimizers = [aux_p1, aux_p2]
     learner_p.auxiliary_regex = ['.*ngram', '.*transformer']
+    learner_p.auxiliary_names = ['ngram', 'transformer']
     learner_instance = instantiate(learner_p)
 
     grads = NestedMap()
@@ -319,6 +321,7 @@ class LearnersTest(test_utils.TestCase):
 
     learner_p.auxiliary_optimizers = [aux_p1, aux_p2]
     learner_p.auxiliary_regex = ['.*ngrammer', '.*ngram']
+    learner_p.auxiliary_names = ['ngram', 'transformer']
     learner_instance = instantiate(learner_p)
 
     grads = NestedMap()
@@ -371,6 +374,7 @@ class LearnersTest(test_utils.TestCase):
     # Add auxiliary optimizers.
     learner_p.auxiliary_optimizers = [aux_p1, aux_p2]
     learner_p.auxiliary_regex = ['.*ngrammer', '.*transformer']
+    learner_p.auxiliary_names = ['ngram', 'transformer']
     learner_instance = instantiate(learner_p)
 
     # Add a single instance optimizer.

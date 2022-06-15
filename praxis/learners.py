@@ -105,6 +105,10 @@ class Learner(base_hyperparams.BaseParameterizable):
     """Return the Optimizer object of this learner."""
     return self._optimizer
 
+  def plot_learning_rate(self, step: int) -> None:
+    learning_rate = self.optimizer.get_learning_rate(step)
+    base_layer.add_global_summary('learning_rate', learning_rate)
+
   def get_grad_tx(
       self, var_weight_hparams: NestedHParams
   ) -> optimizers.GeneralGradientTransformation:
@@ -295,19 +299,23 @@ class MultiOptimizerLearner(Learner):
       auxiliary_regex: A regular expression which if matches the variable name,
         will activate the corresponding auxiliary optimizer. The length of this
         list must be the same as auxiliary optimiers.
+      auxiliary_names: Name of all auxiliary optimizers. This is mainly used
+        for tensorboard.
     """
-    auxiliary_optimizers: Optional[Sequence[
-        optimizers.BaseOptimizer.HParams]] = None
-    auxiliary_regex: Optional[Sequence[str]] = None
+    auxiliary_optimizers: Sequence[optimizers.BaseOptimizer.HParams] = ()
+    auxiliary_regex: Sequence[str] = ()
+    auxiliary_names: Sequence[str] = ()
 
   def __init__(self, hparams: MultiOptimizerLearner.HParams) -> None:
     """Constructor for the MultiOptimizer learner."""
     super().__init__(hparams)
     p = self._hparams
     asserts.not_none(p.optimizer)
-    if len(p.auxiliary_optimizers) != len(p.auxiliary_regex):
+    if len(p.auxiliary_optimizers) != len(p.auxiliary_regex) or len(
+        p.auxiliary_regex) != len(p.auxiliary_names):
       raise ValueError('The length of the auxiliary regex must match the length'
-                       'of the auxiliary optimizers.')
+                       ' of the auxiliary optimizers and length of the '
+                       'auxiliary names.')
     self._optimizer = instantiate(p.optimizer)
     self._auxiliary_optimizers = [
         instantiate(opt) for opt in p.auxiliary_optimizers
@@ -316,6 +324,16 @@ class MultiOptimizerLearner(Learner):
     self._auxiliary_grad_tx_fn = [
         opt.get_grad_transformation for opt in self._auxiliary_optimizers
     ]
+
+  def plot_learning_rate(self, step: int) -> None:
+    p = self._hparams
+    learning_rate = self.optimizer.get_learning_rate(step)
+    base_layer.add_global_summary('main/learning_rate', learning_rate)
+
+    for name, optimizer in zip(p.auxiliary_names, self._auxiliary_optimizers):
+      learning_rate = optimizer.get_learning_rate(step)
+      base_layer.add_global_summary('{0}/learning_rate'.format(name),
+                                    learning_rate)
 
   def get_grad_tx(
       self, var_weight_hparams: NestedHParams
