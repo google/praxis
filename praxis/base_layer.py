@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Base class for the Lingvo Flax layers."""
+"""Base class for the Praxis layers."""
 
 from __future__ import annotations
 
