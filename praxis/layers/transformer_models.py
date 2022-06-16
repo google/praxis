@@ -403,7 +403,7 @@ class TransformerLm(base_layer.BaseLayer):
       if 'class_probabilities' in labels:
         class_probabilities = labels.class_probabilities
       class_weights = labels.class_weights[:, :, jnp.newaxis]
-      xent_output = self.softmax.fprop(
+      xent_output = self.softmax(
           activations,
           class_weights,
           class_ids=class_ids,
@@ -426,14 +426,14 @@ class TransformerLm(base_layer.BaseLayer):
       xent_output.total_loss = xent_output.avg_xent + xent_output.aux_loss
     return xent_output
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: JTensor,
-            labels: Optional[NestedMap] = None,
-            segment_ids: Optional[JTensor] = None,
-            segment_pos: Optional[JTensor] = None,
-            causal_attention_mask: Optional[JTensor] = None,
-            start_time_step: int = 0) -> NestedMap:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: JTensor,
+               labels: Optional[NestedMap] = None,
+               segment_ids: Optional[JTensor] = None,
+               segment_pos: Optional[JTensor] = None,
+               causal_attention_mask: Optional[JTensor] = None,
+               start_time_step: int = 0) -> NestedMap:
     """Computes xent loss given the language model inputs.
 
     Args:
@@ -477,14 +477,14 @@ class TransformerLm(base_layer.BaseLayer):
 
     # Add NGrammer to the source embeddings.
     if p.ngrammer_tpl is not None:
-      input_emb = self.ngrammer.fprop(
+      input_emb = self.ngrammer(
           input_ids=inputs,
           input_embs=input_emb,
           paddings=paddings,
           segment_pos=segment_pos)
 
     if p.position_emb_tpl is not None:
-      position_emb = self.position_emb.fprop(
+      position_emb = self.position_emb(
           seq_length=seq_length, position=segment_pos)
       inputs = input_emb + position_emb
     else:
@@ -498,12 +498,12 @@ class TransformerLm(base_layer.BaseLayer):
                                                     causal_attention_mask)
 
     self.update_decode_state('time_step', start_time_step)
-    output = self.transformer.fprop(
+    output = self.transformer(
         inputs, paddings, segment_mask=segment_mask, segment_pos=segment_pos)
 
     # Final layer norm
     if p.final_ln_tpl is not None:
-      output = self.final_ln.fprop(output)
+      output = self.final_ln(output)
     return self.compute_loss(output, labels)
 
   def extend_step(
@@ -539,7 +539,7 @@ class TransformerLm(base_layer.BaseLayer):
 
     # Add Ngrammer layer if applicable.
     if p.ngrammer_tpl is not None:
-      input_emb = self.ngrammer.fprop(
+      input_emb = self.ngrammer(
           inputs, input_emb, paddings=None, segment_pos=segment_pos)
       inputs = inputs[:, -1][:, jnp.newaxis]
       input_emb = input_emb[:, -1, :][:, jnp.newaxis, :]
@@ -550,7 +550,7 @@ class TransformerLm(base_layer.BaseLayer):
         position = jnp.zeros((inputs.shape[0], 1)) + time_step
       else:
         position = segment_pos
-      position_emb = self.position_emb.fprop(seq_length=1, position=position)
+      position_emb = self.position_emb(seq_length=1, position=position)
 
       inputs = input_emb + position_emb
     else:
@@ -566,7 +566,7 @@ class TransformerLm(base_layer.BaseLayer):
 
     self.update_decode_state('time_step', time_step + 1)
     if p.final_ln_tpl is not None:
-      outputs = self.final_ln.fprop(outputs)
+      outputs = self.final_ln(outputs)
     xent_output = self.compute_loss(outputs)
     return xent_output
 
@@ -1031,32 +1031,32 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
     # Add NGrammer to the source embeddings.
     if p.encoder_ngrammer_tpl is not None:
-      input_emb = self.encoder_ngrammer.fprop(
+      input_emb = self.encoder_ngrammer(
           input_ids=inputs,
           input_embs=input_emb,
           paddings=input_paddings,
           segment_pos=input_segment_pos)
 
     if p.position_emb_tpl is not None:
-      position_emb = self.position_emb.fprop(
+      position_emb = self.position_emb(
           seq_length=seq_length, position=input_segment_pos)
       input_emb += position_emb
     elif p.encoder_position_emb_tpl is not None:
-      position_emb = self.encoder_position_emb.fprop(
+      position_emb = self.encoder_position_emb(
           seq_length=seq_length, position=input_segment_pos)
       input_emb += position_emb
 
     if input_segment_mask is None:
       input_segment_mask = attentions.segment_mask(
           input_segment_ids, dtype=input_emb.dtype)
-    encoder_output = self.encoder.fprop(
+    encoder_output = self.encoder(
         input_emb,
         input_paddings,
         segment_mask=input_segment_mask,
         segment_pos=input_segment_pos)
 
     # Final layer norm for encoder output.
-    encoder_output = self.encoder_ln.fprop(encoder_output)
+    encoder_output = self.encoder_ln(encoder_output)
     return encoder_output
 
   def compute_loss(self,
@@ -1090,7 +1090,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       if 'class_probabilities' in labels:
         class_probabilities = labels.class_probabilities
       class_weights = labels.class_weights[:, :, jnp.newaxis]
-      xent_output = self.softmax.fprop(
+      xent_output = self.softmax(
           activations,
           class_weights,
           class_ids=class_ids,
@@ -1112,7 +1112,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       xent_output.total_loss = xent_output.avg_xent + xent_output.aux_loss
     return xent_output
 
-  def fprop(
+  def __call__(
       self,
       inputs: JTensor,
       input_paddings: JTensor,
@@ -1181,18 +1181,18 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       target_emb = self.softmax.emb_lookup(targets)
 
     if p.decoder_ngrammer_tpl is not None:
-      target_emb = self.decoder_ngrammer.fprop(
+      target_emb = self.decoder_ngrammer(
           input_ids=targets,
           input_embs=target_emb,
           paddings=target_paddings,
           segment_pos=target_segment_pos)
 
     if p.position_emb_tpl is not None:
-      targets_position_emb = self.position_emb.fprop(
+      targets_position_emb = self.position_emb(
           seq_length=target_seq_length, position=target_segment_pos)
       target_emb += targets_position_emb
     elif p.decoder_position_emb_tpl is not None:
-      targets_position_emb = self.decoder_position_emb.fprop(
+      targets_position_emb = self.decoder_position_emb(
           seq_length=target_seq_length, position=target_segment_pos)
       target_emb += targets_position_emb
 
@@ -1228,7 +1228,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
           input_segment_pos=None)
       self.update_decode_state('encoder_output', encoder_output)
       self.update_decode_state('input_paddings', input_paddings)
-    output = self.decoder.fprop(
+    output = self.decoder(
         target_emb,
         target_paddings,
         target_segment_mask,
@@ -1238,7 +1238,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
         segment_pos=target_segment_pos)
 
     # Final layer norm for decoder.
-    output = self.decoder_ln.fprop(output)
+    output = self.decoder_ln(output)
 
     return self.compute_loss(output, labels)
 
@@ -1289,7 +1289,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
     time_step = self.get_decode_state('time_step')
     if p.decoder_ngrammer_tpl is not None:
-      target_emb = self.decoder_ngrammer.fprop(
+      target_emb = self.decoder_ngrammer(
           targets, target_emb, paddings=None, segment_pos=None)
 
     targets = targets[:, -1][:, jnp.newaxis]
@@ -1300,11 +1300,11 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
     # Add position embeddings to target ids.
     if p.position_emb_tpl is not None:
-      target_position_emb = self.position_emb.fprop(
+      target_position_emb = self.position_emb(
           seq_length=1, position=segment_pos)
       target_emb += target_position_emb
     elif p.decoder_position_emb_tpl is not None:
-      target_position_emb = self.decoder_position_emb.fprop(
+      target_position_emb = self.decoder_position_emb(
           seq_length=1, position=segment_pos)
       target_emb += target_position_emb
 
@@ -1319,6 +1319,6 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       outputs, _ = outputs
 
     self.update_decode_state('time_step', time_step + 1)
-    outputs = self.decoder_ln.fprop(outputs)
+    outputs = self.decoder_ln(outputs)
     xent_output = self.compute_loss(outputs)
     return xent_output

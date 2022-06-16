@@ -63,7 +63,7 @@ class FeedForward(base_layer.BaseLayer):
         WeightHParams(shape=[], dtype=jnp.int32, init=WeightInit.Constant(0)),
         trainable=False)
 
-  def fprop(self, inputs):
+  def __call__(self, inputs):
     self.add_summary('inputs_mean', jnp.mean(inputs))
     self.add_aux_loss('z_loss', 1)
     self.update_var('step', self.get_var('step') + 1)

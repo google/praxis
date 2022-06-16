@@ -110,7 +110,7 @@ class ResNetBlock(base_layer.BaseLayer):
         negative_slope=p.negative_slope)
     self.create_child('postact', post_activation)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Forward propagation of a ResNetBlock.
 
     Args:
@@ -125,20 +125,20 @@ class ResNetBlock(base_layer.BaseLayer):
 
     # body
     for i in range(len(self.body)):
-      outputs = self.body[i].fprop(outputs)
+      outputs = self.body[i](outputs)
 
     # projection
     if not self._in_out_same_shape:
-      inputs = self.shortcut.fprop(inputs)
+      inputs = self.shortcut(inputs)
 
     # residual
     if p.residual_droppath_prob:
-      outputs = self.residual_droppath.fprop(inputs, outputs)
+      outputs = self.residual_droppath(inputs, outputs)
     else:
       outputs += inputs
 
     # post activation
-    outputs = self.postact.fprop(outputs)
+    outputs = self.postact(outputs)
     return outputs
 
   @property
@@ -193,7 +193,7 @@ class ResNetBasicBlock(ResNetBlock):
         negative_slope=p.negative_slope)
     self.create_child('postact', post_activation)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Forward propagation of a ResNetBlock.
 
     Args:
@@ -208,20 +208,20 @@ class ResNetBasicBlock(ResNetBlock):
 
     # body
     for i in range(len(self.body)):
-      outputs = self.body[i].fprop(outputs)
+      outputs = self.body[i](outputs)
 
     # projection
     if not self._in_out_same_shape:
-      inputs = self.shortcut.fprop(inputs)
+      inputs = self.shortcut(inputs)
 
     # residual
     if p.residual_droppath_prob:
-      outputs = self.residual_droppath.fprop(inputs, outputs)
+      outputs = self.residual_droppath(inputs, outputs)
     else:
       outputs += inputs
 
     # post activation
-    outputs = self.postact.fprop(outputs)
+    outputs = self.postact(outputs)
     return outputs
 
 
@@ -370,7 +370,7 @@ class ResNet(base_layer.BaseLayer):
       self.create_child('output_spatial_pooling',
                         p.output_spatial_pooling_params)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the ResNet model to the inputs.
 
     Args:
@@ -386,17 +386,17 @@ class ResNet(base_layer.BaseLayer):
     block_group_features = {}
 
     # Apply the entryflow conv.
-    outputs = self.entryflow_conv.fprop(inputs)
+    outputs = self.entryflow_conv(inputs)
 
     # Apply the entryflow maxpooling layer.
-    outputs, _ = self.entryflow_maxpool.fprop(outputs)
+    outputs, _ = self.entryflow_maxpool(outputs)
 
     # Apply the ResNet blocks.
     for stage_id, num_blocks in enumerate(p.blocks):
       for block_id in range(num_blocks):
         block_name = f'stage_{stage_id}_block_{block_id}'
         instance = getattr(self, block_name)
-        outputs = instance.fprop(outputs)
+        outputs = instance(outputs)
 
       if p.return_block_features:
         block_group_features[2 + stage_id] = outputs
@@ -406,5 +406,5 @@ class ResNet(base_layer.BaseLayer):
 
     # Apply optional spatial global pooling.
     if p.output_spatial_pooling_params is not None:
-      outputs = self.output_spatial_pooling.fprop(outputs)
+      outputs = self.output_spatial_pooling(outputs)
     return outputs

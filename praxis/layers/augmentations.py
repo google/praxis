@@ -52,8 +52,8 @@ class MaskedLmDataAugmenter(base_layer.BaseLayer):
     same_prob: float = 0.015
     mask_token_id: int = -1
 
-  def fprop(self, inputs: JTensor,
-            paddings: JTensor) -> Tuple[JTensor, JTensor]:
+  def __call__(self, inputs: JTensor,
+               paddings: JTensor) -> Tuple[JTensor, JTensor]:
     """Applies data augmentation by randomly masking/replacing tokens in inputs.
 
     Args:

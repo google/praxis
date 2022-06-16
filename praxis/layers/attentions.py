@@ -375,7 +375,7 @@ class PerDimScale(base_layer.BaseLayer):
     pc = WeightHParams(shape=[p.dim], init=WeightInit.Constant(0.0))
     self.create_variable('per_dim_scale', pc)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Return per_dim_scale * inputs / jnp.sqrt(dim)).
 
     Args:
@@ -480,9 +480,9 @@ class RelativeBias(base_layer.BaseLayer):
     ret += jnp.where(is_small, n, val_if_large)
     return ret
 
-  def fprop(self,
-            query_segment_pos: JTensor,
-            key_segment_pos: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               query_segment_pos: JTensor,
+               key_segment_pos: Optional[JTensor] = None) -> JTensor:
     """Return relative bias for attention.
 
     We use the following capital letters to denote certain JTensor parameters.
@@ -560,7 +560,7 @@ class RelativeBias(base_layer.BaseLayer):
     """
     query_segment_pos = jnp.zeros([1], jnp.int32) + time_step
     key_segment_pos = jnp.arange(seq_length, dtype=jnp.int32)
-    relative_bias = self.fprop(
+    relative_bias = self(
         query_segment_pos=query_segment_pos[jnp.newaxis, :],
         key_segment_pos=key_segment_pos[jnp.newaxis, :])
     return relative_bias
@@ -643,7 +643,7 @@ class AttentionProjection(base_layer.BaseLayer):
             tensor_split_dims_mapping=bias_split_dims_mapping)
       self.create_variable('b', pc_bias)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Computes the multi headed projection for inputs.
 
     Args:
@@ -769,7 +769,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
 
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
   # attentions.
-  def fprop(self, inputs: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
+  def __call__(self, inputs: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
     """Computes the QKV projection for inputs.
 
     Args:
@@ -1127,7 +1127,7 @@ class DotProductAttention(base_layer.BaseLayer):
     p = self.hparams
     if p.internal_enable_query_scale:
       if p.internal_enable_per_dim_scale:
-        query = self.per_dim_scale.fprop(query)
+        query = self.per_dim_scale(query)
       else:
         query *= (p.hidden_dim // p.num_heads)**-0.5
     return query
@@ -1233,7 +1233,7 @@ class DotProductAttention(base_layer.BaseLayer):
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
           key.dtype)
     # Apply attention dropout.
-    probs = self.atten_dropout.fprop(probs)
+    probs = self.atten_dropout(probs)
     # Compute the attention context.
     encoded = jnp.einsum('BNTS,BSNH->BTNH', probs, value)
     encoded = checkpoint_name(encoded, 'context')
@@ -1302,7 +1302,7 @@ class DotProductAttention(base_layer.BaseLayer):
     encoded = self._shard_bnh(encoded)
     return encoded, probs
 
-  def fprop(
+  def __call__(
       self,
       query_vec: JTensor,
       key_vec: JTensor,
@@ -1335,13 +1335,13 @@ class DotProductAttention(base_layer.BaseLayer):
       assert query_vec is value_vec
       # Project inputs to key, value and query using a combined weight for
       # faster performance on TPU.
-      query_proj, key_proj, value_proj = self.combined_qkv.fprop(query_vec)
+      query_proj, key_proj, value_proj = self.combined_qkv(query_vec)
     else:
       # Project inputs to key, value and query, respectively has shape
       # [B, S, N, H], [B, S, N, H], and [B, T, N, H].
-      query_proj = self.query.fprop(query_vec)
-      key_proj = self.key.fprop(key_vec)
-      value_proj = self.value.fprop(value_vec)
+      query_proj = self.query(query_vec)
+      key_proj = self.key(key_vec)
+      value_proj = self.value(value_vec)
 
     self._fprop_update_decode_state('key_state', key_proj)
     self._fprop_update_decode_state('value_state', value_proj)
@@ -1350,28 +1350,25 @@ class DotProductAttention(base_layer.BaseLayer):
     # Paper: https://arxiv.org/abs/2109.08668.
     if p.dconv_qkv:
       self._fprop_update_decode_state('query_state', query_proj)
-      query_proj = self.dconv_q.fprop(
+      query_proj = self.dconv_q(
           query_proj, axis=1, segment_pos=query_segment_pos)
       self._fprop_update_decode_state('query_post_dconv', query_proj)
-      key_proj = self.dconv_k.fprop(
-          key_proj, axis=1, segment_pos=key_segment_pos)
+      key_proj = self.dconv_k(key_proj, axis=1, segment_pos=key_segment_pos)
       self._fprop_update_decode_state('key_post_dconv', key_proj)
-      value_proj = self.dconv_v.fprop(
-          value_proj, axis=1, segment_pos=key_segment_pos)
+      value_proj = self.dconv_v(value_proj, axis=1, segment_pos=key_segment_pos)
       self._fprop_update_decode_state('value_post_dconv', value_proj)
 
     # Apply rotary position embeddings.
     # Paper: https://arxiv.org/abs/2104.09864.
     if p.use_rotary_position_emb:
-      query_proj = self.rotary_position_emb.fprop(query_proj, query_segment_pos)
-      key_proj = self.rotary_position_emb.fprop(key_proj, key_segment_pos)
+      query_proj = self.rotary_position_emb(query_proj, query_segment_pos)
+      key_proj = self.rotary_position_emb(key_proj, key_segment_pos)
       self._fprop_update_decode_state('key_post_rotary_pos_emb', key_proj)
 
     # Apply relative bias.
     # Paper: https://aclanthology.org/N18-2074.pdf.
     if p.relative_bias_tpl:
-      relative_bias = self.relative_bias.fprop(query_segment_pos,
-                                               key_segment_pos)
+      relative_bias = self.relative_bias(query_segment_pos, key_segment_pos)
     else:
       relative_bias = None
 
@@ -1385,7 +1382,7 @@ class DotProductAttention(base_layer.BaseLayer):
       attention_scores = None
       if p.ngrammer_tpl.ngram_using_attention_scores:
         attention_scores = atten_probs
-      encoded = self.ngrammer.fprop(
+      encoded = self.ngrammer(
           input_ids=None,
           input_embs=encoded,
           segment_pos=key_segment_pos,
@@ -1393,7 +1390,7 @@ class DotProductAttention(base_layer.BaseLayer):
           attention_scores=attention_scores)
 
     # Post projection
-    encoded = self.post.fprop(encoded)
+    encoded = self.post(encoded)
     encoded = self._shard_bld(encoded)
     encoded = checkpoint_name(encoded, 'out_proj')
 
@@ -1479,13 +1476,13 @@ class DotProductAttention(base_layer.BaseLayer):
     if p.combine_qkv:
       # Project inputs to key, value and query using a combined weight for
       # faster performance on TPU.
-      new_query_proj, new_key_proj, new_value_proj = self.combined_qkv.fprop(
+      new_query_proj, new_key_proj, new_value_proj = self.combined_qkv(
           query_vec)
     else:
       # Project inputs to key, value and query. Each has shape [B, N, H].
-      new_key_proj = self.key.fprop(query_vec)
-      new_value_proj = self.value.fprop(query_vec)
-      new_query_proj = self.query.fprop(query_vec)
+      new_key_proj = self.key(query_vec)
+      new_value_proj = self.value(query_vec)
+      new_query_proj = self.query(query_vec)
 
     def _extend_decode_state_and_shard(name: str,
                                        extend_value: JTensor) -> JTensor:
@@ -1573,7 +1570,7 @@ class DotProductAttention(base_layer.BaseLayer):
 
     del atten_prob
     # Post projection.
-    encoded = self.post.fprop(encoded)
+    encoded = self.post(encoded)
     encoded = self._shard_bd(encoded)
     return encoded
 
@@ -2028,13 +2025,12 @@ class DotProductAttentionWithLPB(DotProductAttention):
       if p.combine_qkv:
         # Project inputs to key, value and query using a combined weight for
         # faster performance on TPU.
-        new_query_proj, new_key_proj, new_value_proj = layer.combined_qkv.fprop(
-            q)
+        new_query_proj, new_key_proj, new_value_proj = layer.combined_qkv(q)
       else:
         # Project inputs to key, value and query. Each has shape [B, N, H].
-        new_key_proj = layer.key.fprop(q)
-        new_value_proj = layer.value.fprop(q)
-        new_query_proj = layer.query.fprop(q)
+        new_key_proj = layer.key(q)
+        new_value_proj = layer.value(q)
+        new_query_proj = layer.query(q)
       return new_query_proj, new_key_proj, new_value_proj
 
     new_query_proj, new_key_proj, new_value_proj = _vmap_no_state(_proj_qkv)(
@@ -2144,7 +2140,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
     # Post projection.
     if pfx_count > 0:
       encoded = jnp.reshape(encoded, (-1,) + encoded.shape[1 + pfx_count:])
-    encoded = self.post.fprop(encoded)
+    encoded = self.post(encoded)
     encoded = self._shard_bd(encoded)
     return encoded
 
@@ -2264,9 +2260,9 @@ class DotProductAttentionXL(DotProductAttention):
 
     # [1, 2T - 1]
     pos = jnp.expand_dims(jnp.arange(-(t - 1), t), 0)
-    sin_emb = self.pos_emb.fprop(position=pos)
+    sin_emb = self.pos_emb(position=pos)
     # [1, 2T - 1, N, H]
-    sin_emb = self.pos_proj.fprop(sin_emb)
+    sin_emb = self.pos_proj(sin_emb)
     # [2T - 1, N, H]
     sin_emb = jnp.squeeze(sin_emb, 0)
 
@@ -2502,7 +2498,7 @@ class LocalSelfAttention(DotProductAttention):
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
           key.dtype)
     # Apply attention dropout.
-    probs = self.atten_dropout.fprop(probs)
+    probs = self.atten_dropout(probs)
 
     value_block_context = _extract_block_context(
         value,
@@ -2603,9 +2599,9 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     # term b and d
     # [1, F]
     pos = jnp.expand_dims(jnp.arange(l - 1, -r - 1, -1), 0)
-    sin_emb = self.pos_emb.fprop(position=pos)
+    sin_emb = self.pos_emb(position=pos)
     # [1, F, N, H]
-    sin_emb = self.pos_proj.fprop(sin_emb)
+    sin_emb = self.pos_proj(sin_emb)
     # [F, N, H]
     sin_emb = jnp.squeeze(sin_emb, 0)
 
@@ -2707,7 +2703,7 @@ class ChunkedCrossAttention(base_layer.BaseLayer):
     # [b, m]
     query_segment_pos = np.arange(m, dtype=jnp.int32)[None, :]
     query_segment_pos = jnp.tile(query_segment_pos, [b, 1])
-    encoded, _ = self.atten.fprop(
+    encoded, _ = self.atten(
         query_vec=chunk,
         key_vec=key_vec,
         value_vec=key_vec,
@@ -2717,7 +2713,7 @@ class ChunkedCrossAttention(base_layer.BaseLayer):
     # [b, m, d]
     return encoded
 
-  def fprop(self, query: JTensor, neighbors: JTensor) -> JTensor:
+  def __call__(self, query: JTensor, neighbors: JTensor) -> JTensor:
     """Computes the chunked cross attention.
 
     Not supported: packed input; decoding with extend_step.
@@ -2817,10 +2813,10 @@ class CausalDepthwiseConv1D(base_layer.BaseLayer):
               mesh_shape=p.mesh_shape,
               tensor_split_dims_mapping=wp.wt))
 
-  def fprop(self,
-            inputs: JTensor,
-            axis: int,
-            segment_pos: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               axis: int,
+               segment_pos: Optional[JTensor] = None) -> JTensor:
     """FProp applying depth-wise convolution on 1D sequence.
 
     Args:

@@ -73,7 +73,7 @@ class SpectrumAugmenterTest(test_utils.TestCase):
           inputs,
           paddings,
           rngs={'random': compute_key},
-          method=specaug_layer.fprop)
+          method=specaug_layer.__call__)
     self.assertAllClose(actual_layer_output, expected_output)
 
   def testSpectrumAugmenterWithFrequencyMask(self):
@@ -110,7 +110,7 @@ class SpectrumAugmenterTest(test_utils.TestCase):
           inputs,
           paddings,
           rngs={'random': compute_key},
-          method=specaug_layer.fprop)
+          method=specaug_layer.__call__)
     self.assertAllClose(actual_layer_output, expected_output)
 
 

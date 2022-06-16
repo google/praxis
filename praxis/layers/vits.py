@@ -174,7 +174,7 @@ class VitEntryLayers(base_layer.BaseLayer):
           name='dropout', keep_prob=1.0 - p.pos_emb_dropout_prob)
       self.create_child('dropout', p_dropout)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the vit entry operations to the input image.
 
     Args:
@@ -192,10 +192,10 @@ class VitEntryLayers(base_layer.BaseLayer):
           f'of p.patch_size ({p.patch_size}).')
 
     features = image_to_patch(inputs, p.patch_size)
-    features = self.patch_projection.fprop(features)
+    features = self.patch_projection(features)
 
     num_patches = p.pos_embed_shapes[0] * p.pos_embed_shapes[1]
-    pos_emb = self.pos_emb.fprop(seq_length=num_patches)
+    pos_emb = self.pos_emb(seq_length=num_patches)
 
     row_patch_count = height // p.patch_size
     col_patch_count = width // p.patch_size
@@ -205,7 +205,7 @@ class VitEntryLayers(base_layer.BaseLayer):
 
     features = features + pos_emb
     if self.hparams.pos_emb_dropout_prob > 0.0:
-      features = self.dropout.fprop(features)
+      features = self.dropout(features)
 
     return features
 
@@ -257,7 +257,7 @@ class VitExitLayers(base_layer.BaseLayer):
                                               p.output_dropout_prob)
       self.create_child('dropout', p_dropout)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """FProp function.
 
     Args:
@@ -266,13 +266,13 @@ class VitExitLayers(base_layer.BaseLayer):
     Returns:
       Output tensor of shape [B, D] or [B, N, D] if pooled == False.
     """
-    inputs = self.ln.fprop(inputs)
+    inputs = self.ln(inputs)
     if self.hparams.pooled:
-      inputs = self.pooling.fprop(inputs)
+      inputs = self.pooling(inputs)
     if self.hparams.output_fc_tanh:
-      inputs = self.fc_tanh.fprop(inputs)
+      inputs = self.fc_tanh(inputs)
     if self.hparams.output_dropout_prob > 0.0:
-      inputs = self.dropout.fprop(inputs)
+      inputs = self.dropout(inputs)
     return inputs
 
 
@@ -310,7 +310,7 @@ class VisionTransformer(base_layer.BaseLayer):
     if p.exit_layers_tpl is not None:
       self.create_child('exit_stack', p.exit_layers_tpl)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the Vit model to the inputs.
 
     Args:
@@ -322,11 +322,11 @@ class VisionTransformer(base_layer.BaseLayer):
     p = self.hparams
     features = inputs
     if p.entry_layers_tpl:
-      features = self.entry_stack.fprop(features)  # [B, N, D]
+      features = self.entry_stack(features)  # [B, N, D]
     paddings = jnp.zeros(features.shape[:-1])
-    features = self.transformers_stack.fprop(features, paddings)  # [B, N, D]
+    features = self.transformers_stack(features, paddings)  # [B, N, D]
     if p.exit_layers_tpl:
-      features = self.exit_stack.fprop(features)  # [B, D] or [B, N, D]
+      features = self.exit_stack(features)  # [B, D] or [B, N, D]
     return features
 
 

@@ -41,7 +41,7 @@ class Activation(base_layer.BaseLayer):
     activation: str = 'RELU'
     negative_slope: float = 0.01
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     p = self.hparams
     if p.activation == 'RELU':
       outputs = jax.nn.relu(inputs)

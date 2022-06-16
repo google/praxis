@@ -91,16 +91,16 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     params.keep_prob = (1.0 - p.residual_dropout_prob)
     self.create_child('residual_dropout', params)
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: JTensor,
-            atten_mask: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: JTensor,
+               atten_mask: Optional[JTensor] = None) -> JTensor:
     p = self.hparams
 
     unnormalized_inputs = inputs
 
     if p.pre_layer_norm:
-      inputs = self.norm.fprop(inputs)
+      inputs = self.norm(inputs)
 
     if p.left_context is not None or p.right_context is not None:
       asserts.none(atten_mask)
@@ -113,16 +113,16 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
         padding_mask = attentions.convert_paddings_to_mask(
             paddings, inputs.dtype)
         atten_mask = jnp.minimum(atten_mask, padding_mask)
-    result = self.self_atten.fprop(
+    result = self.self_atten(
         query_vec=inputs,
         key_vec=inputs,
         value_vec=inputs,
         atten_mask=atten_mask)[0]
     if not p.pre_layer_norm:
-      result = self.norm.fprop(result)
+      result = self.norm(result)
 
     result = (
-        self.residual_dropout.fprop(result) * p.residual_weight +
+        self.residual_dropout(result) * p.residual_weight +
         unnormalized_inputs * p.input_weight)
     return result
 
@@ -296,10 +296,10 @@ class Conformer(base_layer.BaseLayer):
   def has_fflayer_end(self) -> bool:
     return hasattr(self, 'fflayer_end')
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: JTensor,
-            atten_mask: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: JTensor,
+               atten_mask: Optional[JTensor] = None) -> JTensor:
     """Conformer layer.
 
     Args:
@@ -315,28 +315,28 @@ class Conformer(base_layer.BaseLayer):
       raise RuntimeError('Attention mask is provided but no attention layer.')
 
     if self.has_fflayer_start:
-      inputs = self.fflayer_start.fprop(inputs, paddings)
+      inputs = self.fflayer_start(inputs, paddings)
 
     if p.layer_order == 'mhsa':
-      inputs = self.trans_atten.fprop(
+      inputs = self.trans_atten(
           inputs=inputs, paddings=paddings, atten_mask=atten_mask)
     elif p.layer_order == 'conv':
-      inputs = self.lconv.fprop(inputs, paddings)
+      inputs = self.lconv(inputs, paddings)
     elif p.layer_order == 'mhsa_before_conv':
-      inputs = self.trans_atten.fprop(
+      inputs = self.trans_atten(
           inputs=inputs, paddings=paddings, atten_mask=atten_mask)
-      inputs = self.lconv.fprop(inputs, paddings)
+      inputs = self.lconv(inputs, paddings)
     else:
       assert p.layer_order == 'conv_before_mhsa'
-      inputs = self.lconv.fprop(inputs, paddings)
-      inputs = self.trans_atten.fprop(
+      inputs = self.lconv(inputs, paddings)
+      inputs = self.trans_atten(
           inputs=inputs, paddings=paddings, atten_mask=atten_mask)
 
     if self.has_fflayer_end:
-      inputs = self.fflayer_end.fprop(inputs, paddings)
+      inputs = self.fflayer_end(inputs, paddings)
     elif p.fflayer_weight_sharing:
       # With the weight sharing, we apply fflayer_start again
-      inputs = self.fflayer_start.fprop(inputs, paddings)
+      inputs = self.fflayer_start(inputs, paddings)
 
-    inputs = self.final_ln.fprop(inputs)
+    inputs = self.final_ln(inputs)
     return inputs

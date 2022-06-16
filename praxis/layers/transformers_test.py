@@ -225,7 +225,7 @@ class TransformersTest(test_utils.TestCase):
           attention_mask=attention_mask,
           cross_inputs=cross_inputs,
           cross_attention_mask=cross_attention_mask,
-          method=transformer_layer.fprop,
+          method=transformer_layer.__call__,
           mutable=[DECODE_CACHE])
       fprop_outputs, _ = transformer_layer.apply(
           initial_vars,
@@ -234,7 +234,7 @@ class TransformersTest(test_utils.TestCase):
           attention_mask=attention_mask,
           cross_inputs=cross_inputs,
           cross_attention_mask=cross_attention_mask,
-          method=transformer_layer.fprop)
+          method=transformer_layer.__call__)
       decoder_outputs = jnp.zeros(shape=[seq_len, batch_size, p.input_dims])
       updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
                                                        initial_vars)

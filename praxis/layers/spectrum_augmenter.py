@@ -249,8 +249,8 @@ class SpectrumAugmenter(base_layer.BaseLayer):
 
     return outputs
 
-  def fprop(self, inputs: JTensor,
-            paddings: JTensor) -> Tuple[JTensor, JTensor]:
+  def __call__(self, inputs: JTensor,
+               paddings: JTensor) -> Tuple[JTensor, JTensor]:
     """Applies data augmentation by randomly masking values in the spectrum.
 
     Args:

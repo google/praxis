@@ -97,9 +97,9 @@ class BaseNormalization(base_layer.BaseLayer):
     """
     dim: int = 0
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> JTensor:
     """Applies the normalization."""
     raise NotImplementedError(
         'Normalization layers are expected to implement fprop().')
@@ -232,9 +232,9 @@ class BatchNorm(BaseNormalization):
     beta, gamma = self._get_beta_gamma()
     return norm_mean, norm_variance, beta, gamma
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> JTensor:
     """Applies batch normalization.
 
     Args:
@@ -315,9 +315,9 @@ class LayerNorm(BaseNormalization):
                   base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
               ]))
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> JTensor:
     """Applies layer norm to inputs.
 
     Args:
@@ -373,9 +373,9 @@ class RmsNorm(BaseNormalization):
             mesh_shape=p.mesh_shape,
             tensor_split_dims_mapping=wp_scale))
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> JTensor:
     """Applies RMS norm to inputs.
 
     Args:
@@ -405,9 +405,9 @@ class RmsNormNoScale(BaseNormalization):
     """
     epsilon: float = 1e-6
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> JTensor:
     """Applies RMS norm to inputs.
 
     Args:
@@ -505,9 +505,9 @@ class GroupNorm(BaseNormalization):
     outputs = grouped_inputs * (1 + self.theta.gamma) + self.theta.beta
     return outputs
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> JTensor:
     """Applies group normalization.
 
     Args:

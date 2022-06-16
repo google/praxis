@@ -1139,9 +1139,9 @@ class BaseLayer(
             mutable=False,
             capture_intermediates=False,
             **kwargs):
-    # Default to self.fprop to make callsite cleaner.
+    # Default to self.__call__ to make callsite cleaner.
     if method is None:
-      method = self.fprop
+      method = self.__call__
     result = super().apply(
         variables,
         *args,
@@ -1180,7 +1180,7 @@ class BaseLayer(
   #
   #     @@nn.compact
   #     def __call__(self, x):
-  #       y = base_layer.fprop(x)
+  #       y = base_layer(x)
   #       ...
   #
   #  == How BaseLayer puts variables inside self.scope:

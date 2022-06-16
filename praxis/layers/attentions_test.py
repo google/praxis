@@ -149,7 +149,7 @@ class AttentionsTest(test_utils.TestCase):
     inputs = np.random.normal(1.5, 2.0, [5, 2, 5]).astype(np.float32)
 
     with base_layer.JaxContext.new_context():
-      jax_out = layer.apply(initial_vars, inputs, method=layer.fprop)
+      jax_out = layer.apply(initial_vars, inputs)
 
     logging.info('jax_output: %s', jax_out)
 
@@ -280,7 +280,7 @@ class AttentionsTest(test_utils.TestCase):
           atten_mask,
           query_segment_pos=segment_pos,
           key_segment_pos=segment_pos,
-          method=layer.fprop,
+          method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
       fprop_out, _ = layer.apply(
           initial_vars,
@@ -290,7 +290,7 @@ class AttentionsTest(test_utils.TestCase):
           atten_mask,
           query_segment_pos=segment_pos,
           key_segment_pos=segment_pos,
-          method=layer.fprop)
+          method=layer.__call__)
 
       decoder_output = jnp.zeros(
           shape=[target_max_length, target_batch_size, mdl_dim])
@@ -356,13 +356,9 @@ class AttentionsTest(test_utils.TestCase):
     atten_mask = attentions.causal_segment_mask(segment_ids, np.float32)
 
     with base_layer.JaxContext.new_context():
-      jax_fprop_out, jax_atten_prob = layer.apply(
-          initial_vars,
-          query_vec,
-          key_vec,
-          value_vec,
-          atten_mask,
-          method=layer.fprop)
+      jax_fprop_out, jax_atten_prob = layer.apply(initial_vars, query_vec,
+                                                  key_vec, value_vec,
+                                                  atten_mask)
 
     tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars['params'])
     tf_initial_vars.atten_dropout = None
@@ -436,13 +432,9 @@ class AttentionsTest(test_utils.TestCase):
     atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
 
     with base_layer.JaxContext.new_context():
-      jax_fprop_out, jax_atten_prob = layer.apply(
-          initial_vars,
-          query_vec,
-          key_vec,
-          value_vec,
-          atten_mask,
-          method=layer.fprop)
+      jax_fprop_out, jax_atten_prob = layer.apply(initial_vars, query_vec,
+                                                  key_vec, value_vec,
+                                                  atten_mask)
 
     tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars['params'])
     tf_initial_vars.atten_dropout = None
@@ -517,13 +509,9 @@ class AttentionsTest(test_utils.TestCase):
     atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
 
     with base_layer.JaxContext.new_context():
-      jax_fprop_out, jax_atten_prob = layer.apply(
-          initial_vars,
-          query_vec,
-          key_vec,
-          value_vec,
-          atten_mask,
-          method=layer.fprop)
+      jax_fprop_out, jax_atten_prob = layer.apply(initial_vars, query_vec,
+                                                  key_vec, value_vec,
+                                                  atten_mask)
 
     tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars['params'])
     tf_initial_vars.atten_dropout = None
@@ -590,13 +578,9 @@ class AttentionsTest(test_utils.TestCase):
       atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
 
     with base_layer.JaxContext.new_context():
-      jax_fprop_out, jax_atten_prob = layer.apply(
-          initial_vars,
-          query_vec,
-          key_vec,
-          value_vec,
-          atten_mask,
-          method=layer.fprop)
+      jax_fprop_out, jax_atten_prob = layer.apply(initial_vars, query_vec,
+                                                  key_vec, value_vec,
+                                                  atten_mask)
 
     tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars['params'])
     tf_initial_vars.atten_dropout = None
@@ -657,7 +641,7 @@ class AttentionsTest(test_utils.TestCase):
     for k in range(kernel_size):
       initial_vars['params'][f'dconv_{k}'] = jnp.ones(kernel_shape)
     jax_dconv_out = causal_dconv_layer.apply(
-        initial_vars, inputs, axis, method=causal_dconv_layer.fprop)
+        initial_vars, inputs, axis, method=causal_dconv_layer.__call__)
     jax_np_out = test_utils.to_np(jax_dconv_out)
     outputs = inputs
     for _ in range(1, kernel_size):
@@ -680,7 +664,7 @@ class AttentionsTest(test_utils.TestCase):
     prng_key, init_key = jax.random.split(prng_key)
     initial_vars = causal_dconv_layer.init(init_key)
     jax_dconv_out = causal_dconv_layer.apply(
-        initial_vars, inputs, axis, method=causal_dconv_layer.fprop)
+        initial_vars, inputs, axis, method=causal_dconv_layer.__call__)
     jax_np_out = test_utils.to_np(jax_dconv_out)
     jax_extend_step_out = jnp.zeros_like(jax_dconv_out)
     for i in range(shape[1]):
@@ -736,14 +720,8 @@ class AttentionsTest(test_utils.TestCase):
     atten_mask = attentions.causal_mask(query_vec)
 
     with base_layer.JaxContext.new_context():
-      atten_output, _ = layer.apply(
-          initial_vars,
-          query_vec,
-          key_vec,
-          value_vec,
-          atten_mask,
-          segment_pos,
-          method=layer.fprop)
+      atten_output, _ = layer.apply(initial_vars, query_vec, key_vec, value_vec,
+                                    atten_mask, segment_pos)
 
     self.assertEqual(atten_output.shape,
                      (target_batch_size, source_max_length, mdl_dim))
@@ -816,7 +794,7 @@ class AttentionsTest(test_utils.TestCase):
           fake_input,
           jnp.ones_like(atten_mask),
           segment_pos,
-          method=layer.fprop,
+          method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
       initial_vars = py_utils.MergeDictsWithValueCheck(attention_states,
                                                        initial_vars)
@@ -864,10 +842,8 @@ class AttentionsTest(test_utils.TestCase):
     logging.info('segment mask: %s', segment_mask)
 
     with base_layer.JaxContext.new_context():
-      rb_raw = layer_raw.apply(
-          initial_vars, segment_pos, segment_pos, method=layer_raw.fprop)
-      rb_len = layer_len.apply(
-          initial_vars, segment_pos, segment_pos, method=layer_len.fprop)
+      rb_raw = layer_raw.apply(initial_vars, segment_pos, segment_pos)
+      rb_len = layer_len.apply(initial_vars, segment_pos, segment_pos)
 
     # Test shape.
     self.assertEqual(
@@ -1005,7 +981,7 @@ class AttentionsTest(test_utils.TestCase):
           key_vec,
           value_vec,
           atten_mask,
-          method=layer.fprop)
+          method=layer.__call__)
       # Updates decode states in fprop.
       _, attention_states = layer.apply(
           initial_vars,
@@ -1013,7 +989,7 @@ class AttentionsTest(test_utils.TestCase):
           prefix,
           prefix,
           atten_mask,
-          method=layer.fprop,
+          method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
 
       updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
@@ -1080,7 +1056,7 @@ class AttentionsTest(test_utils.TestCase):
           key_vec,
           value_vec,
           atten_mask,
-          method=layer.fprop)
+          method=layer.__call__)
       # Updates decode states in fprop.
       _, attention_states = layer.apply(
           initial_vars,
@@ -1088,7 +1064,7 @@ class AttentionsTest(test_utils.TestCase):
           prefix,
           prefix,
           prefix_atten_mask,
-          method=layer.fprop,
+          method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
       updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
                                                        initial_vars)
@@ -1185,7 +1161,7 @@ class AttentionsTest(test_utils.TestCase):
           atten_mask,
           query_segment_pos=segment_pos,
           key_segment_pos=segment_pos,
-          method=layer.fprop,
+          method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
     logging.info('attention_states: %s', attention_states)
     # Makes sure there is no decoder state.
@@ -1228,8 +1204,7 @@ class ChunkedAttentionsTest(test_utils.TestCase):
         size=[batch_size, num_chunks, num_neighbors, retrieval_length, mdl_dim
              ]).astype(np.float32)
     with base_layer.JaxContext.new_context():
-      atten_output = layer.apply(
-          initial_vars, query_vec, neighbors, method=layer.fprop)
+      atten_output = layer.apply(initial_vars, query_vec, neighbors)
 
     self.assertEqual(atten_output.shape, (batch_size, source_length, mdl_dim))
 
@@ -1291,10 +1266,10 @@ class ChunkedAttentionsTest(test_utils.TestCase):
         np.arange(target_length)[None, :], [batch_size, 1])
     with base_layer.JaxContext.new_context():
       layer = layer.bind(initial_vars)
-      atten_output, _ = layer.fprop(query_vec, key_vec, key_vec, atten_mask,
-                                    query_segment_pos, key_segment_pos)
+      atten_output, _ = layer(query_vec, key_vec, key_vec, atten_mask,
+                              query_segment_pos, key_segment_pos)
       # shape [1, N, T, S]
-      rb_shift = layer.relative_bias.fprop(query_segment_pos, key_segment_pos)
+      rb_shift = layer.relative_bias(query_segment_pos, key_segment_pos)
       # verify that vanilla attention impl is correct
     manual_out = self._compute_regular_atten(initial_vars, query_vec, key_vec,
                                              key_vec, rb_shift)
@@ -1420,14 +1395,14 @@ class ChunkedAttentionsTest(test_utils.TestCase):
 
     with base_layer.JaxContext.new_context():
       layer = layer.bind(initial_vars)
-      layer_output = layer.fprop(query, neighbors)
+      layer_output = layer(query, neighbors)
 
     chunk_segment_pos = np.tile(np.arange(chunk_len)[None, :], [1, 1])
     retrieval_segment_pos = np.tile(
         np.arange(retrieval_length)[None, :], [1, 1])
     with base_layer.JaxContext.new_context():
-      rb_shift = layer.atten.relative_bias.fprop(chunk_segment_pos,
-                                                 retrieval_segment_pos)
+      rb_shift = layer.atten.relative_bias(chunk_segment_pos,
+                                           retrieval_segment_pos)
 
     result = self._compute_chunked_cross_atten(initial_vars, rb_shift, query,
                                                neighbors)
@@ -1441,7 +1416,7 @@ class ChunkedAttentionsTest(test_utils.TestCase):
     new_neighbors = np.transpose(x, [1, 2, 0, 3, 4])
 
     with base_layer.JaxContext.new_context():
-      layer_output2 = layer.fprop(query, new_neighbors)
+      layer_output2 = layer(query, new_neighbors)
     self.assertAllClose(layer_output, layer_output2)
 
 

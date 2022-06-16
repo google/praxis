@@ -78,15 +78,15 @@ class FRnn(base_layer.BaseLayer):
       A pair (state1, act), where state1 is the new state, and act is the
       output for the current time-step.
     """
-    state1 = self.cell.fprop(state0, inputs)
+    state1 = self.cell(state0, inputs)
     return state1, self.get_output(state1)
 
   def get_output(self, state: NestedMap) -> JTensor:
     return self.cell.get_output(state)
 
-  def fprop(self,
-            inputs: NestedMap,
-            state0: Optional[NestedMap] = None) -> Tuple[JTensor, NestedMap]:
+  def __call__(self,
+               inputs: NestedMap,
+               state0: Optional[NestedMap] = None) -> Tuple[JTensor, NestedMap]:
     """Computes frnn forward pass.
 
     Args:
@@ -117,7 +117,7 @@ class FRnn(base_layer.BaseLayer):
       state0 = self.init_states(batch_size)
 
     def body_fn(sub, state0, inputs):
-      state1 = sub.fprop(state0, inputs)
+      state1 = sub(state0, inputs)
       return state1, sub.get_output(state1)
 
     # NON_TRAINABLE variables are carried over from one iteration to another.
@@ -213,11 +213,10 @@ class StackFrnn(base_layer.BaseLayer):
   def get_output(self, state: List[NestedMap]) -> JTensor:
     return self.frnn[-1].get_output(state[-1])
 
-  def fprop(
-      self,
-      inputs: NestedMap,
-      state0: Optional[List[NestedMap]] = None
-  ) -> Tuple[JTensor, List[NestedMap]]:
+  def __call__(self,
+               inputs: NestedMap,
+               state0: Optional[List[NestedMap]] = None
+              ) -> Tuple[JTensor, List[NestedMap]]:
     """Computes Stacked LSTM forward pass.
 
     Args:
@@ -240,7 +239,7 @@ class StackFrnn(base_layer.BaseLayer):
 
     final_states = []
     for i in range(p.num_layers):
-      act_i, state = self.frnn[i].fprop(inputs=inputs, state0=state0[i])
+      act_i, state = self.frnn[i](inputs=inputs, state0=state0[i])
       inputs.act = act_i
       final_states.append(state)
     return inputs.act, final_states
@@ -261,9 +260,9 @@ class LstmFrnn(FRnn):
   def num_output_nodes(self) -> int:
     return self.cell.num_output_nodes
 
-  def fprop(self,
-            inputs: NestedMap,
-            state0: Optional[NestedMap] = None) -> Tuple[JTensor, NestedMap]:
+  def __call__(self,
+               inputs: NestedMap,
+               state0: Optional[NestedMap] = None) -> Tuple[JTensor, NestedMap]:
     """Computes LSTM forward pass.
 
     Args:

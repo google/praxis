@@ -66,7 +66,7 @@ class Pooling(base_layer.BaseLayer):
     if p.padding not in ['SAME', 'VALID']:
       raise ValueError('padding must be one of SAME or VALID.')
 
-  def fprop(
+  def __call__(
       self,
       inputs: JTensor,
       paddings: Optional[JTensor] = None,
@@ -201,7 +201,7 @@ class GlobalPooling(base_layer.BaseLayer):
       if not all([p_dims >= 0 for p_dims in p.pooling_dims]):
         raise ValueError('pooling_dims must be non-negative integers.')
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Applies global spatial pooling to inputs.
 
     Args:

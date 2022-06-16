@@ -157,7 +157,7 @@ class FullSoftmax(base_layer.BaseLayer):
     """
     p = self.hparams
     # Compute logits.
-    logits = self.logits_ffn.fprop(inputs)
+    logits = self.logits_ffn(inputs)
 
     # Soft cap logits if applicable.
     if p.soft_cap_logits:
@@ -168,11 +168,11 @@ class FullSoftmax(base_layer.BaseLayer):
     """Converts logits to log probability scores."""
     return jax.nn.log_softmax(logits)
 
-  def fprop(self,
-            inputs: JTensor,
-            class_weights: JTensor,
-            class_ids: Optional[JTensor] = None,
-            class_probabilities: Optional[JTensor] = None) -> NestedMap:
+  def __call__(self,
+               inputs: JTensor,
+               class_weights: JTensor,
+               class_ids: Optional[JTensor] = None,
+               class_probabilities: Optional[JTensor] = None) -> NestedMap:
     """Computes logits, softmax cross entropy etc.
 
     Args:
@@ -229,8 +229,7 @@ class FullSoftmax(base_layer.BaseLayer):
       per_example_xent = -jnp.sum(
           log_probs * class_probabilities, axis=-1, dtype=jnp.float32)
     else:
-      per_example_xent = self.bi_tempered_loss.fprop(logits,
-                                                     class_probabilities)
+      per_example_xent = self.bi_tempered_loss(logits, class_probabilities)
     per_example_argmax = jax.lax.stop_gradient(jnp.argmax(logits, axis=-1))
 
     # Compute total softmax cross-entropy loss for the output tensor.
@@ -346,18 +345,18 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
     """
     p = self.hparams
     # Compute logits.
-    logits = self.logits_ffn.fprop(inputs)
+    logits = self.logits_ffn(inputs)
 
     # Soft cap logits if applicable.
     if p.soft_cap_logits:
       logits = p.soft_cap_logits * jnp.tanh(logits / p.soft_cap_logits)
     return logits
 
-  def fprop(self,
-            inputs: JTensor,
-            class_weights: JTensor,
-            class_ids: Optional[JTensor] = None,
-            class_probabilities: Optional[JTensor] = None) -> NestedMap:
+  def __call__(self,
+               inputs: JTensor,
+               class_weights: JTensor,
+               class_ids: Optional[JTensor] = None,
+               class_probabilities: Optional[JTensor] = None) -> NestedMap:
     """Computes logits, sigmoid cross entropy etc.
 
     Args:
@@ -526,11 +525,11 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
       logits = jnp.clip(logits, -p.logits_abs_max, p.logits_abs_max)
     return logits
 
-  def fprop(self,
-            inputs: JTensor,
-            class_weights: JTensor,
-            class_ids: Optional[JTensor] = None,
-            class_probabilities: Optional[JTensor] = None) -> NestedMap:
+  def __call__(self,
+               inputs: JTensor,
+               class_weights: JTensor,
+               class_ids: Optional[JTensor] = None,
+               class_probabilities: Optional[JTensor] = None) -> NestedMap:
     """Computes logits, cross entropy etc.
 
     Args:
@@ -652,9 +651,9 @@ class PositionalEmbedding(base_layer.BaseLayer):
     max_timescale: int = 10_000
     embedding_dims: int = 0
 
-  def fprop(self,
-            seq_length: Optional[int] = None,
-            position: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               seq_length: Optional[int] = None,
+               position: Optional[JTensor] = None) -> JTensor:
     """Generates a JTensor of sinusoids with different frequencies.
 
     Args:
@@ -697,9 +696,9 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
   The Rotary position embedding is described in https://arxiv.org/abs/2104.09864
   """
 
-  def fprop(self,
-            inputs: JTensor,
-            position: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               position: Optional[JTensor] = None) -> JTensor:
     """Generates a JTensor of sinusoids with different frequencies.
 
     Args:
@@ -774,7 +773,7 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     prefix_position = jnp.where(prefix_position < 0,
                                 jnp.zeros_like(prefix_position),
                                 prefix_position)
-    output = self.fprop(inputs, position=prefix_position)
+    output = self(inputs, position=prefix_position)
     if len(inputs_shape) == 3:
       output = jnp.squeeze(output, axis=1)
     return output
@@ -804,9 +803,9 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
             mesh_shape=p.mesh_shape,
             tensor_split_dims_mapping=wp.wt))
 
-  def fprop(self,
-            seq_length: Optional[int] = None,
-            position: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               seq_length: Optional[int] = None,
+               position: Optional[JTensor] = None) -> JTensor:
     """Generates a JTensor of embedding lookup result.
 
     Args:

@@ -54,14 +54,14 @@ class ProjectionLayer(base_layer.BaseLayer):
     bias_layer_p = linears.Bias.HParams(dims=p.output_dims)
     self.create_child('bias', bias_layer_p)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
-    return self.bias.fprop(self.linear.fprop(inputs))
+  def __call__(self, inputs: JTensor) -> JTensor:
+    return self.bias(self.linear(inputs))
 
 
 class AddOneLayer(base_layer.BaseLayer):
   """A layers without any variables."""
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     return inputs + 1.0
 
 
@@ -80,13 +80,13 @@ class TestLayer(base_layer.BaseLayer):
 
     self.create_variable('final_proj', base_layer.WeightHParams(shape=[4, 5]))
 
-  def fprop(self, inputs: JTensor) -> JTensor:
-    x1 = self.linear[0].fprop(inputs)
-    x2 = self.bias[0].fprop(x1)
-    x3 = self.linear[1].fprop(x2)
-    x4 = self.bias[1].fprop(x3)
+  def __call__(self, inputs: JTensor) -> JTensor:
+    x1 = self.linear[0](inputs)
+    x2 = self.bias[0](x1)
+    x3 = self.linear[1](x2)
+    x4 = self.bias[1](x3)
     x5 = linears.project_last_dim(x4, self.theta.final_proj)
-    x6 = self.add_one.fprop(x5)
+    x6 = self.add_one(x5)
     return x6
 
 
@@ -111,7 +111,7 @@ class VarUnusedLayer(base_layer.BaseLayer):
     self.create_variable(
         'var02', base_layer.WeightHParams(shape=[p.input_dims, p.output_dims]))
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     out = jnp.einsum('bi,io->bo', inputs, self.theta.var01)
     loss = jnp.sum(out)
     return loss
@@ -142,7 +142,7 @@ class TestModel01(base_model.BaseModel):
         'var02', base_layer.WeightHParams(shape=[p.input_dims, p.output_dims]))
 
   def compute_predictions(self, inputs: JTensor) -> JTensor:
-    in_normed = self.bn.fprop(inputs)
+    in_normed = self.bn(inputs)
     return jnp.einsum('bi,io->bo', in_normed, self.theta.var01)
 
   def compute_loss(self, predictions: JTensor,
@@ -181,7 +181,7 @@ class TestLinearRegressionModel(base_model.BaseModel):
     self.create_child('linear', params)
 
   def compute_predictions(self, input_batch: NestedMap) -> JTensor:
-    return self.linear.fprop(input_batch.inputs)
+    return self.linear(input_batch.inputs)
 
   def compute_loss(self, predictions, input_batch):
     targets = input_batch.targets
@@ -208,7 +208,7 @@ class TestBatchNormalizationModel(base_model.BaseModel):
     self.create_child('bn', bn_params)
 
   def compute_predictions(self, input_batch: NestedMap) -> JTensor:
-    return self.bn.fprop(input_batch.inputs)
+    return self.bn(input_batch.inputs)
 
   def compute_loss(self, predictions: JTensor,
                    input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
@@ -236,7 +236,7 @@ class TestSpmdModel(base_model.BaseModel):
     self.create_child('ffwd', p.xformer_ffw)
 
   def compute_predictions(self, inputs: NestedMap) -> JTensor:
-    return self.ffwd.fprop(inputs)
+    return self.ffwd(inputs)
 
   def compute_loss(self, predictions: JTensor,
                    input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:

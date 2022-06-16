@@ -90,8 +90,7 @@ class TransformerModelsTest(test_utils.TestCase):
           input_paddings,
           labels=labels,
           segment_ids=input_segment_ids,
-          segment_pos=input_segment_pos,
-          method=bert_lm.fprop)
+          segment_pos=input_segment_pos)
       logging.info('outputs: %s', outputs)
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=5)))
@@ -165,12 +164,12 @@ class TransformerModelsTest(test_utils.TestCase):
           initial_vars,
           inputs,
           jnp.zeros_like(inputs),
-          method=transformer_lm.fprop)
+          method=transformer_lm.__call__)
       _, decoder_state = transformer_lm.apply(
           initial_vars,
           jnp.zeros_like(inputs),
           jnp.ones_like(inputs),
-          method=transformer_lm.fprop,
+          method=transformer_lm.__call__,
           mutable=[DECODE_CACHE])
 
       logits = fprop_outputs.logits
@@ -234,12 +233,12 @@ class TransformerModelsTest(test_utils.TestCase):
           initial_vars,
           inputs,
           jnp.zeros_like(inputs),
-          method=transformer_lm.fprop)
+          method=transformer_lm.__call__)
       _, decoder_state = transformer_lm.apply(
           initial_vars,
           jnp.zeros_like(inputs),
           jnp.ones_like(inputs),
-          method=transformer_lm.fprop,
+          method=transformer_lm.__call__,
           mutable=[DECODE_CACHE])
       logits = fprop_outputs.logits
       updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
@@ -332,12 +331,12 @@ class TransformerModelsTest(test_utils.TestCase):
           initial_vars,
           inputs,
           jnp.zeros_like(inputs),
-          method=transformer_lm.fprop)
+          method=transformer_lm.__call__)
       _, decoder_state = transformer_lm.apply(
           initial_vars,
           jnp.zeros_like(inputs),
           jnp.ones_like(inputs),
-          method=transformer_lm.fprop,
+          method=transformer_lm.__call__,
           mutable=[DECODE_CACHE])
       logits = fprop_outputs.logits
 
@@ -521,7 +520,7 @@ class TransformerModelsTest(test_utils.TestCase):
           input_paddings,
           targets,
           jnp.zeros_like(targets),
-          method=transformer_enc_dec.fprop)
+          method=transformer_enc_dec.__call__)
       _, decoder_state = transformer_enc_dec.apply(
           initial_vars,
           inputs,
@@ -529,7 +528,7 @@ class TransformerModelsTest(test_utils.TestCase):
           targets,
           jnp.zeros_like(targets),
           start_time_step=0,
-          method=transformer_enc_dec.fprop,
+          method=transformer_enc_dec.__call__,
           mutable=[DECODE_CACHE])
       logits = fprop_outputs.logits
       updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
@@ -846,13 +845,13 @@ class TransformerModelsTest(test_utils.TestCase):
           inputs,
           jnp.zeros_like(inputs),
           rngs={RANDOM: random_key},
-          method=transformer_lm.fprop)
+          method=transformer_lm.__call__)
       _, decoder_state = transformer_lm.apply(
           initial_vars,
           jnp.zeros_like(inputs),
           jnp.ones_like(inputs),
           rngs={RANDOM: random_key},
-          method=transformer_lm.fprop,
+          method=transformer_lm.__call__,
           mutable=[DECODE_CACHE])
       logits = fprop_outputs.logits
       updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
@@ -919,7 +918,7 @@ class TransformerModelsTest(test_utils.TestCase):
           inputs,
           jnp.zeros_like(inputs),
           rngs={RANDOM: random_key},
-          method=transformer_lm.fprop)
+          method=transformer_lm.__call__)
       logits = fprop_outputs.logits
       # Init states.
       _, decoder_state = transformer_lm.apply(
@@ -928,7 +927,7 @@ class TransformerModelsTest(test_utils.TestCase):
           jnp.zeros_like(prefix),
           start_time_step=prefix_len,
           rngs={RANDOM: random_key},
-          method=transformer_lm.fprop,
+          method=transformer_lm.__call__,
           mutable=[DECODE_CACHE])
 
       # Run fprop on prefix only and update the decode states.

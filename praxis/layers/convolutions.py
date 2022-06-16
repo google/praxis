@@ -103,7 +103,7 @@ class Conv2D(base_layer.BaseLayer):
       self.create_variable(
           'b', WeightHParams(shape=[p.filter_shape[-1]], init=p.bias_init))
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """FProp that supports strided, dilated convolution, depthwise convolution.
 
     Args:
@@ -218,7 +218,7 @@ class ConvBNAct(Conv2D):
         activation=p.activation, negative_slope=p.negative_slope)
     self.create_child('activation', act_p)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Forward prop which applies conv-bn-activation.
 
     Args:
@@ -231,10 +231,10 @@ class ConvBNAct(Conv2D):
       then H' = H and W' = W.
     """
     p = self.hparams
-    outputs = super().fprop(inputs)
+    outputs = super().__call__(inputs)
     if p.batch_norm_tpl is not None:
-      outputs = self.bn.fprop(outputs)
-    outputs = self.activation.fprop(outputs)
+      outputs = self.bn(outputs)
+    outputs = self.activation(outputs)
     return outputs
 
   def fprop_with_padding(self, inputs: JTensor,
@@ -254,7 +254,7 @@ class ConvBNAct(Conv2D):
     """
     p = self.hparams
 
-    outputs = self.fprop(inputs)
+    outputs = self(inputs)
 
     if p.filter_stride[0] == 1 and p.padding == 'SAME':
       return outputs, paddings
@@ -330,7 +330,7 @@ class DepthwiseConv1D(base_layer.BaseLayer):
     else:
       return self.theta.w
 
-  def fprop(self, inputs: JTensor, paddings: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor, paddings: JTensor) -> JTensor:
     """Depthwise convolution layer.
 
     Args:
@@ -454,13 +454,13 @@ class LightConv1D(base_layer.BaseLayer):
     if p.use_2d_conv_norm:
       # BTH -> BT1H
       inputs = jnp.expand_dims(inputs, 2)
-    inputs = self.conv_norm.fprop(inputs, paddings)
+    inputs = self.conv_norm(inputs, paddings)
     if p.use_2d_conv_norm:
       # BT1H -> BTH
       inputs = jnp.squeeze(inputs, 2)
     return inputs
 
-  def fprop(self, inputs: JTensor, paddings: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor, paddings: JTensor) -> JTensor:
     """Lightweight conv layer.
 
     Args:
@@ -472,18 +472,18 @@ class LightConv1D(base_layer.BaseLayer):
     """
     unnormalized_inputs = inputs
 
-    inputs = self.ln.fprop(inputs)
-    act_inputs = self.linear_start_act.fprop(inputs)
-    gated_inputs = self.linear_start_gated.fprop(inputs)
+    inputs = self.ln(inputs)
+    act_inputs = self.linear_start_act(inputs)
+    gated_inputs = self.linear_start_gated(inputs)
     inputs = act_inputs * jax.nn.sigmoid(gated_inputs)
 
-    inputs = self.depthwise_conv1d.fprop(inputs, paddings)
+    inputs = self.depthwise_conv1d(inputs, paddings)
 
     inputs = self._conv_norm(inputs, paddings)
-    inputs = self.conv_activation.fprop(inputs)
+    inputs = self.conv_activation(inputs)
 
-    inputs = self.linear_end.fprop(inputs)
-    inputs = self.dropout.fprop(inputs)
+    inputs = self.linear_end(inputs)
+    inputs = self.dropout(inputs)
 
     output = inputs + unnormalized_inputs
     return output

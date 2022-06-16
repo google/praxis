@@ -44,10 +44,10 @@ class FooShared(base_layer.BaseLayer):
     # Note submodule name must be unique.
     self.create_child('linear_private', p.linear_private_tpl)
 
-  def fprop(self, x):
-    x = self.linear1.fprop(x)
-    x = self.linear2.fprop(x)
-    x = self.linear_private.fprop(x)
+  def __call__(self, x):
+    x = self.linear1(x)
+    x = self.linear2(x)
+    x = self.linear_private(x)
     return x
 
 

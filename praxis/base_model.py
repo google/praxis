@@ -78,7 +78,7 @@ class BaseModel(base_layer.BaseLayer):
     """
     raise NotImplementedError('Abstract method')
 
-  def fprop(self, input_batch: NestedMap) -> Tuple[Metrics, Dict[str, Any]]:
+  def __call__(self, input_batch: NestedMap) -> Tuple[Metrics, Dict[str, Any]]:
     """Forward propagation through one tower of the model.
 
     Args:

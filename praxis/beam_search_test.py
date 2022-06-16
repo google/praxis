@@ -102,7 +102,7 @@ class MockLM(base_layer.BaseLayer):
     p = self.hparams
     self.logits = jnp.array(p.logits, dtype=jnp.float32)
 
-  def fprop(self, *args: Any, **kwargs: Any) -> None:
+  def __call__(self, *args: Any, **kwargs: Any) -> None:
     self.put_variable(DECODE_CACHE, 'time_step', 0)
 
   def transform_decode_state(self, *args: Any, **kwargs: Any) -> None:

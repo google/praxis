@@ -108,7 +108,7 @@ class BaseRnnCell(base_layer.BaseLayer):
     """Returns the output value given the current state."""
     raise NotImplementedError('Abstract method')
 
-  def fprop(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
+  def __call__(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
     """Forward function.
 
     Args:
@@ -224,7 +224,7 @@ class LstmCellSimple(BaseRnnCell):
   def get_output(self, state: NestedMap) -> JTensor:
     return state.m
 
-  def fprop(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
+  def __call__(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
     """Forward function.
 
     `_reset_state` is optionally applied if `reset_cell_state` is True. The RNN
@@ -355,7 +355,7 @@ class LstmCellSimple(BaseRnnCell):
 
     # a. Use fprop().
     >>> for i in range(T):
-    ...  state, _ = cell.fprop(inputs[i, :, :], padding, state)
+    ...  state, _ = cell(inputs[i, :, :], padding, state)
 
     # b. Use fprop_with_projected_inputs().
     >>> proj_inputs = cell.project_input(inputs)
@@ -398,7 +398,7 @@ class CifgLstmCellSimple(LstmCellSimple):
   def num_gates(self) -> int:
     return 3
 
-  def fprop(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
+  def __call__(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
     """Forward function.
 
     Please see LstmCellSimple.fprop for more details.

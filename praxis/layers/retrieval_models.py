@@ -78,7 +78,7 @@ class DummyRetriever(base_layer.BaseLayer):
       inputs = jnp.resize(inputs, (inputs.shape[0], p.retrieve_id_length))
       return jnp.tile(inputs, [top_k, 1])
 
-  def fprop(self, inputs: JTensor, input_paddings: JTensor, top_k: int):
+  def __call__(self, inputs: JTensor, input_paddings: JTensor, top_k: int):
     del input_paddings
     keys = self.compute_keys(inputs)
     return self.retrieve(keys, inputs, top_k)
@@ -152,7 +152,7 @@ class Retro(transformer_models.TransformerEncoderDecoder):
   def _retrieve_neighbors(self, chunk, chunk_paddings):
     p = self.hparams
     # [batch, num_neighbors, neighbor_length]
-    neighbors = self.retriever.fprop(chunk, chunk_paddings, p.num_neighbors)
+    neighbors = self.retriever(chunk, chunk_paddings, p.num_neighbors)
     return jnp.reshape(neighbors, [-1, p.neighbor_length])
 
   def _encode_neighbors(self, inputs: JTensor):
@@ -208,18 +208,18 @@ class Retro(transformer_models.TransformerEncoderDecoder):
     neighbor_encodings = jnp.multiply(neighbor_encodings,
                                       jnp.expand_dims(neighbor_paddings, -1))
     # TODO(yuancao): Handle segment_pos properly.
-    output = self.decoder.fprop(
+    output = self.decoder(
         input_emb, paddings, target_segment_mask, neighbors=neighbor_encodings)
-    return self.decoder_ln.fprop(output)
+    return self.decoder_ln(output)
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: JTensor,
-            labels: Optional[NestedMap] = None,
-            segment_ids: Optional[JTensor] = None,
-            segment_pos: Optional[JTensor] = None,
-            causal_attention_mask: Optional[JTensor] = None,
-            start_time_step: int = 0) -> NestedMap:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: JTensor,
+               labels: Optional[NestedMap] = None,
+               segment_ids: Optional[JTensor] = None,
+               segment_pos: Optional[JTensor] = None,
+               causal_attention_mask: Optional[JTensor] = None,
+               start_time_step: int = 0) -> NestedMap:
     """Computes xent loss given the language model inputs.
 
     Args:

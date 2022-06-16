@@ -87,7 +87,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
           query_vec,
           query_vec,
           attentions.causal_mask(query_vec),
-          method=layer.fprop,
+          method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
       updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
                                                        initial_vars)
@@ -123,7 +123,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
           zero_vec,
           zero_vec,
           attentions.causal_mask(zero_vec),
-          method=layer.fprop,
+          method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
       updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
                                                        initial_vars)

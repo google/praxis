@@ -355,9 +355,9 @@ class TransformerFeedForward(base_layer.BaseLayer):
           survival_prob=1.0 - p.residual_droppath_prob)
       self.create_child('residual_droppath', droppath_p)
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> JTensor:
     p = self.hparams
     # Expand paddings to last dim if not None to have shape [batch, time, 1]
     if paddings is not None:
@@ -367,20 +367,20 @@ class TransformerFeedForward(base_layer.BaseLayer):
       inputs *= (1.0 - paddings)
 
     if p.norm_policy == 'primer_hybrid':
-      inputs_normalized = self.pre_layer_norm.fprop(inputs)
+      inputs_normalized = self.pre_layer_norm(inputs)
     elif p.norm_policy == 'pre':
-      inputs_normalized = self.layer_norm.fprop(inputs)
+      inputs_normalized = self.layer_norm(inputs)
     else:
       inputs_normalized = inputs
 
     # Apply first FFN layer
     if self._is_ffn1_gated:
       # theta.ffn_layer1_gate corresponds to gshard_builder's wi0
-      gate_value = self.ffn_layer1_gate.fprop(inputs_normalized)
+      gate_value = self.ffn_layer1_gate(inputs_normalized)
       # theta.ffn_layer1 corresponds to gshard_builder's wi1
-      projected_inputs = gate_value * self.ffn_layer1.fprop(inputs_normalized)
+      projected_inputs = gate_value * self.ffn_layer1(inputs_normalized)
     else:
-      projected_inputs = self.ffn_layer1.fprop(inputs_normalized)
+      projected_inputs = self.ffn_layer1(inputs_normalized)
       projected_inputs = checkpoint_name(projected_inputs, 'ffn1')
 
     # Apply paddings if not None
@@ -388,10 +388,10 @@ class TransformerFeedForward(base_layer.BaseLayer):
       projected_inputs *= (1.0 - paddings)
 
     # Apply RELU dropout
-    projected_inputs = self.relu_dropout.fprop(projected_inputs)
+    projected_inputs = self.relu_dropout(projected_inputs)
 
     # Apply second FFN layer
-    projected_inputs = self.ffn_layer2.fprop(projected_inputs)
+    projected_inputs = self.ffn_layer2(projected_inputs)
     projected_inputs = checkpoint_name(projected_inputs, 'ffn2')
 
     # Apply paddings if not None
@@ -400,18 +400,17 @@ class TransformerFeedForward(base_layer.BaseLayer):
 
     # Apply Primer normalization before dropout.
     if p.norm_policy == 'primer_hybrid':
-      projected_inputs = self.post_layer_norm.fprop(projected_inputs)
+      projected_inputs = self.post_layer_norm(projected_inputs)
     elif p.norm_policy == 'post':
-      projected_inputs = self.layer_norm.fprop(projected_inputs)
+      projected_inputs = self.layer_norm(projected_inputs)
 
     # Apply residual dropout
-    projected_inputs = self.residual_dropout.fprop(projected_inputs)
+    projected_inputs = self.residual_dropout(projected_inputs)
 
     # Apply skip connection
     if p.add_skip_connection:
       if p.residual_droppath_prob:
-        projected_inputs = self.residual_droppath.fprop(inputs,
-                                                        projected_inputs)
+        projected_inputs = self.residual_droppath(inputs, projected_inputs)
       else:
         projected_inputs = inputs + projected_inputs * p.residual_weight
 
@@ -718,9 +717,9 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
 
     hidden = jnp.einsum('gsm,emh->egsh', inputs, theta_wi)
     # Activation function.
-    hidden = self.activation.fprop(hidden)
+    hidden = self.activation(hidden)
     # Dropout.
-    hidden = self.relu_dropout.fprop(hidden)
+    hidden = self.relu_dropout(hidden)
     # Output.
     expert_output = jnp.einsum('egsh,ehm->egsm', hidden, theta_wo)
     combined_output = jnp.einsum('egsm,gse->gsm', expert_output, gates)
@@ -823,9 +822,9 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     hidden = self._split(hidden, ap.egch)
 
     # Activation function.
-    hidden = self.activation.fprop(hidden)
+    hidden = self.activation(hidden)
     # Dropout.
-    hidden = self.relu_dropout.fprop(hidden)
+    hidden = self.relu_dropout(hidden)
     # Output.
     expert_output = jnp.einsum('egch,ehm->egcm', hidden, theta_wo)
     expert_output = self._split(expert_output, ap.egcm)
@@ -846,7 +845,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     combined_output = combined_output.reshape(token_shape + (output_dims,))
     return combined_output, aux_loss
 
-  def fprop(self, inputs: JTensor, paddings: JTensor = None) -> JTensor:
+  def __call__(self, inputs: JTensor, paddings: JTensor = None) -> JTensor:
     """Layer-norm, route, feed-forward, combine, residual.
 
     Args:
@@ -866,9 +865,9 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
 
     # TODO(zhangqiaorjc): Handle input of shape [batch, seq_len, g, model/g]?
     if p.norm_policy == 'primer_hybrid':
-      inputs_normalized = self.pre_layer_norm.fprop(inputs)
+      inputs_normalized = self.pre_layer_norm(inputs)
     elif p.norm_policy == 'pre':
-      inputs_normalized = self.layer_norm.fprop(inputs)
+      inputs_normalized = self.layer_norm(inputs)
     else:
       inputs_normalized = inputs
 
@@ -887,14 +886,14 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
                           jnp.expand_dims(paddings, -1)).astype(fprop_dtype)
     # Primer normalization before dropout.
     if p.norm_policy == 'primer_hybrid':
-      combined_output = self.post_layer_norm.fprop(combined_output)
+      combined_output = self.post_layer_norm(combined_output)
     elif p.norm_policy == 'post':
-      combined_output = self.layer_norm.fprop(combined_output)
+      combined_output = self.layer_norm(combined_output)
     # Residual dropout.
-    after_residual = self.residual_dropout.fprop(combined_output)
+    after_residual = self.residual_dropout(combined_output)
     if p.add_skip_connection:
       if p.residual_droppath_prob:
-        out = self.residual_droppath.fprop(inputs, after_residual)
+        out = self.residual_droppath(inputs, after_residual)
       else:
         out = inputs + after_residual * p.residual_weight
 
@@ -1072,7 +1071,7 @@ class Transformer(base_layer.BaseLayer):
     """
     raise NotImplementedError(type(self))
 
-  def fprop(
+  def __call__(
       self,
       inputs: JTensor,
       paddings: JTensor,
@@ -1112,14 +1111,14 @@ class Transformer(base_layer.BaseLayer):
     self.add_summary('xformer_input_abs_max', inputs_stats.max_v)
 
     if p.norm_policy == 'primer_hybrid':
-      inputs_normalized = self.pre_layer_norm.fprop(inputs)
+      inputs_normalized = self.pre_layer_norm(inputs)
     elif p.norm_policy == 'pre':
-      inputs_normalized = self.layer_norm.fprop(inputs)
+      inputs_normalized = self.layer_norm(inputs)
     else:
       inputs_normalized = inputs
 
     # Compute self-attention, key/value vectors are the input itself
-    atten_output, self_atten_probs = self.self_attention.fprop(
+    atten_output, self_atten_probs = self.self_attention(
         inputs_normalized,
         inputs_normalized,
         inputs_normalized,
@@ -1128,16 +1127,16 @@ class Transformer(base_layer.BaseLayer):
         key_segment_pos=segment_pos)
     atten_probs = NestedMap(self_atten=self_atten_probs)
     if p.norm_policy == 'primer_hybrid':
-      atten_output = self.post_layer_norm.fprop(atten_output)
+      atten_output = self.post_layer_norm(atten_output)
     elif p.norm_policy == 'post':
-      atten_output = self.layer_norm.fprop(atten_output)
+      atten_output = self.layer_norm(atten_output)
 
     # Residual dropout and connection
-    atten_output = self.residual_dropout.fprop(atten_output)
+    atten_output = self.residual_dropout(atten_output)
 
     # Apply skip connection
     if p.residual_droppath_prob > 0.0:
-      atten_output = self.residual_droppath.fprop(inputs, atten_output)
+      atten_output = self.residual_droppath(inputs, atten_output)
     else:
       atten_output += inputs
 
@@ -1146,13 +1145,13 @@ class Transformer(base_layer.BaseLayer):
       assert cross_inputs is not None
       assert cross_attention_mask is not None
       if p.norm_policy == 'pre':
-        atten_output_normalized = self.cross_layer_norm.fprop(atten_output)
+        atten_output_normalized = self.cross_layer_norm(atten_output)
       elif p.norm_policy == 'primer_hybrid':
-        atten_output_normalized = self.pre_cross_layer_norm.fprop(atten_output)
+        atten_output_normalized = self.pre_cross_layer_norm(atten_output)
       elif p.norm_policy == 'post':
         atten_output_normalized = atten_output
 
-      cross_atten_output, cross_atten_probs = self.cross_attention.fprop(
+      cross_atten_output, cross_atten_probs = self.cross_attention(
           atten_output_normalized,
           cross_inputs,
           cross_inputs,
@@ -1160,22 +1159,20 @@ class Transformer(base_layer.BaseLayer):
       atten_probs.cross_atten = cross_atten_probs
 
       if p.norm_policy == 'post':
-        cross_atten_output = self.cross_layer_norm.fprop(cross_atten_output)
+        cross_atten_output = self.cross_layer_norm(cross_atten_output)
       elif p.norm_policy == 'primer_hybrid':
-        cross_atten_output = self.post_cross_layer_norm.fprop(
-            cross_atten_output)
+        cross_atten_output = self.post_cross_layer_norm(cross_atten_output)
 
       # Residual dropout and connection
-      cross_atten_output = self.residual_dropout.fprop(cross_atten_output)
+      cross_atten_output = self.residual_dropout(cross_atten_output)
 
       if p.residual_droppath_prob > 0.0:
-        atten_output = self.residual_droppath.fprop(atten_output,
-                                                    cross_atten_output)
+        atten_output = self.residual_droppath(atten_output, cross_atten_output)
       else:
         atten_output += cross_atten_output
 
     # Apply FFN layer
-    output = self.ff_layer.fprop(atten_output, paddings=paddings)
+    output = self.ff_layer(atten_output, paddings=paddings)
     return output, atten_probs
 
   def extend_step(self,
@@ -1210,9 +1207,9 @@ class Transformer(base_layer.BaseLayer):
     p = self.hparams
     # Layer normalize input
     if p.norm_policy == 'primer_hybrid':
-      inputs_normalized = self.pre_layer_norm.fprop(inputs)
+      inputs_normalized = self.pre_layer_norm(inputs)
     elif p.norm_policy == 'pre':
-      inputs_normalized = self.layer_norm.fprop(inputs)
+      inputs_normalized = self.layer_norm(inputs)
 
     # Self-attention layer.
     atten_output = self.self_attention.extend_step(
@@ -1221,12 +1218,12 @@ class Transformer(base_layer.BaseLayer):
         time_step=time_step,
         segment_pos=segment_pos)
     if p.norm_policy == 'primer_hybrid':
-      atten_output = self.post_layer_norm.fprop(atten_output)
+      atten_output = self.post_layer_norm(atten_output)
     elif p.norm_policy == 'post':
-      atten_output = self.layer_norm.fprop(atten_output)
+      atten_output = self.layer_norm(atten_output)
 
     # Residual dropout and connection
-    atten_output = self.residual_dropout.fprop(atten_output)
+    atten_output = self.residual_dropout(atten_output)
     atten_output += inputs
 
     # Apply cross attention if applicable
@@ -1234,34 +1231,33 @@ class Transformer(base_layer.BaseLayer):
       assert cross_inputs is not None
       assert cross_attention_mask is not None
       if p.norm_policy == 'pre':
-        atten_output_normalized = self.cross_layer_norm.fprop(
+        atten_output_normalized = self.cross_layer_norm(
             jnp.expand_dims(atten_output, axis=1))
       elif p.norm_policy == 'primer_hybrid':
-        atten_output_normalized = self.pre_cross_layer_norm.fprop(
+        atten_output_normalized = self.pre_cross_layer_norm(
             jnp.expand_dims(atten_output, axis=1))
       elif p.norm_policy == 'post':
         atten_output_normalized = jnp.expand_dims(atten_output, axis=1)
 
-      cross_atten_output, _ = self.cross_attention.fprop(
+      cross_atten_output, _ = self.cross_attention(
           atten_output_normalized,
           cross_inputs,
           cross_inputs,
           atten_mask=cross_attention_mask)
 
       if p.norm_policy == 'post':
-        cross_atten_output = self.cross_layer_norm.fprop(cross_atten_output)
+        cross_atten_output = self.cross_layer_norm(cross_atten_output)
       elif p.norm_policy == 'primer_hybrid':
-        cross_atten_output = self.post_cross_layer_norm.fprop(
-            cross_atten_output)
+        cross_atten_output = self.post_cross_layer_norm(cross_atten_output)
 
       # Residual dropout and connection
-      cross_atten_output = self.residual_dropout.fprop(cross_atten_output)
+      cross_atten_output = self.residual_dropout(cross_atten_output)
       # Squeeze sequence dim
       cross_atten_output = jnp.squeeze(cross_atten_output, axis=1)
       atten_output += cross_atten_output
 
     # Apply FFN layer
-    output = self.ff_layer.fprop(atten_output)
+    output = self.ff_layer(atten_output)
     return output
 
   def transform_decode_state(
@@ -1411,14 +1407,14 @@ class StackedTransformer(base_layer.BaseLayer):
     """
     raise NotImplementedError(type(self))
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: JTensor,
-            segment_mask: Optional[JTensor] = None,
-            cross_inputs: Optional[JTensor] = None,
-            cross_paddings: Optional[JTensor] = None,
-            cross_segment_mask: Optional[JTensor] = None,
-            segment_pos: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: JTensor,
+               segment_mask: Optional[JTensor] = None,
+               cross_inputs: Optional[JTensor] = None,
+               cross_paddings: Optional[JTensor] = None,
+               cross_segment_mask: Optional[JTensor] = None,
+               segment_pos: Optional[JTensor] = None) -> JTensor:
     """Stacked Transformer layer.
 
     Args:
@@ -1459,7 +1455,7 @@ class StackedTransformer(base_layer.BaseLayer):
 
     for i in range(p.num_layers):
       x_in = x_out
-      x_out, _ = self.x_layers[i].fprop(
+      x_out, _ = self.x_layers[i](
           x_in,
           paddings,
           attention_mask,
@@ -1598,14 +1594,14 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
 
     self.create_child('repeat', repeat_l_params)
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: JTensor,
-            segment_mask: Optional[JTensor] = None,
-            cross_inputs: Optional[JTensor] = None,
-            cross_paddings: Optional[JTensor] = None,
-            cross_segment_mask: Optional[JTensor] = None,
-            segment_pos: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: JTensor,
+               segment_mask: Optional[JTensor] = None,
+               cross_inputs: Optional[JTensor] = None,
+               cross_paddings: Optional[JTensor] = None,
+               cross_segment_mask: Optional[JTensor] = None,
+               segment_pos: Optional[JTensor] = None) -> JTensor:
     """Stacked Transformer layer.
 
     Args:
@@ -1625,8 +1621,8 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     """
 
     # TODO(zhangqiaorjc): Use positional args until nn.scan supports kwargs.
-    out = self.repeat.fprop(inputs, paddings, segment_mask, cross_inputs,
-                            cross_paddings, cross_segment_mask, segment_pos)
+    out = self.repeat(inputs, paddings, segment_mask, cross_inputs,
+                      cross_paddings, cross_segment_mask, segment_pos)
 
     return out
 
@@ -1762,14 +1758,14 @@ class PipelinedTransformer(base_layer.BaseLayer):
         p.weight_split_dims_mapping.stages)
     self.create_child('pipeline', pipeline_params)
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: JTensor,
-            segment_mask: Optional[JTensor] = None,
-            cross_inputs: Optional[JTensor] = None,
-            cross_paddings: Optional[JTensor] = None,
-            cross_segment_mask: Optional[JTensor] = None,
-            segment_pos: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: JTensor,
+               segment_mask: Optional[JTensor] = None,
+               cross_inputs: Optional[JTensor] = None,
+               cross_paddings: Optional[JTensor] = None,
+               cross_segment_mask: Optional[JTensor] = None,
+               segment_pos: Optional[JTensor] = None) -> JTensor:
     """Pipelined Transformer layer.
 
     Args:
@@ -1822,7 +1818,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
         if segment_pos is not None:
           segment_pos = base_layer.maybe_shard(segment_pos, bld_mapping[:-1],
                                                p.mesh_axis_names)
-    outputs = self.pipeline.fprop(
+    outputs = self.pipeline(
         inputs,
         paddings,
         segment_mask=segment_mask,
@@ -1893,12 +1889,12 @@ class RetroTransformer(Transformer):
     params.atten.relative_bias_tpl = attentions.RelativeBias.HParams()
     self.create_child('cca_layer', params)
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: JTensor,
-            attention_mask: JTensor,
-            segment_pos: Optional[JTensor] = None,
-            neighbors: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: JTensor,
+               attention_mask: JTensor,
+               segment_pos: Optional[JTensor] = None,
+               neighbors: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
     """Transformer decoder layer.
 
     Args:
@@ -1927,14 +1923,14 @@ class RetroTransformer(Transformer):
     self.add_summary('xformer_input_abs_max', inputs_stats.max_v)
 
     if p.norm_policy == 'primer_hybrid':
-      inputs_normalized = self.pre_layer_norm.fprop(inputs)
+      inputs_normalized = self.pre_layer_norm(inputs)
     elif p.norm_policy == 'pre':
-      inputs_normalized = self.layer_norm.fprop(inputs)
+      inputs_normalized = self.layer_norm(inputs)
     else:
       inputs_normalized = inputs
 
     # Compute self-attention, key/value vectors are the input itself
-    atten_output, self_atten_probs = self.self_attention.fprop(
+    atten_output, self_atten_probs = self.self_attention(
         inputs_normalized,
         inputs_normalized,
         inputs_normalized,
@@ -1943,26 +1939,26 @@ class RetroTransformer(Transformer):
         key_segment_pos=segment_pos)
     atten_probs = NestedMap(self_atten=self_atten_probs)
     if p.norm_policy == 'primer_hybrid':
-      atten_output = self.post_layer_norm.fprop(atten_output)
+      atten_output = self.post_layer_norm(atten_output)
     elif p.norm_policy == 'post':
-      atten_output = self.layer_norm.fprop(atten_output)
+      atten_output = self.layer_norm(atten_output)
 
     # Residual dropout and connection
-    atten_output = self.residual_dropout.fprop(atten_output)
+    atten_output = self.residual_dropout(atten_output)
 
     # Apply skip connection
     if p.residual_droppath_prob > 0.0:
-      atten_output = self.residual_droppath.fprop(inputs, atten_output)
+      atten_output = self.residual_droppath(inputs, atten_output)
     else:
       atten_output += inputs
 
     if neighbors is not None:
       # Apply chunked cross attention.
       # Note here neighbors performs the role of "cross_inputs".
-      atten_output = self.cca_layer.fprop(atten_output, neighbors)
+      atten_output = self.cca_layer(atten_output, neighbors)
 
     # Apply FFN layer
-    output = self.ff_layer.fprop(atten_output, paddings=paddings)
+    output = self.ff_layer(atten_output, paddings=paddings)
     return output, atten_probs
 
 
@@ -1971,12 +1967,12 @@ class StackedRetroTransformer(StackedTransformer):
 
   # TODO(yuancao): Fix extend_step() for inference.
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: JTensor,
-            segment_mask: Optional[JTensor] = None,
-            segment_pos: Optional[JTensor] = None,
-            neighbors: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: JTensor,
+               segment_mask: Optional[JTensor] = None,
+               segment_pos: Optional[JTensor] = None,
+               neighbors: Optional[JTensor] = None) -> JTensor:
     """Stacked Transformer layer.
 
     Args:
@@ -2006,7 +2002,7 @@ class StackedRetroTransformer(StackedTransformer):
 
     for i in range(p.num_layers):
       x_in = x_out
-      x_out, _ = self.x_layers[i].fprop(
+      x_out, _ = self.x_layers[i](
           x_in,
           paddings,
           attention_mask,
@@ -2020,12 +2016,12 @@ class StackedRetroTransformerRepeated(StackedTransformerRepeated):
 
   # TODO(yuancao): Fix extend_step() for inference.
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: JTensor,
-            segment_mask: Optional[JTensor] = None,
-            segment_pos: Optional[JTensor] = None,
-            neighbors: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: JTensor,
+               segment_mask: Optional[JTensor] = None,
+               segment_pos: Optional[JTensor] = None,
+               neighbors: Optional[JTensor] = None) -> JTensor:
     """Stacked Transformer layer.
 
     Args:
@@ -2041,5 +2037,4 @@ class StackedRetroTransformerRepeated(StackedTransformerRepeated):
     Returns:
       Output vector with shape [B, T, D].
     """
-    return self.repeat.fprop(inputs, paddings, segment_mask, segment_pos,
-                             neighbors)
+    return self.repeat(inputs, paddings, segment_mask, segment_pos, neighbors)

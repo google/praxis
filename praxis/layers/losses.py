@@ -92,7 +92,7 @@ class BiTemperedLoss(base_layer.BaseLayer):
             jnp.maximum(p.end_step - p.start_step, 1.0), 0.0), schedule)
     return schedule
 
-  def fprop(self, logits: JTensor, labels: JTensor) -> JTensor:
+  def __call__(self, logits: JTensor, labels: JTensor) -> JTensor:
     """Applies bi-tempered loss.
 
     Args:

@@ -139,9 +139,9 @@ class VectorQuantization(base_layer.BaseLayer):
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
     self.create_variable('means', means, trainable=False)
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
     """Computes distances of the given input 'x' to all centroids.
 
     Args:
@@ -301,9 +301,9 @@ class BregmanCompression(base_layer.BaseLayer):
               constant_lr_schedule=p.constant_lr_schedule))
     self.create_children('bregman_layers', bregman_layers)
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> JTensor:
     """Computes distances of the given input 'x' to all centroids.
 
     Args:
@@ -330,8 +330,7 @@ class BregmanCompression(base_layer.BaseLayer):
     coefficients = []
     for i in range(p.num_heads):
       # Shape [B * L, C]
-      _, coefficients_i = self.bregman_layers[i].fprop(inputs[:, i, :],
-                                                       paddings_3d)
+      _, coefficients_i = self.bregman_layers[i](inputs[:, i, :], paddings_3d)
       # Shape [B, L, 1, C]
       coefficients_i = jnp.reshape(
           coefficients_i,
@@ -413,13 +412,13 @@ class Ngrammer(base_layer.BaseLayer):
     self.create_children('ngram_layer_norm', ngram_emb_layer_norm_p)
     self.create_children('ngram_table', ngram_emb_table_p)
 
-  def fprop(self,
-            input_ids: JTensor,
-            input_embs: JTensor,
-            paddings: Optional[JTensor] = None,
-            segment_pos: Optional[JTensor] = None,
-            merge_heads: bool = True,
-            pair_ids: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               input_ids: JTensor,
+               input_embs: JTensor,
+               paddings: Optional[JTensor] = None,
+               segment_pos: Optional[JTensor] = None,
+               merge_heads: bool = True,
+               pair_ids: Optional[JTensor] = None) -> JTensor:
     """Augments the input embeddings with VQ n-gram layer embeddings.
 
     Args:
@@ -490,7 +489,7 @@ class Ngrammer(base_layer.BaseLayer):
       ngram_embs_to_concat.append(self.ngram_table[i].emb_lookup(
           jnp.reshape(ngram_ids_for_head, [-1])))
       # [B * L, H]
-      ngram_embs_to_concat[i] = self.ngram_layer_norm[i].fprop(
+      ngram_embs_to_concat[i] = self.ngram_layer_norm[i](
           ngram_embs_to_concat[i])
 
     # [B * L, N * H].
@@ -503,7 +502,7 @@ class Ngrammer(base_layer.BaseLayer):
     for i in range(p.num_heads):
       # Reshape into [B * L, H]
       per_head_emb = jnp.reshape(input_embs_per_head[i], [-1, p.dim_per_head])
-      input_embs_per_head[i] = self.emb_layer_norm[i].fprop(per_head_emb)
+      input_embs_per_head[i] = self.emb_layer_norm[i](per_head_emb)
       # Reshape to [B, L, H]
       input_embs_per_head[i] = jnp.reshape(
           input_embs_per_head[i], [batch_size, seq_length, p.dim_per_head])
@@ -621,13 +620,13 @@ class VQNgrammer(base_layer.BaseLayer):
         weight_split_dims_mapping=p.weight_split_dims_mapping)
     self.create_child('ngram_layer', ngram_layer_p)
 
-  def fprop(self,
-            input_ids: JTensor,
-            input_embs: JTensor,
-            paddings: Optional[JTensor] = None,
-            segment_pos: Optional[JTensor] = None,
-            merge_heads: bool = True,
-            attention_scores: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               input_ids: JTensor,
+               input_embs: JTensor,
+               paddings: Optional[JTensor] = None,
+               segment_pos: Optional[JTensor] = None,
+               merge_heads: bool = True,
+               attention_scores: Optional[JTensor] = None) -> JTensor:
     """Augments the input embeddings with VQ ngram layer embeddings.
 
     Args:
@@ -678,13 +677,13 @@ class VQNgrammer(base_layer.BaseLayer):
     input_embs = self._cast_to_fprop_dtype(input_embs)
 
     # Distances of shape [B, L, N, K].
-    distances, _ = self.vq_layer.fprop(input_embs, paddings=paddings)
+    distances, _ = self.vq_layer(input_embs, paddings=paddings)
 
     # [B, L, N].
     cluster_ids = jnp.argmin(distances, -1)
 
     # [B, L, D] or [B, L, N, H].
-    output_embs = self.ngram_layer.fprop(
+    output_embs = self.ngram_layer(
         cluster_ids,
         input_embs,
         paddings,
@@ -737,13 +736,13 @@ class VQNgrammer(base_layer.BaseLayer):
         pair_ids = seq_len * jnp.ones_like(attention_score, dtype=jnp.int32)
 
     # Distances of shape [B, L, N, K].
-    distances, _ = self.vq_layer.fprop(input_embs)
+    distances, _ = self.vq_layer(input_embs)
 
     # [B, L, N].
     cluster_ids = jnp.argmin(distances, -1)
 
     # [B, L, D] or [B, L, N, H].
-    output_embs = self.ngram_layer.fprop(
+    output_embs = self.ngram_layer(
         cluster_ids, input_embs, merge_heads=merge_heads, pair_ids=pair_ids)
 
     # Get output at step of shape [B, D] or [B, N, H].

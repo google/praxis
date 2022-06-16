@@ -185,7 +185,7 @@ class NgrammerTest(test_utils.TestCase):
       # fprop because we no longer need to explicitly provide submodule layer
       # vars.
       ngrammer_layer = ngrammer_layer.bind(initial_vars, mutable=True)
-      ngram_embs = ngrammer_layer.fprop(inputs, input_embs, paddings)
+      ngram_embs = ngrammer_layer(inputs, input_embs, paddings)
     ngram_embs = np.reshape(ngram_embs,
                             [batch_size, seq_len, num_heads, dim_per_head])
     input_embs = np.reshape(input_embs,
@@ -198,7 +198,7 @@ class NgrammerTest(test_utils.TestCase):
       ngram_ids_per_head += (i + 1)
       ngram_embs_expected = ngrammer_layer.ngram_table[i].emb_lookup(
           np.reshape(ngram_ids_per_head, [-1]))
-      ngram_embs_expected = ngrammer_layer.ngram_layer_norm[i].fprop(
+      ngram_embs_expected = ngrammer_layer.ngram_layer_norm[i](
           ngram_embs_expected)
       ngram_embs_expected = jnp.reshape(ngram_embs_expected,
                                         [batch_size, seq_len, ngram_emb_dim])
@@ -206,8 +206,7 @@ class NgrammerTest(test_utils.TestCase):
       if concat_ngrams:
         ngram_embs_slice = ngram_embs[:, :, i, -ngram_emb_dim:]
       else:
-        input_embs_ln = ngrammer_layer.emb_layer_norm[i].fprop(input_embs[:, :,
-                                                                          i, :])
+        input_embs_ln = ngrammer_layer.emb_layer_norm[i](input_embs[:, :, i, :])
         ngram_embs_slice = ngram_embs[:, :, i, :] - input_embs_ln
       self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))
 
@@ -250,7 +249,7 @@ class NgrammerTest(test_utils.TestCase):
       # fprop because we no longer need to explicitly provide submodule layer
       # vars.
       ngrammer_layer = ngrammer_layer.bind(initial_vars, mutable=True)
-      ngram_embs = ngrammer_layer.fprop(inputs, input_embs, paddings)
+      ngram_embs = ngrammer_layer(inputs, input_embs, paddings)
     ngram_embs = np.reshape(ngram_embs,
                             [batch_size, seq_len, num_heads, dim_per_head])
     input_embs = np.reshape(input_embs,
@@ -263,7 +262,7 @@ class NgrammerTest(test_utils.TestCase):
       ngram_ids_per_head += (i + 1)
       ngram_embs_expected = ngrammer_layer.ngram_table[i].emb_lookup(
           np.reshape(ngram_ids_per_head, [-1]))
-      ngram_embs_expected = ngrammer_layer.ngram_layer_norm[i].fprop(
+      ngram_embs_expected = ngrammer_layer.ngram_layer_norm[i](
           ngram_embs_expected)
       ngram_embs_expected = jnp.reshape(ngram_embs_expected,
                                         [batch_size, seq_len, ngram_emb_dim])
@@ -271,8 +270,7 @@ class NgrammerTest(test_utils.TestCase):
       if concat_ngrams:
         ngram_embs_slice = ngram_embs[:, :, i, -ngram_emb_dim:]
       else:
-        input_embs_ln = ngrammer_layer.emb_layer_norm[i].fprop(input_embs[:, :,
-                                                                          i, :])
+        input_embs_ln = ngrammer_layer.emb_layer_norm[i](input_embs[:, :, i, :])
         ngram_embs_slice = ngram_embs[:, :, i, :] - input_embs_ln
       self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))
 
@@ -321,9 +319,9 @@ class NgrammerTest(test_utils.TestCase):
     vq_ngrammer_layer = vq_ngrammer_layer.bind(initial_vars, mutable=True)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
-      ngram_embs = vq_ngrammer_layer.fprop(
+      ngram_embs = vq_ngrammer_layer(
           None, input_embs, paddings, attention_scores=attention_scores)
-      dists, _ = vq_ngrammer_layer.vq_layer.fprop(input_embs)
+      dists, _ = vq_ngrammer_layer.vq_layer(input_embs)
 
     ngram_embs = np.reshape(ngram_embs,
                             [batch_size, seq_len, num_heads, dim_per_head])
@@ -344,15 +342,15 @@ class NgrammerTest(test_utils.TestCase):
       ngram_embs_expected = vq_ngrammer_layer.ngram_layer.ngram_table[
           i].emb_lookup(np.reshape(ngram_ids_per_head, [-1]))
       ngram_embs_expected = (
-          vq_ngrammer_layer.ngram_layer.ngram_layer_norm[i].fprop(
-              ngram_embs_expected))
+          vq_ngrammer_layer.ngram_layer.ngram_layer_norm[i](ngram_embs_expected)
+      )
       ngram_embs_expected = jnp.reshape(ngram_embs_expected,
                                         [batch_size, seq_len, ngram_emb_dim])
       ngram_embs_expected *= (1 - paddings[:, :, np.newaxis])
       if concat_ngrams:
         ngram_embs_slice = ngram_embs[:, :, i, -ngram_emb_dim:]
       else:
-        input_embs_ln = vq_ngrammer_layer.ngram_layer.emb_layer_norm[i].fprop(
+        input_embs_ln = vq_ngrammer_layer.ngram_layer.emb_layer_norm[i](
             input_embs[:, :, i, :])
         ngram_embs_slice = ngram_embs[:, :, i, :] - input_embs_ln
       self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))
@@ -400,7 +398,7 @@ class NgrammerTest(test_utils.TestCase):
     vq_ngrammer_layer = vq_ngrammer_layer.bind(initial_vars, mutable=True)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
-      ngram_embs = vq_ngrammer_layer.fprop(
+      ngram_embs = vq_ngrammer_layer(
           None, input_embs, paddings, attention_scores=attention_scores)
       for step in range(seq_len):
         attention_score = None

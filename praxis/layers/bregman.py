@@ -240,9 +240,9 @@ class BregmanPCA(base_layer.BaseLayer):
     representations = self.activation_fn(representations)
     return representations
 
-  def fprop(self,
-            inputs: JTensor,
-            mask: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+  def __call__(self,
+               inputs: JTensor,
+               mask: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
     """Updates the PCA parameters.
 
     Args:

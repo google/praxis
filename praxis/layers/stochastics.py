@@ -66,7 +66,7 @@ class Dropout(base_layer.BaseLayer):
     binary_mask = jnp.floor(random_nums)
     return inputs * binary_mask / keep_prob
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Applies dropout to inputs.
 
     Args:
@@ -133,7 +133,7 @@ class StochasticResidual(base_layer.BaseLayer):
     output = inputs / self.hparams.survival_prob * binary_tensor
     return output
 
-  def fprop(self, inputs: JTensor, residual: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor, residual: JTensor) -> JTensor:
     """Returns inputs + residual with stochastic dropout.
 
     Args:

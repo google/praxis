@@ -409,7 +409,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         return mapped_vars
 
       def layer_fprop(layer, *args, **kwargs):
-        out = layer.fprop(*args, **kwargs)
+        out = layer(*args, **kwargs)
         return out
 
       mapped_fn = nn.map_variables(
@@ -586,12 +586,12 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       per_stage[f'{key}.stage{i}'] = vectorized_summary[i]
     return per_stage
 
-  def fprop(self, inputs: NestedJTensor, *broadcast_inputs,
-            **broadcast_kwargs) -> NestedJTensor:
+  def __call__(self, inputs: NestedJTensor, *broadcast_inputs,
+               **broadcast_kwargs) -> NestedJTensor:
     """FProp inputs through the pipeline body.
 
     self.body.fprop is expected to be of the following signature:
-    outputs = self.body.fprop(theta, inputs,
+    outputs = self.body(theta, inputs,
                               *broadcast_inputs, **broadcast_kwargs)
 
     outputs are expected to be of the same structure as inputs.

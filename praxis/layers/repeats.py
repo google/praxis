@@ -180,7 +180,7 @@ class Repeat(base_layer.BaseLayer):
     mapped_fn(self.sub, None)  # scan requires a dummy carry input
 
   # TODO(zhangqiaorjc): Allow callers to customize. body_fn.
-  def fprop(self, inputs: NestedJTensor, *args: Any, **kwargs: Any) -> Any:
+  def __call__(self, inputs: NestedJTensor, *args: Any, **kwargs: Any) -> Any:
     """FProp inputs through the sub layer stack.
 
     outputs are expected to be of the same structure as inputs. extra can be any
@@ -197,7 +197,7 @@ class Repeat(base_layer.BaseLayer):
     p = self.hparams
 
     def body_fn(sub, layer_in):
-      layer_out = sub.fprop(layer_in, *args, **kwargs)
+      layer_out = sub(layer_in, *args, **kwargs)
       tf.nest.assert_same_structure(layer_in, layer_out)
       return layer_out, None
 

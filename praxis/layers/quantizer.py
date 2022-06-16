@@ -158,13 +158,13 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
         WeightHParams(
             shape=codebook_shape, init=p.codebook_init, dtype=jnp.float32))
 
-  def fprop(self, z: JTensor, paddings: JTensor) -> NestedMap:
+  def __call__(self, z: JTensor, paddings: JTensor) -> NestedMap:
     p = self.hparams
 
     # Stacking.
     # [b, t // s, s * input_dim]
     if p.stack_ratio > 1:
-      z, paddings = self.stack.fprop(z, paddings[:, :, jnp.newaxis])
+      z, paddings = self.stack(z, paddings[:, :, jnp.newaxis])
       paddings = jnp.squeeze(paddings, -1)
 
     proj_vec = jnp.einsum('dh,btd->bth', self.theta.random_proj, z)
@@ -291,7 +291,7 @@ class SeqVectorQuantizer(base_layer.BaseLayer):
     mask = jnp.reshape(mask, mask.shape + tuple([1] * (x_rank - mask_rank)))
     return x * mask.astype(x.dtype)
 
-  def fprop(self, z: JTensor, paddings: JTensor) -> NestedMap:
+  def __call__(self, z: JTensor, paddings: JTensor) -> NestedMap:
     """Quantizes 'z' of shape [B, T, D].
 
     The z_codes of padded locations are 0.

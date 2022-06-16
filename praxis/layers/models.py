@@ -167,7 +167,7 @@ class LanguageModel(base_model.BaseModel):
       causal_attention_mask = 1 - input_batch.inputs_indicator
     else:
       causal_attention_mask = None
-    return self.lm.fprop(
+    return self.lm(
         inputs=inputs,
         paddings=paddings,
         labels=labels,
@@ -274,7 +274,7 @@ class LanguageModel(base_model.BaseModel):
     # Flat beam search doesn't work yet.
     if isinstance(p.decoder, FlatBeamSearchHParams):
       # Init cache states.
-      self.lm.fprop(
+      self.lm(
           fprop_input_ids,
           fprop_input_paddings,
           segment_ids=fprop_segment_ids,
@@ -299,7 +299,7 @@ class LanguageModel(base_model.BaseModel):
       assert p.decoder.fprop_for_prefix
 
       def fprop_fn(mdl, ids, paddings):
-        mdl.lm.fprop(
+        mdl.lm(
             ids,
             paddings,
             segment_ids=fprop_segment_ids,
@@ -312,7 +312,7 @@ class LanguageModel(base_model.BaseModel):
                                        p.decoder)
     elif isinstance(p.decoder, SampleDecoderHParams):
       # Init cache states, batch size needs to multiply by num_samples.
-      self.lm.fprop(
+      self.lm(
           fprop_input_ids,
           fprop_input_paddings,
           segment_ids=fprop_segment_ids,
@@ -341,7 +341,7 @@ class LanguageModel(base_model.BaseModel):
           eos_id=p.decoder.eos_id)
     elif isinstance(p.decoder, GreedyDecoderHParams):
       # Init cache states.
-      self.lm.fprop(
+      self.lm(
           fprop_input_ids,
           fprop_input_paddings,
           segment_ids=fprop_segment_ids,
@@ -484,7 +484,7 @@ class SequenceModel(base_model.BaseModel):
           (1.0 - class_probabilities)).astype(self.fprop_dtype)
       labels.class_probabilities = class_probabilities
 
-    return self.model.fprop(
+    return self.model(
         inputs=input_batch.src.ids,
         input_paddings=input_batch.src.paddings,
         targets=input_batch.tgt.ids,
@@ -527,7 +527,7 @@ class SequenceModel(base_model.BaseModel):
                        f'{p.decoder.seqlen}')
     batch_size = input_batch.tgt.ids.shape[0]
 
-    self.model.fprop(
+    self.model(
         inputs=input_batch.src.ids,
         input_paddings=input_batch.src.paddings,
         targets=input_batch.tgt.ids,
@@ -637,7 +637,7 @@ class ClassificationModel(base_model.BaseModel):
     """
     p = self.hparams
     inputs = input_batch.Get(p.input_field)
-    features = self.network.fprop(inputs)
+    features = self.network(inputs)
     batch_size = inputs.shape[0]
     example_weights = jnp.ones([batch_size])
     if 'weight' in input_batch:
@@ -647,7 +647,7 @@ class ClassificationModel(base_model.BaseModel):
             f'Shape of example weights should be ({batch_size},), but instead'
             f'is {example_weights.shape}')
     # Softmax expects weights to be of shape [..., 1].
-    softmax_output = self.softmax.fprop(
+    softmax_output = self.softmax(
         inputs=features,
         class_weights=example_weights[:, jnp.newaxis],
         class_probabilities=input_batch.label_probs)
@@ -708,7 +708,7 @@ class ClassificationModel(base_model.BaseModel):
     """
     p = self.hparams
     inputs = input_batch.Get(p.input_field)
-    features = self.network.fprop(inputs)
+    features = self.network(inputs)
     logits = self.softmax.get_logits(inputs=features)
     logp = self.softmax.logits_to_logp(logits)
     return py_utils.NestedMap(logits=logits, logp=logp)
@@ -757,8 +757,7 @@ class BertModel(base_model.BaseModel):
       augmented_labels = input_batch.masked_ids
       augmented_pos = input_batch.masked_pos
     else:
-      augmented_labels, augmented_pos = self.mlm_augmenter.fprop(
-          labels, paddings)
+      augmented_labels, augmented_pos = self.mlm_augmenter(labels, paddings)
 
     if p.label_smoothing_prob > 0.0:
       class_probabilities = jax.nn.one_hot(labels, p.lm.vocab_size)
@@ -774,7 +773,7 @@ class BertModel(base_model.BaseModel):
       # Only compute loss on masked pos.
       labels = NestedMap(class_ids=labels, class_weights=augmented_pos)
 
-    lm_out = self.lm.fprop(
+    lm_out = self.lm(
         inputs=augmented_labels,
         paddings=paddings,
         labels=labels,
@@ -849,8 +848,8 @@ class ClassificationMLPModel(base_model.BaseModel):
 
     input_emb = self.softmax.emb_lookup(input_batch.ids)
 
-    output = self.mlp_layers.fprop(input_emb)
-    predictions = self.softmax.fprop(
+    output = self.mlp_layers(input_emb)
+    predictions = self.softmax(
         inputs=output,
         class_weights=input_batch.weights[:, :, jnp.newaxis],
         class_ids=input_batch.ids[:, :, jnp.newaxis])

@@ -186,8 +186,8 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
 
     self.create_child('dec', flaxformer_decoder)
 
-  def fprop(self, *args, **kwargs):
-    return self.dec.fprop(*args, **kwargs)
+  def __call__(self, *args, **kwargs):
+    return self.dec(*args, **kwargs)
 
 
 class EncoderDecoder(base_layer.BaseLayer):
@@ -237,8 +237,8 @@ class EncoderDecoder(base_layer.BaseLayer):
 
     self.create_child('enc_dec', encoder_decoder)
 
-  def fprop(self, *args, **kwargs):
-    return self.enc_dec.fprop(*args, **kwargs)
+  def __call__(self, *args, **kwargs):
+    return self.enc_dec(*args, **kwargs)
 
 
 class FactoryBasedEncoderDecoder(EncoderDecoder):
@@ -451,7 +451,7 @@ class LanguageModel(base_model.BaseModel):
     Returns:
       A NestedMap of predictions.
     """
-    logits = self.decoder.fprop(
+    logits = self.decoder(
         decoder_input_tokens=input_batch.decoder_input_tokens,
         decoder_target_tokens=input_batch.decoder_target_tokens,
         decoder_segment_ids=input_batch.decoder_segment_ids,
@@ -542,7 +542,7 @@ class EncoderDecoderModel(LanguageModel):
     """
     get_elem = lambda x, k: x[k] if k in x else None
 
-    logits = self.encoder_decoder.fprop(
+    logits = self.encoder_decoder(
         encoder_input_tokens=input_batch.encoder_input_tokens,
         decoder_input_tokens=input_batch.decoder_input_tokens,
         decoder_target_tokens=input_batch.decoder_target_tokens,

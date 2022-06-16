@@ -87,7 +87,7 @@ class VanillaBlock(base_layer.BaseLayer):
         filter_stride=(1, 1)))
     self.create_children('body', body)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Forward propagation of a VanillaBlock.
 
     Args:
@@ -101,7 +101,7 @@ class VanillaBlock(base_layer.BaseLayer):
     outputs = inputs
 
     for i in range(len(self.body)):
-      outputs = tailored_lrelu(p.negative_slope, self.body[i].fprop(outputs))
+      outputs = tailored_lrelu(p.negative_slope, self.body[i](outputs))
     return outputs
 
 
@@ -230,7 +230,7 @@ class VanillaNet(base_layer.BaseLayer):
       self.create_child('output_spatial_pooling',
                         p.output_spatial_pooling_params)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the VanillaNet model to the inputs.
 
     Args:
@@ -246,19 +246,18 @@ class VanillaNet(base_layer.BaseLayer):
     p = self.hparams
 
     # Apply the entryflow conv.
-    outputs = tailored_lrelu(p.negative_slope,
-                             self.entryflow_conv.fprop(inputs))
+    outputs = tailored_lrelu(p.negative_slope, self.entryflow_conv(inputs))
 
     # Apply the entryflow maxpooling layer.
-    outputs, _ = self.entryflow_maxpool.fprop(outputs)
+    outputs, _ = self.entryflow_maxpool(outputs)
 
     # Apply the VanillaNet blocks.
     for stage_id, num_blocks in enumerate(p.blocks):
       for block_id in range(num_blocks):
         block_name = f'stage_{stage_id}_block_{block_id}'
-        outputs = getattr(self, block_name).fprop(outputs)
+        outputs = getattr(self, block_name)(outputs)
 
     # Apply optional spatial global pooling.
     if p.output_spatial_pooling_params is not None:
-      outputs = self.output_spatial_pooling.fprop(outputs)
+      outputs = self.output_spatial_pooling(outputs)
     return outputs

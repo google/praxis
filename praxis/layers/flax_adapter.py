@@ -99,7 +99,7 @@ class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
     # Call the final mapped_fn.
     mapped_fn(self.cld, *var_init_args, **var_init_kwargs)
 
-  def fprop(self, *args, **kwargs):
+  def __call__(self, *args, **kwargs):
     # axis_rules context manager is used to map activation sharding logical
     # axes to mesh axes names that pjit expects.
     with flax_partitioning.axis_rules(self.hparams.logical_axes_rules):

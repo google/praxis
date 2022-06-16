@@ -91,10 +91,10 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
     act_p = activations.Activation.HParams(activation=p.activation)
     self.create_child('activation', act_p)
 
-  def fprop(self,
-            inputs: JTensor,
-            paddings: Optional[JTensor] = None,
-            tasks: Optional[JTensor] = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None,
+               tasks: Optional[JTensor] = None) -> JTensor:
     """Fprop for multitask adapter.
 
     Args:
@@ -142,17 +142,17 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
       up_b = jnp.expand_dims(up_b, -2)
 
     # Norm -> down-projection -> non-linearity -> up-projection
-    norm_inputs = self.norm.fprop(inputs)
+    norm_inputs = self.norm(inputs)
     if p.norm_tpl.cls in {
         normalizations.BatchNorm, normalizations.GroupNorm,
         normalizations.LayerNorm
     }:
-      norm_inputs = self.norm.fprop(inputs, paddings)
+      norm_inputs = self.norm(inputs, paddings)
     else:
       raise NotImplementedError('%s is not supported' % p.norm_tpl.cls)
 
     down_projected = jnp.einsum('...i,...in->...n', norm_inputs,
                                 down_w) + down_b
-    down_projected = self.activation.fprop(down_projected)
+    down_projected = self.activation(down_projected)
     up_projected = jnp.einsum('...n,...ni->...i', down_projected, up_w) + up_b
     return inputs + up_projected

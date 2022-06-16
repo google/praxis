@@ -78,7 +78,7 @@ class OneHeadedAttentionProjection(base_layer.BaseLayer):
           tensor_split_dims_mapping=bias_split_dims_mapping)
       self.create_variable('b', pc_bias)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Computes the multi headed projection for inputs.
 
     Args:
@@ -502,7 +502,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     encoded = self._shard_bnh(encoded)
     return encoded, probs
 
-  def fprop(
+  def __call__(
       self,
       query_vec: JTensor,
       key_vec: JTensor,
@@ -531,9 +531,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     p = self.hparams
     # Project inputs to key, value and query, respectively has shape
     # [B, S, N, H], [B, S, H], and [B, T, H].
-    query_proj = self.query.fprop(query_vec)
-    key_proj = self.key.fprop(key_vec)
-    value_proj = self.value.fprop(value_vec)
+    query_proj = self.query(query_vec)
+    key_proj = self.key(key_vec)
+    value_proj = self.value(value_vec)
 
     self._fprop_update_decode_state('key_state', key_proj)
     self._fprop_update_decode_state('value_state', value_proj)
@@ -541,8 +541,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # Apply relative bias.
     # Paper: https://aclanthology.org/N18-2074.pdf.
     if p.relative_bias_tpl:
-      relative_bias = self.relative_bias.fprop(query_segment_pos,
-                                               key_segment_pos)
+      relative_bias = self.relative_bias(query_segment_pos, key_segment_pos)
     else:
       relative_bias = None
 
@@ -550,7 +549,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
                                            atten_mask, relative_bias)
 
     # Post projection
-    encoded = self.post.fprop(encoded)
+    encoded = self.post(encoded)
     encoded = self._shard_bld(encoded)
     encoded = checkpoint_name(encoded, 'out_proj')
 
@@ -634,9 +633,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     assert time_step.ndim == 0
     # Project inputs to key, value and query. Query has shape [B, N, H],
     # key/value shapes [B, H]
-    new_key_proj = self.key.fprop(query_vec)
-    new_value_proj = self.value.fprop(query_vec)
-    new_query_proj = self.query.fprop(query_vec)
+    new_key_proj = self.key(query_vec)
+    new_value_proj = self.value(query_vec)
+    new_query_proj = self.query(query_vec)
 
     def _extend_decode_state_and_shard_blh(name: str,
                                            extend_value: JTensor) -> JTensor:
@@ -664,7 +663,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # TODO(yonghui): return atten_probs back to the caller.
     del atten_prob
     # Post projection.
-    encoded = self.post.fprop(encoded)
+    encoded = self.post(encoded)
     encoded = self._shard_bd(encoded)
     return encoded
 

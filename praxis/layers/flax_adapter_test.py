@@ -90,11 +90,11 @@ class MixLayer(base_layer.BaseLayer):
     bn_p = normalizations.BatchNorm.HParams(dim=10)
     self.create_child('bn', bn_p)
 
-  def fprop(self, x: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
+  def __call__(self, x: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
     p = self.hparams
-    out1 = self.cnn_p1.fprop(x, use_running_average=p.use_running_average)
-    out2 = self.cnn_p2.fprop(x, use_running_average=p.use_running_average)
-    out = self.bn.fprop(out1 + out2)
+    out1 = self.cnn_p1(x, use_running_average=p.use_running_average)
+    out2 = self.cnn_p2(x, use_running_average=p.use_running_average)
+    out = self.bn(out1 + out2)
     return out1, out2, out
 
 
@@ -209,7 +209,7 @@ class PaxWrapperTest(test_utils.TestCase):
 
       @flax_nn.compact
       def __call__(self, x: JTensor) -> JTensor:
-        x = self.bn_p.Instantiate().fprop(x)
+        x = self.bn_p.Instantiate()(x)
         return x
 
     key = jax.random.PRNGKey(1)
@@ -236,7 +236,7 @@ class PaxWrapperTest(test_utils.TestCase):
 
       @flax_nn.compact
       def __call__(self, x: JTensor) -> JTensor:
-        x = self.pax_layer.fprop(x)
+        x = self.pax_layer(x)
         return x
 
     key = jax.random.PRNGKey(1)

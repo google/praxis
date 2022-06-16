@@ -80,7 +80,7 @@ class Linear(base_layer.BaseLayer):
             mesh_shape=p.mesh_shape,
             tensor_split_dims_mapping=wp.wt))
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Apply projection to inputs.
 
     Args:
@@ -123,7 +123,7 @@ class Bias(base_layer.BaseLayer):
             mesh_shape=p.mesh_shape,
             tensor_split_dims_mapping=wp.wt))
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     """Adds bias to inputs.
 
     Args:
@@ -186,11 +186,11 @@ class FeedForward(base_layer.BaseLayer):
     self.activation: activations.Activation
     self.create_child('activation', act_p)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
-    projected_inputs = self.linear.fprop(inputs)
+  def __call__(self, inputs: JTensor) -> JTensor:
+    projected_inputs = self.linear(inputs)
     if self.hparams.has_bias:
-      projected_inputs = self.bias.fprop(projected_inputs)
-    output = self.activation.fprop(projected_inputs)
+      projected_inputs = self.bias(projected_inputs)
+    output = self.activation(projected_inputs)
     return output
 
 
@@ -238,11 +238,11 @@ class MLPBlock(base_layer.BaseLayer):
     mlp_layers.append(output_layer_p)
     self.create_children('mlp_layers', mlp_layers)
 
-  def fprop(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor) -> JTensor:
     output = inputs
     p = self.hparams
     for i in range(p.num_layers):
-      output = self.mlp_layers[i].fprop(output)
+      output = self.mlp_layers[i](output)
     return output
 
 
@@ -353,7 +353,7 @@ class StackingOverTime(base_layer.BaseLayer):
     out = out[:, ::p.stride]
     return out
 
-  def fprop(self, inputs, paddings=None):
+  def __call__(self, inputs, paddings=None):
     """Apply the stacking to inputs along the time axis.
 
     Args:
@@ -435,7 +435,7 @@ class StackingOverTime(base_layer.BaseLayer):
 
         inputs = ...  # [batch, length, input_dim]
         # [batch, ceil(length / stride), rnn_dim]
-        rnn_out = rnn.fprop(stacking.fprop(inputs)[0])
+        rnn_out = rnn(stacking(inputs)[0])
         # [batch, length, rnn_dim]
         back_projected_rnn_out = py_utils.PadOrTrimTo(
             stacking.unstack(jnp.tile(rnn_out, [1, 1, stacking.window_size])),
