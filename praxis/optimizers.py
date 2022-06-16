@@ -837,6 +837,7 @@ class DistributedShampoo(BaseOptimizer):
       block_size: Size of the preconditioner (block size x block size).
       beta1: Momentum parameter.
       beta2: Second moment averaging parameter.
+      diagonal_epsilon: Epsilon parameter for the diagonal adaptive method.
       matrix_epsilon: Epsilon parameter as part of computing the inverse-pth
         roots.
       weight_decay: Weight decay.
@@ -871,6 +872,7 @@ class DistributedShampoo(BaseOptimizer):
     block_size: int = 1024
     beta1: float = 0.9
     beta2: float = 0.999
+    diagonal_epsilon: float = 1e-16
     matrix_epsilon: float = 1e-6
     weight_decay: float = 0.0
     start_preconditioning_step: int = 101
@@ -935,7 +937,7 @@ class DistributedShampoo(BaseOptimizer):
         block_size=p.block_size,
         beta1=p.beta1,
         beta2=p.beta2,
-        diagonal_epsilon=1e-10,
+        diagonal_epsilon=p.diagonal_epsilon,
         matrix_epsilon=p.matrix_epsilon,
         weight_decay=p.weight_decay,
         start_preconditioning_step=p.start_preconditioning_step,
