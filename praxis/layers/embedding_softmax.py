@@ -61,13 +61,17 @@ class Embedding(base_layer.BaseLayer):
         opposed to the more appropriate `embedding_dims` to be compatible with
         other softmax/embedding layers defined in this file.
       lookup_style: Style of lookup, one of index or matmul.
-      scale_sqrt_depth: If set True, activations are scaled with
+      scale_sqrt_depth: If set to True, activations are scaled with
         sqrt(embedding_dim) in emb_lookup.
+      set_nan_for_oob_id: If set to True, embeddings corresponding to 
+        out-of-boundaries ids will be set to NaN. Useful for debugging
+        purposes.
     """
     num_classes: int = 0
     input_dims: int = 0
     lookup_style: str = 'index'
     scale_sqrt_depth: bool = False
+    set_nan_for_oob_id: bool = False
 
   def setup(self) -> None:
     p = self.hparams
@@ -84,6 +88,7 @@ class Embedding(base_layer.BaseLayer):
 
   def emb_lookup(self, ids: JTensor) -> JTensor:
     p = self.hparams
+
     if p.lookup_style == 'index':
       embs = jnp.asarray(self.theta.emb_var)[(ids,)]
     elif p.lookup_style == 'matmul':
@@ -91,6 +96,10 @@ class Embedding(base_layer.BaseLayer):
       embs = jnp.matmul(one_hot_ids, self.theta.emb_var)
     else:
       raise ValueError('Unknown lookup style.')
+
+    # map out-of-boundary ids to nan for easier debug
+    if p.set_nan_for_oob_id:
+      embs = jnp.where(ids[..., jnp.newaxis] < p.num_classes, embs, jnp.nan)
 
     if p.scale_sqrt_depth:
       embs *= p.input_dims**0.5
