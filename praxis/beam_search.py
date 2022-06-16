@@ -24,7 +24,6 @@ from praxis import base_layer
 from praxis import decoder_hparams
 from praxis import decoder_utils
 from praxis import py_utils
-from praxis import sample_decode
 
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
@@ -246,7 +245,7 @@ def beam_search(model: base_layer.BaseLayer,
       carry_variables=[base_layer.DECODE_CACHE])
 
   result.output_ids = result.end_ids
-  result.output_ids = sample_decode.left_align_output_sequence(
+  result.output_ids = decoder_utils.left_align_tensor(
       jnp.reshape(result.output_ids, (batch_size * beam_size, -1)),
       jnp.reshape(prefix_lengths, (-1)), max_prefix_len)
   result.output_ids = jnp.reshape(result.output_ids,

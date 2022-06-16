@@ -28,16 +28,6 @@ NestedMap = py_utils.NestedMap
 
 class SampleDecodeHelperTest(test_utils.TestCase):
 
-  def test_broadcast_batch_dim(self):
-    x = jnp.array([[1, 2], [3, 4]], dtype=jnp.int32)
-    self.assertArraysEqual(
-        sample_decode.broadcast_batch_dim(x, batch_dim=0, num_samples=2),
-        np.array([[1, 2], [1, 2], [3, 4], [3, 4]], dtype=np.int32))
-
-    self.assertArraysEqual(
-        sample_decode.broadcast_batch_dim(x, batch_dim=1, num_samples=2),
-        np.array([[1, 1, 2, 2], [3, 3, 4, 4]], dtype=np.int32))
-
   def test_split_batch_dim(self):
     x = jnp.array([[1, 2], [1, 2], [3, 4], [3, 4]], dtype=np.int32)
     self.assertArraysEqual(
@@ -175,19 +165,6 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     self.assertArraysEqual(
         right_align_prefix_paddings,
         jnp.array([[1, 0, 0], [1, 1, 0], [0, 0, 0]], dtype=jnp.int32))
-
-  def test_left_align_output_sequence(self):
-    output_ids = jnp.array([[0, 1, 2, 3], [0, 1, 0, 0], [1, 2, 3, 4]],
-                           dtype=jnp.int32)
-    prefix_lengths = jnp.array([1, 1, 2], dtype=jnp.int32)
-    max_prefix_len = 2
-
-    left_align_prefix_ids = sample_decode.left_align_output_sequence(
-        output_ids, prefix_lengths, max_prefix_len)
-
-    self.assertArraysEqual(
-        left_align_prefix_ids,
-        jnp.array([[1, 2, 3, 0], [1, 0, 0, 0], [1, 2, 3, 4]], dtype=jnp.int32))
 
   def test_right_align_segment_position(self):
     lengths = jnp.array([5, 4, 6], dtype=jnp.int32)

@@ -782,7 +782,6 @@ py_strict_test(
         "//praxis:base_layer",
         "//praxis:decoder_utils",
         "//praxis:py_utils",
-        "//praxis:sample_decode",
         "//praxis:test_utils",
     ],
 )

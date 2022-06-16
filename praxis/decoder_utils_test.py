@@ -86,6 +86,48 @@ class DecoderUtilsTest(test_utils.TestCase):
                    [[0.2, 0.3], [0.4, 0.5]], [[0, 0.1], [0.1, 0]]]],
                  dtype=np.float32))
 
+  def test_left_align_tensor(self):
+    output_ids = jnp.array([[0, 1, 2, 3], [0, 1, 0, 0], [1, 2, 3, 4]],
+                           dtype=jnp.int32)
+    prefix_lengths = jnp.array([1, 1, 2], dtype=jnp.int32)
+    max_prefix_len = 2
+
+    left_align_prefix_ids = decoder_utils.left_align_tensor(
+        output_ids, prefix_lengths, max_prefix_len)
+
+    self.assertArraysEqual(
+        left_align_prefix_ids,
+        jnp.array([[1, 2, 3, 0], [1, 0, 0, 0], [1, 2, 3, 4]], dtype=jnp.int32))
+
+  def test_concat_suffix_and_left_align_tensor(self):
+    num_samples = 3
+    num_suffix = 2
+    output_ids = jnp.array([[0, 1, 2, 3], [0, 1, 3, 0], [1, 2, 3, 4]],
+                           dtype=jnp.int32)
+    prefix_lengths = jnp.array([1, 1, 2], dtype=jnp.int32)
+    decode_end_indices = jnp.array([4, 3, 4], dtype=jnp.int32)
+    max_prefix_len = 2
+
+    suffix_ids = jnp.array([[5, 2], [7, 3], [5, 2], [7, 3], [5, 2], [7, 3]],
+                           dtype=jnp.int32)
+
+    left_align_ids = decoder_utils.concat_suffix_and_left_align(
+        output_ids,
+        suffix_ids,
+        decode_end_indices,
+        prefix_lengths,
+        max_prefix_len,
+        num_samples,
+        num_suffix,
+        pad_value=0)
+
+    self.assertArraysEqual(
+        left_align_ids,
+        jnp.array(
+            [[[[1, 2, 3, 5, 2, 0], [1, 3, 5, 2, 0, 0], [1, 2, 3, 4, 5, 2]],
+              [[1, 2, 3, 7, 3, 0], [1, 3, 7, 3, 0, 0], [1, 2, 3, 4, 7, 3]]]],
+            dtype=jnp.int32))
+
 
 if __name__ == '__main__':
   absltest.main()

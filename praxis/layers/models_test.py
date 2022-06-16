@@ -25,7 +25,6 @@ import numpy as np
 from praxis import base_layer
 from praxis import decoder_utils
 from praxis import py_utils
-from praxis import sample_decode
 from praxis import test_utils
 from praxis.layers import models
 
@@ -513,7 +512,7 @@ class LanguageModelTest(test_utils.TestCase):
             [0, 0, 0, 1, 0],  # argmax=[4, 4, 3]
         ],
     ]
-    sample_logits = sample_decode.broadcast_batch_dim(jnp.array(logits), 1, 2)
+    sample_logits = jnp.repeat(jnp.array(logits), axis=1, repeats=2)
     input_batch = NestedMap(
         ids=jnp.array([[11, 13, 15], [12, 14, 16], [20, 30, 40]],
                       dtype=jnp.int32),
@@ -581,7 +580,7 @@ class LanguageModelTest(test_utils.TestCase):
             [0, 0, 0, 1, 0],  # argmax=[4, 4, 3]
         ],
     ]
-    sample_logits = sample_decode.broadcast_batch_dim(jnp.array(logits), 1, 2)
+    sample_logits = jnp.repeat(jnp.array(logits), axis=1, repeats=2)
     input_batch = NestedMap(
         ids=jnp.array([[11, 13, 15], [12, 14, 16], [20, 30, 40]],
                       dtype=jnp.int32),

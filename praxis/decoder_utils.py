@@ -20,8 +20,9 @@ from typing import Callable, Tuple
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
+from praxis import pytypes
 
-JTensor = base_layer.JTensor
+JTensor = pytypes.JTensor
 ExtendStepFn = Callable[[base_layer.BaseLayer, JTensor, JTensor], JTensor]
 FPropFn = Callable[[base_layer.BaseLayer, JTensor, JTensor], None]
 TransformStateFn = Callable[
@@ -199,3 +200,114 @@ def right_align_state_fn(
     return right_align_tensors(x, seq_lengths, time_dim)
 
   return _right_align_state_fn
+
+
+def left_align_tensor(x: JTensor, prefix_lengths: JTensor,
+                      max_prefix_len: int) -> JTensor:
+  """Changes middle aligned sequence to be left aligned.
+
+  x has the following middle aligned format:
+  |-max_prefix_len--|
+  [0, 0, 0, 0, P, P, X, X, X, 0, 0, 0]
+  where prefix_lengths = 2, max_prefix_len = 6, there are 4 paddings in the
+  prefix.
+
+  After left aligned, x will have the following format:
+  |-max_prefix_len--|
+  [P, P, X, X, X, 0, 0, 0, 0, 0, 0, 0]
+
+  Args:
+    x: Tensor of shape [batch_size, seq_len].
+    prefix_lengths: prefix lengths of shape [batch_size].
+    max_prefix_len: max prefix lengths.
+
+  Returns:
+    Left aligned tensor with shape [batch_size, seqlen].
+  """
+  if len(x.shape) != 2:
+    raise ValueError(
+        f'Argument `x` needs to be 2-index, but has shape: {x.shape}')
+
+  seqlen = x.shape[1]
+
+  def _align_one(x: JTensor, prefix_length: JTensor) -> JTensor:
+    """Aligns one middle align tensor to be left align."""
+    padded = jnp.pad(x, [[0, max_prefix_len]])
+    return jax.lax.dynamic_slice(padded, [max_prefix_len - prefix_length],
+                                 [seqlen])
+
+  return jax.vmap(_align_one)(x, prefix_lengths)
+
+
+def concat_suffix_and_left_align(decoded_tensors: JTensor,
+                                 suffix_tensors: JTensor,
+                                 decode_end_indices: JTensor,
+                                 prefix_lengths: JTensor, max_prefix_len: int,
+                                 num_samples: int, num_suffix: int,
+                                 pad_value: float):
+  """Concatenates suffix tensor to decoded tensor and then left aligns.
+
+
+  When batch_size = 1, num_samples = 1, num_suffix = 1 if decoded_tensors has
+  the following middle align format:
+  |-max_prefix_len--|
+  [0, 0, 0, 0, P, P, X, X, X, 0, 0, 0]
+  where prefix_lengths = 2, max_prefix_len = 6, end_decode_indices = 8, and
+  suffix_id = [S, S]
+
+  After concat and left aligned, return tensor will have the following format:
+  |-max_prefix_len--|
+  [P, P, X, X, X, S, S, 0, 0, 0, 0, 0]
+
+  Args:
+    decoded_tensors: JTensor generated from decoding with shape
+      [batch_size*num_samples, seq_len].
+    suffix_tensors: Suffix JTensor to append, has shape
+      [batch_size * num_samples * num_suffix, suffix_len].
+    decode_end_indices: Indices after last decode token position in decoded
+      tensor, JTensor of shape [batch_size * num_samples],
+    prefix_lengths: Prefix lengths of shape [batch_size * num_samples].
+    max_prefix_len: Max prefix length.
+    num_samples: Number of samples.
+    num_suffix: Number of suffixes.
+    pad_value: Value for padding.
+
+  Returns:
+    The left aligned tensor has suffix_tensor concatenated to the back of
+    decoded_tensor.
+  """
+  suffix_batch_size, suffix_length = suffix_tensors.shape
+
+  # [batch_size * num_samples * num_suffix, seq_len]
+  broadcast_decoded_tensors = jnp.repeat(
+      decoded_tensors, repeats=num_suffix, axis=0)
+
+  # [batch_size * num_samples * num_suffix, seq_len + suffix_len]
+  padded_decoded_tensors = jnp.pad(
+      broadcast_decoded_tensors, [[0, 0], [0, suffix_length]],
+      mode='constant',
+      constant_values=decoded_tensors.dtype.type(pad_value))
+
+  def _update_one(x: JTensor, suffix: JTensor, start: JTensor) -> JTensor:
+    """Concats suffix to x at start index."""
+    return jax.lax.dynamic_update_slice(x, suffix, [start])
+
+  # Concat suffix tensors to the back of decoded tensors.
+  concat_tensors = jax.vmap(_update_one)(padded_decoded_tensors,
+                                         suffix_tensors,
+                                         jnp.repeat(
+                                             decode_end_indices,
+                                             repeats=num_suffix,
+                                             axis=0))
+  # Left align concatenated tensors.
+  left_align_tensors = left_align_tensor(
+      concat_tensors, jnp.repeat(prefix_lengths, repeats=num_suffix, axis=0),
+      max_prefix_len)
+  # Reshape to [batch_size, num_samples, num_suffix, seq_len + suffix_len]
+  reshaped_tensors = jnp.reshape(left_align_tensors, [
+      suffix_batch_size //
+      (num_samples * num_suffix), num_samples, num_suffix, -1
+  ])
+
+  # Output has [batch_size, num_suffix, num_samples, seq_len + suffix_len]
+  return jnp.transpose(reshaped_tensors, (0, 2, 1, 3))

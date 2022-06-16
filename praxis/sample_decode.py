@@ -37,32 +37,6 @@ RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
 
 
-def broadcast_batch_dim(x: jnp.ndarray, batch_dim: int,
-                        num_samples: int) -> jnp.ndarray:
-  """Broadcasts the tensor num_samples times and flat at batch dimension.
-
-  Args:
-    x: The input tensor of shape [batch, ...] or [seq_len, batch, ...]
-    batch_dim: batch dimension.
-    num_samples: number of samples in sample decode.
-
-  Returns:
-    A tensor of shape [batch * num_samples, ...] or [seq_len, batch *
-    num_samples, ...].
-  """
-  assert isinstance(x, jnp.ndarray)
-  assert len(x.shape) >= 1 and batch_dim < len(x.shape)
-  # [a, b, c] and num_samples = 3 will have
-  # [a, a, a, b, b, b, c, c, c].
-  repeated_x = jnp.repeat(
-      jnp.expand_dims(x, batch_dim + 1),
-      repeats=num_samples,
-      axis=batch_dim + 1)
-  new_shape = list(x.shape)
-  new_shape[batch_dim] = -1
-  return jnp.reshape(repeated_x, new_shape)
-
-
 def reorder_with_indices(x: JTensor, indices: JTensor):
   """Reorders with the given indices.
 
@@ -232,29 +206,6 @@ def right_align_prefix_ids(prefix_ids: JTensor, prefix_lengths: JTensor,
   return right_align_ids, prefix_paddings
 
 
-# TODO(b/229679837): return decoding ids only and remove left_align_prefix_ids.
-def left_align_output_sequence(outputs: JTensor, prefix_lengths: JTensor,
-                               max_prefix_len: int) -> JTensor:
-  """Change left align outputs sequence to be right align.
-
-  Args:
-    outputs: outputs sequence of shape [batch_size, seq_len].
-    prefix_lengths: prefix lengths of shape [batch_size].
-    max_prefix_len: max prefix lengths.
-
-  Returns:
-    Left aligned outputs with shape [batch_size, seqlen].
-  """
-  seqlen = outputs.shape[1]
-
-  def _align_one(x, prefix_length):
-    padded = jnp.pad(x, [[0, max_prefix_len]])
-    return jax.lax.dynamic_slice(padded, [max_prefix_len - prefix_length],
-                                 [seqlen])
-
-  return jax.vmap(_align_one)(outputs, prefix_lengths)
-
-
 def sample_decode(model: base_layer.BaseLayer,
                   extend_step_fn: decoder_utils.ExtendStepFn,
                   transform_state_fn: Optional[decoder_utils.TransformStateFn],
@@ -322,12 +273,11 @@ def sample_decode(model: base_layer.BaseLayer,
     # Broadcast inputs from [batch, ...] to [batch * num_samples, ...].
     # [a, b, c] and num_samples = 3 will have
     # [a, a, a, b, b, b, c, c, c].
-    target_prefix_ids = broadcast_batch_dim(
-        target_prefix_ids, batch_dim=0, num_samples=num_samples)
-    target_prefix_paddings = broadcast_batch_dim(
-        target_prefix_paddings, batch_dim=0, num_samples=num_samples)
-    prefix_lengths = broadcast_batch_dim(
-        prefix_lengths, batch_dim=0, num_samples=num_samples)
+    target_prefix_ids = jnp.repeat(
+        target_prefix_ids, axis=0, repeats=num_samples)
+    target_prefix_paddings = jnp.repeat(
+        target_prefix_paddings, axis=0, repeats=num_samples)
+    prefix_lengths = jnp.repeat(prefix_lengths, axis=0, repeats=num_samples)
 
     if lazy_broadcast_prefix_fn is not None:
       assert fprop_for_prefix
@@ -452,8 +402,8 @@ def sample_decode(model: base_layer.BaseLayer,
       1.0 - target_prefix_paddings, axis=1).astype(jnp.int32)
 
   if fprop_for_prefix:
-    prefix_ids = left_align_output_sequence(target_prefix_ids, prefix_lengths,
-                                            max_prefix_len)
+    prefix_ids = decoder_utils.left_align_tensor(target_prefix_ids,
+                                                 prefix_lengths, max_prefix_len)
   else:
     prefix_ids = target_prefix_ids
   # We manually pad out the ids not belonging to the prefix because some
@@ -464,13 +414,18 @@ def sample_decode(model: base_layer.BaseLayer,
   prefix_ids = jnp.where(indices < prefix_lengths_2d, prefix_ids,
                          jnp.zeros_like(prefix_ids))
   result.prefix_ids = prefix_ids
+
   if fprop_for_prefix:
+    # TODO(b/229679837): return decoding ids only and
+    # remove left align logic here.
+
     # Change output_ids to left align.
-    result.output_ids = left_align_output_sequence(result.output_ids,
-                                                   prefix_lengths,
-                                                   max_prefix_len)
-    result.logprobs = left_align_output_sequence(result.logprobs,
-                                                 prefix_lengths, max_prefix_len)
+    result.output_ids = decoder_utils.left_align_tensor(result.output_ids,
+                                                        prefix_lengths,
+                                                        max_prefix_len)
+    result.logprobs = decoder_utils.left_align_tensor(result.logprobs,
+                                                      prefix_lengths,
+                                                      max_prefix_len)
 
   del result.step, result.done
 

@@ -100,7 +100,6 @@ pytype_strict_library(
         ":decoder_hparams",
         ":decoder_utils",
         ":py_utils",
-        ":sample_decode",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
     ],
@@ -121,8 +120,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_layer",
-        ":py_utils",
-        # Implicit flax.core dependency.
+        ":pytypes",
         # Implicit jax dependency.
     ],
 )
