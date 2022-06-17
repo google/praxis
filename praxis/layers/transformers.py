@@ -264,11 +264,12 @@ class TransformerFeedForward(base_layer.BaseLayer):
   def setup(self) -> None:
     p = self.hparams
 
-    if p.output_dims == 0:
+    output_dims = p.output_dims
+    if output_dims == 0:
       # Make it compatible with previous implementation
-      p.output_dims = p.input_dims
+      output_dims = p.input_dims
     else:
-      assert p.output_dims == p.input_dims
+      assert output_dims == p.input_dims
 
     wp = p.weight_split_dims_mapping
     ap = p.activation_split_dims_mapping
@@ -335,7 +336,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
     ffn2_p.input_dims = p.hidden_dims
     ffn2_p.has_bias = p.has_bias
     ffn2_p.activation = 'NONE'
-    ffn2_p.output_dims = p.output_dims
+    ffn2_p.output_dims = output_dims
     ffn2_p.weight_split_dims_mapping.wt = wp.ffn1
     ffn2_p.activation_split_dims_mapping.out = ap.ffn1
     if p.internal_gshard_variance_scaling_fan_in_init:
