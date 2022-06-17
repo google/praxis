@@ -896,6 +896,10 @@ class DistributedShampoo(BaseOptimizer):
     tensor_split_dims_mapping_for_inverse_pth_root: Sequence[
         int] = dataclasses.field(default_factory=lambda: [-1, 1, -1])
     best_effort_memory_usage_reduction: bool = False
+    relative_matrix_epsilon: bool = True
+    cholesky: bool = False
+    qr_based_root: bool = False
+    sharded_statistics_only: bool = False
 
   @classmethod
   def HParamsImageClassification(cls) -> DistributedShampoo.HParams:  # pylint: disable=invalid-name
@@ -957,7 +961,11 @@ class DistributedShampoo(BaseOptimizer):
         skip_preconditioning_dim_size_gt=p.skip_preconditioning_dim_size_gt,
         clip_by_scaled_gradient_norm=p.clip_by_scaled_gradient_norm,
         precision=lax.Precision.HIGHEST,
-        best_effort_memory_usage_reduction=p.best_effort_memory_usage_reduction)
+        best_effort_memory_usage_reduction=p.best_effort_memory_usage_reduction,
+        relative_matrix_epsilon=p.relative_matrix_epsilon,
+        cholesky=p.cholesky,
+        qr_based_root=p.qr_based_root,
+        sharded_statistics_only=p.sharded_statistics_only)
 
 
 class ShardedDistributedShampoo(DistributedShampoo):
