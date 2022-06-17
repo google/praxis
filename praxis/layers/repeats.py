@@ -217,6 +217,10 @@ class Repeat(base_layer.BaseLayer):
         scan_fn,
         SUMMARIES,
         mutable=self.is_mutable_collection(SUMMARIES),
+        trans_in_fn=functools.partial(
+            flax_utils.maybe_repack_summary,
+            unpack_summaries=p.unpack_summaries,
+            x_times=p.x_times),
         trans_out_fn=functools.partial(
             flax_utils.maybe_unpack_summary,
             unpack_summaries=p.unpack_summaries,
@@ -258,8 +262,21 @@ class Repeat(base_layer.BaseLayer):
         split_rngs=SCAN_SPLIT_RNGS,
         length=p.x_times)
 
+    mapped_scan_fn = nn.map_variables(
+        scan_fn,
+        SUMMARIES,
+        mutable=self.is_mutable_collection(SUMMARIES),
+        trans_in_fn=functools.partial(
+            flax_utils.maybe_repack_summary,
+            unpack_summaries=p.unpack_summaries,
+            x_times=p.x_times),
+        trans_out_fn=functools.partial(
+            flax_utils.maybe_unpack_summary,
+            unpack_summaries=p.unpack_summaries,
+            x_times=p.x_times))
+
     # Calls scan_fn with a None carry_in and ignores the carry_out.
-    scan_fn(self.sub, None)
+    mapped_scan_fn(self.sub, None)
 
   def extend_step(self, step_inputs: NestedJTensor, *args: Any,
                   **kwargs: Any) -> Any:
@@ -294,6 +311,10 @@ class Repeat(base_layer.BaseLayer):
         scan_fn,
         SUMMARIES,
         mutable=self.is_mutable_collection(SUMMARIES),
+        trans_in_fn=functools.partial(
+            flax_utils.maybe_repack_summary,
+            unpack_summaries=p.unpack_summaries,
+            x_times=p.x_times),
         trans_out_fn=functools.partial(
             flax_utils.maybe_unpack_summary,
             unpack_summaries=p.unpack_summaries,
@@ -326,7 +347,21 @@ class Repeat(base_layer.BaseLayer):
         variable_axes=SCAN_VARIABLE_AXES,
         split_rngs=SCAN_SPLIT_RNGS,
         length=p.x_times)
-    scan_fn(self.sub, None)
+
+    mapped_scan_fn = nn.map_variables(
+        scan_fn,
+        SUMMARIES,
+        mutable=self.is_mutable_collection(SUMMARIES),
+        trans_in_fn=functools.partial(
+            flax_utils.maybe_repack_summary,
+            unpack_summaries=p.unpack_summaries,
+            x_times=p.x_times),
+        trans_out_fn=functools.partial(
+            flax_utils.maybe_unpack_summary,
+            unpack_summaries=p.unpack_summaries,
+            x_times=p.x_times))
+
+    mapped_scan_fn(self.sub, None)
 
   def lazy_broadcast_prefix(self, num_suffix_samples: int,
                             suffix_length: int) -> None:
@@ -352,4 +387,18 @@ class Repeat(base_layer.BaseLayer):
         variable_axes=SCAN_VARIABLE_AXES,
         split_rngs=SCAN_SPLIT_RNGS,
         length=p.x_times)
-    scan_fn(self.sub, None)
+
+    mapped_scan_fn = nn.map_variables(
+        scan_fn,
+        SUMMARIES,
+        mutable=self.is_mutable_collection(SUMMARIES),
+        trans_in_fn=functools.partial(
+            flax_utils.maybe_repack_summary,
+            unpack_summaries=p.unpack_summaries,
+            x_times=p.x_times),
+        trans_out_fn=functools.partial(
+            flax_utils.maybe_unpack_summary,
+            unpack_summaries=p.unpack_summaries,
+            x_times=p.x_times))
+
+    mapped_scan_fn(self.sub, None)

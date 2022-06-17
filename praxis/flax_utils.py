@@ -59,7 +59,8 @@ def add_axis_to_metadata(tree, sub_weight_split_dims_mapping, x_times):
 
 
 # Internal unpacking comparison."],
-def maybe_unpack_summary(tree, unpack_summaries, x_times):
+def maybe_unpack_summary(tree: pytypes.PyTreeDef, unpack_summaries: bool,
+                         x_times: int) -> pytypes.PyTreeDef:
   """Unpacks the summary when `unpack_summaries` is set."""
   if not unpack_summaries:
     return tree
@@ -71,6 +72,23 @@ def maybe_unpack_summary(tree, unpack_summaries, x_times):
     return jnp.split(value, x_times)
 
   return jax.tree_map(unpack, tree)
+
+
+def maybe_repack_summary(tree: pytypes.PyTreeDef, unpack_summaries: bool,
+                         x_times: int) -> pytypes.PyTreeDef:
+  """Repacks the summary when `unpack_summaries` is set."""
+  if not unpack_summaries:
+    return tree
+
+  def maybe_repack(value):
+    if not isinstance(value, list):
+      return value
+    # If unpacked, callers will get a list of repacked summary values.
+    # e.g., [(1,), (1,), (1,), (1,)] -> (4, )
+    assert len(value) == x_times
+    return jnp.stack(value)
+
+  return jax.tree_map(maybe_repack, tree, is_leaf=lambda x: isinstance(x, list))
 
 
 def convert_to_boxed_params(
