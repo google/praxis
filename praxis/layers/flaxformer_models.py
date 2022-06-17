@@ -60,21 +60,28 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
       num_layers: Number of decoder layers.
     """
     num_layers: int = 2
+    activation_dtype: str = 'bfloat16'
+    embed_dim: int = 2048
+    num_embeddings: int = 32128
+    num_heads: int = 32
+    head_dim: int = 64
+    init_scale: float = 1.0
+    dropout_rate: float = 0.0
+    mlp_dim: int = 5120
+    activation_partitioning_dims: int = 1
 
   def setup(self) -> None:
     p = self.hparams
     super().setup()
-    # TODO(yonghui): Define hyper-params for the constants below. Even better,
-    # instantiate the model object from a gin config directly.
-    activation_dtype = 'bfloat16'
-    embed_dim = 2048
-    num_embeddings = 32128
-    num_heads = 32
-    head_dim = 64
-    init_scale = 1.0
-    dropout_rate = 0.0
-    mlp_dim = 5120
-    activation_partitioning_dims = 1
+    activation_dtype = p.activation_dtype
+    embed_dim = p.embed_dim
+    num_embeddings = p.num_embeddings
+    num_heads = p.num_heads
+    head_dim = p.head_dim
+    init_scale = p.init_scale
+    dropout_rate = p.dropout_rate
+    mlp_dim = p.mlp_dim
+    activation_partitioning_dims = p.activation_partitioning_dims
     num_decoder_layers = p.num_layers
 
     def token_embedder_factory():
@@ -451,11 +458,12 @@ class LanguageModel(base_model.BaseModel):
     Returns:
       A NestedMap of predictions.
     """
+    get_elem = lambda x, k: x[k] if k in x else None
     logits = self.decoder(
         decoder_input_tokens=input_batch.decoder_input_tokens,
         decoder_target_tokens=input_batch.decoder_target_tokens,
-        decoder_segment_ids=input_batch.decoder_segment_ids,
-        decoder_positions=input_batch.decoder_positions)
+        decoder_segment_ids=get_elem(input_batch, 'decoder_segment_ids'),
+        decoder_positions=get_elem(input_batch, 'decoder_positions'))
     return NestedMap(logits=logits)
 
   def compute_loss(self, predictions: Predictions,
