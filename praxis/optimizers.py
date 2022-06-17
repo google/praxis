@@ -868,6 +868,7 @@ class DistributedShampoo(BaseOptimizer):
         preconditioner matrices.
       best_effort_memory_usage_reduction: Experimental mode: Best effort memory
         usage reduction.
+      merge_small_dims_block_size: : Block size for merging dims.
     """
     block_size: int = 1024
     beta1: float = 0.9
@@ -900,6 +901,7 @@ class DistributedShampoo(BaseOptimizer):
     cholesky: bool = False
     qr_based_root: bool = False
     sharded_statistics_only: bool = False
+    merge_small_dims_block_size: int = 4096
 
   @classmethod
   def HParamsImageClassification(cls) -> DistributedShampoo.HParams:  # pylint: disable=invalid-name
@@ -965,7 +967,8 @@ class DistributedShampoo(BaseOptimizer):
         relative_matrix_epsilon=p.relative_matrix_epsilon,
         cholesky=p.cholesky,
         qr_based_root=p.qr_based_root,
-        sharded_statistics_only=p.sharded_statistics_only)
+        sharded_statistics_only=p.sharded_statistics_only,
+        merge_small_dims_block_size=p.merge_small_dims_block_size)
 
 
 class ShardedDistributedShampoo(DistributedShampoo):
