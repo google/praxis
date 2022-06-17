@@ -285,8 +285,9 @@ class Conformer(base_layer.BaseLayer):
           dropout_prob=p.conv_residual_dropout)
       self.create_child('lconv', lconv_p)
 
-    ln_p = p.final_ln_tpl.clone().set(name='final_ln', dim=p.model_dims)
-    self.create_child('final_ln', ln_p)
+    if p.final_ln_tpl:
+      ln_p = p.final_ln_tpl.clone().set(name='final_ln', dim=p.model_dims)
+      self.create_child('final_ln', ln_p)
 
   @property
   def has_fflayer_start(self) -> bool:
@@ -295,6 +296,10 @@ class Conformer(base_layer.BaseLayer):
   @property
   def has_fflayer_end(self) -> bool:
     return hasattr(self, 'fflayer_end')
+
+  @property
+  def has_final_ln(self) -> bool:
+    return hasattr(self, 'final_ln')
 
   def __call__(self,
                inputs: JTensor,
@@ -338,5 +343,6 @@ class Conformer(base_layer.BaseLayer):
       # With the weight sharing, we apply fflayer_start again
       inputs = self.fflayer_start(inputs, paddings)
 
-    inputs = self.final_ln(inputs)
+    if self.has_final_ln:
+      inputs = self.final_ln(inputs)
     return inputs
