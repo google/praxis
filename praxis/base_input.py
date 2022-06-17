@@ -378,7 +378,9 @@ class LingvoInputAdaptor(BaseInput):
                      lengths: pytypes.NpTensor,
                      key: Optional[str] = None) -> List[str]:
     """Converts int ids into strings."""
-    bytes_list = self.input.IdsToStrings(ids, lengths, key=key).numpy()
+    bytes_list = self.input.IdsToStrings(ids, lengths, key=key)
+    if isinstance(bytes_list, tf.Tensor):
+      bytes_list = bytes_list.numpy()
     return [b.decode('utf-8') for b in bytes_list]
 
 
