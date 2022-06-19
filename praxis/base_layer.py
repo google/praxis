@@ -529,7 +529,7 @@ def init_var(var_full_name: str, var_p: WeightHParams,
     dim0 = 1
 
   if is_default_param_init(var_p.init):
-    logging.warning(
+    logging.debug(
         'WARNING!!! var %s is using the default xavier initializer.'
         ' Make sure this is intended.', var_full_name)
 
