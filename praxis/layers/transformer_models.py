@@ -34,6 +34,7 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
 BaseHParams = base_layer.BaseLayer.HParams
+AuxLossStruct = base_layer.AuxLossStruct
 
 AUX_LOSS = base_layer.AUX_LOSS
 sub_config_field = base_layer.sub_config_field
@@ -414,14 +415,22 @@ class TransformerLm(base_layer.BaseLayer):
 
       # Sum aux_loss and add to avg_xent.
       aux_loss = 0.0
+      aux_loss_weight = 0.0
       if AUX_LOSS in self.variables:
-        aux_loss_values = jax.tree_leaves(self.variables[AUX_LOSS])
+        aux_loss_values = jax.tree_leaves(
+            self.variables[AUX_LOSS],
+            is_leaf=lambda x: isinstance(x, AuxLossStruct))
         for v in aux_loss_values:
-          aux_loss += jnp.sum(v)
+          assert isinstance(v, AuxLossStruct)
+          aux_loss += jnp.sum(v.value)
+          aux_loss_weight += jnp.sum(v.weight)
       if not isinstance(aux_loss, jnp.ndarray):
         aux_loss = jnp.array(aux_loss, dtype=self.fprop_dtype)
+        aux_loss_weight = jnp.array(aux_loss_weight, dtype=self.fprop_dtype)
       self.add_summary('total_aux_loss', aux_loss)
+      self.add_summary('total_aux_loss_weight', aux_loss_weight)
       xent_output.aux_loss = aux_loss
+      xent_output.aux_loss_weight = aux_loss_weight
       # This is the loss to minimize.
       xent_output.total_loss = xent_output.avg_xent + xent_output.aux_loss
     return xent_output
@@ -1101,13 +1110,23 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
       # Sum aux_loss and add to avg_xent.
       aux_loss = 0.0
+      aux_loss_weight = 0.0
       if AUX_LOSS in self.variables:
-        aux_loss_values = jax.tree_leaves(self.variables[AUX_LOSS])
+        aux_loss_values = jax.tree_leaves(
+            self.variables[AUX_LOSS],
+            is_leaf=lambda x: isinstance(x, AuxLossStruct))
         for v in aux_loss_values:
-          aux_loss += jnp.sum(v)
+          assert isinstance(v, AuxLossStruct)
+          aux_loss += jnp.sum(v.value)
+          aux_loss_weight += jnp.sum(v.weight)
       if not isinstance(aux_loss, jnp.ndarray):
         aux_loss = jnp.array(aux_loss, dtype=self.fprop_dtype)
+        aux_loss_weight = jnp.array(aux_loss_weight, dtype=self.fprop_dtype)
       xent_output.aux_loss = aux_loss
+      xent_output.aux_loss_weight = aux_loss_weight
+      self.add_summary('total_aux_loss', aux_loss)
+      self.add_summary('total_aux_loss_weight', aux_loss_weight)
+
       # This is the loss to minimize.
       xent_output.total_loss = xent_output.avg_xent + xent_output.aux_loss
     return xent_output

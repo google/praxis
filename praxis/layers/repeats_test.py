@@ -65,7 +65,7 @@ class FeedForward(base_layer.BaseLayer):
 
   def __call__(self, inputs):
     self.add_summary('inputs_mean', jnp.mean(inputs))
-    self.add_aux_loss('z_loss', 1)
+    self.add_aux_loss('z_loss', 1, 0.5)
     self.update_var('step', self.get_var('step') + 1)
     out = jnp.einsum('...y,yz->...z', inputs, self.theta.w)
     out = jax.nn.sigmoid(out)
@@ -109,7 +109,11 @@ class RepeatsTest(test_utils.TestCase):
         {'params', 'non_trainable', 'summaries', 'aux_loss'})
     self.assertEqual(updated_vars_shape['params']['sub']['w'], (5, 2, 2))
     self.assertEqual(updated_vars_shape['non_trainable']['sub']['step'], (5,))
-    self.assertEqual(updated_vars_shape['aux_loss']['sub']['z_loss'], ())
+    self.assertEqual(updated_vars_shape['aux_loss']['sub']['z_loss'].value, ())
+    self.assertEqual(updated_vars_shape['aux_loss']['sub']['z_loss'].weight, ())
+    self.assertEqual(updated_vars['aux_loss']['sub']['z_loss'].value, 5.0)
+    self.assertEqual(updated_vars['aux_loss']['sub']['z_loss'].weight, 2.5)
+
     if unpack_summaries:
       self.assertEqual(
           updated_vars_shape['summaries']['sub']['inputs_mean_scalar'], [(1,),
@@ -120,6 +124,7 @@ class RepeatsTest(test_utils.TestCase):
     else:
       self.assertEqual(
           updated_vars_shape['summaries']['sub']['inputs_mean_scalar'], (5,))
+
 
     print(jax.tree_map(lambda x: x.shape, updated_vars))
 

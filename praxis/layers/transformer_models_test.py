@@ -597,7 +597,7 @@ class TransformerModelsTest(test_utils.TestCase):
     # Compute jax outputs
     with base_layer.JaxContext.new_context():
       prng_key, random_key = jax.random.split(prng_key)
-      jax_outputs, _ = jax_layer.apply(
+      jax_outputs, updated_vars = jax_layer.apply(
           jax_vars,
           jax_ids,
           jax_paddings,
@@ -609,7 +609,11 @@ class TransformerModelsTest(test_utils.TestCase):
           segment_pos=jax_seg_pos,
           rngs={RANDOM: random_key},
           mutable=[base_layer.AUX_LOSS])
+      # There are two MOE load balancing loss + z-loss, for a total aux-loss 
+      # weight of 3.0
       print(jax_outputs)
+      print(updated_vars)
+      self.assertEqual(3.0, jax_outputs.aux_loss_weight)
 
   def test_glam_unitransformer(self):
     batch = 2

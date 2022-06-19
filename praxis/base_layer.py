@@ -620,6 +620,11 @@ class WrappedHParams:
   meta: BaseHyperParams = struct.field(pytree_node=False)
 
 
+@struct.dataclass
+class AuxLossStruct:
+  value: JTensor
+  weight: JTensor
+
 def maybe_unbox_value(tree):
   """Return the `value` leaf component of the pytree if it is a BoxedParam."""
   return jax.tree_map(
@@ -1234,14 +1239,22 @@ class BaseLayer(
     self.sow(SUMMARIES, full_name, tensor, reduce_fn=lambda x, y: y)
 
   @nn.nowrap
-  def add_aux_loss(self, name: str, value: JTensor):
+  def add_aux_loss(self, name: str, value: JTensor, weight=None):
     # Accumulate by summing aux_loss.
+    if weight is None:
+      weight = jnp.ones_like(value)
+
+    def reduce_fn(x, y):
+      assert isinstance(x, AuxLossStruct)
+      assert isinstance(y, AuxLossStruct)
+      return AuxLossStruct(value=x.value + y.value, weight=x.weight + y.weight)
+
     self.sow(
-        'aux_loss',
+        AUX_LOSS,
         name,
-        value,
-        init_fn=lambda: 0.0,
-        reduce_fn=lambda x, y: x + y)
+        AuxLossStruct(value, weight),
+        init_fn=lambda: AuxLossStruct(0.0, 0.0),
+        reduce_fn=reduce_fn)
 
   @nn.nowrap
   def next_prng_key(self, name=RANDOM):
