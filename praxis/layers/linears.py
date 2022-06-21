@@ -93,9 +93,11 @@ class Linear(base_layer.BaseLayer):
     ap = p.activation_split_dims_mapping
     out = project_last_dim(inputs, self.theta.w)
     # Adjust sharding annotation during decoding.
-    if ap.out is not None and len(ap.out) == 3 and out.ndim == 2:
-      ap.out = [ap.out[0], ap.out[2]]
-    out = base_layer.maybe_shard(out, ap.out, p.mesh_axis_names)
+    # TODO(pax): This logic should likely be lifted somewhere else.
+    ap_out = ap.out
+    if ap_out is not None and len(ap_out) == 3 and out.ndim == 2:
+      ap_out = [ap_out[0], ap_out[2]]
+    out = base_layer.maybe_shard(out, ap_out, p.mesh_axis_names)
     return out
 
 

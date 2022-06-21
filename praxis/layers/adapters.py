@@ -66,14 +66,15 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
 
   def setup(self) -> None:
     p = self.hparams
-    if p.norm_tpl.cls in {
+    norm_tpl = p.norm_tpl.clone()
+    if norm_tpl.cls in {
         normalizations.BatchNorm, normalizations.GroupNorm,
         normalizations.LayerNorm
     }:
-      p.norm_tpl.dim = p.input_dims
+      norm_tpl.dim = p.input_dims
     else:
-      raise NotImplementedError('%s is not supported' % p.norm_tpl.cls)
-    self.create_child('norm', p.norm_tpl)
+      raise NotImplementedError('%s is not supported' % norm_tpl.cls)
+    self.create_child('norm', norm_tpl)
 
     down_w_pc = WeightHParams(
         shape=[p.num_tasks, p.input_dims, p.bottleneck_dims])

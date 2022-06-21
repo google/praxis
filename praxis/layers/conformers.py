@@ -220,11 +220,8 @@ class Conformer(base_layer.BaseLayer):
       for prob in all_dropouts:
         assert prob is None or prob == p.dropout_prob
 
-      p.atten_dropout = p.dropout_prob
-      p.atten_residual_dropout = p.dropout_prob
-      p.conv_residual_dropout = p.dropout_prob
-      p.ffn_residual_dropout = p.dropout_prob
-      p.ffn_relu_dropout = p.dropout_prob
+    def dropout_prob(prob):
+      return p.dropout_prob if p.dropout_prob is not None else prob
 
     if p.fflayer_start_tpl:
       if p.input_dims == p.model_dims:
@@ -234,8 +231,8 @@ class Conformer(base_layer.BaseLayer):
             input_dims=p.input_dims,
             hidden_dims=p.model_dims * p.ffn_dim_multiplier,
             residual_weight=p.ff_residual_weight,
-            residual_dropout_prob=p.ffn_residual_dropout,
-            relu_dropout_prob=p.ffn_relu_dropout,
+            residual_dropout_prob=dropout_prob(p.ffn_residual_dropout),
+            relu_dropout_prob=dropout_prob(p.ffn_relu_dropout),
         )
       else:
         # Need to add another projection layer in fflayer
@@ -246,8 +243,8 @@ class Conformer(base_layer.BaseLayer):
             output_dims=p.model_dims,
             hidden_dims=p.model_dims * p.ffn_dim_multiplier,
             residual_weight=p.ff_residual_weight,
-            residual_dropout_prob=p.ffn_residual_dropout,
-            relu_dropout_prob=p.ffn_relu_dropout,
+            residual_dropout_prob=dropout_prob(p.ffn_residual_dropout),
+            relu_dropout_prob=dropout_prob(p.ffn_relu_dropout),
         )
       self.create_child(fflayer_start_p.name, fflayer_start_p)
 
@@ -258,8 +255,8 @@ class Conformer(base_layer.BaseLayer):
           input_dims=p.model_dims,
           hidden_dims=p.model_dims * p.ffn_dim_multiplier,
           residual_weight=p.ff_residual_weight,
-          residual_dropout_prob=p.ffn_residual_dropout,
-          relu_dropout_prob=p.ffn_relu_dropout,
+          residual_dropout_prob=dropout_prob(p.ffn_residual_dropout),
+          relu_dropout_prob=dropout_prob(p.ffn_relu_dropout),
       )
       if not p.fflayer_weight_sharing:
         self.create_child(fflayer_end_p.name, fflayer_end_p)
@@ -268,11 +265,11 @@ class Conformer(base_layer.BaseLayer):
 
     if 'mhsa' in p.layer_order:
       trans_atten_p = p.trans_atten_tpl.clone().set(
-          residual_dropout_prob=p.atten_residual_dropout,
+          residual_dropout_prob=dropout_prob(p.atten_residual_dropout),
           self_atten_tpl=p.trans_atten_tpl.self_atten_tpl.clone().set(
               input_dim=p.model_dims,
               hidden_dim=p.model_dims,
-              atten_dropout_prob=p.atten_dropout,
+              atten_dropout_prob=dropout_prob(p.atten_dropout),
               num_heads=p.atten_num_heads))
       trans_atten_p.norm_tpl = trans_atten_p.norm_tpl.clone().set(
           dim=p.model_dims)
@@ -282,7 +279,7 @@ class Conformer(base_layer.BaseLayer):
       lconv_p = p.lconv_tpl.clone().set(
           input_dims=p.model_dims,
           kernel_size=p.kernel_size,
-          dropout_prob=p.conv_residual_dropout)
+          dropout_prob=dropout_prob(p.conv_residual_dropout))
       self.create_child('lconv', lconv_p)
 
     if p.final_ln_tpl:

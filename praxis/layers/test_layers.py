@@ -175,7 +175,7 @@ class TestLinearRegressionModel(base_model.BaseModel):
 
   def setup(self) -> None:
     p = self.hparams
-    params = p.linear_p
+    params = p.linear_p.clone()
     params.input_dims = p.input_dims
     params.output_dims = p.output_dims
     self.create_child('linear', params)

@@ -63,7 +63,7 @@ class Embedding(base_layer.BaseLayer):
       lookup_style: Style of lookup, one of index or matmul.
       scale_sqrt_depth: If set to True, activations are scaled with
         sqrt(embedding_dim) in emb_lookup.
-      set_nan_for_oob_id: If set to True, embeddings corresponding to 
+      set_nan_for_oob_id: If set to True, embeddings corresponding to
         out-of-boundaries ids will be set to NaN. Useful for debugging
         purposes.
     """
@@ -521,9 +521,12 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
     # Compute logits:  BLH,HV -> BLV
     logits = linears.project_last_dim(inputs, softmax_var)
     # Adjust sharding annotation during decoding.
-    if ap.out is not None and len(ap.out) == 3 and logits.ndim == 2:
-      ap.out = [ap.out[0], ap.out[2]]
-    logits = base_layer.maybe_shard(logits, ap.out, p.mesh_axis_names)
+    ap_out = ap.out
+    if ap_out is not None:
+      ap_out = ap_out.clone()
+      if len(ap_out) == 3 and logits.ndim == 2:
+        ap_out = [ap_out[0], ap_out[2]]
+    logits = base_layer.maybe_shard(logits, ap_out, p.mesh_axis_names)
 
     # Soft cap logits if applicable
     if p.soft_cap_logits:

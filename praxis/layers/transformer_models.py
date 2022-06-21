@@ -355,7 +355,7 @@ class TransformerLm(base_layer.BaseLayer):
 
     # Final layer norm.
     if p.final_ln_tpl is not None:
-      ln_params = p.final_ln_tpl.set(dim=p.model_dims)
+      ln_params = p.final_ln_tpl.clone().set(dim=p.model_dims)
       self.create_child('final_ln', ln_params)
 
     # Final softmax

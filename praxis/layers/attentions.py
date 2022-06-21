@@ -967,7 +967,6 @@ class DotProductAttention(base_layer.BaseLayer):
     dim_per_head = p.dim_per_head
     if dim_per_head is None:
       dim_per_head = p.hidden_dim // p.num_heads
-      p.dim_per_head = dim_per_head
       assert dim_per_head * p.num_heads == p.hidden_dim, (
           f'{dim_per_head} * {p.num_heads} != {p.hidden_dim}')
 
@@ -1033,7 +1032,7 @@ class DotProductAttention(base_layer.BaseLayer):
       self.create_child('rotary_position_emb', pos_emb_p)
 
     if p.relative_bias_tpl is not None:
-      relative_bias_p = p.relative_bias_tpl
+      relative_bias_p = p.relative_bias_tpl.clone()
       relative_bias_p.num_heads = p.num_heads
       self.create_child('relative_bias', relative_bias_p)
 
@@ -1053,8 +1052,9 @@ class DotProductAttention(base_layer.BaseLayer):
 
     if p.internal_enable_query_scale and p.internal_enable_per_dim_scale:
       self.create_child('per_dim_scale', PerDimScale.HParams(dim=dim_per_head))
-    self.create_child('atten_dropout',
-                      p.dropout_tpl.set(keep_prob=1.0 - p.atten_dropout_prob))
+    self.create_child(
+        'atten_dropout',
+        p.dropout_tpl.clone().set(keep_prob=1.0 - p.atten_dropout_prob))
     # Setting is_output_projection=True to set the projection direction
     # from hidden dim to input dim. Output projection follows query_input_dim.
     post_proj_p = p.proj_tpl.clone().set(
@@ -2177,20 +2177,24 @@ class DotProductAttentionXL(DotProductAttention):
     self.create_child('pos_emb', emb_params)
 
     # Projection layer for relative position encoding
+    dim_per_head = params.dim_per_head
+    if dim_per_head is None:
+      dim_per_head = params.hidden_dim // params.num_heads
+      assert dim_per_head * params.num_heads == params.hidden_dim, (
+          f'{dim_per_head} * {params.num_heads} != {params.hidden_dim}')
+
     pos_proj_tpl = params.proj_tpl.clone().set(
         input_dim=params.rel_pos_emb_dim,
         num_heads=params.num_heads,
-        dim_per_head=params.dim_per_head,
+        dim_per_head=dim_per_head,
         use_bias=False)
     pos_proj_tpl.weight_split_dims_mapping.wt = wp.proj
     self.create_child('pos_proj', pos_proj_tpl)
 
     u_pc = WeightHParams(
-        shape=[params.num_heads, params.dim_per_head],
-        init=WeightInit.Constant(0.0))
+        shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
     v_pc = WeightHParams(
-        shape=[params.num_heads, params.dim_per_head],
-        init=WeightInit.Constant(0.0))
+        shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
 
     self.create_variable('u', u_pc)
     self.create_variable('v', v_pc)
@@ -2566,20 +2570,24 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     self.create_child('pos_emb', emb_params)
 
     # Projection layer for relative position encoding
+    dim_per_head = params.dim_per_head
+    if dim_per_head is None:
+      dim_per_head = params.hidden_dim // params.num_heads
+      assert dim_per_head * params.num_heads == params.hidden_dim, (
+          f'{dim_per_head} * {params.num_heads} != {params.hidden_dim}')
+
     pos_proj_tpl = params.proj_tpl.clone().set(
         input_dim=params.rel_pos_emb_dim,
         num_heads=params.num_heads,
-        dim_per_head=params.dim_per_head,
+        dim_per_head=dim_per_head,
         use_bias=False)
     pos_proj_tpl.weight_split_dims_mapping.wt = wp.proj
     self.create_child('pos_proj', pos_proj_tpl)
 
     u_pc = WeightHParams(
-        shape=[params.num_heads, params.dim_per_head],
-        init=WeightInit.Constant(0.0))
+        shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
     v_pc = WeightHParams(
-        shape=[params.num_heads, params.dim_per_head],
-        init=WeightInit.Constant(0.0))
+        shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
 
     self.create_variable('u', u_pc)
     self.create_variable('v', v_pc)
