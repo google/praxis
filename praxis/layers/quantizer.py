@@ -221,10 +221,10 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
         entropy=entropy)
 
 
-class SeqVectorQuantizer(base_layer.BaseLayer):
+class VectorQuantizer(base_layer.BaseLayer):
   """The VQ-VAE sequence vector quantizer.
 
-  This extends l/b/r/b/m/vqgan.VectorQuantizer by allowing padding inputs.
+  https://arxiv.org/abs/1711.00937
 
   Symbols in comments:
   B: batch_size.

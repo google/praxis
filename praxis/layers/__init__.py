@@ -72,7 +72,7 @@ from praxis.layers.poolings import GlobalPooling
 from praxis.layers.poolings import Pooling
 from praxis.layers.quantizer import quantize_vector
 from praxis.layers.quantizer import RandomVectorQuantizer
-from praxis.layers.quantizer import SeqVectorQuantizer
+from praxis.layers.quantizer import VectorQuantizer
 from praxis.layers.repeats import AutodiffCheckpointType
 from praxis.layers.repeats import Repeat
 from praxis.layers.resnets import ResNet

@@ -28,7 +28,7 @@ from praxis.layers import quantizer
 instantiate = base_layer.instantiate
 
 
-class SeqVectorQuantizerTest(test_utils.TestCase):
+class VectorQuantizerTest(test_utils.TestCase):
 
   W = np.array([[0.116230249, 0.0104732513, -0.409445882, -0.153374314],
                 [-0.0672334433, -0.430877686, -0.280010223, 0.394074917],
@@ -36,7 +36,7 @@ class SeqVectorQuantizerTest(test_utils.TestCase):
                 [0.406187773, 0.304340839, 0.439772606, 0.368542314]])
 
   def _GetParams(self, num_classes, latent_dim):
-    return quantizer.SeqVectorQuantizer.HParams(
+    return quantizer.VectorQuantizer.HParams(
         name='vq',
         normalize_latent_vector=True,
         normalize_codebook=True,
