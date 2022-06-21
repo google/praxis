@@ -243,6 +243,7 @@ pytype_strict_library(
         ":embedding_softmax",
         ":normalizations",
         # Implicit jax dependency.
+        "//praxis:asserts",
         "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:pytypes",

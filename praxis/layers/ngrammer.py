@@ -18,6 +18,7 @@
 from typing import Optional, Tuple, Union
 import jax
 from jax import numpy as jnp
+from praxis import asserts
 from praxis import base_layer
 from praxis import py_utils
 from praxis import pytypes
@@ -318,25 +319,25 @@ class BregmanCompression(base_layer.BaseLayer):
     p = self.hparams
     inputs = self._cast_to_fprop_dtype(inputs)
     inputs_shape = inputs.shape
-    # Shape [B * L, N, H]
+    # Shape [B * L, N, H].
     inputs = jnp.reshape(
         inputs,
         [inputs_shape[0] * inputs_shape[1], p.num_heads, p.dim_per_head])
     paddings_3d = None
     if paddings is not None:
-      # Shape [B * L, 1, 1]
-      paddings_3d = paddings[:, jnp.newaxis, jnp.newaxis]
+      # Shape [B * L, 1, 1].
+      paddings_3d = jnp.reshape(paddings, [-1, 1, 1])
 
     coefficients = []
     for i in range(p.num_heads):
-      # Shape [B * L, C]
+      # Shape [B * L, C].
       _, coefficients_i = self.bregman_layers[i](inputs[:, i, :], paddings_3d)
-      # Shape [B, L, 1, C]
+      # Shape [B, L, 1, C].
       coefficients_i = jnp.reshape(
           coefficients_i,
           [inputs_shape[0], inputs_shape[1], 1, p.num_components])
       coefficients.append(coefficients_i)
-    # Shape [B, L, N, C]
+    # Shape [B, L, N, C].
     coefficients = jnp.concatenate(coefficients, axis=2)
 
     return coefficients
@@ -749,3 +750,250 @@ class VQNgrammer(base_layer.BaseLayer):
     output_embs = jax.lax.dynamic_slice_in_dim(
         output_embs, slice_size=1, start_index=step, axis=1)
     return jnp.squeeze(output_embs, axis=1)
+
+
+class BregmanNgrammer(base_layer.BaseLayer):
+  """Implements a Bregman PCA based ngrammer layer to form bi-grams.
+
+  We use the following capital letters to denote shape parameters:
+    B = batch size
+    L = length of the input sequence (referred to as S or T elsewhere)
+    N = number of attention heads
+    H = dimensions of each attention head
+    C = dimensions of compression coefficients.
+    V = n-gram vocab size.
+  """
+
+  class HParams(BaseHParams):
+    """Associated hyper-params for this layer class.
+
+    Attributes:
+      ngram_vocab_size: Size of the ngram vocabulary.
+      ngram_emb_dim: Size of the ngram dimension per head.
+      concat_ngrams: If True, then concat ngrams.
+      num_heads: Number of attention heads.
+      dim_per_head: The dimension per each head of the input.
+      num_components: Number of PCA components, which is the same as the
+        dimensionality of the compression coefficients.
+      activation: Name of the activation function. Supported activation
+        functions are {NONE, LEAKY_RELU, SOFTMAX}.
+      negative_slope: Negative slope for leaky ReLU.
+      mean_beta: EMA constant for updating the mean.
+      coefficients_lr: Learning rate for the coefficients.
+      coefficients_beta: EMA constant for the coefficients updates.
+      coefficients_steps: Number of steps for solving the coefficients.
+      components_lr: Learning rate for the PCA components.
+      components_beta: EMA constant for the PCA components updates.
+      start_step: Step number to start updating the components.
+      end_step: Step number to end updating the components.
+      constant_lr_schedule: Whether to use a constant learning rate schedule for
+        the components. Applies a linearly decaying schedule if False.
+    """
+    ngram_vocab_size: int = 768 * 256
+    ngram_emb_dim: int = 8
+    concat_ngrams: bool = True
+    num_heads: int = 0
+    dim_per_head: int = 0
+    num_components: int = 0
+    activation: str = 'NONE'
+    negative_slope: float = 0.0
+    mean_beta: float = 0.99
+    coefficients_lr: float = 0.01
+    coefficients_beta: float = 0.9
+    coefficients_steps: int = 20
+    components_lr: float = 0.01
+    components_beta: float = 0.9
+    start_step: int = 0
+    end_step: int = 0
+    constant_lr_schedule: bool = True
+
+  def setup(self) -> None:
+    """Constructs an instance which looks up ngrams."""
+    p = self.hparams
+
+    asserts.gt(p.dim_per_head, 0)
+    asserts.gt(p.num_heads, 0)
+    asserts.gt(p.num_components, 0)
+    asserts.le(p.num_components, p.dim_per_head)
+    if p.concat_ngrams:
+      # The ngram_emb_dim must be smaller than dim_per_head.
+      asserts.le(p.ngram_emb_dim, p.dim_per_head)
+    else:
+      # If not concatenating ngram embeddings, check the dims are compatible.
+      asserts.eq(p.ngram_emb_dim, p.dim_per_head)
+
+    # Create a separate layer norm per head for embedding normalization.
+    # Create a separate layer norm per head for ngram embedding normalization.
+    emb_layer_norm_p = []
+    ngram_emb_layer_norm_p = []
+    for i in range(p.num_heads):
+      layer_norm_p = normalizations.LayerNorm.HParams(
+          dim=p.dim_per_head, name=f'emb_layer_norm_{i}')
+      emb_layer_norm_p.append(layer_norm_p)
+
+      ngram_layer_norm_p = normalizations.LayerNorm.HParams(
+          dim=p.ngram_emb_dim, name=f'ngram_layer_norm_{i}')
+      ngram_emb_layer_norm_p.append(ngram_layer_norm_p)
+
+    self.create_children('emb_layer_norm', emb_layer_norm_p)
+    self.create_children('ngram_layer_norm', ngram_emb_layer_norm_p)
+
+    # Create correlation tensors and embedding tables for n-gram lookup.
+    # [C, C, V, N]
+    correlation_p = WeightHParams(
+        shape=[
+            p.num_components, p.num_components, p.ngram_vocab_size, p.num_heads
+        ],
+        init=p.params_init,
+        tensor_split_dims_mapping=p.weight_split_dims_mapping,
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
+    # [V, H, N]
+    embedding_table_p = WeightHParams(
+        shape=[p.ngram_vocab_size, p.ngram_emb_dim, p.num_heads],
+        init=p.params_init,
+        tensor_split_dims_mapping=p.weight_split_dims_mapping,
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
+
+    self.create_variable('correlation', correlation_p)
+    self.create_variable('embedding_table', embedding_table_p)
+
+    # Create a Bregman compression layer.
+    bregman_compression_layer_p = BregmanCompression.HParams(
+        params_init=p.params_init,
+        num_heads=p.num_heads,
+        dim_per_head=p.dim_per_head,
+        num_components=p.num_components,
+        activation=p.activation,
+        negative_slope=p.negative_slope,
+        mean_beta=p.mean_beta,
+        coefficients_lr=p.coefficients_lr,
+        coefficients_beta=p.coefficients_beta,
+        coefficients_steps=p.coefficients_steps,
+        components_lr=p.components_lr,
+        components_beta=p.components_beta,
+        start_step=p.start_step,
+        end_step=p.end_step,
+        constant_lr_schedule=p.constant_lr_schedule)
+
+    self.create_child('bregman_compression_layer', bregman_compression_layer_p)
+
+  def __call__(self,
+               input_ids: JTensor,
+               input_embs: JTensor,
+               paddings: Optional[JTensor] = None,
+               merge_heads: bool = True) -> JTensor:
+    """Augments the input embeddings with Bregman n-gram layer embeddings.
+
+    Args:
+      input_ids: Input unigram id tensor of shape [B, L] or [B, L, N]. This is
+        unused and is added here to be consistent with the Ngrammger API.
+      input_embs: Input unigram embedding tensor of shape [B, L, D] to which to
+        add the ngram embedding.
+      paddings: If not None, a tensor of shape [B, L] corresponding to padding.
+      merge_heads: Optional argument determining whether to merge the heads in
+        the output sequence.
+
+    Returns:
+      outputs: Output with the ngram embeddings added of shape [B, L, D] if
+        `merge_heads` is True, or [B, L, N, H] if False.
+    """
+    del input_ids
+
+    p = self.hparams
+    if paddings is not None:
+      # Shape [B, L, 1, 1].
+      paddings_4d = paddings[:, :, jnp.newaxis, jnp.newaxis]
+
+    # Cast input embeddings to fprop dtype.
+    input_embs = self._cast_to_fprop_dtype(input_embs)
+    inputs_shape = input_embs.shape
+    batch_size = inputs_shape[0]
+    seq_length = inputs_shape[1]
+
+    # Reshape to [B, L, N, H].
+    input_embs = jnp.reshape(input_embs,
+                             [batch_size, seq_length, p.num_heads, -1])
+
+    # This step can be more efficient using a lookup during inference. During
+    # training, we can calculate the compression coefficeints and update the
+    # coefficients table.
+    input_coeffs = self.bregman_compression_layer(input_embs, paddings)
+
+    correlations = jnp.split(self.theta.correlation, p.num_heads, axis=-1)
+    correlations = [
+        jnp.squeeze(correlation, axis=-1) for correlation in correlations
+    ]
+    embedding_tables = jnp.split(
+        self.theta.embedding_table, p.num_heads, axis=-1)
+    embedding_tables = [
+        jnp.squeeze(embedding_table, axis=-1)
+        for embedding_table in embedding_tables
+    ]
+
+    token_id = jnp.tile(jnp.arange(seq_length)[jnp.newaxis, :], [batch_size, 1])
+    token_pad = jnp.zeros([batch_size, 1], dtype=token_id.dtype)  # [batch, 1]
+    token_id = jnp.concatenate([token_pad, token_id], axis=1)
+    # [B, L].
+    curr_token_id = token_id[:, 1:]
+    prev_token_id = token_id[:, :-1]
+    ngram_embs_to_concat = []
+    for i in range(p.num_heads):
+      # [B, L, C].
+      curr_coeffs_i = jnp.take_along_axis(
+          input_coeffs[:, :, i, :], curr_token_id[:, :, jnp.newaxis], axis=1)
+      prev_coeffs_i = jnp.take_along_axis(
+          input_coeffs[:, :, i, :], prev_token_id[:, :, jnp.newaxis], axis=1)
+
+      # [B, L, C, V].
+      inner_prod = jnp.einsum('BLC, CKV -> BLKV', prev_coeffs_i,
+                              correlations[i])
+      # [B, L, V].
+      ngram_corrs_i = jnp.einsum('BLC, BLCV -> BLV', curr_coeffs_i, inner_prod)
+
+      # [B, L, H].
+      ngram_embs_i = jnp.einsum('BLV, VH -> BLH', ngram_corrs_i,
+                                embedding_tables[i])
+      # [B * L, H]
+      ngram_embs_i = jnp.reshape(ngram_embs_i, [-1, p.ngram_emb_dim])
+      ngram_embs_to_concat.append(ngram_embs_i)
+
+      ngram_embs_to_concat[i] = self.ngram_layer_norm[i](
+          ngram_embs_to_concat[i])
+
+    # [B * L, N * H].
+    ngram_embs = jnp.concatenate(ngram_embs_to_concat, axis=-1)
+    # [B, L, N, H]
+    ngram_embs = jnp.reshape(
+        ngram_embs, [batch_size, seq_length, p.num_heads, p.ngram_emb_dim])
+
+    # Layer norm input embeddings independently for each head.
+    input_embs_per_head = jnp.split(input_embs, p.num_heads, 2)
+    for i in range(p.num_heads):
+      # Reshape into [B * L, H]
+      per_head_emb = jnp.reshape(input_embs_per_head[i], [-1, p.dim_per_head])
+      input_embs_per_head[i] = self.emb_layer_norm[i](per_head_emb)
+      # Reshape to [B, L, H]
+      input_embs_per_head[i] = jnp.reshape(
+          input_embs_per_head[i], [batch_size, seq_length, p.dim_per_head])
+
+    # [B, L, N, H].
+    input_embs = jnp.stack(input_embs_per_head, 2)
+
+    if p.concat_ngrams:
+      d = p.dim_per_head - p.ngram_emb_dim
+      input_embs_slice = jax.lax.dynamic_slice_in_dim(
+          input_embs, start_index=0, slice_size=d, axis=-1)
+      input_embs = jnp.concatenate([input_embs_slice, ngram_embs], axis=-1)
+    else:
+      input_embs += ngram_embs
+
+    # Apply paddings back.
+    if paddings is not None:
+      input_embs *= (1 - paddings_4d)
+
+    # Merge heads.
+    if merge_heads:
+      # [B, L, D].
+      input_embs = jnp.reshape(input_embs, [batch_size, seq_length, -1])
+
+    return input_embs

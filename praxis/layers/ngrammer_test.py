@@ -409,6 +409,114 @@ class NgrammerTest(test_utils.TestCase):
         self.assertAllClose(
             to_np(ngram_embs[:, step, :]), to_np(ngram_embs_extend_step))
 
+  @parameterized.parameters(
+      (32, 8, 2, 4, 32, True),
+      (32, 4, 4, 16, 16, True),
+      (24, 16, 2, 8, 64, True),
+      (16, 4, 2, 8, 8, True),
+      (16, 8, 2, 4, 8, False),
+      (32, 4, 4, 2, 4, False),
+      (32, 16, 4, 8, 16, False),
+      (32, 16, 8, 16, 16, False),
+  )
+  def test_bregman_ngrammer_layer_exact_bigram(self, ngram_vocab_size,
+                                               ngram_emb_dim, num_heads,
+                                               num_components, dim_per_head,
+                                               concat_ngrams):
+    batch_size = 2
+    seq_len = 8
+    paddings = np.random.randint(low=0, high=2, size=[batch_size, seq_len])
+    inputs = np.tile(np.arange(seq_len)[np.newaxis, :],
+                     [batch_size, 1]).astype(dtype=np.int32)
+    inputs_pad = jnp.zeros([batch_size, 1], dtype=np.int32)
+    inputs = np.concatenate([inputs_pad, inputs], 1)
+    curr_token_id = inputs[:, 1:]
+    prev_token_id = inputs[:, :-1]
+
+    input_embs = np.random.normal(
+        1.5, 2.0, (batch_size, seq_len, num_heads, dim_per_head))
+    prng_key = jax.random.PRNGKey(seed=123)
+    prng_key, init_key = jax.random.split(prng_key)
+    bregman_ngrammer_layer_p = ngrammer.BregmanNgrammer.HParams(
+        name='jax_bregman_ngrammer_layer',
+        ngram_vocab_size=ngram_vocab_size,
+        ngram_emb_dim=ngram_emb_dim,
+        num_heads=num_heads,
+        num_components=num_components,
+        dim_per_head=dim_per_head,
+        concat_ngrams=concat_ngrams,
+        start_step=0,
+        end_step=10)
+    bregman_ngrammer_layer = instantiate(bregman_ngrammer_layer_p)
+    initial_vars = bregman_ngrammer_layer.init(init_key)
+    # Bind makes bregman_ngrammer_layer a stateful layer with all its submodule
+    # layer variables automatically bound. It simplfies calling of submodule
+    # __call__ because we no longer need to explicitly provide submodule layer
+    # vars.
+    bregman_ngrammer_layer = bregman_ngrammer_layer.bind(
+        initial_vars, mutable=True)
+    context_params = base_layer.JaxContext.HParams(do_eval=True)
+    with base_layer.JaxContext.new_context(hparams=context_params):
+      ngram_embs = bregman_ngrammer_layer(inputs, input_embs, paddings=paddings)
+      # [B, L, N, C].
+      input_coeffs = bregman_ngrammer_layer.bregman_compression_layer(
+          input_embs, paddings=paddings)
+
+    ngram_embs = np.reshape(ngram_embs,
+                            [batch_size, seq_len, num_heads, dim_per_head])
+    input_embs = np.reshape(input_embs,
+                            [batch_size, seq_len, num_heads, dim_per_head])
+
+    correlations = np.split(
+        bregman_ngrammer_layer.theta.correlation, num_heads, axis=-1)
+    correlations = [
+        np.squeeze(correlation, axis=-1) for correlation in correlations
+    ]
+    embedding_tables = np.split(
+        bregman_ngrammer_layer.theta.embedding_table, num_heads, axis=-1)
+    embedding_tables = [
+        np.squeeze(embedding_table, axis=-1)
+        for embedding_table in embedding_tables
+    ]
+
+    input_embs_per_head = np.split(input_embs, num_heads, 2)
+    for i in range(num_heads):
+      # Reshape into [B * L, H]
+      per_head_emb = np.reshape(input_embs_per_head[i], [-1, dim_per_head])
+      input_embs_per_head[i] = bregman_ngrammer_layer.emb_layer_norm[i](
+          per_head_emb)
+      input_embs_per_head[i] = np.reshape(input_embs_per_head[i],
+                                          [batch_size, seq_len, dim_per_head])
+
+    # [B, L, N, H].
+    input_embs = np.stack(input_embs_per_head, axis=2)
+
+    for i in range(num_heads):
+      # [B, L, C]
+      curr_coeffs_i = np.take_along_axis(
+          input_coeffs[:, :, i, :], curr_token_id[:, :, np.newaxis], axis=1)
+      prev_coeffs_i = np.take_along_axis(
+          input_coeffs[:, :, i, :], prev_token_id[:, :, np.newaxis], axis=1)
+      # [B, L, C, V].
+      inner_prod = np.einsum('BLC, CKV -> BLKV', prev_coeffs_i, correlations[i])
+      # [B, L, V].
+      ngram_corrs = np.einsum('BLC, BLCV -> BLV', curr_coeffs_i, inner_prod)
+      # [B, L, H].
+      ngram_embs_expected = np.einsum('BLV, VH -> BLH', ngram_corrs,
+                                      embedding_tables[i])
+      ngram_embs_expected = np.reshape(ngram_embs_expected, [-1, ngram_emb_dim])
+      ngram_embs_expected = bregman_ngrammer_layer.ngram_layer_norm[i](
+          ngram_embs_expected)
+      ngram_embs_expected = jnp.reshape(ngram_embs_expected,
+                                        [batch_size, seq_len, ngram_emb_dim])
+      ngram_embs_expected *= (1 - paddings[:, :, np.newaxis])
+      if concat_ngrams:
+        ngram_embs_slice = ngram_embs[:, :, i, -ngram_emb_dim:]
+      else:
+        ngram_embs_slice = ngram_embs[:, :, i, :] - input_embs[:, :, i, :]
+        ngram_embs_slice *= (1 - paddings[:, :, np.newaxis])
+      self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))
+
 
 if __name__ == '__main__':
   absltest.main()
