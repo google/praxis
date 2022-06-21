@@ -267,6 +267,9 @@ def sharded_chain(
     new_state = []
     for s, fn in zip(state, args):
       updates, new_s = fn.update(updates, s, params)
+      # Some of the new states may have None instead of optax.MaskedNode.
+      new_s = jax.tree_map(lambda x: optax.MaskedNode() if x is None else x,
+                           new_s, is_leaf=lambda x: x is None)
       new_state.append(new_s)
     return updates, tuple(new_state)
 
@@ -279,7 +282,7 @@ def sharded_chain(
         partition_specs.append(nmap)
       else:
         # Replicate the states.
-        partition_specs.append(None)
+        partition_specs.append(optax.MaskedNode())
     return tuple(partition_specs)
 
   return ShardedGradientTransformation(
@@ -1558,6 +1561,8 @@ class _ShardedAdafactorHelper:
   def compute_var_and_slot_update(self, count, grad, m, m_scale, vr, vc, v,
                                   param, var_name):
     """Computes the var and optimizer slots updates for a single variable."""
+    if py_utils.is_optax_masked_node(grad):
+      return
     # We can probably skip this step
     grad = self.sanitize_values(grad)
     grad = grad.astype(jnp.float32)
@@ -1834,9 +1839,17 @@ def sharded_adafactor(
     compute_var_and_slot_update_fn = functools.partial(
         sharded_adafactor_helper.compute_var_and_slot_update, state.count)
     var_names = py_utils.extract_prefixed_keys_from_nested_map(updates)
-    output = jax.tree_map(compute_var_and_slot_update_fn, updates, state.m,
-                          state.m_scale, state.vr, state.vc, state.v, params,
-                          var_names)
+    output = jax.tree_map(
+        compute_var_and_slot_update_fn,
+        updates,
+        state.m,
+        state.m_scale,
+        state.vr,
+        state.vc,
+        state.v,
+        params,
+        var_names,
+        is_leaf=py_utils.is_optax_masked_node)
     updates = jax.tree_map(lambda o: o.update, output)
     count_plus_one = state.count + jnp.array(1, jnp.int32)
     updated_states = sharded_adafactor_helper.to_state(count_plus_one, output)

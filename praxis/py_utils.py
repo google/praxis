@@ -36,6 +36,7 @@ from lingvo.core import cluster
 from lingvo.core import hyperparams
 from lingvo.core import py_utils
 import numpy as np
+import optax
 
 flags.DEFINE_bool(
     'pmap_use_tensorstore', False,
@@ -368,6 +369,11 @@ def get_uneven_sharding_paddings(
   return paddings
 
 
+def is_optax_masked_node(x: Any) -> bool:
+  """Check whether the input is an instance of optax MaskedNode."""
+  return isinstance(x, optax.MaskedNode)
+
+
 def maybe_pad_uneven_sharding(x: JTensor, partition_spec: pjit.PartitionSpec,
                               shape: Sequence[int], mesh_shape: Sequence[int],
                               mesh_axis_names: Sequence[str]) -> JTensor:
@@ -385,6 +391,8 @@ def maybe_pad_uneven_sharding(x: JTensor, partition_spec: pjit.PartitionSpec,
 def maybe_slice_uneven_sharding(x: JTensor, partition_spec: pjit.PartitionSpec,
                                 shape: Sequence[int]) -> JTensor:
   """Slices x to remove padding due to uneven sharding, if needed."""
+  if is_optax_masked_node(x):
+    return x
   if list(shape) == list(x.shape):
     return x
   if x.shape == (0,):

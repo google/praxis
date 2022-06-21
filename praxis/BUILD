@@ -237,6 +237,7 @@ pytype_strict_library(
         # Implicit lingvo.core.hyperparams dependency.
         # Implicit lingvo.core.py_utils dependency.
         # Implicit numpy dependency.
+        # Implicit optax dependency.
     ],
 )
 

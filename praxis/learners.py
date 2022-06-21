@@ -16,7 +16,6 @@
 """Module with the Learner class."""
 
 from __future__ import annotations
-
 import dataclasses
 import re
 from typing import Optional, Sequence, Tuple, Union
@@ -313,9 +312,10 @@ class MultiOptimizerLearner(Learner):
     asserts.not_none(p.optimizer)
     if len(p.auxiliary_optimizers) != len(p.auxiliary_regex) or len(
         p.auxiliary_regex) != len(p.auxiliary_names):
-      raise ValueError('The length of the auxiliary regex must match the length'
-                       ' of the auxiliary optimizers and length of the '
-                       'auxiliary names.')
+      raise ValueError(
+          f'The length of the {p.auxiliary_regex} must match the length'
+          f' of the {p.auxiliary_optimizers} and length of the '
+          f'{p.auxiliary_names}.')
     self._optimizer = instantiate(p.optimizer)
     self._auxiliary_optimizers = [
         instantiate(opt) for opt in p.auxiliary_optimizers
