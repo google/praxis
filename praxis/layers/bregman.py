@@ -291,7 +291,8 @@ class BregmanPCA(base_layer.BaseLayer):
     _, coefficients, _, _, _ = lax.while_loop(
         _iter_condition, _iter_body,
         (0, coefficients, coefficients_momentum, components, mean))
-    masked_coefficients = lax.stop_gradient(coefficients)
+    coefficients = lax.stop_gradient(coefficients)
+    masked_coefficients = coefficients
     if mask is not None:
       masked_coefficients *= mask
     if not self.do_eval:

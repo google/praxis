@@ -323,15 +323,15 @@ class BregmanCompression(base_layer.BaseLayer):
     inputs = jnp.reshape(
         inputs,
         [inputs_shape[0] * inputs_shape[1], p.num_heads, p.dim_per_head])
-    paddings_3d = None
+    paddings_2d = None
     if paddings is not None:
-      # Shape [B * L, 1, 1].
-      paddings_3d = jnp.reshape(paddings, [-1, 1, 1])
+      # Shape [B * L, 1].
+      paddings_2d = jnp.reshape(paddings, [-1, 1])
 
     coefficients = []
     for i in range(p.num_heads):
       # Shape [B * L, C].
-      _, coefficients_i = self.bregman_layers[i](inputs[:, i, :], paddings_3d)
+      _, coefficients_i = self.bregman_layers[i](inputs[:, i, :], paddings_2d)
       # Shape [B, L, 1, C].
       coefficients_i = jnp.reshape(
           coefficients_i,
@@ -881,7 +881,8 @@ class BregmanNgrammer(base_layer.BaseLayer):
                input_ids: JTensor,
                input_embs: JTensor,
                paddings: Optional[JTensor] = None,
-               merge_heads: bool = True) -> JTensor:
+               merge_heads: bool = True,
+               **kwargs) -> JTensor:
     """Augments the input embeddings with Bregman n-gram layer embeddings.
 
     Args:
@@ -892,6 +893,7 @@ class BregmanNgrammer(base_layer.BaseLayer):
       paddings: If not None, a tensor of shape [B, L] corresponding to padding.
       merge_heads: Optional argument determining whether to merge the heads in
         the output sequence.
+      **kwargs: Unused key-word args.
 
     Returns:
       outputs: Output with the ngram embeddings added of shape [B, L, D] if
