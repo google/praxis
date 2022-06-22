@@ -277,18 +277,20 @@ def _extract_block_context(x: JTensor,
 
   if left_context > 1:
     if block_size == left_context - 1:
-      left_block = jnp.roll(block, shift=1, axis=1)
+      left_block = jnp.concatenate([block[:, -1:], block[:, :-1]], axis=1)
     else:
-      x_shift = jnp.roll(x, shift=left_context - 1, axis=1)
+      x_shift = jnp.concatenate(
+          [x[:, -(left_context - 1):], x[:, :-(left_context - 1)]], axis=1)
       x_shift_block = _convert_to_block(x_shift, block_size, padding_val)
       left_block = x_shift_block[:, :, :left_context - 1:, ...]
     concat_list = [left_block] + concat_list
 
   if right_context > 0:
     if block_size == right_context:
-      right_block = jnp.roll(block, shift=-1, axis=1)
+      right_block = jnp.concatenate([block[:, 1:], block[:, :1]], axis=1)
     else:
-      x_shift = jnp.roll(x, shift=-right_context, axis=1)
+      x_shift = jnp.concatenate([x[:, right_context:], x[:, :right_context]],
+                                axis=1)
       x_shift_block = _convert_to_block(x_shift, block_size, padding_val)
       right_block = x_shift_block[:, :, -right_context:, ...]
     concat_list += [right_block]
