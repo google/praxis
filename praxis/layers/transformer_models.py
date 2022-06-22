@@ -329,7 +329,8 @@ class TransformerLm(base_layer.BaseLayer):
       self.create_child('ngrammer', p.ngrammer_tpl)
 
     # Transformer layers.
-    xformer_params = p.stacked_transformer_tpl
+    stacked_xformer_params = p.stacked_transformer_tpl.clone()
+    xformer_params = stacked_xformer_params
     if xformer_params.cls == transformers.PipelinedTransformer:
       xformer_params = xformer_params.pipeline_stage
     if xformer_params.cls in (transformers.StackedTransformerRepeated,
@@ -351,7 +352,7 @@ class TransformerLm(base_layer.BaseLayer):
         raise ValueError('The length of post_attention_ngrammer_tpls must match'
                          'the number of attention layers.')
       xformer_params.ngrammer_tpls = p.post_attention_ngrammer_tpls
-    self.create_child('transformer', p.stacked_transformer_tpl)
+    self.create_child('transformer', stacked_xformer_params)
 
     # Final layer norm.
     if p.final_ln_tpl is not None:
@@ -853,8 +854,9 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
           p.decoder_position_emb_tpl,
           msg=('Separate decoder position embeddings must not be set when '
                'shared position embeddings are specified.'))
-      set_position_emb_model_dims(p.position_emb_tpl, p.model_dims)
-      self.create_child('position_emb', p.position_emb_tpl)
+      position_emb_tpl = p.position_emb_tpl.clone()
+      set_position_emb_model_dims(position_emb_tpl, p.model_dims)
+      self.create_child('position_emb', position_emb_tpl)
 
     # Optional separate encoder position embeddings.
     if p.encoder_position_emb_tpl is not None:
@@ -862,8 +864,9 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
           p.position_emb_tpl,
           msg=('Shared position embeddings must not be set when separate '
                'encoder position embeddings are specified.'))
-      set_position_emb_model_dims(p.encoder_position_emb_tpl, p.model_dims)
-      self.create_child('encoder_position_emb', p.encoder_position_emb_tpl)
+      encoder_position_emb_tpl = p.encoder_position_emb_tpl.clone()
+      set_position_emb_model_dims(encoder_position_emb_tpl, p.model_dims)
+      self.create_child('encoder_position_emb', encoder_position_emb_tpl)
 
     # Create the encoder.
     if p.encoder_stacked_transformer_tpl is None:
@@ -921,7 +924,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
     # Encoder output layer norm.
     if p.encoder_ln_tpl is not None:
-      encoder_ln_params = p.encoder_ln_tpl.set(dim=p.model_dims)
+      encoder_ln_params = p.encoder_ln_tpl.clone().set(dim=p.model_dims)
       self.create_child('encoder_ln', encoder_ln_params)
 
     # Optional separate decoder position embeddings.
@@ -930,8 +933,9 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
           p.position_emb_tpl,
           msg=('Shared position embeddings must not be set when separate '
                'decoder position embeddings are specified.'))
-      set_position_emb_model_dims(p.decoder_position_emb_tpl, p.model_dims)
-      self.create_child('decoder_position_emb', p.decoder_position_emb_tpl)
+      decoder_position_emb_tpl = p.decoder_position_emb_tpl.clone()
+      set_position_emb_model_dims(decoder_position_emb_tpl, p.model_dims)
+      self.create_child('decoder_position_emb', decoder_position_emb_tpl)
 
     # Create the decoder.
     if p.decoder_stacked_transformer_tpl is None:
@@ -984,7 +988,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
     # Decoder output layer norm.
     if p.decoder_ln_tpl:
-      decoder_ln_params = p.decoder_ln_tpl.set(dim=p.model_dims)
+      decoder_ln_params = p.decoder_ln_tpl.clone().set(dim=p.model_dims)
       self.create_child('decoder_ln', decoder_ln_params)
 
     # Final softmax.

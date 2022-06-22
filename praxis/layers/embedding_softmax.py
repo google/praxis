@@ -522,10 +522,8 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
     logits = linears.project_last_dim(inputs, softmax_var)
     # Adjust sharding annotation during decoding.
     ap_out = ap.out
-    if ap_out is not None:
-      ap_out = ap_out.clone()
-      if len(ap_out) == 3 and logits.ndim == 2:
-        ap_out = [ap_out[0], ap_out[2]]
+    if ap_out is not None and len(ap_out) == 3 and logits.ndim == 2:
+      ap_out = [ap_out[0], ap_out[2]]
     logits = base_layer.maybe_shard(logits, ap_out, p.mesh_axis_names)
 
     # Soft cap logits if applicable
