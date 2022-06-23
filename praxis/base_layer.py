@@ -859,7 +859,7 @@ _BaseLayerRecursionDictKeysToIgnore = [
 class BaseLayer(
     BaseParameterizable,
     nn.Module,
-    init_params_arg_name='_private_hparams',
+    init_params_arg_name='_hparams',
     nonconfigurable_init_arg_names=('name', 'parent')):
   r"""Base class for all the layer object.
 
@@ -874,7 +874,7 @@ class BaseLayer(
   """
   # dataclass takes a single HParams object. This should not change during the
   # lifetime of this layer.
-  _private_hparams: base_hyperparams.InstantiableHyperParams
+  _hparams: base_hyperparams.InstantiableHyperParams
 
   # Fetches variables from flax 'params' class via theta "dot" syntax.
   theta = ThetaDescriptor()
@@ -1046,25 +1046,17 @@ class BaseLayer(
     return None
 
   def __post_init__(self):
-    assert self._private_hparams.name, (
+    assert self._hparams.name, (
         f'{type(self).__name__} HParams must define the layer\'s "name"')
-    object.__setattr__(self, 'name', self._private_hparams.name)
-    # We make a copy of the `_private_hparams` passed to __init__ the very first
-    # time in case `_private_hparams` refers to a shared params object that gets
-    # mutated by something outside this class.
-    object.__setattr__(self, '_private_hparams', self._private_hparams.clone())
-    # Freeze the layer hparams. This is to prevent accidental config mutations
-    # that may lead to subtle bugs.
-    # TODO(b/236187824): Get rid of _private_hparams of _hparams duplicates.
-    self._private_hparams.freeze()
-    # Always make a copy from self._private_hparams since users may modify
-    # self.hparams in setup() and Flax may call setup() more than once. It is
-    # strictly safer to start with the original copy of params at the start of
-    # each setup() invocation when users ask for self.hparams.
-    #
+    object.__setattr__(self, 'name', self._hparams.name)
+    # We make a copy of the `_hparams` passed to __init__ the very first time in
+    # case `_hparams` refers to a shared params object that gets mutated by
+    # something outside this class.
     # Note: self.hparams is a property defined on BaseParameterizable that
     # returns self._hparams, which is why we set it like this.
-    object.__setattr__(self, '_hparams', self._private_hparams.clone())
+    object.__setattr__(self, '_hparams', self._hparams.clone())
+    # Freeze the layer hparams. This is to prevent accidental config mutations
+    # that may lead to subtle bugs.
     self._hparams.freeze()
     object.__setattr__(self, '_theta', set())
     object.__setattr__(self, '_private_children', {})
