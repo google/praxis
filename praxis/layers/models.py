@@ -18,6 +18,7 @@
 from typing import Any, Dict, Sequence, Tuple
 
 import jax
+from absl import logging
 from jax import numpy as jnp
 from praxis import asserts
 from praxis import base_input
@@ -198,14 +199,21 @@ class LanguageModel(base_model.BaseModel):
     Args:
       input_batch: The input batch, with fields `.ids` and `.paddings`. It may
         have an optional `.prefix_lengths` field indicating the lengths of
-        prefixes in the ids used as decoding inputs.
+        prefixes in the ids used as decoding inputs. Optional `.suffix` for the
+        suffix_ids with shape [num_suffix, suffix_length]. Optional 
+        `.suffix_lengths` of shape [num_suffix] indicating the lengths of the
+        suffixes.
 
     Returns:
       - metrics, a NestedMap containing str keys and (metrics, weight) pairs.
       - A NestedMap like `input_batch`, with `.prefix_lengths` (vector of
         specified or randomly generated ints indicating the lengths of prefixes
         for each row), and `.output_ids` (matrix of int ids with the decoded
-        output).
+        output). If `.suffix` exists in the `input_batch` and uses sample
+        decode function, will return the decoded results with suffix and
+        logprobs of the sequence with suffix, the return `.output_ids` and
+        `.logprobs` will have the shape of
+        [batch, num_samples, num_suffix, seq_len].
     """
     p = self.hparams
     if not isinstance(p.decoder, DecoderHParams):
@@ -311,6 +319,18 @@ class LanguageModel(base_model.BaseModel):
                                        fprop_input_ids, fprop_input_paddings,
                                        p.decoder)
     elif isinstance(p.decoder, SampleDecoderHParams):
+      if 'suffix' in input_batch and 'suffix_lengths' in input_batch:
+        suffix = input_batch.suffix
+        suffix_lengths = input_batch.suffix_lengths
+        if not p.decoder.lazy_prefix_broadcast:
+          suffix = None
+          suffix_lengths = None
+          logging.info(
+              'Suffix scoring is only supported when lazy_prefix_broadcast '
+              'is True')
+      else:
+        suffix = None
+        suffix_lengths = None
       # Init cache states, batch size needs to multiply by num_samples.
       self.lm(
           fprop_input_ids,
@@ -338,7 +358,10 @@ class LanguageModel(base_model.BaseModel):
           max_prefix_len=max_prefix_len,
           max_decode_steps=p.decoder.max_decode_steps,
           prefix_lengths=prefix_lengths,
-          eos_id=p.decoder.eos_id)
+          eos_id=p.decoder.eos_id,
+          suffix_ids=suffix,
+          suffix_lengths=suffix_lengths,
+      )
     elif isinstance(p.decoder, GreedyDecoderHParams):
       # Init cache states.
       self.lm(

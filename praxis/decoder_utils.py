@@ -202,8 +202,10 @@ def right_align_state_fn(
   return _right_align_state_fn
 
 
-def left_align_tensor(x: JTensor, prefix_lengths: JTensor,
-                      max_prefix_len: int) -> JTensor:
+def left_align_tensor(x: JTensor,
+                      prefix_lengths: JTensor,
+                      max_prefix_len: int,
+                      pad_value: float = 0.0) -> JTensor:
   """Changes middle aligned sequence to be left aligned.
 
   x has the following middle aligned format:
@@ -220,6 +222,7 @@ def left_align_tensor(x: JTensor, prefix_lengths: JTensor,
     x: Tensor of shape [batch_size, seq_len].
     prefix_lengths: prefix lengths of shape [batch_size].
     max_prefix_len: max prefix lengths.
+    pad_value: Value for padding.
 
   Returns:
     Left aligned tensor with shape [batch_size, seqlen].
@@ -232,7 +235,10 @@ def left_align_tensor(x: JTensor, prefix_lengths: JTensor,
 
   def _align_one(x: JTensor, prefix_length: JTensor) -> JTensor:
     """Aligns one middle align tensor to be left align."""
-    padded = jnp.pad(x, [[0, max_prefix_len]])
+    padded = jnp.pad(
+        x, [[0, max_prefix_len]],
+        mode='constant',
+        constant_values=x.dtype.type(pad_value))
     return jax.lax.dynamic_slice(padded, [max_prefix_len - prefix_length],
                                  [seqlen])
 
@@ -301,8 +307,10 @@ def concat_suffix_and_left_align(decoded_tensors: JTensor,
                                              axis=0))
   # Left align concatenated tensors.
   left_align_tensors = left_align_tensor(
-      concat_tensors, jnp.repeat(prefix_lengths, repeats=num_suffix, axis=0),
-      max_prefix_len)
+      concat_tensors,
+      jnp.repeat(prefix_lengths, repeats=num_suffix, axis=0),
+      max_prefix_len,
+      pad_value=pad_value)
   # Reshape to [batch_size, num_samples, num_suffix, seq_len + suffix_len]
   reshaped_tensors = jnp.reshape(left_align_tensors, [
       suffix_batch_size //

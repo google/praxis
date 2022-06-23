@@ -25,6 +25,7 @@ from typing import Optional
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
+from praxis import asserts
 from praxis import base_layer
 from praxis import decoder_utils
 from praxis import py_utils
@@ -206,6 +207,159 @@ def right_align_prefix_ids(prefix_ids: JTensor, prefix_lengths: JTensor,
   return right_align_ids, prefix_paddings
 
 
+def suffix_decode(model: base_layer.BaseLayer,
+                  extend_step_fn: decoder_utils.ExtendStepFn,
+                  transform_state_fn: Optional[decoder_utils.TransformStateFn],
+                  lazy_broadcast_prefix_fn: Optional[
+                      decoder_utils.LazyBroadcastPrefixFn], num_samples: int,
+                  output_ids: JTensor, suffix_ids: JTensor,
+                  suffix_lengths: JTensor, logprobs: JTensor,
+                  decode_lengths: JTensor, prefix_lengths: JTensor,
+                  max_prefix_length: int) -> NestedMap:
+  """Suffix decode for the sequence.
+
+  Args:
+    model: The model object.
+    extend_step_fn: A function that takes in `states` and the decoded sequence
+      at the current time step (with shape [B] or [B, P] where B corresponds to
+      the batch size and P corresponds to a possible prefix) and returns a tuple
+      of (`NestedMap`, `JTensor`), where the first `NestedMap` corresponds to
+      the `new_states` and the second `JTensor` corresponds to the logits of the
+      next step.
+    transform_state_fn: A function that transforms the decode state.
+    lazy_broadcast_prefix_fn: A function that lazily broadcasts decode prefix.
+    num_samples: int, number of samples.
+    output_ids: The token ids that correspond to the ids in the generated
+      sequence. JTensor of shape [batch_size,decode_seq_length].
+    suffix_ids: The token ids that correspond to the suffix sequence. A JTensor
+      of shape [suffix_size, suffix_sequence_length].
+    suffix_lengths: JTensor of shape [suffix_size].
+    logprobs: JTensor of shape [batch * num_samples, decode_seq_length].
+    decode_lengths: JTensor of shape [batch * num_samples].
+    prefix_lengths: JTensor of shape [batch * num_samples].
+    max_prefix_length: Maximum prefix length.
+
+  Returns:
+    A NestedMap with `.logprobs` (the log probability of selected tokens,
+    including the prefix, where a positive value of 1.0 is used to
+    indicate padded positions). `.output_ids` the suffix_ids appends to the
+    decoded output_ids.
+    The outputs has shape [batch, num_suffix, num_samples, ...].
+  """
+  num_suffix, max_suffix_length = suffix_ids.shape
+
+  # Right align decode state.
+  transform_state_fn(
+      model,
+      decoder_utils.right_align_state_fn(decode_lengths - prefix_lengths))
+
+  # We need to exclude the last token from prefix, and instead move it to
+  # the multi-sample suffix. This is because the last token only as an Input
+  # ID, but not an output ID (label), and we need to start decoding from it.
+  transform_state_fn(model, decoder_utils.slice_state_fn(0, -1))
+
+  # Lazy broadcast for decode states, changing generated sequences to prefix.
+  lazy_broadcast_prefix_fn(model, num_suffix, max_suffix_length)
+  batch_size, _ = logprobs.shape
+
+  last_decode_positions = (
+      max_prefix_length + decode_lengths - prefix_lengths - 1)
+
+  # inner function to get last_ids.
+  def _slice_one(x, start):
+    return jax.lax.dynamic_slice(x, [start], [1])
+
+  # Get the last_ids from output_ids.
+  last_ids = jax.vmap(_slice_one)(output_ids, last_decode_positions)
+
+  # [batch_size * num_suffix, 1]
+  broadcast_last_ids = jnp.reshape(
+      jnp.repeat(jnp.expand_dims(last_ids, 1), axis=1, repeats=num_suffix),
+      (-1, 1))
+
+  # [batch_size * num_suffix]
+  broadcast_suffix_lengths = jnp.reshape(
+      jnp.repeat(
+          jnp.expand_dims(suffix_lengths, 0), axis=0, repeats=batch_size), (-1))
+
+  # [batch_size, num_suffix, suffix_length]
+  broadcast_suffix_ids = jnp.repeat(
+      jnp.expand_dims(suffix_ids, 0), axis=0, repeats=batch_size)
+  broadcast_suffix_ids = jnp.reshape(broadcast_suffix_ids,
+                                     [batch_size * num_suffix, -1])
+
+  val = NestedMap()
+  val.step = 0
+  # Shape [batch_size], whether each row has terminated and should stop.
+  val.done = jnp.zeros(shape=batch_size * num_suffix, dtype=jnp.bool_)
+  # We use a positive value of 1.0 to indicate blank or padded positions.
+  val.logprobs = jnp.ones_like(broadcast_suffix_ids, dtype=jnp.float32)
+  val.segment_pos = jnp.repeat(decode_lengths, axis=0, repeats=num_suffix)
+  val.suffix_ids = jnp.concatenate([broadcast_last_ids, broadcast_suffix_ids],
+                                   axis=1)
+
+  def cond_func(model, val):
+    """Whether the while loop should continue."""
+    del model
+    # We continue the decoding search iff both:
+    #   (1) We have yet to exceed the suffix_length steps, AND;
+    #   (2) At least one row in the batch has not terminated.
+    length_ok = val.step < max_suffix_length
+    all_rows_done = jnp.all(val.done)
+    return jnp.logical_and(length_ok, jnp.logical_not(all_rows_done))
+
+  # If suffix length N is small ( < 10), it is faster to extend N steps
+  # compared to the fprop.
+  def loop_body(model, val):
+    """Get suffix id logprobs at `step + 1`."""
+    step = val.step
+    logits = extend_step_fn(model, val.suffix_ids[:, step], val.segment_pos)
+    logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
+
+    # new_ids are given in the suffix.
+    new_ids = val.suffix_ids[:, step + 1]
+    prev_done = val.done
+    new_ids = jnp.where(prev_done, jnp.zeros_like(new_ids), new_ids)
+    val.done = jnp.logical_or(prev_done, step >= broadcast_suffix_lengths - 1)
+    val.segment_pos += 1
+    logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size * num_suffix),
+                                      new_ids].get()
+    logprobs_at_new_ids = jnp.where(prev_done,
+                                    jnp.ones_like(logprobs_at_new_ids),
+                                    logprobs_at_new_ids)
+    val.logprobs = val.logprobs.at[:, step].set(logprobs_at_new_ids)
+    val.step += 1
+    return val
+
+  result = nn.while_loop(
+      cond_func,
+      loop_body,
+      model,
+      val,
+      split_rngs={RANDOM: True},
+      carry_variables=[DECODE_CACHE],
+  )
+
+  # Shape [batch_size, num_suffix, num_samples, decode_len + suffix_len]
+  result.output_ids = decoder_utils.concat_suffix_and_left_align(
+      output_ids, broadcast_suffix_ids, last_decode_positions + 1,
+      prefix_lengths, max_prefix_length, num_samples, num_suffix, 0)
+  # Shape [batch_size, num_suffix, num_samples, decode_len + suffix_len]
+  result.logprobs = decoder_utils.concat_suffix_and_left_align(
+      logprobs, result.logprobs, last_decode_positions + 1, prefix_lengths,
+      max_prefix_length, num_samples, num_suffix, 1.0)
+  broadcast_decode_lengths = jnp.repeat(
+      decode_lengths, repeats=num_suffix, axis=0)
+  # shape [batch_size, num_suffix, num_samples]
+  result.decode_lengths = jnp.transpose(
+      jnp.reshape(broadcast_decode_lengths,
+                  (batch_size // num_samples, num_samples, num_suffix)),
+      (0, 2, 1))
+
+  del result.step, result.done, result.segment_pos
+  return result
+
+
 def sample_decode(model: base_layer.BaseLayer,
                   extend_step_fn: decoder_utils.ExtendStepFn,
                   transform_state_fn: Optional[decoder_utils.TransformStateFn],
@@ -221,7 +375,9 @@ def sample_decode(model: base_layer.BaseLayer,
                   max_prefix_len: Optional[int] = None,
                   max_decode_steps: Optional[int] = None,
                   prefix_lengths: Optional[JTensor] = None,
-                  eos_id: Optional[int] = None) -> NestedMap:
+                  eos_id: Optional[int] = None,
+                  suffix_ids: Optional[JTensor] = None,
+                  suffix_lengths: Optional[JTensor] = None) -> NestedMap:
   """Sampling decode the input batch.
 
   Top-K sampling with num_samples for each batch, in which the K most likely
@@ -259,6 +415,8 @@ def sample_decode(model: base_layer.BaseLayer,
       batch. This can either be None or a JTensor of shape [batch] signifying
       the prefix length for each sequence in the batch.
     eos_id: Optional EOS id which to terminate the decoding early.
+    suffix_ids: Optional suffix_ids, if it is defined, will call suffix_decode.
+    suffix_lengths: Optional JTensor of shape [suffix_size].
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -396,6 +554,21 @@ def sample_decode(model: base_layer.BaseLayer,
       split_rngs={RANDOM: True},
       carry_variables=[DECODE_CACHE],
   )
+
+  if suffix_ids is not None:
+    asserts.not_none(
+        lazy_broadcast_prefix_fn,
+        msg='suffix decoding is only supported with lax_broadcast_prefix = True.'
+    )
+    asserts.eq(
+        fprop_for_prefix,
+        True,
+        msg='suffix decoding is only supported with fprop_for_prefix=True.')
+    return suffix_decode(model, extend_step_fn, transform_state_fn,
+                         lazy_broadcast_prefix_fn, num_samples,
+                         result.output_ids, suffix_ids, suffix_lengths,
+                         result.logprobs, result.decode_lengths, prefix_lengths,
+                         max_prefix_len)
 
   result.prefix_lengths = prefix_lengths
   result.original_lengths = jnp.sum(

@@ -219,6 +219,7 @@ pytype_strict_library(
         ":linears",
         ":resnets",
         ":transformer_models",
+        # Implicit absl.logging dependency.
         # Implicit jax dependency.
         "//praxis:asserts",
         "//praxis:base_input",
