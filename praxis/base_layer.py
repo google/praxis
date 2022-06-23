@@ -1053,6 +1053,10 @@ class BaseLayer(
     # time in case `_private_hparams` refers to a shared params object that gets
     # mutated by something outside this class.
     object.__setattr__(self, '_private_hparams', self._private_hparams.clone())
+    # Freeze the layer hparams. This is to prevent accidental config mutations
+    # that may lead to subtle bugs.
+    # TODO(b/236187824): Get rid of _private_hparams of _hparams duplicates.
+    self._private_hparams.freeze()
     # Always make a copy from self._private_hparams since users may modify
     # self.hparams in setup() and Flax may call setup() more than once. It is
     # strictly safer to start with the original copy of params at the start of
@@ -1061,6 +1065,7 @@ class BaseLayer(
     # Note: self.hparams is a property defined on BaseParameterizable that
     # returns self._hparams, which is why we set it like this.
     object.__setattr__(self, '_hparams', self._private_hparams.clone())
+    self._hparams.freeze()
     object.__setattr__(self, '_theta', set())
     object.__setattr__(self, '_private_children', {})
     super().__post_init__()

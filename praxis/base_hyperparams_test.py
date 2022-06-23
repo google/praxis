@@ -128,13 +128,13 @@ class HyperParamsTest(absltest.TestCase):
     # pylint: disable=protected-access
     x = NestedTestClass.HParams(
         d=SimpleTestChild.HParams(a=456, b='hello'), e=37)
-    x._freeze()
+    x.freeze()
     with self.assertRaises(AttributeError):
       x.d.a = 100
-    x._unfreeze()
+    x.unfreeze()
     x.d.a = 200
     self.assertEqual(200, x.d.a)
-    x._freeze()
+    x.freeze()
     self.assertEqual(True, x._internal_frozen)
     self.assertEqual(True, x.d._internal_frozen)
     x_clone = x.clone()

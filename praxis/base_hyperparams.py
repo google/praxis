@@ -454,30 +454,30 @@ class BaseHyperParams:
 
       self._check_assignment(field, attr_value)
 
-  def _freeze(self):
+  def freeze(self):
     object.__setattr__(self, '_internal_frozen', True)
     fields = self.__dataclass_fields__  # pytype: disable=attribute-error
     for name in fields:
       attr_value = getattr(self, name)
-      # recursively _freeze all HyperParams
+      # recursively freeze all HyperParams
       if isinstance(attr_value, BaseHyperParams):
-        attr_value._freeze()  # pylint: disable=protected-access
+        attr_value.freeze()
 
-  def _unfreeze(self):
+  def unfreeze(self):
     object.__setattr__(self, '_internal_frozen', False)
     fields = self.__dataclass_fields__  # pytype: disable=attribute-error
     for name in fields:
       attr_value = getattr(self, name)
-      # recursively _unfreeze all HyperParams
+      # recursively unfreeze all HyperParams
       if isinstance(attr_value, BaseHyperParams):
-        attr_value._unfreeze()  # pylint: disable=protected-access
+        attr_value.unfreeze()
 
   def clone(self) -> 'BaseHyperParams':
     """Performs a deep copy of self and returns a mutable copy."""
     cloned = copy.deepcopy(self)
     # A cloned object is always unfrozen as the reason to make a clone if often
     # to make changes the resulting config.
-    cloned._unfreeze()  # pylint: disable=protected-access
+    cloned.unfreeze()
     return cloned
 
   def copy_fields_from(self, source: 'BaseHyperParams') -> None:
