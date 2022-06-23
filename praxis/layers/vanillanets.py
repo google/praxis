@@ -187,10 +187,10 @@ class VanillaNet(base_layer.BaseLayer):
     if num_stages != len(p.kernels):
       raise ValueError(f'num_stages {num_stages} != kernels {len(p.kernels)}.')
 
-    _ = p.block_params.set(negative_slope=p.negative_slope)
+    block_p_tpl = p.block_params.clone().set(negative_slope=p.negative_slope)
     # Set the convolution type used in the Resnet block.
-    if hasattr(p.block_params, 'conv_params'):
-      _ = p.block_params.set(conv_params=p.conv_params)
+    if hasattr(block_p_tpl, 'conv_params'):
+      block_p_tpl.conv_params = p.conv_params
 
     # Create the entryflow convolution layer.
     input_dim = p.channels[0] // 4
@@ -215,7 +215,7 @@ class VanillaNet(base_layer.BaseLayer):
       for block_id in range(num_blocks):
         name = f'stage_{stage_id}_block_{block_id}'
         output_dim = channel
-        block_p = p.block_params.clone().set(
+        block_p = block_p_tpl.clone().set(
             name=name,
             kernel_size=kernel,
             input_dim=input_dim,

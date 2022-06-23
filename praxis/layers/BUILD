@@ -447,6 +447,20 @@ pytype_strict_library(
     ],
 )
 
+py_strict_test(
+    name = "vanillanets_test",
+    srcs = ["vanillanets_test.py"],
+    deps = [
+        ":poolings",
+        ":vanillanets",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+    ],
+)
+
 pytype_strict_library(
     name = "stochastics",
     srcs = ["stochastics.py"],
