@@ -523,7 +523,8 @@ def init_var(var_full_name: str, var_p: WeightHParams,
   assert not var_p.repeat_prefix_split_dims_mapping
 
   if shape:
-    assert all([dim_size > 0 for dim_size in shape]), shape
+    assert all([dim_size > 0 for dim_size in shape
+               ]), 'shape of %s is %s' % (var_full_name, shape)
     dim0 = shape[0]
   else:
     dim0 = 1
