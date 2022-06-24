@@ -371,7 +371,7 @@ def sample_decode(model: base_layer.BaseLayer,
                   num_samples: int,
                   k: int,
                   fprop_for_prefix: bool = False,
-                  temperature: Optional[float] = None,
+                  temperature: float = 1.0,
                   max_prefix_len: Optional[int] = None,
                   max_decode_steps: Optional[int] = None,
                   prefix_lengths: Optional[JTensor] = None,
@@ -508,6 +508,12 @@ def sample_decode(model: base_layer.BaseLayer,
           model.next_prng_key(),
           temperature=temperature,
           topk=k)
+    elif k == 0:
+      if temperature > 0.0:
+        gumbel_noise = jax.random.gumbel(
+            model.next_prng_key(), shape=logits.shape, dtype=logits.dtype)
+        logits += gumbel_noise * temperature
+      new_ids = jnp.argmax(logits, axis=1)
     else:
       new_ids = jnp.argmax(logits, axis=1)
 
@@ -669,4 +675,5 @@ def greedy_decode(
       prefix_lengths=prefix_lengths,
       eos_id=eos_id,
       num_samples=1,
-      k=1)
+      k=1,
+      temperature=0.0)
