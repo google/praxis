@@ -235,6 +235,36 @@ class _ShardedAdamHelper:
     return update / denom
 
 
+class _HeroLionOptState:
+
+  def __init__(self, *, m):
+    self.m = m
+
+
+class _ShardedHeroLionHelper(_ShardedAdamHelper):
+  """A helper class facilitates the creation of sharded_hero_lion_optimizer."""
+
+  def opt_state_sharding_spec(self,
+                              var_hparams: WeightHParams) -> _HeroLionOptState:
+    """Returns optimizer sharding spec for one particular variable."""
+    m_var_hparams = var_hparams.clone()
+    m_var_hparams.init = None
+    # m simply share the same sharding.
+    return _HeroLionOptState(m=m_var_hparams)
+
+  def init_opt_state(self, var_hparams: py_utils.HParams) -> _HeroLionOptState:
+    """Returns optimizer state for one particular variable."""
+    return _HeroLionOptState(m=jnp.zeros_like(var_hparams))
+
+  def update_moments(self, step: JTensor, update: JTensor,
+                     moments: _HeroLionOptState,
+                     beta2: float) -> _HeroLionOptState:
+    """Updates momentum values."""
+    beta2_decay = self.bias_corrected_decay(step, beta2)
+    m = (1.0 - beta2_decay) * update + beta2_decay * moments.m
+    return _HeroLionOptState(m=m)
+
+
 def sharded_chain(
     *args: GeneralGradientTransformation) -> ShardedGradientTransformation:
   """Applies a list of (possibly sharded) chainable update transformations.
@@ -515,6 +545,81 @@ def sharded_adam(learning_rate_fn: optax.Schedule, beta1: float, beta2: float,
       init_partition_spec=init_partition_spec_fn)
 
 
+def sharded_hero_lion(learning_rate_fn: optax.Schedule, beta1: float,
+                      beta2: float, update_capping: float,
+                      weight_decay: float) -> ShardedGradientTransformation:
+  """Standard HeroLion optimizer that also supports sharding.
+
+  This HeroLion optimizer supports optional update capping when update_capping
+  is > 0. Update capping can help stabilizing model learning, avoiding excessive
+  updates when gradient variance estimate is stale (e.g. when data distribution
+  suddenly shifts).
+
+  Args:
+    learning_rate_fn: a callable that given the current training step, returns
+      the learning rate to apply.
+    beta1: rate to combine the moment and the current gradient.
+    beta2: decay rate to track the moment.
+    update_capping: If > 0, cap mean update to at most this value.
+    weight_decay: If > 0, weight decay to apply.
+
+  Returns:
+    A `ShardedGradientTransformation`.
+  """
+  helper = _ShardedHeroLionHelper()
+
+  def init_fn(mdl_vars):
+    slot_vars = jax.tree_map(helper.init_opt_state, mdl_vars)
+    count = jnp.array(0, dtype=jnp.int32)
+    return NestedMap(
+        count=count,
+        m=jax.tree_map(lambda x: x.m, slot_vars))
+
+  def init_partition_spec_fn(mdl_params):
+    slot_vars = jax.tree_map(helper.opt_state_sharding_spec, mdl_params)
+    count = WeightHParams(
+        shape=[], init=None, dtype=jnp.int32, collections=None)
+
+    return NestedMap(
+        count=count,
+        m=jax.tree_map(lambda x: x.m, slot_vars))
+
+  def update_fn(updates, state, params=None):
+    # Sanitize updates just in case.
+    if weight_decay > 0:
+      assert params is not None
+    updates = jax.tree_map(helper.sanitize_values, updates)
+    count = state.count
+
+    def _update_momentum(g, m):
+      return helper.update_moments(count, g, _HeroLionOptState(m=m), beta2)
+
+    updated_moments = jax.tree_map(_update_momentum, updates, state.m)
+
+    updates = jax.tree_map(
+        lambda g, m: jnp.sign((1.0 - beta1) * g + beta1 * m), updates, state.m)
+
+    if update_capping > 0:
+      updates = jax.tree_map(lambda x: helper.clip_update(x, update_capping),
+                             updates)
+
+    if weight_decay > 0:
+      updates = jax.tree_map(lambda x, v: x + weight_decay * v, updates, params)
+
+    step_size = -1.0 * learning_rate_fn(count)
+    # Finally, fold in step size.
+    updates = jax.tree_map(lambda x: step_size * x, updates)
+
+    updated_states = NestedMap(count=count + 1,
+                               m=jax.tree_map(lambda x: x.m, updated_moments))
+    return updates, updated_states
+
+  return ShardedGradientTransformation(
+      init=init_fn,
+      update=update_fn,
+      init_partition_spec=init_partition_spec_fn)
+
+
 def apply_ema_weights(decay: float) -> optax.GradientTransformation:
   """Applies exponential moving average on weights.
 
@@ -778,6 +883,35 @@ class Adam(BaseOptimizer):
           b2=p.beta2,
           eps=p.epsilon,
           eps_root=p.epsilon_root)
+
+
+class HeroLion(BaseOptimizer):
+  """HeroLion optimizer discovered in the AutoML-Hero project."""
+
+  class HParams(BaseOptimizer.HParams):
+    """Defines hyper-params for HeroLion.
+
+    Attributes:
+      beta1: Rate to combine the moment and the current gradient.
+      beta2: Exponential decay rate to track the moment of past gradients.
+      clip_threshold: An optional float to clip raw HeroLion updates to.
+      weight_decay: Decoupled weight decay to apply.
+    """
+    beta1: float = 0.9
+    beta2: float = 0.99
+    clip_threshold: float = 1.0
+    weight_decay: float = 0.0
+
+  def _get_raw_grad_transformation(
+      self, lr: optax.Schedule) -> ShardedGradientTransformation:
+    p = self._hparams
+    logging.info('Using sharded_hero_lion.')
+    return sharded_hero_lion(
+        learning_rate_fn=lr,
+        beta1=p.beta1,
+        beta2=p.beta2,
+        update_capping=p.clip_threshold,
+        weight_decay=p.weight_decay)
 
 
 class Adafactor(BaseOptimizer):
