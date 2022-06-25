@@ -1288,7 +1288,9 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       targets: Target sequence of shape [B] or [B, P] corresponding to target
         sequence at index time_step. Note that the shape [B, P] corresponds to a
         prefix which is useful for decoding in some special architectures such
-        as Primer or Ngrammer.
+        as Primer or Ngrammer. B can be a multiple of the batch size for the
+        encoder, where each encoder output will generate multiple samples; the
+        encoder output will be repeated on the batch dimension in this case.
 
     Returns:
       xent_output: A `.NestedMap` object containing the log probabilities and
@@ -1298,6 +1300,22 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     # Fetch encoder output from the cache.
     encoder_output = self.get_decode_state('encoder_output')
     input_paddings = self.get_decode_state('input_paddings')
+
+    target_batch_size = targets.shape[0]
+    encoder_batch_size = encoder_output.shape[0]
+
+    if target_batch_size != encoder_batch_size:
+      if target_batch_size % encoder_batch_size != 0:
+        raise ValueError(f'target_batch_size {target_batch_size} is not a '
+                         f'multiple of encoder_batch_size {encoder_batch_size}')
+      encoder_output = jnp.repeat(
+          encoder_output,
+          axis=0,
+          repeats=target_batch_size // encoder_batch_size)
+      input_paddings = jnp.repeat(
+          input_paddings,
+          axis=0,
+          repeats=target_batch_size // encoder_batch_size)
 
     # During autoregressive decoding inputs and targets are not packed.
     if len(targets.shape) == 1:
