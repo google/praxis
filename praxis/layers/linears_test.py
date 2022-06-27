@@ -47,11 +47,11 @@ class LinearsTest(test_utils.TestCase):
     p = linears.FeedForward.HParams(
         name='jax_ffn', input_dims=3, output_dims=20, activation=activation)
     ffn = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = ffn.init(prng_key)
     npy_input = np.random.normal(1.0, 0.5,
                                  [10, 10, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_input)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = ffn.init(prng_key, inputs)
     outputs = ffn.apply(initial_vars, inputs)
     logging.info('initial_vars in ffn = %s', initial_vars)
     # Test whether tf projection layer returns same output
@@ -85,11 +85,11 @@ class LinearsTest(test_utils.TestCase):
         has_bias=False,
         activation=activation)
     ffn = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = ffn.init(prng_key)
     npy_input = np.random.normal(1.0, 0.5,
                                  [10, 10, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_input)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = ffn.init(prng_key, inputs)
     outputs = ffn.apply(initial_vars, inputs)
     logging.info('initial_vars in ffn = %s', initial_vars)
     # Test whether tf projection layer returns same output
@@ -174,7 +174,6 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
     p.pad_with_left_frame = pad_with_left_frame
 
     stacker = instantiate(p)
-    stacker_vars = stacker.init(jax.random.PRNGKey(123))
     self.assertEqual(stacker.window_size, 3)
 
     inputs = jnp.array([[[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]],
@@ -184,6 +183,7 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
         [[[0], [0], [0], [0], [0], [0]], [[0], [0], [1], [1], [1], [1]]],
         dtype=jnp.float32)
 
+    stacker_vars = stacker.init(jax.random.PRNGKey(123), inputs, paddings)
     outputs, output_paddings = stacker.apply(stacker_vars, inputs, paddings)
     print(f'{outputs}')
     if pad_with_left_frame:
@@ -223,8 +223,6 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
     p.pad_with_right_frame = pad_with_right_frame
 
     stacker = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    stacker_vars = stacker.init(prng_key)
     self.assertEqual(stacker.window_size, 2)
 
     # input shape [2, 5, 2]
@@ -233,6 +231,8 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
                        dtype=jnp.float32)
     paddings = jnp.array([[[0], [0], [0], [0], [0]], [[0], [0], [1], [1], [1]]],
                          dtype=jnp.float32)
+    prng_key = jax.random.PRNGKey(seed=123)
+    stacker_vars = stacker.init(prng_key, inputs, paddings)
     outputs, output_paddings = stacker.apply(stacker_vars, inputs, paddings)
     print(f'{outputs}')
 
@@ -266,8 +266,6 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
     p.padding_reduce_option = 'reduce_max'
 
     stacker = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    stacker_vars = stacker.init(prng_key)
     self.assertEqual(stacker.window_size, 3)
 
     inputs = jnp.array([[[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]],
@@ -277,6 +275,8 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
         [[[0], [0], [0], [0], [0], [0]], [[0], [0], [1], [1], [1], [1]]],
         dtype=jnp.float32)
 
+    prng_key = jax.random.PRNGKey(seed=123)
+    stacker_vars = stacker.init(prng_key, inputs, paddings)
     outputs, output_paddings = stacker.apply(stacker_vars, inputs, paddings)
     print(f'{outputs}')
     expected_outputs = jnp.array([
@@ -299,8 +299,6 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
     p.stride = 2
 
     stacker = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    stacker_vars = stacker.init(prng_key)
     self.assertEqual(stacker.window_size, 2)
 
     inputs = np.random.normal(size=[2, 21, 16])
@@ -311,6 +309,8 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
 
     paddings = 1.0 - mask
     paddings = jnp.expand_dims(paddings, -1)
+    prng_key = jax.random.PRNGKey(seed=123)
+    stacker_vars = stacker.init(prng_key, inputs, paddings)
     outputs, output_paddings = stacker.apply(stacker_vars, inputs, paddings)
 
     # length
@@ -328,12 +328,12 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
     p.stride = 1
 
     stacker = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    stacker_vars = stacker.init(prng_key)
     self.assertEqual(stacker.window_size, 1)
     inputs = jnp.array([[[1], [2], [3], [4], [5]]], dtype=jnp.float32)
     paddings = jnp.zeros([1, 5, 1], dtype=jnp.float32)
 
+    prng_key = jax.random.PRNGKey(seed=123)
+    stacker_vars = stacker.init(prng_key, inputs, paddings)
     outputs, output_paddings = stacker.apply(stacker_vars, inputs, paddings)
     print(f'{outputs}')
     expected_outputs = jnp.array([[[1], [2], [3], [4], [5]]], dtype=jnp.float32)
@@ -347,7 +347,7 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
 
     stacker = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
-    stacker_vars = stacker.init(prng_key)
+    stacker_vars = stacker.init(prng_key, inputs)
     stacked, _ = stacker.apply(stacker_vars, inputs)
     unstacked = stacker.apply(stacker_vars, stacked, method=stacker.unstack)
     print(f'{unstacked}')

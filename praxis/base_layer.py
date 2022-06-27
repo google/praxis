@@ -158,17 +158,15 @@ def to_partition_spec(split_dims_mapping: SplitDimsMapping,
 
   Args:
     split_dims_mapping: A (nested) tuple of mesh axis to split x over. Below are
-      a few example sharding specifications.
-      (0, 2)  - the first dim of x is split over the first axis of the mesh and
-        the second dim over the third axis of the mesh.
-      (1, -1) - the first dim of x is split over the second axis of the mesh and
-        the second dim is replicated.
-      (1, None) - the first dim is split over the second axis of the mesh, and
-        the second dim replicated.
-      ('data', 'mdl') - the first dim is split over the 'data' axis of the mesh
-        and the second dim over the 'mdl' axis.
-      (('replica', 'data'), 'mdl'), the first dim is split over both the
-        'replica' and 'data' axes, while the second dim over the 'mdl' axis.
+      a few example sharding specifications. (0, 2)  - the first dim of x is
+      split over the first axis of the mesh and the second dim over the third
+      axis of the mesh. (1, -1) - the first dim of x is split over the second
+      axis of the mesh and the second dim is replicated. (1, None) - the first
+      dim is split over the second axis of the mesh, and the second dim
+      replicated. ('data', 'mdl') - the first dim is split over the 'data' axis
+      of the mesh and the second dim over the 'mdl' axis. (('replica', 'data'),
+      'mdl'), the first dim is split over both the 'replica' and 'data' axes,
+      while the second dim over the 'mdl' axis.
     mesh_axis_names: A tuple/list of strings of the name of the device mesh.
 
   Returns:
@@ -410,18 +408,18 @@ class WeightHParams(BaseHyperParams):
     collections: Variable collections this weight belongs to.
     mesh_shape: Shape of logical mesh. mesh_shape and tensor_split_dims_mapping
       below together specifies how this weight tensor should be sharded across
-      different tpu cores. If None, this variable is not sharded.
-      Here are examples of mesh shape: [2, 3, 4] for 2-way replica parallelism,
-        3-way data parallelism and 4-way model parallelism.
+      different tpu cores. If None, this variable is not sharded. Here are
+      examples of mesh shape: [2, 3, 4] for 2-way replica parallelism, 3-way
+      data parallelism and 4-way model parallelism.
     tensor_split_dims_mapping: A list of integers that map each tensor axis to
       the device mesh axis along which it is sharded. Its length is the tensor
       rank, and split_dims_mapping[i] is device mesh axis for tensor dimension
       i. Use -1 for tensor dimensions that are not sharded. If the list is set
       to None and a mesh_shape is specified, the sharding will be treated as
       replicated. Here is a concrete examples: mesh_shape=[2, 4] and shape=[x,
-        y, z], so this is a 3d variable. tensor_split_dims_mapping=[-1, -1, 1],
-        in this case, the third dim of the variable is split along the second
-        dim of the mesh. Each split of the variable is of the shape [x, y, z/4].
+      y, z], so this is a 3d variable. tensor_split_dims_mapping=[-1, -1, 1], in
+      this case, the third dim of the variable is split along the second dim of
+      the mesh. Each split of the variable is of the shape [x, y, z/4].
     repeat_prefix: If not None, the full shape of this var is
       repeat_prefix+shape. For example, if repeat_prefix=[16, 2], and
       shape=[512, 1024], then real shape of variable is [16, 2, 512, 1024].
@@ -625,6 +623,7 @@ class WrappedHParams:
 class AuxLossStruct:
   value: JTensor
   weight: JTensor
+
 
 def maybe_unbox_value(tree):
   """Return the `value` leaf component of the pytree if it is a BoxedParam."""
@@ -1128,7 +1127,11 @@ class BaseLayer(
   #   outputs = layer.apply(initial_vars, method=layer.fprop)
   # where `initial_vars` that users see are unboxed jnp.arrays, and
   # also the code in fprop never sees BoxedParams but always jnp.arrays.
-  def init(self, rngs):
+  def init(self, rngs, *args, **kwargs):
+    # TODO(zhangqiaorjc): Pass args and kwargs to init when Praxis switches to
+    # running forward computation for layer initialization, similar to what
+    # Flax does.
+    del args, kwargs
     variables = super().init(rngs, method=self.force_init, mutable=True)
     return flax_core.unfreeze(maybe_unbox_value(variables))
 
@@ -1164,7 +1167,11 @@ class BaseLayer(
   # populating self.scope with the variable collections. What gets put into
   # self.scope is BoxedParams and thus init_fn returns the variable collections
   # with BoxedParams. We unboxed it and return WeightHParams metadata.
-  def abstract_init_with_metadata(self, rngs):
+  def abstract_init_with_metadata(self, rngs, *args, **kwargs):
+    # TODO(zhangqiaorjc): Pass args and kwargs to init when Praxis switches to
+    # running forward computation for layer initialization, similar to what
+    # Flax does.
+    del args, kwargs
     init_fn = functools.partial(
         super().init, method=self.force_init, mutable=True)
     # Disable logging to reduce logspam.
