@@ -211,6 +211,10 @@ class ConvBNAct(Conv2D):
   def setup(self) -> None:
     super().setup()
     p = self.hparams
+    if p.compat_with_lingvo:
+      assert tuple(
+          p.dilations) == (1, 1), ('compat_with_lingvo supports no dilation.')
+
     if p.batch_norm_tpl is not None:
       bn = p.batch_norm_tpl.clone()
       bn.dim = p.filter_shape[3]
