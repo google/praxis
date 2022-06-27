@@ -55,6 +55,10 @@ class BaseLayerTest(test_utils.TestCase):
         base_layer.SummaryType.IMAGE,
         base_layer.get_summary_base_type(
             base_layer.SummaryType.AGGREGATE_IMAGE))
+    self.assertEqual(
+        base_layer.SummaryType.TEXT,
+        base_layer.get_summary_base_type(
+            base_layer.SummaryType.TEXT))
 
 
 if __name__ == '__main__':

@@ -643,6 +643,7 @@ class SummaryType(enum.Enum):
   """Types of summary tensors."""
   SCALAR = 1
   IMAGE = 2
+  TEXT = 5
 
   # Like SCALAR, but this type indicates that this data is suitable for use
   # with sensitive data.
@@ -683,8 +684,8 @@ def trim_summary_type_from_key(key: str) -> str:
 class _SummaryDict:
   """A dict holding summaries generated during forward computation.
 
-  Currently it supports 4 types: SCALAR, AGGREGATE_SCALAR, IMAGE,
-  AGGREGATE_IMAGE. Keys will be appended with a type suffix.
+  Currently it supports 5 types: SCALAR, AGGREGATE_SCALAR, IMAGE,
+  AGGREGATE_IMAGE, TEXT. Keys will be appended with a type suffix.
   """
 
   def __init__(self) -> None:
