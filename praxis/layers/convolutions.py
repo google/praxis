@@ -197,14 +197,16 @@ class ConvBNAct(Conv2D):
 
     Attributes:
       batch_norm_tpl: The batchnorm layer template.
-      activation: Activation function to use. Options are RELU, RELU6,
+      activation:     Activation function to use. Options are RELU, RELU6,
         LEAKY_RELU, SIGMOID, TANH, GELU, NONE.
       negative_slope: Negative slope of LEAKY_RELU convolution activation.
+      compat_with_lingvo: If use lingvo-compatible logic.
     """
     batch_norm_tpl: Optional[BaseHParams] = sub_config_field(
         normalizations.BatchNorm.HParams)
     activation: str = 'RELU'
     negative_slope: Optional[float] = None
+    compat_with_lingvo: bool = False
 
   def setup(self) -> None:
     super().setup()
@@ -262,15 +264,21 @@ class ConvBNAct(Conv2D):
       input_length = paddings.shape[1]
       stride = p.filter_stride[0]
 
-      pad_len = (input_length + stride - 1) // stride * stride - input_length
-      out_padding = jax.lax.conv_general_dilated(
-          lhs=paddings[:, :, None],
-          rhs=jnp.ones([1, 1, 1]),
-          window_strides=p.filter_stride[:1],
-          padding=[(0, pad_len)],
-          rhs_dilation=p.dilations[:1],
-          dimension_numbers=('NHC', 'HIO', 'NHC'))
-      out_padding = jnp.squeeze(out_padding, axis=-1)
+      if p.compat_with_lingvo:
+        out_padding = paddings[:, stride - 1::stride]
+        out_padding = jnp.pad(
+            out_padding, [[0, 0], [0, outputs.shape[1] - out_padding.shape[1]]],
+            constant_values=1)
+      else:
+        pad_len = (input_length + stride - 1) // stride * stride - input_length
+        out_padding = jax.lax.conv_general_dilated(
+            lhs=paddings[:, :, None],
+            rhs=jnp.ones([1, 1, 1]),
+            window_strides=p.filter_stride[:1],
+            padding=[(0, pad_len)],
+            rhs_dilation=p.dilations[:1],
+            dimension_numbers=('NHC', 'HIO', 'NHC'))
+        out_padding = jnp.squeeze(out_padding, axis=-1)
     else:
 
       def rolling_window(arr: JTensor, window: int, stride: int):
