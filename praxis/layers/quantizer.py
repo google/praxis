@@ -105,6 +105,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
         codebook weight is [num_latent_classes, projection_dim] instead of
         [num_latent_classes, 1, projection_dim]. This is for checkpoint
         compatibility with old models.
+      plot_codebook:      Whether to plot the codebook as an image summary.
     """
     latent_dim: Optional[int] = None
     projection_dim: int = 16
@@ -116,6 +117,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     codebook_init: WeightInit = dataclasses.field(
         default_factory=WeightInit.Gaussian)
     low_rank_codebook: bool = False
+    plot_codebook: bool = False
 
   def _l2_normalize(self, x, axis, epsilon=1e-12):
     dis = jnp.sum(x * x, axis=axis, keepdims=True) + epsilon
@@ -192,6 +194,15 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
       proj_vec = self._l2_normalize(proj_vec, -1)
 
     codebook = self._get_codebook()
+
+    if p.plot_codebook:
+      # Considered as [B, H, W, C] in summaries.
+      codebook_plots = jnp.einsum('cgd->gcd', codebook)
+      codebook_plots = jnp.tile(codebook_plots[..., jnp.newaxis], [1, 1, 1, 3])
+      self.add_summary(
+          'codebook',
+          codebook_plots,
+          summary_type=base_layer.SummaryType.IMAGE)
 
     q, c, onehot = quantize_vector(proj_vec, codebook)
     q = jnp.reshape(q, [batch_size, time_steps, dim])
