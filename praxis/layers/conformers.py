@@ -118,12 +118,12 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
         key_vec=inputs,
         value_vec=inputs,
         atten_mask=atten_mask)[0]
-    if not p.pre_layer_norm:
-      result = self.norm(result)
 
     result = (
         self.residual_dropout(result) * p.residual_weight +
         unnormalized_inputs * p.input_weight)
+    if not p.pre_layer_norm:
+      result = self.norm(result)
     return result
 
 
