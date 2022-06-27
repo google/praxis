@@ -158,6 +158,21 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
         WeightHParams(
             shape=codebook_shape, init=p.codebook_init, dtype=jnp.float32))
 
+  def _get_codebook(self):
+    """Gets the latent embedding."""
+    p = self.hparams
+
+    # Recovers codebook to 3d.
+    if p.low_rank_codebook and p.num_groups == 1:
+      codebook = self.theta.random_codebook[:, jnp.newaxis, :]
+    else:
+      codebook = self.theta.random_codebook
+
+    if p.normalize_codebook:
+      codebook = self._l2_normalize(codebook, -1)
+
+    return codebook
+
   def __call__(self, z: JTensor, paddings: JTensor) -> NestedMap:
     p = self.hparams
 
@@ -176,14 +191,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     if p.normalize_latent_vector:
       proj_vec = self._l2_normalize(proj_vec, -1)
 
-    # Recovers codebook to 3d.
-    if p.low_rank_codebook and p.num_groups == 1:
-      codebook = self.theta.random_codebook[:, jnp.newaxis, :]
-    else:
-      codebook = self.theta.random_codebook
-
-    if p.normalize_codebook:
-      codebook = self._l2_normalize(codebook, -1)
+    codebook = self._get_codebook()
 
     q, c, onehot = quantize_vector(proj_vec, codebook)
     q = jnp.reshape(q, [batch_size, time_steps, dim])
@@ -219,6 +227,16 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
         codebook_num_covered_codes=codebook_num_covered_codes,
         pplx=pplx,
         entropy=entropy)
+
+  def look_up(self, z_codes):
+    """Looks up latent vectors [B, T, D] by z_codes [B, T, G]."""
+    p = self.hparams
+    b, t = z_codes.shape[:2]
+    latent = jnp.einsum('btgc,cgd->btgd',
+                        jax.nn.one_hot(z_codes, p.num_latent_classes),
+                        self._get_codebook())
+    # Stops the gradient to keep the codebook frozen.
+    return jax.lax.stop_gradient(jnp.reshape(latent, [b, t, -1]))
 
 
 class VectorQuantizer(base_layer.BaseLayer):
