@@ -993,14 +993,8 @@ class DistributedShampoo(BaseOptimizer):
       clip_by_scaled_gradient_norm: Clip by scaled gradient norm (if not None).
       best_effort_shape_interpretation: Best effort shape interpretation to
         coalesce dimensions.
-      shard_optimizer_states: Shard optimizer states, used by
-        ShardedDistributedShampoo (Do not explicitly set this).
-      statistics_partition_spec: PartitionSpec used by ShardedDistributedShampoo
-        (Do not explicitly set this).
       tensor_split_dims_mapping: Sharding information for statistics and
         preconditioner matrices.
-      preconditioner_partition_spec: PartitionSpec used by
-        ShardedDistributedShampoo (Do not explicitly set this).
       tensor_split_dims_mapping_for_inverse_pth_root: Sharding information for
         preconditioner matrices.
       best_effort_memory_usage_reduction: Experimental mode: Best effort memory
@@ -1026,11 +1020,8 @@ class DistributedShampoo(BaseOptimizer):
     skip_preconditioning_dim_size_gt: int = 4096
     clip_by_scaled_gradient_norm: Optional[float] = None
     best_effort_shape_interpretation: bool = True
-    shard_optimizer_states: bool = False
-    statistics_partition_spec: Optional[pjit.PartitionSpec] = None
     tensor_split_dims_mapping: Sequence[int] = dataclasses.field(
         default_factory=lambda: [-1, 1, -1])
-    preconditioner_partition_spec: Optional[pjit.PartitionSpec] = None
     tensor_split_dims_mapping_for_inverse_pth_root: Sequence[
         int] = dataclasses.field(default_factory=lambda: [-1, 1, -1])
     best_effort_memory_usage_reduction: bool = False
@@ -1072,6 +1063,12 @@ class DistributedShampoo(BaseOptimizer):
         moving_average_for_momentum=True,
         clip_by_scaled_gradient_norm=None)
 
+  def __init__(self, hparams: DistributedShampoo.HParams) -> None:
+    super().__init__(hparams)
+    self._shard_optimizer_states = False
+    self._statistics_partition_spec = None
+    self._preconditioner_partition_spec = None
+
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> optax.GradientTransformation:
     p = self._hparams
@@ -1092,9 +1089,9 @@ class DistributedShampoo(BaseOptimizer):
         exponent_override=p.exponent_override,
         batch_axis_name=p.batch_axis_name,
         num_devices_for_pjit=p.num_devices_for_pjit,
-        statistics_partition_spec=p.statistics_partition_spec,
-        preconditioner_partition_spec=p.preconditioner_partition_spec,
-        shard_optimizer_states=p.shard_optimizer_states,
+        statistics_partition_spec=self._statistics_partition_spec,
+        preconditioner_partition_spec=self._preconditioner_partition_spec,
+        shard_optimizer_states=self._shard_optimizer_states,
         inverse_failure_threshold=0.1,
         moving_average_for_momentum=p.moving_average_for_momentum,
         skip_preconditioning_dim_size_gt=p.skip_preconditioning_dim_size_gt,
@@ -1113,11 +1110,10 @@ class ShardedDistributedShampoo(DistributedShampoo):
 
   def __init__(self, hparams: DistributedShampoo.HParams) -> None:
     super().__init__(hparams)
-    self._hparams.shard_optimizer_states = True
-    self._hparams.statistics_partition_spec = pjit.PartitionSpec(
-        *self._sharded_axes(self._hparams.mesh_axis_names,
-                            self._hparams.tensor_split_dims_mapping))
-    self._hparams.preconditioner_partition_spec = pjit.PartitionSpec(
+    self._shard_optimizer_states = True
+    self._statistics_partition_spec = pjit.PartitionSpec(*self._sharded_axes(
+        self._hparams.mesh_axis_names, self._hparams.tensor_split_dims_mapping))
+    self._preconditioner_partition_spec = pjit.PartitionSpec(
         *self._sharded_axes(
             self._hparams.mesh_axis_names,
             self._hparams.tensor_split_dims_mapping_for_inverse_pth_root))
