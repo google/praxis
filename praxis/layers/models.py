@@ -102,8 +102,10 @@ def _compute_xent_loss_helper(
       fraction_of_correct_next_step_preds=(mean_acc, metric_weight),
       num_predictions=(num_preds, jnp.array(1.0, num_preds.dtype)),
   )
+  # The score for the sequence is the negative of the sum of per token cross
+  # entropy, which is the (weighted) sum of log probs on the tokens.
   per_example_output = NestedMap(
-      labels=labels, scores=predictions.per_sequence_xent)
+      labels=labels, scores=-predictions.per_sequence_xent)
   if return_predictions:
     per_example_output = predictions
   return metrics, per_example_output
