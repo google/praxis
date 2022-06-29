@@ -60,7 +60,7 @@ def collapse_and_remove_blanks(labels: jnp.ndarray,
 
   # Filter labels that aren't in the original sequence.
   maxlen = labels.shape[1]
-  seq_mask = sequence_mask(seq_length, maxlen=maxlen)
+  seq_mask = sequence_mask(seq_length, maxlen=maxlen, dtype=jnp.int32)
   label_mask = label_mask * seq_mask
 
   # remove repetitions from the labels
@@ -72,7 +72,7 @@ def collapse_and_remove_blanks(labels: jnp.ndarray,
 
   # Mask indexes based on sequence length mask.
   new_maxlen = maxlen
-  idx_mask = sequence_mask(new_seq_len, maxlen=new_maxlen)
+  idx_mask = sequence_mask(new_seq_len, maxlen=new_maxlen, dtype=jnp.int32)
 
   # Flatten everything and mask out labels to keep and sparse indices.
   flat_labels = jnp.reshape(ulabels, [-1])

@@ -532,18 +532,35 @@ def get_large_negative_number(dtype: jnp.dtype) -> JTensor:
   return jnp.asarray(-0.7 * dtype_max, dtype=dtype)
 
 
-def sequence_mask(lengths: jnp.ndarray, maxlen) -> JTensor:
-  """Creates sequence mask where 1s are valid positions and 0s are padded.
+def sequence_mask(lengths: jnp.ndarray,
+                  maxlen: int,
+                  dtype=jnp.bool_) -> JTensor:
+  """Creates a sequence mask where 1s are valid positions and 0s are padded.
 
   Args:
-    lengths: [batch_size, max_len], a int JTensor.
-    maxlen:  a Python int.
+    lengths: An int JTensor.
+    maxlen: A Python int.
+    dtype: Output data type.
 
   Returns:
-    [batch_size, max_len] of 0/1 JTensor where 1s are valid positions.
+    [..., maxlen] of 0/1 JTensor where 1s are valid positions.
   """
-  batch_size = lengths.shape[0]
-  a = jnp.ones([batch_size, maxlen])
-  b = jnp.cumsum(a, axis=-1)
-  c = jnp.less_equal(b, lengths[:, jnp.newaxis]).astype(lengths.dtype)
-  return c
+  return (jnp.arange(maxlen)[jnp.newaxis, ...] <
+          lengths[..., jnp.newaxis]).astype(dtype)
+
+
+def sequence_paddings(lengths: jnp.ndarray,
+                      maxlen: int,
+                      dtype=jnp.float32) -> JTensor:
+  """Creates sequence paddings based on the lengths.
+
+  Args:
+    lengths: An integer JTensor.
+    maxlen: A Python int.
+    dtype: Output data type.
+
+  Returns:
+    A 0/1 JTensor of shape [..., maxlen], in which 1 indicates paddings.
+  """
+  return (jnp.arange(maxlen)[jnp.newaxis, ...] >=
+          lengths[..., jnp.newaxis]).astype(dtype)

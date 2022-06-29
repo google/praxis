@@ -155,5 +155,19 @@ class PyUtilsTest(test_utils.TestCase):
     jax_number = py_utils.get_large_negative_number(dtype)
     self.assertDtypesMatch(jax_number, dtype)
 
+  @parameterized.parameters(jnp.int32, jnp.float32, jnp.bool_)
+  def test_sequence_mask(self, dtype):
+    lengths = np.array([0, 1, 2, 3])
+    mask = py_utils.sequence_mask(lengths, maxlen=4, dtype=dtype)
+    expected = np.tri(4, k=-1, dtype=dtype)
+    self.assertAllClose(mask, expected)
+
+  @parameterized.parameters(jnp.int32, jnp.float32, jnp.bool_)
+  def test_sequence_paddings(self, dtype):
+    lengths = np.array([0, 1, 2, 3])
+    paddings = py_utils.sequence_paddings(lengths, maxlen=4, dtype=dtype)
+    expected = (1 - np.tri(4, k=-1)).astype(dtype)
+    self.assertAllClose(paddings, expected)
+
 if __name__ == '__main__':
   absltest.main()
