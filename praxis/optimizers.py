@@ -2158,9 +2158,10 @@ class DynamicAccumulator(BaseOptimizer):
     if p.min_accum_weight <= 0.0:
       raise ValueError('Set positive `p.min_accum_weight`.')
 
-    if p.optimizer_tpl.lr_schedule is None:
-      p.optimizer_tpl.lr_schedule = p.lr_schedule
-    self.base_optimizer = instantiate(p.optimizer_tpl)
+    optimizer_tpl = p.optimizer_tpl.clone()
+    if optimizer_tpl.lr_schedule is None:
+      optimizer_tpl.lr_schedule = p.lr_schedule
+    self.base_optimizer = instantiate(optimizer_tpl)
 
   def _get_raw_grad_transformation(self, lr: optax.Schedule):
     p = self._hparams
