@@ -600,8 +600,9 @@ class BaseParameterizable:
       hparams: The dataclasses-like instance used to configure this class
         instance.
     """
-    self._hparams = hparams.clone(
-    )  # TODO(b/228403686): Remove clone after Fidl.
+    # TODO(b/228403686): Remove clone after Fiddle integration.
+    self._hparams = hparams.clone()
+    self._hparams.freeze()
 
   @property
   def hparams(self) -> BaseParameterizable.HParams:
