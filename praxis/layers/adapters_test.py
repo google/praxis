@@ -52,8 +52,6 @@ class AdaptersTest(test_utils.TestCase):
         num_tasks=num_tasks)
     layer = instantiate(layer)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = layer.init(prng_key)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -65,6 +63,8 @@ class AdaptersTest(test_utils.TestCase):
     context_p = base_layer.JaxContext.HParams(do_eval=True)
 
     with base_layer.JaxContext.new_context(hparams=context_p):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = layer.init(prng_key, inputs, tasks=tasks)
       output = layer.apply(initial_vars, inputs, tasks=tasks)
 
     tf_p = layers.MultitaskAdapterEinsumLayer.Params().Set(
@@ -103,8 +103,6 @@ class AdaptersTest(test_utils.TestCase):
         norm_tpl=normalizations.BatchNorm.HParams())
     layer = instantiate(layer)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = layer.init(prng_key)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -114,6 +112,9 @@ class AdaptersTest(test_utils.TestCase):
     context_p = base_layer.JaxContext.HParams(do_eval=True)
 
     with base_layer.JaxContext.new_context(hparams=context_p):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = layer.init(
+          prng_key, inputs, paddings=paddings, tasks=tasks)
       output = layer.apply(initial_vars, inputs, paddings=paddings, tasks=tasks)
     self.assertEqual(output.shape, inputs.shape)
 
@@ -133,8 +134,6 @@ class AdaptersTest(test_utils.TestCase):
         norm_tpl=normalizations.BatchNorm.HParams())
     layer = instantiate(layer)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = layer.init(prng_key)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -143,6 +142,8 @@ class AdaptersTest(test_utils.TestCase):
     context_p = base_layer.JaxContext.HParams(do_eval=True)
 
     with base_layer.JaxContext.new_context(hparams=context_p):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = layer.init(prng_key, inputs, paddings=paddings)
       output = layer.apply(initial_vars, inputs, paddings=paddings)
     self.assertEqual(output.shape, inputs.shape)
 

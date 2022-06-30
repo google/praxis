@@ -56,8 +56,6 @@ class ConformerTest(test_utils.TestCase):
         model_dims=model_dims,
         atten_num_heads=atten_num_heads)
     conformer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = conformer.init(prng_key)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -73,6 +71,8 @@ class ConformerTest(test_utils.TestCase):
     context_p = base_layer.JaxContext.HParams(do_eval=True)
 
     with base_layer.JaxContext.new_context(hparams=context_p):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = conformer.init(prng_key, inputs, paddings)
       output = conformer.apply(initial_vars, inputs, paddings)
     # Test whether tf Conformer layer returns the same output
     # Modify initial_vars to use TF compatible params

@@ -69,8 +69,6 @@ class BregmanTest(test_utils.TestCase):
         end_step=1,
         constant_lr_schedule=constant_lr_schedule)
     layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = layer.init(prng_key)
     if activation == 'SOFTMAX':
       npy_input = np.random.random([16] + p.input_dims).astype('float32')
       npy_input = npy_input / np.sum(npy_input, axis=-1, keepdims=True)
@@ -78,17 +76,20 @@ class BregmanTest(test_utils.TestCase):
       npy_input = np.random.normal(1.0, 0.5,
                                    [16] + p.input_dims).astype('float32')
     inputs = jnp.asarray(npy_input)
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = layer.init(prng_key, inputs)
 
     @jax.jit
     def comp(theta, inputs):
       with base_layer.JaxContext.new_context():
-        return layer.apply(theta, inputs, mutable=True)
+        return layer.apply(theta, inputs, mutable=[NON_TRAINABLE])
 
     (outputs, coefficients), updated_vars = comp(initial_vars, inputs)
     self.assertAllClose(outputs, inputs, atol=1e-5)
 
     with base_layer.JaxContext.new_context():
-      layer = layer.bind(initial_vars, mutable=True)
+      layer = layer.bind(initial_vars, mutable=[NON_TRAINABLE])
     initial_vars = py_utils.NestedMap.FromNestedDict(
         initial_vars['non_trainable'])
     init_components = initial_vars.components
@@ -114,14 +115,14 @@ class BregmanTest(test_utils.TestCase):
         start_step=0,
         end_step=1)
     layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = layer.init(prng_key)
     npy_input = np.random.normal(1.0, 0.5,
                                  [16] + p.input_dims).astype('float32')
     inputs = jnp.asarray(npy_input)
 
     with base_layer.JaxContext.new_context():
-      layer = layer.bind(initial_vars, mutable=True)
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = layer.init(prng_key, inputs)
+      layer = layer.bind(initial_vars, mutable=[NON_TRAINABLE])
     mean = jnp.zeros((1, 3))
     components = jnp.eye(3)
     coefficients_grad = layer.coefficients_grad_fn(inputs, components, mean,

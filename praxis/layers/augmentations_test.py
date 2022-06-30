@@ -25,6 +25,8 @@ from praxis import test_utils
 from praxis.layers import augmentations
 
 instantiate = base_layer.instantiate
+PARAMS = base_layer.PARAMS
+RANDOM = base_layer.RANDOM
 to_np = test_utils.to_np
 
 
@@ -38,14 +40,17 @@ class AugmentationsTest(test_utils.TestCase):
     p = augmentations.MaskedLmDataAugmenter.HParams(
         name='mlm', vocab_size=32000, mask_token_id=0)
     layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=12345)
-    prng_key, compute_key = jax.random.split(prng_key)
-    initial_vars = layer.init(prng_key)
     inputs = jnp.arange(10, dtype=jnp.int32)
     paddings = jnp.array([0, 0, 0, 0, 0, 0, 0, 0, 1.0, 1.0], dtype=jnp.float32)
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=12345)
+      prng_key, compute_key = jax.random.split(prng_key)
+      initial_vars = layer.init({
+          PARAMS: prng_key,
+          RANDOM: compute_key
+      }, inputs, paddings)
       augmented_ids, augmented_pos = layer.apply(
-          initial_vars, inputs, paddings, rngs={'random': compute_key})
+          initial_vars, inputs, paddings, rngs={RANDOM: compute_key})
     logging.info('augmented_ids: %s', augmented_ids)
     logging.info('augmented_pos: %s', augmented_pos)
     expected_ids = np.array([0, 1, 0, 3, 4, 5, 0, 7, 8, 9])
@@ -57,14 +62,17 @@ class AugmentationsTest(test_utils.TestCase):
     p = augmentations.MaskedLmDataAugmenter.HParams(
         name='mlm', vocab_size=32000, mask_token_id=0)
     layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, compute_key = jax.random.split(prng_key)
-    initial_vars = layer.init(prng_key)
     inputs = jnp.arange(100, dtype=jnp.int32)
     paddings = jnp.zeros_like(inputs).astype(jnp.float32)
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, compute_key = jax.random.split(prng_key)
+      initial_vars = layer.init({
+          PARAMS: prng_key,
+          RANDOM: compute_key
+      }, inputs, paddings)
       augmented_ids, augmented_pos = layer.apply(
-          initial_vars, inputs, paddings, rngs={'random': compute_key})
+          initial_vars, inputs, paddings, rngs={RANDOM: compute_key})
     logging.info('augmented_ids: %s', np.array_repr(augmented_ids))
     logging.info('augmented_pos: %s', np.array_repr(augmented_pos))
     np.set_printoptions(threshold=np.inf)
