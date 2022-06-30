@@ -61,6 +61,17 @@ class DecoderUtilsTest(test_utils.TestCase):
     output_ids = decoder_utils.gather_output_id(long_output_ids, topk_indices)
     self.assertArraysEqual(output_ids, np.array([[0, 2, 1, 3]], dtype=np.int32))
 
+  def test_gather_logprobs(self):
+    logprobs = jnp.array(
+        [[[1, 2, 4, 0], [2, 1, 3, 0], [3, 2, 3, 4]],
+         [[4, 5, 2, 1], [1, 3, 4, 4], [4, 3, 3, 2]],],
+        dtype=np.float32)
+    hyp_ids = jnp.array([[1, 0, 1], [2, 1, 0]], dtype=np.int32)
+    ids = jnp.array([[2, 3, 1], [1, 1, 2]], dtype=np.int32)
+    output_logprobs = decoder_utils.gather_logprobs(logprobs, hyp_ids, ids)
+    self.assertArraysEqual(output_logprobs, np.array(
+        [[3, 0, 1], [3, 3, 2]], dtype=np.float32))
+
   def test_right_align_tensors(self):
     long_output_ids = jnp.array(
         [[5, 3, 2, 5, 0, 0], [0, 6, 7, 0, 0, 0], [1, 3, 9, 5, 6, 2]],

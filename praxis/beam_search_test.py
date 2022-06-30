@@ -74,13 +74,21 @@ class BeamSearchHelperTest(test_utils.TestCase):
     end_scores_norm = jnp.array([[2, 0]], dtype=np.float32)
     cur_scores_norm = jnp.array([[3, 1]], dtype=np.float32)
 
-    (output_ids, output_lengths, output_scores,
-     output_scores_norm) = beam_search.update_topk_scores_with_eos(
-         (end_ids, end_lengths, end_scores, end_scores_norm),
-         (cur_ids, cur_lengths, cur_scores, cur_scores_norm))
+    end_logprobs = jnp.array(
+        [[[-0.1, -1.1, 0., 0.], [-1.3, -2.3, 0., 0.]]], dtype=np.float32)
+    cur_logprobs = jnp.array(
+        [[[-0.1, -1.2, -1.1, 0.], [-1., -2., -0.3, 0.]]], dtype=np.float32)
+
+    (output_ids, output_lengths, output_scores, output_scores_norm,
+     output_logprobs) = beam_search.update_topk_scores_with_eos(
+         (end_ids, end_lengths, end_scores, end_scores_norm, end_logprobs),
+         (cur_ids, cur_lengths, cur_scores, cur_scores_norm, cur_logprobs))
 
     self.assertArraysEqual(
         output_ids, np.array([[[0, 1, 2, 3], [0, 1, 0, 0]]], dtype=np.int32))
+    self.assertArraysEqual(
+        output_logprobs, np.array(
+            [[[-0.1, -1.2, -1.1, 0.], [-0.1, -1.1, 0., 0.]]], dtype=np.float32))
     self.assertArraysEqual(output_lengths, np.array([[4, 2]], dtype=np.int32))
     self.assertArraysEqual(output_scores, np.array([[2, 0]], dtype=np.float32))
     self.assertArraysEqual(output_scores_norm,
@@ -174,9 +182,10 @@ class BeamSearchTest(test_utils.TestCase):
     self.assertArraysEqual(
         results.logprobs,
         np.array([[
-            logprobs[3][4], logprobs[3][3] + logprobs[3][4],
-            logprobs[3][0] + logprobs[0][3] + logprobs[3][4],
-            logprobs[3][1] + logprobs[1][0] + logprobs[0][4]
+            [1., 1., logprobs[3][4], 1., 1.],
+            [1., 1., logprobs[3][3], logprobs[3][4], 1.],
+            [1., 1., logprobs[3][0], logprobs[0][3], logprobs[3][4]],
+            [1., 1., logprobs[3][1], logprobs[1][0], logprobs[0][4]]
         ]],
                  dtype=np.float32))
 

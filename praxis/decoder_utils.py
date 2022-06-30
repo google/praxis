@@ -38,7 +38,7 @@ def length_norm(t, length_norm_alpha) -> jnp.ndarray:
 
 def gather_output_id(long_output_ids: jnp.ndarray,
                      topk_indices: jnp.ndarray) -> jnp.ndarray:
-  """Gather output ids from long topk ouput ids.
+  """Gather output ids from long topk output ids.
 
   Args:
     long_output_ids: The first TopK indices from [batch_size, beam_size
@@ -54,6 +54,28 @@ def gather_output_id(long_output_ids: jnp.ndarray,
   output_id = jnp.einsum('bt,bkt->bk', long_output_ids.astype(jnp.int32),
                          one_hot)
   return output_id.astype(jnp.int32)
+
+
+def gather_logprobs(logprobs: jnp.ndarray,
+                    hyp_ids: jnp.ndarray,
+                    ids: jnp.ndarray) -> jnp.ndarray:
+  """Gather logprobs from output ids.
+
+  Args:
+    logprobs: The log probability of shape [batch_size, beam_size, vocab_size].
+    hyp_ids: The hyp ids of shape [batch_size, beam_size]
+    ids: The output ids of shape [batch_size, beam_size].
+
+  Returns:
+    Final output log prob of shape [batch_size, beam_size].
+  """
+  new_logprobs = jax.vmap(
+      lambda s, i: jnp.take(s, i, axis=0), in_axes=0, out_axes=0)(
+          logprobs, hyp_ids)
+  one_hot = jax.nn.one_hot(
+      ids, logprobs.shape[-1], dtype=logprobs.dtype)
+  output_logprobs = jnp.einsum('bkv,bkv->bk', new_logprobs, one_hot)
+  return output_logprobs
 
 
 def two_stage_topk(

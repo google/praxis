@@ -14,11 +14,10 @@
 # limitations under the License.
 
 """Definition of specific models."""
-
 from typing import Any, Dict, Sequence, Tuple
 
-import jax
 from absl import logging
+import jax
 from jax import numpy as jnp
 from praxis import asserts
 from praxis import base_input
@@ -202,7 +201,7 @@ class LanguageModel(base_model.BaseModel):
       input_batch: The input batch, with fields `.ids` and `.paddings`. It may
         have an optional `.prefix_lengths` field indicating the lengths of
         prefixes in the ids used as decoding inputs. Optional `.suffix` for the
-        suffix_ids with shape [num_suffix, suffix_length]. Optional 
+        suffix_ids with shape [num_suffix, suffix_length]. Optional
         `.suffix_lengths` of shape [num_suffix] indicating the lengths of the
         suffixes.
 
@@ -345,6 +344,7 @@ class LanguageModel(base_model.BaseModel):
         # Pad to full-sequence length.
         self.lm.transform_decode_state(
             decoder_utils.pad_state_fn(state_padding_size))
+      # XXX not this one
       result = sample_decode.sample_decode(
           self,
           extend_step_fn,
@@ -472,7 +472,7 @@ class SequenceModel(base_model.BaseModel):
         amount ofprob mass to all other tokens.
     """
     model: BaseHParams = sub_config_field(
-        transformer_models.TransformerLm.HParams)
+        transformer_models.TransformerEncoderDecoder.HParams)
     return_predictions: bool = False
     decoder: DecoderHParams = sub_config_field(GreedyDecoderHParams)
     label_smoothing_prob: float = 0.0
@@ -547,31 +547,64 @@ class SequenceModel(base_model.BaseModel):
         int ids with the decoded output) as well as the decoded length.
     """
     p = self.hparams
+    if not isinstance(p.decoder, DecoderHParams):
+      raise ValueError('p.decoder must be DecoderHParams type, but it is a '
+                       f'type of {type(p.decoder)}')
     if p.decoder.seqlen <= 0:
       raise ValueError('Must set p.decoder.seqlen > 0, current value = '
                        f'{p.decoder.seqlen}')
     batch_size = input_batch.tgt.ids.shape[0]
-
-    self.model(
-        inputs=input_batch.src.ids,
-        input_paddings=input_batch.src.paddings,
-        targets=input_batch.tgt.ids,
-        target_paddings=input_batch.tgt.paddings)
 
     def extend_step_fn(mdl, ids, segment_pos):
       del segment_pos
       xent = mdl.model.extend_step(ids)
       return xent.logits
 
-    result = sample_decode.greedy_decode(
-        self,
-        extend_step_fn,
-        input_batch.tgt.ids,
-        input_batch.tgt.paddings,
-        p.decoder.seqlen,
-        eos_id=p.decoder.eos_id)
-    # Prefix lengths are not needed for sequence model decoding.
-    del result.prefix_lengths
+    def transform_decode_state_fn(mdl, transform_fn):
+      mdl.model.transform_decode_state(transform_fn)
+
+    # Flat beam search doesn't work yet.
+    if isinstance(p.decoder, FlatBeamSearchHParams):
+      raise NotImplementedError('flat beam search not supported')
+    elif isinstance(p.decoder, BeamSearchHParams):
+      assert not p.decoder.fprop_for_prefix
+      start_time_step = 0
+      # Prefix decoding is not fully supported.
+      # This fprop_fn is currently used for initializing the decoder states.
+      def fprop_fn(mdl, ids, paddings):
+        mdl.model(
+            inputs=input_batch.src.ids,
+            input_paddings=input_batch.src.paddings,
+            targets=ids,
+            target_paddings=paddings,
+            start_time_step=start_time_step)
+      fprop_input_ids = input_batch.tgt.ids[:, :1]
+      fprop_input_paddings = jnp.ones(
+          (batch_size, 1), input_batch.tgt.paddings.dtype)
+      result = beam_search.beam_search(self, extend_step_fn, fprop_fn,
+                                       transform_decode_state_fn,
+                                       fprop_input_ids, fprop_input_paddings,
+                                       p.decoder)
+    elif isinstance(p.decoder, SampleDecoderHParams):
+      raise NotImplementedError('sample decode not supported')
+    elif isinstance(p.decoder, GreedyDecoderHParams):
+      self.model(
+          inputs=input_batch.src.ids,
+          input_paddings=input_batch.src.paddings,
+          targets=input_batch.tgt.ids,
+          target_paddings=input_batch.tgt.paddings)
+      result = sample_decode.greedy_decode(
+          self,
+          extend_step_fn,
+          input_batch.tgt.ids,
+          input_batch.tgt.paddings,
+          p.decoder.seqlen,
+          eos_id=p.decoder.eos_id)
+    else:
+      # Needs to define a decoding algorithm.
+      raise NotImplementedError(
+          f'Decoding algorithm {type(p.decoder)} is not implemented.')
+
     result.update(input_batch)
     if hasattr(result, 'eval_sample_weights'):
       num_decoded = jnp.sum(result.eval_sample_weights)
@@ -599,20 +632,25 @@ class SequenceModel(base_model.BaseModel):
     decode_out.output_ids = decode_out.output_ids[:, 0, :]
     decode_out.decode_lengths = decode_out.decode_lengths[:, 0]
     decode_out.original_lengths = decode_out.original_lengths[:, 0]
-    decode_out.logprobs = decode_out.logprobs[:, 0, :]
+    decode_out.logprobs = decode_out.logprobs[:, :]
     decoded_strs = input_obj.ids_to_strings(
         decode_out.output_ids, decode_out.decode_lengths, key='tgt')
     source_lengths = jnp.sum(
         1.0 - decode_out.src.paddings, axis=1).astype(jnp.int32)
     source_strs = input_obj.ids_to_strings(
         decode_out.src.ids, source_lengths, key='src')
+    target_lengths = jnp.sum(
+        1.0 - decode_out.tgt.paddings, axis=1).astype(jnp.int32)
     target_strs = input_obj.ids_to_strings(
-        decode_out.tgt.ids, decode_out.original_lengths, key='tgt')
+        decode_out.tgt.ids, target_lengths, key='tgt')
     ret = list()
     for idx, decoded_str in enumerate(decoded_strs):
       if (hasattr(decode_out, 'eval_sample_weights') and
           not decode_out.eval_sample_weights[idx]):
         continue
+      logging.info('SRC: %s\n', source_strs[idx])
+      logging.info('TGT: %s\n', target_strs[idx])
+      logging.info('OUT: %s\n', decoded_str)
       ret.append((source_strs[idx], {
           'source': source_strs[idx],
           'decoded': decoded_str,

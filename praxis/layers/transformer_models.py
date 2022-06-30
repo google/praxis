@@ -1265,6 +1265,11 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
     return self.compute_loss(output, labels)
 
+  def transform_decode_state(
+      self, transform_fn: base_layer.DecodeStateTransformFn) -> None:
+    """Transforms all decode state variables based on transform_fn."""
+    self.decoder.transform_decode_state(transform_fn)
+
   def init_states(self, inputs: JTensor, input_paddings: JTensor, *args: Any,
                   **kwargs: Any) -> None:
     """Initialize the cache for autoregressive decoding.
