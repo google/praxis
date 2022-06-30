@@ -173,7 +173,7 @@ class PyUtilsTest(test_utils.TestCase):
       ('_numpy', np),
       ('_jax_numpy', jnp),
   )
-  def test_flatten_axis(self, np_module):
+  def test_tree_unstack(self, np_module):
     batch_axis, batch_size = 0, 8
     tree = py_utils.NestedMap(
         a=np_module.reshape(np_module.arange(batch_size), (batch_size, 1)),
@@ -183,7 +183,7 @@ class PyUtilsTest(test_utils.TestCase):
         ),
     )
 
-    flat_trees = py_utils.flatten_axis(batch_axis, tree)
+    flat_trees = py_utils.tree_unstack(tree, batch_axis)
     self.assertLen(flat_trees, batch_size)
 
     # Merge tree back

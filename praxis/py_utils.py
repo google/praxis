@@ -566,14 +566,14 @@ def sequence_paddings(lengths: jnp.ndarray,
           lengths[..., jnp.newaxis]).astype(dtype)
 
 
-def flatten_axis(axis: int, tree: Any) -> Sequence[Any]:
+def tree_unstack(tree: Any, axis: int) -> Sequence[Any]:
   """Extracts an axis' dimension to the list dimension of the output.
 
   Args:
-    axis: int, the axis to extract into the list dimension. All leafs in the
-      pytree must have this dimension and must have the same shape.
     tree: PyTree which must have the above axis dimension with same size for
       all leaf nodes. All leafs must be one of (np.ndarray, jnp.ndarray) types.
+    axis: int, the axis to extract into the list dimension. All leafs in the
+      pytree must have this dimension and must have the same shape.
 
   Returns:
     A list of PyTrees with the `axis` dimension extracted. I.e., if
