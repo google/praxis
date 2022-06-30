@@ -216,8 +216,13 @@ class Learner(base_hyperparams.BaseParameterizable):
           lambda x: jnp.where(valid_step, x, jnp.zeros_like(x)),
           transformed_grad)
       # Keep the old state if the step is invalid.
-      new_states = jax.tree_map(lambda x, y: jnp.where(valid_step, x, y),
-                                new_states, states)
+      def _update(x, y):
+        if not py_utils.is_optax_masked_node(
+            x) and not py_utils.is_optax_masked_node(y):
+          return jnp.where(valid_step, x, y)
+        return x
+      new_states = jax.tree_map(_update, new_states, states,
+                                is_leaf=py_utils.is_optax_masked_node)
     return transformed_grad, new_states
 
   def apply_gradient(
@@ -421,6 +426,12 @@ class MultiOptimizerLearner(Learner):
           lambda x: jnp.where(valid_step, x, jnp.zeros_like(x)),
           transformed_grad)
       # Keep the old state if the step is invalid.
-      new_states = jax.tree_map(lambda x, y: jnp.where(valid_step, x, y),
-                                new_states, states)
+      def _update(x, y):
+        if not py_utils.is_optax_masked_node(
+            x) and not py_utils.is_optax_masked_node(y):
+          return jnp.where(valid_step, x, y)
+        return x
+
+      new_states = jax.tree_map(
+          _update, new_states, states, is_leaf=py_utils.is_optax_masked_node)
     return transformed_grad, new_states

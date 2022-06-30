@@ -117,6 +117,8 @@ class LearnersTest(test_utils.TestCase):
     grad_tx = learner_instance.get_grad_tx(var_weight_hparams)
 
     opt_states_pspec = grad_tx.init_partition_spec(var_weight_hparams)
+    # Due to a new optax update, chained pytrees are masked.
+    opt_states_pspec = opt_states_pspec.inner_state
     logging.info('opt_states_pspec=%s', opt_states_pspec)
 
     # opt_states = (
@@ -439,16 +441,18 @@ class LearnersTest(test_utils.TestCase):
     grad_tx_single = learner_instance_single.get_grad_tx(
         var_weight_hparams=old_vars)
     partition_spec = grad_tx.init_partition_spec(old_vars)
+    # Due to a new optax update, chained pytrees are masked.
+    partition_spec = partition_spec.inner_state
     partition_spec_single = grad_tx_single.init_partition_spec(old_vars)
     # Assert that the length of partition spec is the same as the total
     # auxiliary optimizers plus 1 (for the primary optimizer).
     self.assertLen(partition_spec,
                    len(learner_instance._auxiliary_optimizers) + 1)
     # Optimizers are chained as l1 - l2 - optimizer update - weight_decay.
-    for k in partition_spec_single[2]._fields:
+    for k in partition_spec_single[0][2]._fields:
       for p in partition_spec:
         tf.nest.assert_same_structure(
-            getattr(p[2], k), getattr(partition_spec_single[2], k))
+            getattr(p[0][2], k), getattr(partition_spec_single[0][2], k))
 
   def test_vectorized_prefix(self):
 
@@ -500,22 +504,24 @@ class LearnersTest(test_utils.TestCase):
     grad_tx = learner_instance.get_grad_tx(var_weight_hparams=var_hparams)
     partition_spec = grad_tx.init_partition_spec(var_hparams)
     # Optimizers are chained as l1 - l2 - optimizer update - weight_decay.
+    # Due to a new optax update, chained pytrees are masked.
     opt_idx = 2
-    self.assertEqual(partition_spec['p#2#i-1'][opt_idx].a.shape, ())
-    self.assertEqual(partition_spec['p#2#i-1'][opt_idx].a.repeat_prefix, [2])
+    pspec_1 = partition_spec['p#2#i-1'].inner_state
+    pspec_2 = partition_spec[opt_vec.NO_PREFIX_KEY].inner_state
+    pspec_3 = partition_spec['p#2.2#tsdata,smdl.'].inner_state
+    self.assertEqual(pspec_1[opt_idx].a.shape, ())
+    self.assertEqual(pspec_1[opt_idx].a.repeat_prefix, [2])
     self.assertEqual(
-        partition_spec['p#2#i-1'][opt_idx].a.repeat_prefix_split_dims_mapping,
+        pspec_1[opt_idx].a.repeat_prefix_split_dims_mapping,
         [-1])
-    self.assertEqual(partition_spec[opt_vec.NO_PREFIX_KEY][opt_idx].b.shape,
+    self.assertEqual(pspec_2[opt_idx].b.shape,
                      (2,))
     self.assertEmpty(
-        partition_spec[opt_vec.NO_PREFIX_KEY][opt_idx].b.repeat_prefix or [])
-    self.assertEqual(partition_spec['p#2.2#tsdata,smdl.'][opt_idx].c.shape, ())
-    self.assertEqual(
-        partition_spec['p#2.2#tsdata,smdl.'][opt_idx].c.repeat_prefix, [2, 2])
-    self.assertEqual(
-        partition_spec['p#2.2#tsdata,smdl.']
-        [opt_idx].c.repeat_prefix_split_dims_mapping, [('data', 'mdl'), None])
+        pspec_2[opt_idx].b.repeat_prefix or [])
+    self.assertEqual(pspec_3[opt_idx].c.shape, ())
+    self.assertEqual(pspec_3[opt_idx].c.repeat_prefix, [2, 2])
+    self.assertEqual(pspec_3[opt_idx].c.repeat_prefix_split_dims_mapping,
+                     [('data', 'mdl'), None])
 
     state = grad_tx.init(variables)
     # Computed update is 0 + state, and state is sum of each variable.
@@ -588,23 +594,21 @@ class LearnersTest(test_utils.TestCase):
       grad_tx = learner_instance.get_grad_tx(var_weight_hparams=var_hparams)
       partition_spec = grad_tx.init_partition_spec(var_hparams)
       # Optimizers are chained as l1 - l2 - optimizer update - weight_decay.
+      # Due to a new optax update, chained pytrees are masked.
       opt_idx = 2
-      self.assertEqual(partition_spec['p#2#i-1'][opt_idx].a.shape, ())
-      self.assertEqual(partition_spec['p#2#i-1'][opt_idx].a.repeat_prefix, [2])
-      self.assertEqual(
-          partition_spec['p#2#i-1'][opt_idx].a.repeat_prefix_split_dims_mapping,
-          [-1])
-      self.assertEqual(partition_spec[opt_vec.NO_PREFIX_KEY][opt_idx].b.shape,
-                       (2,))
-      self.assertEmpty(
-          partition_spec[opt_vec.NO_PREFIX_KEY][opt_idx].b.repeat_prefix or [])
-      self.assertEqual(partition_spec['p#2.2#tsdata,smdl.'][opt_idx].c.shape,
-                       ())
-      self.assertEqual(
-          partition_spec['p#2.2#tsdata,smdl.'][opt_idx].c.repeat_prefix, [2, 2])
-      self.assertEqual(
-          partition_spec['p#2.2#tsdata,smdl.']
-          [opt_idx].c.repeat_prefix_split_dims_mapping, [('data', 'mdl'), None])
+      pspec_1 = partition_spec['p#2#i-1'].inner_state
+      pspec_2 = partition_spec[opt_vec.NO_PREFIX_KEY].inner_state
+      pspec_3 = partition_spec['p#2.2#tsdata,smdl.'].inner_state
+      self.assertEqual(pspec_1[opt_idx].a.shape, ())
+      self.assertEqual(pspec_1[opt_idx].a.repeat_prefix, [2])
+      self.assertEqual(pspec_1[opt_idx].a.repeat_prefix_split_dims_mapping,
+                       [-1])
+      self.assertEqual(pspec_2[opt_idx].b.shape, (2,))
+      self.assertEmpty(pspec_2[opt_idx].b.repeat_prefix or [])
+      self.assertEqual(pspec_3[opt_idx].c.shape, ())
+      self.assertEqual(pspec_3[opt_idx].c.repeat_prefix, [2, 2])
+      self.assertEqual(pspec_3[opt_idx].c.repeat_prefix_split_dims_mapping,
+                       [('data', 'mdl'), None])
 
       state = grad_tx.init(variables)
       # Computed update is 0 + state, and state is sum of each variable.

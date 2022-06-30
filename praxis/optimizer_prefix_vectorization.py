@@ -156,7 +156,7 @@ def group_by_repeat_prefix(variables: NestedMap,
     def _filter_one(v, p):
       if key == _get_var_param_repeat_prefix_key(p):
         return v
-      return ()
+      return optax.MaskedNode()
 
     return jax.tree_map(_filter_one, variables, var_hparams)
 

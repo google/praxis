@@ -284,6 +284,11 @@ def sharded_chain(
 
   Returns:
     A single chained ShardedGradientTransformation.
+
+  Raises:
+    ValueError: If the number of updates and states do not match.
+    ValueError: If attempting to `sharded_chain` an optimizer that does not have
+      an `init_partition_spec` defined.
   """
 
   def init_fn(params):
@@ -311,9 +316,11 @@ def sharded_chain(
         nmap = init_partition_spec(mdl_vars)
         partition_specs.append(nmap)
       else:
-        # Replicate the states.
-        partition_specs.append(optax.MaskedNode())
-    return tuple(partition_specs)
+        # Raise ValueError as we are attempting to sharded_chain an optimizer
+        # that does not have an `init_partition_spec` method defined.
+        raise ValueError('Attempting to use an optimizer in sharded_chain that '
+                         'does not have an init_partition_spec.')
+    return optax.MaskedState(inner_state=tuple(partition_specs))
 
   return ShardedGradientTransformation(
       init=init_fn,
@@ -620,7 +627,7 @@ def sharded_hero_lion(learning_rate_fn: optax.Schedule, beta1: float,
       init_partition_spec=init_partition_spec_fn)
 
 
-def apply_ema_weights(decay: float) -> optax.GradientTransformation:
+def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
   """Applies exponential moving average on weights.
 
   Note, this implementation averages the weight before optimization because
@@ -658,7 +665,34 @@ def apply_ema_weights(decay: float) -> optax.GradientTransformation:
 
     return updates, NestedMap(count=count_inc, ema=new_ema)
 
-  return optax.GradientTransformation(init=init_fn, update=update_fn)
+  def init_partition_spec_fn(params):
+    var_spec_flattened, _ = jax.tree_flatten(params)
+    assert var_spec_flattened
+    first_var = var_spec_flattened[0]
+    assert isinstance(first_var, WeightHParams)
+    mesh_shape = first_var.mesh_shape
+    def _infer_ema_pspec(x):
+      return WeightHParams(
+          shape=x.shape,
+          init=None,
+          dtype=x.dtype,
+          collections=None,
+          mesh_shape=mesh_shape,
+          tensor_split_dims_mapping=[-1] * len(x.shape))
+    return NestedMap(
+        count=WeightHParams(
+            shape=[],
+            init=None,
+            dtype=jnp.int32,
+            collections=None,
+            mesh_shape=mesh_shape,
+            tensor_split_dims_mapping=[]),
+        ema=jax.tree_map(_infer_ema_pspec, params))
+
+  return ShardedGradientTransformation(
+      init=init_fn,
+      update=update_fn,
+      init_partition_spec=init_partition_spec_fn)
 
 
 class BaseOptimizer(base_hyperparams.BaseParameterizable):
