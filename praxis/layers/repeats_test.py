@@ -33,6 +33,10 @@ BaseHParams = base_layer.BaseLayer.HParams
 SplitDimsMapping = base_layer.SplitDimsMapping
 
 instantiate = base_layer.instantiate
+PARAMS = base_layer.PARAMS
+NON_TRAINABLE = base_layer.NON_TRAINABLE
+SUMMARIES = base_layer.SUMMARIES
+AUX_LOSS = base_layer.AUX_LOSS
 
 
 class FeedForward(base_layer.BaseLayer):
@@ -90,41 +94,48 @@ class RepeatsTest(test_utils.TestCase):
     repeated_ffn = instantiate(p)
 
     k = jax.random.PRNGKey(123)
-    k, init_key = jax.random.split(k)
-    init_vars = repeated_ffn.init(init_key)
-    init_vars_shape = jax.tree_map(lambda x: x.shape, init_vars)
-    self.assertEqual(set(init_vars_shape), {'params', 'non_trainable'})
-
     k, input_random_key = jax.random.split(k)
     x = jax.random.uniform(input_random_key, shape=(4, 2))
 
-    _, updated_vars = repeated_ffn.apply(init_vars, x, mutable=True)
-    self.assertArraysEqual(updated_vars['non_trainable']['sub']['step'],
+    k, init_key = jax.random.split(k)
+    weight_hparams = repeated_ffn.abstract_init_with_metadata(init_key, x)
+    self.assertEqual(set(weight_hparams), {PARAMS, NON_TRAINABLE})
+    self.assertEqual(weight_hparams[PARAMS]['sub']['w'].shape, [2, 2])
+    self.assertEqual(weight_hparams[PARAMS]['sub']['w'].repeat_prefix, [5])
+    self.assertEqual(
+        weight_hparams[PARAMS]['sub']['w'].repeat_prefix_split_dims_mapping,
+        (-1,))
+
+    init_vars = repeated_ffn.init(init_key, x)
+    init_vars_shape = jax.tree_map(lambda x: x.shape, init_vars)
+    self.assertEqual(set(init_vars_shape), {PARAMS, NON_TRAINABLE})
+    self.assertEqual(init_vars_shape[PARAMS]['sub']['w'], (5, 2, 2))
+    self.assertEqual(init_vars_shape[NON_TRAINABLE]['sub']['step'], (5,))
+    self.assertArraysEqual(init_vars[NON_TRAINABLE]['sub']['step'],
+                           jnp.zeros((5,), dtype=jnp.int32))
+
+    _, updated_vars = repeated_ffn.apply(
+        init_vars, x, mutable=[NON_TRAINABLE, SUMMARIES, AUX_LOSS])
+    self.assertArraysEqual(updated_vars[NON_TRAINABLE]['sub']['step'],
                            jnp.ones((5,), dtype=jnp.int32))
 
     # Ensure top level variables all exist with the right shape.
     updated_vars_shape = jax.tree_map(lambda x: x.shape, updated_vars)
     self.assertEqual(
-        set(updated_vars_shape),
-        {'params', 'non_trainable', 'summaries', 'aux_loss'})
-    self.assertEqual(updated_vars_shape['params']['sub']['w'], (5, 2, 2))
-    self.assertEqual(updated_vars_shape['non_trainable']['sub']['step'], (5,))
-    self.assertEqual(updated_vars_shape['aux_loss']['sub']['z_loss'].value, ())
-    self.assertEqual(updated_vars_shape['aux_loss']['sub']['z_loss'].weight, ())
-    self.assertEqual(updated_vars['aux_loss']['sub']['z_loss'].value, 5.0)
-    self.assertEqual(updated_vars['aux_loss']['sub']['z_loss'].weight, 2.5)
+        set(updated_vars_shape), {NON_TRAINABLE, SUMMARIES, AUX_LOSS})
+    self.assertEqual(updated_vars_shape[NON_TRAINABLE]['sub']['step'], (5,))
+    self.assertEqual(updated_vars_shape[AUX_LOSS]['sub']['z_loss'].value, ())
+    self.assertEqual(updated_vars_shape[AUX_LOSS]['sub']['z_loss'].weight, ())
+    self.assertEqual(updated_vars[AUX_LOSS]['sub']['z_loss'].value, 5.0)
+    self.assertEqual(updated_vars[AUX_LOSS]['sub']['z_loss'].weight, 2.5)
 
     if unpack_summaries:
       self.assertEqual(
-          updated_vars_shape['summaries']['sub']['inputs_mean_scalar'], [(1,),
-                                                                         (1,),
-                                                                         (1,),
-                                                                         (1,),
-                                                                         (1,)])
+          updated_vars_shape[SUMMARIES]['sub']['inputs_mean_scalar'],
+          [(1,), (1,), (1,), (1,), (1,)])
     else:
       self.assertEqual(
-          updated_vars_shape['summaries']['sub']['inputs_mean_scalar'], (5,))
-
+          updated_vars_shape[SUMMARIES]['sub']['inputs_mean_scalar'], (5,))
 
     print(jax.tree_map(lambda x: x.shape, updated_vars))
 

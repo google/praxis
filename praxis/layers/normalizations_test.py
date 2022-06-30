@@ -78,20 +78,21 @@ class NormalizationsTest(test_utils.TestCase):
     test_layer_p = normalizations.BatchNorm.HParams(name='bn', decay=0.8, dim=8)
     layer = instantiate(test_layer_p)
 
-    prng_key = jax.random.PRNGKey(seed=1234)
-    prng_key, init_key = jax.random.split(prng_key)
-    # initial_vars[NON_TRAINABLE] has initialized moving_mean/variance.
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
-
     inputs = np.random.normal(1.5, 2.0, [2, 200, 8])
     paddings = np.zeros([2, 200])
     paddings[1, 1] = 1.0
 
     # JaxContext needed for `do_eval`.
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=1234)
+      prng_key, init_key = jax.random.split(prng_key)
+      # initial_vars[NON_TRAINABLE] has initialized moving_mean/variance.
+      initial_vars = layer.init(init_key, inputs, paddings)
+      logging.info('initial_vars: %s', initial_vars)
+      self.assertAllClose(
+          np.sum(initial_vars[NON_TRAINABLE]['moving_mean']), 0.0)
       output1, updated_variables = layer.apply(
-          initial_vars, inputs, paddings, mutable=True)
+          initial_vars, inputs, paddings, mutable=[NON_TRAINABLE, SUMMARIES])
     new_vars = updated_variables[NON_TRAINABLE]
     summaries = updated_variables[SUMMARIES]
 
@@ -125,20 +126,19 @@ class NormalizationsTest(test_utils.TestCase):
     test_layer_p = normalizations.BatchNorm.HParams(name='bn', decay=0.8, dim=1)
     layer = instantiate(test_layer_p)
 
-    prng_key = jax.random.PRNGKey(seed=123456)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    initial_vars[PARAMS]['beta'] = jnp.array([0.7])
-    initial_vars[PARAMS]['gamma'] = jnp.array([1.8])
-    logging.info('initial_vars: %s', initial_vars)
-
     inputs = np.random.normal(1.5, 2.0, [2, 200, 1])
     paddings = np.zeros([2, 200])
     paddings[1, 1] = 1.0
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123456)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, inputs, paddings)
+      initial_vars[PARAMS]['beta'] = jnp.array([0.7])
+      initial_vars[PARAMS]['gamma'] = jnp.array([1.8])
+      logging.info('initial_vars: %s', initial_vars)
       jax_output, updated_variables = layer.apply(
-          initial_vars, inputs, paddings, mutable=True)
+          initial_vars, inputs, paddings, mutable=[NON_TRAINABLE])
       del updated_variables
 
     tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars[PARAMS])
@@ -159,15 +159,15 @@ class NormalizationsTest(test_utils.TestCase):
     dim = 3
     p = normalizations.LayerNorm.HParams(name='jax_ln', dim=dim)
     layer_norm = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123456)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer_norm.init(init_key)
-    logging.info('LN initial_vars: %s', initial_vars)
-    initial_vars[PARAMS]['scale'] = jnp.array([scale] * dim, dtype=jnp.float32)
-    initial_vars[PARAMS]['bias'] = jnp.array([bias] * dim, dtype=jnp.float32)
     npy_input = np.random.normal(1.0, 0.5,
                                  [10, 10, 10, p.dim]).astype('float32')
     inputs = jnp.asarray(npy_input)
+    prng_key = jax.random.PRNGKey(seed=123456)
+    prng_key, init_key = jax.random.split(prng_key)
+    initial_vars = layer_norm.init(init_key, inputs)
+    logging.info('LN initial_vars: %s', initial_vars)
+    initial_vars[PARAMS]['scale'] = jnp.array([scale] * dim, dtype=jnp.float32)
+    initial_vars[PARAMS]['bias'] = jnp.array([bias] * dim, dtype=jnp.float32)
     outputs = layer_norm.apply(initial_vars, inputs)
     # Now test whether tf layer norm returns same output
     tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars[PARAMS])
@@ -188,13 +188,13 @@ class NormalizationsTest(test_utils.TestCase):
     p = normalizations.RmsNorm.HParams(
         name='jax_rmsn', dim=dim, direct_scale=False)
     rms_norm = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123456)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = rms_norm.init(init_key)
-    initial_vars[PARAMS]['scale'] = jnp.array([scale] * dim, dtype=jnp.float32)
     npy_input = np.random.normal(1.0, 0.5,
                                  [10, 10, 10, p.dim]).astype('float32')
     inputs = jnp.asarray(npy_input)
+    prng_key = jax.random.PRNGKey(seed=123456)
+    prng_key, init_key = jax.random.split(prng_key)
+    initial_vars = rms_norm.init(init_key, inputs)
+    initial_vars[PARAMS]['scale'] = jnp.array([scale] * dim, dtype=jnp.float32)
     outputs = rms_norm.apply(initial_vars, inputs)
     # Now test whether tf RMS norm returns same output.
     tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars[PARAMS])
@@ -241,14 +241,14 @@ class NormalizationsTest(test_utils.TestCase):
         epsilon=epsilon,
         fprop_dtype=fprop_dtype)
     group_norm = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123456)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = group_norm.init(init_key)
     npy_input = np.random.normal(1.0, 0.5, input_shape).astype(np.float32)
     inputs = jnp.asarray(npy_input, dtype=input_dtype)
     jax_paddings = paddings
     if jax_paddings is not None:
       jax_paddings = jnp.asarray(jax_paddings, dtype=input_dtype)
+    prng_key = jax.random.PRNGKey(seed=123456)
+    prng_key, init_key = jax.random.split(prng_key)
+    initial_vars = group_norm.init(init_key, inputs, paddings=jax_paddings)
     output = group_norm.apply(initial_vars, inputs, paddings=jax_paddings)
 
     # Now test whether tf layer norm returns same output.
