@@ -564,3 +564,36 @@ def sequence_paddings(lengths: jnp.ndarray,
   """
   return (jnp.arange(maxlen)[jnp.newaxis, ...] >=
           lengths[..., jnp.newaxis]).astype(dtype)
+
+
+def flatten_axis(axis: int, tree: Any) -> Sequence[Any]:
+  """Extracts an axis' dimension to the list dimension of the output.
+
+  Args:
+    axis: int, the axis to extract into the list dimension. All leafs in the
+      pytree must have this dimension and must have the same shape.
+    tree: PyTree which must have the above axis dimension with same size for
+      all leaf nodes. All leafs must be one of (np.ndarray, jnp.ndarray) types.
+
+  Returns:
+    A list of PyTrees with the `axis` dimension extracted. I.e., if
+      tree_leaf.shape[axis] == N, then len(returned_list) == N.
+  """
+  leaves = jax.tree_leaves(tree)
+  if not leaves:
+    return []
+
+  if not all(isinstance(leaf, (jnp.ndarray, np.ndarray)) for leaf in leaves):
+    raise ValueError('leaves must be either a pure numpy or jax ndarray')
+
+  axis_size = leaves[0].shape[axis]
+  if not all(
+      leaf.ndim > axis and leaf.shape[axis] == axis_size for leaf in leaves):
+    raise ValueError(f'all leaves must have x.ndim > {axis}'
+                     f' and x.shape[{axis}] == {axis_size}')
+
+  flat_pytrees = []
+  for i in range(axis_size):
+    flat_pytrees.append(jax.tree_map(lambda x: x.take(i, axis), tree))  # pylint: disable=cell-var-from-loop"
+
+  return flat_pytrees

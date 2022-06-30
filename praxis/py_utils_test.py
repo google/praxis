@@ -169,5 +169,39 @@ class PyUtilsTest(test_utils.TestCase):
     expected = (1 - np.tri(4, k=-1)).astype(dtype)
     self.assertAllClose(paddings, expected)
 
+  @parameterized.named_parameters(
+      ('_numpy', np),
+      ('_jax_numpy', jnp),
+  )
+  def test_flatten_axis(self, np_module):
+    batch_axis, batch_size = 0, 8
+    tree = py_utils.NestedMap(
+        a=np_module.reshape(np_module.arange(batch_size), (batch_size, 1)),
+        b=py_utils.NestedMap(
+            c=np_module.reshape(
+                np_module.arange(batch_size * 2 * 3), (batch_size, 2, 3)),
+        ),
+    )
+
+    flat_trees = py_utils.flatten_axis(batch_axis, tree)
+    self.assertLen(flat_trees, batch_size)
+
+    # Merge tree back
+    merged_tree = jax.tree_map(
+        lambda x: np_module.expand_dims(x, batch_axis), flat_trees[0])
+
+    def _concat_tree_with_batch(x_batch, y):
+      y_batch = np_module.expand_dims(y, batch_axis)
+      return np_module.concatenate((x_batch, y_batch), axis=batch_axis)
+
+    for other_tree in flat_trees[1:]:
+      merged_tree = jax.tree_map(
+          _concat_tree_with_batch, merged_tree, other_tree)
+
+    # Check all leaves are element-wise equal
+    for l1, l2 in zip(jax.tree_leaves(tree), jax.tree_leaves(merged_tree)):
+      self.assertArraysEqual(l1, l2)
+
+
 if __name__ == '__main__':
   absltest.main()
