@@ -20,7 +20,7 @@ Greedy decode is a special case for sample decode.
 """
 
 import functools
-from typing import Optional
+from typing import Optional, Union
 
 from flax import linen as nn
 import jax
@@ -360,6 +360,34 @@ def suffix_decode(model: base_layer.BaseLayer,
   return result
 
 
+def top_p_mask_logits(logits: JTensor, p: Union[float, JTensor]) -> JTensor:
+  """Adjust logits so that the smallest number of logits whose cumulative...
+
+  sum of probs adds up to (at least) p. The other logits are masked with a
+  large negative number.
+
+  Args:
+    logits: logits of shape [B, T].
+    p: a scalar.
+
+  Returns:
+    The masked logits.
+  """
+  if not isinstance(p, JTensor) and p >= 1.0:
+    return logits
+  batch_size = logits.shape[0]
+  # Ascending order. Cumsum will go through small numbers first, which is
+  # more numerically stable.
+  logits_sorted = jnp.sort(logits, axis=-1)
+  sorted_cum_probs = jnp.cumsum(
+      jax.nn.softmax(logits_sorted.astype(jnp.float32), axis=-1), axis=-1)
+  cutoff_idx = jnp.sum((sorted_cum_probs <= 1.0 - p).astype(jnp.int32), axis=-1)
+  cutoff_logit = logits_sorted[jnp.arange(batch_size), cutoff_idx]
+  logits = jnp.where(logits < jnp.expand_dims(cutoff_logit, -1),
+                     py_utils.get_large_negative_number(logits.dtype), logits)
+  return logits
+
+
 def sample_decode(model: base_layer.BaseLayer,
                   extend_step_fn: decoder_utils.ExtendStepFn,
                   transform_state_fn: Optional[decoder_utils.TransformStateFn],
@@ -370,6 +398,7 @@ def sample_decode(model: base_layer.BaseLayer,
                   seq_len: int,
                   num_samples: int,
                   k: int,
+                  p: Optional[Union[float, JTensor]] = None,
                   fprop_for_prefix: bool = False,
                   temperature: float = 1.0,
                   max_prefix_len: Optional[int] = None,
@@ -403,6 +432,8 @@ def sample_decode(model: base_layer.BaseLayer,
     num_samples: Number of samples.
     k: If nonzero, use top-k sampling, only selecting among the most likely k
       tokens at each step.
+    p: If not None, use the smallest number of logits whose cumulative sum of
+      probs adds up to (at least) p.
     fprop_for_prefix: Use one fprop for prefix.
     temperature: Temperature of sampling decoding.
     max_prefix_len: Python int or None, the max prefix length for decoding.
@@ -498,10 +529,8 @@ def sample_decode(model: base_layer.BaseLayer,
     step = val.step
     logits = extend_step_fn(model, val.output_ids[:, step], val.segment_pos)
     logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
-    # When step becomes prefix_length - 1, the new output has index beyond
-    # the known prefix.
-    # If prefix_length is 0, the condition is always False, so we take the
-    # decoded output rather than the prefix.
+    if p is not None:
+      logits = top_p_mask_logits(logits, p)
     if k > 1:
       new_ids = sample_from_topk(
           logits,
@@ -517,6 +546,10 @@ def sample_decode(model: base_layer.BaseLayer,
     else:
       new_ids = jnp.argmax(logits, axis=1)
 
+    # When step becomes prefix_length - 1, the new output has index beyond
+    # the known prefix.
+    # If prefix_length is 0, the condition is always False, so we take the
+    # decoded output rather than the prefix.
     # Selects prefix ids when step smaller than prefix_lengths when using
     # extend_step for prefix.
     if not fprop_for_prefix:
