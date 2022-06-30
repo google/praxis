@@ -647,9 +647,13 @@ def apply_ema_weights(decay: float) -> optax.GradientTransformation:
   def update_fn(updates, state, params):
     if params is None:
       raise ValueError('Params required for the EMA')
+
+    # https://github.com/tensorflow/tensorflow/blob/v2.9.1/tensorflow/python/training/moving_averages.py#L469
+    ema_decay = jnp.minimum(decay, (1. + state.count) / (10. + state.count))
+
     new_ema = jax.tree_map(
-        lambda old_v, new_v: old_v - (1. - decay) * (old_v - new_v), state.ema,
-        params)
+        lambda old_v, new_v: old_v - (1. - ema_decay) * (old_v - new_v),
+        state.ema, params)
     count_inc = state.count + jnp.array(1, jnp.int32)
 
     return updates, NestedMap(count=count_inc, ema=new_ema)
