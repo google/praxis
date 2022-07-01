@@ -260,7 +260,7 @@ class FullSoftmax(base_layer.BaseLayer):
         logits=logits.astype(inputs_dtype),
         log_probs=log_probs.astype(inputs_dtype),
         per_example_argmax=per_example_argmax.astype(inputs_dtype),
-        per_example_xent=per_example_xent.astype(inputs_dtype),
+        per_example_xent=per_example_xent.astype(jnp.float32),
         total_xent=total_xent.astype(inputs_dtype),
         total_weight=total_weight,
         avg_xent=(total_xent / (total_weight + 1e-6)).astype(inputs_dtype))
@@ -632,7 +632,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
         logits=logits.astype(inputs_dtype),
         log_probs=log_probs.astype(inputs_dtype),
         per_example_argmax=per_example_argmax.astype(inputs_dtype),
-        per_example_xent=per_example_xent.astype(inputs_dtype),
+        per_example_xent=per_example_xent.astype(jnp.float32),
         total_xent=total_xent.astype(inputs_dtype),
         # base_model.py _compute_xent_loss_helper uses avg_xent_weight if set,
         # this helper is currently used by LanguageModel only, if we have

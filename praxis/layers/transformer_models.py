@@ -1108,9 +1108,12 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
           class_weights,
           class_ids=class_ids,
           class_probabilities=class_probabilities)
-      per_token_xent = xent_output.per_example_xent * labels.class_weights
+      per_token_xent = (
+          xent_output.per_example_xent *
+          labels.class_weights.astype(jnp.float32))
       xent_output.per_token_xent = per_token_xent
-      xent_output.per_sequence_xent = jnp.sum(per_token_xent, -1)
+      xent_output.per_sequence_xent = jnp.sum(
+          per_token_xent, -1, dtype=jnp.float32)
 
       # Sum aux_loss and add to avg_xent.
       aux_loss = 0.0
