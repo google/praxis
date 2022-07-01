@@ -998,12 +998,12 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     softmax_params.input_dims = p.model_dims
     self.create_child('softmax', softmax_params)
 
-  def _encode(self,
-              inputs: JTensor,
-              input_paddings: JTensor,
-              input_segment_ids: Optional[JTensor] = None,
-              input_segment_pos: Optional[JTensor] = None,
-              input_segment_mask: Optional[JTensor] = None) -> JTensor:
+  def encode(self,
+             inputs: JTensor,
+             input_paddings: JTensor,
+             input_segment_ids: Optional[JTensor] = None,
+             input_segment_pos: Optional[JTensor] = None,
+             input_segment_mask: Optional[JTensor] = None) -> JTensor:
     """Apply the Transformer encoder to the source sequence.
 
     Args:
@@ -1196,8 +1196,8 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     batch, seq_length = inputs.shape
     _, target_seq_length = targets.shape
 
-    encoder_output = self._encode(inputs, input_paddings, input_segment_ids,
-                                  input_segment_pos, input_segment_mask)
+    encoder_output = self.encode(inputs, input_paddings, input_segment_ids,
+                                 input_segment_pos, input_segment_mask)
 
     if p.decoder_embedding_tpl is not None:
       # Targets have separate embedding params.

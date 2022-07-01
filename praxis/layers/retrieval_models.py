@@ -174,7 +174,7 @@ class Retro(transformer_models.TransformerEncoderDecoder):
     # TODO(yuancao): Handle paddings for neighbors.
     neighbor_paddings = jnp.zeros_like(chunk_neighbors, dtype=self.fprop_dtype)
     # [batch*num_chunks*num_neighbors, neighbor_length, dim]
-    neighbor_encodings = self._encode(chunk_neighbors, neighbor_paddings)
+    neighbor_encodings = self.encode(chunk_neighbors, neighbor_paddings)
     neighbor_encodings = jnp.reshape(
         neighbor_encodings,
         [batch, num_chunks, p.num_neighbors, p.neighbor_length, -1])
