@@ -1281,7 +1281,7 @@ class DotProductAttention(base_layer.BaseLayer):
             f'q batch size {q_b} is not divisible by state batch size {k_b}')
       key = jnp.repeat(key, q_b // k_b, axis=0)
       value = jnp.repeat(value, q_b // k_b, axis=0)
-    if atten_mask.shape[0] != 1 and atten_mask.shape[1] != q_b:
+    if atten_mask.shape[0] != 1 and atten_mask.shape[0] != q_b:
       assert atten_mask.shape[0] == k_b
       atten_mask = jnp.repeat(atten_mask, q_b // k_b, axis=0)
     # query is 3d.
