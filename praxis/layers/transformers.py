@@ -125,7 +125,6 @@ def compute_attention_masks_for_extend_step(
     time_step: JTensor,
     seq_len: int,
     segment_mask: Optional[JTensor] = None,
-    cross_inputs: Optional[JTensor] = None,
     cross_paddings: Optional[JTensor] = None,
     cross_segment_mask: Optional[JTensor] = None
 ) -> Tuple[JTensor, Union[JTensor, None]]:
@@ -136,7 +135,6 @@ def compute_attention_masks_for_extend_step(
     seq_len: Sequence length for generating causal mask.
     segment_mask: if not None, per step segment mask JTensor for this time step,
       of shape [B, 1, T].
-    cross_inputs: Source sequence JTensor of shape [B, S, D].
     cross_paddings: Source paddings JTensor of shape [B, S].
     cross_segment_mask: if not None, cross_segment_mask JTensor for this time
       step, of shape [B, 1, S].
@@ -146,7 +144,7 @@ def compute_attention_masks_for_extend_step(
       attention of shape [B/1, 1, 1, T].
     cross_attention_mask: Attention mask JTensor ready to add to logits for
       cross attention of shape [B/1, 1, 1, S]. This will be None if
-      cross_inputs are None.
+      cross_paddings are None.
   """
   # Create a broadcast friendly version of time step of shape [1, 1]
   batch_time_step = jnp.asarray(time_step, dtype=jnp.uint32)
@@ -167,12 +165,10 @@ def compute_attention_masks_for_extend_step(
 
   # Compute cross attention mask if applicable
   cross_attention_mask = None
-  if cross_inputs is not None:
-    assert cross_paddings is not None
-
+  if cross_paddings is not None:
     # Compute paddings mask [B, 1, 1, S]
     cross_attention_mask = attentions.convert_paddings_to_mask(
-        cross_paddings, dtype=cross_inputs.dtype)
+        cross_paddings, dtype=attention_mask.dtype)
 
     # Cross segment mask may be overloaded
     if cross_segment_mask is not None:
@@ -1030,7 +1026,6 @@ class Transformer(base_layer.BaseLayer):
       params.num_heads = p.num_heads
       params.dim_per_head = p.dim_per_head
       params.atten_dropout_prob = p.atten_dropout_prob
-      params.decode_cache = False
       # Note that cross attention should not use any position embeddings.
       if params.use_rotary_position_emb:
         raise ValueError('Rotary position embedding should not be enabled for '
@@ -1182,9 +1177,15 @@ class Transformer(base_layer.BaseLayer):
                   time_step: JTensor,
                   attention_mask: JTensor,
                   segment_pos: Optional[JTensor] = None,
-                  cross_inputs: Optional[JTensor] = None,
                   cross_attention_mask: Optional[JTensor] = None) -> JTensor:
     """Transformer decoder layer, autoregressive cached decoding.
+
+    For cross attention, the key/value cache may have a smaller batch size b
+    than inputs batch size B. In this case, we require B % b == 0, and this
+    corresponds to multi-sample decoding for each input in b, and cross-
+    attention states will be repeated by (B // b) times. Each consecutive
+    (B // b) chunk in B correspond to multiple samples for the same cross
+    # inputs.
 
     Args:
       inputs: Target sequence of shape [B, D] corresponding to target sequence
@@ -1194,10 +1195,9 @@ class Transformer(base_layer.BaseLayer):
         1, T]. This combines causal mask with any segment mask if applicable.
       segment_pos: An optional JTensor of shape [B]. Current position in the
         same segment. If unspecified, time_step will be used.
-      cross_inputs: Source sequence - [B, S, H].
       cross_attention_mask: if not None, cross_segment_mask for this time step,
-        of shape [B, 1, 1, S]. This combines padding mask with any segment mask
-        if applicable.
+        of shape [b/B, 1, 1, S]. This combines padding mask with any segment
+        mask if applicable.
 
     Returns:
       cur_output: [B, D]
@@ -1229,22 +1229,20 @@ class Transformer(base_layer.BaseLayer):
 
     # Apply cross attention if applicable
     if p.cross_attention:
-      assert cross_inputs is not None
       assert cross_attention_mask is not None
       if p.norm_policy == 'pre':
-        atten_output_normalized = self.cross_layer_norm(
-            jnp.expand_dims(atten_output, axis=1))
+        atten_output_normalized = self.cross_layer_norm(atten_output)
       elif p.norm_policy == 'primer_hybrid':
-        atten_output_normalized = self.pre_cross_layer_norm(
-            jnp.expand_dims(atten_output, axis=1))
+        atten_output_normalized = self.pre_cross_layer_norm(atten_output)
       elif p.norm_policy == 'post':
-        atten_output_normalized = jnp.expand_dims(atten_output, axis=1)
+        atten_output_normalized = atten_output
 
-      cross_atten_output, _ = self.cross_attention(
+      cross_atten_output = self.cross_attention.extend_step(
           atten_output_normalized,
-          cross_inputs,
-          cross_inputs,
-          atten_mask=cross_attention_mask)
+          atten_mask=jnp.squeeze(cross_attention_mask, 2),
+          time_step=time_step,
+          segment_pos=segment_pos,
+          is_cross_attention=True)
 
       if p.norm_policy == 'post':
         cross_atten_output = self.cross_layer_norm(cross_atten_output)
@@ -1253,8 +1251,6 @@ class Transformer(base_layer.BaseLayer):
 
       # Residual dropout and connection
       cross_atten_output = self.residual_dropout(cross_atten_output)
-      # Squeeze sequence dim
-      cross_atten_output = jnp.squeeze(cross_atten_output, axis=1)
       atten_output += cross_atten_output
 
     # Apply FFN layer
@@ -1470,7 +1466,6 @@ class StackedTransformer(base_layer.BaseLayer):
                   *,
                   time_step: JTensor,
                   segment_pos: Optional[JTensor] = None,
-                  cross_inputs: Optional[JTensor] = None,
                   cross_paddings: Optional[JTensor] = None,
                   cross_segment_mask: Optional[JTensor] = None) -> JTensor:
     """Transformer stacked decoder layers, autoregressive cached decoding.
@@ -1481,10 +1476,9 @@ class StackedTransformer(base_layer.BaseLayer):
       time_step: A scalar, the current decode step, 0-based.
       segment_pos: An optional JTensor of shape [B]. Current position in the
         same segment. If unspecified, time_step will be used.
-      cross_inputs: Source sequence - [B, S, D].
-      cross_paddings: Source paddings - [B, S].
+      cross_paddings: Source paddings - [b/B, S].
       cross_segment_mask: if not None, cross_segment_mask for this time step, of
-        shape [B, 1, S].
+        shape [b/B, 1, S].
 
     Returns:
       decoder_output: The last decoder layer output of shape [B, D].
@@ -1496,7 +1490,6 @@ class StackedTransformer(base_layer.BaseLayer):
     max_t = self.x_layers[0].self_attention.decoding_state_sequence_length()
 
     if p.cross_attention:
-      assert cross_inputs is not None
       assert cross_paddings is not None
 
     if segment_pos is None:
@@ -1518,7 +1511,7 @@ class StackedTransformer(base_layer.BaseLayer):
 
     attention_mask, cross_attention_mask = (
         compute_attention_masks_for_extend_step(time_step, max_t, segment_mask,
-                                                cross_inputs, cross_paddings,
+                                                cross_paddings,
                                                 cross_segment_mask))
 
     decoder_input = inputs
@@ -1528,7 +1521,6 @@ class StackedTransformer(base_layer.BaseLayer):
           time_step=time_step,
           attention_mask=attention_mask,
           segment_pos=segment_pos,
-          cross_inputs=cross_inputs,
           cross_attention_mask=cross_attention_mask)
       decoder_input = decoder_output
     return decoder_output
@@ -1642,7 +1634,6 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
                   *,
                   time_step: JTensor,
                   segment_pos: Optional[JTensor] = None,
-                  cross_inputs: Optional[JTensor] = None,
                   cross_paddings: Optional[JTensor] = None,
                   cross_segment_mask: Optional[JTensor] = None) -> JTensor:
     """Transformer stacked decoder layers, autoregressive cached decoding.
@@ -1653,10 +1644,9 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
       time_step: A scalar, the current decode step, 0-based.
       segment_pos: An optional JTensor of shape [B]. Current position in the
         same segment. If unspecified, time_step will be used.
-      cross_inputs: Source sequence - [B, S, D].
-      cross_paddings: Source paddings - [B, S].
+      cross_paddings: Source paddings - [b/B, S].
       cross_segment_mask: if not None, cross_segment_mask for this time step, of
-        shape [B, 1, S].
+        shape [b/B, 1, S].
 
     Returns:
       decoder_output: The last decoder layer output of shape [B, D].
@@ -1666,7 +1656,6 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         inputs,
         time_step=time_step,
         segment_pos=segment_pos,
-        cross_inputs=cross_inputs,
         cross_paddings=cross_paddings,
         cross_segment_mask=cross_segment_mask)
 
@@ -1852,7 +1841,6 @@ class PipelinedTransformer(base_layer.BaseLayer):
       *,
       time_step: JTensor,
       segment_pos: Optional[JTensor] = None,
-      cross_inputs: Optional[JTensor] = None,
       cross_paddings: Optional[JTensor] = None,
       cross_segment_mask: Optional[JTensor] = None
   ) -> Tuple[JTensor, NestedMap]:

@@ -1307,19 +1307,6 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     target_batch_size = targets.shape[0]
     encoder_batch_size = encoder_output.shape[0]
 
-    if target_batch_size != encoder_batch_size:
-      if target_batch_size % encoder_batch_size != 0:
-        raise ValueError(f'target_batch_size {target_batch_size} is not a '
-                         f'multiple of encoder_batch_size {encoder_batch_size}')
-      encoder_output = jnp.repeat(
-          encoder_output,
-          axis=0,
-          repeats=target_batch_size // encoder_batch_size)
-      input_paddings = jnp.repeat(
-          input_paddings,
-          axis=0,
-          repeats=target_batch_size // encoder_batch_size)
-
     # During autoregressive decoding inputs and targets are not packed.
     if len(targets.shape) == 1:
       targets = targets[:, jnp.newaxis]
@@ -1355,7 +1342,6 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     outputs = self.decoder.extend_step(
         target_emb[:, 0, :],
         time_step=time_step,
-        cross_inputs=encoder_output,
         cross_paddings=input_paddings)
 
     # Stacked repeated transformer will have tuple shape outputs.

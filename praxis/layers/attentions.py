@@ -1273,6 +1273,17 @@ class DotProductAttention(base_layer.BaseLayer):
     p = self.hparams
     key = self._shard_blnh(self.get_decode_state(key_state_name))
     value = self._shard_blnh(self.get_decode_state(value_state_name))
+    k_b = key.shape[0]
+    q_b = query.shape[0]
+    if q_b != k_b:
+      if q_b % k_b != 0:
+        raise ValueError(
+            f'q batch size {q_b} is not divisible by state batch size {k_b}')
+      key = jnp.repeat(key, q_b // k_b, axis=0)
+      value = jnp.repeat(value, q_b // k_b, axis=0)
+    if atten_mask.shape[0] != 1 and atten_mask.shape[1] != q_b:
+      assert atten_mask.shape[0] == k_b
+      atten_mask = jnp.repeat(atten_mask, q_b // k_b, axis=0)
     # query is 3d.
     query = self._shard_bnh(query)
 
@@ -1318,7 +1329,7 @@ class DotProductAttention(base_layer.BaseLayer):
       query_vec: JTensor of shape [B, T, D].
       key_vec: JTensor of shape [B, S, D].
       value_vec: JTensor of shape [B, S, D].
-      atten_mask: JTensor of shape [1/B, 1, 1/T, S] which is a mask that is
+      atten_mask: JTensor of shape [1/B/b, 1, 1/T, S] which is a mask that is
         applied to prevent attention between unwanted pairs. This has already
         been converted into large negative logits. Note that the first and third
         dimension allow size 1 if the mask is shared by every item in the batch
@@ -1449,22 +1460,35 @@ class DotProductAttention(base_layer.BaseLayer):
     self.update_decode_state(name, new_state)
     return new_state
 
-  def extend_step(self, query_vec: JTensor, *, atten_mask: JTensor,
+  def extend_step(self,
+                  query_vec: JTensor,
+                  *,
+                  atten_mask: JTensor,
                   time_step: JTensor,
-                  segment_pos: Optional[JTensor]) -> JTensor:
+                  segment_pos: Optional[JTensor],
+                  is_cross_attention: bool = False) -> JTensor:
     """Computes the value vector given the query of the current step.
 
     This function is used by autoregressive decoding.
 
+    For cross attention, the key/value cache may have a smaller batch size b
+    than inputs batch size B. In this case, we require B % b == 0, and this
+    corresponds to multi-sample decoding for each input in b, and cross-
+    attention states will be repeated by (B // b) times. Each consecutive
+    (B // b) chunk in B correspond to multiple samples for the same cross
+    inputs.
+
     Args:
       query_vec: JTensor of shape [B, D] corresponding to query vector at index
         time_step.
-      atten_mask: JTensor of shape [B/1, 1, S]. atten_mask should have already
+      atten_mask: JTensor of shape [B/1/b, 1, S]. atten_mask should have already
         taken care of causal masking for decoding, plus other maskings
         necessary.
       time_step: A scalar or JTensor. Current time-step, 0-based.
       segment_pos: An optional JTensor of shape [B]. Current position in the
         same segment. If unspecified, time_step will be used.
+      is_cross_attention: Whether this is a cross-attention layer. Decoding
+        states will not be updated in this case.
 
     Returns:
       encoded: JTensor of shape [B, D] which returns the attention output at
@@ -1488,8 +1512,11 @@ class DotProductAttention(base_layer.BaseLayer):
 
     def _extend_decode_state_and_shard(name: str,
                                        extend_value: JTensor) -> JTensor:
-      extended_state = self.extend_decode_state(
-          name, extend_value, time_step, time_dim=time_dim)
+      if is_cross_attention:
+        extended_state = self.get_decode_state(name)
+      else:
+        extended_state = self.extend_decode_state(
+            name, extend_value, time_step, time_dim=time_dim)
       return self._shard_blnh(extended_state)
 
     # Update key_state
@@ -1504,6 +1531,7 @@ class DotProductAttention(base_layer.BaseLayer):
     # Apply depth-wise convolution as in Primer.
     # Paper: https://arxiv.org/abs/2109.08668.
     if p.dconv_qkv:
+      assert not is_cross_attention
       # Update query in cache.
       query_state = _extend_decode_state_and_shard('query_state',
                                                    new_query_proj)
@@ -1529,6 +1557,7 @@ class DotProductAttention(base_layer.BaseLayer):
     # Apply rotary position embeddings.
     # Paper: https://arxiv.org/abs/2104.09864.
     if p.use_rotary_position_emb:
+      assert not is_cross_attention
       if segment_pos is None:
         position = jnp.broadcast_to(time_step, [query_vec.shape[0]])
       else:

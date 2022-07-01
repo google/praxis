@@ -263,7 +263,6 @@ class TransformersTest(test_utils.TestCase):
             inputs=inputs[:, t, :],
             time_step=t,
             attention_mask=attention_mask_t,
-            cross_inputs=cross_inputs,
             cross_attention_mask=cross_attention_mask_t,
             method=transformer_layer.extend_step,
             mutable=[DECODE_CACHE])
@@ -1078,7 +1077,6 @@ class TransformersTest(test_utils.TestCase):
             inputs=inputs[:, t, :],
             time_step=t,
             segment_pos=segment_pos_t,
-            cross_inputs=cross_inputs,
             cross_paddings=cross_paddings,
             cross_segment_mask=cross_segment_mask_t,
             method=repeat_transformer_layer.extend_step,
