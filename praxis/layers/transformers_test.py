@@ -63,7 +63,6 @@ class TransformersTest(test_utils.TestCase):
     batch_size = 10
     transformer_layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = transformer_layer.init(prng_key)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -115,6 +114,13 @@ class TransformersTest(test_utils.TestCase):
             segment_ids, source_segment_ids)
 
     with base_layer.JaxContext.new_context():
+      initial_vars = transformer_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          attention_mask=attention_mask,
+          cross_inputs=cross_inputs,
+          cross_attention_mask=cross_attention_mask)
       outputs, unused_atten_probs = transformer_layer.apply(
           initial_vars,
           inputs,
@@ -181,7 +187,6 @@ class TransformersTest(test_utils.TestCase):
     batch_size = 4
     transformer_layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = transformer_layer.init(prng_key)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -218,6 +223,14 @@ class TransformersTest(test_utils.TestCase):
                                            cross_segment_mask)
 
     with base_layer.JaxContext.new_context():
+      initial_vars = transformer_layer.init(
+          prng_key,
+          jnp.zeros_like(inputs),
+          jnp.ones_like(paddings),
+          attention_mask=attention_mask,
+          cross_inputs=cross_inputs,
+          cross_attention_mask=cross_attention_mask,
+          method=transformer_layer.__call__)
       _, decoder_state = transformer_layer.apply(
           initial_vars,
           jnp.zeros_like(inputs),
@@ -280,19 +293,6 @@ class TransformersTest(test_utils.TestCase):
         cross_attention=True)
     seq_len = 5
     batch_size = 4
-    transformer_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = transformer_layer.init(prng_key)
-    # Change the self attention initial vars.
-    initial_vars[PARAMS]['layer_norm']['scale'] = 0.5 * jnp.ones(
-        shape=[p.input_dims])
-    initial_vars[PARAMS]['layer_norm']['bias'] = 5.0 * jnp.ones(
-        shape=[p.input_dims])
-    # Change the cross attention initial vars.
-    initial_vars[PARAMS]['cross_layer_norm']['scale'] = 15 * jnp.ones(
-        shape=[p.input_dims])
-    initial_vars[PARAMS]['cross_layer_norm']['bias'] = 1.5 * jnp.ones(
-        shape=[p.input_dims])
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -307,36 +307,76 @@ class TransformersTest(test_utils.TestCase):
       segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
       attention_mask = jnp.minimum(attention_mask, segment_mask)
 
-    layer_norm_p = copy.deepcopy(p.ln_tpl)
-    layer_norm_p.set(name='layer_norm', dim=input_dims)
-    layer_norm = instantiate(layer_norm_p)
-    layer_norm_vars = {PARAMS: initial_vars[PARAMS]['layer_norm']}
-
-    self_attention_p = copy.deepcopy(p.tr_atten_tpl)
-    self_attention_p.set(
-        name='self_attention',
-        input_dim=input_dims,
-        hidden_dim=input_dims,
-        num_heads=num_heads,
-        dim_per_head=None,
-        atten_dropout_prob=0.0)
-    self_attention = instantiate(self_attention_p)
-    prng_key, init_key = jax.random.split(prng_key)
-    self_attention_vars = self_attention.init(init_key)
-
-    residual_dropout_p = copy.deepcopy(p.dropout_tpl)
-    residual_dropout_p.set(name='residual_dropout', keep_prob=1.)
-    residual_dropout = instantiate(residual_dropout_p)
-    prng_key, init_key = jax.random.split(prng_key)
-    residual_dropout_vars = residual_dropout.init(init_key)
-
-    cross_layer_norm_p = copy.deepcopy(p.ln_tpl)
-    cross_layer_norm_p.set(name='cross_layer_norm', dim=input_dims)
-    cross_layer_norm = instantiate(cross_layer_norm_p)
-    cross_layer_norm_vars = {PARAMS: initial_vars[PARAMS]['cross_layer_norm']}
-
+    cross_seq_len = np.random.randint(10, 32)
+    npy_cross_inputs = np.random.normal(
+        1.0, 0.5, [batch_size, cross_seq_len, p.input_dims]).astype('float32')
+    cross_inputs = jnp.asarray(npy_cross_inputs)
+    npy_cross_paddings = np.random.randint(
+        0, 1, [batch_size, cross_seq_len]).astype('float32')
+    cross_paddings = jnp.asarray(npy_cross_paddings)
+    cross_attention_mask = attentions.convert_paddings_to_mask(cross_paddings)
+    if packed_input:
+      source_segment_ids = np.random.randint(0, 3, [batch_size, cross_seq_len])
+      cross_segment_mask = attentions.segment_mask(
+          segment_ids, source_segment_ids, dtype=np.float32)
+      cross_attention_mask = jnp.minimum(cross_attention_mask,
+                                         cross_segment_mask)
     with base_layer.JaxContext.new_context():
+      transformer_layer = instantiate(p)
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          attention_mask=attention_mask,
+          cross_inputs=cross_inputs,
+          cross_attention_mask=cross_attention_mask,
+      )
+      # Change the self attention initial vars.
+      initial_vars[PARAMS]['layer_norm']['scale'] = 0.5 * jnp.ones(
+          shape=[p.input_dims])
+      initial_vars[PARAMS]['layer_norm']['bias'] = 5.0 * jnp.ones(
+          shape=[p.input_dims])
+      # Change the cross attention initial vars.
+      initial_vars[PARAMS]['cross_layer_norm']['scale'] = 15 * jnp.ones(
+          shape=[p.input_dims])
+      initial_vars[PARAMS]['cross_layer_norm']['bias'] = 1.5 * jnp.ones(
+          shape=[p.input_dims])
+
+      layer_norm_p = copy.deepcopy(p.ln_tpl)
+      layer_norm_p.set(name='layer_norm', dim=input_dims)
+      layer_norm = instantiate(layer_norm_p)
+      layer_norm_vars = {PARAMS: initial_vars[PARAMS]['layer_norm']}
       inputs_normalized = layer_norm.apply(layer_norm_vars, inputs)
+
+      self_attention_p = copy.deepcopy(p.tr_atten_tpl)
+      self_attention_p.set(
+          name='self_attention',
+          input_dim=input_dims,
+          hidden_dim=input_dims,
+          num_heads=num_heads,
+          dim_per_head=None,
+          atten_dropout_prob=0.0)
+      self_attention = instantiate(self_attention_p)
+      prng_key, init_key = jax.random.split(prng_key)
+      self_attention_vars = self_attention.init(
+          init_key,
+          inputs_normalized,
+          inputs_normalized,
+          inputs_normalized,
+          atten_mask=attention_mask)
+
+      residual_dropout_p = copy.deepcopy(p.dropout_tpl)
+      residual_dropout_p.set(name='residual_dropout', keep_prob=1.)
+      residual_dropout = instantiate(residual_dropout_p)
+      prng_key, init_key = jax.random.split(prng_key)
+      residual_dropout_vars = residual_dropout.init(init_key, inputs_normalized)
+
+      cross_layer_norm_p = copy.deepcopy(p.ln_tpl)
+      cross_layer_norm_p.set(name='cross_layer_norm', dim=input_dims)
+      cross_layer_norm = instantiate(cross_layer_norm_p)
+      cross_layer_norm_vars = {PARAMS: initial_vars[PARAMS]['cross_layer_norm']}
+
       # Compute self-attention, key/value vectors are the input itself
       atten_output, _ = self_attention.apply(
           self_attention_vars,
@@ -381,10 +421,15 @@ class TransformersTest(test_utils.TestCase):
     p.cross_atten_tpl = copy.deepcopy(p.tr_atten_tpl)
     # Enable depth-wise convolution.
     p.cross_atten_tpl.dconv_qkv = True
+    # Dummy inputs.
+    seq_len = 5
+    batch_size = 4
+    dummy_inputs = jnp.ones([batch_size, seq_len, p.input_dims])
+    dummy_paddings = jnp.ones([batch_size, seq_len])
     with self.assertRaises(ValueError):
       transformer_layer = instantiate(p)
       prng_key = jax.random.PRNGKey(seed=123)
-      _ = transformer_layer.init(prng_key)
+      _ = transformer_layer.init(prng_key, dummy_inputs, dummy_paddings)
 
   def test_transformer_layer_cross_attention_pos_emb_value_error(self):
     p = transformers.Transformer.HParams(
@@ -398,10 +443,15 @@ class TransformersTest(test_utils.TestCase):
     p.cross_atten_tpl = copy.deepcopy(p.tr_atten_tpl)
     # Enable rotary position embedding.
     p.cross_atten_tpl.use_rotary_position_emb = True
+    # Dummy inputs.
+    seq_len = 5
+    batch_size = 4
+    dummy_inputs = jnp.ones([batch_size, seq_len, p.input_dims])
+    dummy_paddings = jnp.ones([batch_size, seq_len])
     with self.assertRaises(ValueError):
       transformer_layer = instantiate(p)
       prng_key = jax.random.PRNGKey(seed=123)
-      _ = transformer_layer.init(prng_key)
+      _ = transformer_layer.init(prng_key, dummy_inputs, dummy_paddings)
 
   # TODO(lingvo-team): Figure out a solution to use identical Flax prng stream
   # for the two configurations considered. At the moment, the
@@ -462,15 +512,6 @@ class TransformersTest(test_utils.TestCase):
 
     seq_len = 4
     batch_size = 3
-    prng_key = jax.random.PRNGKey(seed=123)
-    block_initial_vars = transformer_block.init(prng_key)
-    stack_initial_vars = transformer_stack.init(prng_key)
-    stack_initial_vars[PARAMS]['x_layers_0'] = jax.tree_map(
-        lambda x: jnp.squeeze(x, axis=0),
-        block_initial_vars[PARAMS]['repeat']['sub']['x_layers_0'])
-    stack_initial_vars[PARAMS]['x_layers_1'] = jax.tree_map(
-        lambda x: jnp.squeeze(x, axis=0),
-        block_initial_vars[PARAMS]['repeat']['sub']['x_layers_1'])
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, block_p.model_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -486,7 +527,36 @@ class TransformersTest(test_utils.TestCase):
     cross_segment_mask = None
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
       prng_key, subkey = jax.random.split(prng_key)
+      block_initial_vars = transformer_block.init(
+          {
+              PARAMS: prng_key,
+              RANDOM: subkey
+          },
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask)
+      stack_initial_vars = transformer_stack.init(
+          {
+              PARAMS: prng_key,
+              RANDOM: subkey
+          },
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask)
+      stack_initial_vars[PARAMS]['x_layers_0'] = jax.tree_map(
+          lambda x: jnp.squeeze(x, axis=0),
+          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_0'])
+      stack_initial_vars[PARAMS]['x_layers_1'] = jax.tree_map(
+          lambda x: jnp.squeeze(x, axis=0),
+          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_1'])
       block_outputs = transformer_block.apply(
           block_initial_vars,
           inputs,
@@ -559,15 +629,6 @@ class TransformersTest(test_utils.TestCase):
 
     seq_len = 4
     batch_size = 3
-    prng_key = jax.random.PRNGKey(seed=123)
-    block_initial_vars = transformer_block.init(prng_key)
-    stack_initial_vars = transformer_stack.init(prng_key)
-    stack_initial_vars[PARAMS]['x_layers_0'] = jax.tree_map(
-        lambda x: jnp.squeeze(x, axis=0),
-        block_initial_vars[PARAMS]['repeat']['sub']['x_layers_0'])
-    stack_initial_vars[PARAMS]['x_layers_1'] = jax.tree_map(
-        lambda x: jnp.squeeze(x, axis=0),
-        block_initial_vars[PARAMS]['repeat']['sub']['x_layers_1'])
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, block_p.model_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -598,7 +659,36 @@ class TransformersTest(test_utils.TestCase):
             segment_ids, source_segment_ids, dtype=np.float32)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
       prng_key, subkey = jax.random.split(prng_key)
+      block_initial_vars = transformer_block.init(
+          {
+              PARAMS: prng_key,
+              RANDOM: subkey
+          },
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask)
+      stack_initial_vars = transformer_stack.init(
+          {
+              PARAMS: prng_key,
+              RANDOM: subkey
+          },
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask)
+      stack_initial_vars[PARAMS]['x_layers_0'] = jax.tree_map(
+          lambda x: jnp.squeeze(x, axis=0),
+          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_0'])
+      stack_initial_vars[PARAMS]['x_layers_1'] = jax.tree_map(
+          lambda x: jnp.squeeze(x, axis=0),
+          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_1'])
       block_outputs = transformer_block.apply(
           block_initial_vars,
           inputs,
@@ -608,7 +698,6 @@ class TransformersTest(test_utils.TestCase):
           cross_paddings=cross_paddings,
           cross_segment_mask=cross_segment_mask,
           rngs={RANDOM: subkey})
-
       stack_outputs = transformer_stack.apply(
           stack_initial_vars,
           inputs,
@@ -637,8 +726,6 @@ class TransformersTest(test_utils.TestCase):
     seq_len = np.random.randint(10, 32)
     batch_size = 10
     stacked_transformer_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = stacked_transformer_layer.init(prng_key)
 
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.model_dims]).astype('float32')
@@ -683,6 +770,15 @@ class TransformersTest(test_utils.TestCase):
             segment_ids, source_segment_ids)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = stacked_transformer_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask)
       outputs = stacked_transformer_layer.apply(
           initial_vars,
           inputs,
@@ -765,29 +861,6 @@ class TransformersTest(test_utils.TestCase):
         x_times=p1.num_layers)
     seq_len = np.random.randint(10, 32)
     batch_size = 10
-    stacked_transformer_layer = instantiate(p1)
-    repeated_transformer_layer = instantiate(p2)
-    prng_key = jax.random.PRNGKey(seed=123)
-
-    initial_vars = stacked_transformer_layer.init(prng_key)
-
-    def _stack_vars(*args):
-      args = [x[jnp.newaxis, :] for x in args]
-      return jnp.vstack(args)
-
-    x_layers = []
-    for i in range(num_layers):
-      x_layers.append(initial_vars[PARAMS]['x_layers_' + str(i)])
-    stacked_x_layers = tf.nest.map_structure(_stack_vars, *x_layers)
-    repeated_vars = repeated_transformer_layer.init(prng_key)
-    repeated_vars = py_utils.NestedMap(
-        params=py_utils.NestedMap(
-            repeat=py_utils.NestedMap(
-                sub=py_utils.NestedMap(x_layers_0=stacked_x_layers))))
-
-    tf.nest.assert_same_structure(repeated_vars,
-                                  repeated_transformer_layer.init(prng_key))
-
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, model_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -817,6 +890,18 @@ class TransformersTest(test_utils.TestCase):
             segment_ids, source_segment_ids, dtype=np.float32)
 
     with base_layer.JaxContext.new_context():
+      stacked_transformer_layer = instantiate(p1)
+      repeated_transformer_layer = instantiate(p2)
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = stacked_transformer_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask)
+
       outputs = stacked_transformer_layer.apply(
           initial_vars,
           inputs,
@@ -826,6 +911,37 @@ class TransformersTest(test_utils.TestCase):
           cross_paddings=cross_paddings,
           cross_segment_mask=cross_segment_mask)
 
+      def _stack_vars(*args):
+        args = [x[jnp.newaxis, :] for x in args]
+        return jnp.vstack(args)
+
+      x_layers = []
+      for i in range(num_layers):
+        x_layers.append(initial_vars[PARAMS]['x_layers_' + str(i)])
+      stacked_x_layers = tf.nest.map_structure(_stack_vars, *x_layers)
+      repeated_vars = repeated_transformer_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask)
+      repeated_vars = py_utils.NestedMap(
+          params=py_utils.NestedMap(
+              repeat=py_utils.NestedMap(
+                  sub=py_utils.NestedMap(x_layers_0=stacked_x_layers))))
+
+      tf.nest.assert_same_structure(
+          repeated_vars,
+          repeated_transformer_layer.init(
+              prng_key,
+              inputs,
+              paddings,
+              segment_mask=segment_mask,
+              cross_inputs=cross_inputs,
+              cross_paddings=cross_paddings,
+              cross_segment_mask=cross_segment_mask))
       outputs_repeated = repeated_transformer_layer.apply(
           repeated_vars,
           inputs,
@@ -878,9 +994,6 @@ class TransformersTest(test_utils.TestCase):
 
     seq_len = 4
     batch_size = 4
-    repeat_transformer_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = repeat_transformer_layer.init(prng_key)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, model_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -921,6 +1034,16 @@ class TransformersTest(test_utils.TestCase):
 
     prng_key = jax.random.PRNGKey(seed=123)
     with base_layer.JaxContext.new_context():
+      repeat_transformer_layer = instantiate(p)
+      initial_vars = repeat_transformer_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          segment_pos=segment_pos,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask)
       fprop_outputs = repeat_transformer_layer.apply(
           initial_vars,
           inputs,
@@ -983,9 +1106,6 @@ class TransformersTest(test_utils.TestCase):
         activation=activation_function)
     batch_size = 8
     seq_len = 512
-    ffwd = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = ffwd.init(prng_key)
 
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
@@ -994,6 +1114,9 @@ class TransformersTest(test_utils.TestCase):
     input_paddings = jnp.asarray(npy_paddings)
 
     with base_layer.JaxContext.new_context():
+      ffwd = instantiate(p)
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = ffwd.init(prng_key, inputs, input_paddings)
       outputs = ffwd.apply(initial_vars, inputs, input_paddings)
       logging.info('outputs: %s', outputs)
 
@@ -1037,9 +1160,6 @@ class TransformersTest(test_utils.TestCase):
         norm_policy=norm_policy)
     seq_len = np.random.randint(10, 32)
     batch_size = 10
-    transformer_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = transformer_layer.init(prng_key)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -1054,6 +1174,10 @@ class TransformersTest(test_utils.TestCase):
     attention_mask = jnp.minimum(attention_mask, segment_mask)
 
     with base_layer.JaxContext.new_context():
+      transformer_layer = instantiate(p)
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_layer.init(
+          prng_key, inputs, paddings, attention_mask=attention_mask)
       outputs, _ = transformer_layer.apply(
           initial_vars, inputs, paddings, attention_mask=attention_mask)
     logging.info('initial_vars in transformer layer = %s',
@@ -1077,8 +1201,6 @@ class TransformersTest(test_utils.TestCase):
     seq_len = np.random.randint(10, 32)
     batch_size = 10
     transformer_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = transformer_layer.init(prng_key)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -1093,9 +1215,21 @@ class TransformersTest(test_utils.TestCase):
     attention_mask = jnp.minimum(attention_mask, segment_mask)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          attention_mask=attention_mask,
+          cross_inputs=inputs,
+          cross_attention_mask=attention_mask)
       outputs, _ = transformer_layer.apply(
-          initial_vars, inputs, paddings, attention_mask=attention_mask,
-          cross_inputs=inputs, cross_attention_mask=attention_mask)
+          initial_vars,
+          inputs,
+          paddings,
+          attention_mask=attention_mask,
+          cross_inputs=inputs,
+          cross_attention_mask=attention_mask)
     logging.info('initial_vars in transformer layer = %s',
                  jax.tree_map(lambda x: x.shape, initial_vars))
 
@@ -1118,9 +1252,6 @@ class TransformersTest(test_utils.TestCase):
     if use_relative_bias:
       p.tr_atten_tpl.relative_bias_tpl = attentions.RelativeBias.HParams(
           relative_attention_num_buckets=2, relative_attention_max_distance=8)
-    transformer_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = transformer_layer.init(prng_key)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -1142,6 +1273,14 @@ class TransformersTest(test_utils.TestCase):
       segment_pos = None
 
     with base_layer.JaxContext.new_context():
+      transformer_layer = instantiate(p)
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          attention_mask=attention_mask,
+          segment_pos=segment_pos)
       outputs, _ = transformer_layer.apply(
           initial_vars,
           inputs,
@@ -1190,9 +1329,6 @@ class RetroTransformersTest(test_utils.TestCase):
         packed_input=False)
     seq_len = 12
     batch_size = 4
-    transformer_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = transformer_layer.init(prng_key)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -1209,6 +1345,14 @@ class RetroTransformersTest(test_utils.TestCase):
             dim=p.input_dims))
 
     with base_layer.JaxContext.new_context():
+      transformer_layer = instantiate(p)
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          attention_mask=attention_mask,
+          neighbors=neighbors)
       outputs, unused_atten_probs = transformer_layer.apply(
           initial_vars,
           inputs,
@@ -1230,10 +1374,6 @@ class RetroTransformersTest(test_utils.TestCase):
         packed_input=False)
     seq_len = 12
     batch_size = 4
-    stacked_transformer_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = stacked_transformer_layer.init(prng_key)
-
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.model_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -1251,6 +1391,14 @@ class RetroTransformersTest(test_utils.TestCase):
             dim=p.model_dims))
 
     with base_layer.JaxContext.new_context():
+      stacked_transformer_layer = instantiate(p)
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = stacked_transformer_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          neighbors=neighbors)
       outputs = stacked_transformer_layer.apply(
           initial_vars,
           inputs,

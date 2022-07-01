@@ -28,6 +28,7 @@ from praxis.layers import ngrammer
 import tensorflow as tf
 
 instantiate = base_layer.instantiate
+NON_TRAINABLE = base_layer.NON_TRAINABLE
 to_np = test_utils.to_np
 
 
@@ -101,9 +102,9 @@ class NgrammerTest(test_utils.TestCase):
         num_heads=num_heads,
         dim_per_head=dim_per_head,
     )
-    vq_layer = instantiate(vq_layer_p)
-    initial_vars = vq_layer.init(init_key)
     with base_layer.JaxContext.new_context():
+      vq_layer = instantiate(vq_layer_p)
+      initial_vars = vq_layer.init(init_key, inputs)
       jax_dists, _ = vq_layer.apply(initial_vars, inputs)
     # Now run TF based computation.
     tf_vq_layer_p = attention_util.KMeansClusteringForAtten.Params().Set(
@@ -139,8 +140,8 @@ class NgrammerTest(test_utils.TestCase):
         end_step=10,
         constant_lr_schedule=True)
     bregman_compression_layer_p = instantiate(bregman_compression_layer_p)
-    initial_vars = bregman_compression_layer_p.init(init_key)
     with base_layer.JaxContext.new_context():
+      initial_vars = bregman_compression_layer_p.init(init_key, inputs)
       coefficients = bregman_compression_layer_p.apply(initial_vars, inputs)
     self.assertEqual(
         list(coefficients.shape), [2, 32, num_heads, num_components])
@@ -178,13 +179,14 @@ class NgrammerTest(test_utils.TestCase):
         concat_ngrams=concat_ngrams,
     )
     ngrammer_layer = instantiate(ngrammer_layer_p)
-    initial_vars = ngrammer_layer.init(init_key)
     with base_layer.JaxContext.new_context():
+      initial_vars = ngrammer_layer.init(init_key, inputs, input_embs, paddings)
       # Bind makes ngrammer_layer a stateful layer with all its submodule
       # layer variables automatically bound. It simplfies calling of submodule
       # fprop because we no longer need to explicitly provide submodule layer
       # vars.
-      ngrammer_layer = ngrammer_layer.bind(initial_vars, mutable=True)
+      ngrammer_layer = ngrammer_layer.bind(
+          initial_vars, mutable=[base_layer.NON_TRAINABLE])
       ngram_embs = ngrammer_layer(inputs, input_embs, paddings)
     ngram_embs = np.reshape(ngram_embs,
                             [batch_size, seq_len, num_heads, dim_per_head])
@@ -242,13 +244,14 @@ class NgrammerTest(test_utils.TestCase):
         concat_ngrams=concat_ngrams,
     )
     ngrammer_layer = instantiate(ngrammer_layer_p)
-    initial_vars = ngrammer_layer.init(init_key)
     with base_layer.JaxContext.new_context():
       # Bind makes ngrammer_layer a stateful layer with all its submodule
       # layer variables automatically bound. It simplfies calling of submodule
       # fprop because we no longer need to explicitly provide submodule layer
       # vars.
-      ngrammer_layer = ngrammer_layer.bind(initial_vars, mutable=True)
+      initial_vars = ngrammer_layer.init(init_key, input_embs, paddings)
+      ngrammer_layer = ngrammer_layer.bind(
+          initial_vars, mutable=[NON_TRAINABLE])
       ngram_embs = ngrammer_layer(inputs, input_embs, paddings)
     ngram_embs = np.reshape(ngram_embs,
                             [batch_size, seq_len, num_heads, dim_per_head])
@@ -311,14 +314,20 @@ class NgrammerTest(test_utils.TestCase):
         ngram_using_attention_scores=use_attention_scores,
         causal_attention=False)
     vq_ngrammer_layer = instantiate(vq_ngrammer_layer_p)
-    initial_vars = vq_ngrammer_layer.init(init_key)
-    # Bind makes vq_ngrammer_layer a stateful layer with all its submodule
-    # layer variables automatically bound. It simplfies calling of submodule
-    # fprop because we no longer need to explicitly provide submodule layer
-    # vars.
-    vq_ngrammer_layer = vq_ngrammer_layer.bind(initial_vars, mutable=True)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
+      initial_vars = vq_ngrammer_layer.init(
+          init_key,
+          None,
+          input_embs,
+          paddings,
+          attention_scores=attention_scores)
+      # Bind makes vq_ngrammer_layer a stateful layer with all its submodule
+      # layer variables automatically bound. It simplfies calling of submodule
+      # fprop because we no longer need to explicitly provide submodule layer
+      # vars.
+      vq_ngrammer_layer = vq_ngrammer_layer.bind(
+          initial_vars, mutable=[NON_TRAINABLE])
       ngram_embs = vq_ngrammer_layer(
           None, input_embs, paddings, attention_scores=attention_scores)
       dists, _ = vq_ngrammer_layer.vq_layer(input_embs)
@@ -390,14 +399,20 @@ class NgrammerTest(test_utils.TestCase):
         causal_attention=True,
         ngram_using_attention_scores=use_attention_scores)
     vq_ngrammer_layer = instantiate(vq_ngrammer_layer_p)
-    initial_vars = vq_ngrammer_layer.init(init_key)
-    # Bind makes vq_ngrammer_layer a stateful layer with all its submodule
-    # layer variables automatically bound. It simplfies calling of submodule
-    # fprop because we no longer need to explicitly provide submodule layer
-    # vars.
-    vq_ngrammer_layer = vq_ngrammer_layer.bind(initial_vars, mutable=True)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
+      initial_vars = vq_ngrammer_layer.init(
+          init_key,
+          None,
+          input_embs,
+          paddings,
+          attention_scores=attention_scores)
+      # Bind makes vq_ngrammer_layer a stateful layer with all its submodule
+      # layer variables automatically bound. It simplfies calling of submodule
+      # fprop because we no longer need to explicitly provide submodule layer
+      # vars.
+      vq_ngrammer_layer = vq_ngrammer_layer.bind(
+          initial_vars, mutable=[NON_TRAINABLE])
       ngram_embs = vq_ngrammer_layer(
           None, input_embs, paddings, attention_scores=attention_scores)
       for step in range(seq_len):
@@ -448,15 +463,16 @@ class NgrammerTest(test_utils.TestCase):
         start_step=0,
         end_step=10)
     bregman_ngrammer_layer = instantiate(bregman_ngrammer_layer_p)
-    initial_vars = bregman_ngrammer_layer.init(init_key)
-    # Bind makes bregman_ngrammer_layer a stateful layer with all its submodule
-    # layer variables automatically bound. It simplfies calling of submodule
-    # __call__ because we no longer need to explicitly provide submodule layer
-    # vars.
-    bregman_ngrammer_layer = bregman_ngrammer_layer.bind(
-        initial_vars, mutable=True)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
+      initial_vars = bregman_ngrammer_layer.init(
+          init_key, inputs, input_embs, paddings=paddings)
+      # Bind makes bregman_ngrammer_layer a stateful layer with all its
+      # submodule layer variables automatically bound. It simplfies calling of
+      # submodule __call__ because we no longer need to explicitly provide
+      # submodule layer vars.
+      bregman_ngrammer_layer = bregman_ngrammer_layer.bind(
+          initial_vars, mutable=[NON_TRAINABLE])
       ngram_embs = bregman_ngrammer_layer(inputs, input_embs, paddings=paddings)
       # [B, L, N, C].
       input_coeffs = bregman_ngrammer_layer.bregman_compression_layer(

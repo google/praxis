@@ -107,7 +107,9 @@ class BiTemperedLoss(base_layer.BaseLayer):
     base_schedule = 0.0
     if not self.do_eval:
       count = self.get_var('count')
-      self.update_var('count', count + 1.0)
+      is_initializing = self.is_mutable_collection(base_layer.PARAMS)
+      if not is_initializing:
+        self.update_var('count', count + 1.0)
       base_schedule = self.temperature_schedule(count)
     t1 = 1.0 * base_schedule + p.t1 * (1.0 - base_schedule)
     t2 = 1.0 * base_schedule + p.t2 * (1.0 - base_schedule)
