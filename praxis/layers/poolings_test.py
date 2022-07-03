@@ -57,8 +57,6 @@ class PoolingsTest(test_utils.TestCase):
         pooling_type=pooling_type,
         padding=padding)
     pooling_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = pooling_layer.init(prng_key)
     if int_inputs:
       npy_inputs = np.random.randint(0, 100, input_shape).astype('int32')
     else:
@@ -66,6 +64,8 @@ class PoolingsTest(test_utils.TestCase):
     inputs = jnp.asarray(npy_inputs)
     paddings = None
     tf_paddings = None
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pooling_layer.init(prng_key, inputs, paddings)
     output, _ = pooling_layer.apply(initial_vars, inputs, paddings)
     # Test whether tf Pooling layer returns the same output.
     # Modify initial_vars to use TF compatible params.
@@ -106,8 +106,6 @@ class PoolingsTest(test_utils.TestCase):
         pooling_type=pooling_type,
         padding=padding)
     pooling_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = pooling_layer.init(prng_key)
     if int_inputs:
       npy_inputs = np.random.randint(0, 100, input_shape).astype('int32')
     else:
@@ -123,6 +121,8 @@ class PoolingsTest(test_utils.TestCase):
           0, 2, [input_shape[0], input_shape[1]]).astype(npy_inputs.dtype)
     paddings = jnp.asarray(npy_paddings)
     tf_paddings = tf.constant(npy_paddings, dtype=tf.float32)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pooling_layer.init(prng_key, inputs, paddings)
     output, out_paddings = pooling_layer.apply(initial_vars, inputs, paddings)
     # Test whether tf Pooling layer returns the same output.
     # Modify initial_vars to use TF compatible params.

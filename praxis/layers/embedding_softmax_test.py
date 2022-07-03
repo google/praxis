@@ -50,10 +50,10 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         lookup_style=lookup_style,
         scale_sqrt_depth=scale_sqrt_depth)
     emb_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = emb_layer.init(prng_key)
     npy_input = np.random.randint(0, p.num_classes, [10, 20]).astype('int32')
     inputs = jnp.asarray(npy_input)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = emb_layer.init(prng_key, inputs, method=emb_layer.emb_lookup)
     outputs = emb_layer.apply(initial_vars, inputs, method=emb_layer.emb_lookup)
     # Test whether tf Embedding layer returns same output
     # Modify initial_vars to use TF compatible params
@@ -90,14 +90,15 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         soft_cap_logits=soft_cap_logits,
         label_smoothing_prob=label_smoothing_prob)
     softmax_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=1234)
-    initial_vars = softmax_layer.init(prng_key)
     npy_input = np.random.normal(1.5, 2.0, [8, 10, p.input_dims])
     inputs = jnp.asarray(npy_input)
     class_weights = np.random.normal(1.5, 2.0, [8, 10, 1])
     if class_probabilities is not None:
       class_probabilities /= np.sum(class_probabilities, axis=-1, keepdims=True)
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=1234)
+      initial_vars = softmax_layer.init(
+          prng_key, inputs, method=softmax_layer.get_logits)
       logits = softmax_layer.apply(
           initial_vars, inputs, method=softmax_layer.get_logits)
       outputs = softmax_layer.apply(
@@ -151,11 +152,12 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     p = embedding_softmax.FullSoftmax.HParams(
         name='jax_softmax', num_classes=num_classes, input_dims=40)
     softmax_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = softmax_layer.init(prng_key)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
     class_weights = np.random.normal(1.5, 2.0, [batch_size, 1])
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = softmax_layer.init(
+        prng_key, inputs, method=softmax_layer.get_logits)
     logits = softmax_layer.apply(
         initial_vars, inputs, method=softmax_layer.get_logits)
     with base_layer.JaxContext.new_context():
@@ -203,8 +205,6 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         label_smoothing_prob=0.5)  # build softmax with label smoothing.
     # Boiler-plate stuff, initialize weights and inputs/ class ids.
     softmax_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = softmax_layer.init(prng_key)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
     class_weights = np.random.normal(1.5, 2.0, [batch_size, 1])
@@ -225,6 +225,13 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
       p.label_smoothing_apply_for_eval = label_smoothing_apply_for_eval
       softmax_layer = instantiate(p)
       with base_layer.JaxContext.new_context(hparams=context_p):
+        prng_key = jax.random.PRNGKey(seed=123)
+        initial_vars = softmax_layer.init(
+            prng_key,
+            inputs,
+            class_weights,
+            class_ids=class_ids,
+            class_probabilities=None)
         outputs = softmax_layer.apply(
             initial_vars,
             inputs,
@@ -252,11 +259,12 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     p = embedding_softmax.FullSoftmax.HParams(
         name='jax_softmax', num_classes=num_classes, input_dims=40)
     softmax_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = softmax_layer.init(prng_key)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
     class_weights = np.random.normal(1.5, 2.0, [batch_size, 1])
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = softmax_layer.init(
+        prng_key, inputs, method=softmax_layer.get_logits)
     logits = softmax_layer.apply(
         initial_vars, inputs, method=softmax_layer.get_logits)
     with base_layer.JaxContext.new_context():
@@ -301,13 +309,18 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     p = embedding_softmax.FullSoftmax.HParams(
         name='jax_softmax', num_classes=num_classes, input_dims=40)
     softmax_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = softmax_layer.init(prng_key)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
     class_weights = np.random.normal(1.5, 2.0, [batch_size, 1])
     with self.assertRaises(ValueError):
       with base_layer.JaxContext.new_context():
+        prng_key = jax.random.PRNGKey(seed=123)
+        initial_vars = softmax_layer.init(
+            prng_key,
+            inputs,
+            class_weights,
+            class_ids=class_ids,
+            class_probabilities=class_probabilities)
         _ = softmax_layer.apply(
             initial_vars,
             inputs,
@@ -328,12 +341,13 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         lookup_style=lookup_style,
         scale_sqrt_depth=scale_sqrt_depth)
     softmax_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = softmax_layer.init(prng_key)
     npy_input = np.random.normal(1.5, 2.0, [8, 10, p.input_dims])
     inputs = jnp.asarray(npy_input)
     class_weights = np.random.normal(1.5, 2.0, [8, 10, 1])
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = softmax_layer.init(
+          prng_key, inputs, class_weights, class_ids=class_ids)
       outputs = softmax_layer.apply(
           initial_vars, inputs, class_weights, class_ids=class_ids)
     ids = np.squeeze(class_ids, axis=-1)
@@ -382,11 +396,12 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     p = embedding_softmax.SigmoidCrossEntropy.HParams(
         name='jax_softmax', num_classes=num_classes, input_dims=40)
     sigmoid_xent_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = sigmoid_xent_layer.init(prng_key)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
     class_weights = np.random.normal(1.5, 2.0, [batch_size, 1])
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = sigmoid_xent_layer.init(
+        prng_key, inputs, method=sigmoid_xent_layer.get_logits)
     logits = sigmoid_xent_layer.apply(
         initial_vars, inputs, method=sigmoid_xent_layer.get_logits)
     with base_layer.JaxContext.new_context():
@@ -434,9 +449,9 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         min_timescale=min_timescale,
         max_timescale=max_timescale)
     pos_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = pos_layer.init(prng_key)
     seq_length = np.random.randint(100, 1000)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pos_layer.init(prng_key, seq_length)
     output = pos_layer.apply(initial_vars, seq_length)
 
     output = jnp.squeeze(output, axis=0)
@@ -463,12 +478,12 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         min_timescale=min_timescale,
         max_timescale=max_timescale)
     pos_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = pos_layer.init(prng_key)
     position = np.array([[0, 1, 2, 3, 4, 0, 1, 2, 3, 4],
                          [0, 1, 2, 0, 1, 2, 0, 1, 2, 0],
                          [0, 1, 2, 3, 4, 5, 6, 0, 1, 2],
                          [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]])
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pos_layer.init(prng_key, position=position)
     output = pos_layer.apply(initial_vars, position=position)
     # Test whether tf PositionalEmbedding layer returns same output
     # Modify initial_vars to use TF compatible params
@@ -494,9 +509,9 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         min_timescale=min_timescale,
         max_timescale=max_timescale)
     pos_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = pos_layer.init(prng_key)
     inputs = np.random.normal(1.5, 2.5, (2, 8, 4, embedding_dims))
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pos_layer.init(prng_key, inputs)
     output = pos_layer.apply(initial_vars, inputs)
     # Test whether extend_step returns same output.
     for i in range(inputs.shape[1]):
@@ -528,9 +543,9 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         min_timescale=min_timescale,
         max_timescale=max_timescale)
     pos_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = pos_layer.init(prng_key)
     inputs = np.random.normal(1.5, 2.5, (2, 8, 4, embedding_dims))
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pos_layer.init(prng_key, inputs=inputs)
     output = pos_layer.apply(initial_vars, inputs=inputs)
     # Test whether extend_step returns same output.
     for i in range(inputs.shape[1]):
@@ -560,12 +575,13 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         min_timescale=min_timescale,
         max_timescale=max_timescale)
     pos_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = pos_layer.init(prng_key)
     inputs = np.random.normal(1.5, 2.5, (1, 4, 1, embedding_dims))
     if position is None:
       position = jnp.arange(4, dtype=jnp.float32)
     position = jnp.array(position)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pos_layer.init(
+        prng_key, inputs=inputs, position=position[jnp.newaxis, :])
     output = pos_layer.apply(
         initial_vars, inputs=inputs, position=position[jnp.newaxis, :])
     np_output = test_utils.to_np(output)
@@ -585,11 +601,11 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         embedding_dims=40,
         lookup_style=lookup_style)
     emb_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = emb_layer.init(prng_key)
     npy_input = np.random.randint(0, p.max_seq_length,
                                   [10, p.max_seq_length]).astype('int32')
     inputs = jnp.asarray(npy_input)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = emb_layer.init(prng_key, p.max_seq_length, inputs)
     outputs = emb_layer.apply(initial_vars, p.max_seq_length, inputs)
     # Test whether tf Embedding layer returns same output
     # Modify initial_vars to use TF compatible params
@@ -604,6 +620,7 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     np_outputs = to_np(outputs)
     tf_np_outputs = to_np(tf_output)
     self.assertAllClose(tf_np_outputs, np_outputs)
+
 
 if __name__ == '__main__':
   absltest.main()

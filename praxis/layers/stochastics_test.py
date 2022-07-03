@@ -32,15 +32,17 @@ class StochaticsTest(test_utils.TestCase):
     test_layer_p = stochastics.Dropout.HParams(name='dropout', keep_prob=0.8)
     layer = instantiate(test_layer_p)
 
-    prng_key = jax.random.PRNGKey(seed=12346)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
-
     inputs = jnp.ones([10, 1000], dtype=jnp.bfloat16)
-    prng_key, dropout_k1, dropout_k2 = jax.random.split(prng_key, 3)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=12346)
+      prng_key, init_key = jax.random.split(prng_key)
+      prng_key, dropout_k1, dropout_k2 = jax.random.split(prng_key, 3)
+      initial_vars = layer.init({
+          'random': dropout_k1,
+          'params': init_key
+      }, inputs)
+      logging.info('initial_vars: %s', initial_vars)
       output1 = layer.apply(initial_vars, inputs, rngs={'random': dropout_k1})
       output2 = layer.apply(initial_vars, inputs, rngs={'random': dropout_k2})
 
@@ -67,15 +69,17 @@ class StochaticsTest(test_utils.TestCase):
         noise_shape_broadcast_dims=[2])
     layer = instantiate(test_layer_p)
 
-    prng_key = jax.random.PRNGKey(seed=12346)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
-
     inputs = jnp.ones([2, 10, 6, 8], dtype=jnp.bfloat16)
-    prng_key, compute_key = jax.random.split(prng_key)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=12346)
+      prng_key, init_key = jax.random.split(prng_key)
+      prng_key, compute_key = jax.random.split(prng_key)
+      initial_vars = layer.init({
+          'random': compute_key,
+          'params': init_key
+      }, inputs)
+      logging.info('initial_vars: %s', initial_vars)
       output1 = layer.apply(initial_vars, inputs, rngs={'random': compute_key})
 
     out1_sum = jnp.sum(output1)
@@ -92,15 +96,18 @@ class StochaticsTest(test_utils.TestCase):
         name='dropout', keep_prob=0.8, noise_shape_broadcast_dims=[0, 3])
     layer = instantiate(test_layer_p)
 
-    prng_key = jax.random.PRNGKey(seed=12346)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
-
     inputs = jnp.ones([2, 10, 6, 8], dtype=jnp.bfloat16)
-    prng_key, compute_key = jax.random.split(prng_key)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=12346)
+      prng_key, init_key = jax.random.split(prng_key)
+      prng_key, compute_key = jax.random.split(prng_key)
+      initial_vars = layer.init({
+          'random': compute_key,
+          'params': init_key
+      }, inputs)
+      logging.info('initial_vars: %s', initial_vars)
+
       output1 = layer.apply(initial_vars, inputs, rngs={'random': compute_key})
 
     out1_sum = jnp.sum(output1)
