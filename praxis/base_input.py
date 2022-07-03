@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import copy
 import re
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, Optional, Sequence
 
 from absl import logging
 from lingvo.core import cluster_factory
@@ -165,7 +165,7 @@ class BaseInput(base_hyperparams.BaseParameterizable):
   def ids_to_strings(self,
                      ids: pytypes.NpTensor,
                      lengths: pytypes.NpTensor,
-                     key: Optional[str] = None) -> List[str]:
+                     key: Optional[str] = None) -> Sequence[str]:
     """Converts int ids into strings.
 
     Args:
@@ -376,7 +376,7 @@ class LingvoInputAdaptor(BaseInput):
   def ids_to_strings(self,
                      ids: pytypes.NpTensor,
                      lengths: pytypes.NpTensor,
-                     key: Optional[str] = None) -> List[str]:
+                     key: Optional[str] = None) -> Sequence[str]:
     """Converts int ids into strings."""
     bytes_list = self.input.IdsToStrings(ids, lengths, key=key)
     if isinstance(bytes_list, tf.Tensor):
@@ -613,7 +613,7 @@ class MultiStreamInput(BaseInput):
                      ids: pytypes.NpTensor,
                      lengths: pytypes.NpTensor,
                      key: Optional[str] = None,
-                     stream: Optional[str] = None) -> List[str]:
+                     stream: Optional[str] = None) -> Sequence[str]:
     """Converts int ids into strings using a particular input stream.
 
     Args:
