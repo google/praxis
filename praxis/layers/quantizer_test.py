@@ -55,7 +55,7 @@ class VectorQuantizerTest(test_utils.TestCase):
 
     vq_p = self._GetParams(num_classes, latent_dim)
     vq = instantiate(vq_p)
-    vq_theta = vq.init(jax.random.PRNGKey(1))
+    vq_theta = vq.init(jax.random.PRNGKey(1), z, paddings)
     vq_theta['params']['w'] = jnp.expand_dims(self.W, 1)
     out = vq.apply(vq_theta, z, paddings)
 
@@ -87,7 +87,7 @@ class VectorQuantizerTest(test_utils.TestCase):
     vq_p = self._GetParams(num_classes, latent_dim)
     vq_p.num_groups = num_groups
     vq = instantiate(vq_p)
-    vq_theta = vq.init(jax.random.PRNGKey(1))
+    vq_theta = vq.init(jax.random.PRNGKey(1), z, paddings)
     out = vq.apply(vq_theta, z, paddings)
 
     with self.subTest('test_shape'):

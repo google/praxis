@@ -249,7 +249,7 @@ class NgrammerTest(test_utils.TestCase):
       # layer variables automatically bound. It simplfies calling of submodule
       # fprop because we no longer need to explicitly provide submodule layer
       # vars.
-      initial_vars = ngrammer_layer.init(init_key, input_embs, paddings)
+      initial_vars = ngrammer_layer.init(init_key, inputs, input_embs, paddings)
       ngrammer_layer = ngrammer_layer.bind(
           initial_vars, mutable=[NON_TRAINABLE])
       ngram_embs = ngrammer_layer(inputs, input_embs, paddings)

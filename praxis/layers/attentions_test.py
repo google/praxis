@@ -66,15 +66,15 @@ class AttentionsTest(test_utils.TestCase):
   def test_per_dim_scale(self):
     test_layer_p = attentions.PerDimScale.HParams(name='scale', dim=4)
     layer = instantiate(test_layer_p)
+    inputs = np.random.normal(1.5, 2.0, [5, 4]).astype(np.float32)
 
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
+    initial_vars = layer.init(init_key, inputs)
     initial_vars['params']['per_dim_scale'] = jnp.array([-0.5, 0.5, 1.0, 0.0],
                                                         dtype=jnp.float32)
     logging.info('initial_vars: %s', initial_vars)
 
-    inputs = np.random.normal(1.5, 2.0, [5, 4]).astype(np.float32)
     jax_out = layer.apply(initial_vars, inputs)
 
     logging.info('jax_output: %s', jax_out)
@@ -98,13 +98,12 @@ class AttentionsTest(test_utils.TestCase):
         dim_per_head=5,
         is_output_projection=False)
     layer = instantiate(test_layer_p)
+    inputs = np.random.normal(1.5, 2.0, [5, 16]).astype(np.float32)
 
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
+    initial_vars = layer.init(init_key, inputs)
     logging.info('initial_vars: %s', initial_vars)
-
-    inputs = np.random.normal(1.5, 2.0, [5, 16]).astype(np.float32)
 
     jax_out = layer.apply(initial_vars, inputs)
 
@@ -140,15 +139,14 @@ class AttentionsTest(test_utils.TestCase):
         use_nhd_shape=use_nhd_shape,
     )
     layer = instantiate(test_layer_p)
+    inputs = np.random.normal(1.5, 2.0, [5, 2, 5]).astype(np.float32)
 
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
-
-    inputs = np.random.normal(1.5, 2.0, [5, 2, 5]).astype(np.float32)
 
     with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(init_key, inputs)
+      logging.info('initial_vars: %s', initial_vars)
       jax_out = layer.apply(initial_vars, inputs)
 
     logging.info('jax_output: %s', jax_out)
@@ -184,10 +182,11 @@ class AttentionsTest(test_utils.TestCase):
         dim_per_head=16,
         is_output_projection=True)
     layer = instantiate(test_layer_p)
+    inputs = np.random.normal(1.5, 2.0, [2, 16, 16]).astype(np.float32)
 
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
+    initial_vars = layer.init(init_key, inputs)
 
     # Now run TF based computation.
     tf_layer_p = batch_major_attention.MultiHeadedProjectionLayer.Params().Set(
@@ -252,8 +251,6 @@ class AttentionsTest(test_utils.TestCase):
     layer = instantiate(test_layer_p)
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
     target_batch_size = 3
     source_max_length = 16
     target_max_length = 16
@@ -272,6 +269,15 @@ class AttentionsTest(test_utils.TestCase):
       segment_pos = jnp.maximum(segment_pos - starting_index, 0)
 
     with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(
+          init_key,
+          fake_query_vec,
+          fake_query_vec,
+          fake_query_vec,
+          atten_mask,
+          query_segment_pos=segment_pos,
+          key_segment_pos=segment_pos)
+      logging.info('initial_vars: %s', initial_vars)
       _, attention_states = layer.apply(
           initial_vars,
           fake_query_vec,
@@ -337,10 +343,6 @@ class AttentionsTest(test_utils.TestCase):
     )
     layer = instantiate(test_layer_p)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-
     target_batch_size = 3
     source_max_length = 8
     target_max_length = 8
@@ -356,6 +358,11 @@ class AttentionsTest(test_utils.TestCase):
     atten_mask = attentions.causal_segment_mask(segment_ids, np.float32)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
+
       jax_fprop_out, jax_atten_prob = layer.apply(initial_vars, query_vec,
                                                   key_vec, value_vec,
                                                   atten_mask)
@@ -407,18 +414,6 @@ class AttentionsTest(test_utils.TestCase):
     )
     layer = instantiate(test_layer_p)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars['params']['u'] = jax.random.uniform(
-        shape=initial_vars['params']['u'].shape, key=init_key)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars['params']['v'] = jax.random.uniform(
-        shape=initial_vars['params']['v'].shape, key=init_key)
-    initial_vars['params']['pos_emb'] = {}
-
     target_batch_size = 3
     source_max_length = 8
 
@@ -432,6 +427,18 @@ class AttentionsTest(test_utils.TestCase):
     atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars['params']['u'] = jax.random.uniform(
+          shape=initial_vars['params']['u'].shape, key=init_key)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars['params']['v'] = jax.random.uniform(
+          shape=initial_vars['params']['v'].shape, key=init_key)
+      initial_vars['params']['pos_emb'] = {}
+
       jax_fprop_out, jax_atten_prob = layer.apply(initial_vars, query_vec,
                                                   key_vec, value_vec,
                                                   atten_mask)
@@ -483,18 +490,6 @@ class AttentionsTest(test_utils.TestCase):
     )
     layer = instantiate(test_layer_p)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars['params']['u'] = jax.random.uniform(
-        shape=initial_vars['params']['u'].shape, key=init_key)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars['params']['v'] = jax.random.uniform(
-        shape=initial_vars['params']['v'].shape, key=init_key)
-    initial_vars['params']['pos_emb'] = {}
-
     target_batch_size = 3
     source_max_length = 8
 
@@ -509,6 +504,18 @@ class AttentionsTest(test_utils.TestCase):
     atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
+
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars['params']['u'] = jax.random.uniform(
+          shape=initial_vars['params']['u'].shape, key=init_key)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars['params']['v'] = jax.random.uniform(
+          shape=initial_vars['params']['v'].shape, key=init_key)
+      initial_vars['params']['pos_emb'] = {}
       jax_fprop_out, jax_atten_prob = layer.apply(initial_vars, query_vec,
                                                   key_vec, value_vec,
                                                   atten_mask)
@@ -557,10 +564,6 @@ class AttentionsTest(test_utils.TestCase):
     )
     layer = instantiate(test_layer_p)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-
     target_batch_size = 3
     source_max_length = 16
 
@@ -578,6 +581,10 @@ class AttentionsTest(test_utils.TestCase):
       atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
       jax_fprop_out, jax_atten_prob = layer.apply(initial_vars, query_vec,
                                                   key_vec, value_vec,
                                                   atten_mask)
@@ -633,15 +640,14 @@ class AttentionsTest(test_utils.TestCase):
     causal_dconv_layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = causal_dconv_layer.init(init_key)
+    initial_vars = causal_dconv_layer.init(init_key, inputs, axis)
     if isinstance(hidden_dims, list):
       kernel_shape = hidden_dims
     else:
       kernel_shape = [hidden_dims]
     for k in range(kernel_size):
       initial_vars['params'][f'dconv_{k}'] = jnp.ones(kernel_shape)
-    jax_dconv_out = causal_dconv_layer.apply(
-        initial_vars, inputs, axis, method=causal_dconv_layer.__call__)
+    jax_dconv_out = causal_dconv_layer.apply(initial_vars, inputs, axis)
     jax_np_out = test_utils.to_np(jax_dconv_out)
     outputs = inputs
     for _ in range(1, kernel_size):
@@ -662,7 +668,7 @@ class AttentionsTest(test_utils.TestCase):
     causal_dconv_layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = causal_dconv_layer.init(init_key)
+    initial_vars = causal_dconv_layer.init(init_key, inputs, axis)
     jax_dconv_out = causal_dconv_layer.apply(
         initial_vars, inputs, axis, method=causal_dconv_layer.__call__)
     jax_np_out = test_utils.to_np(jax_dconv_out)
@@ -705,9 +711,6 @@ class AttentionsTest(test_utils.TestCase):
             relative_attention_num_buckets=num_buckets,
             relative_attention_max_distance=max_distance))
     layer = instantiate(test_layer_p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
     target_batch_size = 3
     source_max_length = 16
     query_vec = np.random.normal(
@@ -720,6 +723,10 @@ class AttentionsTest(test_utils.TestCase):
     atten_mask = attentions.causal_mask(query_vec)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask, segment_pos)
       atten_output, _ = layer.apply(initial_vars, query_vec, key_vec, value_vec,
                                     atten_mask, segment_pos)
 
@@ -771,9 +778,6 @@ class AttentionsTest(test_utils.TestCase):
             relative_attention_num_buckets=num_buckets,
             relative_attention_max_distance=max_distance))
     layer = instantiate(test_layer_p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
     target_batch_size = 2
     source_max_length = 8
     inputs = np.random.normal(
@@ -787,6 +791,10 @@ class AttentionsTest(test_utils.TestCase):
     time_step = 2
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, fake_input, fake_input, fake_input,
+                                jnp.ones_like(atten_mask), segment_pos)
       _, attention_states = layer.apply(
           initial_vars,
           fake_input,
@@ -821,9 +829,6 @@ class AttentionsTest(test_utils.TestCase):
     layer_raw = instantiate(test_layer_p)
     test_layer_p.use_length_as_position = True
     layer_len = instantiate(test_layer_p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer_raw.init(init_key)
     target_batch_size = 3
     source_max_length = 8
     segment_ids = np.array([
@@ -842,6 +847,9 @@ class AttentionsTest(test_utils.TestCase):
     logging.info('segment mask: %s', segment_mask)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer_raw.init(init_key, segment_pos, segment_pos)
       rb_raw = layer_raw.apply(initial_vars, segment_pos, segment_pos)
       rb_len = layer_len.apply(initial_vars, segment_pos, segment_pos)
 
@@ -912,21 +920,21 @@ class AttentionsTest(test_utils.TestCase):
         attention_combine_dims=True)
     combine_proj = instantiate(combine_proj_p)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = proj.init(init_key)
-
-    # Set up initial vars for combine attention dim projection.
-    combine_initial_vars = combine_proj.init(init_key)
-    combine_initial_vars['params']['w'] = np.reshape(
-        initial_vars['params']['w'], (3, input_dim, num_heads * dim_per_head))
-    combine_initial_vars['params']['b'] = np.reshape(
-        initial_vars['params']['b'], (3, num_heads * dim_per_head))
-
     batch_size = 3
     inputs = np.random.normal(size=[batch_size, input_dim]).astype(np.float32)
 
     with base_layer.JaxContext.new_context():
+      # Set up initial vars for combine attention dim projection.
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = proj.init(init_key, inputs)
+
+      combine_initial_vars = combine_proj.init(init_key, inputs)
+      combine_initial_vars['params']['w'] = np.reshape(
+          initial_vars['params']['w'], (3, input_dim, num_heads * dim_per_head))
+      combine_initial_vars['params']['b'] = np.reshape(
+          initial_vars['params']['b'], (3, num_heads * dim_per_head))
+
       q_proj_ref, k_proj_ref, v_proj_ref = proj.apply(initial_vars, inputs)
       q_proj_combine, k_proj_combine, v_proj_combine = combine_proj.apply(
           combine_initial_vars, inputs)
@@ -957,10 +965,6 @@ class AttentionsTest(test_utils.TestCase):
         dconv_kernel_size=dconv_kernel_size,
         use_rotary_position_emb=use_rotary_position_emb)
     layer = instantiate(test_layer_p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
     target_batch_size = 3
     source_max_length = 16
     target_max_length = 16
@@ -975,6 +979,11 @@ class AttentionsTest(test_utils.TestCase):
     atten_mask = attentions.causal_mask(query_vec)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
+      logging.info('initial_vars: %s', initial_vars)
       fprop_out, _ = layer.apply(
           initial_vars,
           query_vec,
@@ -1032,10 +1041,6 @@ class AttentionsTest(test_utils.TestCase):
         dconv_kernel_size=dconv_kernel_size,
         use_rotary_position_emb=use_rotary_position_emb)
     layer = instantiate(test_layer_p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
     target_batch_size = 3
     source_max_length = 8
     suffix_1_len = 2
@@ -1050,6 +1055,11 @@ class AttentionsTest(test_utils.TestCase):
     prefix_atten_mask = attentions.causal_mask(prefix)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
+      logging.info('initial_vars: %s', initial_vars)
       fprop_out, attention_states = layer.apply(
           initial_vars,
           query_vec,
@@ -1140,10 +1150,6 @@ class AttentionsTest(test_utils.TestCase):
         dim_per_head=16,
         decode_cache=False)
     layer = instantiate(test_layer_p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
     target_batch_size = 3
     source_max_length = 16
     query_vec = np.random.normal(
@@ -1153,6 +1159,17 @@ class AttentionsTest(test_utils.TestCase):
     segment_pos = np.tile(np.arange(source_max_length), (target_batch_size, 1))
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(
+          init_key,
+          fake_query_vec,
+          fake_query_vec,
+          fake_query_vec,
+          atten_mask,
+          query_segment_pos=segment_pos,
+          key_segment_pos=segment_pos)
+      logging.info('initial_vars: %s', initial_vars)
       _, attention_states = layer.apply(
           initial_vars,
           fake_query_vec,
@@ -1190,9 +1207,6 @@ class ChunkedAttentionsTest(test_utils.TestCase):
             relative_attention_max_distance=8))
     cca = attentions.ChunkedCrossAttention.HParams(name='cca', atten=atten_p)
     layer = instantiate(cca)
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
     batch_size = 5
     source_length = 28
     query_vec = np.random.normal(
@@ -1204,6 +1218,9 @@ class ChunkedAttentionsTest(test_utils.TestCase):
         size=[batch_size, num_chunks, num_neighbors, retrieval_length, mdl_dim
              ]).astype(np.float32)
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, neighbors)
       atten_output = layer.apply(initial_vars, query_vec, neighbors)
 
     self.assertEqual(atten_output.shape, (batch_size, source_length, mdl_dim))
@@ -1248,9 +1265,6 @@ class ChunkedAttentionsTest(test_utils.TestCase):
             relative_attention_max_distance=16))
 
     layer = base_layer.instantiate(atten_p)
-    prng_key = jax.random.PRNGKey(seed=456)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
     batch_size = 9
     target_length = 8  # T
     source_length = 12  # S
@@ -1265,6 +1279,10 @@ class ChunkedAttentionsTest(test_utils.TestCase):
     key_segment_pos = np.tile(
         np.arange(target_length)[None, :], [batch_size, 1])
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=456)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, key_vec,
+                                atten_mask, query_segment_pos, key_segment_pos)
       layer = layer.bind(initial_vars)
       atten_output, _ = layer(query_vec, key_vec, key_vec, atten_mask,
                               query_segment_pos, key_segment_pos)
@@ -1376,9 +1394,6 @@ class ChunkedAttentionsTest(test_utils.TestCase):
             relative_attention_max_distance=16))
     cca = attentions.ChunkedCrossAttention.HParams(name='cca', atten=atten_p)
     layer = base_layer.instantiate(cca)
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
     batch_size = 5  # B
     # Shape [B, T, D]
     query = np.random.normal(size=[batch_size, target_length, mdl_dim]).astype(
@@ -1394,6 +1409,9 @@ class ChunkedAttentionsTest(test_utils.TestCase):
              ]).astype(np.float32)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query, neighbors)
       layer = layer.bind(initial_vars)
       layer_output = layer(query, neighbors)
 

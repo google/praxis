@@ -77,11 +77,10 @@ class RnnCellTest(test_utils.TestCase):
     )
     model = instantiate(p)
 
-    initial_vars = model.init(jax.random.PRNGKey(5678))
-    initial_vars[PARAMS]['wm'] = lstm.vars['wm'].numpy()
-    initial_vars[PARAMS]['b'] = lstm.vars['b'].numpy()
-
     with base_layer.JaxContext.new_context():
+      initial_vars = model.init(jax.random.PRNGKey(5678), state0, inputs)
+      initial_vars[PARAMS]['wm'] = lstm.vars['wm'].numpy()
+      initial_vars[PARAMS]['b'] = lstm.vars['b'].numpy()
       output = model.apply(initial_vars, state0, inputs)
     self.assertAllClose(m_expected, output.m)
     self.assertAllClose(c_expected, output.c)

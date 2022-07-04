@@ -27,6 +27,7 @@ from praxis import test_utils
 from praxis.layers import transformers
 from praxis.layers import vits
 
+PARAMS = base_layer.PARAMS
 RANDOM = base_layer.RANDOM
 instantiate = base_layer.instantiate
 
@@ -95,15 +96,15 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
     p_entry = self._vit_entry_layers(exp_params)
     entry = instantiate(p_entry)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, subkey = jax.random.split(prng_key)
-    initial_vars = entry.init(prng_key)
-
     inputs_np = np.random.normal(
         size=[exp_params.batch_size, image_sizes[0], image_sizes[1], 3])
     inputs = jnp.asarray(inputs_np)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, subkey = jax.random.split(prng_key)
+      initial_vars = entry.init({PARAMS: prng_key, RANDOM: subkey}, inputs)
+
       features = entry.apply(initial_vars, inputs, rngs={RANDOM: subkey})
 
     row_patch_count = image_sizes[0] // exp_params.patch_size
@@ -118,16 +119,18 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
     p_exit = self._vit_exit_layers(exp_params)
     exit_module = instantiate(p_exit)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, subkey = jax.random.split(prng_key)
-    initial_vars = exit_module.init(prng_key)
-
     inputs_np = np.random.normal(size=[
         exp_params.batch_size, exp_params.num_tokens, exp_params.hidden_dim
     ])
     inputs = jnp.asarray(inputs_np)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, subkey = jax.random.split(prng_key)
+      initial_vars = exit_module.init({
+          PARAMS: prng_key,
+          RANDOM: subkey
+      }, inputs)
       features = exit_module.apply(initial_vars, inputs, rngs={RANDOM: subkey})
 
     self.assertEqual(features.shape,
@@ -177,15 +180,15 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
 
     vit_model = instantiate(p_vit)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, subkey = jax.random.split(prng_key)
-    initial_vars = vit_model.init(prng_key)
-
     inputs_np = np.random.normal(
         size=[exp_params.batch_size, image_sizes[0], image_sizes[1], 3])
     inputs = jnp.asarray(inputs_np)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, subkey = jax.random.split(prng_key)
+      initial_vars = vit_model.init({PARAMS: prng_key, RANDOM: subkey}, inputs)
+
       features = vit_model.apply(initial_vars, inputs, rngs={RANDOM: subkey})
 
     if pooled:

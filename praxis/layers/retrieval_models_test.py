@@ -135,10 +135,6 @@ class RetrievalModelsTest(test_utils.TestCase):
             input_dims=model_dim, num_classes=vocab_size))
 
     jax_layer = instantiate(jax_p)
-    prng_key = jax.random.PRNGKey(seed=42)
-    prng_key, init_key = jax.random.split(prng_key)
-    jax_vars = jax_layer.init(init_key)
-
     # Build Jax Inputs
     np.random.seed(7232)
     npy_ids = np.random.randint(0, vocab_size - 1, [batch, length])
@@ -156,7 +152,24 @@ class RetrievalModelsTest(test_utils.TestCase):
 
     # Compute jax outputs
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=42)
+      prng_key, init_key = jax.random.split(prng_key)
       prng_key, random_key = jax.random.split(prng_key)
+      jax_vars = jax_layer.init(
+          {
+              'params': init_key,
+              'random': random_key
+          },
+          jax_ids,
+          jax_paddings,
+          labels=py_utils.NestedMap(
+              class_ids=jax_labels,
+              class_weights=jax_label_weighs,
+          ),
+          segment_ids=jax_seg_ids,
+          segment_pos=jax_seg_pos,
+      )
+
       jax_outputs, _ = jax_layer.apply(
           jax_vars,
           jax_ids,
@@ -168,7 +181,7 @@ class RetrievalModelsTest(test_utils.TestCase):
           segment_ids=jax_seg_ids,
           segment_pos=jax_seg_pos,
           rngs={RANDOM: random_key},
-          mutable=True)
+          mutable=['non_trainable'])
     # [batch, length, vocab]
     self.assertEqual(jax_outputs.logits.shape, (2, 3, 16))
 

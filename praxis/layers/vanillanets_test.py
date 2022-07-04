@@ -49,12 +49,12 @@ class VanillanetsTest(parameterized.TestCase):
         kernel_size=kernel_size,
         stride=stride)
     resnet_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = resnet_layer.init(prng_key)
     npy_inputs = np.random.normal(1.0, 0.5, input_shape).astype('float32')
     inputs = jnp.asarray(npy_inputs)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = resnet_layer.init(prng_key, inputs)
       output = resnet_layer.apply(initial_vars, inputs)
 
   @parameterized.parameters(
@@ -68,12 +68,12 @@ class VanillanetsTest(parameterized.TestCase):
       p.output_spatial_pooling_params = poolings.GlobalPooling.HParams(
           pooling_dims=spatial_pooling_dims)
     vanillanet_layer = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = vanillanet_layer.init(prng_key)
     npy_inputs = np.random.normal(1.0, 0.5, input_shape).astype('float32')
     inputs = jnp.asarray(npy_inputs)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = vanillanet_layer.init(prng_key, inputs)
       output = vanillanet_layer.apply(initial_vars, inputs)
 
 

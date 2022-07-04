@@ -42,12 +42,12 @@ class MultiQueryAttentionTest(test_utils.TestCase):
         name='mh', input_dim=16, output_dim=5)
     layer = instantiate(test_layer_p)
 
+    inputs = np.random.normal(1.5, 2.0, [5, 16]).astype(np.float32)
+
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
+    initial_vars = layer.init(init_key, inputs)
     logging.info('initial_vars: %s', initial_vars)
-
-    inputs = np.random.normal(1.5, 2.0, [5, 16]).astype(np.float32)
 
     jax_out = layer.apply(initial_vars, inputs)
     self.assertSequenceEqual(jax_out.shape, [5, 5])
@@ -56,16 +56,16 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     test_layer_p = multi_query_attention.MultiQueryDotProductAttention.HParams(
         name='mqa', input_dim=16, hidden_dim=50, num_heads=10)
     layer = instantiate(test_layer_p)
+    inputs = np.random.normal(1.5, 2.0, [5, 12, 16]).astype(np.float32)
+    atten_mask = jnp.zeros([1, 1, 1, 12])
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
-
-    inputs = np.random.normal(1.5, 2.0, [5, 12, 16]).astype(np.float32)
 
     with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(init_key, inputs, inputs, inputs, atten_mask)
+      logging.info('initial_vars: %s', initial_vars)
       encoded, attens = layer.apply(initial_vars, inputs, inputs, inputs,
-                                    jnp.zeros([1, 1, 1, 12]))
+                                    atten_mask)
     self.assertSequenceEqual(encoded.shape, [5, 12, 16])
     self.assertSequenceEqual(attens.shape, [5, 10, 12, 12])
 
@@ -75,19 +75,19 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     layer = instantiate(test_layer_p)
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
 
     query_vec = jnp.zeros([5, 10, 16])
 
     with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(init_key, query_vec, query_vec, query_vec,
+                                attentions.causal_mask(query_vec))
+      logging.info('initial_vars: %s', initial_vars)
       _, attention_states = layer.apply(
           initial_vars,
           query_vec,
           query_vec,
           query_vec,
           attentions.causal_mask(query_vec),
-          method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
       updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
                                                        initial_vars)
@@ -104,15 +104,15 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     test_layer_p = multi_query_attention.MultiQueryDotProductAttention.HParams(
         name='mqa', input_dim=16, hidden_dim=50, num_heads=10)
     layer = instantiate(test_layer_p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = layer.init(init_key)
-    logging.info('initial_vars: %s', initial_vars)
 
     inputs = np.random.normal(1.5, 2.0, [5, 2, 16]).astype(np.float32)
     mask = attentions.causal_mask(inputs)
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, inputs, inputs, inputs, mask)
+      logging.info('initial_vars: %s', initial_vars)
       encoded, _ = layer.apply(initial_vars, inputs, inputs, inputs, mask)
 
     with base_layer.JaxContext.new_context():

@@ -69,8 +69,6 @@ class TransformerModelsTest(test_utils.TestCase):
     p.softmax_tpl.scale_sqrt_depth = True
     batch_size = 8
     bert_lm = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = bert_lm.init(prng_key)
     input_ids = jax.random.randint(
         jax.random.PRNGKey(1234), [batch_size, seq_len], 0, 51)
     input_paddings = jnp.zeros([batch_size, seq_len])
@@ -84,6 +82,14 @@ class TransformerModelsTest(test_utils.TestCase):
     labels.class_weights = input_weights
 
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = bert_lm.init(
+          prng_key,
+          input_ids,
+          input_paddings,
+          labels=labels,
+          segment_ids=input_segment_ids,
+          segment_pos=input_segment_pos)
       outputs = bert_lm.apply(
           initial_vars,
           input_ids,
@@ -153,13 +159,17 @@ class TransformerModelsTest(test_utils.TestCase):
     seq_len = 4
     batch_size = 2
     transformer_lm = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = transformer_lm.init(prng_key)
     npy_inputs = np.random.randint(
         vocab_size, size=(batch_size, seq_len)).astype('int32')
     inputs = jnp.asarray(npy_inputs)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_lm.init(
+          prng_key,
+          inputs,
+          jnp.zeros_like(inputs),
+      )
       fprop_outputs = transformer_lm.apply(
           initial_vars,
           inputs,
@@ -222,13 +232,17 @@ class TransformerModelsTest(test_utils.TestCase):
     params.tr_atten_tpl.dconv_kernel_size = dconv_kernel_size
     params.tr_atten_tpl.use_rotary_position_emb = use_rotary_position_emb
     transformer_lm = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = transformer_lm.init(prng_key)
     npy_inputs = np.random.randint(
         vocab_size, size=(batch_size, seq_len)).astype('int32')
     inputs = jnp.asarray(npy_inputs)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_lm.init(
+          prng_key,
+          inputs,
+          jnp.zeros_like(inputs),
+      )
       fprop_outputs = transformer_lm.apply(
           initial_vars,
           inputs,
@@ -320,13 +334,14 @@ class TransformerModelsTest(test_utils.TestCase):
     params = p.stacked_transformer_tpl.transformer_layer_params_tpl
     params.tr_atten_tpl.use_rotary_position_emb = use_rotary_position_emb
     transformer_lm = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = transformer_lm.init(prng_key)
     npy_inputs = np.random.randint(
         vocab_size, size=(batch_size, seq_len)).astype('int32')
     inputs = jnp.asarray(npy_inputs)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_lm.init(prng_key, inputs,
+                                         jnp.zeros_like(inputs))
       fprop_outputs = transformer_lm.apply(
           initial_vars,
           inputs,
@@ -501,8 +516,6 @@ class TransformerModelsTest(test_utils.TestCase):
     seq_len = 4
     batch_size = 1
     transformer_enc_dec = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = transformer_enc_dec.init(prng_key)
     npy_inputs = np.random.randint(
         vocab_size, size=(batch_size, seq_len)).astype('int32')
     npy_input_paddings = np.random.randint(
@@ -514,6 +527,9 @@ class TransformerModelsTest(test_utils.TestCase):
     targets = jnp.asarray(npy_targets, dtype=jnp.int32)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_enc_dec.init(prng_key, inputs, input_paddings,
+                                              targets, jnp.zeros_like(targets))
       fprop_outputs = transformer_enc_dec.apply(
           initial_vars,
           inputs,
@@ -577,9 +593,6 @@ class TransformerModelsTest(test_utils.TestCase):
         c_dim=c_dim,
         e_dim=e_dim)
     jax_layer = instantiate(jax_p)
-    prng_key = jax.random.PRNGKey(seed=42)
-    prng_key, init_key = jax.random.split(prng_key)
-    jax_vars = jax_layer.init(init_key)
     # Build Jax Inputs
     np.random.seed(42)
     npy_ids = np.random.randint(0, vocab_size - 1, [batch, length])
@@ -596,7 +609,23 @@ class TransformerModelsTest(test_utils.TestCase):
     jax_label_weighs = jnp.asarray([[1, 1, 0], [1, 1, 0]])
     # Compute jax outputs
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=42)
+      prng_key, init_key = jax.random.split(prng_key)
       prng_key, random_key = jax.random.split(prng_key)
+      jax_vars = jax_layer.init(
+          {
+              PARAMS: init_key,
+              RANDOM: random_key
+          },
+          jax_ids,
+          jax_paddings,
+          labels=py_utils.NestedMap(
+              class_ids=jax_labels,
+              class_weights=jax_label_weighs,
+          ),
+          segment_ids=jax_seg_ids,
+          segment_pos=jax_seg_pos,
+      )
       jax_outputs, updated_vars = jax_layer.apply(
           jax_vars,
           jax_ids,
@@ -609,7 +638,7 @@ class TransformerModelsTest(test_utils.TestCase):
           segment_pos=jax_seg_pos,
           rngs={RANDOM: random_key},
           mutable=[base_layer.AUX_LOSS])
-      # There are two MOE load balancing loss + z-loss, for a total aux-loss 
+      # There are two MOE load balancing loss + z-loss, for a total aux-loss
       # weight of 3.0
       print(jax_outputs)
       print(updated_vars)
@@ -644,9 +673,6 @@ class TransformerModelsTest(test_utils.TestCase):
         e_dim=e_dim)
     assert jax_p.packed_input
     jax_layer = instantiate(jax_p)
-    prng_key = jax.random.PRNGKey(seed=42)
-    prng_key, init_key = jax.random.split(prng_key)
-    jax_vars = jax_layer.init(init_key)
 
     builder_p = gshard_builder.DenseBuilder.Params().Set(
         num_groups=1,
@@ -701,7 +727,21 @@ class TransformerModelsTest(test_utils.TestCase):
 
     # Compute jax outputs
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=42)
+      prng_key, init_key = jax.random.split(prng_key)
       prng_key, random_key = jax.random.split(prng_key)
+      jax_vars = jax_layer.init({
+          PARAMS: init_key,
+          RANDOM: random_key
+      },
+                                jax_ids,
+                                jax_paddings,
+                                labels=py_utils.NestedMap(
+                                    class_ids=jax_labels,
+                                    class_weights=jax_label_weighs,
+                                ),
+                                segment_ids=jax_seg_ids,
+                                segment_pos=jax_seg_pos)
       jax_outputs, _ = jax_layer.apply(
           jax_vars,
           jax_ids,
@@ -835,15 +875,22 @@ class TransformerModelsTest(test_utils.TestCase):
             z_loss_weight=1e-4,
             c_dim=c_dim,
             e_dim=e_dim))
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = transformer_lm.init(init_key)
     npy_inputs = np.random.randint(
         vocab_size, size=(batch, length)).astype('int32')
     inputs = jnp.asarray(npy_inputs)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
       prng_key, random_key = jax.random.split(prng_key)
+      initial_vars = transformer_lm.init(
+          {
+              PARAMS: init_key,
+              RANDOM: random_key
+          },
+          inputs,
+          jnp.zeros_like(inputs),
+      )
       fprop_outputs = transformer_lm.apply(
           initial_vars,
           inputs,
@@ -904,9 +951,6 @@ class TransformerModelsTest(test_utils.TestCase):
             z_loss_weight=1e-4,
             c_dim=c_dim,
             e_dim=e_dim))
-    prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
-    initial_vars = transformer_lm.init(init_key)
     npy_inputs = np.random.randint(
         vocab_size, size=(batch, length)).astype('int32')
     inputs = jnp.asarray(npy_inputs)
@@ -915,7 +959,13 @@ class TransformerModelsTest(test_utils.TestCase):
                                           [0, 0])
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
       prng_key, random_key = jax.random.split(prng_key)
+      initial_vars = transformer_lm.init({
+          PARAMS: init_key,
+          RANDOM: random_key
+      }, inputs, jnp.zeros_like(inputs))
       # Run fprop without decode state on all the inputs.
       fprop_outputs = transformer_lm.apply(
           initial_vars,

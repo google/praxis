@@ -66,14 +66,14 @@ class SpectrumAugmenterTest(test_utils.TestCase):
     context_p = base_layer.JaxContext.HParams(do_eval=False)
     prng_key = jax.random.PRNGKey(seed=23456)
     prng_key, compute_key = jax.random.split(prng_key)
-    initial_vars = specaug_layer.init(prng_key)
     with base_layer.JaxContext.new_context(hparams=context_p):
+      initial_vars = specaug_layer.init(
+          {
+              'params': prng_key,
+              'random': compute_key
+          }, inputs, paddings)
       actual_layer_output, _ = specaug_layer.apply(
-          initial_vars,
-          inputs,
-          paddings,
-          rngs={'random': compute_key},
-          method=specaug_layer.__call__)
+          initial_vars, inputs, paddings, rngs={'random': compute_key})
     self.assertAllClose(actual_layer_output, expected_output)
 
   def testSpectrumAugmenterWithFrequencyMask(self):
@@ -103,14 +103,14 @@ class SpectrumAugmenterTest(test_utils.TestCase):
     context_p = base_layer.JaxContext.HParams(do_eval=False)
     prng_key = jax.random.PRNGKey(seed=34567)
     prng_key, compute_key = jax.random.split(prng_key)
-    initial_vars = specaug_layer.init(prng_key)
     with base_layer.JaxContext.new_context(hparams=context_p):
+      initial_vars = specaug_layer.init(
+          {
+              'params': prng_key,
+              'random': compute_key
+          }, inputs, paddings)
       actual_layer_output, _ = specaug_layer.apply(
-          initial_vars,
-          inputs,
-          paddings,
-          rngs={'random': compute_key},
-          method=specaug_layer.__call__)
+          initial_vars, inputs, paddings, rngs={'random': compute_key})
     self.assertAllClose(actual_layer_output, expected_output)
 
 
