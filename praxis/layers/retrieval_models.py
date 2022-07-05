@@ -205,8 +205,8 @@ class Retro(transformer_models.TransformerEncoderDecoder):
     segment_ids = jnp.asarray(1 - paddings, jnp.int32)
     target_segment_mask = attentions.causal_segment_mask(
         segment_ids, input_emb.dtype)
-    neighbor_encodings = jnp.multiply(neighbor_encodings,
-                                      jnp.expand_dims(neighbor_paddings, -1))
+    neighbor_encodings = jnp.multiply(
+        neighbor_encodings, 1.0 - jnp.expand_dims(neighbor_paddings, -1))
     # TODO(yuancao): Handle segment_pos properly.
     output = self.decoder(
         input_emb, paddings, target_segment_mask, neighbors=neighbor_encodings)
