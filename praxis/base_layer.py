@@ -1294,7 +1294,7 @@ class BaseLayer(
   def update_var(self, name: str, new_val: JTensor) -> None:
     """Update var 'name' in the forward pass."""
     old_val = self.get_var(name)
-    if self.is_mutable_collection(NON_TRAINABLE):
+    if self.is_mutable_collection(NON_TRAINABLE) and not self.is_initializing():
       asserts.eq(old_val.shape, new_val.shape)
       self.put_variable(NON_TRAINABLE, name, new_val)
 

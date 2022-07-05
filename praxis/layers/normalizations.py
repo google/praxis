@@ -161,8 +161,6 @@ class BatchNorm(BaseNormalization):
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
     self.create_variable('moving_variance', mvv, trainable=False)
 
-    self.is_initializing = self.is_mutable_collection(PARAMS)
-
   def _get_default_paddings(self, inputs: JTensor) -> JTensor:
     """Gets the default paddings for an input."""
     in_shape = list(inputs.shape)
@@ -210,14 +208,13 @@ class BatchNorm(BaseNormalization):
           keepdims=False,  # Reduce to [p.dim] the same as moving mean/var.
       )
 
-      if not self.is_initializing:
-        new_moving_mean = (
-            self.get_var('moving_mean') * p.decay + mean * (1.0 - p.decay))
-        self.update_var('moving_mean', new_moving_mean)
-        new_moving_variance = (
-            self.get_var('moving_variance') * p.decay + variance *
-            (1.0 - p.decay))
-        self.update_var('moving_variance', new_moving_variance)
+      new_moving_mean = (
+          self.get_var('moving_mean') * p.decay + mean * (1.0 - p.decay))
+      self.update_var('moving_mean', new_moving_mean)
+      new_moving_variance = (
+          self.get_var('moving_variance') * p.decay + variance *
+          (1.0 - p.decay))
+      self.update_var('moving_variance', new_moving_variance)
 
       # Add some summaries for visualization.
       self.add_summary('mean', mean)

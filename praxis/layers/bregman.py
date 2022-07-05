@@ -214,8 +214,6 @@ class BregmanPCA(base_layer.BaseLayer):
     self.create_variable(
         'components_momentum', components_momentum, trainable=False)
 
-    self.is_initializing = self.is_mutable_collection(PARAMS)
-
   def base_learning_rate(self, step: JTensor) -> Tuple[JTensor, JTensor]:
     p = self.hparams
     constant_lr_schedule = p.constant_lr_schedule
@@ -283,8 +281,7 @@ class BregmanPCA(base_layer.BaseLayer):
     if not self.do_eval:
       step = self.get_var('step')
       base_lr, apply_update = self.base_learning_rate(step)
-      if not self.is_initializing:
-        self.update_var('step', self.get_var('step') + 1)
+      self.update_var('step', self.get_var('step') + 1)
       mean_beta = 1. - apply_update * (1. - p.mean_beta)
       mean = mean_beta * mean + (1. - mean_beta) * self.inv_activation_fn(
           jnp.mean(inputs, axis=0, keepdims=True))
@@ -307,9 +304,8 @@ class BregmanPCA(base_layer.BaseLayer):
       components_momentum = (p.components_beta * components_momentum) + (
           1. - p.components_beta) * components_grad * apply_update
       components -= base_lr * p.components_lr * components_momentum
-      if not self.is_initializing:
-        self.update_var('mean', mean)
-        self.update_var('components', components)
+      self.update_var('mean', mean)
+      self.update_var('components', components)
     bregman_loss = self.bregman_loss_fn(coefficients, components, mean, inputs)
     self.add_summary('bregman_loss', bregman_loss)
     return inputs, coefficients
