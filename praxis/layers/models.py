@@ -117,15 +117,21 @@ class LanguageModel(base_model.BaseModel):
       bidirectional_attention_on_inputs: If true, allow bidirectional attention
         on inputs as in PrefixLM. Requires causal_attention_mask to be set in
         input_batch.
+      count_tokens: Whether to track total tokens trained on in the checkpoint.
     """
     lm: BaseHParams = sub_config_field(transformer_models.TransformerLm.HParams)
     return_predictions: bool = False
     decoder: DecoderHParams = sub_config_field(GreedyDecoderHParams)
     bidirectional_attention_on_inputs: bool = False
+    count_tokens: bool = False
 
   def setup(self) -> None:
     super().setup()
     p = self.hparams
+
+    if p.count_tokens:
+      tc_p = embedding_softmax.TokenCounter.HParams()
+      self.create_child('token_counter', tc_p)
 
     # Construct the model.
     lm_p = p.lm.clone()
@@ -138,6 +144,8 @@ class LanguageModel(base_model.BaseModel):
     paddings = input_batch.paddings
     weights = input_batch.weights
     inputs = input_batch.ids
+    if p.count_tokens:
+      self.token_counter(inputs, paddings)
     labels = NestedMap(class_ids=input_batch.labels, class_weights=weights)
     if p.lm.packed_input:
       packed_input_kwargs = {

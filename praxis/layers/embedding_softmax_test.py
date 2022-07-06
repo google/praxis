@@ -17,6 +17,7 @@
 
 import itertools
 
+from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -31,6 +32,53 @@ import tensorflow.compat.v2 as tf
 
 instantiate = base_layer.instantiate
 to_np = test_utils.to_np
+
+NON_TRAINABLE = base_layer.NON_TRAINABLE
+SUMMARIES = base_layer.SUMMARIES
+
+
+class TokenCounterTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+    tf.random.set_seed(123)
+
+  def test_token_counter(self):
+    test_layer_p = embedding_softmax.TokenCounter.HParams(name='tc')
+    layer = instantiate(test_layer_p)
+
+    prng_key = jax.random.PRNGKey(seed=1234)
+    prng_key, init_key = jax.random.split(prng_key)
+    inputs = np.zeros([100, 100], dtype=jnp.int32)
+    paddings = np.zeros([100, 100])
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(init_key, inputs, paddings)
+      logging.info('initial_vars: %s', initial_vars)
+      _, updated_variables = layer.apply(
+          initial_vars, inputs, paddings, mutable=[NON_TRAINABLE, SUMMARIES])
+    new_vars = updated_variables
+    logging.info('new_vars: %s', new_vars)
+
+    non_trainable_vars = new_vars[NON_TRAINABLE]
+    logging.info(non_trainable_vars)
+    tf.nest.assert_same_structure(non_trainable_vars, {
+        'approx_total_tokens_mm': None,
+    })
+    self.assertAllClose(0.01, non_trainable_vars['approx_total_tokens_mm'])
+
+    with base_layer.JaxContext.new_context():
+      _, updated_vars = layer.apply(
+          new_vars, inputs, paddings, mutable=[NON_TRAINABLE, SUMMARIES])
+    non_trainable_vars = updated_vars[NON_TRAINABLE]
+    summaries = updated_vars[SUMMARIES]
+    tf.nest.assert_same_structure(summaries, {
+        'approx_total_tokens_mm_scalar': None,
+    })
+    logging.info(summaries)
+    self.assertAllClose(0.01, summaries['approx_total_tokens_mm_scalar'])
+    self.assertAllClose(0.02, non_trainable_vars['approx_total_tokens_mm'])
 
 
 class EmbeddingSoftmaxTest(test_utils.TestCase):

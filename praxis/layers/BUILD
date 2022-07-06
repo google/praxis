@@ -719,6 +719,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":embedding_softmax",
+        # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.

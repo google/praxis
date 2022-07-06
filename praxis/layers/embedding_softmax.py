@@ -50,6 +50,40 @@ def _compute_z_loss(logits):
   return jnp.square(log_z)
 
 
+class TokenCounter(base_layer.BaseLayer):
+  """Keep track of total tokens seen during training."""
+
+  def setup(self) -> None:
+    """Creates non-trainable counter."""
+    # Currently, uint64 support is explicitly disabled as it causes
+    # causes different type promotion behaviors. NB: Using a uint64 type
+    # will fall-back to a uint32 with a UserWarning.
+    #
+    # Using float32 approximation, tracking millions of tokens.
+    approx_total_tokens_mm = WeightHParams(
+        shape=(),
+        init=base_layer.WeightInit.Constant(0.),
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_SUM_SYNC])
+    self.create_variable(
+        'approx_total_tokens_mm', approx_total_tokens_mm, trainable=False)
+
+  def __call__(self, inputs: JTensor, paddings: JTensor) -> JTensor:
+    """Track total non-padding tokens.
+
+    Args:
+      inputs: Input ids. An int32 JTensor of shape [B, T].
+      paddings: A 0/1 JTensor of shape [B, T] with 1 denoting padding.
+    """
+    if not self.do_eval:
+      approx_total_tokens_mm = self.get_var('approx_total_tokens_mm')
+      self.add_summary('approx_total_tokens_mm', approx_total_tokens_mm)
+      batch_total_mm = jnp.sum(1.0 - paddings) / 1e6
+      # Force f32 addition.
+      new_approx_total_tokens_mm = approx_total_tokens_mm.astype(
+          jnp.float32) + batch_total_mm.astype(jnp.float32)
+      self.update_var('approx_total_tokens_mm', new_approx_total_tokens_mm)
+
+
 class Embedding(base_layer.BaseLayer):
   """A simple embedding layer that performs embedding lookups from ids."""
 

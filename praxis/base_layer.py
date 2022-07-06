@@ -136,6 +136,7 @@ class WeightHParamsCollection:
   SKIP_LP_REGULARIZATION = '__lingvo_jax_skip_regularization'
   NON_TRAINABLE = '_lingvo_jax_non_trainable'
   REQUIRES_MEAN_SYNC = '_requires_mean_sync'
+  REQUIRES_SUM_SYNC = '_requires_sum_sync'
 
 
 def var_not_trainable(var_hparams: ParamsT) -> bool:
@@ -146,6 +147,11 @@ def var_not_trainable(var_hparams: ParamsT) -> bool:
 def var_requires_mean_sync(var_hparams: ParamsT) -> bool:
   """Returns True if var_hparams requires synchronization across replicas."""
   return WeightHParamsCollection.REQUIRES_MEAN_SYNC in var_hparams.collections
+
+
+def var_requires_sum_sync(var_hparams: ParamsT) -> bool:
+  """Returns True if var_hparams requires summation across replicas."""
+  return WeightHParamsCollection.REQUIRES_SUM_SYNC in var_hparams.collections
 
 
 def var_skip_lp_regularization(var_params: ParamsT) -> bool:
