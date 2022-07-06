@@ -559,7 +559,7 @@ class MultiStreamInput(BaseInput):
       default_stream: Default input stream to use for ids_to_strings or other
         input generator methods.
     """
-    input_streams: Dict[str, BaseInput] = None
+    input_streams: Dict[str, BaseInput.HParams] = None
     default_stream: str = None
 
   @classmethod
