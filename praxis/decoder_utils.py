@@ -15,7 +15,7 @@
 
 """Util functions for decoder."""
 
-from typing import Callable, Tuple
+from typing import Callable, List, Tuple
 
 import jax
 from jax import numpy as jnp
@@ -79,15 +79,15 @@ def gather_logprobs(logprobs: jnp.ndarray,
 
 
 def two_stage_topk(
-    logits: jnp.ndarray, hyp_scores: jnp.ndarray,
-    eos_id: int) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    logits: jnp.ndarray, hyp_scores: jnp.ndarray, terminal_ids: List[int]
+) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
   """Two stage TopK to choose TopK values and indices from each beam.
 
   Args:
     logits: The logits of [batch_size, beam_size, vocab_size or beam_size *
       vocab_size].
     hyp_scores: The topK scores of [batch_size, beam_size].
-    eos_id: EOS id.
+    terminal_ids: terminal ids. In most cases this is simply eos_id.
 
   Returns:
     topk_value, topk_indices of shape [batch_size, beam_size * beam_size], they
@@ -107,7 +107,9 @@ def two_stage_topk(
   topk_indices = jnp.reshape(
       topk_indices, newshape=(batch_size, beam_size, beam_size))
   topk_value += jnp.expand_dims(hyp_scores, -1)
-  topk_value -= 1e9 * jnp.equal(topk_indices, eos_id).astype(topk_value.dtype)
+  for terminal_id in terminal_ids:
+    topk_value -= 1e9 * jnp.equal(topk_indices, terminal_id).astype(
+        topk_value.dtype)
 
   topk_value = jnp.reshape(
       topk_value, newshape=(batch_size, beam_size * beam_size))

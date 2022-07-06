@@ -134,7 +134,9 @@ def beam_search(model: base_layer.BaseLayer,
   beam_size = beam_search_hparams.beam_size
   batch_size = target_prefix_ids.shape[0]
   max_prefix_len = target_prefix_ids.shape[1]
-  eos_id = beam_search_hparams.eos_id
+  terminal_ids = beam_search_hparams.parse_tokens or [
+      beam_search_hparams.eos_id
+  ]
   seq_len = beam_search_hparams.max_decode_steps + max_prefix_len
 
   # Init decode state using fprop_fn, state seq size is max_prefix_len.
@@ -199,12 +201,17 @@ def beam_search(model: base_layer.BaseLayer,
     # TODO(b/229679837): consider add logprobs to while loop state and
     # shuffle it.
     logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
-    # Select the best ids with eos.
-    eos_scores = val.hyp_scores + logprobs[:, :, eos_id]
-    new_end_ids = val.output_ids.at[:, :, step + 1].set(
-        eos_id * jnp.ones_like(prefix_lengths))
-    new_end_logprobs = val.logprobs.at[:, :, step + 1].set(
-        logprobs[:, :, eos_id])
+    # Select the best ids with terminal tokens.
+    eos_scores = jnp.ones_like(val.hyp_scores) * -1e9
+    new_end_ids = val.output_ids
+    new_end_logprobs = val.logprobs
+    for terminal_id in terminal_ids:
+      eos_scores_candidate = val.hyp_scores + logprobs[:, :, terminal_id]
+      eos_scores = jnp.maximum(eos_scores, eos_scores_candidate)
+      new_end_ids = new_end_ids.at[:, :, step + 1].set(
+          terminal_id * jnp.ones_like(prefix_lengths))
+      new_end_logprobs = new_end_logprobs.at[:, :, step + 1].set(
+          logprobs[:, :, terminal_id])
     decode_length = step + 2
     new_decode_lengths = jnp.ones_like(prefix_lengths) * decode_length
     eos_scores_norm = eos_scores / decoder_utils.length_norm(
@@ -219,7 +226,7 @@ def beam_search(model: base_layer.BaseLayer,
 
     # Choose the topk indices.
     _, topk_indices, final_topk_value, final_topk_indices = (
-        decoder_utils.two_stage_topk(logprobs, val.hyp_scores, eos_id))
+        decoder_utils.two_stage_topk(logprobs, val.hyp_scores, terminal_ids))
     # update scores without EOS.
     val.hyp_scores = final_topk_value
     hyp_id = final_topk_indices // beam_size

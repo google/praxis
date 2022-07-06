@@ -374,6 +374,7 @@ py_strict_test(
         ":py_utils",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis/layers:models",
@@ -389,6 +390,7 @@ py_strict_test(
         ":decoder_utils",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
     ],

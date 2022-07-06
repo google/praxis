@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """HParams for the decoder."""
-from typing import Optional
+from typing import List, Optional
 
 from praxis import base_hyperparams
 
@@ -58,9 +58,11 @@ class BeamSearchHParams(DecoderHParams):
   Attributes:
     beam_size: Beam size for decoding.
     length_norm_alpha: Length norm alpha for beam search.
+    parse_tokens: Token ids used for parsing out answers from model outputs.
   """
   beam_size: int = 1
   length_norm_alpha: float = 0.8
+  parse_tokens: Optional[List[int]] = None
 
 
 class FlatBeamSearchHParams(BeamSearchHParams):

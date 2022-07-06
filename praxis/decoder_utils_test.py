@@ -16,6 +16,7 @@
 """Unit tests for decoder_utils."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
 from jax import numpy as jnp
 import numpy as np
 from praxis import decoder_utils
@@ -24,7 +25,16 @@ from praxis import test_utils
 
 class DecoderUtilsTest(test_utils.TestCase):
 
-  def test_two_stage_topk(self):
+  @parameterized.parameters(
+      ([4], [[-1.0e+09, 4, 3, 2, 25, 4, 3, 2, 0, 0, 0, 0, -1.0e+09, 4, 3, 2]
+            ], [[25, 4, 4, 4]], [[4, 1, 5, 13]]),
+      ([1, 4], [[
+          -1.0e+09, 4, -1.0e+09, 2, 25, -1.0e+09, 3, 2, 0, -1.0e+09, 0, 0,
+          -1.0e+09, 4, 3, -1.0e+09
+      ]], [[25, 4, 4, 3]], [[4, 1, 13, 6]]),
+  )
+  def test_two_stage_topk(self, terminal_ids, topk_value_target,
+                          target_final_topk_value, target_final_topk_indices):
     hyp_scores = np.zeros((1, 4))
     logits = [
         [2, 3, 4, 1, 15],  # Top-4 id: 4, 0, 1, 2
@@ -32,17 +42,13 @@ class DecoderUtilsTest(test_utils.TestCase):
         [0, 0, 0, 0, 0],  # Top-4 id: 0, 1, 2, 3
         [1, 2, 3, 4, 5],  # Top-4 id: 4, 3, 2, 1
     ]
-    eos_id = 4
     topk_value, topk_indices, final_topk_value, final_topk_indices = (
         decoder_utils.two_stage_topk(
-            np.array(logits, dtype=np.float32), hyp_scores, eos_id))
+            np.array(logits, dtype=np.float32), hyp_scores, terminal_ids))
 
     # Compares 1st topk
-    self.assertArraysEqual(
-        topk_value,
-        np.array(
-            [[-1.0e+09, 4, 3, 2, 25, 4, 3, 2, 0, 0, 0, 0, -1.0e+09, 4, 3, 2]],
-            dtype=np.float32))
+    self.assertArraysEqual(topk_value,
+                           np.array(topk_value_target, dtype=np.float32))
     self.assertArraysEqual(
         topk_indices,
         np.array([[4, 2, 1, 0, 0, 1, 2, 3, 0, 1, 2, 3, 4, 3, 2, 1]],
@@ -50,9 +56,9 @@ class DecoderUtilsTest(test_utils.TestCase):
 
     # Compares 2nd topk
     self.assertArraysEqual(final_topk_value,
-                           np.array([[25, 4, 4, 4]], dtype=np.float32))
+                           np.array(target_final_topk_value, dtype=np.float32))
     self.assertArraysEqual(final_topk_indices,
-                           np.array([[4, 1, 5, 13]], dtype=np.int32))
+                           np.array(target_final_topk_indices, dtype=np.int32))
 
   def test_gather_output_id(self):
     long_output_ids = jnp.array(

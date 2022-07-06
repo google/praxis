@@ -18,6 +18,7 @@
 from typing import Any
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
 import numpy as np
@@ -148,15 +149,27 @@ class BeamSearchTest(test_utils.TestCase):
     _, results = results
     return results
 
-  def test_vanilla_beam_search_base(self):
+  @parameterized.parameters(
+      ([], [[[2, 3, 4, 0, 0], [2, 3, 3, 4, 0], [2, 3, 0, 3, 4], [2, 3, 1, 0, 4]
+            ]], [[3, 4, 5, 5]], [[[3, 4]], [[3, 3], [3, 4]],
+                                 [[3, 0], [0, 3], [3, 4]],
+                                 [[3, 1], [1, 0], [0, 4]]]),
+      ([1, 3], [[[2, 3, 4, 3, 0], [2, 3, 4, 0, 3], [2, 3, 4, 2, 3],
+                 [2, 3, 3, 0, 0]]
+               ], [[4, 5, 5, 3]], [[[3, 4], [4, 1]], [[3, 4], [4, 0], [0, 3]],
+                                   [[3, 4], [4, 1], [1, 1]], [[3, 3]]]))
+  def test_vanilla_beam_search_base(self, parse_tokens, target_output_ids,
+                                    target_decode_ids, target_logprob_indexes):
     # Set length_norm_alpha to maket length_norm = 1.0
     length_norm_alpha = 0.0
+    seq_len = 5
     p = models.BeamSearchHParams(
         beam_size=4,
         eos_id=4,
+        parse_tokens=parse_tokens,
         fprop_for_prefix=True,
         max_decode_steps=3,
-        seqlen=5,
+        seqlen=seq_len,
         length_norm_alpha=length_norm_alpha)
     logits = [[1, 0, 0, 2, 0], [5, 1, 0, 0, 0], [5, 0, 0, 1, 0],
               [0, 1, 0, 2, 10], [0, 0, 0, 0, 0]]
@@ -169,25 +182,23 @@ class BeamSearchTest(test_utils.TestCase):
     results = self._run_decode(p, logits, input_batch)
 
     # If no EOS in the sequence, add EOS to the last postion of the sequence.
-    self.assertArraysEqual(
-        results.output_ids,
-        np.array([[[2, 3, 4, 0, 0], [2, 3, 3, 4, 0], [2, 3, 0, 3, 4],
-                   [2, 3, 1, 0, 4]]],
-                 dtype=np.int32))
+    self.assertArraysEqual(results.output_ids,
+                           np.array(target_output_ids, dtype=np.int32))
 
     self.assertArraysEqual(results.decode_lengths,
-                           np.array([[3, 4, 5, 5]], dtype=np.int32))
+                           np.array(target_decode_ids, dtype=np.int32))
 
     # If no EOS in the sequence, add EOS to the last postion of the sequence.
-    self.assertArraysEqual(
-        results.logprobs,
-        np.array([[
-            [1., 1., logprobs[3][4], 1., 1.],
-            [1., 1., logprobs[3][3], logprobs[3][4], 1.],
-            [1., 1., logprobs[3][0], logprobs[0][3], logprobs[3][4]],
-            [1., 1., logprobs[3][1], logprobs[1][0], logprobs[0][4]]
-        ]],
-                 dtype=np.float32))
+    target_logprobs = []
+    for indexes_list in target_logprob_indexes:
+      logprobs_list = [1., 1.]
+      for index in indexes_list:
+        logprobs_list.append(logprobs[index[0]][index[1]])
+      while len(logprobs_list) < seq_len:
+        logprobs_list.append(1.)
+      target_logprobs.append(logprobs_list)
+    self.assertArraysEqual(results.logprobs,
+                           np.array([target_logprobs], dtype=np.float32))
 
 
 if __name__ == '__main__':

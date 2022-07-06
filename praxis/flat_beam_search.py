@@ -281,7 +281,7 @@ def flat_beam_search(model: base_layer.BaseLayer,
     val.end_mask, val.end_scores, val.end_scores_norm = updated_topk_scores
 
     _, topk_indices, final_topk_value, final_topk_indices = (
-        decoder_utils.two_stage_topk(logits, val.hyp_scores, eos_id))
+        decoder_utils.two_stage_topk(logits, val.hyp_scores, [eos_id]))
     # update scores
     val.hyp_scores = final_topk_value
     hyp_id = final_topk_indices // beam_size
