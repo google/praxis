@@ -15,7 +15,18 @@
 
 """Exposes the public layer functionalities."""
 
-from praxis.layers.activations import Activation
+from praxis.layers.activations import BaseActivation
+from praxis.layers.activations import CubedReLU
+from praxis.layers.activations import GELU
+from praxis.layers.activations import Identity
+from praxis.layers.activations import LeakyReLU
+from praxis.layers.activations import ReLU
+from praxis.layers.activations import ReLU6
+from praxis.layers.activations import Sigmoid
+from praxis.layers.activations import SiLU
+from praxis.layers.activations import SquaredReLU
+from praxis.layers.activations import Swish
+from praxis.layers.activations import Tanh
 from praxis.layers.adapters import MultitaskResidualAdapter
 from praxis.layers.attentions import AttentionProjection
 from praxis.layers.attentions import causal_mask
@@ -63,6 +74,7 @@ from praxis.layers.ngrammer import get_bigram_ids
 from praxis.layers.ngrammer import Ngrammer
 from praxis.layers.ngrammer import VectorQuantization
 from praxis.layers.ngrammer import VQNgrammer
+from praxis.layers.normalizations import BaseNormalization
 from praxis.layers.normalizations import BatchNorm
 from praxis.layers.normalizations import compute_moments
 from praxis.layers.normalizations import GroupNorm

@@ -197,15 +197,13 @@ class ConvBNAct(Conv2D):
 
     Attributes:
       batch_norm_tpl: The batchnorm layer template.
-      activation:     Activation function to use. Options are RELU, RELU6,
-        LEAKY_RELU, SIGMOID, TANH, GELU, NONE.
-      negative_slope: Negative slope of LEAKY_RELU convolution activation.
+      activation_tpl: Activation function to use.
       compat_with_lingvo: If use lingvo-compatible logic.
     """
     batch_norm_tpl: Optional[BaseHParams] = sub_config_field(
         normalizations.BatchNorm.HParams)
-    activation: str = 'RELU'
-    negative_slope: Optional[float] = None
+    activation_tpl: activations.BaseActivation = sub_config_field(
+        activations.ReLU.HParams)
     compat_with_lingvo: bool = False
 
   def setup(self) -> None:
@@ -220,9 +218,7 @@ class ConvBNAct(Conv2D):
       bn.dim = p.filter_shape[3]
       bn.use_moving_avg_in_training = False
       self.create_child('bn', bn)
-    act_p = activations.Activation.HParams(
-        activation=p.activation, negative_slope=p.negative_slope)
-    self.create_child('activation', act_p)
+    self.create_child('activation', p.activation_tpl.clone())
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Forward prop which applies conv-bn-activation.
@@ -400,8 +396,7 @@ class LightConv1D(base_layer.BaseLayer):
     Attributes:
       input_dims:      Input and (in fact,) output dimension.
       kernel_size:     Kernel size of 1d deptwise conv.
-      conv_activation: Activation after normalization.
-      negative_slope:  Negative slope of LEAKY_RELU convolution activation.
+      conv_activation_tpl: Activation after normalization.
       dropout_prob:    Dropout probability.
       ln_tpl:          Parameterization of input layer normalization.
       linear_start_tpl:     Parameterization of linear start layer.
@@ -415,16 +410,17 @@ class LightConv1D(base_layer.BaseLayer):
     """
     input_dims: Optional[int] = None
     kernel_size: Optional[int] = None
-    conv_activation: str = 'SWISH'
-    negative_slope: Optional[float] = None
+    conv_activation_tpl: activations.BaseActivation.HParams = sub_config_field(
+        activations.Swish.HParams)
     dropout_prob: float = 0.0
     ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
     linear_start_tpl: BaseHParams = linears.FeedForward.HParams(
-        activation='NONE')
+        activation_tpl=activations.Identity.HParams())
     depthwise_conv_tpl: BaseHParams = sub_config_field(DepthwiseConv1D.HParams)
     conv_norm_layer_tpl: BaseHParams = sub_config_field(
         normalizations.BatchNorm.HParams)
-    linear_end_tpl: BaseHParams = linears.FeedForward.HParams(activation='NONE')
+    linear_end_tpl: BaseHParams = linears.FeedForward.HParams(
+        activation_tpl=activations.Identity.HParams())
     dropout_tpl: BaseHParams = sub_config_field(stochastics.Dropout.HParams)
     is_causal: bool = False
     use_2d_conv_norm: bool = False
@@ -449,10 +445,7 @@ class LightConv1D(base_layer.BaseLayer):
     norm_p = p.conv_norm_layer_tpl.clone().set(dim=p.input_dims)
     self.create_child('conv_norm', norm_p)
 
-    self.create_child(
-        'conv_activation',
-        activations.Activation.HParams(
-            activation=p.conv_activation, negative_slope=p.negative_slope))
+    self.create_child('conv_activation', p.conv_activation_tpl.clone())
 
     linear_end_p = p.linear_end_tpl.clone().set(
         input_dims=p.input_dims, output_dims=p.input_dims)

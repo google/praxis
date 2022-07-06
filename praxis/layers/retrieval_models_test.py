@@ -23,6 +23,7 @@ from praxis import base_layer
 from praxis import layers
 from praxis import py_utils
 from praxis import test_utils
+from praxis.layers import activations
 from praxis.layers import retrieval_models
 
 RANDOM = base_layer.RANDOM
@@ -50,7 +51,8 @@ class RetrievalModelsTest(test_utils.TestCase):
     # Enable rotary position embedding for encoder.
     lp.tr_atten_tpl.use_rotary_position_emb = True
 
-    lp.tr_fflayer_tpl.activation = 'GATED_GELU'
+    lp.tr_fflayer_tpl.activation_tpl = activations.GELU.HParams()
+    lp.tr_fflayer_tpl.use_gated_activation = True
     # Enable Gated Gelu activation.
     stacked_transformer_tpl.hidden_dims = (stacked_transformer_tpl.hidden_dims *
                                            2) // 3
@@ -77,7 +79,8 @@ class RetrievalModelsTest(test_utils.TestCase):
     # Enable rotary position embedding for encoder.
     lp.tr_atten_tpl.use_rotary_position_emb = True
 
-    lp.tr_fflayer_tpl.activation = 'GATED_GELU'
+    lp.tr_fflayer_tpl.activation_tpl = activations.GELU.HParams()
+    lp.tr_fflayer_tpl.use_gated_activation = True
     # Enable Gated Gelu activation.
     stacked_transformer_tpl.hidden_dims = (stacked_transformer_tpl.hidden_dims *
                                            2) // 3

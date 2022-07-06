@@ -24,6 +24,7 @@ import numpy as np
 from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
+from praxis.layers import bregman
 from praxis.layers import ngrammer
 import tensorflow as tf
 
@@ -134,7 +135,7 @@ class NgrammerTest(test_utils.TestCase):
         num_heads=num_heads,
         dim_per_head=dim_per_head,
         num_components=num_components,
-        activation='LEAKY_RELU',
+        activation_type=bregman.ActivationType.LEAKY_RELU,
         negative_slope=0.1,
         start_step=0,
         end_step=10,

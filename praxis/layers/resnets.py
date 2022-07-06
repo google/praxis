@@ -46,9 +46,7 @@ class ResNetBlock(base_layer.BaseLayer):
       conv_params: Parameterization of the convolution layer.
       kernel_size: Kernel sizes of the block.
       stride: Stride.
-      activation: Activation function to use. Options are RELU, RELU6,
-        LEAKY_RELU, SIGMOID, TANH, GELU, NONE.
-      negative_slope: Negative slope of LEAKY_RELU convolution activation.
+      activation_tpl: Activation function to use.
       residual_droppath_prob: Probability for residual path.
     """
     input_dim: int = 0
@@ -56,8 +54,8 @@ class ResNetBlock(base_layer.BaseLayer):
     conv_params: BaseHParams = sub_config_field(convolutions.ConvBNAct.HParams)
     kernel_size: int = 3
     stride: int = 1
-    activation: str = 'RELU'
-    negative_slope: Optional[float] = None
+    activation_tpl: activations.BaseActivation.HParams = sub_config_field(
+        activations.ReLU.HParams)
     residual_droppath_prob: float = 0.0
 
   def setup(self) -> None:
@@ -69,8 +67,7 @@ class ResNetBlock(base_layer.BaseLayer):
         name='conv_in',
         filter_shape=(1, 1, p.input_dim, p.output_dim // 4),
         filter_stride=(1, 1),
-        activation=p.activation,
-        negative_slope=p.negative_slope))
+        activation_tpl=p.activation_tpl))
 
     # conv_mid using the kernel size and stride provided
     body.append(p.conv_params.clone().set(
@@ -78,15 +75,14 @@ class ResNetBlock(base_layer.BaseLayer):
         filter_shape=(p.kernel_size, p.kernel_size, p.output_dim // 4,
                       p.output_dim // 4),
         filter_stride=(p.stride, p.stride),
-        activation=p.activation,
-        negative_slope=p.negative_slope))
+        activation_tpl=p.activation_tpl))
 
     # conv_out, expand back to hidden dim
     body.append(p.conv_params.clone().set(
         name='conv_out',
         filter_shape=(1, 1, p.output_dim // 4, p.output_dim),
         filter_stride=(1, 1),
-        activation='NONE'))
+        activation_tpl=activations.Identity.HParams()))
     self.create_children('body', body)
 
     # projection with 1x1 if input dim and output dim are not the same
@@ -95,7 +91,7 @@ class ResNetBlock(base_layer.BaseLayer):
           name='shortcut',
           filter_shape=(1, 1, p.input_dim, p.output_dim),
           filter_stride=(p.stride, p.stride),
-          activation='NONE')
+          activation_tpl=activations.Identity.HParams())
       self.create_child('shortcut', shortcut)
 
     # Initialize droppath layer
@@ -104,10 +100,7 @@ class ResNetBlock(base_layer.BaseLayer):
           survival_prob=1.0 - p.residual_droppath_prob)
       self.create_child('residual_droppath', droppath_p)
 
-    post_activation = activations.Activation.HParams(
-        name='post_activation',
-        activation=p.activation,
-        negative_slope=p.negative_slope)
+    post_activation = p.activation_tpl.clone().set(name='post_activation')
     self.create_child('postact', post_activation)
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -160,16 +153,14 @@ class ResNetBasicBlock(ResNetBlock):
         name='conv_in',
         filter_shape=(p.kernel_size, p.kernel_size, p.input_dim, p.output_dim),
         filter_stride=(p.stride, p.stride),
-        activation=p.activation,
-        negative_slope=p.negative_slope))
+        activation_tpl=p.activation_tpl.clone()))
 
     # second conv
     body.append(p.conv_params.clone().set(
         name='conv_mid',
         filter_shape=(p.kernel_size, p.kernel_size, p.output_dim, p.output_dim),
         filter_stride=(1, 1),
-        activation='NONE',
-        negative_slope=p.negative_slope))
+        activation_tpl=activations.Identity.HParams()))
     self.create_children('body', body)
 
     # projection with 1x1 if input dim and output dim are not the same
@@ -178,7 +169,7 @@ class ResNetBasicBlock(ResNetBlock):
           name='shortcut',
           filter_shape=(1, 1, p.input_dim, p.output_dim),
           filter_stride=(p.stride, p.stride),
-          activation='NONE')
+          activation_tpl=activations.Identity.HParams())
       self.create_child('shortcut', shortcut)
 
     # Initialize droppath layer
@@ -187,10 +178,7 @@ class ResNetBasicBlock(ResNetBlock):
           survival_prob=1.0 - p.residual_droppath_prob)
       self.create_child('residual_droppath', droppath_p)
 
-    post_activation = activations.Activation.HParams(
-        name='post_activation',
-        activation=p.activation,
-        negative_slope=p.negative_slope)
+    post_activation = p.activation_tpl.clone().set(name='post_activation')
     self.create_child('postact', post_activation)
 
   def __call__(self, inputs: JTensor) -> JTensor:

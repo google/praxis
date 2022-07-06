@@ -37,10 +37,10 @@ class BregmanTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.parameters(
-      ('NONE', 0.99, 0.0, 0.0, True),
-      ('NONE', 1.0, 0.01, 0.0, True),
-      ('NONE', 1.0, 0.01, 0.01, False),
-      ('NONE', 0.99, 0.01, 0.01, True),
+      ('IDENTITY', 0.99, 0.0, 0.0, True),
+      ('IDENTITY', 1.0, 0.01, 0.0, True),
+      ('IDENTITY', 1.0, 0.01, 0.01, False),
+      ('IDENTITY', 0.99, 0.01, 0.01, True),
       ('LEAKY_RELU', 0.99, 0.0, 0.0, False),
       ('LEAKY_RELU', 1.0, 0.01, 0.0, True),
       ('LEAKY_RELU', 1.0, 0.01, 0.01, False),
@@ -53,11 +53,12 @@ class BregmanTest(test_utils.TestCase):
   def test_bregman_layer(self, activation, mean_beta, coefficients_lr,
                          components_lr, constant_lr_schedule):
     """Tests layer construction and the expected outputs."""
+    activation_type = getattr(bregman.ActivationType, activation)
     p = bregman.BregmanPCA.HParams(
         name='bregman_pca',
         num_components=3,
         input_dims=[8, 10],
-        activation=activation,
+        activation_type=activation_type,
         negative_slope=0.1,
         mean_beta=mean_beta,
         coefficients_lr=coefficients_lr,
@@ -104,14 +105,13 @@ class BregmanTest(test_utils.TestCase):
     representations = layer.reconstruct(coefficients)
     self.assertEqual(representations.shape, inputs.shape)
 
-  @parameterized.parameters(('NONE',))
-  def test_pca_convergence(self, activation):
+  def test_pca_convergence(self):
     """Tests whether the gradients are zero at the solution."""
     p = bregman.BregmanPCA.HParams(
         name='bregman_pca',
         num_components=3,
         input_dims=[3],
-        activation=activation,
+        activation_type=bregman.ActivationType.IDENTITY,
         start_step=0,
         end_step=1)
     layer = instantiate(p)

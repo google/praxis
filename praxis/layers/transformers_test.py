@@ -31,6 +31,7 @@ from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
+from praxis.layers import activations
 from praxis.layers import attentions
 from praxis.layers import transformers
 import tensorflow.compat.v2 as tf
@@ -1095,13 +1096,31 @@ class TransformersTest(test_utils.TestCase):
     np_decoder_outputs = test_utils.to_np(decoder_out_transposed) * non_pad
     self.assertAllClose(np_fprop_outputs, np_decoder_outputs, atol=1e-5)
 
-  @parameterized.parameters('RELU', 'SILU', 'GATED_SILU')
-  def test_transformer_feedforward(self, activation_function):
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'ReLU',
+          'activation_tpl': activations.ReLU.HParams(),
+          'lingvo_activation_name': 'RELU',
+          'use_gated_activation': False,
+      }, {
+          'testcase_name': 'SiLU',
+          'activation_tpl': activations.SiLU.HParams(),
+          'lingvo_activation_name': 'SILU',
+          'use_gated_activation': False,
+      }, {
+          'testcase_name': 'Gated_SiLU',
+          'activation_tpl': activations.SiLU.HParams(),
+          'lingvo_activation_name': 'GATED_SILU',
+          'use_gated_activation': True,
+      })
+  def test_transformer_feedforward(self, activation_tpl, lingvo_activation_name,
+                                   use_gated_activation):
     p = transformers.TransformerFeedForward.HParams(
         name='ffwd',
         input_dims=8,
         hidden_dims=32,
-        activation=activation_function)
+        activation_tpl=activation_tpl,
+        use_gated_activation=use_gated_activation)
     batch_size = 8
     seq_len = 512
 
@@ -1118,7 +1137,7 @@ class TransformersTest(test_utils.TestCase):
       outputs = ffwd.apply(initial_vars, inputs, input_paddings)
       logging.info('outputs: %s', outputs)
 
-    if activation_function.startswith('GATED_'):
+    if use_gated_activation:
       # Default lingvo layers_with_attention.TransformerFeedForwardLayer does
       # not support gating.
       return
@@ -1135,7 +1154,7 @@ class TransformersTest(test_utils.TestCase):
         name='tf_ffwd',
         input_dim=p.input_dims,
         hidden_dim=p.hidden_dims,
-        activation=p.activation)
+        activation=lingvo_activation_name)
     tf_ffwd = tf_p.Instantiate()
     tf_output = tf_ffwd.FProp(
         tf_initial_vars,

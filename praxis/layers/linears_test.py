@@ -26,6 +26,7 @@ from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
+from praxis.layers import activations
 from praxis.layers import linears
 import tensorflow.compat.v2 as tf
 
@@ -41,11 +42,34 @@ class LinearsTest(test_utils.TestCase):
     np.random.seed(123456)
     tf.random.set_seed(123)
 
-  @parameterized.parameters(('RELU'), ('TANH'), ('RELU6'), ('SIGMOID'),
-                            ('NONE'))
-  def test_feedforward_layer(self, activation):
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'ReLU',
+          'activation_tpl': activations.ReLU.HParams(),
+          'lingvo_activation_name': 'RELU',
+      }, {
+          'testcase_name': 'Tanh',
+          'activation_tpl': activations.Tanh.HParams(),
+          'lingvo_activation_name': 'TANH',
+      }, {
+          'testcase_name': 'ReLU6',
+          'activation_tpl': activations.ReLU6.HParams(),
+          'lingvo_activation_name': 'RELU6',
+      }, {
+          'testcase_name': 'Sigmoid',
+          'activation_tpl': activations.Sigmoid.HParams(),
+          'lingvo_activation_name': 'SIGMOID',
+      }, {
+          'testcase_name': 'Identity',
+          'activation_tpl': activations.Identity.HParams(),
+          'lingvo_activation_name': 'NONE',
+      })
+  def test_feedforward_layer(self, activation_tpl, lingvo_activation_name):
     p = linears.FeedForward.HParams(
-        name='jax_ffn', input_dims=3, output_dims=20, activation=activation)
+        name='jax_ffn',
+        input_dims=3,
+        output_dims=20,
+        activation_tpl=activation_tpl.clone())
     ffn = instantiate(p)
     npy_input = np.random.normal(1.0, 0.5,
                                  [10, 10, p.input_dims]).astype('float32')
@@ -67,7 +91,7 @@ class LinearsTest(test_utils.TestCase):
         output_dim=p.output_dims,
         batch_norm=False,
         has_bias=True,
-        activation=activation)
+        activation=lingvo_activation_name)
     tf_ffn = tf_p.Instantiate()
     tf_output = tf_ffn.FProp(tf_initial_vars,
                              tf.constant(inputs, dtype=tf.float32))
@@ -75,15 +99,36 @@ class LinearsTest(test_utils.TestCase):
     tf_np_outputs = to_np(tf_output)
     self.assertAllClose(tf_np_outputs, np_outputs, atol=1e-6)
 
-  @parameterized.parameters(('RELU'), ('TANH'), ('RELU6'), ('SIGMOID'),
-                            ('NONE'))
-  def test_feedforward_layer_no_bias(self, activation):
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'ReLU',
+          'activation_tpl': activations.ReLU.HParams(),
+          'lingvo_activation_name': 'RELU',
+      }, {
+          'testcase_name': 'Tanh',
+          'activation_tpl': activations.Tanh.HParams(),
+          'lingvo_activation_name': 'TANH',
+      }, {
+          'testcase_name': 'ReLU6',
+          'activation_tpl': activations.ReLU6.HParams(),
+          'lingvo_activation_name': 'RELU6',
+      }, {
+          'testcase_name': 'Sigmoid',
+          'activation_tpl': activations.Sigmoid.HParams(),
+          'lingvo_activation_name': 'SIGMOID',
+      }, {
+          'testcase_name': 'Identity',
+          'activation_tpl': activations.Identity.HParams(),
+          'lingvo_activation_name': 'NONE',
+      })
+  def test_feedforward_layer_no_bias(self, activation_tpl,
+                                     lingvo_activation_name):
     p = linears.FeedForward.HParams(
         name='jax_ffn',
         input_dims=3,
         output_dims=20,
         has_bias=False,
-        activation=activation)
+        activation_tpl=activation_tpl.clone())
     ffn = instantiate(p)
     npy_input = np.random.normal(1.0, 0.5,
                                  [10, 10, p.input_dims]).astype('float32')
@@ -104,7 +149,7 @@ class LinearsTest(test_utils.TestCase):
         output_dim=p.output_dims,
         batch_norm=False,
         has_bias=False,
-        activation=activation)
+        activation=lingvo_activation_name)
     tf_ffn = tf_p.Instantiate()
     tf_output = tf_ffn.FProp(tf_initial_vars,
                              tf.constant(inputs, dtype=tf.float32))
@@ -118,7 +163,7 @@ class LinearsTest(test_utils.TestCase):
         input_dims=3,
         output_dims=20,
         has_bias=True,
-        activation='RELU')
+        activation_tpl=activations.ReLU.HParams())
     ffn = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
 

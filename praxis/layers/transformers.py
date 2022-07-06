@@ -194,8 +194,9 @@ class TransformerFeedForward(base_layer.BaseLayer):
       has_bias: Adds bias weights to Feedforward or not.
       apply_padding_first: Apply padding to inputs before everything else or
         not. For example, it is better to apply padding before batch norm.
-      activation: Activation function to use. Options are RELU, RELU6, RELU^2,
-        RELU^3, SIGMOID, TANH, GELU, GATED_GELU, GATED_SILU, NONE.
+      activation_tpl: Activation function to use.
+      use_gated_activation: Boolean indicating whether to use a gated activation
+        function for the second feedforward layer or not.
       fflayer_tpl: Parameterization of the feedforward layer.
       ln_tpl: Parameterization of the layer normalization layer. Other options
         include RmsNorm as well.
@@ -222,7 +223,9 @@ class TransformerFeedForward(base_layer.BaseLayer):
     hidden_dims: int = 0
     has_bias: bool = True
     apply_padding_first: bool = False
-    activation: str = 'RELU'
+    activation_tpl: activations_lib.BaseActivation.HParams = sub_config_field(
+        activations_lib.ReLU.HParams)
+    use_gated_activation: bool = False
     fflayer_tpl: BaseHParams = sub_config_field(linears.FeedForward.HParams)
     ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
     residual_dropout_prob: float = 0.0
@@ -283,21 +286,20 @@ class TransformerFeedForward(base_layer.BaseLayer):
     else:
       raise ValueError('Unrecognized norm_policy: %s' % p.norm_policy)
 
-    if p.activation.startswith('GATED_'):
-      activation = 'NONE'
-      gate_activation = p.activation[len('GATED_'):]
-      self._is_ffn1_gated = True
+    self._is_ffn1_gated = p.use_gated_activation
+    if self._is_ffn1_gated:
+      activation = activations_lib.Identity.HParams()
+      gate_activation = p.activation_tpl.clone()
     else:
-      activation = p.activation
+      activation = p.activation_tpl.clone()
       gate_activation = None
-      self._is_ffn1_gated = False
 
     # Create the first Feedforward layer mapping to hidden dims
     ffn1_p = p.fflayer_tpl.clone()
     ffn1_p.name = 'ffn_layer1'
     ffn1_p.input_dims = p.input_dims
     ffn1_p.has_bias = p.has_bias
-    ffn1_p.activation = activation
+    ffn1_p.activation_tpl = activation
     ffn1_p.output_dims = p.hidden_dims
     ffn1_p.weight_split_dims_mapping.wt = wp.ffn0
     ffn1_p.activation_split_dims_mapping.out = ap.ffn0
@@ -312,7 +314,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
       gate_p.name = 'ffn_layer1_gate'
       gate_p.input_dims = p.input_dims
       gate_p.has_bias = p.has_bias
-      gate_p.activation = gate_activation
+      gate_p.activation_tpl = gate_activation
       gate_p.output_dims = p.hidden_dims
       gate_p.weight_split_dims_mapping.wt = wp.ffn0
       gate_p.activation_split_dims_mapping.out = ap.ffn0
@@ -331,7 +333,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
     ffn2_p.name = 'ffn_layer2'
     ffn2_p.input_dims = p.hidden_dims
     ffn2_p.has_bias = p.has_bias
-    ffn2_p.activation = 'NONE'
+    ffn2_p.activation_tpl = activations_lib.Identity.HParams()
     ffn2_p.output_dims = output_dims
     ffn2_p.weight_split_dims_mapping.wt = wp.ffn1
     ffn2_p.activation_split_dims_mapping.out = ap.ffn1
@@ -435,8 +437,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
       apply_padding_first: Apply padding to inputs before everything else or
         not. For example, it is better to apply padding before batch norm.
       ln_tpl: Parameterization of the layer normalization layer.
-      activation: Activation function to use. Options are RELU, RELU6, SIGMOID,
-        TANH, NONE.
+      activation_tpl: Activation function to use.
       relu_dropout_tpl: Parameterization of the relu dropout layer. keep_prop
         will be reset to (1.0 - relu_dropout_prob).
       relu_dropout_prob: Probability at which we apply dropout to the hidden
@@ -484,7 +485,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     hidden_dims: int = 0
     apply_padding_first: bool = False
     ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
-    activation: str = 'RELU'
+    activation_tpl: activations_lib.BaseActivation.HParams = sub_config_field(
+        activations_lib.ReLU.HParams)
     relu_dropout_tpl: BaseHParams = sub_config_field(
         stochastics.Dropout.HParams)
     relu_dropout_prob: float = 0.0
@@ -592,8 +594,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
           survival_prob=1.0 - p.residual_droppath_prob)
       self.create_child('residual_droppath', droppath_p)
 
-    act_p = activations_lib.Activation.HParams(activation=p.activation)
-    self.create_child('activation', act_p)
+    self.create_child('activation', p.activation_tpl.clone())
 
     # Assume output_dims == input_dims
     output_dims = p.input_dims

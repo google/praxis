@@ -24,6 +24,7 @@ import numpy as np
 from praxis import base_layer
 from praxis import py_utils
 from praxis import pytypes
+from praxis.layers import activations
 from praxis.layers import linears
 
 NestedMap = py_utils.NestedMap
@@ -147,7 +148,7 @@ class FullSoftmax(base_layer.BaseLayer):
     ff_p = p.feed_forward_tpl.clone().set(
         input_dims=p.input_dims,
         output_dims=p.num_classes,
-        activation='NONE',
+        activation_tpl=activations.Identity.HParams(),
         bias_init=p.bias_init,
         weight_split_dims_mapping=wp.clone(),
         activation_split_dims_mapping=ap.clone())
@@ -337,7 +338,7 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
     ff_p = linears.FeedForward.HParams(
         input_dims=p.input_dims,
         output_dims=p.num_classes,
-        activation='NONE',
+        activation_tpl=activations.Identity.HParams(),
         bias_init=p.bias_init,
         weight_split_dims_mapping=wp.clone(),
         activation_split_dims_mapping=ap.clone())

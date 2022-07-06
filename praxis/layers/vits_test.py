@@ -24,6 +24,7 @@ import numpy as np
 from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
+from praxis.layers import activations
 from praxis.layers import transformers
 from praxis.layers import vits
 
@@ -72,7 +73,7 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
 
     p_tfm = p_stacked_tfm.transformer_layer_params_tpl
     p_tfm.norm_policy = 'pre'
-    p_tfm.tr_fflayer_tpl.activation = 'GELU'
+    p_tfm.tr_fflayer_tpl.activation_tpl = activations.GELU.HParams()
     p_tfm.tr_atten_tpl.atten_logit_cap = 0.0
     p_tfm.tr_atten_tpl.internal_enable_per_dim_scale = False
 

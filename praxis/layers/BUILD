@@ -67,7 +67,6 @@ pytype_strict_library(
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
-        "//praxis:py_utils",
         "//praxis:pytypes",
     ],
 )
@@ -148,6 +147,7 @@ pytype_strict_library(
     srcs = ["embedding_softmax.py"],
     srcs_version = "PY3",
     deps = [
+        ":activations",
         ":linears",
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -176,6 +176,7 @@ pytype_strict_library(
     srcs = ["glam.py"],
     srcs_version = "PY3",
     deps = [
+        ":activations",
         ":attentions",
         ":embedding_softmax",
         ":normalizations",
@@ -536,6 +537,7 @@ pytype_strict_library(
     srcs = ["conformers.py"],
     srcs_version = "PY3",
     deps = [
+        ":activations",
         ":attentions",
         ":convolutions",
         ":normalizations",
@@ -591,6 +593,7 @@ py_strict_test(
     name = "vits_test",
     srcs = ["vits_test.py"],
     deps = [
+        ":activations",
         ":transformers",
         ":vits",
         # Implicit absl.testing.absltest dependency.
@@ -624,6 +627,7 @@ py_strict_test(
     shard_count = 27,
     srcs_version = "PY3",
     deps = [
+        ":activations",
         ":layers",
         ":retrieval_models",
         # Implicit absl.testing.absltest dependency.
@@ -751,6 +755,7 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        ":activations",
         ":linears",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
@@ -808,6 +813,7 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        ":bregman",
         ":ngrammer",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
@@ -931,6 +937,7 @@ py_strict_test(
     shard_count = 20,
     srcs_version = "PY3",
     deps = [
+        ":activations",
         ":attentions",
         ":transformers",
         # Implicit absl.logging dependency.
@@ -1032,6 +1039,7 @@ pytype_strict_library(
     name = "vits",
     srcs = ["vits.py"],
     deps = [
+        ":activations",
         ":embedding_softmax",
         ":linears",
         ":normalizations",

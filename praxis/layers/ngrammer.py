@@ -249,8 +249,7 @@ class BregmanCompression(base_layer.BaseLayer):
       dim_per_head: The dimension per each head of the input.
       num_components: Number of PCA components, which is the same as the
         dimensionality of the compression coefficients.
-      activation: Name of the activation function. Supported activation
-        functions are {NONE, LEAKY_RELU, SOFTMAX}.
+      activation_type: Type of the activation function.
       negative_slope: Negative slope for leaky ReLU.
       mean_beta: EMA constant for updating the mean.
       coefficients_lr: Learning rate for the coefficients.
@@ -266,7 +265,7 @@ class BregmanCompression(base_layer.BaseLayer):
     num_heads: int = 0
     dim_per_head: int = 0
     num_components: int = 0
-    activation: str = 'NONE'
+    activation_type: bregman.ActivationType = bregman.ActivationType.IDENTITY
     negative_slope: float = 0.0
     mean_beta: float = 0.99
     coefficients_lr: float = 0.01
@@ -289,7 +288,7 @@ class BregmanCompression(base_layer.BaseLayer):
           bregman.BregmanPCA.HParams(
               num_components=p.num_components,
               input_dims=p.dim_per_head,
-              activation=p.activation,
+              activation_type=p.activation_type,
               negative_slope=p.negative_slope,
               mean_beta=p.mean_beta,
               coefficients_lr=p.coefficients_lr,
@@ -775,8 +774,7 @@ class BregmanNgrammer(base_layer.BaseLayer):
       dim_per_head: The dimension per each head of the input.
       num_components: Number of PCA components, which is the same as the
         dimensionality of the compression coefficients.
-      activation: Name of the activation function. Supported activation
-        functions are {NONE, LEAKY_RELU, SOFTMAX}.
+      activation_type: Type of the activation function.
       negative_slope: Negative slope for leaky ReLU.
       mean_beta: EMA constant for updating the mean.
       coefficients_lr: Learning rate for the coefficients.
@@ -795,7 +793,7 @@ class BregmanNgrammer(base_layer.BaseLayer):
     num_heads: int = 0
     dim_per_head: int = 0
     num_components: int = 0
-    activation: str = 'NONE'
+    activation_type: bregman.ActivationType = bregman.ActivationType.IDENTITY
     negative_slope: float = 0.0
     mean_beta: float = 0.99
     coefficients_lr: float = 0.01
@@ -863,7 +861,7 @@ class BregmanNgrammer(base_layer.BaseLayer):
         num_heads=p.num_heads,
         dim_per_head=p.dim_per_head,
         num_components=p.num_components,
-        activation=p.activation,
+        activation_type=p.activation_type,
         negative_slope=p.negative_slope,
         mean_beta=p.mean_beta,
         coefficients_lr=p.coefficients_lr,

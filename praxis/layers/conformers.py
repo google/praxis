@@ -19,6 +19,7 @@ from typing import Optional
 from praxis import asserts
 from praxis import base_layer
 from praxis import py_utils
+from praxis.layers import activations
 from praxis.layers import attentions
 from praxis.layers import convolutions
 from praxis.layers import normalizations
@@ -151,7 +152,7 @@ class Conformer(base_layer.BaseLayer):
       input_dims: Input dimension.
       model_dims: Encoder model dimension.
       kernel_size: Conv kernel size.
-      ff_activation: Activation function used in the feedforward network.
+      ff_activation_tpl: Activation function used in the feedforward network.
       ff_residual_weight: Residual weight used in the fflayer.
       ffn_dim_multiplier: Feed forward hidden dimension will be
         ffn_dim_multiplier * model_dims.
@@ -184,7 +185,8 @@ class Conformer(base_layer.BaseLayer):
     input_dims: Optional[int] = None
     model_dims: int = 512
     kernel_size: int = 32
-    ff_activation: str = 'SWISH'
+    ff_activation_tpl: activations.BaseActivation.HParams = sub_config_field(
+        activations.Swish.HParams)
     ff_residual_weight: float = 0.5
     ffn_dim_multiplier: int = 4
     atten_num_heads: int = 8
@@ -227,7 +229,7 @@ class Conformer(base_layer.BaseLayer):
       if p.input_dims == p.model_dims:
         fflayer_start_p = p.fflayer_start_tpl.clone().set(
             name='fflayer_start',
-            activation=p.ff_activation,
+            activation_tpl=p.ff_activation_tpl.clone(),
             input_dims=p.input_dims,
             hidden_dims=p.model_dims * p.ffn_dim_multiplier,
             residual_weight=p.ff_residual_weight,
@@ -238,7 +240,7 @@ class Conformer(base_layer.BaseLayer):
         # Need to add another projection layer in fflayer
         fflayer_start_p = p.fflayer_start_tpl.clone().set(
             name='fflayer_start',
-            activation=p.ff_activation,
+            activation_tpl=p.ff_activation_tpl.clone(),
             input_dims=p.input_dims,
             output_dims=p.model_dims,
             hidden_dims=p.model_dims * p.ffn_dim_multiplier,
@@ -251,7 +253,7 @@ class Conformer(base_layer.BaseLayer):
     if p.fflayer_end_tpl:
       fflayer_end_p = p.fflayer_end_tpl.clone().set(
           name='fflayer_end',
-          activation=p.ff_activation,
+          activation_tpl=p.ff_activation_tpl.clone(),
           input_dims=p.model_dims,
           hidden_dims=p.model_dims * p.ffn_dim_multiplier,
           residual_weight=p.ff_residual_weight,

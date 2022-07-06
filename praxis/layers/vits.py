@@ -41,6 +41,7 @@ from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import py_utils
 from praxis import pytypes
+from praxis.layers import activations
 from praxis.layers import embedding_softmax
 from praxis.layers import linears
 from praxis.layers import normalizations
@@ -156,7 +157,7 @@ class VitEntryLayers(base_layer.BaseLayer):
         name='proj',
         input_dims=p.patch_size**2 * p.image_channels,
         output_dims=p.dim_per_patch,
-        activation='NONE')
+        activation_tpl=activations.Identity.HParams())
     self.create_child('patch_projection', p_patch_projection)
 
     num_patches = p.pos_embed_shapes[0] * p.pos_embed_shapes[1]
@@ -246,7 +247,9 @@ class VitExitLayers(base_layer.BaseLayer):
 
     if p.output_fc_tanh:
       p_fc_tanh = linears.FeedForward.HParams(
-          input_dims=p.hidden_dim, output_dims=p.output_dim, activation='TANH')
+          input_dims=p.hidden_dim,
+          output_dims=p.output_dim,
+          activation_tpl=activations.Tanh.HParams())
       self.create_child('fc_tanh', p_fc_tanh)
     elif p.hidden_dim != p.output_dim:
       raise ValueError('When there is no linear projection, hidden_dim must '

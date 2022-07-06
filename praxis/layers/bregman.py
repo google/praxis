@@ -15,6 +15,7 @@
 
 """Bregman PCA layer."""
 
+import enum
 import functools
 from typing import Optional, Sequence, Tuple, Union
 
@@ -31,7 +32,9 @@ WeightInit = base_layer.WeightInit
 JTensor = pytypes.JTensor
 
 BaseHParams = base_layer.BaseLayer.HParams
+sub_config_field = base_layer.sub_config_field
 PARAMS = base_layer.PARAMS
+
 
 def _leaky_relu_loss(coefficients: JTensor, components: JTensor, mean: JTensor,
                      labels: JTensor, negative_slope: float) -> JTensor:
@@ -107,6 +110,14 @@ def _softmax_loss(coefficients: JTensor, components: JTensor, mean: JTensor,
   return loss
 
 
+@enum.unique
+class ActivationType(str, enum.Enum):
+  """Enumeration with the activation function names supported by this module."""
+  IDENTITY = 'IDENTITY'
+  LEAKY_RELU = 'LEAKY_RELU'
+  SOFTMAX = 'SOFTMAX'
+
+
 class BregmanPCA(base_layer.BaseLayer):
   """Implements an online Bregman PCA layer.
 
@@ -132,8 +143,8 @@ class BregmanPCA(base_layer.BaseLayer):
     Attributes:
       num_components: Number of PCA components.
       input_dims: Dimensions of input
-      activation: Name of the activation function. Supported activation
-        functions are {NONE, LEAKY_RELU, SOFTMAX}.
+      activation_type: The type of the activation function to use. See the
+        supported activation functions in the ActivationType enum above.
       negative_slope: Negative slope for leaky ReLU.
       mean_beta: EMA constant for updating the mean.
       coefficients_lr: Learning rate for the coefficients.
@@ -148,7 +159,7 @@ class BregmanPCA(base_layer.BaseLayer):
     """
     num_components: int = 0
     input_dims: Union[int, Sequence[int]] = 0
-    activation: str = 'NONE'
+    activation_type: ActivationType = ActivationType.IDENTITY
     negative_slope: float = 0.0
     mean_beta: float = 0.99
     coefficients_lr: float = 0.01
@@ -189,23 +200,23 @@ class BregmanPCA(base_layer.BaseLayer):
         shape=[p.num_components] + input_dims,
         init=WeightInit.Constant(0.0),
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
-    if p.activation == 'NONE':
+    if p.activation_type == ActivationType.IDENTITY:
       self.activation_fn = lambda x: x
       self.inv_activation_fn = lambda x: x
       self.bregman_loss_fn = _squared_loss
-    elif p.activation == 'LEAKY_RELU':
+    elif p.activation_type == ActivationType.LEAKY_RELU:
       self.activation_fn = functools.partial(
           jax.nn.leaky_relu, negative_slope=p.negative_slope)
       self.inv_activation_fn = functools.partial(
           jax.nn.leaky_relu, negative_slope=1. / p.negative_slope)
       self.bregman_loss_fn = functools.partial(
           _leaky_relu_loss, negative_slope=p.negative_slope)
-    elif p.activation == 'SOFTMAX':
+    elif p.activation_type == ActivationType.SOFTMAX:
       self.activation_fn = nn.softmax
       self.inv_activation_fn = _inverse_softmax
       self.bregman_loss_fn = _softmax_loss
     else:
-      raise ValueError('Unknown activation type {}'.format(p.activation))
+      raise ValueError('Unknown activation type {}'.format(p.activation_type))
     self.coefficients_grad_fn = jax.grad(self.bregman_loss_fn, argnums=0)
     self.components_grad_fn = jax.grad(self.bregman_loss_fn, argnums=1)
     self.create_variable('step', step, trainable=False)

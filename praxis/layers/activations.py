@@ -18,56 +18,125 @@
 import jax
 import jax.numpy as jnp
 from praxis import base_layer
-from praxis import py_utils
 from praxis import pytypes
 
-NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
-BaseHParams = base_layer.BaseLayer.HParams
+
+class BaseActivation(base_layer.BaseLayer):
+  """Base class for activation functions."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    raise NotImplementedError(
+        'Activation layers are expected to implement __call__().')
 
 
-class Activation(base_layer.BaseLayer):
-  """Activation layer that wraps popular activation functions."""
+class ReLU(BaseActivation):
+  """Rectified Linear Unit (ReLU) activation layer."""
 
-  class HParams(BaseHParams):
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    return jax.nn.relu(inputs)
+
+
+class ReLU6(BaseActivation):
+  """ReLU6 activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    return jax.nn.relu6(inputs)
+
+
+class SquaredReLU(BaseActivation):
+  """Squared ReLU activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    outputs = jax.nn.relu(inputs)
+    return jnp.square(outputs)
+
+
+class CubedReLU(BaseActivation):
+  """Cubed ReLU activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    outputs = jax.nn.relu(inputs)
+    outputs *= jnp.square(outputs)
+    return outputs
+
+
+class LeakyReLU(BaseActivation):
+  """Leaky ReLU activation layer."""
+
+  class HParams(base_layer.BaseLayer.HParams):
     """Associated hyperparams for this layer class.
 
     Attributes:
-      activation: Activation function to use. Options are RELU, RELU6, RELU^2,
-        RELU^3, LEAKY_RELU, SIGMOID, TANH, GELU, EXACT_GELU, SILU, SWISH, NONE.
       negative_slope: Negative slope of LEAKY_RELU.
     """
-    activation: str = 'RELU'
     negative_slope: float = 0.01
 
   def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
     p = self.hparams
-    if p.activation == 'RELU':
-      outputs = jax.nn.relu(inputs)
-    elif p.activation == 'RELU6':
-      outputs = jax.nn.relu6(inputs)
-    elif p.activation == 'RELU^2':
-      outputs = jax.nn.relu(inputs)
-      outputs = jnp.square(outputs)
-    elif p.activation == 'RELU^3':
-      outputs = jax.nn.relu(inputs)
-      outputs *= jnp.square(outputs)
-    elif p.activation == 'LEAKY_RELU':
-      outputs = jax.nn.leaky_relu(inputs, negative_slope=p.negative_slope)
-    elif p.activation == 'SIGMOID':
-      outputs = jax.nn.sigmoid(inputs)
-    elif p.activation == 'TANH':
-      outputs = jax.nn.tanh(inputs)
-    elif p.activation == 'GELU':
-      outputs = jax.nn.gelu(inputs)
-    elif p.activation == 'EXACT_GELU':
-      # By default `tf.nn.gelu` is exact.
-      outputs = jax.nn.gelu(inputs, approximate=False)
-    elif p.activation == 'SILU':
-      outputs = jax.nn.silu(inputs)
-    elif p.activation == 'SWISH':
-      outputs = jax.nn.swish(inputs)
-    else:  # 'NONE'
-      outputs = inputs
-    return outputs
+    return jax.nn.leaky_relu(inputs, negative_slope=p.negative_slope)
+
+
+class Sigmoid(BaseActivation):
+  """Sigmoid activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    return jax.nn.sigmoid(inputs)
+
+
+class Tanh(BaseActivation):
+  """Tanh activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    return jax.nn.tanh(inputs)
+
+
+class GELU(BaseActivation):
+  """Gaussian Error Linear Unit (GELU) activation layer."""
+
+  class HParams(base_layer.BaseLayer.HParams):
+    """Associated hyperparams for this layer class.
+
+    Attributes:
+      approximate: Whtether to use the approximate or exact formulation.
+    """
+    # By default `tf.nn.gelu` is exact.
+    approximate: bool = True
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    p = self.hparams
+    return jax.nn.gelu(inputs, approximate=p.approximate)
+
+
+class SiLU(BaseActivation):
+  """Sigmoid Linear Unit (SiLU) activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    return jax.nn.silu(inputs)
+
+
+class Swish(BaseActivation):
+  """Swish activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    return jax.nn.swish(inputs)
+
+
+class Identity(BaseActivation):
+  """Identity (or lack of non-linear) activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    return inputs

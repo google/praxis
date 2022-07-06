@@ -57,12 +57,14 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
       bottleneck_dims: bottleneck dimension of the adapter
       num_tasks: total number of tasks
       norm_tpl: normalization used in the beginning
+      activation_tpl: activation template to use.
     """
     input_dims: int = 0
     bottleneck_dims: int = 0
     num_tasks: int = 1
     norm_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
-    activation: str = 'RELU'
+    activation_tpl: activations.BaseActivation.HParams = sub_config_field(
+        activations.ReLU.HParams)
 
   def setup(self) -> None:
     p = self.hparams
@@ -89,8 +91,7 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
         shape=[p.num_tasks, p.input_dims], init=weight_init.Constant(0.))
     self.create_variable('up_b', up_b_pc)
 
-    act_p = activations.Activation.HParams(activation=p.activation)
-    self.create_child('activation', act_p)
+    self.create_child('activation', p.activation_tpl)
 
   def __call__(self,
                inputs: JTensor,

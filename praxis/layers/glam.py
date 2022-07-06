@@ -15,6 +15,7 @@
 
 """Helper function to config GLaM models."""
 
+from praxis.layers import activations
 from praxis.layers import attentions
 from praxis.layers import embedding_softmax
 from praxis.layers import normalizations
@@ -22,28 +23,30 @@ from praxis.layers import transformer_models
 from praxis.layers import transformers
 
 
-def GlamStackedTransformerHParams(model_dim,
-                                  ff_dim,
-                                  attention_num_heads,
-                                  attention_key_value_dim,
-                                  name='transformer',
-                                  moe=False,
-                                  moe_hidden_dim=None,
-                                  ffn_activation='GATED_GELU',
-                                  mask_self_attention=True,
-                                  cross_attention=False,
-                                  atten_logit_cap=0.0,
-                                  attention_extra_logit=0.0,
-                                  relative_attention_num_buckets=32,
-                                  relative_attention_max_distance=128,
-                                  moe_load_balance_loss_weight=0.01,
-                                  moe_gating_func='top2',
-                                  num_groups=1,
-                                  c_dim=None,
-                                  capacity_factor=0.0,
-                                  e_dim=None,
-                                  combine_qkv=False,
-                                  bidirectional=False):
+def GlamStackedTransformerHParams(
+    model_dim,
+    ff_dim,
+    attention_num_heads,
+    attention_key_value_dim,
+    name='transformer',
+    moe=False,
+    moe_hidden_dim=None,
+    ffn_activation_cls=activations.GELU,
+    use_gated_activation=True,
+    mask_self_attention=True,
+    cross_attention=False,
+    atten_logit_cap=0.0,
+    attention_extra_logit=0.0,
+    relative_attention_num_buckets=32,
+    relative_attention_max_distance=128,
+    moe_load_balance_loss_weight=0.01,
+    moe_gating_func='top2',
+    num_groups=1,
+    c_dim=None,
+    capacity_factor=0.0,
+    e_dim=None,
+    combine_qkv=False,
+    bidirectional=False) -> transformers.StackedTransformer.HParams:
   """Common setup for GLaM Transformer layers.
 
   This function setups a transformer block for both MoE and dense GLaM models.
@@ -64,7 +67,9 @@ def GlamStackedTransformerHParams(model_dim,
     name: Name of the this layer
     moe: If this is a moe block or not.
     moe_hidden_dim: hidden dimension of MoE layer.
-    ffn_activation: Activation function used in the ffn layer.
+    ffn_activation_cls: Activation function class used in the ffn layer.
+    use_gated_activation: Whether to use gated activation in the ffn layer or
+      not.
     mask_self_attention: Use masked self-attention.
     cross_attention: If set, use cross encoder-decoder attention layer.
     atten_logit_cap: Attention logits cap to apply to attention logits.
@@ -85,6 +90,7 @@ def GlamStackedTransformerHParams(model_dim,
   Returns:
     A Params object to set up a StackedTransformer.
   """
+  ffn_activation_tpl = getattr(ffn_activation_cls, 'HParams')()
 
   p = transformers.StackedTransformer.HParams()
   p.name = name
@@ -131,7 +137,8 @@ def GlamStackedTransformerHParams(model_dim,
   ff_tpl.ln_tpl = normalizations.RmsNorm.HParams()
   ff_tpl.ln_tpl.direct_scale = True
   ff_tpl.add_skip_connection = True
-  ff_tpl.activation = ffn_activation
+  ff_tpl.activation_tpl = ffn_activation_tpl
+  ff_tpl.use_gated_activation = use_gated_activation
   ff_tpl.internal_gshard_variance_scaling_fan_in_init = True
   # MoE ffn setup
   moe_p = p.moe_layer_tpl
@@ -160,7 +167,8 @@ def GlamUniTransformerLmHParams(
     name='transformer',
     moe=False,
     moe_hidden_dim=None,
-    ffn_activation='GATED_GELU',
+    ffn_activation_cls=activations.GELU,
+    use_gated_activation=True,
     atten_logit_cap=0.0,
     attention_extra_logit=0.0,
     relative_attention_num_buckets=32,
@@ -201,7 +209,9 @@ def GlamUniTransformerLmHParams(
     name: Name of the this layer
     moe: If this is a moe block or not.
     moe_hidden_dim: hidden dimension of MoE layer.
-    ffn_activation: Activation function used in the ffn layer.
+    ffn_activation_cls: Activation function class used in the ffn layer.
+    use_gated_activation: Whether to use gated activation in the ffn layer or
+      not.
     atten_logit_cap: Attention logits cap to apply to attention logits.
     attention_extra_logit: Extra logit for attention softmax.
     relative_attention_num_buckets: Relative attention num buckets
@@ -251,7 +261,8 @@ def GlamUniTransformerLmHParams(
       name='decoder_block',
       moe=moe,
       moe_hidden_dim=moe_hidden_dim,
-      ffn_activation=ffn_activation,
+      ffn_activation_cls=ffn_activation_cls,
+      use_gated_activation=use_gated_activation,
       mask_self_attention=True,
       cross_attention=False,
       atten_logit_cap=atten_logit_cap,
@@ -282,7 +293,4 @@ def GlamUniTransformerLmHParams(
         num_pipeline_stages=num_pipeline_stages,
         num_pipeline_microbatches=num_pipeline_microbatches,
         stream_io=True)
-
-  # Force type checking to alleviate pytype error.
-  assert isinstance(p, transformer_models.TransformerLm.HParams)
   return p
