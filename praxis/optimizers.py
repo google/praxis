@@ -165,6 +165,55 @@ def sharded_sgd(learning_rate_fn: optax.Schedule, momentum: Optional[float],
       init_partition_spec=init_partition_spec_fn)
 
 
+def sharded_adagrad(learning_rate_fn: optax.Schedule,
+                    initial_accumulator_value: float,
+                    epsilon: float) -> ShardedGradientTransformation:
+  """Adagrad optimizer that supports spmd sharding.
+
+  Args:
+    learning_rate_fn: a callable that given the current training step, returns
+      the learning rate to apply.
+    initial_accumulator_value: (default `0.1`).
+    epsilon (default `1e-7`): epsilon.
+
+  Returns:
+    A `ShardedGradientTransformation`.
+  """
+
+  # optax.adagrad is a trace transform followed by scale-by-learning-rate.
+  adagrad = optax.adagrad(
+      learning_rate=learning_rate_fn,
+      initial_accumulator_value=initial_accumulator_value,
+      eps=epsilon)
+
+  def init_fn(mdl_vars: NestedJTensor):
+    return adagrad.init(mdl_vars)
+
+  def init_partition_spec_fn(mdl_params):
+    count = WeightHParams(
+        shape=[], init=None, dtype=jnp.int32, collections=None)
+
+    def _opt_state_sharding_spec(var_hparams: WeightHParams) -> WeightHParams:
+      """Returns optimizer sharding spec for one particular variable."""
+      s_var_hparams = var_hparams.clone()
+      s_var_hparams.init = None
+      # ScaleByRssState has same sharding as `mdl_var`.
+      return s_var_hparams
+
+    scale_by_rss_sharding = jax.tree_map(_opt_state_sharding_spec, mdl_params)
+    return (optax.ScaleByRssState(sum_of_squares=scale_by_rss_sharding),
+            optax.ScaleByScheduleState(count=count))
+
+  def update_fn(updates, state, params=None):
+    del params
+    return adagrad.update(updates, state)
+
+  return ShardedGradientTransformation(
+      init=init_fn,
+      update=update_fn,
+      init_partition_spec=init_partition_spec_fn)
+
+
 class _AdamOptState:
 
   def __init__(self, *, m, v):
@@ -861,6 +910,29 @@ class ShardedSgd(BaseOptimizer):
     p = self._hparams
     return sharded_sgd(
         learning_rate_fn=lr, momentum=p.momentum, nesterov=p.nesterov)
+
+
+class ShardedAdagrad(BaseOptimizer):
+  """Sharded Adagrad optimizer."""
+
+  class HParams(BaseOptimizer.HParams):
+    """Defines hyper-params for ShardedAdagrad.
+
+    Attributes:
+      initial_accumulator_value: Initial value of the accumulator.
+      epsilon: Small constant applied to the denominator outside of the square
+        root to avoid dividing by zero when rescaling.
+    """
+    initial_accumulator_value: float = 1e-12
+    epsilon: float = 1e-12
+
+  def _get_raw_grad_transformation(
+      self, lr: optax.Schedule) -> ShardedGradientTransformation:
+    p = self._hparams
+    return sharded_adagrad(
+        learning_rate_fn=lr,
+        initial_accumulator_value=p.initial_accumulator_value,
+        epsilon=p.epsilon)
 
 
 class Adam(BaseOptimizer):

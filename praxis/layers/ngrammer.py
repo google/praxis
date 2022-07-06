@@ -180,8 +180,17 @@ class VectorQuantization(base_layer.BaseLayer):
     dists += inputs_norm_sq + means_norm_sq
 
     # Shape [B, L, N, K], the same as 'dists' above.
+    nearest_ids = jnp.argmin(dists, axis=-1)
     nearest_one_hot = jax.nn.one_hot(
-        jnp.argmin(dists, axis=-1), p.num_clusters, dtype=means.dtype)
+        nearest_ids, p.num_clusters, dtype=means.dtype)
+    # [B, L, N].
+    # Renormalize between [0, 1] and scale to 256.
+    nearest_ids /= p.num_clusters
+    nearest_ids *= 256
+    self.add_summary(
+        'k_means/centroid/cluster_ids',
+        nearest_ids[:, :, :, jnp.newaxis],
+        summary_type=base_layer.SummaryType.IMAGE)
 
     # Apply paddings.
     if paddings is not None:
