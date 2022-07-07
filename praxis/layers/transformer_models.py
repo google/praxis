@@ -171,6 +171,7 @@ class TransformerLm(base_layer.BaseLayer):
         parameters, however if we wish to separate the parameters of embedding
         lookup and softmax then we can set this param.
       final_ln_tpl: Parameterization of the layer normalization layer.
+      skip_compute_loss: Set to skip compute_loss and output activations.
     """
     position_emb_tpl: BaseHParams = sub_config_field(
         embedding_softmax.PositionalEmbedding.HParams)
@@ -187,6 +188,7 @@ class TransformerLm(base_layer.BaseLayer):
     separate_embedding_tpl: Optional[BaseHParams] = None
     final_ln_tpl: BaseHParams = sub_config_field(
         normalizations.LayerNorm.HParams)
+    skip_compute_loss: bool = False
 
   @classmethod
   def set_sharding_params_v1(cls,
@@ -514,7 +516,11 @@ class TransformerLm(base_layer.BaseLayer):
     # Final layer norm
     if p.final_ln_tpl is not None:
       output = self.final_ln(output)
-    return self.compute_loss(output, labels)
+
+    if p.skip_compute_loss:
+      return output
+    else:
+      return self.compute_loss(output, labels)
 
   def extend_step(
       self,
