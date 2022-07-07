@@ -169,6 +169,12 @@ class PyUtilsTest(test_utils.TestCase):
     expected = (1 - np.tri(4, k=-1)).astype(dtype)
     self.assertAllClose(paddings, expected)
 
+  def test_sequence_paddings_from_python_list(self):
+    lengths = [0, 1, 2, 3]
+    paddings = py_utils.sequence_paddings(lengths, maxlen=4)
+    expected = (1 - np.tri(4, k=-1))
+    self.assertAllClose(paddings, expected)
+
   @parameterized.named_parameters(
       ('_numpy', np),
       ('_jax_numpy', jnp),

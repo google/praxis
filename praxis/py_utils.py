@@ -532,36 +532,38 @@ def get_large_negative_number(dtype: jnp.dtype) -> JTensor:
   return jnp.asarray(-0.7 * dtype_max, dtype=dtype)
 
 
-def sequence_mask(lengths: jnp.ndarray,
+def sequence_mask(lengths: Union[JTensor, Sequence[int]],
                   maxlen: int,
                   dtype=jnp.bool_) -> JTensor:
   """Creates a sequence mask where 1s are valid positions and 0s are padded.
 
   Args:
-    lengths: An int JTensor.
+    lengths: A JTensor or Python list of integers.
     maxlen: A Python int.
     dtype: Output data type.
 
   Returns:
     [..., maxlen] of 0/1 JTensor where 1s are valid positions.
   """
+  lengths = jnp.array(lengths)
   return (jnp.arange(maxlen)[jnp.newaxis, ...] <
           lengths[..., jnp.newaxis]).astype(dtype)
 
 
-def sequence_paddings(lengths: jnp.ndarray,
+def sequence_paddings(lengths: Union[JTensor, Sequence[int]],
                       maxlen: int,
                       dtype=jnp.float32) -> JTensor:
   """Creates sequence paddings based on the lengths.
 
   Args:
-    lengths: An integer JTensor.
+    lengths: A JTensor or Python list of integers.
     maxlen: A Python int.
     dtype: Output data type.
 
   Returns:
     A 0/1 JTensor of shape [..., maxlen], in which 1 indicates paddings.
   """
+  lengths = jnp.array(lengths)
   return (jnp.arange(maxlen)[jnp.newaxis, ...] >=
           lengths[..., jnp.newaxis]).astype(dtype)
 
