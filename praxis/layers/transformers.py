@@ -1203,9 +1203,6 @@ class Transformer(base_layer.BaseLayer):
     Returns:
       cur_output: [B, D]
     """
-    if not self.hparams.mask_self_attention:
-      raise ValueError('extend_step should only be called with causal masking.')
-
     p = self.hparams
     # Layer normalize input
     if p.norm_policy == 'primer_hybrid':
@@ -1485,8 +1482,6 @@ class StackedTransformer(base_layer.BaseLayer):
       decoder_output: The last decoder layer output of shape [B, D].
     """
     p = self.hparams
-    if not self.hparams.mask_self_attention:
-      raise ValueError('extend_step should only be used with masked attention')
 
     max_t = self.x_layers[0].self_attention.decoding_state_sequence_length()
 
