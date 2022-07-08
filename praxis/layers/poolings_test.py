@@ -145,6 +145,42 @@ class PoolingsTest(test_utils.TestCase):
     self.assertAllClose(np_paddings, tf_np_paddings)
     self.assertAllClose(tf_np_output, np_output)
 
+  @parameterized.parameters(
+      ('MAX', True, False, [5., 3.]),
+      ('MAX', True, True, [5, 3]),
+      ('MAX', False, False, [5., 5.]),
+      ('MAX', False, True, [5, 5]),
+      ('AVG', True, False, [4., 2.]),
+      ('AVG', True, True, [4, 2]),
+      ('AVG', False, False, [3., 3.]),
+      ('AVG', False, True, [3, 3]),
+  )
+  def test_global_pooling_layer(self, pooling_type, apply_padding, int_inputs,
+                                ground_truth):
+    p = poolings.GlobalPooling.HParams(
+        name='global_pooling',
+        pooling_type=pooling_type,
+        pooling_dims=[1],
+        keepdims=False)
+    pooling_layer = instantiate(p)
+    if int_inputs:
+      inputs = jnp.asarray([[1, 2, 3, 4, 5],
+                            [5, 4, 3, 2, 1]])
+    else:
+      inputs = jnp.asarray([[1.0, 2.0, 3.0, 4.0, 5.0],
+                            [5.0, 4.0, 3.0, 2.0, 1.0]])
+    paddings = None
+    if apply_padding:
+      paddings = jnp.asarray([[1.0, 1.0, 0.0, 0.0, 0.0],
+                              [1.0, 1.0, 0.0, 0.0, 0.0]])
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pooling_layer.init(
+        prng_key, inputs, compatible_paddings=paddings)
+    output = pooling_layer.apply(
+        initial_vars, inputs, compatible_paddings=paddings)
+
+    self.assertAllClose(output, ground_truth)
 
 if __name__ == '__main__':
   absltest.main()

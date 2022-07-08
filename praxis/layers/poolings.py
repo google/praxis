@@ -172,7 +172,7 @@ class Pooling(base_layer.BaseLayer):
 
 
 class GlobalPooling(base_layer.BaseLayer):
-  """Performs a simple global pooling over the input.
+  """Performs a simple global pooling over the input with optional paddings.
 
   Raises:
     ValueError if `pooling_dims` is not a list or if any of their entries is
@@ -201,18 +201,51 @@ class GlobalPooling(base_layer.BaseLayer):
       if not all([p_dims >= 0 for p_dims in p.pooling_dims]):
         raise ValueError('pooling_dims must be non-negative integers.')
 
-  def __call__(self, inputs: JTensor) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               epsilon: float = 1e-8,
+               compatible_paddings: Optional[JTensor] = None) -> JTensor:
     """Applies global spatial pooling to inputs.
 
     Args:
       inputs: An input tensor.
+      epsilon: small value to avoid divide by zero error.
+      compatible_paddings: optional paddings of inputs with shapes compatible
+        with inputs, e.g. compatible_paddings with shape [B, 1] for inputs with
+        shape [B, D].
 
     Returns:
       Output tensor with global pooling applied.
     """
     p = self.hparams
+
+    if compatible_paddings is not None:
+      if p.pooling_type == 'MAX':
+        if jnp.issubdtype(inputs.dtype, jnp.inexact):
+          padded_value = -jnp.inf
+        elif jnp.issubdtype(inputs.dtype, jnp.integer):
+          padded_value = jnp.iinfo(inputs.dtype).min
+        else:
+          raise ValueError('Unsupported dtype for inputs.')
+      elif p.pooling_type == 'AVG':
+        padded_value = jnp.zeros(shape=(), dtype=inputs.dtype)
+      padded_value = jnp.ones_like(inputs) * padded_value
+      inputs = jnp.where(compatible_paddings > 0, padded_value, inputs)
+
     if p.pooling_type == 'MAX':
       outputs = jnp.max(inputs, p.pooling_dims, keepdims=p.keepdims)
     elif p.pooling_type == 'AVG':
-      outputs = jnp.mean(inputs, p.pooling_dims, keepdims=p.keepdims)
+      if compatible_paddings is not None:
+        valid_inputs = jnp.sum(
+            1.0 - compatible_paddings,
+            p.pooling_dims,
+            keepdims=True,
+            dtype=inputs.dtype) + epsilon
+        inputs_sum = jnp.sum(inputs, p.pooling_dims, keepdims=True)
+        outputs = jnp.divide(inputs_sum, valid_inputs).astype(inputs.dtype)
+        if not p.keepdims:
+          outputs = jnp.squeeze(outputs, axis=p.pooling_dims)
+      else:
+        outputs = jnp.mean(
+            inputs, p.pooling_dims, keepdims=p.keepdims).astype(inputs.dtype)
     return outputs
