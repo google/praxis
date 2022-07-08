@@ -141,13 +141,19 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
         WeightHParams(
             shape=[p.latent_dim * p.stack_ratio, p.projection_dim],
             init=p.params_init,
-            dtype=jnp.float32))
+            dtype=jnp.float32,
+            collections=[
+                base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
+            ]))
     self.create_variable(
         'random_bias',
         WeightHParams(
             shape=[p.projection_dim],
             init=WeightInit.Constant(0.0),
-            dtype=jnp.float32))
+            dtype=jnp.float32,
+            collections=[
+                base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
+            ]))
 
     if p.num_groups == 1 and p.low_rank_codebook:
       codebook_shape = [p.num_latent_classes, p.projection_dim]
@@ -158,7 +164,12 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     self.create_variable(
         'random_codebook',
         WeightHParams(
-            shape=codebook_shape, init=p.codebook_init, dtype=jnp.float32))
+            shape=codebook_shape,
+            init=p.codebook_init,
+            dtype=jnp.float32,
+            collections=[
+                base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
+            ]))
 
   def _get_codebook(self):
     """Gets the latent embedding."""
@@ -230,9 +241,9 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
 
     codebook_num_covered_codes = codebook_coverage * p.num_latent_classes
     return NestedMap(
-        z_q=q,
-        z_codes=c,
-        z_onehot=onehot,
+        z_q=jax.lax.stop_gradient(q),
+        z_codes=jax.lax.stop_gradient(c),
+        z_onehot=jax.lax.stop_gradient(onehot),
         paddings=paddings,
         codebook_coverage=codebook_coverage,
         codebook_num_covered_codes=codebook_num_covered_codes,
