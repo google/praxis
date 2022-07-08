@@ -2277,3 +2277,128 @@ class DynamicAccumulator(BaseOptimizer):
     p = self._hparams
     base_tx = self.base_optimizer._get_raw_grad_transformation(lr)  # pylint: disable=protected-access
     return dynamic_accumulation(p.min_accum_weight, p.weight_key, base_tx)
+
+
+def sharded_static_accumulation(
+    num_sub_batches: int,
+    base_tx: ShardedGradientTransformation,
+) -> ShardedGradientTransformation:
+  """Gradient transformation for ShardedStaticAccumulator optimizer."""
+
+  def init_fn(mdl_vars: NestedJTensor):
+    base_state = base_tx.init(mdl_vars)
+    # Make sure we accumulate in f32.
+    accumulated_update = jax.tree_map(
+        lambda v: jnp.zeros_like(v, dtype=jnp.float32), mdl_vars)
+    return NestedMap(
+        base_state=base_state,
+        accumulated_update=accumulated_update,
+        count=jnp.zeros((), dtype=jnp.int32))
+
+  def init_partition_spec(params):
+    def _weight_hparams(param):
+      return WeightHParams(
+          shape=param.shape,
+          init=None,
+          dtype=param.dtype,
+          collections=None,
+          mesh_shape=param.mesh_shape,
+          tensor_split_dims_mapping=param.tensor_split_dims_mapping)
+    accumulated_update = jax.tree_map(_weight_hparams, params)
+    params_flattened, _ = jax.tree_flatten(params)
+    first_param = params_flattened[0]
+    assert isinstance(first_param, WeightHParams)
+    mesh_shape = first_param.mesh_shape
+    count = WeightHParams(
+        shape=[],
+        init=None,
+        dtype=jnp.int32,
+        collections=None,
+        mesh_shape=mesh_shape,
+        tensor_split_dims_mapping=[])
+    return NestedMap(
+        base_state=base_tx.init_partition_spec(params),
+        accumulated_update=accumulated_update,
+        count=count)
+
+  def update_fn(updates: NestedJTensor,
+                state: NestedJTensor,
+                params: Optional[NestedJTensor] = None):
+    new_accumulated_update = jax.tree_map(lambda acc, x: acc + x,
+                                          state.accumulated_update, updates)
+
+    new_count = state.count + 1
+    should_emit = new_count >= num_sub_batches
+    new_count = lax.cond(
+        should_emit, lambda: jnp.array(0, dtype=jnp.int32), lambda: new_count)
+
+    def _run_base_tx():
+      averaged_updated = jax.tree_map(
+          lambda acc: acc / num_sub_batches, new_accumulated_update)
+      emission_updates, emission_base_state = base_tx.update(
+          averaged_updated, state.base_state, params)
+      return (
+          emission_updates,
+          jax.tree_map(lambda u: jnp.zeros_like(u, dtype=jnp.float32), updates),
+          emission_base_state)
+
+    def _continue_accumulating():
+      return (jax.tree_map(jnp.zeros_like, updates), new_accumulated_update,
+              state.base_state)
+
+    new_updates, new_accumulated_update, new_base_state = lax.cond(
+        should_emit, _run_base_tx, _continue_accumulating)
+
+    return new_updates, NestedMap(
+        base_state=new_base_state,
+        accumulated_update=new_accumulated_update,
+        count=new_count)
+
+  return ShardedGradientTransformation(
+      init=init_fn,
+      update=update_fn,
+      init_partition_spec=init_partition_spec,
+  )
+
+
+class ShardedStaticAccumulator(BaseOptimizer):
+  """Optimizer wrapper that accumulates a fixed number of sharded updates.
+
+  Note that to enable gradient clipping, the clipping value must be set
+  explicitly on ShardedStaticAccumulator and not the wrapped optimizer.
+
+  Note that gradient clipping happens on the sub batches used for each
+  accumulating step, which is different than clipping on the accumulated update,
+  which is what some users may expect.
+
+  Note we accumulate the gradients in whatever dtype they are, and then call the
+  base optimizer transformation using the mean of the updates.
+  """
+
+  class HParams(BaseOptimizer.HParams):
+    """Defines hyper-params for ShardedStaticAccumulator.
+
+    Attributes:
+      optimizer_tpl: Parameter for base optimizer.
+      num_sub_batches: The number of batches whose updates should be accumulated
+        before sending to the base optimizer transformation.
+    """
+    optimizer_tpl: Optional[BaseOptimizer.HParams] = None
+    num_sub_batches: int = 1
+
+  def __init__(self, hparams: BaseOptimizer.HParams) -> None:
+    super().__init__(hparams)
+    p = self._hparams
+    if p.num_sub_batches < 1:
+      raise ValueError('Set `p.num_sub_batches >= 1`.')
+
+    base_opt_tpl = p.optimizer_tpl.clone()
+    if base_opt_tpl.lr_schedule is None:
+      base_opt_tpl.lr_schedule = p.lr_schedule
+    self.base_optimizer = instantiate(base_opt_tpl)
+
+  def _get_raw_grad_transformation(
+      self, lr: optax.Schedule) -> GeneralGradientTransformation:
+    p = self._hparams
+    base_tx = self.base_optimizer._get_raw_grad_transformation(lr)  # pylint: disable=protected-access
+    return sharded_static_accumulation(p.num_sub_batches, base_tx)

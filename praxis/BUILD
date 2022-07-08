@@ -434,6 +434,21 @@ py_strict_test(
 )
 
 py_strict_test(
+    name = "optimizers_test",
+    srcs = ["optimizers_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":optimizers",
+        ":schedules",
+        ":test_utils",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        # Implicit optax dependency.
+    ],
+)
+
+py_strict_test(
     name = "py_utils_test",
     srcs = ["py_utils_test.py"],
     python_version = "PY3",
