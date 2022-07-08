@@ -1557,10 +1557,12 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
       x_times: Num times to repeat a block.
       checkpoint_policy: How to checkpoint residuals for BProp: save nothing,
         dot only or dot with no batch dimensions.
+      unroll_in_decode: Whether to unroll the layers during extend_step.
     """
     block: BaseHParams = sub_config_field(StackedTransformer.HParams)
     x_times: int = 0
     checkpoint_policy: repeats.AutodiffCheckpointType = repeats.AutodiffCheckpointType.SAVE_NOTHING
+    unroll_in_decode: bool = False
 
   class WeightShardingHParams(BaseWtShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -1578,7 +1580,8 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         sub=p.block,
         x_times=p.x_times,
         checkpoint_policy=p.checkpoint_policy,
-        unpack_summaries=True)
+        unpack_summaries=True,
+        unroll_in_decode=p.unroll_in_decode)
     repeat_l_params.weight_split_dims_mapping.sub = wp.block
 
     self.create_child('repeat', repeat_l_params)

@@ -1084,7 +1084,6 @@ class TransformersTest(test_utils.TestCase):
             mutable=[DECODE_CACHE])
         updated_vars = py_utils.MergeDictsWithValueCheck(
             decoder_state, initial_vars)
-        encoded, _ = encoded
         decoder_outputs = decoder_outputs.at[t].set(encoded)
 
     decoder_out_transposed = jnp.transpose(decoder_outputs, [1, 0, 2])

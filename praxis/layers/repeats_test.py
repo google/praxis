@@ -37,6 +37,7 @@ PARAMS = base_layer.PARAMS
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 SUMMARIES = base_layer.SUMMARIES
 AUX_LOSS = base_layer.AUX_LOSS
+DECODE_CACHE = base_layer.DECODE_CACHE
 
 
 class FeedForward(base_layer.BaseLayer):
@@ -74,6 +75,44 @@ class FeedForward(base_layer.BaseLayer):
     out = jnp.einsum('...y,yz->...z', inputs, self.theta.w)
     out = jax.nn.sigmoid(out)
     return out
+
+
+class Decoder(base_layer.BaseLayer):
+  """Decoder layer."""
+
+  class HParams(BaseHParams):
+    """Associated hyperparams for this layer class.
+
+    Attributes:
+      model_dim: Model dimension size.
+    """
+    model_dim: int = 0
+
+  def setup(self):
+    p = self.hparams
+    assert p.name
+    assert p.model_dim > 0
+
+    self.create_variable(
+        'w',
+        WeightHParams(
+            shape=[p.model_dim, p.model_dim], init=WeightInit.Gaussian(1.0)))
+
+  def __call__(self, inputs):
+    x = jnp.einsum('bty,yz->btz', inputs, self.theta.w)
+    self.update_decode_state('x', x)
+    x = jnp.cumsum(x, axis=1)
+    out = jax.nn.sigmoid(x)
+    return out
+
+  def extend_step(self, step_inputs, t, seqlen):
+    x = self.get_decode_state('x')
+    x_t = jnp.einsum('by,yz->bz', step_inputs, self.theta.w)
+    x.at[:, t].set(x_t)
+    self.update_decode_state('x', x)
+    x_t = jnp.sum(jnp.where(jnp.arange(seqlen)[:, None] > t, 0.0, x), axis=1)
+    x_t = jax.nn.sigmoid(x_t)
+    return x_t
 
 
 class RepeatsTest(test_utils.TestCase):
@@ -138,6 +177,33 @@ class RepeatsTest(test_utils.TestCase):
           updated_vars_shape[SUMMARIES]['sub']['inputs_mean_scalar'], (5,))
 
     print(jax.tree_map(lambda x: x.shape, updated_vars))
+
+  @parameterized.parameters((False,), (True,))
+  def test_extend_step(self, unroll):
+
+    sub_p = Decoder.HParams(model_dim=4)
+    p = repeats.Repeat.HParams(
+        name='repeated_decoder', sub=sub_p, x_times=5, unroll_in_decode=unroll)
+    repeated_decoder = instantiate(p)
+
+    k = jax.random.PRNGKey(123)
+    k, input_random_key = jax.random.split(k)
+    x = jax.random.uniform(input_random_key, shape=(2, 6, 4))
+
+    k, init_key = jax.random.split(k)
+    init_vars = repeated_decoder.init(init_key, x)
+    fprop_outs, updated_vars = repeated_decoder.apply(
+        init_vars, x, mutable=[PARAMS, DECODE_CACHE])
+
+    for t in range(6):
+      step_out, updated_vars = repeated_decoder.apply(
+          updated_vars,
+          x[:, t],
+          t,
+          6,
+          mutable=[PARAMS, DECODE_CACHE],
+          method=repeated_decoder.extend_step)
+      self.assertAllClose(step_out, fprop_outs[:, t])
 
 
 if __name__ == '__main__':

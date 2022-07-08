@@ -577,8 +577,6 @@ class TransformerLm(base_layer.BaseLayer):
       segment_pos = jnp.squeeze(segment_pos, 1)
     outputs = self.transformer.extend_step(
         inputs[:, 0, :], time_step=time_step, segment_pos=segment_pos)
-    if isinstance(outputs, tuple):
-      outputs, _ = outputs
 
     self.update_decode_state('time_step', time_step + 1)
     if p.final_ln_tpl is not None:
@@ -1349,10 +1347,6 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
         target_emb[:, 0, :],
         time_step=time_step,
         cross_paddings=input_paddings)
-
-    # Stacked repeated transformer will have tuple shape outputs.
-    if isinstance(outputs, tuple):
-      outputs, _ = outputs
 
     self.update_decode_state('time_step', time_step + 1)
     outputs = self.decoder_ln(outputs)

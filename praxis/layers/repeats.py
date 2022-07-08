@@ -20,7 +20,7 @@ This simply passes input through the layer stack.
 
 import enum
 import functools
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from flax import linen as nn
 import jax
@@ -118,11 +118,15 @@ class Repeat(base_layer.BaseLayer):
         each loop iterations.
       checkpoint_policy: How to checkpoint residuals for BProp: save nothing,
         dot only or dot with no batch dimensions.
+      unroll_in_decode: Whether to unroll the layers during extend_step. The
+        scan loop within a decoding loop can cause large overheads for data
+        copy/formatting.
     """
     sub: Optional[BaseHParams] = None
     x_times: int = 0
     unpack_summaries: bool = False
     checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_NOTHING
+    unroll_in_decode: bool = False
 
   class WeightShardingHParams(BaseWtShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -232,6 +236,25 @@ class Repeat(base_layer.BaseLayer):
         mutable=self.is_mutable_collection(AUX_LOSS),
         trans_out_fn=_sum_aux_loss)
 
+    if p.unroll_in_decode:
+
+      def _unstack_cache(tree):
+        new_tree = {}
+        for collection, subtree in tree.items():
+          new_tree[collection] = {}
+          for i in range(p.x_times):
+
+            def _slice(x, i=i):
+              return x[i]
+
+            new_tree[collection][f'layer{i}'] = jax.tree_map(_slice, subtree)
+        return new_tree
+
+      mapped_scan_fn = nn.map_variables(
+          mapped_scan_fn, [DECODE_CACHE, PREFIX_DECODE_CACHE],
+          mutable=True,
+          trans_out_fn=_unstack_cache)
+
     layer_out, _ = mapped_scan_fn(self.sub, inputs)
     return layer_out
 
@@ -278,6 +301,66 @@ class Repeat(base_layer.BaseLayer):
     # Calls scan_fn with a None carry_in and ignores the carry_out.
     mapped_scan_fn(self.sub, None)
 
+  def _run_unrolled_for_decoding(self, fn: Callable[[base_layer.BaseLayer, Any],
+                                                    Any], inputs: Any) -> Any:
+    p = self.hparams
+
+    def _run_one_layer(i, inp):
+
+      def _map_in(tree):
+        for collection, subtree in tree.items():
+          if collection not in [DECODE_CACHE, PREFIX_DECODE_CACHE]:
+            layer_i = jax.tree_map(lambda x: x[i], subtree)
+            subtree.clear()
+            subtree.update(layer_i)
+          else:
+            layer_i = subtree[f'layer{i}']
+            del subtree[f'layer{i}']
+            other_layers = subtree.copy()
+            subtree.clear()
+            subtree.update(layer_i)
+            subtree['_repeats_other_layers'] = other_layers
+        return tree
+
+      def _map_out(tree):
+        for collection, subtree in tree.items():
+          if collection not in [DECODE_CACHE, PREFIX_DECODE_CACHE]:
+            continue
+          other_layers = subtree['_repeats_other_layers']
+          del subtree['_repeats_other_layers']
+          layer_i = subtree.copy()
+          subtree.clear()
+          subtree.update(other_layers)
+          subtree[f'layer{i}'] = layer_i
+        return tree
+
+      mapped_fn = nn.map_variables(
+          fn, [
+              DECODE_CACHE, PREFIX_DECODE_CACHE, PARAMS, NON_TRAINABLE,
+              SUMMARIES, AUX_LOSS
+          ],
+          mutable=True,
+          trans_in_fn=_map_in,
+          trans_out_fn=_map_out)
+      mapped_fn = nn.map_variables(
+          mapped_fn,
+          SUMMARIES,
+          mutable=False,
+          trans_in_fn=functools.partial(
+              flax_utils.maybe_repack_summary,
+              unpack_summaries=p.unpack_summaries,
+              x_times=p.x_times))
+      # TODO(yuanzx): we do not support summaries/aux_losses yet.
+      mapped_fn = nn.map_variables(
+          mapped_fn, [PARAMS, NON_TRAINABLE, SUMMARIES, AUX_LOSS],
+          mutable=False)
+      return mapped_fn(self.sub, inp)
+
+    out = inputs
+    for i in range(p.x_times):
+      out, _ = _run_one_layer(i, out)
+    return out
+
   def extend_step(self, step_inputs: NestedJTensor, *args: Any,
                   **kwargs: Any) -> Any:
     """Extends decoder states by one step.
@@ -298,6 +381,9 @@ class Repeat(base_layer.BaseLayer):
       layer_out = sub.extend_step(layer_in, *args, **kwargs)
       tf.nest.assert_same_structure(layer_in, layer_out)
       return layer_out, None
+
+    if p.unroll_in_decode:
+      return self._run_unrolled_for_decoding(body_fn, step_inputs)
 
     # Note that in_axes specification skips `carry` and supports prefix spec.
     scan_fn = nn.scan(
@@ -330,7 +416,7 @@ class Repeat(base_layer.BaseLayer):
     mapped_scan_fn = nn.map_variables(
         mapped_scan_fn, PREFIX_DECODE_CACHE, mutable=False)
 
-    layer_out = mapped_scan_fn(self.sub, step_inputs)
+    layer_out, _ = mapped_scan_fn(self.sub, step_inputs)
     return layer_out
 
   def transform_decode_state(
@@ -341,6 +427,10 @@ class Repeat(base_layer.BaseLayer):
     def body_fn(sub, _):
       sub.transform_decode_state(transform_fn)
       return None, None
+
+    if p.unroll_in_decode:
+      self._run_unrolled_for_decoding(body_fn, None)
+      return
 
     scan_fn = nn.scan(
         body_fn,
@@ -381,6 +471,9 @@ class Repeat(base_layer.BaseLayer):
     def body_fn(sub, _):
       sub.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
       return None, None
+
+    if p.unroll_in_decode:
+      return self._run_unrolled_for_decoding(body_fn, None)
 
     scan_fn = nn.scan(
         body_fn,
