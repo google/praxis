@@ -399,6 +399,7 @@ def sample_decode(model: base_layer.BaseLayer,
                   num_samples: int,
                   k: int,
                   p: Optional[Union[float, JTensor]] = None,
+                  cf_guidance_scale: float = 1.0,
                   fprop_for_prefix: bool = False,
                   temperature: float = 1.0,
                   max_prefix_len: Optional[int] = None,
@@ -434,6 +435,12 @@ def sample_decode(model: base_layer.BaseLayer,
       tokens at each step.
     p: If not None, use the smallest number of logits whose cumulative sum of
       probs adds up to (at least) p.
+    cf_guidance_scale: If not 1.0, apply classifier-free guidance for
+      conditioned generation assuming the inputs are with [cond_a, uncond_a,
+      cond_b, uncond_b, ...]. Before sampling, we modify logits as
+      logits = uncond_logits + cf_guidance_scale * (cond_logits - uncond_logits)
+      while after sampling, we force align sampled token ids of conditioned and
+      unconditioned branch.
     fprop_for_prefix: Use one fprop for prefix.
     temperature: Temperature of sampling decoding.
     max_prefix_len: Python int or None, the max prefix length for decoding.
@@ -461,7 +468,8 @@ def sample_decode(model: base_layer.BaseLayer,
   if num_samples > 1:
     # Broadcast inputs from [batch, ...] to [batch * num_samples, ...].
     # [a, b, c] and num_samples = 3 will have
-    # [a, a, a, b, b, b, c, c, c].
+    # [a, a, a, b, b, b, c, c, c]. If cf_guidance_scale is enabled, it will have
+    # [cond_a, cond_a, cond_a, uncond_a, uncond_a, uncond_a, ...].
     target_prefix_ids = jnp.repeat(
         target_prefix_ids, axis=0, repeats=num_samples)
     target_prefix_paddings = jnp.repeat(
@@ -529,6 +537,13 @@ def sample_decode(model: base_layer.BaseLayer,
     step = val.step
     logits = extend_step_fn(model, val.output_ids[:, step], val.segment_pos)
     logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
+    if cf_guidance_scale != 1.0:
+      # Split cond / uncond logits.
+      logits_split = split_batch_dim(logits, 0, 2 * num_samples)
+      cond_logits = logits_split[:, :num_samples]
+      uncond_logits = logits_split[:, num_samples:]
+      logits = uncond_logits + cf_guidance_scale * (cond_logits - uncond_logits)
+      logits = jnp.reshape(logits, (-1,) + logits.shape[2:])
     if p is not None:
       logits = top_p_mask_logits(logits, p)
     if k > 1:
@@ -545,6 +560,12 @@ def sample_decode(model: base_layer.BaseLayer,
       new_ids = jnp.argmax(logits, axis=1)
     else:
       new_ids = jnp.argmax(logits, axis=1)
+
+    if cf_guidance_scale != 1.0:
+      # Force-align unconditioned branch as conditioned sampled tokens ids.
+      new_ids = split_batch_dim(new_ids, 0, num_samples)
+      new_ids = jnp.concatenate([new_ids, new_ids], axis=1)
+      new_ids = jnp.reshape(new_ids, (-1,) + new_ids.shape[2:])
 
     # When step becomes prefix_length - 1, the new output has index beyond
     # the known prefix.
@@ -641,7 +662,12 @@ def sample_decode(model: base_layer.BaseLayer,
 
   del result.step, result.done
 
-  result = jax.tree_map(lambda x: split_batch_dim(x, 0, num_samples), result)
+  if cf_guidance_scale != 1.0:
+    # Split cond / uncond branches and only return conditioned branch.
+    result = jax.tree_map(
+        lambda x: split_batch_dim(x, 0, 2 * num_samples)[:, :num_samples], result)
+  else:
+    result = jax.tree_map(lambda x: split_batch_dim(x, 0, num_samples), result)
   if num_samples > 1:
     return sort_samples_by_scores(result)
   return result
