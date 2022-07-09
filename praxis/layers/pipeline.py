@@ -882,12 +882,17 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
     Attributes:
       circular_repeat: Number of round-robin layers in each stage for the
         circular pipeline schedule.
+      share_weights: Whether layers in the same stage share the weights. This
+        can be useful for token-level autoregressive decoding.
     """
     circular_repeat: int = 1
+    share_weights: bool = False
 
   def _get_body_force_init_fn(
       self) -> Callable[[base_layer.BaseLayer, Any], None]:
     p = self.hparams
+    if p.share_weights:
+      return super()._get_body_force_init_fn()
 
     # Add a leading circular_repeat dim to variables.
     body_init_fn = super()._get_body_force_init_fn()
@@ -916,6 +921,17 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
 
     return body_init_fn
 
+  def _async_circular_transfer(self, num_microbatches: int) -> bool:
+    """Whether to delay circular transfers by 1 iteration."""
+    p = self.hparams
+    if num_microbatches < p.num_stages:
+      # TODO(yuanzx): Implement padding on small number of microbatches.
+      raise NotImplementedError('num_microbatches must be at least num_stages')
+    # If we have at least num_stages + 1 microbatches, we can delay the
+    # transfer. This is to overlap it with the computation of the next
+    # iteration.
+    return p.num_stages < num_microbatches
+
   def num_total_iterations(self, num_microbatches: int) -> int:
     p = self.hparams
     return num_microbatches * p.circular_repeat + p.num_stages - 1
@@ -927,6 +943,8 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
                          num_microbatches: int) -> Callable[..., JTensor]:
     p = self.hparams
     vmapped_fn = super()._get_body_fprop_fn(loop_iteration, num_microbatches)
+    if p.share_weights:
+      return vmapped_fn
     backup_vars = self.body.variables
     microbatch_ids = jnp.maximum(loop_iteration - jnp.arange(p.num_stages), 0)
     repeat_ids = microbatch_ids // num_microbatches
@@ -973,15 +991,11 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
                            num_microbatches: int) -> NestedJTensor:
     p = self.hparams
     state = super()._get_init_loop_state(microbatched_inputs, num_microbatches)
-    state.last_iter_result = state.shift
-    state.circular_inputs = jax.tree_map(
-        lambda x: jnp.zeros((p.num_stages,) + x.shape, x.dtype),
-        microbatched_inputs)
-    # The circular data transfer is delayed by 1 iteration to avoid blocking.
-    if num_microbatches <= p.circular_repeat:
-      # TODO(yuanzx): Implement padding on small number of microbatches.
-      raise NotImplementedError(
-          'num_microbatches must be at least circular_repeat + 1')
+    if self._async_circular_transfer(num_microbatches):
+      state.last_iter_result = state.shift
+      state.circular_inputs = jax.tree_map(
+          lambda x: jnp.zeros((p.num_stages,) + x.shape, x.dtype),
+          microbatched_inputs)
     return state
 
   def _get_iteration_inputs(self, loop_iteration: JTensor,
@@ -990,12 +1004,16 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
                             loop_state: NestedJTensor) -> NestedJTensor:
     inputs = super()._get_iteration_inputs(loop_iteration, num_microbatches,
                                            per_stage_inputs, loop_state)
-    # After all the microbatches finish repeat_index 0, the first stage will
-    # use data received from earlier iterations from the last stage
-    # (circular_inputs).
-    circular_slice = jax.tree_map(
-        lambda x: x[:, loop_iteration % num_microbatches],
-        loop_state.circular_inputs)
+    if self._async_circular_transfer(num_microbatches):
+      # After all the microbatches finish repeat_index 0, the first stage will
+      # use data received from earlier iterations from the last stage
+      # (circular_inputs).
+      circular_slice = jax.tree_map(
+          lambda x: x[:, loop_iteration % num_microbatches],
+          loop_state.circular_inputs)
+    else:
+      # shift is a circular buffer in this case.
+      circular_slice = loop_state.shift
     return jax.tree_map(
         lambda x, c: jnp.where(loop_iteration < num_microbatches, x, c), inputs,
         circular_slice)
@@ -1008,31 +1026,43 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
     new_state = super()._get_new_loop_state(loop_iteration, num_microbatches,
                                             body_outputs, old_state)
 
-    # Transfer data from the last stage to the first. We delay the transfer by
-    # one iteration, which means the current iteration's output will be saved in
-    # last_iter_result, and in the next iteration, the data in last_iter_result
-    # will be transferred using a rotate pattern. We delay the transfer to make
-    # it easy to be overlapped with the computation in the iteration.
-    def _rotate_right_and_update(x, inp_buf):
+    # Rotate state to the right by 1.
+    def _rotate_right(x):
       # Use lax.slice to avoid generating a gather.
-      last_stage = jax.lax.slice_in_dim(x, L - 1, L, axis=0)
-      other_stages = jax.lax.slice_in_dim(x, 0, L - 1, axis=0)
-      rotated = jnp.concatenate([last_stage, other_stages], axis=0)
-      rotated = jnp.expand_dims(rotated, 1)
-      # The offset is the last stage's last microbatch ID.
-      offset = (loop_iteration - (L - 1) - 1) % num_microbatches
-      return jax.lax.dynamic_update_slice_in_dim(
-          inp_buf, rotated, offset, axis=1)
+      last = jax.lax.slice_in_dim(x, L - 1, L, axis=0)
+      except_last = jax.lax.slice_in_dim(x, 0, L - 1, axis=0)
+      return jnp.concatenate([last, except_last], axis=0)
 
-    new_state.circular_inputs = jax.tree_map(_rotate_right_and_update,
-                                             old_state.last_iter_result,
-                                             old_state.circular_inputs)
-    new_state.last_iter_result = body_outputs
+    if self._async_circular_transfer(num_microbatches):
+      # Transfer data from the last stage to the first. We delay the transfer by
+      # one iteration, which means the current iteration's output will be saved
+      # in last_iter_result, and in the next iteration, the data in
+      # last_iter_result will be transferred using a rotate pattern. We delay
+      # the transfer to make it easy to be overlapped with the computation in
+      # the iteration.
+      def _rotate_right_and_update(x, inp_buf):
+        rotated = _rotate_right(x)
+        rotated = jnp.expand_dims(rotated, 1)
+        # The offset is the last stage's last microbatch ID.
+        offset = (loop_iteration - (L - 1) - 1) % num_microbatches
+        return jax.lax.dynamic_update_slice_in_dim(
+            inp_buf, rotated, offset, axis=1)
+
+      new_state.circular_inputs = jax.tree_map(_rotate_right_and_update,
+                                               old_state.last_iter_result,
+                                               old_state.circular_inputs)
+      new_state.last_iter_result = body_outputs
+    else:
+      new_state.shift = jax.tree_map(_rotate_right, body_outputs)
     return new_state
 
   def _unpack_summary(self, key: str, vectorized_summary: JTensor):
     """Unpack vectorized summaries to per-stage ones."""
     p = self.hparams
+    if p.share_weights:
+      # Average over layers sharing the weights.
+      return super()._unpack_summary(key,
+                                     vectorized_summary / p.circular_repeat)
     per_layer = {}
     assert vectorized_summary.shape[0] == p.circular_repeat
     assert vectorized_summary.shape[1] == p.num_stages
