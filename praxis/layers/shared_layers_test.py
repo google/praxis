@@ -135,5 +135,155 @@ class SharedLayersTest(test_utils.TestCase):
                  base_hyperparams.nested_struct_to_text(hyper_params))
 
 
+class SimpleShared01(base_layer.BaseLayer):
+  """A layer to test weight sharing."""
+
+  class HParams(BaseHParams):
+    sub1: BaseHParams = None
+    sub2: BaseHParams = None
+
+  def setup(self) -> None:
+    p = self.hparams
+    self.create_child('sub1', p.sub1)
+    self.create_child('sub2', p.sub2)
+
+  def __call__(self, x_in):
+    return self.sub2(self.sub1(x_in))
+
+
+class SharedLayerTest(test_utils.TestCase):
+
+  def testSharedLayer(self):
+    sub_params = linears.FeedForward.HParams(input_dims=8, output_dims=8)
+    # Share the entire FeedForward layer.
+    sub_params.shared_weight_layer_id = 'shared_layer'
+    test_layer_p = SimpleShared01.HParams(
+        name='test', sub1=sub_params.clone(), sub2=sub_params.clone())
+    x_in = jnp.ones([2, 8])
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(1234)
+      layer = base_layer.instantiate(test_layer_p)
+      init_vars = layer.init(prng_key, x_in)
+      logging.info('SimpleShared01 initial_vars %s',
+                   jax.tree_structure(init_vars))
+      dummy = jnp.ones([1])
+      # 'sub2' share the same weights as 'sub1'
+      expected_vars_struct = {
+          'params': {
+              'sub1': {
+                  'bias': {
+                      'b': dummy
+                  },
+                  'linear': {
+                      'w': dummy
+                  }
+              }
+          }
+      }
+      self.assertEqual(
+          jax.tree_structure(expected_vars_struct),
+          jax.tree_structure(init_vars))
+      # We share the linear and bias layer.
+      # TODO(yonghui): check the shape of the shared vars.
+      out1 = layer.apply(init_vars, x_in)
+      logging.info('out1: %s', out1)
+      # We can apply again.
+      out2 = layer.apply(init_vars, out1)
+      logging.info('out2: %s', out2)
+
+  def testSharedTemplateLayer(self):
+    sub_params = linears.FeedForward.HParams(input_dims=8, output_dims=8)
+    # Only share the linear projection, not the entire FeedForward layer.
+    sub_params.linear_tpl.shared_weight_layer_id = 'shared_weight'
+    test_layer_p = SimpleShared01.HParams(
+        name='test', sub1=sub_params.clone(), sub2=sub_params.clone())
+    x_in = jnp.ones([2, 8])
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(1234)
+      layer = base_layer.instantiate(test_layer_p)
+      init_vars = layer.init(prng_key, x_in)
+      logging.info('SimpleShared01 initial_vars %s',
+                   jax.tree_structure(init_vars))
+      dummy = jnp.ones([1])
+      # 'sub2' share the same linear weights as 'sub1', but has its own bias var
+      expected_vars_struct = {
+          'params': {
+              'sub1': {
+                  'bias': {
+                      'b': dummy
+                  },
+                  'linear': {
+                      'w': dummy
+                  }
+              },
+              'sub2': {
+                  'bias': {
+                      'b': dummy
+                  },
+              }
+          }
+      }
+      self.assertEqual(
+          jax.tree_structure(expected_vars_struct),
+          jax.tree_structure(init_vars))
+      # We share the linear and bias layer.
+      # TODO(yonghui): check the shape of the shared vars.
+      out1 = layer.apply(init_vars, x_in)
+      logging.info('out1: %s', out1)
+      # We can apply again.
+      out2 = layer.apply(init_vars, out1)
+      logging.info('out2: %s', out2)
+
+  def testRecursiveSharing(self):
+    sub_params = linears.FeedForward.HParams(input_dims=8, output_dims=8)
+    # Share the linear projection.
+    sub_params.linear_tpl.shared_weight_layer_id = 'shared_linear'
+    parent_p = SimpleShared01.HParams(
+        sub1=sub_params.clone(), sub2=sub_params.clone())
+    # Share parent nodes.
+    parent_p.shared_weight_layer_id = 'shared'
+    root_layer_p = SimpleShared01.HParams(
+        name='root', sub1=parent_p.clone(), sub2=parent_p.clone())
+    x_in = jnp.ones([2, 8])
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(1234)
+      layer = base_layer.instantiate(root_layer_p)
+      init_vars = layer.init(prng_key, x_in)
+      logging.info('SimpleShared01 initial_vars %s',
+                   jax.tree_structure(init_vars))
+      dummy = jnp.ones([1])
+      # 'sub2' share the same linear weights as 'sub1', but has its own bias var
+      expected_vars_struct = {
+          'params': {
+              'sub1': {
+                  'sub1': {
+                      'bias': {
+                          'b': dummy
+                      },
+                      'linear': {
+                          'w': dummy
+                      }
+                  },
+                  'sub2': {
+                      'bias': {
+                          'b': dummy
+                      },
+                  }
+              }
+          }
+      }
+      self.assertEqual(
+          jax.tree_structure(expected_vars_struct),
+          jax.tree_structure(init_vars))
+      # We share the linear and bias layer.
+      # TODO(yonghui): check the shape of the shared vars.
+      out1 = layer.apply(init_vars, x_in)
+      logging.info('out1: %s', out1)
+      # We can apply again.
+      out2 = layer.apply(init_vars, out1)
+      logging.info('out2: %s', out2)
+
+
+
 if __name__ == '__main__':
   absltest.main()

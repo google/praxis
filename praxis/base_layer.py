@@ -18,18 +18,20 @@
 from __future__ import annotations
 
 import copy
+import collections
 import dataclasses
 import enum
 import functools
 import itertools
 import math
-from typing import Any, Callable, List, Optional, Sequence, Tuple, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, TypeVar
 
 from absl import flags
 from absl import logging
 from flax import core as flax_core
 from flax import linen as nn
 from flax import struct
+
 import jax
 from jax import numpy as jnp
 from jax import random as jrandom
@@ -741,6 +743,13 @@ class JaxContext:
   def __init__(self, hparams: JaxContext.HParams) -> None:
     self._hparams = hparams.clone()
     self._summary_dict = _SummaryDict()
+    # This is a dict of dict. The inner dict is a map from string to layer
+    # object, and the outer dict is keyed by the root scope. The intended Use
+    # of this is for passing shared layers. A special shared_layer_id identifier
+    # is used to indicate that multiple modules should share the same underlying
+    # model weights.
+    self._root_scope_to_shared_layers_map: Dict[Any, Dict[str, BaseLayer]] = (
+        collections.defaultdict(lambda: collections.defaultdict(lambda: None)))
 
   @property
   def summary_dict(self) -> _SummaryDict:
@@ -790,6 +799,20 @@ class JaxContext:
       new_hparams = hparams.clone()
     context = JaxContext(new_hparams)
     return context
+
+  def lookup_shared_layer(self, root_scope: flax_core.Scope,
+                          shared_layer_id: str) -> Optional[BaseLayer]:
+    logging.info('lookup_shared_layer called with id: %s in the scope of %s',
+                 shared_layer_id, root_scope)
+    return self._root_scope_to_shared_layers_map[root_scope][shared_layer_id]
+
+  def set_shared_layer(self, root_scope: flax_core.Scope, shared_layer_id: str,
+                       layer: BaseLayer):
+    logging.info('set_shared_layer called with id: %s in the scope of %s',
+                 shared_layer_id, root_scope)
+    existing = self.lookup_shared_layer(root_scope, shared_layer_id)
+    assert existing is None
+    self._root_scope_to_shared_layers_map[root_scope][shared_layer_id] = layer
 
 
 def cur_jax_context() -> JaxContext:
@@ -949,6 +972,9 @@ class BaseLayer(
         of the sublayers should be sharded over the overall device mesh. This
         field will be dynamically bound to the ActivationShardingHParams
         dataclass above.
+      shared_weight_layer_id: a unique id indicating weight sharing. Layers with
+        the same 'shared_weight_layer_id' share the same underlying model
+        weights.
     """
     dtype: jnp.dtype = jnp.float32
     fprop_dtype: Optional[Any] = None
@@ -960,6 +986,7 @@ class BaseLayer(
     mesh_axis_names: Optional[Sequence[str]] = None
     weight_split_dims_mapping: Optional[BaseHyperParams] = None
     activation_split_dims_mapping: Optional[BaseHyperParams] = None
+    shared_weight_layer_id: Optional[str] = None
 
     @property
     def mesh_shape(self):
@@ -1431,7 +1458,24 @@ class BaseLayer(
     p = self.copy_base_hparams(self.hparams, params.clone())
     p.name = name
     assert p.name not in self._private_children
-    child = instantiate(p)
+    if p.shared_weight_layer_id:
+      root_scope = self.scope.root
+      pre_created = self.jax_context.lookup_shared_layer(
+          root_scope, p.shared_weight_layer_id)
+      if pre_created is not None:
+        assert compatible_hparams(
+            pre_created.hparams,
+            p), (f'shared layers are of incompatible configs '
+                 f'{pre_created.hparams.to_text()} vs {p.to_text()}')
+        # simply reuse existing layer.
+        child = pre_created
+      else:
+        child = instantiate(p)
+        self.jax_context.set_shared_layer(root_scope, p.shared_weight_layer_id,
+                                          child)
+    else:
+      # simply create the child
+      child = instantiate(p)
     self._private_children[p.name] = child
     setattr(self, p.name, child)
 
@@ -1455,8 +1499,13 @@ class BaseLayer(
     uid = itertools.count()
 
     def _instantiate(p: InstantiableHyperParams) -> BaseLayerT:
+      # TODO(yonghui): delegate this call to create_child() instead.
       p = self.copy_base_hparams(self.hparams, p.clone())
       p.name = '%s_%d' % (name, next(uid))
+      if p.shared_weight_layer_id:
+        raise NotImplementedError(
+            'Shared layer is currently not implemented for create_children. '
+            'TODO(pax): implement shared layer in create_children.')
       child = instantiate(p)
       assert p.name not in self._private_children
       self._private_children[p.name] = child
@@ -1484,3 +1533,23 @@ def assert_has_shape(t: JTensor, shape: Sequence[int]) -> None:
   for i in range(t.ndim):
     if shape[i] != -1:
       asserts.eq(t.shape[i], shape[i])
+
+
+def compatible_hparams(hparams1, hparams2):
+  """Returns True if hparams1 and hparams2 are compatible to each other.
+
+  The current definition of "compatible" are two params are identical except
+  for their names.
+
+  Args:
+    hparams1: hyper-params for layer1
+    hparams2: hyper-params for layer2
+
+  Returns:
+    True if two hparams are fully compatible.
+  """
+  p1 = hparams1.clone()
+  p1.name = ''
+  p2 = hparams2.clone()
+  p2.name = ''
+  return p1.to_text() == p2.to_text()
