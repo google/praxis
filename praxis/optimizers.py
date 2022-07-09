@@ -1318,10 +1318,9 @@ class ShardedDistributedShampoo(DistributedShampoo):
           base_layer.add_global_summary(f'inverse_pth_root_errors/{key}_{i}',
                                         value)
 
-      with base_layer.JaxContext.new_context():
-        assert len(var_keys) == len(local_stats_flattened)
-        for key, local_stat in zip(var_keys, local_stats_flattened):
-          add_summary(key, local_stat)
+      assert len(var_keys) == len(local_stats_flattened)
+      for key, local_stat in zip(var_keys, local_stats_flattened):
+        add_summary(key, local_stat)
       return new_params, new_state
 
     return ShardedGradientTransformation(
