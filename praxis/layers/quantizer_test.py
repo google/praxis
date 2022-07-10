@@ -115,7 +115,7 @@ class RandomVectorQuantizerTest(test_utils.TestCase):
         latent_dim=latent_dim,
         projection_dim=projection_dim)
     rq = instantiate(rq)
-    rq_theta = rq.init(jax.random.PRNGKey(1))
+    rq_theta = rq.init(jax.random.PRNGKey(1), z, paddings)
     out = rq.apply(rq_theta, z, paddings)
     self.assertEqual((b, t, projection_dim), out.z_q.shape)
     self.assertEqual((b, t, num_groups), out.z_codes.shape)

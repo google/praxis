@@ -72,8 +72,10 @@ class SharedLayersTest(test_utils.TestCase):
     )
     foo_shared = instantiate(foo_shared_p)
 
+    inputs = jnp.ones((3, 2))
+
     prng_key = jax.random.PRNGKey(1)
-    initial_vars = foo_shared.init(prng_key)
+    initial_vars = foo_shared.init(prng_key, inputs)
     logging.info('initial_vars=%s', initial_vars)
 
     expected_shape = {
@@ -89,7 +91,6 @@ class SharedLayersTest(test_utils.TestCase):
     self.assertEqual(
         jax.tree_map(lambda x: x.shape, initial_vars), expected_shape)
 
-    inputs = jnp.ones((3, 2))
     output = foo_shared.apply(initial_vars, inputs)
     logging.info('output=%s', output)
 
