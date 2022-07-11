@@ -38,7 +38,7 @@ from praxis.layers import transformer_models
 
 NestedMap = py_utils.NestedMap
 Predictions = base_model.Predictions
-Metrics = base_model.Metrics
+WeightedScalars = base_model.WeightedScalars
 DecoderHParams = decoder_hparams.DecoderHParams
 BeamSearchHParams = decoder_hparams.BeamSearchHParams
 FlatBeamSearchHParams = decoder_hparams.FlatBeamSearchHParams
@@ -51,7 +51,7 @@ sub_config_field = base_layer.sub_config_field
 
 def _compute_xent_loss_helper(
     predictions: NestedMap, input_batch: NestedMap,
-    return_predictions: bool) -> Tuple[Metrics, Dict[str, Any]]:
+    return_predictions: bool) -> Tuple[WeightedScalars, Dict[str, Any]]:
   """Helper for computing the xent loss for Language model and Sequence model.
 
   Args:
@@ -65,7 +65,7 @@ def _compute_xent_loss_helper(
       expensive.
 
   Returns:
-    - A dict or NestedMap containing str keys and (metric, weight) pairs as
+    - A dict or NestedMap containing str keys and (value, weight) pairs as
       values, where one of the entries is expected to correspond to the loss.
     - A dict containing arbitrary tensors describing something about each
       training example, where the first dimension of each tensor is the batch
@@ -165,8 +165,9 @@ class LanguageModel(base_model.BaseModel):
         causal_attention_mask=causal_attention_mask,
         **packed_input_kwargs)
 
-  def compute_loss(self, predictions: NestedMap,
-                   input_batch: NestedMap) -> Tuple[Metrics, Dict[str, Any]]:
+  def compute_loss(
+      self, predictions: NestedMap,
+      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -174,7 +175,7 @@ class LanguageModel(base_model.BaseModel):
       input_batch: A `.NestedMap` object containing input tensors to this tower.
 
     Returns:
-      - A dict or NestedMap containing str keys and (metric, weight) pairs as
+      - A dict or NestedMap containing str keys and (value, weight) pairs as
         values, where one of the entries is expected to corresponds to the loss.
       - A dict containing arbitrary tensors describing something about each
         training example, where the first dimension of each tensor is the batch
@@ -708,8 +709,9 @@ class ClassificationModel(base_model.BaseModel):
         softmax_output=softmax_output,
         example_weights=example_weights)
 
-  def compute_loss(self, predictions: NestedMap,
-                   input_batch: NestedMap) -> Tuple[Metrics, Dict[str, Any]]:
+  def compute_loss(
+      self, predictions: NestedMap,
+      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -717,7 +719,7 @@ class ClassificationModel(base_model.BaseModel):
       input_batch: A `.NestedMap` object containing input tensors to this tower.
 
     Returns:
-      - A dict or NestedMap containing str keys and (metric, weight) pairs as
+      - A dict or NestedMap containing str keys and (value, weight) pairs as
         values, where one of the entries is expected to correspond to the loss.
       - A dict containing arbitrary tensors describing something about each
         training example, where the first dimension of each tensor is the batch
@@ -835,8 +837,9 @@ class BertModel(base_model.BaseModel):
     lm_out.augmented_pos = augmented_pos
     return lm_out
 
-  def compute_loss(self, predictions: NestedMap,
-                   input_batch: NestedMap) -> Tuple[Metrics, Dict[str, Any]]:
+  def compute_loss(
+      self, predictions: NestedMap,
+      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -907,8 +910,9 @@ class ClassificationMLPModel(base_model.BaseModel):
         class_ids=input_batch.ids[:, :, jnp.newaxis])
     return predictions
 
-  def compute_loss(self, predictions: NestedMap,
-                   input_batch: NestedMap) -> Tuple[Metrics, Dict[str, Any]]:
+  def compute_loss(
+      self, predictions: NestedMap,
+      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     labels = input_batch.labels
     weights = input_batch.weights
     class_weights = weights[:, :, jnp.newaxis]

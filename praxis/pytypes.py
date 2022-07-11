@@ -47,6 +47,6 @@ NestedShapeDtypeStruct = Nested[jax.ShapeDtypeStruct]
 DimShardingAnnotation = Optional[Union[Sequence[Union[int, str]], int, str]]
 SplitDimsMapping = Optional[Sequence[DimShardingAnnotation]]
 
-Metrics = Dict[str, Tuple[JTensor, JTensor]]
+WeightedScalars = Dict[str, Tuple[JTensor, JTensor]]
 
 LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]

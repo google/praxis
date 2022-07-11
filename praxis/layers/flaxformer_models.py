@@ -36,7 +36,7 @@ from flaxformer.components.attention import dense_attention
 
 NestedMap = py_utils.NestedMap
 Predictions = base_model.Predictions
-Metrics = pytypes.Metrics
+WeightedScalars = pytypes.WeightedScalars
 BaseHParams = base_layer.BaseLayer.HParams
 sub_config_field = base_layer.sub_config_field
 
@@ -466,8 +466,9 @@ class LanguageModel(base_model.BaseModel):
         decoder_positions=get_elem(input_batch, 'decoder_positions'))
     return NestedMap(logits=logits)
 
-  def compute_loss(self, predictions: Predictions,
-                   input_batch: NestedMap) -> Tuple[Metrics, Dict[str, Any]]:
+  def compute_loss(
+      self, predictions: Predictions,
+      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     p = self.hparams
     assert 'decoder_loss_weights' in input_batch
     loss_weights = input_batch.decoder_loss_weights

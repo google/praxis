@@ -29,7 +29,7 @@ from praxis import pytypes
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
-Metrics = pytypes.Metrics
+WeightedScalars = pytypes.WeightedScalars
 Predictions = Union[JTensor, NestedMap, Dict[str, Any], Dict[int, Any]]
 BaseHParams = base_layer.BaseLayer.HParams
 
@@ -59,8 +59,9 @@ class BaseModel(base_layer.BaseLayer):
     """
     raise NotImplementedError('Abstract method')
 
-  def compute_loss(self, predictions: Union[JTensor, NestedMap],
-                   input_batch: NestedMap) -> Tuple[Metrics, Dict[str, Any]]:
+  def compute_loss(
+      self, predictions: Union[JTensor, NestedMap],
+      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     This method must be defined in a concrete derived class.
@@ -70,15 +71,17 @@ class BaseModel(base_layer.BaseLayer):
       input_batch: A `.NestedMap` object containing input tensors to this tower.
 
     Returns:
-      - A dict or NestedMap containing str keys and (metric, weight) pairs as
-        values, where one of the entries is expected to corresponds to the loss.
+      - WeightedScalars - A dict or NestedMap containing str keys and
+        (value, weight) pairs as values, where one or more entries are
+        expected to correspond to the loss (or losses).
       - A dict containing arbitrary tensors describing something about each
         training example, where the first dimension of each tensor is the batch
         index.
     """
     raise NotImplementedError('Abstract method')
 
-  def __call__(self, input_batch: NestedMap) -> Tuple[Metrics, Dict[str, Any]]:
+  def __call__(
+      self, input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Forward propagation through one tower of the model.
 
     Args:
@@ -87,8 +90,9 @@ class BaseModel(base_layer.BaseLayer):
     Returns:
       (dict, dict):
 
-      - A dict containing str keys and (metric, weight) pairs as values, where
-        one of the keys is expected to be 'loss'.
+      - WeightedScalars - A dict or NestedMap containing str keys and
+        (value, weight) pairs as values, where one or more entries are
+        expected to correspond to the loss (or losses).
       - A dict containing arbitrary tensors describing something about each
         training example, where the first dimension of each tensor is the batch
         index.
@@ -96,7 +100,7 @@ class BaseModel(base_layer.BaseLayer):
     predictions = self.compute_predictions(input_batch)
     return self.compute_loss(predictions, input_batch)
 
-  def decode(self, input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
+  def decode(self, input_batch: NestedMap) -> Tuple[WeightedScalars, NestedMap]:
     """Decodes input_batch.
 
     Args:
@@ -104,15 +108,15 @@ class BaseModel(base_layer.BaseLayer):
         spiltting is used, a list of `NestedMap`, one for each split.
 
     Returns:
-      - metrics, a NestedMap containing str keys and (metric, weight) pairs for
-        the current batch (a tuple of two scalars).
+      - weighted scalars, a NestedMap containing str keys and (value, weight)
+        pairs for the current batch (a tuple of two scalars).
       - results, a `.NestedMap` as decoder output.
     """
     raise NotImplementedError('Abstract method')
 
   def process_decode_out(
-      self, input_obj: base_input.BaseInput,
-      decode_out: NestedMap) -> Tuple[NestedMap, Sequence[Tuple[str, Any]]]:
+      self, input_obj: base_input.BaseInput, decode_out: NestedMap
+  ) -> Tuple[WeightedScalars, Sequence[Tuple[str, Any]]]:
     """Processes one batch of decoded outputs.
 
     Args:
@@ -120,8 +124,8 @@ class BaseModel(base_layer.BaseLayer):
       decode_out: The output from decode(). May have an extra leading axis.
 
     Returns:
-      - metrics, a NestedMap containing str keys and (metric, weight) pairs for
-        the current batch (a tuple of two scalars).
+      - weighted scalars, a NestedMap containing str keys and (value, weight)
+        pairs for the current batch (a tuple of two scalars).
       - A list of tuples where each element corresponds to a row in the batch.
         Each tuple is a key value pair.
     """
