@@ -375,6 +375,222 @@ def top2_gating_on_logits(paddings,
                                                      over_capacity_2)
 
 
+def topk_gating_on_logits(paddings,
+                          logits,
+                          experts_dim,
+                          expert_capacity_dim,
+                          fprop_dtype,
+                          capacity_factor=None,
+                          mask_dtype=jnp.int32,
+                          k=2,
+                          gating_logit_cap=0.0):
+  """Computes Top-k gating for Mixture-of-Experts.
+
+  This function takes gating logits, potentially sharded across tpu cores as
+  inputs. We rely on sharding propagation to work universally with 1D and 2D
+  sharding cases. Dispatch and combine tensors should be explicitly annotated
+  with jax.with_sharding_constraint by the caller.
+
+  We perform dispatch/combine via einsum.
+
+  Dimensions:
+
+    G: group dim
+    S: group size dim
+    E: number of experts
+    C: capacity per expert
+    M: model_dim (same as input_dim and output_dim as in FF layer)
+    B: original batch dim
+    L: original seq len dim
+
+  Note that for local_dispatch, the original batch BLM is reshaped to GSM, each
+  group `g = 0..G-1` is being dispatched independently.
+
+  Args:
+    paddings: G`S tensor.
+    logits: G`SE tensor.
+    experts_dim: number of experts
+    expert_capacity_dim: number of examples per minibatch/group per expert. Each
+      example is typically a vector of size input_dim, representing embedded
+      token or an element of Transformer layer output.
+    fprop_dtype: activation dtype
+    capacity_factor: if set, increases expert_capacity_dim to at least
+      (group_size * capacity_factor) / experts_dim
+    mask_dtype: using bfloat16 for fprop_dtype could be problematic for mask
+      tensors, mask_dtype overrides dtype for such tensors
+    k: number of activated experts per prediction in each MoE layer
+    gating_logit_cap: soft cap, applied for gating logits, this is a stability
+      fix to avoid extreme values during initial steps. Defaults to 50.0.
+
+  Returns:
+    A tuple (aux_loss, combine_tensor, dispatch_tensor, over_capacity ratios).
+
+    - aux_loss: auxiliary loss, for equalizing the expert assignment ratios.
+    - combine_tensor: a G`SEC tensor for combining expert outputs.
+    - dispatch_tensor: a G`SEC tensor, scattering/dispatching inputs to experts.
+    - over_capacity ratios: tuple that represents the ratio of tokens that
+      were not dispatched due to lack of capcity for top_1 and top_2 expert
+      respectively, e.g. (over_capacity_1, over_capacity_2)
+  """
+  assert (capacity_factor or expert_capacity_dim)
+  if mask_dtype is None:
+    assert fprop_dtype != jnp.bfloat16, 'Using bfloat16 for mask is an error.'
+    mask_dtype = fprop_dtype
+
+  if logits.dtype != jnp.float32:
+    logging.info('Upcasting gating logits')
+    logits = logits.astype(jnp.float32)
+
+  def _cap_logits(logits):
+    if gating_logit_cap > 0.0:
+      logging.info('gating_logit_cap: %f', gating_logit_cap)
+      cap = jnp.array(gating_logit_cap, dtype=logits.dtype)
+      logits = cap * jnp.tanh(logits / cap)
+    return logits
+
+  logits = _cap_logits(logits)
+
+  # GSE
+  raw_gates = jax.nn.softmax(logits, axis=-1)  # along E dim
+
+  if capacity_factor is not None:
+    # Determine expert capacity automatically depending on the input size
+    group_size_dim = logits.shape[1]
+    auto_expert_capacity = int(group_size_dim * capacity_factor / experts_dim)
+    if expert_capacity_dim < auto_expert_capacity:
+      expert_capacity_dim = auto_expert_capacity
+      # Round up to a multiple of 4 to avoid possible padding.
+      while expert_capacity_dim % 4:
+        expert_capacity_dim += 1
+      logging.info(
+          'Setting expert_capacity_dim=%r (capacity_factor=%r '
+          'group_size_dim=%r experts_dim=%r)', expert_capacity_dim,
+          capacity_factor, group_size_dim, experts_dim)
+
+  capacity = jnp.array(expert_capacity_dim, dtype=jnp.int32)
+
+  # top-1 index: GS tensor
+  index_1 = jnp.argmax(raw_gates, axis=-1)
+  # GSE
+  mask_1 = jax.nn.one_hot(index_1, experts_dim, dtype=mask_dtype)
+  density_1_proxy = raw_gates
+  assert len(mask_1.shape) == 3
+
+  if paddings is not None:
+    nonpaddings = 1.0 - paddings
+    mask_1 *= jnp.expand_dims(nonpaddings.astype(mask_1.dtype), -1)
+    density_1_proxy *= jnp.expand_dims(
+        nonpaddings.astype(density_1_proxy.dtype), -1)
+
+  density_1 = jnp.mean(mask_1.astype(jnp.float32), axis=-2)
+  # density_1_proxy[:, e] represents mean of raw_gates for expert e, including
+  # those of examples not assigned to e with top_k
+  density_1_proxy = jnp.mean(density_1_proxy, axis=-2, dtype=jnp.float32)
+
+  # Compute aux_loss
+  aux_loss = jnp.mean(
+      density_1_proxy * density_1, dtype=jnp.float32)  # element-wise
+  aux_loss *= (experts_dim * experts_dim)  # const coefficients
+
+  gate_1 = jnp.einsum('GSE,GSE->GS', raw_gates, mask_1.astype(raw_gates.dtype))
+  gates_list = [gate_1]  # GS
+  index_list = [index_1]  # GS
+  masks_list = [mask_1]  # GSE
+  raw_gates_i = raw_gates  # GSE
+
+  if k > 1:
+    denom = gate_1 + 1e-9
+  else:
+    denom = 1.0
+
+  for i in range(1, k):
+    # Gates without the selected value from the last step
+    raw_gates_i *= (1.0 - masks_list[i - 1].astype(raw_gates_i.dtype))
+    # Greedily pick the current expert
+    index_i = jnp.argmax(raw_gates_i, axis=-1)
+    mask_i = jax.nn.one_hot(index_i, experts_dim, dtype=mask_dtype)
+    if paddings is not None:
+      nonpaddings = 1.0 - paddings
+      mask_i *= jnp.expand_dims(nonpaddings.astype(mask_i.dtype), -1)
+    gate_i = jnp.einsum('GSE,GSE->GS', raw_gates_i,
+                        mask_i.astype(raw_gates_i.dtype))
+    denom += gate_i
+    gates_list.append(gate_i)
+    masks_list.append(mask_i)
+    index_list.append(index_i)
+
+  # Renormalize.
+  gates_list = [x / denom for x in gates_list]
+
+  # Compute cumulative sums of assignment GSE
+  # indicators for each expert index e \in 0..E-1 independently.
+  # First occurrence of assignment indicator is excluded, see exclusive=True
+  # flag below.
+  # cumsum over S dim: mask_1 is GSE tensor.
+  position_in_expert_1 = cum_sum(masks_list[0], exclusive=True, axis=-2)
+  # Add the over capacity ratio for expert 1
+  over_capacity_list = [
+      _create_over_capacity_ratio_summary(masks_list[0], position_in_expert_1,
+                                          capacity, 'over_capacity_1')
+  ]
+  # Filter valid positions for top 1 selection
+  masks_list[0] *= jnp.less(position_in_expert_1,
+                            expert_capacity_dim).astype(masks_list[0].dtype)
+  position_in_expert_1 = jnp.einsum('GSE,GSE->GS', position_in_expert_1,
+                                    masks_list[0])
+
+  # How many examples in this sequence go to this expert?
+  mask_1_count = jnp.einsum('GSE->GE', masks_list[0])
+  # GS - mostly ones, but zeros where something didn't fit.
+  mask_1_flat = jnp.sum(masks_list[0], axis=-1, dtype=mask_dtype)
+  position_in_expert_list = [position_in_expert_1]
+  mask_i_flat_list = [mask_1_flat]
+  mask_count_all = mask_1_count
+
+  for i in range(1, k):
+    position_in_expert_i = cum_sum(
+        masks_list[i], exclusive=True, axis=-2) + jnp.expand_dims(
+            mask_count_all, -2)
+    # Add the over capacity ratio for expert 1
+    over_capacity_list.append(
+        _create_over_capacity_ratio_summary(masks_list[i], position_in_expert_i,
+                                            capacity, f'over_capacity_{i+1}'))
+    # Filter invalid positions for top i selection
+    masks_list[i] *= jnp.less(position_in_expert_i,
+                              expert_capacity_dim).astype(masks_list[i].dtype)
+    # How many examples in this sequence go to this expert?
+    mask_count_all += jnp.einsum('GSE->GE', masks_list[i])
+    position_in_expert_i = jnp.einsum('GSE,GSE->GS', position_in_expert_i,
+                                      masks_list[i])
+    position_in_expert_list.append(position_in_expert_i)
+    mask_i_flat_list.append(jnp.sum(masks_list[i], axis=-1, dtype=mask_dtype))
+
+  combine_tensor = jnp.zeros(
+      [logits.shape[0], logits.shape[1], experts_dim,
+       expert_capacity_dim], dtype=jnp.float32)
+  for gate_i, index_i, position_in_expert_i, mask_i_flat in zip(
+      gates_list, index_list, position_in_expert_list, mask_i_flat_list):
+    #  GS Filter valid gate values
+    gate_i *= mask_i_flat.astype(gate_i.dtype)
+    # GSC
+    b = jax.nn.one_hot(
+        position_in_expert_i.astype(np.int32),
+        expert_capacity_dim,
+        dtype=jnp.float32)
+    # GSE
+    a = jnp.expand_dims(
+        gate_i * mask_i_flat.astype(jnp.float32), axis=-1) * jax.nn.one_hot(
+            index_i, experts_dim, dtype=jnp.float32)
+    combine_tensor += jnp.einsum('GSE,GSC->GSEC', a, b)
+
+  # GSEC tensor
+  aux_loss = aux_loss.astype(fprop_dtype)
+  combine_tensor = combine_tensor.astype(fprop_dtype)
+  dispatch_tensor = combine_tensor.astype(bool).astype(fprop_dtype)
+
+  return aux_loss, combine_tensor, dispatch_tensor, over_capacity_list
+
+
 def compute_gating(paddings,
                    logits,
                    experts_dim,
