@@ -60,10 +60,14 @@ class TokenCounter(base_layer.BaseLayer):
     # will fall-back to a uint32 with a UserWarning.
     #
     # Using float32 approximation, tracking millions of tokens.
+    # Do not allow bfloat16 conversion.
     approx_total_tokens_mm = WeightHParams(
         shape=(),
         init=base_layer.WeightInit.Constant(0.),
-        collections=[base_layer.WeightHParamsCollection.REQUIRES_SUM_SYNC])
+        collections=[
+            base_layer.WeightHParamsCollection.REQUIRES_SUM_SYNC,
+            base_layer.WeightHParamsCollection.DISALLOW_BFLOAT16_CONVERSION
+        ])
     self.create_variable(
         'approx_total_tokens_mm', approx_total_tokens_mm, trainable=False)
 
@@ -77,7 +81,8 @@ class TokenCounter(base_layer.BaseLayer):
     if not self.do_eval:
       approx_total_tokens_mm = self.get_var('approx_total_tokens_mm')
       self.add_summary('approx_total_tokens_mm', approx_total_tokens_mm)
-      batch_total_mm = jnp.sum(1.0 - paddings) / 1e6
+      scale = jnp.array(1e6, dtype=jnp.float32)
+      batch_total_mm = jnp.sum(1.0 - paddings).astype(jnp.float32) / scale
       # Force f32 addition.
       new_approx_total_tokens_mm = approx_total_tokens_mm.astype(
           jnp.float32) + batch_total_mm.astype(jnp.float32)

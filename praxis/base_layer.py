@@ -139,6 +139,7 @@ class WeightHParamsCollection:
   NON_TRAINABLE = '_lingvo_jax_non_trainable'
   REQUIRES_MEAN_SYNC = '_requires_mean_sync'
   REQUIRES_SUM_SYNC = '_requires_sum_sync'
+  DISALLOW_BFLOAT16_CONVERSION = '_disallow_bfloat16_conversion'
 
 
 def var_not_trainable(var_hparams: ParamsT) -> bool:
@@ -154,6 +155,11 @@ def var_requires_mean_sync(var_hparams: ParamsT) -> bool:
 def var_requires_sum_sync(var_hparams: ParamsT) -> bool:
   """Returns True if var_hparams requires summation across replicas."""
   return WeightHParamsCollection.REQUIRES_SUM_SYNC in var_hparams.collections
+
+
+def var_disallow_bfloat16_conversion(var_hparams: ParamsT) -> bool:
+  """Returns True if var_hparams excludes from bfloat16 conversion."""
+  return WeightHParamsCollection.DISALLOW_BFLOAT16_CONVERSION in var_hparams.collections
 
 
 def var_skip_lp_regularization(var_params: ParamsT) -> bool:
