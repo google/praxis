@@ -456,14 +456,22 @@ def apply_lp_regularizer(
 
       if p == 1.0:
         fn = lambda g, p, m: g + regularizer_weight * jnp.sign(p) * skip_mask(
-            p) * m
+            p) * m if not py_utils.is_optax_masked_node(
+                g) else optax.MaskedNode()
       elif p == 2.0:
-        fn = lambda g, p, m: g + regularizer_weight * p * skip_mask(p) * m
+        fn = lambda g, p, m: g + regularizer_weight * p * skip_mask(
+            p) * m if not py_utils.is_optax_masked_node(
+                g) else optax.MaskedNode()
 
       if var_lp_mask is None:
         updates = jax.tree_map(fn, updates, params, 1.0)
       else:
-        updates = jax.tree_map(fn, updates, params, var_lp_mask)
+        updates = jax.tree_map(
+            fn,
+            updates,
+            params,
+            var_lp_mask,
+            is_leaf=py_utils.is_optax_masked_node)
     updated_state = NestedMap(count=count + 1)
     return updates, updated_state
 
