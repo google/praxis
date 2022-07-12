@@ -15,6 +15,7 @@
 
 """Convolutional layers."""
 
+import math
 from typing import Optional, Sequence, Tuple
 
 import jax
@@ -414,13 +415,22 @@ class LightConv1D(base_layer.BaseLayer):
         activations.Swish.HParams)
     dropout_prob: float = 0.0
     ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
+
+    # The activation/gate matrix is a sub-matrix of large matrix so the scale
+    # needs to be smaller.
+    # More specifically, since input_dim == output_dim, the scale of xavier
+    # should be \sqrt(6) / \sqrt(input_dim + input_dim * 2) instead of \sqrt(6)
+    # / \sqrt(input_dim + input_dim).
+
     linear_start_tpl: BaseHParams = linears.FeedForward.HParams(
-        activation_tpl=activations.Identity.HParams())
+        activation_tpl=activations.Identity.HParams(),
+        params_init=WeightInit.Xavier(math.sqrt(3 / 2)))
     depthwise_conv_tpl: BaseHParams = sub_config_field(DepthwiseConv1D.HParams)
     conv_norm_layer_tpl: BaseHParams = sub_config_field(
         normalizations.BatchNorm.HParams)
     linear_end_tpl: BaseHParams = linears.FeedForward.HParams(
-        activation_tpl=activations.Identity.HParams())
+        activation_tpl=activations.Identity.HParams(),
+        params_init=WeightInit.Xavier(math.sqrt(3 / 2)))
     dropout_tpl: BaseHParams = sub_config_field(stochastics.Dropout.HParams)
     is_causal: bool = False
     use_2d_conv_norm: bool = False
