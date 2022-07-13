@@ -20,7 +20,7 @@ Greedy decode is a special case for sample decode.
 """
 
 import functools
-from typing import Optional, Union
+from typing import List, Optional, Tuple, Union
 
 from flax import linen as nn
 import jax
@@ -399,7 +399,7 @@ def sample_decode(model: base_layer.BaseLayer,
                   num_samples: int,
                   k: int,
                   p: Optional[Union[float, JTensor]] = None,
-                  cf_guidance_scale: float = 1.0,
+                  cf_guidance_scale: Optional[Union[List[float], float]] = None,
                   fprop_for_prefix: bool = False,
                   temperature: float = 1.0,
                   max_prefix_len: Optional[int] = None,
@@ -490,6 +490,13 @@ def sample_decode(model: base_layer.BaseLayer,
       transform_state_fn(model,
                          decoder_utils.batch_broadcast_state_fn(num_samples))
 
+    # If cf guidance scale is a list floats with length == num_samples, we
+    # convert it to the target shape to be used in decode loop_body.
+    if isinstance(cf_guidance_scale, list):
+      assert len(cf_guidance_scale) == num_samples
+      cf_guidance_scale = jnp.array(cf_guidance_scale)
+      cf_guidance_scale = cf_guidance_scale[jnp.newaxis, :, jnp.newaxis]
+
   if seq_len <= 0:
     raise ValueError('The sequence length for decoding must be > 0, '
                      f'current value = {seq_len}.')
@@ -537,7 +544,7 @@ def sample_decode(model: base_layer.BaseLayer,
     step = val.step
     logits = extend_step_fn(model, val.output_ids[:, step], val.segment_pos)
     logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
-    if cf_guidance_scale != 1.0:
+    if cf_guidance_scale is not None:
       # Split cond / uncond logits.
       logits_split = split_batch_dim(logits, 0, 2 * num_samples)
       cond_logits = logits_split[:, :num_samples]
@@ -561,7 +568,7 @@ def sample_decode(model: base_layer.BaseLayer,
     else:
       new_ids = jnp.argmax(logits, axis=1)
 
-    if cf_guidance_scale != 1.0:
+    if cf_guidance_scale is not None:
       # Force-align unconditioned branch as conditioned sampled tokens ids.
       new_ids = split_batch_dim(new_ids, 0, num_samples)
       new_ids = jnp.concatenate([new_ids, new_ids], axis=1)
@@ -662,7 +669,7 @@ def sample_decode(model: base_layer.BaseLayer,
 
   del result.step, result.done
 
-  if cf_guidance_scale != 1.0:
+  if cf_guidance_scale is not None:
     # Split cond / uncond branches and only return conditioned branch.
     result = jax.tree_map(
         lambda x: split_batch_dim(x, 0, 2 * num_samples)[:, :num_samples], result)
