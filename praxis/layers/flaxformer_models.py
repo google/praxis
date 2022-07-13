@@ -39,6 +39,7 @@ Predictions = base_model.Predictions
 WeightedScalars = pytypes.WeightedScalars
 BaseHParams = base_layer.BaseLayer.HParams
 sub_config_field = base_layer.sub_config_field
+LogicalAxisRules = pytypes.LogicalAxisRules
 
 
 class FlaxFormerDecoder(base_layer.BaseLayer):
@@ -69,6 +70,7 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
     dropout_rate: float = 0.0
     mlp_dim: int = 5120
     activation_partitioning_dims: int = 1
+    logical_axes_rules: Optional[LogicalAxisRules] = None
 
   def setup(self) -> None:
     p = self.hparams
@@ -189,7 +191,8 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
 
     flaxformer_decoder = flax_adapter.FlaxModuleAdapter.HParams(
         module_factory_method=decoder_only_factory,
-        var_init_args=var_init_args_fn)
+        var_init_args=var_init_args_fn,
+        logical_axes_rules=p.logical_axes_rules)
 
     self.create_child('dec', flaxformer_decoder)
 
@@ -207,6 +210,7 @@ class EncoderDecoder(base_layer.BaseLayer):
       encoder_decoder_factory: Callable which will generate a Flaxformer model.
     """
     encoder_decoder_factory: Optional[Callable[[], linen.Module]] = None
+    logical_axes_rules: Optional[LogicalAxisRules] = None
 
   def _build_wrapped_module(self) -> linen.Module:
     if self.hparams.encoder_decoder_factory is None:
@@ -240,7 +244,8 @@ class EncoderDecoder(base_layer.BaseLayer):
 
     encoder_decoder = flax_adapter.FlaxModuleAdapter.HParams(
         module_factory_method=self._build_wrapped_module,
-        var_init_args=var_init_args_fn)
+        var_init_args=var_init_args_fn,
+        logical_axes_rules=self.hparams.logical_axes_rules)
 
     self.create_child('enc_dec', encoder_decoder)
 
@@ -255,7 +260,7 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
   allows deep overrides in model settings.
   """
 
-  class HParams(BaseHParams):
+  class HParams(EncoderDecoder.HParams):
     """Associated hyperparams for this layer class.
 
     Attributes:
@@ -438,10 +443,14 @@ class LanguageModel(base_model.BaseModel):
     loss_normalizing_factor: str = 'NUM_REAL_TARGET_TOKENS'
     label_smoothing: float = 0.0
     z_loss: float = 0.0001
+    logical_axes_rules: Optional[LogicalAxisRules] = None
 
   def setup(self):
     p = self.hparams
-    self.create_child('decoder', p.decoder)
+    # Propagate partitioning information from BaseModel to BaseLayer.
+    decoder_p = p.decoder.clone()
+    decoder_p.logical_axes_rules = p.logical_axes_rules
+    self.create_child('decoder', decoder_p)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
     """Compute model predictions.
@@ -524,10 +533,14 @@ class EncoderDecoderModel(LanguageModel):
     loss_normalizing_factor: str = 'NUM_REAL_TARGET_TOKENS'
     label_smoothing: float = 0.0
     z_loss: float = 0.0001
+    logical_axes_rules: Optional[LogicalAxisRules] = None
 
   def setup(self):
     p = self.hparams
-    self.create_child('encoder_decoder', p.encoder_decoder)
+    # Propagate partitioning information from BaseModel to BaseLayer.
+    encoder_decoder_p = p.encoder_decoder.clone()
+    encoder_decoder_p.logical_axes_rules = p.logical_axes_rules
+    self.create_child('encoder_decoder', encoder_decoder_p)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
     """Compute model predictions.

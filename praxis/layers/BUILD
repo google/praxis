@@ -1089,6 +1089,7 @@ py_strict_test(
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit t5x.models dependency.
+        "//third_party/py/t5x:partitioning",
     ],
 )
 

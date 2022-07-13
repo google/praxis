@@ -26,6 +26,7 @@ from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import flaxformer_models
 from t5x import models as t5x_models
+from t5x import partitioning as t5x_partitioning
 from flaxformer import testing_utils
 from flaxformer.t5x.fiddle.architectures import t5_1_1
 from flaxformer.t5x.fiddle.models import t5x_model as t5x_model_configs
@@ -250,6 +251,48 @@ class FlaxFormerModelsTest(test_utils.TestCase):
 
     np.testing.assert_allclose(t5x_loss, metrics['total_loss'][0])
 
+  def test_sharded_flaxformer_model(self):
+    decoder_p = flaxformer_models.FlaxFormerDecoder.HParams(num_layers=2)
+    decoder_mdl_p = flaxformer_models.LanguageModel.HParams(
+        decoder=decoder_p, z_loss=0.0001, label_smoothing=0.1, name='mdl',
+        mesh_axis_names=['replica', 'data', 'model'],
+        ici_mesh_shape=[1, 2, 4],
+        logical_axes_rules=t5x_partitioning.standard_logical_axis_rules())
+    decoder_mdl = instantiate(decoder_mdl_p)
+    init_vars = decoder_mdl.abstract_init_with_metadata(jax.random.PRNGKey(0))
+
+    dec = init_vars['params']['decoder']['dec']['cld']['decoder']
+    # Tests sharding for embedding variable.
+    self.assertEqual(
+        dec['token_embedder']['embedding'].tensor_split_dims_mapping,
+        ['model', None])
+    # Tests sharding for layernorm.
+    self.assertEqual(
+        dec['decoder_norm']['scale'].tensor_split_dims_mapping,
+        [None])
+
+  def test_sharded_encoder_decoder_model(self):
+    flaxformer_model = t5_1_1.small_fixture()
+    as_partial = fdl.Partial(flaxformer_model)
+    encdec_p = flaxformer_models.EncoderDecoder.HParams.config(
+        encoder_decoder_factory=as_partial, name='encoder_decoder')
+    mdl_p = flaxformer_models.EncoderDecoderModel.config(
+        encoder_decoder=encdec_p, name='mdl',
+        mesh_axis_names=['replica', 'data', 'model'],
+        ici_mesh_shape=[1, 2, 4],
+        logical_axes_rules=t5x_partitioning.standard_logical_axis_rules())
+    encdec_mdl = instantiate(mdl_p)
+    init_vars = encdec_mdl.abstract_init_with_metadata(jax.random.PRNGKey(0))
+
+    encdec = init_vars['params']['encoder_decoder']['enc_dec']['cld']
+    # Tests sharding for embedding variable.
+    self.assertEqual(
+        encdec['token_embedder']['embedding'].tensor_split_dims_mapping,
+        ['model', None])
+    # Tests sharding for layernorm.
+    self.assertEqual(
+        encdec['decoder']['decoder_norm']['scale'].tensor_split_dims_mapping,
+        [None])
 
 if __name__ == '__main__':
   absltest.main()
