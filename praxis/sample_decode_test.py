@@ -249,7 +249,7 @@ class LanguageModelTest(test_utils.TestCase):
         rngs={RANDOM: prng_key},
         method=lang_model.decode,
         mutable=[DECODE_CACHE])
-    _, results = results
+    _, results, _ = results
     return results
 
   def test_sample_decoding_fprop_for_prefix_with_suffix(self):

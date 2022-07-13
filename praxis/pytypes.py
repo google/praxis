@@ -15,6 +15,7 @@
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
 
+import clu.metrics as clu_metrics
 import jax
 from jax import numpy as jnp
 from jax.experimental import pjit
@@ -47,6 +48,9 @@ NestedShapeDtypeStruct = Nested[jax.ShapeDtypeStruct]
 DimShardingAnnotation = Optional[Union[Sequence[Union[int, str]], int, str]]
 SplitDimsMapping = Optional[Sequence[DimShardingAnnotation]]
 
+# Note(b/238657605): pytypes Metrics were renamed to WeightedScalars
+# and Metrics are now true metric objects using clu.metrics
 WeightedScalars = Dict[str, Tuple[JTensor, JTensor]]
+Metrics = Union[py_utils.NestedMap, Dict[str, clu_metrics.Metric]]
 
 LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]

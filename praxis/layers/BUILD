@@ -221,6 +221,7 @@ pytype_strict_library(
         ":resnets",
         ":transformer_models",
         # Implicit absl.logging dependency.
+        "//third_party/py/clu:metrics",
         # Implicit jax dependency.
         "//praxis:asserts",
         "//praxis:base_input",

@@ -29,6 +29,7 @@ from praxis import pytypes
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
+Metrics = pytypes.Metrics
 WeightedScalars = pytypes.WeightedScalars
 Predictions = Union[JTensor, NestedMap, Dict[str, Any], Dict[int, Any]]
 BaseHParams = base_layer.BaseLayer.HParams
@@ -100,7 +101,12 @@ class BaseModel(base_layer.BaseLayer):
     predictions = self.compute_predictions(input_batch)
     return self.compute_loss(predictions, input_batch)
 
-  def decode(self, input_batch: NestedMap) -> Tuple[WeightedScalars, NestedMap]:
+  # TODO(pax): If/when all user models are ported to have a third return
+  # we can remove this Union in the return type.
+  def decode(
+      self, input_batch: NestedMap
+  ) -> Union[Tuple[WeightedScalars, NestedMap], Tuple[WeightedScalars,
+                                                      NestedMap, Metrics]]:
     """Decodes input_batch.
 
     Args:
@@ -111,6 +117,8 @@ class BaseModel(base_layer.BaseLayer):
       - weighted scalars, a NestedMap containing str keys and (value, weight)
         pairs for the current batch (a tuple of two scalars).
       - results, a `.NestedMap` as decoder output.
+      - metrics, a NestedMap containing str keys and clu_metrics.Metric
+        objects. This is currently optional.
     """
     raise NotImplementedError('Abstract method')
 

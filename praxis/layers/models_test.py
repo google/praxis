@@ -92,7 +92,7 @@ class LanguageModelTest(test_utils.TestCase):
         rngs={RANDOM: prng_key},
         method=lang_model.decode,
         mutable=[DECODE_CACHE])
-    _, results = results
+    _, results, _ = results
     return results
 
   @parameterized.parameters([True, False])

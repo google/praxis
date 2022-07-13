@@ -17,6 +17,7 @@
 from typing import Any, Dict, Sequence, Tuple
 
 from absl import logging
+import clu.metrics as clu_metrics
 import jax
 from jax import numpy as jnp
 from praxis import asserts
@@ -38,6 +39,7 @@ from praxis.layers import transformer_models
 
 NestedMap = py_utils.NestedMap
 Predictions = base_model.Predictions
+Metrics = base_model.Metrics
 WeightedScalars = base_model.WeightedScalars
 DecoderHParams = decoder_hparams.DecoderHParams
 BeamSearchHParams = decoder_hparams.BeamSearchHParams
@@ -184,7 +186,9 @@ class LanguageModel(base_model.BaseModel):
     return _compute_xent_loss_helper(predictions, input_batch,
                                      self.hparams.return_predictions)
 
-  def decode(self, input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
+  def decode(
+      self,
+      input_batch: NestedMap) -> Tuple[WeightedScalars, NestedMap, Metrics]:
     """Greedy decodes the input_batch.
 
     Args:
@@ -196,7 +200,8 @@ class LanguageModel(base_model.BaseModel):
         suffixes.
 
     Returns:
-      - metrics, a NestedMap containing str keys and (metrics, weight) pairs.
+      - weighted_scalars, a NestedMap containing str keys and (metrics, weight)
+        pairs.
       - A NestedMap like `input_batch`, with `.prefix_lengths` (vector of
         specified or randomly generated ints indicating the lengths of prefixes
         for each row), and `.output_ids` (matrix of int ids with the decoded
@@ -205,6 +210,7 @@ class LanguageModel(base_model.BaseModel):
         logprobs of the sequence with suffix, the return `.output_ids` and
         `.logprobs` will have the shape of
         [batch, num_samples, num_suffix, seq_len].
+      - A dict of [str, clu_metrics.Metric] objects with metric objects.
     """
     p = self.hparams
     if not isinstance(p.decoder, DecoderHParams):
@@ -388,7 +394,7 @@ class LanguageModel(base_model.BaseModel):
     else:
       num_decoded = jnp.array(result.ids.shape[0], jnp.float32)
     metrics = NestedMap(num_decoded=(num_decoded, jnp.array(1, jnp.float32)))
-    return metrics, result
+    return metrics, result, {}
 
   def process_decode_out(
       self, input_obj: base_input.BaseInput,
@@ -524,7 +530,9 @@ class SequenceModel(base_model.BaseModel):
     return _compute_xent_loss_helper(predictions, input_batch.tgt,
                                      self.hparams.return_predictions)
 
-  def decode(self, input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
+  def decode(
+      self,
+      input_batch: NestedMap) -> Tuple[WeightedScalars, NestedMap, Metrics]:
     """Decodes input_batch.
 
     Args:
@@ -532,9 +540,10 @@ class SequenceModel(base_model.BaseModel):
         to source and target, which itself contains the `.ids` and `.paddings.`
 
     Returns:
-      - metrics, a nestedmap of metrics.
+      - weighted_scalars, a nestedmap of (scalar, weight) pairs.
       - results, a NestedMap like `input_batch`, with `.output_ids` (matrix of
         int ids with the decoded output) as well as the decoded length.
+      - metrics, A NestedMap of clu.metrics objects.
     """
     p = self.hparams
     if not isinstance(p.decoder, DecoderHParams):
@@ -601,7 +610,7 @@ class SequenceModel(base_model.BaseModel):
     else:
       num_decoded = jnp.array(batch_size, jnp.float32)
     metrics = NestedMap(num_decoded=(num_decoded, jnp.array(1, jnp.float32)))
-    return metrics, result
+    return metrics, result, {}
 
   def process_decode_out(
       self, input_obj: base_input.BaseInput,
@@ -766,6 +775,26 @@ class ClassificationModel(base_model.BaseModel):
     logits = self.softmax.get_logits(inputs=features)
     logp = self.softmax.logits_to_logp(logits)
     return py_utils.NestedMap(logits=logits, logp=logp)
+
+  def decode(
+      self,
+      input_batch: NestedMap) -> Tuple[WeightedScalars, NestedMap, Metrics]:
+    """Computes predictions and runs metrics."""
+    predictions = self.compute_predictions(input_batch)
+    losses, _ = self.compute_loss(predictions, input_batch)
+
+    per_example_out = NestedMap()
+    eval_metrics = NestedMap()
+
+    eval_metrics.accuracy = clu_metrics.Accuracy.from_model_output(
+        logits=predictions.softmax_output.logits,
+        labels=jnp.argmax(input_batch.label_probs, axis=-1))
+    return losses, per_example_out, eval_metrics
+
+  def process_decode_out(
+      self, input_obj: base_input.BaseInput,
+      decode_out: NestedMap) -> Tuple[NestedMap, Sequence[Tuple[str, Any]]]:
+    return NestedMap(), []
 
 
 class BertModel(base_model.BaseModel):
