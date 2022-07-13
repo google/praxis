@@ -285,7 +285,6 @@ class FullSoftmax(base_layer.BaseLayer):
     total_xent = jnp.sum(
         jnp.expand_dims(per_example_xent, axis=-1) * class_weights,
         dtype=jnp.float32)
-    assert total_xent.dtype == jnp.float32
     total_weight = jnp.sum(class_weights, dtype=jnp.float32)
 
     if p.z_loss_weight > 0.0:
@@ -301,9 +300,9 @@ class FullSoftmax(base_layer.BaseLayer):
         log_probs=log_probs.astype(inputs_dtype),
         per_example_argmax=per_example_argmax.astype(inputs_dtype),
         per_example_xent=per_example_xent.astype(jnp.float32),
-        total_xent=total_xent.astype(inputs_dtype),
+        total_xent=total_xent,
         total_weight=total_weight,
-        avg_xent=(total_xent / (total_weight + 1e-6)).astype(inputs_dtype))
+        avg_xent=(total_xent / (total_weight + 1e-6)).astype(jnp.float32))
 
     return output_nmap
 
