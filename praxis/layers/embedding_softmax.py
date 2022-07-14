@@ -878,7 +878,7 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
     if p.lookup_style == 'index':
       embs = jnp.asarray(pos_emb_var)[(position,)]
     elif p.lookup_style == 'matmul':
-      one_hot_ids = jax.nn.one_hot(position, seq_length)
+      one_hot_ids = jax.nn.one_hot(position, seq_length, dtype=self.fprop_dtype)
       embs = jnp.matmul(one_hot_ids, pos_emb_var)
     else:
       raise ValueError('Unknown lookup style.')
