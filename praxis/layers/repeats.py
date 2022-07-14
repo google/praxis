@@ -121,12 +121,15 @@ class Repeat(base_layer.BaseLayer):
       unroll_in_decode: Whether to unroll the layers during extend_step. The
         scan loop within a decoding loop can cause large overheads for data
         copy/formatting.
+      sublayer_name: Name of the sublayer. This affects the checkpoint variable
+        paths.
     """
     sub: Optional[BaseHParams] = None
     x_times: int = 0
     unpack_summaries: bool = False
     checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_NOTHING
     unroll_in_decode: bool = False
+    sublayer_name: str = 'sub'
 
   class WeightShardingHParams(BaseWtShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -142,7 +145,7 @@ class Repeat(base_layer.BaseLayer):
     assert p.x_times > 0
     assert p.sub is not None
 
-    self.create_child('sub', p.sub)
+    self.create_child(p.sublayer_name, p.sub)
 
   def force_init(self):
     p = self.hparams
@@ -181,7 +184,7 @@ class Repeat(base_layer.BaseLayer):
               sub_weight_split_dims_mapping=wp_sub,
               x_times=p.x_times))
 
-    mapped_fn(self.sub, None)  # scan requires a dummy carry input
+    mapped_fn(self.sublayer, None)  # scan requires a dummy carry input
 
   # TODO(zhangqiaorjc): Allow callers to customize. body_fn.
   def __call__(self, inputs: NestedJTensor, *args: Any, **kwargs: Any) -> Any:
@@ -255,8 +258,13 @@ class Repeat(base_layer.BaseLayer):
           mutable=True,
           trans_out_fn=_unstack_cache)
 
-    layer_out, _ = mapped_scan_fn(self.sub, inputs)
+    layer_out, _ = mapped_scan_fn(self.sublayer, inputs)
     return layer_out
+
+  @property
+  def sublayer(self) -> base_layer.BaseLayer:
+    p = self.hparams
+    return getattr(self, p.sublayer_name)
 
   def init_states(self, *args: Any, **kwargs: Any) -> Any:
     """Inits decoder states for all sub layers.
@@ -299,7 +307,7 @@ class Repeat(base_layer.BaseLayer):
             x_times=p.x_times))
 
     # Calls scan_fn with a None carry_in and ignores the carry_out.
-    mapped_scan_fn(self.sub, None)
+    mapped_scan_fn(self.sublayer, None)
 
   def _run_unrolled_for_decoding(self, fn: Callable[[base_layer.BaseLayer, Any],
                                                     Any], inputs: Any) -> Any:
@@ -354,7 +362,7 @@ class Repeat(base_layer.BaseLayer):
       mapped_fn = nn.map_variables(
           mapped_fn, [PARAMS, NON_TRAINABLE, SUMMARIES, AUX_LOSS],
           mutable=False)
-      return mapped_fn(self.sub, inp)
+      return mapped_fn(self.sublayer, inp)
 
     out = inputs
     for i in range(p.x_times):
@@ -416,7 +424,7 @@ class Repeat(base_layer.BaseLayer):
     mapped_scan_fn = nn.map_variables(
         mapped_scan_fn, PREFIX_DECODE_CACHE, mutable=False)
 
-    layer_out, _ = mapped_scan_fn(self.sub, step_inputs)
+    layer_out, _ = mapped_scan_fn(self.sublayer, step_inputs)
     return layer_out
 
   def transform_decode_state(
@@ -451,7 +459,7 @@ class Repeat(base_layer.BaseLayer):
             unpack_summaries=p.unpack_summaries,
             x_times=p.x_times))
 
-    mapped_scan_fn(self.sub, None)
+    mapped_scan_fn(self.sublayer, None)
 
   def lazy_broadcast_prefix(self, num_suffix_samples: int,
                             suffix_length: int) -> None:
@@ -494,4 +502,4 @@ class Repeat(base_layer.BaseLayer):
             unpack_summaries=p.unpack_summaries,
             x_times=p.x_times))
 
-    mapped_scan_fn(self.sub, None)
+    mapped_scan_fn(self.sublayer, None)

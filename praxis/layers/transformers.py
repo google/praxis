@@ -1563,6 +1563,8 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     x_times: int = 0
     checkpoint_policy: repeats.AutodiffCheckpointType = repeats.AutodiffCheckpointType.SAVE_NOTHING
     unroll_in_decode: bool = False
+    repeat_layer_name: str = 'repeat'
+    sublayer_name: str = 'sub'
 
   class WeightShardingHParams(BaseWtShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -1581,10 +1583,15 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         x_times=p.x_times,
         checkpoint_policy=p.checkpoint_policy,
         unpack_summaries=True,
-        unroll_in_decode=p.unroll_in_decode)
+        unroll_in_decode=p.unroll_in_decode,
+        sublayer_name=p.sublayer_name)
     repeat_l_params.weight_split_dims_mapping.sub = wp.block
 
-    self.create_child('repeat', repeat_l_params)
+    self.create_child(self.hparams.repeat_layer_name, repeat_l_params)
+
+  @property
+  def repeat_layer(self) -> repeats.Repeat:
+    return getattr(self, self.hparams.repeat_layer_name)
 
   def __call__(self,
                inputs: JTensor,
@@ -1613,8 +1620,8 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     """
 
     # TODO(zhangqiaorjc): Use positional args until nn.scan supports kwargs.
-    out = self.repeat(inputs, paddings, segment_mask, cross_inputs,
-                      cross_paddings, cross_segment_mask, segment_pos)
+    out = self.repeat_layer(inputs, paddings, segment_mask, cross_inputs,
+                            cross_paddings, cross_segment_mask, segment_pos)
 
     return out
 
@@ -1651,7 +1658,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
       decoder_output: The last decoder layer output of shape [B, D].
     """
 
-    return self.repeat.extend_step(
+    return self.repeat_layer.extend_step(
         inputs,
         time_step=time_step,
         segment_pos=segment_pos,
@@ -1661,7 +1668,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
   def transform_decode_state(
       self, transform_fn: base_layer.DecodeStateTransformFn) -> None:
     """Transforms all decode state variables based on transform_fn."""
-    self.repeat.transform_decode_state(transform_fn)
+    self.repeat_layer.transform_decode_state(transform_fn)
 
   def lazy_broadcast_prefix(self, num_suffix_samples: int,
                             suffix_length: int) -> None:
@@ -1676,7 +1683,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         decoding state.
       suffix_length: The length of the new suffix samples.
     """
-    self.repeat.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
+    self.repeat_layer.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
 
 
 class PipelinedTransformer(base_layer.BaseLayer):
@@ -1844,6 +1851,16 @@ class PipelinedTransformer(base_layer.BaseLayer):
       cross_segment_mask: Optional[JTensor] = None
   ) -> Tuple[JTensor, NestedMap]:
     raise NotImplementedError(type(self))
+
+
+class PipelineCompatibleStackedTransformerRepeated(StackedTransformerRepeated):
+  """Repeated transformer for inference compatible with pipeline."""
+
+  def setup(self) -> None:
+    p = self.hparams.clone()
+    p.repeat_layer_name = 'pipeline'
+    p.sublayer_name = 'body'
+    super().setup()
 
 
 class RetroTransformer(Transformer):
@@ -2025,4 +2042,5 @@ class StackedRetroTransformerRepeated(StackedTransformerRepeated):
     Returns:
       Output vector with shape [B, T, D].
     """
-    return self.repeat(inputs, paddings, segment_mask, segment_pos, neighbors)
+    return self.repeat_layer(inputs, paddings, segment_mask, segment_pos,
+                             neighbors)
