@@ -177,6 +177,8 @@ def top2_gating_on_logits(paddings,
     # Determine expert capacity automatically depending on the input size
     group_size_dim = logits.shape[1]
     auto_expert_capacity = int(group_size_dim * capacity_factor / experts_dim)
+    if expert_capacity_dim is None:
+      expert_capacity_dim = 1
     if expert_capacity_dim < auto_expert_capacity:
       expert_capacity_dim = auto_expert_capacity
       # Round up to a multiple of 4 to avoid possible padding.
