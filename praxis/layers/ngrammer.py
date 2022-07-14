@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""N-grammer layers from https://openreview.net/forum?id=GxjCYmQAody."""
+"""N-grammer layers from https://arxiv.org/abs/2207.06366."""
 
 from typing import Optional, Tuple, Union
 import jax
@@ -556,7 +556,9 @@ class VQNgrammer(base_layer.BaseLayer):
 
     Attributes:
       ngram_vocab_size: Size of the ngram vocabulary.
+
       ngram_emb_dim: Size of the ngram dimension per head.
+      unigram_vocab_size: Size of the unigram vocabulary.
       ngram_using_attention_scores: Whether to compute n-grams using attention
         scores. If True, then consecutive tokens are not used to compute n-grams
         rather it is computed by taking the maximum over the attention scores.
@@ -571,8 +573,11 @@ class VQNgrammer(base_layer.BaseLayer):
       epsilon: Tiny value to guard against divide by 0.
       dim_per_head: The last dimension of the inputs on which to apply Vector
         Quantization.
+      use_cached_input_ids_to_cluster_ids: Whether to use cached input ids to
+        cluster ids.
     """
     ngram_vocab_size: int = 768 * 256
+    unigram_vocab_size: int = 0
     ngram_emb_dim: int = 8
     ngram_using_attention_scores: bool = False
     causal_attention: bool = True
@@ -582,6 +587,7 @@ class VQNgrammer(base_layer.BaseLayer):
     decay: float = 0.999
     epsilon: float = 1e-6
     dim_per_head: int = 0
+    use_cached_input_ids_to_cluster_ids: bool = False
 
   @classmethod
   def set_canonical_sharding_params(cls, vqngrammer_p, *, replica_axis,
@@ -616,6 +622,15 @@ class VQNgrammer(base_layer.BaseLayer):
         epsilon=p.epsilon,
         params_init=p.params_init)
     self.create_child('vq_layer', vq_layer_p)
+
+    # Create the input id to cluster id cache.
+    if p.unigram_vocab_size:
+      input_id_to_cluster_id_cache = WeightHParams(
+          shape=[p.unigram_vocab_size], dtype=jnp.int32,
+          init=base_layer.WeightInit.Constant(0))
+      self.create_variable('input_id_to_cluster_id_cache',
+                           input_id_to_cluster_id_cache,
+                           trainable=False)
 
     # Create N-gram lookup layer.
     ngram_layer_p = Ngrammer.HParams(
@@ -656,40 +671,52 @@ class VQNgrammer(base_layer.BaseLayer):
       outputs: Input embedding with the VQ ngram added of shape [B, L, D] if
         `merge_heads` is True, and shape [B, L, N, H] otherwise.
     """
-    del input_ids
-
-    # Check if `ngram_using_attention_scores` is set to True, then attention
-    # scores is not None.
+    p = self.hparams
     pair_ids = None
-    if self.hparams.ngram_using_attention_scores:
-      if attention_scores is None:
-        raise ValueError('If ngram_using_attention_scores is set, then'
-                         'attention_scores must be provided.')
-      # Compute the pair ids for each token in the sequence by taking the
-      # argmax at each position of the attention score.
-      if self.hparams.causal_attention:
-        seq_len = attention_scores.shape[2]
-        pair_ids = jnp.zeros(attention_scores.shape[:-1], dtype=jnp.int32)
-        for i in range(seq_len):
-          if i > 0:
-            # Take the token with the highest attention value less than i.
-            pair_ids_at_i = jnp.argmax(attention_scores[:, :, i, :i], axis=-1)
-            pair_ids = pair_ids.at[:, :, i].set(pair_ids_at_i)
-          else:
-            # The first token pairs with PAD due to causal attention.
-            pair_ids = pair_ids.at[:, :, i].set(seq_len)
-      else:
-        # Take the argmax as there is no constraint on causal order.
-        pair_ids = jnp.argmax(attention_scores, axis=-1)
+    if p.use_cached_input_ids_to_cluster_ids:
+      assert self.hparams.unigram_vocab_size > 0
+      cache = self.get_var('input_id_to_cluster_id_cache')
+      cluster_ids = jnp.asarray(cache)[(input_ids,)]
+    else:
+      # Check if `ngram_using_attention_scores` is set to True, then attention
+      # scores is not None.
+      if self.hparams.ngram_using_attention_scores:
+        if attention_scores is None:
+          raise ValueError('If ngram_using_attention_scores is set, then'
+                           'attention_scores must be provided.')
+        # Compute the pair ids for each token in the sequence by taking the
+        # argmax at each position of the attention score.
+        if self.hparams.causal_attention:
+          seq_len = attention_scores.shape[2]
+          pair_ids = jnp.zeros(attention_scores.shape[:-1], dtype=jnp.int32)
+          for i in range(seq_len):
+            if i > 0:
+              # Take the token with the highest attention value less than i.
+              pair_ids_at_i = jnp.argmax(attention_scores[:, :, i, :i], axis=-1)
+              pair_ids = pair_ids.at[:, :, i].set(pair_ids_at_i)
+            else:
+              # The first token pairs with PAD due to causal attention.
+              pair_ids = pair_ids.at[:, :, i].set(seq_len)
+        else:
+          # Take the argmax as there is no constraint on causal order.
+          pair_ids = jnp.argmax(attention_scores, axis=-1)
 
-    # Cast input embeddings to fprop dtype.
-    input_embs = self._cast_to_fprop_dtype(input_embs)
+      # Cast input embeddings to fprop dtype.
+      input_embs = self._cast_to_fprop_dtype(input_embs)
 
-    # Distances of shape [B, L, N, K].
-    distances, _ = self.vq_layer(input_embs, paddings=paddings)
+      # Distances of shape [B, L, N, K].
+      distances, _ = self.vq_layer(input_embs, paddings=paddings)
 
-    # [B, L, N].
-    cluster_ids = jnp.argmin(distances, -1)
+      # [B, L, N].
+      cluster_ids = jnp.argmin(distances, -1)
+
+      # Cache the cluster ids for future use.
+      if not self.do_eval and p.unigram_vocab_size:
+        cache = self.get_var('input_id_to_cluster_id_cache')
+        input_ids_flat = jnp.reshape(input_ids, [-1])
+        cluster_ids_flat = jnp.reshape(cluster_ids, [-1])
+        updated_cache = cache.at[input_ids_flat].set(cluster_ids_flat)
+        self.update_var('input_id_to_cluster_id_cache', updated_cache)
 
     # [B, L, D] or [B, L, N, H].
     output_embs = self.ngram_layer(

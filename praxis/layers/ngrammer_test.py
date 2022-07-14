@@ -425,6 +425,81 @@ class NgrammerTest(test_utils.TestCase):
         self.assertAllClose(
             to_np(ngram_embs[:, step, :]), to_np(ngram_embs_extend_step))
 
+  def test_vq_ngrammer_layer_cache(self):
+    ngram_emb_dim = 2
+    num_heads = 1
+    num_clusters = 4
+    dim_per_head = 2
+    concat_ngrams = True
+    use_attention_scores = False
+    batch_size = 2
+    seq_len = 4
+    unigram_vocab_size = 8
+    paddings = np.random.randint(1, size=[batch_size, seq_len])
+    input_ids = np.asarray([[0, 1, 2, 3], [4, 5, 6, 7]])
+    embeddings = np.random.normal(
+        1.5, 2.0, (unigram_vocab_size, num_heads * dim_per_head))
+    input_embs = embeddings[(input_ids,)]
+    prng_key = jax.random.PRNGKey(seed=123)
+    prng_key, init_key = jax.random.split(prng_key)
+    vq_ngrammer_layer_p = ngrammer.VQNgrammer.HParams(
+        name='jax_vq_ngrammer_layer',
+        ngram_vocab_size=num_heads * num_clusters**2 + 1,
+        unigram_vocab_size=unigram_vocab_size,
+        ngram_emb_dim=ngram_emb_dim,
+        num_heads=num_heads,
+        num_clusters=num_clusters,
+        dim_per_head=dim_per_head,
+        concat_ngrams=concat_ngrams,
+        ngram_using_attention_scores=use_attention_scores,
+        causal_attention=False,
+        use_cached_input_ids_to_cluster_ids=False
+        )
+    vq_ngrammer_layer = instantiate(vq_ngrammer_layer_p)
+    context_params = base_layer.JaxContext.HParams(do_eval=True)
+    vq_ngrammer_layer_p_cached = ngrammer.VQNgrammer.HParams(
+        name='jax_vq_ngrammer_layer',
+        ngram_vocab_size=num_heads * num_clusters**2 + 1,
+        unigram_vocab_size=unigram_vocab_size,
+        ngram_emb_dim=ngram_emb_dim,
+        num_heads=num_heads,
+        num_clusters=num_clusters,
+        dim_per_head=dim_per_head,
+        concat_ngrams=concat_ngrams,
+        ngram_using_attention_scores=use_attention_scores,
+        causal_attention=False,
+        use_cached_input_ids_to_cluster_ids=True
+        )
+    vq_ngrammer_layer_cached = instantiate(vq_ngrammer_layer_p_cached)
+    with base_layer.JaxContext.new_context(hparams=context_params):
+      initial_vars = vq_ngrammer_layer.init(
+          init_key,
+          input_ids,
+          input_embs,
+          paddings)
+      # Bind makes vq_ngrammer_layer a stateful layer with all its submodule
+      # layer variables automatically bound. It simplfies calling of submodule
+      # fprop because we no longer need to explicitly provide submodule layer
+      # vars.
+      vq_ngrammer_layer = vq_ngrammer_layer.bind(
+          initial_vars, mutable=[NON_TRAINABLE])
+      vq_ngrammer_layer_cached = vq_ngrammer_layer_cached.bind(
+          initial_vars, mutable=[NON_TRAINABLE])
+      dists, _ = vq_ngrammer_layer.vq_layer(input_embs)
+      cluster_ids = jnp.argmin(dists, -1)
+      input_ids_flat = jnp.reshape(input_ids, [-1])
+      cluster_ids_flat = jnp.reshape(cluster_ids, [-1])
+      cache = initial_vars['non_trainable']['input_id_to_cluster_id_cache']
+      updated_cache = cache.at[input_ids_flat].set(cluster_ids_flat)
+      updated_vars = initial_vars
+      updated_vars['non_trainable']['input_id_to_cluster_id_cache'] = updated_cache
+      ngram_embs = vq_ngrammer_layer(
+          input_ids, input_embs, paddings)
+      ngram_embs_cached = vq_ngrammer_layer_cached.apply(
+          updated_vars,
+          input_ids, input_embs, paddings)
+      self.assertAllClose(ngram_embs, ngram_embs_cached)
+
   @parameterized.parameters(
       (32, 8, 2, 4, 32, True),
       (32, 4, 4, 16, 16, True),
