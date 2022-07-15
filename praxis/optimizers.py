@@ -43,6 +43,7 @@ QuantizedValue = distributed_shampoo.QuantizedValue
 GraftingType = distributed_shampoo.GraftingType
 ShardedShampooStats = distributed_shampoo.ShardedShampooStats
 ShampooState = distributed_shampoo.ShampooState
+TrainingMetrics = distributed_shampoo.TrainingMetrics
 LocalShardedParameterStats = distributed_shampoo.LocalShardedParameterStats
 GlobalShardedParameterStats = distributed_shampoo.GlobalShardedParameterStats
 
@@ -1105,6 +1106,8 @@ class DistributedShampoo(BaseOptimizer):
       num_devices_for_pjit: Number of devices to parallelize over in pjit mode.
       nesterov: Use nesterov update for momentum.
       exponent_override: Exponent override.
+      inverse_failure_threshold: Numerics are hard and inverses fail sometimes;
+        we determine that using this threshold.
       moving_average_for_momentum: Moving average for momentum.
       skip_preconditioning_dim_size_gt: Skips preconditioning if any dim is
         greater than this value.
@@ -1117,7 +1120,12 @@ class DistributedShampoo(BaseOptimizer):
         preconditioner matrices.
       best_effort_memory_usage_reduction: Experimental mode: Best effort memory
         usage reduction.
-      merge_small_dims_block_size: : Block size for merging dims.
+      merge_small_dims_block_size: Block size for merging dims.
+      lobpcg_topk_precondition: If nonzero, specifies the number of top
+        eigenvectors to subtract out before performing LOBPCG
+      lobpcg_max_iter: If nonzero, specifies the maximum number of iterations
+        to perform LOBPCG if activated by lobpcg_topk_precondition. If zero,
+        uses a default value equal to `lobpcg_topk_precondition` itself.
     """
     block_size: int = 1024
     beta1: float = 0.9
@@ -1134,6 +1142,7 @@ class DistributedShampoo(BaseOptimizer):
     num_devices_for_pjit: Optional[int] = None
     nesterov: bool = True
     exponent_override: int = 0
+    inverse_failure_threshold: float = 0.1
     moving_average_for_momentum: bool = False
     skip_preconditioning_dim_size_gt: int = 4096
     clip_by_scaled_gradient_norm: Optional[float] = None
@@ -1148,6 +1157,8 @@ class DistributedShampoo(BaseOptimizer):
     qr_based_root: bool = False
     sharded_statistics_only: bool = False
     merge_small_dims_block_size: int = 4096
+    lobpcg_topk_precondition: int = 0
+    lobpcg_max_iter: int = 0
 
   @classmethod
   def HParamsImageClassification(cls) -> DistributedShampoo.HParams:  # pylint: disable=invalid-name
@@ -1189,6 +1200,39 @@ class DistributedShampoo(BaseOptimizer):
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> optax.GradientTransformation:
+    grad_transformation = self._shampoo_transformation(lr)
+
+    def wrapped_update_fn(grads, state, params=None):
+      new_params, new_state = grad_transformation.update(grads, state, params)
+      param_stats = new_state.stats
+
+      # Construct an almost parallel-structured pytree with key prefixes to
+      # annotate per-parameter metrics for the summary name. Frustratingly,
+      # this ignores non-pytree-node lists, creating separate prefixes for
+      # what should be a leaf list of integers representing shapes.
+      keys = py_utils.extract_prefixed_keys_from_nested_map(param_stats)
+
+      # Luckily, extracting just the required TrainingMetrics nodes
+      # collates generated prefixes perfectly for any top-down flatten ordering.
+      is_metrics = lambda l: isinstance(l, TrainingMetrics)
+      flatten = lambda tree: jax.tree_flatten(tree, is_leaf=is_metrics)[0]
+      training_metrics = [
+          x for x in flatten(param_stats) if is_metrics(x)]
+      training_metrics_keys = [
+          x for x in flatten(keys) if is_metrics(x)]
+
+      assert len(training_metrics) == len(training_metrics_keys)
+      for metrics, keys in zip(training_metrics, training_metrics_keys):
+        # Walk all training metrics fields and summarize, assuming
+        # they're scalars, using their key prefixes.
+        jax.tree_map(base_layer.add_global_summary, keys, metrics)
+
+      return new_params, new_state
+
+    return optax.GradientTransformation(grad_transformation.init,
+                                        wrapped_update_fn)
+
+  def _shampoo_transformation(self, lr):
     p = self._hparams
     return distributed_shampoo_optimizer(
         learning_rate=lr,
@@ -1210,13 +1254,15 @@ class DistributedShampoo(BaseOptimizer):
         statistics_partition_spec=self._statistics_partition_spec,
         preconditioner_partition_spec=self._preconditioner_partition_spec,
         shard_optimizer_states=self._shard_optimizer_states,
-        inverse_failure_threshold=0.1,
+        inverse_failure_threshold=p.inverse_failure_threshold,
         moving_average_for_momentum=p.moving_average_for_momentum,
         skip_preconditioning_dim_size_gt=p.skip_preconditioning_dim_size_gt,
         clip_by_scaled_gradient_norm=p.clip_by_scaled_gradient_norm,
         precision=lax.Precision.HIGHEST,
         best_effort_memory_usage_reduction=p.best_effort_memory_usage_reduction,
         relative_matrix_epsilon=p.relative_matrix_epsilon,
+        lobpcg_topk_precondition=p.lobpcg_topk_precondition,
+        lobpcg_max_iter=p.lobpcg_max_iter,
         cholesky=p.cholesky,
         qr_based_root=p.qr_based_root,
         sharded_statistics_only=p.sharded_statistics_only,
@@ -1305,7 +1351,7 @@ class ShardedDistributedShampoo(DistributedShampoo):
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
-    result = super()._get_raw_grad_transformation(lr)
+    result = self._shampoo_transformation(lr)
     # TODO(rohananil): Refactor after PartitionSpec layering is finalized in
     # the JAX ecosystem.
     fns = result.init(None)
