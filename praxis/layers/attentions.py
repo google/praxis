@@ -601,18 +601,22 @@ class AttentionProjection(base_layer.BaseLayer):
   def setup(self) -> None:
     p = self.hparams
     wp = p.weight_split_dims_mapping
-    if p.mesh_shape is not None:
-      assert wp.wt is not None, ('Must provide sharding annotations for the '
-                                 'weights if mesh shape is provided')
+    has_sharding = p.mesh_shape is not None and wp.wt is not None
     if p.attention_combine_dims:
       assert not p.use_bias
       hd_shape = [p.num_heads * p.dim_per_head]
     else:
       hd_shape = [p.num_heads, p.dim_per_head]
 
-    if (p.attention_combine_dims and isinstance(wp.wt, list) and
-        len(wp.wt) == 3):
-      wt = [axis for axis in wp.wt if axis is not None]
+    if p.attention_combine_dims and has_sharding:
+      if len(wp.wt) == 3:
+        h_sharding = ()
+        for axes in (wp.wt[0], wp.wt[1]):
+          if isinstance(axes, (str, int)):
+            h_sharding += (axes,)
+          elif axes is not None:
+            h_sharding += axes
+        wt = [h_sharding, wp.wt[2]]
       assert len(wt) == 2
     else:
       wt = wp.wt
@@ -624,7 +628,7 @@ class AttentionProjection(base_layer.BaseLayer):
     self.create_variable('w', pc)
     if p.use_bias:
       if p.is_output_projection:
-        if p.mesh_shape is not None:
+        if has_sharding:
           bias_split_dims_mapping = [wp.wt[0]]
         else:
           bias_split_dims_mapping = None
@@ -634,7 +638,7 @@ class AttentionProjection(base_layer.BaseLayer):
             mesh_shape=p.mesh_shape,
             tensor_split_dims_mapping=bias_split_dims_mapping)
       else:
-        if p.mesh_shape is not None:
+        if has_sharding:
           bias_split_dims_mapping = [wp.wt[1], wp.wt[2]]
         else:
           bias_split_dims_mapping = None
