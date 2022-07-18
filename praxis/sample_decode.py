@@ -407,7 +407,8 @@ def sample_decode(model: base_layer.BaseLayer,
                   prefix_lengths: Optional[JTensor] = None,
                   eos_id: Optional[int] = None,
                   suffix_ids: Optional[JTensor] = None,
-                  suffix_lengths: Optional[JTensor] = None) -> NestedMap:
+                  suffix_lengths: Optional[JTensor] = None,
+                  sort_samples: bool = True) -> NestedMap:
   """Sampling decode the input batch.
 
   Top-K sampling with num_samples for each batch, in which the K most likely
@@ -455,6 +456,7 @@ def sample_decode(model: base_layer.BaseLayer,
     eos_id: Optional EOS id which to terminate the decoding early.
     suffix_ids: Optional suffix_ids, if it is defined, will call suffix_decode.
     suffix_lengths: Optional JTensor of shape [suffix_size].
+    sort_samples: Whether to sort the samples by logprobs.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -675,7 +677,7 @@ def sample_decode(model: base_layer.BaseLayer,
         lambda x: split_batch_dim(x, 0, 2 * num_samples)[:, :num_samples], result)
   else:
     result = jax.tree_map(lambda x: split_batch_dim(x, 0, num_samples), result)
-  if num_samples > 1:
+  if num_samples > 1 and sort_samples:
     return sort_samples_by_scores(result)
   return result
 
