@@ -231,6 +231,12 @@ class LanguageModel(base_model.BaseModel):
       prefix_lengths = jax.random.randint(self.next_prng_key(), [batch_size],
                                           minval, maxval + 1,
                                           input_batch.ids.dtype)
+
+    if p.bidirectional_attention_on_inputs:
+      causal_attention_mask = 1 - input_batch.inputs_indicator
+    else:
+      causal_attention_mask = None
+
     max_prefix_len = input_batch.ids.shape[1]
     if p.decoder.fprop_for_prefix:
       asserts.not_none(p.decoder.max_decode_steps)
@@ -255,6 +261,12 @@ class LanguageModel(base_model.BaseModel):
       input_paddings = jnp.pad(
           fprop_input_paddings, [[0, 0], [0, p.decoder.max_decode_steps]],
           constant_values=1.)
+      if causal_attention_mask is not None:
+        # Pad 1 to the left of causal_attention_mask.
+        causal_attention_mask = decoder_utils.right_align_tensors(
+            causal_attention_mask, prefix_lengths)
+        causal_attention_mask = jnp.pad(
+            causal_attention_mask, [[0, 0], [0, p.decoder.max_decode_steps]])
     else:
       seqlen = p.decoder.seqlen
       start_time_step = 0
@@ -285,6 +297,7 @@ class LanguageModel(base_model.BaseModel):
           segment_ids=fprop_segment_ids,
           segment_pos=fprop_segment_pos,
           start_time_step=start_time_step,
+          causal_attention_mask=causal_attention_mask,
       )
       # Pad to full-sequence length.
       self.lm.transform_decode_state(
@@ -309,7 +322,9 @@ class LanguageModel(base_model.BaseModel):
             paddings,
             segment_ids=fprop_segment_ids,
             segment_pos=fprop_segment_pos,
-            start_time_step=start_time_step)
+            start_time_step=start_time_step,
+            causal_attention_mask=causal_attention_mask,
+        )
 
       result = beam_search.beam_search(self, extend_step_fn, fprop_fn,
                                        transform_decode_state_fn,
@@ -334,7 +349,9 @@ class LanguageModel(base_model.BaseModel):
           fprop_input_paddings,
           segment_ids=fprop_segment_ids,
           segment_pos=fprop_segment_pos,
-          start_time_step=start_time_step)
+          start_time_step=start_time_step,
+          causal_attention_mask=causal_attention_mask,
+      )
 
       if not p.decoder.lazy_prefix_broadcast:
         # Pad to full-sequence length.
@@ -367,7 +384,9 @@ class LanguageModel(base_model.BaseModel):
           fprop_input_paddings,
           segment_ids=fprop_segment_ids,
           segment_pos=fprop_segment_pos,
-          start_time_step=start_time_step)
+          start_time_step=start_time_step,
+          causal_attention_mask=causal_attention_mask,
+      )
       # Pad to full-sequence length.
       self.lm.transform_decode_state(
           decoder_utils.pad_state_fn(state_padding_size))

@@ -77,11 +77,16 @@ class MockLM(base_layer.BaseLayer):
 
 class LanguageModelTest(test_utils.TestCase):
 
-  def _run_decode(self, decoder_p, logits, input_batch):
+  def _run_decode(self,
+                  decoder_p,
+                  logits,
+                  input_batch,
+                  bidirectional_attention_on_inputs=False):
     p = models.LanguageModel.HParams(
         name='mock_lm',
         decoder=decoder_p.clone(),
-        lm=MockLM.HParams(logits=logits))
+        lm=MockLM.HParams(logits=logits),
+        bidirectional_attention_on_inputs=bidirectional_attention_on_inputs)
     lang_model = instantiate(p)
     theta = NestedMap(lm=NestedMap())
     # We fix seed to 9 to get the desired prefix lengths below.
@@ -208,6 +213,55 @@ class LanguageModelTest(test_utils.TestCase):
         paddings=jnp.array([[0., 0., 1., 1., 1.]], dtype=jnp.float32),
     )
     results = self._run_decode(p, logits, input_batch)
+    self.assertArraysEqual(results.prefix_lengths,
+                           np.array([[2]], dtype=np.int32))
+    # We copy prefix of length 2 from input.ids, so the first argmax
+    # from logits is unused. Remaining 3 ids are from argmax.
+    if fprop_for_prefix:
+      self.assertArraysEqual(
+          results.output_ids,
+          np.array([[[11, 12, 1, 3, 4, 0, 0, 0]]], dtype=np.int32))
+      self.assertArraysEqual(
+          results.prefix_ids,
+          np.array([[[11, 12, 0, 0, 0, 0, 0, 0]]], dtype=np.int32))
+    else:
+      self.assertArraysEqual(results.output_ids,
+                             np.array([[[11, 12, 3, 4, 5]]], dtype=np.int32))
+      self.assertArraysEqual(results.prefix_ids,
+                             np.array([[[11, 12, 0, 0, 0]]], dtype=np.int32))
+
+    self.assertArraysEqual(results.decode_lengths,
+                           np.array([[5]], dtype=np.int32))
+
+  @parameterized.parameters([True, False])
+  def test_bidirectional_attention_on_inputs(self, fprop_for_prefix):
+    p = models.LanguageModel.HParams().decoder
+    p.seqlen = 5
+    p.min_prefix_len = 2
+    p.fprop_for_prefix = fprop_for_prefix
+    if fprop_for_prefix:
+      p.max_decode_steps = 3
+    logits = [
+        [
+            [0, 1, 0, 0, 0, 0],  # argmax=1
+        ],
+        [
+            [0, 0, 0, 1, 0, 0],  # argmax=3
+        ],
+        [
+            [0, 0, 0, 0, 1, 0],  # argmax=4
+        ],
+        [
+            [0, 0, 0, 0, 0, 1],  # argmax=5
+        ],
+    ]
+    input_batch = NestedMap(
+        ids=jnp.array([[11, 12, 13, 14, 15]], dtype=jnp.int32),
+        paddings=jnp.array([[0., 0., 1., 1., 1.]], dtype=jnp.float32),
+        inputs_indicator=jnp.array([[0., 1., 1., 1., 1.]], dtype=jnp.float32),
+    )
+    results = self._run_decode(
+        p, logits, input_batch, bidirectional_attention_on_inputs=True)
     self.assertArraysEqual(results.prefix_lengths,
                            np.array([[2]], dtype=np.int32))
     # We copy prefix of length 2 from input.ids, so the first argmax
