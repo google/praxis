@@ -317,85 +317,85 @@ class WeightInit(BaseHyperParams):
   scale: float
 
   @staticmethod
-  def Gaussian(scale=1.0):
+  def Gaussian(scale: float = 1.0):
     """scale * jax.random.normal(0, 1.0)."""
     return WeightInit('gaussian', scale)
 
   @staticmethod
-  def Uniform(scale=1.0):
+  def Uniform(scale: float = 1.0):
     """scale * jax.random.uniform(-1.0, 1.0)."""
     return WeightInit('uniform', scale)
 
   @staticmethod
-  def Xavier(scale=1.0):
+  def Xavier(scale: float = 1.0):
     """Xavier initialization (x = sqrt(6. / (in + out)); [-x, x])."""
     return WeightInit('xavier', scale)
 
   @staticmethod
-  def XavierWithFixupParams(scale=1.0,
-                            depth=1.0,
-                            layers_per_residual_block=1.0):
+  def XavierWithFixupParams(scale: float = 1.0,
+                            depth: float = 1.0,
+                            layers_per_residual_block: float = 1.0):
     """Xavier initialization with Fixup."""
     scale = scale * math.pow(depth, (-1.0 / (2 * layers_per_residual_block)))
     return WeightInit('xavier', scale)
 
   @staticmethod
-  def Constant(scale=1.0):
+  def Constant(scale: float = 1.0):
     """scale."""
     return WeightInit('constant', scale)
 
   @staticmethod
-  def TruncatedGaussian(scale=1.0):
+  def TruncatedGaussian(scale: float = 1.0):
     """scale * jax.random.truncated_normal(-2.0, 2.0)."""
     return WeightInit('truncated_gaussian', scale)
 
   @staticmethod
-  def GaussianSqrtDim(scale=1.0):
+  def GaussianSqrtDim(scale: float = 1.0):
     """scale * jax.random.normal(0, 1 / sqrt(dim0))."""
     return WeightInit('gaussian_sqrt_dim', scale)
 
   @staticmethod
-  def GaussianSqrtFanIn(scale=1.0):
+  def GaussianSqrtFanIn(scale: float = 1.0):
     """scale * jax.random.normal(0, 1 / sqrt(fan_in))."""
     return WeightInit('gaussian_sqrt_fanin', scale)
 
   @staticmethod
-  def GaussianSqrtFanOut(scale=1.0):
+  def GaussianSqrtFanOut(scale: float = 1.0):
     """scale * jax.random.normal(0, 1 / sqrt(fan_out))."""
     return WeightInit('gaussian_sqrt_fanout', scale)
 
   @staticmethod
-  def GaussianSqrtFanAvg(scale=1.0):
+  def GaussianSqrtFanAvg(scale: float = 1.0):
     """jax.random.normal(0, sqrt(2.0 / (in + out)))."""
     return WeightInit('gaussian_sqrt_fanavg', scale)
 
   @staticmethod
-  def UniformSqrtDim(scale=1.0):
+  def UniformSqrtDim(scale: float = 1.0):
     """scale * jax.random.uniform(-1 / sqrt(dim0), 1 / sqrt(dim0))."""
     return WeightInit('uniform_sqrt_dim', scale)
 
   @staticmethod
-  def UniformUnitScaling(scale=1.0):
+  def UniformUnitScaling(scale: float = 1.0):
     """scale * sqrt(3) / sqrt(dim0) * jax.random.uniform(-1, 1)."""
     return WeightInit('uniform_unit_scaling', scale)
 
   @staticmethod
-  def TruncatedGaussianSqrtDim(scale=1.0):
+  def TruncatedGaussianSqrtDim(scale: float = 1.0):
     """scale * jax.random.truncated_normal(0, 1 / sqrt(dim0))."""
     return WeightInit('truncated_gaussian_sqrt_dim', scale)
 
   @staticmethod
-  def TruncatedGaussianSqrtFanIn(scale=1.0):
+  def TruncatedGaussianSqrtFanIn(scale: float = 1.0):
     """scale * jax.random.truncated_normal(0, 1 / sqrt(fan_in))."""
     return WeightInit('truncated_gaussian_sqrt_fanin', scale)
 
   @staticmethod
-  def TruncatedGaussianSqrtFanOut(scale=1.0):
+  def TruncatedGaussianSqrtFanOut(scale: float = 1.0):
     """scale * jax.random.truncated_normal(0, 1 / sqrt(fan_out))."""
     return WeightInit('truncated_gaussian_sqrt_fanout', scale)
 
   @staticmethod
-  def ScaledDeltaOrthogonal(scale=1.0):
+  def ScaledDeltaOrthogonal(scale: float = 1.0):
     return WeightInit('delta_orthogonal', scale)
 
 

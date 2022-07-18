@@ -326,7 +326,7 @@ class VisionTransformer(base_layer.BaseLayer):
     features = inputs
     if p.entry_layers_tpl:
       features = self.entry_stack(features)  # [B, N, D]
-    paddings = jnp.zeros(features.shape[:-1])
+    paddings = jnp.zeros(features.shape[:-1], dtype=features.dtype)
     features = self.transformers_stack(features, paddings)  # [B, N, D]
     if p.exit_layers_tpl:
       features = self.exit_stack(features)  # [B, D] or [B, N, D]
