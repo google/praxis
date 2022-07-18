@@ -179,6 +179,48 @@ def compute_attention_masks_for_extend_step(
   return attention_mask, cross_attention_mask
 
 
+def _get_sentence_embeddings(inputs: JTensor, segment_ids: JTensor) -> JTensor:
+  """Returns the average sentence embedding to gate by.
+
+  Args:
+    inputs: Input sequence JTensor of the shape [S, D]
+    segment_ids:  A JTensor of shape [S] specifying the segment each token
+      belongs to.
+
+  Returns:
+    sentence_embeddings: A JTensor of the shape [S, D] that is an average of the
+    input tensor per segment. The sentence embeddings will contain the same
+    averaged vector for a particular segment_id.
+  """
+  # Max segments is required for segment_sum to be statically compiled.
+  # max_segments = S
+  max_segments = inputs.shape[0]
+  # Compute the sum within segments(specified by segment_ids) of the input.
+  # segment_sum shape: [max_segments, D]
+  segment_sum = jax.ops.segment_sum(
+      inputs, segment_ids, num_segments=max_segments)
+
+  # Zero out the segment_sum belonging to segment_ids=0, which corresponds to
+  # padding.
+  segment_sum = segment_sum.at[0].set(0.0)
+
+  # Compute the number of elements per segment. This is used to calculate the
+  # mean.
+  # num_elements_per_segment shape: [max_segments, D]
+  num_elements_per_segment = jax.ops.segment_sum(
+      jnp.ones_like(segment_ids), segment_ids, num_segments=max_segments)
+
+  #segment_mean shape: [max_segments, D]
+  segment_mean = segment_sum / jnp.maximum(
+      num_elements_per_segment[:, jnp.newaxis], 1)
+  # Sentence embedding contains the average of the input tensor per segment.
+  # The sentence embeddings will contain the same averaged vector for a
+  # particular segment_id.
+  # sentence_embedding shape: [S, D]
+  sentence_embeddings = segment_mean[segment_ids]
+  return sentence_embeddings
+
+
 class TransformerFeedForward(base_layer.BaseLayer):
   """Transformer feedforward layer with residual connection and dropout."""
 
@@ -356,7 +398,8 @@ class TransformerFeedForward(base_layer.BaseLayer):
 
   def __call__(self,
                inputs: JTensor,
-               paddings: Optional[JTensor] = None) -> JTensor:
+               paddings: Optional[JTensor] = None,
+               segment_ids: Optional[JTensor] = None) -> JTensor:
     p = self.hparams
     # Expand paddings to last dim if not None to have shape [batch, time, 1]
     if paddings is not None:
@@ -480,6 +523,13 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
         MoE layer.
       gating_logit_cap:  Cap the absolute values of MoE gating logits by tanh.
         Enabled when a positive value is specified.
+      moe_gating_embedding_level: Specifies the type of MOE gating embedding
+      used.
+      See Section 3.1 https://arxiv.org/pdf/2110.03742.pdf.
+      Options are:
+        (1) "token" -> The gating function uses tokens to route.
+        (2) "sentence" -> The gating function uses the sentence embeddings,
+            calculated by taking the average token representation, to route.
     """
     input_dims: int = 0
     hidden_dims: int = 0
@@ -508,6 +558,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     internal_gshard_variance_scaling_fan_in_init: bool = True
     moe_load_balance_loss_weight: float = 1.0
     gating_logit_cap: float = 0.0
+    moe_gating_embedding_level: str = 'token'
 
   # SPMD partition related params.
   # M - model_dim, for both inputs and outputs
@@ -725,7 +776,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     aux_loss = jnp.array(0.0)
     return combined_output, aux_loss
 
-  def _dispatch_and_combine_expert_outputs(self, inputs, paddings):
+  def _dispatch_and_combine_expert_outputs(self, inputs, paddings, segment_ids):
     """Combine expert outputs using GShard-style dispatch-combine tensors."""
     p = self.hparams
     fprop_dtype = self.fprop_dtype
@@ -760,8 +811,28 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
       reshaped_paddings = reshaped_paddings.astype(fprop_dtype)
     else:
       reshaped_paddings = None
-
-    logits = jnp.einsum('gsm,me->gse', reshaped_inputs, self.theta.gate)
+    if p.moe_gating_embedding_level == 'sentence':
+      if segment_ids is None and paddings is None:
+        sentence_embeddings = jnp.tile(
+            jnp.average(inputs, axis=1, keepdims=True), [1, inputs.shape[1], 1])
+      else:
+        if segment_ids is None:
+          segment_ids = jnp.asarray(1 - paddings, jnp.int32)
+        # It is important that the segment_ids have shape [B, S, D] and are not
+        # reshaped to [G, B*S / G, D] when calculating the sentence embeddings.
+        # The vmap below assumes that it is operating on a batch.
+        sentence_embeddings_fn = jax.vmap(_get_sentence_embeddings, (0, 0), 0)
+        sentence_embeddings = sentence_embeddings_fn(inputs, segment_ids)
+      # Reshape the sentence embeddings, so that it corresponds to sharding
+      # groups.
+      reshaped_sentence_embeddings = sentence_embeddings.reshape(
+          [num_groups, g_len, m_dim])
+      reshaped_sentence_embeddings = self._split(reshaped_sentence_embeddings,
+                                                 ap.gsm)
+      logits = jnp.einsum('gsm,me->gse', reshaped_sentence_embeddings,
+                          self.theta.gate)
+    else:
+      logits = jnp.einsum('gsm,me->gse', reshaped_inputs, self.theta.gate)
 
     # Here and below, we assume num devices equals num groups.
     # TODO(yonghui): Expose some of the options below through params.
@@ -843,12 +914,17 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     combined_output = combined_output.reshape(token_shape + (output_dims,))
     return combined_output, aux_loss
 
-  def __call__(self, inputs: JTensor, paddings: JTensor = None) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: JTensor = None,
+               segment_ids: JTensor = None) -> JTensor:
     """Layer-norm, route, feed-forward, combine, residual.
 
     Args:
       inputs: [batch, seq_len, model].
       paddings: [batch, seq_len], optional when called by extend_step.
+      segment_ids: [batch, seq_len] Optional. Segment_ids is used when
+        moe_gating_embedding_level == 'sentence'.
 
     Returns:
       Tensor of the same shape as inputs.
@@ -876,7 +952,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
           inputs_normalized, paddings)
     else:
       combined_output, aux_loss = self._dispatch_and_combine_expert_outputs(
-          inputs_normalized, paddings)
+          inputs_normalized, paddings, segment_ids)
 
     # Apply padding.
     if paddings is not None:
@@ -1076,7 +1152,7 @@ class Transformer(base_layer.BaseLayer):
       cross_inputs: Optional[JTensor] = None,
       cross_attention_mask: Optional[JTensor] = None,
       segment_pos: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      segment_ids: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
     """Transformer decoder layer.
 
     Args:
@@ -1094,6 +1170,8 @@ class Transformer(base_layer.BaseLayer):
         combined paddings as well as segment maskings.
       segment_pos: A JTensor of shape [B, T]. The position of each token in a
         segment.
+      segment_ids: A JTensor of shape [B, T] specifying which segment each token
+          belongs to.
 
     Returns:
       The fflayer output with shape [B, T, D].

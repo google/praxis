@@ -1314,6 +1314,16 @@ class TransformersTest(test_utils.TestCase):
     # Plumbing test.
     self.assertAllClose(np_outputs, np_outputs, atol=1e-5)
 
+  def test_get_sentence_embeddings(self):
+    inputs = jnp.transpose(
+        jnp.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]], dtype='float32'))
+    segment_ids = segment_ids = jnp.array([0, 1, 1, 2, 2], dtype='int32')
+    sentence_embedding = transformers._get_sentence_embeddings(
+        inputs, segment_ids)
+    self.assertAllClose(
+        sentence_embedding,
+        [[0.0, 0.0], [2.5, 7.5], [2.5, 7.5], [4.5, 9.5], [4.5, 9.5]])
+
 
 class RetroTransformersTest(test_utils.TestCase):
   """Test cases for RETRO Transformer."""
