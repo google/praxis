@@ -269,6 +269,18 @@ class LingvoInputAdaptor(BaseInput):
                        'it must be None.')
     if not hparams.name:
       hparams.name = hparams.input.name
+    if hparams.input is None:
+      raise ValueError('Params of a Lingvo input generator is not set.')
+    if hasattr(hparams.input,
+               'file_random_seed') and (hparams.input.file_random_seed) and (
+                   not hparams.allow_fixed_file_random_seed):
+      raise ValueError(
+          'Input data using fixed non-zero file_random_seed: '
+          f'hparams.input.file_random_seed={hparams.input.file_random_seed}. '
+          'This means each host *might* infeed identical batches. You can set '
+          'hparams.input.file_random_seed = 0, or if certain this is intended, '
+          'suppress this error by setting hparams.allow_fixed_file_random_seed '
+          '= True.')
     super().__init__(hparams)
     self._cluster = copy.deepcopy(cluster_factory.Current())
     # For Lingvo's Cluster context that may impact the behavior of this input
@@ -286,14 +298,6 @@ class LingvoInputAdaptor(BaseInput):
     """Updates file random seed to use different seeds for different hosts."""
     p = self.hparams
     if hasattr(p.input, 'file_random_seed') and p.input.file_random_seed:
-      if not p.allow_fixed_file_random_seed:
-        raise ValueError(
-            'Training data using fixed non-zero file_random_seed: '
-            f'p.input.file_random_seed={p.input.file_random_seed}. '
-            'This means each host *might* infeed identical batches. You can set '
-            'p.input.file_random_seed = 0, or if certain this is intended, '
-            'suppress this error by setting p.allow_fixed_file_random_seed = '
-            'True.')
       # Make sure each host uses a different random seed.
       p.input.file_random_seed += infeed_host_index
 
@@ -479,6 +483,18 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
     self._num_samples = None
     self._dataset = self._get_dataset()
     self._iter = self._dataset.as_numpy_iterator()
+
+  def _update_file_random_seed(self, infeed_host_index: int) -> None:
+    """Updates file random seed.
+
+    This overrides LingvoInputAdaptor._update_file_random_seed where each host
+    is assigned a different file random seed. It does nothing to make sure every
+    host uses the same file random seed in hparams.input.
+
+    Args:
+      infeed_host_index: index of this infeed host.
+    """
+    pass
 
   @property
   def num_samples(self) -> int:

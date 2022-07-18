@@ -86,9 +86,10 @@ class LingvoInput(base_input_generator.BaseInputGeneratorFromFiles):
     inputs, _ = generic_input.GenericInput(
         processor=_process,
         file_pattern=file_pattern,
-        file_random_seed=0,
-        require_sequential_order=True,
-        repeat_count=1,
+        file_random_seed=p.file_random_seed,
+        require_sequential_order=bool(
+            self.cluster.require_sequential_input_order),
+        repeat_count=p.repeat_count,
         file_buffer_size=32,
         file_parallelism=1,
         bucket_upper_bound=[10],
@@ -132,7 +133,11 @@ class InputTest(test_utils.TestCase):
     p.input = LingvoInput.Params()
     p.input.file_pattern = 'tfrecord:' + tmp
     p.input.file_random_seed = 0
+    p.input.repeat_count = 1
     p.reset_for_eval = True
+    # To set require_sequential_input_order to True
+    p.is_training = False
+    p.cluster_do_eval = True
     inp = instantiate(p)
     for i in range(num_batches):
       batch = inp.get_next()
@@ -176,8 +181,12 @@ class InputTest(test_utils.TestCase):
     p.input = LingvoInput.Params()
     p.input.file_pattern = 'tfrecord:' + tmp
     p.input.file_random_seed = 0
+    p.input.repeat_count = 1
     p.batch_size = 1
     p.reset_for_eval = True
+    # To set require_sequential_input_order to True
+    p.is_training = False
+    p.cluster_do_eval = True
     inp = instantiate(p)
     for i in range(num_batches * 2):
       batch = inp.get_next()
@@ -369,10 +378,13 @@ class InputTest(test_utils.TestCase):
         w.write(('%04d' % i).encode('utf-8'))
 
     input_p = LingvoInput.Params().Set(
-        file_pattern='tfrecord:' + tmp, file_random_seed=0)
-
+        file_pattern='tfrecord:' + tmp, file_random_seed=0, repeat_count=1)
+    # Set is_training and cluster_do_eval to get sequential input.
     p = base_input.LingvoEvalAdaptor.HParams(
-        input=input_p, reset_for_eval=True, is_training=False)
+        input=input_p,
+        reset_for_eval=True,
+        is_training=False,
+        cluster_do_eval=True)
     p.batch_size = 3
     inp = instantiate(p)
     batches = []
@@ -390,6 +402,52 @@ class InputTest(test_utils.TestCase):
     inp.reset()
     self.assertArraysEqual(inp.get_next().num,
                            np.array([0, 1, 2], dtype=np.int32))
+
+  def test_lingvo_eval_adaptor_multiple_hosts(self):
+    """Tests LingvoEvalAdaptor with multiple hosts."""
+    tmp = os.path.join(FLAGS.test_tmpdir, 'eval_adaptor')
+    batch_size = 2
+    num_batches = 2
+    num_data = batch_size * num_batches
+    with tf.io.TFRecordWriter(tmp) as w:
+      for i in range(num_data):
+        w.write(('%04d' % i).encode('utf-8'))
+
+    # Use two hosts in this test. Each host randomly shuffle the data instead of
+    # using sequential order to test they generate the data in the same order.
+    # Set file_random_seed to a non-zero value.
+    input_p = LingvoInput.Params().Set(
+        file_pattern='tfrecord:' + tmp, file_random_seed=1, batch_size=1)
+    # Set cluster_do_eval=False to not use sequential input.
+    adaptor_p = base_input.LingvoEvalAdaptor.HParams(
+        input=input_p,
+        num_batches=num_data,
+        reset_for_eval=True,
+        is_training=False,
+        num_infeed_hosts=2,
+        batch_size=3,
+        allow_fixed_file_random_seed=True,
+        cluster_do_eval=False)
+
+    input_params = [
+        adaptor_p.clone().set(infeed_host_index=i)
+        for i in range(adaptor_p.num_infeed_hosts)
+    ]
+    inputs = [instantiate(p) for p in input_params]
+
+    # Expect only one batch for each host.
+    batches = [inp.get_next() for inp in inputs]
+    num_concat = np.concatenate([batch.num for batch in batches])
+    weights_concat = np.concatenate(
+        [batch.eval_sample_weights for batch in batches])
+    # Each host may get input in random order. Remove padded data and sort the
+    # results.
+    self.assertArraysEqual(
+        np.sort(np.extract(weights_concat.astype(np.int32), num_concat)),
+        np.array([0, 1, 2, 3], dtype=np.int32))
+    for i in range(adaptor_p.num_infeed_hosts):
+      with self.assertRaises(StopIteration):
+        inputs[i].get_next()
 
   def test_multi_stream_input(self):
     tmp_1 = os.path.join(FLAGS.test_tmpdir, 'tmptest_1')
@@ -414,12 +472,20 @@ class InputTest(test_utils.TestCase):
     p.input.file_pattern = 'tfrecord:' + tmp_1
     p.input.batch_size = batch_size_1
     p.input.file_random_seed = 0
+    p.input.repeat_count = 1
+    # To set require_sequential_input_order to True
+    p.is_training = False
+    p.cluster_do_eval = True
 
     p2 = base_input.LingvoInputAdaptor.HParams()
     p2.input = LingvoInput.Params()
     p2.input.file_pattern = 'tfrecord:' + tmp_2
     p2.input.batch_size = batch_size_2
     p2.input.file_random_seed = 0
+    p2.input.repeat_count = 1
+    # To set require_sequential_input_order to True
+    p2.is_training = False
+    p2.cluster_do_eval = True
 
     streams = {
         'stream_1': p,
@@ -449,6 +515,10 @@ class InputTest(test_utils.TestCase):
     p.input.file_pattern = 'tfrecord:' + tmp_1
     p.input.batch_size = batch_size_1
     p.input.file_random_seed = 0
+    p.input.repeat_count = 1
+    # To set require_sequential_input_order to True
+    p.is_training = False
+    p.cluster_do_eval = True
 
     streams = {
         'stream_1': p,
