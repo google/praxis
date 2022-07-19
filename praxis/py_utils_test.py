@@ -106,6 +106,30 @@ class PyUtilsTest(test_utils.TestCase):
         'stats1/statistics', 'stats1/preconditioners', 'stats1/exponents'
     ], flattened_nested_names)
 
+  def test_extract_prefixed_keys_using_is_leaf(self):
+
+    class Masked:
+      """Test class."""
+
+    Point = collections.namedtuple('Point', ['x', 'y'])
+
+    inputs = {
+        'a': [1, 2, Point(x=3, y=4), (5, 6, Masked())],
+        'b': ('c', 'd'),
+        'e': Masked()
+    }
+    outputs = py_utils.extract_prefixed_keys_from_nested_map(
+        inputs, is_leaf=lambda x: isinstance(x, Masked))
+    self.assertEqual(
+        {
+            'a': [
+                'a[0]', 'a[1]',
+                Point(x='a[2]/x', y='a[2]/y'), ('a[3][0]', 'a[3][1]', None)
+            ],
+            'b': ('b[0]', 'b[1]'),
+            'e': None,
+        }, outputs)
+
   def test_sync_global_devices(self):
     py_utils.sync_global_devices('sync')
 

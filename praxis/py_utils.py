@@ -19,7 +19,7 @@ import contextlib
 import dataclasses
 import functools
 import re
-from typing import Any, Iterable, Optional, Sequence, Union
+from typing import Any, Callable, Iterable, Optional, Sequence, Union
 
 from absl import flags
 from absl import logging
@@ -159,14 +159,15 @@ def maybe_unreplicate_for_first_shard(data):
   return jax.tree_map(_unreplicate, data)
 
 
-def extract_keys(n, p, key_separator, left_separator, right_separator):
+def extract_keys(n, p, key_separator, left_separator, right_separator, is_leaf):
   """Alias long function call with fixed separators."""
   return extract_prefixed_keys_from_nested_map(
       n,
       p,
       key_separator=key_separator,
       left_separator=left_separator,
-      right_separator=right_separator)
+      right_separator=right_separator,
+      is_leaf=is_leaf)
 
 
 def _handle_dict(
@@ -176,6 +177,7 @@ def _handle_dict(
     left_separator,
     right_separator,
     node_type=None,
+    is_leaf=None,
 ):
   """Handles dictionaries."""
   result = {}
@@ -184,23 +186,37 @@ def _handle_dict(
       path = f'{prefix}{key_separator}{key}'
     else:
       path = key
-    result[key] = extract_keys(value, path, key_separator, left_separator,
-                               right_separator)
+    result[key] = extract_keys(
+        value,
+        path,
+        key_separator,
+        left_separator,
+        right_separator,
+        is_leaf=is_leaf)
   if node_type is not None:
     return node_type(**result)
   else:
     return type(node)(result)
 
 
-def extract_prefixed_keys_from_nested_map(node: Any,
-                                          prefix: str = '',
-                                          key_separator: str = '/',
-                                          left_separator: str = '[',
-                                          right_separator: str = ']') -> Any:
+def extract_prefixed_keys_from_nested_map(
+    node: Any,
+    prefix: str = '',
+    key_separator: str = '/',
+    left_separator: str = '[',
+    right_separator: str = ']',
+    is_leaf: Optional[Callable[[Any], bool]] = None) -> Any:
   """Extracts a NestedMap with the nested prefix keys from its NestedMap node."""
-  if isinstance(node, dict):  # NestedMap inherits from dict.
-    return _handle_dict(node, prefix, key_separator, left_separator,
-                        right_separator)
+  if is_leaf is not None and is_leaf(node):
+    return None
+  elif isinstance(node, dict):  # NestedMap inherits from dict.
+    return _handle_dict(
+        node,
+        prefix,
+        key_separator,
+        left_separator,
+        right_separator,
+        is_leaf=is_leaf)
   # PartitionSpec is subclass of tuple.
   elif isinstance(node, pjit.PartitionSpec):
     return prefix
@@ -209,16 +225,28 @@ def extract_prefixed_keys_from_nested_map(node: Any,
     if hasattr(node, '_fields'):
       if prefix:
         prefix += f'{key_separator}'
-      return type(node)(**{
-          field: extract_keys(
-              getattr(node, field), f'{prefix}{field}', key_separator,
-              left_separator, right_separator) for field in node._fields
-      })
+      out = {}
+      for field in node._fields:
+        out[field] = extract_keys(
+            getattr(node, field),
+            f'{prefix}{field}',
+            key_separator,
+            left_separator,
+            right_separator,
+            is_leaf=is_leaf)
+      return type(node)(**out)
     # Convert back to list or tuple.
-    return type(node)(
-        extract_keys(v, f'{prefix}{left_separator}{i}{right_separator}',
-                     key_separator, left_separator, right_separator)
-        for i, v in enumerate(node))
+    out = []
+    for i, v in enumerate(node):
+      out.append(
+          extract_keys(
+              v,
+              f'{prefix}{left_separator}{i}{right_separator}',
+              key_separator,
+              left_separator,
+              right_separator,
+              is_leaf=is_leaf))
+    return type(node)(out)
   elif (dataclasses.is_dataclass(node) and
         node.__class__ in flax.serialization._STATE_DICT_REGISTRY):  # pylint: disable=protected-access
     if hasattr(node, '__dict__'):
@@ -232,6 +260,7 @@ def extract_prefixed_keys_from_nested_map(node: Any,
         left_separator,
         right_separator,
         node_type=type(node),
+        is_leaf=is_leaf,
     )
   if not prefix:
     return None
