@@ -626,7 +626,7 @@ class VQNgrammer(base_layer.BaseLayer):
     # Create the input id to cluster id cache.
     if p.unigram_vocab_size:
       input_id_to_cluster_id_cache = WeightHParams(
-          shape=[p.unigram_vocab_size], dtype=jnp.int32,
+          shape=[p.unigram_vocab_size, p.num_heads], dtype=jnp.int32,
           init=base_layer.WeightInit.Constant(0))
       self.create_variable('input_id_to_cluster_id_cache',
                            input_id_to_cluster_id_cache,
@@ -675,8 +675,17 @@ class VQNgrammer(base_layer.BaseLayer):
     pair_ids = None
     if p.use_cached_input_ids_to_cluster_ids:
       assert self.hparams.unigram_vocab_size > 0
+      if not self.hparams.unigram_vocab_size:
+        raise ValueError('unigram_vocab_size must be set if using VQ NGrammer'
+                         'with use_cached_input_ids_to_cluster_ids = True.')
+      if input_ids is None:
+        raise ValueError('input_ids must be provided if using VQ NGrammer with'
+                         'use_cached_input_ids_to_cluster_ids = True.')
       cache = self.get_var('input_id_to_cluster_id_cache')
-      cluster_ids = jnp.asarray(cache)[(input_ids,)]
+      cluster_ids_list = []
+      for i in range(p.num_heads):
+        cluster_ids_list.append(cache[:, i][(input_ids,)])
+      cluster_ids = jnp.stack(cluster_ids_list, axis=-1)
     else:
       # Check if `ngram_using_attention_scores` is set to True, then attention
       # scores is not None.
@@ -711,12 +720,13 @@ class VQNgrammer(base_layer.BaseLayer):
       cluster_ids = jnp.argmin(distances, -1)
 
       # Cache the cluster ids for future use.
-      if not self.do_eval and p.unigram_vocab_size:
+      if not self.do_eval and p.unigram_vocab_size and input_ids is not None:
         cache = self.get_var('input_id_to_cluster_id_cache')
         input_ids_flat = jnp.reshape(input_ids, [-1])
-        cluster_ids_flat = jnp.reshape(cluster_ids, [-1])
-        updated_cache = cache.at[input_ids_flat].set(cluster_ids_flat)
-        self.update_var('input_id_to_cluster_id_cache', updated_cache)
+        cluster_ids_flat = jnp.reshape(cluster_ids, [-1, p.num_heads])
+        for i in range(p.num_heads):
+          cache = cache.at[input_ids_flat, i].set(cluster_ids_flat[:, i])
+        self.update_var('input_id_to_cluster_id_cache', cache)
 
     # [B, L, D] or [B, L, N, H].
     output_embs = self.ngram_layer(

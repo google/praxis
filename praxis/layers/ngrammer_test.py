@@ -427,9 +427,9 @@ class NgrammerTest(test_utils.TestCase):
 
   def test_vq_ngrammer_layer_cache(self):
     ngram_emb_dim = 2
-    num_heads = 1
+    num_heads = 2
     num_clusters = 4
-    dim_per_head = 2
+    dim_per_head = 4
     concat_ngrams = True
     use_attention_scores = False
     batch_size = 2
@@ -488,13 +488,15 @@ class NgrammerTest(test_utils.TestCase):
       dists, _ = vq_ngrammer_layer.vq_layer(input_embs)
       cluster_ids = jnp.argmin(dists, -1)
       input_ids_flat = jnp.reshape(input_ids, [-1])
-      cluster_ids_flat = jnp.reshape(cluster_ids, [-1])
+      cluster_ids_flat = jnp.reshape(cluster_ids, [-1, num_heads])
       cache = initial_vars['non_trainable']['input_id_to_cluster_id_cache']
-      updated_cache = cache.at[input_ids_flat].set(cluster_ids_flat)
+      for i in range(num_heads):
+        cache = cache.at[input_ids_flat, i].set(
+            cluster_ids_flat[:, i])
       updated_vars = initial_vars
-      updated_vars['non_trainable']['input_id_to_cluster_id_cache'] = updated_cache
-      ngram_embs = vq_ngrammer_layer(
-          input_ids, input_embs, paddings)
+      updated_vars['non_trainable'][
+          'input_id_to_cluster_id_cache'] = cache
+      ngram_embs = vq_ngrammer_layer(input_ids, input_embs, paddings)
       ngram_embs_cached = vq_ngrammer_layer_cached.apply(
           updated_vars,
           input_ids, input_embs, paddings)
