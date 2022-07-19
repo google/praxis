@@ -112,6 +112,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
+        ":pytypes",
     ],
 )
 

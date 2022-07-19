@@ -357,6 +357,11 @@ class LanguageModel(base_model.BaseModel):
         # Pad to full-sequence length.
         self.lm.transform_decode_state(
             decoder_utils.pad_state_fn(state_padding_size))
+
+      if p.decoder.k > 0 and p.decoder.p:
+        raise ValueError('In decoder hparams, k and p should not be set at the'
+                         ' same time. Currently k is: %s and p is: %s' %
+                         (p.decoder.k, p.decoder.p))
       # XXX not this one
       result = sample_decode.sample_decode(
           self,
@@ -368,6 +373,7 @@ class LanguageModel(base_model.BaseModel):
           seqlen,
           num_samples=p.decoder.num_samples,
           k=p.decoder.k,
+          p=p.decoder.p,
           fprop_for_prefix=p.decoder.fprop_for_prefix,
           temperature=p.decoder.temperature,
           max_prefix_len=max_prefix_len,

@@ -14,11 +14,12 @@
 # limitations under the License.
 
 """HParams for the decoder."""
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from praxis import base_hyperparams
-
+from praxis import pytypes
 BaseHyperParams = base_hyperparams.BaseHyperParams
+JTensor = pytypes.JTensor
 
 
 class DecoderHParams(BaseHyperParams):
@@ -77,8 +78,12 @@ class SampleDecoderHParams(DecoderHParams):
     temperature: Temperature of sampling decoding.
     k: if nonzero, use top-k sampling, only selecting amongthe most likely k
       tokens at each step.
+    p: if not None, use the smallest number of logits whose cumulative sum of
+      probs adds up to (at least) p. Notice that it should not be used with k
+      at the same time.
   """
   num_samples: int = 1
   # TODO(wangtao): supports per-example temperature.
   temperature: float = 1.0
   k: int = 40
+  p: Optional[Union[float, JTensor]] = None
