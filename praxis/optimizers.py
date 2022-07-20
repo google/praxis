@@ -2218,6 +2218,12 @@ class ShardedAdafactor(BaseOptimizer):
     multiply_by_parameter_scale: bool = False
     epsilon2_param_scale_reg: float = 1e-3
 
+  @classmethod
+  def HParamsAdamB(cls) -> ShardedAdafactor.HParams:  # pylint: disable=invalid-name
+    """Convenient method for another commonly used Adam config."""
+    return cls.HParams(
+        beta1=0.9, decay_method='adam', decay_adam=0.98, quantized_dtype='int8')
+
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
     p = self._hparams
