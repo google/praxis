@@ -978,8 +978,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
         'load balancing loss in MoE layers.')
     aux_loss = aux_loss.astype(fprop_dtype)
     aux_loss *= p.moe_load_balance_loss_weight
-    self.add_summary('aux_moe_load_balance_loss_weight', aux_loss)
-    self.add_aux_loss('aux_moe_load_balance_loss_weight', aux_loss)
+    self.add_summary('aux_moe_load_balance_loss', aux_loss)
+    self.add_aux_loss('aux_moe_load_balance_loss', aux_loss)
 
     return out
 
