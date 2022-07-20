@@ -264,7 +264,8 @@ class SpectrumAugmenter(base_layer.BaseLayer):
     """
     lengths = jnp.einsum('bh->b', 1 - paddings).astype(jnp.int32)
 
-    inputs = self._time_mask(inputs, lengths)
-    inputs = self._frequency_mask(inputs)
+    if not self.do_eval:
+      inputs = self._time_mask(inputs, lengths)
+      inputs = self._frequency_mask(inputs)
 
     return inputs, paddings
