@@ -262,9 +262,8 @@ class SpectrumAugmenter(base_layer.BaseLayer):
       new_inputs: A tensor of shape [batch, length, channels].
       paddings: A 0/1 tensor of shape [batch, length].
     """
-    lengths = jnp.einsum('bh->b', 1 - paddings).astype(jnp.int32)
-
     if not self.do_eval:
+      lengths = jnp.einsum('bh->b', 1 - paddings).astype(jnp.int32)
       inputs = self._time_mask(inputs, lengths)
       inputs = self._frequency_mask(inputs)
 
