@@ -1353,6 +1353,13 @@ class Transformer(base_layer.BaseLayer):
     """
     self.self_attention.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
 
+  def right_align_decode_state_with_prefix(
+      self, max_prefix_size: int,
+      right_align_fn: base_layer.DecodeStateTransformFn) -> None:
+    """Right aligns decode state with prefix decode states."""
+    self.self_attention.right_align_decode_state_with_prefix(
+        max_prefix_size, right_align_fn)
+
 
 class StackedTransformer(base_layer.BaseLayer):
   """A stack of Transformer layers."""
@@ -1621,6 +1628,14 @@ class StackedTransformer(base_layer.BaseLayer):
     for layer in self.x_layers:
       layer.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
 
+  def right_align_decode_state_with_prefix(
+      self, max_prefix_size: int,
+      right_align_fn: base_layer.DecodeStateTransformFn) -> None:
+    """Right aligns decode state with prefix decode states."""
+    for layer in self.x_layers:
+      layer.right_align_decode_state_with_prefix(max_prefix_size,
+                                                 right_align_fn)
+
 
 class StackedTransformerRepeated(base_layer.BaseLayer):
   """A StackedTransformer implemented using the generic Repeat."""
@@ -1762,6 +1777,13 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
       suffix_length: The length of the new suffix samples.
     """
     self.repeat_layer.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
+
+  def right_align_decode_state_with_prefix(
+      self, max_prefix_size: int,
+      right_align_fn: base_layer.DecodeStateTransformFn) -> None:
+    """Right aligns decode state with prefix decode states."""
+    self.repeat_layer.right_align_decode_state_with_prefix(
+        max_prefix_size, right_align_fn)
 
 
 class PipelinedTransformer(base_layer.BaseLayer):

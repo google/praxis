@@ -604,6 +604,13 @@ class TransformerLm(base_layer.BaseLayer):
     """
     self.transformer.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
 
+  def right_align_decode_state_with_prefix(
+      self, max_prefix_size: int,
+      right_align_fn: base_layer.DecodeStateTransformFn) -> None:
+    """Right aligns decode state with prefix decode states."""
+    self.transformer.right_align_decode_state_with_prefix(
+        max_prefix_size, right_align_fn)
+
 
 class TransformerEncoderDecoder(base_layer.BaseLayer):
   """Transformer encoder/decoder class.

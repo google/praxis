@@ -503,3 +503,42 @@ class Repeat(base_layer.BaseLayer):
             x_times=p.x_times))
 
     mapped_scan_fn(self.sublayer, None)
+
+  def right_align_decode_state_with_prefix(
+      self, max_prefix_size: int,
+      right_align_fn: base_layer.DecodeStateTransformFn) -> None:
+    """Right aligns decode state with prefix decode states.
+
+    Args:
+      max_prefix_size: Max prefix length of the decode state.
+      right_align_fn: Right align function for decode state.
+    """
+    p = self.hparams
+
+    def body_fn(sub, _):
+      sub.right_align_decode_state_with_prefix(max_prefix_size, right_align_fn)
+      return None, None
+
+    if p.unroll_in_decode:
+      return self._run_unrolled_for_decoding(body_fn, None)
+
+    scan_fn = nn.scan(
+        body_fn,
+        variable_axes=SCAN_VARIABLE_AXES,
+        split_rngs=SCAN_SPLIT_RNGS,
+        length=p.x_times)
+
+    mapped_scan_fn = nn.map_variables(
+        scan_fn,
+        SUMMARIES,
+        mutable=self.is_mutable_collection(SUMMARIES),
+        trans_in_fn=functools.partial(
+            flax_utils.maybe_repack_summary,
+            unpack_summaries=p.unpack_summaries,
+            x_times=p.x_times),
+        trans_out_fn=functools.partial(
+            flax_utils.maybe_unpack_summary,
+            unpack_summaries=p.unpack_summaries,
+            x_times=p.x_times))
+
+    mapped_scan_fn(self.sublayer, None)

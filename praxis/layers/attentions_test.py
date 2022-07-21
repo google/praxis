@@ -16,6 +16,7 @@
 """Tests for Praxis attention layers."""
 
 import functools
+
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -24,6 +25,7 @@ from jax import numpy as jnp
 from lingvo.core import batch_major_attention
 import numpy as np
 from praxis import base_layer
+from praxis import decoder_utils
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import attentions
@@ -1137,6 +1139,117 @@ class AttentionsTest(test_utils.TestCase):
         encoded = jnp.reshape(encoded, (-1, 6) + encoded.shape[1:])
         for sample_id in range(6):
           self.assertAllClose(fprop_out[:, t, :], encoded[:, sample_id])
+
+  def test_right_align_decode_state(self):
+    mdl_dim = 4
+    hidden_dim = 8
+    num_heads = 2
+    test_layer_p = attentions.DotProductAttentionWithLPB.config(
+        name='mh',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        dim_per_head=None)
+    layer = instantiate(test_layer_p)
+    target_batch_size = 3
+    source_max_length = 8
+    prefix_len = 4
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    prefix = query_vec[:, 0:prefix_len, :]
+    key_vec = query_vec
+    value_vec = query_vec
+    atten_mask = attentions.causal_mask(query_vec)
+    prefix_atten_mask = attentions.causal_mask(prefix)
+    suffix_len = 8
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
+      # Updates decode states in fprop.
+      _, attention_states = layer.apply(
+          initial_vars,
+          prefix,
+          prefix,
+          prefix,
+          prefix_atten_mask,
+          method=layer.__call__,
+          mutable=[base_layer.DECODE_CACHE])
+      logging.info('attention_states: %s', attention_states)
+
+      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
+                                                       initial_vars)
+
+      def _set_state(value):
+        """Sets decode state as the value."""
+
+        def set_state_fn(x, batch_dim, time_dim):
+          del x, batch_dim, time_dim
+          return value
+
+        return set_state_fn
+
+      _, attention_states = layer.apply(
+          updated_vars,
+          _set_state(jnp.array([[0, 0, 0, 1], [0, 0, 1, 1]], dtype=jnp.int32)),
+          method=layer.transform_decode_state,
+          mutable=[base_layer.DECODE_CACHE])
+
+      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
+                                                       initial_vars)
+
+      # Second lazy broadcast.
+      _, attention_states = layer.apply(
+          updated_vars,
+          num_suffix_samples=2,
+          suffix_length=suffix_len,
+          method=layer.lazy_broadcast_prefix,
+          mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
+      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
+                                                       initial_vars)
+
+      _, attention_states = layer.apply(
+          updated_vars,
+          _set_state(jnp.ones([2, 2, 8], dtype=jnp.int32) * 2),
+          method=layer.transform_decode_state,
+          mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
+
+      logging.info('attention_states: %s', attention_states)
+      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
+                                                       initial_vars)
+
+      max_prefix_len = 4
+      decode_lengths = np.array([2, 3, 4, 5])
+      prefix_lengths = np.array([1, 1, 2, 2])
+
+      # Before transform, prefix_decode_state has:
+      # [[0, 0, 0, 1],
+      #  [0, 0, 1, 1]]
+      # decode state has:
+      # [[[2, 2, 2, 2, 2, 2, 2, 2],
+      #   [2, 2, 2, 2, 2, 2, 2, 2]],
+      #  [[2, 2, 2, 2, 2, 2, 2, 2],
+      #   [2, 2, 2, 2, 2, 2, 2, 2]]]
+      _, attention_states = layer.apply(
+          updated_vars,
+          max_prefix_len,
+          decoder_utils.right_align_state_fn(max_prefix_len + decode_lengths -
+                                             prefix_lengths),
+          method=layer.right_align_decode_state_with_prefix,
+          mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
+
+      logging.info('attention_states: %s', attention_states)
+      self.assertArraysEqual(
+          attention_states[base_layer.DECODE_CACHE]['key_state'],
+          np.array([[[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2],
+                     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 2]],
+                    [[0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2],
+                     [0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 2]]], jnp.int32))
+      self.assertArraysEqual(
+          attention_states[base_layer.PREFIX_DECODE_CACHE]['key_state_0_pfx'],
+          np.array([[0], [0]], jnp.int32))
 
   def test_no_attention_decode_state(self):
     mdl_dim = 16

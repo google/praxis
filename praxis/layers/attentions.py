@@ -16,6 +16,7 @@
 """Attention layers."""
 
 import functools
+import math
 import string
 from typing import Callable, Dict, Optional, Sequence, Tuple, Union
 
@@ -1627,6 +1628,14 @@ class DotProductAttention(base_layer.BaseLayer):
         'lazy_broadcast_prefix not implemented, use DotProductAttentionWithLPB '
         'instead.')
 
+  def right_align_decode_state_with_prefix(
+      self, max_prefix_size: int,
+      right_align_fn: base_layer.DecodeStateTransformFn) -> None:
+    """Right aligns decode state with prefix decode states."""
+    raise NotImplementedError(
+        'right_align_decode_state_with_prefix not implemented, use DotProductAttentionWithLPB '
+        'instead.')
+
 
 # FnOnDecodeStateChunk is used for lazy prefix broadcast. See comments in
 # DotProductAttentionWithLPB.
@@ -1696,6 +1705,17 @@ class DotProductAttentionWithLPB(DotProductAttention):
     blnh = [blnh[0]] + [None] * (x.ndim - 4) + list(blnh[1:])
     return base_layer.maybe_shard(x, blnh, p.mesh_axis_names)
 
+  def transform_decode_state(self,
+                             transform_fn: base_layer.DecodeStateTransformFn):
+    """Transforms all decode state variables based on transform_fn."""
+    batch_dim = 0
+    time_dim = self._broadcast_prefixes_count + 1
+    for name, state in self.variables[base_layer.DECODE_CACHE].items():
+      if not isinstance(state, JTensor):
+        continue
+      new_state = transform_fn(state, batch_dim, time_dim)
+      self.update_decode_state(name, new_state)
+
   def lazy_broadcast_prefix(self, num_suffix_samples: int,
                             suffix_length: int) -> None:
     """Performs lazy prefix broadcast on the decoding states.
@@ -1720,6 +1740,50 @@ class DotProductAttentionWithLPB(DotProductAttention):
       suffix_shape = state.shape[:prev_pfx_count + 1] + (
           num_suffix_samples, suffix_length) + state.shape[prev_pfx_count + 2:]
       self.update_decode_state(name, jnp.zeros(suffix_shape, dtype=state.dtype))
+
+  def right_align_decode_state_with_prefix(
+      self, max_prefix_size: int,
+      right_align_fn: base_layer.DecodeStateTransformFn) -> None:
+    """Right aligns decode state with prefix decode states.
+
+    Args:
+      max_prefix_size: Max prefix length of the decode state.
+      right_align_fn: Right align function for decode state.
+    """
+    batch_dim = 0
+    time_dim = 1
+    prev_pfx_count = self._broadcast_prefixes_count
+    # Only one prefix decode state is supported at the moment.
+    assert prev_pfx_count == 1
+    for name, state in self.variables[base_layer.DECODE_CACHE].items():
+      if not isinstance(state, JTensor):
+        continue
+      # Left concat decode state with prefixes.
+      new_state = self._left_concat_decode_state(name, max_prefix_size)
+
+      # Merge batch dims.
+      state_shape = list(new_state.shape)
+      final_state_shape = state_shape.copy()
+      state_shape[batch_dim] = math.prod(state_shape[:prev_pfx_count + 1])
+      state_shape.pop(prev_pfx_count)
+      new_state = jnp.reshape(new_state, state_shape)
+      # Right align decode state.
+      new_state = right_align_fn(new_state, batch_dim, time_dim)
+      # Reshape back.
+      new_state = jnp.reshape(new_state, final_state_shape)
+
+      self.update_decode_state(name, new_state)
+
+      # Set seq_len to 1 in prefix decode state.
+      prefix_name = f'{name}_{prev_pfx_count - 1}_pfx'
+      assert self.is_mutable_collection(PREFIX_DECODE_CACHE)
+      prefix_state = self.get_variable(PREFIX_DECODE_CACHE, prefix_name)
+      prefix_state_shape = list(prefix_state.shape)
+      prefix_state_shape[batch_dim + 1] = 1
+      # Pass all 0s to the prefix state.
+      new_prefix_state = jnp.zeros(prefix_state_shape, prefix_state.dtype)
+
+      self.put_variable(PREFIX_DECODE_CACHE, prefix_name, new_prefix_state)
 
   @property
   def _broadcast_prefixes_count(self):
@@ -2046,8 +2110,8 @@ class DotProductAttentionWithLPB(DotProductAttention):
                 base_layer.DECODE_CACHE: None,
                 base_layer.PREFIX_DECODE_CACHE: None,
             },
-            in_axes=1,
-            out_axes=1,
+            in_axes=i + 1,
+            out_axes=i + 1,
             split_rngs={
                 base_layer.PARAMS: True,
                 base_layer.RANDOM: True

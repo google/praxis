@@ -188,7 +188,9 @@ class LanguageModel(base_model.BaseModel):
 
   def decode(
       self,
-      input_batch: NestedMap) -> Tuple[WeightedScalars, NestedMap, Metrics]:
+      input_batch: NestedMap,
+      return_result_for_suffix_score=False
+  ) -> Tuple[WeightedScalars, NestedMap, Metrics]:
     """Greedy decodes the input_batch.
 
     Args:
@@ -198,6 +200,7 @@ class LanguageModel(base_model.BaseModel):
         suffix_ids with shape [num_suffix, suffix_length]. Optional
         `.suffix_lengths` of shape [num_suffix] indicating the lengths of the
         suffixes.
+      return_result_for_suffix_score: Whether return results for suffix score.
 
     Returns:
       - weighted_scalars, a NestedMap containing str keys and (metrics, weight)
@@ -331,18 +334,6 @@ class LanguageModel(base_model.BaseModel):
                                        fprop_input_ids, fprop_input_paddings,
                                        p.decoder)
     elif isinstance(p.decoder, SampleDecoderHParams):
-      if 'suffix' in input_batch and 'suffix_lengths' in input_batch:
-        suffix = input_batch.suffix
-        suffix_lengths = input_batch.suffix_lengths
-        if not p.decoder.lazy_prefix_broadcast:
-          suffix = None
-          suffix_lengths = None
-          logging.info(
-              'Suffix scoring is only supported when lazy_prefix_broadcast '
-              'is True')
-      else:
-        suffix = None
-        suffix_lengths = None
       # Init cache states, batch size needs to multiply by num_samples.
       self.lm(
           fprop_input_ids,
@@ -380,8 +371,7 @@ class LanguageModel(base_model.BaseModel):
           max_decode_steps=p.decoder.max_decode_steps,
           prefix_lengths=prefix_lengths,
           eos_id=p.decoder.eos_id,
-          suffix_ids=suffix,
-          suffix_lengths=suffix_lengths,
+          return_result_for_suffix_score=return_result_for_suffix_score,
       )
     elif isinstance(p.decoder, GreedyDecoderHParams):
       # Init cache states.

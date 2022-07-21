@@ -655,6 +655,7 @@ py_strict_test(
         # Implicit lingvo.core.batch_major_attention dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:decoder_utils",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.

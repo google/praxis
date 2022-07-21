@@ -484,6 +484,9 @@ class BaseHyperParams:
     """Copies fields from source."""
     fields = self.__dataclass_fields__  # pytype: disable=attribute-error
     for name in fields:
+      # Skip the field in self but not in source.
+      if not hasattr(source, name) and hasattr(self, name):
+        continue
       if not hasattr(source, name):
         raise ValueError(f'Copying incompatible HParams: {name} not in source')
       if name == 'cls':
