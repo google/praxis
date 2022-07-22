@@ -84,6 +84,8 @@ def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
                                       a_egcm):
   """Set sharding params for the stacked transformer layer."""
   stacked_p = stacked_transformer_p
+  if stacked_p.cls == transformers.PipelinedTransformer:
+    stacked_p = stacked_p.pipeline_stage
   if stacked_p.cls in (transformers.StackedTransformerRepeated,
                        transformers.StackedRetroTransformerRepeated):
     stacked_p = stacked_p.block
@@ -852,6 +854,11 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
                 stacked_transformer_tpl.block.model_dims == model_dims)
         stacked_transformer_tpl.block.model_dims = model_dims
         stacked_transformer_tpl.block.packed_input = packed_input
+      elif stacked_transformer_tpl.cls == transformers.PipelinedTransformer:
+        assert (stacked_transformer_tpl.pipeline_stage.model_dims == 0 or
+                stacked_transformer_tpl.pipeline_stage.model_dims == model_dims)
+        stacked_transformer_tpl.pipeline_stage.model_dims = model_dims
+        stacked_transformer_tpl.pipeline_stage.packed_input = packed_input
       else:
         raise ValueError(f'{stacked_transformer_tpl.cls} not supported.')
 
@@ -898,6 +905,10 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       mask_self_attention = encoder_params.block.mask_self_attention
       encoder_num_layers = encoder_params.block.num_layers
       stacked_encoder_block_params = encoder_params.block
+    elif encoder_params.cls == transformers.PipelinedTransformer:
+      mask_self_attention = encoder_params.pipeline_stage.mask_self_attention
+      encoder_num_layers = encoder_params.pipeline_stage.num_layers
+      stacked_encoder_block_params = encoder_params.pipeline_stage
     else:
       raise ValueError('Unknown encoder stack.')
 
@@ -968,6 +979,10 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       mask_self_attention = decoder_hparams.block.mask_self_attention
       num_decoder_layers = decoder_hparams.block.num_layers
       stacked_decoder_block_params = decoder_hparams.block
+    elif decoder_hparams.cls == transformers.PipelinedTransformer:
+      mask_self_attention = decoder_hparams.pipeline_stage.mask_self_attention
+      num_decoder_layers = decoder_hparams.pipeline_stage.num_layers
+      stacked_decoder_block_params = decoder_hparams.pipeline_stage
     else:
       raise ValueError('Unknown decoder stack.')
 

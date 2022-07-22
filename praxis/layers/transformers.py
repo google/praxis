@@ -1801,6 +1801,9 @@ class PipelinedTransformer(base_layer.BaseLayer):
       pipeline_microbatch_size: Size of each pipeline microbatch.
       stream_io: Whether to enable input/output streaming across stages. This is
         typically useful for DCN.
+      pipeline_broadcast_inputs: If true, broadcast inputs (shared between
+        all stages instead of being computed by the previous stage) will be
+        passed stage-by-stage instead of being replicated.
     """
     pipeline_stage: BaseHParams = sub_config_field(StackedTransformer.HParams)
     circular_repeat: int = 1
@@ -1808,6 +1811,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
     num_pipeline_microbatches: Optional[int] = None
     pipeline_microbatch_size: Optional[int] = None
     stream_io: bool = False
+    pipeline_broadcast_inputs: bool = False
 
   class WeightShardingHParams(BaseWtShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -1838,7 +1842,8 @@ class PipelinedTransformer(base_layer.BaseLayer):
           num_microbatches=p.num_pipeline_microbatches,
           microbatch_size=p.pipeline_microbatch_size,
           unpack_summaries=True,
-          stream_io=p.stream_io)
+          stream_io=p.stream_io,
+          pipeline_broadcast_inputs=p.pipeline_broadcast_inputs)
     else:
       pipeline_params = pipeline.CircularLayerwiseShardablePipelined.HParams(
           name=p.name,
@@ -1848,7 +1853,8 @@ class PipelinedTransformer(base_layer.BaseLayer):
           num_microbatches=p.num_pipeline_microbatches,
           microbatch_size=p.pipeline_microbatch_size,
           unpack_summaries=True,
-          stream_io=p.stream_io)
+          stream_io=p.stream_io,
+          pipeline_broadcast_inputs=p.pipeline_broadcast_inputs)
 
     pipeline_params.weight_split_dims_mapping.stages = (
         p.weight_split_dims_mapping.stages)

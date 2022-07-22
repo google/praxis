@@ -125,6 +125,9 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       polluting_bubbles_with_nan: If True, inputs to bubble iterations will be
         filled with NaNs instead of zeros. This is for testing purpose, and the
         value should not affect correctness.
+      pipeline_broadcast_inputs: If true, broadcast inputs (shared between
+        all stages instead of being computed by the previous stage) will be
+        passed stage-by-stage instead of being replicated.
     """
     num_stages: int = 1
     single_stage_body: Optional[BaseHParams] = None
@@ -133,6 +136,8 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     unpack_summaries: bool = True
     stream_io: bool = False
     polluting_bubbles_with_nan: bool = False
+    disable_xmap: bool = False
+    pipeline_broadcast_inputs: bool = False
 
   class WeightShardingHParams(BaseWtShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -233,7 +238,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       return jnp.squeeze(
           jax.lax.dynamic_slice_in_dim(x, i, 1, ids_dim), ids_dim)
 
-    if p.mesh_axis_names is not None:
+    if not p.disable_xmap and p.mesh_axis_names is not None:
       # When the stage dim is partitioned, we use xmap (with manual sharding
       # implementation) to make sure it's trivially partitioned on the stage
       # dim and work around some potential optimization problems in XLA.
@@ -473,7 +478,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       def annotate(x):
         unconstrained_dims = list(range(1, x.ndim))
         dims_mapping = (
-            p.weight_split_dims_mapping.stages + [None] * (x.ndim - 1))
+            list(p.weight_split_dims_mapping.stages) + [None] * (x.ndim - 1))
         return base_layer.maybe_shard(x, dims_mapping, p.mesh_axis_names,
                                       unconstrained_dims)
 
@@ -511,7 +516,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         reshaped = jnp.reshape(x, (L, num_microbatches // L) + x.shape[1:])
         return base_layer.maybe_shard(
             reshaped,
-            p.weight_split_dims_mapping.stages + [None] * x.ndim,
+            list(p.weight_split_dims_mapping.stages) + [None] * x.ndim,
             p.mesh_axis_names,
             unconstrained_dims=list(range(1, reshaped.ndim)))
 
@@ -655,6 +660,14 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       broadcast_inputs = jax.tree_map(_to_microbatches, broadcast_inputs)
       broadcast_kwargs = jax.tree_map(_to_microbatches, broadcast_kwargs)
 
+    if p.pipeline_broadcast_inputs:
+      inputs = py_utils.NestedMap(
+          inputs=inputs,
+          broadcast_inputs=broadcast_inputs,
+          broadcast_kwargs=broadcast_kwargs)
+      broadcast_inputs = []
+      broadcast_kwargs = {}
+
     total_iterations = self.num_total_iterations(num_microbatches)
 
     if p.stream_io:
@@ -689,12 +702,6 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       # Different stages need args from different microbatches.
       microbatch_ids = jnp.maximum(loop_iter - jnp.arange(L), 0)
       microbatch_ids = microbatch_ids % num_microbatches
-      per_stage_args = jax.tree_map(
-          functools.partial(self._xmap_gather, ids=microbatch_ids, ids_dim=0),
-          broadcast_inputs)
-      per_stage_kwargs = jax.tree_map(
-          functools.partial(self._xmap_gather, ids=microbatch_ids, ids_dim=0),
-          broadcast_kwargs)
 
       # Bring in the next microbatch.
       def _select_state_or_input(x, s):
@@ -716,18 +723,37 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         stages_in = jax.tree_map(_fill_nan_for_bubbles, stages_in)
 
       if self._should_checkpoint_stages_in():
-        stages_in = checkpoint_name(stages_in, 'iteration_input')
+        stages_in = jax.tree_map(
+            lambda x: checkpoint_name(x, 'iteration_input'), stages_in)
       stages_in = jax.tree_map(_select_state_or_input, stages_in, in_state)
 
+      if p.pipeline_broadcast_inputs:
+        per_stage_args = stages_in.broadcast_inputs
+        per_stage_kwargs = stages_in.broadcast_kwargs
+        stages_in = stages_in.inputs
+      else:
+        per_stage_args = jax.tree_map(
+            functools.partial(self._xmap_gather, ids=microbatch_ids, ids_dim=0),
+            broadcast_inputs)
+        per_stage_kwargs = jax.tree_map(
+            functools.partial(self._xmap_gather, ids=microbatch_ids, ids_dim=0),
+            broadcast_kwargs)
       # Run through pipeline body.
       out_state = model.body_fprop(loop_iter, num_microbatches, stages_in,
                                    *per_stage_args, **per_stage_kwargs)
+      y_out = out_state
       py_utils.assert_same_shape_and_dtype(stages_in, out_state)
+      if p.pipeline_broadcast_inputs:
+        out_state = py_utils.NestedMap(
+            inputs=out_state,
+            broadcast_inputs=per_stage_args,
+            broadcast_kwargs=per_stage_kwargs,
+        )
       new_carry_data = self._get_new_loop_state(loop_iter, num_microbatches,
                                                 out_state, carry.data)
 
       # Accumulator saves out_state for final output retrieval.
-      ys = NestedMap(data=out_state if not p.stream_io else None)
+      ys = NestedMap(data=y_out if not p.stream_io else None)
       carry = NestedMap(data=new_carry_data, loop_iter=loop_iter + 1)
       return carry, ys
 
@@ -848,7 +874,10 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
               [x[:, first_last_offset:], x[:, :first_last_offset]], axis=1)
         return jnp.reshape(x, (num_microbatches,) + x.shape[2:])
 
-      output = jax.tree_map(_extract_out, out.data.stream)
+      if p.pipeline_broadcast_inputs:
+        output = jax.tree_map(_extract_out, out.data.stream.inputs)
+      else:
+        output = jax.tree_map(_extract_out, out.data.stream)
 
     if needs_microbatching:
 
