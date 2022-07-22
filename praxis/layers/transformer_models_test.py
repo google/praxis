@@ -563,8 +563,11 @@ class TransformerModelsTest(test_utils.TestCase):
             decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits, atol=2e-6)
 
-  @parameterized.parameters('top2', 'dense_top2', 'expert_choice')
-  def test_glam_unitransformer_fprop(self, gating_func):
+  @parameterized.parameters(
+      itertools.product(['top2', 'dense_top2', 'expert_choice'],
+                        ['token', 'sentence']))
+  def test_glam_unitransformer_fprop(self, gating_func,
+                                     moe_gating_embedding_level):
     batch = 2
     length = 3
     d_model = 6
@@ -590,6 +593,7 @@ class TransformerModelsTest(test_utils.TestCase):
         moe_load_balance_loss_weight=0.01,
         z_loss_weight=1e-4,
         moe_gating_func=gating_func,
+        moe_gating_embedding_level=moe_gating_embedding_level,
         c_dim=c_dim,
         e_dim=e_dim)
     jax_layer = instantiate(jax_p)

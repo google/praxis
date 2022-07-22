@@ -31,6 +31,7 @@ def GlamStackedTransformerHParams(
     name='transformer',
     moe=False,
     moe_hidden_dim=None,
+    moe_gating_embedding_level='token',
     ffn_activation_cls=activations.GELU,
     use_gated_activation=True,
     mask_self_attention=True,
@@ -67,6 +68,8 @@ def GlamStackedTransformerHParams(
     name: Name of the this layer
     moe: If this is a moe block or not.
     moe_hidden_dim: hidden dimension of MoE layer.
+    moe_gating_embedding_level: Specifies the type of MOE gating embedding
+      used.
     ffn_activation_cls: Activation function class used in the ffn layer.
     use_gated_activation: Whether to use gated activation in the ffn layer or
       not.
@@ -154,6 +157,7 @@ def GlamStackedTransformerHParams(
   moe_p.internal_gshard_variance_scaling_fan_in_init = True
   moe_p.moe_load_balance_loss_weight = moe_load_balance_loss_weight
   moe_p.gating_func = moe_gating_func
+  moe_p.moe_gating_embedding_level = moe_gating_embedding_level
   return p
 
 
@@ -167,6 +171,7 @@ def GlamUniTransformerLmHParams(
     name='transformer',
     moe=False,
     moe_hidden_dim=None,
+    moe_gating_embedding_level='token',
     ffn_activation_cls=activations.GELU,
     use_gated_activation=True,
     atten_logit_cap=0.0,
@@ -209,6 +214,8 @@ def GlamUniTransformerLmHParams(
     name: Name of the this layer
     moe: If this is a moe block or not.
     moe_hidden_dim: hidden dimension of MoE layer.
+    moe_gating_embedding_level: Specifies the type of MOE gating embedding
+      used.
     ffn_activation_cls: Activation function class used in the ffn layer.
     use_gated_activation: Whether to use gated activation in the ffn layer or
       not.
@@ -276,7 +283,9 @@ def GlamUniTransformerLmHParams(
       capacity_factor=capacity_factor,
       e_dim=e_dim,
       combine_qkv=combine_qkv,
-      bidirectional=bidirectional)
+      bidirectional=bidirectional,
+      moe_gating_embedding_level=moe_gating_embedding_level,
+  )
 
   num_blocks = num_transformer_layers // 2 if moe else num_transformer_layers
 

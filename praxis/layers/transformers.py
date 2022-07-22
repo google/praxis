@@ -737,15 +737,25 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
       theta_wo = jnp.concatenate(theta_wos, 2)
     return theta_wi, theta_wo
 
-  def _combine_top2_expert_outputs(self, inputs, paddings):
+  def _combine_top2_expert_outputs(self, inputs, paddings, segment_ids):
     """Combine outputs from top 2 experts directly."""
+    p = self.hparams
     fprop_dtype = self.fprop_dtype
     ap = self.hparams.activation_split_dims_mapping
 
     theta_wi, theta_wo = self._get_weights()
-    del paddings
-
-    logits = jnp.einsum('gsm,me->gse', inputs, self.theta.gate)
+    if p.moe_gating_embedding_level == 'sentence':
+      if segment_ids is None and paddings is None:
+        sentence_embeddings = jnp.tile(
+            jnp.average(inputs, axis=1, keepdims=True), [1, inputs.shape[1], 1])
+      else:
+        if segment_ids is None:
+          segment_ids = jnp.asarray(1 - paddings, jnp.int32)
+        sentence_embeddings_fn = jax.vmap(_get_sentence_embeddings, (0, 0), 0)
+        sentence_embeddings = sentence_embeddings_fn(inputs, segment_ids)
+      logits = jnp.einsum('gsm,me->gse', sentence_embeddings, self.theta.gate)
+    else:
+      logits = jnp.einsum('gsm,me->gse', inputs, self.theta.gate)
     # gsm -> gse tensor
     raw_gates = jax.nn.softmax(logits.astype(jnp.float32), axis=-1)
     if raw_gates.dtype != fprop_dtype:
@@ -949,7 +959,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
 
     if p.gating_func == 'dense_top2':
       combined_output, aux_loss = self._combine_top2_expert_outputs(
-          inputs_normalized, paddings)
+          inputs_normalized, paddings, segment_ids)
     else:
       combined_output, aux_loss = self._dispatch_and_combine_expert_outputs(
           inputs_normalized, paddings, segment_ids)
