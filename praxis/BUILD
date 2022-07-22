@@ -54,6 +54,7 @@ pytype_strict_library(
         ":py_utils",
         ":pytypes",
         # Implicit absl.logging dependency.
+        # Implicit jax dependency.
         # Implicit lingvo.core.cluster_factory dependency.
         # Implicit lingvo.core.datasource dependency.
         # Implicit numpy dependency.

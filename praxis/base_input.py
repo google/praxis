@@ -17,11 +17,13 @@
 
 from __future__ import annotations
 
+import abc
 import copy
 import re
 from typing import Any, Callable, Dict, Iterable, Optional, Sequence
 
 from absl import logging
+import jax
 from lingvo.core import cluster_factory
 from lingvo.core import datasource
 import numpy as np
@@ -33,6 +35,7 @@ import tensorflow.compat.v2 as tf
 NestedMap = py_utils.NestedMap
 NestedJTensor = pytypes.NestedJTensor
 Nested = pytypes.Nested
+NestedShapeDtypeStruct = pytypes.NestedShapeDtypeStruct
 instantiate = base_hyperparams.instantiate
 
 
@@ -649,3 +652,32 @@ class MultiStreamInput(BaseInput):
     if stream is None:
       stream = self.hparams.default_stream
     return self._input_streams[stream].ids_to_strings(ids, lengths, key)
+
+
+class BaseInputSpecsProvider(
+    base_hyperparams.BaseParameterizable, metaclass=abc.ABCMeta):
+  """Base class to provide input specs for model initialization.
+
+  This helper class is added for shape inference support.
+  """
+
+  @abc.abstractmethod
+  def get_input_specs(self) -> NestedShapeDtypeStruct:
+    """Returns example input specs for model initialization."""
+
+
+class DatasetInputSpecsProvider(BaseInputSpecsProvider):
+  """Class to provide input specs from a dataset for model initialization."""
+
+  class HParams(BaseInputSpecsProvider.HParams):
+    """Hyper-parameters for this parameterizable component."""
+    input_p: Optional[BaseInput.HParams] = None
+
+  def get_input_specs(self) -> NestedShapeDtypeStruct:
+    """Returns example input specs from the input pipeline for model init."""
+    # Note that this re-instantiate the input pipeline every time
+    # `.get_input_specs()` is called. In practice, we typically call this
+    # method only once at model initialization time.
+    input_pipeline = instantiate(self.hparams.input_p)
+    return jax.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
+                        input_pipeline.get_next_padded())
