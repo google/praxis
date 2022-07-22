@@ -155,11 +155,16 @@ class Retro(transformer_models.TransformerEncoderDecoder):
     neighbors = self.retriever(chunk, chunk_paddings, p.num_neighbors)
     return jnp.reshape(neighbors, [-1, p.neighbor_length])
 
-  def _encode_neighbors(self, inputs: JTensor):
+  def _encode_neighbors(self,
+                        inputs: JTensor,
+                        neighbors: Optional[JTensor] = None):
     """Retrieve neighbors for inputs, then encode each retrieved chunks.
 
     Args:
       inputs: A JTensor of shape [batch, length], input ids.
+      neighbors: If not None, a JTensor of neighbor token ids for the input
+        chunks with shape [batch, num_chunks, num_neighbors, chunk_length]. If
+        None, neighbors are assumed to be extracted online.
 
     Returns:
       A tuple of chunk encodings and associated paddings.
@@ -169,10 +174,19 @@ class Retro(transformer_models.TransformerEncoderDecoder):
     num_chunks = self._num_chunks(input_length)
     # Get retrieved examples.
     input_chunks, chunk_paddings = self._chunk_inputs(inputs)
-    # [batch*num_chunks*num_neighbors, neighbor_length]
-    chunk_neighbors = self._retrieve_neighbors(input_chunks, chunk_paddings)
+
+    if neighbors is None:
+      # Retrieve neighbors on-the-fly.
+      # [batch*num_chunks*num_neighbors, neighbor_length]
+      chunk_neighbors = self._retrieve_neighbors(input_chunks, chunk_paddings)
+    else:
+      base_layer.assert_has_shape(
+          neighbors, [batch, num_chunks, p.num_neighbors, p.neighbor_length])
+      chunk_neighbors = jnp.reshape(
+          neighbors, [batch * num_chunks * p.num_neighbors, p.neighbor_length])
     # TODO(yuancao): Handle paddings for neighbors.
     neighbor_paddings = jnp.zeros_like(chunk_neighbors, dtype=self.fprop_dtype)
+
     # [batch*num_chunks*num_neighbors, neighbor_length, dim]
     neighbor_encodings = self.encode(chunk_neighbors, neighbor_paddings)
     neighbor_encodings = jnp.reshape(
@@ -219,6 +233,7 @@ class Retro(transformer_models.TransformerEncoderDecoder):
                segment_ids: Optional[JTensor] = None,
                segment_pos: Optional[JTensor] = None,
                causal_attention_mask: Optional[JTensor] = None,
+               neighbors: Optional[JTensor] = None,
                start_time_step: int = 0) -> NestedMap:
     """Computes xent loss given the language model inputs.
 
@@ -237,6 +252,9 @@ class Retro(transformer_models.TransformerEncoderDecoder):
       causal_attention_mask: A JTensor of shape [B, T] where 1 indicates a token
         position with causal attention and 0 indicates bidirectional attention.
         This overrides part of the causal mask.
+      neighbors: If not None, a JTensor of neighbor token ids for the input
+        chunks with shape [batch, num_chunks, num_neighbors, chunk_length]. If
+        None, neighbors are assumed to be extracted online.
       start_time_step: Decode extend_step start time step. When decoding after
         prefix, start_time_step will be prefix_len - 1.
 
@@ -246,7 +264,8 @@ class Retro(transformer_models.TransformerEncoderDecoder):
       addition, per_sequence_xent is added which equal to the sum of xent loss
       for tokens in a sequence.
     """
-    neighbor_encodings, neighbor_paddings = self._encode_neighbors(inputs)
+    neighbor_encodings, neighbor_paddings = self._encode_neighbors(
+        inputs, neighbors)
     output = self._decode(inputs, paddings, neighbor_encodings,
                           neighbor_paddings)
     return self.compute_loss(output, labels)
