@@ -173,7 +173,7 @@ def top2_gating_on_logits(paddings,
 
   raw_gates = jax.nn.softmax(logits, axis=-1)  # along E dim
 
-  if capacity_factor is not None:
+  if capacity_factor:
     # Determine expert capacity automatically depending on the input size
     group_size_dim = logits.shape[1]
     auto_expert_capacity = int(group_size_dim * capacity_factor / experts_dim)
