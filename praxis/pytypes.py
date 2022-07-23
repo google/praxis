@@ -28,7 +28,7 @@ PRNGKey = JTensor
 JTensorOrPartitionSpec = Union[JTensor, pjit.PartitionSpec]
 NpTensor = np.ndarray
 SummaryDict = Union[py_utils.NestedMap, Dict[str, JTensor]]
-PyTreeDef = type(jax.tree_structure(None))
+PyTreeDef = type(jax.tree_util.tree_structure(None))
 
 T = TypeVar('T')
 Nested = Union[T, Tuple[Any, ...], List[Any], Dict[str, Any],

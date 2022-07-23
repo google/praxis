@@ -53,7 +53,7 @@ class PyUtilsTest(test_utils.TestCase):
         step=pjit.PartitionSpec(), mdl_vars=w_sepc, opt_states={})
     nested_names = py_utils.extract_prefixed_keys_from_nested_map(
         train_state_partition_specs)
-    flattened_names, _ = jax.tree_flatten(nested_names)
+    flattened_names, _ = jax.tree_util.tree_flatten(nested_names)
     self.assertListEqual(['step', 'mdl_vars/w'], flattened_names)
 
   def test_extract_prefixed_keys_from_nested_map(self):
@@ -99,7 +99,7 @@ class PyUtilsTest(test_utils.TestCase):
 
     nested_data = py_utils.NestedMap(stats0=stats0, stats1=stats1)
     nested_names = py_utils.extract_prefixed_keys_from_nested_map(nested_data)
-    flattened_nested_names, _ = jax.tree_flatten(nested_names)
+    flattened_nested_names, _ = jax.tree_util.tree_flatten(nested_names)
 
     self.assertListEqual([
         'stats0/statistics', 'stats0/preconditioners', 'stats0/exponents',
@@ -225,11 +225,13 @@ class PyUtilsTest(test_utils.TestCase):
       return np_module.concatenate((x_batch, y_batch), axis=batch_axis)
 
     for other_tree in flat_trees[1:]:
-      merged_tree = jax.tree_map(
-          _concat_tree_with_batch, merged_tree, other_tree)
+      merged_tree = jax.tree_map(_concat_tree_with_batch, merged_tree,
+                                 other_tree)
 
     # Check all leaves are element-wise equal
-    for l1, l2 in zip(jax.tree_leaves(tree), jax.tree_leaves(merged_tree)):
+    for l1, l2 in zip(
+        jax.tree_util.tree_leaves(tree),
+        jax.tree_util.tree_leaves(merged_tree)):
       self.assertArraysEqual(l1, l2)
 
 

@@ -145,7 +145,7 @@ def _parse_var_param_repeat_prefix_key(
 def group_by_repeat_prefix(variables: NestedMap,
                            var_hparams: NestedHParams) -> NestedMap:
   """Groups variables based on prefix keys."""
-  var_hparams_flat, _ = jax.tree_flatten(var_hparams)
+  var_hparams_flat, _ = jax.tree_util.tree_flatten(var_hparams)
   key_set = set()
   for p in var_hparams_flat:
     key = _get_var_param_repeat_prefix_key(p)

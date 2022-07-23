@@ -88,7 +88,7 @@ def count_init_fn(_):
 
 def count_init_partition_spec_fn(var_hparams):
   """Init partition spec for only partitioning the count/step."""
-  var_spec_flattened, _ = jax.tree_flatten(var_hparams)
+  var_spec_flattened, _ = jax.tree_util.tree_flatten(var_hparams)
   assert var_spec_flattened
   first_var = var_spec_flattened[0]
   assert isinstance(first_var, WeightHParams)
@@ -736,7 +736,7 @@ def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
     return updates, NestedMap(count=count_inc, ema=new_ema)
 
   def init_partition_spec_fn(params):
-    var_spec_flattened, _ = jax.tree_flatten(params)
+    var_spec_flattened, _ = jax.tree_util.tree_flatten(params)
     assert var_spec_flattened
     first_var = var_spec_flattened[0]
     assert isinstance(first_var, WeightHParams)
@@ -1229,7 +1229,8 @@ class DistributedShampoo(BaseOptimizer):
       # Luckily, extracting just the required TrainingMetrics nodes
       # collates generated prefixes perfectly for any top-down flatten ordering.
       is_metrics = lambda l: isinstance(l, TrainingMetrics)
-      flatten = lambda tree: jax.tree_flatten(tree, is_leaf=is_metrics)[0]
+      flatten = lambda tree: jax.tree_util.tree_flatten(
+          tree, is_leaf=is_metrics)[0]
       training_metrics = [
           x for x in flatten(param_stats) if is_metrics(x)]
       training_metrics_keys = [
@@ -1314,7 +1315,7 @@ class ShardedDistributedShampoo(DistributedShampoo):
                              params):
     """Annotates the PartitionSpec for optimizer states."""
     p = self._hparams
-    param_pspec_flattened, _ = jax.tree_flatten(params)
+    param_pspec_flattened, _ = jax.tree_util.tree_flatten(params)
     assert param_pspec_flattened
     first_param = param_pspec_flattened[0]
     assert isinstance(first_param, WeightHParams)
@@ -1373,11 +1374,12 @@ class ShardedDistributedShampoo(DistributedShampoo):
     def _wrapped_update_fn(grads, state, params):
       new_params, new_state = result.update(grads, state, params)
       local_stats = new_state.stats.local_stats
-      var_keys, _ = jax.tree_flatten(
+      var_keys, _ = jax.tree_util.tree_flatten(
           py_utils.extract_prefixed_keys_from_nested_map(local_stats))
       var_keys = [x for x in var_keys if 'inverse_pth_root_errors' in x]
       is_stats = lambda l: isinstance(l, (LocalShardedParameterStats))
-      local_stats_flattened, _ = jax.tree_flatten(local_stats, is_stats)
+      local_stats_flattened, _ = jax.tree_util.tree_flatten(
+          local_stats, is_stats)
 
       def add_summary(key, local_stat):
         num_statistics = len(local_stat.sizes)
@@ -2121,7 +2123,7 @@ def sharded_adafactor(
         jax.tree_map(sharded_adafactor_helper.init, params))
 
   def init_partition_spec_fn(var_hparams):
-    var_spec_flattened, _ = jax.tree_flatten(var_hparams)
+    var_spec_flattened, _ = jax.tree_util.tree_flatten(var_hparams)
     assert var_spec_flattened
     first_var = var_spec_flattened[0]
     assert isinstance(first_var, WeightHParams)
@@ -2378,7 +2380,7 @@ def sharded_static_accumulation(
           mesh_shape=param.mesh_shape,
           tensor_split_dims_mapping=param.tensor_split_dims_mapping)
     accumulated_update = jax.tree_map(_weight_hparams, params)
-    params_flattened, _ = jax.tree_flatten(params)
+    params_flattened, _ = jax.tree_util.tree_flatten(params)
     first_param = params_flattened[0]
     assert isinstance(first_param, WeightHParams)
     mesh_shape = first_param.mesh_shape

@@ -422,7 +422,7 @@ class TransformerLm(base_layer.BaseLayer):
       aux_loss = 0.0
       aux_loss_weight = 0.0
       if AUX_LOSS in self.variables:
-        aux_loss_values = jax.tree_leaves(
+        aux_loss_values = jax.tree_util.tree_leaves(
             self.variables[AUX_LOSS],
             is_leaf=lambda x: isinstance(x, AuxLossStruct))
         for v in aux_loss_values:
@@ -1145,7 +1145,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       aux_loss = 0.0
       aux_loss_weight = 0.0
       if AUX_LOSS in self.variables:
-        aux_loss_values = jax.tree_leaves(
+        aux_loss_values = jax.tree_util.tree_leaves(
             self.variables[AUX_LOSS],
             is_leaf=lambda x: isinstance(x, AuxLossStruct))
         for v in aux_loss_values:

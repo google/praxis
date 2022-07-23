@@ -162,7 +162,7 @@ class Learner(base_hyperparams.BaseParameterizable):
 
       jax.tree_map(add_grad_norm_summary, var_keys, grad_norms)
 
-    grad_squared, _ = jax.tree_flatten(grad_squared)
+    grad_squared, _ = jax.tree_util.tree_flatten(grad_squared)
     grad_squared = jnp.concatenate([x[jnp.newaxis] for x in grad_squared])
     raw_grad_norm = jnp.sqrt(jnp.sum(grad_squared))
     base_layer.add_global_summary(f'{learner_name}/grad_norm', raw_grad_norm)
@@ -275,7 +275,7 @@ class Learner(base_hyperparams.BaseParameterizable):
 
     # Add a summary of total var norm.
     var_squared = jax.tree_map(lambda x: jnp.sum(x * x), old_vars)
-    var_squared, _ = jax.tree_flatten(var_squared)
+    var_squared, _ = jax.tree_util.tree_flatten(var_squared)
     var_squared = jnp.concatenate([x[jnp.newaxis] for x in var_squared])
     var_norm = jnp.sqrt(jnp.sum(var_squared))
     base_layer.add_global_summary('var_norm', var_norm)

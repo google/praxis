@@ -615,7 +615,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     # If inputs are already microbatched, the leading dimension is the number of
     # microbatches.
     needs_microbatching = False
-    flat_inputs = jax.tree_leaves(inputs)
+    flat_inputs = jax.tree_util.tree_leaves(inputs)
     assert flat_inputs
     num_microbatches = flat_inputs[0].shape[0]
 

@@ -166,7 +166,7 @@ class SharedLayerTest(test_utils.TestCase):
       layer = base_layer.instantiate(test_layer_p)
       init_vars = layer.init(prng_key, x_in)
       logging.info('SimpleShared01 initial_vars %s',
-                   jax.tree_structure(init_vars))
+                   jax.tree_util.tree_structure(init_vars))
       dummy = jnp.ones([1])
       # 'sub2' share the same weights as 'sub1'
       expected_vars_struct = {
@@ -182,8 +182,8 @@ class SharedLayerTest(test_utils.TestCase):
           }
       }
       self.assertEqual(
-          jax.tree_structure(expected_vars_struct),
-          jax.tree_structure(init_vars))
+          jax.tree_util.tree_structure(expected_vars_struct),
+          jax.tree_util.tree_structure(init_vars))
       # We share the linear and bias layer.
       # TODO(yonghui): check the shape of the shared vars.
       out1 = layer.apply(init_vars, x_in)
@@ -204,7 +204,7 @@ class SharedLayerTest(test_utils.TestCase):
       layer = base_layer.instantiate(test_layer_p)
       init_vars = layer.init(prng_key, x_in)
       logging.info('SimpleShared01 initial_vars %s',
-                   jax.tree_structure(init_vars))
+                   jax.tree_util.tree_structure(init_vars))
       dummy = jnp.ones([1])
       # 'sub2' share the same linear weights as 'sub1', but has its own bias var
       expected_vars_struct = {
@@ -225,8 +225,8 @@ class SharedLayerTest(test_utils.TestCase):
           }
       }
       self.assertEqual(
-          jax.tree_structure(expected_vars_struct),
-          jax.tree_structure(init_vars))
+          jax.tree_util.tree_structure(expected_vars_struct),
+          jax.tree_util.tree_structure(init_vars))
       # We share the linear and bias layer.
       # TODO(yonghui): check the shape of the shared vars.
       out1 = layer.apply(init_vars, x_in)
@@ -251,7 +251,7 @@ class SharedLayerTest(test_utils.TestCase):
       layer = base_layer.instantiate(root_layer_p)
       init_vars = layer.init(prng_key, x_in)
       logging.info('SimpleShared01 initial_vars %s',
-                   jax.tree_structure(init_vars))
+                   jax.tree_util.tree_structure(init_vars))
       dummy = jnp.ones([1])
       # 'sub2' share the same linear weights as 'sub1', but has its own bias var
       expected_vars_struct = {
@@ -274,8 +274,8 @@ class SharedLayerTest(test_utils.TestCase):
           }
       }
       self.assertEqual(
-          jax.tree_structure(expected_vars_struct),
-          jax.tree_structure(init_vars))
+          jax.tree_util.tree_structure(expected_vars_struct),
+          jax.tree_util.tree_structure(init_vars))
       # We share the linear and bias layer.
       # TODO(yonghui): check the shape of the shared vars.
       out1 = layer.apply(init_vars, x_in)

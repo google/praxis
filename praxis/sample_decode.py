@@ -508,7 +508,8 @@ def sample_decode(model: base_layer.BaseLayer,
   if cf_guidance_scale is not None:
     # Split cond / uncond branches and only return conditioned branch.
     result = jax.tree_map(
-        lambda x: split_batch_dim(x, 0, 2 * num_samples)[:, :num_samples], result)
+        lambda x: split_batch_dim(x, 0, 2 * num_samples)[:, :num_samples],
+        result)
   else:
     result = jax.tree_map(lambda x: split_batch_dim(x, 0, num_samples), result)
   if num_samples > 1 and sort_samples:

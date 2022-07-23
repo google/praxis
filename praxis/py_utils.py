@@ -360,7 +360,7 @@ def set_globally_use_rbg_prng_key() -> None:
 def total_num_vars(variables) -> int:
   """Returns the total number of variables of the given variable collections."""
   param_shape_counts = jax.tree_map(lambda x: np.prod(x.shape), variables)
-  flattened_counts, _ = jax.tree_flatten(param_shape_counts)
+  flattened_counts, _ = jax.tree_util.tree_flatten(param_shape_counts)
   return np.sum(flattened_counts)
 
 
@@ -610,7 +610,7 @@ def tree_unstack(tree: Any, axis: int) -> Sequence[Any]:
     A list of PyTrees with the `axis` dimension extracted. I.e., if
       tree_leaf.shape[axis] == N, then len(returned_list) == N.
   """
-  leaves = jax.tree_leaves(tree)
+  leaves = jax.tree_util.tree_leaves(tree)
   if not leaves:
     return []
 
