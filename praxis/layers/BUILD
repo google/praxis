@@ -37,6 +37,7 @@ pytype_strict_library(
         ":conformers",
         ":convolutions",
         ":embedding_softmax",
+        ":flax_adapter",
         ":frnn",
         ":linears",
         ":losses",
