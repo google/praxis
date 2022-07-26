@@ -629,7 +629,8 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     if p.microbatch_size is not None:
       assert p.num_microbatches is None
       batch_size = flat_inputs[0].shape[0]
-      assert batch_size % p.microbatch_size == 0
+      assert batch_size % p.microbatch_size == 0, (batch_size,
+                                                   p.microbatch_size)
       num_microbatches = batch_size // p.microbatch_size
       needs_microbatching = True
 
