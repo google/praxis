@@ -791,7 +791,8 @@ def _add_precise_signature_to_make(
   cls.make.__func__.__doc__ = cls.__doc__  # pytype: disable=attribute-error
 
 
-def instantiate(config: Union[InstantiableHyperParams, fdl.Buildable]) -> Any:
+def instantiate(config: Union[InstantiableHyperParams, fdl.Buildable],
+                **kwargs) -> Any:
   """Converts a config into an instance of the configured type.
 
   This function is an extra layer of indirection to facilitate migrations
@@ -799,6 +800,8 @@ def instantiate(config: Union[InstantiableHyperParams, fdl.Buildable]) -> Any:
 
   Args:
     config: The configuration to instantiate.
+    kwargs: Additional kwargs to pass to instance constructor. Only used in
+      InstantiableHyperParams.
 
   Returns:
     An instance constructed from the provided configuration object `config`.
@@ -806,6 +809,6 @@ def instantiate(config: Union[InstantiableHyperParams, fdl.Buildable]) -> Any:
   if isinstance(config, fdl.Buildable):
     return fdl.build(config)
   if isinstance(config, InstantiableHyperParams):
-    return config.Instantiate()
+    return config.Instantiate(**kwargs)
   raise ValueError(f'Unknown configuration type: {type(config)}. (Full config: '
                    f'{config})')

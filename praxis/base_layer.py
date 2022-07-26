@@ -733,6 +733,13 @@ class _SummaryDict:
     self.dict = {}
 
 
+# A small structure that stores a shared layer and the hparams that were used in
+# creating the layer. Note, hparams might be different from layer.hparam as
+# during creation of layer, layer.hparams might have undergone modifications.
+_SharedLayerCacheEntry = collections.namedtuple('_SharedLayerCacheEntry',
+                                                ['layer', 'hparams'])
+
+
 class JaxContext:
   """Global context under which jax computations are carried out."""
 
@@ -754,8 +761,10 @@ class JaxContext:
     # of this is for passing shared layers. A special shared_layer_id identifier
     # is used to indicate that multiple modules should share the same underlying
     # model weights.
-    self._root_scope_to_shared_layers_map: Dict[Any, Dict[str, BaseLayer]] = (
-        collections.defaultdict(lambda: collections.defaultdict(lambda: None)))
+    self._root_scope_to_shared_layers_map: Dict[Any, Dict[
+        str, _SharedLayerCacheEntry]] = (
+            collections.defaultdict(
+                lambda: collections.defaultdict(lambda: None)))
 
   @property
   def summary_dict(self) -> _SummaryDict:
@@ -806,19 +815,22 @@ class JaxContext:
     context = JaxContext(new_hparams)
     return context
 
-  def lookup_shared_layer(self, root_scope: flax_core.Scope,
-                          shared_layer_id: str) -> Optional[BaseLayer]:
+  def lookup_shared_layer(
+      self, root_scope: flax_core.Scope,
+      shared_layer_id: str) -> Optional[_SharedLayerCacheEntry]:
     logging.info('lookup_shared_layer called with id: %s in the scope of %s',
                  shared_layer_id, root_scope)
     return self._root_scope_to_shared_layers_map[root_scope][shared_layer_id]
 
   def set_shared_layer(self, root_scope: flax_core.Scope, shared_layer_id: str,
-                       layer: BaseLayer):
+                       layer: BaseLayer, layer_hparams):
     logging.info('set_shared_layer called with id: %s in the scope of %s',
                  shared_layer_id, root_scope)
     existing = self.lookup_shared_layer(root_scope, shared_layer_id)
     assert existing is None
-    self._root_scope_to_shared_layers_map[root_scope][shared_layer_id] = layer
+    self._root_scope_to_shared_layers_map[root_scope][
+        shared_layer_id] = _SharedLayerCacheEntry(
+            layer=layer, hparams=layer_hparams.clone())
 
 
 def cur_jax_context() -> JaxContext:
@@ -1469,16 +1481,23 @@ class BaseLayer(
       pre_created = self.jax_context.lookup_shared_layer(
           root_scope, p.shared_weight_layer_id)
       if pre_created is not None:
-        assert compatible_hparams(
-            pre_created.hparams,
-            p), (f'shared layers are of incompatible configs '
-                 f'{pre_created.hparams.to_text()} vs {p.to_text()}')
+        assert compatible_hparams(pre_created.hparams, p), (
+            f'shared layers are of incompatible configs '
+            f'\n\n{pre_created.hparams.to_text()} \n\n vs \n\n {p.to_text()}')
         # simply reuse existing layer.
-        child = pre_created
+        child = pre_created.layer
       else:
-        child = instantiate(p)
+        # Always place the shared layers under the root_scope, under the unique
+        # namespace p.name. This makes sure that the variables of the shared
+        # layer is uniquely addressable regardless of the order they are
+        # created.
+        wrapped_p = p.clone()
+        wrapped_p.shared_weight_layer_id = None
+        wrapper_p = _WrapperLayer.HParams(
+            name=p.shared_weight_layer_id, cld=wrapped_p)
+        child = instantiate(wrapper_p, parent=root_scope).cld
         self.jax_context.set_shared_layer(root_scope, p.shared_weight_layer_id,
-                                          child)
+                                          child, p.clone())
     else:
       # simply create the child
       child = instantiate(p)
@@ -1559,3 +1578,19 @@ def compatible_hparams(hparams1, hparams2):
   p2 = hparams2.clone()
   p2.name = ''
   return p1.to_text() == p2.to_text()
+
+
+class _WrapperLayer(BaseLayer):
+  """A simple wrapper layer."""
+
+  class HParams(BaseLayer.HParams):
+    """Hyperparameters for this layer."""
+    cld: Optional[BaseLayer.HParams] = None
+
+  def setup(self) -> None:
+    p = self.hparams
+    name = p.name
+    # create child under the name space of 'name'.
+    # This implicitly set p.cld.name to name as well.
+    self.create_child(name, p.cld)
+    self.cld = getattr(self, name)

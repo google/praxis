@@ -165,13 +165,13 @@ class SharedLayerTest(test_utils.TestCase):
       prng_key = jax.random.PRNGKey(1234)
       layer = base_layer.instantiate(test_layer_p)
       init_vars = layer.init(prng_key, x_in)
-      logging.info('SimpleShared01 initial_vars %s',
-                   jax.tree_util.tree_structure(init_vars))
       dummy = jnp.ones([1])
+      logging.info('SimpleShared01 initial_vars %s',
+                   jax.tree_util.tree_map(lambda x: dummy, init_vars))
       # 'sub2' share the same weights as 'sub1'
       expected_vars_struct = {
           'params': {
-              'sub1': {
+              'shared_layer': {
                   'bias': {
                       'b': dummy
                   },
@@ -203,24 +203,24 @@ class SharedLayerTest(test_utils.TestCase):
       prng_key = jax.random.PRNGKey(1234)
       layer = base_layer.instantiate(test_layer_p)
       init_vars = layer.init(prng_key, x_in)
-      logging.info('SimpleShared01 initial_vars %s',
-                   jax.tree_util.tree_structure(init_vars))
       dummy = jnp.ones([1])
+      logging.info('SimpleShared01 initial_vars %s',
+                   jax.tree_util.tree_map(lambda x: dummy, init_vars))
       # 'sub2' share the same linear weights as 'sub1', but has its own bias var
       expected_vars_struct = {
           'params': {
+              'shared_weight': {
+                  'w': dummy
+              },
               'sub1': {
                   'bias': {
                       'b': dummy
-                  },
-                  'linear': {
-                      'w': dummy
                   }
               },
               'sub2': {
                   'bias': {
                       'b': dummy
-                  },
+                  }
               }
           }
       }
@@ -250,26 +250,26 @@ class SharedLayerTest(test_utils.TestCase):
       prng_key = jax.random.PRNGKey(1234)
       layer = base_layer.instantiate(root_layer_p)
       init_vars = layer.init(prng_key, x_in)
-      logging.info('SimpleShared01 initial_vars %s',
-                   jax.tree_util.tree_structure(init_vars))
       dummy = jnp.ones([1])
+      logging.info('SimpleShared01 initial_vars %s',
+                   jax.tree_util.tree_map(lambda x: dummy, init_vars))
       # 'sub2' share the same linear weights as 'sub1', but has its own bias var
       expected_vars_struct = {
           'params': {
-              'sub1': {
+              'shared': {
                   'sub1': {
                       'bias': {
                           'b': dummy
-                      },
-                      'linear': {
-                          'w': dummy
                       }
                   },
                   'sub2': {
                       'bias': {
                           'b': dummy
-                      },
+                      }
                   }
+              },
+              'shared_linear': {
+                  'w': dummy
               }
           }
       }
@@ -283,7 +283,6 @@ class SharedLayerTest(test_utils.TestCase):
       # We can apply again.
       out2 = layer.apply(init_vars, out1)
       logging.info('out2: %s', out2)
-
 
 
 if __name__ == '__main__':
