@@ -136,7 +136,6 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     unpack_summaries: bool = True
     stream_io: bool = False
     polluting_bubbles_with_nan: bool = False
-    disable_xmap: bool = False
     pipeline_broadcast_inputs: bool = False
 
   class WeightShardingHParams(BaseWtShardingHParams):
@@ -238,7 +237,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       return jnp.squeeze(
           jax.lax.dynamic_slice_in_dim(x, i, 1, ids_dim), ids_dim)
 
-    if not p.disable_xmap and p.mesh_axis_names is not None:
+    if p.mesh_axis_names is not None:
       # When the stage dim is partitioned, we use xmap (with manual sharding
       # implementation) to make sure it's trivially partitioned on the stage
       # dim and work around some potential optimization problems in XLA.
