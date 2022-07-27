@@ -41,9 +41,6 @@ NestedHParams = Nested[HParamsT]
 NestedPartitionSpec = Nested[pjit.PartitionSpec]
 NestedJTensorOrPartitionSpec = Nested[JTensorOrPartitionSpec]
 NestedShapeDtypeStruct = Nested[jax.ShapeDtypeStruct]
-NestedShapedArray = Nested[jax.ShapedArray]
-NestedShapeDtypeLike = Union[NestedJTensor, NestedNpTensor,
-                             NestedShapeDtypeStruct, NestedShapedArray]
 
 # Sharding annotation for a dim can be a single int, or a str, or a sequence of
 # (int, str), or None. For example "1", "-1", "None", "data", "(data, replia)"
