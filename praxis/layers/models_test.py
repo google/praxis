@@ -258,7 +258,7 @@ class LanguageModelTest(test_utils.TestCase):
     input_batch = NestedMap(
         ids=jnp.array([[11, 12, 13, 14, 15]], dtype=jnp.int32),
         paddings=jnp.array([[0., 0., 1., 1., 1.]], dtype=jnp.float32),
-        inputs_indicator=jnp.array([[0., 1., 1., 1., 1.]], dtype=jnp.float32),
+        inputs_indicator=jnp.array([[1, 1, 0, 0, 0]], dtype=jnp.float32),
     )
     results = self._run_decode(
         p, logits, input_batch, bidirectional_attention_on_inputs=True)

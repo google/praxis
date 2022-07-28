@@ -226,8 +226,18 @@ class LanguageModel(base_model.BaseModel):
       raise ValueError('Must set p.decoder.seqlen > 0, current value = '
                        f'{p.decoder.seqlen}')
     batch_size = input_batch.ids.shape[0]
+
+    # TODO(b/229679837): unify prefix_lengths logic to depend on
+    # inputs_indicator or paddings only.
+    # Get prefix_lengths from inputs_indicator or paddings.
     if 'prefix_lengths' in input_batch:
       prefix_lengths = input_batch.prefix_lengths
+    elif p.bidirectional_attention_on_inputs:
+      asserts.eq(('inputs_indicator' in input_batch),
+                 True,
+                 msg='inputs_indicator should be in input batch for prefix LM.')
+      prefix_lengths = jnp.sum(
+          input_batch.inputs_indicator.astype(jnp.int32), axis=1)
     else:
       # The max lengths of the prefix, which are the number of unpadded tokens.
       # Note that computing the sum with bf16 is not precise enough, so convert
