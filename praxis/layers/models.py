@@ -137,6 +137,9 @@ class LanguageModel(base_model.BaseModel):
 
     # Construct the model.
     lm_p = p.lm.clone()
+    if hasattr(lm_p, 'bidirectional_attention_on_inputs'):
+      prefix_lm = p.bidirectional_attention_on_inputs
+      lm_p.bidirectional_attention_on_inputs = prefix_lm
     self.create_child('lm', lm_p)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
@@ -268,8 +271,6 @@ class LanguageModel(base_model.BaseModel):
         # Pad 1 to the left of causal_attention_mask.
         causal_attention_mask = decoder_utils.right_align_tensors(
             causal_attention_mask, prefix_lengths)
-        causal_attention_mask = jnp.pad(
-            causal_attention_mask, [[0, 0], [0, p.decoder.max_decode_steps]])
     else:
       seqlen = p.decoder.seqlen
       start_time_step = 0

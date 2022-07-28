@@ -157,6 +157,8 @@ class TransformerLm(base_layer.BaseLayer):
       vocab_size: Size of the vocabulary for LM.
       packed_input: Whether the inputs are packed.
       masked_lm: Whether this is BERT style masked LM.
+      bidirectional_attention_on_inputs: If true, allow bidirectional attention
+        on inputs as in PrefixLM.
       ngrammer_tpl: Params or list of params for the Ngrammer layer applied to
         the input sequence (at the beginning of the network). This param may be
         of type Ngrammer as well as VQNgrammer layer. If this is None then the
@@ -185,6 +187,7 @@ class TransformerLm(base_layer.BaseLayer):
     vocab_size: int = 0
     packed_input: bool = False
     masked_lm: bool = False
+    bidirectional_attention_on_inputs: bool = False
     ngrammer_tpl: Optional[BaseHParams] = None
     post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = None
     separate_embedding_tpl: Optional[BaseHParams] = None
@@ -345,7 +348,7 @@ class TransformerLm(base_layer.BaseLayer):
     assert (xformer_params.model_dims == 0 or
             xformer_params.model_dims == p.model_dims)
     xformer_params.model_dims = p.model_dims
-    if p.masked_lm:
+    if p.masked_lm or p.bidirectional_attention_on_inputs:
       xformer_params.mask_self_attention = False
     else:
       xformer_params.mask_self_attention = True
