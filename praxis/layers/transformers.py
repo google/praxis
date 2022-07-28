@@ -510,10 +510,16 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
       min_group_size: If not None, num_groups will be adjusted so that there
         will be at least min_group_size tokens in each group.
       expert_capacity_dim: Internal. Exact expert capacity. Setting non-zero
-        expert_capacity_factor is a preferred way.
-      expert_capacity_factor: Expert capacity_factor. This is the ratio between
-        max allowed examples per expert over the average number of examples per
-        expert assuming routing is completely uniform.
+        unadjusted_expert_capacity_factor is a preferred way.
+      unadjusted_expert_capacity_factor: Expert capacity factor. This is the
+        ratio between global batch size and total capacity across all experts
+        and all routing groups. If the global batch size is G*S (num_groups*
+        group_size) or B*L(batch*length) and the total expert capacity across
+        all routing groups is E*G*C (num_experts*num_groups*expert_capacity),
+        then
+          unadjusted_expert_capacity_factor == (E*G*C)/(G*S)
+        unadjusted_expert_capacity_factor is set to 2 by default for top-2
+        routing.
       expert_weight_shards: Shard each expert params into this many number of
         shards to reduce the size of individual weight params.
       second_expert_policy: How to pick second expert: all, sampling or random.
@@ -552,7 +558,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     num_groups: int = 0
     min_group_size: Optional[int] = None
     expert_capacity_dim: int = 0
-    expert_capacity_factor: float = 1.0
+    unadjusted_expert_capacity_factor: float = 2.0
     expert_weight_shards: int = 1
     second_expert_policy: str = 'all'
     internal_gshard_variance_scaling_fan_in_init: bool = True
@@ -611,7 +617,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     assert p.input_dims
     assert p.hidden_dims
 
-    assert (p.expert_capacity_factor or p.expert_capacity_dim)
+    assert (p.unadjusted_expert_capacity_factor or p.expert_capacity_dim)
     assert p.num_experts > 0
     assert p.num_groups > 0
     assert p.expert_weight_shards == 1, (
@@ -867,7 +873,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
         second_expert_policy=p.second_expert_policy,
         second_expert_threshold=0.0,
         legacy_mtf_behavior=True,
-        capacity_factor=2.0 * p.expert_capacity_factor,
+        capacity_factor=p.unadjusted_expert_capacity_factor,
         mask_dtype=jnp.int32,
         gating_logit_cap=p.gating_logit_cap)
 
@@ -1394,9 +1400,9 @@ class StackedTransformer(base_layer.BaseLayer):
         'expert_choice', based on https://arxiv.org/abs/2202.09368,
         'dense_top2': experimental gating function for decodiing. Similar to
           'top2' gating, but no capacity constrainst for each expert.
-      expert_capacity_factor: Expert capacity_factor. This is the ratio between
-        max allowed examples per expert over the average number of examples per
-        expert assuming routing is completely uniform.
+      unadjusted_expert_capacity_factor: Unadjusted expert capacity_factor. This
+        is the ratio between global batch size and total capacity across all
+        experts and all routing groups.
       transformer_layer_params_tpl: A template of Transformer.params, can be a
         list of params of length equal to the num_layers or a factor of
         num_layers. For a factor, the params are tiled as [a, a, ..., b,
@@ -1427,7 +1433,7 @@ class StackedTransformer(base_layer.BaseLayer):
     dropout_prob: float = 0.0
     residual_droppath_prob: float = 0.0
     gating_func: str = 'top2'
-    expert_capacity_factor: float = 1.0
+    unadjusted_expert_capacity_factor: float = 2.0
     transformer_layer_params_tpl: BaseHParams = sub_config_field(
         Transformer.HParams)
     packed_input: bool = False

@@ -499,7 +499,7 @@ class TransformersTest(test_utils.TestCase):
     moe_p.gating_func = gating_function
     moe_p.num_experts = 4
     moe_p.expert_capacity_dim = 2
-    moe_p.expert_capacity_factor = 0
+    moe_p.unadjusted_expert_capacity_factor = 0
 
     moe_p = block_p.moe_layer_tpl
     moe_p.gating_func = gating_function

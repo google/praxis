@@ -15,6 +15,7 @@
 
 """Helper function to config GLaM models."""
 
+
 from praxis.layers import activations
 from praxis.layers import attentions
 from praxis.layers import embedding_softmax
@@ -153,7 +154,7 @@ def GlamStackedTransformerHParams(
   moe_p.num_experts = e_dim
   moe_p.num_groups = num_groups
   moe_p.expert_capacity_dim = c_dim
-  moe_p.expert_capacity_factor = capacity_factor
+  moe_p.unadjusted_expert_capacity_factor = capacity_factor
   moe_p.internal_gshard_variance_scaling_fan_in_init = True
   moe_p.moe_load_balance_loss_weight = moe_load_balance_loss_weight
   moe_p.gating_func = moe_gating_func
