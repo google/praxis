@@ -34,6 +34,11 @@ WeightedScalars = pytypes.WeightedScalars
 Predictions = Union[JTensor, NestedMap, Dict[str, Any], Dict[int, Any]]
 BaseHParams = base_layer.BaseLayer.HParams
 
+LegacyDecodeOut = Tuple[WeightedScalars, NestedMap]
+DecodeOut = Tuple[WeightedScalars, NestedMap, Metrics]
+LegacyProcessDecodeOut = Tuple[WeightedScalars, Sequence[Tuple[str, Any]]]
+ProcessDecodeOut = Tuple[WeightedScalars, Sequence[Tuple[str, Any]], Metrics]
+
 
 class BaseModel(base_layer.BaseLayer):
   """An API that every model should be derived from."""
@@ -103,10 +108,7 @@ class BaseModel(base_layer.BaseLayer):
 
   # TODO(pax): If/when all user models are ported to have a third return
   # we can remove this Union in the return type.
-  def decode(
-      self, input_batch: NestedMap
-  ) -> Union[Tuple[WeightedScalars, NestedMap], Tuple[WeightedScalars,
-                                                      NestedMap, Metrics]]:
+  def decode(self, input_batch: NestedMap) -> Union[LegacyDecodeOut, DecodeOut]:
     """Decodes input_batch.
 
     Args:
@@ -123,8 +125,8 @@ class BaseModel(base_layer.BaseLayer):
     raise NotImplementedError('Abstract method')
 
   def process_decode_out(
-      self, input_obj: base_input.BaseInput, decode_out: NestedMap
-  ) -> Tuple[WeightedScalars, Sequence[Tuple[str, Any]]]:
+      self, input_obj: base_input.BaseInput,
+      decode_out: NestedMap) -> Union[LegacyProcessDecodeOut, ProcessDecodeOut]:
     """Processes one batch of decoded outputs.
 
     Args:
@@ -136,6 +138,9 @@ class BaseModel(base_layer.BaseLayer):
         pairs for the current batch (a tuple of two scalars).
       - A list of tuples where each element corresponds to a row in the batch.
         Each tuple is a key value pair.
+      - metrics, a NestedMap containing str keys and clu_metrics.Metric
+        objects. These will run outside of pmap/pjit.
+        This is currently optional.
     """
     raise NotImplementedError('Abstract method')
 
