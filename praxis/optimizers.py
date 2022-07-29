@@ -1140,6 +1140,8 @@ class DistributedShampoo(BaseOptimizer):
       lobpcg_max_iter: If nonzero, specifies the maximum number of iterations
         to perform LOBPCG if activated by lobpcg_topk_precondition. If zero,
         uses a default value equal to `lobpcg_topk_precondition` itself.
+      skip_preconditioning_rank_lt: Skips preconditioning if param rank is less
+        than this value.
     """
     block_size: int = 1024
     beta1: float = 0.9
@@ -1173,6 +1175,7 @@ class DistributedShampoo(BaseOptimizer):
     merge_small_dims_block_size: int = 4096
     lobpcg_topk_precondition: int = 0
     lobpcg_max_iter: int = 0
+    skip_preconditioning_rank_lt: int = 1
 
   @classmethod
   def HParamsImageClassification(cls) -> DistributedShampoo.HParams:  # pylint: disable=invalid-name
@@ -1281,7 +1284,8 @@ class DistributedShampoo(BaseOptimizer):
         cholesky=p.cholesky,
         qr_based_root=p.qr_based_root,
         sharded_statistics_only=p.sharded_statistics_only,
-        merge_small_dims_block_size=p.merge_small_dims_block_size)
+        merge_small_dims_block_size=p.merge_small_dims_block_size,
+        skip_preconditioning_rank_lt=p.skip_preconditioning_rank_lt)
 
 
 class ShardedDistributedShampoo(DistributedShampoo):
