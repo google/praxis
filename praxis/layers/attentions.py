@@ -908,6 +908,7 @@ class DotProductAttention(base_layer.BaseLayer):
         the VQNgrammer layer. If this is None, then there is no NGrammer layer
         present in this layer.
       decode_cache: if the attention layer needs decode cache.
+      attention_mask_summary: bool = False
     """
     input_dim: Union[int, Dict[str, int]] = 0
     hidden_dim: int = 0
@@ -932,6 +933,7 @@ class DotProductAttention(base_layer.BaseLayer):
     attention_extra_logit: Optional[float] = None
     ngrammer_tpl: Optional[BaseHParams] = None
     decode_cache: bool = True
+    attention_mask_summary: bool = False
 
   # SPMD partition related params.
   #
@@ -1234,6 +1236,8 @@ class DotProductAttention(base_layer.BaseLayer):
     logits = logits.astype(jnp.float32)
     # Apply attention masking
     padded_logits = logits + atten_mask.astype(jnp.float32)
+    if p.attention_mask_summary:
+      self.add_summary('attention_mask', atten_mask)
     if p.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
     else:
