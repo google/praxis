@@ -1142,6 +1142,12 @@ class DistributedShampoo(BaseOptimizer):
         uses a default value equal to `lobpcg_topk_precondition` itself.
       skip_preconditioning_rank_lt: Skips preconditioning if param rank is less
         than this value.
+      summarize_training_metrics: Summarize training statistics
+        (for example: inverse pth root)
+      decoupled_weight_decay_from_momentum: Decouple weight decay from momentum.
+      decoupled_learning_rate_from_momentum: Decouple learning rate from
+        momentum.
+
     """
     block_size: int = 1024
     beta1: float = 0.9
@@ -1176,6 +1182,9 @@ class DistributedShampoo(BaseOptimizer):
     lobpcg_topk_precondition: int = 0
     lobpcg_max_iter: int = 0
     skip_preconditioning_rank_lt: int = 1
+    summarize_training_metrics: bool = True
+    decoupled_weight_decay_from_momentum: bool = True
+    decoupled_learning_rate_from_momentum: bool = False
 
   @classmethod
   def HParamsImageClassification(cls) -> DistributedShampoo.HParams:  # pylint: disable=invalid-name
@@ -1221,29 +1230,32 @@ class DistributedShampoo(BaseOptimizer):
 
     def wrapped_update_fn(grads, state, params=None):
       new_params, new_state = grad_transformation.update(grads, state, params)
-      param_stats = new_state.stats
+      p = self._hparams
+      if p.summarize_training_metrics:
+        param_stats = new_state.stats
 
-      # Construct an almost parallel-structured pytree with key prefixes to
-      # annotate per-parameter metrics for the summary name. Frustratingly,
-      # this ignores non-pytree-node lists, creating separate prefixes for
-      # what should be a leaf list of integers representing shapes.
-      keys = py_utils.extract_prefixed_keys_from_nested_map(param_stats)
+        # Construct an almost parallel-structured pytree with key prefixes to
+        # annotate per-parameter metrics for the summary name. Frustratingly,
+        # this ignores non-pytree-node lists, creating separate prefixes for
+        # what should be a leaf list of integers representing shapes.
+        keys = py_utils.extract_prefixed_keys_from_nested_map(param_stats)
 
-      # Luckily, extracting just the required TrainingMetrics nodes
-      # collates generated prefixes perfectly for any top-down flatten ordering.
-      is_metrics = lambda l: isinstance(l, TrainingMetrics)
-      flatten = lambda tree: jax.tree_util.tree_flatten(
-          tree, is_leaf=is_metrics)[0]
-      training_metrics = [
-          x for x in flatten(param_stats) if is_metrics(x)]
-      training_metrics_keys = [
-          x for x in flatten(keys) if is_metrics(x)]
+        # Luckily, extracting just the required TrainingMetrics nodes
+        # collates generated prefixes perfectly for any top-down flatten
+        # ordering.
+        is_metrics = lambda l: isinstance(l, TrainingMetrics)
+        flatten = lambda tree: jax.tree_util.tree_flatten(
+            tree, is_leaf=is_metrics)[0]
+        training_metrics = [
+            x for x in flatten(param_stats) if is_metrics(x)]
+        training_metrics_keys = [
+            x for x in flatten(keys) if is_metrics(x)]
 
-      assert len(training_metrics) == len(training_metrics_keys)
-      for metrics, keys in zip(training_metrics, training_metrics_keys):
-        # Walk all training metrics fields and summarize, assuming
-        # they're scalars, using their key prefixes.
-        jax.tree_map(base_layer.add_global_summary, keys, metrics)
+        assert len(training_metrics) == len(training_metrics_keys)
+        for metrics, keys in zip(training_metrics, training_metrics_keys):
+          # Walk all training metrics fields and summarize, assuming
+          # they're scalars, using their key prefixes.
+          jax.tree_map(base_layer.add_global_summary, keys, metrics)
 
       return new_params, new_state
 
@@ -1285,7 +1297,9 @@ class DistributedShampoo(BaseOptimizer):
         qr_based_root=p.qr_based_root,
         sharded_statistics_only=p.sharded_statistics_only,
         merge_small_dims_block_size=p.merge_small_dims_block_size,
-        skip_preconditioning_rank_lt=p.skip_preconditioning_rank_lt)
+        skip_preconditioning_rank_lt=p.skip_preconditioning_rank_lt,
+        decoupled_weight_decay=p.decoupled_weight_decay_from_momentum,
+        decoupled_learning_rate=p.decoupled_learning_rate_from_momentum)
 
 
 class ShardedDistributedShampoo(DistributedShampoo):
@@ -1377,24 +1391,26 @@ class ShardedDistributedShampoo(DistributedShampoo):
 
     def _wrapped_update_fn(grads, state, params):
       new_params, new_state = result.update(grads, state, params)
-      local_stats = new_state.stats.local_stats
-      var_keys, _ = jax.tree_util.tree_flatten(
-          py_utils.extract_prefixed_keys_from_nested_map(local_stats))
-      var_keys = [x for x in var_keys if 'inverse_pth_root_errors' in x]
-      is_stats = lambda l: isinstance(l, (LocalShardedParameterStats))
-      local_stats_flattened, _ = jax.tree_util.tree_flatten(
-          local_stats, is_stats)
+      p = self._hparams
+      if p.summarize_training_metrics:
+        local_stats = new_state.stats.local_stats
+        var_keys, _ = jax.tree_util.tree_flatten(
+            py_utils.extract_prefixed_keys_from_nested_map(local_stats))
+        var_keys = [x for x in var_keys if 'inverse_pth_root_errors' in x]
+        is_stats = lambda l: isinstance(l, (LocalShardedParameterStats))
+        local_stats_flattened, _ = jax.tree_util.tree_flatten(
+            local_stats, is_stats)
 
-      def add_summary(key, local_stat):
-        num_statistics = len(local_stat.sizes)
-        for i in range(num_statistics):
-          value = local_stat.training_metrics.inverse_pth_root_errors[i]
-          base_layer.add_global_summary(f'inverse_pth_root_errors/{key}_{i}',
-                                        value)
+        def add_summary(key, local_stat):
+          num_statistics = len(local_stat.sizes)
+          for i in range(num_statistics):
+            value = local_stat.training_metrics.inverse_pth_root_errors[i]
+            base_layer.add_global_summary(f'inverse_pth_root_errors/{key}_{i}',
+                                          value)
 
-      assert len(var_keys) == len(local_stats_flattened)
-      for key, local_stat in zip(var_keys, local_stats_flattened):
-        add_summary(key, local_stat)
+        assert len(var_keys) == len(local_stats_flattened)
+        for key, local_stat in zip(var_keys, local_stats_flattened):
+          add_summary(key, local_stat)
       return new_params, new_state
 
     return ShardedGradientTransformation(
