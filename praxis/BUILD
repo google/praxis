@@ -382,6 +382,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis/layers:models",
+        "//praxis/layers:transformer_models",
     ],
 )
 

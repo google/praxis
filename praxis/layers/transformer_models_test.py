@@ -140,7 +140,7 @@ class TransformerModelsTest(test_utils.TestCase):
     p = transformer_models.TransformerLm.HParams(
         name='jax_ngrammer_layer',
         model_dims=num_heads * dim_per_head,
-        masked_lm=False,
+        model_type=transformer_models.LanguageModelType.CAUSAL,
         packed_input=False,
         ngrammer_tpl=ngrammer_params,
         post_attention_ngrammer_tpls=post_attention_ngrammer_tpls,
@@ -211,7 +211,7 @@ class TransformerModelsTest(test_utils.TestCase):
     p = transformer_models.TransformerLm.HParams(
         name='jax_primer_layer',
         model_dims=num_heads * dim_per_head,
-        masked_lm=False,
+        model_type=transformer_models.LanguageModelType.CAUSAL,
         packed_input=False,
         vocab_size=vocab_size)
     stacked_transformer_tpl = p.stacked_transformer_tpl
@@ -311,7 +311,7 @@ class TransformerModelsTest(test_utils.TestCase):
     p = transformer_models.TransformerLm.HParams(
         name='jax_ngrammer_layer',
         model_dims=num_heads * dim_per_head,
-        masked_lm=False,
+        model_type=transformer_models.LanguageModelType.CAUSAL,
         packed_input=False,
         ngrammer_tpl=ngrammer_params,
         post_attention_ngrammer_tpls=post_attention_ngrammer_tpls,

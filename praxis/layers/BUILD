@@ -800,6 +800,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":models",
+        ":transformer_models",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.

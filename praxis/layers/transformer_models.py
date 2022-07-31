@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import enum
 from typing import Any, Optional, Sequence
 
 import jax
@@ -137,6 +138,14 @@ def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
   return stacked_transformer_p
 
 
+@enum.unique
+class LanguageModelType(str, enum.Enum):
+  """The different language model types based on the tokens visibility."""
+  CAUSAL = 'causal'
+  PREFIX = 'prefix'
+  BIDIRECTIONAL = 'bidirectional'
+
+
 class TransformerLm(base_layer.BaseLayer):
   """Packed Transformer LM with position embedding and shared softmax layer.
 
@@ -156,9 +165,7 @@ class TransformerLm(base_layer.BaseLayer):
         parameters in this case.
       vocab_size: Size of the vocabulary for LM.
       packed_input: Whether the inputs are packed.
-      masked_lm: Whether this is BERT style masked LM.
-      bidirectional_attention_on_inputs: If true, allow bidirectional attention
-        on inputs as in PrefixLM.
+      model_type: The type of language model based on the tokens visibility.
       ngrammer_tpl: Params or list of params for the Ngrammer layer applied to
         the input sequence (at the beginning of the network). This param may be
         of type Ngrammer as well as VQNgrammer layer. If this is None then the
@@ -186,8 +193,7 @@ class TransformerLm(base_layer.BaseLayer):
         embedding_softmax.SharedEmbeddingSoftmax.HParams)
     vocab_size: int = 0
     packed_input: bool = False
-    masked_lm: bool = False
-    bidirectional_attention_on_inputs: bool = False
+    model_type: LanguageModelType = LanguageModelType.CAUSAL
     ngrammer_tpl: Optional[BaseHParams] = None
     post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = None
     separate_embedding_tpl: Optional[BaseHParams] = None
@@ -348,7 +354,9 @@ class TransformerLm(base_layer.BaseLayer):
     assert (xformer_params.model_dims == 0 or
             xformer_params.model_dims == p.model_dims)
     xformer_params.model_dims = p.model_dims
-    if p.masked_lm or p.bidirectional_attention_on_inputs:
+    if p.model_type in {
+        LanguageModelType.PREFIX, LanguageModelType.BIDIRECTIONAL
+    }:
       xformer_params.mask_self_attention = False
     else:
       xformer_params.mask_self_attention = True
@@ -507,7 +515,7 @@ class TransformerLm(base_layer.BaseLayer):
     else:
       inputs = input_emb
 
-    if p.masked_lm:
+    if p.model_type == LanguageModelType.BIDIRECTIONAL:
       segment_mask = attentions.segment_mask(segment_ids, segment_ids,
                                              inputs.dtype)
     else:
@@ -546,8 +554,8 @@ class TransformerLm(base_layer.BaseLayer):
         probabilities.
     """
     p = self.hparams
-    # Extend step should only be called with causal LM.
-    assert not p.masked_lm
+    # Extend step should only be called with causal or prefix LM.
+    assert p.model_type != LanguageModelType.BIDIRECTIONAL
 
     if len(inputs.shape) == 1:
       inputs = inputs[:, jnp.newaxis]
@@ -1332,9 +1340,6 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     # Fetch encoder output from the cache.
     encoder_output = self.get_decode_state('encoder_output')
     input_paddings = self.get_decode_state('input_paddings')
-
-    target_batch_size = targets.shape[0]
-    encoder_batch_size = encoder_output.shape[0]
 
     # During autoregressive decoding inputs and targets are not packed.
     if len(targets.shape) == 1:

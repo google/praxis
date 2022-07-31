@@ -46,6 +46,7 @@ BeamSearchHParams = decoder_hparams.BeamSearchHParams
 FlatBeamSearchHParams = decoder_hparams.FlatBeamSearchHParams
 SampleDecoderHParams = decoder_hparams.SampleDecoderHParams
 GreedyDecoderHParams = decoder_hparams.GreedyDecoderHParams
+LanguageModelType = transformer_models.LanguageModelType
 
 BaseHParams = base_layer.BaseLayer.HParams
 sub_config_field = base_layer.sub_config_field
@@ -116,15 +117,13 @@ class LanguageModel(base_model.BaseModel):
       return_predictions: Whether to return predictions during eval. Returning
         predictions is more expensive, but may be useful for debugging.
       decoder: Parameterization of the decoder.
-      bidirectional_attention_on_inputs: If true, allow bidirectional attention
-        on inputs as in PrefixLM. Requires causal_attention_mask to be set in
-        input_batch.
+      model_type: The type of language model based on the tokens visibility.
       count_tokens: Whether to track total tokens trained on in the checkpoint.
     """
     lm: BaseHParams = sub_config_field(transformer_models.TransformerLm.HParams)
     return_predictions: bool = False
     decoder: DecoderHParams = sub_config_field(GreedyDecoderHParams)
-    bidirectional_attention_on_inputs: bool = False
+    model_type: LanguageModelType = LanguageModelType.CAUSAL
     count_tokens: bool = False
 
   def setup(self) -> None:
@@ -137,9 +136,7 @@ class LanguageModel(base_model.BaseModel):
 
     # Construct the model.
     lm_p = p.lm.clone()
-    if hasattr(lm_p, 'bidirectional_attention_on_inputs'):
-      prefix_lm = p.bidirectional_attention_on_inputs
-      lm_p.bidirectional_attention_on_inputs = prefix_lm
+    lm_p.model_type = p.model_type
     self.create_child('lm', lm_p)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
@@ -159,7 +156,9 @@ class LanguageModel(base_model.BaseModel):
       }
     else:
       packed_input_kwargs = {}
-    if p.bidirectional_attention_on_inputs:
+    if p.model_type == LanguageModelType.BIDIRECTIONAL:
+      causal_attention_mask = jnp.zeros_like(inputs)
+    elif p.model_type == LanguageModelType.PREFIX:
       causal_attention_mask = 1 - input_batch.inputs_indicator
     else:
       causal_attention_mask = None
@@ -232,7 +231,7 @@ class LanguageModel(base_model.BaseModel):
     # Get prefix_lengths from inputs_indicator or paddings.
     if 'prefix_lengths' in input_batch:
       prefix_lengths = input_batch.prefix_lengths
-    elif p.bidirectional_attention_on_inputs:
+    elif p.model_type == transformer_models.LanguageModelType.PREFIX:
       asserts.eq(('inputs_indicator' in input_batch),
                  True,
                  msg='inputs_indicator should be in input batch for prefix LM.')
@@ -248,7 +247,9 @@ class LanguageModel(base_model.BaseModel):
                                           minval, maxval + 1,
                                           input_batch.ids.dtype)
 
-    if p.bidirectional_attention_on_inputs:
+    if p.model_type == LanguageModelType.BIDIRECTIONAL:
+      raise NotImplementedError(type(self))
+    elif p.model_type == LanguageModelType.PREFIX:
       causal_attention_mask = 1 - input_batch.inputs_indicator
     else:
       causal_attention_mask = None
@@ -842,7 +843,7 @@ class BertModel(base_model.BaseModel):
   def setup(self) -> None:
     super().setup()
     p = self.hparams
-    assert p.lm.masked_lm
+    assert p.lm.model_type == LanguageModelType.BIDIRECTIONAL
     assert p.lm.packed_input
 
     self.create_child('lm', p.lm)

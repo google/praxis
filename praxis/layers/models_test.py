@@ -27,10 +27,12 @@ from praxis import decoder_utils
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import models
+from praxis.layers import transformer_models
 
 NestedMap = py_utils.NestedMap
 BaseHParams = base_layer.BaseLayer.HParams
 instantiate = base_layer.instantiate
+LanguageModelType = transformer_models.LanguageModelType
 
 RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
@@ -44,8 +46,10 @@ class MockLM(base_layer.BaseLayer):
     Attributes:
       logits: results returned by extend_step(), of shape [max step, batch size,
         vocab size].
+      model_type:
     """
     logits: Any = None
+    model_type: LanguageModelType = LanguageModelType.CAUSAL
 
   def setup(self) -> None:
     p = self.hparams
@@ -81,12 +85,12 @@ class LanguageModelTest(test_utils.TestCase):
                   decoder_p,
                   logits,
                   input_batch,
-                  bidirectional_attention_on_inputs=False):
+                  model_type=LanguageModelType.CAUSAL):
     p = models.LanguageModel.HParams(
         name='mock_lm',
         decoder=decoder_p.clone(),
         lm=MockLM.HParams(logits=logits),
-        bidirectional_attention_on_inputs=bidirectional_attention_on_inputs)
+        model_type=model_type)
     lang_model = instantiate(p)
     theta = NestedMap(lm=NestedMap())
     # We fix seed to 9 to get the desired prefix lengths below.
@@ -234,7 +238,7 @@ class LanguageModelTest(test_utils.TestCase):
                            np.array([[5]], dtype=np.int32))
 
   @parameterized.parameters([True, False])
-  def test_bidirectional_attention_on_inputs(self, fprop_for_prefix):
+  def test_prefix_lm(self, fprop_for_prefix):
     p = models.LanguageModel.HParams().decoder
     p.seqlen = 5
     p.min_prefix_len = 2
@@ -261,7 +265,7 @@ class LanguageModelTest(test_utils.TestCase):
         inputs_indicator=jnp.array([[1, 1, 0, 0, 0]], dtype=jnp.float32),
     )
     results = self._run_decode(
-        p, logits, input_batch, bidirectional_attention_on_inputs=True)
+        p, logits, input_batch, model_type=LanguageModelType.PREFIX)
     self.assertArraysEqual(results.prefix_lengths,
                            np.array([[2]], dtype=np.int32))
     # We copy prefix of length 2 from input.ids, so the first argmax

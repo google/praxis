@@ -27,10 +27,12 @@ from praxis import beam_search
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import models
+from praxis.layers import transformer_models
 
 NestedMap = py_utils.NestedMap
 BaseHParams = base_layer.BaseLayer.HParams
 instantiate = base_layer.instantiate
+LanguageModelType = transformer_models.LanguageModelType
 
 RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
@@ -106,6 +108,7 @@ class MockLM(base_layer.BaseLayer):
         vocab size].
     """
     logits: Any = None
+    model_type: LanguageModelType = LanguageModelType.CAUSAL
 
   def setup(self) -> None:
     p = self.hparams

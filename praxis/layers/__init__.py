@@ -95,6 +95,7 @@ from praxis.layers.rnn_cell import LstmCellSimple
 from praxis.layers.spectrum_augmenter import SpectrumAugmenter
 from praxis.layers.stochastics import Dropout
 from praxis.layers.stochastics import StochasticResidual
+from praxis.layers.transformer_models import LanguageModelType
 from praxis.layers.transformer_models import TransformerEncoderDecoder
 from praxis.layers.transformer_models import TransformerLm
 from praxis.layers.transformers import compute_attention_masks_for_extend_step
