@@ -1315,6 +1315,37 @@ class ShardedDistributedShampoo(DistributedShampoo):
             self._hparams.mesh_axis_names,
             self._hparams.tensor_split_dims_mapping_for_inverse_pth_root))
 
+  @classmethod
+  def HParamsLargeLanguageModeling(cls) -> DistributedShampoo.HParams:  # pylint: disable=invalid-name
+    """Common Shampoo config for Large Language Modeling (8B+)."""
+    return cls.HParams(
+        block_size=4096,
+        # Should be ~block_size x 3
+        merge_small_dims_block_size=4096*3,
+        # Larger than largest dim of dense layers.
+        skip_preconditioning_dim_size_gt=4096*6,
+        # AdaGrad is used for grafting.
+        graft_type=GraftingType.ADAGRAD_NORMALIZED,
+        # Clip aggressively as AdaGrad otherwise early updates can saturate
+        # the accumulator.
+        clip_gradient_norm_to_value=1.0,
+        # TODO(rohananil): Ablate this with 0.9 which is the default for.
+        # ShardedAdaFactor
+        beta1=0.95,
+        beta2=1.0,
+        weight_decay=0.0,
+        matrix_epsilon=1e-8,
+        nesterov=False,
+        exponent_override=0,
+        mesh_axis_names=('replica', 'data', 'mdl'),
+        sharded_statistics_only=False,
+        tensor_split_dims_mapping=[-1, 1, 2],
+        tensor_split_dims_mapping_for_inverse_pth_root=[1, -1, 2],
+        start_preconditioning_step=51,
+        preconditioning_compute_steps=50,
+        moving_average_for_momentum=True,
+        clip_by_scaled_gradient_norm=None)
+
   def _sharded_axes(self, axes_names, tensor_split_dims_mapping):
     """Returns the axes to shard with."""
     axes = []
