@@ -276,6 +276,7 @@ pytype_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
+        # Implicit absl.logging dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         # Implicit optax dependency.
@@ -703,6 +704,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":objectives",
+        # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit jax dependency.
         # Implicit jax.experimental.jax2tf dependency.

@@ -227,7 +227,7 @@ class CtcAlignmentsTest(test_utils.TestCase):
     num_classes = 15
     sequence_len = len(label_sequence) + 3
 
-    logits = np.ones((1, sequence_len, num_classes)) * -1e5
+    logits = np.ones((1, sequence_len, num_classes)) * -1e3
     logitpaddings = np.ones((1, sequence_len), dtype=float)
     for i in range(len(label_sequence)):
       logits[0, i, label_sequence[i]] = 0
@@ -247,6 +247,28 @@ class CtcAlignmentsTest(test_utils.TestCase):
         logits, logitpaddings, labels, labelpaddings)
     self.assertAllClose([expected_aligment, expected_aligment], aux.alignment)
     self.assertAllClose(per_seq_loss, [0.0, 0.0])
+
+  def test_ctc_loss_alignment_validity(self):
+    # Test that the alignments generated contain all of the labels in the
+    # proper order.
+    num_classes = 7
+    sequence_len = 14
+
+    for i in range(10):
+      logits = np.random.random_sample((1, sequence_len, num_classes))
+      logitpaddings = np.zeros((1, sequence_len), dtype=float)
+      labels = np.array([[2, 5, 3, 1, 4, 0]], dtype=np.intp)
+      labelpaddings = np.array([[0, 0, 0, 0, 0, 1]], dtype=float)
+      _, aux = ctc_objectives.ctc_loss_with_alignments(logits, logitpaddings,
+                                                       labels, labelpaddings)
+
+      last_output = 0
+      for output in aux.alignment[i].tolist():
+        # Alignments are monotonically increasing.
+        self.assertLessEqual(last_output, output)
+        # You can't skip tokens in the alignment.
+        self.assertLessEqual(output, last_output + 1)
+        last_output = output
 
 if __name__ == '__main__':
   absltest.main()

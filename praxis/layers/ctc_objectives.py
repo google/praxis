@@ -18,6 +18,7 @@
 import dataclasses
 from typing import Tuple
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -245,8 +246,59 @@ def ctc_loss_with_alignments(
       # Probability of being in state N at time T measured from sequence end.
       _state_logprob(logbeta_emit, logbeta_phi))
 
-  # [T, B]
-  alignment = jnp.transpose(jnp.argmax(state_logprobs, axis=2))
+  # If we take the argmax of state_logprobs, we usually get a valid alignment,
+  # but sometimes it's not correct: sometimes labels are missing or appear
+  # out of order. Therefore, we apply the argmax left-to-right to ensure
+  # that all labels are selected.
+  batch_size, logits_arraylen, _ = logits.shape
+  _, labels_arraylen = labels.shape
+  logits_lengths = logits_arraylen - jnp.sum(logitpaddings, axis=-1)
+  logits_lengths = logits_lengths[:, np.newaxis]
+  label_lengths = labels_arraylen - jnp.sum(labelpaddings, axis=-1)
+  label_lengths = label_lengths[:, np.newaxis]
+
+  # min_label is the minimum possible label index at each point in the
+  # alignment, given that we have to output all of the labels.
+  # Example: seq_len = 5, num_labels = 2:
+  # min_label = [0, 0, 0, 1, 2]
+  # min_label.shape = (batch, seq_len)
+  logits_arange = jnp.tile(jnp.arange(0, logits_arraylen), (batch_size, 1))
+  num_blanks = logits_lengths - label_lengths
+  min_label = logits_arange - num_blanks
+  min_label = jnp.where(min_label < 0, jnp.zeros_like(min_label), min_label)
+  min_label = jnp.where(min_label > label_lengths,
+                        jnp.ones_like(min_label) * label_lengths, min_label)
+
+  def _pick_best_label(last_label, xs):
+    logits_slice, min_label_slice = xs
+    # (batch_size, num_classes), contents are the index of the class.
+    classes_arange = jnp.tile(
+        jnp.arange(0, labels_arraylen + 1), (batch_size, 1))
+    # The minimum label index we can use at this step. Alignments are
+    # monotonic, so it has to be at least as large as the previous frame.
+    # It also has to be as large as min_label_slice to ensure we don't run
+    # out of time to emit all of the labels.
+    local_min_label = jnp.where(last_label > min_label_slice, last_label,
+                                min_label_slice)
+    masked_logits = jnp.where(classes_arange < local_min_label[:, np.newaxis],
+                              jnp.ones_like(logits_slice) * logepsilon,
+                              logits_slice)
+    # We can't skip labels, so the alignment index can't be more than 1
+    # greater than the previous label output.
+    masked_logits = jnp.where(classes_arange > (last_label[:, np.newaxis] + 1),
+                              jnp.ones_like(masked_logits) * logepsilon,
+                              masked_logits)
+    # label.shape = (batch_size)
+    label = jnp.argmax(masked_logits, axis=-1)
+    return label, label
+
+  # state_logprobs.shape = (frames, batch, classes)
+  # min_label.shape = (batch, frames)
+  xs = (state_logprobs, jnp.transpose(min_label, (1, 0)))
+  _, alignment = jax.lax.scan(_pick_best_label,
+                              jnp.zeros((batch_size), jnp.int32), xs)
+  # (frames, batch) -> (batch, frames)
+  alignment = jnp.transpose(alignment, (1, 0))
 
   return per_seq_loss, CtcAlignments(
       alignment=alignment,
