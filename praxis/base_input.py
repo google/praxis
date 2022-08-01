@@ -42,7 +42,7 @@ instantiate = base_hyperparams.instantiate
 class BaseInput(base_hyperparams.BaseParameterizable):
   """Base class for Jax input classes.
 
-  During Lingvo Jax's train, on each host an input instance will be
+  During paxml's train, on each host an input instance will be
   created (instantiate(input_p)), and then get_next() is iteratively
   called in eager mode to generate one batch of data for each step
   of train/eval/etc.
