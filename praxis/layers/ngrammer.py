@@ -427,7 +427,8 @@ class Ngrammer(base_layer.BaseLayer):
                paddings: Optional[JTensor] = None,
                segment_pos: Optional[JTensor] = None,
                merge_heads: bool = True,
-               pair_ids: Optional[JTensor] = None) -> JTensor:
+               pair_ids: Optional[JTensor] = None,
+               emb_var: Optional[JTensor] = None) -> JTensor:
     """Augments the input embeddings with VQ n-gram layer embeddings.
 
     Args:
@@ -446,11 +447,14 @@ class Ngrammer(base_layer.BaseLayer):
         Note that not supplying the `pair_ids` results in consecutive tokens
         getting paired together, which is equivalent to `pair_ids = [L, 0, 1, 2,
         ..., L - 2]`.
+      emb_var: Embedding table for calculating cluster centers for eval. This
+        is unused and is added here to be consistent with the N-grammer API.
 
     Returns:
       outputs: Output with the ngram embeddings added of shape [B, L, D] if
         `merge_heads` is True, or [B, L, N, H] if False.
     """
+    del emb_var  # Unused.
     p = self.hparams
     if paddings is not None:
       # Shape [B, L, 1, 1]
@@ -650,7 +654,8 @@ class VQNgrammer(base_layer.BaseLayer):
                paddings: Optional[JTensor] = None,
                segment_pos: Optional[JTensor] = None,
                merge_heads: bool = True,
-               attention_scores: Optional[JTensor] = None) -> JTensor:
+               attention_scores: Optional[JTensor] = None,
+               emb_var: Optional[JTensor] = None) -> JTensor:
     """Augments the input embeddings with VQ ngram layer embeddings.
 
     Args:
@@ -666,11 +671,14 @@ class VQNgrammer(base_layer.BaseLayer):
       attention_scores: Optional argument representing the attention matrix of
         shape [B, N, L, L] used to construct n-grams if the argument
         `ngrammer_using_attention_scores` is set.
+      emb_var: Embedding table for calculating cluster centers for eval. This
+        is unused and is added here to be consistent with the N-grammer API.
 
     Returns:
       outputs: Input embedding with the VQ ngram added of shape [B, L, D] if
         `merge_heads` is True, and shape [B, L, N, H] otherwise.
     """
+    del emb_var  # Unused.
     p = self.hparams
     pair_ids = None
     if p.use_cached_input_ids_to_cluster_ids:

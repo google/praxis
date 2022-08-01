@@ -502,11 +502,16 @@ class TransformerLm(base_layer.BaseLayer):
 
     # Add NGrammer to the source embeddings.
     if p.ngrammer_tpl is not None:
+      if self.hparams.separate_embedding_tpl is not None:
+        emb_var = self.embedding_lookup.theta.emb_var
+      else:
+        emb_var = jnp.transpose(self.softmax.logits_ffn.linear.theta.w)
       input_emb = self.ngrammer(
           input_ids=inputs,
           input_embs=input_emb,
           paddings=paddings,
-          segment_pos=segment_pos)
+          segment_pos=segment_pos,
+          emb_var=emb_var)
 
     if p.position_emb_tpl is not None:
       position_emb = self.position_emb(
