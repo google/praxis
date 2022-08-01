@@ -27,6 +27,7 @@ from praxis.layers import transformer_models
 BaseHParams = base_layer.BaseLayer.HParams
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
+LanguageModelType = transformer_models.LanguageModelType
 
 
 class DummyRetrievedValue(enum.Enum):
@@ -109,6 +110,12 @@ class Retro(transformer_models.TransformerEncoderDecoder):
     neighbor_length: int = 5
     retriever_tpl: BaseHParams = base_layer.sub_config_field(
         DummyRetriever.HParams)
+    # Retro is in fact a causal language model (it is simply an enc-dec
+    # lm nested under
+    # pax.lm.experimental.layers.retrieval_layers.RetroModel). We need to set
+    # the model_type attribute explicitly just to make it run through the
+    # LanguageModel base class.
+    model_type: LanguageModelType = LanguageModelType.CAUSAL
 
   def setup(self) -> None:
     super().setup()
