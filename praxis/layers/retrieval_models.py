@@ -28,6 +28,7 @@ BaseHParams = base_layer.BaseLayer.HParams
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 LanguageModelType = transformer_models.LanguageModelType
+NestedJTensor = pytypes.NestedJTensor
 
 
 class DummyRetrievedValue(enum.Enum):
@@ -204,7 +205,7 @@ class Retro(transformer_models.TransformerEncoderDecoder):
         [batch, num_chunks, p.num_neighbors, p.neighbor_length])
     return neighbor_encodings, neighbor_paddings
 
-  def _decode(self, inputs: JTensor, paddings: JTensor,
+  def _decode(self, inputs: NestedJTensor, paddings: JTensor,
               neighbor_encodings: JTensor, neighbor_paddings: JTensor):
     """Decode inputs.
 
@@ -222,7 +223,7 @@ class Retro(transformer_models.TransformerEncoderDecoder):
     # standard decoder only to make the model go through. It will be replaced
     # by RETRO-specific decoder shortly!
 
-    input_emb = self.decoder_embedding_lookup.emb_lookup(inputs)
+    input_emb = self.decoder_embedding_lookup.emb_lookup(inputs['inputs'])
     segment_ids = jnp.asarray(1 - paddings, jnp.int32)
     target_segment_mask = attentions.causal_segment_mask(
         segment_ids, input_emb.dtype)
@@ -230,8 +231,14 @@ class Retro(transformer_models.TransformerEncoderDecoder):
         neighbor_encodings, 1.0 - jnp.expand_dims(neighbor_paddings, -1))
     # TODO(yuancao): Handle segment_pos properly.
     output = self.decoder(
-        input_emb, paddings, target_segment_mask, neighbors=neighbor_encodings)
-    return self.decoder_ln(output)
+        {
+            'inputs': input_emb,
+            'block_count': inputs['block_count']
+        },
+        paddings,
+        target_segment_mask,
+        neighbors=neighbor_encodings)
+    return self.decoder_ln(output['inputs'])
 
   def __call__(self,
                inputs: JTensor,
@@ -273,6 +280,13 @@ class Retro(transformer_models.TransformerEncoderDecoder):
     """
     neighbor_encodings, neighbor_paddings = self._encode_neighbors(
         inputs, neighbors)
+    # Why do we need to augment the inputs with "block_count" here? We want to
+    # enable CCA layer only at selected layers, and the Retro layers are
+    # currently stacked by StackedRetrotransformerRepeated. Each
+    # Retrotransformer is one "block", and we need to feed "block_count" into
+    # the blocks and increase it by 1 after each fprop, so that the model knows
+    # when CCA layer is activated.
+    inputs = {'inputs': inputs, 'block_count': 0}
     output = self._decode(inputs, paddings, neighbor_encodings,
                           neighbor_paddings)
     return self.compute_loss(output, labels)

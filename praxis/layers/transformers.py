@@ -17,7 +17,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Sequence, Tuple, Union
+import dataclasses
+from typing import Any, Optional, Sequence, Tuple, Union, List
 
 from absl import logging
 import jax
@@ -43,6 +44,7 @@ WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
 
 JTensor = pytypes.JTensor
+NestedJTensor = pytypes.NestedJTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
 BaseHParams = base_layer.BaseLayer.HParams
@@ -2000,6 +2002,8 @@ class RetroTransformer(Transformer):
     # ChunkedCrossAttention layer.
     cca_tpl: BaseHParams = sub_config_field(
         attentions.ChunkedCrossAttention.HParams)
+    # How many of the top-k neighbors to use. If 0, use all the top-k neighbors.
+    topk_neighbors_to_use: int = 0
 
   def setup(self) -> None:
     super().setup()
@@ -2019,6 +2023,7 @@ class RetroTransformer(Transformer):
   def __call__(self,
                inputs: JTensor,
                paddings: JTensor,
+               apply_cca: JTensor,
                attention_mask: JTensor,
                segment_pos: Optional[JTensor] = None,
                neighbors: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
@@ -2027,6 +2032,8 @@ class RetroTransformer(Transformer):
     Args:
       inputs: Input sequence JTensor of shape [B, T, H].
       paddings: Input paddings JTensor of shape [B, T] (only used in FFN layer).
+      apply_cca: A binary JTensor that indicates whether CCA layer needs to be
+        applied for this Transformer block.
       attention_mask: Self attention mask ready to add to the logits. It can be
         of shape [B/1, 1, T/1, T] which is broadcast compatible with the self
         attention matrix of shape [B, N, T, T]. This is assumed to have combined
@@ -2082,7 +2089,15 @@ class RetroTransformer(Transformer):
     if neighbors is not None:
       # Apply chunked cross attention.
       # Note here neighbors performs the role of "cross_inputs".
-      atten_output = self.cca_layer(atten_output, neighbors)
+      if p.topk_neighbors_to_use > 0:
+        neighbors = neighbors[:, :, :p.topk_neighbors_to_use, :, :]
+      atten_output_cca = self.cca_layer(atten_output, neighbors)
+      use_cca = apply_cca.astype(atten_output.dtype)
+      # The transformer block is nested inside repeats.py, which does not allow
+      # jnp.cond for branching for now. We therefore use the following trick
+      # to get the desired attention output, with some additional computation.
+      atten_output = (
+          use_cca * atten_output_cca + (1.0 - use_cca) * atten_output)
 
     # Apply FFN layer
     output = self.ff_layer(atten_output, paddings=paddings)
@@ -2091,15 +2106,22 @@ class RetroTransformer(Transformer):
 
 class StackedRetroTransformer(StackedTransformer):
   """A stack of Retro Transformer layers."""
-
   # TODO(yuancao): Fix extend_step() for inference.
 
+  class HParams(StackedTransformer.HParams):
+    """HParams for the StackedRetroTransformer.
+
+    Attributes:
+      cca_layer_blocks: A list of block ids in which the CCA layer is activated.
+    """
+    cca_layer_blocks: List[int] = dataclasses.field(default_factory=list)
+
   def __call__(self,
-               inputs: JTensor,
+               inputs: NestedJTensor,
                paddings: JTensor,
                segment_mask: Optional[JTensor] = None,
                segment_pos: Optional[JTensor] = None,
-               neighbors: Optional[JTensor] = None) -> JTensor:
+               neighbors: Optional[JTensor] = None) -> NestedJTensor:
     """Stacked Transformer layer.
 
     Args:
@@ -2115,6 +2137,7 @@ class StackedRetroTransformer(StackedTransformer):
     Returns:
       Output vector with shape [B, T, D].
     """
+    inputs, block_count = inputs['inputs'], inputs['block_count']
     p = self.hparams
     x_out = inputs
     if p.packed_input:
@@ -2127,15 +2150,20 @@ class StackedRetroTransformer(StackedTransformer):
         segment_mask,
         fold_padding_with_segment_mask=p.fold_padding_with_segment_mask)
 
+    apply_cca = jnp.isin(block_count, jnp.array(p.cca_layer_blocks))
+    # Each Transformer "block" is composed of num_layers of Transformer, and
+    # repeated by StackedRetroTransformerRepeated.
     for i in range(p.num_layers):
       x_in = x_out
       x_out, _ = self.x_layers[i](
           x_in,
           paddings,
+          apply_cca,
           attention_mask,
           segment_pos=segment_pos,
           neighbors=neighbors)
-    return x_out
+    block_count += 1
+    return {'inputs': x_out, 'block_count': block_count}
 
 
 class StackedRetroTransformerRepeated(StackedTransformerRepeated):
@@ -2144,7 +2172,7 @@ class StackedRetroTransformerRepeated(StackedTransformerRepeated):
   # TODO(yuancao): Fix extend_step() for inference.
 
   def __call__(self,
-               inputs: JTensor,
+               inputs: NestedJTensor,
                paddings: JTensor,
                segment_mask: Optional[JTensor] = None,
                segment_pos: Optional[JTensor] = None,

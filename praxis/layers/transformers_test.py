@@ -1383,6 +1383,7 @@ class RetroTransformersTest(test_utils.TestCase):
           initial_vars,
           inputs,
           paddings,
+          np.asarray(True),
           attention_mask=attention_mask,
           neighbors=neighbors)
       self.assertEqual(outputs.shape, (batch_size, seq_len, p.input_dims))
@@ -1396,6 +1397,7 @@ class RetroTransformersTest(test_utils.TestCase):
         num_heads=8,
         mask_self_attention=False,
         num_layers=4,
+        cca_layer_blocks=[0],
         # TODO(yuancao): Test packed input cases when supported.
         packed_input=False)
     seq_len = 12
@@ -1403,6 +1405,7 @@ class RetroTransformersTest(test_utils.TestCase):
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.model_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
+    inputs = {'inputs': jnp.asarray(npy_inputs), 'block_count': 0}
     npy_paddings = np.random.randint(0, 1,
                                      [batch_size, seq_len]).astype('float32')
     paddings = jnp.asarray(npy_paddings)
@@ -1431,9 +1434,12 @@ class RetroTransformersTest(test_utils.TestCase):
           paddings,
           segment_mask=segment_mask,
           neighbors=neighbors)
-    np_outputs = test_utils.to_np(outputs)
+    layer_out = test_utils.to_np(outputs['inputs'])
+    block_count = test_utils.to_np(outputs['block_count'])
+    # Increased block_count by 1.
+    self.assertAllClose(block_count, 1.0)
     # self.assertAllClose(tf_np_outputs, np_outputs, atol=1e-5)
-    print(np_outputs.shape)
+    print(layer_out.shape)
 
 
 if __name__ == '__main__':
