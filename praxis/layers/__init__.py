@@ -49,7 +49,6 @@ from praxis.layers.convolutions import Conv2D
 from praxis.layers.convolutions import ConvBNAct
 from praxis.layers.convolutions import DepthwiseConv1D
 from praxis.layers.convolutions import LightConv1D
-from praxis.layers.ctc_objectives import collapse_and_remove_blanks
 from praxis.layers.embedding_softmax import Embedding
 from praxis.layers.embedding_softmax import FullSoftmax
 from praxis.layers.embedding_softmax import GShardSharedEmbeddingSoftmax

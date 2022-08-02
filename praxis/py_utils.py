@@ -628,3 +628,4 @@ def tree_unstack(tree: Any, axis: int) -> Sequence[Any]:
     flat_pytrees.append(jax.tree_map(lambda x: x.take(i, axis), tree))  # pylint: disable=cell-var-from-loop"
 
   return flat_pytrees
+
