@@ -373,6 +373,7 @@ def sample_decode(model: base_layer.BaseLayer,
   val.output_ids = output_ids
   # Shape [batch_size], whether each row has terminated and should stop.
   val.done = jnp.zeros(shape=batch_size, dtype=jnp.bool_)
+  val.has_eos = jnp.zeros(shape=batch_size, dtype=jnp.bool_)
   val.decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
   # We use a positive value of 1.0 to indicate blank or padded positions.
   val.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
@@ -435,6 +436,7 @@ def sample_decode(model: base_layer.BaseLayer,
     new_ids = jnp.where(prev_done, jnp.zeros_like(new_ids), new_ids)
     if eos_id is not None:
       val.done = jnp.logical_or(prev_done, jnp.equal(new_ids, eos_id))
+      val.has_eos = jnp.logical_or(val.has_eos, jnp.equal(new_ids, eos_id))
     if fprop_for_prefix:
       prefix_offset = max_prefix_len
       decode_lengths = prefix_lengths + (step - max_prefix_len + 2)
@@ -503,7 +505,7 @@ def sample_decode(model: base_layer.BaseLayer,
                                                       prefix_lengths,
                                                       max_prefix_len)
 
-  del result.step, result.done
+  del result.step, result.done, result.has_eos
 
   if cf_guidance_scale is not None:
     # Split cond / uncond branches and only return conditioned branch.
