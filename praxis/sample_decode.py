@@ -153,7 +153,7 @@ def sample_from_topk(logits: JTensor, prng_key: pytypes.PRNGKey,
   gumbel_noise_shape = list(logits.shape)
   gumbel_noise_shape[-1] = topk
   gumbel_noise = jax.random.gumbel(
-      prng_key, shape=gumbel_noise_shape, dtype=logits.dtype)
+      prng_key, shape=gumbel_noise_shape).astype(logits.dtype)
   return sample_from_topk_with_gumbel_noise(logits, gumbel_noise, temperature,
                                             topk)
 
@@ -411,7 +411,7 @@ def sample_decode(model: base_layer.BaseLayer,
     elif k == 0:
       if temperature > 0.0:
         gumbel_noise = jax.random.gumbel(
-            model.next_prng_key(), shape=logits.shape, dtype=logits.dtype)
+            model.next_prng_key(), shape=logits.shape).astype(logits.dtype)
         logits += gumbel_noise * temperature
       new_ids = jnp.argmax(logits, axis=1)
     else:
