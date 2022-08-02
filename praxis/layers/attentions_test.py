@@ -58,6 +58,98 @@ def assert_var_stats_close(map01, map02, test_case):
     have_similar_stats(x[1], y[1])
 
 
+class BlockUtilsTest(test_utils.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('_single_block', 7),
+      ('_one_frame_block', 1),
+      ('_two_frame_blocks', 2),
+  )
+  def test_convert_to_block(self, block_size):
+    x = np.random.random([2, 6, 2, 3, 4])
+    x_blocks = attentions._convert_to_block(x, block_size)
+    # Check shape.
+    batch_size = x.shape[0]
+    other_dims = x.shape[2:]
+    num_blocks = int(np.ceil(x.shape[1] / float(block_size)))
+    expected_shape = (batch_size, num_blocks, block_size) + other_dims
+    self.assertEqual(expected_shape, x_blocks.shape)
+
+    # Check values.
+    x_recover = x_blocks.reshape((x_blocks.shape[0], -1) + x_blocks.shape[3:])
+    x_recover = x_recover[:, :x.shape[1], ...]
+    self.assertAllClose(x, x_recover)
+
+  @parameterized.named_parameters(
+      ('_single_block', 7, 2, 1),
+      ('_single_frame_context', 1, 1, 0),
+      ('_other_case_1', 3, 4, 1),
+      ('_other_case_2', 4, 2, 4),
+  )
+  def test_extract_block_context(self, block_size, left_context, right_context):
+    x = np.random.random([2, 6, 2, 3, 4])
+    x_context = attentions._extract_block_context(x, block_size, left_context,
+                                                  right_context)
+    # Check shape.
+    batch_size = x.shape[0]
+    other_dims = x.shape[2:]
+    num_blocks = int(np.ceil(x.shape[1] / float(block_size)))
+    context_size = block_size + left_context - 1 + right_context
+    expected_shape = (batch_size, num_blocks, context_size) + other_dims
+    self.assertEqual(expected_shape, x_context.shape)
+
+    # Check values block by block.
+    for block_idx in range(num_blocks):
+      context_start = block_idx * block_size - left_context + 1
+      context_end = (block_idx + 1) * block_size + right_context
+      slice_start = max(0, context_start)
+      slice_end = min(x.shape[1], context_end)
+      expected_val = x[:, slice_start:slice_end, ...]
+      actual_val = x_context[:, block_idx, ...]
+      # remove paddings
+      front_padding = slice_start - context_start
+      back_padding = context_end - slice_end
+      actual_val = actual_val[:, front_padding:context_size - back_padding, ...]
+      self.assertAllClose(expected_val, actual_val)
+
+  def _get_reference_causal_padding(self, seq_len, block_size, left_context,
+                                    right_context):
+    num_blocks = int(np.ceil(seq_len / float(block_size)))
+    context_size = block_size + left_context - 1 + right_context
+    padding = np.ones((num_blocks, block_size, context_size))
+
+    for i in range(num_blocks):
+      for j in range(block_size):
+        actual_src_pos = j + (i * block_size)
+        if actual_src_pos < seq_len:
+          for k in range(context_size):
+            actual_tgt_pos = k + i * block_size - (left_context - 1)
+            if 0 <= actual_tgt_pos and actual_tgt_pos < seq_len:
+              diff = actual_src_pos - actual_tgt_pos
+              if -right_context <= diff and diff < left_context:
+                padding[i, j, k] = 0
+
+    return padding
+
+  @parameterized.named_parameters(
+      ('_single_block', 6, 9, 2, 1),
+      ('_single_frame_block', 6, 1, 2, 1),
+      ('_single_frame_context', 6, 1, 1, 0),
+      ('_other_case_1', 6, 3, 4, 1),
+      ('_other_case_2', 6, 4, 2, 4),
+  )
+  def test_make_local_mask(self, seq_len, block_size, left_context,
+                           right_context):
+    mask = attentions._make_local_mask(seq_len, block_size, left_context,
+                                       right_context)
+    padding = 1.0 - mask
+
+    ref_padding = self._get_reference_causal_padding(seq_len, block_size,
+                                                     left_context,
+                                                     right_context)
+    self.assertAllClose(ref_padding, padding)
+
+
 class AttentionsTest(test_utils.TestCase):
 
   def setUp(self):
