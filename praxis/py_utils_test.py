@@ -234,6 +234,26 @@ class PyUtilsTest(test_utils.TestCase):
         jax.tree_util.tree_leaves(merged_tree)):
       self.assertArraysEqual(l1, l2)
 
+  def test_apply_padding_zero(self):
+    y = py_utils.apply_padding(
+        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=np.array([[0.0], [1.0], [0.0]]))
+    self.assertAllClose(y, [[1.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
+
+  def test_apply_padding_constant(self):
+    y = py_utils.apply_padding(
+        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=np.array([[0.0], [1.0], [0.0]]),
+        pad_value=np.array([[1.0, 2.0], [9.0, 10.0], [5.0, 6.0]]))
+    self.assertAllClose(y, [[1.0, 2.0], [9.0, 10.0], [5.0, 6.0]])
+
+  def test_apply_padding_zero_arithmetic(self):
+    y = py_utils.apply_padding(
+        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=np.array([[0.0], [1.0], [0.0]]),
+        use_select=False)
+    self.assertAllClose(y, [[1.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
+
 
 if __name__ == '__main__':
   absltest.main()

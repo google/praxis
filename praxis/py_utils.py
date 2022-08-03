@@ -629,3 +629,34 @@ def tree_unstack(tree: Any, axis: int) -> Sequence[Any]:
 
   return flat_pytrees
 
+
+def apply_padding(inputs: JTensor,
+                  padding: JTensor,
+                  pad_value: Optional[JTensor] = None,
+                  use_select: bool = True) -> JTensor:
+  """Applies padding to a tensor.
+
+  Args:
+    inputs: JTensor to apply padding to.
+    padding: JTensor of padding values where 0 == keep and 1 == pad.
+    pad_value: Values to include for padded elements. Defaults to zeros. Must
+      have a shape broadcastable to 'x' if specified.
+    use_select: Controls whether padding is applied with a select-mask
+      (True/default) or arithmetically (False). Some platforms have a
+      sensitivity to one or the other and this is used to work around such
+      issues.
+
+  Returns:
+    A tensor with the same shape as x with padded values masked.
+  """
+  if use_select:
+    if pad_value is None:
+      pad_value = jnp.zeros([], inputs.dtype)
+    if padding.dtype != jnp.bool_:
+      padding = padding > jnp.zeros([], padding.dtype)
+    result = jnp.where(padding, pad_value, inputs)
+  else:
+    result = inputs * (1.0 - padding.astype(jnp.float32)).astype(inputs.dtype)
+    if pad_value is not None:
+      result += pad_value * padding.astype(pad_value.dtype)
+  return result
