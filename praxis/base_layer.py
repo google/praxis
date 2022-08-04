@@ -1179,7 +1179,7 @@ class BaseLayer(
   #   outputs = layer.apply(initial_vars, method=layer.fprop)
   # where `initial_vars` that users see are unboxed jnp.arrays, and
   # also the code in fprop never sees BoxedParams but always jnp.arrays.
-  def init(self, rngs, *args, **kwargs):
+  def init(self, rngs, *args, method=None, mutable=None, **kwargs):
     # TODO(zhangqiaorjc): Pass args and kwargs to init when Praxis switches to
     # running forward computation for layer initialization, similar to what
     # Flax does.
