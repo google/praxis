@@ -1026,6 +1026,11 @@ class Transformer(base_layer.BaseLayer):
         path.
       mask_self_attention: If True, use causal mask.
       cross_attention: If True, perform cross encoder-decoder attention.
+      allow_skip_cross_attention: If True, allow skipping cross attention
+        during forward pass and decoding. This allows to skip cross attention
+        when cross inputs are not available. For example, if we want to train
+        the model with paired data and unimodal data. For paired data, we need
+        cross attention but for unimodal data, we don't have cross inputs.
       cross_atten_tpl: Optional cross attention params template that can be set
         when cross attention is enabled. If cross-attention is enabled and this
         is set to None, then cross-attention params will be inherited from
@@ -1053,6 +1058,7 @@ class Transformer(base_layer.BaseLayer):
     residual_droppath_prob: float = 0.0
     mask_self_attention: bool = False
     cross_attention: bool = False
+    allow_skip_cross_attention: bool = False
     cross_atten_tpl: Optional[BaseHParams] = None
     ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
     norm_policy: str = 'pre'
@@ -1234,7 +1240,8 @@ class Transformer(base_layer.BaseLayer):
       atten_output += inputs
 
     # Apply cross attention if applicable
-    if p.cross_attention:
+    if p.cross_attention and (not p.allow_skip_cross_attention or
+                              cross_inputs is not None):
       assert cross_inputs is not None
       assert cross_attention_mask is not None
       if p.norm_policy == 'pre':
@@ -1322,7 +1329,8 @@ class Transformer(base_layer.BaseLayer):
     atten_output += inputs
 
     # Apply cross attention if applicable
-    if p.cross_attention:
+    if p.cross_attention and (not p.allow_skip_cross_attention or
+                              cross_attention_mask is not None):
       assert cross_attention_mask is not None
       if p.norm_policy == 'pre':
         atten_output_normalized = self.cross_layer_norm(atten_output)
