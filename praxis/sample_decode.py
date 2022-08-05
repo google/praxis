@@ -472,6 +472,8 @@ def sample_decode(model: base_layer.BaseLayer,
       carry_variables=[DECODE_CACHE],
   )
 
+  del result.segment_pos
+
   if return_result_for_suffix_score:
     return result
 
