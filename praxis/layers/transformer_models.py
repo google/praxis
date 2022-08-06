@@ -493,7 +493,8 @@ class TransformerLm(base_layer.BaseLayer):
       input_emb = self.softmax.emb_lookup(inputs)
     batch, seq_length = inputs.shape
 
-    num_unpadded_tokens = jnp.sum(1.0 - paddings).astype(jnp.float32)
+    paddings_float32 = paddings.astype(jnp.float32)
+    num_unpadded_tokens = jnp.sum(1.0 - paddings_float32)
     self.add_summary('num_unpadded_tokens', num_unpadded_tokens)
     if inputs.size != 0:
       num_tokens = jnp.array(inputs.size, jnp.float32)
