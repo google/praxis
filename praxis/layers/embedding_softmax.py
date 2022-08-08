@@ -363,17 +363,20 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
         This is also the size of the vocabulary when used as an embedding layer.
       soft_cap_logits: If not None logits are soft capped to this value.
       bias_init: Init scale (constant) of bias terms.
+      feed_forward_tpl: Sub configurable field for the feed-forward layer.
     """
     input_dims: int = 0
     num_classes: int = 0
     soft_cap_logits: Optional[float] = 0.0
     bias_init: Optional[float] = 0.0
+    feed_forward_tpl: BaseHParams = sub_config_field(
+        linears.FeedForward.HParams)
 
   def setup(self) -> None:
     p = self.hparams
     wp = p.weight_split_dims_mapping
     ap = p.activation_split_dims_mapping
-    ff_p = linears.FeedForward.HParams(
+    ff_p = p.feed_forward_tpl.clone().set(
         input_dims=p.input_dims,
         output_dims=p.num_classes,
         activation_tpl=activations.Identity.HParams(),
