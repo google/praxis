@@ -176,10 +176,9 @@ class BaseInput(base_hyperparams.BaseParameterizable):
         converted.
       lengths: A vector of shape [batch]. lens[i] is the sequence length of the
         i-th row. Only the first lens[i] tokens in ids[i, :] are valid tokens.
-      key: Optional argument to specify whether a tokenizer to use is the source
-        or target. This is useful for example in a sequence model where the
-        source and targets have different tokenizers. For the source corpus the
-        key should be `src` while for the target corpus the key should be `tgt`.
+      key: Optional argument to specify which tokenizer to use. This is useful
+        for example in a sequence model where the source and targets have
+        different tokenizers.
 
     Returns:
       A list strings of shape [batch]. The converted texts.
