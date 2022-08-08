@@ -2597,7 +2597,8 @@ class LocalSelfAttention(DotProductAttention):
     # Attention softmax is always carried out in fp32.
     logits = logits.astype(jnp.float32)
 
-    padded_logits = logits + mask.astype(jnp.float32)
+    padded_logits = logits * (mask > minus_inf / 2).astype(
+        jnp.float32) + mask.astype(jnp.float32)
 
     if p.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
