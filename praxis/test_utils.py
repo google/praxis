@@ -15,7 +15,8 @@
 
 """Utility functions for JAX tests."""
 
-from typing import Any, Optional
+import os
+from typing import Any, Mapping, Optional
 
 from absl import flags
 from absl.testing import parameterized
@@ -425,3 +426,32 @@ def replace_jax_conformer_layer_vars_to_tf(
   tf_initial_vars.trans_atten.atten.atten_dropout = py_utils.NestedMap()
   tf_initial_vars = to_tf_nmap(tf_initial_vars)
   return tf_initial_vars
+
+
+def get_tfevent_scalars(root: str) -> Mapping[str, float]:
+  """Extracts dict of scalars from all tfevents proto files under a dir."""
+  # recursively walk from root and collect all tfevent files
+  tfevent_files = []
+  for dirname, subdir, fnames in tf.io.gfile.walk(root):
+    if subdir:
+      continue
+
+    for fname in fnames:
+      if fname.startswith('events.out.tfevents'):
+        tfevent_files.append(os.path.join(dirname, fname))
+
+  # for all tfevent files extract scalar tensor values
+  scalars = {}
+  for tfevent_file in tfevent_files:
+    for event in tf.compat.v1.train.summary_iterator(tfevent_file):
+      for value in event.summary.value:
+        if value.metadata.plugin_data.plugin_name != 'scalars':
+          continue
+
+        if not value.HasField('tensor'):
+          continue
+
+        np_value = tf.make_ndarray(value.tensor)
+        scalars[value.tag] = np_value.item()
+
+  return scalars
