@@ -37,20 +37,17 @@ pytype_strict_library(
         ":conformers",
         ":convolutions",
         ":embedding_softmax",
-        ":flax_adapter",
         ":frnn",
         ":linears",
         ":losses",
         ":models",
         ":ngrammer",
         ":normalizations",
-        ":objectives",
         ":pipeline",
         ":poolings",
         ":quantizer",
         ":repeats",
         ":resnets",
-        ":retrieval_models",
         ":rnn_cell",
         ":spectrum_augmenter",
         ":stochastics",
@@ -568,6 +565,7 @@ pytype_strict_library(
         ":stochastics",
         # Implicit absl.logging dependency.
         # Implicit jax dependency.
+        "//third_party/py/jax:experimental_host_callback",
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:gshard_utils",
@@ -601,39 +599,6 @@ py_strict_test(
         ":vits",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
-        # Implicit jax dependency.
-        # Implicit numpy dependency.
-        "//praxis:base_layer",
-        "//praxis:py_utils",
-        "//praxis:test_utils",
-    ],
-)
-
-pytype_strict_library(
-    name = "retrieval_models",
-    srcs = ["retrieval_models.py"],
-    deps = [
-        ":attentions",
-        ":transformer_models",
-        # Implicit jax dependency.
-        "//praxis:base_layer",
-        "//praxis:py_utils",
-        "//praxis:pytypes",
-    ],
-)
-
-py_strict_test(
-    name = "retrieval_models_test",
-    size = "large",
-    srcs = ["retrieval_models_test.py"],
-    python_version = "PY3",
-    shard_count = 27,
-    srcs_version = "PY3",
-    deps = [
-        ":activations",
-        ":layers",
-        ":retrieval_models",
-        # Implicit absl.testing.absltest dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",

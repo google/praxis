@@ -87,8 +87,7 @@ def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
   stacked_p = stacked_transformer_p
   if stacked_p.cls == transformers.PipelinedTransformer:
     stacked_p = stacked_p.pipeline_stage
-  if stacked_p.cls in (transformers.StackedTransformerRepeated,
-                       transformers.StackedRetroTransformerRepeated):
+  if issubclass(stacked_p.cls, transformers.StackedTransformerRepeated):
     stacked_p = stacked_p.block
   transformer_p = stacked_p.transformer_layer_params_tpl
   for atten_p in (transformer_p.tr_atten_tpl, transformer_p.cross_atten_tpl):
@@ -346,8 +345,7 @@ class TransformerLm(base_layer.BaseLayer):
     xformer_params = stacked_xformer_params
     if xformer_params.cls == transformers.PipelinedTransformer:
       xformer_params = xformer_params.pipeline_stage
-    if xformer_params.cls in (transformers.StackedTransformerRepeated,
-                              transformers.StackedRetroTransformerRepeated):
+    if issubclass(xformer_params.cls, transformers.StackedTransformerRepeated):
       xformer_params = xformer_params.block
     if not issubclass(xformer_params.cls, transformers.StackedTransformer):
       assert False, f'{xformer_params.cls} not supported.'
@@ -871,9 +869,8 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
                 stacked_transformer_tpl.model_dims == model_dims)
         stacked_transformer_tpl.model_dims = model_dims
         stacked_transformer_tpl.packed_input = packed_input
-      elif stacked_transformer_tpl.cls in (
-          transformers.StackedTransformerRepeated,
-          transformers.StackedRetroTransformerRepeated):
+      elif issubclass(stacked_transformer_tpl.cls,
+                      transformers.StackedTransformerRepeated):
         assert (stacked_transformer_tpl.block.model_dims == 0 or
                 stacked_transformer_tpl.block.model_dims == model_dims)
         stacked_transformer_tpl.block.model_dims = model_dims
@@ -924,8 +921,8 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       mask_self_attention = encoder_params.mask_self_attention
       encoder_num_layers = encoder_params.num_layers
       stacked_encoder_block_params = encoder_params
-    elif encoder_params.cls in (transformers.StackedTransformerRepeated,
-                                transformers.StackedRetroTransformerRepeated):
+    elif issubclass(encoder_params.cls,
+                    transformers.StackedTransformerRepeated):
       mask_self_attention = encoder_params.block.mask_self_attention
       encoder_num_layers = encoder_params.block.num_layers
       stacked_encoder_block_params = encoder_params.block
@@ -998,8 +995,8 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       mask_self_attention = decoder_hparams.mask_self_attention
       num_decoder_layers = decoder_hparams.num_layers
       stacked_decoder_block_params = decoder_hparams
-    elif decoder_hparams.cls in (transformers.StackedTransformerRepeated,
-                                 transformers.StackedRetroTransformerRepeated):
+    elif issubclass(decoder_hparams.cls,
+                    transformers.StackedTransformerRepeated):
       mask_self_attention = decoder_hparams.block.mask_self_attention
       num_decoder_layers = decoder_hparams.block.num_layers
       stacked_decoder_block_params = decoder_hparams.block

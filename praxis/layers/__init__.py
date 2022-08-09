@@ -88,7 +88,6 @@ from praxis.layers.repeats import AutodiffCheckpointType
 from praxis.layers.repeats import Repeat
 from praxis.layers.resnets import ResNet
 from praxis.layers.resnets import ResNetBlock
-from praxis.layers.retrieval_models import Retro
 from praxis.layers.rnn_cell import CifgLstmCellSimple
 from praxis.layers.rnn_cell import LstmCellSimple
 from praxis.layers.spectrum_augmenter import SpectrumAugmenter
@@ -100,9 +99,6 @@ from praxis.layers.transformer_models import TransformerLm
 from praxis.layers.transformers import compute_attention_masks_for_extend_step
 from praxis.layers.transformers import compute_attention_masks_for_fprop
 from praxis.layers.transformers import PipelinedTransformer
-from praxis.layers.transformers import RetroTransformer
-from praxis.layers.transformers import StackedRetroTransformer
-from praxis.layers.transformers import StackedRetroTransformerRepeated
 from praxis.layers.transformers import StackedTransformer
 from praxis.layers.transformers import StackedTransformerRepeated
 from praxis.layers.transformers import Transformer

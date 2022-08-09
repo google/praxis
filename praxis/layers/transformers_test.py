@@ -16,7 +16,6 @@
 """Tests for Praxis transformer layers."""
 
 import copy
-import dataclasses
 import itertools
 
 from absl import logging
@@ -1323,123 +1322,6 @@ class TransformersTest(test_utils.TestCase):
     self.assertAllClose(
         sentence_embedding,
         [[0.0, 0.0], [2.5, 7.5], [2.5, 7.5], [4.5, 9.5], [4.5, 9.5]])
-
-
-class RetroTransformersTest(test_utils.TestCase):
-  """Test cases for RETRO Transformer."""
-
-  def setUp(self):
-    super().setUp()
-    np.random.seed(123456)
-    tf.random.set_seed(123)
-
-  @dataclasses.dataclass
-  class NeighborSize:
-    batch: int
-    num_chunks: int
-    num_neighbors: int
-    chunk_length: int
-    dim: int
-
-  def prepare_neighbors(self, neighbor_size):
-    return np.random.randint(0, 100, size=dataclasses.astuple(neighbor_size))
-
-  def test_retro_transformer_layer(self):
-    p = transformers.RetroTransformer.HParams(
-        name='jax_retro_transformer_layer',
-        input_dims=32,
-        hidden_dims=128,
-        num_heads=8,
-        mask_self_attention=False,
-        # TODO(yuancao): Test packed input cases when supported.
-        packed_input=False)
-    seq_len = 12
-    batch_size = 4
-    npy_inputs = np.random.normal(
-        1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
-    inputs = jnp.asarray(npy_inputs)
-    npy_paddings = np.random.randint(0, 1,
-                                     [batch_size, seq_len]).astype('float32')
-    paddings = jnp.asarray(npy_paddings)
-    attention_mask = attentions.convert_paddings_to_mask(paddings)
-    neighbors = self.prepare_neighbors(
-        self.NeighborSize(
-            batch=batch_size,
-            num_chunks=3,
-            num_neighbors=2,
-            chunk_length=5,
-            dim=p.input_dims))
-
-    with base_layer.JaxContext.new_context():
-      transformer_layer = instantiate(p)
-      prng_key = jax.random.PRNGKey(seed=123)
-      initial_vars = transformer_layer.init(
-          prng_key,
-          inputs,
-          paddings,
-          attention_mask=attention_mask,
-          neighbors=neighbors)
-      outputs, unused_atten_probs = transformer_layer.apply(
-          initial_vars,
-          inputs,
-          paddings,
-          np.asarray(True),
-          attention_mask=attention_mask,
-          neighbors=neighbors)
-      self.assertEqual(outputs.shape, (batch_size, seq_len, p.input_dims))
-
-  def test_stacked_retro_layer(self):
-    p = transformers.StackedRetroTransformer.HParams(
-        name='jax_stacked_retro_transformer_layer',
-        transformer_layer_params_tpl=transformers.RetroTransformer.HParams(),
-        model_dims=16,
-        hidden_dims=64,
-        num_heads=8,
-        mask_self_attention=False,
-        num_layers=4,
-        cca_layer_blocks=[0],
-        # TODO(yuancao): Test packed input cases when supported.
-        packed_input=False)
-    seq_len = 12
-    batch_size = 4
-    npy_inputs = np.random.normal(
-        1.0, 0.5, [batch_size, seq_len, p.model_dims]).astype('float32')
-    inputs = jnp.asarray(npy_inputs)
-    inputs = {'inputs': jnp.asarray(npy_inputs), 'block_count': 0}
-    npy_paddings = np.random.randint(0, 1,
-                                     [batch_size, seq_len]).astype('float32')
-    paddings = jnp.asarray(npy_paddings)
-    segment_mask = None
-
-    neighbors = self.prepare_neighbors(
-        self.NeighborSize(
-            batch=batch_size,
-            num_chunks=3,
-            num_neighbors=2,
-            chunk_length=5,
-            dim=p.model_dims))
-
-    with base_layer.JaxContext.new_context():
-      stacked_transformer_layer = instantiate(p)
-      prng_key = jax.random.PRNGKey(seed=123)
-      initial_vars = stacked_transformer_layer.init(
-          prng_key,
-          inputs,
-          paddings,
-          segment_mask=segment_mask,
-          neighbors=neighbors)
-      outputs = stacked_transformer_layer.apply(
-          initial_vars,
-          inputs,
-          paddings,
-          segment_mask=segment_mask,
-          neighbors=neighbors)
-    layer_out = test_utils.to_np(outputs['inputs'])
-    block_count = test_utils.to_np(outputs['block_count'])
-    # Increased block_count by 1.
-    self.assertAllClose(block_count, 1.0)
-    # self.assertAllClose(tf_np_outputs, np_outputs, atol=1e-5)
-    print(layer_out.shape)
 
 
 if __name__ == '__main__':
