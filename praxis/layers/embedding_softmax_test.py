@@ -489,6 +489,91 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     for k in outputs.keys():
       self.assertAllClose(to_np(outputs[k]), to_np(tf_output[k]))
 
+  @parameterized.parameters(8, 1)
+  def test_sigmoid_cross_entropy_class_weights(self, num_classes):
+    batch_size = 32
+    class_probabilities = np.random.normal(1.5, 2.0, [batch_size, num_classes])
+    # Normalize class probabilities to be a probability distribution.
+    class_probabilities /= np.sum(class_probabilities, axis=-1, keepdims=True)
+    p = embedding_softmax.SigmoidCrossEntropy.HParams(
+        name='jax_softmax', num_classes=num_classes, input_dims=40)
+    sigmoid_xent_layer = instantiate(p)
+    npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
+    inputs = jnp.asarray(npy_input)
+    class_weights = np.random.normal(1.5, 2.0, [batch_size, num_classes])
+    target_weights = np.sum(class_weights, keepdims=True)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = sigmoid_xent_layer.init(
+        prng_key, inputs, method=sigmoid_xent_layer.get_logits)
+    logits = sigmoid_xent_layer.apply(
+        initial_vars, inputs, method=sigmoid_xent_layer.get_logits)
+    with base_layer.JaxContext.new_context():
+      outputs = sigmoid_xent_layer.apply(
+          initial_vars,
+          inputs,
+          class_weights,
+          class_ids=None,
+          class_probabilities=class_probabilities)
+    # Test whether tf sigmoid-cross-entropy layer returns same output.
+    # Modify initial_vars to use TF compatible params.
+    tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars['params'])
+    tf_initial_vars = test_utils.replace_jax_simple_full_softmax_vars_to_tf(
+        tf_initial_vars)
+    # Convert all the values to TF tensor.
+    tf_initial_vars = tf.nest.map_structure(tf.convert_to_tensor,
+                                            tf_initial_vars)
+
+    tf_p = lingvo_layers.SimpleFullSigmoidCrossEntropy.Params().Set(
+        name='tf_softmax',
+        num_classes=p.num_classes,
+        input_dim=p.input_dims,
+        bias_init=-10.0)
+    tf_sigmoid_xent_layer = tf_p.Instantiate()
+    tf_logits = tf_sigmoid_xent_layer.Logits(
+        tf_initial_vars, tf.constant(inputs, dtype=tf.float32))
+    tf_output = tf_sigmoid_xent_layer.FProp(
+        tf_initial_vars,
+        tf.constant(inputs, dtype=tf.float32),
+        target_weights,
+        class_ids=None,
+        class_probabilities=tf.constant(class_probabilities, dtype=tf.float32))
+    # Check all entries in the NestedMap and ensure it matches TF.
+    np_get_logits = to_np(logits)
+    tf_np_get_logits = to_np(tf_logits)
+    self.assertAllClose(np_get_logits, tf_np_get_logits)
+    self.assertAllClose(
+        to_np(outputs['total_weight']), to_np(tf_output['total_weight']))
+    self.assertAllClose(
+        to_np(outputs['per_example_argmax']),
+        to_np(tf_output['per_example_argmax']))
+
+  def test_sigmoid_cross_entropy_class_weights_no_ffn(self):
+    batch_size = 32
+    num_classes = 40
+    class_probabilities = np.random.normal(1.5, 2.0, [batch_size, num_classes])
+    # Normalize class probabilities to be a probability distribution.
+    class_probabilities /= np.sum(class_probabilities, axis=-1, keepdims=True)
+    p = embedding_softmax.SigmoidCrossEntropy.HParams(
+        name='jax_softmax',
+        num_classes=num_classes,
+        input_dims=40,
+        feed_forward_tpl=None)
+    sigmoid_xent_layer = instantiate(p)
+    npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
+    inputs = jnp.asarray(npy_input)
+    class_weights = np.random.normal(1.5, 2.0, [batch_size, num_classes])
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = sigmoid_xent_layer.init(
+        prng_key, inputs, method=sigmoid_xent_layer.get_logits)
+    with base_layer.JaxContext.new_context():
+      outputs = sigmoid_xent_layer.apply(
+          initial_vars,
+          inputs,
+          class_weights,
+          class_ids=None,
+          class_probabilities=class_probabilities)
+      self.assertAllClose(to_np(outputs['logits']), inputs)
+
   @parameterized.parameters((1, 10), (1, 1e5), (10, 20), (10, 1e5))
   def test_position_embedding_layer(self, min_timescale, max_timescale):
     p = embedding_softmax.PositionalEmbedding.HParams(

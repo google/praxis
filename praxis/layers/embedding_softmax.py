@@ -363,7 +363,8 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
         This is also the size of the vocabulary when used as an embedding layer.
       soft_cap_logits: If not None logits are soft capped to this value.
       bias_init: Init scale (constant) of bias terms.
-      feed_forward_tpl: Sub configurable field for the feed-forward layer.
+      feed_forward_tpl: Sub configurable field for the feed-forward layer. If
+        None, skip the FFN projection.
     """
     input_dims: int = 0
     num_classes: int = 0
@@ -374,16 +375,22 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
 
   def setup(self) -> None:
     p = self.hparams
-    wp = p.weight_split_dims_mapping
-    ap = p.activation_split_dims_mapping
-    ff_p = p.feed_forward_tpl.clone().set(
-        input_dims=p.input_dims,
-        output_dims=p.num_classes,
-        activation_tpl=activations.Identity.HParams(),
-        bias_init=p.bias_init,
-        weight_split_dims_mapping=wp.clone(),
-        activation_split_dims_mapping=ap.clone())
-    self.create_child('logits_ffn', ff_p)
+    if p.feed_forward_tpl:
+      wp = p.weight_split_dims_mapping
+      ap = p.activation_split_dims_mapping
+      ff_p = p.feed_forward_tpl.clone().set(
+          input_dims=p.input_dims,
+          output_dims=p.num_classes,
+          activation_tpl=activations.Identity.HParams(),
+          bias_init=p.bias_init,
+          weight_split_dims_mapping=wp.clone(),
+          activation_split_dims_mapping=ap.clone())
+      self.create_child('logits_ffn', ff_p)
+    else:
+      if p.input_dims != p.num_classes:
+        raise ValueError(
+            f'SigmoidCrossEntropy\'s input_dims {p.input_dims} has to match '
+            f'num_classes if ffn is disabled.')
 
   def get_logits(self, inputs: JTensor) -> JTensor:
     """Returns logits given the inputs with an option to soft cap it.
@@ -395,6 +402,8 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
       logits: with shape [..., num_classes]. Unnormalized softmax's logits.
     """
     p = self.hparams
+    if not p.feed_forward_tpl:
+      return inputs
     # Compute logits.
     logits = self.logits_ffn(inputs)
 
@@ -412,8 +421,8 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
 
     Args:
       inputs: a single JTensor with shape [..., input_dim].
-      class_weights: a JTensor with shape [..., 1] containing the weights for
-        each target word.
+      class_weights: a JTensor with shape [..., 1] or [..., num_classes]
+        containing the weights for each target or for each label class.
       class_ids: a JTensor with shape [..., 1] of int32 dtype containing the
         target class labels.
       class_probabilities: a JTensor with shape [..., num_classes] of float
@@ -423,11 +432,10 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
       A `.NestedMap` containing the following fields
 
       - logits: with shape [..., num_classes]. Unnormalized softmax's logits.
+      - log_probs: with shape [..., num_classes]. Log prob of logits.
       - per_example_argmax: with shape [...]. argmax of i-th example.
       - per_example_xent: with shape [...]. Cross entropy between i-th example's
-        prediction and its label.
-      - per_example_weight: with shape [...]. class_weights casted to
-        this layer's dtype.
+        prediction and its label multiplied by per_class_weight.
       - total_xent: A scalar. The sum of per_example_weight * per_example_xent.
       - total_weight: A scalar. The sum of per_example_weight.
       - avg_xent: A scalar. total_loss / total_weight.
@@ -445,26 +453,43 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
     log_probs = jax.nn.log_sigmoid(logits)
 
     if class_probabilities is None:
+      if p.num_classes == 1:
+        raise ValueError(
+            'one_hot with num_classes=1 has a strange behavior. Please double '
+            'check this is what you intended to do.')
       class_probabilities = jax.nn.one_hot(
           jnp.squeeze(class_ids, axis=-1), p.num_classes, dtype=jnp.float32)
       class_probabilities = jax.lax.stop_gradient(class_probabilities)
+
+    if class_weights.shape[-1] == p.num_classes:
+      per_class_weight = class_weights
+      per_example_weight = jnp.ones(class_weights.shape[:-1] + (1,))
+    elif class_weights.shape[-1] == 1:
+      per_class_weight = jnp.ones(class_weights.shape[:-1] + (p.num_classes,))
+      per_example_weight = class_weights
+    else:
+      raise ValueError(
+          f'Wrong shape of class_weights {class_weights.shape} vs '
+          f'logits shape {logits.shape} vs '
+          f'class_probabilities shape {class_probabilities.shape} vs '
+          f'num_classes {p.num_classes}')
 
     # A stable implementation of sigmoid cross entropy loss.
     zeros = jnp.zeros_like(logits)
     cond = logits > zeros
     relu_logits = jnp.where(cond, logits, zeros)
     neg_abs_logits = jnp.where(cond, -logits, logits)
-    per_example_xent = jnp.sum(
+    per_class_xent = (
         relu_logits - logits * class_probabilities +
-        jnp.log1p(jnp.exp(neg_abs_logits)),
-        axis=-1,
-        dtype=jnp.float32)
+        jnp.log1p(jnp.exp(neg_abs_logits)))
+    per_example_xent = jnp.sum(
+        per_class_xent * per_class_weight, axis=-1, dtype=jnp.float32)
 
     per_example_argmax = jax.lax.stop_gradient(jnp.argmax(logits, axis=-1))
 
     # Compute total sigmoid cross-entropy loss for the output tensor.
     total_xent = jnp.sum(
-        jnp.expand_dims(per_example_xent, axis=-1) * class_weights,
+        jnp.expand_dims(per_example_xent, axis=-1) * per_example_weight,
         dtype=jnp.float32)
 
     total_weight = jnp.sum(class_weights, dtype=jnp.float32)
