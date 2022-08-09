@@ -114,7 +114,7 @@ def interpolate_embedding_2d(emb, source_emb_shape, target_emb_shape):
 
   target_emb = jax.image.resize(
       emb, (target_emb_shape[0], target_emb_shape[1], emb_dims),
-      method='linear')
+      method='bilinear')
   target_emb = jnp.reshape(
       target_emb, (1, target_emb_shape[0] * target_emb_shape[1], emb_dims))
 
