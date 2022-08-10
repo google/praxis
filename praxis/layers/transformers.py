@@ -1490,6 +1490,9 @@ class StackedTransformer(base_layer.BaseLayer):
         moe_p.num_groups = p.num_groups
         moe_p.min_group_size = p.min_group_size
         moe_p.gating_func = p.gating_func
+        if moe_p.hidden_dims:
+          # MoE hidden_dims could be different from FFN hidden_dims
+          p_i.hidden_dims = moe_p.hidden_dims
         p_i.tr_fflayer_tpl = moe_p
 
       if p.ngrammer_tpls is not None:
