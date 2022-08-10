@@ -327,6 +327,7 @@ py_strict_test(
     srcs = ["base_hyperparams_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = ["fast_and_reliable_fiddle_integration_test"],
     deps = [
         ":base_hyperparams",
         ":base_layer",
