@@ -37,6 +37,7 @@ from typing import Tuple
 import einops
 import jax
 from jax import numpy as jnp
+import numpy as np
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import py_utils
@@ -160,7 +161,7 @@ class VitEntryLayers(base_layer.BaseLayer):
         activation_tpl=activations.Identity.HParams())
     self.create_child('patch_projection', p_patch_projection)
 
-    num_patches = p.pos_embed_shapes[0] * p.pos_embed_shapes[1]
+    num_patches = np.prod(p.pos_embed_shapes)
 
     p_emb = embedding_softmax.TrainablePositionalEmbedding.HParams(
         name='emb',
@@ -179,30 +180,39 @@ class VitEntryLayers(base_layer.BaseLayer):
     """Applies the vit entry operations to the input image.
 
     Args:
-      inputs: Input image tensor of shape [B, H, W, 3].
+      inputs: Input image tensor of allowed shapes:
+        - [B, H, W, 3], where inputs are images
+        - [B, N, D], where inputs are a sequence of embeddings or patches
 
     Returns:
       Output tensor of shape [B, N, D].
     """
     p = self.hparams
 
-    height, width = inputs.shape[1:3]
-    if height % p.patch_size != 0 or width % p.patch_size != 0:
-      raise ValueError(
-          f'Image height ({height}) and width ({width}) should be multiples '
-          f'of p.patch_size ({p.patch_size}).')
+    if len(inputs.shape) == 4:
+      height, width = inputs.shape[1:3]
+      if height % p.patch_size != 0 or width % p.patch_size != 0:
+        raise ValueError(
+            f'Image height ({height}) and width ({width}) should be multiples '
+            f'of p.patch_size ({p.patch_size}).')
+      patches = image_to_patch(inputs, p.patch_size)
+    elif len(inputs.shape) == 3:
+      patches = inputs
+    else:
+      raise ValueError('Input image tensor allows [B, H, W, 3] or [B, N, D].')
 
-    features = image_to_patch(inputs, p.patch_size)
-    features = self.patch_projection(features)
+    features = self.patch_projection(patches)
 
-    num_patches = p.pos_embed_shapes[0] * p.pos_embed_shapes[1]
+    num_patches = np.prod(p.pos_embed_shapes)
     pos_emb = self.pos_emb(seq_length=num_patches)
 
-    row_patch_count = height // p.patch_size
-    col_patch_count = width // p.patch_size
-    if p.pos_embed_shapes != (row_patch_count, col_patch_count):
-      pos_emb = interpolate_embedding_2d(pos_emb, p.pos_embed_shapes,
-                                         (row_patch_count, col_patch_count))
+    # Only support image shape for pos interpolation.
+    if len(inputs.shape) == 4:
+      row_patch_count = height // p.patch_size
+      col_patch_count = width // p.patch_size
+      if p.pos_embed_shapes != (row_patch_count, col_patch_count):
+        pos_emb = interpolate_embedding_2d(pos_emb, p.pos_embed_shapes,
+                                           (row_patch_count, col_patch_count))
 
     features = features + pos_emb
     if self.hparams.pos_emb_dropout_prob > 0.0:
@@ -313,11 +323,15 @@ class VisionTransformer(base_layer.BaseLayer):
     if p.exit_layers_tpl is not None:
       self.create_child('exit_stack', p.exit_layers_tpl)
 
-  def __call__(self, inputs: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor, paddings: JTensor = None) -> JTensor:
     """Applies the Vit model to the inputs.
 
     Args:
-      inputs: Input image tensor of shape [B, H, W, 3] (H == W).
+      inputs: Input image tensor of allowed shapes:
+        - [B, H, W, 3], where inputs are images
+        - [B, N, D], where inputs are a sequence of embeddings or patches
+      paddings: Optional [B, N] padding field of inputs when inputs are with
+        [B, N, D].
 
     Returns:
       Output tensor of shape [B, D] or [B, N, D] if pooled == False.
@@ -326,7 +340,8 @@ class VisionTransformer(base_layer.BaseLayer):
     features = inputs
     if p.entry_layers_tpl:
       features = self.entry_stack(features)  # [B, N, D]
-    paddings = jnp.zeros(features.shape[:-1], dtype=features.dtype)
+    if paddings is None:
+      paddings = jnp.zeros(features.shape[:-1], dtype=features.dtype)
     features = self.transformers_stack(features, paddings)  # [B, N, D]
     if p.exit_layers_tpl:
       features = self.exit_stack(features)  # [B, D] or [B, N, D]

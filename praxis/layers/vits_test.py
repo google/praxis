@@ -88,17 +88,18 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
     return p_exit
 
   @parameterized.named_parameters(
-      ('square_image_square_embeddings_no_interp', (32, 32), (8, 8)),
-      ('square_image_square_embeddings_interp', (64, 64), (8, 8)),
-      ('rec_image_rec_embeddings_interp', (16, 24), (2, 3)))
-  def test_vit_entry_layers(self, image_sizes, pos_embed_shapes):
+      ('square_image_square_embeddings_no_interp', (32, 32, 3), (8, 8)),
+      ('square_image_square_embeddings_interp', (64, 64, 3), (8, 8)),
+      ('rec_image_rec_embeddings_interp', (16, 24, 3), (2, 3)),
+      ('sequence_input', (16, 4**2 * 3), (4, 4)))
+  def test_vit_entry_layers(self, input_shapes, pos_embed_shapes):
     exp_params = self._exp_params()
     exp_params.pos_embed_shapes = pos_embed_shapes
     p_entry = self._vit_entry_layers(exp_params)
     entry = instantiate(p_entry)
 
     inputs_np = np.random.normal(
-        size=[exp_params.batch_size, image_sizes[0], image_sizes[1], 3])
+        size=(exp_params.batch_size,) + input_shapes)
     inputs = jnp.asarray(inputs_np)
 
     with base_layer.JaxContext.new_context():
@@ -108,12 +109,15 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
 
       features = entry.apply(initial_vars, inputs, rngs={RANDOM: subkey})
 
-    row_patch_count = image_sizes[0] // exp_params.patch_size
-    col_patch_count = image_sizes[1] // exp_params.patch_size
+    if len(input_shapes) == 3:
+      row_patch_count = input_shapes[0] // exp_params.patch_size
+      col_patch_count = input_shapes[1] // exp_params.patch_size
+      seq_len = row_patch_count * col_patch_count
+    elif len(input_shapes) == 2:
+      seq_len = input_shapes[0]
 
     self.assertEqual(features.shape,
-                     (exp_params.batch_size, row_patch_count * col_patch_count,
-                      exp_params.hidden_dim))
+                     (exp_params.batch_size, seq_len, exp_params.hidden_dim))
 
   def test_vit_exit_layers(self):
     exp_params = self._exp_params()

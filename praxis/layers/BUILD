@@ -1020,6 +1020,7 @@ pytype_strict_library(
         ":transformers",
         # Implicit einops dependency.
         # Implicit jax dependency.
+        # Implicit numpy dependency.
         "//praxis:base_hyperparams",
         "//praxis:base_layer",
         "//praxis:py_utils",
