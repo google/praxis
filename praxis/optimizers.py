@@ -1919,8 +1919,6 @@ class _ShardedAdafactorHelper:
   def compute_var_and_slot_update(self, count, grad, m, m_scale, vr, vc, v,
                                   param, var_name):
     """Computes the var and optimizer slots updates for a single variable."""
-    if py_utils.is_optax_masked_node(grad):
-      return
     # We can probably skip this step
     grad = self.sanitize_values(grad)
     grad = grad.astype(jnp.float32)
@@ -2206,8 +2204,7 @@ def sharded_adafactor(
         state.vc,
         state.v,
         params,
-        var_names,
-        is_leaf=py_utils.is_optax_masked_node)
+        var_names)
     updates = jax.tree_map(lambda o: o.update, output)
     count_plus_one = state.count + jnp.array(1, jnp.int32)
     updated_states = sharded_adafactor_helper.to_state(count_plus_one, output)
