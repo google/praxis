@@ -34,6 +34,7 @@ pytype_strict_library(
         ":attentions",
         ":augmentations",
         ":bregman",
+        ":checkpoint_policy",
         ":conformers",
         ":convolutions",
         ":embedding_softmax",
@@ -312,6 +313,7 @@ pytype_strict_library(
     srcs = ["pipeline.py"],
     srcs_version = "PY3",
     deps = [
+        ":checkpoint_policy",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -352,6 +354,7 @@ pytype_strict_library(
     srcs = ["repeats.py"],
     srcs_version = "PY3",
     deps = [
+        ":checkpoint_policy",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -551,12 +554,22 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "checkpoint_policy",
+    srcs = ["checkpoint_policy.py"],
+    srcs_version = "PY3",
+    deps = [
+        # Implicit jax dependency.
+    ],
+)
+
+pytype_strict_library(
     name = "transformers",
     srcs = ["transformers.py"],
     srcs_version = "PY3",
     deps = [
         ":activations",
         ":attentions",
+        ":checkpoint_policy",
         ":linears",
         ":normalizations",
         ":pipeline",

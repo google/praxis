@@ -43,6 +43,7 @@ from praxis.layers.attentions import RelativeBias
 from praxis.layers.attentions import segment_mask
 from praxis.layers.augmentations import MaskedLmDataAugmenter
 from praxis.layers.bregman import BregmanPCA
+from praxis.layers.checkpoint_policy import AutodiffCheckpointType
 from praxis.layers.conformers import Conformer
 from praxis.layers.conformers import SelfAttentionWithNormAndResidual
 from praxis.layers.convolutions import Conv2D
@@ -84,7 +85,6 @@ from praxis.layers.poolings import Pooling
 from praxis.layers.quantizer import quantize_vector
 from praxis.layers.quantizer import RandomVectorQuantizer
 from praxis.layers.quantizer import VectorQuantizer
-from praxis.layers.repeats import AutodiffCheckpointType
 from praxis.layers.repeats import Repeat
 from praxis.layers.resnets import ResNet
 from praxis.layers.resnets import ResNetBlock

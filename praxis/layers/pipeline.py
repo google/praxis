@@ -29,6 +29,7 @@ from praxis import base_layer
 from praxis import flax_utils
 from praxis import py_utils
 from praxis import pytypes
+from praxis.layers import checkpoint_policy
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
@@ -43,6 +44,7 @@ AUX_LOSS = base_layer.AUX_LOSS
 SUMMARIES = base_layer.SUMMARIES
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 RANDOM = base_layer.RANDOM
+AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 
 @contextlib.contextmanager
@@ -128,6 +130,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       pipeline_broadcast_inputs: If true, broadcast inputs (shared between
         all stages instead of being computed by the previous stage) will be
         passed stage-by-stage instead of being replicated.
+      checkpoint_policy: How to checkpoint residuals for BProp.
     """
     num_stages: int = 1
     single_stage_body: Optional[BaseHParams] = None
@@ -137,6 +140,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     stream_io: bool = False
     polluting_bubbles_with_nan: bool = False
     pipeline_broadcast_inputs: bool = False
+    checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
 
   class WeightShardingHParams(BaseWtShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -763,7 +767,10 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     rematted_scan_fn = nn.remat(
         _scan_fn,
         prevent_cse=False,  # prevent_cse not required for scan.
-        policy=jax.checkpoint_policies.save_only_these_names('iteration_input'))
+        policy=jax.checkpoint_policies.save_from_both_policies(
+            checkpoint_policy.custom_policy(p.checkpoint_policy),
+            checkpoint_policy.custom_policy(
+                AutodiffCheckpointType.SAVE_ITERATION_INPUT)))
 
     # This nn.scan morally iterates through microbatches and feed each
     # microbatch to a full pipeline body (N layers, not 1 layer).

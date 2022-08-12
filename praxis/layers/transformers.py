@@ -30,6 +30,7 @@ from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations as activations_lib
 from praxis.layers import attentions
+from praxis.layers import checkpoint_policy
 from praxis.layers import linears
 from praxis.layers import normalizations
 from praxis.layers import pipeline
@@ -49,6 +50,7 @@ SplitDimsMapping = pytypes.SplitDimsMapping
 BaseHParams = base_layer.BaseLayer.HParams
 BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
+AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 
 def compute_attention_masks_for_fprop(
@@ -1840,6 +1842,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
     pipeline_microbatch_size: Optional[int] = None
     stream_io: bool = False
     pipeline_broadcast_inputs: bool = False
+    checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
 
   class WeightShardingHParams(BaseWtShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -1871,7 +1874,8 @@ class PipelinedTransformer(base_layer.BaseLayer):
           microbatch_size=p.pipeline_microbatch_size,
           unpack_summaries=True,
           stream_io=p.stream_io,
-          pipeline_broadcast_inputs=p.pipeline_broadcast_inputs)
+          pipeline_broadcast_inputs=p.pipeline_broadcast_inputs,
+          checkpoint_policy=p.checkpoint_policy)
     else:
       pipeline_params = pipeline.CircularLayerwiseShardablePipelined.HParams(
           name=p.name,
@@ -1882,7 +1886,8 @@ class PipelinedTransformer(base_layer.BaseLayer):
           microbatch_size=p.pipeline_microbatch_size,
           unpack_summaries=True,
           stream_io=p.stream_io,
-          pipeline_broadcast_inputs=p.pipeline_broadcast_inputs)
+          pipeline_broadcast_inputs=p.pipeline_broadcast_inputs,
+          checkpoint_policy=p.checkpoint_policy)
 
     pipeline_params.weight_split_dims_mapping.stages = (
         p.weight_split_dims_mapping.stages)

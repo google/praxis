@@ -18,7 +18,6 @@
 This simply passes input through the layer stack.
 """
 
-import enum
 import functools
 from typing import Any, Callable, Optional
 
@@ -29,6 +28,7 @@ from praxis import base_layer
 from praxis import flax_utils
 from praxis import py_utils
 from praxis import pytypes
+from praxis.layers import checkpoint_policy
 import tensorflow.compat.v2 as tf
 
 NestedMap = py_utils.NestedMap
@@ -46,6 +46,7 @@ NON_TRAINABLE = base_layer.NON_TRAINABLE
 RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
 PREFIX_DECODE_CACHE = base_layer.PREFIX_DECODE_CACHE
+AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 SCAN_VARIABLE_AXES = {
     PARAMS: 0,
@@ -58,48 +59,6 @@ SCAN_VARIABLE_AXES = {
 # PARAMS is vmapped. Scan does not need to init vars, so PARAMS rng key is not
 # needed.
 SCAN_SPLIT_RNGS = {PARAMS: False, RANDOM: True}
-
-
-@enum.unique
-class AutodiffCheckpointType(str, enum.Enum):
-  """jax.checkpoint policy types."""
-  SAVE_NOTHING = 'save_nothing'
-  SAVE_EVERYTHING = 'save_everything'
-  SAVE_QKV_OUT_PROJ = 'save_qkv_out_proj'
-  SAVE_OUT_PROJ = 'save_out_proj'
-  SAVE_CONTEXT = 'save_context'
-  SAVE_CONTEXT_AND_OUT_PROJ = 'save_encoded_and_out_proj'
-  SAVE_DOT_ONLY = 'save_dot_only'
-  SAVE_DOT_WITH_NO_BATCH_DIM = 'save_dot_with_no_batch_dims'
-  SAVE_DOT_FOR_MLPERF_200B = 'save_dot_for_mlperf_200b'
-
-
-def _custom_policy(checkpoint_policy: AutodiffCheckpointType):
-  """Returns a JAX Autodiff checkpointing policy from the enum value."""
-  # TODO(zhangqiaorjc): Configure custom checkpoint policy in expt config
-  # without introducing enum.
-  if checkpoint_policy == AutodiffCheckpointType.SAVE_EVERYTHING:
-    return jax.checkpoint_policies.everything_saveable
-  if checkpoint_policy == AutodiffCheckpointType.SAVE_DOT_ONLY:
-    return jax.checkpoint_policies.checkpoint_dots
-  if checkpoint_policy == AutodiffCheckpointType.SAVE_DOT_WITH_NO_BATCH_DIM:
-    return jax.checkpoint_policies.checkpoint_dots_with_no_batch_dims
-  if checkpoint_policy == AutodiffCheckpointType.SAVE_QKV_OUT_PROJ:
-    return jax.checkpoint_policies.save_only_these_names(
-        'combined_qkv_proj', 'out_proj')
-  if checkpoint_policy == AutodiffCheckpointType.SAVE_CONTEXT:
-    return jax.checkpoint_policies.save_only_these_names('context')
-  if checkpoint_policy == AutodiffCheckpointType.SAVE_OUT_PROJ:
-    return jax.checkpoint_policies.save_only_these_names('out_proj')
-  if checkpoint_policy == AutodiffCheckpointType.SAVE_CONTEXT_AND_OUT_PROJ:
-    return jax.checkpoint_policies.save_only_these_names('context', 'out_proj')
-  if checkpoint_policy == AutodiffCheckpointType.SAVE_DOT_FOR_MLPERF_200B:
-    return jax.checkpoint_policies.save_only_these_names(
-        'combined_qkv_proj', 'query_proj', 'value_proj', 'key_proj', 'context',
-        'out_proj')
-  assert checkpoint_policy == AutodiffCheckpointType.SAVE_NOTHING
-  return jax.checkpoint_policies.nothing_saveable
-
 
 def _sum_aux_loss(tree):
   return jax.tree_map(jnp.sum, tree)
@@ -212,7 +171,7 @@ class Repeat(base_layer.BaseLayer):
     rematted_body_fn = nn.remat(
         body_fn,
         prevent_cse=False,  # prevent_cse not required for scan.
-        policy=_custom_policy(p.checkpoint_policy))
+        policy=checkpoint_policy.custom_policy(p.checkpoint_policy))
 
     scan_fn = nn.scan(
         rematted_body_fn,
