@@ -20,6 +20,7 @@ from absl import logging
 import clu.metrics as clu_metrics
 import jax
 from jax import numpy as jnp
+import numpy as np
 from praxis import asserts
 from praxis import base_input
 from praxis import base_layer
@@ -438,6 +439,8 @@ class LanguageModel(base_model.BaseModel):
       - A list of dict where each entry corresponds to a row in the batch. The
         keys should be unique across the entire decode dataset.
     """
+    # Move output to the host
+    decode_out = jax.tree_map(np.array, decode_out)
     # Get the first output within a batch.
     decode_out.output_ids = decode_out.output_ids[:, 0, :]
     decode_out.decode_lengths = decode_out.decode_lengths[:, 0]

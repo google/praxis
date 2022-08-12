@@ -222,6 +222,7 @@ pytype_strict_library(
         # Implicit absl.logging dependency.
         "//third_party/py/clu:metrics",
         # Implicit jax dependency.
+        # Implicit numpy dependency.
         "//praxis:asserts",
         "//praxis:base_input",
         "//praxis:base_layer",
