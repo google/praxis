@@ -2041,7 +2041,14 @@ class _ShardedAdafactorHelper:
       # TODO(bf-jax): Add support for skip weight decay
       subtrahend += weight_decay * old_val
 
-    # TODO(bf-jax): Add support for layerwise adaptation
+    if self._layerwise_adaptation:
+      w_norm = reduce_rms(old_val)
+      g_norm = reduce_rms(subtrahend / update_scale) + self._epsilon1
+      ratio = w_norm / g_norm
+      ratio = jnp.where(
+          jnp.greater(w_norm, 0),
+          jnp.where(jnp.greater(g_norm, 0), (w_norm / g_norm), 1.0), 1.0)
+      subtrahend *= ratio
 
     return _ShardedAdafactorUpdateResult(
         update=-subtrahend,
@@ -2134,8 +2141,7 @@ def sharded_adafactor(
   Returns:
     A `ShardedGradientTransformation`.
   """
-  # TODO(bf-jax): layerwise adaptation and skip regularization.
-  assert not layerwise_adaptation
+  # TODO(bf-jax):  skip regularization.
   assert not respect_skip_lp_regularization
   assert decay_adam >= 0
   assert decay_pow >= 0
