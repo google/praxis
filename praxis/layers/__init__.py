@@ -57,6 +57,7 @@ from praxis.layers.embedding_softmax import PositionalEmbedding
 from praxis.layers.embedding_softmax import SharedEmbeddingSoftmax
 from praxis.layers.embedding_softmax import SigmoidCrossEntropy
 from praxis.layers.embedding_softmax import TrainablePositionalEmbedding
+from praxis.layers.frnn import FRnn
 from praxis.layers.frnn import LstmFrnn
 from praxis.layers.frnn import StackFrnn
 from praxis.layers.linears import Bias
