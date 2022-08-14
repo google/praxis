@@ -486,8 +486,10 @@ py_strict_test(
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit flax dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
+        "//praxis:base_model",
         "//praxis/layers:models",
     ],
 )

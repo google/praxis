@@ -20,8 +20,10 @@ from typing import Any
 from absl.testing import absltest
 import jax
 from jax import numpy as jnp
+import flax.linen as nn
 import numpy as np
 from praxis import base_layer
+from praxis import base_model
 from praxis import py_utils
 from praxis import sample_decode
 from praxis import test_utils
@@ -29,10 +31,43 @@ from praxis.layers import models
 
 NestedMap = py_utils.NestedMap
 BaseHParams = base_layer.BaseLayer.HParams
+WeightHPrams = base_layer.WeightHParams
 instantiate = base_layer.instantiate
 
 RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
+SUMMARIES = base_layer.SUMMARIES
+
+
+class TestModel(base_model.BaseModel):
+
+  class HParams(base_model.BaseModel.HParams):
+    vocab_size: int = 0
+    num_samples: int = 0
+    seq_len: int = 0
+    batch_size: int = 0
+
+  def setup(self) -> None:
+    p = self.hparams
+    super().setup()
+    logits_wp = base_layer.WeightHParams(
+        shape=[p.seq_len, p.batch_size * p.num_samples, p.vocab_size])
+    self.create_variable('logits', logits_wp)
+
+  def __call__(self, *args, **kwargs):
+    # A dummy __call__ function
+    del args, kwargs
+
+  # do something here
+  def extend_step(self, ids, segment_pos):
+    p = self.hparams
+    assert segment_pos.shape == (p.batch_size * p.num_samples, 1), (
+        segment_pos.shape)
+    time_step = segment_pos[0][0] + 1
+    logits_at_t = self.theta.logits[time_step, :, :]
+    self.add_summary('logits', logits_at_t)
+    self.add_summary('time_step', time_step)
+    return logits_at_t
 
 
 class SampleDecodeHelperTest(test_utils.TestCase):
@@ -68,10 +103,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         ],
         dtype=jnp.float32)
     new_ids = sample_decode.sample_from_topk(
-        logits,
-        jax.random.PRNGKey(seed=123),
-        temperature=1.0,
-        topk=2)
+        logits, jax.random.PRNGKey(seed=123), temperature=1.0, topk=2)
     # gumbel noise is relatively smaller compared to the logits value.
     self.assertArraysEqual(new_ids, np.array([2, 0, 1, 0], dtype=np.int32))
 
@@ -83,10 +115,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
 
     for i in range(100):
       new_ids = sample_decode.sample_from_topk(
-          logits,
-          jax.random.PRNGKey(seed=i),
-          temperature=1.0,
-          topk=4)
+          logits, jax.random.PRNGKey(seed=i), temperature=1.0, topk=4)
       count[new_ids[0]] += 1
 
     # Top4 value won't choose token 0.
@@ -191,6 +220,66 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     masked = sample_decode.top_p_mask_logits(logits, p=0.99)
     self.assertAllClose(logits[:, :-1], masked[:, :-1])
     self.assertLess(masked[0, -1], 1e-10)
+
+  def test_sample_decode(self):
+    batch_size = 1
+    num_samples = 2
+    seq_len = 3
+    vocab_size = 4
+    model_p = TestModel.HParams(
+        name='test_model',
+        batch_size=batch_size,
+        num_samples=num_samples,
+        seq_len=seq_len,
+        vocab_size=vocab_size)
+
+    def extend_step_fn(mdl, ids, segment_pos):
+      logits = mdl.extend_step(ids, segment_pos=segment_pos)
+      return logits
+
+    def transform_decode_state_fn(mdl, transform_fn):
+      del mdl
+      del transform_fn
+
+    model = instantiate(model_p)
+    init_vars = model.init(rngs=jax.random.PRNGKey(1234))
+    logits_var = init_vars['params']['logits']
+    # One can override logits to inject logits to be used during decoding.
+
+    input_ids = jnp.zeros([batch_size, seq_len], dtype=jnp.int32)
+    input_paddings = jnp.zeros([batch_size, seq_len], dtype=jnp.float32)
+
+    def decode_fn(model, input_ids, input_paddings):
+      return sample_decode.sample_decode(
+          model,
+          extend_step_fn,
+          transform_decode_state_fn,
+          None,
+          input_ids,
+          input_paddings,
+          prefix_lengths=jnp.zeros([batch_size], dtype=jnp.int32),
+          seq_len=seq_len,
+          num_samples=num_samples,
+          k=0,
+          max_prefix_len=0,
+          max_decode_steps=seq_len,
+          fprop_for_prefix=True,
+          # Call the scan loop.
+          early_exit=False)
+
+    mutables = [SUMMARIES, DECODE_CACHE]
+    rngs = {'random': jax.random.PRNGKey(9382)}
+
+    # test that we can fetch arbitrary summary out.
+    _, updated_vars = nn.apply(
+        decode_fn, model, mutable=mutables)(
+            init_vars, input_ids, input_paddings, rngs=rngs)
+    logits_summary = updated_vars['summaries']['logits_scalar']
+    time_step_summary = updated_vars['summaries']['time_step_scalar']
+    print('logits_var', logits_var)
+    print('logits_summary', logits_summary)
+    print('time_step_summary', time_step_summary)
+    self.assertAllClose(logits_var, logits_summary)
 
 
 if __name__ == '__main__':

@@ -35,7 +35,12 @@ NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
 
 RANDOM = base_layer.RANDOM
+PARAMS = base_layer.PARAMS
+NON_TRAINABLE = base_layer.NON_TRAINABLE
+AUX_LOSS = base_layer.AUX_LOSS
+SUMMARIES = base_layer.SUMMARIES
 DECODE_CACHE = base_layer.DECODE_CACHE
+PREFIX_DECODE_CACHE = base_layer.PREFIX_DECODE_CACHE
 
 
 def reorder_with_indices(x: JTensor, indices: JTensor):
@@ -254,7 +259,8 @@ def sample_decode(model: base_layer.BaseLayer,
                   prefix_lengths: Optional[JTensor] = None,
                   eos_id: Optional[int] = None,
                   return_result_for_suffix_score: bool = False,
-                  sort_samples: bool = True) -> NestedMap:
+                  sort_samples: bool = True,
+                  early_exit=True) -> NestedMap:
   """Sampling decode the input batch.
 
   Top-K sampling with num_samples for each batch, in which the K most likely
@@ -303,6 +309,7 @@ def sample_decode(model: base_layer.BaseLayer,
     return_result_for_suffix_score: Whether or not to return result for suffix
       score.
     sort_samples: Whether to sort the samples by logprobs.
+    early_exit: A bool, whether or not to allow early exit.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -351,7 +358,7 @@ def sample_decode(model: base_layer.BaseLayer,
   max_decode_steps = max_decode_steps or seq_len
   batch_size = target_prefix_ids.shape[0]
 
-  # If prefix length is not specified set it to 0.
+  # If prefix length is not specified, set it to 0.
   if prefix_lengths is None:
     prefix_lengths = jnp.zeros([batch_size], dtype=jnp.int32)
 
@@ -417,6 +424,9 @@ def sample_decode(model: base_layer.BaseLayer,
     else:
       new_ids = jnp.argmax(logits, axis=1)
 
+    model.add_summary('new_ids', new_ids)
+    model.add_summary('sample_logits', logits)
+
     if cf_guidance_scale is not None:
       # Force-align unconditioned branch as conditioned sampled tokens ids.
       new_ids = split_batch_dim(new_ids, 0, num_samples)
@@ -463,14 +473,79 @@ def sample_decode(model: base_layer.BaseLayer,
     val.step += 1
     return val
 
-  result = nn.while_loop(
-      cond_func,
-      loop_body,
-      model,
-      val,
-      split_rngs={RANDOM: True},
-      carry_variables=[DECODE_CACHE],
-  )
+
+  if early_exit:
+    result = nn.while_loop(
+        cond_func,
+        loop_body,
+        model,
+        val,
+        split_rngs={RANDOM: True},
+        carry_variables=[DECODE_CACHE],
+    )
+  else:
+    # We call nn.scan to allow propagation of summaries through decoding loop.
+    # Summary and AuxLoss are concatenated on the first dim.
+
+    def scan_body(model, val, scan_input):
+      # Adapt loop_body for use in scan.
+      del scan_input
+      val = loop_body(model, val)
+      return val, {}
+
+    scan_fn = nn.scan(
+        scan_body,
+        variable_axes={
+            AUX_LOSS: 0,
+            SUMMARIES: 0
+        },
+        variable_broadcast=[PARAMS, NON_TRAINABLE],
+        variable_carry=[DECODE_CACHE, PREFIX_DECODE_CACHE],
+        split_rngs={RANDOM: True},
+        in_axes=0,
+        out_axes=0,
+    )
+
+    def pop_collection(module, col_name):
+      """Pops all variables in a given collection."""
+      col = module.scope._mutable_collection(col_name)
+      col_keys = list(col.keys())
+      popped = {}
+      for key in col_keys:
+        popped[key] = col.pop(key)
+      return popped
+
+    def reinsert_collection(module, col_name, data):
+      """Inserts data into collection *without* overwriting."""
+      col = module.scope._mutable_collection(col_name)
+
+      def put(target, key, val):
+        # traverse dicts to insert recursively
+        if key not in target:
+          target[key] = val
+        elif isinstance(target[key], dict) and isinstance(val, dict):
+          # traverse dict recursively
+          for k, v in val.items():
+            put(target[key], k, v)
+        else:
+          # don't overwrite existing leaves!
+          pass
+
+      for key in list(data.keys()):
+        put(col, key, data[key])
+
+    if model.is_mutable_collection(base_layer.SUMMARIES):
+      # stash out the summaries temporarily
+      model_summaries_copy = pop_collection(model, base_layer.SUMMARIES)
+
+    dummy_inputs = {'dummy': jnp.zeros([seq_len, 2])}
+    result, _ = scan_fn(model, val, dummy_inputs)
+
+    # Now merge back the summaries.
+    if model.is_mutable_collection(base_layer.SUMMARIES):
+      # recursively merge two dictionaries.
+      reinsert_collection(model, base_layer.SUMMARIES, model_summaries_copy)
+
 
   del result.segment_pos
 
