@@ -112,28 +112,30 @@ def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
   ff_ap.ffn0 = a_blf
   ff_ap.ffn1 = a_bld
 
-  moe_p = stacked_p.moe_layer_tpl
-  moe_wp = moe_p.weight_split_dims_mapping
-  moe_wp.me = [None, None]  # Replicated.
-  moe_wp.emh = w_emh
-  w_e_sharding = None if w_emh is None else w_emh[0]
-  w_m_sharding = None if w_emh is None else w_emh[1]
-  w_h_sharding = None if w_emh is None else w_emh[2]
-  moe_wp.ehm = [w_e_sharding, w_h_sharding, w_m_sharding]
-  # Activations
-  a_e_sharding = None if a_egch is None else a_egch[0]
-  moe_ap = moe_p.activation_split_dims_mapping
-  moe_ap.gs = [a_e_sharding, None]
-  # dispatch and combine tensors
-  moe_ap.gsec = [a_e_sharding, None, None, None]
-  moe_ap.gecs = [a_e_sharding, None, None, None]
-  moe_ap.gec = [a_e_sharding, None, None]
-  moe_ap.egch = a_egch
-  a_e_sharding = None if a_egcm is None else a_egcm[0]
-  a_m_sharding = None if a_egcm is None else a_egcm[3]
-  moe_ap.gsm = [a_e_sharding, None, a_m_sharding]
-  moe_ap.egcm = a_egcm
-  moe_ap.gecm = a_egcm
+  if stacked_p.moe_layer_tpl is not None:
+    # Set Moe layer sharding hparams.
+    moe_p = stacked_p.moe_layer_tpl
+    moe_wp = moe_p.weight_split_dims_mapping
+    moe_wp.me = [None, None]  # Replicated.
+    moe_wp.emh = w_emh
+    w_e_sharding = None if w_emh is None else w_emh[0]
+    w_m_sharding = None if w_emh is None else w_emh[1]
+    w_h_sharding = None if w_emh is None else w_emh[2]
+    moe_wp.ehm = [w_e_sharding, w_h_sharding, w_m_sharding]
+    # Activations
+    a_e_sharding = None if a_egch is None else a_egch[0]
+    moe_ap = moe_p.activation_split_dims_mapping
+    moe_ap.gs = [a_e_sharding, None]
+    # dispatch and combine tensors
+    moe_ap.gsec = [a_e_sharding, None, None, None]
+    moe_ap.gecs = [a_e_sharding, None, None, None]
+    moe_ap.gec = [a_e_sharding, None, None]
+    moe_ap.egch = a_egch
+    a_e_sharding = None if a_egcm is None else a_egcm[0]
+    a_m_sharding = None if a_egcm is None else a_egcm[3]
+    moe_ap.gsm = [a_e_sharding, None, a_m_sharding]
+    moe_ap.egcm = a_egcm
+    moe_ap.gecm = a_egcm
   return stacked_transformer_p
 
 
