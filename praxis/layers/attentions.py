@@ -1215,7 +1215,12 @@ class DotProductAttention(base_layer.BaseLayer):
     # [1, 1, T, S]
     base_layer.assert_has_shape(atten_mask, [-1, 1, -1, s])
     assert atten_mask.shape[2] in [1, t]
-    assert atten_mask.shape[0] in [1, b]
+    
+    # The following assertion is disabled for jax2tf compatibility.  In the
+    # future it might make sense to support assertions that can be disabled
+    # when running jax2tf.
+    # assert atten_mask.shape[0] in [1, b]
+    
     query = self._scale_query(query)
     logits = self._atten_logits(query, key)
     if relative_bias is not None:
