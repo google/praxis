@@ -1299,7 +1299,9 @@ class DistributedShampoo(BaseOptimizer):
         merge_small_dims_block_size=p.merge_small_dims_block_size,
         skip_preconditioning_rank_lt=p.skip_preconditioning_rank_lt,
         decoupled_weight_decay=p.decoupled_weight_decay_from_momentum,
-        decoupled_learning_rate=p.decoupled_learning_rate_from_momentum)
+        decoupled_learning_rate=p.decoupled_learning_rate_from_momentum,
+        generate_training_metrics=p.summarize_training_metrics,
+    )
 
 
 class ShardedDistributedShampoo(DistributedShampoo):
