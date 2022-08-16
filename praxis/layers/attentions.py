@@ -276,24 +276,16 @@ def _extract_block_context(x: JTensor,
   block = _convert_to_block(x, block_size, padding_val)
   concat_list = [block]
 
+  # Creats one block filled with padding values.
+  pad_block = jnp.full(block[:, :1].shape, padding_val, dtype=block.dtype)
   if left_context > 1:
-    if block_size == left_context - 1:
-      left_block = jnp.concatenate([block[:, -1:], block[:, :-1]], axis=1)
-    else:
-      x_shift = jnp.concatenate(
-          [x[:, -(left_context - 1):], x[:, :-(left_context - 1)]], axis=1)
-      x_shift_block = _convert_to_block(x_shift, block_size, padding_val)
-      left_block = x_shift_block[:, :, :left_context - 1:, ...]
+    left_block = jnp.concatenate([pad_block, block[:, :-1]], axis=1)
+    left_block = left_block[:, :, -(left_context - 1):, ...]
     concat_list = [left_block] + concat_list
 
   if right_context > 0:
-    if block_size == right_context:
-      right_block = jnp.concatenate([block[:, 1:], block[:, :1]], axis=1)
-    else:
-      x_shift = jnp.concatenate([x[:, right_context:], x[:, :right_context]],
-                                axis=1)
-      x_shift_block = _convert_to_block(x_shift, block_size, padding_val)
-      right_block = x_shift_block[:, :, -right_context:, ...]
+    right_block = jnp.concatenate([block[:, 1:], pad_block], axis=1)
+    right_block = right_block[:, :, :right_context, ...]
     concat_list += [right_block]
 
   return jnp.concatenate(concat_list, axis=2)
