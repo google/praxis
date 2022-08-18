@@ -41,6 +41,13 @@ InstantiableHyperParams = base_hyperparams.InstantiableHyperParams
 instantiate = base_hyperparams.instantiate
 
 
+def _compute_grad_norm(grads: NestedMap) -> JTensor:
+  """Computes total grad norm."""
+  grad_norms_squared = jax.tree_map(lambda x: jnp.sum(x * x), grads)
+  grad_norms_squared, _ = jax.tree_util.tree_flatten(grad_norms_squared)
+  return jnp.sqrt(jnp.sum(jnp.stack(grad_norms_squared)))
+
+
 class Learner(base_hyperparams.BaseParameterizable):
   """A learner.
 
@@ -53,12 +60,12 @@ class Learner(base_hyperparams.BaseParameterizable):
     lambda v: base_layer.WeightHParams(v.shape), mdl_vars)
 
   grad_tx = pax_l_.get_grad_tx(var_weight_hparams)
-  state0 = grad_tx.init(mdl_vars)
+  states0 = grad_tx.init(mdl_vars)
 
   grads0 = ...
   grads1, states1 = learner.update_states(
     grads0, states0, mdl_vars, var_weight_hparams)
-  updated_mdl_vars = learner.apply_gradients(
+  updated_mdl_vars = learner.apply_gradient(
     mdl_vars, grads1, var_weight_hparams)
   """
 
@@ -150,22 +157,19 @@ class Learner(base_hyperparams.BaseParameterizable):
     p = self._hparams
     learner_name = self._hparams.name
     # Compute gradient norm.
-    grad_squared = jax.tree_map(lambda x: jnp.sum(x * x), raw_grads)
 
     if p.grad_norm_individual_vars:
-      grad_norms = jax.tree_map(jnp.sqrt, grad_squared)
+      grad_norms = jax.tree_map(lambda x: jnp.sqrt(jnp.sum(x * x)), raw_grads)
       var_keys = py_utils.extract_prefixed_keys_from_nested_map(grad_norms)
 
       def add_grad_norm_summary(key, value):
-        base_layer.add_global_summary(f'{learner_name}/var_grad_norm/{key}',
-                                      value)
+        base_layer.add_global_summary(f'{learner_name}/grad_norm/{key}', value)
 
       jax.tree_map(add_grad_norm_summary, var_keys, grad_norms)
 
-    grad_squared, _ = jax.tree_util.tree_flatten(grad_squared)
-    grad_squared = jnp.concatenate([x[jnp.newaxis] for x in grad_squared])
-    raw_grad_norm = jnp.sqrt(jnp.sum(grad_squared))
-    base_layer.add_global_summary(f'{learner_name}/grad_norm', raw_grad_norm)
+    raw_grad_norm = _compute_grad_norm(raw_grads)
+    base_layer.add_global_summary(f'{learner_name}/raw_grad_norm',
+                                  raw_grad_norm)
 
     def keep_step(grad_norm):
       keep_threshold = p.skip_step_gradient_norm_value
@@ -205,9 +209,14 @@ class Learner(base_hyperparams.BaseParameterizable):
     # Mark the step as invalid if any gradient anomaly is detected (e.g. Nan or
     # Inf, or excessively big gradient norm).
     valid_step = keep_step(raw_grad_norm)
+    base_layer.add_global_summary('is_valid_step',
+                                  valid_step.astype(jnp.float32))
     grads, grad_scale = clip_grads(raw_grads, raw_grad_norm)
     base_layer.add_global_summary('grad_scale', grad_scale)
 
+    clipped_grad_norm = _compute_grad_norm(grads)
+    base_layer.add_global_summary(f'{learner_name}/clipped_grad_norm',
+                                  clipped_grad_norm)
     return grads, valid_step
 
   def update_states(
@@ -224,23 +233,30 @@ class Learner(base_hyperparams.BaseParameterizable):
     Returns:
       transformed_grad, new_states pair.
     """
+    p = self._hparams
+    learner_name = p.name
+
     grads, valid_step = self.scale_gradients(grads)
     transformed_grad, new_states = self.get_grad_tx(var_weight_hparams).update(
         grads, states, old_vars)
 
-    if self._hparams.enable_skip_step_on_gradient_anomalies:
+    if p.enable_skip_step_on_gradient_anomalies:
       # Set grads to 0 if the step is invalid.
       transformed_grad = jax.tree_map(
           lambda x: jnp.where(valid_step, x, jnp.zeros_like(x)),
           transformed_grad)
       # Keep the old state if the step is invalid.
-      def _update(x, y):
-        if not py_utils.is_optax_masked_node(
-            x) and not py_utils.is_optax_masked_node(y):
-          return jnp.where(valid_step, x, y)
-        return x
+      def _update(updated, original):
+        if any([py_utils.is_optax_masked_node(x) for x in (updated, original)]):
+          return updated
+        else:
+          return jnp.where(valid_step, updated, original)
       new_states = jax.tree_map(_update, new_states, states,
                                 is_leaf=py_utils.is_optax_masked_node)
+    # Final applied grad norm.
+    applied_grad_norm = _compute_grad_norm(transformed_grad)
+    base_layer.add_global_summary(f'{learner_name}/applied_grad_norm',
+                                  applied_grad_norm)
     return transformed_grad, new_states
 
   def apply_gradient(
