@@ -903,6 +903,50 @@ _BaseLayerRecursionDictKeysToIgnore = [
 ]
 
 
+def instantiate_layer(layer_p: BaseLayer.HParams, scope: Any) -> BaseLayer:
+  """Instantiates a layer parameterized with layer_p.
+
+  If a layer with the same shared_name exists under the scope 'scope', the
+  cached layer will be returned.
+
+  Args:
+    layer_p: HParams of the layer to be instantiated.
+    scope: The scope under which the layer to be created.
+
+  Returns:
+    A newly created layer or a cached layer if desired.
+  """
+  if layer_p.shared_weight_layer_id:
+    jax_context = cur_jax_context()
+    assert jax_context is not None
+    pre_created = jax_context.lookup_shared_layer(
+        scope, layer_p.shared_weight_layer_id)
+    if pre_created is not None:
+      assert compatible_hparams(
+          pre_created.hparams,
+          layer_p), (f'shared layers are of incompatible configs '
+                     f'\n\n{pre_created.hparams.to_text()} \n\n vs '
+                     f'\n\n {layer_p.to_text()}')
+      # simply reuse existing layer.
+      layer = pre_created.layer
+    else:
+      # Always place the shared layers under the scope, under the unique
+      # namespace p.name. This makes sure that the variables of the shared
+      # layer is uniquely addressable regardless of the order they are
+      # created.
+      wrapped_p = layer_p.clone()
+      wrapped_p.shared_weight_layer_id = None
+      wrapper_p = _WrapperLayer.HParams(
+          name=layer_p.shared_weight_layer_id, cld=wrapped_p)
+      layer = instantiate(wrapper_p, parent=scope).cld
+      jax_context.set_shared_layer(scope, layer_p.shared_weight_layer_id,
+                                   layer, layer_p.clone())
+  else:
+    # simply create the child
+    layer = layer_p.Instantiate()
+  return layer
+
+
 # Inherit from Flax Linen Module.
 class BaseLayer(
     BaseParameterizable,
@@ -1476,31 +1520,7 @@ class BaseLayer(
     p = self.copy_base_hparams(self.hparams, params.clone())
     p.name = name
     assert p.name not in self._private_children
-    if p.shared_weight_layer_id:
-      root_scope = self.scope.root
-      pre_created = self.jax_context.lookup_shared_layer(
-          root_scope, p.shared_weight_layer_id)
-      if pre_created is not None:
-        assert compatible_hparams(pre_created.hparams, p), (
-            f'shared layers are of incompatible configs '
-            f'\n\n{pre_created.hparams.to_text()} \n\n vs \n\n {p.to_text()}')
-        # simply reuse existing layer.
-        child = pre_created.layer
-      else:
-        # Always place the shared layers under the root_scope, under the unique
-        # namespace p.name. This makes sure that the variables of the shared
-        # layer is uniquely addressable regardless of the order they are
-        # created.
-        wrapped_p = p.clone()
-        wrapped_p.shared_weight_layer_id = None
-        wrapper_p = _WrapperLayer.HParams(
-            name=p.shared_weight_layer_id, cld=wrapped_p)
-        child = instantiate(wrapper_p, parent=root_scope).cld
-        self.jax_context.set_shared_layer(root_scope, p.shared_weight_layer_id,
-                                          child, p.clone())
-    else:
-      # simply create the child
-      child = instantiate(p)
+    child = instantiate_layer(p, self.scope.root)
     self._private_children[p.name] = child
     setattr(self, p.name, child)
 
@@ -1524,14 +1544,9 @@ class BaseLayer(
     uid = itertools.count()
 
     def _instantiate(p: InstantiableHyperParams) -> BaseLayerT:
-      # TODO(yonghui): delegate this call to create_child() instead.
       p = self.copy_base_hparams(self.hparams, p.clone())
       p.name = '%s_%d' % (name, next(uid))
-      if p.shared_weight_layer_id:
-        raise NotImplementedError(
-            'Shared layer is currently not implemented for create_children. '
-            'TODO(pax): implement shared layer in create_children.')
-      child = instantiate(p)
+      child = instantiate_layer(p, self.scope.root)
       assert p.name not in self._private_children
       self._private_children[p.name] = child
       return child
