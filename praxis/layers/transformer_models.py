@@ -42,14 +42,16 @@ sub_config_field = base_layer.sub_config_field
 
 
 def _set_embedding_softmax_sharding_params_for_transformers(
-    softmax_p, *, ici_mesh_shape, dcn_mesh_shape, mesh_axis_names, w_vd, a_blv,
-    a_bld):
+    embedding_softmax_p, *, ici_mesh_shape, dcn_mesh_shape, mesh_axis_names,
+    w_vd, a_blv, a_bld):
   """Sets sharding params for embedding_softmax modules in transformers.
 
   Args:
-    softmax_p: A params of a embedding_softmax class. Currently only
-      embedding_softmax.GShardSharedEmbeddingSoftmax and
-      embedding_softmax.SharedEmbeddingSoftmax are supported.
+    embedding_softmax_p: A params of a embedding_softmax class. Currently only
+      embedding_softmax.GShardSharedEmbeddingSoftmax,
+      embedding_softmax.SharedEmbeddingSoftmax,
+      embedding_softmax.FullSoftmax and
+      embedding_softmax.Embedding are supported.
     ici_mesh_shape: Shape of logical mesh for a slice.
     dcn_mesh_shape: Shape of logical mesh between slices.
     mesh_axis_names: A list of length len(shape). Each element of the list is
@@ -61,23 +63,31 @@ def _set_embedding_softmax_sharding_params_for_transformers(
   Returns:
     Params with sharding annotations added.
   """
-  softmax_p.ici_mesh_shape = ici_mesh_shape
-  softmax_p.dcn_mesh_shape = dcn_mesh_shape
-  softmax_p.mesh_axis_names = mesh_axis_names
+  embedding_softmax_p.ici_mesh_shape = ici_mesh_shape
+  embedding_softmax_p.dcn_mesh_shape = dcn_mesh_shape
+  embedding_softmax_p.mesh_axis_names = mesh_axis_names
 
-  if softmax_p.cls == embedding_softmax.GShardSharedEmbeddingSoftmax:
+  if embedding_softmax_p.cls == embedding_softmax.GShardSharedEmbeddingSoftmax:
     # Softmax weight is of shape [vocab_size, input_dim].
-    softmax_p.weight_split_dims_mapping.wt = w_vd
-  elif softmax_p.cls == embedding_softmax.SharedEmbeddingSoftmax:
+    embedding_softmax_p.weight_split_dims_mapping.wt = w_vd
+  elif (embedding_softmax_p.cls == embedding_softmax.SharedEmbeddingSoftmax or
+        embedding_softmax_p.cls == embedding_softmax.FullSoftmax or
+        embedding_softmax_p.cls == embedding_softmax.Embedding):
     # Softmax weight is of shape [input_dim, vocab_size].
-    softmax_p.weight_split_dims_mapping.wt = [w_vd[1], w_vd[0]]
-    softmax_p.lookup_style = 'matmul'
+    embedding_softmax_p.weight_split_dims_mapping.wt = [w_vd[1], w_vd[0]]
+    if embedding_softmax_p.cls != embedding_softmax.FullSoftmax:
+      embedding_softmax_p.lookup_style = 'matmul'
   else:
-    raise NotImplementedError(f'softmax class {softmax_p.cls} not supported')
+    raise NotImplementedError(
+        f'embedding_softmax class {embedding_softmax_p.cls} not supported')
 
-  softmax_p.activation_split_dims_mapping.out = a_blv
-  softmax_p.activation_split_dims_mapping.emb_out_split_dims_mapping = a_bld
-  return softmax_p
+  if (embedding_softmax_p.cls == embedding_softmax.GShardSharedEmbeddingSoftmax
+      or embedding_softmax_p.cls == embedding_softmax.SharedEmbeddingSoftmax
+      or embedding_softmax_p.cls == embedding_softmax.Embedding):
+    embedding_softmax_p.activation_split_dims_mapping.out = a_blv
+    (embedding_softmax_p.activation_split_dims_mapping
+     .emb_out_split_dims_mapping) = a_bld
+  return embedding_softmax_p
 
 
 def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
