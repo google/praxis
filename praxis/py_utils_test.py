@@ -17,6 +17,7 @@
 
 import collections
 import re
+import time
 from typing import Any
 
 from absl.testing import absltest
@@ -253,6 +254,19 @@ class PyUtilsTest(test_utils.TestCase):
         padding=np.array([[0.0], [1.0], [0.0]]),
         use_select=False)
     self.assertAllClose(y, [[1.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
+
+  def test_timeit(self):
+    start_time = time.time()
+    with py_utils.timeit() as period:
+      time.sleep(1)
+    end_time = time.time()
+    self.assertGreaterEqual(period.start, start_time)
+    self.assertLessEqual(period.end, end_time)
+    self.assertGreater(period.elapsed, 0.9)
+
+    with py_utils.timeit(min_elapsed=1.) as period:
+      _ = 0
+    self.assertEqual(period.elapsed, 1.)
 
 
 if __name__ == '__main__':

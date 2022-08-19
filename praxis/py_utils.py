@@ -19,7 +19,8 @@ import contextlib
 import dataclasses
 import functools
 import re
-from typing import Any, Callable, Iterable, Optional, Sequence, Union
+import time
+from typing import Any, Callable, Iterable, Iterator, Optional, Sequence, Union
 
 from absl import flags
 from absl import logging
@@ -660,3 +661,42 @@ def apply_padding(inputs: JTensor,
     if pad_value is not None:
       result += pad_value * padding.astype(pad_value.dtype)
   return result
+
+
+@dataclasses.dataclass
+class RunningPeriod:
+  """Information about a running period."""
+
+  start: float
+  end: Optional[float] = None
+  min_elapsed: float = 0
+
+  @property
+  def elapsed(self) -> float:
+    """Returns the elapsed time in second."""
+    assert self.end is not None
+    return max(self.end - self.start, self.min_elapsed)
+
+
+@contextlib.contextmanager
+def timeit(min_elapsed: float = 1e-6) -> Iterator[RunningPeriod]:
+  """A context manager that times a running period.
+
+  Usage:
+    with py_utils.timeit() as period:
+      run_logics()
+    period.elapsed
+
+  Args:
+    min_elapsed: the minimal elapsed to use if elapsed is smaller than this
+      number.
+
+  Yields:
+    A `RunningPeriod` object that contains time information for execution
+      under the context.
+  """
+  period = RunningPeriod(start=time.time(), min_elapsed=min_elapsed)
+  try:
+    yield period
+  finally:
+    period.end = time.time()
