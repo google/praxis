@@ -113,6 +113,14 @@ class Embedding(base_layer.BaseLayer):
     scale_sqrt_depth: bool = False
     set_nan_for_oob_id: bool = False
 
+  class ActivationShardingHParams(BaseActShardingHParams):
+    """Represents how intermediate values should be partitioned across a mesh.
+
+    Attributes:
+      emb_out_split_dims_mapping: Sharding of the emb output.
+    """
+    emb_out_split_dims_mapping: SplitDimsMapping = None
+
   def setup(self) -> None:
     p = self.hparams
     assert p.num_classes > 0
@@ -128,12 +136,14 @@ class Embedding(base_layer.BaseLayer):
 
   def emb_lookup(self, ids: JTensor) -> JTensor:
     p = self.hparams
+    ap = p.activation_split_dims_mapping
 
     if p.lookup_style == 'index':
       embs = jnp.asarray(self.theta.emb_var)[(ids,)]
     elif p.lookup_style == 'matmul':
-      one_hot_ids = jax.nn.one_hot(ids, p.num_classes)
-      embs = jnp.matmul(one_hot_ids, self.theta.emb_var)
+      # Explicit casting to fprop_dtype needed for bf16.
+      one_hot_ids = jax.nn.one_hot(ids, p.num_classes, dtype=self.fprop_dtype)
+      embs = linears.project_last_dim(one_hot_ids, self.theta.emb_var)
     else:
       raise ValueError('Unknown lookup style.')
 
@@ -143,6 +153,9 @@ class Embedding(base_layer.BaseLayer):
 
     if p.scale_sqrt_depth:
       embs *= p.input_dims**0.5
+
+    embs = base_layer.maybe_shard(embs, ap.emb_out_split_dims_mapping,
+                                  p.mesh_axis_names)
     return embs
 
 
