@@ -39,7 +39,7 @@ import numpy as np
 import optax
 
 flags.DEFINE_bool(
-    'pmap_use_tensorstore', True,
+    'pmap_use_tensorstore', False,
     'Temporary flag to allow pmap users to fall back to flax checkpointing.')
 
 
@@ -601,8 +601,8 @@ def tree_unstack(tree: Any, axis: int) -> Sequence[Any]:
   """Extracts an axis' dimension to the list dimension of the output.
 
   Args:
-    tree: PyTree which must have the above axis dimension with same size for all
-      leaf nodes. All leafs must be one of (np.ndarray, jnp.ndarray) types.
+    tree: PyTree which must have the above axis dimension with same size for
+      all leaf nodes. All leafs must be one of (np.ndarray, jnp.ndarray) types.
     axis: int, the axis to extract into the list dimension. All leafs in the
       pytree must have this dimension and must have the same shape.
 
