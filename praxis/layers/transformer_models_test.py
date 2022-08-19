@@ -1031,6 +1031,7 @@ class TransformerModelsTest(test_utils.TestCase):
         == embedding_softmax.TrainablePositionalEmbedding):
       pos_emb_p = lm_p.position_emb_tpl
       pos_emb_p.weight_split_dims_mapping.wt = [data_axis, mdl_axis]
+      pos_emb_p.activation_split_dims_mapping.out = [data_axis, mdl_axis]
 
     # NGrammer embedding table is currently replicated.
     # TODO(aurkor): Explore different sharding configs for the table.
