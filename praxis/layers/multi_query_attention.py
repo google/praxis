@@ -176,6 +176,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     atten_logit_cap: float = 0.0
     relative_bias_tpl: Optional[BaseHParams] = None
     attention_extra_logit: Optional[float] = None
+    dconv_qkv: bool = False
+    combine_qkv: bool = False
+    # TODO(adai): Implement rotary positional embeddings.
+    use_rotary_position_emb: bool = False
+    atten_dropout_prob: float = 0.0
+    ngrammer_tpl: Optional[BaseHParams] = None
 
   # SPMD partition related params.
   #
@@ -195,6 +201,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         the same sharding.
     """
     proj: SplitDimsMapping = None
+    dconv: SplitDimsMapping = None
     proj_headless: SplitDimsMapping = None
 
   class ActivationShardingHParams(BaseActShardingHParams):
@@ -259,7 +266,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     self.create_child('value', project_input_no_heads(value_input_dim))
 
     if p.relative_bias_tpl is not None:
-      relative_bias_p = p.relative_bias_tpl
+      relative_bias_p = p.relative_bias_tpl.clone()
       relative_bias_p.num_heads = p.num_heads
       self.create_child('relative_bias', relative_bias_p)
 
