@@ -242,9 +242,14 @@ class EncoderDecoder(base_layer.BaseLayer):
           # decoder_positions
           jnp.zeros((batch_size, decoder_seq_length), dtype=jnp.int32))
 
+    # Disable dropout during initialization.
+    def var_init_kwargs_fn():
+      return {'enable_dropout': False}
+
     encoder_decoder = flax_adapter.FlaxModuleAdapter.HParams(
         module_factory_method=self._build_wrapped_module,
         var_init_args=var_init_args_fn,
+        var_init_kwargs=var_init_kwargs_fn,
         logical_axes_rules=self.hparams.logical_axes_rules)
 
     self.create_child('enc_dec', encoder_decoder)

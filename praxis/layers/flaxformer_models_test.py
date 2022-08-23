@@ -160,10 +160,7 @@ class FlaxFormerModelsTest(test_utils.TestCase):
   def test_encoder_decoder_model(self, get_model_fn):
     model = get_model_fn()
 
-    prng_key = {
-        'params': jax.random.PRNGKey(seed=123),
-        'dropout': jax.random.PRNGKey(seed=456)
-    }
+    prng_key = jax.random.PRNGKey(seed=123)
     init_vars = model.init(prng_key)
 
     encoder_seq_len = 32
