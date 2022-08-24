@@ -313,9 +313,8 @@ class _ShardedHeroLionHelper(_ShardedAdamHelper):
                      update: JTensor,
                      moments: _HeroLionOptState,
                      beta2: float) -> _HeroLionOptState:
-    """Updates momentum values."""
-    beta2_decay = self.bias_corrected_decay(step, beta2)
-    m = (1. - beta2_decay) * update + beta2_decay * moments.m
+    """Updates momentum value."""
+    m = (1. - beta2) * update + beta2 * moments.m
     return _HeroLionOptState(m=m)
 
 
@@ -1032,7 +1031,7 @@ class HeroLion(BaseOptimizer):
     beta2: float = 0.99
     clip_threshold: float = 1.0
     weight_decay: float = 0.0
-    m_dtype: jnp.dtype = jnp.float32
+    m_dtype: jnp.dtype = jnp.bfloat16
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
