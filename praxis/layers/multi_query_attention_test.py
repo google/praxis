@@ -17,6 +17,7 @@
 
 from absl import logging
 from absl.testing import absltest
+from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
 import numpy as np
@@ -52,9 +53,11 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     jax_out = layer.apply(initial_vars, inputs)
     self.assertSequenceEqual(jax_out.shape, [5, 5])
 
-  def test_multi_query_attention_shape(self):
+  @parameterized.parameters([False, True])
+  def test_multi_query_attention_shape(self, use_rotary_position_emb):
     test_layer_p = multi_query_attention.MultiQueryDotProductAttention.HParams(
-        name='mqa', input_dim=16, hidden_dim=50, num_heads=10)
+        name='mqa', input_dim=16, hidden_dim=60, num_heads=10,
+        use_rotary_position_emb=use_rotary_position_emb)
     layer = instantiate(test_layer_p)
     inputs = np.random.normal(1.5, 2.0, [5, 12, 16]).astype(np.float32)
     atten_mask = jnp.zeros([1, 1, 1, 12])
@@ -69,9 +72,11 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     self.assertSequenceEqual(encoded.shape, [5, 12, 16])
     self.assertSequenceEqual(attens.shape, [5, 10, 12, 12])
 
-  def test_multi_query_attention_decoding_shape(self):
+  @parameterized.parameters([False, True])
+  def test_multi_query_attention_decoding_shape(self, use_rotary_position_emb):
     test_layer_p = multi_query_attention.MultiQueryDotProductAttention.HParams(
-        name='mqa', input_dim=16, hidden_dim=50, num_heads=10)
+        name='mqa', input_dim=16, hidden_dim=60, num_heads=10,
+        use_rotary_position_emb=use_rotary_position_emb)
     layer = instantiate(test_layer_p)
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)

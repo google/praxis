@@ -24,6 +24,7 @@ from jax.ad_checkpoint import checkpoint_name
 from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import attentions
+from praxis.layers import embedding_softmax
 from praxis.layers import stochastics
 
 WeightInit = base_layer.WeightInit
@@ -149,6 +150,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       dim_per_head: Dimension of each attention head. If None then dim_per_head
         == hidden_dim // num_heads.
       dropout_tpl: Parameterization for the dropout layer.
+      atten_dropout_prob: Probability at which we apply dropout to the attention
+        weights.
       proj_tpl: Parameterization for the query projection layer.
       headless_proj_tpl: Parameterization for the key/value projection layer.
       use_bias: Whether to use bias for projection layers.
@@ -157,14 +160,21 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       internal_enable_query_scale: Internal. Enable scaling of query vector.
       atten_logit_cap: Cap the absolute values of logits by tanh. Enabled when a
         positive value is specified. May not be supported by a subclass.
+      use_rotary_position_emb: Whether to add rotary position embedding to the
+        queries and keys before computing self attention scores. This was
+        proposed in https://arxiv.org/abs/2104.09864.
       relative_bias_tpl: Optional parameterization of relative bias.
       attention_extra_logit: Extra logit for attention softmax.
+      combine_qkv: Whether to combine qkv tensor for optimizing qkv input
+        gradient computation with SPMD. Only supports self-attention.
+      Note: dconv_qkv and ngrammer are not supported.
     """
     input_dim: Union[int, Dict[str, int]] = 0
     hidden_dim: int = 0
     num_heads: int = 1
     dim_per_head: Optional[int] = None
     dropout_tpl: BaseHParams = sub_config_field(stochastics.Dropout.HParams)
+    atten_dropout_prob: float = 0.0
     proj_tpl: BaseHParams = sub_config_field(
         attentions.AttentionProjection.HParams)
     headless_proj_tpl: BaseHParams = sub_config_field(
@@ -178,10 +188,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     attention_extra_logit: Optional[float] = None
     dconv_qkv: bool = False
     combine_qkv: bool = False
-    # TODO(adai): Implement rotary positional embeddings.
     use_rotary_position_emb: bool = False
-    atten_dropout_prob: float = 0.0
-    ngrammer_tpl: Optional[BaseHParams] = None
 
   # SPMD partition related params.
   #
@@ -225,6 +232,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     assert p.input_dim, 'input_dim is {}'.format(p.input_dim)
     assert p.hidden_dim, 'hidden_dim is {}'.format(p.hidden_dim)
 
+    assert not p.dconv_qkv
+    assert not p.combine_qkv
+
     dim_per_head = p.dim_per_head
     if dim_per_head is None:
       dim_per_head = p.hidden_dim // p.num_heads
@@ -265,10 +275,19 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     self.create_child('query', project_input(query_input_dim))
     self.create_child('value', project_input_no_heads(value_input_dim))
 
+    if p.use_rotary_position_emb:
+      pos_emb_p = embedding_softmax.RotaryPositionalEmbedding.HParams()
+      pos_emb_p.embedding_dims = dim_per_head
+      self.create_child('rotary_position_emb', pos_emb_p)
+
     if p.relative_bias_tpl is not None:
       relative_bias_p = p.relative_bias_tpl.clone()
       relative_bias_p.num_heads = p.num_heads
       self.create_child('relative_bias', relative_bias_p)
+
+    self.create_child(
+        'atten_dropout',
+        p.dropout_tpl.clone().set(keep_prob=1.0 - p.atten_dropout_prob))
 
     # Setting is_output_projection=True to set the projection direction
     # from hidden dim to input dim. Output projection follows query_input_dim.
@@ -441,6 +460,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     else:
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
           key.dtype)
+    # Apply attention dropout.
+    probs = self.atten_dropout(probs)
     # Compute the attention context.
     encoded = jnp.einsum('BNTS,BSH->BTNH', probs, value)
     encoded = checkpoint_name(encoded, 'context')
@@ -544,6 +565,17 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
 
     self._fprop_update_decode_state('key_state', key_proj)
     self._fprop_update_decode_state('value_state', value_proj)
+
+    # Apply rotary position embeddings.
+    # Paper: https://arxiv.org/abs/2104.09864.
+    if p.use_rotary_position_emb:
+      query_proj = self.rotary_position_emb(query_proj, query_segment_pos)
+      key_shape = key_proj.shape
+      # [B, S, H] -> [B, S, N(1), H]
+      key_proj = jnp.expand_dims(key_proj, axis=-2)
+      key_proj = self.rotary_position_emb(key_proj, key_segment_pos)
+      key_proj = jnp.reshape(key_proj, key_shape)
+      self._fprop_update_decode_state('key_post_rotary_pos_emb', key_proj)
 
     # Apply relative bias.
     # Paper: https://aclanthology.org/N18-2074.pdf.
@@ -656,6 +688,22 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # Update key state.
     key_state_name = 'key_state'
     _extend_decode_state_and_shard_blh(key_state_name, new_key_proj)
+
+    if p.use_rotary_position_emb:
+      if segment_pos is None:
+        position = jnp.broadcast_to(time_step, [query_vec.shape[0]])
+      else:
+        position = segment_pos
+      new_query_proj = self.rotary_position_emb.extend_step(
+          new_query_proj, position)
+      key_shape = new_key_proj.shape
+      new_key_proj = jnp.expand_dims(new_key_proj, axis=-2)
+      new_key_proj = self.rotary_position_emb.extend_step(
+          new_key_proj, position)
+      new_key_proj = jnp.reshape(new_key_proj, key_shape)
+      key_state_name = 'key_post_rotary_pos_emb'
+      _extend_decode_state_and_shard_blh(key_state_name, new_key_proj)
+
     if p.relative_bias_tpl:
       # Relative bias uses time_step instead of segment_pos.
       relative_bias = self.relative_bias.extend_step(

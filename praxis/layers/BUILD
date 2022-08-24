@@ -1047,6 +1047,7 @@ pytype_strict_library(
     srcs = ["multi_query_attention.py"],
     deps = [
         ":attentions",
+        ":embedding_softmax",
         ":stochastics",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
@@ -1087,6 +1088,7 @@ py_strict_test(
         ":multi_query_attention",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
