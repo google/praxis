@@ -68,6 +68,13 @@ def compute_moments(
     count_v = jnp.cumsum(count_v, axis=cumulative_axis)
 
   if base_layer.is_running_under_pmap():
+    # Here the aggregated mean & variance is the true mean & variance of all
+    # workers' samples ONLY IF all pmap workers have the same number of
+    # elements to be normalized (e.g. have the same batch sizes). This
+    # implementation is like Flax's BatchNorm, but unlike PyTorch's
+    # SyncBatchNorm (which always computes true statistics of all samples).
+    # This difference may not matter according to Appendix A.6 of
+    # https://arxiv.org/abs/2105.07576.
     sum_v = jax.lax.psum(sum_v, axis_name=PMAP_PARALLEL_AXIS_NAME)
     count_v = jax.lax.psum(count_v, axis_name=PMAP_PARALLEL_AXIS_NAME)
 
@@ -109,6 +116,9 @@ class BaseNormalization(base_layer.BaseLayer):
 class BatchNorm(BaseNormalization):
   """Batch normalization layer.
 
+  Note that statistics are aggregated across
+  all workers (a.k.a. Sync BatchNorm) in both pmap and pjit mode.
+
   Note that gamma in this layer is reparameterized: the gamma variable is
   0-initialized and input is scaled by (1 + gamma). This is different from
   Flax, tf.layers, PyTorch etc., where gamma is by default 1-initialized
@@ -132,11 +142,14 @@ class BatchNorm(BaseNormalization):
         which has to be done separately (e.g. via bprop_variable_exclusion).
         This is commonly used in object detection when using pretrained
         backbones.
+      gamma_init: Initializer for gamma. It defaults to zero (which scales the
+        input by 1.0) due to the reparameterization.
     """
     decay: float = 0.999
     use_moving_avg_in_training: bool = False
     set_padded_output_to_zero: bool = True
     force_eval_mode: bool = False
+    gamma_init: WeightInit = WeightInit.Constant(0.0)
 
   def _get_weight_shape(self) -> JTensor:
     return [self.hparams.dim]
@@ -152,8 +165,7 @@ class BatchNorm(BaseNormalization):
     self.create_variable('beta', beta_pc)
 
     # gamma = self.theta.gamma + 1.0
-    gamma_pc = WeightHParams(
-        shape=self._get_weight_shape(), init=WeightInit.Constant(0.0))
+    gamma_pc = WeightHParams(shape=self._get_weight_shape(), init=p.gamma_init)
     self.create_variable('gamma', gamma_pc)
 
     mva = WeightHParams(

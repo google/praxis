@@ -28,6 +28,7 @@ from praxis.layers import poolings
 from praxis.layers import stochastics
 
 NestedMap = py_utils.NestedMap
+WeightInit = base_layer.WeightInit
 JTensor = pytypes.JTensor
 
 BaseHParams = base_layer.BaseLayer.HParams
@@ -48,6 +49,8 @@ class ResNetBlock(base_layer.BaseLayer):
       stride: Stride.
       activation_tpl: Activation function to use.
       residual_droppath_prob: Probability for residual path.
+      zero_init_residual: zero-initialize the gamma of the last BN in each
+        residual branch. From https://arxiv.org/abs/2105.07576.
     """
     input_dim: int = 0
     output_dim: int = 0
@@ -57,6 +60,7 @@ class ResNetBlock(base_layer.BaseLayer):
     activation_tpl: activations.BaseActivation.HParams = sub_config_field(
         activations.ReLU.HParams)
     residual_droppath_prob: float = 0.0
+    zero_init_residual: bool = False
 
   def setup(self) -> None:
     p = self.hparams
@@ -78,11 +82,22 @@ class ResNetBlock(base_layer.BaseLayer):
         activation_tpl=p.activation_tpl))
 
     # conv_out, expand back to hidden dim
+    last_bn_tpl = p.conv_params.batch_norm_tpl
+    if p.zero_init_residual:
+      if last_bn_tpl is None:
+        # This can be implemented by zero-init the weights of conv layer.
+        raise NotImplementedError(
+            'zero_init_residual without BN is not implemented.')
+      else:
+        last_bn_tpl = last_bn_tpl.clone().set(
+            gamma_init=WeightInit.Constant(
+                -1.0 if p.zero_init_residual else 0.0))
     body.append(p.conv_params.clone().set(
         name='conv_out',
         filter_shape=(1, 1, p.output_dim // 4, p.output_dim),
         filter_stride=(1, 1),
-        activation_tpl=activations.Identity.HParams()))
+        activation_tpl=activations.Identity.HParams(),
+        batch_norm_tpl=last_bn_tpl))
     self.create_children('body', body)
 
     # projection with 1x1 if input dim and output dim are not the same
@@ -254,7 +269,8 @@ class ResNet(base_layer.BaseLayer):
     # pylint: disable=g-long-lambda
     conv_params: BaseHParams = dataclasses.field(
         default_factory=lambda: convolutions.ConvBNAct.HParams(
-            batch_norm_tpl=normalizations.BatchNorm.HParams(decay=0.9)))
+            batch_norm_tpl=normalizations.BatchNorm.HParams(decay=0.9),
+            params_init=WeightInit.GaussianSqrtFanOut(1.4141)))
     # pylint: enable=g-long-lambda
     block_params: BaseHParams = sub_config_field(ResNetBlock.HParams)
     strides: Sequence[int] = (1, 2, 2, 2)
