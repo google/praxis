@@ -89,7 +89,7 @@ pytype_strict_library(
         ":base_layer",
         ":py_utils",
         ":pytypes",
-        "//third_party/py/clu:metrics",
+        # Implicit clu.metrics dependency.
     ],
 )
 
@@ -250,7 +250,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":py_utils",
-        "//third_party/py/clu:metrics",
+        # Implicit clu.metrics dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
     ],
