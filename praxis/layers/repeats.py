@@ -281,8 +281,13 @@ class Repeat(base_layer.BaseLayer):
             subtree.clear()
             subtree.update(layer_i)
           else:
-            layer_i = subtree[f'layer{i}']
-            del subtree[f'layer{i}']
+            if f'layer{i}' in subtree:
+              layer_i = subtree[f'layer{i}']
+              del subtree[f'layer{i}']
+            else:
+              # This could happen during lazy_broadcast_prefix since the vars in
+              # PREFIX_DECODE_CACHE are newly created.
+              layer_i = {}
             other_layers = subtree.copy()
             subtree.clear()
             subtree.update(layer_i)
@@ -293,8 +298,12 @@ class Repeat(base_layer.BaseLayer):
         for collection, subtree in tree.items():
           if collection not in [DECODE_CACHE, PREFIX_DECODE_CACHE]:
             continue
-          other_layers = subtree['_repeats_other_layers']
-          del subtree['_repeats_other_layers']
+          if '_repeats_other_layers' in subtree:
+            other_layers = subtree['_repeats_other_layers']
+            del subtree['_repeats_other_layers']
+          else:
+            # This could happen during the first layer of lazy_broadcast_prefix.
+            other_layers = {}
           layer_i = subtree.copy()
           subtree.clear()
           subtree.update(other_layers)

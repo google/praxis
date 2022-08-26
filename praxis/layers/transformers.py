@@ -1685,7 +1685,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     block: BaseHParams = sub_config_field(StackedTransformer.HParams)
     x_times: int = 0
     checkpoint_policy: repeats.AutodiffCheckpointType = repeats.AutodiffCheckpointType.SAVE_NOTHING
-    unroll_in_decode: bool = False
+    unroll_in_decode: bool = True
     repeat_layer_name: str = 'repeat'
     sublayer_name: str = 'sub'
 
