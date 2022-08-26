@@ -339,7 +339,9 @@ class DepthwiseConv1D(base_layer.BaseLayer):
     else:
       return self.theta.w
 
-  def __call__(self, inputs: JTensor, paddings: JTensor) -> JTensor:
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> JTensor:
     """Depthwise convolution layer.
 
     Args:
@@ -352,14 +354,15 @@ class DepthwiseConv1D(base_layer.BaseLayer):
     p = self.hparams
 
     # Applying padding.
-    inputs = inputs * (1.0 - jnp.expand_dims(paddings, axis=-1))
+    if paddings is not None:
+      inputs = inputs * (1.0 - jnp.expand_dims(paddings, axis=-1))
 
     dn = jax.lax.conv_dimension_numbers(inputs.shape,
                                         self.get_w().shape,
                                         ('NHC', 'HIO', 'NHC'))
 
     if p.is_causal:
-      causal_pad_size = p.filter_shape[0] - 1
+      causal_pad_size = p.rhs_dilation_rate * (p.filter_shape[0] - 1)
       padding = [(causal_pad_size, 0)]
     else:
       padding = 'SAME'

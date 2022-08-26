@@ -1097,3 +1097,26 @@ py_strict_test(
         # Implicit tensorflow_no_contrib dependency.
     ],
 )
+
+py_strict_test(
+    name = "convolutions_test",
+    srcs = ["convolutions_test.py"],
+    python_version = "PY3",
+    shard_count = 10,
+    srcs_version = "PY3",
+    deps = [
+        ":convolutions",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit lingvo.core.cluster_factory dependency.
+        # Implicit lingvo.core.conformer_layer dependency.
+        "//third_party/py/lingvo/core:conv_layers_with_time_padding",
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        # Implicit tensorflow_no_contrib dependency.
+    ],
+)
