@@ -69,12 +69,8 @@ def compute_moments(
 
   if base_layer.is_running_under_pmap():
     # Here the aggregated mean & variance is the true mean & variance of all
-    # workers' samples ONLY IF all pmap workers have the same number of
-    # elements to be normalized (e.g. have the same batch sizes). This
-    # implementation is like Flax's BatchNorm, but unlike PyTorch's
-    # SyncBatchNorm (which always computes true statistics of all samples).
-    # This difference may not matter according to Appendix A.6 of
-    # https://arxiv.org/abs/2105.07576.
+    # workers' samples even when they have different batch sizes. This
+    # property is like PyTorch's SyncBatchNorm, but unlike Flax's BatchNorm.
     sum_v = jax.lax.psum(sum_v, axis_name=PMAP_PARALLEL_AXIS_NAME)
     count_v = jax.lax.psum(count_v, axis_name=PMAP_PARALLEL_AXIS_NAME)
 
