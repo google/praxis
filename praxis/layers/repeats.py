@@ -200,6 +200,10 @@ class Repeat(base_layer.BaseLayer):
 
     if p.unroll_in_decode:
 
+      def _clear_decode_cache(tree):
+        del tree
+        return {}
+
       def _unstack_cache(tree):
         new_tree = {}
         for collection, subtree in tree.items():
@@ -215,6 +219,7 @@ class Repeat(base_layer.BaseLayer):
       mapped_scan_fn = nn.map_variables(
           mapped_scan_fn, [DECODE_CACHE, PREFIX_DECODE_CACHE],
           mutable=True,
+          trans_in_fn=_clear_decode_cache,
           trans_out_fn=_unstack_cache)
 
     layer_out, _ = mapped_scan_fn(self.sublayer, inputs)
