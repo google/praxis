@@ -579,7 +579,7 @@ pytype_strict_library(
         ":stochastics",
         # Implicit absl.logging dependency.
         # Implicit jax dependency.
-        "//third_party/py/jax:experimental_host_callback",
+        # Implicit jax.experimental_host_callback dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:gshard_utils",
@@ -1076,7 +1076,7 @@ py_strict_test(
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit t5x.models dependency.
-        "//third_party/py/t5x:partitioning",
+        # Implicit t5x.partitioning dependency.
     ],
 )
 
@@ -1112,7 +1112,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit lingvo.core.cluster_factory dependency.
         # Implicit lingvo.core.conformer_layer dependency.
-        "//third_party/py/lingvo/core:conv_layers_with_time_padding",
+        # Implicit core.conv_layers_with_time_padding dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:py_utils",
