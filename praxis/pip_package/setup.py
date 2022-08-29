@@ -19,7 +19,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='praxis',
-    version='0.1',
+    version='0.1.0',
     description=('Functionalities such as a layers for building neural networks '
                  'in Jax.'),
     author='PAX team',
