@@ -257,6 +257,9 @@ class ConvBNAct(Conv2D):
     """
     p = self.hparams
 
+    # Applying padding.
+    inputs *= (1 - paddings)[:, :, None, None]
+
     outputs = self(inputs)
 
     if p.filter_stride[0] == 1 and p.padding == 'SAME':

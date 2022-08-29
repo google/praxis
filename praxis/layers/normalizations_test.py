@@ -271,6 +271,14 @@ class NormalizationsTest(test_utils.TestCase):
           tf_inputs,
           paddings=tf.convert_to_tensor(
               paddings, dtype=_JaxToTfDtype(input_dtype)))
+      # TF doesn't apply padding so we apply manually
+      paddings = np.array(paddings)
+      expanded_shape = list(paddings.shape) + [
+          1,
+      ] * (
+          len(tf_output.shape) - 2)
+      expanded_padding = np.reshape(paddings, expanded_shape)
+      tf_output *= (1 - expanded_padding)
 
     self.assertAllClose(to_np(tf_output), to_np(output))
 

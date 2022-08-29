@@ -454,12 +454,14 @@ class GroupNorm(BaseNormalization):
       cumulative: If true, only normalize by current and previous time steps.
       input_rank: Rank of input. Only 3(BTD) and 4(NHWC) are supported.
       epsilon: Epsilon added when computing the rsqrt.
+      set_padded_output_to_zero: bool. whether to pad padding part to zero.
     """
     num_groups: int = 32
     min_group_size: int = 1
     cumulative: bool = False
     input_rank: Optional[int] = None
     epsilon: float = 0.001
+    set_padded_output_to_zero: bool = True
 
   def setup(self) -> None:
     """Initializes GroupNorm layer and checks parameters."""
@@ -569,4 +571,10 @@ class GroupNorm(BaseNormalization):
           cumulative_axis=1,
           keepdims=True)
 
-    return self._normalize(x, group_mean, group_variance)
+    gn_output = self._normalize(x, group_mean, group_variance)
+    if p.set_padded_output_to_zero and paddings is not None:
+      expanded_paddings = jnp.reshape(
+          paddings,
+          list(inputs.shape[:2]) + [1] * (expanded_rank - 3))
+      gn_output *= 1.0 - expanded_paddings
+    return gn_output
