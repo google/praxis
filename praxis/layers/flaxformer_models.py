@@ -181,17 +181,8 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
           decoder_factory=decoder_factory, dtype=activation_dtype)
       return t5_architecture.DecoderOnly(**init_kwargs)
 
-    def var_init_args_fn():
-      # model initialization shouldn't be sensitive to batch size and sequence
-      # length.
-      batch_size = 2
-      seq_length = 2
-      return (jnp.zeros((batch_size, seq_length), dtype=jnp.int32),
-              jnp.zeros((batch_size, seq_length), dtype=jnp.int32))
-
     flaxformer_decoder = flax_adapter.FlaxModuleAdapter.HParams(
         module_factory_method=decoder_only_factory,
-        var_init_args=var_init_args_fn,
         logical_axes_rules=p.logical_axes_rules)
 
     self.create_child('dec', flaxformer_decoder)
@@ -220,36 +211,8 @@ class EncoderDecoder(base_layer.BaseLayer):
   def setup(self) -> None:
     super().setup()
 
-    def var_init_args_fn():
-      # model initialization shouldn't be sensitive to batch size and sequence
-      # length.
-      batch_size = 2
-      encoder_seq_length = 2
-      decoder_seq_length = 4
-      return (
-          # encoder_input_tokens
-          jnp.zeros((batch_size, encoder_seq_length), dtype=jnp.int32),
-          # decoder_input_tokens
-          jnp.zeros((batch_size, decoder_seq_length), dtype=jnp.int32),
-          # decoder_target_tokens
-          jnp.zeros((batch_size, decoder_seq_length), dtype=jnp.int32),
-          # encoder_segment_ids
-          jnp.zeros((batch_size, encoder_seq_length), dtype=jnp.int32),
-          # decoder_segment_ids
-          jnp.zeros((batch_size, decoder_seq_length), dtype=jnp.int32),
-          # encoder_positions
-          jnp.zeros((batch_size, encoder_seq_length), dtype=jnp.int32),
-          # decoder_positions
-          jnp.zeros((batch_size, decoder_seq_length), dtype=jnp.int32))
-
-    # Disable dropout during initialization.
-    def var_init_kwargs_fn():
-      return {'enable_dropout': False}
-
     encoder_decoder = flax_adapter.FlaxModuleAdapter.HParams(
         module_factory_method=self._build_wrapped_module,
-        var_init_args=var_init_args_fn,
-        var_init_kwargs=var_init_kwargs_fn,
         logical_axes_rules=self.hparams.logical_axes_rules)
 
     self.create_child('enc_dec', encoder_decoder)

@@ -88,7 +88,14 @@ HYPER_PARAMS = 'hyper_params'
 # Used for interoperability with Flax-based libraries and
 # not for use within Pax' own layers.
 # It will be handled as NON_TRAINABLE in train mode.
-NON_PAX_VAR_COLLECTION = ['batch_stats']
+NON_PAX_VAR_COLLECTION = ['batch_stats', 'params_axes']
+
+# Only allow PARAMS and NON_TRAINABLE to be mutable in order to allow Repeat
+# and Pipeline layer fprop to alter the shape of SUMMARIES collection, e.g.
+# by splitting along scan axis using nn.map_variable.
+# The goal is to allow init_vars = layer.init(...) to be fed into
+# layer.fprop(init_vars, ...).
+DEFAULT_INIT_MUTABLE_LIST = [PARAMS, NON_TRAINABLE] + NON_PAX_VAR_COLLECTION
 
 # A few special Flax RNG stream names.
 RANDOM = 'random'
@@ -1188,35 +1195,17 @@ class BaseLayer(
         else:
           pass
 
-  # Recursively walk through the submodule tree to force lazy module
-  # initialization to happen eagerly during the call. It effectively calls
-  # `setup` on each submodule. It's important to note that we do not care about
-  # the returned value of force_init but rather relies on the side effect of
-  # mutating the self.scope object -- for the module tree structure and also
-  # the variable collections that get added to self.scope.
-  # In `setup`, `self.create_variable` ultimately calls `self.param` and
-  # `self.variable`. They put BoxedParams into self.scope.
-  # In `setup`, `self.create_child` builds the module tree structure in
-  # self.scope.
-  def force_init(self, *args):
-    """Recursively forces setup() to be called."""
-    # Dummy `*args` signature is needed for scan's rigid signature requirements.
-    for key, val in self.__dict__.items():
-      if key in _BaseLayerRecursionDictKeysToIgnore:
-        continue  # don't create recursion loop!
-
-      def force(v):
-        if isinstance(v, nn.Module):
-          # pass dummy args through - again only needed for scan.
-          v.force_init(*args)
-
-      jax.tree_map(force, val)
-    return None
-
-  # This top level `init` call does not use the returned value of `force_init`
-  # but rather relies on the side effects of self.param/self.variable for
-  # populating self.scope with the variable collections. What gets put into
-  # self.scope is BoxedParams and thus the need for unboxing for super().init().
+  # Similar to Flax nn.Module.init, except that BaseLayer param and variables
+  # are created with WeightHParams as their metadata (e.g. SPMD annotations).
+  # We store the variables with their metadata as a BoxedParams object inside
+  # Flax variable collections. This wrapped BaseLayer.init tries to preserve
+  # the same semantics as nn.Module.init by returning callers unboxed variables.
+  #
+  # This top level `init` call relies on the side effects of
+  # self.param/self.variable for populating self.scope with the variable
+  # collections. What gets put into self.scope is BoxedParams and thus the need
+  # for unboxing for super().init().
+  #
   # We intentionally unbox BoxedParams and only return jnp.array values to
   # callers because we expect users to do
   #   initial_vars = layer.init(k)
@@ -1224,11 +1213,17 @@ class BaseLayer(
   # where `initial_vars` that users see are unboxed jnp.arrays, and
   # also the code in fprop never sees BoxedParams but always jnp.arrays.
   def init(self, rngs, *args, method=None, mutable=None, **kwargs):
-    # TODO(zhangqiaorjc): Pass args and kwargs to init when Praxis switches to
-    # running forward computation for layer initialization, similar to what
-    # Flax does.
-    del args, kwargs
-    variables = super().init(rngs, method=self.force_init, mutable=True)
+    if method is None:
+      method = self.__call__
+    # Only allow PARAMS and NON_TRAINABLE to be mutable because the trainer
+    # typically checkpoints only PARAMS and NON_TRAINABLE. The other variable
+    # collections are typically associated with a single step only.
+    mutable_list = DEFAULT_INIT_MUTABLE_LIST
+    if mutable:
+      # Allow users to override and ask for DECODE_CACHE init for example.
+      mutable_list = mutable
+    variables = super().init(
+        rngs, *args, method=method, mutable=mutable_list, **kwargs)
     return flax_core.unfreeze(maybe_unbox_value(variables))
 
   # See comments in `init` above.
@@ -1258,21 +1253,26 @@ class BaseLayer(
     else:
       return result
 
-  # The top level `init_fn` call does not use the returned value of `force_init`
-  # but rather relies on the side effects of self.param/self.variable for
-  # populating self.scope with the variable collections. What gets put into
-  # self.scope is BoxedParams and thus init_fn returns the variable collections
-  # with BoxedParams. We unboxed it and return WeightHParams metadata.
+  # In its essence, this is jax.eval_shape(model.init) except that we return
+  # the WeightHParams objects to callers. This is typically used to retrieve
+  # the unpadded variable shapes and SPMD annotations for
+  # PARAMS and NON_TRAINABLE collections.
   def abstract_init_with_metadata(self, rngs, *args, **kwargs):
-    # TODO(zhangqiaorjc): Pass args and kwargs to init when Praxis switches to
-    # running forward computation for layer initialization, similar to what
-    # Flax does.
-    del args, kwargs
-    init_fn = functools.partial(
-        super().init, method=self.force_init, mutable=True)
+    # TODO(zhangqiaorjc): Remove `rngs` args?
+    del rngs
+    # Dummy key is enough because we eval_shape only.
+    k = jax.random.PRNGKey(1)
+    rngs = {PARAMS: k, RANDOM: k, NON_PAX_RNG_KEY: k}
+    # Only PARAMS and NON_TRAINABLE have BoxedParam.
+    init_fn = functools.partial(super().init, mutable=DEFAULT_INIT_MUTABLE_LIST)
     # Disable logging to reduce logspam.
     with py_utils.logging_verbosity_level('FATAL'):
-      variables_abstract = jax.eval_shape(init_fn, rngs)
+      # Var init should be the same whether do_eval or not.
+      context_p = JaxContext.HParams(do_eval=False)
+      with JaxContext.new_context(hparams=context_p):
+        variables_abstract = jax.eval_shape(init_fn, rngs, *args, **kwargs)
+    # If model contains FlaxAdapter, we may see 'params_axes' collections, but
+    # they do not contain WeightHParams, so we remove them from returned values.
     if 'params_axes' in variables_abstract:
       del variables_abstract['params_axes']
     return flax_core.unfreeze(unbox_meta(variables_abstract))

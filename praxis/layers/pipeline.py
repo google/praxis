@@ -17,7 +17,7 @@
 
 import contextlib
 import functools
-from typing import Any, Callable, List, Optional
+from typing import Callable, List, Optional
 
 from flax import core as flax_core
 from flax import linen as nn
@@ -156,69 +156,6 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     p = self.hparams
     assert p.single_stage_body
     self.create_child('body', p.single_stage_body)
-
-  def _get_body_force_init_fn(
-      self) -> Callable[[base_layer.BaseLayer, Any], None]:
-    p = self.hparams
-
-    # Dummy args and return values are needed in case sublayers have a scan.
-    def fn(model, _):
-      model.force_init(None)
-      return None, None
-
-    # This nn.vmap morally makes N copies of a single layer.
-    #
-    # `variable_axes` adds a leading stage axis to PARAMS/NON_TRAINABLE,
-    # i.e. N copies of layer vars concatenated in the leading dimension.
-    #
-    # `variable_axes` for AUX_LOSS and SUMMARIES allows us to record them for
-    # each layer and potentially aggregated across layers elsewhere.
-    #
-    # `split_rngs` for PARAMS and RANDOM because each var init and dropout mask
-    # should be independent for each layer.
-    vmapped_fn = nn.vmap(
-        fn,
-        variable_axes={
-            PARAMS: 0,
-            NON_TRAINABLE: 0,
-            AUX_LOSS: 0,
-            SUMMARIES: 0,
-        },
-        split_rngs={
-            PARAMS: True,
-            RANDOM: True
-        },
-        axis_size=p.num_stages)
-
-    wp = p.weight_split_dims_mapping
-    assert wp.stages is not None
-    assert isinstance(wp.stages, (list, tuple))
-    assert len(wp.stages) == 1
-    wp_sub = tuple(wp.stages)
-
-    # nn.map_variables needs to update variable metadata: repeat_prefix and
-    # repeat_prefix_split_dims_mapping for trainable and non-trainable vars as
-    # we make N copies of a layer. Each layer variable metadata encapsulated
-    # in the WeightHParams object in the original single layer needs to be
-    # updated to reflect the newly vmapped axis.
-    # `repeat_prefix` and `repeat_prefix_split_dims_mapping` are consumed by
-    # the optimizer to correctly handle scan-over-layer slot variables.
-    mapped_fn = vmapped_fn
-    for collection in (PARAMS, NON_TRAINABLE):
-      mapped_fn = nn.map_variables(
-          mapped_fn,
-          collection,
-          mutable=self.is_mutable_collection(collection),
-          trans_out_fn=functools.partial(
-              flax_utils.add_axis_to_metadata,
-              sub_weight_split_dims_mapping=wp_sub,
-              x_times=p.num_stages))
-
-    return mapped_fn
-
-  def force_init(self):
-    body_init_fn = self._get_body_force_init_fn()
-    body_init_fn(self.body, None)
 
   def _xmap_gather(self, xs, ids, ids_dim):
     """Use xmap to implement a stage-wise sharded gather.
@@ -443,7 +380,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     # each layer.
     #
     # Note that fprop should not use PARAMS rng because there is no var init.
-    return nn.vmap(
+    vmapped_fn = nn.vmap(
         body_fn,
         in_axes=0,
         out_axes=0,
@@ -453,7 +390,36 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
             SUMMARIES: 0,
             NON_TRAINABLE: 0
         },
-        split_rngs={RANDOM: True})
+        split_rngs={
+            PARAMS: self.is_initializing(),
+            RANDOM: True
+        })
+
+    if self.is_initializing():
+      p = self.hparams
+      wp = p.weight_split_dims_mapping
+      assert wp.stages is not None
+      assert isinstance(wp.stages, (list, tuple))
+      assert len(wp.stages) == 1
+      wp_sub = tuple(wp.stages)
+
+      # nn.map_variables needs to update variable metadata: repeat_prefix and
+      # repeat_prefix_split_dims_mapping for trainable and non-trainable vars as
+      # we make N copies of a layer. Each layer variable metadata encapsulated
+      # in the WeightHParams object in the original single layer needs to be
+      # updated to reflect the newly vmapped axis.
+      # `repeat_prefix` and `repeat_prefix_split_dims_mapping` are consumed by
+      # the optimizer to correctly handle scan-over-layer slot variables.
+      for collection in (PARAMS, NON_TRAINABLE):
+        vmapped_fn = nn.map_variables(
+            vmapped_fn,
+            collection,
+            mutable=self.is_mutable_collection(collection),
+            trans_out_fn=functools.partial(
+                flax_utils.add_axis_to_metadata,
+                sub_weight_split_dims_mapping=wp_sub,
+                x_times=p.num_stages))
+    return vmapped_fn
 
   def num_total_iterations(self, num_microbatches: int) -> int:
     p = self.hparams
@@ -676,12 +642,14 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
     if p.stream_io:
       per_stage_inputs = None
+
       # Broadcast inputs need to be replicated across stages.
       def _replicate_broadcast_inputs(x):
         return base_layer.maybe_shard(
             x, [None] * x.ndim,
             p.mesh_axis_names,
             unconstrained_dims=list(range(1, x.ndim)))
+
       broadcast_inputs = jax.tree_map(_replicate_broadcast_inputs,
                                       broadcast_inputs)
       broadcast_kwargs = jax.tree_map(_replicate_broadcast_inputs,
@@ -853,38 +821,48 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         mutable=True,
         trans_out_fn=post_process)
 
-    out, accum = after_post_process(
-        self,
-        NestedMap(data=loop_state0, loop_iter=jnp.array(0, dtype=jnp.int32)))
+    init_carry = NestedMap(
+        data=loop_state0, loop_iter=jnp.array(0, dtype=jnp.int32))
 
-    if not p.stream_io:
-      # Extract output from the last stage after num_stages-1 bubbles.
-      def _extract_out(x):
-        # Use lax.slice to guarantee the gradient is a pad.
-        return jnp.squeeze(
-            jax.lax.slice(
-                x, [total_iterations - num_microbatches, x.shape[1] - 1] + [0] *
-                (x.ndim - 2), x.shape), 1)
-
-      output = jax.tree_map(_extract_out, accum.data)
+    if self.is_initializing():
+      # Variable initializations doesn't require scanning through microbatches.
+      # One scan body is enough to trigger variable initializations.
+      out, accum = _scan_fn(self, init_carry)
+      # Get a single-stage output and broadcast it to the right output shape.
+      output = jax.tree_map(
+          lambda x: jax.lax.broadcast(x[0], [num_microbatches]), out.data.shift)
     else:
-      # Extract output the streaming buffer.
-      # The output can be misaligned on the (num_microbatches // L) dim, because
-      # the implementation uses an offset based the input (consumed by the first
-      # stage), but outputs are produced by the last stage. We rotate the buffer
-      # to fix the misalignment.
-      first_last_offset = (L - 1) % (num_microbatches // L)
+      # The following is layer.apply codepath.
+      out, accum = after_post_process(self, init_carry)
 
-      def _extract_out(x):
-        if first_last_offset > 0:
-          x = jnp.concatenate(
-              [x[:, first_last_offset:], x[:, :first_last_offset]], axis=1)
-        return jnp.reshape(x, (num_microbatches,) + x.shape[2:])
+      if not p.stream_io:
+        # Extract output from the last stage after num_stages-1 bubbles.
+        def _extract_out(x):
+          # Use lax.slice to guarantee the gradient is a pad.
+          return jnp.squeeze(
+              jax.lax.slice(
+                  x, [total_iterations - num_microbatches, x.shape[1] - 1] +
+                  [0] * (x.ndim - 2), x.shape), 1)
 
-      if p.pipeline_broadcast_inputs:
-        output = jax.tree_map(_extract_out, out.data.stream.inputs)
+        output = jax.tree_map(_extract_out, accum.data)
       else:
-        output = jax.tree_map(_extract_out, out.data.stream)
+        # Extract output the streaming buffer.
+        # The output can be misaligned on the (num_microbatches // L) dim,
+        # because the implementation uses an offset based the input (consumed
+        # by the first stage), but outputs are produced by the last stage. We
+        # rotate the buffer to fix the misalignment.
+        first_last_offset = (L - 1) % (num_microbatches // L)
+
+        def _extract_out(x):
+          if first_last_offset > 0:
+            x = jnp.concatenate(
+                [x[:, first_last_offset:], x[:, :first_last_offset]], axis=1)
+          return jnp.reshape(x, (num_microbatches,) + x.shape[2:])
+
+        if p.pipeline_broadcast_inputs:
+          output = jax.tree_map(_extract_out, out.data.stream.inputs)
+        else:
+          output = jax.tree_map(_extract_out, out.data.stream)
 
     if needs_microbatching:
 
@@ -924,39 +902,6 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
     circular_repeat: int = 1
     share_weights: bool = False
 
-  def _get_body_force_init_fn(
-      self) -> Callable[[base_layer.BaseLayer, Any], None]:
-    p = self.hparams
-    if p.share_weights:
-      return super()._get_body_force_init_fn()
-
-    # Add a leading circular_repeat dim to variables.
-    body_init_fn = super()._get_body_force_init_fn()
-    body_init_fn = nn.vmap(
-        body_init_fn,
-        variable_axes={
-            PARAMS: 0,
-            NON_TRAINABLE: 0,
-            AUX_LOSS: None,
-            SUMMARIES: 0,
-        },
-        split_rngs={
-            PARAMS: True,
-            RANDOM: True
-        },
-        axis_size=p.circular_repeat)
-    for collection in (PARAMS, NON_TRAINABLE):
-      body_init_fn = nn.map_variables(
-          body_init_fn,
-          collection,
-          mutable=self.is_mutable_collection(collection),
-          trans_out_fn=functools.partial(
-              flax_utils.add_axis_to_metadata,
-              sub_weight_split_dims_mapping=(None,),
-              x_times=p.circular_repeat))
-
-    return body_init_fn
-
   def _async_circular_transfer(self, num_microbatches: int) -> bool:
     """Whether to delay circular transfers by 1 iteration."""
     p = self.hparams
@@ -981,6 +926,18 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
     vmapped_fn = super()._get_body_fprop_fn(loop_iteration, num_microbatches)
     if p.share_weights:
       return vmapped_fn
+
+    if self.is_initializing():
+      for collection in (PARAMS, NON_TRAINABLE):
+        vmapped_fn = nn.map_variables(
+            vmapped_fn,
+            collection,
+            mutable=self.is_mutable_collection(collection),
+            trans_out_fn=functools.partial(
+                flax_utils.add_axis_to_metadata,
+                sub_weight_split_dims_mapping=(None,),
+                x_times=p.circular_repeat))
+
     backup_vars = self.body.variables
     microbatch_ids = jnp.maximum(loop_iteration - jnp.arange(p.num_stages), 0)
     repeat_ids = microbatch_ids // num_microbatches

@@ -17,7 +17,7 @@
 
 import abc
 import functools
-from typing import Any, Callable, Iterable, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Optional
 
 import flax.linen as nn
 from flax.linen import partitioning as flax_partitioning
@@ -34,8 +34,7 @@ class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
   """Base class for converting an arbitrary nn.Module into a proper Pax Layer.
 
   Subclasses must implement a `_build_wrapped_module()` method that instantiates
-  the nn.Module. The module is passed `var_init_args` and `var_init_kwargs` at
-  variable-initialization time.
+  the nn.Module.
 
   This adapter assumes that the module has a single compact method __call__. If
   this constraint is not satisfied, a similar adapter can be easily constructed.
@@ -45,16 +44,9 @@ class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
     """Associated hyper-params for this layer class.
 
     Attributes:
-      var_init_args: A tuple of args to pass when initializing the module
-        variables, or a zero-arg callable that returns such a tuple.
-      var_init_kwargs: Optional. Kwargs to pass when initializing the module
-        variables, or a zero-arg callable that returns these kwargs.
       logical_axes_rules: Optional logical axes rules, e.g., [('input', 'mdl'),
         ('output', 'data')]
     """
-    var_init_args: Optional[Union[Tuple[Any], Callable[[], Tuple[Any]]]] = None
-    var_init_kwargs: Optional[Union[Mapping[str, Any],
-                                    Callable[[], Mapping[str, Any]]]] = None
     logical_axes_rules: Optional[LogicalAxisRules] = None
 
   def setup(self) -> None:
@@ -67,27 +59,25 @@ class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
     """Builds the Flax module to be wrapped by this layer."""
     pass
 
-  def force_init(self, *args):
+  def __call__(self, *args, **kwargs):
     p = self.hparams
 
-    # TODO(zhangqiaorjc): Consolidates var_init_args and var_init_kwargs for
-    # both JTensor and non-JTensor values. Currently we assume all elements in
-    # var_init_args are JTensor (or numpy arrays convertable to JTensor), and
-    # values in var_init_kwargs can be any.
-    var_init_args, var_init_kwargs = self._build_init_args()
-
-    def init_fn(module, *init_args, **var_init_kwargs):
+    def call_fn(module, *args, **kwargs):
       # axis_rules context manager is used to map activation sharding logical
       # axes to mesh axes names that pjit expects.
       with flax_partitioning.axis_rules(p.logical_axes_rules):
-        return module.__call__(*init_args, **var_init_kwargs)
+        return module.__call__(*args, **kwargs)
 
+    if not self.is_initializing():
+      return call_fn(self.cld, *args, **kwargs)
+
+    # For layer initialization path, need to create BoxedParams.
     # Combine 'params' and 'params_axes' collections into a BoxedParams
     # collection with WeightHParams and tensor_split_dims_mapping derived
     # from Flaxformer's logical axis rules. All other collections are left
     # unchanged.
     mapped_fn = nn.map_variables(
-        init_fn,
+        call_fn,
         mapped_collections=True,  # Transform the entire var col tree.
         mutable=True,
         trans_out_fn=functools.partial(
@@ -97,32 +87,7 @@ class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
         ))
 
     # Call the final mapped_fn.
-    mapped_fn(self.cld, *var_init_args, **var_init_kwargs)
-
-  def __call__(self, *args, **kwargs):
-    # axis_rules context manager is used to map activation sharding logical
-    # axes to mesh axes names that pjit expects.
-    with flax_partitioning.axis_rules(self.hparams.logical_axes_rules):
-      return self.cld(*args, **kwargs)
-
-  def _build_init_args(self) -> Tuple[Iterable[Any], Mapping[str, Any]]:
-    """Returns the args and kwargs to be passed when initializing variables."""
-    p = self.hparams
-
-    if p.var_init_args is None:
-      raise ValueError('var_init_args must be set.')
-    elif callable(p.var_init_args):
-      args = p.var_init_args()
-    else:
-      args = tuple(p.var_init_args)
-
-    if p.var_init_kwargs is None:
-      kwargs = {}
-    elif callable(p.var_init_kwargs):
-      kwargs = p.var_init_kwargs()
-    else:
-      kwargs = dict(p.var_init_kwargs)
-    return args, kwargs
+    return mapped_fn(self.cld, *args, **kwargs)
 
 
 class FlaxModuleAdapter(FlaxModuleAdapterBase):

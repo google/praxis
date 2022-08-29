@@ -37,7 +37,8 @@ SUMMARIES = base_layer.SUMMARIES
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 RANDOM = base_layer.RANDOM
 
-SCAN_SPLIT_RNGS = {PARAMS: True, RANDOM: True}
+# RNN share weights across time dimension, so PARAMS are never split.
+SCAN_SPLIT_RNGS = {PARAMS: False, RANDOM: True}
 
 
 def _sum_aux_loss(tree):
@@ -119,6 +120,16 @@ class FRnn(base_layer.BaseLayer):
     def body_fn(sub, state0, inputs):
       state1 = sub(state0, inputs)
       return state1, sub.get_output(state1)
+
+    # Flax nn.scan has the limitation that variables cannot be created inside.
+    # So we must create variables before we enter nn.scan by calling body_fn
+    # once to initialize the variables with the right shape expected by the
+    # scan during layer.init.
+    if self.is_initializing():
+      # inputs has shape [b, t, dim] or [b, t, 1]
+      # sliced_inputs has shape [b, dim] or [b, 1].
+      sliced_inputs = jax.tree_map(lambda x: x[:, 1], inputs)
+      _ = body_fn(self.cell, state0, sliced_inputs)
 
     # NON_TRAINABLE variables are carried over from one iteration to another.
     # For example, frnn iteration n+1 is able to see updated batch norm
@@ -303,6 +314,17 @@ class LstmFrnn(FRnn):
     def body_fn(sub, state0, inputs):
       state1 = sub.fprop_with_projected_inputs(state0, inputs)
       return state1, sub.get_output(state1)
+
+    # Flax nn.scan has the limitation that variables cannot be created inside.
+    # So we must create variables before we enter nn.scan by calling body_fn
+    # once to initialize the variables with the right shape expected by the
+    # scan during layer.init.
+    if self.is_initializing():
+      # inputs has shape [b, t, dim] or [b, t, 1]
+      # sliced_inputs has shape [b, dim] or [b, 1].
+      sliced_inputs = jax.tree_map(lambda x: x[:, 1], inputs)
+      # `body_fn` is sufficient to trigger PARAMS initialization.
+      _ = body_fn(self.cell, state0, sliced_inputs)
 
     # NON_TRAINABLE variables are carried over from one iteration to another.
     # For example, frnn iteration n+1 is able to see updated batch norm

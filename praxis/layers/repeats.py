@@ -56,9 +56,6 @@ SCAN_VARIABLE_AXES = {
     DECODE_CACHE: 0,
     PREFIX_DECODE_CACHE: 0
 }
-# PARAMS is vmapped. Scan does not need to init vars, so PARAMS rng key is not
-# needed.
-SCAN_SPLIT_RNGS = {PARAMS: False, RANDOM: True}
 
 def _sum_aux_loss(tree):
   return jax.tree_map(jnp.sum, tree)
@@ -106,46 +103,6 @@ class Repeat(base_layer.BaseLayer):
 
     self.create_child(p.sublayer_name, p.sub)
 
-  def force_init(self):
-    p = self.hparams
-
-    # nn.vmap variable_axes adds a leading stage axis to variable shapes.
-    def fn(model, _):
-      model.force_init(None)
-      return None, None
-
-    # nn.vmap variable_axes adds a leading stage axis to variable shapes.
-    vmapped_fn = nn.vmap(
-        fn,
-        variable_axes=SCAN_VARIABLE_AXES,
-        split_rngs={
-            PARAMS: True,
-            RANDOM: True
-        },
-        axis_size=p.x_times)
-
-    wp = p.weight_split_dims_mapping
-    if wp.sub is not None:
-      assert isinstance(wp.sub, (list, tuple))
-      assert len(wp.sub) == 1
-      wp_sub = tuple(wp.sub)
-    else:
-      wp_sub = (-1,)
-
-    mapped_fn = vmapped_fn
-    for collection in (PARAMS, NON_TRAINABLE):
-      mapped_fn = nn.map_variables(
-          mapped_fn,
-          collection,
-          mutable=self.is_mutable_collection(collection),
-          trans_out_fn=functools.partial(
-              flax_utils.add_axis_to_metadata,
-              sub_weight_split_dims_mapping=wp_sub,
-              x_times=p.x_times))
-
-    mapped_fn(self.sublayer, None)  # scan requires a dummy carry input
-
-  # TODO(zhangqiaorjc): Allow callers to customize. body_fn.
   def __call__(self, inputs: NestedJTensor, *args: Any, **kwargs: Any) -> Any:
     """FProp inputs through the sub layer stack.
 
@@ -176,8 +133,30 @@ class Repeat(base_layer.BaseLayer):
     scan_fn = nn.scan(
         rematted_body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
-        split_rngs=SCAN_SPLIT_RNGS,
+        split_rngs={
+            PARAMS: self.is_initializing(),
+            RANDOM: True
+        },
         length=p.x_times)
+
+    if self.is_initializing():
+      wp = p.weight_split_dims_mapping
+      if wp.sub is not None:
+        assert isinstance(wp.sub, (list, tuple))
+        assert len(wp.sub) == 1
+        wp_sub = tuple(wp.sub)
+      else:
+        wp_sub = (-1,)
+
+      for collection in (PARAMS, NON_TRAINABLE):
+        scan_fn = nn.map_variables(
+            scan_fn,
+            collection,
+            mutable=self.is_mutable_collection(collection),
+            trans_out_fn=functools.partial(
+                flax_utils.add_axis_to_metadata,
+                sub_weight_split_dims_mapping=wp_sub,
+                x_times=p.x_times))
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -247,6 +226,8 @@ class Repeat(base_layer.BaseLayer):
     # TODO(team): Configure for spmd.
     p = self.hparams
 
+    assert not self.is_initializing()
+
     def body_fn(sub, _):
       sub.init_states(*args, **kwargs)
       return None, None
@@ -254,7 +235,10 @@ class Repeat(base_layer.BaseLayer):
     scan_fn = nn.scan(
         body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
-        split_rngs=SCAN_SPLIT_RNGS,
+        split_rngs={
+            PARAMS: self.is_initializing(),
+            RANDOM: True
+        },
         length=p.x_times)
 
     mapped_scan_fn = nn.map_variables(
@@ -357,6 +341,8 @@ class Repeat(base_layer.BaseLayer):
     """
     p = self.hparams
 
+    assert not self.is_initializing()
+
     # TODO(zhangqiaorjc): Apply remat?
     def body_fn(sub, layer_in):
       layer_out = sub.extend_step(layer_in, *args, **kwargs)
@@ -371,7 +357,7 @@ class Repeat(base_layer.BaseLayer):
         body_fn,
         in_axes=0,  # scan over axis 0 for layer_states
         variable_axes=SCAN_VARIABLE_AXES,
-        split_rngs=SCAN_SPLIT_RNGS,
+        split_rngs={RANDOM: True},
         length=p.x_times)
 
     mapped_scan_fn = nn.map_variables(
@@ -405,6 +391,8 @@ class Repeat(base_layer.BaseLayer):
     """Transforms all decode state variables based on transform_fn."""
     p = self.hparams
 
+    assert not self.is_initializing()
+
     def body_fn(sub, _):
       sub.transform_decode_state(transform_fn)
       return None, None
@@ -416,7 +404,7 @@ class Repeat(base_layer.BaseLayer):
     scan_fn = nn.scan(
         body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
-        split_rngs=SCAN_SPLIT_RNGS,
+        split_rngs={RANDOM: True},
         length=p.x_times)
 
     mapped_scan_fn = nn.map_variables(
@@ -449,6 +437,8 @@ class Repeat(base_layer.BaseLayer):
     """
     p = self.hparams
 
+    assert not self.is_initializing()
+
     def body_fn(sub, _):
       sub.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
       return None, None
@@ -459,7 +449,7 @@ class Repeat(base_layer.BaseLayer):
     scan_fn = nn.scan(
         body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
-        split_rngs=SCAN_SPLIT_RNGS,
+        split_rngs={RANDOM: True},
         length=p.x_times)
 
     mapped_scan_fn = nn.map_variables(
@@ -498,7 +488,7 @@ class Repeat(base_layer.BaseLayer):
     scan_fn = nn.scan(
         body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
-        split_rngs=SCAN_SPLIT_RNGS,
+        split_rngs={RANDOM: True},
         length=p.x_times)
 
     mapped_scan_fn = nn.map_variables(

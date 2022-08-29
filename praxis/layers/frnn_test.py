@@ -42,7 +42,6 @@ class FRNNTest(test_utils.TestCase):
                        output_nonlinearity,
                        direct_config=False):
     params = jax_cell_class.HParams(name='rnn')
-    params.output_nonlinearity = True
     params.params_init = WeightInit.Uniform(1.24)
     params.num_input_nodes = 7
     params.num_output_nodes = 9
@@ -84,13 +83,11 @@ class FRNNTest(test_utils.TestCase):
     cell = instantiate(cell_p)
     frnn_model = instantiate(frnn_p)
 
-    theta = frnn_model.init(jax.random.PRNGKey(5678))
-    _ = cell.init(jax.random.PRNGKey(5678))
-
     state0 = NestedMap(m=m0, c=c0)
     inputs = py_utils.NestedMap(act=act_in, padding=padding)
 
     with base_layer.JaxContext.new_context():
+      theta = frnn_model.init(jax.random.PRNGKey(5678), inputs, state0=state0)
       frnn_act, frnn_state = frnn_model.apply(theta, inputs, state0=state0)
 
     rnn_theta = {'params': theta['params']['cell']}
@@ -127,11 +124,11 @@ class FRNNTest(test_utils.TestCase):
     act_in, padding, m0, c0 = self._get_test_inputs()
     stack_frnn_model = instantiate(stack_frnn_p)
 
-    theta = stack_frnn_model.init(jax.random.PRNGKey(5678))
-
     state0 = [NestedMap(m=m0.clone(), c=c0.clone()) for _ in range(num_layers)]
     inputs = NestedMap(act=act_in, padding=padding)
     with base_layer.JaxContext.new_context():
+      theta = stack_frnn_model.init(
+          jax.random.PRNGKey(5678), inputs, state0=state0)
       stack_frnn_act, stack_frnn_state = stack_frnn_model.apply(
           theta, inputs, state0=state0)
 
@@ -182,11 +179,11 @@ class FRNNTest(test_utils.TestCase):
     stack_frnn_model = instantiate(stack_frnn_p)
     stack_lstm_model = instantiate(stack_lstm_p)
 
-    theta = stack_frnn_model.init(jax.random.PRNGKey(5678))
-
     state0 = [NestedMap(m=m0.clone(), c=c0.clone()) for _ in range(num_layers)]
     inputs = NestedMap(act=act_in, padding=padding)
     with base_layer.JaxContext.new_context():
+      theta = stack_frnn_model.init(
+          jax.random.PRNGKey(5678), inputs, state0=state0)
       stack_frnn_act, stack_frnn_state = stack_frnn_model.apply(
           theta, inputs, state0=state0)
       stack_lstm_act, stack_lstm_state = stack_lstm_model.apply(

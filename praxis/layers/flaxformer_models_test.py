@@ -92,9 +92,6 @@ class FlaxFormerModelsTest(test_utils.TestCase):
         name='flaxformer_decoder', num_layers=2)
     decoder = instantiate(decoder_p)
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    init_vars = decoder.init(prng_key)
-
     seq_len = 128
     batch_size = 2
     # TODO(yonghui): Feed in real data.
@@ -106,6 +103,10 @@ class FlaxFormerModelsTest(test_utils.TestCase):
     decoder_positions = jnp.tile(
         jnp.arange(0, seq_len)[jnp.newaxis, :], (batch_size, 1))
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      init_vars = decoder.init(prng_key, decoder_input_tokens,
+                               decoder_target_tokens, decoder_segment_ids,
+                               decoder_positions)
       out = decoder.apply(init_vars, decoder_input_tokens,
                           decoder_target_tokens, decoder_segment_ids,
                           decoder_positions)
@@ -116,11 +117,6 @@ class FlaxFormerModelsTest(test_utils.TestCase):
     decoder_mdl_p = flaxformer_models.LanguageModel.HParams(
         decoder=decoder_p, z_loss=0.0001, label_smoothing=0.1, name='mdl')
     decoder_mdl = instantiate(decoder_mdl_p)
-
-    prng_key = jax.random.PRNGKey(seed=123)
-    init_vars = decoder_mdl.init(prng_key)
-    expected_files.check_params(init_vars['params'],
-                                'language_model_param_shapes.json')
 
     seq_len = 8
     batch_size = 2
@@ -140,6 +136,10 @@ class FlaxFormerModelsTest(test_utils.TestCase):
         decoder_positions=decoder_positions,
         decoder_loss_weights=decoder_loss_weights)
     with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      init_vars = decoder_mdl.init(prng_key, input_batch)
+      expected_files.check_params(init_vars['params'],
+                                  'language_model_param_shapes.json')
       out = decoder_mdl.apply(init_vars, input_batch)
       del out  # unused
 
@@ -159,9 +159,6 @@ class FlaxFormerModelsTest(test_utils.TestCase):
   )
   def test_encoder_decoder_model(self, get_model_fn):
     model = get_model_fn()
-
-    prng_key = jax.random.PRNGKey(seed=123)
-    init_vars = model.init(prng_key)
 
     encoder_seq_len = 32
     decoder_seq_len = 16
@@ -192,10 +189,14 @@ class FlaxFormerModelsTest(test_utils.TestCase):
         decoder_loss_weights=decoder_loss_weights)
 
     with base_layer.JaxContext.new_context():
+      prng_key = {
+          'params': jax.random.PRNGKey(seed=123),
+          'dropout': jax.random.PRNGKey(seed=456)
+      }
+      init_vars = model.init(prng_key, input_batch)
+
       out = model.apply(
-          init_vars,
-          input_batch,
-          rngs={'dropout': jax.random.PRNGKey(456)})
+          init_vars, input_batch, rngs={'dropout': jax.random.PRNGKey(456)})
       del out  # unused
 
   def test_encoder_decoder_loss(self):
@@ -210,12 +211,18 @@ class FlaxFormerModelsTest(test_utils.TestCase):
     np.random.seed(0)
     logits = np.random.normal(size=(batch_size, seq_len, vocab_size))
     target_tokens = np.argmax(logits, axis=-1)
+    dummy_input_tokens = target_tokens
     loss_weights = np.ones((batch_size, seq_len))
 
     predictions = py_utils.NestedMap(logits=logits)
     input_batch = py_utils.NestedMap(
-        decoder_target_tokens=target_tokens, decoder_loss_weights=loss_weights)
-    init_vars = model.init(jax.random.PRNGKey(0))
+        encoder_input_tokens=dummy_input_tokens,
+        decoder_input_tokens=dummy_input_tokens,
+        decoder_target_tokens=target_tokens,
+        decoder_loss_weights=loss_weights)
+    # Need to run model.compute_predictions to trigger self.decoder.
+    init_vars = model.init(
+        jax.random.PRNGKey(0), input_batch, method=model.compute_predictions)
     # model.compute_loss(predictions, input_batch)
     result, variables = model.apply(
         init_vars,
@@ -251,12 +258,35 @@ class FlaxFormerModelsTest(test_utils.TestCase):
   def test_sharded_flaxformer_model(self):
     decoder_p = flaxformer_models.FlaxFormerDecoder.HParams(num_layers=2)
     decoder_mdl_p = flaxformer_models.LanguageModel.HParams(
-        decoder=decoder_p, z_loss=0.0001, label_smoothing=0.1, name='mdl',
+        decoder=decoder_p,
+        z_loss=0.0001,
+        label_smoothing=0.1,
+        name='mdl',
         mesh_axis_names=['replica', 'data', 'model'],
         ici_mesh_shape=[1, 2, 4],
         logical_axes_rules=t5x_partitioning.standard_logical_axis_rules())
     decoder_mdl = instantiate(decoder_mdl_p)
-    init_vars = decoder_mdl.abstract_init_with_metadata(jax.random.PRNGKey(0))
+
+    seq_len = 8
+    batch_size = 2
+    # TODO(yonghui): Feed in real data.
+    decoder_input_tokens = jnp.tile(
+        jnp.arange(0, seq_len)[jnp.newaxis, :], (batch_size, 1))
+    decoder_target_tokens = jnp.tile(
+        jnp.arange(1, seq_len + 1)[jnp.newaxis, :], (batch_size, 1))
+    decoder_segment_ids = jnp.ones((batch_size, seq_len), jnp.int32)
+    decoder_positions = jnp.tile(
+        jnp.arange(0, seq_len)[jnp.newaxis, :], (batch_size, 1))
+    decoder_loss_weights = jnp.ones((batch_size, seq_len), jnp.float32)
+    input_batch = py_utils.NestedMap(
+        decoder_input_tokens=decoder_input_tokens,
+        decoder_target_tokens=decoder_target_tokens,
+        decoder_segment_ids=decoder_segment_ids,
+        decoder_positions=decoder_positions,
+        decoder_loss_weights=decoder_loss_weights)
+
+    init_vars = decoder_mdl.abstract_init_with_metadata(
+        jax.random.PRNGKey(0), input_batch)
 
     dec = init_vars['params']['decoder']['dec']['cld']['decoder']
     # Tests sharding for embedding variable.
@@ -264,9 +294,8 @@ class FlaxFormerModelsTest(test_utils.TestCase):
         dec['token_embedder']['embedding'].tensor_split_dims_mapping,
         ['model', None])
     # Tests sharding for layernorm.
-    self.assertEqual(
-        dec['decoder_norm']['scale'].tensor_split_dims_mapping,
-        [None])
+    self.assertEqual(dec['decoder_norm']['scale'].tensor_split_dims_mapping,
+                     [None])
 
   def test_sharded_encoder_decoder_model(self):
     flaxformer_model = t5_1_1.small_fixture()
@@ -274,12 +303,42 @@ class FlaxFormerModelsTest(test_utils.TestCase):
     encdec_p = flaxformer_models.EncoderDecoder.HParams.config(
         encoder_decoder_factory=as_partial, name='encoder_decoder')
     mdl_p = flaxformer_models.EncoderDecoderModel.config(
-        encoder_decoder=encdec_p, name='mdl',
+        encoder_decoder=encdec_p,
+        name='mdl',
         mesh_axis_names=['replica', 'data', 'model'],
         ici_mesh_shape=[1, 2, 4],
         logical_axes_rules=t5x_partitioning.standard_logical_axis_rules())
     encdec_mdl = instantiate(mdl_p)
-    init_vars = encdec_mdl.abstract_init_with_metadata(jax.random.PRNGKey(0))
+
+    encoder_seq_len = 32
+    decoder_seq_len = 16
+    batch_size = 2
+
+    encoder_input_tokens = jnp.tile(
+        jnp.arange(0, encoder_seq_len)[jnp.newaxis, :], (batch_size, 1))
+    decoder_input_tokens = jnp.tile(
+        jnp.arange(0, decoder_seq_len)[jnp.newaxis, :], (batch_size, 1))
+    decoder_target_tokens = jnp.tile(
+        jnp.arange(1, decoder_seq_len + 1)[jnp.newaxis, :], (batch_size, 1))
+    encoder_segment_ids = jnp.ones((batch_size, encoder_seq_len), jnp.int32)
+    decoder_segment_ids = jnp.ones((batch_size, decoder_seq_len), jnp.int32)
+    encoder_positions = jnp.tile(
+        jnp.arange(0, encoder_seq_len)[jnp.newaxis, :], (batch_size, 1))
+    decoder_positions = jnp.tile(
+        jnp.arange(0, decoder_seq_len)[jnp.newaxis, :], (batch_size, 1))
+    decoder_loss_weights = jnp.ones((batch_size, decoder_seq_len), jnp.float32)
+
+    input_batch = py_utils.NestedMap(
+        decoder_input_tokens=decoder_input_tokens,
+        decoder_target_tokens=decoder_target_tokens,
+        decoder_segment_ids=decoder_segment_ids,
+        decoder_positions=decoder_positions,
+        encoder_input_tokens=encoder_input_tokens,
+        encoder_segment_ids=encoder_segment_ids,
+        encoder_positions=encoder_positions,
+        decoder_loss_weights=decoder_loss_weights)
+    init_vars = encdec_mdl.abstract_init_with_metadata(
+        jax.random.PRNGKey(0), input_batch)
 
     encdec = init_vars['params']['encoder_decoder']['enc_dec']['cld']
     # Tests sharding for embedding variable.
@@ -290,6 +349,7 @@ class FlaxFormerModelsTest(test_utils.TestCase):
     self.assertEqual(
         encdec['decoder']['decoder_norm']['scale'].tensor_split_dims_mapping,
         [None])
+
 
 if __name__ == '__main__':
   absltest.main()
