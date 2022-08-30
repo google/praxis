@@ -270,6 +270,7 @@ def extract_prefixed_keys_from_nested_map(
 
 def sync_global_devices(name: str) -> None:
   """Sync across all hosts/devices."""
+  # Internal mock TPU handling
   global_device_count = jax.device_count()
   logging.info('Starting sync_global_devices %s across %s devices globally',
                name, global_device_count)
