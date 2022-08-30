@@ -120,13 +120,18 @@ class Conv2D(base_layer.BaseLayer):
     # Check if the feature_group_count is compatible with the inputs and filter
     # For more information see XLA docs on ConvWithGeneralPadding below
     # https://www.tensorflow.org/xla/operation_semantics#convwithgeneralpadding_convolution
+    if inputs.shape[3] % p.filter_shape[2] != 0:
+      raise ValueError(f'Input features {inputs.shape[3]} must be a'
+                       f'multiple of filter input dim {p.filter_shape[2]} '
+                       f'(Input shape: {inputs.shape}, '
+                       f'filter shape: {p.filter_shape}).')
     # feature group count is D_in // filter input dim
     feature_group_count = inputs.shape[3] // p.filter_shape[2]
     if p.filter_shape[3] % feature_group_count != 0:
       raise ValueError(f'Filter output dim {p.filter_shape[3]} must be a '
                        f'multiple of feature group count {feature_group_count} '
                        f'(Input shape: {inputs.shape}, '
-                       f'filter_shape: {p.filter_shape})')
+                       f'filter shape: {p.filter_shape}).')
     if not p.tf_equivalent_padding:
       if p.padding == 'SAME':
         pad_height_total = p.filter_shape[0] - 1
