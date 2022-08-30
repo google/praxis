@@ -102,6 +102,7 @@ def _compute_xent_loss_helper(
   # entropy, which is the (weighted) sum of log probs on the tokens.
   per_example_output = NestedMap(
       labels=labels, scores=-predictions.per_sequence_xent)
+  per_example_output.update(py_utils.get_provenance_fields(input_batch))
   if return_predictions:
     per_example_output = predictions
   return metrics, per_example_output
@@ -163,12 +164,15 @@ class LanguageModel(base_model.BaseModel):
       causal_attention_mask = 1 - input_batch.inputs_indicator
     else:
       causal_attention_mask = None
-    return self.lm(
+    predictions = self.lm(
         inputs=inputs,
         paddings=paddings,
         labels=labels,
         causal_attention_mask=causal_attention_mask,
         **packed_input_kwargs)
+
+    predictions.update(py_utils.get_provenance_fields(input_batch))
+    return predictions
 
   def compute_loss(
       self, predictions: NestedMap,
@@ -454,11 +458,14 @@ class LanguageModel(base_model.BaseModel):
                                              decode_out.original_lengths)
     prefix_strs = input_obj.ids_to_strings(decode_out.prefix_ids,
                                            decode_out.prefix_lengths)
-    ret = list()
+
+    ret = []
     for idx, decoded_str in enumerate(decoded_strs):
-      if (hasattr(decode_out, 'eval_sample_weights') and
-          not decode_out.eval_sample_weights[idx]):
+      if ('eval_sample_weights' in decode_out
+          and not decode_out.eval_sample_weights[idx]):
+        # skip padded examples
         continue
+
       prefix_length = decode_out.prefix_lengths[idx]
       decode_length = decode_out.decode_lengths[idx]
       # Note that this field has varying lengths.
@@ -466,7 +473,14 @@ class LanguageModel(base_model.BaseModel):
       decoded_substr = input_obj.ids_to_strings(
           decoded_ids[None, :],
           jnp.array([decode_length - prefix_length], dtype=jnp.int32))[0]
-      ret.append((prefix_strs[idx], {
+
+      ex = jax.tree_map(lambda x: x[idx], decode_out)  # pylint: disable=cell-var-from-loop
+      key = py_utils.get_enumeration_id(ex)
+      if not key:
+        # not using seqio input's use_enumeration matching
+        key = prefix_strs[idx]
+
+      ret.append((key, {
           'prefix': prefix_strs[idx],
           'decoded': decoded_str,
           'original': original_strs[idx],
@@ -477,6 +491,7 @@ class LanguageModel(base_model.BaseModel):
           'prefix_length': prefix_length,
           'decode_length': decode_length,
       }))
+
     decoded_lengths = jnp.average(decode_out.decode_lengths).astype(jnp.float32)
     metrics = NestedMap(
         decoded_length=(decoded_lengths, jnp.array(1.0, jnp.float32)))

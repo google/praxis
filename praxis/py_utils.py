@@ -20,7 +20,7 @@ import dataclasses
 import functools
 import re
 import time
-from typing import Any, Callable, Iterable, Iterator, Optional, Sequence, Union
+from typing import Any, Callable, Iterable, Iterator, Mapping, Optional, Sequence, Union
 
 from absl import flags
 from absl import logging
@@ -42,6 +42,14 @@ import optax
 flags.DEFINE_bool(
     'pmap_use_tensorstore', False,
     'Temporary flag to allow pmap users to fall back to flax checkpointing.')
+
+
+# SeqIOInput enumeration provenance keys
+PROVENANCE_PREFIX = '_seqio_provenance'
+INDEX_WITHIN_SHARD_KEY = f'{PROVENANCE_PREFIX}/index_within_shard'
+SHARD_INDEX_KEY = f'{PROVENANCE_PREFIX}/shard_index'
+NUM_SHARDS_KEY = f'{PROVENANCE_PREFIX}/num_shards'
+ENUM_PROVENANCE_KEYS = (INDEX_WITHIN_SHARD_KEY, SHARD_INDEX_KEY, NUM_SHARDS_KEY)
 
 
 def pmap_use_tensorstore():
@@ -701,3 +709,20 @@ def timeit(min_elapsed: float = 1e-6) -> Iterator[RunningPeriod]:
     yield period
   finally:
     period.end = time.time()
+
+
+def get_provenance_fields(batch: NestedMap) -> NestedMap:
+  """Returns a NestedMap with only the enumeration provenance fields."""
+  return batch.FilterKeyVal(lambda k, _: k.startswith(PROVENANCE_PREFIX))
+
+
+def get_enumeration_id(example: Mapping[str, Any]) -> Optional[str]:
+  """Build enumeration ID string from example map's enumeration fields."""
+  if not all(k in example for k in (
+      INDEX_WITHIN_SHARD_KEY, SHARD_INDEX_KEY, NUM_SHARDS_KEY)):
+    return
+
+  return (
+      f'{INDEX_WITHIN_SHARD_KEY}={int(example[INDEX_WITHIN_SHARD_KEY])}/'
+      f'{SHARD_INDEX_KEY}={int(example[SHARD_INDEX_KEY])}/'
+      f'{NUM_SHARDS_KEY}={int(example[NUM_SHARDS_KEY])}')
