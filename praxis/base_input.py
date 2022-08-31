@@ -585,7 +585,7 @@ class MultiInput(BaseInput):
         'get_batch_size for MultiInput only returns batch size for the first '
         'input. This might be different from batch sizes for other inputs.'
     )
-    first = list(hparams.input_to_params.keys())[0]
+    first = list(hparams.input_to_params.values())[0]
     return first.cls.get_batch_size(first)
 
   def __init__(self, hparams: MultiInput.HParams) -> None:

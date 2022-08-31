@@ -540,6 +540,33 @@ class InputTest(test_utils.TestCase):
       self.assertArraysEqual(
           np.array([2 * i, 2 * i + 1], dtype=np.int32), batch.input_1.num)
 
+  def test_multi_input_get_batch_size(self):
+    batch_size_1 = 2
+    batch_size_2 = 1
+
+    p = base_input.LingvoInputAdaptor.HParams()
+    p.input = LingvoInput.Params()
+    p.input.file_pattern = 'tfrecord:dummy'
+    p.input.batch_size = batch_size_1
+    p.input.file_random_seed = 0
+    p.input.repeat_count = 1
+    p.is_training = True
+
+    p2 = base_input.LingvoInputAdaptor.HParams()
+    p2.input = LingvoInput.Params()
+    p2.input.file_pattern = 'tfrecord:dummy'
+    p2.input.batch_size = batch_size_2
+    p2.input.file_random_seed = 0
+    p2.input.repeat_count = 1
+    p2.is_training = True
+
+    inputs = {
+        'input_1': p,
+        'input_2': p2,
+    }
+    multi_p = base_input.MultiInput.HParams(input_to_params=inputs)
+    multi_bs = base_input.MultiInput.get_batch_size(multi_p)
+    self.assertEqual(multi_bs, batch_size_1)
 
 if __name__ == '__main__':
   absltest.main()
