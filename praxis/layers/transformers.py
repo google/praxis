@@ -1095,7 +1095,8 @@ class Transformer(base_layer.BaseLayer):
     params.num_heads = p.num_heads
     params.dim_per_head = p.dim_per_head
     params.atten_dropout_prob = p.atten_dropout_prob
-    params.ngrammer_tpl = p.ngrammer_tpl
+    if p.ngrammer_tpl:
+      params.ngrammer_tpl = p.ngrammer_tpl
     self.create_child('self_attention', params)
 
     # Initialize residual dropout.
