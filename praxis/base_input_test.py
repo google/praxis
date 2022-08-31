@@ -449,7 +449,7 @@ class InputTest(test_utils.TestCase):
       with self.assertRaises(StopIteration):
         inputs[i].get_next()
 
-  def test_multi_stream_input(self):
+  def test_multi_input(self):
     tmp_1 = os.path.join(FLAGS.test_tmpdir, 'tmptest_1')
     tmp_2 = os.path.join(FLAGS.test_tmpdir, 'tmptest_2')
     batch_size_1 = 2
@@ -487,21 +487,21 @@ class InputTest(test_utils.TestCase):
     p2.is_training = False
     p2.cluster_do_eval = True
 
-    streams = {
-        'stream_1': p,
-        'stream_2': p2,
+    inputs = {
+        'input_1': p,
+        'input_2': p2,
     }
-    multi_p = base_input.MultiStreamInput.HParams(input_streams=streams)
-    multi_p.default_stream = 'stream_1'
+    multi_p = base_input.MultiInput.HParams(input_to_params=inputs)
+    multi_p.default_input = 'input_1'
     inp = instantiate(multi_p)
     for i in range(num_batches):
       batch = inp.get_next()
       self.assertArraysEqual(
-          np.array([2 * i, 2 * i + 1], dtype=np.int32), batch.stream_1.num)
+          np.array([2 * i, 2 * i + 1], dtype=np.int32), batch.input_1.num)
       self.assertArraysEqual(
-          np.array([num_data_2 - i], dtype=np.int32), batch.stream_2.num)
+          np.array([num_data_2 - i], dtype=np.int32), batch.input_2.num)
 
-  def test_multi_stream_input_eval(self):
+  def test_multi_input_eval(self):
     tmp_1 = os.path.join(FLAGS.test_tmpdir, 'tmptest_1')
     batch_size_1 = 2
     num_batches = 10
@@ -520,17 +520,17 @@ class InputTest(test_utils.TestCase):
     p.is_training = False
     p.cluster_do_eval = True
 
-    streams = {
-        'stream_1': p,
+    inputs = {
+        'input_1': p,
     }
-    multi_p = base_input.MultiStreamInput.HParams(input_streams=streams)
-    multi_p.default_stream = 'stream_1'
+    multi_p = base_input.MultiInput.HParams(input_to_params=inputs)
+    multi_p.default_input = 'input_1'
     multi_p.reset_for_eval = True
     inp = instantiate(multi_p)
     for i in range(num_batches):
       batch = inp.get_next()
       self.assertArraysEqual(
-          np.array([2 * i, 2 * i + 1], dtype=np.int32), batch.stream_1.num)
+          np.array([2 * i, 2 * i + 1], dtype=np.int32), batch.input_1.num)
     with self.assertRaisesRegex(tf.errors.OutOfRangeError,
                                 'SequentialRecordYielder reached 1 repeat'):
       inp.get_next()
@@ -538,7 +538,7 @@ class InputTest(test_utils.TestCase):
     for i in range(num_batches):
       batch = inp.get_next()
       self.assertArraysEqual(
-          np.array([2 * i, 2 * i + 1], dtype=np.int32), batch.stream_1.num)
+          np.array([2 * i, 2 * i + 1], dtype=np.int32), batch.input_1.num)
 
 
 if __name__ == '__main__':

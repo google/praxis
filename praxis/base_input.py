@@ -553,7 +553,7 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
     self._iter = self._dataset.as_numpy_iterator()
 
 
-class MultiStreamInput(BaseInput):
+class MultiInput(BaseInput):
   """Wraps children inputs and outputs a combined batch at each step.
 
   During Lingvo Jax's train, on each host input instances for all children
@@ -561,8 +561,6 @@ class MultiStreamInput(BaseInput):
   iteratively called for each child in eager mode to generate one batch of
   data for each step. Each batch will contain a batch from all children
   input generators nested into a NestedMap.
-
-  NOTE: Batch sizes need to be equal across all input streams to work with pmap.
   """
   _VALIDATE_BATCH_SIZE_NOT_NONE = False  # Validated separately for children.
   _VALIDATE_BATCH_SIZE_NONE = True  # Can't set batch size for wrapper.
@@ -571,25 +569,29 @@ class MultiStreamInput(BaseInput):
     """Hyper-parameters associated with this Input class.
 
     Attributes:
-      input_streams: Dict from stream names to input generator parameter
-        definitions for each stream. Input generators need to implement
+      input_to_params: Dict from input names to input generator parameter
+        definitions for each input. Input generators need to implement
         BaseInput.
-      default_stream: Default input stream to use for ids_to_strings or other
+      default_input: Default input to use for ids_to_strings or other
         input generator methods.
     """
-    input_streams: Dict[str, BaseInput.HParams] = None
-    default_stream: str = None
+    input_to_params: Dict[str, BaseInput.HParams] = None
+    default_input: str = None
 
   @classmethod
-  def get_batch_size(cls, hparams: MultiStreamInput.HParams) -> int:
-    assert hparams.input_streams
-    first = list(hparams.input_streams.values())[0]
+  def get_batch_size(cls, hparams: MultiInput.HParams) -> int:
+    assert hparams.input_to_params
+    logging.warning(
+        'get_batch_size for MultiInput only returns batch size for the first '
+        'input. This might be different from batch sizes for other inputs.'
+    )
+    first = list(hparams.input_to_params.keys())[0]
     return first.cls.get_batch_size(first)
 
-  def __init__(self, hparams: MultiStreamInput.HParams) -> None:
+  def __init__(self, hparams: MultiInput.HParams) -> None:
     if self._VALIDATE_BATCH_SIZE_NONE and hparams.batch_size is not None:
-      raise ValueError('MultiStreamInput does not support p.batch_size. '
-                       'Please specify batch size on each child input stream '
+      raise ValueError('MultiInput does not support p.batch_size. '
+                       'Please specify batch size on each child input '
                        'separately.')
     if not hparams.name:
       hparams.name = 'train' if hparams.is_training else 'input'
@@ -598,41 +600,41 @@ class MultiStreamInput(BaseInput):
     if re.fullmatch(r'[a-zA-Z0-9.:_-]+', name) is None:
       raise ValueError(f'Input hparams p.name string invalid: "{name}" '
                        'does not fully match "[a-zA-Z0-9._-]+".')
-    if hparams.input_streams is None:
-      raise ValueError('Need to define input streams.')
+    if hparams.input_to_params is None:
+      raise ValueError('Need to define inputs.')
 
-    if hparams.reset_for_eval and len(hparams.input_streams) > 1:
+    if hparams.reset_for_eval and len(hparams.input_to_params) > 1:
       raise ValueError(
-          'Only 1 input stream can be specified when using reset_for_eval.')
+          'Only 1 input can be specified when using reset_for_eval.')
 
-    self._input_streams = {}
-    for stream_name, stream_params in hparams.input_streams.items():
+    self._inputs = {}
+    for input_name, input_params in hparams.input_to_params.items():
       # Overriding params for children to match parent.
-      stream_params.num_infeed_hosts = hparams.num_infeed_hosts
-      stream_params.infeed_host_index = hparams.infeed_host_index
-      stream_params.is_training = hparams.is_training
-      stream_params.reset_for_eval = hparams.reset_for_eval
-      stream_params.eval_loop_num_batches = hparams.eval_loop_num_batches
-      stream_params.name = hparams.name + '_' + stream_name
+      input_params.num_infeed_hosts = hparams.num_infeed_hosts
+      input_params.infeed_host_index = hparams.infeed_host_index
+      input_params.is_training = hparams.is_training
+      input_params.reset_for_eval = hparams.reset_for_eval
+      input_params.eval_loop_num_batches = hparams.eval_loop_num_batches
+      input_params.name = hparams.name + '_' + input_name
 
-      self._input_streams[stream_name] = instantiate(stream_params)
+      self._inputs[input_name] = instantiate(input_params)
 
   def get_next(self) -> NestedJTensor:
-    stream_batches = {}
-    for stream_name, stream in self._input_streams.items():
-      stream_batches[stream_name] = stream.get_next()
-    return NestedMap(stream_batches)
+    input_batches = {}
+    for input_name, input_gen in self._inputs.items():
+      input_batches[input_name] = input_gen.get_next()
+    return NestedMap(input_batches)
 
   def reset(self) -> None:
-    for _, stream in self._input_streams.items():
-      stream.reset()
+    for _, input_gen in self._inputs.items():
+      input_gen.reset()
 
   def ids_to_strings(self,
                      ids: pytypes.NpTensor,
                      lengths: pytypes.NpTensor,
                      key: Optional[str] = None,
-                     stream: Optional[str] = None) -> Sequence[str]:
-    """Converts int ids into strings using a particular input stream.
+                     input_name: Optional[str] = None) -> Sequence[str]:
+    """Converts int ids into strings using a particular input.
 
     Args:
       ids: A matrix of shape [batch, seqlen], each row is a sequence to be
@@ -643,14 +645,14 @@ class MultiStreamInput(BaseInput):
         or target. This is useful for example in a sequence model where the
         source and targets have different tokenizers. For the source corpus the
         key should be `src` while for the target corpus the key should be `tgt`.
-      stream: Argument specifying which input stream's ids_to_strings to call.
+      input_name: Argument specifying which input's ids_to_strings to call.
 
     Returns:
       A list strings of shape [batch]. The converted texts.
     """
-    if stream is None:
-      stream = self.hparams.default_stream
-    return self._input_streams[stream].ids_to_strings(ids, lengths, key)
+    if input_name is None:
+      input_name = self.hparams.default_input
+    return self._inputs[input_name].ids_to_strings(ids, lengths, key)
 
 
 class BaseInputSpecsProvider(
