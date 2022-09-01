@@ -1505,11 +1505,6 @@ class BaseLayer(
         self.create_child('foo', foo_params)
         self.foo.fprop...
 
-    or:
-
-        self.children['foo'].Fprop...
-        self.children.foo.Fprop...
-
     If the layer does not have a name set, i.e. foo_params.name is None, then
     its name will be set to `name`.
 
