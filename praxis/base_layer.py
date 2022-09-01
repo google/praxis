@@ -581,7 +581,7 @@ def init_var(var_full_name: str, var_p: WeightHParams,
       scale *= math.sqrt(2.0 / (fan_in + fan_out))
 
   if method in ['delta_orthogonal']:
-    if len(shape) <= 2:
+    if len(shape) < 2:
       return scale * jrandom.normal(prng_key, shape, init_dtype)
     elif len(shape) == 2:
       return scaled_orthogonal(prng_key, shape, init_dtype)
