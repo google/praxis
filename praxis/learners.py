@@ -84,8 +84,14 @@ class Learner(base_hyperparams.BaseParameterizable):
         switchable layers in neural architectural search. Possible values are:
         None: do not skip zero gradients; "variable": skip if the entire
           variable gradients are almost zero.
+      grad_norm_summary: Whether or not to export accumulated grad_norm
+        summaries. Disable to save some compute.
       grad_norm_individual_vars: Whether or not to export grad_norm for each
         individual variable as summaries.
+      var_norm_summary: Whether or not to export accumulated var_norm
+        summaries. Disable to save some compute.
+      check_valid_step: Whether or not to run sanity check to ensure that the
+        training step is valid.
       vectorize_on_repeat_prefix: Whether to vectorize optimizers on the
         repeat_prefix dims of the variables. This allows stacking variables of
         different layers while not affecting the behavior of optimizers like
@@ -104,7 +110,10 @@ class Learner(base_hyperparams.BaseParameterizable):
     loss_name: Optional[str] = None
     optimizer: Optional[optimizers.BaseOptimizer.HParams] = None
     skip_zero_gradients: Optional[bool] = None
+    grad_norm_summary: bool = True
     grad_norm_individual_vars: bool = False
+    var_norm_summary: bool = True
+    check_valid_step: bool = True
     vectorize_on_repeat_prefix: bool = True
     skip_step_gradient_norm_value: float = 0.0
     enable_skip_step_on_gradient_anomalies: bool = True
@@ -167,9 +176,15 @@ class Learner(base_hyperparams.BaseParameterizable):
 
       jax.tree_map(add_grad_norm_summary, var_keys, grad_norms)
 
-    raw_grad_norm = _compute_grad_norm(raw_grads)
-    base_layer.add_global_summary(f'{learner_name}/raw_grad_norm',
-                                  raw_grad_norm)
+    if (p.grad_norm_summary or p.check_valid_step or
+        p.optimizer.clip_gradient_norm_to_value or
+        p.optimizer.clip_gradient_single_norm_to_value):
+      raw_grad_norm = _compute_grad_norm(raw_grads)
+      if p.grad_norm_summary:
+        base_layer.add_global_summary(f'{learner_name}/raw_grad_norm',
+                                      raw_grad_norm)
+    else:
+      raw_grad_norm = None
 
     def keep_step(grad_norm):
       keep_threshold = p.skip_step_gradient_norm_value
@@ -206,17 +221,21 @@ class Learner(base_hyperparams.BaseParameterizable):
         grad_scale = jnp.array(1.0)
       return grads, grad_scale
 
-    # Mark the step as invalid if any gradient anomaly is detected (e.g. Nan or
-    # Inf, or excessively big gradient norm).
-    valid_step = keep_step(raw_grad_norm)
-    base_layer.add_global_summary('is_valid_step',
-                                  valid_step.astype(jnp.float32))
+    if p.check_valid_step:
+      # Mark the step as invalid if any gradient anomaly is detected (e.g. Nan
+      # or Inf, or excessively big gradient norm).
+      valid_step = keep_step(raw_grad_norm)
+      base_layer.add_global_summary('is_valid_step',
+                                    valid_step.astype(jnp.float32))
+    else:
+      valid_step = True
     grads, grad_scale = clip_grads(raw_grads, raw_grad_norm)
     base_layer.add_global_summary('grad_scale', grad_scale)
 
-    clipped_grad_norm = _compute_grad_norm(grads)
-    base_layer.add_global_summary(f'{learner_name}/clipped_grad_norm',
-                                  clipped_grad_norm)
+    if p.grad_norm_summary:
+      clipped_grad_norm = _compute_grad_norm(grads)
+      base_layer.add_global_summary(f'{learner_name}/clipped_grad_norm',
+                                    clipped_grad_norm)
     return grads, valid_step
 
   def update_states(
@@ -254,9 +273,10 @@ class Learner(base_hyperparams.BaseParameterizable):
       new_states = jax.tree_map(_update, new_states, states,
                                 is_leaf=py_utils.is_optax_masked_node)
     # Final applied grad norm.
-    applied_grad_norm = _compute_grad_norm(transformed_grad)
-    base_layer.add_global_summary(f'{learner_name}/applied_grad_norm',
-                                  applied_grad_norm)
+    if p.grad_norm_summary:
+      applied_grad_norm = _compute_grad_norm(transformed_grad)
+      base_layer.add_global_summary(f'{learner_name}/applied_grad_norm',
+                                    applied_grad_norm)
     return transformed_grad, new_states
 
   def apply_gradient(
@@ -289,12 +309,13 @@ class Learner(base_hyperparams.BaseParameterizable):
 
     assert p.skip_zero_gradients is None
 
-    # Add a summary of total var norm.
-    var_squared = jax.tree_map(lambda x: jnp.sum(x * x), old_vars)
-    var_squared, _ = jax.tree_util.tree_flatten(var_squared)
-    var_squared = jnp.concatenate([x[jnp.newaxis] for x in var_squared])
-    var_norm = jnp.sqrt(jnp.sum(var_squared))
-    base_layer.add_global_summary('var_norm', var_norm)
+    if p.var_norm_summary:
+      # Add a summary of total var norm.
+      var_squared = jax.tree_map(lambda x: jnp.sum(x * x), old_vars)
+      var_squared, _ = jax.tree_util.tree_flatten(var_squared)
+      var_squared = jnp.concatenate([x[jnp.newaxis] for x in var_squared])
+      var_norm = jnp.sqrt(jnp.sum(var_squared))
+      base_layer.add_global_summary('var_norm', var_norm)
 
     # TODO(yonghui): implement skip_zero_gradients.
     # TODO(yonghui): implement numerical checks.
