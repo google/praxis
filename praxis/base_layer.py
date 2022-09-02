@@ -17,8 +17,8 @@
 
 from __future__ import annotations
 
-import copy
 import collections
+import copy
 import dataclasses
 import enum
 import functools
@@ -31,7 +31,6 @@ from absl import logging
 from flax import core as flax_core
 from flax import linen as nn
 from flax import struct
-
 import jax
 from jax import numpy as jnp
 from jax import random as jrandom
@@ -48,7 +47,6 @@ FLAGS = flags.FLAGS
 NestedMap = py_utils.NestedMap
 
 ParamsT = pytypes.HParamsT
-BaseLayerS = TypeVar('BaseLayerS', bound='BaseLayer')
 BaseLayerT = TypeVar('BaseLayerT', bound='BaseLayer')
 JTensor = pytypes.JTensor
 PRNGKey = pytypes.PRNGKey
