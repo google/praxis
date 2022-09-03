@@ -1255,7 +1255,7 @@ class BaseLayer(
   # the WeightHParams objects to callers. This is typically used to retrieve
   # the unpadded variable shapes and SPMD annotations for
   # PARAMS and NON_TRAINABLE collections.
-  def abstract_init_with_metadata(self, rngs, *args, **kwargs):
+  def abstract_init_with_metadata(self, rngs, *args, do_eval=False, **kwargs):
     # TODO(zhangqiaorjc): Remove `rngs` args?
     del rngs
     # Dummy key is enough because we eval_shape only.
@@ -1265,8 +1265,7 @@ class BaseLayer(
     init_fn = functools.partial(super().init, mutable=DEFAULT_INIT_MUTABLE_LIST)
     # Disable logging to reduce logspam.
     with py_utils.logging_verbosity_level('FATAL'):
-      # Var init should be the same whether do_eval or not.
-      context_p = JaxContext.HParams(do_eval=False)
+      context_p = JaxContext.HParams(do_eval=do_eval)
       with JaxContext.new_context(hparams=context_p):
         variables_abstract = jax.eval_shape(init_fn, rngs, *args, **kwargs)
     # If model contains FlaxAdapter, we may see 'params_axes' collections, but
