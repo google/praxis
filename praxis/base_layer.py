@@ -753,10 +753,8 @@ class JaxContext:
 
     Attributes:
       do_eval: Whether to do eval.
-      in_unit_test: Whether this is running in a unit test.
     """
     do_eval: Optional[bool] = None
-    in_unit_test: Optional[bool] = None
 
   def __init__(self, hparams: JaxContext.HParams) -> None:
     self._hparams = hparams.clone()
