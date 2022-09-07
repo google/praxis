@@ -15,6 +15,7 @@
 
 """An inter-op wrapper that directly instantiates flaxformer models in pax."""
 
+import functools
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import clu.metrics as clu_metrics
@@ -25,6 +26,7 @@ from praxis import base_model
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import flax_adapter
+from t5x import decoding as t5x_decoding
 from t5x import losses as t5x_losses
 
 from flaxformer.architectures.t5 import t5_architecture
@@ -40,6 +42,7 @@ WeightedScalars = pytypes.WeightedScalars
 BaseHParams = base_layer.BaseLayer.HParams
 sub_config_field = base_layer.sub_config_field
 LogicalAxisRules = pytypes.LogicalAxisRules
+DecodeOut = Tuple[WeightedScalars, NestedMap, Any]
 
 
 class FlaxFormerDecoder(base_layer.BaseLayer):
@@ -211,7 +214,7 @@ class EncoderDecoder(base_layer.BaseLayer):
   def setup(self) -> None:
     super().setup()
 
-    encoder_decoder = flax_adapter.FlaxModuleAdapter.HParams(
+    encoder_decoder = flax_adapter.EncoderDecoderFlaxModuleAdaptor.HParams(
         module_factory_method=self._build_wrapped_module,
         logical_axes_rules=self.hparams.logical_axes_rules)
 
@@ -219,6 +222,12 @@ class EncoderDecoder(base_layer.BaseLayer):
 
   def __call__(self, *args, **kwargs):
     return self.enc_dec(*args, **kwargs)
+
+  def encode(self, *args, **kwargs):
+    return self.enc_dec.encode(*args, **kwargs)
+
+  def decode(self, *args, **kwargs):
+    return self.enc_dec.decode(*args, **kwargs)
 
 
 class FactoryBasedEncoderDecoder(EncoderDecoder):
@@ -495,6 +504,8 @@ class EncoderDecoderModel(LanguageModel):
       loss_normalizing_factor: Normalization factor for loss.
       label_smoothing: Amount of label smoothing to apply.
       z_loss: Coefficient for auxiliary z-loss loss term.
+      decoding_fn: Decoding function to be used during the prediction. The
+        default is t5x_decoding.beam_search.
     """
     encoder_decoder: base_layer.BaseLayer.HParams = sub_config_field(
         EncoderDecoder.HParams)
@@ -502,12 +513,14 @@ class EncoderDecoderModel(LanguageModel):
     label_smoothing: float = 0.0
     z_loss: float = 0.0001
     logical_axes_rules: Optional[LogicalAxisRules] = None
+    decoding_fn: Optional[Callable[..., Any]] = t5x_decoding.beam_search
 
   def setup(self):
     p = self.hparams
     # Propagate partitioning information from BaseModel to BaseLayer.
     encoder_decoder_p = p.encoder_decoder.clone()
     encoder_decoder_p.logical_axes_rules = p.logical_axes_rules
+    self._decoding_fn = p.decoding_fn
     self.create_child('encoder_decoder', encoder_decoder_p)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
@@ -541,3 +554,134 @@ class EncoderDecoderModel(LanguageModel):
         encoder_positions=get_elem(input_batch, 'encoder_positions'),
         decoder_positions=get_elem(input_batch, 'decoder_positions'))
     return NestedMap(logits=logits)
+
+  def decode(self, input_batch: NestedMap) -> DecodeOut:
+    """Mimic `predict_batch_with_aux` function in t5x models.
+
+    Predict with fast decoding beam search on a batch. Unlike
+    `compute_predictions` that provides logits for training, this function
+    provides predictions for inference.
+
+    Args:
+      input_batch: A NestedMap of an input batch. It should contain the
+        following elements. "encoder_input_tokens" - the encoder input tokens,
+        of shape [batch, encoder_len]. "decoder_input_tokens" - the decoder
+        input tokens of shape [batch, target_len].
+
+    Returns:
+      - weighted scalars, a NestedMap containing str keys and (value, weight)
+        pairs for the current batch (a tuple of two scalars).
+      - results, a `.NestedMap` as decoder output.
+      - metrics, a NestedMap containing str keys and clu_metrics.Metric
+        objects. This is currently optional.
+    """
+    num_decodes = 1  # We only have 1
+    params = self.encoder_decoder.variables['params']
+    decoder_params = {'eos_id': 1}
+
+    # Prepare zeroed-out autoregressive cache.
+    # [batch, input_len]
+    inputs = input_batch['encoder_input_tokens']
+    # [batch, target_len]
+    target_shape = input_batch['decoder_input_tokens'].shape
+    target_type = input_batch['decoder_input_tokens'].dtype
+
+    _, variables_with_cache = self.encoder_decoder.apply(
+        {'params': params},
+        jnp.ones(inputs.shape, inputs.dtype),
+        jnp.ones(target_shape, target_type),
+        jnp.ones(target_shape, target_type),
+        decode=True,
+        enable_dropout=False,
+        mutable=['cache'])
+
+    cache = variables_with_cache['cache']
+
+    # Prepare transformer fast-decoder call for beam search: for beam search, we
+    # need to set up our decoder model to handle a batch size equal to
+    # batch_size * num_decodes, where each batch item's data is expanded
+    # in-place rather than tiled.
+    # i.e. if we denote each batch element subtensor as el[n]:
+    # [el0, el1, el2] --> beamsize=2 --> [el0,el0,el1,el1,el2,el2]
+    # [batch * num_decodes, input_len, emb_dim]
+    encoded_inputs = t5x_decoding.flat_batch_beam_expand(
+        self.encoder_decoder.apply({'params': params},
+                                   inputs,
+                                   enable_dropout=False,
+                                   method=self.encoder_decoder.encode),
+        num_decodes)
+
+    # [batch * num_decodes, input_len]
+    raw_inputs = t5x_decoding.flat_batch_beam_expand(inputs, num_decodes)
+
+    tokens_ids_to_logits = functools.partial(
+        self._compute_logits_from_slice,
+        params=params,
+        encoded_inputs=encoded_inputs,
+        raw_inputs=raw_inputs,
+        max_decode_length=target_shape[1])
+
+    # Currently, we do not support the prompt in the decoder.
+    empty_decoder_prompt_inputs = jnp.zeros_like(
+        input_batch['decoder_input_tokens'])
+
+    # TODO(hwchung): rename the returned value names to more generic ones.
+    # Using the above-defined single-step decoder function, run a
+    # beam search over possible sequences given input encoding.
+    # decodes: [batch, num_decodes, max_decode_len + 1]
+    # scores: [batch, num_decodes]
+    scanned = hasattr(self.encoder_decoder,
+                      'scan_layers') and self.module.scan_layers
+
+    decodes, scores = self._decoding_fn(
+        inputs=empty_decoder_prompt_inputs,
+        cache=cache,
+        tokens_to_logits=tokens_ids_to_logits,
+        num_decodes=num_decodes,
+        cache_offset=1 if scanned else 0,
+        **decoder_params)
+
+    # Beam search returns [n_batch, n_beam, n_length] with beam dimension sorted
+    # in increasing order of log-probability.
+    # Return the highest scoring beam sequence.
+    # pyformat: disable
+    decode_out = (
+        NestedMap(num_decoded=(num_decodes, jnp.array(1, jnp.float32))),
+        NestedMap(output_ids=decodes[:, -1, :],
+                  logprobs=scores[:, -1]),
+        None)
+    # pyformat: enable
+    return decode_out
+
+  def _compute_logits_from_slice(
+      self, decoding_state: t5x_decoding.DecodingState, params: Any,
+      encoded_inputs: jnp.ndarray, raw_inputs: jnp.ndarray,
+      max_decode_length: int):
+    """This mimics _compute_logits_from_slice in t5x."""
+    params = self.encoder_decoder.variables['params']
+    flat_ids = decoding_state.cur_token
+    flat_cache = decoding_state.cache
+
+    # flat_ids: [batch * beam, seq_len=1]
+    # cache is expanded inside beam_search to become flat_cache
+    # flat_cache: [batch * beam, num_heads, depth_per_head, max_decode_len]
+    # flat_logits: [batch * beam, seq_len=1, vocab]
+    flat_logits, new_vars = self.encoder_decoder.apply(
+        {
+            'params': params,
+            'cache': flat_cache
+        },
+        encoded_inputs,
+        raw_inputs,  # only needed for encoder padding mask
+        flat_ids,
+        flat_ids,
+        enable_dropout=False,
+        decode=True,
+        max_decode_length=max_decode_length,
+        mutable=['cache'],
+        method=self.encoder_decoder.decode)
+
+    # Remove sequence length dimension since it's always 1 during decoding.
+    flat_logits = jnp.squeeze(flat_logits, axis=1)
+    new_flat_cache = new_vars['cache']
+    return flat_logits, new_flat_cache

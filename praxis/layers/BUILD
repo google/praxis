@@ -1017,6 +1017,7 @@ pytype_strict_library(
         "//praxis:base_model",
         "//praxis:py_utils",
         "//praxis:pytypes",
+        # Implicit t5x.decoding dependency.
         # Implicit t5x.losses dependency.
     ],
 )

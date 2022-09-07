@@ -255,6 +255,61 @@ class FlaxFormerModelsTest(test_utils.TestCase):
 
     np.testing.assert_allclose(t5x_loss, metrics['total_loss'][0])
 
+  def test_encoder_decoder_decode(self):
+    pax_model = fiddle_configured_model()
+    t5x_model_cfg = t5x_model_configs.t5x_model_fixture.as_buildable(
+        t5_1_1.small_fixture(),)
+    t5x_model = fdl.build(t5x_model_cfg)
+
+    prng_key = {
+        'params': jax.random.PRNGKey(seed=123),
+        'dropout': jax.random.PRNGKey(seed=456)
+    }
+
+    encoder_seq_len = 32
+    decoder_seq_len = 16
+    batch_size = 2
+
+    encoder_input_tokens = jnp.tile(
+        jnp.arange(0, encoder_seq_len)[jnp.newaxis, :], (batch_size, 1))
+    decoder_input_tokens = jnp.tile(
+        jnp.arange(0, decoder_seq_len)[jnp.newaxis, :], (batch_size, 1))
+    decoder_target_tokens = jnp.tile(
+        jnp.arange(1, decoder_seq_len + 1)[jnp.newaxis, :], (batch_size, 1))
+    encoder_segment_ids = jnp.ones((batch_size, encoder_seq_len), jnp.int32)
+    decoder_segment_ids = jnp.ones((batch_size, decoder_seq_len), jnp.int32)
+    encoder_positions = jnp.tile(
+        jnp.arange(0, encoder_seq_len)[jnp.newaxis, :], (batch_size, 1))
+    decoder_positions = jnp.tile(
+        jnp.arange(0, decoder_seq_len)[jnp.newaxis, :], (batch_size, 1))
+    decoder_loss_weights = jnp.ones((batch_size, decoder_seq_len), jnp.float32)
+
+    input_batch = py_utils.NestedMap(
+        decoder_input_tokens=decoder_input_tokens,
+        decoder_target_tokens=decoder_target_tokens,
+        decoder_segment_ids=decoder_segment_ids,
+        decoder_positions=decoder_positions,
+        encoder_input_tokens=encoder_input_tokens,
+        encoder_segment_ids=encoder_segment_ids,
+        encoder_positions=encoder_positions,
+        decoder_loss_weights=decoder_loss_weights)
+    init_vars = pax_model.init(prng_key, input_batch)
+
+    # Run Pax version of decoding (originally predict_batch_with_aux)
+    pax_result = pax_model.apply(
+        init_vars, input_batch, method=pax_model.decode)
+    pax_result_ids = pax_result[1].output_ids
+
+    # Run the original T5X version of decoding
+    t5x_result = t5x_model.predict_batch_with_aux(
+        init_vars['params']['encoder_decoder']['enc_dec']['cld'],
+        input_batch,
+        decoder_params={'eos_id': 1})
+    t5x_result_ids = t5x_result[0]
+
+    # Test whether they are the same.
+    np.testing.assert_array_equal(pax_result_ids, t5x_result_ids)
+
   def test_sharded_flaxformer_model(self):
     decoder_p = flaxformer_models.FlaxFormerDecoder.HParams(num_layers=2)
     decoder_mdl_p = flaxformer_models.LanguageModel.HParams(
