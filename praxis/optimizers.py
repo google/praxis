@@ -1665,7 +1665,8 @@ class _ShardedAdafactorHelper:
       sort_factored_second_moment_dims: bool,
       min_dim_size_to_factor: int,
       multiply_by_parameter_scale: bool,
-      epsilon2_param_scale_reg: float) -> None:
+      epsilon2_param_scale_reg: float,
+      sanitize_values: bool) -> None:
     """Constructor. See ShardedAdafactor() below."""
     self._learning_rate_fn = learning_rate_fn
     self._weight_decay = weight_decay
@@ -1684,6 +1685,7 @@ class _ShardedAdafactorHelper:
     self._min_dim_size_to_factor = min_dim_size_to_factor
     self._multiply_by_parameter_scale = multiply_by_parameter_scale
     self._epsilon2 = epsilon2_param_scale_reg
+    self._sanitize_values = sanitize_values
 
   def should_use_factored_second_moment_estimate(self, shape):
     """Should we use a factored second moment estimator.
@@ -1739,6 +1741,10 @@ class _ShardedAdafactorHelper:
     Returns:
       A boolean.
     """
+    if jnp.issubdtype(self._quantized_dtype, jnp.floating):
+      return False
+    if self._quantized_dtype is None:
+      return False
     return len(shape) >= 1
 
   def to_state(self, count, result_tree):
@@ -1762,8 +1768,7 @@ class _ShardedAdafactorHelper:
     output_v = jnp.zeros((1,))
     shape = param.shape
     if self._beta1:
-      if (self._quantized_dtype == jnp.bfloat16 or
-          self._quantized_dtype == jnp.float32):
+      if jnp.issubdtype(self._quantized_dtype, jnp.floating):
         output_m = jnp.zeros(shape, dtype=self._quantized_dtype)
       elif self.should_store_momentum_in_qint(shape):
         output_m = jnp.zeros(shape, dtype=self._quantized_dtype)
@@ -1814,15 +1819,19 @@ class _ShardedAdafactorHelper:
       sharding_specified = False
 
     if self._beta1:
-      if self._quantized_dtype == jnp.bfloat16:
+      if jnp.issubdtype(self._quantized_dtype, jnp.floating):
+        # jnp.bfloat16 or jnp.float32
         output_m = WeightHParams(
             shape=shape,
             init=None,
-            dtype=jnp.bfloat16,
+            dtype=self._quantized_dtype,
             collections=None,
             mesh_shape=var_param.mesh_shape,
             tensor_split_dims_mapping=tensor_split_dims_mapping)
       elif self.should_store_momentum_in_qint(shape):
+        if not jnp.issubdtype(self._quantized_dtype, jnp.integer):
+          raise ValueError('jnp.integer quantized_dtype expected, got %s' %
+                           self._quantized_dtype)
         output_m = WeightHParams(
             shape=shape,
             init=None,
@@ -1899,6 +1908,8 @@ class _ShardedAdafactorHelper:
 
   def sanitize_values(self, array, replacement=0.):
     """Sanitizes NaN and Infinity values."""
+    if not self._sanitize_values:
+      return array
     return jnp.nan_to_num(
         array, nan=replacement, posinf=replacement, neginf=replacement)
 
@@ -2020,7 +2031,7 @@ class _ShardedAdafactorHelper:
 
     subtrahend = update_scale * x
     if self._beta1:
-      if self._quantized_dtype == jnp.bfloat16:
+      if jnp.issubdtype(self._quantized_dtype, jnp.floating):
         m = m.astype(jnp.float32)
       elif self.should_store_momentum_in_qint(shape):
         m_init_dtype = m.dtype
@@ -2083,6 +2094,7 @@ def sharded_adafactor(
     min_dim_size_to_factor: int = 128,
     multiply_by_parameter_scale: bool = False,
     epsilon2_param_scale_reg: float = 1e-3,
+    sanitize_values: bool = True,
 ) -> ShardedGradientTransformation:
   """AdaFactor optimizer that supports SPMD sharding.
 
@@ -2140,7 +2152,7 @@ def sharded_adafactor(
       size. NOTE: False by default.
     epsilon2_param_scale_reg: Regularization constant for parameter scale. Only
       used when multiply_by_parameter_scale is True.
-
+    sanitize_values: Will use jax.nan_to_num during update when True.
   Returns:
     A `ShardedGradientTransformation`.
   """
@@ -2170,7 +2182,8 @@ def sharded_adafactor(
       sort_factored_second_moment_dims=sort_factored_second_moment_dims,
       min_dim_size_to_factor=min_dim_size_to_factor,
       multiply_by_parameter_scale=multiply_by_parameter_scale,
-      epsilon2_param_scale_reg=epsilon2_param_scale_reg)
+      epsilon2_param_scale_reg=epsilon2_param_scale_reg,
+      sanitize_values=sanitize_values)
 
   def init_fn(params):
     """Initializes the optimizer's state."""
@@ -2257,6 +2270,7 @@ class ShardedAdafactor(BaseOptimizer):
       multiply_by_parameter_scale: If True, then scale learning_rate by
         parameter norm. if False, provided learning_rate is absolute step size.
       epsilon2_param_scale_reg: Regularization constant for parameter scale.
+      sanitize_values: Will use jax.nan_to_num during update when True.
     """
     weight_decay: Optional[float] = None
     layerwise_adaptation: bool = False
@@ -2274,6 +2288,7 @@ class ShardedAdafactor(BaseOptimizer):
     min_dim_size_to_factor: int = 128
     multiply_by_parameter_scale: bool = False
     epsilon2_param_scale_reg: float = 1e-3
+    sanitize_values: bool = True
 
   @classmethod
   def HParamsAdamB(cls) -> ShardedAdafactor.HParams:  # pylint: disable=invalid-name
@@ -2301,7 +2316,8 @@ class ShardedAdafactor(BaseOptimizer):
         sort_factored_second_moment_dims=p.sort_factored_second_moment_dims,
         min_dim_size_to_factor=p.min_dim_size_to_factor,
         multiply_by_parameter_scale=p.multiply_by_parameter_scale,
-        epsilon2_param_scale_reg=p.epsilon2_param_scale_reg)
+        epsilon2_param_scale_reg=p.epsilon2_param_scale_reg,
+        sanitize_values=p.sanitize_values)
 
 
 def dynamic_accumulation(
