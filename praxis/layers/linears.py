@@ -155,7 +155,7 @@ class FeedForward(base_layer.BaseLayer):
     output_dims: int = 0
     has_bias: bool = True
     linear_tpl: BaseHParams = sub_config_field(Linear.HParams)
-    activation_tpl: activations.BaseActivation = sub_config_field(
+    activation_tpl: activations.BaseActivation.HParams = sub_config_field(
         activations.ReLU.HParams)
     bias_init: Optional[float] = 0.0
 
