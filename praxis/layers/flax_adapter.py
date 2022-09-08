@@ -80,6 +80,10 @@ class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
         call_fn,
         mapped_collections=True,  # Transform the entire var col tree.
         mutable=True,
+        # The module may be called multiple times during initialization. If this
+        # occurs, we must provide it with unboxed versions of the params it
+        # previously created.
+        trans_in_fn=base_layer.maybe_unbox_value,
         trans_out_fn=functools.partial(
             flax_utils.convert_to_boxed_params,
             logical_axes_rules=p.logical_axes_rules,
