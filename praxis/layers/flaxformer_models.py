@@ -493,7 +493,7 @@ class LanguageModel(base_model.BaseModel):
     return metrics, NestedMap()
 
 
-class EncoderDecoderModel(LanguageModel):
+class EncoderDecoderModel(base_model.BaseModel):
   """EncoderDecoder base task."""
 
   class HParams(base_model.BaseModel.HParams):
@@ -554,6 +554,46 @@ class EncoderDecoderModel(LanguageModel):
         encoder_positions=get_elem(input_batch, 'encoder_positions'),
         decoder_positions=get_elem(input_batch, 'decoder_positions'))
     return NestedMap(logits=logits)
+
+  def compute_loss(
+      self, predictions: Predictions,
+      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
+    p = self.hparams
+    assert 'decoder_loss_weights' in input_batch
+    loss_weights = input_batch.decoder_loss_weights
+
+    if p.loss_normalizing_factor == 'NUM_REAL_TARGET_TOKENS':
+      loss_normalizing_factor = jnp.sum(loss_weights)
+    else:
+      assert NotImplementedError('loss_normalizing_factor: %s not implemented' %
+                                 p.loss_normalizing_factor)
+
+    # TODO(yonghui): reimplement the loss in pax instead of having a dependency
+    # on t5x for loss computations.
+    targets = input_batch['decoder_target_tokens']
+    loss, z_loss, weight_sum = t5x_losses.compute_weighted_cross_entropy(
+        predictions.logits,
+        targets=targets,
+        weights=loss_weights,
+        label_smoothing=p.label_smoothing,
+        z_loss=p.z_loss,
+        loss_normalizing_factor=loss_normalizing_factor)
+    accuracy = clu_metrics.Accuracy.from_model_output(
+        logits=predictions.logits,
+        labels=targets.astype(jnp.int32),
+        mask=loss_weights).compute()
+
+    metrics = {
+        'total_loss': (loss, weight_sum),
+        'z_loss': (z_loss, weight_sum),
+        'cross_entropy': (loss - z_loss, weight_sum),
+        'accuracy': (accuracy, weight_sum),
+    }
+    self.add_summary('z_loss', z_loss)
+    self.add_summary('cross_entropy', loss - z_loss)
+    self.add_summary('accuracy', accuracy)
+    # loss already contains z_loss
+    return metrics, NestedMap()
 
   def decode(self, input_batch: NestedMap) -> DecodeOut:
     """Mimic `predict_batch_with_aux` function in t5x models.
