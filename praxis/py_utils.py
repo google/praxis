@@ -50,6 +50,7 @@ INDEX_WITHIN_SHARD_KEY = f'{PROVENANCE_PREFIX}/index_within_shard'
 SHARD_INDEX_KEY = f'{PROVENANCE_PREFIX}/shard_index'
 NUM_SHARDS_KEY = f'{PROVENANCE_PREFIX}/num_shards'
 ENUM_PROVENANCE_KEYS = (INDEX_WITHIN_SHARD_KEY, SHARD_INDEX_KEY, NUM_SHARDS_KEY)
+_CPU = 'cpu'
 
 
 def pmap_use_tensorstore():
@@ -547,12 +548,18 @@ def create_device_mesh(ici_mesh_shape: Sequence[int],
     An ndarray of JAX devices.
   """
   if dcn_mesh_shape is not None and any(s > 1 for s in dcn_mesh_shape):
-    try:
-      device_mesh = mesh_utils.create_hybrid_device_mesh(
-          ici_mesh_shape, dcn_mesh_shape)
-    except AssertionError as e:
-      raise ValueError('Setting a nontrivial dcn_mesh_shape requires multiple '
-                       'slices') from e
+    devices = jax.devices()
+    device_kind = devices[-1].device_kind
+    if device_kind == _CPU:
+      target_shape = np.array(ici_mesh_shape) * np.array(dcn_mesh_shape)
+      device_mesh = np.array(devices).reshape(target_shape)
+    else:
+      try:
+        device_mesh = mesh_utils.create_hybrid_device_mesh(
+            ici_mesh_shape, dcn_mesh_shape, devices=devices)
+      except AssertionError as e:
+        raise ValueError('Setting a nontrivial dcn_mesh_shape requires '
+                         'multiple slices') from e
   else:
     device_mesh = mesh_utils.create_device_mesh(ici_mesh_shape)
   logging.info('device_mesh: %s', device_mesh)
