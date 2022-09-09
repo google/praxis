@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """Definition of specific models."""
-from typing import Any, Dict, Sequence, Tuple
+from typing import Any, Dict, Sequence, Tuple, Union
 
 from absl import logging
 import clu.metrics as clu_metrics
@@ -42,6 +42,7 @@ NestedMap = py_utils.NestedMap
 Predictions = base_model.Predictions
 Metrics = base_model.Metrics
 WeightedScalars = base_model.WeightedScalars
+ProcessDecodeOut = base_model.ProcessDecodeOut
 DecoderHParams = decoder_hparams.DecoderHParams
 BeamSearchHParams = decoder_hparams.BeamSearchHParams
 FlatBeamSearchHParams = decoder_hparams.FlatBeamSearchHParams
@@ -429,8 +430,8 @@ class LanguageModel(base_model.BaseModel):
     return metrics, result, {}
 
   def process_decode_out(
-      self, input_obj: base_input.BaseInput,
-      decode_out: NestedMap) -> Tuple[NestedMap, Sequence[Tuple[str, Any]]]:
+      self, input_obj: base_input.BaseInput, decode_out: NestedMap
+  ) -> Union[Tuple[NestedMap, Sequence[Tuple[str, Any]]], ProcessDecodeOut]:
     """Processes one batch of decoded outputs.
 
     Args:
