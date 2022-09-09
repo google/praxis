@@ -28,6 +28,7 @@ from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import attentions
 from praxis.layers import embedding_softmax
+from praxis.layers import multi_query_attention
 from praxis.layers import normalizations
 from praxis.layers import transformers
 
@@ -110,6 +111,9 @@ def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
     atten_ap = atten_p.activation_split_dims_mapping
     atten_ap.blnh = a_blnh
     atten_ap.bld = a_bld
+    if atten_p.cls == multi_query_attention.MultiQueryDotProductAttention:
+      atten_wp.proj_headless = [w_dnh[0], w_dnh[2]]
+      atten_ap.blh = [a_blnh[0], a_blnh[1], a_blnh[3]]
 
   ff_p = transformer_p.tr_fflayer_tpl
   ff_wp = ff_p.weight_split_dims_mapping

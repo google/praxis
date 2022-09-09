@@ -594,6 +594,7 @@ pytype_strict_library(
     deps = [
         ":attentions",
         ":embedding_softmax",
+        ":multi_query_attention",
         ":normalizations",
         ":transformers",
         # Implicit jax dependency.
