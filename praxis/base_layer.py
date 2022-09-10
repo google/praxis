@@ -89,10 +89,10 @@ HYPER_PARAMS = 'hyper_params'
 NON_PAX_VAR_COLLECTION = ['batch_stats', 'params_axes']
 
 # Only allow PARAMS and NON_TRAINABLE to be mutable in order to allow Repeat
-# and Pipeline layer fprop to alter the shape of SUMMARIES collection, e.g.
+# and Pipeline layer __call__ to alter the shape of SUMMARIES collection, e.g.
 # by splitting along scan axis using nn.map_variable.
 # The goal is to allow init_vars = layer.init(...) to be fed into
-# layer.fprop(init_vars, ...).
+# layer(init_vars, ...).
 DEFAULT_INIT_MUTABLE_LIST = [PARAMS, NON_TRAINABLE] + NON_PAX_VAR_COLLECTION
 
 # A few special Flax RNG stream names.
@@ -673,6 +673,14 @@ class SummaryType(enum.Enum):
   AGGREGATE_IMAGE = 4
 
 
+class SummaryVerbosity(enum.IntEnum):
+  """Defines logging levels for writing summaries."""
+  ERROR = 0
+  WARNING = 1
+  INFO = 2
+  DEBUG = 3  # typically detailed metrics like input statistics for layers
+
+
 def get_summary_base_type(summary_type: SummaryType) -> SummaryType:
   if summary_type == SummaryType.AGGREGATE_SCALAR:
     return SummaryType.SCALAR
@@ -753,8 +761,11 @@ class JaxContext:
 
     Attributes:
       do_eval: Whether to do eval.
+      summary_verbosity: int, defines the verbosity level for summaries context.
+        By default it's DEBUG level, meaning we add summaries for everything.
     """
     do_eval: Optional[bool] = None
+    summary_verbosity: SummaryVerbosity = SummaryVerbosity.DEBUG
 
   def __init__(self, hparams: JaxContext.HParams) -> None:
     self._hparams = hparams.clone()
@@ -781,6 +792,10 @@ class JaxContext:
   def do_eval(self) -> bool:
     return self.hparams.do_eval
 
+  @property
+  def summary_verbosity(self) -> SummaryVerbosity:
+    return self.hparams.summary_verbosity
+
   def __enter__(self) -> JaxContext:
     _JaxContextStack.stack.append(self)
     return self
@@ -793,6 +808,11 @@ class JaxContext:
   @staticmethod
   def top() -> Optional[JaxContext]:
     return _JaxContextStack.stack[-1] if _JaxContextStack.stack else None
+
+  @staticmethod
+  def has_context() -> bool:
+    """Whether there currently exists a global jax context."""
+    return len(_JaxContextStack.stack) > 0  # pylint: disable=g-explicit-length-test
 
   @staticmethod
   def new_context(*,
@@ -842,9 +862,9 @@ def cur_jax_context() -> JaxContext:
   return current
 
 
-def add_global_summary(name: str,
-                       tensor: JTensor,
-                       summary_type: SummaryType = SummaryType.SCALAR) -> None:
+def add_global_summary(
+    name: str, tensor: JTensor, summary_type: SummaryType = SummaryType.SCALAR,
+    verbosity: SummaryVerbosity = SummaryVerbosity.INFO) -> None:
   """Adds a global summary tensor.
 
   This summary is not associated with any particular layer and is added to the
@@ -856,8 +876,14 @@ def add_global_summary(name: str,
     summary_type: type of the summary. Currently it supports 2 types: SCALAR,
       IMAGE. Keys will be appended with a type suffix. Image tensors must be
       either [batch, height, width, channels] or [height, width, channels].
+    verbosity: verbosity level for the summary to add. If the current jax
+      context's verbosity level is less verbose than the summary, the summary
+      does not get added.
   """
   context = cur_jax_context()
+  if verbosity > context.summary_verbosity:
+    return
+
   global_namespace_name = '/' + name
   if jnp.issubdtype(tensor.dtype, jnp.floating):
     tensor = tensor.astype(jnp.float32)
@@ -963,7 +989,7 @@ class BaseLayer(
   HParams(): Returns a configuration HParams for this layer.
   setup(): To setup this instance, which includes create all the sub-layers, as
     well as immediate layer variables.
-  fprop(): The main method that carries out ML computation.
+  __call__(): The main method that carries out ML computation.
 
   TODO(pax-team): Add more doc-string and example.
   """
@@ -1205,9 +1231,9 @@ class BaseLayer(
   # We intentionally unbox BoxedParams and only return jnp.array values to
   # callers because we expect users to do
   #   initial_vars = layer.init(k)
-  #   outputs = layer.apply(initial_vars, method=layer.fprop)
+  #   outputs = layer.apply(initial_vars, method=layer.__call__)
   # where `initial_vars` that users see are unboxed jnp.arrays, and
-  # also the code in fprop never sees BoxedParams but always jnp.arrays.
+  # also the code in __call__ never sees BoxedParams but always jnp.arrays.
   def init(self, rngs, *args, method=None, mutable=None, **kwargs):
     if method is None:
       method = self.__call__
@@ -1293,7 +1319,7 @@ class BaseLayer(
   #
   #  == How FlaxModule.__call__ retrieves variables from self.scope
   #
-  # `base_layer.fprop` internally may call `base_layer.theta` or
+  # `base_layer.__call__` internally may call `base_layer.theta` or
   # `base_layer.get_var` which ultimately calls `self.get_variable` to retrieve
   # the variables.
   # Since these variables are BoxedParams inside self.scope and FlaxModule
@@ -1303,7 +1329,7 @@ class BaseLayer(
   # For Flax interop only, BaseLayer users should not use self.get_variable
   # directly. Note that this optional unboxing is a no-op for pure Pax case:
   #   initial_vars = layer.init(k)
-  #   outputs = layer.apply(initial_vars, method=layer.fprop)
+  #   outputs = layer.apply(initial_vars, method=layer.__call__)
   # Here the unboxing is done at the top level `layer.init`, so self.scope
   # inside `layer.apply` sees unboxed variables, which means `self.get_variable`
   # also only sees already unboxed variables.
@@ -1316,7 +1342,12 @@ class BaseLayer(
   def add_summary(self,
                   name: str,
                   tensor: JTensor,
-                  summary_type: SummaryType = SummaryType.SCALAR):
+                  summary_type: SummaryType = SummaryType.SCALAR,
+                  verbosity: SummaryVerbosity = SummaryVerbosity.INFO) -> None:
+    # if not running under any jax context add summary by default
+    if (JaxContext.has_context()
+        and verbosity > self.jax_context.summary_verbosity):
+      return
 
     next_iter = 0
     summary_name = name
@@ -1498,7 +1529,7 @@ class BaseLayer(
     The created sub layer can be accessed by `name`. E.g.::
 
         self.create_child('foo', foo_params)
-        self.foo.fprop...
+        self.foo(...)
 
     If the layer does not have a name set, i.e. foo_params.name is None, then
     its name will be set to `name`.
@@ -1522,7 +1553,7 @@ class BaseLayer(
     The created sub layer list can be accessed by `name`. E.g.::
 
         self.create_children('foo', ...)
-        self.foo[10].fprop...
+        self.foo[10](...)
 
     Args:
       name: The name for the sub layers, which is used as the key into

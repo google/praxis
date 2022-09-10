@@ -16,9 +16,25 @@
 """Tests for base_layer."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
+import jax
 import jax.numpy as jnp
 from praxis import base_layer
 from praxis import test_utils
+
+SummaryVerbosity = base_layer.SummaryVerbosity
+
+
+class Identity(base_layer.BaseLayer):
+  """Layer for testing summary writing."""
+
+  def setup(self):
+    pass
+
+  def __call__(self, x):
+    self.add_summary('debug', x, verbosity=SummaryVerbosity.DEBUG)
+    self.add_summary('info', x, verbosity=SummaryVerbosity.INFO)
+    return x
 
 
 class BaseLayerTest(test_utils.TestCase):
@@ -39,6 +55,55 @@ class BaseLayerTest(test_utils.TestCase):
       self.assertSameElements(
           list(summary_dict.dict.keys()),
           {'my_custom_summary_scalar', 'my_custom_summary1_scalar'})
+
+  def test_layer_summary_verbosity_log(self):
+    layer_p = Identity.HParams(name='test_identity')
+    layer = base_layer.instantiate(layer_p)
+
+    x = jnp.array([1., 2.], dtype=jnp.float32)
+    init_vars = layer.init(jax.random.PRNGKey(0), x)
+    _, updated_vars = layer.apply(init_vars, x, mutable=[base_layer.SUMMARIES])
+    summaries = updated_vars[base_layer.SUMMARIES]
+
+    self.assertIn('debug_scalar', summaries)
+    self.assertIn('info_scalar', summaries)
+    self.assertArraysEqual(x, summaries['debug_scalar'])
+    self.assertArraysEqual(x, summaries['info_scalar'])
+
+  def test_layer_summary_verbosity_no_log(self):
+    context_p = base_layer.JaxContext.HParams(
+        do_eval=True, summary_verbosity=SummaryVerbosity.INFO)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+      layer_p = Identity.HParams(name='test_identity')
+      layer = base_layer.instantiate(layer_p)
+
+      x = jnp.array([1., 2.], dtype=jnp.float32)
+      init_vars = layer.init(jax.random.PRNGKey(0), x)
+      _, updated_vars = layer.apply(
+          init_vars, x, mutable=[base_layer.SUMMARIES])
+      summaries = updated_vars[base_layer.SUMMARIES]
+
+    self.assertNotIn('debug_scalar', summaries)
+    self.assertIn('info_scalar', summaries)
+    self.assertArraysEqual(x, summaries['info_scalar'])
+
+  @parameterized.named_parameters(
+      ('log', SummaryVerbosity.INFO, SummaryVerbosity.INFO, True),
+      ('no_log', SummaryVerbosity.INFO, SummaryVerbosity.DEBUG, False),
+  )
+  def test_global_summary_verbosity(
+      self, ctx_verbosity, summary_verbosity, should_log):
+    context_p = base_layer.JaxContext.HParams(
+        do_eval=True, summary_verbosity=ctx_verbosity)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+      summary = jnp.array([1., 2.], dtype=jnp.float32)
+      base_layer.add_global_summary('test', summary,
+                                    verbosity=summary_verbosity)
+      all_summaries = base_layer.all_global_summaries()
+
+      self.assertEqual('/test_scalar' in all_summaries, should_log)
+      if should_log:
+        self.assertArraysEqual(summary, all_summaries['/test_scalar'])
 
   def test_get_summary_base_type(self):
     self.assertEqual(

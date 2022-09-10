@@ -361,9 +361,9 @@ py_strict_test(
     srcs = ["base_layer_test.py"],
     deps = [
         ":base_layer",
-        ":py_utils",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
     ],
 )
