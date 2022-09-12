@@ -829,8 +829,11 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       # One scan body is enough to trigger variable initializations.
       out, accum = _scan_fn(self, init_carry)
       # Get a single-stage output and broadcast it to the right output shape.
+      shift_buf = out.data.shift
+      if p.pipeline_broadcast_inputs:
+        shift_buf = shift_buf.inputs
       output = jax.tree_map(
-          lambda x: jax.lax.broadcast(x[0], [num_microbatches]), out.data.shift)
+          lambda x: jax.lax.broadcast(x[0], [num_microbatches]), shift_buf)
     else:
       # The following is layer.apply codepath.
       out, accum = after_post_process(self, init_carry)
