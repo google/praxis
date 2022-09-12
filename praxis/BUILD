@@ -312,6 +312,18 @@ pytype_strict_library(
     ],
 )
 
+pytype_strict_library(
+    name = "praxis_fiddle",
+    srcs = ["praxis_fiddle.py"],
+    deps = [
+        # Implicit fiddle dependency.
+        # Implicit fiddle.daglish dependency.
+        # Implicit fiddle.tagging dependency.
+        # Implicit fiddle.experimental.auto_config dependency.
+        # Implicit fiddle.experimental.dataclasses dependency.
+    ],
+)
+
 py_strict_test(
     name = "asserts_test",
     srcs = ["asserts_test.py"],
@@ -508,5 +520,16 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit lingvo.core.py_utils dependency.
         # Implicit lingvo.core.schedule dependency.
+    ],
+)
+
+py_strict_test(
+    name = "praxis_fiddle_test",
+    srcs = ["praxis_fiddle_test.py"],
+    deps = [
+        ":praxis_fiddle",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit fiddle dependency.
+        # Implicit fiddle.testing dependency.
     ],
 )
