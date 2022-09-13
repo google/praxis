@@ -910,6 +910,27 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     hidden = jnp.einsum('egcm,emh->egch', expert_inputs, theta_wi)
     hidden = self._split(hidden, ap.egch)
 
+    if p.gating_func == 'top2':
+      threshold = 0
+      activation_class_name = p.activation_tpl.cls.__name__
+      if isinstance(p.activation_tpl.cls, activations_lib.GELU):
+        logging.info('Setting dead neuron count threshold=-3.0 '
+                     'for approximate GeLU activation')
+        threshold = -3.0
+
+      nonpadding_indicator = jnp.einsum('gsec->ec', dispatch_tensor)
+      nonpadding_indicator = nonpadding_indicator[:, jnp.newaxis, :,
+                                                  jnp.newaxis]
+      padding_indicator = 1 - nonpadding_indicator
+      hidden_minus_ten_padding_indicator = hidden - 10 * padding_indicator
+      # EG, taking max over G and C dim
+      max_hidden = jnp.max(
+          jnp.max(hidden_minus_ten_padding_indicator, axis=1), axis=1)
+      dead_neuron_indicator = jnp.less(max_hidden, threshold).astype(jnp.int32)
+      dead_neuron_count = jnp.count_nonzero(dead_neuron_indicator)
+      self.add_summary('dead_%s_count' % activation_class_name,
+                       dead_neuron_count)
+
     # Activation function.
     hidden = self.activation(hidden)
     # Dropout.
