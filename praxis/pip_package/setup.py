@@ -20,14 +20,15 @@ from setuptools import setup, find_packages
 setup(
     name='praxis',
     version='0.1.0',
-    description=('Functionalities such as a layers for building neural networks '
-                 'in Jax.'),
+    description=(
+        'Functionalities such as a layers for building neural networks in Jax.'
+    ),
     author='PAX team',
     author_email='pax-dev@google.com',
     packages=find_packages(),
     python_requires='>=3.7',
     install_requires=[
-        'protobuf', 'absl-py', 'fiddle-config', 'numpy', 'tensorflow', 'lingvo',
+        'protobuf', 'absl-py', 'fiddle', 'numpy', 'tensorflow', 'lingvo',
         'flax', 'jax', 'optax', 'optax-shampoo', 'jax-bitempered-loss',
         'einops', 't5x', 'clu'
     ],
