@@ -99,6 +99,9 @@ DEFAULT_INIT_MUTABLE_LIST = [PARAMS, NON_TRAINABLE] + NON_PAX_VAR_COLLECTION
 RANDOM = 'random'
 NON_PAX_RNG_KEY = 'dropout'
 
+# Postfix for quantized scale name.
+_QUANTIZED_NAME_POSTFIX = '_quantized_scale'
+
 # Public aliase of base_hyperparams.instantiate() for convenience.
 instantiate = base_hyperparams.instantiate
 
@@ -1449,6 +1452,53 @@ class BaseLayer(
       self.put_variable(DECODE_CACHE, name, new_state)
 
   @nn.nowrap
+  def create_quantized_variable(self, name: str, weight_hparams: WeightHParams,
+                                scale_shape: Sequence[int]):
+    """Creates quantized variables, a pair of weight and scale tensors.
+
+    `name` will be name of the weight tensor; `name` + `_quantized_scale` will
+    be the name of the scale tensor.
+
+    Only the shape and mesh for weight_hparams are used.
+
+    Currently supports only int8 weight types.
+
+    Args:
+      name: Variable name for the weight tensor.
+      weight_hparams: HParams for weight.
+      scale_shape: Shape of the scales.
+    """
+
+    quantized_weight_hparams = weight_hparams.clone()
+    # TODO(jianlijianli): support other dtypes.
+    quantized_weight_hparams.dtype = jnp.int8
+    quantized_weight_hparams.init = WeightInit.Constant(0)
+    self.create_variable(name=name, var_hparams=quantized_weight_hparams)
+    self.create_variable(
+        name=name + _QUANTIZED_NAME_POSTFIX,
+        var_hparams=WeightHParams(shape=scale_shape))
+
+  @nn.nowrap
+  def get_quantized_weight(self, name: str) -> Tuple[JTensor, JTensor]:
+    """Gets quantized variables.
+
+    Gets a pair of weight and scale tensors. To be used together with
+    `create_quantized_variable`.
+
+    `name` will be name of the weight tensor; assumes scale tensor has the
+    postfix: `_quantized_scale`
+
+    Args:
+      name: Variable name for the weight tensor.
+
+    Returns:
+      A Tuple of two elements for weight Tensor and scale Tensor.
+    """
+
+    scale_name = name + _QUANTIZED_NAME_POSTFIX
+    return self.theta[name], self.theta[scale_name]
+
+  @nn.nowrap
   def create_variable(self,
                       name: str,
                       var_hparams: WeightHParams,
@@ -1630,3 +1680,28 @@ class _WrapperLayer(BaseLayer):
     # This implicitly set p.cld.name to name as well.
     self.create_child(name, p.cld)
     self.cld = getattr(self, name)
+
+
+@enum.unique
+class QuantizationMode(str, enum.Enum):
+  """The different modes for quantization.
+
+  INFERENCE indicates that the model is already quantized and is ready to run
+    inference with the previously set dtypes.
+  QUANTIZE indicates that the model is still float and is going to be quantized
+    according to the provided dtypes.
+  """
+  INFERENCE = 'inference'
+  QUANTIZE = 'quantize'
+
+
+class QuantizationHParams(base_hyperparams.BaseHyperParams):
+  """Parameters for quantization.
+
+  Currently supports only post-training quantization.
+
+  Attributes:
+    mode: the quantization mode associated with this quantization parameter.
+  """
+
+  mode: QuantizationMode = QuantizationMode.INFERENCE
