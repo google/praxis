@@ -326,6 +326,22 @@ class HyperParamsTest(absltest.TestCase):
     bar_params = fdl.build(cfg)
     self.assertEqual(bar_params.foo_tpl.foo_a, 1)
 
+  def test_hparams_special_attributes(self):
+
+    class Foo(base_hyperparams.BaseParameterizable):
+
+      class HParams(base_hyperparams.BaseHyperParams):
+        """Test."""
+        foo_a: int = 0
+
+    self.assertEqual(Foo.HParams.__doc__, 'Test.')
+    self.assertRegex(Foo.HParams.__module__,
+                     r'__main__|\.base_hyperparams_test')
+    self.assertEqual(Foo.HParams.__name__, 'HParams')
+    self.assertEqual(
+        Foo.HParams.__qualname__,
+        'HyperParamsTest.test_hparams_special_attributes.<locals>.Foo.HParams')
+
 
 if __name__ == '__main__':
   absltest.main()

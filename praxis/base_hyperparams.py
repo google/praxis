@@ -689,8 +689,15 @@ def _bind_cls_to_nested_params_class(cls: Type[Any]):
       ('_attribute_overrides', Tuple[str, ...], ('cls',)),
       ('cls', Type[Any], cls),
   ]
+  forwarded_attrs = {
+      attr_name: getattr(cls.HParams, attr_name)
+      for attr_name in ('__doc__', '__module__', '__name__', '__qualname__')
+      if hasattr(cls.HParams, attr_name)
+  }
   cls.HParams = dataclasses.make_dataclass(
-      f'{cls.__name__}.HParams', fields=fields, bases=(cls.HParams,))  # pytype: disable=wrong-arg-types
+      'HParams', fields=fields, bases=(cls.HParams,))  # pytype: disable=wrong-arg-types
+  for attr_name, attr_value in forwarded_attrs.items():
+    setattr(cls.HParams, attr_name, attr_value)
 
 
 def _add_precise_signature_to_make(
