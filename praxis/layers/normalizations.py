@@ -296,8 +296,8 @@ class LayerNorm(BaseNormalization):
       bias: Whether to use bias.
     """
     epsilon: float = 1e-6
-    scale: bool = True
-    bias: bool = True
+    use_scale: bool = True
+    use_bias: bool = True
 
   def setup(self) -> None:
     """Creates layer normalization variables."""
@@ -307,7 +307,7 @@ class LayerNorm(BaseNormalization):
     if p.mesh_shape is not None and wp.wt is None:
       # Simply replicate the weights.
       wp_scale = [-1]
-    if p.scale:
+    if p.use_scale:
       self.create_variable(
           'scale',
           WeightHParams(
@@ -318,7 +318,7 @@ class LayerNorm(BaseNormalization):
               collections=[
                   base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
               ]))
-    if p.bias:
+    if p.use_bias:
       wp_bias = wp_scale  # bias should use the same sharding as scale.
       self.create_variable(
           'bias',
@@ -349,9 +349,9 @@ class LayerNorm(BaseNormalization):
     mean = jnp.mean(inputs, axis=[-1], keepdims=True)
     var = jnp.mean(jnp.square(inputs - mean), axis=[-1], keepdims=True)
     normed_inputs = (inputs - mean) * jax.lax.rsqrt(var + self.hparams.epsilon)
-    if p.scale:
+    if p.use_scale:
       normed_inputs *= (1 + self.theta.scale)
-    if p.bias:
+    if p.use_bias:
       normed_inputs += self.theta.bias
     return normed_inputs
 

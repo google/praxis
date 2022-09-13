@@ -1517,6 +1517,13 @@ class BaseLayer(
       trainable: whether or not this param is trainable.
     """
     p = self.hparams
+
+    if hasattr(p, name):
+      raise AttributeError(
+          f'{self.__class__}.HParams already has attribute {name}. '
+          'Please rename to avoid future name collision after Fiddle migration.'
+      )
+
     var_hparams = var_hparams.clone()
 
     # If users did not specify init and dtype for var_hparams, fill in from
