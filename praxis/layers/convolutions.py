@@ -305,8 +305,8 @@ class ConvBNAct(Conv2D):
 
 
 # TODO(nanxinchen): add Depthwise Conv2D support
-class DepthwiseConv1D(base_layer.BaseLayer):
-  """Depthwise 1D convolution based on lax implementation."""
+class BaseDepthwiseConv1D(base_layer.BaseLayer):
+  """Base class for Depthwise 1D convolution."""
 
   class HParams(BaseHParams):
     """Associated hyper-params for this layer class.
@@ -327,6 +327,24 @@ class DepthwiseConv1D(base_layer.BaseLayer):
     is_causal: bool = False
     use_2d_conv_weight_shape: bool = False
     rhs_dilation_rate: int = 1
+
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> JTensor:
+    """Depthwise convolution.
+
+    Args:
+      inputs: Input sequence JTensor of shape [B, T, H].
+      paddings: Input paddings JTensor of shape [B, T].
+
+    Returns:
+      The depthwise conv output with shape [B, T, H].
+    """
+    raise NotImplementedError()
+
+
+class DepthwiseConv1D(BaseDepthwiseConv1D):
+  """Depthwise 1D convolution based on lax implementation."""
 
   def setup(self) -> None:
     p = self.hparams
