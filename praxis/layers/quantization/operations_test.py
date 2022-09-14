@@ -20,6 +20,8 @@ from absl.testing import parameterized
 from jax import numpy as jnp
 from praxis import test_utils
 from praxis.layers.quantization import operations
+from typing import List
+
 
 
 class QuantizationUtilsTest(test_utils.TestCase):

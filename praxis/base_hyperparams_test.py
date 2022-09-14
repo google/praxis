@@ -20,7 +20,7 @@ import functools
 import inspect
 import pickle
 import textwrap
-from typing import Optional
+from typing import Optional, List
 
 from absl.testing import absltest
 import fiddle as fdl
@@ -293,7 +293,7 @@ class HyperParamsTest(absltest.TestCase):
     class DefaultFactoryTestClass(base_hyperparams.BaseParameterizable):
 
       class HParams(base_hyperparams.BaseHyperParams):
-        a: list[str] = dataclasses.field(default_factory=lambda: [1, 2, 3])
+        a: List[str] = dataclasses.field(default_factory=lambda: [1, 2, 3])
 
     instance_1 = DefaultFactoryTestClass.make()
     instance_2 = DefaultFactoryTestClass.make()

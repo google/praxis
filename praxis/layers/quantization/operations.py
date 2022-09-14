@@ -17,11 +17,12 @@
 
 from jax import numpy as jnp
 from praxis import pytypes
+from typing import List
 
 JTensor = pytypes.JTensor
 
 
-def _get_expand_dims(eqn: str) -> list[int]:
+def _get_expand_dims(eqn: str) -> List[int]:
   """Potentially expand dimentions for scale.
 
   It handles cases such as ABD,KDNH->KABNH and AD,KDNH->KANH, where weight is
