@@ -50,7 +50,7 @@ def sub_field(
   Example usage:
 
   >>> class Parent(base_layer.BaseLayer):
-  ...   child: Child = praxis_fiddle.sub_field(Child)
+  ...   child: Child = pax_fiddle.sub_field(Child)
 
   Args:
     field_type: The dataclass type used by the field.
@@ -76,7 +76,7 @@ def template_field(
   Example usage:
 
   >>> class Parent(base_layer.BaseLayer):
-  ...   child_tpl: fdl.Config[Child] = praxis_fiddle.template_field(Child)
+  ...   child_tpl: fdl.Config[Child] = pax_fiddle.template_field(Child)
 
   Args:
     template: The template type (or factory function).

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for praxis_fiddle."""
+"""Tests for pax_fiddle."""
 
 import dataclasses
 from typing import Optional, List
@@ -21,7 +21,7 @@ from absl.testing import absltest
 
 import fiddle as fdl
 from fiddle import testing
-from praxis import praxis_fiddle
+from praxis import pax_fiddle
 
 
 @dataclasses.dataclass
@@ -47,15 +47,15 @@ class Person:
 
 @dataclasses.dataclass
 class Vehicle:
-  wheel_tpl: fdl.Config[Wheel] = praxis_fiddle.template_field(Wheel)
+  wheel_tpl: fdl.Config[Wheel] = pax_fiddle.template_field(Wheel)
   num_wheels: int = 4
-  owner: Person = praxis_fiddle.sub_field(Person)
+  owner: Person = pax_fiddle.sub_field(Person)
   wheels: Optional[List[Wheel]] = None  # Initialized by setup.
 
   def setup(self):
     assert self.wheels is None
     self.wheels = [
-        praxis_fiddle.build(self.wheel_tpl).setup()
+        pax_fiddle.build(self.wheel_tpl).setup()
         for i in range(self.num_wheels)
     ]
     return self
@@ -63,15 +63,15 @@ class Vehicle:
 
 @dataclasses.dataclass
 class Fleet:
-  vehicle_tpl: fdl.Config[Vehicle] = praxis_fiddle.template_field(Vehicle)
+  vehicle_tpl: fdl.Config[Vehicle] = pax_fiddle.template_field(Vehicle)
   num_vehicles: int = 1
-  manager: Person = praxis_fiddle.sub_field(Person)
+  manager: Person = pax_fiddle.sub_field(Person)
   vehicles: Optional[List[Vehicle]] = None  # Initialized by setup.
 
   def setup(self):
     assert self.vehicles is None
     self.vehicles = [
-        praxis_fiddle.build(self.vehicle_tpl).setup()
+        pax_fiddle.build(self.vehicle_tpl).setup()
         for i in range(self.num_vehicles)
     ]
     return self
@@ -111,7 +111,7 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
   def test_build_default_fleet_config(self):
     config = fdl.Config(Fleet)
     config.manager.name = "Ben"  # Required arg
-    fleet = praxis_fiddle.build(config)
+    fleet = pax_fiddle.build(config)
     self.assertEqual(
         fleet,
         Fleet(
@@ -125,7 +125,7 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     config.num_vehicles = 3
     config.vehicle_tpl.wheel_tpl.radius *= 2
     config.vehicle_tpl.owner = config.manager
-    fleet = praxis_fiddle.build(config)
+    fleet = pax_fiddle.build(config)
     self.assertEqual(
         fleet,
         Fleet(
@@ -140,7 +140,7 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     config = fdl.Config(Fleet)
     config.manager.name = "Ben"  # Required arg
     config.vehicle_tpl.owner.name = "Joe"  # Required arg
-    fleet = praxis_fiddle.build(config).setup()
+    fleet = pax_fiddle.build(config).setup()
     self.assertEqual(
         fleet,
         Fleet(
@@ -166,7 +166,7 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     config.vehicle_tpl.owner.name = "Joe"
 
     with self.subTest("got_expected_fleet"):
-      fleet = praxis_fiddle.build(config).setup()
+      fleet = pax_fiddle.build(config).setup()
       self.assertEqual(
           fleet,
           Fleet(
@@ -200,7 +200,7 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     config.num_vehicles = 3
     config.vehicle_tpl.owner = config.manager  # shared config object.
 
-    fleet = praxis_fiddle.build(config).setup()
+    fleet = pax_fiddle.build(config).setup()
     self.assertEqual(
         fleet,
         Fleet(
@@ -221,7 +221,7 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     # fleet.vehicle[j].owner, despite the fact that they were all constructed
     # from the same Config object (by identity).  This lack of sharing occurs
     # because they were all constructed during different calls to
-    # praxis_fiddle.build.  This will change when we transition to using factory
+    # pax_fiddle.build.  This will change when we transition to using factory
     # objects (partials) instead of config objects to store templates.
     self.assertIsNot(fleet.vehicles[0].owner, fleet.vehicles[1].owner)
     self.assertIsNot(fleet.vehicles[0].owner, fleet.vehicles[2].owner)

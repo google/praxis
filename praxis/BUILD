@@ -314,8 +314,8 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
-    name = "praxis_fiddle",
-    srcs = ["praxis_fiddle.py"],
+    name = "pax_fiddle",
+    srcs = ["pax_fiddle.py"],
     deps = [
         # Implicit fiddle dependency.
         # Implicit fiddle.daglish dependency.
@@ -530,10 +530,10 @@ py_strict_test(
 )
 
 py_strict_test(
-    name = "praxis_fiddle_test",
-    srcs = ["praxis_fiddle_test.py"],
+    name = "pax_fiddle_test",
+    srcs = ["pax_fiddle_test.py"],
     deps = [
-        ":praxis_fiddle",
+        ":pax_fiddle",
         # Implicit absl.testing.absltest dependency.
         # Implicit fiddle dependency.
         # Implicit fiddle.testing dependency.
