@@ -330,6 +330,12 @@ def create_gda(host_arrays: np.ndarray, global_shapes: jax.ShapeDtypeStruct,
   return jax.tree_map(_gda, global_shapes, pspecs, device_buffers)
 
 
+def copy_gda(x: gda_lib.GlobalDeviceArray) -> gda_lib.GlobalDeviceArray:
+  """Copies a GDA."""
+  buffers = [jnp.copy(s.data) for s in x.local_shards]
+  return gda_lib.GlobalDeviceArray(x.shape, x.mesh, x.mesh_axes, buffers)
+
+
 def convert_fully_replicated_sda_to_gda(sda):
   """Convert a fully replicated SDA to GDA."""
   # SDA is fully replicated, so its device_buffers[0].shape is the global shape.
