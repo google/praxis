@@ -25,10 +25,12 @@ from praxis import pytypes
 from praxis.layers import convolutions
 from praxis.layers.streaming import streaming_base
 
+BaseHParams = base_layer.BaseLayer.HParams
 NestedMap = py_utils.NestedMap
 NestedJTensor = pytypes.NestedJTensor
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
+sub_config_field = base_layer.sub_config_field
 
 JTensor = pytypes.JTensor
 
@@ -196,3 +198,72 @@ class DepthwiseConv1D(convolutions.BaseDepthwiseConv1D,  # pytype: disable=signa
                                                 'VALID')
     # Output padding is the same with the input, in causal models.
     return NestedMap(features=output_features, paddings=inputs.paddings)
+
+
+class LightConv1D(convolutions.LightConv1D,  # pytype: disable=signature-mismatch
+                  streaming_base.StreamingBase):
+  """Streaming aware LightConv1D layer."""
+
+  class HParams(convolutions.LightConv1D.HParams):
+    # Replace DepthwiseConv1D by its streaming aware version:
+    _attribute_overrides: Tuple[str, ...] = ('depthwise_conv_tpl',)
+    depthwise_conv_tpl: BaseHParams = sub_config_field(
+        DepthwiseConv1D.HParams)
+
+  @classmethod
+  def get_stride(cls, hparams):
+    return 1
+
+  @classmethod
+  def get_right_context(cls, hparams):
+    if hparams.is_causal:
+      return 0
+    else:
+      raise ValueError('Non causal streaming is not supported yet.')
+
+  def init_states(self, batch_size: int, with_paddings: bool = True):
+    """Creates streaming states in base_layer.DECODE_CACHE.
+
+    Args:
+      batch_size: defines batch size of streaming states.
+      with_paddings: if True it will creates streaming states
+        for padding processing, else will set it None (it can save some memory).
+    """
+
+    # Initialize states for all streaming aware sub layers:
+    self.depthwise_conv1d.init_states(
+        batch_size=batch_size, with_paddings=with_paddings)
+
+  def streaming_step(
+      self,
+      inputs: NestedJTensor,
+  ) -> NestedJTensor:
+    """LightConv1D layer in streaming mode.
+
+    Args:
+      inputs: NestedMap with input sequence JTensor of shape [B, T, H]
+        and paddings.
+
+    Returns:
+      NestedMap with conv output with shape [B, T, H] and paddings.
+    """
+    features = inputs.features
+    paddings = inputs.paddings
+    unnormalized_features = features
+
+    features = self.ln(features)
+    act_features = self.linear_start_act(features)
+    gated_features = self.linear_start_gated(features)
+    features = act_features * jax.nn.sigmoid(gated_features)
+
+    outputs = self.depthwise_conv1d.streaming_step(
+        NestedMap(features=features, paddings=paddings))
+
+    features = self._conv_norm(outputs.features, outputs.paddings)
+    features = self.conv_activation(features)
+
+    features = self.linear_end(features)
+    features = self.dropout(features)
+
+    output = features + unnormalized_features
+    return NestedMap(features=output, paddings=outputs.paddings)
