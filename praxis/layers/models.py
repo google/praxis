@@ -206,8 +206,9 @@ class LanguageModel(base_model.BaseModel):
         have an optional `.prefix_lengths` field indicating the lengths of
         prefixes in the ids used as decoding inputs. Optional `.suffix` for the
         suffix_ids with shape [num_suffix, suffix_length]. Optional
-        `.suffix_lengths` of shape [num_suffix] indicating the lengths of the
-        suffixes.
+        `.temperature` of shape [batch_size] has the temperature for each
+        example. If `.temperature` is not set in the input_batch,
+        p.decoder.temperature will be used in sampling decode.
       return_result_for_suffix_score: Whether return results for suffix score.
 
     Returns:
@@ -371,6 +372,14 @@ class LanguageModel(base_model.BaseModel):
         raise ValueError('In decoder hparams, k and p should not be set at the'
                          ' same time. Currently k is: %s and p is: %s' %
                          (p.decoder.k, p.decoder.p))
+
+      # Fetch dynamic temperature from input_batch if the input_batch has this
+      # information.
+      if hasattr(input_batch, 'temperature'):
+        temperature = input_batch.temperature
+      else:
+        temperature = p.decoder.temperature
+
       # XXX not this one
       result = sample_decode.sample_decode(
           self,
@@ -384,7 +393,7 @@ class LanguageModel(base_model.BaseModel):
           k=p.decoder.k,
           p=p.decoder.p,
           fprop_for_prefix=p.decoder.fprop_for_prefix,
-          temperature=p.decoder.temperature,
+          temperature=temperature,
           max_prefix_len=max_prefix_len,
           max_decode_steps=p.decoder.max_decode_steps,
           prefix_lengths=prefix_lengths,

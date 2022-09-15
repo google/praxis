@@ -25,6 +25,7 @@ import numpy as np
 from praxis import base_layer
 from praxis import decoder_utils
 from praxis import py_utils
+from praxis import pytypes
 from praxis import test_utils
 from praxis.layers import models
 from praxis.layers import transformer_models
@@ -33,6 +34,7 @@ NestedMap = py_utils.NestedMap
 BaseHParams = base_layer.BaseLayer.HParams
 instantiate = base_layer.instantiate
 LanguageModelType = transformer_models.LanguageModelType
+JTensor = pytypes.JTensor
 
 RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
@@ -603,10 +605,13 @@ class LanguageModelTest(test_utils.TestCase):
                            np.array([[5, 5], [4, 4], [3, 3]], dtype=np.int32))
 
   @parameterized.parameters(
-      (1),
-      (2),
+      (1, False),
+      (2, False),
+      (1, True),
+      (2, True),
   )
-  def test_sample_decoding_prefix_and_eos_fprop_for_prefix(self, k):
+  def test_sample_decoding_prefix_and_eos_fprop_for_prefix(
+      self, k, is_dynamic_temp):
     p = models.SampleDecoderHParams(
         fprop_for_prefix=True,
         seqlen=7,
@@ -645,6 +650,11 @@ class LanguageModelTest(test_utils.TestCase):
         paddings=jnp.zeros(shape=(3, 3), dtype=jnp.float32),
         prefix_lengths=jnp.array([2, 1, 1], dtype=jnp.int32),
     )
+
+    if is_dynamic_temp:
+      # Test if JTensor type temperature could work.
+      input_batch['temperature'] = jnp.array([0.5, 0.5, 0.5], dtype=jnp.float32)
+
     results = self._run_decode(p, sample_logits, input_batch)
 
     # This is fixed by the prng seed provided.

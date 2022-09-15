@@ -15,19 +15,16 @@
 
 """Unit tests for sample_decode."""
 
-from typing import Any
-
 from absl.testing import absltest
+import flax.linen as nn
 import jax
 from jax import numpy as jnp
-import flax.linen as nn
 import numpy as np
 from praxis import base_layer
 from praxis import base_model
 from praxis import py_utils
 from praxis import sample_decode
 from praxis import test_utils
-from praxis.layers import models
 
 NestedMap = py_utils.NestedMap
 BaseHParams = base_layer.BaseLayer.HParams
@@ -93,6 +90,22 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         logits, noise, temperature=1.0, topk=2)
     self.assertArraysEqual(new_ids, np.array([2, 4, 1, 0], dtype=np.int32))
 
+  def test_sample_from_topk_with_gumbel_noise_dyn_temp(self):
+    logits = jnp.array([[[0, 0, 1, 1, 0], [1, 0, 0, 0, 1]],
+                        [[0, 1, 1, 0, 0], [1, 1, 0, 0, 0]]],
+                       dtype=jnp.float32)
+    noise = jnp.array([[[0.5, 0], [-0.5, 0]], [[-0.5, -1], [1, 0.5]]],
+                      dtype=jnp.float32)
+    temperature = jnp.array([[0.1], [0.2]], dtype=jnp.float32)
+    new_ids = sample_decode.sample_from_topk_with_gumbel_noise(
+        logits, noise, temperature=temperature, topk=2)
+    # logits + noise =
+    # [[[0, 0, 1.5, 1, 0], # argmax: 2
+    #  [0.5, 0, 0, 0, 1]]  # argmax: 4
+    #  [[0, 0.5, 0, 0, 0], # argmax: 1
+    #  [2, 1.5, 0, 0, 0]]] # argmax: 0
+    self.assertArraysEqual(new_ids, np.array([[2, 4], [1, 0]], dtype=np.int32))
+
   def test_sample_from_topk(self):
     logits = jnp.array(
         [
@@ -106,6 +119,26 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         logits, jax.random.PRNGKey(seed=123), temperature=1.0, topk=2)
     # gumbel noise is relatively smaller compared to the logits value.
     self.assertArraysEqual(new_ids, np.array([2, 0, 1, 0], dtype=np.int32))
+
+  def test_sample_from_topk_dyn_temp(self):
+    logits = jnp.array(
+        [
+            [
+                [0, 0, 1, 0, 0],  # argmax: 2
+                [1, 0, 0, 0, 0],  # argmax: 0
+            ],
+            [
+                [0, 1, 0, 0, 0],  # argmax: 1
+                [1, 0, 0, 0, 0],  # argmax: 0
+            ],
+        ],
+        dtype=jnp.float32)
+
+    temperature = jnp.array([[0.1], [0.2]], dtype=jnp.float32)
+    new_ids = sample_decode.sample_from_topk(
+        logits, jax.random.PRNGKey(seed=123), temperature=temperature, topk=2)
+    # gumbel noise is relatively smaller compared to the logits value.
+    self.assertArraysEqual(new_ids, np.array([[2, 0], [1, 0]], dtype=np.int32))
 
   def test_sample_from_topk_distribution(self):
     logits = jnp.array([

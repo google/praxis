@@ -20,12 +20,11 @@ Greedy decode is a special case for sample decode.
 """
 
 import functools
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
-from praxis import asserts
 from praxis import base_layer
 from praxis import decoder_utils
 from praxis import py_utils
@@ -109,7 +108,7 @@ def split_batch_dim(x: jnp.ndarray, batch_dim: int,
 
 
 def sample_from_topk_with_gumbel_noise(logits: JTensor, gumbel_noise: JTensor,
-                                       temperature: float,
+                                       temperature: Union[JTensor, float],
                                        topk: int) -> JTensor:
   """Sample decode algorithm from TopK with gumbel noise.
 
@@ -118,7 +117,8 @@ def sample_from_topk_with_gumbel_noise(logits: JTensor, gumbel_noise: JTensor,
       num_samples, vocab_size].
     gumbel_noise: Gumbel noise. This is a JTensor of [batch_size * num_samples,
       vocab_size].
-    temperature: Temperature of sampling decoding.
+    temperature: Temperature of sampling decoding. It could be a float or
+      a JTensor of shape [batch_size].
     topk: If nonzero, use top-k sampling, only selecting among the most likely k
       tokens at each step.
 
@@ -141,14 +141,15 @@ def sample_from_topk_with_gumbel_noise(logits: JTensor, gumbel_noise: JTensor,
 
 
 def sample_from_topk(logits: JTensor, prng_key: pytypes.PRNGKey,
-                     temperature: float, topk: int) -> JTensor:
+                     temperature: Union[JTensor, float], topk: int) -> JTensor:
   """Sample decode algorithm from TopK.
 
   Args:
     logits: Logits of current step. This is a JTensor of [batch_size *
       num_samples, vocab_size].
     prng_key: The prng key.
-    temperature: Temperature of sampling decoding.
+    temperature: Temperature of sampling decoding. It could be a float or
+      a JTensor of shape [batch_size].
     topk: If nonzero, use top-k sampling, only selecting among the most likely k
       tokens at each step.
 
@@ -253,7 +254,7 @@ def sample_decode(model: base_layer.BaseLayer,
                   p: Optional[Union[float, JTensor]] = None,
                   cf_guidance_scale: Optional[Union[List[float], float]] = None,
                   fprop_for_prefix: bool = False,
-                  temperature: float = 1.0,
+                  temperature: Union[float, JTensor] = 1.0,
                   max_prefix_len: Optional[int] = None,
                   max_decode_steps: Optional[int] = None,
                   prefix_lengths: Optional[JTensor] = None,
@@ -295,7 +296,8 @@ def sample_decode(model: base_layer.BaseLayer,
       while after sampling, we force align sampled token ids of conditioned and
       unconditioned branch.
     fprop_for_prefix: Use one fprop for prefix.
-    temperature: Temperature of sampling decoding.
+    temperature: Temperature of sampling decoding. It could be a float or
+      a JTensor of shape [B].
     max_prefix_len: Python int or None, the max prefix length for decoding.
     max_decode_steps: Python int or None, the max decode step to run after the
       prefix (if any). Since the prefixes might be of unequal lengths, this
@@ -320,6 +322,7 @@ def sample_decode(model: base_layer.BaseLayer,
     where a positive value of 1.0 is used to indicate padded positions).
     The outputs has shape [batch, num_samples, ...].
   """
+  original_batch_size = target_prefix_ids.shape[0]
   if num_samples > 1:
     # Broadcast inputs from [batch, ...] to [batch * num_samples, ...].
     # [a, b, c] and num_samples = 3 will have
@@ -330,6 +333,17 @@ def sample_decode(model: base_layer.BaseLayer,
     target_prefix_paddings = jnp.repeat(
         target_prefix_paddings, axis=0, repeats=num_samples)
     prefix_lengths = jnp.repeat(prefix_lengths, axis=0, repeats=num_samples)
+
+    # Broadcast temperature if it is a JTensor.
+    if isinstance(temperature, JTensor):
+      temperature_expected_shape = (original_batch_size,)
+      if temperature.shape != temperature_expected_shape:  # pytype: disable=attribute-error
+        raise ValueError('Dynamic temperature should have shape: '
+                         f'{temperature_expected_shape}, but it has shape: '
+                         f'{temperature.shape}.'  # pytype: disable=attribute-error
+                        )
+      temperature = jnp.repeat(temperature, axis=0, repeats=num_samples)
+      temperature = jnp.reshape(temperature, (-1, 1))
 
     if lazy_broadcast_prefix_fn is not None:
       assert fprop_for_prefix
@@ -416,7 +430,7 @@ def sample_decode(model: base_layer.BaseLayer,
           temperature=temperature,
           topk=k)
     elif k == 0:
-      if temperature > 0.0:
+      if isinstance(temperature, JTensor) or temperature > 0.0:
         gumbel_noise = jax.random.gumbel(
             model.next_prng_key(), shape=logits.shape).astype(logits.dtype)
         logits += gumbel_noise * temperature
