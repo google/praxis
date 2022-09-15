@@ -38,6 +38,7 @@ from jax.experimental import pjit
 import numpy as np
 from praxis import asserts
 from praxis import base_hyperparams
+from praxis import layer_utils
 from praxis import py_utils
 from praxis import pytypes
 import tensorflow.compat.v2 as tf
@@ -866,7 +867,9 @@ def cur_jax_context() -> JaxContext:
 
 
 def add_global_summary(
-    name: str, tensor: JTensor, summary_type: SummaryType = SummaryType.SCALAR,
+    name: str,
+    tensor: JTensor,
+    summary_type: SummaryType = SummaryType.SCALAR,
     verbosity: SummaryVerbosity = SummaryVerbosity.INFO) -> None:
   """Adds a global summary tensor.
 
@@ -971,8 +974,8 @@ def instantiate_layer(layer_p: BaseLayer.HParams, scope: Any) -> BaseLayer:
       wrapper_p = _WrapperLayer.HParams(
           name=layer_p.shared_weight_layer_id, cld=wrapped_p)
       layer = instantiate(wrapper_p, parent=scope).cld
-      jax_context.set_shared_layer(scope, layer_p.shared_weight_layer_id,
-                                   layer, layer_p.clone())
+      jax_context.set_shared_layer(scope, layer_p.shared_weight_layer_id, layer,
+                                   layer_p.clone())
   else:
     # simply create the child
     layer = layer_p.Instantiate()
@@ -1348,8 +1351,8 @@ class BaseLayer(
                   summary_type: SummaryType = SummaryType.SCALAR,
                   verbosity: SummaryVerbosity = SummaryVerbosity.INFO) -> None:
     # if not running under any jax context add summary by default
-    if (JaxContext.has_context()
-        and verbosity > self.jax_context.summary_verbosity):
+    if (JaxContext.has_context() and
+        verbosity > self.jax_context.summary_verbosity):
       return
 
     next_iter = 0
@@ -1595,11 +1598,19 @@ class BaseLayer(
       name: Sub layer name which is used as the key into vars/theta.
       params: `Hyperparams` object to instantiate a layer.
     """
+    conflict = False
+    if name in {field.name for field in dataclasses.fields(self.hparams)}:
+      # As part of the Fiddle migration, child names that conflict with HParams
+      # attributes will be fixed.
+      logging.info('FiddleMigration: %s Child name %s conflict hparam.',
+                   self.__class__.__name__, name)
+      conflict = True
     p = self.copy_base_hparams(self.hparams, params.clone())
     p.name = name
     assert p.name not in self._private_children
     child = instantiate_layer(p, self.scope.root)
     self._private_children[p.name] = child
+    layer_utils.LayerRegistry().add_layer(p.name, self, conflict=conflict)
     setattr(self, p.name, child)
 
   @nn.nowrap
@@ -1629,6 +1640,14 @@ class BaseLayer(
       self._private_children[p.name] = child
       return child
 
+    conflict = False
+    if name in {field.name for field in dataclasses.fields(self.hparams)}:
+      # As part of the Fiddle migration, children names that conflict with
+      # HParams attributes will be fixed.
+      logging.info('FiddleMigration: %s Children name %s conflict hparam.',
+                   self.__class__.__name__, name)
+      conflict = True
+    layer_utils.LayerRegistry().add_layer(name, self, conflict=conflict)
     setattr(self, name, NestedMap(sub=params).Transform(_instantiate).sub)
 
   @nn.nowrap

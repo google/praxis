@@ -69,6 +69,7 @@ pytype_strict_library(
     deps = [
         ":asserts",
         ":base_hyperparams",
+        ":layer_utils",
         ":py_utils",
         ":pytypes",
         # Implicit absl.flags dependency.
@@ -324,6 +325,11 @@ pytype_strict_library(
     ],
 )
 
+pytype_strict_library(
+    name = "layer_utils",
+    srcs = ["layer_utils.py"],
+)
+
 py_strict_test(
     name = "asserts_test",
     srcs = ["asserts_test.py"],
@@ -531,5 +537,15 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit fiddle dependency.
         # Implicit fiddle.testing dependency.
+    ],
+)
+
+py_strict_test(
+    name = "layer_utils_test",
+    srcs = ["layer_utils_test.py"],
+    deps = [
+        ":layer_utils",
+        ":test_utils",
+        # Implicit absl.testing.absltest dependency.
     ],
 )
