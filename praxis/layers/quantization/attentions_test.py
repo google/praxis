@@ -60,6 +60,27 @@ class QuantizedAttentionTest(test_utils.TestCase):
       ('inference', base_layer.QuantizationMode.INFERENCE),
       ('quantize', base_layer.QuantizationMode.QUANTIZE),
   )
+  def test_attention_projection_no_output_proj_quantized(self, mode):
+    p = qattentions.AttentionProjection.HParams(
+        name='_attn_proj',
+        input_dim=5,
+        num_heads=2,
+        dim_per_head=3,
+        is_output_projection=False,
+        quantization=base_layer.QuantizationHParams(mode=mode))
+    attn = instantiate(p)
+    inputs = jnp.ones((4, 3, 5), dtype=jnp.bfloat16)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = attn.init(prng_key, inputs)
+    outputs = attn.apply(initial_vars, inputs)
+    self.assertEqual(outputs.shape, (4, 3, 2, 3))
+    if mode == base_layer.QuantizationMode.INFERENCE:
+      self.assertAllClose(jnp.full((4, 3, 2, 3), 0.0), outputs)
+
+  @parameterized.named_parameters(
+      ('inference', base_layer.QuantizationMode.INFERENCE),
+      ('quantize', base_layer.QuantizationMode.QUANTIZE),
+  )
   def test_combined_projection_quantized(self, mode):
     p = qattentions.CombinedQKVProjectionLayer.HParams(
         name='_combined_qkv',

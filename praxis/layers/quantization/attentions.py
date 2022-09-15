@@ -75,7 +75,10 @@ class AttentionProjection(attentions.AttentionProjection):
     pc = WeightHParams(
         shape=pc_shape, mesh_shape=p.mesh_shape, tensor_split_dims_mapping=wt)
     if p.quantization.mode == base_layer.QuantizationMode.INFERENCE:
-      self.create_quantized_variable('w', pc, [p.input_dim])
+      if p.is_output_projection:
+        self.create_quantized_variable('w', pc, [p.input_dim])
+      else:
+        self.create_quantized_variable('w', pc, hd_shape)
     else:
       self.create_variable('w', pc)
     if p.use_bias:
