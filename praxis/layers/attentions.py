@@ -229,7 +229,7 @@ def _convert_to_block(x, block_size: int, padding_val: float = 0.0) -> JTensor:
   if block_size < 1:
     raise ValueError('block_size must be at least 1, got {}'.format(block_size))
   w = block_size
-  # Pad t to be a multiply of w.
+  # Pad it to be a multipe of w.
   num_blocks = (t + w - 1) // w
   pad_length = num_blocks * w - t
 
@@ -276,7 +276,7 @@ def _extract_block_context(x: JTensor,
   block = _convert_to_block(x, block_size, padding_val)
   concat_list = [block]
 
-  # Creats one block filled with padding values.
+  # Creates one block filled with padding values.
   pad_block = jnp.full(block[:, :1].shape, padding_val, dtype=block.dtype)
   if left_context > 1:
     left_block = jnp.concatenate([pad_block, block[:, :-1]], axis=1)
@@ -377,7 +377,7 @@ class PerDimScale(base_layer.BaseLayer):
       inputs: A JTensor with shape [..., p.dim].
 
     Returns:
-      outpus: A JTensor with shape [..., p.dim].
+      outputs: A JTensor with shape [..., p.dim].
     """
     p = self.hparams
     inputs_shape = inputs.shape
@@ -1149,7 +1149,7 @@ class DotProductAttention(base_layer.BaseLayer):
     """Compute log softmax with extra logit.
 
     self.hparams.attention_extra_logit is a user defined float value that
-    helps to stablize logit values so that they don't drift too much from it.
+    helps to stabilize logit values so that they don't drift too much from it.
 
     Args:
       logits: input logit tensor
@@ -1646,10 +1646,10 @@ class DotProductAttention(base_layer.BaseLayer):
 # Args:
 #   layer: a layer.
 #   args: args with a batch dimension
-#   args_to_slice: batched args, but need to be siced on the time dim for the
+#   args_to_slice: batched args, but need to be sliced on the time dim for the
 #     chunk.
 #   broadcast_args_to_slice: args to be shared by all the batch samples, which
-#     need to be siced on the time dim for the chunk.
+#     need to be sliced on the time dim for the chunk.
 #   states: a list of chunks for useful decoding states.
 FnOnDecodeStateChunk = Callable[[
     base_layer
