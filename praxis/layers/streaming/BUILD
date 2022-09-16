@@ -29,6 +29,7 @@ pytype_strict_library(
     srcs = ["__init__.py"],
     srcs_version = "PY3",
     deps = [
+        ":attentions",
         ":convolutions",
         ":streaming_base",
     ],
@@ -91,14 +92,45 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
-        # Implicit lingvo.core.cluster_factory dependency.
-        # Implicit lingvo.core.conformer_layer dependency.
-        # Implicit core.conv_layers_with_time_padding dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:test_utils",
         "//praxis/layers:convolutions",
-        # Implicit tensorflow_no_contrib dependency.
+    ],
+)
+
+pytype_strict_library(
+    name = "attentions",
+    srcs = ["attentions.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":streaming_base",
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
+        "//praxis/layers:attentions",
+    ],
+)
+
+py_strict_test(
+    name = "attentions_test",
+    srcs = ["attentions_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        ":operations",
+        ":streaming",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        "//praxis/layers:attentions",
     ],
 )

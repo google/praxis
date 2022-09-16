@@ -54,7 +54,7 @@ class StreamingBase(base_layer.BaseLayer):
   def stride(self) -> int:
     return self.get_stride(self.hparams)
 
-  def init_states(self, batch_size: int, with_paddings: Optional[bool] = True):
+  def init_states(self, batch_size: int, with_paddings: bool = True):
     """Creates streaming states in base_layer.DECODE_CACHE.
 
     It will use _update_streaming_state() for states creation.
