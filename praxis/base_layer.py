@@ -1505,7 +1505,7 @@ class BaseLayer(
   def create_variable(self,
                       name: str,
                       var_hparams: WeightHParams,
-                      trainable: bool = True) -> None:
+                      trainable: bool = True) -> Any:
     """Create a variable of this layer according to the parameter `var_hparams`.
 
     E.g.::
@@ -1518,6 +1518,9 @@ class BaseLayer(
       name: Variable name which is used as the key into vars/theta.
       var_hparams: WeightHParams used to create the variable.
       trainable: whether or not this param is trainable.
+
+    Returns:
+      The newly created variable.
     """
     p = self.hparams
 
@@ -1570,6 +1573,7 @@ class BaseLayer(
       self.param(name, _initializer_fn)
       # Add var to the private theta name set for checks.
       self._theta.add(name)
+      return getattr(self.theta, name)
     else:
 
       def _initializer_fn():
@@ -1581,9 +1585,10 @@ class BaseLayer(
 
       # Non-trainable variables go into Flax nontrainable var collection.
       self.variable(NON_TRAINABLE, name, _initializer_fn)
+      return self.get_var(name)
 
   @nn.nowrap
-  def create_child(self, name: str, params: BaseLayer.HParams) -> None:
+  def create_child(self, name: str, params: BaseLayer.HParams) -> BaseLayer:
     """Creates a sub layer.
 
     The created sub layer can be accessed by `name`. E.g.::
@@ -1597,6 +1602,9 @@ class BaseLayer(
     Args:
       name: Sub layer name which is used as the key into vars/theta.
       params: `Hyperparams` object to instantiate a layer.
+
+    Returns:
+      The created sub layer, or makes the sub layer an assess of this layer.
     """
     conflict = False
     if name in {field.name for field in dataclasses.fields(self.hparams)}:
@@ -1611,11 +1619,14 @@ class BaseLayer(
     child = instantiate_layer(p, self.scope.root)
     self._private_children[p.name] = child
     layer_utils.LayerRegistry().add_layer(p.name, self, conflict=conflict)
-    setattr(self, p.name, child)
+    if self._state.in_setup:
+      setattr(self, p.name, child)
+    return child
 
   @nn.nowrap
-  def create_children(self, name: str,
-                      params: Sequence[BaseLayer.HParams]) -> None:
+  def create_children(
+      self, name: str,
+      params: Sequence[BaseLayer.HParams]) -> Sequence[BaseLayer]:
     """Creates a list of sub layers.
 
     The created sub layer list can be accessed by `name`. E.g.::
@@ -1627,6 +1638,9 @@ class BaseLayer(
       name: The name for the sub layers, which is used as the key into
         vars/theta.
       params: a list of `Hyperparams` objects to create.
+
+    Returns:
+      The created sub layers, or makes the sub layers an assess of this layer.
     """
     params = NestedMap.FromNestedDict(params)
 
@@ -1648,7 +1662,10 @@ class BaseLayer(
                    self.__class__.__name__, name)
       conflict = True
     layer_utils.LayerRegistry().add_layer(name, self, conflict=conflict)
-    setattr(self, name, NestedMap(sub=params).Transform(_instantiate).sub)
+    children = NestedMap(sub=params).Transform(_instantiate).sub
+    if self._state.in_setup:
+      setattr(self, name, children)
+    return children
 
   @nn.nowrap
   def _cast_to_fprop_dtype(self, value: Any) -> Any:

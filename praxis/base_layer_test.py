@@ -15,10 +15,12 @@
 
 """Tests for base_layer."""
 
+from typing import Tuple, Union
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
+from flax import linen as nn
 from praxis import base_layer
 from praxis import test_utils
 
@@ -34,6 +36,43 @@ class Identity(base_layer.BaseLayer):
   def __call__(self, x):
     self.add_summary('debug', x, verbosity=SummaryVerbosity.DEBUG)
     self.add_summary('info', x, verbosity=SummaryVerbosity.INFO)
+    return x
+
+
+class AddBias(base_layer.BaseLayer):
+  """A layer that adds bias to an input tensor."""
+
+  @nn.compact
+  def __call__(self, x: base_layer.JTensor) -> base_layer.JTensor:
+    var_p = base_layer.WeightHParams(
+        shape=(x.shape[-1],), init=base_layer.WeightInit.Constant(0.))
+    b = self.create_variable('b', var_hparams=var_p, trainable=True)
+    x, b = self._cast_to_fprop_dtype((x, b))
+    return x + b
+
+
+class MultipleBiasLayer(base_layer.BaseLayer):
+  """A dummy layer that adds multiple biases to an input tensor."""
+
+  class HParams(base_layer.BaseLayer.HParams):
+    """Attributes for MultipleBiasLayer.
+
+    Attributes:
+      num_child: number of independent child AddBias layers to test.
+      num_children: number of children to be added into a self.create_children.
+    """
+    num_child: int = 0
+    num_children: int = 0
+
+  @nn.compact
+  def __call__(self, x: base_layer.JTensor) -> base_layer.JTensor:
+    p = self.hparams
+    b_p = AddBias.HParams()
+    for i in range(p.num_child):
+      x = self.create_child(f'child_{i}', b_p)(x)
+    layers = self.create_children('children', [b_p] * p.num_children)
+    for layer in layers:
+      x = layer(x)
     return x
 
 
@@ -124,6 +163,25 @@ class BaseLayerTest(test_utils.TestCase):
         base_layer.SummaryType.TEXT,
         base_layer.get_summary_base_type(
             base_layer.SummaryType.TEXT))
+
+  @parameterized.parameters((0, 2), (3, 0), (1, 4))
+  def test_layer_building_nn_compact(self, num_child: int, num_children: int):
+    x = jnp.array([[0., 1.], [2., 3.]], dtype=jnp.float32)
+
+    p = MultipleBiasLayer.HParams()
+    p.name = 'multi_bias'
+    p.num_child = num_child
+    p.num_children = num_children
+    layer = base_layer.instantiate(p)
+
+    with base_layer.JaxContext.new_context():
+      params = layer.init(jax.random.PRNGKey(0), x)
+
+    flattened_params, _ = jax.tree_util.tree_flatten(params)
+    self.assertLen(flattened_params, num_children + num_child)
+
+    y = layer.apply(params, x)
+    self.assertAllClose(x, y)
 
 
 if __name__ == '__main__':
