@@ -20,7 +20,7 @@ import dataclasses
 import functools
 import re
 import time
-from typing import Any, Callable, Iterable, Iterator, Mapping, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Sequence, Union
 
 from absl import flags
 from absl import logging
@@ -729,13 +729,30 @@ def get_provenance_fields(batch: NestedMap) -> NestedMap:
   return batch.FilterKeyVal(lambda k, _: k.startswith(PROVENANCE_PREFIX))
 
 
-def get_enumeration_id(example: Mapping[str, Any]) -> Optional[str]:
-  """Build enumeration ID string from example map's enumeration fields."""
+def get_enumeration_id(example: Dict[str, Any],
+                       pop: bool = False) -> Optional[str]:
+  """Build enumeration ID string from example map's enumeration fields.
+
+  Args:
+    example: a mapping between field names and an item, which is typically an
+      array.
+    pop: whether or not to modify the input 'example' in-place and pop
+      enumeration related fields.
+
+  Returns:
+    a string represending the enumeration ID which should be globally unique
+      within a given dataset. If enum fields DNE in example, returns None.
+  """
   if not all(k in example for k in (
       INDEX_WITHIN_SHARD_KEY, SHARD_INDEX_KEY, NUM_SHARDS_KEY)):
     return
 
+  if pop:
+    get_fn = lambda ex, key: int(ex.pop(key))
+  else:
+    get_fn = lambda ex, key: int(ex[key])
+
   return (
-      f'{INDEX_WITHIN_SHARD_KEY}={int(example[INDEX_WITHIN_SHARD_KEY])}/'
-      f'{SHARD_INDEX_KEY}={int(example[SHARD_INDEX_KEY])}/'
-      f'{NUM_SHARDS_KEY}={int(example[NUM_SHARDS_KEY])}')
+      f'{INDEX_WITHIN_SHARD_KEY}={get_fn(example, INDEX_WITHIN_SHARD_KEY)}/'
+      f'{SHARD_INDEX_KEY}={get_fn(example, SHARD_INDEX_KEY)}/'
+      f'{NUM_SHARDS_KEY}={get_fn(example, NUM_SHARDS_KEY)}')
