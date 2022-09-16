@@ -225,6 +225,9 @@ class _AdamOptState:
 class _ShardedAdamHelper:
   """A helper class facilitates the creation of sharded_adam_optimizer."""
 
+  def __init__(self, maybe_inf_to_nan: bool = True):
+    self._maybe_inf_to_nan = maybe_inf_to_nan
+
   def opt_state_sharding_spec(self,
                               var_hparams: WeightHParams) -> _AdamOptState:
     """Returns optimizer sharding spec for one particular variable."""
@@ -240,10 +243,11 @@ class _ShardedAdamHelper:
     return _AdamOptState(
         m=jnp.zeros_like(var_hparams), v=jnp.zeros_like(var_hparams))
 
-  def sanitize_values(self, array: JTensor, replacement: float = 0.0):
-    """Sanitizes NaN and Infinity values."""
-    return jnp.nan_to_num(
-        array, nan=replacement, posinf=replacement, neginf=replacement)
+  def inf_to_nan(self, array: JTensor):
+    """Converting Infinity values to the more sticky NaN."""
+    if not self._maybe_inf_to_nan:
+      return array
+    return jnp.nan_to_num(array, nan=jnp.nan, posinf=jnp.nan, neginf=jnp.nan)
 
   def bias_corrected_decay(self, step: JTensor, decay: float) -> JTensor:
     """Incorporates bias correction into decay.
@@ -279,7 +283,7 @@ class _ShardedAdamHelper:
     return _AdamOptState(m=m, v=v)
 
   def clip_update(self, update: JTensor, clip_threshold: float) -> JTensor:
-    mean_update = self.sanitize_values(reduce_rms(update), 1.0)
+    mean_update = self.inf_to_nan(reduce_rms(update))
     clip_threshold = jnp.array(clip_threshold, dtype=update.dtype)
     denom = jnp.maximum(1.0, mean_update / clip_threshold)
     return update / denom
@@ -529,9 +533,15 @@ def apply_decoupled_weight_decay(
       init_partition_spec=count_init_partition_spec_fn)
 
 
-def sharded_adam(learning_rate_fn: optax.Schedule, beta1: float, beta2: float,
-                 epsilon: float, epsilon_root: float, update_capping: float,
-                 weight_decay: float) -> ShardedGradientTransformation:
+def sharded_adam(
+    learning_rate_fn: optax.Schedule,
+    beta1: float,
+    beta2: float,
+    epsilon: float,
+    epsilon_root: float,
+    update_capping: float,
+    weight_decay: float,
+    maybe_inf_to_nan: bool = True) -> ShardedGradientTransformation:
   """Standard Adam optimizer that also supports sharding.
 
   This Adam optimizer supports optional update capping when update_capping is >
@@ -550,11 +560,12 @@ def sharded_adam(learning_rate_fn: optax.Schedule, beta1: float, beta2: float,
       root to avoid dividing by zero when rescaling.
     update_capping: If > 0, cap mean update to at most this value.
     weight_decay: If > 0, weight decay to apply.
+    maybe_inf_to_nan: Will use jax.nan_to_num during update when True
 
   Returns:
     A `ShardedGradientTransformation`.
   """
-  helper = _ShardedAdamHelper()
+  helper = _ShardedAdamHelper(maybe_inf_to_nan=maybe_inf_to_nan)
 
   def init_fn(mdl_vars):
     slot_vars = jax.tree_map(helper.init_opt_state, mdl_vars)
@@ -578,7 +589,7 @@ def sharded_adam(learning_rate_fn: optax.Schedule, beta1: float, beta2: float,
     # Sanitize updates just in case.
     if weight_decay > 0:
       assert params is not None
-    updates = jax.tree_map(helper.sanitize_values, updates)
+    updates = jax.tree_map(helper.inf_to_nan, updates)
     count = state.count
 
     def _update_momentum(g, m, v):
@@ -661,7 +672,7 @@ def sharded_hero_lion(learning_rate_fn: optax.Schedule,
     # Sanitize updates just in case.
     if weight_decay > 0:
       assert params is not None
-    updates = jax.tree_map(helper.sanitize_values, updates)
+    updates = jax.tree_map(helper.inf_to_nan, updates)
     count = state.count
 
     m_casted = jax.tree_map(lambda u, x: x.astype(u.dtype), updates, state.m)
@@ -973,6 +984,7 @@ class Adam(BaseOptimizer):
       clip_threshold: An optional float to clip raw adam updates to.
       weight_decay: Decoupled weight decay to apply.
       sharded_adam: whether or not to use sharded_adam
+      maybe_inf_to_nan: Will use jax.nan_to_num during update when True.
     """
     beta1: float = 0.9
     beta2: float = 0.999
@@ -981,6 +993,7 @@ class Adam(BaseOptimizer):
     clip_threshold: float = 1.0
     weight_decay: float = 0.0
     sharded_adam: bool = True
+    maybe_inf_to_nan: bool = True
 
   @classmethod
   def HParamsA(cls) -> Adam.HParams:  # pylint: disable=invalid-name
@@ -1004,7 +1017,8 @@ class Adam(BaseOptimizer):
           epsilon=p.epsilon,
           epsilon_root=p.epsilon_root,
           update_capping=p.clip_threshold,
-          weight_decay=p.weight_decay)
+          weight_decay=p.weight_decay,
+          maybe_inf_to_nan=p.maybe_inf_to_nan)
     else:
       logging.info('Using optax.adam.')
       return optax.adam(
@@ -1666,7 +1680,7 @@ class _ShardedAdafactorHelper:
       min_dim_size_to_factor: int,
       multiply_by_parameter_scale: bool,
       epsilon2_param_scale_reg: float,
-      sanitize_values: bool) -> None:
+      maybe_inf_to_nan: bool) -> None:
     """Constructor. See ShardedAdafactor() below."""
     self._learning_rate_fn = learning_rate_fn
     self._weight_decay = weight_decay
@@ -1685,7 +1699,7 @@ class _ShardedAdafactorHelper:
     self._min_dim_size_to_factor = min_dim_size_to_factor
     self._multiply_by_parameter_scale = multiply_by_parameter_scale
     self._epsilon2 = epsilon2_param_scale_reg
-    self._sanitize_values = sanitize_values
+    self._maybe_inf_to_nan = maybe_inf_to_nan
 
   def should_use_factored_second_moment_estimate(self, shape):
     """Should we use a factored second moment estimator.
@@ -1906,12 +1920,14 @@ class _ShardedAdafactorHelper:
         vc=output_vc,
         v=output_v)
 
-  def sanitize_values(self, array, replacement=0.):
-    """Sanitizes NaN and Infinity values."""
-    if not self._sanitize_values:
+  def inf_to_nan(self, array):
+    """Converting Infinity values to the more sticky NaN."""
+    # For example, when we have y = 1.0 / x in code and x == inf, y will become
+    # 0. Therefore the infinite value of x is hidden in the calculation,
+    # leading to silent omission of numerical issues.
+    if not self._maybe_inf_to_nan:
       return array
-    return jnp.nan_to_num(
-        array, nan=replacement, posinf=replacement, neginf=replacement)
+    return jnp.nan_to_num(array, nan=jnp.nan, posinf=jnp.nan, neginf=jnp.nan)
 
   def parameter_scale(self, var):
     """Estimate the scale of the parameters from the current values.
@@ -1934,12 +1950,21 @@ class _ShardedAdafactorHelper:
                                   param, var_name):
     """Computes the var and optimizer slots updates for a single variable."""
     # We can probably skip this step
-    grad = self.sanitize_values(grad)
+    grad = self.inf_to_nan(grad)
     grad = grad.astype(jnp.float32)
+    grad_squared = jnp.square(grad)
+
+    if self._per_var_learning_summary:
+      grad_num_elements = jnp.array(grad.size, dtype=grad.dtype)
+      num_zeros_in_grad = jnp.sum(grad_squared < 0.01 * self._epsilon1) * 1.0
+      fraction_zero_grad = num_zeros_in_grad / grad_num_elements
+      base_layer.add_global_summary(f'fraction_zero_grad/{var_name}',
+                                    fraction_zero_grad)
+
     # Add epsilon1_grad_sq_reg as per Algorithm 4
     # of https://arxiv.org/pdf/1804.04235.pdf
-    grad_squared = jnp.square(grad) + self._epsilon1
-    grad_squared_mean = self.sanitize_values(reduce_mean(grad_squared))
+    grad_squared += self._epsilon1
+    grad_squared_mean = self.inf_to_nan(reduce_mean(grad_squared))
     if self._decay_method == 'adam':
       assert self._decay_adam > 0
       decay_rate = adafactor_decay_rate_adam(self._decay_adam, count)
@@ -1988,9 +2013,9 @@ class _ShardedAdafactorHelper:
       # Q(shafey): Should we use the more numerically stable version
       # reduce_mean().
       vr_axis, vc_axis = factored_second_moment_dims
-      grad_squared_row_mean = self.sanitize_values(
+      grad_squared_row_mean = self.inf_to_nan(
           jnp.mean(grad_squared, axis=vr_axis))
-      grad_squared_col_mean = self.sanitize_values(
+      grad_squared_col_mean = self.inf_to_nan(
           jnp.mean(grad_squared, axis=vc_axis))
       new_vr = decay_rate * vr + mixing_rate * grad_squared_row_mean
       new_vc = decay_rate * vc + mixing_rate * grad_squared_col_mean
@@ -2015,7 +2040,7 @@ class _ShardedAdafactorHelper:
 
     if self._clipping_threshold is not None:
       clipping_denom = jnp.maximum(1., reduce_rms(x) / self._clipping_threshold)
-      clipping_denom = self.sanitize_values(clipping_denom, replacement=1.)
+      clipping_denom = self.inf_to_nan(clipping_denom)
       x /= clipping_denom
       if self._per_var_learning_summary:
         # Add summary for this var.
@@ -2037,7 +2062,7 @@ class _ShardedAdafactorHelper:
         m_init_dtype = m.dtype
         m = to_float(m, m_scale)
       subtrahend = self._beta1 * m + (1. - self._beta1) * subtrahend
-      subtrahend = self.sanitize_values(subtrahend)
+      subtrahend = self.inf_to_nan(subtrahend)
       if self._quantized_dtype == jnp.bfloat16:
         new_m = subtrahend.astype(jnp.bfloat16)
         output_m = new_m
@@ -2094,7 +2119,7 @@ def sharded_adafactor(
     min_dim_size_to_factor: int = 128,
     multiply_by_parameter_scale: bool = False,
     epsilon2_param_scale_reg: float = 1e-3,
-    sanitize_values: bool = True,
+    maybe_inf_to_nan: bool = True,
 ) -> ShardedGradientTransformation:
   """AdaFactor optimizer that supports SPMD sharding.
 
@@ -2152,7 +2177,7 @@ def sharded_adafactor(
       size. NOTE: False by default.
     epsilon2_param_scale_reg: Regularization constant for parameter scale. Only
       used when multiply_by_parameter_scale is True.
-    sanitize_values: Will use jax.nan_to_num during update when True.
+    maybe_inf_to_nan: Will use jax.nan_to_num during update when True.
   Returns:
     A `ShardedGradientTransformation`.
   """
@@ -2183,7 +2208,7 @@ def sharded_adafactor(
       min_dim_size_to_factor=min_dim_size_to_factor,
       multiply_by_parameter_scale=multiply_by_parameter_scale,
       epsilon2_param_scale_reg=epsilon2_param_scale_reg,
-      sanitize_values=sanitize_values)
+      maybe_inf_to_nan=maybe_inf_to_nan)
 
   def init_fn(params):
     """Initializes the optimizer's state."""
@@ -2270,7 +2295,7 @@ class ShardedAdafactor(BaseOptimizer):
       multiply_by_parameter_scale: If True, then scale learning_rate by
         parameter norm. if False, provided learning_rate is absolute step size.
       epsilon2_param_scale_reg: Regularization constant for parameter scale.
-      sanitize_values: Will use jax.nan_to_num during update when True.
+      maybe_inf_to_nan: Will use jax.nan_to_num during update when True.
     """
     weight_decay: Optional[float] = None
     layerwise_adaptation: bool = False
@@ -2288,7 +2313,7 @@ class ShardedAdafactor(BaseOptimizer):
     min_dim_size_to_factor: int = 128
     multiply_by_parameter_scale: bool = False
     epsilon2_param_scale_reg: float = 1e-3
-    sanitize_values: bool = True
+    maybe_inf_to_nan: bool = True
 
   @classmethod
   def HParamsAdamB(cls) -> ShardedAdafactor.HParams:  # pylint: disable=invalid-name
@@ -2317,7 +2342,7 @@ class ShardedAdafactor(BaseOptimizer):
         min_dim_size_to_factor=p.min_dim_size_to_factor,
         multiply_by_parameter_scale=p.multiply_by_parameter_scale,
         epsilon2_param_scale_reg=p.epsilon2_param_scale_reg,
-        sanitize_values=p.sanitize_values)
+        maybe_inf_to_nan=p.maybe_inf_to_nan)
 
 
 def dynamic_accumulation(
