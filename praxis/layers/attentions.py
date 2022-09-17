@@ -1187,7 +1187,7 @@ class DotProductAttention(base_layer.BaseLayer):
       query: JTensor of shape [B, T, N, H].
       key: JTensor of shape [B, S, N, H].
       value: JTensor of shape [B, S, N, H].
-      atten_mask: JTensor of shape [1/B, 1, 1/T, S] which is a mask that is
+      atten_mask: JTensor of shape [1|B, 1, 1|T, S] which is a mask that is
         applied to prevent attention between unwanted pairs. This has already
         been converted into large negative logits. Note that the first and third
         dimension allow size 1 if the mask is shared by every item in the batch
@@ -1215,12 +1215,12 @@ class DotProductAttention(base_layer.BaseLayer):
     # [1, 1, T, S]
     base_layer.assert_has_shape(atten_mask, [-1, 1, -1, s])
     assert atten_mask.shape[2] in [1, t]
-    
+
     # The following assertion is disabled for jax2tf compatibility.  In the
     # future it might make sense to support assertions that can be disabled
     # when running jax2tf.
     # assert atten_mask.shape[0] in [1, b]
-    
+
     query = self._scale_query(query)
     logits = self._atten_logits(query, key)
     if relative_bias is not None:
@@ -1264,12 +1264,12 @@ class DotProductAttention(base_layer.BaseLayer):
       query: JTensor of shape [B, N, H].
       key_state_name: Name of the decoding key state variable.
       value_state_name: Name of the decoding value state variable.
-      atten_mask: JTensor of shape [1/B, 1, S] which is a mask that is applied
+      atten_mask: JTensor of shape [1|B, 1, S] which is a mask that is applied
         to prevent attention between unwanted pairs. This has already been
         converted into large negative logits. The first dimension is allowed to
         be of size 1, if the mask is shared by all items in the batch (e.g.,
         only a causal mask).
-      relative_bias: Relative bias of shape [1/B, N, 1, S].
+      relative_bias: Relative bias of shape [1|B, N, 1, S].
 
     Returns:
       encoded: JTensor of shape [B, N, H].
@@ -1335,7 +1335,7 @@ class DotProductAttention(base_layer.BaseLayer):
       query_vec: JTensor of shape [B, T, D].
       key_vec: JTensor of shape [B, S, D].
       value_vec: JTensor of shape [B, S, D].
-      atten_mask: JTensor of shape [1/B/b, 1, 1/T, S] which is a mask that is
+      atten_mask: JTensor of shape [1|b|B, 1, 1|T, S] which is a mask that is
         applied to prevent attention between unwanted pairs. This has already
         been converted into large negative logits. Note that the first and third
         dimension allow size 1 if the mask is shared by every item in the batch
@@ -1487,7 +1487,7 @@ class DotProductAttention(base_layer.BaseLayer):
     Args:
       query_vec: JTensor of shape [B, D] corresponding to query vector at index
         time_step.
-      atten_mask: JTensor of shape [B/1/b, 1, S]. atten_mask should have already
+      atten_mask: JTensor of shape [1|b|B, 1, S]. atten_mask should have already
         taken care of causal masking for decoding, plus other maskings
         necessary.
       time_step: A scalar or JTensor. Current time-step, 0-based.
@@ -1957,12 +1957,12 @@ class DotProductAttentionWithLPB(DotProductAttention):
       query: JTensor of shape [B, ..., N, H].
       key_state_name: Name of the decoding key state variable.
       value_state_name: Name of the decoding value state variable.
-      atten_mask: JTensor of shape [1/B, 1, S] which is a mask that is applied
+      atten_mask: JTensor of shape [1|B, 1, S] which is a mask that is applied
         to prevent attention between unwanted pairs. This has already been
         converted into large negative logits. The first dimension is allowed to
         be of size 1, if the mask is shared by all items in the batch (e.g.,
         only a causal mask).
-      relative_bias: Relative bias of shape [1/B, N, 1, S].
+      relative_bias: Relative bias of shape [1|B, N, 1, S].
 
     Returns:
       encoded: JTensor of shape [B, ..., N, H].
@@ -2074,7 +2074,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
     Args:
       query_vec: JTensor of shape [B, D] corresponding to query vector at index
         time_step.
-      atten_mask: JTensor of shape [B/1, 1, S]. atten_mask should have already
+      atten_mask: JTensor of shape [1|B, 1, S]. atten_mask should have already
         taken care of causal masking for decoding, plus other maskings
         necessary.
       time_step: A scalar or JTensor. Current time-step, 0-based.
@@ -2491,7 +2491,7 @@ class LocalSelfAttention(DotProductAttention):
       query: JTensor of shape [B, T, N, H].
       key: JTensor of shape [B, S, N, H].
       value: JTensor of shape [B, S, N, H].
-      atten_mask: JTensor of shape [1/B, 1, 1/T, S] which is a mask that is
+      atten_mask: JTensor of shape [1|B, 1, 1|T, S] which is a mask that is
         applied to prevent attention between unwanted pairs. This has already
         been converted into large negative logits. Note that the first and third
         dimension allow size 1 if the mask is shared by every item in the batch
@@ -2541,7 +2541,7 @@ class LocalSelfAttention(DotProductAttention):
     minus_inf = py_utils.get_large_negative_number(jnp.float32)
 
     if atten_mask.shape[2] == 1:
-      # Attention mask with shape [1/B, 1, 1, S]
+      # Attention mask with shape [1|B, 1, 1, S]
       # For example, generated by convert_paddings_to_mask
 
       mask = atten_mask[:, 0, 0, :]

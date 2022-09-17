@@ -84,9 +84,9 @@ def compute_attention_masks_for_fprop(
 
   Returns:
     attention_mask: Attention mask JTensor ready to add to logits for self
-      attention of shape [B/1, 1, T/1, T].
+      attention of shape [1|B, 1, 1|T, T].
     cross_attention_mask: Attention mask ready to add to logits for cross
-      attention of shape [B/1, 1, T/1, S]. This will be None if cross_inputs
+      attention of shape [1|B, 1, 1|T, S]. This will be None if cross_inputs
       are None.
   """
   if fold_padding_with_segment_mask:
@@ -145,9 +145,9 @@ def compute_attention_masks_for_extend_step(
 
   Returns:
     attention_mask: Attention mask JTensor ready to add to logits for self
-      attention of shape [B/1, 1, 1, T].
+      attention of shape [1|B, 1, 1, T].
     cross_attention_mask: Attention mask JTensor ready to add to logits for
-      cross attention of shape [B/1, 1, 1, S]. This will be None if
+      cross attention of shape [1|B, 1, 1, S]. This will be None if
       cross_paddings are None.
   """
   # Create a broadcast friendly version of time step of shape [1, 1]
@@ -159,7 +159,7 @@ def compute_attention_masks_for_extend_step(
   causal_padding = jnp.greater(
       jnp.expand_dims(jnp.arange(seq_len), 0), batch_time_step)
 
-  # Create attention mask from padding of shape [1/B, 1, T]
+  # Create attention mask from padding of shape [1|B, 1, T]
   attention_mask = jnp.squeeze(
       attentions.convert_paddings_to_mask(causal_padding), axis=1)
 
@@ -214,7 +214,7 @@ def _get_sentence_embeddings(inputs: JTensor, segment_ids: JTensor) -> JTensor:
   num_elements_per_segment = jax.ops.segment_sum(
       jnp.ones_like(segment_ids), segment_ids, num_segments=max_segments)
 
-  #segment_mean shape: [max_segments, D]
+  # segment_mean shape: [max_segments, D]
   segment_mean = segment_sum / jnp.maximum(
       num_elements_per_segment[:, jnp.newaxis], 1)
   # Sentence embedding contains the average of the input tensor per segment.
@@ -1207,13 +1207,13 @@ class Transformer(base_layer.BaseLayer):
       inputs: Input sequence JTensor of shape [B, T, H].
       paddings: Input paddings JTensor of shape [B, T] (only used in FFN layer).
       attention_mask: Self attention mask ready to add to the logits. It can be
-        of shape [B/1, 1, T/1, T] which is broadcast compatible with the self
+        of shape [1|B, 1, 1|T, T] which is broadcast compatible with the self
         attention matrix of shape [B, N, T, T]. This is assumed to have combined
         paddings, causal masking as well as segment maskings.
       cross_inputs: Output of the encoder, to be used for cross attention, of
         shape [B, S, H].
       cross_attention_mask: Cross attention mask ready to add to the logits. It
-        can be of shape [B/1, 1, T/1, S] which is broadcast compatible with the
+        can be of shape [1|B, 1, 1|T, S] which is broadcast compatible with the
         cross attention matrix of shape [B, N, T, T]. This is assumed to have
         combined paddings as well as segment maskings.
       segment_pos: A JTensor of shape [B, T]. The position of each token in a
@@ -1327,7 +1327,7 @@ class Transformer(base_layer.BaseLayer):
       segment_pos: An optional JTensor of shape [B]. Current position in the
         same segment. If unspecified, time_step will be used.
       cross_attention_mask: if not None, cross_segment_mask for this time step,
-        of shape [b/B, 1, 1, S]. This combines padding mask with any segment
+        of shape [b|B, 1, 1, S]. This combines padding mask with any segment
         mask if applicable.
 
     Returns:
@@ -1615,9 +1615,9 @@ class StackedTransformer(base_layer.BaseLayer):
       time_step: A scalar, the current decode step, 0-based.
       segment_pos: An optional JTensor of shape [B]. Current position in the
         same segment. If unspecified, time_step will be used.
-      cross_paddings: Source paddings - [b/B, S].
+      cross_paddings: Source paddings - [b|B, S].
       cross_segment_mask: if not None, cross_segment_mask for this time step, of
-        shape [b/B, 1, S].
+        shape [b|B, 1, S].
 
     Returns:
       decoder_output: The last decoder layer output of shape [B, D].
@@ -1799,9 +1799,9 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
       time_step: A scalar, the current decode step, 0-based.
       segment_pos: An optional JTensor of shape [B]. Current position in the
         same segment. If unspecified, time_step will be used.
-      cross_paddings: Source paddings - [b/B, S].
+      cross_paddings: Source paddings - [b|B, S].
       cross_segment_mask: if not None, cross_segment_mask for this time step, of
-        shape [b/B, 1, S].
+        shape [b|B, 1, S].
 
     Returns:
       decoder_output: The last decoder layer output of shape [B, D].
