@@ -124,7 +124,7 @@ class FRNNTest(test_utils.TestCase):
     act_in, padding, m0, c0 = self._get_test_inputs()
     stack_frnn_model = instantiate(stack_frnn_p)
 
-    state0 = [NestedMap(m=m0.clone(), c=c0.clone()) for _ in range(num_layers)]
+    state0 = [NestedMap(m=jnp.copy(m0), c=jnp.copy(c0)) for _ in range(num_layers)]
     inputs = NestedMap(act=act_in, padding=padding)
     with base_layer.JaxContext.new_context():
       theta = stack_frnn_model.init(
@@ -139,7 +139,7 @@ class FRNNTest(test_utils.TestCase):
       cell_p.num_output_nodes = output_dim
       frnn_p = frnn.LstmFrnn.HParams(name='frnn', cell=cell_p)
       frnn_model = instantiate(frnn_p)
-      state0 = NestedMap(m=m0.clone(), c=c0.clone())
+      state0 = NestedMap(m=jnp.copy(m0), c=jnp.copy(c0))
 
       rnn_theta = {'params': {'cell': theta['params']['frnn_%d' % ii]['cell']}}
       with base_layer.JaxContext.new_context():
@@ -179,7 +179,7 @@ class FRNNTest(test_utils.TestCase):
     stack_frnn_model = instantiate(stack_frnn_p)
     stack_lstm_model = instantiate(stack_lstm_p)
 
-    state0 = [NestedMap(m=m0.clone(), c=c0.clone()) for _ in range(num_layers)]
+    state0 = [NestedMap(m=jnp.copy(m0), c=jnp.copy(c0)) for _ in range(num_layers)]
     inputs = NestedMap(act=act_in, padding=padding)
     with base_layer.JaxContext.new_context():
       theta = stack_frnn_model.init(
