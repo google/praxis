@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """Tests for layer_utils."""
+import os
 
 from absl.testing import absltest
 
@@ -43,14 +44,16 @@ class LayerUtilsTest(test_utils.TestCase):
     for key, layer_info in layer_utils.LayerRegistry().get_registry().items():
       if 'barlayer' in key:
         self.assertTrue(layer_info.conflict)
-        self.assertEqual('Bar', layer_info.to_text())
+        expected = 'Bar\t' + os.path.basename(__file__) + ':27'
+        self.assertEqual(expected, layer_info.to_text())
       else:
         self.assertFalse(layer_info.conflict)
-        self.assertEqual('Foo', layer_info.to_text())
+        expected = 'Foo\t'
+        self.assertEqual(expected, layer_info.to_text())
 
     self.assertSameElements(
         list(layer_utils.LayerRegistry().get_registry().keys()),
-        ['barlayer : __main__', 'foolayer : __main__'])
+        ['barlayer : __main__', 'foolayer'])
 
 
 if __name__ == '__main__':

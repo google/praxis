@@ -21,7 +21,7 @@ global list of layer names etc. is being maintained.
 
 import dataclasses
 import inspect
-
+import re
 from typing import Any
 
 pax_layer_registry = {}
@@ -34,12 +34,16 @@ class LayerInfo:
   Attributes:
     layer: PAX layer.
     conflict: Boolean to indicate an hparam conflict.
+    file_info: File/linenumber information for where layer exists.
   """
   layer: Any
   conflict: bool = False
+  file_info: str = ''
 
-  def to_text(self) -> str:
-    return self.layer.__class__.__name__
+  def to_text(self, filename_normalization_regex: str = r'^.*/(.*)$') -> str:
+    file = re.sub(filename_normalization_regex, r'\1', self.file_info)
+    items = [self.layer.__class__.__name__, file]
+    return '\t'.join(items)
 
 
 class LayerRegistry:
@@ -53,8 +57,13 @@ class LayerRegistry:
       layer: the layer being created.
       conflict: the layer name has a conflict with an HParam attribute.
     """
-    key = name + ' : ' + inspect.getmodule(layer).__name__
-    layer_info = LayerInfo(layer=layer, conflict=conflict)
+    key = name
+    file_info = ''
+    if conflict:
+      key += ' : ' + inspect.getmodule(layer).__name__
+      location = inspect.getframeinfo(inspect.stack()[2][0])
+      file_info = f'{location.filename}:{location.lineno}'
+    layer_info = LayerInfo(layer=layer, conflict=conflict, file_info=file_info)
     pax_layer_registry[key] = layer_info
 
   def get_registry(self):
