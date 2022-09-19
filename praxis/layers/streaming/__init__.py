@@ -18,4 +18,5 @@
 from praxis.layers.streaming.attentions import LocalSelfAttention
 from praxis.layers.streaming.convolutions import DepthwiseConv1D
 from praxis.layers.streaming.convolutions import LightConv1D
+from praxis.layers.streaming.normalizations import GroupNorm
 from praxis.layers.streaming.streaming_base import StreamingBase

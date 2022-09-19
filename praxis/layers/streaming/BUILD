@@ -31,6 +31,7 @@ pytype_strict_library(
     deps = [
         ":attentions",
         ":convolutions",
+        ":normalizations",
         ":streaming_base",
     ],
 )
@@ -132,5 +133,40 @@ py_strict_test(
         "//praxis:py_utils",
         "//praxis:test_utils",
         "//praxis/layers:attentions",
+    ],
+)
+
+pytype_strict_library(
+    name = "normalizations",
+    srcs = ["normalizations.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":streaming_base",
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
+        "//praxis/layers:normalizations",
+    ],
+)
+
+py_strict_test(
+    name = "normalizations_test",
+    srcs = ["normalizations_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":normalizations",
+        ":operations",
+        ":streaming",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        "//praxis/layers:normalizations",
     ],
 )
