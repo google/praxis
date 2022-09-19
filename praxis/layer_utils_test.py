@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """Tests for layer_utils."""
+import inspect
 import os
 
 from absl.testing import absltest
@@ -40,11 +41,14 @@ class LayerUtilsTest(test_utils.TestCase):
 
     b = self.Bar()
     b.setup()
+    line_number = inspect.currentframe().f_lineno
+    # To get linenumber of b.setup()
+    line_number = line_number - 1
 
     for key, layer_info in layer_utils.LayerRegistry().get_registry().items():
       if 'barlayer' in key:
         self.assertTrue(layer_info.conflict)
-        expected = 'Bar\t' + os.path.basename(__file__) + ':27'
+        expected = 'Bar\t' + os.path.basename(__file__) + ':' + str(line_number)
         self.assertEqual(expected, layer_info.to_text())
       else:
         self.assertFalse(layer_info.conflict)
