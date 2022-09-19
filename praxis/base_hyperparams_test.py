@@ -24,6 +24,7 @@ from typing import Optional, List
 
 from absl.testing import absltest
 import fiddle as fdl
+# Internal config_dict import from ml_collections
 from praxis import base_hyperparams
 from praxis import base_layer
 
@@ -124,6 +125,7 @@ class HyperParamsTest(absltest.TestCase):
         e : 37
         """))
 
+  # Internal test test_config_dict_to_text
   def test_freeze_params(self):
     # pylint: disable=protected-access
     x = NestedTestClass.HParams(

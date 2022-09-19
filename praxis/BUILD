@@ -40,6 +40,7 @@ pytype_strict_library(
         # Implicit python proto dependency.
         # Implicit absl.logging dependency.
         # Implicit fiddle dependency.
+        # Implicit ml_collections config_dict dependency.
         # Implicit numpy dependency.
         # Implicit tensorflow_no_contrib dependency.
     ],
@@ -351,6 +352,7 @@ py_strict_test(
         ":base_layer",
         # Implicit absl.testing.absltest dependency.
         # Implicit fiddle dependency.
+        # Implicit ml_collections config_dict dependency.
     ],
 )
 

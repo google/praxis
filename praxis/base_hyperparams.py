@@ -28,6 +28,7 @@ from typing import Any, Callable, Optional, Tuple, Type, TypeVar, Union
 
 from absl import logging
 import fiddle as fdl
+# Internal config_dict import from ml_collections
 import numpy as np
 from praxis import py_utils
 import tensorflow.compat.v2 as tf
@@ -150,6 +151,7 @@ def visit_nested_struct(obj_to_visit: Any,
         exit_fn(key, val)
       else:
         visit_fn(key, val)
+    # Internal handle of type config_dict.ConfigDict in visit_nested_struct
     elif dataclasses.is_dataclass(val):
       if enter_fn(key, val):
         for f in dataclasses.fields(val):
@@ -248,12 +250,14 @@ def nested_struct_to_text(obj_to_visit: Any,
       return True
     elif isinstance(val, BaseHyperParams):
       return True
+    # Internal handle of type config_dict.ConfigDict in nested_struct_to_text
     elif (isinstance(val, (list, tuple)) and
           all(isinstance(x, HParams) for x in val)):
       return True
     elif (isinstance(val, (list, tuple)) and
           all(isinstance(x, BaseHyperParams) for x in val)):
       return True
+    # Internal handle of config_dict.ConfigDict sequence in nested_struct_to_text
     # TODO(jiahuiyu): Create single-direction DebugString for
     # List[(str, HParams)] pattern and remove redundancies.
     elif _is_str_param_pairs(val):
