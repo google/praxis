@@ -64,7 +64,7 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
         hidden_dims=exp_params.hidden_dim * 4,
         num_heads=exp_params.num_heads,
         mask_self_attention=False,
-        cross_attention=False,
+        use_cross_attention=False,
         packed_input=False,
         num_layers=exp_params.num_xformer_layers,
         dropout_prob=exp_params.atten_dropout_prob,
@@ -98,8 +98,7 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
     p_entry = self._vit_entry_layers(exp_params)
     entry = instantiate(p_entry)
 
-    inputs_np = np.random.normal(
-        size=(exp_params.batch_size,) + input_shapes)
+    inputs_np = np.random.normal(size=(exp_params.batch_size,) + input_shapes)
     inputs = jnp.asarray(inputs_np)
 
     with base_layer.JaxContext.new_context():

@@ -15,7 +15,6 @@
 
 """Helper function to config GLaM models."""
 
-
 from praxis.layers import activations
 from praxis.layers import attentions
 from praxis.layers import embedding_softmax
@@ -70,8 +69,7 @@ def GlamStackedTransformerHParams(
     name: Name of the this layer
     moe: If this is a moe block or not.
     moe_hidden_dim: hidden dimension of MoE layer.
-    moe_gating_embedding_level: Specifies the type of MOE gating embedding
-      used.
+    moe_gating_embedding_level: Specifies the type of MOE gating embedding used.
     ffn_activation_cls: Activation function class used in the ffn layer.
     use_gated_activation: Whether to use gated activation in the ffn layer or
       not.
@@ -111,7 +109,7 @@ def GlamStackedTransformerHParams(
   p.num_experts = e_dim
   p.num_groups = num_groups
   p.mask_self_attention = mask_self_attention
-  p.cross_attention = cross_attention
+  p.use_cross_attention = cross_attention
   # Attention setup
   p.transformer_layer_params_tpl.ln_tpl = normalizations.RmsNorm.HParams()
   p.transformer_layer_params_tpl.ln_tpl.direct_scale = True
@@ -221,8 +219,7 @@ def GlamUniTransformerLmHParams(
     name: Name of the this layer
     moe: If this is a moe block or not.
     moe_hidden_dim: hidden dimension of MoE layer.
-    moe_gating_embedding_level: Specifies the type of MOE gating embedding
-      used.
+    moe_gating_embedding_level: Specifies the type of MOE gating embedding used.
     ffn_activation_cls: Activation function class used in the ffn layer.
     use_gated_activation: Whether to use gated activation in the ffn layer or
       not.

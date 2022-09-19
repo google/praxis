@@ -258,8 +258,8 @@ class TransformerFeedForward(base_layer.BaseLayer):
         path.
       norm_policy: Policy for applying normaliztion wrt. transformations.
         Options are: (1) "pre", applied before transformation. (2)
-          "primer_hybrid", applied before and after transformation. (3) "post",
-          applied after transformation.
+        "primer_hybrid", applied before and after transformation. (3) "post",
+        applied after transformation.
       internal_gshard_variance_scaling_fan_in_init: Feedforward weight init
         follows uniform distribution withbound = 1.0 / sqrt(3 / dim_0).
     """
@@ -498,15 +498,15 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
         add_skip_connection is True.
       norm_policy: Policy for applying normaliztion wrt. transformations.
         Options are: (1) "pre", applied before transformation. (2)
-          "primer_hybrid", applied before and after transformation. (3) "post",
-          applied after transformation.
+        "primer_hybrid", applied before and after transformation. (3) "post",
+        applied after transformation.
       residual_droppath_prob: Probability at which we drop the entire residual
         path.
       gating_func: Gating function type--can be one of the following options:
         'top2', based on the GShard paper: https://arxiv.org/abs/2006.16668,
         'expert_choice', based on https://arxiv.org/abs/2202.09368,
         'dense_top2': experimental gating function for decodiing. Similar to
-          'top2' gating, but no capacity constrainst for each expert.
+        'top2' gating, but no capacity constrainst for each expert.
       num_experts: Total number of experts in this layer.
       num_groups: Total number of groups for dispatching. num_groups typically
         should be the same as num devices.
@@ -519,8 +519,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
         and all routing groups. If the global batch size is G*S (num_groups*
         group_size) or B*L(batch*length) and the total expert capacity across
         all routing groups is E*G*C (num_experts*num_groups*expert_capacity),
-        then
-          unadjusted_expert_capacity_factor == (E*G*C)/(G*S)
+        then unadjusted_expert_capacity_factor == (E*G*C)/(G*S)
         unadjusted_expert_capacity_factor is set to 2 by default for top-2
         routing.
       expert_weight_shards: Shard each expert params into this many number of
@@ -1048,11 +1047,11 @@ class Transformer(base_layer.BaseLayer):
         path.
       mask_self_attention: If True, use causal mask.
       cross_attention: If True, perform cross encoder-decoder attention.
-      allow_skip_cross_attention: If True, allow skipping cross attention
-        during forward pass and decoding. This allows to skip cross attention
-        when cross inputs are not available. For example, if we want to train
-        the model with paired data and unimodal data. For paired data, we need
-        cross attention but for unimodal data, we don't have cross inputs.
+      allow_skip_cross_attention: If True, allow skipping cross attention during
+        forward pass and decoding. This allows to skip cross attention when
+        cross inputs are not available. For example, if we want to train the
+        model with paired data and unimodal data. For paired data, we need cross
+        attention but for unimodal data, we don't have cross inputs.
       cross_atten_tpl: Optional cross attention params template that can be set
         when cross attention is enabled. If cross-attention is enabled and this
         is set to None, then cross-attention params will be inherited from
@@ -1060,8 +1059,8 @@ class Transformer(base_layer.BaseLayer):
       ln_tpl: Parameterization of the layer normalization layer.
       norm_policy: Policy for applying normaliztion wrt. transformations.
         Options are: (1) "pre", applied before transformation. (2)
-          "primer_hybrid", applied before and after transformation. (3) "post",
-          applied after transformation.
+        "primer_hybrid", applied before and after transformation. (3) "post",
+        applied after transformation.
       tr_atten_tpl: Parameterization of the DotProductAttention layer.
       packed_input: If True, each training example may pack multiple sequences.
       tr_fflayer_tpl: Parameterization of the transformer Feed-Forward Layer.
@@ -1079,7 +1078,7 @@ class Transformer(base_layer.BaseLayer):
     relu_dropout_prob: float = 0.0
     residual_droppath_prob: float = 0.0
     mask_self_attention: bool = False
-    cross_attention: bool = False
+    use_cross_attention: bool = False
     allow_skip_cross_attention: bool = False
     cross_atten_tpl: Optional[BaseHParams] = None
     ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
@@ -1126,7 +1125,7 @@ class Transformer(base_layer.BaseLayer):
     self.create_child('residual_dropout', params)
 
     # Initialize multi-headed cross-attention and layer norm.
-    if p.cross_attention:
+    if p.use_cross_attention:
       if p.norm_policy in ('pre', 'post'):
         params = p.ln_tpl.clone()
         params.name = 'cross_layer_norm'
@@ -1218,7 +1217,7 @@ class Transformer(base_layer.BaseLayer):
       segment_pos: A JTensor of shape [B, T]. The position of each token in a
         segment.
       segment_ids: A JTensor of shape [B, T] specifying which segment each token
-          belongs to.
+        belongs to.
 
     Returns:
       The fflayer output with shape [B, T, D].
@@ -1263,8 +1262,8 @@ class Transformer(base_layer.BaseLayer):
       atten_output += inputs
 
     # Apply cross attention if applicable
-    if p.cross_attention and (not p.allow_skip_cross_attention or
-                              cross_inputs is not None):
+    if p.use_cross_attention and (not p.allow_skip_cross_attention or
+                                  cross_inputs is not None):
       assert cross_inputs is not None
       assert cross_attention_mask is not None
       if p.norm_policy == 'pre':
@@ -1352,8 +1351,8 @@ class Transformer(base_layer.BaseLayer):
     atten_output += inputs
 
     # Apply cross attention if applicable
-    if p.cross_attention and (not p.allow_skip_cross_attention or
-                              cross_attention_mask is not None):
+    if p.use_cross_attention and (not p.allow_skip_cross_attention or
+                                  cross_attention_mask is not None):
       assert cross_attention_mask is not None
       if p.norm_policy == 'pre':
         atten_output_normalized = self.cross_layer_norm(atten_output)
@@ -1417,7 +1416,8 @@ class StackedTransformer(base_layer.BaseLayer):
     """Associated hyper-params for this layer class.
 
     Attributes:
-      cross_attention: If set, introduces cross encoder-decoder attention layer.
+      use_cross_attention: If True, introduces cross encoder-decoder attention
+        layer.
       mask_self_attention: Use masked self-attention.
       num_layers: Number of layers in this stack.
       model_dims: Model dimension in Transformer layers.
@@ -1432,7 +1432,7 @@ class StackedTransformer(base_layer.BaseLayer):
         'top2', based on the GShard paper: https://arxiv.org/abs/2006.16668,
         'expert_choice', based on https://arxiv.org/abs/2202.09368,
         'dense_top2': experimental gating function for decodiing. Similar to
-          'top2' gating, but no capacity constrainst for each expert.
+        'top2' gating, but no capacity constrainst for each expert.
       unadjusted_expert_capacity_factor: Unadjusted expert capacity_factor. This
         is the ratio between global batch size and total capacity across all
         experts and all routing groups.
@@ -1456,7 +1456,7 @@ class StackedTransformer(base_layer.BaseLayer):
         entry in the sequence is None, then there is no NGrammer layer present
         in that corresponding layer.
     """
-    cross_attention: bool = False
+    use_cross_attention: bool = False
     mask_self_attention: bool = False
     num_layers: int = 0
     model_dims: int = 0
@@ -1492,7 +1492,7 @@ class StackedTransformer(base_layer.BaseLayer):
       """Construct i-th layer params."""
       p_i = p.transformer_layer_params_tpl.clone()
       p_i.name = f'layer_{i}'
-      p_i.cross_attention = p.cross_attention
+      p_i.use_cross_attention = p.use_cross_attention
       p_i.mask_self_attention = p.mask_self_attention
       p_i.num_heads = p.num_heads
       p_i.dim_per_head = p.dim_per_head
@@ -1569,7 +1569,7 @@ class StackedTransformer(base_layer.BaseLayer):
     if p.packed_input:
       assert segment_mask is not None
 
-    if p.cross_attention:
+    if p.use_cross_attention:
       assert cross_inputs is not None
       assert cross_paddings is not None
       if p.packed_input:
@@ -1622,7 +1622,7 @@ class StackedTransformer(base_layer.BaseLayer):
 
     max_t = self.x_layers[0].self_attention.decoding_state_sequence_length()
 
-    if p.cross_attention:
+    if p.use_cross_attention:
       assert cross_paddings is not None
 
     if segment_pos is None:
@@ -1853,9 +1853,9 @@ class PipelinedTransformer(base_layer.BaseLayer):
       pipeline_microbatch_size: Size of each pipeline microbatch.
       stream_io: Whether to enable input/output streaming across stages. This is
         typically useful for DCN.
-      pipeline_broadcast_inputs: If true, broadcast inputs (shared between
-        all stages instead of being computed by the previous stage) will be
-        passed stage-by-stage instead of being replicated.
+      pipeline_broadcast_inputs: If true, broadcast inputs (shared between all
+        stages instead of being computed by the previous stage) will be passed
+        stage-by-stage instead of being replicated.
     """
     pipeline_stage: BaseHParams = sub_config_field(StackedTransformer.HParams)
     circular_repeat: int = 1

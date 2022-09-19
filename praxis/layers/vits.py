@@ -384,7 +384,7 @@ def build_vision_transformer_hparams_for_test(
       hidden_dims=mlp_dims,
       num_heads=num_heads,
       mask_self_attention=False,
-      cross_attention=False,
+      use_cross_attention=False,
       packed_input=False,
       num_layers=num_xformer_layers,
   )
