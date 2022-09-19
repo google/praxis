@@ -43,6 +43,7 @@ def GlamStackedTransformerHParams(
     relative_attention_max_distance=128,
     moe_load_balance_loss_weight=0.01,
     moe_gating_func='top2',
+    moe_gating_logit_cap=0.0,
     num_groups=1,
     c_dim=None,
     capacity_factor=0.0,
@@ -82,6 +83,8 @@ def GlamStackedTransformerHParams(
     relative_attention_max_distance: Max relative distance.
     moe_load_balance_loss_weight: Weight of load balancing loss in MoE layers.
     moe_gating_func: Gating function choice in the MoE Layer.
+    moe_gating_logit_cap:  Cap the absolute values of MoE gating logits by tanh.
+      Enabled when a positive value is specified.
     num_groups: Total number of groups for token dispatching in MoE layer.
     c_dim: Expert capacity.
     capacity_factor: This is the ratio between max allowed examples per expert
@@ -153,6 +156,7 @@ def GlamStackedTransformerHParams(
   moe_p.ln_tpl.direct_scale = True
   moe_p.num_experts = e_dim
   moe_p.num_groups = num_groups
+  moe_p.gating_logit_cap = moe_gating_logit_cap
   moe_p.expert_capacity_dim = c_dim
   moe_p.unadjusted_expert_capacity_factor = capacity_factor
   moe_p.internal_gshard_variance_scaling_fan_in_init = True
@@ -180,11 +184,13 @@ def GlamUniTransformerLmHParams(
     relative_attention_num_buckets=32,
     relative_attention_max_distance=128,
     moe_gating_func='top2',
+    moe_gating_logit_cap=0.0,
     num_groups=1,
     c_dim=None,
     capacity_factor=0.0,
     e_dim=None,
     use_tgt_labels_size_as_loss_denominator=True,
+    use_gshard_softmax=True,
     moe_load_balance_loss_weight=0.01,
     z_loss_weight=1e-4,
     combine_qkv=False,
@@ -225,6 +231,8 @@ def GlamUniTransformerLmHParams(
     relative_attention_num_buckets: Relative attention num buckets
     relative_attention_max_distance: Max relative distance.
     moe_gating_func: Gating function choice in the MoE Layer.
+    moe_gating_logit_cap:  Cap the absolute values of MoE gating logits by tanh.
+      Enabled when a positive value is specified.
     num_groups: Total number of groups for token dispatching in MoE layer.
     c_dim: Expert capacity.
     capacity_factor: This is the ratio between max allowed examples per expert
@@ -279,6 +287,7 @@ def GlamUniTransformerLmHParams(
       relative_attention_max_distance=relative_attention_max_distance,
       moe_load_balance_loss_weight=moe_load_balance_loss_weight,
       moe_gating_func=moe_gating_func,
+      moe_gating_logit_cap=moe_gating_logit_cap,
       num_groups=num_groups,
       c_dim=c_dim,
       capacity_factor=capacity_factor,
