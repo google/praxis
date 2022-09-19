@@ -15,16 +15,13 @@
 
 """Tests for base_layer."""
 
-from typing import Tuple, Union
 from absl.testing import absltest
 from absl.testing import parameterized
+from flax import linen as nn
 import jax
 import jax.numpy as jnp
-from flax import linen as nn
 from praxis import base_layer
 from praxis import test_utils
-
-SummaryVerbosity = base_layer.SummaryVerbosity
 
 
 class Identity(base_layer.BaseLayer):
@@ -34,8 +31,8 @@ class Identity(base_layer.BaseLayer):
     pass
 
   def __call__(self, x):
-    self.add_summary('debug', x, verbosity=SummaryVerbosity.DEBUG)
-    self.add_summary('info', x, verbosity=SummaryVerbosity.INFO)
+    self.add_summary('debug', x, verbosity=3)
+    self.add_summary('info', x, verbosity=2)
     return x
 
 
@@ -111,7 +108,7 @@ class BaseLayerTest(test_utils.TestCase):
 
   def test_layer_summary_verbosity_no_log(self):
     context_p = base_layer.JaxContext.HParams(
-        do_eval=True, summary_verbosity=SummaryVerbosity.INFO)
+        do_eval=True, summary_verbosity=2)
     with base_layer.JaxContext.new_context(hparams=context_p):
       layer_p = Identity.HParams(name='test_identity')
       layer = base_layer.instantiate(layer_p)
@@ -127,8 +124,8 @@ class BaseLayerTest(test_utils.TestCase):
     self.assertArraysEqual(x, summaries['info_scalar'])
 
   @parameterized.named_parameters(
-      ('log', SummaryVerbosity.INFO, SummaryVerbosity.INFO, True),
-      ('no_log', SummaryVerbosity.INFO, SummaryVerbosity.DEBUG, False),
+      ('log', 2, 2, True),
+      ('no_log', 2, 3, False),
   )
   def test_global_summary_verbosity(
       self, ctx_verbosity, summary_verbosity, should_log):

@@ -677,14 +677,6 @@ class SummaryType(enum.Enum):
   AGGREGATE_IMAGE = 4
 
 
-class SummaryVerbosity(enum.IntEnum):
-  """Defines logging levels for writing summaries."""
-  ERROR = 0
-  WARNING = 1
-  INFO = 2
-  DEBUG = 3  # typically detailed metrics like input statistics for layers
-
-
 def get_summary_base_type(summary_type: SummaryType) -> SummaryType:
   if summary_type == SummaryType.AGGREGATE_SCALAR:
     return SummaryType.SCALAR
@@ -738,7 +730,8 @@ class _SummaryDict:
     while full_name in self.dict:
       next_iter += 1
       full_name = summary_base_name + str(next_iter) + summary_suffix
-    if summary_type == SummaryType.IMAGE or summary_type == SummaryType.AGGREGATE_IMAGE:
+    if (summary_type == SummaryType.IMAGE
+        or summary_type == SummaryType.AGGREGATE_IMAGE):
       if tensor.ndim == 3:
         # Add a batch dim.
         tensor = jnp.expand_dims(tensor, 0)
@@ -766,10 +759,15 @@ class JaxContext:
     Attributes:
       do_eval: Whether to do eval.
       summary_verbosity: int, defines the verbosity level for summaries context.
-        By default it's DEBUG level, meaning we add summaries for everything.
+        The following are some notes on summary verbosity levels:
+        * The larger the verbosity value, the more verbose.
+        * The convention is to use non-negative integers.
+        * The default verbosity level at the context level is 3, meaning that
+          we'll log any summary written with verbosity <= 3 by default.
+        * Summaries are written if context_verbosity >= callsite_verbosity.
     """
     do_eval: Optional[bool] = None
-    summary_verbosity: SummaryVerbosity = SummaryVerbosity.DEBUG
+    summary_verbosity: int = 3
 
   def __init__(self, hparams: JaxContext.HParams) -> None:
     self._hparams = hparams.clone()
@@ -797,7 +795,7 @@ class JaxContext:
     return self.hparams.do_eval
 
   @property
-  def summary_verbosity(self) -> SummaryVerbosity:
+  def summary_verbosity(self) -> int:
     return self.hparams.summary_verbosity
 
   def __enter__(self) -> JaxContext:
@@ -870,7 +868,7 @@ def add_global_summary(
     name: str,
     tensor: JTensor,
     summary_type: SummaryType = SummaryType.SCALAR,
-    verbosity: SummaryVerbosity = SummaryVerbosity.INFO) -> None:
+    verbosity: int = 2) -> None:
   """Adds a global summary tensor.
 
   This summary is not associated with any particular layer and is added to the
@@ -883,8 +881,8 @@ def add_global_summary(
       IMAGE. Keys will be appended with a type suffix. Image tensors must be
       either [batch, height, width, channels] or [height, width, channels].
     verbosity: verbosity level for the summary to add. If the current jax
-      context's verbosity level is less verbose than the summary, the summary
-      does not get added.
+      context's verbosity level is less verbose (lower value) than the summary,
+      the summary does not get added.
   """
   context = cur_jax_context()
   if verbosity > context.summary_verbosity:
@@ -1349,7 +1347,7 @@ class BaseLayer(
                   name: str,
                   tensor: JTensor,
                   summary_type: SummaryType = SummaryType.SCALAR,
-                  verbosity: SummaryVerbosity = SummaryVerbosity.INFO) -> None:
+                  verbosity: int = 2) -> None:
     # if not running under any jax context add summary by default
     if (JaxContext.has_context() and
         verbosity > self.jax_context.summary_verbosity):

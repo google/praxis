@@ -42,7 +42,6 @@ NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
-SummaryVerbosity = base_layer.SummaryVerbosity
 
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
@@ -1229,12 +1228,9 @@ class Transformer(base_layer.BaseLayer):
     p = self.hparams
 
     inputs_stats = stats.compute_stats(inputs, jnp.expand_dims(paddings, -1))
-    self.add_summary('xformer_input_mean', inputs_stats.mean_v,
-                     verbosity=SummaryVerbosity.DEBUG)
-    self.add_summary('xformer_input_std', inputs_stats.std_v,
-                     verbosity=SummaryVerbosity.DEBUG)
-    self.add_summary('xformer_input_abs_max', inputs_stats.max_v,
-                     verbosity=SummaryVerbosity.DEBUG)
+    self.add_summary('xformer_input_mean', inputs_stats.mean_v, verbosity=3)
+    self.add_summary('xformer_input_std', inputs_stats.std_v, verbosity=3)
+    self.add_summary('xformer_input_abs_max', inputs_stats.max_v, verbosity=3)
 
     if p.norm_policy == 'primer_hybrid':
       inputs_normalized = self.pre_layer_norm(inputs)
