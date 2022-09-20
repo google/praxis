@@ -16,6 +16,8 @@
 """Exposes the public streaming layer functionalities."""
 
 from praxis.layers.streaming.attentions import LocalSelfAttention
+from praxis.layers.streaming.conformers import Conformer
+from praxis.layers.streaming.conformers import SelfAttentionWithNormAndResidual
 from praxis.layers.streaming.convolutions import DepthwiseConv1D
 from praxis.layers.streaming.convolutions import LightConv1D
 from praxis.layers.streaming.normalizations import GroupNorm

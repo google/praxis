@@ -30,6 +30,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":attentions",
+        ":conformers",
         ":convolutions",
         ":normalizations",
         ":streaming_base",
@@ -168,5 +169,42 @@ py_strict_test(
         "//praxis:py_utils",
         "//praxis:test_utils",
         "//praxis/layers:normalizations",
+    ],
+)
+
+pytype_strict_library(
+    name = "conformers",
+    srcs = ["conformers.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        ":convolutions",
+        ":streaming_base",
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
+        "//praxis/layers:conformers",
+    ],
+)
+
+py_strict_test(
+    name = "conformers_test",
+    srcs = ["conformers_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":conformers",
+        ":operations",
+        ":streaming",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        "//praxis/layers:conformers",
     ],
 )
