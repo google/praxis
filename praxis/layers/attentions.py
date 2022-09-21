@@ -877,6 +877,7 @@ class DotProductAttention(base_layer.BaseLayer):
         in the depth-wise convolution.
       internal_gshard_gaussian_init: Projection weight init follows Gaussian
         distribution.
+      internal_init_scale: Overrides the Xavier scale for init.
       combine_qkv: Whether to combine qkv tensor for optimizing qkv input
         gradient computation with SPMD. Only supports self-attention.
       combined_qkv_proj_tpl: Parameterization for combined QKV projection layer.
@@ -912,6 +913,8 @@ class DotProductAttention(base_layer.BaseLayer):
     dconv_qkv: bool = False
     dconv_kernel_size: int = 3
     internal_gshard_gaussian_init: bool = False
+    # TODO(melvinp): Remove internal_init_scale and set directly in params_init.
+    internal_init_scale: Optional[float] = None
     combine_qkv: bool = False
     combined_qkv_proj_tpl: BaseHParams = sub_config_field(
         CombinedQKVProjectionLayer.HParams)
@@ -975,7 +978,7 @@ class DotProductAttention(base_layer.BaseLayer):
       assert p.weight_split_dims_mapping is not None
       assert p.activation_split_dims_mapping is not None
 
-    def project_input(input_dim, gaussian_std=None):
+    def project_input(input_dim, gaussian_std=None, xavier_scale=None):
       proj_p = p.proj_tpl.clone().set(
           input_dim=input_dim,
           num_heads=p.num_heads,
@@ -983,6 +986,8 @@ class DotProductAttention(base_layer.BaseLayer):
           use_bias=p.use_bias)
       if gaussian_std:
         proj_p.params_init = WeightInit.Gaussian(gaussian_std)
+      if xavier_scale:
+        proj_p.params_init = WeightInit.Xavier(xavier_scale)
       proj_p.weight_split_dims_mapping.wt = wp.proj
       return proj_p
 
@@ -1023,9 +1028,24 @@ class DotProductAttention(base_layer.BaseLayer):
       self.create_child('combined_qkv',
                         combined_qkv_project_input(query_input_dim))
     else:
-      self.create_child('key', project_input(key_input_dim, key_std))
-      self.create_child('query', project_input(query_input_dim, query_std))
-      self.create_child('value', project_input(value_input_dim, value_std))
+      self.create_child(
+          'key',
+          project_input(
+              key_input_dim,
+              gaussian_std=key_std,
+              xavier_scale=p.internal_init_scale))
+      self.create_child(
+          'query',
+          project_input(
+              query_input_dim,
+              gaussian_std=query_std,
+              xavier_scale=p.internal_init_scale))
+      self.create_child(
+          'value',
+          project_input(
+              value_input_dim,
+              gaussian_std=value_std,
+              xavier_scale=p.internal_init_scale))
 
     if p.use_rotary_position_emb:
       pos_emb_p = embedding_softmax.RotaryPositionalEmbedding.HParams()
@@ -1067,6 +1087,8 @@ class DotProductAttention(base_layer.BaseLayer):
         use_nhd_shape=p.output_proj_use_nhd_shape)
     if post_std is not None:
       post_proj_p.params_init = WeightInit.Gaussian(post_std)
+    if p.internal_init_scale:
+      post_proj_p.params_init = WeightInit.Xavier(p.internal_init_scale)
     if p.output_proj_use_nhd_shape and isinstance(wp.proj, list) and len(
         wp.proj) == 3:
       permutation = [1, 2, 0]
