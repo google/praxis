@@ -91,7 +91,7 @@ class LanguageModelTest(test_utils.TestCase):
     p = models.LanguageModel.HParams(
         name='mock_lm',
         decoder=decoder_p.clone(),
-        lm=MockLM.HParams(logits=logits),
+        lm_tpl=MockLM.HParams(logits=logits),
         model_type=model_type)
     lang_model = instantiate(p)
     theta = NestedMap(lm=NestedMap())

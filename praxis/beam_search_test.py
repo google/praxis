@@ -138,9 +138,9 @@ class BeamSearchTest(test_utils.TestCase):
     p = models.LanguageModel.HParams(
         name='mock_lm',
         decoder=decoder_p.clone(),
-        lm=MockLM.HParams(logits=logits))
+        lm_tpl=MockLM.HParams(logits=logits))
     lang_model = instantiate(p)
-    theta = NestedMap(lm=NestedMap())
+    theta = NestedMap(lm_tpl=NestedMap())
     # We fix seed to 9 to get the desired prefix lengths below.
     prng_key = jax.random.PRNGKey(seed=9)
     results, _ = lang_model.apply(

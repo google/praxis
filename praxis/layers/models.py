@@ -123,7 +123,8 @@ class LanguageModel(base_model.BaseModel):
       model_type: The type of language model based on the tokens visibility.
       count_tokens: Whether to track total tokens trained on in the checkpoint.
     """
-    lm: BaseHParams = sub_config_field(transformer_models.TransformerLm.HParams)
+    lm_tpl: BaseHParams = sub_config_field(
+        transformer_models.TransformerLm.HParams)
     return_predictions: bool = False
     decoder: DecoderHParams = sub_config_field(GreedyDecoderHParams)
     model_type: LanguageModelType = LanguageModelType.CAUSAL
@@ -138,7 +139,7 @@ class LanguageModel(base_model.BaseModel):
       self.create_child('token_counter', tc_p)
 
     # Construct the model.
-    lm_p = p.lm.clone()
+    lm_p = p.lm_tpl.clone()
     lm_p.model_type = p.model_type
     self.create_child('lm', lm_p)
 
@@ -152,7 +153,7 @@ class LanguageModel(base_model.BaseModel):
     if p.count_tokens:
       self.token_counter(inputs, paddings)
     labels = NestedMap(class_ids=input_batch.labels, class_weights=weights)
-    if p.lm.packed_input:
+    if p.lm_tpl.packed_input:
       packed_input_kwargs = {
           'segment_ids': input_batch.segment_ids,
           'segment_pos': input_batch.segment_pos,
@@ -471,8 +472,8 @@ class LanguageModel(base_model.BaseModel):
 
     ret = []
     for idx, decoded_str in enumerate(decoded_strs):
-      if ('eval_sample_weights' in decode_out
-          and not decode_out.eval_sample_weights[idx]):
+      if ('eval_sample_weights' in decode_out and
+          not decode_out.eval_sample_weights[idx]):
         # skip padded examples
         continue
 
@@ -623,6 +624,7 @@ class SequenceModel(base_model.BaseModel):
     elif isinstance(p.decoder, BeamSearchHParams):
       assert not p.decoder.fprop_for_prefix
       start_time_step = 0
+
       # Prefix decoding is not fully supported.
       # This fprop_fn is currently used for initializing the decoder states.
       def fprop_fn(mdl, ids, paddings):
@@ -632,9 +634,10 @@ class SequenceModel(base_model.BaseModel):
             targets=ids,
             target_paddings=paddings,
             start_time_step=start_time_step)
+
       fprop_input_ids = input_batch.tgt.ids[:, :1]
-      fprop_input_paddings = jnp.ones(
-          (batch_size, 1), input_batch.tgt.paddings.dtype)
+      fprop_input_paddings = jnp.ones((batch_size, 1),
+                                      input_batch.tgt.paddings.dtype)
       result = beam_search.beam_search(self, extend_step_fn, fprop_fn,
                                        transform_decode_state_fn,
                                        fprop_input_ids, fprop_input_paddings,
@@ -864,27 +867,28 @@ class BertModel(base_model.BaseModel):
         amount of prob mass to all other tokens.
       mask_token_id: Mask token id.
     """
-    lm: BaseHParams = sub_config_field(transformer_models.TransformerLm.HParams)
+    lm_tpl: BaseHParams = sub_config_field(
+        transformer_models.TransformerLm.HParams)
     label_smoothing_prob: float = 0.0
     mask_token_id: int = 0
 
   def setup(self) -> None:
     super().setup()
     p = self.hparams
-    assert p.lm.model_type == LanguageModelType.BIDIRECTIONAL
-    assert p.lm.packed_input
+    assert p.lm_tpl.model_type == LanguageModelType.BIDIRECTIONAL
+    assert p.lm_tpl.packed_input
 
-    self.create_child('lm', p.lm)
+    self.create_child('lm', p.lm_tpl)
 
     mlm_augment_p = augmentations.MaskedLmDataAugmenter.HParams()
-    mlm_augment_p.vocab_size = p.lm.vocab_size
+    mlm_augment_p.vocab_size = p.lm_tpl.vocab_size
     mlm_augment_p.mask_token_id = p.mask_token_id
     self.create_child('mlm_augmenter', mlm_augment_p)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
     """Computes predictions for `input_batch`."""
     p = self.hparams
-    assert p.lm.packed_input
+    assert p.lm_tpl.packed_input
     segment_ids = input_batch.segment_ids
     segment_pos = input_batch.segment_pos
     paddings = input_batch.paddings
