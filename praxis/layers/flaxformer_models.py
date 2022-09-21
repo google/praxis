@@ -214,11 +214,11 @@ class EncoderDecoder(base_layer.BaseLayer):
   def setup(self) -> None:
     super().setup()
 
-    encoder_decoder = flax_adapter.EncoderDecoderFlaxModuleAdaptor.HParams(
+    encoder_decoder_tpl = flax_adapter.EncoderDecoderFlaxModuleAdaptor.HParams(
         module_factory_method=self._build_wrapped_module,
         logical_axes_rules=self.hparams.logical_axes_rules)
 
-    self.create_child('enc_dec', encoder_decoder)
+    self.create_child('enc_dec', encoder_decoder_tpl)
 
   def __call__(self, *args, **kwargs):
     return self.enc_dec(*args, **kwargs)
@@ -500,14 +500,14 @@ class EncoderDecoderModel(base_model.BaseModel):
     """Associated hyperparams for this model class.
 
     Attributes:
-      encoder_decoder: Flaxformer encoder decoder params.
+      encoder_decoder_tpl: Flaxformer encoder decoder params.
       loss_normalizing_factor: Normalization factor for loss.
       label_smoothing: Amount of label smoothing to apply.
       z_loss: Coefficient for auxiliary z-loss loss term.
       decoding_fn: Decoding function to be used during the prediction. The
         default is t5x_decoding.beam_search.
     """
-    encoder_decoder: base_layer.BaseLayer.HParams = sub_config_field(
+    encoder_decoder_tpl: base_layer.BaseLayer.HParams = sub_config_field(
         EncoderDecoder.HParams)
     loss_normalizing_factor: str = 'NUM_REAL_TARGET_TOKENS'
     label_smoothing: float = 0.0
@@ -518,7 +518,7 @@ class EncoderDecoderModel(base_model.BaseModel):
   def setup(self):
     p = self.hparams
     # Propagate partitioning information from BaseModel to BaseLayer.
-    encoder_decoder_p = p.encoder_decoder.clone()
+    encoder_decoder_p = p.encoder_decoder_tpl.clone()
     encoder_decoder_p.logical_axes_rules = p.logical_axes_rules
     self._decoding_fn = p.decoding_fn
     self.create_child('encoder_decoder', encoder_decoder_p)

@@ -45,7 +45,7 @@ def fiddle_configured_model():
   encdec_p = flaxformer_models.EncoderDecoder.HParams.config(
       encoder_decoder_factory=as_partial, name='encoder_decoder')
   mdl_p = flaxformer_models.EncoderDecoderModel.config(
-      encoder_decoder=encdec_p, name='mdl')
+      encoder_decoder_tpl=encdec_p, name='mdl')
   return instantiate(mdl_p)
 
 
@@ -58,7 +58,7 @@ def fiddle_configured_scanned_model():
   encdec_p = flaxformer_models.EncoderDecoder.HParams.config(
       encoder_decoder_factory=as_partial, name='encoder_decoder')
   mdl_p = flaxformer_models.EncoderDecoderModel.config(
-      encoder_decoder=encdec_p, name='mdl')
+      encoder_decoder_tpl=encdec_p, name='mdl')
   return instantiate(mdl_p)
 
 
@@ -77,7 +77,7 @@ def factory_configured_model():
       mlp_dim=64,
       activation_partitioning_dims=2)
   mdl_p = flaxformer_models.EncoderDecoderModel.config(
-      encoder_decoder=encdec_p, name='mdl')
+      encoder_decoder_tpl=encdec_p, name='mdl')
   return instantiate(mdl_p)
 
 
@@ -358,7 +358,7 @@ class FlaxFormerModelsTest(test_utils.TestCase):
     encdec_p = flaxformer_models.EncoderDecoder.HParams.config(
         encoder_decoder_factory=as_partial, name='encoder_decoder')
     mdl_p = flaxformer_models.EncoderDecoderModel.config(
-        encoder_decoder=encdec_p,
+        encoder_decoder_tpl=encdec_p,
         name='mdl',
         mesh_axis_names=['replica', 'data', 'model'],
         ici_mesh_shape=[1, 2, 4],
