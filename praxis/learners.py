@@ -36,7 +36,7 @@ JTensor = jnp.ndarray
 NestedMap = py_utils.NestedMap
 NestedJTensor = base_layer.NestedJTensor
 NestedBool = base_layer.NestedBool
-NestedHParams = pytypes.NestedHParams
+NestedWeightHParams = base_layer.NestedWeightHParams
 InstantiableHyperParams = base_hyperparams.InstantiableHyperParams
 instantiate = base_hyperparams.instantiate
 
@@ -143,7 +143,7 @@ class Learner(base_hyperparams.BaseParameterizable):
     base_layer.add_global_summary('learning_rate', learning_rate)
 
   def get_grad_tx(
-      self, var_weight_hparams: NestedHParams
+      self, var_weight_hparams: NestedWeightHParams
   ) -> optimizers.GeneralGradientTransformation:
     # Apply vectorization on prefix dims.
     if not self._hparams.vectorize_on_repeat_prefix:
@@ -240,7 +240,8 @@ class Learner(base_hyperparams.BaseParameterizable):
 
   def update_states(
       self, grads: NestedMap, states: optax.OptState, old_vars: NestedJTensor,
-      var_weight_hparams: NestedHParams) -> Tuple[NestedMap, optax.OptState]:
+      var_weight_hparams: NestedWeightHParams
+  ) -> Tuple[NestedMap, optax.OptState]:
     """Applies gradient transformation, updates optimizer states.
 
     Args:
@@ -283,7 +284,7 @@ class Learner(base_hyperparams.BaseParameterizable):
       self,
       old_vars: NestedJTensor,
       transformed_grads: NestedJTensor,
-      var_weight_hparams: NestedHParams,
+      var_weight_hparams: NestedWeightHParams,
   ) -> NestedJTensor:
     """Applies grads to model_variables.
 
@@ -396,7 +397,7 @@ class MultiOptimizerLearner(Learner):
                                     learning_rate)
 
   def get_grad_tx(
-      self, var_weight_hparams: NestedHParams
+      self, var_weight_hparams: NestedWeightHParams
   ) -> optimizers.GeneralGradientTransformation:
     """The gradient transformation the MultiOptimizer lerner.
 
@@ -460,7 +461,8 @@ class MultiOptimizerLearner(Learner):
 
   def update_states(
       self, grads: NestedMap, states: optax.OptState, old_vars: NestedJTensor,
-      var_weight_hparams: NestedHParams) -> Tuple[NestedMap, optax.OptState]:
+      var_weight_hparams: NestedWeightHParams
+  ) -> Tuple[NestedMap, optax.OptState]:
     """Applies gradient transformation, updates optimizer states.
 
     Args:

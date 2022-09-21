@@ -49,6 +49,7 @@ GlobalShardedParameterStats = distributed_shampoo.GlobalShardedParameterStats
 
 NestedMap = py_utils.NestedMap
 WeightHParams = base_layer.WeightHParams
+NestedWeightHParams = base_layer.NestedWeightHParams
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 NestedHParams = pytypes.NestedHParams
@@ -86,7 +87,8 @@ def count_init_fn(_):
   return NestedMap(count=jnp.zeros([], jnp.int32))
 
 
-def count_init_partition_spec_fn(var_hparams):
+def count_init_partition_spec_fn(
+    var_hparams: NestedWeightHParams) -> NestedWeightHParams:
   """Init partition spec for only partitioning the count/step."""
   var_spec_flattened, _ = jax.tree_util.tree_flatten(var_hparams)
   assert var_spec_flattened
@@ -238,7 +240,7 @@ class _ShardedAdamHelper:
     # m and v simply share the same sharding.
     return _AdamOptState(m=m_var_hparams, v=v_var_hparams)
 
-  def init_opt_state(self, var_hparams: py_utils.HParams) -> _AdamOptState:
+  def init_opt_state(self, var_hparams: WeightHParams) -> _AdamOptState:
     """Returns optimizer state for one particular variable."""
     return _AdamOptState(
         m=jnp.zeros_like(var_hparams), v=jnp.zeros_like(var_hparams))
@@ -307,7 +309,7 @@ class _ShardedHeroLionHelper(_ShardedAdamHelper):
     return _HeroLionOptState(m=m_var_hparams)
 
   def init_opt_state(self,
-                     var_hparams: py_utils.HParams,
+                     var_hparams: WeightHParams,
                      m_dtype: jnp.dtype = jnp.float32) -> _HeroLionOptState:
     """Returns optimizer state for one particular variable."""
     return _HeroLionOptState(m=jnp.zeros_like(var_hparams, dtype=m_dtype))
@@ -834,7 +836,7 @@ class BaseOptimizer(base_hyperparams.BaseParameterizable):
 
   def get_grad_transformation(
       self,
-      var_weight_hparams: Optional[NestedHParams] = None,
+      var_weight_hparams: Optional[NestedWeightHParams] = None,
       include_ema: bool = True) -> GeneralGradientTransformation:
     """Get the grad transformation corresponds to this optimizer config.
 
@@ -2216,7 +2218,8 @@ def sharded_adafactor(
         jnp.zeros([], jnp.int32),
         jax.tree_map(sharded_adafactor_helper.init, params))
 
-  def init_partition_spec_fn(var_hparams):
+  def init_partition_spec_fn(
+      var_hparams: NestedWeightHParams) -> NestedWeightHParams:
     var_spec_flattened, _ = jax.tree_util.tree_flatten(var_hparams)
     assert var_spec_flattened
     first_var = var_spec_flattened[0]

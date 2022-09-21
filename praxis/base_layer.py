@@ -60,6 +60,7 @@ BaseParameterizable = base_hyperparams.BaseParameterizable
 InstantiableHyperParams = base_hyperparams.InstantiableHyperParams
 sub_config_field = base_hyperparams.sub_config_field
 
+Nested = pytypes.Nested
 NestedJTensor = pytypes.NestedJTensor
 NestedBool = pytypes.NestedBool
 NestedHParams = pytypes.NestedHParams
@@ -473,6 +474,9 @@ class WeightHParams(BaseHyperParams):
             'Sets tensor_split_dims_mapping of a param of shape %s to %s',
             self.shape, self.tensor_split_dims_mapping)
       assert len(self.tensor_split_dims_mapping) == len(self.shape)
+
+
+NestedWeightHParams = Nested[WeightHParams]
 
 
 def get_fan_in_fan_out(
@@ -1283,7 +1287,11 @@ class BaseLayer(
   # the WeightHParams objects to callers. This is typically used to retrieve
   # the unpadded variable shapes and SPMD annotations for
   # PARAMS and NON_TRAINABLE collections.
-  def abstract_init_with_metadata(self, rngs, *args, do_eval=False, **kwargs):
+  def abstract_init_with_metadata(self,
+                                  rngs,
+                                  *args,
+                                  do_eval=False,
+                                  **kwargs) -> NestedWeightHParams:
     # TODO(zhangqiaorjc): Remove `rngs` args?
     del rngs
     # Dummy key is enough because we eval_shape only.
