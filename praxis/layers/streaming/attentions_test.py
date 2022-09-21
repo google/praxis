@@ -18,23 +18,17 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
-from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
 from praxis import py_utils
-from praxis import test_utils
 from praxis.layers import attentions
 from praxis.layers import streaming
-from praxis.layers.streaming import operations
+from praxis.layers.streaming import test_utils
 
 instantiate = base_layer.instantiate
 
 
-class StreamingAttentionsTest(test_utils.TestCase):
-
-  def setUp(self):
-    super().setUp()
-    np.random.seed(123456)
+class StreamingAttentionsTest(test_utils.StreamingTest):
 
   @parameterized.parameters([(4, 2, 1, 1, True), (4, 2, 1, 1, False),
                              (8, 3, 5, 2, True), (8, 3, 5, 1, False),
@@ -61,7 +55,7 @@ class StreamingAttentionsTest(test_utils.TestCase):
     paddings = np.array(paddings)
     atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
     if is_full:
-      atten_mask = jnp.tile(atten_mask, [1, 1, sequence_length, 1])
+      atten_mask = np.tile(atten_mask, [1, 1, sequence_length, 1])
 
     base_layer_p = attentions.LocalSelfAttention.HParams(
         name='self_atten',
@@ -97,7 +91,7 @@ class StreamingAttentionsTest(test_utils.TestCase):
         value_vec=value_vec,
         paddings=paddings)
     output_names = ['encoded', 'paddings']
-    output_stream = operations.run_streaming(layer, initial_vars, in_nmap,
+    output_stream = test_utils.run_streaming(layer, initial_vars, in_nmap,
                                              output_names, step)
 
     self.assertEqual(p.cls.get_stride(p), 1)

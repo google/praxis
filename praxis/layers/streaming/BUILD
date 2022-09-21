@@ -51,16 +51,19 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
-    name = "operations",
-    srcs = ["operations.py"],
+    name = "test_utils",
+    testonly = True,
+    srcs = ["test_utils.py"],
     srcs_version = "PY3",
     deps = [
         ":streaming_base",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
+        # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:pytypes",
+        "//praxis:test_utils",
     ],
 )
 
@@ -88,16 +91,12 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":convolutions",
-        ":operations",
         ":streaming",
-        # Implicit absl.logging dependency.
+        ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
-        # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
-        "//praxis:py_utils",
-        "//praxis:test_utils",
         "//praxis/layers:convolutions",
     ],
 )
@@ -123,16 +122,14 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":attentions",
-        ":operations",
         ":streaming",
-        # Implicit absl.logging dependency.
+        ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:py_utils",
-        "//praxis:test_utils",
         "//praxis/layers:attentions",
     ],
 )
@@ -158,16 +155,12 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":normalizations",
-        ":operations",
         ":streaming",
-        # Implicit absl.logging dependency.
+        ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
-        # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
-        "//praxis:py_utils",
-        "//praxis:test_utils",
         "//praxis/layers:normalizations",
     ],
 )
@@ -195,16 +188,12 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":conformers",
-        ":operations",
         ":streaming",
-        # Implicit absl.logging dependency.
+        ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
-        # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
-        "//praxis:py_utils",
-        "//praxis:test_utils",
         "//praxis/layers:conformers",
     ],
 )

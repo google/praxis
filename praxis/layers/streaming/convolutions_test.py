@@ -17,61 +17,23 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
-import jax
 import numpy as np
 from praxis import base_layer
-from praxis import py_utils
-from praxis import test_utils
 from praxis.layers import convolutions
 from praxis.layers import streaming
-from praxis.layers.streaming import operations
+from praxis.layers.streaming import test_utils
 
 instantiate = base_layer.instantiate
 
 
-class StreamingConvolutionsTest(test_utils.TestCase):
+class StreamingConvolutionsTest(test_utils.StreamingTest):
 
   def setUp(self):
     super().setUp()
-    np.random.seed(123456)
 
     # Input data.
     self.inputs = np.random.normal(size=[1, 8, 4]).astype(np.float32)
     self.paddings = np.array([[1, 1, 1, 0, 0, 0, 1, 1]]).astype(np.float32)
-
-  def _compare_stream_non_stream(self,
-                                 p_non_stream,
-                                 p_stream,
-                                 with_paddings,
-                                 step,
-                                 do_eval=True):
-    paddings = self.paddings if with_paddings else None
-    context_p = base_layer.JaxContext.HParams(do_eval=do_eval)
-    with base_layer.JaxContext.new_context(hparams=context_p):
-      layer_non_stream = instantiate(p_non_stream)
-      prng_key = jax.random.PRNGKey(seed=123)
-      prng_key, init_key = jax.random.split(prng_key)
-      initial_vars = layer_non_stream.init(init_key, self.inputs, paddings)
-      base_output_non_stream = layer_non_stream.apply(initial_vars, self.inputs,
-                                                      paddings)
-
-      # Run streaming aware layer in non streaming mode
-      layer_stream = instantiate(p_stream)
-      output_non_stream = layer_stream.apply(initial_vars, self.inputs,
-                                             paddings)
-
-    # Run streaming aware layer in streaming mode
-    output_names = ['features', 'paddings']
-    in_nmap = py_utils.NestedMap(features=self.inputs, paddings=paddings)
-    output_stream = operations.run_streaming(layer_stream, initial_vars,
-                                             in_nmap, output_names, step)
-
-    self.assertAllClose(output_non_stream, output_stream.features)
-    self.assertAllClose(base_output_non_stream, output_stream.features)
-
-    if with_paddings:
-      # Streaming paddings is the same with the input paddings in causal model:
-      self.assertAllClose(paddings, output_stream.paddings)
 
   @parameterized.parameters((2, 3, True), (2, 3, False), (4, 3, True),
                             (4, 4, True))
@@ -93,7 +55,13 @@ class StreamingConvolutionsTest(test_utils.TestCase):
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)
     # Causal model has no delay:
     self.assertEqual(p_stream.cls.get_right_context(p_stream), 0)
-    self._compare_stream_non_stream(p_non_stream, p_stream, with_paddings, step)
+    self._compare_stream_non_stream(
+        self.inputs,
+        self.paddings if with_paddings else None,
+        p_non_stream,
+        p_stream,
+        step,
+        expand_padding_rank=1)
 
   @parameterized.parameters((2, True), (2, False), (4, True))
   def test_light_conv1D_streaming(self, step, with_paddings):
@@ -108,7 +76,13 @@ class StreamingConvolutionsTest(test_utils.TestCase):
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)
     # Causal model has no delay:
     self.assertEqual(p_stream.cls.get_right_context(p_stream), 0)
-    self._compare_stream_non_stream(p_stream, p_stream, with_paddings, step)
+    self._compare_stream_non_stream(
+        self.inputs,
+        self.paddings if with_paddings else None,
+        p_stream,
+        p_stream,
+        step,
+        expand_padding_rank=1)
 
 
 if __name__ == '__main__':

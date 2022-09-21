@@ -17,75 +17,21 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
-import jax
-import jax.numpy as jnp
 import numpy as np
 from praxis import base_layer
-from praxis import py_utils
-from praxis import test_utils
 from praxis.layers import conformers
 from praxis.layers import streaming
-from praxis.layers.streaming import operations
+from praxis.layers.streaming import test_utils
 
 instantiate = base_layer.instantiate
 
 
-class StreamingConformersTest(test_utils.TestCase):
-
-  def setUp(self):
-    super().setUp()
-    np.random.seed(123456)
-
-  def _append_dims(self, x, ndim):
-    if ndim == 1:
-      return jnp.expand_dims(x, -1)
-    else:
-      return jnp.reshape(x, jnp.concat([x.shape, [1] * ndim], axis=0))
-
-  def _compare_stream_non_stream(self,
-                                 inputs,
-                                 paddings,
-                                 p_non_stream,
-                                 p_stream,
-                                 step,
-                                 is_eval=True):
-    context_p = base_layer.JaxContext.HParams(do_eval=True)
-    with base_layer.JaxContext.new_context(hparams=context_p):
-      layer_non_stream = instantiate(p_non_stream)
-      prng_key = jax.random.PRNGKey(seed=123)
-      prng_key, init_key = jax.random.split(prng_key)
-      initial_vars = layer_non_stream.init(init_key, inputs, paddings)
-      output_non_stream = layer_non_stream.apply(
-          initial_vars, inputs, paddings)
-
-      layer_stream = instantiate(p_stream)
-      in_nmap = py_utils.NestedMap(features=inputs, paddings=paddings)
-      output_names = ['features', 'paddings']
-      output_stream = operations.run_streaming(layer_stream, initial_vars,
-                                               in_nmap, output_names, step)
-
-    right_context = p_stream.cls.get_right_context(p_stream)
-
-    # Remove delay elements from streaming output.
-    output_stream.features = output_stream.features[:, right_context:,]
-    output_stream.paddings = output_stream.paddings[:, right_context:,]
-
-    # Size of time dim after removing streaming delay elements.
-    time_size = output_stream.features.shape[1]
-    non_stream_paddings = paddings[:, :time_size,]
-    mask = self._append_dims(1. - non_stream_paddings,
-                             output_non_stream.ndim - 2)
-
-    # Last elements in non streaming outputs have to be removed due to delay.
-    self.assertAllClose(non_stream_paddings, output_stream.paddings)
-    self.assertAllClose(output_non_stream[:, :time_size,] * mask,
-                        output_stream.features * mask)
+class StreamingConformersTest(test_utils.StreamingTest):
 
   @parameterized.parameters([(4, 2, 1, 1), (6, 3, 2, 2)])
   def test_streaming_self_attention_with_norm_residual(self, block_size,
                                                        left_context,
                                                        right_context, step):
-
     batch_size = 1
     sequence_length = 16
     mdl_dim = 4
@@ -125,8 +71,13 @@ class StreamingConformersTest(test_utils.TestCase):
 
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)
     self.assertEqual(p_stream.cls.get_right_context(p_stream), right_context)
-    self._compare_stream_non_stream(inputs, paddings, p_non_stream, p_stream,
-                                    step)
+    self._compare_stream_non_stream(
+        inputs,
+        paddings,
+        p_non_stream,
+        p_stream,
+        step,
+        expand_padding_rank=inputs.ndim - 2)
 
   @parameterized.parameters(
       (2, 10, 3, 8, 8, 4, 0.0, 6, 3, 2, 2),
@@ -134,12 +85,13 @@ class StreamingConformersTest(test_utils.TestCase):
       (5, 7, 2, 8, 8, 8, 0.25, 4, 2, 1, 1),
       (7, 8, 4, 16, 16, 4, 0.5, None, 3, 3, 2),
   )
-  def test_streaming_conformer(self, batch_size, seq_len, kernel_size, input_dims,
-                               model_dims, atten_num_heads, dropout_prob,
-                               block_size, left_context, right_context, step):
+  def test_streaming_conformer(self, batch_size, seq_len, kernel_size,
+                               input_dims, model_dims, atten_num_heads,
+                               dropout_prob, block_size, left_context,
+                               right_context, step):
     inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
-    inputs = jnp.asarray(inputs)
+    inputs = np.asarray(inputs)
 
     def get_padding_from_length(length):
       idx = np.tile(np.arange(seq_len), [batch_size, 1])
@@ -147,7 +99,7 @@ class StreamingConformersTest(test_utils.TestCase):
 
     length = np.random.randint(seq_len // 2, seq_len, (batch_size,))
     paddings = get_padding_from_length(length)
-    paddings = jnp.asarray(paddings)
+    paddings = np.asarray(paddings)
 
     # Non streaming layer
     p_non_stream = conformers.Conformer.HParams(
@@ -190,7 +142,7 @@ class StreamingConformersTest(test_utils.TestCase):
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)
     self.assertEqual(p_stream.cls.get_right_context(p_stream), right_context)
     self._compare_stream_non_stream(inputs, paddings, p_non_stream, p_stream,
-                                    step)
+                                    step, expand_padding_rank=inputs.ndim - 2)
 
 
 if __name__ == '__main__':

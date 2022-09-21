@@ -17,18 +17,15 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
-import jax
 import numpy as np
 from praxis import base_layer
-from praxis import py_utils
-from praxis import test_utils
 from praxis.layers import streaming
-from praxis.layers.streaming import operations
+from praxis.layers.streaming import test_utils
 
 instantiate = base_layer.instantiate
 
 
-class StreamingNormalizationTest(test_utils.TestCase):
+class StreamingNormalizationTest(test_utils.StreamingTest):
 
   @parameterized.named_parameters(
       ('Basic',),
@@ -56,21 +53,10 @@ class StreamingNormalizationTest(test_utils.TestCase):
           cumulative=True,
           input_rank=4)
 
-      layer = instantiate(p)
-      prng_key = jax.random.PRNGKey(seed=123)
-      prng_key, init_key = jax.random.split(prng_key)
-      initial_vars = layer.init(init_key, inputs, paddings)
-      output_non_stream = layer.apply(initial_vars, inputs, paddings)
-
-    output_names = ['features', 'paddings']
-    in_nmap = py_utils.NestedMap(features=inputs, paddings=paddings)
-    output_stream = operations.run_streaming(layer, initial_vars, in_nmap,
-                                             output_names, stride)
-
     self.assertEqual(p.cls.get_stride(p), 1)
     self.assertEqual(p.cls.get_right_context(p), 0)
-    self.assertAllClose(output_non_stream, output_stream.features)
-    self.assertAllClose(paddings, output_stream.paddings)
+    self._compare_stream_non_stream(
+        inputs, paddings, p, p, stride, expand_padding_rank=p.input_rank - 2)
 
 
 if __name__ == '__main__':

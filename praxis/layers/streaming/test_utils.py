@@ -17,15 +17,29 @@
 
 from typing import List
 
+import jax
 from jax import numpy as jnp
+import numpy as np
 from praxis import base_layer
 from praxis import py_utils
 from praxis import pytypes
+from praxis import test_utils
 from praxis.layers.streaming.streaming_base import StreamingBase
 
 NestedMap = py_utils.NestedMap
 NestedJTensor = pytypes.NestedJTensor
 JTensor = pytypes.JTensor
+
+instantiate = base_layer.instantiate
+
+
+def append_dims(x, ndim):
+  if ndim is None:
+    return x
+  elif ndim == 1:
+    return jnp.expand_dims(x, -1)
+  else:
+    return jnp.reshape(x, list(x.shape[:2]) + [1] * ndim)
 
 
 def run_streaming(layer: StreamingBase,
@@ -115,3 +129,64 @@ def run_streaming(layer: StreamingBase,
           outputs[key] = jnp.concatenate([outputs[key], output_step[key]],
                                          axis=1)
     return outputs
+
+
+class StreamingTest(test_utils.TestCase):
+  """Test method for flax tests with streaming."""
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
+  def _compare_stream_non_stream(self,
+                                 inputs,
+                                 paddings,
+                                 p_non_stream,
+                                 p_stream,
+                                 step,
+                                 expand_padding_rank=None,
+                                 is_eval=True):
+    context_p = base_layer.JaxContext.HParams(do_eval=True)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+      layer_non_stream = instantiate(p_non_stream)
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer_non_stream.init(init_key, inputs, paddings)
+      output_non_stream = layer_non_stream.apply(
+          initial_vars, inputs, paddings)
+
+      layer_stream = instantiate(p_stream)
+      in_nmap = py_utils.NestedMap(features=inputs, paddings=paddings)
+      output_names = ['features', 'paddings']
+      output_stream = run_streaming(layer_stream, initial_vars,
+                                    in_nmap, output_names, step)
+
+    right_context = p_stream.cls.get_right_context(p_stream)
+
+    # Remove delay elements from streaming output.
+    output_stream.features = output_stream.features[:, right_context:,]
+
+    # Size of time dim after removing streaming delay elements.
+    time_size = output_stream.features.shape[1]
+
+    if time_size < 2:
+      raise ValueError('After removing delay from the data, '
+                       'remaining number of samples is too small, '
+                       'you have to increase time dimension '
+                       'of the input sequence.')
+
+    if paddings is not None:
+      output_stream.paddings = output_stream.paddings[:, right_context:,]
+      non_stream_paddings = paddings[:, :time_size,]
+      self.assertAllClose(non_stream_paddings, output_stream.paddings)
+    else:
+      non_stream_paddings = jnp.zeros(
+          (inputs.shape[0], time_size), dtype=jnp.float32)
+
+    # Add extra dimensions, it is a special case for conformer.
+    mask = 1. - non_stream_paddings
+    mask = append_dims(mask, expand_padding_rank)
+
+    # Last elements in non streaming outputs have to be removed due to delay.
+    self.assertAllClose(output_non_stream[:, :time_size,] * mask,
+                        output_stream.features * mask)
