@@ -116,6 +116,10 @@ class StreamingConformersTest(test_utils.StreamingTest):
 
     # Setting left and right context in SelfAttentionWithNormAndResidual,
     # so that it becomes local self attention.
+    # Note: it uses non sreaming DotProductAttention
+    # to emulate LocalSelfAttention we set additional
+    # left_context and right_context, so that it will create attention mask
+    # for DotProductAttention.
     p_non_stream.trans_atten_tpl.set(
         left_context=left_context,
         right_context=right_context)
@@ -136,7 +140,8 @@ class StreamingConformersTest(test_utils.StreamingTest):
         atten_num_heads=atten_num_heads)
     p_stream.trans_atten_tpl.self_atten_tpl.set(
         left_context=left_context,
-        right_context=right_context)
+        right_context=right_context,
+        block_size=block_size)
     p_stream.lconv_tpl.set(is_causal=True)
 
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)

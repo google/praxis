@@ -92,6 +92,7 @@ pytype_strict_library(
     deps = [
         ":embedding_softmax",
         ":stochastics",
+        # Implicit absl.logging dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.

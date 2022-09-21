@@ -20,6 +20,7 @@ import math
 import string
 from typing import Callable, Dict, Optional, Sequence, Tuple, Union
 
+from absl import logging
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
@@ -2485,15 +2486,15 @@ class LocalSelfAttention(DotProductAttention):
     """Associated hyper-params for this layer class.
 
     Attributes:
-      block_size: Size of a processing block, if unset, default to max(1,
-        left_context-1).
+      block_size: Size of a processing block,
+        if unset, default to max(1, right_context, left_context-1).
       left_context: Number of left positions to attend (including current
         position).
       right_context: Number of right positions to attend.
     """
     block_size: Optional[int] = None
     left_context: Optional[int] = None
-    right_context: int = 0
+    right_context: Optional[int] = None
 
   def _atten_logits(self, query: JTensor, key: JTensor) -> JTensor:
     """Compute logits from query and key."""
@@ -2530,6 +2531,16 @@ class LocalSelfAttention(DotProductAttention):
           'relative bias for localattention is not supported yet')
     # Add key sharding annotations.
     p = self.hparams
+
+    block_size = p.block_size
+    if (block_size is None and p.left_context is not None and
+        p.right_context is not None):
+      block_size = max(1, p.right_context, p.left_context - 1)
+      # Note: if query_stride will be added in parameters
+      # then it has to be taken into account here.
+      logging.warning('block_size not set, use default value {}'.format(
+          block_size))
+
     query = self._shard_blnh(query)
     key = self._shard_blnh(key)
     value = self._shard_blnh(value)
@@ -2551,13 +2562,13 @@ class LocalSelfAttention(DotProductAttention):
     # -> [B, U, C, N, H]
     key_block_context = _extract_block_context(
         key,
-        block_size=p.block_size,
+        block_size=block_size,
         left_context=p.left_context,
         right_context=p.right_context)
     _, u, c, _, _ = key_block_context.shape
 
     # -> [B, U, W, N, H]
-    query_blocks = _convert_to_block(query, block_size=p.block_size)
+    query_blocks = _convert_to_block(query, block_size=block_size)
     _, _, w, _, _ = query_blocks.shape
 
     minus_inf = py_utils.get_large_negative_number(jnp.float32)
@@ -2569,7 +2580,7 @@ class LocalSelfAttention(DotProductAttention):
       mask = atten_mask[:, 0, 0, :]
       mask_block_context = _extract_block_context(
           mask,
-          block_size=p.block_size,
+          block_size=block_size,
           left_context=p.left_context,
           right_context=p.right_context,
           padding_val=minus_inf)
@@ -2583,13 +2594,13 @@ class LocalSelfAttention(DotProductAttention):
       # -> [B, U, W, T]
       mask_block_context = _convert_to_block(
           atten_mask[:, 0].astype(jnp.float32),
-          block_size=p.block_size,
+          block_size=block_size,
           padding_val=minus_inf)
       mask_block_context = jnp.reshape(mask_block_context, [b * u * w, t])
       # -> [B, U, W, U, C]
       mask_block_context = _extract_block_context(
           mask_block_context,
-          block_size=p.block_size,
+          block_size=block_size,
           left_context=p.left_context,
           right_context=p.right_context,
           padding_val=minus_inf)
@@ -2604,7 +2615,7 @@ class LocalSelfAttention(DotProductAttention):
     # -> [U, W, C]
     local_causal_mask = _make_local_mask(
         seq_len=t,
-        block_size=p.block_size,
+        block_size=block_size,
         left_context=p.left_context,
         right_context=p.right_context)
     mask = jnp.minimum(mask, (1. - local_causal_mask) * minus_inf)
@@ -2629,7 +2640,7 @@ class LocalSelfAttention(DotProductAttention):
 
     value_block_context = _extract_block_context(
         value,
-        block_size=p.block_size,
+        block_size=block_size,
         left_context=p.left_context,
         right_context=p.right_context)
 
