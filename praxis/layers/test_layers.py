@@ -141,13 +141,13 @@ class TestModel01(base_model.BaseModel):
     self.create_variable(
         'var02', base_layer.WeightHParams(shape=[p.input_dims, p.output_dims]))
 
-  def compute_predictions(self, inputs: JTensor) -> JTensor:
-    in_normed = self.bn(inputs)
+  def compute_predictions(self, input_batch: NestedMap) -> JTensor:
+    in_normed = self.bn(input_batch.inputs)
     return jnp.einsum('bi,io->bo', in_normed, self.theta.var01)
 
   def compute_loss(self, predictions: JTensor,
-                   inputs: JTensor) -> Tuple[NestedMap, NestedMap]:
-    del inputs
+                   input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
+    del input_batch
     loss = jnp.sum(predictions)
     loss02 = jnp.sum(predictions * predictions)
     # Here loss is the main loss to back-prop into, and loss02 is an eval
@@ -235,8 +235,8 @@ class TestSpmdModel(base_model.BaseModel):
     p = self.hparams
     self.create_child('ffwd', p.xformer_ffw)
 
-  def compute_predictions(self, inputs: NestedMap) -> JTensor:
-    return self.ffwd(inputs)
+  def compute_predictions(self, input_batch: NestedMap) -> JTensor:
+    return self.ffwd(input_batch.inputs)
 
   def compute_loss(self, predictions: JTensor,
                    input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
