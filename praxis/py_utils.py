@@ -20,7 +20,7 @@ import dataclasses
 import functools
 import re
 import time
-from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Sequence, Tuple, Union
 
 from absl import flags
 from absl import logging
@@ -724,9 +724,21 @@ def timeit(min_elapsed: float = 1e-6) -> Iterator[RunningPeriod]:
     period.end = time.time()
 
 
-def get_provenance_fields(batch: NestedMap) -> NestedMap:
-  """Returns a NestedMap with only the enumeration provenance fields."""
-  return batch.FilterKeyVal(lambda k, _: k.startswith(PROVENANCE_PREFIX))
+def filter_by_matching_keys(batch: NestedMap,
+                            prefixes: Sequence[str] = ()) -> Tuple[
+                                NestedMap, NestedMap]:
+  """Filter a map into one that matches any prefix and one that doesn't."""
+  def _matching_fn(k: str) -> bool:
+    for prefix in prefixes:
+      if k.startswith(prefix):
+        return True
+
+    return False
+
+  matching = batch.FilterKeyVal(lambda k, _: _matching_fn(k))
+  non_matching = batch.FilterKeyVal(lambda k, _: not _matching_fn(k))
+
+  return matching, non_matching
 
 
 def get_enumeration_id(example: Dict[str, Any],

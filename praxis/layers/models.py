@@ -103,7 +103,6 @@ def _compute_xent_loss_helper(
   # entropy, which is the (weighted) sum of log probs on the tokens.
   per_example_output = NestedMap(
       labels=labels, scores=-predictions.per_sequence_xent)
-  per_example_output.update(py_utils.get_provenance_fields(input_batch))
   if return_predictions:
     per_example_output = predictions
   return metrics, per_example_output
@@ -173,7 +172,6 @@ class LanguageModel(base_model.BaseModel):
         causal_attention_mask=causal_attention_mask,
         **packed_input_kwargs)
 
-    predictions.update(py_utils.get_provenance_fields(input_batch))
     return predictions
 
   def compute_loss(
@@ -381,7 +379,6 @@ class LanguageModel(base_model.BaseModel):
       else:
         temperature = p.decoder.temperature
 
-      # XXX not this one
       result = sample_decode.sample_decode(
           self,
           extend_step_fn,
