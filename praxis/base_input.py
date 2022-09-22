@@ -57,10 +57,6 @@ class BaseInput(base_hyperparams.BaseParameterizable):
 
   If there is already an Lingvo TF input generator that one would like to
   use directly, please use LingvoInputAdaptor below.
-
-  tf_graph_get_next() is an optional TF graph mode implementation of get_next
-  and returns output tensors and init ops. It's used when
-  experimental_remote_input is set.
   """
   _VALIDATE_BATCH_SIZE_NOT_NONE = True
 
@@ -88,9 +84,8 @@ class BaseInput(base_hyperparams.BaseParameterizable):
         many batches. Metrics over those batches will be aggregated and then
         reported.
       is_training: Whether or not this dataset is used for model traning.
-      experimental_remote_input: How to process inputs on remote hosts, when
-        there is a single controller. If set, it requires an implementation of
-        tf_graph_get_next().
+      experimental_remote_input: whether to process inputs on remote hosts, when
+        there is a single controller.
       batch_padding_size: The amount of right-padding applied to each invocation
         of get_next_padded(). Useful when the batch_size is smaller than the
         number of devices.
@@ -106,7 +101,7 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     reset_for_eval: bool = False
     eval_loop_num_batches: int = 1
     is_training: bool = False
-    experimental_remote_input: Optional[RemoteInput] = None
+    experimental_remote_input: bool = False
     batch_padding_size: int = 0
 
   @classmethod
@@ -126,29 +121,9 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     if re.fullmatch(r'[a-zA-Z0-9.:_-]+', name) is None:
       raise ValueError(f'Input hparams p.name string invalid: "{name}" '
                        'does not fully match "[a-zA-Z0-9._-]+".')
-    if hparams.experimental_remote_input:
-      if hparams.batch_padding_size > 0:
-        raise NotImplementedError('Remote input padding not implemented')
-      self._remote_input = hparams.experimental_remote_input.Instantiate(
-          input_fn=self.tf_graph_get_next)
-
-  def tf_graph_get_next(
-      self, host_id: int) -> tuple[Nested[tf.Tensor], Iterable[tf.Operation]]:
-    """TF graph mode implementation of get next.
-
-    Only need to implement this method when the subclass wants to support
-    experimental_remote_input.
-
-    Args:
-      host_id: An integer. The index of the host where to get the data. When
-        experimental_remote_input is true, hparams.infeed_host_index is the
-        index of the local device. Use host_id as infeed host index to get data
-        from a remote host.
-
-    Returns:
-      A tuple of nested output tensors and a list of initialization ops.
-    """
-    raise NotImplementedError
+    if hparams.experimental_remote_input and jax.process_count() > 1:
+      raise NotImplementedError(
+          'Remote input is not supported when there are multiple controllers.')
 
   def get_next(self) -> NestedJTensor:
     raise NotImplementedError
@@ -183,24 +158,6 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     Returns:
       A list strings of shape [batch]. The converted texts.
     """
-    raise NotImplementedError
-
-
-class RemoteInput(base_hyperparams.BaseParameterizable):
-  """Base class for remote input processing."""
-
-  class HParams(base_hyperparams.BaseParameterizable.HParams):
-    """Hyper-parameters for RemoteInput."""
-
-  def __init__(self, hparams: RemoteInput.HParams,
-               input_fn: Callable[..., Any]) -> None:
-    super().__init__(hparams)
-    self._input_fn = input_fn
-
-  def get_next(self) -> pytypes.NestedJTensor:
-    raise NotImplementedError
-
-  def reset(self) -> None:
     raise NotImplementedError
 
 
@@ -296,17 +253,17 @@ class LingvoInputAdaptor(BaseInput):
                                     hparams.cluster_do_eval)
     self._initialize()
 
-  def _update_file_random_seed(self, infeed_host_index) -> None:
+  def _update_file_random_seed(self) -> None:
     """Updates file random seed to use different seeds for different hosts."""
     p = self.hparams
     if hasattr(p.input, 'file_random_seed') and p.input.file_random_seed:
       # Make sure each host uses a different random seed.
-      p.input.file_random_seed += infeed_host_index
+      p.input.file_random_seed += p.infeed_host_index
 
   def _initialize(self) -> None:
     """Initializes the relevant fields of this adaptor input."""
     p = self.hparams
-    self._update_file_random_seed(p.infeed_host_index)
+    self._update_file_random_seed()
     # We make self.input public so that users can access its methods like
     # IdsToStrings if needed.
     with py_utils.infeed_context_scope(
@@ -320,34 +277,18 @@ class LingvoInputAdaptor(BaseInput):
       # call eagerly. Using tf.function may result in returning duplicate
       # batches.
       self._get_next_fn = self._get_batch
-      if p.experimental_remote_input:
-        raise NotImplementedError(
-            'Distributed input processing for datasource is not supported yet.')
     else:
       self._get_next_fn = tf.function(self._get_batch)
     self._num_batches_produced = 0
 
-  def _get_batch(self, host_index: Optional[int] = None) -> NestedMap:
+  def _get_batch(self) -> NestedMap:
     p = self.hparams
-    if not p.experimental_remote_input and host_index is not None:
-      raise ValueError(
-          'Unexpected host index when experimental_remote_input is false.')
-    infeed_host_index = (
-        p.infeed_host_index if host_index is None else host_index)
     with py_utils.infeed_context_scope(
-        infeed_host_index=infeed_host_index,
+        infeed_host_index=p.infeed_host_index,
         num_infeed_hosts=p.num_infeed_hosts), self._cluster:
       ret = self.input.GetPreprocessedInputBatch()
     # Remove unsupported string (byte) array from input.
     return ret.Filter(lambda v: v.dtype != tf.string)
-
-  def tf_graph_get_next(
-      self, host_id: int) -> tuple[Nested[tf.Tensor], Iterable[tf.Operation]]:
-    self._update_file_random_seed(host_id)
-    ret = self._get_batch(host_id)
-    batch_size = tf.nest.flatten(ret)[0].shape[0]
-    ret.eval_sample_weights = tf.ones([batch_size], tf.float32)
-    return ret, []
 
   def get_next(self) -> NestedJTensor:
     p = self.hparams
@@ -358,13 +299,10 @@ class LingvoInputAdaptor(BaseInput):
             op=None,
             message=f'num_batches exceeding {self._num_batches_produced}')
       self._num_batches_produced += 1
-    if p.experimental_remote_input:
-      ret = self._remote_input.get_next()
-    else:
-      ret = self._get_next_fn()
-      ret = tf.nest.map_structure(lambda x: x.numpy(), ret)
-      batch_size = tf.nest.flatten(ret)[0].shape[0]
-      ret.eval_sample_weights = np.ones([batch_size], np.float32)
+    ret = self._get_next_fn()
+    ret = tf.nest.map_structure(lambda x: x.numpy(), ret)
+    batch_size = tf.nest.flatten(ret)[0].shape[0]
+    ret.eval_sample_weights = np.ones([batch_size], np.float32)
     return ret
 
   def reset(self) -> None:
@@ -376,8 +314,6 @@ class LingvoInputAdaptor(BaseInput):
       return
     # reinstantiate the input and retrace self._get_batch.
     self._initialize()
-    if self.hparams.experimental_remote_input:
-      self._remote_input.reset()
 
   def ids_to_strings(self,
                      ids: pytypes.NpTensor,
@@ -486,15 +422,12 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
     self._dataset = self._get_dataset()
     self._iter = self._dataset.as_numpy_iterator()
 
-  def _update_file_random_seed(self, infeed_host_index: int) -> None:
+  def _update_file_random_seed(self) -> None:
     """Updates file random seed.
 
     This overrides LingvoInputAdaptor._update_file_random_seed where each host
     is assigned a different file random seed. It does nothing to make sure every
     host uses the same file random seed in hparams.input.
-
-    Args:
-      infeed_host_index: index of this infeed host.
     """
     pass
 
