@@ -14,7 +14,8 @@
 # limitations under the License.
 
 """Base class for streaming aware layers."""
-from typing import Optional
+
+from __future__ import annotations
 from flax import linen as nn
 
 from praxis import base_layer
@@ -35,7 +36,7 @@ class StreamingBase(base_layer.BaseLayer):
   """
 
   @classmethod
-  def get_right_context(cls, hparams) -> int:
+  def get_right_context(cls, hparams: StreamingBase.HParams) -> int:
     # Returns the right context(number of samples in the future) in time dim.
     # Together with stride they define layer delay.
     raise NotImplementedError(cls)
@@ -45,7 +46,7 @@ class StreamingBase(base_layer.BaseLayer):
     return self.get_right_context(self.hparams)
 
   @classmethod
-  def get_stride(cls, hparams) -> int:
+  def get_stride(cls, hparams: StreamingBase.HParams) -> int:
     # Returns stride in time dimension.
     # It defines a minimum number of input samples to produce one output.
     raise NotImplementedError(cls)

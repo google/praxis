@@ -2516,8 +2516,7 @@ class LocalSelfAttention(DotProductAttention):
       block_size = max(1, p.right_context, p.left_context - 1)
       # Note: if query_stride will be added in parameters
       # then it has to be taken into account here.
-      logging.warning('block_size not set, use default value {}'.format(
-          block_size))
+      logging.warning('block_size not set, use default value = %d', block_size)
 
     query = self._shard_blnh(query)
     key = self._shard_blnh(key)

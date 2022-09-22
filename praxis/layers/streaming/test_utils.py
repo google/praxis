@@ -183,6 +183,11 @@ class StreamingTest(test_utils.TestCase):
       non_stream_paddings = jnp.zeros(
           (inputs.shape[0], time_size), dtype=jnp.float32)
 
+    for b in range(non_stream_paddings.shape[0]):
+      if np.sum(non_stream_paddings[b]) >= non_stream_paddings.shape[1]:
+        raise ValueError('The whole signal is padded, '
+                         'so there is nothing left to test.')
+
     # Add extra dimensions, it is a special case for conformer.
     mask = 1. - non_stream_paddings
     mask = append_dims(mask, expand_padding_rank)

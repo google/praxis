@@ -15,6 +15,7 @@
 
 """Streaming aware normalization layers."""
 
+from __future__ import annotations
 from jax import numpy as jnp
 
 from praxis import py_utils
@@ -30,22 +31,22 @@ class GroupNorm(normalizations.GroupNorm,  # pytype: disable=signature-mismatch
   """Streaming aware GroupNorm layer."""
 
   @property
-  def group_size(self):
+  def group_size(self) -> int:
     p = self.hparams
     assert p.min_group_size <= p.dim
     return max(p.dim // p.num_groups, p.min_group_size)
 
   @property
-  def num_groups(self):
+  def num_groups(self) -> int:
     p = self.hparams
     return p.dim // self.group_size
 
   @classmethod
-  def get_right_context(cls, hparams):
+  def get_right_context(cls, hparams: GroupNorm.HParams) -> int:
     return 0
 
   @classmethod
-  def get_stride(cls, hparams):
+  def get_stride(cls, hparams: GroupNorm.HParams) -> int:
     return 1
 
   def init_states(self,

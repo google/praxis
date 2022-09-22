@@ -15,6 +15,7 @@
 
 """Streaming aware attention layers."""
 
+from __future__ import annotations
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
@@ -39,11 +40,11 @@ class LocalSelfAttention(attentions.LocalSelfAttention,  # pytype: disable=signa
   QUERY_STRIDE = 1  # Keeping it for a case if we add it as a parameter.
 
   @classmethod
-  def get_right_context(cls, hparams):
+  def get_right_context(cls, hparams: LocalSelfAttention.HParams) -> int:
     return hparams.right_context
 
   @classmethod
-  def get_stride(cls, hparams):
+  def get_stride(cls, hparams: LocalSelfAttention.HParams) -> int:
     return 1
 
   def _zero_state_dynamic_length(self, batch_size, with_paddings):

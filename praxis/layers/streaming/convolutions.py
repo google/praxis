@@ -15,6 +15,7 @@
 
 """Streaming aware convolutional layers."""
 
+from __future__ import annotations
 from typing import Optional, Sequence, Tuple, Union
 
 import jax
@@ -123,14 +124,14 @@ class DepthwiseConv1D(convolutions.BaseDepthwiseConv1D,  # pytype: disable=signa
     return p.rhs_dilation_rate * (p.filter_shape[0] - 1)
 
   @classmethod
-  def get_right_context(cls, hparams):
+  def get_right_context(cls, hparams: DepthwiseConv1D.HParams) -> int:
     if hparams.is_causal:
       return 0
     else:
       raise ValueError('Non causal streaming is not supported yet.')
 
   @classmethod
-  def get_stride(cls, hparams):
+  def get_stride(cls, hparams: DepthwiseConv1D.HParams) -> int:
     return 1
 
   def init_states(self,
@@ -211,11 +212,11 @@ class LightConv1D(convolutions.LightConv1D,  # pytype: disable=signature-mismatc
         DepthwiseConv1D.HParams)
 
   @classmethod
-  def get_stride(cls, hparams):
+  def get_stride(cls, hparams: LightConv1D.HParams) -> int:
     return 1
 
   @classmethod
-  def get_right_context(cls, hparams):
+  def get_right_context(cls, hparams: LightConv1D.HParams) -> int:
     if hparams.is_causal:
       return 0
     else:

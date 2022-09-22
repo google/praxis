@@ -185,6 +185,7 @@ py_strict_test(
     name = "conformers_test",
     srcs = ["conformers_test.py"],
     python_version = "PY3",
+    shard_count = 6,
     srcs_version = "PY3",
     deps = [
         ":conformers",

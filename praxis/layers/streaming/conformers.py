@@ -15,6 +15,7 @@
 
 """Streaming aware Conformer-related layers."""
 
+from __future__ import annotations
 from typing import Tuple
 
 from jax import numpy as jnp
@@ -75,11 +76,12 @@ class SelfAttentionWithNormAndResidual(  # pytype: disable=signature-mismatch
         'It has to be non streaming aware normalization.')
 
   @classmethod
-  def get_right_context(cls, hparams):
+  def get_right_context(
+      cls, hparams: SelfAttentionWithNormAndResidual.HParams) -> int:
     return hparams.self_atten_tpl.right_context
 
   @classmethod
-  def get_stride(cls, hparams):
+  def get_stride(cls, hparams: SelfAttentionWithNormAndResidual.HParams) -> int:
     return 1
 
   def init_states(self,
@@ -182,11 +184,11 @@ class Conformer(  # pytype: disable=signature-mismatch
         convolutions.LightConv1D.HParams)
 
   @classmethod
-  def get_right_context(cls, hparams):
+  def get_right_context(cls, hparams: Conformer.HParams) -> int:
     return hparams.trans_atten_tpl.self_atten_tpl.right_context
 
   @classmethod
-  def get_stride(cls, hparams):
+  def get_stride(cls, hparams: Conformer.HParams) -> int:
     return 1
 
   def init_states(self,
