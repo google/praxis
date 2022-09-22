@@ -262,7 +262,6 @@ class TransformerFeedForward(base_layer.BaseLayer):
         applied after transformation.
       internal_gshard_variance_scaling_fan_in_init: Feedforward weight init
         follows uniform distribution withbound = 1.0 / sqrt(3 / dim_0).
-      internal_init_scale: Overrides the Xavier scale for init.
     """
     input_dims: int = 0
     output_dims: int = 0
@@ -285,8 +284,6 @@ class TransformerFeedForward(base_layer.BaseLayer):
     residual_droppath_prob: float = 0.0
     norm_policy: str = 'pre'
     internal_gshard_variance_scaling_fan_in_init: bool = False
-    # TODO(melvinp): Remove internal_init_scale and set directly in params_init.
-    internal_init_scale: Optional[float] = None
 
   class WeightShardingHParams(BaseWtShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -354,8 +351,6 @@ class TransformerFeedForward(base_layer.BaseLayer):
     if p.internal_gshard_variance_scaling_fan_in_init:
       scale = (1. / p.input_dims)**0.5 * (3.0**0.5)
       ffn1_p.linear_tpl.params_init = WeightInit.Uniform(scale)
-    if p.internal_init_scale:
-      ffn1_p.linear_tpl.params_init = WeightInit.Xavier(p.internal_init_scale)
     self.create_child('ffn_layer1', ffn1_p)
 
     if self._is_ffn1_gated:
@@ -371,8 +366,6 @@ class TransformerFeedForward(base_layer.BaseLayer):
       if p.internal_gshard_variance_scaling_fan_in_init:
         scale = (1. / p.input_dims)**0.5 * (3.0**0.5)
         gate_p.linear_tpl.params_init = WeightInit.Uniform(scale)
-      if p.internal_init_scale:
-        gate_p.linear_tpl.params_init = WeightInit.Xavier(p.internal_init_scale)
       self.create_child('ffn_layer1_gate', gate_p)
 
     # Create RELU dropout layer
@@ -392,8 +385,6 @@ class TransformerFeedForward(base_layer.BaseLayer):
     if p.internal_gshard_variance_scaling_fan_in_init:
       scale = (1. / p.hidden_dims)**0.5 * (3.0**0.5)
       ffn2_p.linear_tpl.params_init = WeightInit.Uniform(scale)
-    if p.internal_init_scale:
-      ffn2_p.linear_tpl.params_init = WeightInit.Xavier(p.internal_init_scale)
     self.create_child('ffn_layer2', ffn2_p)
 
     # Create residual dropout layer

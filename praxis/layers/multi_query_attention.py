@@ -167,7 +167,6 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       attention_extra_logit: Extra logit for attention softmax.
       combine_qkv: Whether to combine qkv tensor for optimizing qkv input
         gradient computation with SPMD. Only supports self-attention.
-      internal_init_scale: Overrides the Xavier scale for init.
       Note: dconv_qkv and ngrammer are not supported.
     """
     input_dim: Union[int, Dict[str, int]] = 0
@@ -190,8 +189,6 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     attention_extra_logit: Optional[float] = None
     dconv_qkv: bool = False
     combine_qkv: bool = False
-    # TODO(melvinp): Remove internal_init_scale and set directly in params_init.
-    internal_init_scale: Optional[float] = None
 
   # SPMD partition related params.
   #
@@ -259,36 +256,24 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       value_input_dim = p.input_dim
       query_input_dim = p.input_dim
 
-    def project_input(input_dim, xavier_scale=None):
+    def project_input(input_dim):
       proj_p = p.proj_tpl.clone().set(
           input_dim=input_dim,
           num_heads=p.num_heads,
           dim_per_head=dim_per_head,
           use_bias=p.use_bias)
-      if xavier_scale:
-        proj_p.params_init = WeightInit.Xavier(xavier_scale)
       proj_p.weight_split_dims_mapping.wt = wp.proj
       return proj_p
 
-    def project_input_no_heads(input_dim, xavier_scale=None):
+    def project_input_no_heads(input_dim):
       proj_p = p.headless_proj_tpl.clone().set(
           input_dim=input_dim, output_dim=dim_per_head, use_bias=p.use_bias)
-      if xavier_scale:
-        proj_p.params_init = WeightInit.Xavier(xavier_scale)
       proj_p.weight_split_dims_mapping.wt = wp.proj_headless
       return proj_p
 
-    self.create_child(
-        'key',
-        project_input_no_heads(
-            key_input_dim, xavier_scale=p.internal_init_scale))
-    self.create_child(
-        'query',
-        project_input(query_input_dim, xavier_scale=p.internal_init_scale))
-    self.create_child(
-        'value',
-        project_input_no_heads(
-            value_input_dim, xavier_scale=p.internal_init_scale))
+    self.create_child('key', project_input_no_heads(key_input_dim))
+    self.create_child('query', project_input(query_input_dim))
+    self.create_child('value', project_input_no_heads(value_input_dim))
 
     if p.use_rotary_position_emb:
       pos_emb_p = embedding_softmax.RotaryPositionalEmbedding.HParams()
@@ -314,9 +299,6 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         use_bias=p.use_bias,
         use_nhd_shape=p.output_proj_use_nhd_shape)
     post_proj_p.weight_split_dims_mapping.wt = wp.proj
-
-    if p.internal_init_scale:
-      post_proj_p.params_init = WeightInit.Xavier(p.internal_init_scale)
 
     self.create_child('post', post_proj_p)
 
