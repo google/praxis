@@ -886,7 +886,8 @@ def add_global_summary(
       either [batch, height, width, channels] or [height, width, channels].
     verbosity: verbosity level for the summary to add. If the current jax
       context's verbosity level is less verbose (lower value) than the summary,
-      the summary does not get added.
+      the summary does not get added. Refer to
+      JaxContext.HParams.summary_verbosity docstring for more detail.
   """
   context = cur_jax_context()
   if verbosity > context.summary_verbosity:
@@ -1356,6 +1357,18 @@ class BaseLayer(
                   tensor: JTensor,
                   summary_type: SummaryType = SummaryType.SCALAR,
                   verbosity: int = 2) -> None:
+    """Add a tensor to the SUMMARIES collection.
+
+    Args:
+      name: name of the summary to be collected.
+      tensor: the tensor containing the value to be written.
+      summary_type: enum value indicating what type of summary is being added.
+      verbosity: verbosity level of the summary being written. If this verbosity
+        value is higher (less verbose) than that of the JaxContext the summary
+        will not be added. If the summary is being without any JaxConext, it'll
+        be added by default. Refer to JaxContext.HParams.summary_verbosity
+        docstring for more detail.
+    """
     # if not running under any jax context add summary by default
     if (JaxContext.has_context() and
         verbosity > self.jax_context.summary_verbosity):
