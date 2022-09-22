@@ -47,12 +47,14 @@ RANDOM = base_layer.RANDOM
 AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 
+# TODO(pax-dev): This function is not needed when Array is enabled. Remove it
+# when jax.Array is enabled globally in PAX.
 @contextlib.contextmanager
 def _maybe_set_global_semantics():
   """Sets global semantics within the context manager."""
   prev_positional_val = maps._positional_semantics.val  # pylint: disable=protected-access
   try:
-    if jax.config.jax_parallel_functions_output_gda:
+    if py_utils.gda_or_jax_array():
       maps._positional_semantics.val = maps._PositionalSemantics.GLOBAL  # pylint: disable=protected-access
     else:
       maps._positional_semantics.val = prev_positional_val  # pylint: disable=protected-access

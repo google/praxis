@@ -26,11 +26,13 @@ from absl import flags
 from absl import logging
 import flax
 import jax
+from jax.experimental import array
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental import maps
 from jax.experimental import mesh_utils
 from jax.experimental import multihost_utils
 from jax.experimental import pjit
+from jax.experimental import sharding
 from jax.interpreters import pxla
 import jax.numpy as jnp
 from lingvo.core import cluster
@@ -115,7 +117,9 @@ def unshard(array: jnp.ndarray) -> np.ndarray:
 
 def _unreplicate(x):
   """Helper to unreplicated the data based on its type."""
-  if isinstance(x, gda_lib.GlobalDeviceArray):
+  if isinstance(x, array.Array):
+    return x.addressable_data(0)
+  elif isinstance(x, gda_lib.GlobalDeviceArray):
     return x.local_data(0)
   elif isinstance(x, pxla.ShardedDeviceArray):
     val = x.device_buffers[0]
@@ -323,15 +327,31 @@ def create_gda(host_arrays: np.ndarray, global_shapes: jax.ShapeDtypeStruct,
 
   device_buffers = jax.tree_map(_put_to_devices, host_arrays)
 
-  def _gda(global_shape, pspec, dbs):
-    return gda_lib.GlobalDeviceArray(global_shape.shape, global_mesh, pspec,
-                                     dbs)
+  def _gda_or_jax_array(global_shape, pspec, dbs):
+    if jax.config.jax_array:
+      aval = jax.ShapedArray(global_shape.shape, global_shape.dtype)
+      # This is cached because creating new sharding objects everytime is
+      # expensive in pjit dispatch path for inputs.
+      s = _cached_mesh_pspec_sharding(global_mesh, pspec)
+      return array.Array(aval, s, dbs, committed=True)
+    else:
+      return gda_lib.GlobalDeviceArray(global_shape.shape, global_mesh, pspec,
+                                       dbs)
 
-  return jax.tree_map(_gda, global_shapes, pspecs, device_buffers)
+  return jax.tree_map(_gda_or_jax_array, global_shapes, pspecs, device_buffers)
 
 
-def copy_gda(x: gda_lib.GlobalDeviceArray) -> gda_lib.GlobalDeviceArray:
+@functools.lru_cache()
+def _cached_mesh_pspec_sharding(mesh, pspec):
+  return sharding.MeshPspecSharding(mesh, pspec)
+
+
+# TODO(b/248152817): Delete this function when jax.Array is enabled globally.
+def copy_gda(x):
   """Copies a GDA."""
+  if isinstance(x, array.Array):
+    return jnp.copy(x)
+  assert isinstance(x, gda_lib.GlobalDeviceArray)
   buffers = [jnp.copy(s.data) for s in x.local_shards]
   return gda_lib.GlobalDeviceArray(x.shape, x.mesh, x.mesh_axes, buffers)
 
@@ -349,16 +369,31 @@ def convert_fully_replicated_sda_to_gda(sda):
       sorted(sda.device_buffers, key=lambda x: x.device().id))
 
 
-def convert_fully_replicated_gda_to_sda(gda):
-  """Convert a fully replicated GDA to SDA."""
-  local_shape = (jax.local_device_count(),) + gda.shape
-  local_aval = jax.core.ShapedArray(local_shape, gda.dtype)
-  global_mesh = gda.mesh
-  sharding_spec = pxla.mesh_sharding_specs(global_mesh.local_mesh.shape,
-                                           global_mesh.local_mesh.axis_names)(
-                                               local_aval, {})
-  return pxla.make_sharded_device_array(local_aval, sharding_spec,
-                                        list(gda._device_buffers))  # pylint: disable=protected-access
+def gda_or_jax_array():
+  return jax.config.jax_array or jax.config.jax_parallel_functions_output_gda
+
+
+def convert_host_local_array_to_global_array(arr):
+  """Converts a host local array from pmap to global jax.Array.
+
+  Similar to `convert_fully_replicated_sda_to_gda` function.
+
+  Args:
+    arr: Input host local array produced by pmap.
+
+  Returns:
+    A global array similar to GDA.
+  """
+  # input `arr` is fully replicated, so it's shape is the global shape.
+  global_shape = arr.device_buffers[0].shape
+  # Create a 1D mesh to create fully replicated global jax.Array.
+  mesh = maps.Mesh(np.array(jax.devices()), axis_names=('x',))
+  partition_spec = pjit.PartitionSpec(None)
+  # pmap-produced Array has a "scrambled" device order.
+  dbs = sorted(arr.device_buffers, key=lambda x: x.device().id)
+  aval = jax.ShapedArray(global_shape, dbs[0].dtype)
+  return array.Array(aval, sharding.MeshPspecSharding(mesh, partition_spec),
+                     dbs, committed=True)
 
 
 def get_global_input_shape_dtype(x: jnp.ndarray) -> jax.ShapeDtypeStruct:
