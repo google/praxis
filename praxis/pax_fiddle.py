@@ -40,7 +40,7 @@ class DoNotBuild(fdl.Tag):
 
 def sub_field(
     field_type: Callable[..., Any], tags: Optional[TagOrTags] = tuple()
-) -> dataclasses.Field:  # pylint: disable=g-bare-generic
+) -> Union[dataclasses.Field, Any]:  # pylint: disable=g-bare-generic
   """Dataclass field specification for a Fiddle-configurable dataclass field.
 
   This can be used to specify that a dataclass should have a default value of
@@ -66,7 +66,7 @@ def sub_field(
 
 def template_field(
     template: Callable[..., Any], tags: Optional[TagOrTags] = tuple()
-) -> dataclasses.Field:  # pylint: disable=g-bare-generic
+) -> Union[dataclasses.Field, Any]:  # pylint: disable=g-bare-generic
   """Dataclass field specification for a Fiddle-configurable template field.
 
   This can be used to specify that a dataclass should have a default value of
