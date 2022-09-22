@@ -415,7 +415,7 @@ class LanguageModel(base_model.BaseModel):
       label_smoothing: Amount of label smoothing to apply.
       z_loss: Coefficient for auxiliary z-loss loss term.
     """
-    decoder: base_layer.BaseLayer.HParams = sub_config_field(
+    decoder_tpl: base_layer.BaseLayer.HParams = sub_config_field(
         FlaxFormerDecoder.HParams)
     loss_normalizing_factor: str = 'NUM_REAL_TARGET_TOKENS'
     label_smoothing: float = 0.0
@@ -425,7 +425,7 @@ class LanguageModel(base_model.BaseModel):
   def setup(self):
     p = self.hparams
     # Propagate partitioning information from BaseModel to BaseLayer.
-    decoder_p = p.decoder.clone()
+    decoder_p = p.decoder_tpl.clone()
     decoder_p.logical_axes_rules = p.logical_axes_rules
     self.create_child('decoder', decoder_p)
 

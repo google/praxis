@@ -137,7 +137,7 @@ class BeamSearchTest(test_utils.TestCase):
   def _run_decode(self, decoder_p, logits, input_batch):
     p = models.LanguageModel.HParams(
         name='mock_lm',
-        decoder=decoder_p.clone(),
+        decoder_tpl=decoder_p.clone(),
         lm_tpl=MockLM.HParams(logits=logits))
     lang_model = instantiate(p)
     theta = NestedMap(lm_tpl=NestedMap())
