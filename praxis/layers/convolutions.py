@@ -204,20 +204,15 @@ class ConvBNAct(Conv2D):
     Attributes:
       batch_norm_tpl: The batchnorm layer template.
       activation_tpl: Activation function to use.
-      compat_with_lingvo: If use lingvo-compatible logic.
     """
     batch_norm_tpl: Optional[BaseHParams] = sub_config_field(
         normalizations.BatchNorm.HParams)
     activation_tpl: activations.BaseActivation = sub_config_field(
         activations.ReLU.HParams)
-    compat_with_lingvo: bool = False
 
   def setup(self) -> None:
     super().setup()
     p = self.hparams
-    if p.compat_with_lingvo:
-      assert tuple(
-          p.dilations) == (1, 1), ('compat_with_lingvo supports no dilation.')
 
     if p.batch_norm_tpl is not None:
       bn = p.batch_norm_tpl.clone()
@@ -245,9 +240,28 @@ class ConvBNAct(Conv2D):
     outputs = self.activation(outputs)
     return outputs
 
-  def fprop_with_padding(self, inputs: JTensor,
-                         paddings: JTensor) -> Tuple[JTensor, JTensor]:
-    """Forward prop with time paddings.
+
+class ConvBNActWithPadding(ConvBNAct):
+  """A block of conv-bn-activation layers with padding processing."""
+
+  class HParams(ConvBNAct.HParams):
+    """Associated hyper-params for this layer class.
+
+    Attributes:
+      compat_with_lingvo: If use lingvo-compatible logic.
+    """
+    compat_with_lingvo: bool = False
+
+  def setup(self) -> None:
+    super().setup()
+    p = self.hparams
+    if p.compat_with_lingvo:
+      assert tuple(
+          p.dilations) == (1, 1), ('compat_with_lingvo supports no dilation.')
+
+  def __call__(self, inputs: JTensor,
+               paddings: JTensor) -> Tuple[JTensor, JTensor]:
+    """Forward prop which applies conv-bn-activation with time paddings.
 
     Args:
       inputs: Input sequence of shape [B, H, W, D_in], also known more popularly
@@ -265,7 +279,7 @@ class ConvBNAct(Conv2D):
     # Applying padding.
     inputs *= (1 - paddings)[:, :, None, None]
 
-    outputs = self(inputs)
+    outputs = super().__call__(inputs)
 
     if p.filter_stride[0] == 1 and p.padding == 'SAME':
       return outputs, paddings
@@ -289,7 +303,6 @@ class ConvBNAct(Conv2D):
             dimension_numbers=('NHC', 'HIO', 'NHC'))
         out_padding = jnp.squeeze(out_padding, axis=-1)
     else:
-
       def rolling_window(arr: JTensor, window: int, stride: int):
         idx = jnp.arange(0, arr.shape[1] - window + 1,
                          stride)[:, None] + jnp.arange(window)[None, :]

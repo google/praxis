@@ -202,7 +202,7 @@ class ConvolutionsTest(test_utils.TestCase):
       (5, 3, 'VALID'),
   )
   def test_conv_bnact_withpadding(self, stride, kernel_size, padding):
-    p = convolutions.ConvBNAct.HParams(
+    p = convolutions.ConvBNActWithPadding.HParams(
         name='jax_withpadding_convolution',
         filter_shape=(kernel_size, kernel_size, 1, 1),
         filter_stride=(stride, stride),
@@ -230,9 +230,9 @@ class ConvolutionsTest(test_utils.TestCase):
     paddings = jnp.asarray(npy_paddings)
 
     theta = layer.init(
-        prng_key, features, paddings, method=layer.fprop_with_padding)
+        prng_key, features, paddings)
     _, output = layer.apply(
-        theta, features, paddings, method=layer.fprop_with_padding)
+        theta, features, paddings)
     if padding == 'SAME':
       expect_output = get_padding_from_length((length + stride - 1) // stride)
     elif padding == 'VALID':

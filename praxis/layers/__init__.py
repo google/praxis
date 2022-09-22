@@ -48,6 +48,7 @@ from praxis.layers.conformers import Conformer
 from praxis.layers.conformers import SelfAttentionWithNormAndResidual
 from praxis.layers.convolutions import Conv2D
 from praxis.layers.convolutions import ConvBNAct
+from praxis.layers.convolutions import ConvBNActWithPadding
 from praxis.layers.convolutions import DepthwiseConv1D
 from praxis.layers.convolutions import LightConv1D
 from praxis.layers.embedding_softmax import Embedding
