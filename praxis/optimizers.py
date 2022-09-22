@@ -1088,7 +1088,7 @@ class Adafactor(BaseOptimizer):
     decay_rate: float = 0.8
     decay_offset: float = 0.
     multiply_by_parameter_scale: bool = True
-    clipping_threshold: float = 1.
+    clipping_threshold: Optional[float] = 1.
     momentum: Optional[float] = None
     dtype_momentum: str = 'float32'
     weight_decay_rate: Optional[float] = None
@@ -1671,7 +1671,7 @@ class _ShardedAdafactorHelper:
       decay_adam: float,
       decay_pow: float,
       beta1: float,
-      clipping_threshold: float,
+      clipping_threshold: Optional[float],
       factored: bool,
       epsilon1_grad_sq_reg: float,
       quantized_dtype: jnp.dtype,
@@ -2108,7 +2108,7 @@ def sharded_adafactor(
     decay_adam: float = 0.,
     decay_pow: float = 0.,
     beta1: float = 0.,
-    clipping_threshold: float = 1.,
+    clipping_threshold: Optional[float] = 1.,
     factored: bool = True,
     epsilon1_grad_sq_reg: float = 1e-30,
     quantized_dtype: jnp.dtype = jnp.int8,
@@ -2306,7 +2306,7 @@ class ShardedAdafactor(BaseOptimizer):
     decay_adam: float = 0.
     decay_pow: float = 0.
     beta1: float = 0.
-    clipping_threshold: float = 1.
+    clipping_threshold: Optional[float] = 1.
     factored: bool = True
     epsilon1_grad_sq_reg: float = 1e-30
     quantized_dtype: str = 'int8'
