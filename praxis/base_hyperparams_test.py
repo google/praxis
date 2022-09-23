@@ -195,17 +195,6 @@ class HyperParamsTest(absltest.TestCase):
     with self.assertRaisesRegex(TypeError, 'invalid_name'):
       _ = SimpleTestClass.config(invalid_name=5)
 
-  def test_fiddle_in_plain_dataclass_errors(self):
-    cfg = SimpleTestClass.config()
-    with self.assertRaisesRegex(TypeError,
-                                r'.*Fiddle config.*inside dataclasses'):
-      NestedTestClass.HParams(d=cfg)
-
-    nested_params = NestedTestClass.HParams()
-    with self.assertRaisesRegex(TypeError,
-                                r'.*Fiddle config.*inside dataclasses'):
-      nested_params.d = cfg
-
   def test_fiddle_nested(self):
     p = NestedTestClass.config()
     p.d = SimpleTestChild.config(a=40, c=-1.3)

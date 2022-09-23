@@ -410,12 +410,16 @@ class BaseHyperParams:
     Raises:
       TypeError: If the field is the wrong type.
     """
-    if isinstance(value, fdl.Buildable):
+    # TODO(edloper): Remove the special-case for pax_fiddle.Config once we've
+    # moved to the next step of Fiddle migration.
+    if (isinstance(value, fdl.Buildable) and
+        not isinstance(value, pax_fiddle.Config)):
       raise TypeError(
           'It is forbidden (almost always a mistake) to put Fiddle config '
           'objects inside dataclasses. Instead, create a fdl.Config of '
           'this Params class as well. For example, write fdl.Config(ParamsA, '
-          'a=fdl.Config(ParamsB)), not ParamsA(a=fdl.Config(ParamsB)).')
+          'a=fdl.Config(ParamsB)), not ParamsA(a=fdl.Config(ParamsB)). '
+          'However, using pax_fiddle.Config is ok for template fields.')
 
     if isinstance(value, BaseParameterizable):
       logging.warning(
