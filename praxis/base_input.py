@@ -24,6 +24,7 @@ from typing import Any, Callable, Dict, Iterable, Optional, Sequence
 
 from absl import logging
 import jax
+from jax.experimental import maps
 from lingvo.core import cluster_factory
 from lingvo.core import datasource
 import numpy as np
@@ -159,6 +160,51 @@ class BaseInput(base_hyperparams.BaseParameterizable):
       A list strings of shape [batch]. The converted texts.
     """
     raise NotImplementedError
+
+  @classmethod
+  def reshard_for_pmap(cls, arrays: NestedJTensor) -> NestedJTensor:
+    """Reshards inputs for pmap.
+
+    This function reshards `arrays`, inputs returned by this input class, to be
+    suitable for pmap computation. The returned arrays are expected to have the
+    pmap device dimension as the 0th dimension and per-device batch dimension as
+    the 1st dimension. Input subclasses may override this to customize the
+    resharding implementations.
+
+    Args:
+      arrays: Inputs returned by this input class.
+
+    Returns:
+      Resharded inputs.
+    """
+    return jax.tree_util.tree_map(py_utils.reshard, arrays)
+
+  @classmethod
+  def reshard_for_spmd(cls, arrays: NestedJTensor,
+                       global_shapes: NestedShapeDtypeStruct,
+                       global_mesh: maps.Mesh, pspecs: Any) -> NestedJTensor:
+    """Reshards inputs for pjit.
+
+    This function reshards `arrays`, inputs returned by this input class, to be
+    suitable for pjit computation on the given mesh. The caller also provides
+    the expected global shapes and partition specs of the arrays to be returned.
+    The returned arrays are expected to have the global batch dimension as the
+    0th dimension and be sharded in the way specified by `pspecs`.Input
+    subclasses may override this to customize the resharding implementations.
+
+    Args:
+      arrays: Inputs returned by this input class.
+      global_shapes: Expected global shapes of `arrays` after resharding.
+      global_mesh: Global mesh for pjit computation.
+      pspecs: Expected partition specs for `arrays` after resharding.
+
+    Returns:
+      Resharded inputs.
+    """
+    py_utils.assert_same_shape_and_dtype(
+        global_shapes,
+        tf.nest.map_structure(py_utils.get_global_input_shape_dtype, arrays))
+    return py_utils.create_gda(arrays, global_shapes, global_mesh, pspecs)
 
 
 class LingvoInputAdaptor(BaseInput):
