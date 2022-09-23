@@ -261,9 +261,12 @@ class VitExitLayers(base_layer.BaseLayer):
           output_dims=p.output_dim,
           activation_tpl=activations.Tanh.HParams())
       self.create_child('fc_tanh', p_fc_tanh)
-    elif p.hidden_dim != p.output_dim:
-      raise ValueError('When there is no linear projection, hidden_dim must '
-                       'be equal to output_dim.')
+    elif p.output_dim != 0 and p.hidden_dim != p.output_dim:
+      p_fc = linears.FeedForward.HParams(
+          input_dims=p.hidden_dim,
+          output_dims=p.output_dim,
+          activation_tpl=activations.Identity.HParams())
+      self.create_child('output_projection', p_fc)
 
     if p.output_dropout_prob > 0.0:
       p_dropout = stochastics.Dropout.HParams(keep_prob=1.0 -
@@ -279,12 +282,16 @@ class VitExitLayers(base_layer.BaseLayer):
     Returns:
       Output tensor of shape [B, D] or [B, N, D] if pooled == False.
     """
+    p = self.hparams
     inputs = self.ln(inputs)
-    if self.hparams.pooled:
+    if p.pooled:
       inputs = self.pooling(inputs)
-    if self.hparams.output_fc_tanh:
+    if p.output_fc_tanh:
       inputs = self.fc_tanh(inputs)
-    if self.hparams.output_dropout_prob > 0.0:
+    elif p.output_dim != 0 and p.hidden_dim != p.output_dim:
+      inputs = self.output_projection(inputs)
+
+    if p.output_dropout_prob > 0.0:
       inputs = self.dropout(inputs)
     return inputs
 
