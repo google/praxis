@@ -985,118 +985,15 @@ def instantiate_layer(layer_p: BaseLayer.HParams, scope: Any) -> BaseLayer:
   return layer
 
 
-# Inherit from Flax Linen Module.
-class BaseLayer(
-    BaseParameterizable,
-    nn.Module,
-    init_params_arg_name='_hparams',
-    nonconfigurable_init_arg_names=('name', 'parent')):
-  r"""Base class for all the layer object.
+class _SharedBaseLayer(nn.Module):
+  """Common subclass for `BaseLayer` and `FiddleBaseLayer`.
 
-  Subclasses are expected to override the following functions:
-
-  HParams(): Returns a configuration HParams for this layer.
-  setup(): To setup this instance, which includes create all the sub-layers, as
-    well as immediate layer variables.
-  __call__(): The main method that carries out ML computation.
-
-  TODO(pax-team): Add more doc-string and example.
+  `BaseLayer` is used for layers that are configured using `HParams`.
+  `FiddleBaseLayer` is used for layers configured using `Fiddle`.
   """
-  # dataclass takes a single HParams object. This should not change during the
-  # lifetime of this layer.
-  _hparams: base_hyperparams.InstantiableHyperParams
 
   # Fetches variables from flax 'params' class via theta "dot" syntax.
   theta = ThetaDescriptor()
-
-  class WeightShardingHParams(BaseHyperParams):
-    """Represents how layer's learned parameters are partitioned across a mesh.
-
-    This usually refers to the primary model weight. Sub-layers can define
-    additional params for more weights.
-
-    Attributes:
-      wt: Sharding annotations for the primary model weight.
-    """
-    wt: SplitDimsMapping = None
-
-  class ActivationShardingHParams(BaseHyperParams):
-    """Represents how intermediate values should be partitioned across a mesh.
-
-    This usually refers to the primary layer output. Sub-layers can define
-    additional params for more activations.
-
-    Attributes:
-      out: Sharding annotations for the primary layer output.
-    """
-    out: SplitDimsMapping = None
-
-  class HParams(InstantiableHyperParams):
-    """Hyperparameters for this layer.
-
-    Attributes:
-      dtype: Default dtype for all variables.
-      fprop_dtype: Activations datatype to use.
-      params_init: How model weights should be initialized.
-      skip_lp_regularization:  If True, all variables in this layer will skip Lp
-        regularization. If None/False, only variables explicitly in the
-        SKIP_LP_REGULARIZATION collection will skip Lp regularization. Also
-        propagated to child layers with default settings (None).
-      ici_mesh_shape: Shape of the logical mesh used for SPMD parallelism in
-        each slice. The meaning of each mesh axis is defined by mesh_axis_names,
-        so these two params must be the same length. If dcn_mesh_shape is
-        present, the overall mesh is the product of ici_mesh_shape and
-        dcn_mesh_shape. For example, an ici_mesh_shape of [2, 3, 4] with
-        mesh_axis_names ['replica', 'data', 'mdl'] indicates 2-way replica
-        parallelism, 3-way data parallelism, and 4-way model parallelism over 24
-        devices. None, the default, is equivalent to a sequence of ones and
-        means that the model is placed on a single device.
-      dcn_mesh_shape: Shape of the logical mesh used for SPMD parallelism over
-        multiple slices. The overall mesh is the product of ici_mesh_shape and
-        dcn_mesh_shape, and the meaning of each mesh axis is defined by
-        mesh_axis_names, so these three params must be the same length. For
-        example, a dcn_mesh_shape of [2, 2, 1, 1] with mesh_axis_names ['stage',
-        'replica', 'data', 'mdl'] indicates 2-way pipeline parallelism and 2-way
-        replica parallelism over 4 slices. None, the default, is equivalent to a
-        sequence of ones and means that the model is placed on a single slice.
-      mesh_axis_names: Names for each mesh axis in ici_mesh_shape and/or
-        dcn_mesh_shape. Common mesh axes include 'replica' for replica
-        parallelism, 'data' for data parallelism, 'mdl' for model parallelism,
-        and 'stage' for pipeline parallelism.
-      weight_split_dims_mapping: Relevant only if the mesh shape params above
-        are not None. It specifies how weight of this layer or those of the
-        sublayers should be sharded over the overall device mesh. This field
-        will be dynamically bound to WeightShardingHParams dataclass above.
-      activation_split_dims_mapping: Relevant only if the mesh shape params
-        above are not None. It specifies how activation of this layer or those
-        of the sublayers should be sharded over the overall device mesh. This
-        field will be dynamically bound to the ActivationShardingHParams
-        dataclass above.
-      shared_weight_layer_id: a unique id indicating weight sharing. Layers with
-        the same 'shared_weight_layer_id' share the same underlying model
-        weights.
-    """
-    dtype: jnp.dtype = jnp.float32
-    fprop_dtype: Optional[Any] = None
-    params_init: WeightInit = dataclasses.field(
-        default_factory=default_param_init)
-    skip_lp_regularization: Optional[bool] = None
-    ici_mesh_shape: Optional[Sequence[int]] = None
-    dcn_mesh_shape: Optional[Sequence[int]] = None
-    mesh_axis_names: Optional[Sequence[str]] = None
-    weight_split_dims_mapping: Optional[BaseHyperParams] = None
-    activation_split_dims_mapping: Optional[BaseHyperParams] = None
-    shared_weight_layer_id: Optional[str] = None
-
-    @property
-    def mesh_shape(self):
-      if self.ici_mesh_shape is not None:
-        assert len(self.ici_mesh_shape) == len(self.mesh_axis_names)
-      if self.dcn_mesh_shape is None:
-        return self.ici_mesh_shape
-      else:
-        assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)
-        return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
 
   @staticmethod
   def copy_base_hparams(from_hparams: BaseLayer.HParams,
@@ -1125,24 +1022,6 @@ class BaseLayer(
       # WeightInit, copy.deepcopy(from_hparams.params_init) works in both cases.
       to_hparams.params_init = copy.deepcopy(from_hparams.params_init)
     return to_hparams
-
-  @classmethod
-  def __init_subclass__(cls, **kwargs: Any) -> None:
-    """Automatically initializes all subclasses as custom dataclasses."""
-    super().__init_subclass__(**kwargs)
-
-    # Update the Params to dynamically bind a few fields.
-    fields = [
-        ('_attribute_overrides', Tuple[str, ...],
-         ('cls', 'weight_split_dims_mapping', 'activation_split_dims_mapping')),
-        ('cls', Type[Any], cls),
-        ('weight_split_dims_mapping', BaseHyperParams,
-         cls.WeightShardingHParams()),
-        ('activation_split_dims_mapping', BaseHyperParams,
-         cls.ActivationShardingHParams()),
-    ]
-    cls.HParams = dataclasses.make_dataclass(
-        'HParams', fields=fields, bases=(cls.HParams,))  # pytype: disable=wrong-arg-types
 
   def post_init_hparams(self, *args):
     """Recursively populates the HYPER_PARAMS collection with hyper-params ...
@@ -1180,32 +1059,9 @@ class BaseLayer(
     return None
 
   def __post_init__(self):
-    assert self._hparams.name, (
-        f'{type(self).__name__} HParams must define the layer\'s "name"')
-    object.__setattr__(self, 'name', self._hparams.name)
-    # We make a copy of the `_hparams` passed to __init__ the very first time in
-    # case `_hparams` refers to a shared params object that gets mutated by
-    # something outside this class.
-    # Note: self.hparams is a property defined on BaseParameterizable that
-    # returns self._hparams, which is why we set it like this.
-    object.__setattr__(self, '_hparams', self._hparams.clone())
-    # Freeze the layer hparams. This is to prevent accidental config mutations
-    # that may lead to subtle bugs.
-    self._hparams.freeze()
     object.__setattr__(self, '_theta', set())
     object.__setattr__(self, '_private_children', {})
     super().__post_init__()
-
-  # linen.Module `adopt_attr_modules` sets `name` to None and clones the
-  # BaseLayer object expecting the `name` attribute to be None still. Yet
-  # BaesLayer.__post_init__ always overrides `name` attribute. Here we override
-  # `clone` to explicitly retain the original `name` attribute.
-  @nn.nowrap
-  def clone(self, *, parent=None, **updates):
-    oldname = self.name
-    retval = super().clone(parent=parent, **updates)
-    object.__setattr__(retval, 'name', oldname)
-    return retval
 
   @nn.nowrap
   def _try_setup(self, shallow=False):
@@ -1413,23 +1269,12 @@ class BaseLayer(
     return self.make_rng(name)
 
   @property
-  def name(self) -> str:
-    return self.hparams.name
-
-  @property
   def jax_context(self) -> JaxContext:
     return cur_jax_context()
 
   @property
   def do_eval(self) -> bool:
     return self.jax_context.do_eval
-
-  @property
-  def fprop_dtype(self) -> Any:
-    if self.hparams.fprop_dtype is not None:
-      return self.hparams.fprop_dtype
-    else:
-      return self.hparams.dtype
 
   @nn.nowrap
   def get_var(self, name: str) -> Any:
@@ -1699,6 +1544,172 @@ class BaseLayer(
       return x
 
     return tf.nest.map_structure(_cast, value)
+
+
+# Inherit from Flax Linen Module.
+class BaseLayer(
+    BaseParameterizable,
+    _SharedBaseLayer,
+    init_params_arg_name='_hparams',
+    nonconfigurable_init_arg_names=('name', 'parent')):
+  r"""Base class for all the layer object.
+
+  Subclasses are expected to override the following functions:
+
+  HParams(): Returns a configuration HParams for this layer.
+  setup(): To setup this instance, which includes create all the sub-layers, as
+    well as immediate layer variables.
+  __call__(): The main method that carries out ML computation.
+
+  TODO(pax-team): Add more doc-string and example.
+  """
+  # dataclass takes a single HParams object. This should not change during the
+  # lifetime of this layer.
+  _hparams: base_hyperparams.InstantiableHyperParams
+
+  class WeightShardingHParams(BaseHyperParams):
+    """Represents how layer's learned parameters are partitioned across a mesh.
+
+    This usually refers to the primary model weight. Sub-layers can define
+    additional params for more weights.
+
+    Attributes:
+      wt: Sharding annotations for the primary model weight.
+    """
+    wt: SplitDimsMapping = None
+
+  class ActivationShardingHParams(BaseHyperParams):
+    """Represents how intermediate values should be partitioned across a mesh.
+
+    This usually refers to the primary layer output. Sub-layers can define
+    additional params for more activations.
+
+    Attributes:
+      out: Sharding annotations for the primary layer output.
+    """
+    out: SplitDimsMapping = None
+
+  class HParams(InstantiableHyperParams):
+    """Hyperparameters for this layer.
+
+    Attributes:
+      dtype: Default dtype for all variables.
+      fprop_dtype: Activations datatype to use.
+      params_init: How model weights should be initialized.
+      skip_lp_regularization:  If True, all variables in this layer will skip Lp
+        regularization. If None/False, only variables explicitly in the
+        SKIP_LP_REGULARIZATION collection will skip Lp regularization. Also
+        propagated to child layers with default settings (None).
+      ici_mesh_shape: Shape of the logical mesh used for SPMD parallelism in
+        each slice. The meaning of each mesh axis is defined by mesh_axis_names,
+        so these two params must be the same length. If dcn_mesh_shape is
+        present, the overall mesh is the product of ici_mesh_shape and
+        dcn_mesh_shape. For example, an ici_mesh_shape of [2, 3, 4] with
+        mesh_axis_names ['replica', 'data', 'mdl'] indicates 2-way replica
+        parallelism, 3-way data parallelism, and 4-way model parallelism over 24
+        devices. None, the default, is equivalent to a sequence of ones and
+        means that the model is placed on a single device.
+      dcn_mesh_shape: Shape of the logical mesh used for SPMD parallelism over
+        multiple slices. The overall mesh is the product of ici_mesh_shape and
+        dcn_mesh_shape, and the meaning of each mesh axis is defined by
+        mesh_axis_names, so these three params must be the same length. For
+        example, a dcn_mesh_shape of [2, 2, 1, 1] with mesh_axis_names ['stage',
+        'replica', 'data', 'mdl'] indicates 2-way pipeline parallelism and 2-way
+        replica parallelism over 4 slices. None, the default, is equivalent to a
+        sequence of ones and means that the model is placed on a single slice.
+      mesh_axis_names: Names for each mesh axis in ici_mesh_shape and/or
+        dcn_mesh_shape. Common mesh axes include 'replica' for replica
+        parallelism, 'data' for data parallelism, 'mdl' for model parallelism,
+        and 'stage' for pipeline parallelism.
+      weight_split_dims_mapping: Relevant only if the mesh shape params above
+        are not None. It specifies how weight of this layer or those of the
+        sublayers should be sharded over the overall device mesh. This field
+        will be dynamically bound to WeightShardingHParams dataclass above.
+      activation_split_dims_mapping: Relevant only if the mesh shape params
+        above are not None. It specifies how activation of this layer or those
+        of the sublayers should be sharded over the overall device mesh. This
+        field will be dynamically bound to the ActivationShardingHParams
+        dataclass above.
+      shared_weight_layer_id: a unique id indicating weight sharing. Layers with
+        the same 'shared_weight_layer_id' share the same underlying model
+        weights.
+    """
+    dtype: jnp.dtype = jnp.float32
+    fprop_dtype: Optional[Any] = None
+    params_init: WeightInit = dataclasses.field(
+        default_factory=default_param_init)
+    skip_lp_regularization: Optional[bool] = None
+    ici_mesh_shape: Optional[Sequence[int]] = None
+    dcn_mesh_shape: Optional[Sequence[int]] = None
+    mesh_axis_names: Optional[Sequence[str]] = None
+    weight_split_dims_mapping: Optional[BaseHyperParams] = None
+    activation_split_dims_mapping: Optional[BaseHyperParams] = None
+    shared_weight_layer_id: Optional[str] = None
+
+    @property
+    def mesh_shape(self):
+      if self.ici_mesh_shape is not None:
+        assert len(self.ici_mesh_shape) == len(self.mesh_axis_names)
+      if self.dcn_mesh_shape is None:
+        return self.ici_mesh_shape
+      else:
+        assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)
+        return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
+
+  @classmethod
+  def __init_subclass__(cls, **kwargs: Any) -> None:
+    """Automatically initializes all subclasses as custom dataclasses."""
+    super().__init_subclass__(**kwargs)
+
+    # Update the Params to dynamically bind a few fields.
+    fields = [
+        ('_attribute_overrides', Tuple[str, ...],
+         ('cls', 'weight_split_dims_mapping', 'activation_split_dims_mapping')),
+        ('cls', Type[Any], cls),
+        ('weight_split_dims_mapping', BaseHyperParams,
+         cls.WeightShardingHParams()),
+        ('activation_split_dims_mapping', BaseHyperParams,
+         cls.ActivationShardingHParams()),
+    ]
+    cls.HParams = dataclasses.make_dataclass(
+        'HParams', fields=fields, bases=(cls.HParams,))  # pytype: disable=wrong-arg-types
+
+  def __post_init__(self):
+    assert self._hparams.name, (
+        f'{type(self).__name__} HParams must define the layer\'s "name"')
+    object.__setattr__(self, 'name', self._hparams.name)
+    # We make a copy of the `_hparams` passed to __init__ the very first time in
+    # case `_hparams` refers to a shared params object that gets mutated by
+    # something outside this class.
+    # Note: self.hparams is a property defined on BaseParameterizable that
+    # returns self._hparams, which is why we set it like this.
+    object.__setattr__(self, '_hparams', self._hparams.clone())
+    # Freeze the layer hparams. This is to prevent accidental config mutations
+    # that may lead to subtle bugs.
+    self._hparams.freeze()
+    super().__post_init__()
+
+  # linen.Module `adopt_attr_modules` sets `name` to None and clones the
+  # BaseLayer object expecting the `name` attribute to be None still. Yet
+  # BaesLayer.__post_init__ always overrides `name` attribute. Here we override
+  # `clone` to explicitly retain the original `name` attribute.
+  @nn.nowrap
+  def clone(self, *, parent=None, **updates):
+    oldname = self.name
+    retval = super().clone(parent=parent, **updates)
+    object.__setattr__(retval, 'name', oldname)
+    return retval
+
+  @property
+  def name(self) -> str:
+    return self.hparams.name
+
+  @property
+  def fprop_dtype(self) -> Any:
+    if self.hparams.fprop_dtype is not None:
+      return self.hparams.fprop_dtype
+    else:
+      return self.hparams.dtype
 
 
 def assert_has_shape(t: JTensor, shape: Sequence[int]) -> None:
