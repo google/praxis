@@ -88,6 +88,7 @@ py_strict_test(
     name = "convolutions_test",
     srcs = ["convolutions_test.py"],
     python_version = "PY3",
+    shard_count = 8,
     srcs_version = "PY3",
     deps = [
         ":convolutions",
@@ -95,8 +96,10 @@ py_strict_test(
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:py_utils",
         "//praxis/layers:convolutions",
     ],
 )

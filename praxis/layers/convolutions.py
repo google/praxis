@@ -104,6 +104,54 @@ class Conv2D(base_layer.BaseLayer):
       self.create_variable(
           'b', WeightHParams(shape=[p.filter_shape[-1]], init=p.bias_init))
 
+  def _compute_padding(self, inputs_shape, pad_height_zero=False):
+    p = self.hparams
+    if not p.tf_equivalent_padding:
+      if p.padding == 'SAME':
+        pad_height_total = p.filter_shape[0] - 1
+        pad_height_beg = pad_height_total // 2
+        pad_height_end = pad_height_total - pad_height_beg
+        pad_width_total = p.filter_shape[1] - 1
+        pad_width_beg = pad_width_total // 2
+        pad_width_end = pad_width_total - pad_width_beg
+      else:
+        assert p.padding == 'VALID', p.padding
+        pad_height_beg = 0
+        pad_height_end = 0
+        pad_width_beg = 0
+        pad_width_end = 0
+      padding = [(pad_height_beg, pad_height_end),
+                 (pad_width_beg, pad_width_end)]
+    else:
+      if not p.is_causal:
+        padding = p.padding
+      else:
+        # Compute padding for causal convolution
+        # Reference:
+        # https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2
+        filter_height = (p.filter_shape[0] - 1) * p.dilations[0] + 1
+        filter_width = (p.filter_shape[1] - 1) * p.dilations[1] + 1
+        if inputs_shape[1] % p.filter_stride[0] == 0:
+          pad_height_total = max(filter_height - p.filter_stride[0], 0)
+        else:
+          pad_height_total = max(
+              filter_height - (inputs_shape[1] % p.filter_stride[0]), 0)
+        if inputs_shape[2] % p.filter_stride[1] == 0:
+          pad_width_total = max(filter_width - p.filter_stride[1], 0)
+        else:
+          pad_width_total = max(
+              filter_width - (inputs_shape[2] % p.filter_stride[1]), 0)
+
+        # first dimension is causal
+        pad_height_beg = 0 if pad_height_zero else pad_height_total
+        pad_height_end = 0
+        pad_width_beg = pad_width_total // 2
+        pad_width_end = pad_width_total - pad_width_beg
+
+        padding = [(pad_height_beg, pad_height_end),
+                   (pad_width_beg, pad_width_end)]
+    return padding
+
   def __call__(self, inputs: JTensor) -> JTensor:
     """FProp that supports strided, dilated convolution, depthwise convolution.
 
@@ -132,50 +180,8 @@ class Conv2D(base_layer.BaseLayer):
                        f'multiple of feature group count {feature_group_count} '
                        f'(Input shape: {inputs.shape}, '
                        f'filter shape: {p.filter_shape}).')
-    if not p.tf_equivalent_padding:
-      if p.padding == 'SAME':
-        pad_height_total = p.filter_shape[0] - 1
-        pad_height_beg = pad_height_total // 2
-        pad_height_end = pad_height_total - pad_height_beg
-        pad_width_total = p.filter_shape[1] - 1
-        pad_width_beg = pad_width_total // 2
-        pad_width_end = pad_width_total - pad_width_beg
-      else:
-        assert p.padding == 'VALID', p.padding
-        pad_height_beg = 0
-        pad_height_end = 0
-        pad_width_beg = 0
-        pad_width_end = 0
-      padding = [(pad_height_beg, pad_height_end),
-                 (pad_width_beg, pad_width_end)]
-    else:
-      if not p.is_causal:
-        padding = p.padding
-      else:
-        # Compute padding for causal convolution
-        # Reference:
-        # https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2
-        filter_height = (p.filter_shape[0] - 1) * p.dilations[0] + 1
-        filter_width = (p.filter_shape[1] - 1) * p.dilations[1] + 1
-        if inputs.shape[1] % p.filter_stride[0] == 0:
-          pad_height_total = max(filter_height - p.filter_stride[0], 0)
-        else:
-          pad_height_total = max(
-              filter_height - (inputs.shape[1] % p.filter_stride[0]), 0)
-        if inputs.shape[2] % p.filter_stride[1] == 0:
-          pad_width_total = max(filter_width - p.filter_stride[1], 0)
-        else:
-          pad_width_total = max(
-              filter_width - (inputs.shape[2] % p.filter_stride[1]), 0)
+    padding = self._compute_padding(inputs.shape)
 
-        # first dimension is causal
-        pad_height_beg = pad_height_total
-        pad_height_end = 0
-        pad_width_beg = pad_width_total // 2
-        pad_width_end = pad_width_total - pad_width_beg
-
-        padding = [(pad_height_beg, pad_height_end),
-                   (pad_width_beg, pad_width_end)]
     # The `dimension_numbers=('NHWC', 'HWIO', 'NHWC')` is to be consistent
     # with tf.conv2d, see e.g., see
     # https://github.com/google/jax/blob/main/jax/_src/lax/lax.py#L622

@@ -26,6 +26,7 @@ from praxis import pytypes
 from praxis import test_utils
 from praxis.layers.streaming.streaming_base import StreamingBase
 
+BaseHParams = base_layer.BaseLayer.HParams
 NestedMap = py_utils.NestedMap
 NestedJTensor = pytypes.NestedJTensor
 JTensor = pytypes.JTensor
@@ -139,14 +140,30 @@ class StreamingTest(test_utils.TestCase):
     np.random.seed(123456)
 
   def _compare_stream_non_stream(self,
-                                 inputs,
-                                 paddings,
-                                 p_non_stream,
-                                 p_stream,
-                                 step,
-                                 expand_padding_rank=None,
-                                 is_eval=True):
-    context_p = base_layer.JaxContext.HParams(do_eval=True)
+                                 inputs: JTensor,
+                                 paddings: JTensor,
+                                 p_non_stream: BaseHParams,
+                                 p_stream: BaseHParams,
+                                 step: int,
+                                 is_eval: bool = True):
+    """Compares layer outputs generated in streaming and non streaming modes.
+
+    Args:
+      inputs: Input feature.
+      paddings: Input paddings.
+      p_non_stream: Layer parameters, will run in non streaming mode.
+      p_stream: Layer parameters, will run in streaming mode.
+      step: Defines how many samples to process per streaming step.
+        It also defines how many steps to split the input audio = time_size/step
+      is_eval: Sets do_eval in JaxContext.
+
+    Raises:
+      ValueError:
+        * If after removing delay from data, there is nothing left to compare.
+        * If the sequence is fully padded and there is nothing left to compare.
+      Error if any streaming and non streaming outputs do not match.
+    """
+    context_p = base_layer.JaxContext.HParams(do_eval=is_eval)
     with base_layer.JaxContext.new_context(hparams=context_p):
       layer_non_stream = instantiate(p_non_stream)
       prng_key = jax.random.PRNGKey(seed=123)
@@ -154,6 +171,12 @@ class StreamingTest(test_utils.TestCase):
       initial_vars = layer_non_stream.init(init_key, inputs, paddings)
       output_non_stream = layer_non_stream.apply(
           initial_vars, inputs, paddings)
+
+      if isinstance(output_non_stream, tuple):
+        output_features, output_paddings = output_non_stream
+      else:
+        output_features = output_non_stream
+        output_paddings = paddings
 
       layer_stream = instantiate(p_stream)
       in_nmap = py_utils.NestedMap(features=inputs, paddings=paddings)
@@ -177,21 +200,21 @@ class StreamingTest(test_utils.TestCase):
 
     if paddings is not None:
       output_stream.paddings = output_stream.paddings[:, right_context:,]
-      non_stream_paddings = paddings[:, :time_size,]
+      non_stream_paddings = output_paddings[:, :time_size,]
       self.assertAllClose(non_stream_paddings, output_stream.paddings)
     else:
       non_stream_paddings = jnp.zeros(
           (inputs.shape[0], time_size), dtype=jnp.float32)
 
     for b in range(non_stream_paddings.shape[0]):
-      if np.sum(non_stream_paddings[b]) >= non_stream_paddings.shape[1]:
-        raise ValueError('The whole signal is padded, '
-                         'so there is nothing left to test.')
+      if np.sum(non_stream_paddings[b]) >= non_stream_paddings.shape[1]-1:
+        raise ValueError('There is little number of unpadded elements left, '
+                         'you have to reduce number of padded elements.')
 
-    # Add extra dimensions, it is a special case for conformer.
     mask = 1. - non_stream_paddings
-    mask = append_dims(mask, expand_padding_rank)
+    # Add extra dimensions, if needed.
+    mask = append_dims(mask, output_features.ndim-non_stream_paddings.ndim)
 
     # Last elements in non streaming outputs have to be removed due to delay.
-    self.assertAllClose(output_non_stream[:, :time_size,] * mask,
+    self.assertAllClose(output_features[:, :time_size,] * mask,
                         output_stream.features * mask)

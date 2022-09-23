@@ -17,6 +17,7 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import jax
 import numpy as np
 from praxis import base_layer
 from praxis.layers import convolutions
@@ -28,16 +29,118 @@ instantiate = base_layer.instantiate
 
 class StreamingConvolutionsTest(test_utils.StreamingTest):
 
-  def setUp(self):
-    super().setUp()
+  def _get_padding_from_length(self, max_time_size, batch_size):
+    length = np.random.randint(max_time_size // 4, max_time_size // 2, [
+        batch_size,
+    ])
+    idx = np.tile(np.arange(max_time_size), [batch_size, 1])
+    return (idx < np.expand_dims(length, -1)).astype('float32')
 
-    # Input data.
-    self.inputs = np.random.normal(size=[1, 8, 4]).astype(np.float32)
-    self.paddings = np.array([[1, 1, 1, 0, 0, 0, 1, 1]]).astype(np.float32)
+  @parameterized.parameters(
+      (1, 3, 'SAME', 2, True),
+      (2, 3, 'SAME', 1, False),
+      (3, 5, 'SAME', 1, True),
+      (5, 3, 'SAME', 1, False),
+      (7, 3, 'SAME', 1, False),
+      (2, 3, 'VALID', 2, False),
+      (3, 5, 'VALID', 1, False),
+      (5, 3, 'VALID', 1, False),
+      (7, 3, 'VALID', 1, True),
+      (1, 3, 'VALID', 2, True),
+      (5, 3, 'VALID', 1, True),
+  )
+  def test_conv_bnact_withpadding(self, stride, kernel_size, padding,
+                                  batch_size, compat_with_lingvo):
+    # Compare original ConvBNActWithPadding non streaming version with
+    # ConvBNActWithPadding streaming aware in non streaming mode.
+    feature_dim = stride * 3
+    max_time_size = 5 * stride
+    features = np.random.uniform(
+        size=[batch_size, max_time_size, feature_dim, 1])
+    paddings = self._get_padding_from_length(max_time_size, batch_size)
+    features = np.asarray(features)
+    paddings = np.asarray(paddings)
+
+    p_non_stream = convolutions.ConvBNActWithPadding.HParams(
+        name='conv_bn_act_padding',
+        is_causal=True,
+        tf_equivalent_padding=True,
+        compat_with_lingvo=compat_with_lingvo,
+        filter_shape=(kernel_size, kernel_size, 1, 1),
+        filter_stride=(stride, stride),
+        bias=False,
+        batch_norm_tpl=None,
+        padding='SAME')
+    layer = instantiate(p_non_stream)
+
+    # Streaming aware layer
+    p_stream = streaming.ConvBNActWithPadding.HParams(
+        name='conv_bn_act_padding_stream')
+    p_stream.copy_fields_from(p_non_stream)
+    # Streaming aware layer needs explicit frequency_dim (for states creation).
+    p_stream.frequency_dim = feature_dim
+
+    layer_stream = instantiate(p_stream)
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = layer.init(prng_key, features, paddings)
+
+    output, output_padding = layer.apply(initial_vars, features, paddings)
+    output_stream, output_padding_stream = layer_stream.apply(
+        initial_vars, features, paddings)
+
+    self.assertAllClose(output, output_stream)
+    self.assertAllClose(output_padding, output_padding_stream)
+
+  @parameterized.parameters(
+      (1, 3, 'SAME', 2, True),
+      (2, 3, 'SAME', 1, False),
+      (3, 5, 'SAME', 1, True),
+      (5, 3, 'SAME', 1, False),
+  )
+  def test_conv_bnact_withpadding_streaming(self, stride, kernel_size, padding,
+                                            batch_size, compat_with_lingvo):
+    # Compare streaming aware ConvBNActWithPadding
+    # in streaming and non streaming modes.
+    feature_dim = stride * 3
+    # Streaming aware layer
+    p_stream = streaming.ConvBNActWithPadding.HParams(
+        name='conv_bn_act_padding_stream',
+        is_causal=True,
+        tf_equivalent_padding=True,
+        compat_with_lingvo=compat_with_lingvo,
+        filter_shape=(kernel_size, kernel_size, 1, 1),
+        filter_stride=(stride, stride),
+        bias=False,
+        batch_norm_tpl=None,
+        frequency_dim=feature_dim,
+        padding='SAME')
+
+    max_time_size = 8 * stride
+    features = np.random.uniform(
+        size=[batch_size, max_time_size, feature_dim, 1])
+    paddings = self._get_padding_from_length(max_time_size, batch_size)
+    features = np.asarray(features)
+    paddings = np.asarray(paddings)
+
+    self.assertEqual(p_stream.cls.get_stride(p_stream), stride)
+    # Causal model has no delay:
+    self.assertEqual(p_stream.cls.get_right_context(p_stream), 0)
+    self._compare_stream_non_stream(
+        features,
+        paddings,
+        p_stream,
+        p_stream,
+        stride)
 
   @parameterized.parameters((2, 3, True), (2, 3, False), (4, 3, True),
                             (4, 4, True))
   def test_depthwise_conv1D_streaming(self, step, kernel_size, with_paddings):
+
+    # Input data.
+    inputs = np.random.normal(size=[1, 8, 4]).astype(np.float32)
+    paddings = np.array([[1, 1, 1, 0, 0, 0, 1, 1]]).astype(np.float32)
+
     # Original layer.
     p_non_stream = convolutions.DepthwiseConv1D.HParams(
         name='dw_1D',
@@ -56,19 +159,29 @@ class StreamingConvolutionsTest(test_utils.StreamingTest):
     # Causal model has no delay:
     self.assertEqual(p_stream.cls.get_right_context(p_stream), 0)
     self._compare_stream_non_stream(
-        self.inputs,
-        self.paddings if with_paddings else None,
+        inputs,
+        paddings if with_paddings else None,
         p_non_stream,
         p_stream,
-        step,
-        expand_padding_rank=1)
+        step)
+    self._compare_stream_non_stream(
+        inputs,
+        paddings if with_paddings else None,
+        p_stream,
+        p_stream,
+        step)
 
   @parameterized.parameters((2, True), (2, False), (4, True))
   def test_light_conv1D_streaming(self, step, with_paddings):
+
+    # Input data.
+    inputs = np.random.normal(size=[1, 8, 4]).astype(np.float32)
+    paddings = np.array([[1, 1, 1, 0, 0, 0, 1, 1]]).astype(np.float32)
+
     # Streaming aware layer. It can run in both streaming and non streaming.
     p_stream = streaming.LightConv1D.HParams(
         name='conv1D',
-        input_dims=self.inputs.shape[-1],
+        input_dims=inputs.shape[-1],
         kernel_size=3,
         is_causal=True)
 
@@ -77,12 +190,11 @@ class StreamingConvolutionsTest(test_utils.StreamingTest):
     # Causal model has no delay:
     self.assertEqual(p_stream.cls.get_right_context(p_stream), 0)
     self._compare_stream_non_stream(
-        self.inputs,
-        self.paddings if with_paddings else None,
+        inputs,
+        paddings if with_paddings else None,
         p_stream,
         p_stream,
-        step,
-        expand_padding_rank=1)
+        step)
 
 
 if __name__ == '__main__':

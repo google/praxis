@@ -56,7 +56,7 @@ class StreamingNormalizationTest(test_utils.StreamingTest):
     self.assertEqual(p.cls.get_stride(p), 1)
     self.assertEqual(p.cls.get_right_context(p), 0)
     self._compare_stream_non_stream(
-        inputs, paddings, p, p, stride, expand_padding_rank=p.input_rank - 2)
+        inputs, paddings, p, p, stride)
 
 
 if __name__ == '__main__':

@@ -76,8 +76,7 @@ class StreamingConformersTest(test_utils.StreamingTest):
         paddings,
         p_non_stream,
         p_stream,
-        step,
-        expand_padding_rank=inputs.ndim - 2)
+        step)
 
   @parameterized.parameters(
       (2, 10, 3, 8, 8, 4, 0.0, 6, 3, 2, 2),
@@ -147,7 +146,7 @@ class StreamingConformersTest(test_utils.StreamingTest):
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)
     self.assertEqual(p_stream.cls.get_right_context(p_stream), right_context)
     self._compare_stream_non_stream(inputs, paddings, p_non_stream, p_stream,
-                                    step, expand_padding_rank=inputs.ndim - 2)
+                                    step)
 
 
 if __name__ == '__main__':
