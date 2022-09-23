@@ -49,6 +49,10 @@ class CloneAndSetMixin:
 class PaxConfig(fdl.Config, CloneAndSetMixin):
   """Subclasses `fdl.Config` to make it more compatible with HParams."""
 
+  @property
+  def cls(self):
+    return self.__fn_or_cls__
+
 
 Config = PaxConfig  # Alias pax_fiddle.Config -> PaxConfig.
 

@@ -259,6 +259,13 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
 
 class PaxConfigTest(testing.TestCase):
 
+  def test_cls_property(self):
+    cfg = pax_fiddle.Config(
+        Vehicle, wheel_tpl=pax_fiddle.Config(Wheel), num_wheels=3)
+    self.assertEqual(cfg.cls, Vehicle)
+    self.assertEqual(cfg.wheel_tpl.cls, Wheel)
+    self.assertEqual(cfg.owner.cls, Person)
+
   def test_clone(self):
     cfg = pax_fiddle.Config(
         Vehicle, wheel_tpl=pax_fiddle.Config(Wheel), num_wheels=3)
