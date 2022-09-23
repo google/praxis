@@ -15,6 +15,7 @@
 
 """Helper functions and types related to Fiddle."""
 
+import contextlib
 import copy
 import dataclasses
 from typing import overload, TypeVar, Callable, Any, Union, Optional, Collection
@@ -25,6 +26,7 @@ from fiddle import tagging
 from fiddle.experimental import auto_config
 from fiddle.experimental import dataclasses as fdl_dataclasses
 from fiddle.experimental.dataclasses import field as fdl_field
+from flax.linen import module as flax_module
 
 fdl_field = fdl_dataclasses.field
 TagOrTags = Union[type(fdl.Tag), Collection[type(fdl.Tag)]]
@@ -53,8 +55,19 @@ class PaxConfig(fdl.Config, CloneAndSetMixin):
   def cls(self):
     return self.__fn_or_cls__
 
+  def Instantiate(self, **kwargs):
+    """Builds `self` with optional argument overrides."""
+    return instantiate(self, **kwargs)
+
 
 Config = PaxConfig  # Alias pax_fiddle.Config -> PaxConfig.
+
+
+def instantiate(config: fdl.Buildable, **kwargs):
+  """Builds `config` with optional argument overrides."""
+  if kwargs:
+    config = fdl.copy_with(config, **kwargs)
+  return build(config)
 
 
 class DoNotBuild(fdl.Tag):
@@ -191,4 +204,20 @@ def build(buildable):
     else:
       return state.map_children(value)
 
-  return _build(buildable, daglish.MemoizedTraversal.begin(_build, buildable))
+  # Clear the flax module stack, to avoid having `nn.Module`s be automatically
+  # parented to the current module.  This is important for modules that are
+  # supposed to be nested descendents (not direct children).
+  with empty_flax_module_stack():
+    return _build(buildable, daglish.MemoizedTraversal.begin(_build, buildable))
+
+
+@contextlib.contextmanager
+def empty_flax_module_stack():
+  """Context manager that temporarily clears the flax module stack."""
+  module_stack = flax_module._context.module_stack  # pylint: disable=protected-access
+  old_modules = list(module_stack)
+  try:
+    module_stack[:] = [None]  # Reset module stack.
+    yield
+  finally:
+    module_stack[:] = old_modules  # Restore module stack.

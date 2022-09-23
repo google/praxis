@@ -30,6 +30,7 @@ from absl import logging
 import fiddle as fdl
 # Internal config_dict import from ml_collections
 import numpy as np
+from praxis import pax_fiddle
 from praxis import py_utils
 import tensorflow.compat.v2 as tf
 
@@ -810,14 +811,13 @@ def instantiate(config: Union[InstantiableHyperParams, fdl.Buildable],
 
   Args:
     config: The configuration to instantiate.
-    kwargs: Additional kwargs to pass to instance constructor. Only used in
-      InstantiableHyperParams.
+    **kwargs: Additional kwargs to pass to instance constructor.
 
   Returns:
     An instance constructed from the provided configuration object `config`.
   """
   if isinstance(config, fdl.Buildable):
-    return fdl.build(config)
+    return pax_fiddle.instantiate(config, **kwargs)
   if isinstance(config, InstantiableHyperParams):
     return config.Instantiate(**kwargs)
   raise ValueError(f'Unknown configuration type: {type(config)}. (Full config: '

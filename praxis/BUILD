@@ -36,6 +36,7 @@ pytype_strict_library(
     srcs = ["base_hyperparams.py"],
     srcs_version = "PY3",
     deps = [
+        ":pax_fiddle",
         ":py_utils",
         # Implicit python proto dependency.
         # Implicit absl.logging dependency.
@@ -323,6 +324,7 @@ pytype_strict_library(
         # Implicit fiddle.tagging dependency.
         # Implicit fiddle.experimental.auto_config dependency.
         # Implicit fiddle.experimental.dataclasses dependency.
+        # Implicit flax.core dependency.
     ],
 )
 
@@ -536,10 +538,13 @@ py_strict_test(
     name = "pax_fiddle_test",
     srcs = ["pax_fiddle_test.py"],
     deps = [
+        ":base_hyperparams",
         ":pax_fiddle",
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit fiddle dependency.
         # Implicit fiddle.testing dependency.
+        # Implicit flax.core dependency.
     ],
 )
 

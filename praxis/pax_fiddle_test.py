@@ -18,9 +18,13 @@
 import dataclasses
 from typing import Optional, List
 from absl.testing import absltest
+from absl.testing import parameterized
 
 import fiddle as fdl
 from fiddle import testing
+from flax import core as flax_core
+from flax import linen as nn
+from praxis import base_hyperparams
 from praxis import pax_fiddle
 
 
@@ -257,7 +261,7 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     self.assertEqual(fleet.vehicles[0].wheel_tpl, pax_fiddle.Config(Wheel))
 
 
-class PaxConfigTest(testing.TestCase):
+class PaxConfigTest(testing.TestCase, parameterized.TestCase):
 
   def test_cls_property(self):
     cfg = pax_fiddle.Config(
@@ -286,6 +290,98 @@ class PaxConfigTest(testing.TestCase):
             num_wheels=2,
             owner=pax_fiddle.Config(Person, "Grug"),
             wheel_tpl=pax_fiddle.Config(Wheel, radius=20)))
+
+  @parameterized.parameters([
+      pax_fiddle.build, pax_fiddle.instantiate, base_hyperparams.instantiate,
+      pax_fiddle.PaxConfig.Instantiate
+  ])
+  def test_instantiate(self, build_func):
+    cfg = pax_fiddle.Config(Vehicle)
+    cfg.set(num_wheels=2)
+    cfg.wheel_tpl.set(radius=20)
+
+    vehicle = build_func(cfg).setup()
+    self.assertEqual(
+        vehicle,
+        Vehicle(
+            wheel_tpl=pax_fiddle.Config(Wheel, radius=20),
+            num_wheels=2,
+            wheels=[Wheel(20), Wheel(20)],
+            owner=Person()))
+
+  @parameterized.parameters([
+      pax_fiddle.instantiate, base_hyperparams.instantiate,
+      pax_fiddle.PaxConfig.Instantiate
+  ])
+  def test_instantiate_with_override(self, build_func):
+    cfg = pax_fiddle.Config(Vehicle)
+    cfg.set(num_wheels=2)
+    cfg.wheel_tpl.set(radius=20)
+    vehicle = build_func(cfg, owner=Person("Mo"), num_wheels=3).setup()
+    self.assertEqual(
+        vehicle,
+        Vehicle(
+            wheel_tpl=pax_fiddle.Config(Wheel, radius=20),
+            num_wheels=3,
+            wheels=[Wheel(20), Wheel(20), Wheel(20)],
+            owner=Person("Mo")))
+
+
+class LayerA(nn.Module):
+  x: int = 0
+
+  def __call__(self):
+    return self.x
+
+
+class LayerB(nn.Module):
+  a: LayerA = pax_fiddle.sub_field(LayerA)
+
+  def __call__(self):
+    return self.a()
+
+
+class LayerC(nn.Module):
+  b_tpl: pax_fiddle.Config = pax_fiddle.template_field(LayerB)
+
+  def setup(self):
+    self.b = pax_fiddle.build(self.b_tpl)
+    if self.b.a.parent is not None:
+      raise AssertionError(
+          "Expected self.b.a.parent to be None (before b.setup).")
+
+  def __call__(self, x):
+    if self.b.a.parent is not None:
+      raise AssertionError(
+          "Expected self.b.a.parent to be None (before b.setup).")
+    self.b()
+    if self.b.a.parent is not self.b:
+      raise AssertionError(
+          "Expected self.b.a.parent to be self.b (after b.setup).")
+    return 0
+
+
+class BuildTest(testing.TestCase, parameterized.TestCase):
+  """Tests for pax_fiddle.build."""
+
+  @parameterized.parameters([
+      pax_fiddle.build, pax_fiddle.instantiate, base_hyperparams.instantiate,
+      pax_fiddle.PaxConfig.Instantiate
+  ])
+  def test_parent_links_are_not_set_to_outer_scope(self, build_func):
+    # This test checks that using the `empty_flax_module_stack` decorator is
+    # effective at preventing modules from being built with the wrong parent.
+    with self.subTest("pax_fiddle_build"):
+      cfg = pax_fiddle.Config(LayerC)
+      cfg.parent = flax_core.Scope({})
+      c = build_func(cfg)
+      self.assertEqual(c(5), 0)
+
+    with self.subTest("base_hyperparams_instantiate"):
+      cfg = pax_fiddle.Config(LayerC)
+      cfg.parent = flax_core.Scope({})
+      c = base_hyperparams.instantiate(cfg)
+      self.assertEqual(c(5), 0)
 
 
 if __name__ == "__main__":
