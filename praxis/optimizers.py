@@ -62,6 +62,22 @@ TransformInitPartitionSpecFn = Callable[[NestedHParams],
 instantiate = base_hyperparams.instantiate
 
 
+_WEIGHT_DECAY_DEPRECATION_TEMPLATE = (
+    'DEPRECATION WARNING: p.{0} is deprecated. Currently, setting '
+    'p.{0} will have no effect on the optimizer. In the future, '
+    'p.{0} will be removed and setting it will throw an exception. '
+    'Please use p.l2_regularizer_weight for coupled weight decay (i.e., '
+    'weight decays that affect optimizer slots), and use '
+    'p.decoupled_weight_decay for decoupled weight decay (i.e., weight decays '
+    'that are added only to the final update).')
+
+_WEIGHT_DECAY_DEPRECATION = _WEIGHT_DECAY_DEPRECATION_TEMPLATE.format(
+    'weight_decay')
+
+_WEIGHT_DECAY_RATE_DEPRECATION = _WEIGHT_DECAY_DEPRECATION_TEMPLATE.format(
+    'weight_decay_rate')
+
+
 # Extension of optax.GradientTransformation that supports spmd sharding and
 # explicit annotation of sharding specs for the optimizer state variables.
 @dataclasses.dataclass(frozen=True)
@@ -567,6 +583,9 @@ def sharded_adam(
   Returns:
     A `ShardedGradientTransformation`.
   """
+  if weight_decay:
+    logging.warn(_WEIGHT_DECAY_DEPRECATION)
+
   helper = _ShardedAdamHelper(maybe_inf_to_nan=maybe_inf_to_nan)
 
   def init_fn(mdl_vars):
@@ -651,6 +670,9 @@ def sharded_hero_lion(learning_rate_fn: optax.Schedule,
   Returns:
     A `ShardedGradientTransformation`.
   """
+  if weight_decay:
+    logging.warn(_WEIGHT_DECAY_DEPRECATION)
+
   helper = _ShardedHeroLionHelper()
   init_opt_state = functools.partial(helper.init_opt_state, m_dtype=m_dtype)
 
@@ -1010,6 +1032,9 @@ class Adam(BaseOptimizer):
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> GeneralGradientTransformation:
     p = self._hparams
+    if p.weight_decay:
+      logging.warning(_WEIGHT_DECAY_DEPRECATION)
+
     if p.sharded_adam:
       logging.info('Using sharded_adam.')
       return sharded_adam(
@@ -1098,6 +1123,8 @@ class Adafactor(BaseOptimizer):
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> optax.GradientTransformation:
     p = self._hparams
+    if p.weight_decay_rate:
+      logging.warning(_WEIGHT_DECAY_RATE_DEPRECATION)
     return optax.adafactor(
         learning_rate=lr,
         min_dim_size_to_factor=p.min_dim_size_to_factor,
@@ -1684,6 +1711,9 @@ class _ShardedAdafactorHelper:
       epsilon2_param_scale_reg: float,
       maybe_inf_to_nan: bool) -> None:
     """Constructor. See ShardedAdafactor() below."""
+    if weight_decay:
+      logging.warning(_WEIGHT_DECAY_DEPRECATION)
+
     self._learning_rate_fn = learning_rate_fn
     self._weight_decay = weight_decay
     self._layerwise_adaptation = layerwise_adaptation
@@ -2183,6 +2213,9 @@ def sharded_adafactor(
   Returns:
     A `ShardedGradientTransformation`.
   """
+  if weight_decay:
+    logging.warning(_WEIGHT_DECAY_DEPRECATION)
+
   # TODO(bf-jax):  skip regularization.
   assert not respect_skip_lp_regularization
   assert decay_adam >= 0
@@ -2327,6 +2360,9 @@ class ShardedAdafactor(BaseOptimizer):
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
     p = self._hparams
+    if p.weight_decay:
+      logging.warning(_WEIGHT_DECAY_DEPRECATION)
+
     return sharded_adafactor(
         learning_rate_fn=lr,
         weight_decay=p.weight_decay,
