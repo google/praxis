@@ -15,6 +15,7 @@
 
 """Helper functions and types related to Fiddle."""
 
+import copy
 import dataclasses
 from typing import overload, TypeVar, Callable, Any, Union, Optional, Collection
 
@@ -28,6 +29,28 @@ from fiddle.experimental.dataclasses import field as fdl_field
 fdl_field = fdl_dataclasses.field
 TagOrTags = Union[type(fdl.Tag), Collection[type(fdl.Tag)]]
 T = TypeVar('T')
+
+
+class CloneAndSetMixin:
+  """Mixin used to add `clone` and `set` methods, for HParams compatibility."""
+
+  def clone(self):
+    return copy.deepcopy(self)
+
+  def set(self, **kwargs):
+    # Note: we don't use `fdl.assign` here because this mixin will be used
+    # with classes that are not `fdl.Buildable` (e.g.,
+    # `FiddleBaseLayer.ActivationSharding`).
+    for name, value in kwargs.items():
+      setattr(self, name, value)
+    return self
+
+
+class PaxConfig(fdl.Config, CloneAndSetMixin):
+  """Subclasses `fdl.Config` to make it more compatible with HParams."""
+
+
+Config = PaxConfig  # Alias pax_fiddle.Config -> PaxConfig.
 
 
 class DoNotBuild(fdl.Tag):
@@ -60,8 +83,15 @@ def sub_field(
   Returns:
     A `dataclasses.Field` specification for the field.
   """
-  return fdl_field(default_factory=field_type, tags=tags,
-                   configurable_factory=True)
+
+  # Using auto_unconfig here ensures that the factory will return a PaxConfig
+  # object in the Fiddle.as_buildable path, but an object of type `field_type`
+  # in the Python path.
+  @auto_config.auto_unconfig
+  def factory():
+    return PaxConfig(field_type)
+
+  return fdl_field(default_factory=factory, tags=tags)
 
 
 def template_field(
@@ -86,7 +116,16 @@ def template_field(
   Returns:
     A `dataclasses.Field` specification for the field.
   """
-  factory = auto_config.auto_config(lambda: fdl.Config(template))  # pylint: disable=unnecessary-lambda
+  always_true = lambda _: True
+
+  # Using auto_config here ensures that this will return a PaxConfig object
+  # in both the Fiddle.as_buildable path and the Python path.  (The custom
+  # exemption policy is needed because `fdl.auto_config` doesn't know about
+  # PaxConfig -- this tells it not to create a Config for it.)
+  @auto_config.auto_config(experimental_exemption_policy=always_true)
+  def factory():
+    return PaxConfig(template)
+
   tags = set(tags) | {DoNotBuild}
   return fdl_field(default_factory=factory, tags=tags)
 

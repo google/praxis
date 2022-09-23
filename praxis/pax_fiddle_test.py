@@ -47,7 +47,7 @@ class Person:
 
 @dataclasses.dataclass
 class Vehicle:
-  wheel_tpl: fdl.Config[Wheel] = pax_fiddle.template_field(Wheel)
+  wheel_tpl: pax_fiddle.Config[Wheel] = pax_fiddle.template_field(Wheel)
   num_wheels: int = 4
   owner: Person = pax_fiddle.sub_field(Person)
   wheels: Optional[List[Wheel]] = None  # Initialized by setup.
@@ -55,15 +55,14 @@ class Vehicle:
   def setup(self):
     assert self.wheels is None
     self.wheels = [
-        pax_fiddle.build(self.wheel_tpl).setup()
-        for i in range(self.num_wheels)
+        pax_fiddle.build(self.wheel_tpl).setup() for i in range(self.num_wheels)
     ]
     return self
 
 
 @dataclasses.dataclass
 class Fleet:
-  vehicle_tpl: fdl.Config[Vehicle] = pax_fiddle.template_field(Vehicle)
+  vehicle_tpl: pax_fiddle.Config[Vehicle] = pax_fiddle.template_field(Vehicle)
   num_vehicles: int = 1
   manager: Person = pax_fiddle.sub_field(Person)
   vehicles: Optional[List[Vehicle]] = None  # Initialized by setup.
@@ -80,47 +79,47 @@ class Fleet:
 class SubFieldAndTemplateFieldTest(testing.TestCase):
 
   def test_default_fleet_config(self):
-    config = fdl.Config(Fleet)
+    config = pax_fiddle.Config(Fleet)
     with self.subTest("expected_config"):
       self.assertDagEqual(
           config,
-          fdl.Config(
+          pax_fiddle.Config(
               Fleet,
-              vehicle_tpl=fdl.Config(
+              vehicle_tpl=pax_fiddle.Config(
                   Vehicle,
-                  wheel_tpl=fdl.Config(Wheel),
-                  owner=fdl.Config(Person)),
-              manager=fdl.Config(Person)))
+                  wheel_tpl=pax_fiddle.Config(Wheel),
+                  owner=pax_fiddle.Config(Person)),
+              manager=pax_fiddle.Config(Person)))
 
     with self.subTest("with_materialized_defaults"):
       fdl.materialize_defaults(config)
       self.assertDagEqual(
           config,
-          fdl.Config(
+          pax_fiddle.Config(
               Fleet,
-              vehicle_tpl=fdl.Config(
+              vehicle_tpl=pax_fiddle.Config(
                   Vehicle,
-                  wheel_tpl=fdl.Config(Wheel, radius=5),
-                  owner=fdl.Config(Person, name=None),
+                  wheel_tpl=pax_fiddle.Config(Wheel, radius=5),
+                  owner=pax_fiddle.Config(Person, name=None),
                   num_wheels=4,
                   wheels=None),
               num_vehicles=1,
-              manager=fdl.Config(Person, name=None),
+              manager=pax_fiddle.Config(Person, name=None),
               vehicles=None))
 
   def test_build_default_fleet_config(self):
-    config = fdl.Config(Fleet)
+    config = pax_fiddle.Config(Fleet)
     config.manager.name = "Ben"  # Required arg
     fleet = pax_fiddle.build(config)
     self.assertEqual(
         fleet,
         Fleet(
-            vehicle_tpl=fdl.Config(Vehicle),
+            vehicle_tpl=pax_fiddle.Config(Vehicle),
             num_vehicles=1,
             manager=Person("Ben")))
 
   def test_build_custom_fleet_config(self):
-    config = fdl.Config(Fleet)
+    config = pax_fiddle.Config(Fleet)
     config.manager.name = "Ben"
     config.num_vehicles = 3
     config.vehicle_tpl.wheel_tpl.radius *= 2
@@ -129,26 +128,26 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     self.assertEqual(
         fleet,
         Fleet(
-            vehicle_tpl=fdl.Config(
+            vehicle_tpl=pax_fiddle.Config(
                 Vehicle,
-                wheel_tpl=fdl.Config(Wheel, radius=10),
-                owner=fdl.Config(Person, name="Ben")),
+                wheel_tpl=pax_fiddle.Config(Wheel, radius=10),
+                owner=pax_fiddle.Config(Person, name="Ben")),
             num_vehicles=3,
             manager=Person("Ben")))
 
   def test_build_and_setup_default_fleet_config(self):
-    config = fdl.Config(Fleet)
+    config = pax_fiddle.Config(Fleet)
     config.manager.name = "Ben"  # Required arg
     config.vehicle_tpl.owner.name = "Joe"  # Required arg
     fleet = pax_fiddle.build(config).setup()
     self.assertEqual(
         fleet,
         Fleet(
-            vehicle_tpl=fdl.Config(
-                Vehicle, owner=fdl.Config(Person, name="Joe")),
+            vehicle_tpl=pax_fiddle.Config(
+                Vehicle, owner=pax_fiddle.Config(Person, name="Joe")),
             vehicles=[
                 Vehicle(
-                    wheel_tpl=fdl.Config(Wheel),
+                    wheel_tpl=pax_fiddle.Config(Wheel),
                     wheels=[Wheel(), Wheel(),
                             Wheel(), Wheel()],
                     num_wheels=4,
@@ -158,7 +157,7 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
             manager=Person("Ben")))
 
   def test_build_and_setup_custom_fleet_config(self):
-    config = fdl.Config(Fleet)
+    config = pax_fiddle.Config(Fleet)
 
     config.manager.name = "Ben"
     config.num_vehicles = 3
@@ -170,13 +169,13 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
       self.assertEqual(
           fleet,
           Fleet(
-              vehicle_tpl=fdl.Config(
+              vehicle_tpl=pax_fiddle.Config(
                   Vehicle,
-                  owner=fdl.Config(Person, name="Joe"),
-                  wheel_tpl=fdl.Config(Wheel, radius=10)),
+                  owner=pax_fiddle.Config(Person, name="Joe"),
+                  wheel_tpl=pax_fiddle.Config(Wheel, radius=10)),
               vehicles=3 * [
                   Vehicle(
-                      wheel_tpl=fdl.Config(Wheel, radius=10),
+                      wheel_tpl=pax_fiddle.Config(Wheel, radius=10),
                       wheels=4 * [Wheel(10)],
                       num_wheels=4,
                       owner=Person("Joe"))
@@ -194,7 +193,7 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
       self.assertIsNot(fleet.manager, fleet.vehicles[0].owner)
 
   def test_shared_vehicle_owners(self):
-    config = fdl.Config(Fleet)
+    config = pax_fiddle.Config(Fleet)
 
     config.manager.name = "Ben"
     config.num_vehicles = 3
@@ -204,11 +203,11 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     self.assertEqual(
         fleet,
         Fleet(
-            vehicle_tpl=fdl.Config(
-                Vehicle, owner=fdl.Config(Person, name="Ben")),
+            vehicle_tpl=pax_fiddle.Config(
+                Vehicle, owner=pax_fiddle.Config(Person, name="Ben")),
             vehicles=3 * [
                 Vehicle(
-                    wheel_tpl=fdl.Config(Wheel),
+                    wheel_tpl=pax_fiddle.Config(Wheel),
                     wheels=4 * [Wheel()],
                     num_wheels=4,
                     owner=Person("Ben"))
@@ -229,10 +228,9 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     self.assertIsNot(fleet.manager, fleet.vehicles[0].owner)
 
   def test_use_custom_wheel(self):
-    config = fdl.Config(Fleet)
-    config.vehicle_tpl.wheel_tpl = fdl.Config(ColoredWheel, color="red")
-    fleet = fdl.build(config).setup()
-    print("FFF", fleet)
+    config = pax_fiddle.Config(Fleet)
+    config.vehicle_tpl.wheel_tpl = pax_fiddle.Config(ColoredWheel, color="red")
+    fleet = pax_fiddle.build(config).setup()
     self.assertIsInstance(fleet.vehicles[0].wheels[0], ColoredWheel)
     self.assertEqual(fleet.vehicles[0].wheels[0],
                      ColoredWheel(radius=5, color="red"))
@@ -243,11 +241,11 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     self.assertEqual(
         fleet,
         Fleet(
-            vehicle_tpl=fdl.Config(Vehicle),
+            vehicle_tpl=pax_fiddle.Config(Vehicle),
             num_vehicles=1,
             vehicles=[
                 Vehicle(
-                    wheel_tpl=fdl.Config(Wheel),
+                    wheel_tpl=pax_fiddle.Config(Wheel),
                     num_wheels=4,
                     wheels=[Wheel(), Wheel(),
                             Wheel(), Wheel()],
@@ -255,8 +253,32 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
             ],
             manager=Person()))
 
-    self.assertEqual(fleet.vehicle_tpl, fdl.Config(Vehicle))
-    self.assertEqual(fleet.vehicles[0].wheel_tpl, fdl.Config(Wheel))
+    self.assertEqual(fleet.vehicle_tpl, pax_fiddle.Config(Vehicle))
+    self.assertEqual(fleet.vehicles[0].wheel_tpl, pax_fiddle.Config(Wheel))
+
+
+class PaxConfigTest(testing.TestCase):
+
+  def test_clone(self):
+    cfg = pax_fiddle.Config(
+        Vehicle, wheel_tpl=pax_fiddle.Config(Wheel), num_wheels=3)
+    clone = cfg.clone()
+    self.assertEqual(cfg, clone)
+    self.assertIsNot(cfg, clone)
+    self.assertIsNot(cfg.wheel_tpl, clone.wheel_tpl)
+
+  def test_set(self):
+    cfg = pax_fiddle.Config(Vehicle)
+    cfg.set(num_wheels=2)
+    cfg.wheel_tpl.set(radius=20)
+    cfg.owner.set(name="Grug")
+    self.assertDagEqual(
+        cfg,
+        pax_fiddle.Config(
+            Vehicle,
+            num_wheels=2,
+            owner=pax_fiddle.Config(Person, "Grug"),
+            wheel_tpl=pax_fiddle.Config(Wheel, radius=20)))
 
 
 if __name__ == "__main__":
