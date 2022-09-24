@@ -671,6 +671,7 @@ class SummaryType(enum.Enum):
   SCALAR = 1
   IMAGE = 2
   TEXT = 5
+  AUDIO = 6
 
   # Like SCALAR, but this type indicates that this data is suitable for use
   # with sensitive data.
@@ -679,6 +680,8 @@ class SummaryType(enum.Enum):
   # Like IMAGE, but this type indicates that the image data was sufficiently
   # aggregated such that this is safe to use with sensitive data.
   AGGREGATE_IMAGE = 4
+
+  # TODO(nanxinchen): add AGGREGATE_AUDIO if needed
 
 
 def get_summary_base_type(summary_type: SummaryType) -> SummaryType:
@@ -711,8 +714,8 @@ def trim_summary_type_from_key(key: str) -> str:
 class _SummaryDict:
   """A dict holding summaries generated during forward computation.
 
-  Currently it supports 5 types: SCALAR, AGGREGATE_SCALAR, IMAGE,
-  AGGREGATE_IMAGE, TEXT. Keys will be appended with a type suffix.
+  Currently it supports 6 types: SCALAR, AGGREGATE_SCALAR, IMAGE,
+  AGGREGATE_IMAGE, TEXT, AUDIO. Keys will be appended with a type suffix.
   """
 
   def __init__(self) -> None:
@@ -740,6 +743,10 @@ class _SummaryDict:
         # Add a batch dim.
         tensor = jnp.expand_dims(tensor, 0)
       assert tensor.ndim == 4
+    if summary_type == SummaryType.AUDIO:
+      if tensor.ndim == 2:
+        # Add a batch dim.
+        tensor = jnp.expand_dims(tensor, 0)
     self.dict[full_name] = tensor
 
   def clear(self) -> None:
@@ -881,9 +888,10 @@ def add_global_summary(
   Args:
     name: name of the summary.
     tensor: value of the summary.
-    summary_type: type of the summary. Currently it supports 2 types: SCALAR,
-      IMAGE. Keys will be appended with a type suffix. Image tensors must be
-      either [batch, height, width, channels] or [height, width, channels].
+    summary_type: type of the summary. Currently it supports 3 types: SCALAR,
+      IMAGE, AUDIO. Keys will be appended with a type suffix. Image tensors
+      must be either [batch, height, width, channels] or
+      [height, width, channels].
     verbosity: verbosity level for the summary to add. If the current jax
       context's verbosity level is less verbose (lower value) than the summary,
       the summary does not get added. Refer to
@@ -1242,6 +1250,11 @@ class _SharedBaseLayer(nn.Module):
         # Add a batch dim.
         tensor = jnp.expand_dims(tensor, 0)
       assert tensor.ndim == 4
+    elif summary_type == SummaryType.AUDIO:
+      if tensor.ndim == 2:
+        # Add a batch dim.
+        tensor = jnp.expand_dims(tensor, 0)
+      assert tensor.ndim == 3
     # full_name is ensured to be unique.
     # reduction function is "overwrite" if layer is called multiple times.
     self.sow(SUMMARIES, full_name, tensor, reduce_fn=lambda x, y: y)
