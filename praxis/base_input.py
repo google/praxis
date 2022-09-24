@@ -37,6 +37,7 @@ NestedMap = py_utils.NestedMap
 NestedJTensor = pytypes.NestedJTensor
 Nested = pytypes.Nested
 NestedShapeDtypeStruct = pytypes.NestedShapeDtypeStruct
+NestedPartitionSpec = pytypes.NestedPartitionSpec
 instantiate = base_hyperparams.instantiate
 
 
@@ -182,7 +183,8 @@ class BaseInput(base_hyperparams.BaseParameterizable):
   @classmethod
   def reshard_for_spmd(cls, arrays: NestedJTensor,
                        global_shapes: NestedShapeDtypeStruct,
-                       global_mesh: maps.Mesh, pspecs: Any) -> NestedJTensor:
+                       global_mesh: maps.Mesh,
+                       pspecs: NestedPartitionSpec) -> NestedJTensor:
     """Reshards inputs for pjit.
 
     This function reshards `arrays`, inputs returned by this input class, to be
