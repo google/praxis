@@ -66,7 +66,8 @@ Config = PaxConfig  # Alias pax_fiddle.Config -> PaxConfig.
 def instantiate(config: fdl.Buildable, **kwargs):
   """Builds `config` with optional argument overrides."""
   if kwargs:
-    config = fdl.copy_with(config, **kwargs)
+    config = copy.copy(config)
+    fdl.assign(config, **kwargs)
   return build(config)
 
 
