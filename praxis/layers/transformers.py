@@ -313,7 +313,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
       # Make it compatible with previous implementation
       output_dims = p.input_dims
     else:
-      assert output_dims == p.input_dims
+      assert output_dims == p.input_dims, (p.input_dims, output_dims)
 
     wp = p.weight_split_dims_mapping
     ap = p.activation_split_dims_mapping
