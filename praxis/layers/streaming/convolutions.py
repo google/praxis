@@ -45,9 +45,9 @@ class ConvBNActWithPadding(convolutions.ConvBNActWithPadding,  # pytype: disable
 
     Attributes:
       frequency_dim: Size of frequency dimension. In non streaming mode conv
-      processes input data [batch, time, frequency, channels]. Where only
-      channels is known ahead of model creation. In streaming mode
-      batch, time, frequency, channels have to be known for states creation:
+        processes input data [batch, time, frequency, channels]. Where only
+        channels is known ahead of model creation. In streaming mode
+        batch, time, frequency, channels have to be known for states creation:
         batch: defined by user.
         time: defined by dilations[0], filter_shape[0], filter_stride[0].
         frequency: is added here, it also can be inferred from the input data.
@@ -257,8 +257,12 @@ class ConvBNActWithPadding(convolutions.ConvBNActWithPadding,  # pytype: disable
     """
     p = self.hparams
     if inputs.features.shape[1] % self.stride:
-      raise ValueError(f'Time dimension {inputs.features.shape[1]}, '
-                       f'is not aligned with stride {self.stride}')
+      if inputs.features.shape[1] == 1:
+        raise ValueError('Time dimension is 1 and it is not aligned with '
+                         'stride, check that total stride is used.')
+      else:
+        raise ValueError(f'Time dimension {inputs.features.shape[1]}, '
+                         f'is not aligned with stride {self.stride}')
     if inputs.features.shape[2] != p.frequency_dim:
       raise ValueError(f'Input frequency dimension: {inputs.features.shape[2]},'
                        f'has to be equal p.frequency_dim: {p.frequency_dim}')

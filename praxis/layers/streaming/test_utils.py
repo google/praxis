@@ -145,7 +145,8 @@ class StreamingTest(test_utils.TestCase):
                                  p_non_stream: BaseHParams,
                                  p_stream: BaseHParams,
                                  step: int,
-                                 is_eval: bool = True):
+                                 is_eval: bool = True,
+                                 input_map: bool = False):
     """Compares layer outputs generated in streaming and non streaming modes.
 
     Args:
@@ -156,6 +157,7 @@ class StreamingTest(test_utils.TestCase):
       step: Defines how many samples to process per streaming step.
         It also defines how many steps to split the input audio = time_size/step
       is_eval: Sets do_eval in JaxContext.
+      input_map: If True non streaming layer takes input as NestedMap.
 
     Raises:
       ValueError:
@@ -163,23 +165,30 @@ class StreamingTest(test_utils.TestCase):
         * If the sequence is fully padded and there is nothing left to compare.
       Error if any streaming and non streaming outputs do not match.
     """
+    in_nmap = py_utils.NestedMap(features=inputs, paddings=paddings)
     context_p = base_layer.JaxContext.HParams(do_eval=is_eval)
     with base_layer.JaxContext.new_context(hparams=context_p):
       layer_non_stream = instantiate(p_non_stream)
       prng_key = jax.random.PRNGKey(seed=123)
       prng_key, init_key = jax.random.split(prng_key)
-      initial_vars = layer_non_stream.init(init_key, inputs, paddings)
-      output_non_stream = layer_non_stream.apply(
-          initial_vars, inputs, paddings)
+      if input_map:
+        initial_vars = layer_non_stream.init(init_key, in_nmap)
+        output_non_stream = layer_non_stream.apply(initial_vars, in_nmap)
+      else:
+        initial_vars = layer_non_stream.init(init_key, inputs, paddings)
+        output_non_stream = layer_non_stream.apply(
+            initial_vars, inputs, paddings)
 
       if isinstance(output_non_stream, tuple):
         output_features, output_paddings = output_non_stream
+      elif isinstance(output_non_stream, NestedMap):
+        output_features = output_non_stream.features
+        output_paddings = output_non_stream.paddings
       else:
         output_features = output_non_stream
         output_paddings = paddings
 
       layer_stream = instantiate(p_stream)
-      in_nmap = py_utils.NestedMap(features=inputs, paddings=paddings)
       output_names = ['features', 'paddings']
       output_stream = run_streaming(layer_stream, initial_vars,
                                     in_nmap, output_names, step)
