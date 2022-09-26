@@ -1483,21 +1483,10 @@ class _SharedBaseLayer(nn.Module):
     Returns:
       The created sub layer, or makes the sub layer an assess of this layer.
     """
-    conflict = False
-    if name in {field.name for field in dataclasses.fields(self.hparams)}:
-      # As part of the Fiddle migration, child names that conflict with HParams
-      # attributes will be fixed.
-      logging.info('FiddleMigration: %s Child name %s conflict hparam.',
-                   self.__class__.__name__, name)
-      conflict = True
-    p = self.copy_base_hparams(self.hparams, params.clone())
-    p.name = name
-    assert p.name not in self._private_children
-    child = instantiate_layer(p, self.scope.root)
-    self._private_children[p.name] = child
-    layer_utils.LayerRegistry().add_layer(p.name, self, conflict=conflict)
+    self._add_child_to_layer_registry(name)
+    child = self._create_child(name, params)
     if self._state.in_setup:
-      setattr(self, p.name, child)
+      setattr(self, name, child)
     return child
 
   @nn.nowrap
@@ -1519,30 +1508,38 @@ class _SharedBaseLayer(nn.Module):
     Returns:
       The created sub layers, or makes the sub layers an assess of this layer.
     """
-    params = NestedMap.FromNestedDict(params)
-
     uid = itertools.count()
 
     def _instantiate(p: InstantiableHyperParams) -> BaseLayerT:
-      p = self.copy_base_hparams(self.hparams, p.clone())
-      p.name = '%s_%d' % (name, next(uid))
-      child = instantiate_layer(p, self.scope.root)
-      assert p.name not in self._private_children
-      self._private_children[p.name] = child
-      return child
+      return self._create_child(f'{name}_{next(uid)}', p)
 
-    conflict = False
-    if name in {field.name for field in dataclasses.fields(self.hparams)}:
-      # As part of the Fiddle migration, children names that conflict with
-      # HParams attributes will be fixed.
-      logging.info('FiddleMigration: %s Children name %s conflict hparam.',
-                   self.__class__.__name__, name)
-      conflict = True
-    layer_utils.LayerRegistry().add_layer(name, self, conflict=conflict)
-    children = NestedMap(sub=params).Transform(_instantiate).sub
+    self._add_child_to_layer_registry(name)
+    children = jax.tree_map(_instantiate, params)
     if self._state.in_setup:
       setattr(self, name, children)
     return children
+
+  @nn.nowrap
+  def _create_child(self, name: str, params: BaseLayer.HParams) -> BaseLayer:
+    """Creates and returns a child (w/o adding it as an attribute of `self`)."""
+    assert name not in self._private_children
+    p = self.copy_base_hparams(self.hparams, params.clone())
+    p.name = name
+    child = instantiate_layer(p, self.scope.root)
+    self._private_children[name] = child
+    return child
+
+  @nn.nowrap
+  def _add_child_to_layer_registry(self, name: str):
+    """Registers child creation with LayerRegistry."""
+    conflict = False
+    if name in {field.name for field in dataclasses.fields(self.hparams)}:
+      # As part of the Fiddle migration, child names that conflict with HParams
+      # attributes will be fixed.
+      logging.warning('FiddleMigration: %s Child name %s conflict hparam.',
+                   self.__class__.__name__, name)
+      conflict = True
+    layer_utils.LayerRegistry().add_layer(name, self, conflict=conflict)
 
   @nn.nowrap
   def _cast_to_fprop_dtype(self, value: Any) -> Any:
