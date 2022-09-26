@@ -122,6 +122,7 @@ class GroupNorm(normalizations.GroupNorm,  # pytype: disable=signature-mismatch
     sum_vv = jnp.cumsum(sum_vv, axis=1)
     sum_vv += self.get_streaming_state('cached_var')
 
+    # TODO(b/247808367) it can overflow:
     # [B, 1, N]
     self._update_streaming_state('cached_sum', sum_v[:, -1:])
 

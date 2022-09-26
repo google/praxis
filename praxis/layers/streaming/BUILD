@@ -32,6 +32,7 @@ pytype_strict_library(
         ":attentions",
         ":conformers",
         ":convolutions",
+        ":embedding_softmax",
         ":normalizations",
         ":streaming_base",
     ],
@@ -199,5 +200,39 @@ py_strict_test(
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis/layers:conformers",
+    ],
+)
+
+pytype_strict_library(
+    name = "embedding_softmax",
+    srcs = ["embedding_softmax.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":streaming_base",
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
+        "//praxis/layers:embedding_softmax",
+    ],
+)
+
+py_strict_test(
+    name = "embedding_softmax_test",
+    srcs = ["embedding_softmax_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":embedding_softmax",
+        ":streaming",
+        ":test_utils",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:py_utils",
+        "//praxis/layers:embedding_softmax",
     ],
 )

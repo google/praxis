@@ -21,5 +21,6 @@ from praxis.layers.streaming.conformers import SelfAttentionWithNormAndResidual
 from praxis.layers.streaming.convolutions import ConvBNActWithPadding
 from praxis.layers.streaming.convolutions import DepthwiseConv1D
 from praxis.layers.streaming.convolutions import LightConv1D
+from praxis.layers.streaming.embedding_softmax import PositionalEmbedding
 from praxis.layers.streaming.normalizations import GroupNorm
 from praxis.layers.streaming.streaming_base import StreamingBase
