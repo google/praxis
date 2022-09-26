@@ -1684,6 +1684,12 @@ class BaseLayer(
     cls.HParams = dataclasses.make_dataclass(
         'HParams', fields=fields, bases=(cls.HParams,))  # pytype: disable=wrong-arg-types
 
+    # Set the module name and qualname of the HParams class, for more accurate
+    # serialization and debugging information.
+    cls.HParams.__module__ = cls.__module__
+    cls.HParams.__qualname__ = f'{cls.__name__}.HParams'
+
+
   def __post_init__(self):
     assert self._hparams.name, (
         f'{type(self).__name__} HParams must define the layer\'s "name"')

@@ -2778,21 +2778,21 @@ class ChunkedCrossAttention(base_layer.BaseLayer):
     convention to use T = L x M to denote the sequence length of the query.
 
     Attributes:
-      atten: an instance of DotProductAttention's HParams.
+      atten_tpl: an instance of DotProductAttention's HParams.
     """
-    atten: BaseHParams = sub_config_field(DotProductAttention.HParams)
+    atten_tpl: BaseHParams = sub_config_field(DotProductAttention.HParams)
 
   def setup(self):
-    if self.hparams.atten.relative_bias_tpl is None:
+    if self.hparams.atten_tpl.relative_bias_tpl is None:
       raise ValueError('Must specify p.atten.relative_bias_tpl')
-    if self.hparams.atten.relative_bias_tpl.use_length_as_position:
+    if self.hparams.atten_tpl.relative_bias_tpl.use_length_as_position:
       # Note: A future optimization here is to not use the batch dimension in
       # relative_bias, since we have the same result for each row in the batch,
       # which would have the same memory saving as use_length_as_position=True.
       raise ValueError('Must have p.atten.relative_bias_tpl.'
                        'use_length_as_position=False, as we rely on '
                        '`key_segment_pos` for correctness.')
-    self.create_child('atten', self.hparams.atten)
+    self.create_child('atten', self.hparams.atten_tpl)
 
   def _cross_atten(self, chunk: JTensor, neighbors: JTensor) -> JTensor:
     """Computes cross attention between one chunk and its neighbors.

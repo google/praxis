@@ -68,7 +68,7 @@ class Repeat(base_layer.BaseLayer):
     """Associated hyperparams for this layer class.
 
     Attributes:
-      sub: The parameterization of the sub-layer.
+      sub_tpl: The parameterization of the sub-layer.
       x_times: The number of times to repeat sub.
       unpack_summaries: If true, unpack summaries to the individual values from
         each loop iterations.
@@ -80,7 +80,7 @@ class Repeat(base_layer.BaseLayer):
       sublayer_name: Name of the sublayer. This affects the checkpoint variable
         paths.
     """
-    sub: Optional[BaseHParams] = None
+    sub_tpl: Optional[BaseHParams] = None
     x_times: int = 0
     unpack_summaries: bool = False
     checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_NOTHING
@@ -99,9 +99,9 @@ class Repeat(base_layer.BaseLayer):
     """Constructor."""
     p = self.hparams
     assert p.x_times > 0
-    assert p.sub is not None
+    assert p.sub_tpl is not None
 
-    self.create_child(p.sublayer_name, p.sub)
+    self.create_child(p.sublayer_name, p.sub_tpl)
 
   def __call__(self, inputs: NestedJTensor, *args: Any, **kwargs: Any) -> Any:
     """FProp inputs through the sub layer stack.

@@ -1724,7 +1724,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     wp = p.weight_split_dims_mapping
 
     repeat_l_params = repeats.Repeat.HParams(
-        sub=p.block,
+        sub_tpl=p.block,
         x_times=p.x_times,
         checkpoint_policy=p.checkpoint_policy,
         unpack_summaries=True,

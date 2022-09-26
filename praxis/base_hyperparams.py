@@ -444,7 +444,8 @@ class BaseHyperParams:
         field for field in dataclasses.fields(self) if field.name == name
     ]
     if not matching_fields:
-      raise AttributeError(f'Attribute {name} doesn\'t exist.')
+      qualname = self.__class__.__qualname__
+      raise AttributeError(f'Attribute {name} doesn\'t exist on {qualname}.')
 
     field, = matching_fields
     self._check_assignment(field, value)

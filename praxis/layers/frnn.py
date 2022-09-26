@@ -52,15 +52,15 @@ class FRnn(base_layer.BaseLayer):
     """Associated hyper-params for this layer class.
 
     Attributes:
-      cell: Configs for the RnnCell.
+      cell_tpl: Configs for the RnnCell.
       reverse: Whether or not to unroll the sequence in reversed order.
     """
-    cell: Optional[BaseHParams] = None
+    cell_tpl: Optional[BaseHParams] = None
     reverse: bool = False
 
   def setup(self) -> None:
     p = self.hparams
-    self.create_child('cell', p.cell)
+    self.create_child('cell', p.cell_tpl)
 
   def init_states(self, batch_size: int) -> NestedMap:
     return self.cell.init_states(batch_size)
@@ -189,7 +189,7 @@ class StackFrnn(base_layer.BaseLayer):
     frnns_p = []
     for _ in range(p.num_layers):
       frnn_p = p.frnn_tpl.clone()
-      frnn_p.cell.set(
+      frnn_p.cell_tpl.set(
           num_input_nodes=input_nodes, num_output_nodes=p.num_output_nodes)
       frnns_p.append(frnn_p)
       input_nodes = p.num_output_nodes
@@ -198,7 +198,7 @@ class StackFrnn(base_layer.BaseLayer):
 
   @property
   def num_input_nodes(self) -> int:
-    return self.frnn[0].cell.num_input_nodes
+    return self.frnn[0].cell_tpl.num_input_nodes
 
   @property
   def num_output_nodes(self) -> int:

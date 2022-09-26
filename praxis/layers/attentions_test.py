@@ -1410,7 +1410,8 @@ class ChunkedAttentionsTest(test_utils.TestCase):
             use_length_as_position=False,
             relative_attention_num_buckets=2,
             relative_attention_max_distance=8))
-    cca = attentions.ChunkedCrossAttention.HParams(name='cca', atten=atten_p)
+    cca = attentions.ChunkedCrossAttention.HParams(
+        name='cca', atten_tpl=atten_p)
     layer = instantiate(cca)
     batch_size = 5
     source_length = 28
@@ -1597,7 +1598,8 @@ class ChunkedAttentionsTest(test_utils.TestCase):
             bidirectional=True,
             relative_attention_num_buckets=8,
             relative_attention_max_distance=16))
-    cca = attentions.ChunkedCrossAttention.HParams(name='cca', atten=atten_p)
+    cca = attentions.ChunkedCrossAttention.HParams(
+        name='cca', atten_tpl=atten_p)
     layer = base_layer.instantiate(cca)
     batch_size = 5  # B
     # Shape [B, T, D]

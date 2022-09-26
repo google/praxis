@@ -127,7 +127,7 @@ class RepeatsTest(test_utils.TestCase):
     sub_p = FeedForward.HParams(input_dim=2, output_dim=2)
     p = repeats.Repeat.HParams(
         name='repeated_ffn',
-        sub=sub_p,
+        sub_tpl=sub_p,
         x_times=5,
         unpack_summaries=unpack_summaries)
     repeated_ffn = instantiate(p)
@@ -183,7 +183,10 @@ class RepeatsTest(test_utils.TestCase):
 
     sub_p = Decoder.HParams(model_dim=4)
     p = repeats.Repeat.HParams(
-        name='repeated_decoder', sub=sub_p, x_times=5, unroll_in_decode=unroll)
+        name='repeated_decoder',
+        sub_tpl=sub_p,
+        x_times=5,
+        unroll_in_decode=unroll)
     repeated_decoder = instantiate(p)
 
     k = jax.random.PRNGKey(123)

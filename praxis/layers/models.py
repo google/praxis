@@ -515,14 +515,14 @@ class SequenceModel(base_model.BaseModel):
     """Associated hyper-params for this layer class.
 
     Attributes:
-      model: Sequence model layer for this task.
+      model_tpl: Sequence model layer for this task.
       return_predictions: Whether to return predictions during eval. Returning
         predictions is more expensive, but may be useful for debugging.
       decoder_tpl: Parameterization of the decoder.
       label_smoothing_prob: If > 0.0, smooth out one-hot prob by spreading this
         amount ofprob mass to all other tokens.
     """
-    model: BaseHParams = sub_config_field(
+    model_tpl: BaseHParams = sub_config_field(
         transformer_models.TransformerEncoderDecoder.HParams)
     return_predictions: bool = False
     decoder_tpl: DecoderHParams = sub_config_field(GreedyDecoderHParams)
@@ -533,13 +533,13 @@ class SequenceModel(base_model.BaseModel):
     p = self.hparams
 
     # Construct the model.
-    model_p = p.model.clone()
+    model_p = p.model_tpl.clone()
     self.create_child('model', model_p)
 
   def compute_predictions(self, input_batch):
     """Computes predictions for `input_batch`."""
     p = self.hparams
-    if p.model.packed_input:
+    if p.model_tpl.packed_input:
       packed_input_kwargs = {
           'input_segment_ids': input_batch.src.segment_ids,
           'input_segment_pos': input_batch.src.segment_pos,
@@ -552,7 +552,7 @@ class SequenceModel(base_model.BaseModel):
     labels = NestedMap(
         class_ids=input_batch.tgt.labels, class_weights=input_batch.tgt.weights)
     if p.label_smoothing_prob > 0.0:
-      vocab_size = p.model.softmax_tpl.num_classes
+      vocab_size = p.model_tpl.softmax_tpl.num_classes
       class_probabilities = jax.nn.one_hot(labels.class_ids, vocab_size)
       fill_prob = p.label_smoothing_prob / (vocab_size - 1)
       class_probabilities = (
