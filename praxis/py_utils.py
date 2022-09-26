@@ -117,7 +117,7 @@ def unshard(array: jnp.ndarray) -> np.ndarray:
 
 def _unreplicate(x):
   """Helper to unreplicated the data based on its type."""
-  if isinstance(x, array.Array):
+  if jax.config.jax_array and isinstance(x, jax.Array):
     return x.addressable_data(0)
   elif isinstance(x, gda_lib.GlobalDeviceArray):
     return x.local_data(0)
@@ -329,11 +329,11 @@ def create_gda(host_arrays: np.ndarray, global_shapes: jax.ShapeDtypeStruct,
 
   def _gda_or_jax_array(global_shape, pspec, dbs):
     if jax.config.jax_array:
-      aval = jax.ShapedArray(global_shape.shape, global_shape.dtype)
       # This is cached because creating new sharding objects everytime is
       # expensive in pjit dispatch path for inputs.
       s = _cached_mesh_pspec_sharding(global_mesh, pspec)
-      return array.Array(aval, s, dbs, committed=True)
+      return array.make_array_from_single_device_arrays(
+          global_shape.shape, s, dbs)
     else:
       return gda_lib.GlobalDeviceArray(global_shape.shape, global_mesh, pspec,
                                        dbs)
@@ -349,7 +349,7 @@ def _cached_mesh_pspec_sharding(mesh, pspec):
 # TODO(b/248152817): Delete this function when jax.Array is enabled globally.
 def copy_gda(x):
   """Copies a GDA."""
-  if isinstance(x, array.Array):
+  if jax.config.jax_array and isinstance(x, jax.Array):
     return jnp.copy(x)
   assert isinstance(x, gda_lib.GlobalDeviceArray)
   buffers = [jnp.copy(s.data) for s in x.local_shards]
@@ -391,9 +391,8 @@ def convert_host_local_array_to_global_array(arr):
   partition_spec = pjit.PartitionSpec(None)
   # pmap-produced Array has a "scrambled" device order.
   dbs = sorted(arr.device_buffers, key=lambda x: x.device().id)
-  aval = jax.ShapedArray(global_shape, dbs[0].dtype)
-  return array.Array(aval, sharding.MeshPspecSharding(mesh, partition_spec),
-                     dbs, committed=True)
+  return array.make_array_from_single_device_arrays(
+      global_shape, _cached_mesh_pspec_sharding(mesh, partition_spec), dbs)
 
 
 def get_global_input_shape_dtype(x: jnp.ndarray) -> jax.ShapeDtypeStruct:
