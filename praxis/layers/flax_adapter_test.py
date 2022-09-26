@@ -205,18 +205,42 @@ class PaxWrapperTest(test_utils.TestCase):
 
     key = jax.random.PRNGKey(1)
     m = SomeFlaxModel(bn_p)
-    print(m)
     input_x = jnp.ones((4, 4, 3))
     with base_layer.JaxContext.new_context():
       initial_vars = m.init(key, input_x)
-      print(initial_vars)
       wrapped_layer_res = m.apply(initial_vars, input_x)
-      print(wrapped_layer_res)
 
       pax_layer = bn_p.Instantiate()
       initial_vars = pax_layer.init(key, input_x)
       pax_layer_res = pax_layer.apply(initial_vars, input_x)
       self.assertAllClose(wrapped_layer_res, pax_layer_res)
+
+  def test_wrap_pax_layer_then_adapter(self):
+    bn_p = normalizations.BatchNorm.HParams(name='pax_bn', dim=5)
+
+    # The flax module contains praxis layers.
+    # But it is also adapted into a praxis layer.
+    class SomeFlaxModel(flax_nn.Module):
+      bn_p: Any
+
+      @flax_nn.compact
+      def __call__(self, x: JTensor) -> JTensor:
+        x = flax_nn.Dense(5)(x)
+        x = self.bn_p.Instantiate()(x)
+        return x
+
+    test_layer_p = flax_adapter.FlaxModuleAdapter.HParams(
+        module_factory_method=lambda: SomeFlaxModel(bn_p), name='test_layer')
+    test_layer = instantiate(test_layer_p)
+    inputs = jnp.zeros((5, 5))
+    with base_layer.JaxContext.new_context():
+      init_vars = test_layer.init(jax.random.PRNGKey(seed=123), inputs)
+      leaves = jax.tree_util.tree_leaves(
+          init_vars, is_leaf=lambda x: isinstance(x, base_layer.BoxedParam))
+      # Check that init variables are unboxed.
+      self.assertFalse(
+          any(isinstance(x, base_layer.BoxedParam) for x in leaves))
+      test_layer.apply(init_vars, inputs)
 
   def test_wrap_pax_layer(self):
     bn_p = normalizations.BatchNorm.HParams(name='pax_bn', dim=3)

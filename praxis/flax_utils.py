@@ -113,6 +113,10 @@ def convert_to_boxed_params(
 
   def to_boxed(x_param, var_collection: str,
                logical_axes: Optional[pjit.PartitionSpec]):
+    if isinstance(x_param, base_layer.BoxedParam):
+      # The param might already be boxed (if the flax module contain praxis
+      # submodules). We should not box it again.
+      return x_param
     if logical_axes is None:
       tensor_split_dims_mapping = None
     else:
@@ -161,11 +165,15 @@ def convert_to_boxed_params(
           flat_full_logical_axes_tree, sep='/')
       boxed_params[key] = jax.tree_map(
           lambda x, y: to_boxed(x, var_collection=key, logical_axes=y),
-          var_tree[key], full_logical_axes_tree)
+          var_tree[key],
+          full_logical_axes_tree,
+          # Consider BoxedParam as leaf to prevent boxing it again.
+          is_leaf=lambda x: isinstance(x, base_layer.BoxedParam))
     else:
       boxed_params[key] = jax.tree_map(
           lambda x: to_boxed(x, var_collection=key, logical_axes=None),
-          var_tree[key])
+          var_tree[key],
+          is_leaf=lambda x: isinstance(x, base_layer.BoxedParam))
     # pylint: enable=cell-var-from-loop
 
   return boxed_params

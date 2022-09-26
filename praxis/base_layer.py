@@ -638,6 +638,10 @@ class BoxedParam:
   # pytree_node=False to prevent JAX transforms from touching it.
   meta: Any = struct.field(pytree_node=False)
 
+  def __post_init__(self):
+    assert not isinstance(self.value,
+                          BoxedParam), 'Cannot double-box a parameter!'
+
 
 @struct.dataclass
 class WrappedHParams:
