@@ -52,8 +52,8 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
         name='entry',
         pos_embed_shapes=exp_params.pos_embed_shapes,
         patch_size=exp_params.patch_size,
-        dim_per_patch=exp_params.hidden_dim,
-        image_channels=3,
+        input_dims=exp_params.patch_size ** 2 * 3,
+        output_dims=exp_params.hidden_dim,
         pos_emb_dropout_prob=0.1,
     )
     return p_entry

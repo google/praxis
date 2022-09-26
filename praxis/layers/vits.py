@@ -141,14 +141,14 @@ class VitEntryLayers(base_layer.BaseLayer):
         used to support images of different shapes. When the embedding_size is
         not equal to image_size / patch_size, interpolation will be employed to
         generate embeddings of image_size / patch_size.
-      patch_size: Height/width of a square patch.
-      dim_per_patch: Number of channels per patch after pachifying.
+      input_dims: Dims per patch before input patch projection.
+      output_dims: Dims per patch after input patch projection.
       image_channels: Number of channels of the input image.
     """
     pos_embed_shapes: Tuple[int, int] = (0, 0)
     patch_size: int = 0
-    dim_per_patch: int = 0
-    image_channels: int = 3
+    input_dims: int = 0
+    output_dims: int = 0
     pos_emb_dropout_prob: float = 0.0
 
   def setup(self) -> None:
@@ -156,8 +156,8 @@ class VitEntryLayers(base_layer.BaseLayer):
 
     p_patch_projection = linears.FeedForward.HParams(
         name='proj',
-        input_dims=p.patch_size**2 * p.image_channels,
-        output_dims=p.dim_per_patch,
+        input_dims=p.input_dims,
+        output_dims=p.output_dims,
         activation_tpl=activations.Identity.HParams())
     self.create_child('patch_projection', p_patch_projection)
 
@@ -166,7 +166,7 @@ class VitEntryLayers(base_layer.BaseLayer):
     p_emb = embedding_softmax.TrainablePositionalEmbedding.HParams(
         name='emb',
         max_seq_length=num_patches,
-        embedding_dims=p.dim_per_patch,
+        embedding_dims=p.output_dims,
         params_init=base_layer.WeightInit.Gaussian(scale=0.02))
 
     self.create_child('pos_emb', p_emb)
@@ -382,8 +382,8 @@ def build_vision_transformer_hparams_for_test(
       name='entry',
       pos_embed_shapes=pos_embed_shapes,
       patch_size=patch_size,
-      dim_per_patch=model_dims,
-      image_channels=image_channels,
+      input_dims=patch_size ** 2 * image_channels,
+      output_dims=model_dims,
   )
 
   p_stacked_tfm = transformers.StackedTransformer.HParams(
