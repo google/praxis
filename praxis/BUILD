@@ -331,6 +331,9 @@ pytype_strict_library(
 pytype_strict_library(
     name = "layer_utils",
     srcs = ["layer_utils.py"],
+    deps = [
+        # Implicit absl.logging dependency.
+    ],
 )
 
 py_strict_test(

@@ -24,6 +24,8 @@ import inspect
 import re
 from typing import Any
 
+from absl import logging
+
 pax_layer_registry = {}
 
 
@@ -63,6 +65,11 @@ class LayerRegistry:
       key += ' : ' + inspect.getmodule(layer).__name__
       location = inspect.getframeinfo(inspect.stack()[2][0])
       file_info = f'{location.filename}:{location.lineno}'
+      hierarchy = []
+      for base in self.__class__.mro():
+        hierarchy.append(str(base))
+      logging.warning('FiddleMigration: layer info:\t%s\t%s', file_info,
+                      '\t'.join(hierarchy))
     layer_info = LayerInfo(layer=layer, conflict=conflict, file_info=file_info)
     pax_layer_registry[key] = layer_info
 
