@@ -640,7 +640,7 @@ class SequenceModel(base_model.BaseModel):
       result = beam_search.beam_search(self, extend_step_fn, fprop_fn,
                                        transform_decode_state_fn,
                                        fprop_input_ids, fprop_input_paddings,
-                                       p.decoder)
+                                       p.decoder_tpl)
     elif isinstance(p.decoder_tpl, SampleDecoderHParams):
       raise NotImplementedError('sample decode not supported')
     elif isinstance(p.decoder_tpl, GreedyDecoderHParams):
@@ -659,7 +659,7 @@ class SequenceModel(base_model.BaseModel):
     else:
       # Needs to define a decoding algorithm.
       raise NotImplementedError(
-          f'Decoding algorithm {type(p.decoder)} is not implemented.')
+          f'Decoding algorithm {type(p.decoder_tpl)} is not implemented.')
 
     result.update(input_batch)
     if hasattr(result, 'eval_sample_weights'):
