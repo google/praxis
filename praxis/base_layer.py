@@ -997,6 +997,25 @@ def instantiate_layer(layer_p: BaseLayer.HParams, scope: Any) -> BaseLayer:
   return layer
 
 
+def _maybe_to_bfloat16_dtype(x):
+  """Maybe convert input to bf16 dtype.
+
+  Args:
+    x: common array types like JTensor, ShapeDtypeStruct or GlobalDeviceArray.
+
+  Returns:
+    A casted ShapeDtypeStruct if x is one of JTensor, ShapeDtypeStruct or
+    GlobalDeviceArray. Otherwise, returns x.
+  """
+  if not hasattr(x, 'dtype'):
+    # Ignore common non-array types that shouldn't be cast.
+    return x
+  elif x.dtype in [jnp.float32, np.float32]:
+    return jax.ShapeDtypeStruct(x.shape, jnp.bfloat16)
+  else:
+    return jax.ShapeDtypeStruct(x.shape, x.dtype)
+
+
 class _SharedBaseLayer(nn.Module):
   """Common subclass for `BaseLayer` and `FiddleBaseLayer`.
 
@@ -1172,7 +1191,14 @@ class _SharedBaseLayer(nn.Module):
     with py_utils.logging_verbosity_level('FATAL'):
       context_p = JaxContext.HParams(do_eval=do_eval)
       with JaxContext.new_context(hparams=context_p):
-        variables_abstract = jax.eval_shape(init_fn, rngs, *args, **kwargs)
+        if self.hparams.fprop_dtype == jnp.bfloat16:
+          converted_args = jax.tree_map(_maybe_to_bfloat16_dtype, args)
+          converted_kwargs = jax.tree_map(_maybe_to_bfloat16_dtype, kwargs)
+        else:
+          converted_args = args
+          converted_kwargs = kwargs
+        variables_abstract = jax.eval_shape(
+            init_fn, rngs, *converted_args, **converted_kwargs)
     # If model contains FlaxAdapter, we may see 'params_axes' collections, but
     # they do not contain WeightHParams, so we remove them from returned values.
     if 'params_axes' in variables_abstract:
