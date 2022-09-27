@@ -24,7 +24,7 @@ import inspect
 import re
 import types
 import typing
-from typing import Any, Callable, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 from absl import logging
 import fiddle as fdl
@@ -490,8 +490,24 @@ class BaseHyperParams:
     cloned.unfreeze()
     return cloned
 
-  def copy_fields_from(self, source: 'BaseHyperParams') -> None:
-    """Copies fields from source."""
+  def copy_fields_from(
+      self,
+      source: 'BaseHyperParams',
+      recursive: bool = False,
+      missing_fields_in_self: Optional[Sequence[str]] = None) -> None:
+    """Copies fields from source.
+
+    Args:
+      source: HParams which will be copied.
+      recursive: If False it will preserve 'cls' name only on root level,
+        on other nested levels all parameters ('cls' too) will be overwritten.
+        It will fail if 'source' has more field only on root level.
+        If True, it will preserve 'cls' name on all nested HParams.
+        Destination can have more parameters, but 'source' can not:
+        it will fail if 'source' has more fields.
+      missing_fields_in_self: List of field names of source which are allowed
+        to be missing in self.
+    """
     fields = self.__dataclass_fields__  # pytype: disable=attribute-error
     for name in fields:
       # Skip the field in self but not in source.
@@ -499,17 +515,27 @@ class BaseHyperParams:
         continue
       if not hasattr(source, name):
         raise ValueError(f'Copying incompatible HParams: {name} not in source')
+
+      # cls is preserved in the destination HParams.
       if name == 'cls':
         continue
       attr_value = getattr(source, name)
       if isinstance(attr_value, BaseHyperParams):
-        setattr(self, name, attr_value.clone())
+        if getattr(self, name) is not None and recursive:
+          # Recursively calls _copy_fields_from,
+          # so that only parameters are copied, but cls is preserved.
+          getattr(self, name).copy_fields_from(attr_value, recursive=recursive)
+        else:
+          # Edge case when destination field is None and it has to be created.
+          setattr(self, name, attr_value.clone())
       else:
         setattr(self, name, attr_value)
 
     for name in source.__dataclass_fields__:
       if not hasattr(self, name):
-        raise ValueError(f'Copying incompatible HParams: {name} not in self')
+        if (missing_fields_in_self is None or
+            name not in missing_fields_in_self):
+          raise ValueError(f'Copying incompatible HParams: {name} not in self')
 
   def set(self, **kwargs) -> 'BaseHyperParams':
     """Sets dataclasses fields from a kwargs."""
