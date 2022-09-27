@@ -1428,6 +1428,8 @@ class StackedTransformer(base_layer.BaseLayer):
       dropout_prob: Apply dropout at this prob at various places.
       residual_droppath_prob: Probability at which we drop the entire residual
         path.
+      input_dropout_prob: Dropout probability applied to the input before any
+        processing happens.
       gating_func: Gating function type--can be one of the following options:
         'top2', based on the GShard paper: https://arxiv.org/abs/2006.16668,
         'expert_choice', based on https://arxiv.org/abs/2202.09368,
@@ -1465,6 +1467,7 @@ class StackedTransformer(base_layer.BaseLayer):
     dim_per_head: Optional[int] = None
     dropout_prob: float = 0.0
     residual_droppath_prob: float = 0.0
+    input_dropout_prob: float = 0.0
     gating_func: str = 'top2'
     unadjusted_expert_capacity_factor: float = 2.0
     transformer_layer_params_tpl: BaseHParams = sub_config_field(
@@ -1487,6 +1490,7 @@ class StackedTransformer(base_layer.BaseLayer):
     assert p.hidden_dims > 0
     assert p.num_heads > 0
     assert 0.0 <= p.dropout_prob < 1.0
+    assert 0.0 <= p.input_dropout_prob < 1.0
 
     def _layer_params(i):
       """Construct i-th layer params."""
@@ -1526,6 +1530,11 @@ class StackedTransformer(base_layer.BaseLayer):
 
     layer_params = [_layer_params(i) for i in range(p.num_layers)]
     self.create_children('x_layers', layer_params)
+
+    if p.input_dropout_prob > 0.0:
+      self.create_child(
+          'input_dropout',
+          stochastics.Dropout.HParams(keep_prob=1.0 - p.input_dropout_prob))
 
   def init_states(self, *args: Any, **kwargs: Any) -> None:
     """Initialize the cache for the StackedTransformer layer.
@@ -1584,6 +1593,9 @@ class StackedTransformer(base_layer.BaseLayer):
         cross_paddings,
         cross_segment_mask,
         fold_padding_with_segment_mask=p.fold_padding_with_segment_mask)
+
+    if p.input_dropout_prob > 0.0:
+      x_out = self.input_dropout(x_out)
 
     for i in range(p.num_layers):
       x_in = x_out

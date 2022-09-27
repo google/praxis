@@ -597,6 +597,7 @@ pytype_strict_library(
         ":embedding_softmax",
         ":multi_query_attention",
         ":normalizations",
+        ":stochastics",
         ":transformers",
         # Implicit jax dependency.
         "//praxis:asserts",
