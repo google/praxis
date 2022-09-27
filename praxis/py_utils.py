@@ -26,13 +26,11 @@ from absl import flags
 from absl import logging
 import flax
 import jax
-from jax.experimental import array
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental import maps
 from jax.experimental import mesh_utils
 from jax.experimental import multihost_utils
 from jax.experimental import pjit
-from jax.experimental import sharding
 from jax.interpreters import pxla
 import jax.numpy as jnp
 from lingvo.core import cluster
@@ -40,6 +38,16 @@ from lingvo.core import hyperparams
 from lingvo.core import py_utils
 import numpy as np
 import optax
+
+# TODO(pax-dev): Remove this when jax>=0.3.19
+# pylint: disable=g-import-not-at-top,bare-except
+try:
+  from jax import sharding
+  from jax import make_array_from_single_device_arrays
+except ImportError:
+  from jax.experimental import sharding  # pytype: disable=import-error
+  from jax.experimental.array import make_array_from_single_device_arrays  # pytype: disable=import-error
+# pylint: enable=g-import-not-at-top,bare-except
 
 flags.DEFINE_bool(
     'pmap_use_tensorstore', False,
@@ -332,7 +340,7 @@ def create_gda(host_arrays: np.ndarray, global_shapes: jax.ShapeDtypeStruct,
       # This is cached because creating new sharding objects everytime is
       # expensive in pjit dispatch path for inputs.
       s = _cached_mesh_pspec_sharding(global_mesh, pspec)
-      return array.make_array_from_single_device_arrays(
+      return make_array_from_single_device_arrays(
           global_shape.shape, s, dbs)
     else:
       return gda_lib.GlobalDeviceArray(global_shape.shape, global_mesh, pspec,
@@ -391,7 +399,7 @@ def convert_host_local_array_to_global_array(arr):
   partition_spec = pjit.PartitionSpec(None)
   # pmap-produced Array has a "scrambled" device order.
   dbs = sorted(arr.device_buffers, key=lambda x: x.device().id)
-  return array.make_array_from_single_device_arrays(
+  return make_array_from_single_device_arrays(
       global_shape, _cached_mesh_pspec_sharding(mesh, partition_spec), dbs)
 
 
