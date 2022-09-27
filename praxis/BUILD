@@ -336,6 +336,14 @@ pytype_strict_library(
     ],
 )
 
+pytype_strict_library(
+    name = "fiddle_tags",
+    srcs = ["fiddle_tags.py"],
+    deps = [
+        # Implicit fiddle dependency.
+    ],
+)
+
 py_strict_test(
     name = "asserts_test",
     srcs = ["asserts_test.py"],
