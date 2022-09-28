@@ -1229,6 +1229,8 @@ class DotProductAttention(base_layer.BaseLayer):
       base_layer.assert_has_shape(relative_bias, [-1, n, t, s])
       logits += relative_bias
     logits = checkpoint_name(logits, 'logits')
+    self.add_summary('max_logit_precap',
+                     jnp.max(logits + atten_mask.astype(jnp.float32)))
     logits = self._cap_logits(logits)
     # Attention softmax is always carried out in fp32.
     logits = logits.astype(jnp.float32)
