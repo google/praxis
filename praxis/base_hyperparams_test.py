@@ -20,7 +20,7 @@ import functools
 import inspect
 import pickle
 import textwrap
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Any
 
 from absl.testing import absltest
 import fiddle as fdl
@@ -400,6 +400,23 @@ class HyperParamsTest(absltest.TestCase):
     self.assertEqual(
         Foo.HParams.__qualname__,
         'HyperParamsTest.test_hparams_special_attributes.<locals>.Foo.HParams')
+
+  def test_override_sub_config_field_protocol(self):
+
+    class CustomSubConfigField(base_hyperparams.OverrideSubConfigFieldProtocol):
+
+      def __to_sub_config_field__(self):
+        return dataclasses.field(metadata={'custom': True})
+
+    class Foo(base_hyperparams.BaseParameterizable):
+
+      class HParams(base_hyperparams.BaseHyperParams):
+        a_tpl: Any = base_hyperparams.sub_config_field(CustomSubConfigField())
+
+    field, = (
+        field for field in dataclasses.fields(Foo.HParams)
+        if field.name == 'a_tpl')
+    self.assertTrue(field.metadata.get('custom'))
 
 
 if __name__ == '__main__':

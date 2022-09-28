@@ -588,8 +588,31 @@ class SubConfigFactory:
     return self.get_class()()
 
 
+class OverrideSubConfigFieldProtocol:
+  """Protocol that can be used to override sub_config_field.
+
+  If `x` implements `OverrideSubConfigFieldProtocol`, then `sub_config_field(x)`
+  returns `x.__to_sub_config_field__().
+
+  This allows us to override `sub_config_field(SomeLayer.HParams)` to return
+  `pax_fiddle.template_field(SomeLayer)` when we migrate `SomeLayer` from a
+  (hparams-configured) `BaseLayer` to a (fiddle-configured) `FiddleBaseLayer`.
+  In particular, when we migrate `SomeLayer`, `SomeLayer.HParams` will become
+  a stub object that implements this protocol.
+
+  TODO(b/249483164): Remove this protocol (and the `sub_config_field` function)
+  once all layers have been updated to use `pax_fiddle.template_field` or
+  `pax_fiddle.sub_field`.
+  """
+
+  def __to_sub_config_field__(self):
+    """Returns a dataclass field."""
+    raise ValueError(f'Abstract method {type(self)}.__to_sub_config_field__')
+
+
 def sub_config_field(
-    sub_config_cls: Optional[Type[BaseHyperParams]] = None,
+    sub_config_cls: Optional[Union[Type[BaseHyperParams],
+                                   OverrideSubConfigFieldProtocol]] = None,
     *,
     lazy_ref: Optional[Callable[[], Type[BaseHyperParams]]] = None,
 ):
@@ -604,6 +627,8 @@ def sub_config_field(
   if sub_config_cls is None and lazy_ref is None:
     raise ValueError('Please provide either sub_config_cls or lazy_ref.')
   elif sub_config_cls is not None:
+    if hasattr(sub_config_cls, '__to_sub_config_field__'):
+      return sub_config_cls.__to_sub_config_field__()
     assert issubclass(sub_config_cls, BaseHyperParams), sub_config_cls
     lazy_ref = lambda: sub_config_cls
   return dataclasses.field(
