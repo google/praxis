@@ -464,21 +464,12 @@ class LightConv1D(base_layer.BaseLayer):
     dropout_prob: float = 0.0
     ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
 
-    # The activation/gate matrix is a sub-matrix of large matrix so the scale
-    # needs to be smaller.
-    # More specifically, since input_dim == output_dim, the scale of xavier
-    # should be \sqrt(6) / \sqrt(input_dim + input_dim * 2) instead of \sqrt(6)
-    # / \sqrt(input_dim + input_dim).
-
-    linear_start_tpl: BaseHParams = linears.FeedForward.HParams(
-        activation_tpl=activations.Identity.HParams(),
-        params_init=WeightInit.Xavier(math.sqrt(3 / 2)))
+    linear_start_tpl: BaseHParams = sub_config_field(
+        linears.FeedForward.HParams)
     depthwise_conv_tpl: BaseHParams = sub_config_field(DepthwiseConv1D.HParams)
     conv_norm_layer_tpl: BaseHParams = sub_config_field(
         normalizations.BatchNorm.HParams)
-    linear_end_tpl: BaseHParams = linears.FeedForward.HParams(
-        activation_tpl=activations.Identity.HParams(),
-        params_init=WeightInit.Xavier(math.sqrt(3 / 2)))
+    linear_end_tpl: BaseHParams = sub_config_field(linears.FeedForward.HParams)
     dropout_tpl: BaseHParams = sub_config_field(stochastics.Dropout.HParams)
     is_causal: bool = False
     use_2d_conv_norm: bool = False
@@ -489,10 +480,22 @@ class LightConv1D(base_layer.BaseLayer):
     ln_p = p.ln_tpl.clone().set(name='ln', dim=p.input_dims)
     self.create_child('ln', ln_p)
 
+    # The activation/gate matrix is a sub-matrix of large matrix so the scale
+    # needs to be smaller.
+    # More specifically, since input_dim == output_dim, the scale of xavier
+    # should be \sqrt(6) / \sqrt(input_dim + input_dim * 2) instead of \sqrt(6)
+    # / \sqrt(input_dim + input_dim).
+
     linear_start_act_p = p.linear_start_tpl.clone().set(
-        input_dims=p.input_dims, output_dims=p.input_dims)
+        input_dims=p.input_dims,
+        output_dims=p.input_dims,
+        activation_tpl=activations.Identity.HParams(),
+        params_init=WeightInit.Xavier(math.sqrt(3 / 2)))
     linear_start_gated_p = p.linear_start_tpl.clone().set(
-        input_dims=p.input_dims, output_dims=p.input_dims)
+        input_dims=p.input_dims,
+        output_dims=p.input_dims,
+        activation_tpl=activations.Identity.HParams(),
+        params_init=WeightInit.Xavier(math.sqrt(3 / 2)))
     self.create_child('linear_start_act', linear_start_act_p)
     self.create_child('linear_start_gated', linear_start_gated_p)
 
@@ -505,8 +508,12 @@ class LightConv1D(base_layer.BaseLayer):
 
     self.create_child('conv_activation', p.conv_activation_tpl.clone())
 
+    # TODO(nanxinchen): the end layer doesn't split so it shouldn't use 3/2
     linear_end_p = p.linear_end_tpl.clone().set(
-        input_dims=p.input_dims, output_dims=p.input_dims)
+        input_dims=p.input_dims,
+        output_dims=p.input_dims,
+        activation_tpl=activations.Identity.HParams(),
+        params_init=WeightInit.Xavier(math.sqrt(3 / 2)))
     self.create_child('linear_end', linear_end_p)
 
     dropout_p = p.dropout_tpl.clone().set(keep_prob=1. - p.dropout_prob)
