@@ -76,7 +76,7 @@ class StreamingConvolutionsTest(test_utils.StreamingTest):
     # Streaming aware layer
     p_stream = streaming.ConvBNActWithPadding.HParams(
         name='conv_bn_act_padding_stream')
-    p_stream.copy_fields_from(p_non_stream)
+    p_stream.copy_fields_from(p_non_stream, recursive=True)
     # Streaming aware layer needs explicit frequency_dim (for states creation).
     p_stream.frequency_dim = feature_dim
 
@@ -152,7 +152,7 @@ class StreamingConvolutionsTest(test_utils.StreamingTest):
 
     # Streaming aware layer
     p_stream = streaming.DepthwiseConv1D.HParams(name='dw_1D_stream')
-    p_stream.copy_fields_from(p_non_stream)
+    p_stream.copy_fields_from(p_non_stream, recursive=True)
 
     # Striding is always 1 for now:
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)
@@ -179,11 +179,14 @@ class StreamingConvolutionsTest(test_utils.StreamingTest):
     paddings = np.array([[1, 1, 1, 0, 0, 0, 1, 1]]).astype(np.float32)
 
     # Streaming aware layer. It can run in both streaming and non streaming.
-    p_stream = streaming.LightConv1D.HParams(
-        name='conv1D',
+    p_non_stream = streaming.LightConv1D.HParams(
+        name='non_stream_conv1D',
         input_dims=inputs.shape[-1],
         kernel_size=3,
         is_causal=True)
+
+    p_stream = streaming.LightConv1D.HParams(name='stream_conv1D')
+    p_stream.copy_fields_from(p_non_stream, recursive=True)
 
     # Striding is always 1.
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)
@@ -192,7 +195,7 @@ class StreamingConvolutionsTest(test_utils.StreamingTest):
     self._compare_stream_non_stream(
         inputs,
         paddings if with_paddings else None,
-        p_stream,
+        p_non_stream,
         p_stream,
         step)
 
