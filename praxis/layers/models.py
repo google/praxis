@@ -257,7 +257,12 @@ class LanguageModel(base_model.BaseModel):
     if p.model_type == LanguageModelType.BIDIRECTIONAL:
       raise NotImplementedError(type(self))
     elif p.model_type == LanguageModelType.PREFIX:
-      causal_attention_mask = 1 - input_batch.inputs_indicator
+      if 'inputs_indicator' in input_batch:
+        causal_attention_mask = 1 - input_batch.inputs_indicator
+      else:
+        causal_attention_mask = (
+            jnp.arange(input_batch.ids.shape[-1])[jnp.newaxis, :] >=
+            prefix_lengths[:, jnp.newaxis])
     else:
       causal_attention_mask = None
 
