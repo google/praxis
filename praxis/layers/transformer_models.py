@@ -567,15 +567,25 @@ class TransformerLm(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       segment_pos: Optional[JTensor] = None,
+      atten_mask: Optional[JTensor] = None,
   ) -> NestedMap:
     """Autoregressive cached decoding of Transformer LM.
+
+    In most of the cases, when `inputs` has shape [B, P], it will do
+    extend_step on N tokenks per batch. This is used to do suffix scoring after
+    autoregressive decoding.
+
+    When `inputs` has shape [B], it will do extend_step
+    on one token per batch in regular autoregressive decoding.
 
     Args:
       inputs: Target sequence of shape [B] or [B, P] corresponding to target
         sequence at index time_step. Note that the shape [B, P] corresponds to a
         prefix which is useful for decoding in some special architectures such
-        as Primer or Ngrammer.
-      segment_pos: Segment position of shape [B, 1].
+        as Primer or Ngrammer, it can also be used as suffix scoring after
+        autoregressive decoding.
+      segment_pos: Optional segment position of shape [B, T].
+      atten_mask: Optional attention mask of shape [B, 1, T, S].
 
     Returns:
       xent_output: A `.NestedMap` object containing the log probabilities and
@@ -613,11 +623,19 @@ class TransformerLm(base_layer.BaseLayer):
     else:
       inputs = input_emb
 
-    if segment_pos is not None:
-      # self.transformer expects shape [B].
-      segment_pos = jnp.squeeze(segment_pos, 1)
-    outputs = self.transformer.extend_step(
-        inputs[:, 0, :], time_step=time_step, segment_pos=segment_pos)
+    if inputs.shape[-1] > 1 and segment_pos is not None and (
+        segment_pos.shape[-1] > 1):
+      outputs = self.transformer.extend_step(
+          inputs,
+          time_step=time_step,
+          segment_pos=segment_pos,
+          atten_mask=atten_mask)
+    else:
+      if segment_pos is not None:
+        # self.transformer expects shape [B].
+        segment_pos = jnp.squeeze(segment_pos, 1)
+      outputs = self.transformer.extend_step(
+          inputs[:, 0, :], time_step=time_step, segment_pos=segment_pos)
 
     self.update_decode_state('time_step', time_step + 1)
     if p.final_ln_tpl is not None:

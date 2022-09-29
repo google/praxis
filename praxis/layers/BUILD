@@ -954,6 +954,7 @@ py_strict_test(
     shard_count = 27,
     srcs_version = "PY3",
     deps = [
+        ":attentions",
         ":embedding_softmax",
         ":glam",
         ":ngrammer",

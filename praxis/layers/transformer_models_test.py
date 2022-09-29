@@ -27,6 +27,7 @@ import numpy as np
 from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
+from praxis.layers import attentions
 from praxis.layers import embedding_softmax
 from praxis.layers import glam
 from praxis.layers import ngrammer
@@ -266,6 +267,86 @@ class TransformerModelsTest(test_utils.TestCase):
         updated_vars = py_utils.MergeDictsWithValueCheck(
             decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits)
+
+  @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
+  def test_lm_extend_n_step(self, use_rotary_position_emb,
+                            share_embedding_and_softmax):
+    vocab_size = 8
+    num_layers = 2
+    num_heads = 2
+    dim_per_head = 4
+    p = transformer_models.TransformerLm.HParams(
+        name='jax_lm_layer',
+        model_dims=num_heads * dim_per_head,
+        model_type=transformer_models.LanguageModelType.CAUSAL,
+        packed_input=False,
+        vocab_size=vocab_size)
+    stacked_transformer_tpl = p.stacked_transformer_tpl
+    stacked_transformer_tpl.model_dims = num_heads * dim_per_head
+    stacked_transformer_tpl.hidden_dims = 2 * num_heads * dim_per_head
+    stacked_transformer_tpl.num_heads = num_heads
+    stacked_transformer_tpl.num_layers = num_layers
+    if not share_embedding_and_softmax:
+      p.separate_embedding_tpl = embedding_softmax.Embedding.HParams()
+      p.softmax_tpl = embedding_softmax.FullSoftmax.HParams()
+    seq_len = 4
+    batch_size = 3
+    # Turn on dconv as in Primer.
+    params = p.stacked_transformer_tpl.transformer_layer_params_tpl
+    params.tr_atten_tpl.dconv_qkv = False
+    # Rotary position embedding.
+    params = p.stacked_transformer_tpl.transformer_layer_params_tpl
+    params.tr_atten_tpl = attentions.DotProductAttentionWithLPB.HParams(
+        input_dim=num_heads * dim_per_head,
+        hidden_dim=2 * num_heads * dim_per_head,
+        num_heads=num_heads,
+        dim_per_head=dim_per_head if use_rotary_position_emb else None,
+        atten_logit_cap=20.0,
+        combine_qkv=True,
+        dconv_qkv=False,
+        use_rotary_position_emb=use_rotary_position_emb)
+    transformer_lm = instantiate(p)
+    npy_inputs = np.random.randint(
+        vocab_size, size=(batch_size, seq_len)).astype('int32')
+    inputs = jnp.asarray(npy_inputs)
+    ninf = py_utils.get_large_negative_number(jnp.float32)
+    segment_mask = jnp.stack([
+        jnp.array([[0, ninf, ninf, ninf], [0, 0, ninf, ninf], [0, 0, 0, ninf],
+                   [0, 0, 0, 0]],
+                  dtype=jnp.float32)
+    ] * batch_size)
+    segment_mask = segment_mask[:, jnp.newaxis, :, :]
+    segment_pos = jnp.stack([jnp.arange(seq_len)] * batch_size)
+    context_params = base_layer.JaxContext.HParams(do_eval=True)
+    with base_layer.JaxContext.new_context(hparams=context_params):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_lm.init(
+          prng_key,
+          inputs,
+          jnp.zeros_like(inputs),
+      )
+      fprop_outputs = transformer_lm.apply(
+          initial_vars,
+          inputs,
+          jnp.zeros_like(inputs),
+          method=transformer_lm.__call__)
+      _, decoder_state = transformer_lm.apply(
+          initial_vars,
+          jnp.zeros_like(inputs),
+          jnp.ones_like(inputs),
+          method=transformer_lm.__call__,
+          mutable=[DECODE_CACHE])
+      logits = fprop_outputs.logits
+      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
+                                                       initial_vars)
+      xent_output, _ = transformer_lm.apply(
+          updated_vars,
+          inputs,
+          method=transformer_lm.extend_step,
+          segment_pos=segment_pos,
+          atten_mask=segment_mask,
+          mutable=[DECODE_CACHE])
+      self.assertAllClose(logits, xent_output.logits)
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=5)))
   def test_ngrammer_primer_lm_extendstep(self, use_vq_ngrams,

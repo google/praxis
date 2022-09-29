@@ -1449,16 +1449,20 @@ class DotProductAttention(base_layer.BaseLayer):
     """Extends decode state at time_step.
 
     The decode state is batch major with shape [B, T, N, H].
+
     Args:
       name: Variable name in decoder cache.
-      value: Value to extend at time step.
+      value: Value to extend at time step of shape [B, N, H] or [B, T, N, H].
       time_step: A scalar. Time step to update the state.
       time_dim: Time dimension in the decode state.
 
     Returns:
       Updated decode cache state of that variable.
     """
-    extend_value = jnp.expand_dims(value, axis=time_dim)
+    if len(value.shape) == time_dim + 2:
+      extend_value = jnp.expand_dims(value, axis=time_dim)
+    else:
+      extend_value = value
     indices = [0] * extend_value.ndim
     indices[time_dim] = time_step.astype(jnp.int32)
     state = self.get_decode_state(name)
@@ -1504,6 +1508,11 @@ class DotProductAttention(base_layer.BaseLayer):
         `time_step`.
     """
     p = self.hparams
+    asserts.eq(
+        len(query_vec.shape),
+        2,
+        msg='extend_step in DotProductAttention only supports query_vec as 2D '
+        f'JTensor, while it has shape {query_vec.shape}')
     time_step = jnp.array(time_step)
     # Batch major.
     time_dim = 1
@@ -1957,22 +1966,29 @@ class DotProductAttentionWithLPB(DotProductAttention):
     broadcast prefixes.
 
     Args:
-      query: JTensor of shape [B, ..., N, H].
+      query: JTensor of shape [B, ..., N, H] or [B, ..., T, N, H].
       key_state_name: Name of the decoding key state variable.
       value_state_name: Name of the decoding value state variable.
-      atten_mask: JTensor of shape [1|B, 1, S] which is a mask that is applied
-        to prevent attention between unwanted pairs. This has already been
-        converted into large negative logits. The first dimension is allowed to
-        be of size 1, if the mask is shared by all items in the batch (e.g.,
-        only a causal mask).
+      atten_mask: JTensor of shape [1|B, 1, S] or [1|B, 1, T, S] which is a mask
+        that is applied to prevent attention between unwanted pairs. This has
+        already been converted into large negative logits. The first dimension
+        is allowed to be of size 1, if the mask is shared by all items in the
+        batch (e.g., only a causal mask).
       relative_bias: Relative bias of shape [1|B, N, 1, S].
 
     Returns:
-      encoded: JTensor of shape [B, ..., N, H].
+      encoded: JTensor of shape [B, ..., N, H] or [B, ..., T, N, H]
     """
 
     p = self.hparams
     pfx_count = self._broadcast_prefixes_count
+    # When query has shape of [B, ..., N, H], will apply extend_step to a single
+    # token per batch, normal autoregressive decoding logic is applied.
+    #
+    # When query has shape of [B, ..., T, N, H], will apply extend_step to
+    # T tokens per batch. This is used in suffix scoring of T tokens after
+    # autoregressive decoding.
+    extend_one_step = (len(query.shape) == pfx_count + 3)
 
     batch_dims = self.get_decode_state(key_state_name).shape[:1 + pfx_count]
     rb_batched = False
@@ -1999,18 +2015,30 @@ class DotProductAttentionWithLPB(DotProductAttention):
         rb, *non_batched_slice = non_batched_slice
       k = self._shard_blnh(k)
       # q is 3d.
-      q = self._shard_bnh(q)
+      if extend_one_step:
+        q = self._shard_bnh(q)
+      else:
+        q = self._shard_blnh(q)
 
       b, s, n, h = k.shape
-      base_layer.assert_has_shape(q, [b, n, h])
-      base_layer.assert_has_shape(am, [-1, 1, s])
+      if extend_one_step:
+        base_layer.assert_has_shape(q, [b, n, h])
+        base_layer.assert_has_shape(am, [-1, 1, s])
+      else:
+        base_layer.assert_has_shape(q, [b, -1, n, h])
+        base_layer.assert_has_shape(am, [-1, 1, -1, s])
       assert am.shape[0] in [1, b]
+
       q = self._scale_query(q)
-      logits = jnp.einsum('BNH,BSNH->BNS', q, k)
+      if extend_one_step:
+        logits = jnp.einsum('BNH,BSNH->BNS', q, k)
+      else:
+        logits = jnp.einsum('BTNH,BSNH->BNTS', q, k)
       if rb is not None:
-        base_layer.assert_has_shape(rb, [-1, n, 1, s])
+        base_layer.assert_has_shape(rb, [-1, n, -1, s])
         assert rb.shape[0] in [1, b]
-        rb = jnp.squeeze(rb, axis=2)
+        if rb.shape[2] == 1:
+          rb = jnp.squeeze(rb, axis=2)
         logits += rb
       logits = self._cap_logits(logits)
       # Attention softmax is always carried out in fp32.
@@ -2023,12 +2051,19 @@ class DotProductAttentionWithLPB(DotProductAttention):
     batched_to_slice_tdims = []
     non_batched_to_slice = []
     non_batched_to_slice_tdims = []
+    if extend_one_step:
+      am_tdim = 2
+      concat_dim = 2
+    else:
+      am_tdim = 3
+      concat_dim = 3
+
     if am_batched:
       batched_to_slice.append(atten_mask)
-      batched_to_slice_tdims.append(2)
+      batched_to_slice_tdims.append(am_tdim)
     else:
       non_batched_to_slice.append(atten_mask)
-      non_batched_to_slice_tdims.append(2)
+      non_batched_to_slice_tdims.append(am_tdim)
     if rb_batched:
       batched_to_slice.append(relative_bias)
       batched_to_slice_tdims.append(3)
@@ -2039,7 +2074,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
     def _concat_logits(chunks):
       if len(chunks) == 1:
         return chunks[0]
-      return jnp.concatenate(chunks, axis=pfx_count + 2)
+      return jnp.concatenate(chunks, axis=pfx_count + concat_dim)
 
     padded_logits = self._run_with_all_decode_state_chunks(
         _pre_softmax, query, batched_to_slice, batched_to_slice_tdims,
@@ -2058,15 +2093,19 @@ class DotProductAttentionWithLPB(DotProductAttention):
     def _post_softmax(layer, batched, ps, non_batched, states):
       del layer, batched, non_batched
       v = self._shard_blnh(states[0])
-      return self._shard_bnh(jnp.einsum('BNS,BSNH->BNH', ps, v))
+      if extend_one_step:
+        return self._shard_bnh(jnp.einsum('BNS,BSNH->BNH', ps, v))
+      return self._shard_blnh(jnp.einsum('BNTS,BSNH->BTNH', ps, v))
 
     # Use sum as result combiner since the time dimension is a contracting dim.
     encoded = self._run_with_all_decode_state_chunks(_post_softmax, [], probs,
-                                                     2, [], [],
+                                                     am_tdim, [], [],
                                                      [value_state_name], sum)
 
     return encoded, probs
 
+  # TODO(b/247837331): Separate extend n steps from extend_step API if there
+  # are  more use cases to run scoring right after decoding.
   def extend_step(self, query_vec: JTensor, *, atten_mask: JTensor,
                   time_step: JTensor,
                   segment_pos: Optional[JTensor]) -> JTensor:
@@ -2076,7 +2115,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
 
     Args:
       query_vec: JTensor of shape [B, D] corresponding to query vector at index
-        time_step.
+        time_step or JTensor of shape [B, T, D] to support extend n steps.
       atten_mask: JTensor of shape [1|B, 1, S]. atten_mask should have already
         taken care of causal masking for decoding, plus other maskings
         necessary.
@@ -2089,6 +2128,13 @@ class DotProductAttentionWithLPB(DotProductAttention):
         `time_step`.
     """
     p = self.hparams
+    # When query has shape of [B, D], will apply extend_step to a single
+    # token per batch, normal autoregressive decoding logic is applied.
+    #
+    # When query has shape of [B, T, D], will apply extend_step to
+    # T tokens per batch. This is used in suffix scoring of T tokens after
+    # autoregressive decoding.
+    extend_one_step = (len(query_vec.shape) == 2)
     # Batch major. Reshape the input batch dim to match the decoding state if
     # there are lazy broadcast prefixes.
     pfx_count = self._broadcast_prefixes_count
@@ -2157,6 +2203,10 @@ class DotProductAttentionWithLPB(DotProductAttention):
     # Apply depth-wise convolution as in Primer.
     # Paper: https://arxiv.org/abs/2109.08668.
     if p.dconv_qkv:
+      if not extend_one_step:
+        raise NotImplementedError(
+            'DotProductAttentionWithLPB does not support extend n steps '
+            'with dconv.')
       # Update query in cache.
       _extend_decode_state_and_shard('query_state', new_query_proj)
 
@@ -2201,8 +2251,18 @@ class DotProductAttentionWithLPB(DotProductAttention):
         position = segment_pos
 
       def _rotary(layer, q, k, pos):
-        new_query_proj = layer.rotary_position_emb.extend_step(q, pos)
-        new_key_proj = layer.rotary_position_emb.extend_step(k, pos)
+
+        if len(query_vec.shape) == pfx_count + 2:
+          new_query_proj = layer.rotary_position_emb.extend_step(q, pos)
+          new_key_proj = layer.rotary_position_emb.extend_step(k, pos)
+        else:
+          # If it is extending n steps, uses a vmap to do the computation.
+          def _get_rotary(q, pos):
+            return layer.rotary_position_emb.extend_step(q, pos)
+
+          new_query_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(q, pos)
+          new_key_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(k, pos)
+
         return new_query_proj, new_key_proj
 
       new_query_proj, new_key_proj = _vmap_no_state(_rotary)(self,
@@ -2216,6 +2276,10 @@ class DotProductAttentionWithLPB(DotProductAttention):
 
     if p.relative_bias_tpl:
       # Relative bias uses time_step instead of segment_pos.
+      if not extend_one_step:
+        raise NotImplementedError(
+            'DotProductAttentionWithLPB does not support extend n steps with '
+            'relative bias.')
       relative_bias = self.relative_bias.extend_step(
           seq_length=self.decoding_state_sequence_length(), time_step=time_step)
     else:
@@ -2244,7 +2308,10 @@ class DotProductAttentionWithLPB(DotProductAttention):
     if pfx_count > 0:
       encoded = jnp.reshape(encoded, (-1,) + encoded.shape[1 + pfx_count:])
     encoded = self.post(encoded)
-    encoded = self._shard_bd(encoded)
+    if extend_one_step:
+      encoded = self._shard_bd(encoded)
+    else:
+      encoded = self._shard_bld(encoded)
     return encoded
 
 

@@ -1313,9 +1313,15 @@ class Transformer(base_layer.BaseLayer):
     (B // b) chunk in B correspond to multiple samples for the same cross
     # inputs.
 
+    When `inputs` has shape [B, L, D], it will do extend_step on N tokenks per
+    batch. This is used to do suffix scoring after autoregressive decoding.
+
+    When `inputs` has shape [B, D], it will do extend_step on one token per
+    batch in regular autoregressive decoding.
+
     Args:
-      inputs: Target sequence of shape [B, D] corresponding to target sequence
-        at index time_step.
+      inputs: Target sequence of shape [B, D] or [B, L, D] corresponding to
+        target sequence at index time_step.
       time_step: A scalar, the current decode step, 0-based.
       attention_mask: per step attention mask for this time step, of shape [B,
         1, T]. This combines causal mask with any segment mask if applicable.
@@ -1613,16 +1619,27 @@ class StackedTransformer(base_layer.BaseLayer):
                   *,
                   time_step: JTensor,
                   segment_pos: Optional[JTensor] = None,
+                  atten_mask: Optional[JTensor] = None,
                   cross_paddings: Optional[JTensor] = None,
                   cross_segment_mask: Optional[JTensor] = None) -> JTensor:
     """Transformer stacked decoder layers, autoregressive cached decoding.
 
+    When `inputs` has shape [B, L, D], it will do extend_step on N tokenks per
+    batch. This is used to do suffix scoring after autoregressive decoding.
+
+    When `inputs` has shape [B, D], it will do extend_step on one token per
+    batch in regular autoregressive decoding.
+
     Args:
-      inputs: Target sequence of shape [B, D] corresponding to target sequence
-        at index time_step.
+      inputs: Target sequence of shape [B, D] or [B, L, D] corresponding to
+        target sequence at index time_step.
       time_step: A scalar, the current decode step, 0-based.
-      segment_pos: An optional JTensor of shape [B]. Current position in the
-        same segment. If unspecified, time_step will be used.
+      segment_pos: An optional JTensor of shape [B], or [B, L]. Current position
+        in the same segment. If unspecified, time_step will be used.
+      atten_mask: An optional JTensor of shape [B, 1, L, S] for attention mask
+        between inputs and the whole sequence. If it is None, it will be
+        computed as a causal mask on a contiguous sequence. This passed in
+        atten_mask is unsupported with cross-attention.
       cross_paddings: Source paddings - [b|B, S].
       cross_segment_mask: if not None, cross_segment_mask for this time step, of
         shape [b|B, 1, S].
@@ -1637,27 +1654,35 @@ class StackedTransformer(base_layer.BaseLayer):
     if p.use_cross_attention:
       assert cross_paddings is not None
 
-    if segment_pos is None:
-      segment_mask = None
-    else:
-      # Calculate the segment mask for this step. We assume the segment is
-      # contiguous.
-      segment_pos_2d = jnp.expand_dims(segment_pos, 1)
-      # [B, T]
-      source_positions = jnp.arange(max_t)[
-          jnp.newaxis, :] - time_step + segment_pos_2d
-      # [B, T]
-      source_segment_ids = jnp.where(source_positions < 0, 0, 1)
-      # [B, 1, 1, T]
-      segment_mask = attentions.segment_mask(
-          jnp.ones_like(segment_pos_2d), source_segment_ids, inputs.dtype)
-      # [B, 1, T]
-      segment_mask = jnp.squeeze(segment_mask, 1)
+    if atten_mask is None:
+      if segment_pos is None:
+        segment_mask = None
+      else:
+        # Calculate the segment mask for this step. We assume the segment is
+        # contiguous.
+        segment_pos_2d = jnp.expand_dims(segment_pos, 1)
+        # [B, T]
+        source_positions = jnp.arange(max_t)[
+            jnp.newaxis, :] - time_step + segment_pos_2d
+        # [B, T]
+        source_segment_ids = jnp.where(source_positions < 0, 0, 1)
+        # [B, 1, 1, T]
+        segment_mask = attentions.segment_mask(
+            jnp.ones_like(segment_pos_2d), source_segment_ids, inputs.dtype)
+        # [B, 1, T]
+        segment_mask = jnp.squeeze(segment_mask, 1)
 
-    attention_mask, cross_attention_mask = (
-        compute_attention_masks_for_extend_step(time_step, max_t, segment_mask,
-                                                cross_paddings,
-                                                cross_segment_mask))
+      attention_mask, cross_attention_mask = (
+          compute_attention_masks_for_extend_step(time_step, max_t,
+                                                  segment_mask, cross_paddings,
+                                                  cross_segment_mask))
+    else:
+      if p.use_cross_attention:
+        raise NotImplementedError('cross attention does not support customized '
+                                  'attention_mask passed in yet.')
+
+      attention_mask = atten_mask
+      cross_attention_mask = None
 
     decoder_input = inputs
     for layer in self.x_layers:
@@ -1797,9 +1822,16 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
                   *,
                   time_step: JTensor,
                   segment_pos: Optional[JTensor] = None,
+                  atten_mask: Optional[JTensor] = None,
                   cross_paddings: Optional[JTensor] = None,
                   cross_segment_mask: Optional[JTensor] = None) -> JTensor:
     """Transformer stacked decoder layers, autoregressive cached decoding.
+
+    When `inputs` has shape [B, L, D], it will do extend_step on N tokenks per
+    batch. This is used to do suffix scoring after autoregressive decoding.
+
+    When `inputs` has shape [B, D], it will do extend_step on one token per
+    batch in regular autoregressive decoding.
 
     Args:
       inputs: Target sequence of shape [B, D] corresponding to target sequence
@@ -1807,6 +1839,10 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
       time_step: A scalar, the current decode step, 0-based.
       segment_pos: An optional JTensor of shape [B]. Current position in the
         same segment. If unspecified, time_step will be used.
+      atten_mask: An optional JTensor of shape [B, 1, L, S] for attention mask
+        between inputs and the whole sequence. If it is None, it will be
+        computed as a causal mask on a contiguous sequence. This passed in
+        atten_mask is unsupported with cross-attention.
       cross_paddings: Source paddings - [b|B, S].
       cross_segment_mask: if not None, cross_segment_mask for this time step, of
         shape [b|B, 1, S].
@@ -1819,6 +1855,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         inputs,
         time_step=time_step,
         segment_pos=segment_pos,
+        atten_mask=atten_mask,
         cross_paddings=cross_paddings,
         cross_segment_mask=cross_segment_mask)
 

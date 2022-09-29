@@ -16,6 +16,7 @@
 """Tests for Praxis attention layers."""
 
 import functools
+import itertools
 
 from absl import logging
 from absl.testing import absltest
@@ -1231,6 +1232,91 @@ class AttentionsTest(test_utils.TestCase):
         encoded = jnp.reshape(encoded, (-1, 6) + encoded.shape[1:])
         for sample_id in range(6):
           self.assertAllClose(fprop_out[:, t, :], encoded[:, sample_id])
+
+  @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
+  def test_mha_extend_n_steps_with_lazy_broadcast_state(
+      self, combine_qkv, use_rotary_position_emb):
+    mdl_dim = 4
+    hidden_dim = 8
+    num_heads = 2
+
+    test_layer_p = attentions.DotProductAttentionWithLPB.config(
+        name='mh',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        dim_per_head=4 if use_rotary_position_emb else None,
+        atten_logit_cap=20.0,
+        combine_qkv=combine_qkv,
+        dconv_qkv=False,
+        use_rotary_position_emb=use_rotary_position_emb)
+    layer = instantiate(test_layer_p)
+    target_batch_size = 3
+    source_max_length = 8
+    prefix_len = 4
+    num_samples = 2
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    prefix = query_vec[:, 0:prefix_len, :]
+    key_vec = query_vec
+    value_vec = query_vec
+    atten_mask = attentions.causal_mask(query_vec)
+    prefix_atten_mask = attentions.causal_mask(prefix)
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
+      logging.info('initial_vars: %s', initial_vars)
+      fprop_out, attention_states = layer.apply(
+          initial_vars,
+          query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+          method=layer.__call__)
+      # Updates decode states in fprop.
+      _, attention_states = layer.apply(
+          initial_vars,
+          prefix,
+          prefix,
+          prefix,
+          prefix_atten_mask,
+          method=layer.__call__,
+          mutable=[base_layer.DECODE_CACHE])
+      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
+                                                       initial_vars)
+
+      # First lazy broadcast.
+      _, attention_states = layer.apply(
+          updated_vars,
+          num_suffix_samples=num_samples,
+          suffix_length=source_max_length - prefix_len,
+          method=layer.lazy_broadcast_prefix,
+          mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
+      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
+                                                       initial_vars)
+
+      def _broadcast_sample(x, num_samples):
+        return jnp.repeat(x, num_samples, axis=0)
+
+      suffix_segment_pos = jnp.stack(
+          [jnp.arange(prefix_len, source_max_length)] * target_batch_size)
+
+      # Call extend step start from prefix_len.
+      encoded, _ = layer.apply(
+          updated_vars,
+          query_vec=_broadcast_sample(query_vec[:, prefix_len:, :],
+                                      num_samples),
+          atten_mask=atten_mask[:, :, prefix_len:, :],
+          time_step=prefix_len,
+          segment_pos=_broadcast_sample(suffix_segment_pos, num_samples),
+          method=layer.extend_step,
+          mutable=[base_layer.DECODE_CACHE])
+      self.assertAllClose(
+          encoded,
+          _broadcast_sample(fprop_out, num_samples)[:, prefix_len:, :])
 
   def test_right_align_decode_state(self):
     mdl_dim = 4

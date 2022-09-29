@@ -1094,6 +1094,92 @@ class TransformersTest(test_utils.TestCase):
     np_decoder_outputs = test_utils.to_np(decoder_out_transposed) * non_pad
     self.assertAllClose(np_fprop_outputs, np_decoder_outputs, atol=1e-5)
 
+  @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
+  def test_stacked_transformer_layer_extend_n_step(self, combine_qkv,
+                                                   use_rotary_position_emb):
+    num_layers = 2
+    model_dims = 8
+    hidden_dims = 32
+    num_heads = 2
+
+    layer_params = transformers.StackedTransformer.HParams()
+    p = layer_params.set(
+        name='jax_transformer_layer',
+        model_dims=model_dims,
+        hidden_dims=hidden_dims,
+        num_heads=num_heads,
+        mask_self_attention=True,
+        packed_input=False,
+        use_cross_attention=False,
+        num_layers=num_layers)
+    p.transformer_layer_params_tpl.tr_atten_tpl = attentions.DotProductAttentionWithLPB.HParams(
+        input_dim=model_dims,
+        hidden_dim=hidden_dims,
+        num_heads=num_heads,
+        dim_per_head=4 if use_rotary_position_emb else None,
+        atten_logit_cap=20.0,
+        combine_qkv=combine_qkv,
+        dconv_qkv=False,
+        use_rotary_position_emb=use_rotary_position_emb)
+
+    p_copy = copy.deepcopy(p)
+    p_copy.num_layers = 1
+    p = transformers.StackedTransformerRepeated.HParams()
+    p.name = 'jax_transformer_repeated_layer'
+    p.block = p_copy
+    p.x_times = num_layers
+
+    seq_len = 4
+    batch_size = 4
+    npy_inputs = np.random.normal(
+        1.0, 0.5, [batch_size, seq_len, model_dims]).astype('float32')
+    inputs = jnp.asarray(npy_inputs)
+    npy_paddings = np.zeros([batch_size, seq_len]).astype('float32')
+    paddings = jnp.asarray(npy_paddings)
+    ninf = py_utils.get_large_negative_number(jnp.float32)
+    segment_mask = jnp.stack([
+        jnp.array([[0, ninf, ninf, ninf], [0, 0, ninf, ninf], [0, 0, 0, ninf],
+                   [0, 0, 0, 0]],
+                  dtype=jnp.float32)
+    ] * batch_size)
+    segment_mask = segment_mask[:, jnp.newaxis, :, :]
+    segment_pos = jnp.stack([jnp.arange(seq_len)] * batch_size)
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    with base_layer.JaxContext.new_context():
+      repeat_transformer_layer = instantiate(p)
+      initial_vars = repeat_transformer_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          segment_pos=segment_pos,
+          segment_mask=segment_mask)
+      fprop_outputs = repeat_transformer_layer.apply(
+          initial_vars,
+          inputs,
+          paddings,
+          segment_pos=segment_pos,
+          segment_mask=segment_mask)
+      _, decoder_state = repeat_transformer_layer.apply(
+          initial_vars,
+          jnp.zeros_like(inputs),
+          jnp.ones_like(paddings),
+          segment_mask=segment_mask,
+          mutable=[DECODE_CACHE])
+
+      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
+                                                       initial_vars)
+      encoded, _ = repeat_transformer_layer.apply(
+          updated_vars,
+          inputs=inputs,
+          time_step=0,
+          segment_pos=segment_pos,
+          atten_mask=segment_mask,
+          method=repeat_transformer_layer.extend_step,
+          mutable=[DECODE_CACHE])
+
+    self.assertAllClose(fprop_outputs, encoded, atol=1e-5)
+
   @parameterized.named_parameters(
       {
           'testcase_name': 'ReLU',
