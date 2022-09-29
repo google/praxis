@@ -39,6 +39,50 @@ NestedJTensor = py_utils.NestedMap
 instantiate = base_layer.instantiate
 
 
+class FramingTest(test_utils.TestCase):
+
+  def test_basic_framing(self):
+    """Smoke test for Framing."""
+    frame_size = 3
+    frame_step = 2
+    shape = (2, 8, 1)
+    features = np.arange(np.prod(shape)).reshape(shape).astype(np.float32)
+    paddings = np.zeros(shape[:2]).astype(np.float32)
+    paddings[0, 4:] = 1.0
+    paddings[1, 5:] = 1.0
+
+    expected_frames = np.array([[
+        [0., 1., 2.],
+        [2., 3., 4.],
+        [4., 5., 6.],
+        [6., 7., 0.],
+    ], [
+        [8., 9., 10.],
+        [10., 11., 12.],
+        [12., 13., 14.],
+        [14., 15., 0.],
+    ]])
+    # Add singleton channels dim.
+    expected_frames = expected_frames[:, :, :, None]
+    expected_paddings = np.array([[0., 0., 1., 1.], [0., 0., 0., 1.]])
+
+    framing_p = frontend.Framing.HParams(
+        name='framing',
+        frame_size=frame_size,
+        frame_step=frame_step,
+        pad_end=True)
+    framing_layer = instantiate(framing_p)
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = framing_layer.init(
+          jax.random.PRNGKey(123), features=features, paddings=paddings)
+      framed_features, framed_paddings = framing_layer.apply(
+          initial_vars, features, paddings)
+
+    self.assertAllClose(framed_features, expected_frames)
+    self.assertAllClose(framed_paddings, expected_paddings)
+
+
 class SpectrogramFrontendTest(test_utils.TestCase):
 
   def setUp(self):
@@ -193,7 +237,6 @@ class MelFilterbankFrontendTest(test_utils.TestCase):
 
     self.assertSequenceEqual(feats.shape, (1, 6, 80, 1))
     self.assertAllClose(feat_paddings, expected_paddings)
-
 
   def test_normalizer(self):
     """Tests normalizer routine."""

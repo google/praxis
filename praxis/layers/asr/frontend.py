@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A collection of frontend processing modules for speech processing."""
+"""A collection of frontend modules for speech processing."""
 
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 NpTensor = pytypes.NpTensor
 
+sub_config_field = base_layer.sub_config_field
 BaseHParams = base_layer.BaseLayer.HParams
 StackingOverTime = linears.StackingOverTime
 
@@ -60,7 +61,7 @@ def frame(x: JTensor,
           frame_step: int,
           pad_end: bool = False,
           pad_value: Union[int, float] = 0.0) -> JTensor:
-  """Slides a window and extract values.
+  """Slides a window and extracts frames.
 
   This function extracts `x[:, n:n+frame_length, :]` with sliding `n` with
   stride of `frame_step`, and returns an array `y` with the shape
@@ -73,12 +74,12 @@ def frame(x: JTensor,
     x: An input array with `(batch_size, timesteps, channels)`-shape.
     frame_length: The frame length.
     frame_step: The frame hop size.
-    pad_end: If True, the end of signal is padded so the window can continue
+    pad_end: If True, the end of the signal is padded so the window can continue
       sliding while the starting point of the window is in the valid range.
     pad_value: A scalar used as a padding value when `pad_end` is True.
 
   Returns:
-    A tensor with shape `(batch_size, num_frames, frame_length, num_chennels)`.
+    A tensor with shape `(batch_size, num_frames, frame_length, num_channels)`.
   """
   unused_batch_size, num_timesteps, num_channels = x.shape
 
@@ -95,6 +96,63 @@ def frame(x: JTensor,
       dimension_numbers=('NTC', 'OIT', 'NTC'))
   ret = flat_y.reshape(flat_y.shape[:-1] + (num_channels, frame_length))
   return ret.transpose((0, 1, 3, 2))
+
+
+class Framing(base_layer.BaseLayer):
+  """Slides a window and extracts frames."""
+
+  class HParams(BaseHParams):
+    """Associated hyper-params for this layer class.
+
+    Attributes:
+      frame_size: The frame size.
+      frame_step: The frame hop size.
+      pad_end: If True, the end of the signal is padded so the window can
+        continue sliding while the starting point of the window is in the valid
+        range.
+      pad_value: A scalar used as a padding value when `pad_end` is True.
+    """
+    frame_size: int = 0
+    frame_step: int = 0
+    pad_end: bool = False
+    pad_value: Union[int, float] = 0.0
+
+  def frame_paddings(self, paddings: JTensor) -> JTensor:
+    """Specialized implementation for paddings using reduce_window."""
+    p = self.hparams
+    if p.pad_end:
+      num_extends = _pad_end_length(paddings.shape[1], p.frame_step,
+                                    p.frame_size)
+      paddings = jnp.pad(
+          paddings, ((0, 0), (0, num_extends)), constant_values=1.0)
+    return jax.lax.reduce_window(
+        paddings,
+        init_value=1.0,
+        computation=jax.lax.min,
+        window_dimensions=[1, p.frame_size],
+        window_strides=[1, p.frame_step],
+        padding='valid')
+
+  def __call__(
+      self,
+      features: JTensor,
+      paddings: Optional[JTensor] = None) -> Tuple[JTensor, Optional[JTensor]]:
+    """Audio signal framing.
+
+    Args:
+      features: Input sequence with shape (batch_size, timesteps, channels)
+      paddings: Optional paddings with shape (batch_size, timesteps)
+
+    Returns:
+      Features with shape (batch_size, num_frames, frame_size, channels) and
+      optional framed paddings with shape (batch_size, num_frames).
+    """
+    p = self.hparams
+    features = frame(features, p.frame_size, p.frame_step, p.pad_end,
+                     p.pad_value)
+    if paddings is not None:
+      paddings = self.frame_paddings(paddings)
+    return features, paddings
 
 
 def linear_to_mel_weight_matrix(num_mel_bins: int = 20,
@@ -211,6 +269,10 @@ def _next_pow_of_two(x: Union[int, float]) -> int:
   return int(2**np.ceil(np.log2(x)))
 
 
+def _milliseconds_to_samples(length_ms: float, sample_rate: float) -> int:
+  return int(round(sample_rate * length_ms / 1000.0))
+
+
 class SpectrogramFrontend(base_layer.BaseLayer):
   """Perform STFT to convert 1D signals to spectrograms.
 
@@ -243,6 +305,8 @@ class SpectrogramFrontend(base_layer.BaseLayer):
         is 0.0, preemphasis is turned off.
       preemph_htk_flavor: preemphasis is applied as in HTK.
       noise_scale: The amount of noise to add.
+      framing_tpl: The Framing class or subclass to use. Parameter values will
+        be overridden.
     """
     sample_rate: float = 16000.0
     frame_size_ms: float = 25.0
@@ -257,16 +321,39 @@ class SpectrogramFrontend(base_layer.BaseLayer):
     preemph: float = 0.97
     preemph_htk_flavor: bool = False
     noise_scale: float = 8.0
+    framing_tpl: BaseHParams = sub_config_field(Framing.HParams)
+
+  @classmethod
+  def get_frame_size(cls, p: HParams) -> int:
+    return _milliseconds_to_samples(p.frame_size_ms, p.sample_rate)
+
+  @property
+  def frame_size(self) -> int:
+    return self.get_frame_size(self.hparams)
+
+  @classmethod
+  def get_frame_step(cls, p: HParams) -> int:
+    return _milliseconds_to_samples(p.frame_step_ms, p.sample_rate)
+
+  @property
+  def frame_step(self) -> int:
+    return self.get_frame_step(self.hparams)
+
+  @classmethod
+  def configure_framing(cls, p: HParams) -> BaseHParams:
+    return p.framing_tpl.clone().set(
+        name='framing',
+        frame_size=cls.get_frame_size(p) + 1,  # +1 for the preemph
+        frame_step=cls.get_frame_step(p),
+        pad_end=p.pad_end)
 
   def setup(self) -> None:
     p = self.hparams
-    self._frame_step = int(round(p.sample_rate * p.frame_step_ms / 1000.0))
-    fft_input_size = int(round(p.sample_rate * p.frame_size_ms / 1000.0))
-    self._frame_size = fft_input_size + 1  # +1 for the preemph
+    self.create_child('framing', self.configure_framing(p))
 
     # TF-version has maximum of 512, but it's not always necessary
     if p.fft_size is None:
-      self.fft_size = _next_pow_of_two(fft_input_size)
+      self.fft_size = _next_pow_of_two(self.frame_size)
     else:
       self.fft_size = p.fft_size
 
@@ -289,7 +376,7 @@ class SpectrogramFrontend(base_layer.BaseLayer):
       self._window_fn = _hanning_window
     elif p.window_fn.upper() == 'HANNING_NONZERO':
       def f(frame_size, dtype):
-        return _hanning_nonzero(self._frame_size - 1, frame_size, dtype)
+        return _hanning_nonzero(frame_size, frame_size, dtype)
 
       self._window_fn = f
     else:
@@ -307,20 +394,6 @@ class SpectrogramFrontend(base_layer.BaseLayer):
     else:
       return (framed_signal[:, :, 1:, :] -
               p.preemph * framed_signal[:, :, 0:-1, :])
-
-  def fprop_paddings(self, input_paddings: JTensor) -> JTensor:
-    if self.hparams.pad_end:
-      num_extends = _pad_end_length(input_paddings.shape[1], self._frame_step,
-                                    self._frame_size)
-      input_paddings = jnp.pad(
-          input_paddings, ((0, 0), (0, num_extends)), constant_values=1.0)
-    return jax.lax.reduce_window(
-        input_paddings,
-        init_value=1.0,
-        computation=jax.lax.min,
-        window_dimensions=[1, self._frame_size],
-        window_strides=[1, self._frame_step],
-        padding='valid')
 
   def __call__(
       self,
@@ -351,15 +424,14 @@ class SpectrogramFrontend(base_layer.BaseLayer):
 
     if input_paddings is not None:
       inputs = inputs * jnp.expand_dims(1.0 - input_paddings, -1)
-      output_paddings = self.fprop_paddings(input_paddings)
-    else:
-      output_paddings = None
 
     pcm_audio_chunk = inputs * p.input_scale_factor
 
-    framed_signal = frame(
-        pcm_audio_chunk, self._frame_size, self._frame_step, pad_end=p.pad_end)
+    # framed_signal.shape = [batch, frames, frame_size + 1, channels]
+    framed_signal, output_paddings = self.framing(pcm_audio_chunk,
+                                                  input_paddings)
 
+    # preemphasized.shape = [batch, frames, frame_size, channels]
     if p.preemph != 0.0:
       preemphasized = self._apply_preemphasis(framed_signal)
     else:
@@ -374,8 +446,8 @@ class SpectrogramFrontend(base_layer.BaseLayer):
     windowed_signal = preemphasized + noise_signal
     # Window here
     if self._window_fn is not None:
-      window = self._window_fn(self._frame_size - 1, framed_signal.dtype)
-      window = window.reshape((1, 1, self._frame_size - 1, 1))
+      window = self._window_fn(self.frame_size, framed_signal.dtype)
+      window = window.reshape((1, 1, self.frame_size, 1))
       windowed_signal *= window
 
     spectrum = jnp.fft.rfft(windowed_signal, self.fft_size, axis=2)
@@ -396,10 +468,6 @@ class MelFilterbankFrontend(base_layer.BaseLayer):
   This layer partially achieve parameter-level compatibility with its
   counterpart in TF (`lingvo.tasks.asr.frontend.MelAsrFrontend`) except the
   parameter related to post-filterbank processing.
-
-  The fprop of this layer accepts any format as long as an internal sublayer
-  `p.stft` can accept it.  By default, `p.stft` is `SpectrogramFrontend`, and
-  therefore, input shape is expected to be `(batch_size, timesteps, channels)`.
   """
 
   class HParams(BaseHParams):
@@ -426,12 +494,12 @@ class MelFilterbankFrontend(base_layer.BaseLayer):
       compute_energy: Whether to compute filterbank output on the energy of
         spectrum rather than just the magnitude.
       use_divide_stream: Whether use a divide stream to the input signal.
-      stft_tpl: Sublayer used for computing STFT.  If not set,
-        SpectrogramFrontend with consistent parameters will be used.
       feature_dtype: Output feature type.
       per_bin_mean: Per-bin (num_bins) means for normalizing the spectrograms.
         Defaults to zeros.
       per_bin_stddev: Per-bin (num_bins) standard deviations. Defaults to ones.
+      stft_tpl: The SpectrogramFrontend class or subclass to use. Parameter
+        values will be overridden.
     """
     sample_rate: float = 16000.0
     frame_size_ms: float = 25.0
@@ -449,35 +517,34 @@ class MelFilterbankFrontend(base_layer.BaseLayer):
     compute_energy: bool = False
     use_divide_stream: bool = False
     feature_dtype: jnp.dtype = jnp.float32
-    stft_tpl: Optional[BaseHParams] = None
     per_bin_mean: Optional[float] = None
     per_bin_stddev: Optional[float] = None
+    stft_tpl: BaseHParams = sub_config_field(SpectrogramFrontend.HParams)
+
+  @classmethod
+  def configure_stft(cls, p: HParams) -> BaseHParams:
+    stft_p = p.stft_tpl.clone().set(
+        name='spectrogram',
+        sample_rate=p.sample_rate,
+        frame_size_ms=p.frame_size_ms,
+        frame_step_ms=p.frame_step_ms,
+        compute_energy=p.compute_energy,
+        pad_end=p.pad_end,
+        preemph=p.preemph,
+        preemph_htk_flavor=p.preemph_htk_flavor,
+        noise_scale=p.noise_scale,
+        window_fn=p.window_fn,
+        input_scale_factor=2**-15 if p.use_divide_stream else 1.0,
+        output_log=False)
+
+    if p.fft_overdrive:
+      fft_input_size = int(round(p.sample_rate * p.frame_size_ms / 1000.0))
+      stft_p.fft_size = _next_pow_of_two(fft_input_size) * 2
+    return stft_p
 
   def setup(self) -> None:
     p = self.hparams
-
-    if p.stft_tpl is None:
-      stft_tpl = SpectrogramFrontend.HParams(
-          name='spectrogram',
-          sample_rate=p.sample_rate,
-          frame_size_ms=p.frame_size_ms,
-          frame_step_ms=p.frame_step_ms,
-          compute_energy=p.compute_energy,
-          pad_end=p.pad_end,
-          preemph=p.preemph,
-          preemph_htk_flavor=p.preemph_htk_flavor,
-          noise_scale=p.noise_scale,
-          window_fn=p.window_fn,
-          input_scale_factor=2**-15 if p.use_divide_stream else 1.0,
-          output_log=False)
-
-      if p.fft_overdrive:
-        fft_input_size = int(round(p.sample_rate * p.frame_size_ms / 1000.0))
-        stft_tpl.fft_size = _next_pow_of_two(fft_input_size) * 2
-    else:
-      stft_tpl = p.stft_tpl
-
-    self.create_child('stft', stft_tpl)
+    self.create_child('stft', self.configure_stft(p))
 
     # Mean/stddev.
     per_bin_mean = p.per_bin_mean

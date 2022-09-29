@@ -13,9 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Exposes the public layer functionalities for ASR."""
+"""Exposes the public layer functionalities for streaming ASR."""
 
-from praxis.layers.asr.frontend import FeatureStackingFrontend
-from praxis.layers.asr.frontend import Framing
-from praxis.layers.asr.frontend import MelFilterbankFrontend
-from praxis.layers.asr.frontend import SpectrogramFrontend
+from praxis.layers.asr.streaming.frontend import Framing
+from praxis.layers.asr.streaming.frontend import MelFilterbankFrontend
+from praxis.layers.asr.streaming.frontend import SpectrogramFrontend
