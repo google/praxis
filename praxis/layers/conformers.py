@@ -15,8 +15,11 @@
 
 """Conformer-related layers."""
 
-from typing import Optional
+from typing import Optional, Union
+
+import jax.numpy as jnp
 from praxis import asserts
+from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import py_utils
 from praxis.layers import activations
@@ -26,13 +29,12 @@ from praxis.layers import normalizations
 from praxis.layers import stochastics
 from praxis.layers import transformers
 
-import jax.numpy as jnp
-
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
 sub_config_field = base_layer.sub_config_field
 
 BaseHParams = base_layer.BaseLayer.HParams
+BaseHyperParams = base_hyperparams.BaseHyperParams
 
 
 class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
@@ -63,15 +65,16 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
         keep_prop will be reset to (1.0 - residual_dropout_prob).
       left_context: Number of left positions to attend (including current
         position). If set, use a limited attention context from the left.
-        Otherwise if it is None, use all the frames in the left.
+        Otherwise if it is None, use all the frames in the left
+        by using  DotProductAttention.
       right_context: Number of right positions to attend. If set, use a limited
         attention context from the right. Otherwise if it is None, use all the
-        frames in the right. For causal, set it to 0.
+        frames in the right with DotProductAttention. For causal, set it to 0.
     """
     residual_weight: float = 1.0
     input_weight: float = 1.0
     self_atten_tpl: BaseHParams = sub_config_field(
-        attentions.DotProductAttention.HParams)
+        attentions.LocalSelfAttention.HParams)
     norm_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
     pre_layer_norm: bool = True
     residual_dropout_prob: float = 0.0
@@ -80,10 +83,85 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     left_context: Optional[int] = None
     right_context: Optional[int] = None
 
+  def validate_context(self):
+    p = self.hparams
+    atten_left_context = p.self_atten_tpl.left_context if hasattr(
+        p.self_atten_tpl, 'left_context') else None
+    atten_right_context = p.self_atten_tpl.right_context if hasattr(
+        p.right_context, 'left_context') else None
+    # TODO(b/248047726)
+    # User can define local context in p.left_context and
+    # p.self_atten_tpl.left_context. Check it if we have a conflict:
+    if (atten_left_context is not None and
+        p.left_context is not None and
+        atten_left_context != p.left_context):
+      raise ValueError(f'Both p.self_atten_tpl.left_context = '
+                       f'{atten_left_context} and p.left_context ='
+                       f'{p.left_context} can not be defined '
+                       f'and have different values.')
+    # User can define local context in p.right_context and
+    # p.self_atten_tpl.right_context. Check it if we have a conflict:
+    if (atten_right_context is not None and
+        p.right_context is not None and
+        atten_right_context != p.right_context):
+      raise ValueError(f'Both atten_right_context = '
+                       f'{p.self_atten_tpl.left_context} and p.right_context ='
+                       f'{p.right_context} can not be defined '
+                       f'and have different values.')
+
+  @property
+  def left_context(self) -> Union[int, None]:
+    p = self.hparams
+    self.validate_context()
+    if p.left_context is None:
+      if hasattr(p.self_atten_tpl, 'left_context'):
+        return p.self_atten_tpl.left_context
+      else:
+        return None
+    else:
+      return p.left_context
+
+  @property
+  def right_context(self) -> Union[int, None]:
+    p = self.hparams
+    self.validate_context()
+    if p.right_context is None:
+      if hasattr(p.self_atten_tpl, 'right_context'):
+        return p.self_atten_tpl.right_context
+      else:
+        return None
+      return p.self_atten_tpl.right_context
+    else:
+      return p.right_context
+
   def setup(self) -> None:
     p = self.hparams
     asserts.not_none(p.self_atten_tpl)
-    self.create_child('self_atten', p.self_atten_tpl)
+    self.validate_context()
+
+    # If self attention is not local: not limited in one of the contexts,
+    # then use DotProductAttention for backward compatibility.
+    # Note: non local self attention is not streamable.
+    if (self.left_context is None or self.right_context is None):
+      self_atten_tpl = attentions.DotProductAttention.HParams()
+      self_atten_tpl.copy_fields_from(
+          p.self_atten_tpl,
+          recursive=True,
+          missing_fields_in_self=[
+              'block_size', 'left_context', 'right_context', 'rel_pos_emb_dim',
+              'skip_term_b'
+          ])
+    else:
+      self_atten_tpl = p.self_atten_tpl.clone()
+      if not (hasattr(self_atten_tpl, 'left_context') and
+              hasattr(self_atten_tpl, 'right_context')):
+        raise ValueError('self_atten_tpl has to have parameters: '
+                         'left_context and right_context')
+
+      self_atten_tpl.set(
+          left_context=self.left_context, right_context=self.right_context)
+
+    self.create_child('self_atten', self_atten_tpl)
 
     self.create_child('norm', p.norm_tpl)
 
@@ -103,10 +181,10 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     if p.pre_layer_norm:
       inputs = self.norm(inputs)
 
-    if p.left_context is not None or p.right_context is not None:
+    if self.left_context is not None or self.right_context is not None:
       asserts.none(atten_mask)
       atten_mask = attentions.limited_context_mask_from_padding(
-          paddings, p.left_context, p.right_context)
+          paddings, self.left_context, self.right_context)
     else:
       if atten_mask is None:
         atten_mask = attentions.convert_paddings_to_mask(paddings, inputs.dtype)

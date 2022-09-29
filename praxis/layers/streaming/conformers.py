@@ -55,7 +55,7 @@ class SelfAttentionWithNormAndResidual(  # pytype: disable=signature-mismatch
   """
 
   class HParams(conformers.SelfAttentionWithNormAndResidual.HParams):
-    # Replace DotProductAttention by its streaming aware version:
+    # Replace LocalSelfAttention by its streaming aware version:
     _attribute_overrides: Tuple[str, ...] = ('self_atten_tpl',)
     self_atten_tpl: BaseHParams = sub_config_field(
         attentions.LocalSelfAttention.HParams)
@@ -64,13 +64,11 @@ class SelfAttentionWithNormAndResidual(  # pytype: disable=signature-mismatch
     super().setup()
     p = self.hparams
 
-    # These optional parameters can be used only with DotProductAttention.
-    # In streaming mode we use self attention which has
-    # its own left and right parameters. So checking it to avoid a conflict:
-    assert p.left_context is None
-    assert p.right_context is None
-    del p.right_context
-    del p.left_context
+    # If self attention is not local (not limited in one of contexts):
+    if (self.self_atten.hparams.left_context is None or
+        self.self_atten.hparams.right_context is None):
+      raise ValueError('left_context or right_context can not be None '
+                       'in streaming aware LocalSelfAttention')
 
     assert not issubclass(p.norm_tpl.cls, streaming_base.StreamingBase), (
         'It has to be non streaming aware normalization.')
@@ -78,7 +76,9 @@ class SelfAttentionWithNormAndResidual(  # pytype: disable=signature-mismatch
   @classmethod
   def get_right_context(
       cls, hparams: SelfAttentionWithNormAndResidual.HParams) -> int:
-    return hparams.self_atten_tpl.right_context
+    return (hparams.self_atten_tpl.right_context
+            if hparams.self_atten_tpl.right_context is not None else
+            hparams.right_context)
 
   @classmethod
   def get_stride(cls, hparams: SelfAttentionWithNormAndResidual.HParams) -> int:
@@ -128,11 +128,11 @@ class SelfAttentionWithNormAndResidual(  # pytype: disable=signature-mismatch
     unnormalized_inputs = inputs
     step = inputs.shape[1]
 
-    if p.self_atten_tpl.right_context > 0:
+    if self.self_atten.hparams.right_context > 0:
       stream_input = jnp.concatenate(
           [self.get_streaming_state('delay'), inputs], axis=1)
       unnormalized_inputs = stream_input[:, :step]
-      stream_state = stream_input[:, -p.self_atten_tpl.right_context:]
+      stream_state = stream_input[:, -self.self_atten.hparams.right_context:]
       self._update_streaming_state('delay', stream_state)
 
     if p.pre_layer_norm:
@@ -185,7 +185,8 @@ class Conformer(  # pytype: disable=signature-mismatch
 
   @classmethod
   def get_right_context(cls, hparams: Conformer.HParams) -> int:
-    return hparams.trans_atten_tpl.self_atten_tpl.right_context
+    return hparams.trans_atten_tpl.cls.get_right_context(
+        hparams.trans_atten_tpl)
 
   @classmethod
   def get_stride(cls, hparams: Conformer.HParams) -> int:

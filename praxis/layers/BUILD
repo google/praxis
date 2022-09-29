@@ -550,6 +550,7 @@ pytype_strict_library(
         ":transformers",
         # Implicit jax dependency.
         "//praxis:asserts",
+        "//praxis:base_hyperparams",
         "//praxis:base_layer",
         "//praxis:py_utils",
     ],

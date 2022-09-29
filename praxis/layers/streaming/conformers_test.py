@@ -49,25 +49,20 @@ class StreamingConformersTest(test_utils.StreamingTest):
 
     # Non streaming layer
     p_non_stream = conformers.SelfAttentionWithNormAndResidual.HParams(
-        name='self_atten_non_stream')
-    p_non_stream.set(left_context=left_context, right_context=right_context,)
+        name='self_atten_non_stream',
+        left_context=left_context,
+        right_context=right_context)
     p_non_stream.self_atten_tpl.set(
         input_dim=mdl_dim,
         hidden_dim=hidden_dim,
-        num_heads=num_heads)
+        num_heads=num_heads,
+        block_size=block_size)
     p_non_stream.norm_tpl.set(dim=mdl_dim)
 
     # Streaming aware layer
     p_stream = streaming.SelfAttentionWithNormAndResidual.HParams(
         name='self_atten_norm_res_stream')
-    p_stream.self_atten_tpl.set(
-        input_dim=mdl_dim,
-        hidden_dim=hidden_dim,
-        num_heads=num_heads,
-        block_size=block_size,
-        left_context=left_context,
-        right_context=right_context)
-    p_stream.norm_tpl.set(dim=mdl_dim)
+    p_stream.copy_fields_from(p_non_stream, recursive=True)
 
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)
     self.assertEqual(p_stream.cls.get_right_context(p_stream), right_context)
@@ -112,36 +107,17 @@ class StreamingConformersTest(test_utils.StreamingTest):
         kernel_size=kernel_size,
         model_dims=model_dims,
         atten_num_heads=atten_num_heads)
-
-    # Setting left and right context in SelfAttentionWithNormAndResidual,
-    # so that it becomes local self attention.
-    # Note: it uses non sreaming DotProductAttention
-    # to emulate LocalSelfAttention we set additional
-    # left_context and right_context, so that it will create attention mask
-    # for DotProductAttention.
     p_non_stream.trans_atten_tpl.set(
         left_context=left_context,
         right_context=right_context)
-    # Conv has to be causal.
+    p_non_stream.trans_atten_tpl.self_atten_tpl.set(
+        block_size=block_size)
     p_non_stream.lconv_tpl.set(is_causal=True)
 
     # Streaming aware layer
     p_stream = streaming.Conformer.HParams(
-        name='conformer_stream',
-        input_dims=input_dims,
-        conv_residual_dropout=0.0,
-        atten_residual_dropout=dropout_prob,
-        ffn_residual_dropout=dropout_prob,
-        atten_dropout=dropout_prob,
-        ffn_relu_dropout=dropout_prob,
-        kernel_size=kernel_size,
-        model_dims=model_dims,
-        atten_num_heads=atten_num_heads)
-    p_stream.trans_atten_tpl.self_atten_tpl.set(
-        left_context=left_context,
-        right_context=right_context,
-        block_size=block_size)
-    p_stream.lconv_tpl.set(is_causal=True)
+        name='conformer_stream')
+    p_stream.copy_fields_from(p_non_stream, recursive=True)
 
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)
     self.assertEqual(p_stream.cls.get_right_context(p_stream), right_context)
