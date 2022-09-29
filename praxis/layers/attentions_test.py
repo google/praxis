@@ -735,7 +735,7 @@ class AttentionsTest(test_utils.TestCase):
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
     initial_vars = causal_dconv_layer.init(init_key, inputs, axis)
-    if isinstance(hidden_dims, list):
+    if isinstance(hidden_dims, (list, tuple)):
       kernel_shape = hidden_dims
     else:
       kernel_shape = [hidden_dims]

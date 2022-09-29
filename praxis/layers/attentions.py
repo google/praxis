@@ -725,7 +725,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
     if p.mesh_shape is not None:
       assert wp.wt is not None, ('Must provide sharding annotations for the '
                                  'weights if mesh shape is provided')
-      if (p.attention_combine_dims and isinstance(wp.wt, list) and
+      if (p.attention_combine_dims and isinstance(wp.wt, (list, tuple)) and
           len(wp.wt) == 3):
         wt = [axis for axis in wp.wt if axis is not None]
         assert len(wt) == 2, ('wp.wt only specifies the sharding for '
@@ -1068,8 +1068,8 @@ class DotProductAttention(base_layer.BaseLayer):
         use_nhd_shape=p.output_proj_use_nhd_shape)
     if post_std is not None:
       post_proj_p.params_init = WeightInit.Gaussian(post_std)
-    if p.output_proj_use_nhd_shape and isinstance(wp.proj, list) and len(
-        wp.proj) == 3:
+    if (p.output_proj_use_nhd_shape and isinstance(wp.proj, (list, tuple)) and
+        len(wp.proj) == 3):
       permutation = [1, 2, 0]
       post_proj_p.weight_split_dims_mapping.wt = [
           wp.proj[i] for i in permutation
@@ -2908,9 +2908,10 @@ class CausalDepthwiseConv1D(base_layer.BaseLayer):
   def setup(self) -> None:
     p = self.hparams
     assert p.name
-    assert isinstance(p.hidden_dims, list) or isinstance(p.hidden_dims, int)
+    assert isinstance(p.hidden_dims,
+                      (list, tuple)) or isinstance(p.hidden_dims, int)
     assert p.kernel_size > 0
-    if isinstance(p.hidden_dims, list):
+    if isinstance(p.hidden_dims, (list, tuple)):
       for dim in p.hidden_dims:
         assert dim > 0
     else:
@@ -2922,7 +2923,7 @@ class CausalDepthwiseConv1D(base_layer.BaseLayer):
         params_init = base_layer.WeightInit.Constant(0.5)
       else:
         params_init = base_layer.WeightInit.Constant(0.5 / p.kernel_size)
-      if isinstance(p.hidden_dims, list):
+      if isinstance(p.hidden_dims, (list, tuple)):
         shape = p.hidden_dims
       else:
         shape = [p.hidden_dims]
