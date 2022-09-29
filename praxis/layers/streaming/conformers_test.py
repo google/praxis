@@ -26,7 +26,7 @@ from praxis.layers.streaming import test_utils
 instantiate = base_layer.instantiate
 
 
-class StreamingConformersTest(test_utils.StreamingTest):
+class StreamingConformersTest(test_utils.TestCase):
 
   @parameterized.parameters([(4, 2, 1, 1), (6, 3, 2, 2)])
   def test_streaming_self_attention_with_norm_residual(self, block_size,

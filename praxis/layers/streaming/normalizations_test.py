@@ -25,7 +25,7 @@ from praxis.layers.streaming import test_utils
 instantiate = base_layer.instantiate
 
 
-class StreamingNormalizationTest(test_utils.StreamingTest):
+class StreamingNormalizationTest(test_utils.TestCase):
 
   @parameterized.named_parameters(
       ('Basic',),

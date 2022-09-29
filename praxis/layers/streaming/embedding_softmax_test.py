@@ -30,7 +30,7 @@ NestedMap = py_utils.NestedMap
 instantiate = base_layer.instantiate
 
 
-class StreamingConformersTest(test_utils.StreamingTest):
+class StreamingConformersTest(test_utils.TestCase):
 
   @parameterized.parameters(
       (1, 10, 10, 1),

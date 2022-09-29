@@ -28,7 +28,7 @@ from praxis.layers.streaming import test_utils
 instantiate = base_layer.instantiate
 
 
-class StreamingAttentionsTest(test_utils.StreamingTest):
+class StreamingAttentionsTest(test_utils.TestCase):
 
   @parameterized.parameters([(4, 2, 1, 1, True), (4, 2, 1, 1, False),
                              (8, 3, 5, 2, True), (8, 3, 5, 1, False),

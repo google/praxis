@@ -33,14 +33,7 @@ JTensor = pytypes.JTensor
 
 instantiate = base_layer.instantiate
 
-
-def append_dims(x, ndim):
-  if ndim is None:
-    return x
-  elif ndim == 1:
-    return jnp.expand_dims(x, -1)
-  else:
-    return jnp.reshape(x, list(x.shape[:2]) + [1] * ndim)
+TIME_DIM = 1
 
 
 def run_streaming(layer: StreamingBase,
@@ -78,12 +71,11 @@ def run_streaming(layer: StreamingBase,
       batch_size = inputs[key].shape[0]
 
       # Time dimension is the second dim: [batch, time, ...]
-      if time_size is not None and time_size != inputs[key].shape[1]:
+      if time_size is not None and time_size != inputs[key].shape[TIME_DIM]:
         raise ValueError('time_size has to be the same in all inputs')
-      time_size = inputs[key].shape[1]
+      time_size = inputs[key].shape[TIME_DIM]
       if time_size % step:
-        raise ValueError(f'Input time dimension: {inputs[key].shape[1]} '
-                         f'of feature: {key}'
+        raise ValueError(f'Input time dimension: {time_size} of feature: {key}'
                          f'is not aligned with streaming step: {step}')
 
   with_paddings = 'paddings' in inputs and inputs.paddings is not None
@@ -132,7 +124,7 @@ def run_streaming(layer: StreamingBase,
     return outputs
 
 
-class StreamingTest(test_utils.TestCase):
+class TestCase(test_utils.TestCase):
   """Test method for flax tests with streaming."""
 
   def setUp(self):
@@ -186,6 +178,8 @@ class StreamingTest(test_utils.TestCase):
         output_paddings = output_non_stream.paddings
       else:
         output_features = output_non_stream
+        # Compare the streaming paddings against the input paddings for layers
+        # which do not return them.
         output_paddings = paddings
 
       layer_stream = instantiate(p_stream)
@@ -193,37 +187,43 @@ class StreamingTest(test_utils.TestCase):
       output_stream = run_streaming(layer_stream, initial_vars,
                                     in_nmap, output_names, step)
 
+    # Remove any starting delay elements from the streaming features and
+    # paddings, and clip the end of the non-streaming features and paddings by
+    # the same amount to match.
     right_context = p_stream.cls.get_right_context(p_stream)
+    if right_context:
+      output_stream.features = output_stream.features[:, right_context:]
+      output_features = output_features[:, :-right_context]
+      if output_paddings is not None:
+        output_stream.paddings = output_stream.paddings[:, right_context:]
+        output_paddings = output_paddings[:, :-right_context]
 
-    # Remove delay elements from streaming output.
-    output_stream.features = output_stream.features[:, right_context:,]
+    if output_stream.features.shape[TIME_DIM] < 2:
+      raise ValueError('After removing the delay from the data, the remaining '
+                       'number of samples is too small; you must increase '
+                       'the time dimension of the input sequence.')
 
-    # Size of time dim after removing streaming delay elements.
-    time_size = output_stream.features.shape[1]
+    if (output_paddings is None) != (output_stream.paddings is None):
+      raise ValueError(f'Expected output_paddings={output_paddings} to be None '
+                       f'iff output_stream.paddings={output_stream.paddings} '
+                       'is None.')
 
-    if time_size < 2:
-      raise ValueError('After removing delay from the data, '
-                       'remaining number of samples is too small, '
-                       'you have to increase time dimension '
-                       'of the input sequence.')
+    if output_paddings is not None:
+      # Numerically validate paddings.
+      self.assertAllClose(output_paddings, output_stream.paddings)
 
-    if paddings is not None:
-      output_stream.paddings = output_stream.paddings[:, right_context:,]
-      non_stream_paddings = output_paddings[:, :time_size,]
-      self.assertAllClose(non_stream_paddings, output_stream.paddings)
-    else:
-      non_stream_paddings = jnp.zeros(
-          (inputs.shape[0], time_size), dtype=jnp.float32)
+      # Create a mask for the output features and add trailing dimensions if
+      # needed to match the rank of the features.
+      mask = 1.0 - output_paddings
+      mask = np.reshape(mask,
+                        mask.shape + (1,) * (output_features.ndim - mask.ndim))
 
-    for b in range(non_stream_paddings.shape[0]):
-      if np.sum(non_stream_paddings[b]) >= non_stream_paddings.shape[1]-1:
-        raise ValueError('There is little number of unpadded elements left, '
-                         'you have to reduce number of padded elements.')
+      # Validate that none of the signals will be nearly fully masked.
+      for b in range(mask.shape[0]):
+        if np.sum(mask[b]) <= 1:
+          raise ValueError(f'Nearly the whole signal is padded for the {b}-th '
+                           'batch element so there is nothing left to test.')
+      output_features = output_features * mask
+      output_stream.features = output_stream.features * mask
 
-    mask = 1. - non_stream_paddings
-    # Add extra dimensions, if needed.
-    mask = append_dims(mask, output_features.ndim-non_stream_paddings.ndim)
-
-    # Last elements in non streaming outputs have to be removed due to delay.
-    self.assertAllClose(output_features[:, :time_size,] * mask,
-                        output_stream.features * mask)
+    self.assertAllClose(output_features, output_stream.features)

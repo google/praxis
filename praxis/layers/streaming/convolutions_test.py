@@ -27,7 +27,7 @@ from praxis.layers.streaming import test_utils
 instantiate = base_layer.instantiate
 
 
-class StreamingConvolutionsTest(test_utils.StreamingTest):
+class StreamingConvolutionsTest(test_utils.TestCase):
 
   def _get_padding_from_length(self, max_time_size, batch_size):
     length = np.random.randint(max_time_size // 4, max_time_size // 2, [
