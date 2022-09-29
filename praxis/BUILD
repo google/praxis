@@ -72,10 +72,12 @@ pytype_strict_library(
         ":asserts",
         ":base_hyperparams",
         ":layer_utils",
+        ":pax_fiddle",
         ":py_utils",
         ":pytypes",
         # Implicit absl.flags dependency.
         # Implicit absl.logging dependency.
+        # Implicit fiddle.daglish dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -394,6 +396,7 @@ py_strict_test(
     srcs = ["base_layer_test.py"],
     deps = [
         ":base_layer",
+        ":pax_fiddle",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.

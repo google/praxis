@@ -24,10 +24,11 @@ import enum
 import functools
 import itertools
 import math
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 from absl import flags
 from absl import logging
+from fiddle import daglish
 from flax import core as flax_core
 from flax import linen as nn
 from flax import struct
@@ -39,6 +40,7 @@ import numpy as np
 from praxis import asserts
 from praxis import base_hyperparams
 from praxis import layer_utils
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 import tensorflow.compat.v2 as tf
@@ -1027,32 +1029,90 @@ class _SharedBaseLayer(nn.Module):
   theta = ThetaDescriptor()
 
   @staticmethod
-  def copy_base_hparams(from_hparams: BaseLayer.HParams,
-                        to_hparams: BaseLayer.HParams) -> BaseLayer.HParams:
-    """Copies BaseLayer hparams from `from_hparams` to `to_hparams`."""
-    assert issubclass(from_hparams.cls, BaseLayer)
-    assert issubclass(to_hparams.cls, BaseLayer)
-    # Copy-over the BaseLayer params.
-    if to_hparams.dtype == jnp.float32:
-      to_hparams.dtype = from_hparams.dtype
-    if to_hparams.fprop_dtype is None:
-      to_hparams.fprop_dtype = from_hparams.fprop_dtype
-    if to_hparams.skip_lp_regularization is None:
-      to_hparams.skip_lp_regularization = from_hparams.skip_lp_regularization
-    if to_hparams.ici_mesh_shape is None:
-      to_hparams.ici_mesh_shape = copy.deepcopy(from_hparams.ici_mesh_shape)
-    if to_hparams.dcn_mesh_shape is None:
-      to_hparams.dcn_mesh_shape = copy.deepcopy(from_hparams.dcn_mesh_shape)
-    if to_hparams.mesh_axis_names is None:
-      to_hparams.mesh_axis_names = copy.deepcopy(from_hparams.mesh_axis_names)
-    if is_default_param_init(to_hparams.params_init):
-      # Copy params_init as well. Both to_hparams.params_init and
-      # from_hparams.params_init are hyperparams.HParams.
+  def copy_base_hparams(source: Union[BaseLayer.HParams, pax_fiddle.Config],
+                        target: Union[BaseLayer.HParams, pax_fiddle.Config]):
+    """Copies BaseLayer configuration parameters from `source` to `target`.
+
+    This is used by `self.create_child` to allow child layers to "inherit" these
+    parameters from their parent layer (unless they override them).  The
+    following parameters are inherited: dtype, fprop_dtype,
+    skip_lp_regularization, ici_mesh_shape, dcn_mesh_shape, and params_init.
+
+    Args:
+      source: The configuration object to copy parameters from.
+      target: The configuration object to copy parameters to.  Mutated in-place.
+    """
+    assert isinstance(source, (BaseLayer.HParams, pax_fiddle.Config)), source
+    assert isinstance(target, (BaseLayer.HParams, pax_fiddle.Config)), target
+    if isinstance(source, BaseLayer.HParams):
+      assert issubclass(source.cls, BaseLayer)
+    if isinstance(target, BaseLayer.HParams):
+      assert issubclass(target.cls, BaseLayer)
+    if isinstance(target, BaseLayer.HParams):
+      _SharedBaseLayer._copy_base_params_to_hparams(source, target)
+    else:
+      _SharedBaseLayer._copy_base_params_to_fdl_config(source, target)
+
+  _BASE_PARAMS_TO_INHERIT = ('dtype', 'fprop_dtype', 'skip_lp_regularization',
+                             'ici_mesh_shape', 'dcn_mesh_shape',
+                             'mesh_axis_names', 'params_init')
+
+  @staticmethod
+  def _copy_base_params_to_hparams(source: Union[BaseLayer.HParams,
+                                                 pax_fiddle.Config],
+                                   target: BaseLayer.HParams):
+    if target.dtype == jnp.float32:
+      target.dtype = source.dtype
+    if target.fprop_dtype is None:
+      target.fprop_dtype = source.fprop_dtype
+    if target.skip_lp_regularization is None:
+      target.skip_lp_regularization = source.skip_lp_regularization
+    if target.ici_mesh_shape is None:
+      target.ici_mesh_shape = copy.deepcopy(source.ici_mesh_shape)
+    if target.dcn_mesh_shape is None:
+      target.dcn_mesh_shape = copy.deepcopy(source.dcn_mesh_shape)
+    if target.mesh_axis_names is None:
+      target.mesh_axis_names = copy.deepcopy(source.mesh_axis_names)
+    if is_default_param_init(target.params_init):
+      # Copy params_init as well. Both target.params_init and
+      # source.params_init are hyperparams.HParams.
       # The only exception is when layer.setup override params_init with
-      # Params().Set syntax in which case, from_hparams.params_init is a
-      # WeightInit, copy.deepcopy(from_hparams.params_init) works in both cases.
-      to_hparams.params_init = copy.deepcopy(from_hparams.params_init)
-    return to_hparams
+      # Params().Set syntax in which case, source.params_init is a
+      # WeightInit, copy.deepcopy(source.params_init) works in both cases.
+      target.params_init = copy.deepcopy(source.params_init)
+
+  @staticmethod
+  def _copy_base_params_to_fdl_config(source: Union[BaseLayer.HParams,
+                                                    pax_fiddle.Config],
+                                      target: pax_fiddle.Config):
+    # TODO(edloper): Once we start using `pax_fiddle.sub_field`, we will also
+    # need to copy base hparams to child objects in `pax_fiddle.build` (because
+    # create_child won't get called for those sub-fields).  But we *also* need
+    # to copy base hparams here -- e.g. to handle the case where a (non-fiddle)
+    # BaseLayer's child is a FiddleBaseLayer.
+
+    def visit(value, state: daglish.State) -> None:
+      # Copy params if `value` is a FiddleBaseLayer config.
+      if (isinstance(value, pax_fiddle.Config) and
+          isinstance(value.__fn_or_cls__, type) and
+          issubclass(value.__fn_or_cls__, _SharedBaseLayer)):
+        for name in _SharedBaseLayer._BASE_PARAMS_TO_INHERIT:
+          if name not in value.__arguments__:
+            setattr(value, name, getattr(source, name))
+
+      # Recurse to child objects (skipping fields tagged "DoNotBuild").
+      # We skip DoNotBuild objects, because those are child-templates, and
+      # they will inherit parameters from their parent object when their
+      # parent calls self.create_child.
+      if isinstance(value, pax_fiddle.Config):
+        for arg_name, arg_val in value.__arguments__.items():
+          arg_tags = value.__argument_tags__.get(arg_name, ())
+          if pax_fiddle.DoNotBuild not in arg_tags:
+            state.call(arg_val, daglish.Attr(arg_name))
+      elif state.is_traversable(value):
+        state.flattened_map_children(value)
+
+    daglish.MemoizedTraversal.run(visit, target)
 
   def post_init_hparams(self, *args):
     """Recursively populates the HYPER_PARAMS collection with hyper-params ...
@@ -1553,7 +1613,8 @@ class _SharedBaseLayer(nn.Module):
   def _create_child(self, name: str, params: BaseLayer.HParams) -> BaseLayer:
     """Creates and returns a child (w/o adding it as an attribute of `self`)."""
     assert name not in self._private_children
-    p = self.copy_base_hparams(self.hparams, params.clone())
+    p = params.clone()
+    self.copy_base_hparams(self.hparams, p)  # mutates p in place.
     p.name = name
     child = instantiate_layer(p, self.scope.root)
     self._private_children[name] = child

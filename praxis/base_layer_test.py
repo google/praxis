@@ -15,12 +15,16 @@
 
 """Tests for base_layer."""
 
+import dataclasses
+import functools
+from typing import Optional, Sequence, Any
 from absl.testing import absltest
 from absl.testing import parameterized
 from flax import linen as nn
 import jax
 import jax.numpy as jnp
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import test_utils
 
 
@@ -179,6 +183,56 @@ class BaseLayerTest(test_utils.TestCase):
 
     y = layer.apply(params, x)
     self.assertAllClose(x, y)
+
+  def test_copy_base_hparams(self):
+
+    # TODO(edloper): Replace this with FiddleBaseLayer once it's submitted.
+    class FiddleBaseLayerStub(base_layer._SharedBaseLayer):
+      dtype: jnp.dtype = jnp.float32
+      fprop_dtype: Optional[Any] = None
+      params_init: base_layer.WeightInit = dataclasses.field(
+          default_factory=base_layer.default_param_init)
+      skip_lp_regularization: Optional[bool] = None
+      ici_mesh_shape: Optional[Sequence[int]] = None
+      dcn_mesh_shape: Optional[Sequence[int]] = None
+      mesh_axis_names: Optional[Sequence[str]] = None
+
+    class ChildLayer(FiddleBaseLayerStub):
+      pass
+
+    class ParentLayer(FiddleBaseLayerStub):
+      child: Optional[ChildLayer] = None
+      child_tpl: pax_fiddle.Config = pax_fiddle.template_field(ChildLayer)
+
+    config_factories = dict(
+        hparams=base_layer.BaseLayer.HParams,
+        fiddle=functools.partial(pax_fiddle.Config, FiddleBaseLayerStub))
+    for source_name, source_factory in config_factories.items():
+      source = source_factory(
+          dtype=jnp.float64,
+          ici_mesh_shape=[2, 3, 4],
+          params_init=base_layer.default_param_init())
+
+      for target_name, target_factory in config_factories.items():
+        with self.subTest(f'{source_name}_to_{target_name}'):
+          target = target_factory(dtype=jnp.float16)
+          base_layer._SharedBaseLayer.copy_base_hparams(source, target)
+          self.assertEqual(target.dtype, jnp.float16)
+          self.assertEqual(target.ici_mesh_shape, [2, 3, 4])
+
+      with self.subTest(f'{source_name}_to_fiddle_subfield'):
+        target_parent = pax_fiddle.Config(
+            ParentLayer,
+            dtype=jnp.float32,
+            child=pax_fiddle.Config(ChildLayer, dtype=jnp.float16),
+            child_tpl=pax_fiddle.Config(ChildLayer, dtype=jnp.int32))
+        base_layer._SharedBaseLayer.copy_base_hparams(source, target_parent)
+        self.assertEqual(target_parent.dtype, jnp.float32)
+        self.assertEqual(target_parent.ici_mesh_shape, [2, 3, 4])
+        self.assertEqual(target_parent.child.dtype, jnp.float16)
+        self.assertEqual(target_parent.child.ici_mesh_shape, [2, 3, 4])
+        self.assertEqual(target_parent.child_tpl.dtype, jnp.int32)
+        self.assertIsNone(target_parent.child_tpl.ici_mesh_shape)
 
 
 if __name__ == '__main__':
