@@ -254,15 +254,7 @@ class TransformerLm(base_layer.BaseLayer):
     #
     # The batch axis of the activations are always sharded over the combination
     # of (replica_axis, data_axis).
-    lm_p.ici_mesh_shape = ici_mesh_shape
-    lm_p.dcn_mesh_shape = dcn_mesh_shape
-    lm_p.mesh_axis_names = mesh_axis_names
 
-    mesh_kwargs = {
-        'ici_mesh_shape': lm_p.ici_mesh_shape,
-        'dcn_mesh_shape': lm_p.dcn_mesh_shape,
-        'mesh_axis_names': mesh_axis_names,
-    }
     if batch_axes is None:
       batch_axes = (replica_axis, data_axis)
     bld = [batch_axes, None, mdl_axis
@@ -294,7 +286,70 @@ class TransformerLm(base_layer.BaseLayer):
     a_egch = [data_axis, None, None, mdl_axis]
     # a_egcm: sharding of the output of second MoE FFN, shape (e, g, c, m).
     a_egcm = egcm
+    return cls.set_custom_sharding_params(
+        lm_p,
+        ici_mesh_shape=lm_p.ici_mesh_shape,
+        dcn_mesh_shape=lm_p.dcn_mesh_shape,
+        mesh_axis_names=mesh_axis_names,
+        w_df=w_df,
+        w_dnh=w_dnh,
+        w_emh=w_emh,
+        w_vd=w_vd,
+        a_bld=a_bld,
+        a_blf=a_blf,
+        a_blnh=a_blnh,
+        a_blv=a_blv,
+        a_egch=a_egch,
+        a_egcm=a_egcm)
 
+  @classmethod
+  def set_custom_sharding_params(
+      cls,
+      lm_p,
+      *,
+      ici_mesh_shape,
+      dcn_mesh_shape=None,
+      mesh_axis_names,
+      w_df=None,
+      w_dnh=None,
+      w_emh=None,
+      w_vd=None,
+      a_bld=None,
+      a_blf=None,
+      a_blnh=None,
+      a_blv=None,
+      a_egch=None,
+      a_egcm=None,
+  ):
+    """Configure the shardings on each tensor.
+
+    Args:
+      lm_p: A params of this class.
+      ici_mesh_shape: Shape of logical mesh for a slice.
+      dcn_mesh_shape: Shape of logical mesh between slices.
+      mesh_axis_names: A list of length len(mesh_shape). Each element of the list
+        is the name of the corresponding device axis.
+      w_df: sharding for weight of ffn0, shape (d, f). ff1 weights will be
+        inferred from it.
+      w_dnh: Sharding of qkv projection weights, shape (d, num_heads,
+        per_head_size)
+      w_emh: sharding for first MoE FFN weight, shape (e, m, h). The second MoE
+        ffn weight will be inferred from it.
+      w_vd: sharding of the embedding weight of (vocab_size, d).
+      a_bld: sharding of output of ffn/attention, shape (b, l, d).
+      a_blf: sharding of output of ffn0, shape (b, l, f).
+      a_blnh: sharding of the attention activation of shape (b, l, num_heads,
+        per_head_size).
+      a_blv: sharding of the logits activation of shape (b, l, vocab_size).
+      a_egch: sharding of the output of first MoE FFN, shape (e, g, c, h).
+      a_egcm: sharding of the output of second MoE FFN, shape (e, g, c, m).
+
+    Returns:
+      Params with sharding annotations added.
+    """
+    lm_p.ici_mesh_shape = ici_mesh_shape
+    lm_p.dcn_mesh_shape = dcn_mesh_shape
+    lm_p.mesh_axis_names = mesh_axis_names
     pos_emb_w_ld = w_df
     if (lm_p.position_emb_tpl is not None and lm_p.position_emb_tpl.cls
         == embedding_softmax.TrainablePositionalEmbedding):
@@ -304,6 +359,11 @@ class TransformerLm(base_layer.BaseLayer):
     if lm_p.ngrammer_tpl is not None:
       lm_p.ngrammer_tpl.weight_split_dims_mapping.wt = w_vd
 
+    mesh_kwargs = {
+        'ici_mesh_shape': lm_p.ici_mesh_shape,
+        'dcn_mesh_shape': lm_p.dcn_mesh_shape,
+        'mesh_axis_names': mesh_axis_names,
+    }
     lm_p.softmax_tpl = _set_embedding_softmax_sharding_params_for_transformers(
         lm_p.softmax_tpl, w_vd=w_vd, a_blv=a_blv, a_bld=a_bld, **mesh_kwargs)
 
