@@ -39,12 +39,14 @@ def add_axis_to_metadata(tree, sub_weight_split_dims_mapping, x_times):
         safe_fn, tree, is_leaf=lambda x: isinstance(x, base_layer.BoxedParam))
 
   def update(boxed):
-    if boxed.meta.repeat_prefix is not None:
+    if boxed.meta.repeat_prefix:
+      assert isinstance(boxed.meta.repeat_prefix, list)
       repeat_prefix = [x_times] + boxed.meta.repeat_prefix
     else:
       repeat_prefix = [x_times]
 
-    if boxed.meta.repeat_prefix_split_dims_mapping is not None:
+    if boxed.meta.repeat_prefix_split_dims_mapping:
+      assert isinstance(boxed.meta.repeat_prefix_split_dims_mapping, tuple)
       repeat_prefix_split_dims_mapping = wp_sub + tuple(
           boxed.meta.repeat_prefix_split_dims_mapping)
     else:
@@ -53,6 +55,35 @@ def add_axis_to_metadata(tree, sub_weight_split_dims_mapping, x_times):
     boxed.meta.repeat_prefix = repeat_prefix
     boxed.meta.repeat_prefix_split_dims_mapping = (
         repeat_prefix_split_dims_mapping)
+    return base_layer.BoxedParam(value=boxed.value, meta=boxed.meta)
+
+  return _tree_map_boxed(update, tree)
+
+
+def remove_axis_to_metadata(tree, sub_weight_split_dims_mapping, x_times):
+  """Remove an axis to the metadata."""
+  wp_sub = sub_weight_split_dims_mapping
+
+  def _tree_map_boxed(fn, tree):
+    """Only map over Boxed leaves in pytree - identity for other leaves."""
+    safe_fn = lambda x: fn(x) if isinstance(x, base_layer.BoxedParam) else x
+    return jax.tree_map(
+        safe_fn, tree, is_leaf=lambda x: isinstance(x, base_layer.BoxedParam))
+
+  def update(boxed):
+
+    if boxed.meta.repeat_prefix:
+      assert isinstance(boxed.meta.repeat_prefix, list)
+      removed_axis = boxed.meta.repeat_prefix.pop(0)
+      assert removed_axis == x_times
+
+    if boxed.meta.repeat_prefix_split_dims_mapping:
+      assert isinstance(boxed.meta.repeat_prefix_split_dims_mapping, tuple)
+      updated_dims_mapping = list(boxed.meta.repeat_prefix_split_dims_mapping)
+      removed = updated_dims_mapping.pop(0)
+      assert (removed,) == tuple(wp_sub)
+      boxed.meta.repeat_prefix_split_dims_mapping = updated_dims_mapping
+
     return base_layer.BoxedParam(value=boxed.value, meta=boxed.meta)
 
   return _tree_map_boxed(update, tree)

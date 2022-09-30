@@ -77,6 +77,23 @@ class FeedForward(base_layer.BaseLayer):
     return out
 
 
+class RepeatCalledTwice(base_layer.BaseLayer):
+
+  def setup(self):
+    sub_p = FeedForward.HParams(input_dim=2, output_dim=2)
+    p = repeats.Repeat.HParams(
+        name='repeated_ffn',
+        sub_tpl=sub_p,
+        x_times=3)
+
+    self.create_child('repeated_ffn', p)
+
+  def __call__(self, x):
+    x = self.repeated_ffn(x)
+    x = self.repeated_ffn(x)
+    return x
+
+
 class Decoder(base_layer.BaseLayer):
   """Decoder layer."""
 
@@ -207,6 +224,17 @@ class RepeatsTest(test_utils.TestCase):
           mutable=[PARAMS, DECODE_CACHE],
           method=repeated_decoder.extend_step)
       self.assertAllClose(step_out, fprop_outs[:, t])
+
+  def test_repeat_called_twice(self):
+    p = RepeatCalledTwice.HParams(name='repeat_called_twice')
+    repeated_layer = instantiate(p)
+
+    k = jax.random.PRNGKey(123)
+    k, input_random_key = jax.random.split(k)
+    x = jax.random.uniform(input_random_key, shape=(4, 2))
+    k, init_key = jax.random.split(k)
+    weight_hparams = repeated_layer.abstract_init_with_metadata(init_key, x)
+    print('weight_hparams = ', weight_hparams)
 
 
 if __name__ == '__main__':

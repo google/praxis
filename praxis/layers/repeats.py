@@ -153,6 +153,10 @@ class Repeat(base_layer.BaseLayer):
             scan_fn,
             collection,
             mutable=self.is_mutable_collection(collection),
+            trans_in_fn=functools.partial(
+                flax_utils.remove_axis_to_metadata,
+                sub_weight_split_dims_mapping=wp_sub,
+                x_times=p.x_times),
             trans_out_fn=functools.partial(
                 flax_utils.add_axis_to_metadata,
                 sub_weight_split_dims_mapping=wp_sub,

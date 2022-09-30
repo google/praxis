@@ -417,6 +417,10 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
             vmapped_fn,
             collection,
             mutable=self.is_mutable_collection(collection),
+            trans_in_fn=functools.partial(
+                flax_utils.remove_axis_to_metadata,
+                sub_weight_split_dims_mapping=wp_sub,
+                x_times=p.num_stages),
             trans_out_fn=functools.partial(
                 flax_utils.add_axis_to_metadata,
                 sub_weight_split_dims_mapping=wp_sub,
@@ -938,6 +942,10 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
             vmapped_fn,
             collection,
             mutable=self.is_mutable_collection(collection),
+            trans_in_fn=functools.partial(
+                flax_utils.remove_axis_to_metadata,
+                sub_weight_split_dims_mapping=(None,),
+                x_times=p.circular_repeat),
             trans_out_fn=functools.partial(
                 flax_utils.add_axis_to_metadata,
                 sub_weight_split_dims_mapping=(None,),
