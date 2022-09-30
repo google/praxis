@@ -474,6 +474,12 @@ class LightConv1D(base_layer.BaseLayer):
     is_causal: bool = False
     use_2d_conv_norm: bool = False
 
+  def _create_conv(self):
+    p = self.hparams
+    depthwise_conv_p = p.depthwise_conv_tpl.clone().set(
+        filter_shape=(p.kernel_size, p.input_dims, 1), is_causal=p.is_causal)
+    self.create_child('depthwise_conv1d', depthwise_conv_p)
+
   def setup(self) -> None:
     p = self.hparams
 
@@ -499,9 +505,7 @@ class LightConv1D(base_layer.BaseLayer):
     self.create_child('linear_start_act', linear_start_act_p)
     self.create_child('linear_start_gated', linear_start_gated_p)
 
-    depthwise_conv_p = p.depthwise_conv_tpl.clone().set(
-        filter_shape=(p.kernel_size, p.input_dims, 1), is_causal=p.is_causal)
-    self.create_child('depthwise_conv1d', depthwise_conv_p)
+    self._create_conv()
 
     norm_p = p.conv_norm_layer_tpl.clone().set(dim=p.input_dims)
     self.create_child('conv_norm', norm_p)

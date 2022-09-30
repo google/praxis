@@ -462,11 +462,18 @@ class LightConv1D(convolutions.LightConv1D,  # pytype: disable=signature-mismatc
                   streaming_base.StreamingBase):
   """Streaming aware LightConv1D layer."""
 
-  class HParams(convolutions.LightConv1D.HParams):
-    # Replace DepthwiseConv1D by its streaming aware version:
-    _attribute_overrides: Tuple[str, ...] = ('depthwise_conv_tpl',)
-    depthwise_conv_tpl: BaseHParams = sub_config_field(
-        DepthwiseConv1D.HParams)
+  def _create_conv(self):
+    p = self.hparams
+    if not isinstance(p.depthwise_conv_tpl,
+                      convolutions.DepthwiseConv1D.HParams):
+      raise ValueError(f'Streaming mode is not implemented for '
+                       f'{p.depthwise_conv_tpl}.')
+
+    depthwise_conv_p = p.depthwise_conv_tpl.clone().set(
+        filter_shape=(p.kernel_size, p.input_dims, 1), is_causal=p.is_causal)
+    depthwise_conv_p_stream = DepthwiseConv1D.HParams()
+    depthwise_conv_p_stream.copy_fields_from(depthwise_conv_p)
+    self.create_child('depthwise_conv1d', depthwise_conv_p_stream)
 
   @classmethod
   def get_stride(cls, hparams: LightConv1D.HParams) -> int:

@@ -16,13 +16,14 @@
 """Streaming aware Conformer-related layers."""
 
 from __future__ import annotations
-from typing import Tuple
 
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import py_utils
 from praxis import pytypes
+from praxis.layers import attentions as base_attentions
 from praxis.layers import conformers
+from praxis.layers import convolutions as base_convolutions
 from praxis.layers.streaming import attentions
 from praxis.layers.streaming import convolutions
 from praxis.layers.streaming import streaming_base
@@ -54,15 +55,22 @@ class SelfAttentionWithNormAndResidual(  # pytype: disable=signature-mismatch
   that signals summed in (+) are aligned in time.
   """
 
-  class HParams(conformers.SelfAttentionWithNormAndResidual.HParams):
-    # Replace LocalSelfAttention by its streaming aware version:
-    _attribute_overrides: Tuple[str, ...] = ('self_atten_tpl',)
-    self_atten_tpl: BaseHParams = sub_config_field(
-        attentions.LocalSelfAttention.HParams)
+  def _create_self_atten(self):
+    p = self.hparams
+    if not isinstance(p.self_atten_tpl,
+                      base_attentions.LocalSelfAttention.HParams):
+      raise ValueError(f'Streaming mode is not implemented for '
+                       f'{p.self_atten_tpl}.')
+    self_atten_p = p.self_atten_tpl.clone().set(
+        left_context=self.left_context, right_context=self.right_context)
+    self_atten_p_stream = attentions.LocalSelfAttention.HParams()
+    self_atten_p_stream.copy_fields_from(self_atten_p)
+    self.create_child('self_atten', self_atten_p_stream)
 
   def setup(self) -> None:
     super().setup()
     p = self.hparams
+    self.validate_context()
 
     # If self attention is not local (not limited in one of contexts):
     if (self.self_atten.hparams.left_context is None or
@@ -173,20 +181,46 @@ class Conformer(  # pytype: disable=signature-mismatch
     Optionally one can change the order of MHSA and conv.
   """
 
-  class HParams(conformers.Conformer.HParams):
-    _attribute_overrides: Tuple[str, ...] = ('trans_atten_tpl', 'lconv_tpl',)
-    # Replace SelfAttentionWithNormAndResidual by its streaming aware version:
-    trans_atten_tpl: BaseHParams = sub_config_field(
-        SelfAttentionWithNormAndResidual.HParams)
+  def _create_trans_atten(self):
+    p = self.hparams
+    if 'mhsa' in p.layer_order:
+      if not isinstance(p.trans_atten_tpl,
+                        conformers.SelfAttentionWithNormAndResidual.HParams):
+        raise ValueError(f'Streaming mode is not implemented for '
+                         f'{p.trans_atten_tpl}.')
+      trans_atten_p = p.trans_atten_tpl.clone().set(
+          residual_dropout_prob=self._dropout_prob(p.atten_residual_dropout),
+          self_atten_tpl=p.trans_atten_tpl.self_atten_tpl.clone().set(
+              input_dim=p.model_dims,
+              hidden_dim=p.model_dims,
+              atten_dropout_prob=self._dropout_prob(p.atten_dropout),
+              num_heads=p.atten_num_heads))
+      trans_atten_p.norm_tpl = trans_atten_p.norm_tpl.clone().set(
+          dim=p.model_dims)
+      trans_atten_p_stream = SelfAttentionWithNormAndResidual.HParams()
+      trans_atten_p_stream.copy_fields_from(trans_atten_p)
+      self.create_child('trans_atten', trans_atten_p_stream)
 
-    # Replace LightConv1D by its streaming aware version:
-    lconv_tpl: BaseHParams = sub_config_field(
-        convolutions.LightConv1D.HParams)
+  def _create_conv(self):
+    p = self.hparams
+    if 'conv' in p.layer_order:
+      if not isinstance(p.lconv_tpl,
+                        base_convolutions.LightConv1D.HParams):
+        raise ValueError(f'Streaming mode is not implemented for '
+                         f'{p.lconv_tpl}.')
+      lconv_p = p.lconv_tpl.clone().set(
+          input_dims=p.model_dims,
+          kernel_size=p.kernel_size,
+          dropout_prob=self._dropout_prob(p.conv_residual_dropout))
+      lconv_p_stream = convolutions.LightConv1D.HParams()
+      lconv_p_stream.copy_fields_from(lconv_p)
+      self.create_child('lconv', lconv_p_stream)
 
   @classmethod
   def get_right_context(cls, hparams: Conformer.HParams) -> int:
-    return hparams.trans_atten_tpl.cls.get_right_context(
-        hparams.trans_atten_tpl)
+    return (hparams.trans_atten_tpl.self_atten_tpl.right_context
+            if hparams.trans_atten_tpl.self_atten_tpl.right_context is not None
+            else hparams.trans_atten_tpl.right_context)
 
   @classmethod
   def get_stride(cls, hparams: Conformer.HParams) -> int:

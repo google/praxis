@@ -37,20 +37,20 @@ class StreamingConvolutionsTest(test_utils.TestCase):
     return (idx < np.expand_dims(length, -1)).astype('float32')
 
   @parameterized.parameters(
-      (1, 3, 'SAME', 2, True),
-      (2, 3, 'SAME', 1, False),
-      (3, 5, 'SAME', 1, True),
-      (5, 3, 'SAME', 1, False),
-      (7, 3, 'SAME', 1, False),
-      (2, 3, 'VALID', 2, False),
-      (3, 5, 'VALID', 1, False),
-      (5, 3, 'VALID', 1, False),
-      (7, 3, 'VALID', 1, True),
-      (1, 3, 'VALID', 2, True),
-      (5, 3, 'VALID', 1, True),
+      (1, 3, 'SAME', 2, True, True),
+      (2, 3, 'SAME', 1, False, True),
+      (3, 5, 'SAME', 1, True, True),
+      (5, 3, 'SAME', 1, False, True),
+      (7, 3, 'SAME', 1, False, True),
+      (2, 3, 'VALID', 2, False, False),
+      (3, 5, 'VALID', 1, False, False),
+      (5, 3, 'VALID', 1, False, False),
+      (7, 3, 'VALID', 1, True, False),
+      (1, 3, 'VALID', 2, True, False),
+      (5, 3, 'VALID', 1, True, False),
   )
   def test_conv_bnact_withpadding(self, stride, kernel_size, padding,
-                                  batch_size, compat_with_lingvo):
+                                  batch_size, compat_with_lingvo, is_causal):
     # Compare original ConvBNActWithPadding non streaming version with
     # ConvBNActWithPadding streaming aware in non streaming mode.
     feature_dim = stride * 3
@@ -63,20 +63,20 @@ class StreamingConvolutionsTest(test_utils.TestCase):
 
     p_non_stream = convolutions.ConvBNActWithPadding.HParams(
         name='conv_bn_act_padding',
-        is_causal=True,
+        is_causal=is_causal,
         tf_equivalent_padding=True,
         compat_with_lingvo=compat_with_lingvo,
         filter_shape=(kernel_size, kernel_size, 1, 1),
         filter_stride=(stride, stride),
         bias=False,
         batch_norm_tpl=None,
-        padding='SAME')
+        padding=padding)
     layer = instantiate(p_non_stream)
 
     # Streaming aware layer
     p_stream = streaming.ConvBNActWithPadding.HParams(
         name='conv_bn_act_padding_stream')
-    p_stream.copy_fields_from(p_non_stream, recursive=True)
+    p_stream.copy_fields_from(p_non_stream)
     # Streaming aware layer needs explicit frequency_dim (for states creation).
     p_stream.frequency_dim = feature_dim
 
@@ -114,7 +114,7 @@ class StreamingConvolutionsTest(test_utils.TestCase):
         bias=False,
         batch_norm_tpl=None,
         frequency_dim=feature_dim,
-        padding='SAME')
+        padding=padding)
 
     max_time_size = 8 * stride
     features = np.random.uniform(
@@ -152,7 +152,7 @@ class StreamingConvolutionsTest(test_utils.TestCase):
 
     # Streaming aware layer
     p_stream = streaming.DepthwiseConv1D.HParams(name='dw_1D_stream')
-    p_stream.copy_fields_from(p_non_stream, recursive=True)
+    p_stream.copy_fields_from(p_non_stream)
 
     # Striding is always 1 for now:
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)
@@ -178,15 +178,15 @@ class StreamingConvolutionsTest(test_utils.TestCase):
     inputs = np.random.normal(size=[1, 8, 4]).astype(np.float32)
     paddings = np.array([[1, 1, 1, 0, 0, 0, 1, 1]]).astype(np.float32)
 
-    # Streaming aware layer. It can run in both streaming and non streaming.
-    p_non_stream = streaming.LightConv1D.HParams(
+    p_non_stream = convolutions.LightConv1D.HParams(
         name='non_stream_conv1D',
         input_dims=inputs.shape[-1],
         kernel_size=3,
         is_causal=True)
 
+    # Streaming aware layer.
     p_stream = streaming.LightConv1D.HParams(name='stream_conv1D')
-    p_stream.copy_fields_from(p_non_stream, recursive=True)
+    p_stream.copy_fields_from(p_non_stream)
 
     # Striding is always 1.
     self.assertEqual(p_stream.cls.get_stride(p_stream), 1)
@@ -199,6 +199,29 @@ class StreamingConvolutionsTest(test_utils.TestCase):
         p_stream,
         step)
 
+  def test_light_conv1D_assert_on_wrong_layer(self):
+    # Input data.
+    inputs = np.random.normal(size=[1, 8, 4]).astype(np.float32)
+    paddings = np.array([[1, 1, 1, 0, 0, 0, 1, 1]]).astype(np.float32)
+
+    # Assign depthwise_conv_tpl with wrong Dummy layer:
+    p_non_stream = convolutions.LightConv1D.HParams(
+        name='non_stream_conv1D',
+        input_dims=inputs.shape[-1],
+        kernel_size=3,
+        is_causal=True,
+        depthwise_conv_tpl=convolutions.LightConv1D.HParams(name='dummy'))
+
+    p_stream = streaming.LightConv1D.HParams(name='stream_conv1D')
+    p_stream.copy_fields_from(p_non_stream)
+
+    context_p = base_layer.JaxContext.HParams(do_eval=True)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+      layer_stream = instantiate(p_stream)
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      with self.assertRaises(ValueError):
+        _ = layer_stream.init(init_key, inputs, paddings)
 
 if __name__ == '__main__':
   absltest.main()

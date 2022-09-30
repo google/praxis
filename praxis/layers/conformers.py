@@ -88,7 +88,7 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     atten_left_context = p.self_atten_tpl.left_context if hasattr(
         p.self_atten_tpl, 'left_context') else None
     atten_right_context = p.self_atten_tpl.right_context if hasattr(
-        p.right_context, 'left_context') else None
+        p.self_atten_tpl, 'right_context') else None
     # TODO(b/248047726)
     # User can define local context in p.left_context and
     # p.self_atten_tpl.left_context. Check it if we have a conflict:
@@ -105,7 +105,7 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
         p.right_context is not None and
         atten_right_context != p.right_context):
       raise ValueError(f'Both atten_right_context = '
-                       f'{p.self_atten_tpl.left_context} and p.right_context ='
+                       f'{p.self_atten_tpl.right_context} and p.right_context ='
                        f'{p.right_context} can not be defined '
                        f'and have different values.')
 
@@ -134,11 +134,8 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     else:
       return p.right_context
 
-  def setup(self) -> None:
+  def _create_self_atten(self):
     p = self.hparams
-    asserts.not_none(p.self_atten_tpl)
-    self.validate_context()
-
     # If self attention is not local: not limited in one of the contexts,
     # then use DotProductAttention for backward compatibility.
     # Note: non local self attention is not streamable.
@@ -146,7 +143,6 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
       self_atten_tpl = attentions.DotProductAttention.HParams()
       self_atten_tpl.copy_fields_from(
           p.self_atten_tpl,
-          recursive=True,
           missing_fields_in_self=[
               'block_size', 'left_context', 'right_context', 'rel_pos_emb_dim',
               'skip_term_b'
@@ -163,6 +159,10 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
 
     self.create_child('self_atten', self_atten_tpl)
 
+  def setup(self) -> None:
+    p = self.hparams
+    asserts.not_none(p.self_atten_tpl)
+    self._create_self_atten()
     self.create_child('norm', p.norm_tpl)
 
     # Initialize residual dropout.
@@ -287,6 +287,33 @@ class Conformer(base_layer.BaseLayer):
     final_ln_tpl: BaseHParams = sub_config_field(
         normalizations.LayerNorm.HParams)
 
+  def _dropout_prob(self, prob):
+    p = self.hparams
+    return p.dropout_prob if p.dropout_prob is not None else prob
+
+  def _create_trans_atten(self):
+    p = self.hparams
+    if 'mhsa' in p.layer_order:
+      trans_atten_p = p.trans_atten_tpl.clone().set(
+          residual_dropout_prob=self._dropout_prob(p.atten_residual_dropout),
+          self_atten_tpl=p.trans_atten_tpl.self_atten_tpl.clone().set(
+              input_dim=p.model_dims,
+              hidden_dim=p.model_dims,
+              atten_dropout_prob=self._dropout_prob(p.atten_dropout),
+              num_heads=p.atten_num_heads))
+      trans_atten_p.norm_tpl = trans_atten_p.norm_tpl.clone().set(
+          dim=p.model_dims)
+      self.create_child('trans_atten', trans_atten_p)
+
+  def _create_conv(self):
+    p = self.hparams
+    if 'conv' in p.layer_order:
+      lconv_p = p.lconv_tpl.clone().set(
+          input_dims=p.model_dims,
+          kernel_size=p.kernel_size,
+          dropout_prob=self._dropout_prob(p.conv_residual_dropout))
+      self.create_child('lconv', lconv_p)
+
   def setup(self) -> None:
     p = self.hparams
     asserts.in_set(p.layer_order,
@@ -300,9 +327,6 @@ class Conformer(base_layer.BaseLayer):
       for prob in all_dropouts:
         assert prob is None or prob == p.dropout_prob
 
-    def dropout_prob(prob):
-      return p.dropout_prob if p.dropout_prob is not None else prob
-
     if p.fflayer_start_tpl:
       if p.input_dims == p.model_dims:
         fflayer_start_p = p.fflayer_start_tpl.clone().set(
@@ -311,8 +335,8 @@ class Conformer(base_layer.BaseLayer):
             input_dims=p.input_dims,
             hidden_dims=p.model_dims * p.ffn_dim_multiplier,
             residual_weight=p.ff_residual_weight,
-            residual_dropout_prob=dropout_prob(p.ffn_residual_dropout),
-            relu_dropout_prob=dropout_prob(p.ffn_relu_dropout),
+            residual_dropout_prob=self._dropout_prob(p.ffn_residual_dropout),
+            relu_dropout_prob=self._dropout_prob(p.ffn_relu_dropout),
         )
       else:
         # Need to add another projection layer in fflayer
@@ -323,8 +347,8 @@ class Conformer(base_layer.BaseLayer):
             output_dims=p.model_dims,
             hidden_dims=p.model_dims * p.ffn_dim_multiplier,
             residual_weight=p.ff_residual_weight,
-            residual_dropout_prob=dropout_prob(p.ffn_residual_dropout),
-            relu_dropout_prob=dropout_prob(p.ffn_relu_dropout),
+            residual_dropout_prob=self._dropout_prob(p.ffn_residual_dropout),
+            relu_dropout_prob=self._dropout_prob(p.ffn_relu_dropout),
         )
       self.create_child(fflayer_start_p.name, fflayer_start_p)
 
@@ -335,32 +359,16 @@ class Conformer(base_layer.BaseLayer):
           input_dims=p.model_dims,
           hidden_dims=p.model_dims * p.ffn_dim_multiplier,
           residual_weight=p.ff_residual_weight,
-          residual_dropout_prob=dropout_prob(p.ffn_residual_dropout),
-          relu_dropout_prob=dropout_prob(p.ffn_relu_dropout),
+          residual_dropout_prob=self._dropout_prob(p.ffn_residual_dropout),
+          relu_dropout_prob=self._dropout_prob(p.ffn_relu_dropout),
       )
       if not p.fflayer_weight_sharing:
         self.create_child(fflayer_end_p.name, fflayer_end_p)
       else:
         asserts.not_none(p.fflayer_start_tpl)
 
-    if 'mhsa' in p.layer_order:
-      trans_atten_p = p.trans_atten_tpl.clone().set(
-          residual_dropout_prob=dropout_prob(p.atten_residual_dropout),
-          self_atten_tpl=p.trans_atten_tpl.self_atten_tpl.clone().set(
-              input_dim=p.model_dims,
-              hidden_dim=p.model_dims,
-              atten_dropout_prob=dropout_prob(p.atten_dropout),
-              num_heads=p.atten_num_heads))
-      trans_atten_p.norm_tpl = trans_atten_p.norm_tpl.clone().set(
-          dim=p.model_dims)
-      self.create_child('trans_atten', trans_atten_p)
-
-    if 'conv' in p.layer_order:
-      lconv_p = p.lconv_tpl.clone().set(
-          input_dims=p.model_dims,
-          kernel_size=p.kernel_size,
-          dropout_prob=dropout_prob(p.conv_residual_dropout))
-      self.create_child('lconv', lconv_p)
+    self._create_trans_atten()
+    self._create_conv()
 
     if p.final_ln_tpl:
       ln_p = p.final_ln_tpl.clone().set(name='final_ln', dim=p.model_dims)

@@ -181,7 +181,9 @@ pytype_strict_library(
         "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:pytypes",
+        "//praxis/layers:attentions",
         "//praxis/layers:conformers",
+        "//praxis/layers:convolutions",
     ],
 )
 
@@ -197,9 +199,12 @@ py_strict_test(
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis/layers:attentions",
         "//praxis/layers:conformers",
+        "//praxis/layers:convolutions",
     ],
 )
 
