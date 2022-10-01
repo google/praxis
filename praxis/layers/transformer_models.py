@@ -552,7 +552,7 @@ class TransformerLm(base_layer.BaseLayer):
         position with causal attention and 0 indicates bidirectional attention.
         This overrides part of the causal mask.
       start_time_step: Decode extend_step start time step. When decoding after
-        prefix, start_time_step will be prefix_len - 1.
+        prefix, start_time_step will be prefix_len.
 
     Returns:
       Returns xent_output, where
