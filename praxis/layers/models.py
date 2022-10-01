@@ -459,8 +459,6 @@ class LanguageModel(base_model.BaseModel):
       - A list of dict where each entry corresponds to a row in the batch. The
         keys should be unique across the entire decode dataset.
     """
-    # Move output to the host
-    decode_out = jax.tree_map(np.array, decode_out)
     # Get the first output within a batch.
     decode_out.output_ids = decode_out.output_ids[:, 0, :]
     decode_out.decode_lengths = decode_out.decode_lengths[:, 0]
@@ -488,7 +486,7 @@ class LanguageModel(base_model.BaseModel):
       decoded_ids = decode_out.output_ids[idx][prefix_length:decode_length]
       decoded_substr = input_obj.ids_to_strings(
           decoded_ids[None, :],
-          jnp.array([decode_length - prefix_length], dtype=jnp.int32))[0]
+          np.array([decode_length - prefix_length], dtype=np.int32))[0]
 
       ex = jax.tree_map(lambda x: x[idx], decode_out)  # pylint: disable=cell-var-from-loop
       key = py_utils.get_enumeration_id(ex)
@@ -508,9 +506,9 @@ class LanguageModel(base_model.BaseModel):
           'decode_length': decode_length,
       }))
 
-    decoded_lengths = jnp.average(decode_out.decode_lengths).astype(jnp.float32)
+    decoded_lengths = np.average(decode_out.decode_lengths).astype(np.float32)
     metrics = NestedMap(
-        decoded_length=(decoded_lengths, jnp.array(1.0, jnp.float32)))
+        decoded_length=(decoded_lengths, np.array(1.0, np.float32)))
     return metrics, ret
 
 
@@ -697,12 +695,12 @@ class SequenceModel(base_model.BaseModel):
     decode_out.logprobs = decode_out.logprobs[:, :]
     decoded_strs = input_obj.ids_to_strings(
         decode_out.output_ids, decode_out.decode_lengths, key='tgt')
-    source_lengths = jnp.sum(
-        1.0 - decode_out.src.paddings, axis=1).astype(jnp.int32)
+    source_lengths = np.sum(
+        1.0 - decode_out.src.paddings, axis=1).astype(np.int32)
     source_strs = input_obj.ids_to_strings(
         decode_out.src.ids, source_lengths, key='src')
-    target_lengths = jnp.sum(
-        1.0 - decode_out.tgt.paddings, axis=1).astype(jnp.int32)
+    target_lengths = np.sum(
+        1.0 - decode_out.tgt.paddings, axis=1).astype(np.int32)
     target_strs = input_obj.ids_to_strings(
         decode_out.tgt.ids, target_lengths, key='tgt')
     ret = list()
@@ -721,9 +719,9 @@ class SequenceModel(base_model.BaseModel):
           'logprobs': decode_out.logprobs[idx],
           'decode_length': decode_out.decode_lengths[idx],
       }))
-    decode_lengths = jnp.average(decode_out.decode_lengths).astype(jnp.float32)
+    decode_lengths = np.average(decode_out.decode_lengths).astype(np.float32)
     metrics = NestedMap(
-        decode_length=(decode_lengths, jnp.array(1.0, jnp.float32)))
+        decode_length=(decode_lengths, np.array(1.0, np.float32)))
     return metrics, ret
 
 
