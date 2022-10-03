@@ -164,53 +164,21 @@ class HyperParamsTest(absltest.TestCase):
     self.assertEqual(300, x_clone.d.a)
     # pylint: enable=protected-access
 
-  def test_copy_fields_from_with_attribute_overrides(self):
+  def test_copy_fields(self):
     e_new = 0.123
     a_new = 123
     b_new = '456'
-    recursive = True
     p_b = NestedNestedTestClass.HParams(
         tpl=NestedTestClass.HParams(
             e=e_new, d=SimpleTestChild.HParams(a=a_new, b=b_new)))
     p_bb = NestedNestedOverrideTestClass.HParams(
         tpl=NestedTestBehaveClass.HParams(
             e=0.0, d=SimpleTestChild.HParams(a=0, b='')))
-    p_bb.copy_fields_from(p_b, recursive=recursive)
+    p_bb.copy_fields_from(p_b)
     self.assertEqual(p_bb.cls, NestedNestedOverrideTestClass)
-    self.assertEqual(p_bb.tpl.cls, NestedTestBehaveClass)
+    self.assertEqual(p_bb.tpl.cls, NestedTestClass)  # cls is overwritten too.
     self.assertEqual(p_bb.tpl.d.cls, SimpleTestChild)
     self.assertEqual(p_bb.tpl.e, e_new)
-    self.assertEqual(p_bb.tpl.d.a, a_new)
-    self.assertEqual(p_bb.tpl.d.b, b_new)
-
-    # Both source and destination have None field.
-    p_b = NestedNestedTestClass.HParams(
-        tpl=NestedTestClass.HParams(e=e_new, d=None))
-    p_bb = NestedNestedOverrideTestClass.HParams(
-        tpl=NestedTestBehaveClass.HParams(e=0.0, d=None))
-    p_bb.copy_fields_from(p_b, recursive=recursive)
-    self.assertEqual(p_bb.tpl.e, e_new)
-
-    # Only source has None field.
-    p_b = NestedNestedTestClass.HParams(
-        tpl=NestedTestClass.HParams(e=e_new, d=None))
-    p_bb = NestedNestedOverrideTestClass.HParams(
-        tpl=NestedTestBehaveClass.HParams(
-            e=0.0, d=SimpleTestChild.HParams(a=0, b='')))
-    p_bb.copy_fields_from(p_b, recursive=recursive)
-    self.assertEqual(p_bb.tpl.e, e_new)
-    # Test that real data are replaced by None.
-    self.assertIsNone(p_bb.tpl.d)
-
-    # Only destination has None field.
-    p_b = NestedNestedTestClass.HParams(
-        tpl=NestedTestClass.HParams(
-            e=e_new, d=SimpleTestChild.HParams(a=a_new, b=b_new)))
-    p_bb = NestedNestedOverrideTestClass.HParams(
-        tpl=NestedTestBehaveClass.HParams(e=0.0, d=None))
-    p_bb.copy_fields_from(p_b, recursive=recursive)
-    self.assertEqual(p_bb.tpl.e, e_new)
-    # Test that None is replaced with the real data.
     self.assertEqual(p_bb.tpl.d.a, a_new)
     self.assertEqual(p_bb.tpl.d.b, b_new)
 

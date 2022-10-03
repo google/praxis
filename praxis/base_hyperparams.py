@@ -493,18 +493,11 @@ class BaseHyperParams:
   def copy_fields_from(
       self,
       source: 'BaseHyperParams',
-      recursive: bool = False,
       missing_fields_in_self: Optional[Sequence[str]] = None) -> None:
     """Copies fields from source.
 
     Args:
       source: HParams which will be copied.
-      recursive: If False it will preserve 'cls' name only on root level,
-        on other nested levels all parameters ('cls' too) will be overwritten.
-        It will fail if 'source' has more field only on root level.
-        If True, it will preserve 'cls' name on all nested HParams.
-        Destination can have more parameters, but 'source' can not:
-        it will fail if 'source' has more fields.
       missing_fields_in_self: List of field names of source which are allowed
         to be missing in self.
     """
@@ -521,13 +514,7 @@ class BaseHyperParams:
         continue
       attr_value = getattr(source, name)
       if isinstance(attr_value, BaseHyperParams):
-        if getattr(self, name) is not None and recursive:
-          # Recursively calls _copy_fields_from,
-          # so that only parameters are copied, but cls is preserved.
-          getattr(self, name).copy_fields_from(attr_value, recursive=recursive)
-        else:
-          # Edge case when destination field is None and it has to be created.
-          setattr(self, name, attr_value.clone())
+        setattr(self, name, attr_value.clone())
       else:
         setattr(self, name, attr_value)
 
