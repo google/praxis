@@ -208,7 +208,10 @@ class TestBatchNormalizationModel(base_model.BaseModel):
     self.create_child('bn', bn_params)
 
   def compute_predictions(self, input_batch: NestedMap) -> JTensor:
-    return self.bn(input_batch.inputs)
+    params = base_layer.cur_jax_context().hparams.clone()
+    params.summary_verbosity = 4  # Enable BN summaries for testing.
+    with base_layer.JaxContext.new_context(hparams=params):
+      return self.bn(input_batch.inputs)
 
   def compute_loss(self, predictions: JTensor,
                    input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:

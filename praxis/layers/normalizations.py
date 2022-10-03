@@ -211,8 +211,8 @@ class BatchNorm(BaseNormalization):
       # The mean and variance used for normalization.
       norm_mean = self.get_var('moving_mean')
       norm_variance = self.get_var('moving_variance')
-      self.add_summary('moving_mean', norm_mean)
-      self.add_summary('moving_variance', norm_variance)
+      self.add_summary('moving_mean', norm_mean, verbosity=4)
+      self.add_summary('moving_variance', norm_variance, verbosity=4)
     else:
       rank = inputs.ndim
       reduce_over_dims = list(range(0, rank - 1))
@@ -232,10 +232,11 @@ class BatchNorm(BaseNormalization):
       self.update_var('moving_variance', new_moving_variance)
 
       # Add some summaries for visualization.
-      self.add_summary('mean', mean)
-      self.add_summary('variance', variance)
-      self.add_summary('moving_mean', self.get_var('moving_mean'))
-      self.add_summary('moving_variance', self.get_var('moving_variance'))
+      self.add_summary('mean', mean, verbosity=4)
+      self.add_summary('variance', variance, verbosity=4)
+      self.add_summary('moving_mean', self.get_var('moving_mean'), verbosity=4)
+      self.add_summary(
+          'moving_variance', self.get_var('moving_variance'), verbosity=4)
       if p.use_moving_avg_in_training:
         # Use the global statistics for normalization.
         norm_mean = self.get_var('moving_mean')

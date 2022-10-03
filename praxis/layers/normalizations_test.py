@@ -83,7 +83,8 @@ class NormalizationsTest(test_utils.TestCase):
     paddings[1, 1] = 1.0
 
     # JaxContext needed for `do_eval`.
-    with base_layer.JaxContext.new_context():
+    context_p = base_layer.JaxContext.HParams(summary_verbosity=4)
+    with base_layer.JaxContext.new_context(hparams=context_p):
       prng_key = jax.random.PRNGKey(seed=1234)
       prng_key, init_key = jax.random.split(prng_key)
       # initial_vars[NON_TRAINABLE] has initialized moving_mean/variance.
