@@ -480,6 +480,11 @@ class LightConv1D(base_layer.BaseLayer):
         filter_shape=(p.kernel_size, p.input_dims, 1), is_causal=p.is_causal)
     self.create_child('depthwise_conv1d', depthwise_conv_p)
 
+  def _create_conv_norm_layer(self):
+    p = self.hparams
+    norm_p = p.conv_norm_layer_tpl.clone().set(dim=p.input_dims)
+    self.create_child('conv_norm', norm_p)
+
   def setup(self) -> None:
     p = self.hparams
 
@@ -506,10 +511,7 @@ class LightConv1D(base_layer.BaseLayer):
     self.create_child('linear_start_gated', linear_start_gated_p)
 
     self._create_conv()
-
-    norm_p = p.conv_norm_layer_tpl.clone().set(dim=p.input_dims)
-    self.create_child('conv_norm', norm_p)
-
+    self._create_conv_norm_layer()
     self.create_child('conv_activation', p.conv_activation_tpl.clone())
 
     # TODO(nanxinchen): the end layer doesn't split so it shouldn't use 3/2
