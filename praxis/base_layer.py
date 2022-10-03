@@ -647,9 +647,10 @@ class BoxedParam:
 
 @struct.dataclass
 class WrappedHParams:
-  # We do not want to transform hyper-params so we mark the field
-  # pytree_node=False to prevent JAX transforms from touching it.
-  meta: BaseHyperParams = struct.field(pytree_node=False)
+  # We do not want to transform hyper-params in post_init_hparams, so we mark
+  # the field pytree_node=False to prevent JAX transforms from touching it.
+  meta: Union[BaseHyperParams,
+              pax_fiddle.Config] = struct.field(pytree_node=False)
 
 
 @struct.dataclass
@@ -1126,13 +1127,14 @@ class _SharedBaseLayer(nn.Module):
       *args: used for scan's rigid signature requirements.
     """
     hparams = self.hparams.clone()
-    for p in dataclasses.fields(hparams):
-      p_name = p.name
+    for p_name in self._hparam_fields():
       p_value = getattr(hparams, p_name)
-      if (isinstance(p_value, base_hyperparams.InstantiableHyperParams) and
+      if (isinstance(
+          p_value,
+          (base_hyperparams.InstantiableHyperParams, pax_fiddle.Config)) and
           issubclass(p_value.cls, BaseLayer)):
-        # No need to include sub-layer params, which will show up in its own
-        # collection anyways.
+        # No need to include sub-layer template params, since the instantiated
+        # sub-layer will show up in its own collection anyways.
         setattr(hparams, p_name, None)
     self.put_variable(HYPER_PARAMS, '_hparams', WrappedHParams(hparams))
     # walk through all the attributes on self and recursively apply
@@ -1142,12 +1144,16 @@ class _SharedBaseLayer(nn.Module):
         continue  # don't create recursion loop!
 
       def force(v):
-        if isinstance(v, BaseLayer):
+        if isinstance(v, _SharedBaseLayer):
           # pass dummy args through - again only needed for scan.
           v.post_init_hparams(*args)
 
       jax.tree_map(force, val)
     return None
+
+  def _hparam_fields(self) -> List[str]:
+    """Returns a list of hyperparameter field names for `self`."""
+    raise ValueError(f'Abstract method {type(self)}._hparam_fields')
 
   def __post_init__(self):
     object.__setattr__(self, '_theta', set())
@@ -1624,11 +1630,11 @@ class _SharedBaseLayer(nn.Module):
   def _add_child_to_layer_registry(self, name: str):
     """Registers child creation with LayerRegistry."""
     conflict = False
-    if name in {field.name for field in dataclasses.fields(self.hparams)}:
+    if name in self._hparam_fields():
       # As part of the Fiddle migration, child names that conflict with HParams
       # attributes will be fixed.
       logging.warning('FiddleMigration: %s Child name %s conflict hparam.',
-                   self.__class__.__name__, name)
+                      self.__class__.__name__, name)
       conflict = True
     layer_utils.LayerRegistry().add_layer(name, self, conflict=conflict)
 
@@ -1780,6 +1786,8 @@ class BaseLayer(
     cls.HParams.__module__ = cls.__module__
     cls.HParams.__qualname__ = f'{cls.__name__}.HParams'
 
+  def _hparam_fields(self) -> List[str]:
+    return [field.name for field in dataclasses.fields(self.hparams)]
 
   def __post_init__(self):
     assert self._hparams.name, (

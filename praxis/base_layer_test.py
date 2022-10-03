@@ -17,7 +17,7 @@
 
 import dataclasses
 import functools
-from typing import Optional, Sequence, Any
+from typing import Optional, Any, Sequence, List
 from absl.testing import absltest
 from absl.testing import parameterized
 from flax import linen as nn
@@ -26,6 +26,29 @@ import jax.numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import test_utils
+
+
+# TODO(edloper): Replace this with FiddleBaseLayer once it's submitted.
+class FiddleBaseLayerStub(base_layer._SharedBaseLayer):
+  dtype: jnp.dtype = jnp.float32
+  fprop_dtype: Optional[Any] = None
+  params_init: base_layer.WeightInit = dataclasses.field(
+      default=base_layer.default_param_init())
+  skip_lp_regularization: Optional[bool] = None
+  ici_mesh_shape: Optional[Sequence[int]] = None
+  dcn_mesh_shape: Optional[Sequence[int]] = None
+  mesh_axis_names: Optional[Sequence[str]] = None
+  shared_weight_layer_id: Optional[str] = None
+
+  @property
+  def hparams(self):
+    kwargs = {field.name: getattr(self, field.name)
+              for field in dataclasses.fields(self)}
+    return pax_fiddle.Config(type(self), **kwargs)
+
+  def _hparam_fields(self) -> List[str]:
+    """Returns a list of configuration field names for `self`."""
+    return [field.name for field in dataclasses.fields(self)]
 
 
 class Identity(base_layer.BaseLayer):
@@ -186,17 +209,6 @@ class BaseLayerTest(test_utils.TestCase):
 
   def test_copy_base_hparams(self):
 
-    # TODO(edloper): Replace this with FiddleBaseLayer once it's submitted.
-    class FiddleBaseLayerStub(base_layer._SharedBaseLayer):
-      dtype: jnp.dtype = jnp.float32
-      fprop_dtype: Optional[Any] = None
-      params_init: base_layer.WeightInit = dataclasses.field(
-          default_factory=base_layer.default_param_init)
-      skip_lp_regularization: Optional[bool] = None
-      ici_mesh_shape: Optional[Sequence[int]] = None
-      dcn_mesh_shape: Optional[Sequence[int]] = None
-      mesh_axis_names: Optional[Sequence[str]] = None
-
     class ChildLayer(FiddleBaseLayerStub):
       pass
 
@@ -233,6 +245,76 @@ class BaseLayerTest(test_utils.TestCase):
         self.assertEqual(target_parent.child.ici_mesh_shape, [2, 3, 4])
         self.assertEqual(target_parent.child_tpl.dtype, jnp.int32)
         self.assertIsNone(target_parent.child_tpl.ici_mesh_shape)
+
+  def test_post_init_hparams(self):
+
+    class Child(base_layer.BaseLayer):
+
+      class HParams(base_layer.BaseLayer.HParams):
+        x: int = 0
+
+    class Parent(base_layer.BaseLayer):
+
+      class HParams(base_layer.BaseLayer.HParams):
+
+        child_tpl: Child.HParams = base_layer.sub_config_field(Child.HParams)
+
+      def setup(self):
+        child_tpl = self.hparams.child_tpl.clone()
+        child_tpl.x += 2
+        self.create_child('child', child_tpl)
+
+      def __call__(self):
+        return 0
+
+    p = Parent.HParams(name='test')
+    p.child_tpl.x = 5
+    layer = p.Instantiate()
+
+    model = layer.bind(
+        layer.init(jax.random.PRNGKey(0)), mutable=[base_layer.HYPER_PARAMS])
+    model.post_init_hparams()
+    hyper_params = jax.tree_map(
+        lambda x: x.meta,
+        model.variables[base_layer.HYPER_PARAMS],
+        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
+
+    self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
+    self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
+    self.assertEqual(hyper_params['child']['_hparams'].x, 7)
+
+  def test_post_init_hparams_with_fiddle_config(self):
+
+    class Child(FiddleBaseLayerStub):
+      x: int = 0
+
+    class Parent(FiddleBaseLayerStub):
+
+      child_tpl: pax_fiddle.Config = pax_fiddle.template_field(Child)
+
+      def setup(self):
+        child_tpl = self.child_tpl.clone()
+        child_tpl.x += 2
+        self.create_child('child', child_tpl)
+
+      def __call__(self):
+        return 0
+
+    p = pax_fiddle.Config(Parent, name='test')
+    p.child_tpl.x = 5
+    layer = p.Instantiate()
+
+    model = layer.bind(
+        layer.init(jax.random.PRNGKey(0)), mutable=[base_layer.HYPER_PARAMS])
+    model.post_init_hparams()
+    hyper_params = jax.tree_map(
+        lambda x: x.meta,
+        model.variables[base_layer.HYPER_PARAMS],
+        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
+
+    self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
+    self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
+    self.assertEqual(hyper_params['child']['_hparams'].x, 7)
 
 
 if __name__ == '__main__':
