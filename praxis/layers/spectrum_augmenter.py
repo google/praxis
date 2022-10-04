@@ -254,13 +254,13 @@ class SpectrumAugmenter(base_layer.BaseLayer):
     """Applies data augmentation by randomly masking values in the spectrum.
 
     Args:
-      inputs: A tensor of shape [batch, length, channels].
-      paddings: A 0/1 tensor of shape [batch, length].
+      inputs:   [batch, length, channels].
+      paddings: [batch, length], a 0/1 Tensor.
 
     Returns:
       A pair <new_inputs, mask>:
-      new_inputs: A tensor of shape [batch, length, channels].
-      paddings: A 0/1 tensor of shape [batch, length].
+      new_inputs: same shape as inputs.
+      paddings:   same shape as input paddings.
     """
     if not self.do_eval:
       lengths = jnp.einsum('bh->b', 1 - paddings).astype(jnp.int32)
