@@ -956,14 +956,15 @@ _BaseLayerRecursionDictKeysToIgnore = [
 ]
 
 
-def instantiate_layer(layer_p: BaseLayer.HParams, scope: Any) -> BaseLayer:
+def instantiate_layer(layer_p: Union[BaseLayer.HParams, pax_fiddle.Config],
+                      scope: Any) -> BaseLayer:
   """Instantiates a layer parameterized with layer_p.
 
   If a layer with the same shared_name exists under the scope 'scope', the
   cached layer will be returned.
 
   Args:
-    layer_p: HParams of the layer to be instantiated.
+    layer_p: `HParams` or `fdl.Config` for the layer to be instantiated.
     scope: The scope under which the layer to be created.
 
   Returns:
@@ -1043,7 +1044,8 @@ class _SharedBaseLayer(nn.Module):
       source: The configuration object to copy parameters from.
       target: The configuration object to copy parameters to.  Mutated in-place.
     """
-    assert isinstance(source, (BaseLayer.HParams, pax_fiddle.Config)), source
+    assert isinstance(source, (BaseLayer.HParams, pax_fiddle.Config,
+                               _FiddleHParamsInstanceStub)), source
     assert isinstance(target, (BaseLayer.HParams, pax_fiddle.Config)), target
     if isinstance(source, BaseLayer.HParams):
       assert issubclass(source.cls, BaseLayer)
@@ -1825,6 +1827,163 @@ class BaseLayer(
       return self.hparams.fprop_dtype
     else:
       return self.hparams.dtype
+
+
+@dataclasses.dataclass
+class _FiddleHParamsClassStub(base_hyperparams.OverrideSubConfigFieldProtocol):
+  """Backwards-compatibility stub for `HParams` attribute in `FiddleBaseLayer`.
+
+  Can be used with base_hyperparams.sub_config_field.  E.g.:
+
+    >>> class MyLayer(base_layer.BaseLayer):
+    ...   class HParams(BaseHParams):
+    ...     bias_tpl: BaseHParams = sub_config_field(Bias.HParams)
+
+  Can be called to generate a `fdl.Config` for `fiddle_base_layer_cls`.  E.g.:
+
+    >>> bias_tpl = Bias.HParams(
+    ...     name='bias', dims=p.output_dims, bias_init=p.bias_init)
+
+  TODO(b/249483164): Remove this stub once the HParams->Fiddle migration is
+  complete.
+  """
+  fiddle_base_layer_cls: Type[FiddleBaseLayer]
+
+  def __to_sub_config_field__(self):
+    return pax_fiddle.template_field(self.fiddle_base_layer_cls)
+
+  def __call__(self, *args, **kwargs):
+    return pax_fiddle.Config(self.fiddle_base_layer_cls, *args, **kwargs)
+
+
+class _FiddleHParamsClassStubDescriptor:
+  """Descriptor used to implement FiddleBaseLayer.HParams stub."""
+
+  def __get__(self, obj, objtype):
+    return _FiddleHParamsClassStub(objtype)
+
+
+class _FiddleHParamsInstanceStub:
+  """Backwards-compatibility stub for `hparams` attribute in `FiddleBaseLayer`.
+
+  Can be used to read attributes (e.g. `my_layer.hparams.dtype`).
+
+  Can be cloned to generate a `fdl.Config` object (`my_layer.hparams.clone()`).
+
+  TODO(b/249483164): Remove this stub once the HParams->Fiddle migration is
+  complete.
+  """
+
+  def __init__(self, base_layer: FiddleBaseLayer):
+    self._base_layer = base_layer
+
+  def __getattr__(self, name):
+    if name not in self._base_layer._hparam_fields():
+      raise AttributeError(
+          f'{type(self._base_layer)}.HParams has no attribute {name!r}')
+    value = getattr(self._base_layer, name)
+    if isinstance(value, _SharedBaseLayer):
+      value = value.hparams
+    return value
+
+  def clone(self):
+    """Returns a fdl.Config for the wrapped FiddleBaseLayer.
+
+    Does not include child layers.
+    """
+    kwargs = {}
+    for field in dataclasses.fields(self._base_layer):
+      if not field.init:
+        continue
+      value = getattr(self._base_layer, field.name)
+      if isinstance(value, _SharedBaseLayer):
+        continue  # For now all children are built by setup().
+      kwargs[field.name] = value
+    return pax_fiddle.Config(type(self._base_layer), **kwargs)
+
+  @property
+  def cls(self):
+    return type(self._base_layer)
+
+
+class FiddleBaseLayer(_SharedBaseLayer):
+  """Base class for layers that are configured using Fiddle.
+
+  Subclasses are expected to:
+
+  * Declare any configuration parameters using dataclass field syntax.
+  * Define a setup() method, which creates sub-layers and layer variables.
+  * Define a __call__() method, which carries out the ML computation.
+
+  TODO(pax-team): Add more doc-string and example.
+  """
+
+  @dataclasses.dataclass(frozen=True)
+  class WeightSharding(pax_fiddle.CloneAndSetMixin):
+    """Represents how layer's learned parameters are partitioned across a mesh.
+
+    This usually refers to the primary model weight. Sub-layers can define
+    additional params for more weights.
+
+    Attributes:
+      wt: Sharding annotations for the primary model weight.
+    """
+    wt: SplitDimsMapping = pax_fiddle.fdl_field(default=None)
+
+  @dataclasses.dataclass(frozen=True)
+  class ActivationSharding(pax_fiddle.CloneAndSetMixin):
+    """Represents how intermediate values should be partitioned across a mesh.
+
+    This usually refers to the primary layer output. Sub-layers can define
+    additional params for more activations.
+
+    Attributes:
+      out: Sharding annotations for the primary layer output.
+    """
+    out: SplitDimsMapping = pax_fiddle.fdl_field(default=None)
+
+  # The following configuration fields correspond 1:1 with BaseLayer.HParams.
+  dtype: jnp.dtype = pax_fiddle.fdl_field(default=jnp.float32)
+  fprop_dtype: jnp.dtype = pax_fiddle.fdl_field(default=jnp.float32)
+  params_init: WeightInit = pax_fiddle.fdl_field(
+      default_factory=default_param_init)
+  skip_lp_regularization: Optional[bool] = None
+  ici_mesh_shape: Optional[Sequence[int]] = None
+  dcn_mesh_shape: Optional[Sequence[int]] = None
+  mesh_axis_names: Optional[Sequence[str]] = None
+  shared_weight_layer_id: Optional[str] = None
+  weight_split_dims_mapping: Optional[WeightSharding] = (
+      pax_fiddle.sub_field(WeightSharding))
+  activation_split_dims_mapping: Optional[ActivationSharding] = (
+      pax_fiddle.sub_field(ActivationSharding))
+
+  @property
+  def mesh_shape(self):
+    if self.ici_mesh_shape is not None:
+      assert len(self.ici_mesh_shape) == len(self.mesh_axis_names)
+    if self.dcn_mesh_shape is None:
+      return self.ici_mesh_shape
+    else:
+      assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)
+      return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
+
+  @property
+  def fprop_dtype_or_dtype(self):
+    return self.dtype if self.fprop_dtype is None else self.fprop_dtype
+
+  # Compatiblity stubs:
+  # * `self.hparams` returns a Fiddle Config that can be used to build self.
+  # * `self.HParams` returns a stub class that can be called to generate a
+  #   `fdl.Config`; or can be used with `base_hyperparams.sub_config_field`.
+  hparams = property(_FiddleHParamsInstanceStub)
+  HParams = _FiddleHParamsClassStubDescriptor()  # pylint: disable=invalid-name
+
+  @classmethod
+  def config(cls, **kwargs) -> pax_fiddle.Config:
+    return pax_fiddle.Config(cls, **kwargs)
+
+  def _hparam_fields(self) -> List[str]:
+    return [field.name for field in dataclasses.fields(self) if field.init]
 
 
 def assert_has_shape(t: JTensor, shape: Sequence[int]) -> None:

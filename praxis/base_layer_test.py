@@ -209,16 +209,16 @@ class BaseLayerTest(test_utils.TestCase):
 
   def test_copy_base_hparams(self):
 
-    class ChildLayer(FiddleBaseLayerStub):
+    class ChildLayer(base_layer.FiddleBaseLayer):
       pass
 
-    class ParentLayer(FiddleBaseLayerStub):
+    class ParentLayer(base_layer.FiddleBaseLayer):
       child: Optional[ChildLayer] = None
       child_tpl: pax_fiddle.Config = pax_fiddle.template_field(ChildLayer)
 
     config_factories = dict(
         hparams=base_layer.BaseLayer.HParams,
-        fiddle=functools.partial(pax_fiddle.Config, FiddleBaseLayerStub))
+        fiddle=functools.partial(pax_fiddle.Config, base_layer.FiddleBaseLayer))
     for source_name, source_factory in config_factories.items():
       source = source_factory(
           dtype=jnp.float64,
@@ -248,73 +248,122 @@ class BaseLayerTest(test_utils.TestCase):
 
   def test_post_init_hparams(self):
 
-    class Child(base_layer.BaseLayer):
+    class HParamsChild(base_layer.BaseLayer):
 
       class HParams(base_layer.BaseLayer.HParams):
         x: int = 0
 
-    class Parent(base_layer.BaseLayer):
-
-      class HParams(base_layer.BaseLayer.HParams):
-
-        child_tpl: Child.HParams = base_layer.sub_config_field(Child.HParams)
-
-      def setup(self):
-        child_tpl = self.hparams.child_tpl.clone()
-        child_tpl.x += 2
-        self.create_child('child', child_tpl)
-
-      def __call__(self):
-        return 0
-
-    p = Parent.HParams(name='test')
-    p.child_tpl.x = 5
-    layer = p.Instantiate()
-
-    model = layer.bind(
-        layer.init(jax.random.PRNGKey(0)), mutable=[base_layer.HYPER_PARAMS])
-    model.post_init_hparams()
-    hyper_params = jax.tree_map(
-        lambda x: x.meta,
-        model.variables[base_layer.HYPER_PARAMS],
-        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
-
-    self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
-    self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
-    self.assertEqual(hyper_params['child']['_hparams'].x, 7)
-
-  def test_post_init_hparams_with_fiddle_config(self):
-
-    class Child(FiddleBaseLayerStub):
+    class FiddleChild(base_layer.FiddleBaseLayer):
       x: int = 0
 
-    class Parent(FiddleBaseLayerStub):
+    for child_cls in (HParamsChild, FiddleChild):
 
-      child_tpl: pax_fiddle.Config = pax_fiddle.template_field(Child)
+      class HParamsParent(base_layer.BaseLayer):
 
-      def setup(self):
-        child_tpl = self.child_tpl.clone()
-        child_tpl.x += 2
-        self.create_child('child', child_tpl)
+        class HParams(base_layer.BaseLayer.HParams):
 
-      def __call__(self):
-        return 0
+          child_tpl: child_cls.HParams = base_layer.sub_config_field(
+              child_cls.HParams)
 
-    p = pax_fiddle.Config(Parent, name='test')
-    p.child_tpl.x = 5
-    layer = p.Instantiate()
+        def setup(self):
+          child_tpl = self.hparams.child_tpl.clone()
+          child_tpl.x += 2
+          self.create_child('child', child_tpl)
 
-    model = layer.bind(
-        layer.init(jax.random.PRNGKey(0)), mutable=[base_layer.HYPER_PARAMS])
-    model.post_init_hparams()
-    hyper_params = jax.tree_map(
-        lambda x: x.meta,
-        model.variables[base_layer.HYPER_PARAMS],
-        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
+        def __call__(self):
+          return 0
 
-    self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
-    self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
-    self.assertEqual(hyper_params['child']['_hparams'].x, 7)
+      class FiddleParent(base_layer.FiddleBaseLayer):
+
+        child_tpl: pax_fiddle.Config = base_layer.sub_config_field(
+            child_cls.HParams)
+
+        def setup(self):
+          child_tpl = self.child_tpl.clone()
+          child_tpl.x += 2
+          self.create_child('child', child_tpl)
+
+        def __call__(self):
+          return 0
+
+      for parent_cls in (HParamsParent, FiddleParent):
+
+        with self.subTest(f'{parent_cls.__name__}_{child_cls.__name__}'):
+          p = parent_cls.HParams(name='test')
+          p.child_tpl = child_cls.HParams(x=5)
+          layer = p.Instantiate()
+
+          model = layer.bind(
+              layer.init(jax.random.PRNGKey(0)),
+              mutable=[base_layer.HYPER_PARAMS])
+          model.post_init_hparams()
+          hyper_params = jax.tree_map(
+              lambda x: x.meta,
+              model.variables[base_layer.HYPER_PARAMS],
+              is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
+
+          self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
+          self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
+          self.assertEqual(hyper_params['child']['_hparams'].x, 7)
+
+
+class FiddleBaseLayerTest(test_utils.TestCase):
+
+  @parameterized.parameters([
+      dict(expected=None),
+      dict(ici_mesh_shape=[1, 2], mesh_axis_names=['a', 'b'], expected=[1, 2]),
+      dict(
+          ici_mesh_shape=[1, 2],
+          dcn_mesh_shape=[3, 4],
+          mesh_axis_names=['a', 'b'],
+          expected=[1 * 3, 2 * 4]),
+  ])
+  def test_mesh_shape_property(self, expected, **kwargs):
+    layer = base_layer.FiddleBaseLayer(**kwargs)
+    self.assertEqual(layer.mesh_shape, expected)
+
+  def test_hparams_instance_stub(self):
+
+    class Layer(base_layer.FiddleBaseLayer):
+      x: int = 0
+
+    layer = Layer(x=3, fprop_dtype=jnp.float16)
+
+    hparams_stub = layer.hparams
+    self.assertIsInstance(hparams_stub, base_layer._FiddleHParamsInstanceStub)
+    self.assertEqual(hparams_stub.cls, Layer)
+    self.assertEqual(hparams_stub.x, 3)
+    self.assertEqual(hparams_stub.fprop_dtype, jnp.float16)
+    self.assertEqual(hparams_stub.dtype, jnp.float32)
+
+    cloned = hparams_stub.clone()
+    self.assertIsInstance(cloned, pax_fiddle.Config)
+    self.assertEqual(cloned.cls, Layer)
+    self.assertEqual(cloned.__fn_or_cls__, Layer)
+    self.assertEqual(cloned.x, 3)
+    self.assertEqual(cloned.fprop_dtype, jnp.float16)
+    self.assertEqual(cloned.dtype, jnp.float32)
+
+  def test_hparams_class_stub(self):
+
+    class Layer(base_layer.FiddleBaseLayer):
+      x: int = 0
+
+    layer = Layer(x=3, fprop_dtype=jnp.float16)
+
+    hparams_cls_stub = layer.HParams
+    self.assertIsInstance(hparams_cls_stub, base_layer._FiddleHParamsClassStub)
+
+    cfg = hparams_cls_stub(x=3, fprop_dtype=jnp.float16)
+    self.assertIsInstance(cfg, pax_fiddle.Config)
+    self.assertEqual(cfg.cls, Layer)
+    self.assertEqual(cfg.__fn_or_cls__, Layer)
+    self.assertEqual(cfg.x, 3)
+    self.assertEqual(cfg.fprop_dtype, jnp.float16)
+    self.assertEqual(cfg.dtype, jnp.float32)
+
+    field_descr = base_layer.sub_config_field(hparams_cls_stub)
+    self.assertIsInstance(field_descr, dataclasses.Field)
 
 
 if __name__ == '__main__':
