@@ -365,6 +365,37 @@ class FiddleBaseLayerTest(test_utils.TestCase):
     field_descr = base_layer.sub_config_field(hparams_cls_stub)
     self.assertIsInstance(field_descr, dataclasses.Field)
 
+  def test_override_weight_sharding_hparams(self):
+
+    class Layer(base_layer.FiddleBaseLayer):
+
+      class WeightShardingHParams(
+          base_layer.FiddleBaseLayer.WeightShardingHParams):
+        x: int = 5
+
+      class ActivationShardingHParams(
+          base_layer.FiddleBaseLayer.ActivationShardingHParams):
+        y: str = 'y'
+
+    with self.subTest('construct_layer_directly'):
+      layer = Layer()
+      self.assertIsInstance(layer.weight_split_dims_mapping,
+                            Layer.WeightShardingHParams)
+      self.assertIsNone(layer.weight_split_dims_mapping.wt)
+      self.assertEqual(layer.weight_split_dims_mapping.x, 5)
+      self.assertIsInstance(layer.activation_split_dims_mapping,
+                            Layer.ActivationShardingHParams)
+      self.assertIsNone(layer.activation_split_dims_mapping.out)
+      self.assertEqual(layer.activation_split_dims_mapping.y, 'y')
+
+    with self.subTest('build_layer_from_fiddle_config'):
+      cfg = pax_fiddle.Config(Layer)
+      cfg.weight_split_dims_mapping.x = 12
+      cfg.activation_split_dims_mapping.y = 'yellow'
+      layer2 = pax_fiddle.build(cfg)
+      self.assertEqual(layer2.weight_split_dims_mapping.x, 12)
+      self.assertEqual(layer2.activation_split_dims_mapping.y, 'yellow')
+
 
 if __name__ == '__main__':
   absltest.main()

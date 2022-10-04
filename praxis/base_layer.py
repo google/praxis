@@ -1918,8 +1918,10 @@ class FiddleBaseLayer(_SharedBaseLayer):
   TODO(pax-team): Add more doc-string and example.
   """
 
+  # TODO(b/249483164): Remove the `HParams` suffix from this type name once the
+  # initial HParams->Fiddle migration is complete.
   @dataclasses.dataclass(frozen=True)
-  class WeightSharding(pax_fiddle.CloneAndSetMixin):
+  class WeightShardingHParams(pax_fiddle.CloneAndSetMixin):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     This usually refers to the primary model weight. Sub-layers can define
@@ -1930,8 +1932,10 @@ class FiddleBaseLayer(_SharedBaseLayer):
     """
     wt: SplitDimsMapping = pax_fiddle.fdl_field(default=None)
 
+  # TODO(b/249483164): Remove the `HParams` suffix from this type name once the
+  # initial HParams->Fiddle migration is complete.
   @dataclasses.dataclass(frozen=True)
-  class ActivationSharding(pax_fiddle.CloneAndSetMixin):
+  class ActivationShardingHParams(pax_fiddle.CloneAndSetMixin):
     """Represents how intermediate values should be partitioned across a mesh.
 
     This usually refers to the primary layer output. Sub-layers can define
@@ -1952,10 +1956,10 @@ class FiddleBaseLayer(_SharedBaseLayer):
   dcn_mesh_shape: Optional[Sequence[int]] = None
   mesh_axis_names: Optional[Sequence[str]] = None
   shared_weight_layer_id: Optional[str] = None
-  weight_split_dims_mapping: Optional[WeightSharding] = (
-      pax_fiddle.sub_field(WeightSharding))
-  activation_split_dims_mapping: Optional[ActivationSharding] = (
-      pax_fiddle.sub_field(ActivationSharding))
+  weight_split_dims_mapping: Optional[WeightShardingHParams] = (
+      pax_fiddle.sub_field(WeightShardingHParams))
+  activation_split_dims_mapping: Optional[ActivationShardingHParams] = (
+      pax_fiddle.sub_field(ActivationShardingHParams))
 
   @property
   def mesh_shape(self):
@@ -1984,6 +1988,27 @@ class FiddleBaseLayer(_SharedBaseLayer):
 
   def _hparam_fields(self) -> List[str]:
     return [field.name for field in dataclasses.fields(self) if field.init]
+
+  @classmethod
+  def __init_subclass__(cls, **kwargs: Any):
+    if '__annotations__' not in cls.__dict__:
+      cls.__annotations__ = {}
+    # If WeightShardingHParams or ActivationShardingHParams were overridden,
+    # then automatically wrap them in dataclass, and update the corresponding
+    # fields to use the new type for their default_factory.
+    if 'WeightShardingHParams' in cls.__dict__:
+      dataclasses.dataclass(frozen=True)(cls.WeightShardingHParams)
+      cls.__annotations__['weight_split_dims_mapping'] = (
+          cls.WeightShardingHParams)
+      cls.weight_split_dims_mapping = pax_fiddle.sub_field(
+          cls.WeightShardingHParams)
+    if 'ActivationShardingHParams' in cls.__dict__:
+      dataclasses.dataclass(frozen=True)(cls.ActivationShardingHParams)
+      cls.__annotations__['activation_split_dims_mapping'] = (
+          cls.ActivationShardingHParams)
+      cls.activation_split_dims_mapping = pax_fiddle.sub_field(
+          cls.ActivationShardingHParams)
+    super().__init_subclass__(**kwargs)
 
 
 def assert_has_shape(t: JTensor, shape: Sequence[int]) -> None:
