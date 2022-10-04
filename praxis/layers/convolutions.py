@@ -357,7 +357,8 @@ class BaseDepthwiseConv1D(base_layer.BaseLayer):
       paddings: Input paddings JTensor of shape [B, T].
 
     Returns:
-      The depthwise conv output with shape [B, T, H].
+      The depthwise conv output with shape [B, T, H * channel_multipliers]
+        where channel_multipliers = filter_shape[-1].
     """
     raise NotImplementedError()
 
