@@ -259,7 +259,7 @@ class ResNet(base_layer.BaseLayer):
       stages.
     kernels: A list of integers specifying the number of kernel sizes at
       different stages.
-    entryflow_conv_kernel: A tuple of two integers as the kernel size of
+    entryflow_conv_kernel: A tuple of three integers as the kernel size of
       entryflow convolution.
     entryflow_conv_stride: A tuple of two integers as the stride of entryflow
       convolution.
@@ -277,7 +277,7 @@ class ResNet(base_layer.BaseLayer):
     channels: Sequence[int] = (256, 512, 1024, 2048)
     blocks: Sequence[int] = (3, 4, 6, 3)
     kernels: Sequence[int] = (3, 3, 3, 3)
-    entryflow_conv_kernel: Sequence[int] = (7, 7)
+    entryflow_conv_kernel: Sequence[int] = (7, 7, 3)
     entryflow_conv_stride: Sequence[int] = (2, 2)
     output_spatial_pooling_params: Optional[
         BaseHParams] = poolings.GlobalPooling.HParams(pooling_dims=(1, 2))
@@ -340,8 +340,8 @@ class ResNet(base_layer.BaseLayer):
     input_dim = p.channels[0] // entryflow_contraction
     entryflow_conv_params = p.conv_params.clone()
     entryflow_conv_params.filter_shape = (p.entryflow_conv_kernel[0],
-                                          p.entryflow_conv_kernel[1], 3,
-                                          input_dim)
+                                          p.entryflow_conv_kernel[1],
+                                          p.entryflow_conv_kernel[2], input_dim)
     entryflow_conv_params.filter_stride = p.entryflow_conv_stride
     self.create_child('entryflow_conv', entryflow_conv_params)
 
