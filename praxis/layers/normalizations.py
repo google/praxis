@@ -492,14 +492,14 @@ class GroupNorm(BaseNormalization):
     self.create_variable('gamma', pc)
 
   @property
-  def group_size(self) -> int:
+  def _group_size(self) -> int:
     p = self.hparams
     return max(p.dim // p.num_groups, p.min_group_size)
 
   @property
-  def num_groups(self) -> int:
+  def _num_groups(self) -> int:
     p = self.hparams
-    return p.dim // self.group_size
+    return p.dim // self._group_size
 
   def _normalize(self, grouped_inputs: JTensor, group_mean: JTensor,
                  group_variance: JTensor) -> JTensor:
@@ -545,7 +545,7 @@ class GroupNorm(BaseNormalization):
 
     x = jnp.reshape(
         inputs,
-        list(inputs.shape[:-1]) + [self.num_groups, self.group_size])
+        list(inputs.shape[:-1]) + [self._num_groups, self._group_size])
     expanded_rank = p.input_rank + 1
     all_dims = list(range(expanded_rank))
     if paddings is None or not p.cumulative:
