@@ -181,6 +181,7 @@ pytype_strict_library(
         ":optimizers",
         ":py_utils",
         ":pytypes",
+        ":sgf",
         # Implicit jax dependency.
         # Implicit optax dependency.
         # Implicit tensorflow_no_contrib dependency.
@@ -284,6 +285,20 @@ pytype_strict_library(
         ":base_hyperparams",
         ":py_utils",
         ":pytypes",
+        # Implicit jax dependency.
+        # Implicit optax dependency.
+    ],
+)
+
+pytype_strict_library(
+    name = "sgf",
+    srcs = ["sgf.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":base_hyperparams",
+        ":py_utils",
+        ":pytypes",
+        # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit optax dependency.
     ],

@@ -16,6 +16,7 @@
 """Module with the Learner class."""
 
 from __future__ import annotations
+
 import dataclasses
 import re
 from typing import Optional, Sequence, Tuple, Union
@@ -29,7 +30,7 @@ from praxis import base_layer
 from praxis import optimizer_prefix_vectorization as opt_vec
 from praxis import optimizers
 from praxis import py_utils
-from praxis import pytypes
+from praxis import sgf
 import tensorflow.compat.v2 as tf
 
 JTensor = jnp.ndarray
@@ -77,6 +78,7 @@ class Learner(base_hyperparams.BaseParameterizable):
         loss_aggregator this param will be ignored and is expected to be None,
         otherwise it must be set. This loss_name must be in the metrics dict
         (the first return of compute_loss).
+      stochastic_gradient: Params for the stochastic gradient function.
       optimizer: Params for the optimizer.
       skip_zero_gradients: If set, skips aggregating zero gradients while
         computing gradients.This helps in case where some weights may not be
@@ -108,6 +110,7 @@ class Learner(base_hyperparams.BaseParameterizable):
     # create a LossAggregator on the task. Consider moving loss_name to the
     # task or having everyone set it through the loss_aggregator.
     loss_name: Optional[str] = None
+    stochastic_gradient: Optional[sgf.BaseStochasticGradient.HParams] = None
     optimizer: Optional[optimizers.BaseOptimizer.HParams] = None
     skip_zero_gradients: Optional[bool] = None
     grad_norm_summary: bool = True
@@ -131,12 +134,19 @@ class Learner(base_hyperparams.BaseParameterizable):
     p = self._hparams
     asserts.not_none(p.optimizer)
     self._optimizer = instantiate(p.optimizer)
+    self._stochastic_gradient = (None if p.stochastic_gradient is None
+                                 else instantiate(p.stochastic_gradient))
     self._get_grad_tx = self.optimizer.get_grad_transformation
 
   @property
   def optimizer(self) -> optimizers.BaseOptimizer:
     """Return the Optimizer object of this learner."""
     return self._optimizer
+
+  @property
+  def stochastic_gradient(self) -> Optional[sgf.BaseStochasticGradient]:
+    """Return the stochastic gradient function object of this learner."""
+    return self._stochastic_gradient
 
   def plot_learning_rate(self, step: int) -> None:
     learning_rate = self.optimizer.get_learning_rate(step)
