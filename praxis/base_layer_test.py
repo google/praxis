@@ -349,21 +349,35 @@ class FiddleBaseLayerTest(test_utils.TestCase):
     class Layer(base_layer.FiddleBaseLayer):
       x: int = 0
 
+    class AnotherLayer(base_layer.FiddleBaseLayer):
+      y: int = 0
+
     layer = Layer(x=3, fprop_dtype=jnp.float16)
 
     hparams_cls_stub = layer.HParams
     self.assertIsInstance(hparams_cls_stub, base_layer._FiddleHParamsClassStub)
 
-    cfg = hparams_cls_stub(x=3, fprop_dtype=jnp.float16)
-    self.assertIsInstance(cfg, pax_fiddle.Config)
-    self.assertEqual(cfg.cls, Layer)
-    self.assertEqual(cfg.__fn_or_cls__, Layer)
-    self.assertEqual(cfg.x, 3)
-    self.assertEqual(cfg.fprop_dtype, jnp.float16)
-    self.assertEqual(cfg.dtype, jnp.float32)
+    with self.subTest('call'):
+      cfg = hparams_cls_stub(x=3, fprop_dtype=jnp.float16)
+      self.assertIsInstance(cfg, pax_fiddle.Config)
+      self.assertEqual(cfg.cls, Layer)
+      self.assertEqual(cfg.__fn_or_cls__, Layer)
+      self.assertEqual(cfg.x, 3)
+      self.assertEqual(cfg.fprop_dtype, jnp.float16)
+      self.assertEqual(cfg.dtype, jnp.float32)
 
-    field_descr = base_layer.sub_config_field(hparams_cls_stub)
-    self.assertIsInstance(field_descr, dataclasses.Field)
+    with self.subTest('sub_config_field'):
+      field_descr = base_layer.sub_config_field(hparams_cls_stub)
+      self.assertIsInstance(field_descr, dataclasses.Field)
+
+    with self.subTest('instancecheck'):
+      cfg = hparams_cls_stub(x=3, fprop_dtype=jnp.float16)
+      self.assertIsInstance(cfg, Layer.HParams)
+      self.assertIsInstance(pax_fiddle.Config(Layer), Layer.HParams)
+      self.assertNotIsInstance(pax_fiddle.Config(AnotherLayer), Layer.HParams)
+      self.assertNotIsInstance(pax_fiddle, AnotherLayer.HParams)
+      self.assertNotIsInstance(123, Layer.HParams)
+
 
   def test_override_weight_sharding_hparams(self):
 

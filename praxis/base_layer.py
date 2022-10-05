@@ -1829,8 +1829,9 @@ class BaseLayer(
       return self.hparams.dtype
 
 
-@dataclasses.dataclass
-class _FiddleHParamsClassStub(base_hyperparams.OverrideSubConfigFieldProtocol):
+@dataclasses.dataclass(frozen=True)
+class _FiddleHParamsClassStub(type,
+                              base_hyperparams.OverrideSubConfigFieldProtocol):
   """Backwards-compatibility stub for `HParams` attribute in `FiddleBaseLayer`.
 
   Can be used with base_hyperparams.sub_config_field.  E.g.:
@@ -1844,16 +1845,39 @@ class _FiddleHParamsClassStub(base_hyperparams.OverrideSubConfigFieldProtocol):
     >>> bias_tpl = Bias.HParams(
     ...     name='bias', dims=p.output_dims, bias_init=p.bias_init)
 
+  Can be used as type argument to `isinstance` -- returns true if the instance
+  is a `pax_fiddle.Config` whose `__fn_or_cls__` is `fiddle_base_layer_cls`:
+
+    >>> isinstance(pax_fiddle.Config(MyLayer), MyLayer.HParams)
+    True
+
   TODO(b/249483164): Remove this stub once the HParams->Fiddle migration is
   complete.
   """
   fiddle_base_layer_cls: Type[FiddleBaseLayer]
 
-  def __to_sub_config_field__(self):
-    return pax_fiddle.template_field(self.fiddle_base_layer_cls)
+  def __new__(cls, fiddle_base_layer_cls):
+    name = 'HParams'
+    qualname = f'{fiddle_base_layer_cls.__qualname__}.{name}'
+    namespace = {'__qualname__': qualname,
+                 'fiddle_base_layer_cls': fiddle_base_layer_cls}
+    bases = ()
+    # pylint: disable=unused-variable
+    return super().__new__(cls, name, bases, namespace)  # pytype: disable=wrong-arg-count
 
-  def __call__(self, *args, **kwargs):
-    return pax_fiddle.Config(self.fiddle_base_layer_cls, *args, **kwargs)
+  def __init__(cls, fiddle_base_layer_cls):
+    pass
+
+  def __instancecheck__(cls, instance):
+    return (isinstance(instance, pax_fiddle.Config) and
+            isinstance(instance.__fn_or_cls__, type) and
+            issubclass(instance.__fn_or_cls__, cls.fiddle_base_layer_cls))
+
+  def __to_sub_config_field__(cls):
+    return pax_fiddle.template_field(cls.fiddle_base_layer_cls)
+
+  def __call__(cls, *args, **kwargs):
+    return pax_fiddle.Config(cls.fiddle_base_layer_cls, *args, **kwargs)
 
 
 class _FiddleHParamsClassStubDescriptor:
