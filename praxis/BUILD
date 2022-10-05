@@ -77,6 +77,7 @@ pytype_strict_library(
         ":pytypes",
         # Implicit absl.flags dependency.
         # Implicit absl.logging dependency.
+        # Implicit fiddle dependency.
         # Implicit fiddle.daglish dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.

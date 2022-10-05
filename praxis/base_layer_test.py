@@ -17,7 +17,7 @@
 
 import dataclasses
 import functools
-from typing import Optional, Any, Sequence, List
+from typing import Optional
 from absl.testing import absltest
 from absl.testing import parameterized
 from flax import linen as nn
@@ -26,29 +26,6 @@ import jax.numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import test_utils
-
-
-# TODO(edloper): Replace this with FiddleBaseLayer once it's submitted.
-class FiddleBaseLayerStub(base_layer._SharedBaseLayer):
-  dtype: jnp.dtype = jnp.float32
-  fprop_dtype: Optional[Any] = None
-  params_init: base_layer.WeightInit = dataclasses.field(
-      default=base_layer.default_param_init())
-  skip_lp_regularization: Optional[bool] = None
-  ici_mesh_shape: Optional[Sequence[int]] = None
-  dcn_mesh_shape: Optional[Sequence[int]] = None
-  mesh_axis_names: Optional[Sequence[str]] = None
-  shared_weight_layer_id: Optional[str] = None
-
-  @property
-  def hparams(self):
-    kwargs = {field.name: getattr(self, field.name)
-              for field in dataclasses.fields(self)}
-    return pax_fiddle.Config(type(self), **kwargs)
-
-  def _hparam_fields(self) -> List[str]:
-    """Returns a list of configuration field names for `self`."""
-    return [field.name for field in dataclasses.fields(self)]
 
 
 class Identity(base_layer.BaseLayer):
@@ -409,6 +386,27 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       layer2 = pax_fiddle.build(cfg)
       self.assertEqual(layer2.weight_split_dims_mapping.x, 12)
       self.assertEqual(layer2.activation_split_dims_mapping.y, 'yellow')
+
+  def test_hparam_is_instance_of_fdl_buildable(self):
+
+    class Child(base_layer.FiddleBaseLayer):
+      size: int = 5
+
+    with self.assertRaisesRegex(
+        ValueError, 'default value is a mutable instance of fdl.Buildable'):
+
+      # Allowing the default value of `child_tpl` to be a Config object here
+      # would be problematic, because that mutable default value would be
+      # shared by all instances of Parent.  E.g., if `a` and `b` were two
+      # instances of Parent that did not override `child_tpl`, then setting
+      # `a.child_tpl.size = 20` would also modify `b.child_tpl.size` to be 20
+      # (since `a.child_tpl is b.child_tpl`).  We therefore raise an exception,
+      # indicating that the user should use a `default_factory` rather than a
+      # default value.
+      class Parent(base_layer.FiddleBaseLayer):
+        child_tpl: pax_fiddle.Config = pax_fiddle.Config(Child, size=2)
+
+      del Parent  # unused.
 
 
 if __name__ == '__main__':

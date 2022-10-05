@@ -28,6 +28,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, T
 
 from absl import flags
 from absl import logging
+import fiddle as fdl
 from fiddle import daglish
 from flax import core as flax_core
 from flax import linen as nn
@@ -2033,6 +2034,12 @@ class FiddleBaseLayer(_SharedBaseLayer):
       cls.activation_split_dims_mapping = pax_fiddle.sub_field(
           cls.ActivationShardingHParams)
     super().__init_subclass__(**kwargs)
+    for field in dataclasses.fields(cls):
+      if isinstance(field.default, fdl.Buildable):
+        raise ValueError(
+            f"{cls.__qualname__}.{field.name}'s default value is a mutable "
+            'instance of fdl.Buildable.  Please update this field to use a '
+            'default_factory instead, to avoid unintentional object sharing.')
 
 
 def assert_has_shape(t: JTensor, shape: Sequence[int]) -> None:
