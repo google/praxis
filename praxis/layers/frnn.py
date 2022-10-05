@@ -198,11 +198,11 @@ class StackFrnn(base_layer.BaseLayer):
 
   @property
   def num_input_nodes(self) -> int:
-    return self.frnn[0].cell_tpl.num_input_nodes
+    return self.hparams.num_input_nodes
 
   @property
   def num_output_nodes(self) -> int:
-    return self.frnn[-1].cell.num_output_nodes
+    return self.hparams.num_output_nodes
 
   def init_states(self, batch_size: int) -> List[NestedMap]:
     return [
