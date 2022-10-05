@@ -22,3 +22,7 @@ def pytype_strict_library(name, **kwargs):
 # Placeholder to use until bazel supports py_strict_test.
 def py_strict_test(name, **kwargs):
     native.py_test(name = name, **kwargs)
+
+# Placeholder to use until bazel supports pytype_strict_contrib_test.
+def pytype_strict_contrib_test(name, **kwargs):
+    native.py_test(name = name, **kwargs)

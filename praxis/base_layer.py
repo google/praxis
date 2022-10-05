@@ -24,6 +24,7 @@ import enum
 import functools
 import itertools
 import math
+import typing
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 from absl import flags
@@ -2016,23 +2017,7 @@ class FiddleBaseLayer(_SharedBaseLayer):
 
   @classmethod
   def __init_subclass__(cls, **kwargs: Any):
-    if '__annotations__' not in cls.__dict__:
-      cls.__annotations__ = {}
-    # If WeightShardingHParams or ActivationShardingHParams were overridden,
-    # then automatically wrap them in dataclass, and update the corresponding
-    # fields to use the new type for their default_factory.
-    if 'WeightShardingHParams' in cls.__dict__:
-      dataclasses.dataclass(frozen=True)(cls.WeightShardingHParams)
-      cls.__annotations__['weight_split_dims_mapping'] = (
-          cls.WeightShardingHParams)
-      cls.weight_split_dims_mapping = pax_fiddle.sub_field(
-          cls.WeightShardingHParams)
-    if 'ActivationShardingHParams' in cls.__dict__:
-      dataclasses.dataclass(frozen=True)(cls.ActivationShardingHParams)
-      cls.__annotations__['activation_split_dims_mapping'] = (
-          cls.ActivationShardingHParams)
-      cls.activation_split_dims_mapping = pax_fiddle.sub_field(
-          cls.ActivationShardingHParams)
+    cls._override_split_dim_mapping_fields()
     super().__init_subclass__(**kwargs)
     for field in dataclasses.fields(cls):
       if isinstance(field.default, fdl.Buildable):
@@ -2040,6 +2025,42 @@ class FiddleBaseLayer(_SharedBaseLayer):
             f"{cls.__qualname__}.{field.name}'s default value is a mutable "
             'instance of fdl.Buildable.  Please update this field to use a '
             'default_factory instead, to avoid unintentional object sharing.')
+
+  @classmethod
+  def _override_split_dim_mapping_fields(cls):
+    """Overrides the `*_split_dims_mapping` fields, if necessary.
+
+    If WeightShardingHParams or ActivationShardingHParams were overridden by
+    `cls`, then automatically transform them to a dataclass, and update the
+    corresponding dataclass fields to use the new type for their
+    default_factory.
+    """
+    if '__annotations__' not in cls.__dict__:
+      cls.__annotations__ = {}
+    if 'WeightShardingHParams' in cls.__dict__:
+      if not issubclass(cls.WeightShardingHParams,
+                        FiddleBaseLayer.WeightShardingHParams):
+        raise ValueError(
+            f'Expected {cls}.WeightShardingHParams to be a subclass of '
+            'FiddleBaseLayer.WeightShardingHParams')
+      if not typing.TYPE_CHECKING:
+        dataclasses.dataclass(frozen=True)(cls.WeightShardingHParams)
+      cls.__annotations__['weight_split_dims_mapping'] = (
+          cls.WeightShardingHParams)
+      cls.weight_split_dims_mapping = pax_fiddle.sub_field(
+          cls.WeightShardingHParams)
+    if 'ActivationShardingHParams' in cls.__dict__:
+      if not issubclass(cls.ActivationShardingHParams,
+                        FiddleBaseLayer.ActivationShardingHParams):
+        raise ValueError(
+            f'Expected {cls}.ActivationShardingHParams to be a subclass of '
+            'FiddleBaseLayer.ActivationShardingHParams')
+      if not typing.TYPE_CHECKING:
+        dataclasses.dataclass(frozen=True)(cls.ActivationShardingHParams)
+      cls.__annotations__['activation_split_dims_mapping'] = (
+          cls.ActivationShardingHParams)
+      cls.activation_split_dims_mapping = pax_fiddle.sub_field(
+          cls.ActivationShardingHParams)
 
 
 def assert_has_shape(t: JTensor, shape: Sequence[int]) -> None:

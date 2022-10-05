@@ -17,7 +17,7 @@
 
 import dataclasses
 import functools
-from typing import Optional
+from typing import Any
 from absl.testing import absltest
 from absl.testing import parameterized
 from flax import linen as nn
@@ -190,7 +190,7 @@ class BaseLayerTest(test_utils.TestCase):
       pass
 
     class ParentLayer(base_layer.FiddleBaseLayer):
-      child: Optional[ChildLayer] = None
+      child: Any = None
       child_tpl: pax_fiddle.Config = pax_fiddle.template_field(ChildLayer)
 
     config_factories = dict(
@@ -354,7 +354,6 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       self.assertNotIsInstance(pax_fiddle.Config(AnotherLayer), Layer.HParams)
       self.assertNotIsInstance(pax_fiddle, AnotherLayer.HParams)
       self.assertNotIsInstance(123, Layer.HParams)
-
 
   def test_override_weight_sharding_hparams(self):
 
