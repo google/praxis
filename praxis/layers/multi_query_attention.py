@@ -152,9 +152,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       dropout_tpl: Parameterization for the dropout layer.
       atten_dropout_prob: Probability at which we apply dropout to the attention
         weights.
-      proj_tpl: Parameterization for the query projection layer.
-      headless_proj_tpl: Parameterization for the key/value projection layer.
-      use_bias: Whether to use bias for projection layers.
+      proj_tpl: Parameterization for the query projection_tpl layer.
+      headless_proj_tpl: Parameterization for the key/value projection_tpl
+        layer.
+      use_bias: Whether to use bias for projection_tpl layers.
       output_proj_use_nhd_shape: Whether to use NHD variable shape in output
         projection layer.
       internal_enable_query_scale: Internal. Enable scaling of query vector.

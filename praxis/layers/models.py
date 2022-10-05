@@ -733,12 +733,12 @@ class ClassificationModel(base_model.BaseModel):
 
     Attributes:
       network: The classifier network, which is ResNet-50 by default.
-      softmax: The softmax layer used for the classification.
+      softmax_tpl: The softmax_tpl layer used for the classification.
       input_field: The input field which contains the image or video features to
         pass to the classification network.
     """
     network: BaseHParams = sub_config_field(resnets.ResNet.HParams)
-    softmax: BaseHParams = sub_config_field(
+    softmax_tpl: BaseHParams = sub_config_field(
         embedding_softmax.FullSoftmax.HParams)
     input_field: str = 'image'
 
@@ -746,7 +746,7 @@ class ClassificationModel(base_model.BaseModel):
     super().setup()
     p = self.hparams
     self.create_child('network', p.network)
-    self.create_child('softmax', p.softmax)
+    self.create_child('softmax', p.softmax_tpl)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
     """Computes predictions for `input_batch`.
@@ -978,7 +978,7 @@ class ClassificationMLPModel(base_model.BaseModel):
 
     Attributes:
       mlp_tpl: MLP model parameters.
-      softmax_tpl: Input softmax embedding lookup layer.
+      softmax_tpl: Input softmax_tpl embedding lookup layer.
     """
     mlp_tpl: BaseHParams = sub_config_field(linears.MLPBlock.HParams)
     softmax_tpl: BaseHParams = sub_config_field(
