@@ -381,6 +381,7 @@ py_strict_test(
     deps = [
         ":base_hyperparams",
         ":base_layer",
+        ":pax_fiddle",
         # Implicit absl.testing.absltest dependency.
         # Implicit fiddle dependency.
         # Implicit ml_collections config_dict dependency.

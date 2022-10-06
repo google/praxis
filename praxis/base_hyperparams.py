@@ -99,8 +99,8 @@ def visit_nested_struct(obj_to_visit: Any,
                         exit_fn: Optional[Callable[[str, Any], None]] = None):
   """Recursively visits objects within a nested pytree structure.
 
-  Visit can traverse HParams, BaseHyperParams, lists, tuples, dataclasses, and
-  namedtuples.
+  Visit can traverse HParams, BaseHyperParams, lists, tuples, dataclasses,
+  namedtuples, and Fiddle Buildables.
 
   By default, visit_fn is called on any object we don't know how to
   traverse into, like an integer or a string. enter_fn and exit_fn are
@@ -113,7 +113,7 @@ def visit_nested_struct(obj_to_visit: Any,
 
   Keys are of the form::
 
-    key.subkey when traversing HParams objects
+    key.subkey when traversing HParams or Fiddle Buildable objects
     key[1] when traversing lists/tuples
     key[subkey] when traversing dataclasses or namedtuples
 
@@ -181,6 +181,16 @@ def visit_nested_struct(obj_to_visit: Any,
         exit_fn(key, val)
       else:
         visit_fn(key, val)
+    elif isinstance(val, fdl.Buildable):
+      val = copy.deepcopy(val)
+      fdl.materialize_defaults(val)
+      if enter_fn(key, val):
+        _visit(f'{key}.__fn_or_cls__', val.__fn_or_cls__)
+        for param_name, param_val in val.__arguments__.items():
+          _visit(f'{key}.{param_name}', param_val)
+        exit_fn(key, val)
+      else:
+        visit_fn(key, val)
     else:
       visit_fn(key, val)
 
@@ -243,6 +253,10 @@ def nested_struct_to_text(obj_to_visit: Any,
                                  type(val).__name__, proto_str)
     if isinstance(val, type):
       return 'type/' + inspect.getmodule(val).__name__ + '/' + val.__name__
+    if callable(val) and hasattr(val, '__qualname__'):
+      return f'callable/{inspect.getmodule(val).__name__}/{val.__qualname__}'
+    if isinstance(val, fdl.Buildable):
+      return repr(val)
     return type(val).__name__
 
   def _enter(key: str, val: Any) -> bool:
@@ -264,6 +278,8 @@ def nested_struct_to_text(obj_to_visit: Any,
     elif _is_str_param_pairs(val):
       return True
     elif isinstance(val, dict):
+      return True
+    elif isinstance(val, fdl.Buildable):
       return True
     return False
 

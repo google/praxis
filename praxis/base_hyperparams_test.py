@@ -27,6 +27,7 @@ import fiddle as fdl
 # Internal config_dict import from ml_collections
 from praxis import base_hyperparams
 from praxis import base_layer
+from praxis import pax_fiddle
 
 
 class SimpleTestClass(base_hyperparams.BaseParameterizable):
@@ -75,6 +76,20 @@ class NestedNestedOverrideTestClass(NestedNestedTestClass):
     _attribute_overrides: Tuple[str, ...] = ('tpl',)
     tpl: base_hyperparams.HParams = base_hyperparams.sub_config_field(
         NestedTestBehaveClass.HParams)
+
+
+class FiddleTestClass(base_hyperparams.BaseParameterizable):
+
+  class HParams(base_hyperparams.BaseHyperParams):
+    f: fdl.Config = None
+    g: fdl.Config = None
+    h: float = 3.0
+
+  params: base_hyperparams.BaseHyperParams
+
+
+def sample_fn(x, y=5):
+  return (x, y)
 
 
 class HyperParamsTest(absltest.TestCase):
@@ -141,6 +156,24 @@ class HyperParamsTest(absltest.TestCase):
         d.c : 2.0
         d.cls : type/__main__/SimpleTestChild
         e : 37
+        """))
+
+  def test_fdl_config_to_text(self):
+    x = FiddleTestClass.HParams(
+        f=pax_fiddle.Config(sample_fn, x=10),
+        g=pax_fiddle.Config(SimpleTestClass, SimpleTestClass.HParams(a=12)))
+    self.assertEqual(
+        x.to_text(),
+        textwrap.dedent("""\
+        cls : type/__main__/FiddleTestClass
+        f.__fn_or_cls__ : callable/__main__/sample_fn
+        f.x : 10
+        f.y : 5
+        g.__fn_or_cls__ : type/__main__/SimpleTestClass
+        g.hparams.a : 12
+        g.hparams.b : 'b'
+        g.hparams.cls : type/__main__/SimpleTestClass
+        h : 3.0
         """))
 
   # Internal test test_config_dict_to_text
