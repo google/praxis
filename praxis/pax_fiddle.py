@@ -53,7 +53,7 @@ class PaxConfig(fdl.Config, CloneAndSetMixin):
 
   @property
   def cls(self):
-    return self.__fn_or_cls__
+    return fdl.get_callable(self)
 
   def Instantiate(self, **kwargs):
     """Builds `self` with optional argument overrides."""

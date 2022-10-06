@@ -417,7 +417,8 @@ pytype_strict_contrib_test(
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
-        # Implicit flax dependency.
+        # Implicit fiddle dependency.
+        # Implicit flax.core dependency.
         # Implicit jax dependency.
     ],
 )

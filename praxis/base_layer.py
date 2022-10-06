@@ -1099,8 +1099,8 @@ class _SharedBaseLayer(nn.Module):
     def visit(value, state: daglish.State) -> None:
       # Copy params if `value` is a FiddleBaseLayer config.
       if (isinstance(value, pax_fiddle.Config) and
-          isinstance(value.__fn_or_cls__, type) and
-          issubclass(value.__fn_or_cls__, _SharedBaseLayer)):
+          isinstance(fdl.get_callable(value), type) and
+          issubclass(fdl.get_callable(value), _SharedBaseLayer)):
         for name in _SharedBaseLayer._BASE_PARAMS_TO_INHERIT:
           if name not in value.__arguments__:
             setattr(value, name, getattr(source, name))
@@ -1872,8 +1872,8 @@ class _FiddleHParamsClassStub(type,
 
   def __instancecheck__(cls, instance):
     return (isinstance(instance, pax_fiddle.Config) and
-            isinstance(instance.__fn_or_cls__, type) and
-            issubclass(instance.__fn_or_cls__, cls.fiddle_base_layer_cls))
+            isinstance(fdl.get_callable(instance), type) and
+            issubclass(fdl.get_callable(instance), cls.fiddle_base_layer_cls))
 
   def __to_sub_config_field__(cls):
     return pax_fiddle.template_field(cls.fiddle_base_layer_cls)

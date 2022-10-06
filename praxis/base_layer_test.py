@@ -20,6 +20,7 @@ import functools
 from typing import Any
 from absl.testing import absltest
 from absl.testing import parameterized
+import fiddle as fdl
 from flax import linen as nn
 import jax
 import jax.numpy as jnp
@@ -322,7 +323,7 @@ class FiddleBaseLayerTest(test_utils.TestCase):
     cloned = hparams_stub.clone()
     self.assertIsInstance(cloned, pax_fiddle.Config)
     self.assertEqual(cloned.cls, Layer)
-    self.assertEqual(cloned.__fn_or_cls__, Layer)
+    self.assertEqual(fdl.get_callable(cloned), Layer)
     self.assertEqual(cloned.x, 3)
     self.assertEqual(cloned.fprop_dtype, jnp.float16)
     self.assertEqual(cloned.dtype, jnp.float32)
@@ -344,7 +345,7 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       cfg = hparams_cls_stub(x=3, fprop_dtype=jnp.float16)
       self.assertIsInstance(cfg, pax_fiddle.Config)
       self.assertEqual(cfg.cls, Layer)
-      self.assertEqual(cfg.__fn_or_cls__, Layer)
+      self.assertEqual(fdl.get_callable(cfg), Layer)
       self.assertEqual(cfg.x, 3)
       self.assertEqual(cfg.fprop_dtype, jnp.float16)
       self.assertEqual(cfg.dtype, jnp.float32)
