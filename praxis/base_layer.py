@@ -1974,7 +1974,7 @@ class FiddleBaseLayer(_SharedBaseLayer):
 
   # The following configuration fields correspond 1:1 with BaseLayer.HParams.
   dtype: jnp.dtype = pax_fiddle.fdl_field(default=jnp.float32)
-  fprop_dtype: jnp.dtype = pax_fiddle.fdl_field(default=jnp.float32)
+  fprop_dtype: Optional[Any] = pax_fiddle.fdl_field(default=None)
   params_init: WeightInit = pax_fiddle.fdl_field(
       default_factory=default_param_init)
   skip_lp_regularization: Optional[bool] = None
@@ -1997,9 +1997,10 @@ class FiddleBaseLayer(_SharedBaseLayer):
       assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)
       return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
 
-  @property
-  def fprop_dtype_or_dtype(self):
-    return self.dtype if self.fprop_dtype is None else self.fprop_dtype
+  def __post_init__(self):
+    super().__post_init__()
+    if self.fprop_dtype is None:
+      self.fprop_dtype = self.dtype
 
   # Compatiblity stubs:
   # * `self.hparams` returns a Fiddle Config that can be used to build self.

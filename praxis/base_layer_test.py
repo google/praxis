@@ -407,6 +407,25 @@ class FiddleBaseLayerTest(test_utils.TestCase):
 
       del Parent  # unused.
 
+  def test_fprop_dtype(self):
+    with self.subTest('default'):
+      layer = base_layer.FiddleBaseLayer()
+      self.assertEqual(layer.fprop_dtype, jnp.float32)
+
+    with self.subTest('override_dtype'):
+      layer = base_layer.FiddleBaseLayer(dtype=jnp.float16)
+      self.assertEqual(layer.dtype, jnp.float16)
+      self.assertEqual(layer.fprop_dtype, jnp.float16)
+
+    with self.subTest('override_fprop_dtype'):
+      layer = base_layer.FiddleBaseLayer(fprop_dtype=jnp.float64)
+      self.assertEqual(layer.fprop_dtype, jnp.float64)
+
+    with self.subTest('override_both'):
+      layer = base_layer.FiddleBaseLayer(
+          dtype=jnp.float16, fprop_dtype=jnp.float64)
+      self.assertEqual(layer.fprop_dtype, jnp.float64)
+
 
 if __name__ == '__main__':
   absltest.main()
