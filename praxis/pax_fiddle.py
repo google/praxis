@@ -79,6 +79,10 @@ class DoNotBuild(fdl.Tag):
   """
 
 
+def has_do_not_build_tag(field: dataclasses.Field):  # pylint: disable=g-bare-generic
+  return fdl_dataclasses.field_has_tag(field, DoNotBuild)
+
+
 def sub_field(
     field_type: Callable[..., Any], tags: Optional[TagOrTags] = tuple()
 ) -> Union[dataclasses.Field, Any]:  # pylint: disable=g-bare-generic

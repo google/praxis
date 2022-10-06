@@ -17,7 +17,7 @@
 
 import dataclasses
 import functools
-from typing import Any
+from typing import Any, Optional
 from absl.testing import absltest
 from absl.testing import parameterized
 from flax import linen as nn
@@ -75,6 +75,10 @@ class MultipleBiasLayer(base_layer.BaseLayer):
     for layer in layers:
       x = layer(x)
     return x
+
+
+class TrivialFiddleLayer(base_layer.FiddleBaseLayer):
+  pass
 
 
 class BaseLayerTest(test_utils.TestCase):
@@ -252,8 +256,7 @@ class BaseLayerTest(test_utils.TestCase):
 
       class FiddleParent(base_layer.FiddleBaseLayer):
 
-        child_tpl: pax_fiddle.Config = base_layer.sub_config_field(
-            child_cls.HParams)
+        child_tpl: Any = base_layer.sub_config_field(child_cls.HParams)
 
         def setup(self):
           child_tpl = self.child_tpl.clone()
@@ -431,6 +434,23 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       layer = base_layer.FiddleBaseLayer(
           dtype=jnp.float16, fprop_dtype=jnp.float64)
       self.assertEqual(layer.fprop_dtype, jnp.float64)
+
+  def test_check_template_has_do_not_build_tag(self):
+
+    # pylint: disable=unused-variable
+    with self.assertRaisesRegex(
+        ValueError,
+        'has a template type, but does not have the DO_NOT_BUILD tag set.'):
+
+      class Layer1(base_layer.FiddleBaseLayer):
+        child_tpl: Optional[TrivialFiddleLayer.HParams] = None
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'has a template type, but does not have the DO_NOT_BUILD tag set.'):
+
+      class Layer2(base_layer.FiddleBaseLayer):
+        child_tpl: Optional[pax_fiddle.Config] = None
 
 
 if __name__ == '__main__':
