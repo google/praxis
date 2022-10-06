@@ -2030,11 +2030,6 @@ class FiddleBaseLayer(_SharedBaseLayer):
             f"{cls.__qualname__}.{field.name}'s default value is a mutable "
             'instance of fdl.Buildable.  Please update this field to use a '
             'default_factory instead, to avoid unintentional object sharing.')
-      if (_is_template_type(field.type) and
-          not pax_fiddle.has_do_not_build_tag(field)):
-        raise ValueError(
-            f'{cls.__qualname__}.{field.name} has a template type, but '
-            'does not have the DO_NOT_BUILD tag set.')
 
   @classmethod
   def _override_split_dim_mapping_fields(cls):
@@ -2071,18 +2066,6 @@ class FiddleBaseLayer(_SharedBaseLayer):
           cls.ActivationShardingHParams)
       cls.activation_split_dims_mapping = pax_fiddle.sub_field(
           cls.ActivationShardingHParams)
-
-
-def _is_template_type(typ):
-  """Returns true if `typ` is a type expression for a template."""
-  if isinstance(typ, type) and issubclass(typ, pax_fiddle.Config):
-    return True
-  if isinstance(typ, _FiddleHParamsClassStub):
-    return True
-  if hasattr(typing, 'get_args') and typing.get_origin(typ) == Union:
-    if any(_is_template_type(arg) for arg in typing.get_args(typ)):
-      return True
-  return False
 
 
 def assert_has_shape(t: JTensor, shape: Sequence[int]) -> None:
