@@ -339,7 +339,7 @@ def create_gda(host_arrays: np.ndarray, global_shapes: jax.ShapeDtypeStruct,
     if jax.config.jax_array:
       # This is cached because creating new sharding objects everytime is
       # expensive in pjit dispatch path for inputs.
-      s = _cached_mesh_pspec_sharding(global_mesh, pspec)
+      s = cached_mesh_pspec_sharding(global_mesh, pspec)
       return make_array_from_single_device_arrays(
           global_shape.shape, s, dbs)
     else:
@@ -350,7 +350,7 @@ def create_gda(host_arrays: np.ndarray, global_shapes: jax.ShapeDtypeStruct,
 
 
 @functools.lru_cache()
-def _cached_mesh_pspec_sharding(mesh, pspec):
+def cached_mesh_pspec_sharding(mesh, pspec):
   return sharding.MeshPspecSharding(mesh, pspec)
 
 
@@ -400,7 +400,7 @@ def convert_host_local_array_to_global_array(arr):
   # pmap-produced Array has a "scrambled" device order.
   dbs = sorted(arr.device_buffers, key=lambda x: x.device().id)
   return make_array_from_single_device_arrays(
-      global_shape, _cached_mesh_pspec_sharding(mesh, partition_spec), dbs)
+      global_shape, cached_mesh_pspec_sharding(mesh, partition_spec), dbs)
 
 
 def get_global_input_shape_dtype(x: jnp.ndarray) -> jax.ShapeDtypeStruct:
