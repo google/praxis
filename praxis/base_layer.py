@@ -1912,6 +1912,10 @@ class _FiddleHParamsInstanceStub:
       value = value.hparams
     return value
 
+  @property
+  def mesh_shape(self):
+    return self._base_layer.mesh_shape
+
   def clone(self):
     """Returns a fdl.Config for the wrapped FiddleBaseLayer.
 

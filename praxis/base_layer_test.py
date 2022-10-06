@@ -304,7 +304,12 @@ class FiddleBaseLayerTest(test_utils.TestCase):
     class Layer(base_layer.FiddleBaseLayer):
       x: int = 0
 
-    layer = Layer(x=3, fprop_dtype=jnp.float16)
+    layer = Layer(
+        x=3,
+        fprop_dtype=jnp.float16,
+        ici_mesh_shape=[1, 2],
+        dcn_mesh_shape=[3, 4],
+        mesh_axis_names=['a', 'b'])
 
     hparams_stub = layer.hparams
     self.assertIsInstance(hparams_stub, base_layer._FiddleHParamsInstanceStub)
@@ -312,6 +317,7 @@ class FiddleBaseLayerTest(test_utils.TestCase):
     self.assertEqual(hparams_stub.x, 3)
     self.assertEqual(hparams_stub.fprop_dtype, jnp.float16)
     self.assertEqual(hparams_stub.dtype, jnp.float32)
+    self.assertEqual(hparams_stub.mesh_shape, [3, 8])
 
     cloned = hparams_stub.clone()
     self.assertIsInstance(cloned, pax_fiddle.Config)
