@@ -188,7 +188,6 @@ def GlamUniTransformerLmHParams(
     capacity_factor=0.0,
     e_dim=None,
     use_tgt_labels_size_as_loss_denominator=True,
-    use_gshard_softmax=True,
     moe_load_balance_loss_weight=0.01,
     z_loss_weight=1e-4,
     combine_qkv=False,
@@ -299,7 +298,10 @@ def GlamUniTransformerLmHParams(
   if num_pipeline_stages == 1:
     p.stacked_transformer_tpl = (
         transformers.StackedTransformerRepeated.HParams(
-            name='decoder', block=glam_p, x_times=num_blocks))
+            name='decoder',
+            unroll_in_decode=True,
+            block=glam_p,
+            x_times=num_blocks))
   else:
     assert num_blocks % num_pipeline_stages == 0
     glam_p.num_layers = num_transformer_layers // num_pipeline_stages
