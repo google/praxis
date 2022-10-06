@@ -109,8 +109,7 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
                        f'{p.right_context} can not be defined '
                        f'and have different values.')
 
-  @property
-  def left_context(self) -> Union[int, None]:
+  def _left_context(self) -> Union[int, None]:
     p = self.hparams
     self.validate_context()
     if p.left_context is None:
@@ -121,8 +120,7 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     else:
       return p.left_context
 
-  @property
-  def right_context(self) -> Union[int, None]:
+  def _right_context(self) -> Union[int, None]:
     p = self.hparams
     self.validate_context()
     if p.right_context is None:
@@ -139,7 +137,7 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     # If self attention is not local: not limited in one of the contexts,
     # then use DotProductAttention for backward compatibility.
     # Note: non local self attention is not streamable.
-    if (self.left_context is None or self.right_context is None):
+    if (self._left_context() is None or self._right_context() is None):
       self_atten_tpl = attentions.DotProductAttention.HParams()
       self_atten_tpl.copy_fields_from(
           p.self_atten_tpl,
@@ -155,7 +153,8 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
                          'left_context and right_context')
 
       self_atten_tpl.set(
-          left_context=self.left_context, right_context=self.right_context)
+          left_context=self._left_context(),
+          right_context=self._right_context())
 
     self.create_child('self_atten', self_atten_tpl)
 
@@ -181,10 +180,11 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     if p.pre_layer_norm:
       inputs = self.norm(inputs)
 
-    if self.left_context is not None or self.right_context is not None:
+    if (self._left_context() is not None or
+        self._right_context()) is not None:
       asserts.none(atten_mask)
       atten_mask = attentions.limited_context_mask_from_padding(
-          paddings, self.left_context, self.right_context)
+          paddings, self._left_context(), self._right_context())
     else:
       if atten_mask is None:
         atten_mask = attentions.convert_paddings_to_mask(paddings, inputs.dtype)
