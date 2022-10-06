@@ -1080,7 +1080,7 @@ class Transformer(base_layer.BaseLayer):
     mask_self_attention: bool = False
     use_cross_attention: bool = False
     allow_skip_cross_attention: bool = False
-    cross_atten_tpl: Optional[BaseHParams] = None
+    cross_atten_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
     ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
     norm_policy: str = 'pre'
     tr_atten_tpl: BaseHParams = sub_config_field(
@@ -1088,7 +1088,7 @@ class Transformer(base_layer.BaseLayer):
     packed_input: bool = False
     tr_fflayer_tpl: BaseHParams = sub_config_field(
         TransformerFeedForward.HParams)
-    ngrammer_tpl: Optional[BaseHParams] = None
+    ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
 
   def setup(self) -> None:
     p = self.hparams

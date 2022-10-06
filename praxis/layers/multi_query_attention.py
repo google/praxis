@@ -186,7 +186,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     internal_enable_query_scale: bool = True
     atten_logit_cap: float = 0.0
     use_rotary_position_emb: bool = False
-    relative_bias_tpl: Optional[BaseHParams] = None
+    relative_bias_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
     attention_extra_logit: Optional[float] = None
     dconv_qkv: bool = False
     combine_qkv: bool = False

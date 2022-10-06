@@ -55,7 +55,7 @@ class FRnn(base_layer.BaseLayer):
       cell_tpl: Configs for the RnnCell.
       reverse: Whether or not to unroll the sequence in reversed order.
     """
-    cell_tpl: Optional[BaseHParams] = None
+    cell_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
     reverse: bool = False
 
   def setup(self) -> None:
@@ -176,7 +176,7 @@ class StackFrnn(base_layer.BaseLayer):
       num_output_nodes: Number of output nodes. If num_hidden_nodes is 0, also
         used as cell size.
     """
-    frnn_tpl: Optional[BaseHParams] = None
+    frnn_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
     num_layers: int = 1
     num_input_nodes: int = 0
     num_output_nodes: int = 0

@@ -209,9 +209,10 @@ class TransformerLm(base_layer.BaseLayer):
     vocab_size: int = 0
     packed_input: bool = False
     model_type: LanguageModelType = LanguageModelType.CAUSAL
-    ngrammer_tpl: Optional[BaseHParams] = None
+    ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
     post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = None
-    separate_embedding_tpl: Optional[BaseHParams] = None
+    separate_embedding_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
+        None)
     final_ln_tpl: BaseHParams = sub_config_field(
         normalizations.LayerNorm.HParams)
     skip_compute_loss: bool = False
@@ -789,16 +790,24 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     """
     position_emb_tpl: BaseHParams = sub_config_field(
         embedding_softmax.PositionalEmbedding.HParams)
-    encoder_position_emb_tpl: Optional[BaseHParams] = None
-    encoder_stacked_transformer_tpl: Optional[BaseHParams] = None
-    encoder_ngrammer_tpl: Optional[BaseHParams] = None
+    encoder_position_emb_tpl: Optional[
+        BaseHParams] = base_layer.sub_config_field(None)
+    encoder_stacked_transformer_tpl: Optional[
+        BaseHParams] = base_layer.sub_config_field(None)
+    encoder_ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
+        None)
     encoder_post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = None
-    encoder_embedding_tpl: Optional[BaseHParams] = None
-    decoder_position_emb_tpl: Optional[BaseHParams] = None
-    decoder_stacked_transformer_tpl: Optional[BaseHParams] = None
-    decoder_ngrammer_tpl: Optional[BaseHParams] = None
+    encoder_embedding_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
+        None)
+    decoder_position_emb_tpl: Optional[
+        BaseHParams] = base_layer.sub_config_field(None)
+    decoder_stacked_transformer_tpl: Optional[
+        BaseHParams] = base_layer.sub_config_field(None)
+    decoder_ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
+        None)
     decoder_post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = None
-    decoder_embedding_tpl: Optional[BaseHParams] = None
+    decoder_embedding_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
+        None)
     model_dims: int = 0
     softmax_tpl: BaseHParams = sub_config_field(
         embedding_softmax.SharedEmbeddingSoftmax.HParams)

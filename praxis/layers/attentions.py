@@ -922,9 +922,9 @@ class DotProductAttention(base_layer.BaseLayer):
     internal_enable_per_dim_scale: bool = True
     atten_logit_cap: float = 0.0
     use_rotary_position_emb: bool = False
-    relative_bias_tpl: Optional[BaseHParams] = None
+    relative_bias_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
     attention_extra_logit: Optional[float] = None
-    ngrammer_tpl: Optional[BaseHParams] = None
+    ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
     decode_cache: bool = True
     attention_mask_summary: bool = False
 

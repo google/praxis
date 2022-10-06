@@ -607,12 +607,15 @@ def sub_config_field(
 
   Args:
     sub_config_cls: A reference to a sub-configuration class, e.g.
-      `sub_config_cls=Linear.HParams`.
+      `sub_config_cls=Linear.HParams`.  If `None`, then the sub-config
+      defaults to `None`.
     lazy_ref: In the rare corner case that a class is not immediately known,
       provide `lazy_ref` as a lambda function which returns `sub_config_cls`.
   """
+  if sub_config_cls is not None and lazy_ref is not None:
+    raise TypeError('Specify sub_config_cls or lazy_ref, not both.')
   if sub_config_cls is None and lazy_ref is None:
-    raise ValueError('Please provide either sub_config_cls or lazy_ref.')
+    return pax_fiddle.template_field(None)  # Sets DO_NOT_BUILD tag.
   elif sub_config_cls is not None:
     if hasattr(sub_config_cls, '__to_sub_config_field__'):
       return sub_config_cls.__to_sub_config_field__()

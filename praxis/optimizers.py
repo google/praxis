@@ -832,7 +832,8 @@ class BaseOptimizer(base_hyperparams.BaseParameterizable):
     clip_gradient_norm_to_value: float = 0.0
     clip_gradient_single_norm_to_value: float = 0.0
     learning_rate: float = 0.0
-    lr_schedule: Optional[schedules.BaseSchedule.HParams] = None
+    lr_schedule: Optional[
+        schedules.BaseSchedule.HParams] = base_layer.sub_config_field(None)
     ema_decay: float = 0.0
 
   def __init__(self, hparams: BaseOptimizer.HParams) -> None:

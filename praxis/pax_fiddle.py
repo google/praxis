@@ -113,7 +113,7 @@ def sub_field(
 
 
 def template_field(
-    template: Callable[..., Any], tags: Optional[TagOrTags] = tuple()
+    template: Optional[Callable[..., Any]], tags: Optional[TagOrTags] = tuple()
 ) -> Union[dataclasses.Field, Any]:  # pylint: disable=g-bare-generic
   """Dataclass field specification for a Fiddle-configurable template field.
 
@@ -127,13 +127,19 @@ def template_field(
   ...   child_tpl: fdl.Config[Child] = pax_fiddle.template_field(Child)
 
   Args:
-    template: The template type (or factory function).
+    template: The template type (or factory function).  If `None`, then
+      the field defaults to `None`.
     tags: One or more tags to attach to the `fdl.Buildable`'s argument
       corresponding to the field, when building a `fdl.Buildable`.
 
   Returns:
     A `dataclasses.Field` specification for the field.
   """
+  tags = set(tags) | {DoNotBuild}
+
+  if template is None:
+    return fdl_field(default=None, tags=tags)
+
   always_true = lambda _: True
 
   # Using auto_config here ensures that this will return a PaxConfig object
@@ -144,7 +150,6 @@ def template_field(
   def factory():
     return PaxConfig(template)
 
-  tags = set(tags) | {DoNotBuild}
   return fdl_field(default_factory=factory, tags=tags)
 
 
