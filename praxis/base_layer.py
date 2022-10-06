@@ -1960,7 +1960,7 @@ class FiddleBaseLayer(_SharedBaseLayer):
     Attributes:
       wt: Sharding annotations for the primary model weight.
     """
-    wt: SplitDimsMapping = pax_fiddle.fdl_field(default=None)
+    wt: SplitDimsMapping = None
 
   # TODO(b/249483164): Remove the `HParams` suffix from this type name once the
   # initial HParams->Fiddle migration is complete.
@@ -1974,12 +1974,12 @@ class FiddleBaseLayer(_SharedBaseLayer):
     Attributes:
       out: Sharding annotations for the primary layer output.
     """
-    out: SplitDimsMapping = pax_fiddle.fdl_field(default=None)
+    out: SplitDimsMapping = None
 
   # The following configuration fields correspond 1:1 with BaseLayer.HParams.
-  dtype: jnp.dtype = pax_fiddle.fdl_field(default=jnp.float32)
-  fprop_dtype: Optional[Any] = pax_fiddle.fdl_field(default=None)
-  params_init: WeightInit = pax_fiddle.fdl_field(
+  dtype: jnp.dtype = jnp.float32
+  fprop_dtype: Optional[Any] = None
+  params_init: WeightInit = dataclasses.field(
       default_factory=default_param_init)
   skip_lp_regularization: Optional[bool] = None
   ici_mesh_shape: Optional[Sequence[int]] = None
