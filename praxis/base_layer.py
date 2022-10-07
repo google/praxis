@@ -2002,9 +2002,12 @@ class FiddleBaseLayer(_SharedBaseLayer):
       return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
 
   def __post_init__(self):
-    super().__post_init__()
+    # Note: we need to set fprop_dtype before we call super().__post_init__(),
+    # because super().__post_init__() can mark `self` as frozen in some
+    # contexts.
     if self.fprop_dtype is None:
       self.fprop_dtype = self.dtype
+    super().__post_init__()
 
   # Compatiblity stubs:
   # * `self.hparams` returns a Fiddle Config that can be used to build self.

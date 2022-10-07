@@ -433,6 +433,28 @@ class FiddleBaseLayerTest(test_utils.TestCase):
           dtype=jnp.float16, fprop_dtype=jnp.float64)
       self.assertEqual(layer.fprop_dtype, jnp.float64)
 
+    with self.subTest('frozen_during_post_init'):
+      # If a FiddleBaseLayer is created by an `@nn.compact` method, then
+      # it will be already-frozen during __post_init__.  This test checks
+      # that we can still set fprop_dtype, even though the instance is
+      # frozen.
+
+      class SomeFiddleLayer(base_layer.FiddleBaseLayer):
+
+        def __call__(self, x):
+          return x
+
+      class SomeFlaxModel(nn.Module):
+
+        @nn.compact
+        def __call__(self, x):
+          return SomeFiddleLayer()(x)
+
+      with base_layer.JaxContext.new_context():
+        SomeFlaxModel().init(jax.random.PRNGKey(1), jnp.ones((4, 4, 3)))
+
 
 if __name__ == '__main__':
   absltest.main()
+
+
