@@ -1010,6 +1010,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":flax_adapter",
+        # Implicit flaxformer.architectures.t5.parallel_fused_decoder dependency.
         # Implicit flaxformer.architectures.t5.t5_architecture dependency.
         # Implicit flaxformer.components.dense dependency.
         # Implicit flaxformer.components.embedding dependency.
@@ -1021,6 +1022,7 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:base_model",
+        "//praxis:decoder_hparams",
         "//praxis:py_utils",
         "//praxis:pytypes",
         # Implicit t5x.decoding dependency.

@@ -16,19 +16,23 @@
 """An inter-op wrapper that directly instantiates flaxformer models in pax."""
 
 import functools
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
 import clu.metrics as clu_metrics
 from flax import linen
+from flax.linen import partitioning as flax_partitioning
+import jax
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import base_model
+from praxis import decoder_hparams
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import flax_adapter
 from t5x import decoding as t5x_decoding
 from t5x import losses as t5x_losses
 
+from flaxformer.architectures.t5 import parallel_fused_decoder
 from flaxformer.architectures.t5 import t5_architecture
 from flaxformer.components import dense
 from flaxformer.components import embedding
@@ -43,6 +47,10 @@ BaseHParams = base_layer.BaseLayer.HParams
 sub_config_field = base_layer.sub_config_field
 LogicalAxisRules = pytypes.LogicalAxisRules
 DecodeOut = Tuple[WeightedScalars, NestedMap, Any]
+PyTreeDef = type(jax.tree_util.tree_structure(None))
+SampleDecoderHParams = decoder_hparams.SampleDecoderHParams
+DecoderHParams = decoder_hparams.DecoderHParams
+GreedyDecoderHParams = decoder_hparams.GreedyDecoderHParams
 
 
 class FlaxFormerDecoder(base_layer.BaseLayer):
@@ -71,9 +79,21 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
     head_dim: int = 64
     init_scale: float = 1.0
     dropout_rate: float = 0.0
+    mlp_activations: Sequence[str] = ('gelu', 'linear')
     mlp_dim: int = 5120
+    mlp_out_dim: Optional[int] = None
+    mlp_precomputed_intermediates: bool = False
     activation_partitioning_dims: int = 1
     logical_axes_rules: Optional[LogicalAxisRules] = None
+    scan_layers: bool = False
+    shared_relative_bias: bool = True
+    decode_layer_norm_use_scale: bool = True
+    final_layer_norm_use_scale: bool = True
+    layer_norm_center_scale_at_zero: bool = False
+    use_multi_query_attention: bool = False
+    use_rotary_embedding: bool = False
+    parallel_fused_decoder_layer: bool = False
+    use_output_logits: bool = True
 
   def setup(self) -> None:
     p = self.hparams
@@ -85,9 +105,21 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
     head_dim = p.head_dim
     init_scale = p.init_scale
     dropout_rate = p.dropout_rate
+    mlp_activations = p.mlp_activations
     mlp_dim = p.mlp_dim
     activation_partitioning_dims = p.activation_partitioning_dims
     num_decoder_layers = p.num_layers
+    scan_layers = p.scan_layers
+    shared_relative_bias = p.shared_relative_bias
+    decode_layer_norm_use_scale = p.decode_layer_norm_use_scale
+    final_layer_norm_use_scale = p.final_layer_norm_use_scale
+    layer_norm_center_scale_at_zero = p.layer_norm_center_scale_at_zero
+    use_multi_query_attention = p.use_multi_query_attention
+    use_rotary_embedding = p.use_rotary_embedding
+    parallel_fused_decoder_layer = p.parallel_fused_decoder_layer
+    mlp_out_dim = p.mlp_out_dim
+    mlp_precomputed_intermediates = p.mlp_precomputed_intermediates
+    use_output_logits = p.use_output_logits
 
     def token_embedder_factory():
       emb_init_kwargs = dict(
@@ -112,7 +144,15 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
       return relative_position_biases.RelativePositionBiases(**init_kwargs)
 
     def layer_norm_factory():
-      return layer_norm.T5LayerNorm(dtype=activation_dtype)
+      t5_layer_norm = layer_norm.T5LayerNorm(dtype=activation_dtype)
+      t5_layer_norm.center_scale_at_zero = layer_norm_center_scale_at_zero
+      t5_layer_norm.use_scale = decode_layer_norm_use_scale
+      return t5_layer_norm
+
+    def final_layer_norm_factory():
+      t5_layer_norm = layer_norm.T5LayerNorm(dtype=activation_dtype)
+      t5_layer_norm.use_scale = final_layer_norm_use_scale
+      return t5_layer_norm
 
     def self_attention_factory():
       init_kwargs = dict(
@@ -124,12 +164,18 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
           kernel_init=linen.initializers.variance_scaling(
               distribution='normal', mode='fan_in', scale=init_scale),
           num_heads=num_heads,
-          use_bias=False)
+          use_bias=False,
+          use_rotary_embedding=use_rotary_embedding)
+      if use_multi_query_attention:
+        init_kwargs['rescale_logits'] = True
+        init_kwargs['split_head_kernel'] = True
+        init_kwargs['out_features'] = embed_dim
+        return dense_attention.MultiQueryDotProductAttention(**init_kwargs)
       return dense_attention.MultiHeadDotProductAttention(**init_kwargs)
 
     def mlp_factory():
       init_kwargs = dict(
-          activations=('gelu', 'linear'),
+          activations=mlp_activations,
           bias_init=linen.initializers.normal(stddev=1e-06),
           dtype=activation_dtype,
           final_dropout_rate=0,
@@ -137,7 +183,9 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
           intermediate_dropout_rate=dropout_rate,
           kernel_init=linen.initializers.variance_scaling(
               distribution='truncated_normal', mode='fan_in', scale=init_scale),
-          use_bias=False)
+          use_bias=False,
+          out_dim=mlp_out_dim,
+          precomputed_intermediates=mlp_precomputed_intermediates)
       return dense.MlpBlock(**init_kwargs)
 
     def output_logits_factory():
@@ -158,11 +206,15 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
       init_kwargs = dict(
           activation_partitioning_dims=activation_partitioning_dims,
           dropout_factory=dropout_factory,
-          encoder_decoder_attention=None,
           layer_norm_factory=layer_norm_factory,
           mlp=mlp_factory(),
-          self_attention=self_attention_factory(),
-          shared_relative_position_bias=shared_relative_position_bias)
+          self_attention=self_attention_factory())
+      if parallel_fused_decoder_layer:
+        init_kwargs['scanned'] = scan_layers
+        return parallel_fused_decoder.ParallelFusedDecoderLayer(**init_kwargs)
+      init_kwargs['encoder_decoder_attention'] = None
+      init_kwargs[
+          'shared_relative_position_bias'] = shared_relative_position_bias
       return t5_architecture.DecoderLayer(**init_kwargs)
 
     def decoder_factory(shared_token_embedder=None):
@@ -170,18 +222,23 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
           dropout_factory=dropout_factory,
           dtype=activation_dtype,
           layer_factory=decoder_layer_factory,
-          layer_norm_factory=layer_norm_factory,
+          layer_norm_factory=final_layer_norm_factory,
           num_layers=num_decoder_layers,
-          output_logits_factory=output_logits_factory,
+          output_logits_factory=output_logits_factory
+          if use_output_logits else None,
           position_embedder_factory=None,
-          shared_relative_position_bias_factory=relative_position_emb_factory,
+          shared_relative_position_bias_factory=(
+              relative_position_emb_factory if shared_relative_bias else None),
           token_embedder_factory=token_embedder_factory,
-          shared_token_embedder=shared_token_embedder)
+          shared_token_embedder=shared_token_embedder,
+          scan_layers=scan_layers)
       return t5_architecture.Decoder(**init_kwargs)
 
     def decoder_only_factory():
       init_kwargs = dict(
-          decoder_factory=decoder_factory, dtype=activation_dtype)
+          decoder_factory=decoder_factory,
+          dtype=activation_dtype,
+          scan_layers=scan_layers)
       return t5_architecture.DecoderOnly(**init_kwargs)
 
     flaxformer_decoder = flax_adapter.FlaxModuleAdapter.HParams(
@@ -410,22 +467,27 @@ class LanguageModel(base_model.BaseModel):
     """Associated hyperparams for this model class.
 
     Attributes:
-      decoder: Flaxformer decoder params.
+      flax_decoder_tpl: Flaxformer decoder params.
       loss_normalizing_factor: Normalization factor for loss.
       label_smoothing: Amount of label smoothing to apply.
       z_loss: Coefficient for auxiliary z-loss loss term.
+      decoding_fn: Decoding function used in autoregressive decoding.
+      decoder_tpl: Parameterization of the autoregressive decoder.
     """
-    decoder_tpl: base_layer.BaseLayer.HParams = sub_config_field(
+    flax_decoder_tpl: base_layer.BaseLayer.HParams = sub_config_field(
         FlaxFormerDecoder.HParams)
     loss_normalizing_factor: str = 'NUM_REAL_TARGET_TOKENS'
     label_smoothing: float = 0.0
     z_loss: float = 0.0001
     logical_axes_rules: Optional[LogicalAxisRules] = None
+    decoding_fn: Optional[Callable[..., Any]] = t5x_decoding.temperature_sample
+    decoder_tpl: DecoderHParams = sub_config_field(GreedyDecoderHParams)
 
   def setup(self):
     p = self.hparams
+    self._decoding_fn = p.decoding_fn
     # Propagate partitioning information from BaseModel to BaseLayer.
-    decoder_p = p.decoder_tpl.clone()
+    decoder_p = p.flax_decoder_tpl.clone()
     decoder_p.logical_axes_rules = p.logical_axes_rules
     self.create_child('decoder', decoder_p)
 
@@ -491,6 +553,144 @@ class LanguageModel(base_model.BaseModel):
     self.add_summary('accuracy', accuracy)
     # loss already contains z_loss
     return metrics, NestedMap()
+
+  def decode(self, input_batch: NestedMap) -> DecodeOut:
+    """Mimic `predict_batch_with_aux` function in t5x models.
+
+    Predict with sample decode on a batch. Unlike
+    `compute_predictions` that provides logits for training, this function
+    provides predictions for inference.
+
+    Args:
+      input_batch: A NestedMap of an input batch. It should contain the
+        following elements. "ids" - the prefix input tokens, of shape [batch,
+        perfix_len]., "paddings", the paddings for input prefix.
+
+    Returns:
+      - weighted scalars, a NestedMap containing str keys and (value, weight)
+        pairs for the current batch (a tuple of two scalars).
+      - results, a `.NestedMap` as decoder output.
+      - metrics, a NestedMap containing str keys and clu_metrics.Metric
+        objects. This is currently optional.
+    """
+    num_decodes = 1  # Only supports greedy decode.
+    params = self.decoder.variables['params']
+    decoder_params = {'eos_id': self.hparams.decoder_tpl.eos_id}
+    max_decode_length = self.hparams.decoder_tpl.max_decode_steps
+
+    # Prepare zeroed-out autoregressive cache.
+    # [batch, input_len]
+    batch_size, input_seq_len = input_batch.ids.shape
+    inputs = jnp.pad(input_batch.ids, [[0, 0], [1, 0]])
+    inputs = jax.lax.slice(inputs, [0, 0], [batch_size, input_seq_len])
+    inputs = jnp.pad(inputs, [[0, 0], [0, max_decode_length]])
+
+    decoder_causal_attention = jnp.pad(
+        1 - input_batch.paddings, [[0, 0], [1, 0]],
+        'constant',
+        constant_values=1).astype(jnp.int32)
+    decoder_causal_attention = jax.lax.slice(decoder_causal_attention, [0, 0],
+                                             [batch_size, input_seq_len])
+    decoder_causal_attention = jnp.pad(decoder_causal_attention,
+                                       [[0, 0], [0, max_decode_length]])
+
+    inputs_lengths = jnp.sum(decoder_causal_attention, axis=-1) - 1
+
+    # Compute the key/value cache on the input prefix."""
+    _, initial_variables = self.decoder.apply({'params': params},
+                                              jnp.ones_like(inputs),
+                                              jnp.ones_like(inputs),
+                                              enable_dropout=False,
+                                              decode=True,
+                                              mutable=['cache'])
+    cache = initial_variables['cache']
+    if 'cache_axes' in initial_variables:
+      cache_axes = initial_variables['cache_axes']
+
+      cache = jax.tree_util.tree_map(
+          flax_partitioning.with_sharding_constraint, cache,
+          flax_partitioning.get_axis_names(cache_axes))
+
+    # Initialize decode cache with prefix.
+    _, variables_with_cache = self.decoder.apply(
+        {
+            'params': params,
+            'cache': cache
+        },
+        decoder_input_tokens=inputs,
+        decoder_target_tokens=decoder_causal_attention,
+        decoder_causal_attention=None,
+        mutable=['cache'],
+        enable_dropout=False,
+        prefill=True,
+        prefill_lengths=inputs_lengths)
+    prefilled_cache = variables_with_cache['cache']
+
+    scanned = hasattr(self.decoder,
+                      'scan_layers') and self.flax_decoder_tpl.scan_layers
+
+    # Single step decoder function.
+    tokens_ids_to_logits = functools.partial(
+        self._compute_logits_from_slice,
+        params=params,
+        max_decode_length=max_decode_length)
+
+    # Using the above-defined single-step decoder function, run a
+    # sample_decode over possible sequences given input encoding.
+    # decodes: [batch, num_decodes, max_decode_len + 1]
+    # scores: [batch, num_decodes]
+    decodes, scores = self._decoding_fn(
+        inputs=inputs,
+        cache=prefilled_cache,
+        tokens_to_logits=tokens_ids_to_logits,
+        num_decodes=num_decodes,
+        cache_offset=1 if scanned else 0,
+        **decoder_params)
+
+    eos_position = jnp.argmax(
+        jnp.equal(decodes, decoder_params['eos_id']), axis=-1)
+    decode_lengths = jnp.where(eos_position == 0,
+                               jnp.ones_like(eos_position) * decodes.shape[-1],
+                               eos_position + 1)
+    decode_out = (NestedMap(
+        num_decoded=(num_decodes, jnp.array(1, jnp.float32))),
+                  NestedMap(
+                      output_ids=decodes,
+                      scores=scores,
+                      prefix_lengths=inputs_lengths + 1,
+                      decode_lengths=decode_lengths,
+                  ), None)
+    return decode_out
+
+  def _compute_logits_from_slice(
+      self,
+      decoding_state: t5x_decoding.DecodingState,
+      params: PyTreeDef,
+      max_decode_length: int,
+  ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
+    """This mimics _compute_logits_from_slice in t5x."""
+    flat_ids = decoding_state.cur_token
+    flat_cache = decoding_state.cache
+    # flat_ids: [batch, seq_len=1]
+    # flat_cache['cached_(keys|values)']:
+    #   [batch, num_heads, depth_per_head, max_decode_length]
+    # flat_cache['cache_index']: [batch]
+    # flat_logits: [batch, seq_len=1, vocab]
+    flat_logits, new_vars = self.decoder.apply(
+        {
+            'params': params,
+            'cache': flat_cache
+        },
+        flat_ids,
+        flat_ids,
+        enable_dropout=False,
+        decode=True,
+        max_decode_length=max_decode_length,
+        mutable=['cache'])
+    # Remove sequence length dimension since it's always 1 during decoding.
+    flat_logits = jnp.squeeze(flat_logits, axis=1)
+    new_flat_cache = new_vars['cache']
+    return flat_logits, new_flat_cache
 
 
 class EncoderDecoderModel(base_model.BaseModel):

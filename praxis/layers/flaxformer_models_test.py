@@ -115,7 +115,10 @@ class FlaxFormerModelsTest(test_utils.TestCase):
   def test_flaxformer_model(self):
     decoder_p = flaxformer_models.FlaxFormerDecoder.HParams(num_layers=2)
     decoder_mdl_p = flaxformer_models.LanguageModel.HParams(
-        decoder_tpl=decoder_p, z_loss=0.0001, label_smoothing=0.1, name='mdl')
+        flax_decoder_tpl=decoder_p,
+        z_loss=0.0001,
+        label_smoothing=0.1,
+        name='mdl')
     decoder_mdl = instantiate(decoder_mdl_p)
 
     seq_len = 8
@@ -313,7 +316,7 @@ class FlaxFormerModelsTest(test_utils.TestCase):
   def test_sharded_flaxformer_model(self):
     decoder_p = flaxformer_models.FlaxFormerDecoder.HParams(num_layers=2)
     decoder_mdl_p = flaxformer_models.LanguageModel.HParams(
-        decoder_tpl=decoder_p,
+        flax_decoder_tpl=decoder_p,
         z_loss=0.0001,
         label_smoothing=0.1,
         name='mdl',
