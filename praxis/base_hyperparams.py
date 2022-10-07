@@ -185,7 +185,7 @@ def visit_nested_struct(obj_to_visit: Any,
       val = copy.deepcopy(val)
       fdl.materialize_defaults(val)
       if enter_fn(key, val):
-        _visit(f'{key}.__fn_or_cls__', val.__fn_or_cls__)
+        _visit(f'{key}.__fn_or_cls__', fdl.get_callable(val))
         for param_name, param_val in val.__arguments__.items():
           _visit(f'{key}.{param_name}', param_val)
         exit_fn(key, val)
