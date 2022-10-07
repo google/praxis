@@ -78,6 +78,16 @@ class MultipleBiasLayer(base_layer.BaseLayer):
     return x
 
 
+class SimpleFiddleBaseLayer(base_layer.FiddleBaseLayer):
+  x: int = 0
+
+
+class SimpleHParamsBaseLayer(base_layer.BaseLayer):
+
+  class HParams(base_layer.BaseLayer.HParams):
+    x: int = 0
+
+
 class BaseLayerTest(test_utils.TestCase):
 
   def test_summary_same_input_name(self):
@@ -283,6 +293,34 @@ class BaseLayerTest(test_utils.TestCase):
           self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
           self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
           self.assertEqual(hyper_params['child']['_hparams'].x, 7)
+
+  @parameterized.parameters([
+      # Hparams compared w/ HParams
+      (SimpleHParamsBaseLayer.HParams(), SimpleHParamsBaseLayer.HParams(),
+       True),
+      (SimpleHParamsBaseLayer.HParams(),
+       SimpleHParamsBaseLayer.HParams(name='foo'), True),
+      (SimpleHParamsBaseLayer.HParams(),
+       SimpleHParamsBaseLayer.HParams(dtype=jnp.float16), False),
+      # fdl.Config compared w/ fdl.Config
+      (pax_fiddle.Config(SimpleFiddleBaseLayer),
+       pax_fiddle.Config(SimpleFiddleBaseLayer), True),
+      (pax_fiddle.Config(SimpleFiddleBaseLayer),
+       pax_fiddle.Config(SimpleFiddleBaseLayer, name='foo'), True),
+      (pax_fiddle.Config(SimpleFiddleBaseLayer),
+       pax_fiddle.Config(SimpleFiddleBaseLayer, dtype=jnp.float16), False),
+      # fdl.Config compared w/ HParams: raises ValueError
+      (SimpleHParamsBaseLayer.HParams(),
+       pax_fiddle.Config(SimpleFiddleBaseLayer), ValueError),
+      (pax_fiddle.Config(SimpleFiddleBaseLayer),
+       SimpleHParamsBaseLayer.HParams(), ValueError),
+  ])
+  def test_compatible_hparams(self, lhs, rhs, expected):
+    if expected is not ValueError:
+      self.assertEqual(base_layer.compatible_hparams(lhs, rhs), expected)
+    else:
+      with self.assertRaises(ValueError):
+        base_layer.compatible_hparams(lhs, rhs)
 
 
 class FiddleBaseLayerTest(test_utils.TestCase):

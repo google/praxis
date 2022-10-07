@@ -2078,7 +2078,9 @@ def assert_has_shape(t: JTensor, shape: Sequence[int]) -> None:
       asserts.eq(t.shape[i], shape[i])
 
 
-def compatible_hparams(hparams1, hparams2):
+def compatible_hparams(
+    hparams1: Union[base_hyperparams.HParams, pax_fiddle.Config],
+    hparams2: Union[base_hyperparams.HParams, pax_fiddle.Config]) -> bool:
   """Returns True if hparams1 and hparams2 are compatible to each other.
 
   The current definition of "compatible" are two params are identical except
@@ -2095,7 +2097,14 @@ def compatible_hparams(hparams1, hparams2):
   p1.name = ''
   p2 = hparams2.clone()
   p2.name = ''
-  return p1.to_text() == p2.to_text()
+  if isinstance(p1, pax_fiddle.Config) or isinstance(p2, pax_fiddle.Config):
+    if not (isinstance(p1, pax_fiddle.Config) and
+            isinstance(p2, pax_fiddle.Config)):
+      raise ValueError('Expected hparams1 and hparams2 to have the same type; '
+                       f'got {hparams1!r} and {hparams2!r}')
+    return p1 == p2
+  else:
+    return p1.to_text() == p2.to_text()
 
 
 class _WrapperLayer(BaseLayer):
