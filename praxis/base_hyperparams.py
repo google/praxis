@@ -517,6 +517,10 @@ class BaseHyperParams:
       missing_fields_in_self: List of field names of source which are allowed
         to be missing in self.
     """
+    if not isinstance(source, BaseHyperParams):
+      raise TypeError(
+          'Can only copy fields to BaseHyperParams from another '
+          'BaseHyperParams.  (Copying from Fiddle Config not supported yet).')
     fields = self.__dataclass_fields__  # pytype: disable=attribute-error
     for name in fields:
       # Skip the field in self but not in source.

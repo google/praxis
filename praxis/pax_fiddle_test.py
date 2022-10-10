@@ -15,6 +15,7 @@
 
 """Tests for pax_fiddle."""
 
+import copy
 import dataclasses
 from typing import Optional, List
 from absl.testing import absltest
@@ -78,6 +79,17 @@ class Fleet:
         for i in range(self.num_vehicles)
     ]
     return self
+
+
+@dataclasses.dataclass
+class BusStop:
+  location: str  # required arg.
+  times: list = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass
+class HourlyBusStop(BusStop):
+  times: list = dataclasses.field(default_factory=lambda: list(range(24)))
 
 
 class SubFieldAndTemplateFieldTest(testing.TestCase):
@@ -325,6 +337,74 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
             num_wheels=3,
             wheels=[Wheel(20), Wheel(20), Wheel(20)],
             owner=Person("Mo")))
+
+  def test_copy_fields_from(self):
+    source = pax_fiddle.Config(Vehicle, num_wheels=2)
+    source.wheel_tpl.set(radius=20)
+    target = pax_fiddle.Config(Vehicle)
+    expected = copy.deepcopy(source)
+    target.copy_fields_from(source)
+    self.assertEqual(target, expected)
+
+  def test_copy_fields_from_does_not_copy_name(self):
+    source = pax_fiddle.Config(Person, "A")
+    target = pax_fiddle.Config(Person, "B")
+    target.copy_fields_from(source)
+    self.assertEqual(target, pax_fiddle.Config(Person, "B"))
+
+  def test_copy_fields_from_missing_fields_in_source(self):
+    source = pax_fiddle.Config(Wheel, radius=10)
+    target = pax_fiddle.Config(ColoredWheel, radius=3, color="red")
+    target.copy_fields_from(source)
+    self.assertEqual(target, pax_fiddle.Config(ColoredWheel,
+                                               radius=10, color="red"))
+
+  def test_copy_fields_from_missing_fields_in_self(self):
+    source = pax_fiddle.Config(ColoredWheel, radius=3, color="red")
+    target = pax_fiddle.Config(Wheel, radius=10)
+
+    with self.assertRaisesRegex(
+        ValueError, "Copying incompatible HParams: 'color' not in self"):
+      target.copy_fields_from(source)
+
+    target.copy_fields_from(source, missing_fields_in_self=["color"])
+    self.assertEqual(target, pax_fiddle.Config(Wheel, radius=3))
+
+  def test_copy_fields_from_missing_required_value(self):
+    source = pax_fiddle.Config(BusStop)
+    target = pax_fiddle.Config(BusStop)
+    with self.assertRaisesRegex(
+        ValueError, "Can't copy from missing required .*BusStop.location"):
+      target.copy_fields_from(source)
+
+  def test_copy_fields_from_compatible_default_factory(self):
+    source = pax_fiddle.Config(BusStop, "Oak Town")
+    target = pax_fiddle.Config(BusStop, times=[5, 8])
+    target.copy_fields_from(source)
+    self.assertEqual(target, pax_fiddle.Config(BusStop, "Oak Town"))
+
+  def test_copy_fields_from_no_unintentional_sharing(self):
+    source = pax_fiddle.Config(BusStop, "Oak Town", times=[5, 8])
+    target = pax_fiddle.Config(BusStop)
+    target.copy_fields_from(source)
+    self.assertEqual(target, pax_fiddle.Config(BusStop, "Oak Town", [5, 8]))
+    self.assertEqual(target.times, source.times)
+    self.assertIsNot(target.times, source.times)
+
+  def test_copy_fields_from_incompatible_default_factory(self):
+    source = pax_fiddle.Config(BusStop, "Oak Town")
+    target = pax_fiddle.Config(HourlyBusStop)
+    with self.assertRaisesRegex(
+        ValueError, "Can't copy from default_factory .*BusStop.times"):
+      target.copy_fields_from(source)
+
+  def test_copy_fields_from_invalid_source(self):
+    with self.subTest("source_field_not_in_self"):
+      source = pax_fiddle.Config(Wheel)
+      target = pax_fiddle.Config(Vehicle)
+      with self.assertRaisesRegex(
+          ValueError, "Copying incompatible HParams: 'radius' not in self"):
+        target.copy_fields_from(source)
 
 
 class LayerA(nn.Module):

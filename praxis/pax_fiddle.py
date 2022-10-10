@@ -15,6 +15,8 @@
 
 """Helper functions and types related to Fiddle."""
 
+from __future__ import annotations
+
 import contextlib
 import copy
 import dataclasses
@@ -58,6 +60,70 @@ class PaxConfig(fdl.Config, CloneAndSetMixin):
   def Instantiate(self, **kwargs):
     """Builds `self` with optional argument overrides."""
     return instantiate(self, **kwargs)
+
+  def copy_fields_from(self, source: PaxConfig, missing_fields_in_self=()):
+    """Copies fields from `source`.
+
+    Corresponds with `BaseHyperparams.copy_fields_from`.
+
+    Args:
+      source: `PaxConfig` from which fields will be copied.
+      missing_fields_in_self: List of field names in `source` which are allowed
+        to be missing in `self`.
+    """
+    if not isinstance(source, PaxConfig):
+      raise TypeError('Can only copy fields to PaxConfig from another '
+                      'PaxConfig.  (Copying from HParams not supported yet).')
+
+    # Deepcopy the source, so we don't introduce any unintentional sharing.
+    source = source.clone()
+
+    source_fields = {
+        field.name: field
+        for field in dataclasses.fields(source.__fn_or_cls__)
+        if field.init and field.name not in ('parent', 'name')
+    }
+    self_fields = {
+        field.name: field
+        for field in dataclasses.fields(self.__fn_or_cls__)
+        if field.init and field.name not in ('parent', 'name')
+    }
+
+    for name in source_fields:
+      if name not in self_fields and name not in missing_fields_in_self:
+        raise ValueError(f'Copying incompatible HParams: {name!r} not in self')
+
+    for name, self_field in self_fields.items():
+      source_field = source_fields.get(name, None)
+      # Source doesn't have this field: skip it.
+      if source_field is None:
+        continue
+
+      elif name in source.__arguments__:
+        # Source has an explicit value for this field: copy it.
+        setattr(self, name, getattr(source, name))
+
+      elif source_field.default is not dataclasses.MISSING:
+        # Source has a default value for this field: copy it.
+        setattr(self, name, source_field.default)
+
+      elif source_field.default_factory is not dataclasses.MISSING:
+        if source_field.default_factory == self_field.default_factory:
+          # Self and source have the same default factory for this field:
+          # clear any value from self, so we'll use the default factory.
+          self.__arguments__.pop(name, None)
+        else:
+          # Self and source have different default factories: we can't
+          # handle this case.  (Calling the default factory here might
+          # introduce unintentional sharing.)
+          # TODO(edloper) Consider using fiddle.ArgFactory to handle this
+          # case, if it turns out to be important to handle.
+          raise ValueError("Can't copy from default_factory "
+                           f'{source.__fn_or_cls__.__qualname__}.{name}')
+
+      else:
+        raise ValueError("Can't copy from missing required value "
+                         f'{source.__fn_or_cls__.__qualname__}.{name}')
 
 
 Config = PaxConfig  # Alias pax_fiddle.Config -> PaxConfig.
