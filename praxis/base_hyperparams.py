@@ -430,7 +430,7 @@ class BaseHyperParams:
     # moved to the next step of Fiddle migration.
     if (isinstance(value, fdl.Buildable) and
         not isinstance(value, pax_fiddle.Config)):
-      raise TypeError(
+      logging.warning(
           'It is forbidden (almost always a mistake) to put Fiddle config '
           'objects inside dataclasses. Instead, create a fdl.Config of '
           'this Params class as well. For example, write fdl.Config(ParamsA, '
