@@ -75,6 +75,13 @@ SplitDimsMapping = pytypes.SplitDimsMapping
 # Layer stack to establish parent child relationships.
 _LAYER_STACK = py_utils.ThreadLocalStack()
 
+# A temporary allow list while we finish name conflict resolution for Fiddle
+# migration.  Before we start the migration, this list should be empty and
+# removed.
+_FIDDLE_MIGRATION_CONFLICT_ALLOW_LIST = ('loss', 'proj', 'sub1', 'sub2', 'unet',
+                                         'emb', 'ff0', 'ff1', 'mlm', 'vit',
+                                         'ff')
+
 # Global state that may impact how certain jax computation will be carried (e.g.
 # whether or not to enable dropout).
 _JaxContextStack = py_utils.ThreadLocalStack()
@@ -1641,6 +1648,11 @@ class _SharedBaseLayer(nn.Module):
                       self.__class__.__name__, name)
       conflict = True
     layer_utils.LayerRegistry().add_layer(name, self, conflict=conflict)
+    if conflict and name not in _FIDDLE_MIGRATION_CONFLICT_ALLOW_LIST:
+      raise AttributeError(
+          f'{self.__class__}.HParams already has attribute {name}. '
+          'Please rename to avoid future name collision after Fiddle migration.'
+      )
 
   @nn.nowrap
   def _cast_to_fprop_dtype(self, value: Any) -> Any:

@@ -184,7 +184,8 @@ class FullSoftmax(base_layer.BaseLayer):
     input_dims: int = 0
     num_classes: int = 0
     soft_cap_logits: Optional[float] = 0.0
-    bi_tempered_loss: Optional[BaseHParams] = base_layer.sub_config_field(None)
+    bi_tempered_loss_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
+        None)
     label_smoothing_prob: float = 0.0
     label_smoothing_apply_for_eval: bool = True
     z_loss_weight: float = 0.
@@ -205,8 +206,8 @@ class FullSoftmax(base_layer.BaseLayer):
         weight_split_dims_mapping=wp.clone(),
         activation_split_dims_mapping=ap.clone())
     self.create_child('logits_ffn', ff_p)
-    if p.bi_tempered_loss:
-      self.create_child('bi_tempered_loss', p.bi_tempered_loss)
+    if p.bi_tempered_loss_tpl:
+      self.create_child('bi_tempered_loss', p.bi_tempered_loss_tpl)
 
   def get_logits(self, inputs: JTensor) -> JTensor:
     """Returns logits given the inputs with an option to soft cap it.
@@ -287,7 +288,7 @@ class FullSoftmax(base_layer.BaseLayer):
               other_prob * (1.0 - class_probabilities)).astype(jnp.float32)
       class_probabilities = jax.lax.stop_gradient(class_probabilities)
 
-    if p.bi_tempered_loss is None:
+    if p.bi_tempered_loss_tpl is None:
       per_example_xent = -jnp.sum(
           log_probs * class_probabilities, axis=-1, dtype=jnp.float32)
     else:

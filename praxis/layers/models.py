@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """Definition of specific models."""
-from typing import Any, Dict, Sequence, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 from absl import logging
 import clu.metrics as clu_metrics
@@ -732,12 +732,12 @@ class ClassificationModel(base_model.BaseModel):
     """Associated hyper-params for this layer class.
 
     Attributes:
-      network: The classifier network, which is ResNet-50 by default.
+      network_tpl: The classifier network_tpl, which is ResNet-50 by default.
       softmax_tpl: The softmax_tpl layer used for the classification.
       input_field: The input field which contains the image or video features to
         pass to the classification network.
     """
-    network: BaseHParams = sub_config_field(resnets.ResNet.HParams)
+    network_tpl: BaseHParams = sub_config_field(resnets.ResNet.HParams)
     softmax_tpl: BaseHParams = sub_config_field(
         embedding_softmax.FullSoftmax.HParams)
     input_field: str = 'image'
@@ -745,7 +745,7 @@ class ClassificationModel(base_model.BaseModel):
   def setup(self) -> None:
     super().setup()
     p = self.hparams
-    self.create_child('network', p.network)
+    self.create_child('network', p.network_tpl)
     self.create_child('softmax', p.softmax_tpl)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
