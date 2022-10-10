@@ -634,6 +634,16 @@ def compute_gating(paddings,
         fprop_dtype=fprop_dtype,
         capacity_factor=capacity_factor,
         mask_dtype=jnp.int32)
+  elif gating_func == 'expert_choice_v2':
+    gating = expert_choice_gating_on_logits_v2(
+        paddings=paddings,
+        logits=logits.astype(jnp.float32),
+        experts_dim=experts_dim,
+        expert_capacity_dim=expert_capacity_dim,
+        fprop_dtype=fprop_dtype,
+        capacity_factor=capacity_factor,
+        mask_dtype=jnp.int32,
+        gating_logit_cap=0.0)
   else:
     raise ValueError('Unsupported gating function type: %s' % gating_func)
   return gating
@@ -812,6 +822,7 @@ def expert_choice_gating_on_logits_v2(paddings,
 
   if capacity_factor is not None:
     # Determine expert capacity automatically depending on the input size
+     # Determine expert capacity automatically depending on the input size
     group_size_dim = logits.shape[1]
     auto_expert_capacity = int(group_size_dim * capacity_factor / experts_dim)
     if expert_capacity_dim < auto_expert_capacity:
@@ -823,7 +834,6 @@ def expert_choice_gating_on_logits_v2(paddings,
           'Setting expert_capacity_dim=%r (capacity_factor=%r '
           'group_size_dim=%r experts_dim=%r)', expert_capacity_dim,
           capacity_factor, group_size_dim, experts_dim)
-
   # GEC
   _, token_indices = top_k(token_scores, k=expert_capacity_dim)
   # GECS

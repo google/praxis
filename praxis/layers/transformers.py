@@ -891,7 +891,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
       dispatch_tensor = dispatch_tensor.astype(fprop_dtype)
 
     # both tensors have shape [g, s, e, c]
-    if p.gating_func == 'top2':
+    if p.gating_func in ['top2', 'expert_choice_v2']:
       combine_tensor = self._split(combine_tensor, ap.gsec)
       dispatch_tensor = self._split(dispatch_tensor, ap.gsec)
       expert_inputs = jnp.einsum('gsec,gsm->egcm', dispatch_tensor,
@@ -908,7 +908,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     hidden = jnp.einsum('egcm,emh->egch', expert_inputs, theta_wi)
     hidden = self._split(hidden, ap.egch)
 
-    if p.gating_func == 'top2':
+    if p.gating_func in ['top2', 'expert_choice_v2']:
       threshold = 0
       activation_class_name = p.activation_tpl.cls.__name__
       if isinstance(p.activation_tpl.cls, activations_lib.GELU):
@@ -939,7 +939,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     # Now transpose and reshard.
     transposed_expert_output = jnp.einsum('egcm->gecm', expert_output)
     transposed_expert_output = self._split(transposed_expert_output, ap.gecm)
-    if p.gating_func == 'top2':
+    if p.gating_func in ['top2', 'expert_choice_v2']:
       combined_output = jnp.einsum('gecm,gsec->gsm', transposed_expert_output,
                                    combine_tensor)
     elif p.gating_func == 'expert_choice':
