@@ -20,7 +20,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import dataclasses
-from typing import overload, TypeVar, Callable, Any, Union, Optional, Collection
+from typing import overload, TypeVar, Callable, Any, Union, Optional, Collection, Generic
 
 import fiddle as fdl
 from fiddle import daglish
@@ -50,7 +50,7 @@ class CloneAndSetMixin:
     return self
 
 
-class PaxConfig(fdl.Config, CloneAndSetMixin):
+class PaxConfig(Generic[T], fdl.Config[T], CloneAndSetMixin):
   """Subclasses `fdl.Config` to make it more compatible with HParams."""
 
   @property
