@@ -81,6 +81,8 @@ class Dropout(base_layer.BaseLayer):
         return inputs
       if p.noise_shape_broadcast_dims:
         noise_shape = p.noise_shape or list(inputs.shape)
+        if isinstance(noise_shape, tuple):
+          noise_shape = list(noise_shape)
         for dim in p.noise_shape_broadcast_dims:
           if dim >= len(noise_shape):
             raise ValueError('Invalid broadcasted dim {}'.format(dim))
