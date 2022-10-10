@@ -1935,6 +1935,10 @@ class _FiddleHParamsInstanceStub:
   def cls(self):
     return type(self._base_layer)
 
+  def to_text(self, include_types: bool = False, separator: str = ':'):
+    return base_hyperparams.nested_struct_to_text(
+        self.clone(), include_types, separator)
+
 
 class FiddleBaseLayer(_SharedBaseLayer):
   """Base class for layers that are configured using Fiddle.

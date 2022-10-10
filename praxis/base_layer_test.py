@@ -366,6 +366,27 @@ class FiddleBaseLayerTest(test_utils.TestCase):
     self.assertEqual(cloned.fprop_dtype, jnp.float16)
     self.assertEqual(cloned.dtype, jnp.float32)
 
+    expected_to_text = '\n'.join([
+        f'.__fn_or_cls__ : {Layer!r}',
+        '.activation_split_dims_mapping' +
+        ' : FiddleBaseLayer.ActivationShardingHParams(out=None)',
+        '.dcn_mesh_shape : [3, 4]',
+        '.dtype : type/jax.numpy/float32',
+        '.fprop_dtype : type/jax.numpy/float16',
+        '.ici_mesh_shape : [1, 2]',
+        ".mesh_axis_names : ['a', 'b']",
+        '.name : NoneType',
+        ".params_init.method : 'xavier'",
+        '.params_init.scale : 1.000001',
+        '.parent : NoneType',
+        '.shared_weight_layer_id : NoneType',
+        '.skip_lp_regularization : NoneType',
+        '.weight_split_dims_mapping' +
+        ' : FiddleBaseLayer.WeightShardingHParams(wt=None)',
+        '.x : 3',
+    ]) + '\n'
+    self.assertEqual(hparams_stub.to_text(), expected_to_text)
+
   def test_hparams_class_stub(self):
 
     class Layer(base_layer.FiddleBaseLayer):
