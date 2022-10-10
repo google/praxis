@@ -143,7 +143,6 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
           p.self_atten_tpl,
           missing_fields_in_self=[
               'block_size', 'left_context', 'right_context', 'rel_pos_emb_dim',
-              'skip_term_b'
           ])
     else:
       self_atten_tpl = p.self_atten_tpl.clone()

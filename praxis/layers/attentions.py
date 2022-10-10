@@ -2328,10 +2328,8 @@ class DotProductAttentionXL(DotProductAttention):
 
     Attributes:
       rel_pos_emb_dim: Dimension of relative positional embedding.
-      skip_term_b: If True, skip term_b in the paper section 3.3.
     """
     rel_pos_emb_dim: int = 0
-    skip_term_b: bool = False
 
   def setup(self) -> None:
     """Constructs a DotProductAttentionXL object."""
@@ -2387,43 +2385,26 @@ class DotProductAttentionXL(DotProductAttention):
 
     Args:
       tensors of the following shapes:
-      content:         [N, H] if skip_term_b else [B, T, N, H]
+      content:          B, T, N, H]
       abs_pos_emb:     [2T - 1, N, H], the absolute positional embedding.
         abs_pos_emb[i] is the emb of relative distance i - (T-1).
 
     Returns:
-      The attention logits tensor. [N, T, T] if skip_term_b else [B, N, T, T].
+      The attention logits tensor. [B, N, T, T].
     """
     params = self.hparams
-    if not params.skip_term_b:
-      b, t, n = content.shape[:3]
-      l = 2 * t - 1
+    b, t, n = content.shape[:3]
+    l = 2 * t - 1
 
-      # [B, N, T, L=2T-1]
-      term_bd = jnp.einsum('BTNH,LNH->BNTL', content, abs_pos_emb)
+    # [B, N, T, L=2T-1]
+    term_bd = jnp.einsum('BTNH,LNH->BNTL', content, abs_pos_emb)
 
-      term_bd = jnp.reshape(term_bd, [b, n, t * l])
-      # [B, N, T * (L + 1)].
-      term_bd = jnp.pad(term_bd, ((0, 0), (0, 0), (0, t)))
-      # [B, N, T, L + 1].
-      term_bd = jnp.reshape(term_bd, [b, n, t, l + 1])
-      return term_bd[:, :, :, t - 1::-1]
-    else:
-      n = content.shape[0]
-      l = abs_pos_emb.shape[0]
-      t = (l + 1) // 2
-
-      # [N, L=2T-1]
-      term_d = jnp.einsum('NH,LNH->NL', content, abs_pos_emb)
-
-      # [N, T, L]
-      term_d = jnp.tile(jnp.expand_dims(term_d, axis=1), [1, t, 1])
-      term_d = jnp.reshape(term_d, [n, t * l])
-      # [N, T * (L + 1)].
-      term_d = jnp.pad(term_d, ((0, 0), (0, t)))
-      # [N, T, L + 1].
-      term_d = jnp.reshape(term_d, [n, t, l + 1])
-      return term_d[:, :, t - 1::-1]
+    term_bd = jnp.reshape(term_bd, [b, n, t * l])
+    # [B, N, T * (L + 1)].
+    term_bd = jnp.pad(term_bd, ((0, 0), (0, 0), (0, t)))
+    # [B, N, T, L + 1].
+    term_bd = jnp.reshape(term_bd, [b, n, t, l + 1])
+    return term_bd[:, :, :, t - 1::-1]
 
   def _atten_logits(self, query, key):
     p = self.hparams
@@ -2444,10 +2425,7 @@ class DotProductAttentionXL(DotProductAttention):
     content = query + self.theta.u
     term_ac = jnp.einsum('BTNH,BSNH->BNTS', content, key)
 
-    if p.skip_term_b:
-      content = self.theta.v
-    else:
-      content = query + self.theta.v
+    content = query + self.theta.v
     term_bd = self._rel_position_bias(content, sin_emb)
     return term_ac + term_bd
 
@@ -2731,10 +2709,8 @@ class LocalSelfAttentionXL(LocalSelfAttention):
 
     Attributes:
       rel_pos_emb_dim: Dimension of relative positional embedding.
-      skip_term_b: bool. If True, skip term_b in the paper section 3.3.
     """
     rel_pos_emb_dim: int = 0
-    skip_term_b: bool = False
 
   def setup(self) -> None:
     """Constructs a LocalSelfAttentionXL object."""
@@ -2793,34 +2769,21 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     # [F, N, H]
     sin_emb = jnp.squeeze(sin_emb, 0)
 
-    if not p.skip_term_b:
-      # [B, N, U, W, F]
-      term_bd = jnp.einsum('BUWNH,FNH->BNUWF', query + self.theta.v, sin_emb)
+    # [B, N, U, W, F]
+    term_bd = jnp.einsum('BUWNH,FNH->BNUWF', query + self.theta.v, sin_emb)
 
-      # Perform relative shift in order to get [B, N, U, W, C]
-      # Pads the input to [B, N, U, C, C+1]
-      term_bd = jnp.pad(term_bd,
-                        ((0, 0), (0, 0), (0, 0), (0, c - w), (0, c + 1 - f)))
+    # Perform relative shift in order to get [B, N, U, W, C]
+    # Pads the input to [B, N, U, C, C+1]
+    term_bd = jnp.pad(term_bd,
+                      ((0, 0), (0, 0), (0, 0), (0, c - w), (0, c + 1 - f)))
 
-      # Reshapes to [B, N, U, C+1, C]. Note the output last dim is 1-smaller
-      # than the input, which "pushses" one element off to the next row for each
-      # row. The accumulated effect is row_i is right-shifted i steps (i>=0).
-      term_bd = jnp.reshape(term_bd, [b, n, u, c + 1, c])
+    # Reshapes to [B, N, U, C+1, C]. Note the output last dim is 1-smaller
+    # than the input, which "pushses" one element off to the next row for each
+    # row. The accumulated effect is row_i is right-shifted i steps (i>=0).
+    term_bd = jnp.reshape(term_bd, [b, n, u, c + 1, c])
 
-      # Keeps useful slices. [B, N, U, W, C]
-      term_bd = term_bd[:, :, :, :w, :]
-    else:
-      # [N, F]
-      term_d = jnp.einsum('NH,FNH->NF', self.theta.v, sin_emb)
-      # [N, W, F]
-      term_d = jax.numpy.tile(jnp.expand_dims(term_d, 1), [1, w, 1])
-      # [N, C, C+1]
-      term_d = jnp.pad(term_d, ((0, 0), (0, c - w), (0, c + 1 - f)))
-      # [N, C+1, C]
-      term_d = jnp.reshape(term_d, [n, c + 1, c])
-      # Keeps useful slices. [N, W, C]
-      term_d = term_d[:, :w, :]
-      term_bd = jnp.reshape(term_d, [1, n, 1, w, c])
+    # Keeps useful slices. [B, N, U, W, C]
+    term_bd = term_bd[:, :, :, :w, :]
     return term_ac + term_bd
 
 

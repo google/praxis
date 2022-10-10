@@ -491,10 +491,8 @@ class AttentionsTest(test_utils.TestCase):
         test_utils.to_np(jax_atten_prob), test_utils.to_np(tf_atten_prob))
 
   @parameterized.product(
-      rel_pos_emb_dim=[10, 16],
-      skip_term_b=[True, False],
-  )
-  def test_attention_xl(self, rel_pos_emb_dim, skip_term_b):
+      rel_pos_emb_dim=[10, 16],)
+  def test_attention_xl(self, rel_pos_emb_dim):
     mdl_dim = 16
     hidden_dim = 32
     num_heads = 4
@@ -504,7 +502,6 @@ class AttentionsTest(test_utils.TestCase):
         hidden_dim=hidden_dim,
         num_heads=num_heads,
         rel_pos_emb_dim=rel_pos_emb_dim,
-        skip_term_b=skip_term_b,
     )
     layer = instantiate(test_layer_p)
 
@@ -544,8 +541,7 @@ class AttentionsTest(test_utils.TestCase):
         input_dim=mdl_dim,
         hidden_dim=hidden_dim,
         num_heads=num_heads,
-        rel_pos_emb_dim=rel_pos_emb_dim,
-        skip_term_b=skip_term_b)
+        rel_pos_emb_dim=rel_pos_emb_dim)
     tf_layer = tf_layer_p.Instantiate()
     tf_out, tf_atten_prob = tf_layer.FProp(
         tf_initial_vars, query_vec, key_vec, value_vec, paddings=paddings)
@@ -561,11 +557,10 @@ class AttentionsTest(test_utils.TestCase):
 
   @parameterized.product(
       rel_pos_emb_dim=[10, 16],
-      skip_term_b=[True, False],
       left_context=[1, 2],
       right_context=[0, 2],
   )
-  def test_local_attention_xl(self, rel_pos_emb_dim, skip_term_b, left_context,
+  def test_local_attention_xl(self, rel_pos_emb_dim, left_context,
                               right_context):
     mdl_dim = 16
     hidden_dim = 32
@@ -577,7 +572,6 @@ class AttentionsTest(test_utils.TestCase):
         hidden_dim=hidden_dim,
         num_heads=num_heads,
         rel_pos_emb_dim=rel_pos_emb_dim,
-        skip_term_b=skip_term_b,
         left_context=left_context,
         right_context=right_context,
         block_size=block_size,
@@ -622,7 +616,6 @@ class AttentionsTest(test_utils.TestCase):
         hidden_dim=hidden_dim,
         num_heads=num_heads,
         rel_pos_emb_dim=rel_pos_emb_dim,
-        skip_term_b=skip_term_b,
         block_size=block_size,
         left_context=left_context,
         right_context=right_context)
