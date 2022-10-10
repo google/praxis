@@ -372,11 +372,13 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
     assert p.rhs_dilation_rate > 0
 
     w_shape = [p.filter_shape[0], 1, p.filter_shape[1] * p.filter_shape[2]]
+    bias_shape = w_shape[-1]
     if p.use_2d_conv_weight_shape:
       w_shape = w_shape + [1]
     self.create_variable('w', WeightHParams(shape=w_shape))
     if p.bias:
-      self.create_variable('b', WeightHParams(shape=[p.dim], init=p.bias_init))
+      self.create_variable(
+          'b', WeightHParams(shape=[bias_shape], init=p.bias_init))
 
   def get_w(self) -> JTensor:
     p = self.hparams

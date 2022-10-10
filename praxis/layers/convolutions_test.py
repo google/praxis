@@ -90,19 +90,20 @@ class ConvolutionsTest(test_utils.TestCase):
     self.assertAllClose(to_np(output[0, :, :, 0]), np_output)
 
   @parameterized.parameters(
-      (2, 10, 3, 10, 1),
-      (3, 12, 5, 11, 1),
-      (5, 7, 2, 8, 1),
-      (7, 8, 4, 5, 1),
-      (2, 10, 3, 10, 2),
-      (3, 12, 5, 11, 2),
+      (2, 10, 3, 10, 1, True),
+      (3, 12, 5, 11, 1, False),
+      (5, 7, 2, 8, 1, True),
+      (7, 8, 4, 5, 1, False),
+      (2, 10, 3, 10, 2, True),
+      (3, 12, 5, 11, 2, False),
   )
   def test_depthwise_conv1d_layer(self, batch_size, seq_len, kernel_size,
-                                  input_dims, rhs_dilation_rate):
+                                  input_dims, rhs_dilation_rate, bias):
     p = convolutions.DepthwiseConv1D.HParams(
         name='jax_depthwise_conv1d',
         filter_shape=(kernel_size, input_dims, 1),
-        rhs_dilation_rate=rhs_dilation_rate)
+        rhs_dilation_rate=rhs_dilation_rate,
+        bias=bias)
     depthwiseconv1d = instantiate(p)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
@@ -123,7 +124,8 @@ class ConvolutionsTest(test_utils.TestCase):
     tf_l = clwp.DepthwiseConv2DLayer.Params().Set(
         name='tf_depthwise_conv_layer',
         filter_shape=(kernel_size, 1, input_dims, 1),
-        dilation_rate=(rhs_dilation_rate, 1))
+        dilation_rate=(rhs_dilation_rate, 1),
+        bias=bias)
     tf_depthwiseconv1d = tf_l.Instantiate()
     tf_output = tf_depthwiseconv1d.FProp(
         tf_initial_vars,
