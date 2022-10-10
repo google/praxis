@@ -1,0 +1,14 @@
+absl-py
+clu
+einops
+fiddle @ git+https://github.com/google/fiddle
+flax
+jax
+jax-bitempered-loss
+lingvo
+numpy
+optax
+optax-shampoo
+protobuf==3.15
+t5x
+tensorflow==2.7.3
