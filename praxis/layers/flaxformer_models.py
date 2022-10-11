@@ -573,7 +573,7 @@ class LanguageModel(base_model.BaseModel):
       - metrics, a NestedMap containing str keys and clu_metrics.Metric
         objects. This is currently optional.
     """
-    num_decodes = 1  # Only supports greedy decode.
+    num_decodes = self.hparams.decoder_tpl.num_samples
     params = self.decoder.variables['params']
     decoder_params = {'eos_id': self.hparams.decoder_tpl.eos_id}
     max_decode_length = self.hparams.decoder_tpl.max_decode_steps
@@ -584,6 +584,7 @@ class LanguageModel(base_model.BaseModel):
     inputs = jnp.pad(input_batch.ids, [[0, 0], [1, 0]])
     inputs = jax.lax.slice(inputs, [0, 0], [batch_size, input_seq_len])
     inputs = jnp.pad(inputs, [[0, 0], [0, max_decode_length]])
+    inputs = jnp.repeat(inputs, repeats=num_decodes, axis=0)
 
     decoder_causal_attention = jnp.pad(
         1 - input_batch.paddings, [[0, 0], [1, 0]],
@@ -593,6 +594,8 @@ class LanguageModel(base_model.BaseModel):
                                              [batch_size, input_seq_len])
     decoder_causal_attention = jnp.pad(decoder_causal_attention,
                                        [[0, 0], [0, max_decode_length]])
+    decoder_causal_attention = jnp.repeat(
+        decoder_causal_attention, repeats=num_decodes, axis=0)
 
     inputs_lengths = jnp.sum(decoder_causal_attention, axis=-1) - 1
 
@@ -626,8 +629,7 @@ class LanguageModel(base_model.BaseModel):
         prefill_lengths=inputs_lengths)
     prefilled_cache = variables_with_cache['cache']
 
-    scanned = hasattr(self.decoder,
-                      'scan_layers') and self.flax_decoder_tpl.scan_layers
+    scanned = self.hparams.flax_decoder_tpl.scan_layers
 
     # Single step decoder function.
     tokens_ids_to_logits = functools.partial(
@@ -643,8 +645,9 @@ class LanguageModel(base_model.BaseModel):
         inputs=inputs,
         cache=prefilled_cache,
         tokens_to_logits=tokens_ids_to_logits,
-        num_decodes=num_decodes,
+        num_decodes=1,
         cache_offset=1 if scanned else 0,
+        topk=self.hparams.decoder_tpl.k,
         **decoder_params)
 
     eos_position = jnp.argmax(
@@ -655,10 +658,13 @@ class LanguageModel(base_model.BaseModel):
     decode_out = (NestedMap(
         num_decoded=(num_decodes, jnp.array(1, jnp.float32))),
                   NestedMap(
-                      output_ids=decodes,
-                      scores=scores,
-                      prefix_lengths=inputs_lengths + 1,
-                      decode_lengths=decode_lengths,
+                      output_ids=jnp.reshape(decodes,
+                                             (batch_size, num_decodes, -1)),
+                      scores=jnp.reshape(scores, (batch_size, num_decodes)),
+                      prefix_lengths=jnp.reshape(inputs_lengths + 1,
+                                                 (batch_size, num_decodes)),
+                      decode_lengths=jnp.reshape(decode_lengths,
+                                                 (batch_size, num_decodes)),
                   ), None)
     return decode_out
 
