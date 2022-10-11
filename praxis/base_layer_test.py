@@ -17,7 +17,8 @@
 
 import dataclasses
 import functools
-from typing import Any
+import typing
+from typing import Any, Optional
 from absl.testing import absltest
 from absl.testing import parameterized
 import fiddle as fdl
@@ -76,6 +77,10 @@ class MultipleBiasLayer(base_layer.BaseLayer):
     for layer in layers:
       x = layer(x)
     return x
+
+
+class TrivialFiddleLayer(base_layer.FiddleBaseLayer):
+  pass
 
 
 class SimpleFiddleBaseLayer(base_layer.FiddleBaseLayer):
@@ -263,8 +268,7 @@ class BaseLayerTest(test_utils.TestCase):
 
       class FiddleParent(base_layer.FiddleBaseLayer):
 
-        child_tpl: pax_fiddle.Config = base_layer.sub_config_field(
-            child_cls.HParams)
+        child_tpl: Any = base_layer.sub_config_field(child_cls.HParams)
 
         def setup(self):
           child_tpl = self.child_tpl.clone()
@@ -512,8 +516,57 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       with base_layer.JaxContext.new_context():
         SomeFlaxModel().init(jax.random.PRNGKey(1), jnp.ones((4, 4, 3)))
 
+  def test_check_template_has_do_not_build_tag(self):
+
+    # pylint: disable=unused-variable
+    with self.subTest('FiddleHParamsClassStub'):
+      with self.assertRaisesRegex(
+          ValueError,
+          'has a template type, but does not have the DO_NOT_BUILD tag set.'):
+
+        class Layer1(base_layer.FiddleBaseLayer):
+          child_tpl: TrivialFiddleLayer.HParams = dataclasses.field(
+              default_factory=TrivialFiddleLayer.HParams)
+
+    with self.subTest('FiddleConfig'):
+      with self.assertRaisesRegex(
+          ValueError,
+          'has a template type, but does not have the DO_NOT_BUILD tag set.'):
+
+        class Layer2(base_layer.FiddleBaseLayer):
+          child_tpl: pax_fiddle.Config = dataclasses.field(
+              default_factory=lambda: pax_fiddle.Config(SimpleHParamsBaseLayer))
+
+    with self.subTest('Optional_FiddleHParamsClassStub'):
+      if not hasattr(typing, 'get_origin'):
+        self.skipTest('This version of Python has not typing.get_origin')
+      with self.assertRaisesRegex(
+          ValueError,
+          'has a template type, but does not have the DO_NOT_BUILD tag set.'):
+
+        class Layer3(base_layer.FiddleBaseLayer):
+          child_tpl: Optional[TrivialFiddleLayer.HParams] = None
+
+    with self.subTest('Optional_FiddleConfig'):
+      if not hasattr(typing, 'get_origin'):
+        self.skipTest('This version of Python has not typing.get_origin')
+      with self.assertRaisesRegex(
+          ValueError,
+          'has a template type, but does not have the DO_NOT_BUILD tag set.'):
+
+        class Layer4(base_layer.FiddleBaseLayer):
+          child_tpl: Optional[pax_fiddle.Config] = None
+
+    with self.subTest('Optional_Parameterized_FiddleConfig'):
+      if not hasattr(typing, 'get_origin'):
+        self.skipTest('This version of Python has not typing.get_origin')
+      with self.assertRaisesRegex(
+          ValueError,
+          'has a template type, but does not have the DO_NOT_BUILD tag set.'):
+
+        class Layer5(base_layer.FiddleBaseLayer):
+          child_tpl: Optional[pax_fiddle.Config[TrivialFiddleLayer]] = None
+
 
 if __name__ == '__main__':
   absltest.main()
-
-
