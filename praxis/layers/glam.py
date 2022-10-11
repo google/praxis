@@ -22,6 +22,8 @@ from praxis.layers import normalizations
 from praxis.layers import transformer_models
 from praxis.layers import transformers
 
+LanguageModelType = transformer_models.LanguageModelType
+
 
 def GlamStackedTransformerHParams(
     model_dim,
@@ -193,7 +195,9 @@ def GlamUniTransformerLmHParams(
     combine_qkv=False,
     bidirectional=False,
     num_pipeline_stages=1,
-    num_pipeline_microbatches=1) -> transformer_models.TransformerLm.HParams:
+    num_pipeline_microbatches=1,
+    model_type=LanguageModelType.CAUSAL
+) -> transformer_models.TransformerLm.HParams:
   """Common setup for GLaM Decoder-only Transformer Model.
 
   This function sets up configs for both MoE and dense GLaM models.
@@ -243,6 +247,8 @@ def GlamUniTransformerLmHParams(
     bidirectional: Set to support bidirectional relative attention.
     num_pipeline_stages: Number of pipeline stages.
     num_pipeline_microbatches: Number of pipeline microbatches.
+    model_type: Type of the Language Model. Either `CAUSAL`, `PREFIX`, or
+      `BIDIRECTIONAL`.
 
   Returns:
     A Params object to set up a StackedTransformer.
@@ -253,6 +259,7 @@ def GlamUniTransformerLmHParams(
   p.model_dims = model_dim
   p.vocab_size = vocab_size
   p.position_emb_tpl = None
+  p.model_type = model_type
 
   p.final_ln_tpl = normalizations.RmsNorm.HParams(
       name='rms_norm', dim=model_dim)
