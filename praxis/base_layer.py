@@ -75,13 +75,6 @@ SplitDimsMapping = pytypes.SplitDimsMapping
 # Layer stack to establish parent child relationships.
 _LAYER_STACK = py_utils.ThreadLocalStack()
 
-# A temporary allow list while we finish name conflict resolution for Fiddle
-# migration.  Before we start the migration, this list should be empty and
-# removed.
-_FIDDLE_MIGRATION_CONFLICT_ALLOW_LIST = ('loss', 'proj', 'sub1', 'sub2', 'unet',
-                                         'emb', 'ff0', 'ff1', 'mlm', 'vit',
-                                         'ff')
-
 # Global state that may impact how certain jax computation will be carried (e.g.
 # whether or not to enable dropout).
 _JaxContextStack = py_utils.ThreadLocalStack()
@@ -1640,19 +1633,13 @@ class _SharedBaseLayer(nn.Module):
   @nn.nowrap
   def _add_child_to_layer_registry(self, name: str):
     """Registers child creation with LayerRegistry."""
-    conflict = False
     if name in self._hparam_fields():
-      # As part of the Fiddle migration, child names that conflict with HParams
-      # attributes will be fixed.
-      logging.warning('FiddleMigration: %s Child name %s conflict hparam.',
-                      self.__class__.__name__, name)
-      conflict = True
-    layer_utils.LayerRegistry().add_layer(name, self, conflict=conflict)
-    if conflict and name not in _FIDDLE_MIGRATION_CONFLICT_ALLOW_LIST:
       raise AttributeError(
-          f'{self.__class__}.HParams already has attribute {name}. '
-          'Please rename to avoid future name collision after Fiddle migration.'
-      )
+          f'{self.__class__}.HParams has a field named {name!r}. We are '
+          'disallowing creating children of the same name, since those will '
+          'result in a name collision after Fiddle migration (which moves '
+          'HParams fields to root-level Flax module fields).')
+    layer_utils.LayerRegistry().add_layer(name, self, conflict=False)
 
   @nn.nowrap
   def _cast_to_fprop_dtype(self, value: Any) -> Any:
