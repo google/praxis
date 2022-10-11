@@ -67,7 +67,7 @@ class BlockUtilsTest(test_utils.TestCase, parameterized.TestCase):
   )
   def test_convert_to_block(self, block_size):
     x = np.random.random([2, 6, 2, 3, 4])
-    x_blocks = attentions._convert_to_block(x, block_size)
+    x_blocks = attentions.convert_to_block(x, block_size)
     # Check shape.
     batch_size = x.shape[0]
     other_dims = x.shape[2:]
@@ -88,8 +88,8 @@ class BlockUtilsTest(test_utils.TestCase, parameterized.TestCase):
   )
   def test_extract_block_context(self, block_size, left_context, right_context):
     x = np.random.random([2, 6, 2, 3, 4])
-    x_context = attentions._extract_block_context(x, block_size, left_context,
-                                                  right_context)
+    x_context = attentions.extract_block_context(x, block_size, left_context,
+                                                 right_context)
     # Check shape.
     batch_size = x.shape[0]
     other_dims = x.shape[2:]
@@ -148,6 +148,7 @@ class BlockUtilsTest(test_utils.TestCase, parameterized.TestCase):
                                                      left_context,
                                                      right_context)
     self.assertAllClose(ref_padding, padding)
+
 
 
 class AttentionsTest(test_utils.TestCase):

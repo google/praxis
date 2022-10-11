@@ -213,7 +213,7 @@ def shift_1d(inputs: JTensor, offset: int, axis: int):
   return output
 
 
-def _convert_to_block(x, block_size: int, padding_val: float = 0.0) -> JTensor:
+def convert_to_block(x, block_size: int, padding_val: float = 0.0) -> JTensor:
   """Turns a sequence to non overlapping blocks.
 
   Args:
@@ -243,11 +243,11 @@ def _convert_to_block(x, block_size: int, padding_val: float = 0.0) -> JTensor:
   return reshaped
 
 
-def _extract_block_context(x: JTensor,
-                           block_size: int,
-                           left_context: int,
-                           right_context: int,
-                           padding_val: float = 0.0) -> JTensor:
+def extract_block_context(x: JTensor,
+                          block_size: int,
+                          left_context: int,
+                          right_context: int,
+                          padding_val: float = 0.0) -> JTensor:
   """Extracts temporal context for every block.
 
   Args:
@@ -274,7 +274,7 @@ def _extract_block_context(x: JTensor,
         'right_context must be at least 0 and at most block_size = {}, '
         'got {}'.format(block_size, right_context))
 
-  block = _convert_to_block(x, block_size, padding_val)
+  block = convert_to_block(x, block_size, padding_val)
   concat_list = [block]
 
   # Creates one block filled with padding values.
@@ -2315,6 +2315,41 @@ class DotProductAttentionWithLPB(DotProductAttention):
     return encoded
 
 
+def create_relative_positional_embedding(layer: base_layer.BaseLayer) -> None:
+  params = layer.hparams
+  wp = params.weight_split_dims_mapping
+
+  if params.rel_pos_emb_dim <= 0:
+    raise ValueError('Invalid rel_pos_emb_dim: %s' % params.rel_pos_emb_dim)
+
+  emb_params = embedding_softmax.PositionalEmbedding.HParams(
+      embedding_dims=params.rel_pos_emb_dim)
+  layer.create_child('pos_emb', emb_params)
+
+  # Projection layer for relative position encoding
+  dim_per_head = params.dim_per_head
+  if dim_per_head is None:
+    dim_per_head = params.hidden_dim // params.num_heads
+    assert dim_per_head * params.num_heads == params.hidden_dim, (
+        f'{dim_per_head} * {params.num_heads} != {params.hidden_dim}')
+
+  pos_proj_tpl = params.proj_tpl.clone().set(
+      input_dim=params.rel_pos_emb_dim,
+      num_heads=params.num_heads,
+      dim_per_head=dim_per_head,
+      use_bias=False)
+  pos_proj_tpl.weight_split_dims_mapping.wt = wp.proj
+  layer.create_child('pos_proj', pos_proj_tpl)
+
+  u_pc = WeightHParams(
+      shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
+  v_pc = WeightHParams(
+      shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
+
+  layer.create_variable('u', u_pc)
+  layer.create_variable('v', v_pc)
+
+
 class DotProductAttentionXL(DotProductAttention):
   """Transformer-XL multiheaded attention with relative positional embedding.
 
@@ -2328,44 +2363,14 @@ class DotProductAttentionXL(DotProductAttention):
 
     Attributes:
       rel_pos_emb_dim: Dimension of relative positional embedding.
+      skip_term_b: If True, skip term_b in the paper section 3.3.
     """
     rel_pos_emb_dim: int = 0
 
   def setup(self) -> None:
     """Constructs a DotProductAttentionXL object."""
     super().setup()
-    params = self.hparams
-    wp = params.weight_split_dims_mapping
-
-    if params.rel_pos_emb_dim <= 0:
-      raise ValueError('Invalid rel_pos_emb_dim: %s' % params.rel_pos_emb_dim)
-
-    emb_params = embedding_softmax.PositionalEmbedding.HParams(
-        embedding_dims=params.rel_pos_emb_dim)
-    self.create_child('pos_emb', emb_params)
-
-    # Projection layer for relative position encoding
-    dim_per_head = params.dim_per_head
-    if dim_per_head is None:
-      dim_per_head = params.hidden_dim // params.num_heads
-      assert dim_per_head * params.num_heads == params.hidden_dim, (
-          f'{dim_per_head} * {params.num_heads} != {params.hidden_dim}')
-
-    pos_proj_tpl = params.proj_tpl.clone().set(
-        input_dim=params.rel_pos_emb_dim,
-        num_heads=params.num_heads,
-        dim_per_head=dim_per_head,
-        use_bias=False)
-    pos_proj_tpl.weight_split_dims_mapping.wt = wp.proj
-    self.create_child('pos_proj', pos_proj_tpl)
-
-    u_pc = WeightHParams(
-        shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
-    v_pc = WeightHParams(
-        shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
-
-    self.create_variable('u', u_pc)
-    self.create_variable('v', v_pc)
+    create_relative_positional_embedding(self)
 
   def _rel_position_bias(self, content: JTensor,
                          abs_pos_emb: JTensor) -> JTensor:
@@ -2584,7 +2589,7 @@ class LocalSelfAttention(DotProductAttention):
     query = self._scale_query(query)
 
     # -> [B, U, C, N, H]
-    key_block_context = _extract_block_context(
+    key_block_context = extract_block_context(
         key,
         block_size=block_size,
         left_context=p.left_context,
@@ -2592,7 +2597,7 @@ class LocalSelfAttention(DotProductAttention):
     _, u, c, _, _ = key_block_context.shape
 
     # -> [B, U, W, N, H]
-    query_blocks = _convert_to_block(query, block_size=block_size)
+    query_blocks = convert_to_block(query, block_size=block_size)
     _, _, w, _, _ = query_blocks.shape
 
     minus_inf = py_utils.get_large_negative_number(jnp.float32)
@@ -2602,7 +2607,7 @@ class LocalSelfAttention(DotProductAttention):
       # For example, generated by convert_paddings_to_mask
 
       mask = atten_mask[:, 0, 0, :]
-      mask_block_context = _extract_block_context(
+      mask_block_context = extract_block_context(
           mask,
           block_size=block_size,
           left_context=p.left_context,
@@ -2616,13 +2621,13 @@ class LocalSelfAttention(DotProductAttention):
       # Full attention mask
 
       # -> [B, U, W, T]
-      mask_block_context = _convert_to_block(
+      mask_block_context = convert_to_block(
           atten_mask[:, 0].astype(jnp.float32),
           block_size=block_size,
           padding_val=minus_inf)
       mask_block_context = jnp.reshape(mask_block_context, [b * u * w, t])
       # -> [B, U, W, U, C]
-      mask_block_context = _extract_block_context(
+      mask_block_context = extract_block_context(
           mask_block_context,
           block_size=block_size,
           left_context=p.left_context,
@@ -2662,7 +2667,7 @@ class LocalSelfAttention(DotProductAttention):
     # Apply attention dropout.
     probs = self.atten_dropout(probs)
 
-    value_block_context = _extract_block_context(
+    value_block_context = extract_block_context(
         value,
         block_size=block_size,
         left_context=p.left_context,
@@ -2715,38 +2720,7 @@ class LocalSelfAttentionXL(LocalSelfAttention):
   def setup(self) -> None:
     """Constructs a LocalSelfAttentionXL object."""
     super().setup()
-    params = self.hparams
-    wp = params.weight_split_dims_mapping
-
-    if params.rel_pos_emb_dim <= 0:
-      raise ValueError('Invalid rel_pos_emb_dim: %s' % params.rel_pos_emb_dim)
-
-    emb_params = embedding_softmax.PositionalEmbedding.HParams(
-        embedding_dims=params.rel_pos_emb_dim)
-    self.create_child('pos_emb', emb_params)
-
-    # Projection layer for relative position encoding
-    dim_per_head = params.dim_per_head
-    if dim_per_head is None:
-      dim_per_head = params.hidden_dim // params.num_heads
-      assert dim_per_head * params.num_heads == params.hidden_dim, (
-          f'{dim_per_head} * {params.num_heads} != {params.hidden_dim}')
-
-    pos_proj_tpl = params.proj_tpl.clone().set(
-        input_dim=params.rel_pos_emb_dim,
-        num_heads=params.num_heads,
-        dim_per_head=dim_per_head,
-        use_bias=False)
-    pos_proj_tpl.weight_split_dims_mapping.wt = wp.proj
-    self.create_child('pos_proj', pos_proj_tpl)
-
-    u_pc = WeightHParams(
-        shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
-    v_pc = WeightHParams(
-        shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
-
-    self.create_variable('u', u_pc)
-    self.create_variable('v', v_pc)
+    create_relative_positional_embedding(self)
 
   def _atten_logits(self, query, key):
     p = self.hparams
