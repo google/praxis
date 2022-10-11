@@ -77,6 +77,7 @@ pytype_strict_library(
     deps = [
         ":activations",
         ":normalizations",
+        ":transformers",
         # Implicit jax dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
@@ -505,7 +506,9 @@ py_strict_test(
     deps = [
         ":adapters",
         ":normalizations",
+        ":transformers",
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit lingvo.core.cluster_factory dependency.
         # Implicit lingvo.core.layers dependency.

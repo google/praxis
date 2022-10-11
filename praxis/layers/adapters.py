@@ -25,6 +25,7 @@ from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
 from praxis.layers import normalizations
+from praxis.layers import transformers
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
@@ -62,21 +63,23 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
     input_dims: int = 0
     bottleneck_dims: int = 0
     num_tasks: int = 1
-    norm_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
+    norm_tpl: Optional[BaseHParams] = sub_config_field(
+        normalizations.LayerNorm.HParams)
     activation_tpl: activations.BaseActivation.HParams = sub_config_field(
         activations.ReLU.HParams)
 
   def setup(self) -> None:
     p = self.hparams
-    norm_tpl = p.norm_tpl.clone()
-    if norm_tpl.cls in {
-        normalizations.BatchNorm, normalizations.GroupNorm,
-        normalizations.LayerNorm
-    }:
-      norm_tpl.dim = p.input_dims
-    else:
-      raise NotImplementedError('%s is not supported' % norm_tpl.cls)
-    self.create_child('norm', norm_tpl)
+    if p.norm_tpl:
+      norm_tpl = p.norm_tpl.clone()
+      if norm_tpl.cls in {
+          normalizations.BatchNorm, normalizations.GroupNorm,
+          normalizations.LayerNorm
+      }:
+        norm_tpl.dim = p.input_dims
+      else:
+        raise NotImplementedError('%s is not supported' % norm_tpl.cls)
+      self.create_child('norm', norm_tpl)
 
     down_w_pc = WeightHParams(
         shape=[p.num_tasks, p.input_dims, p.bottleneck_dims])
@@ -96,7 +99,8 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
   def __call__(self,
                inputs: JTensor,
                paddings: Optional[JTensor] = None,
-               tasks: Optional[JTensor] = None) -> JTensor:
+               tasks: Optional[JTensor] = None,
+               add_residual: bool = True) -> JTensor:
     """Fprop for multitask adapter.
 
     Args:
@@ -109,6 +113,7 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
         dimensions should be less than two. For example, inputs with [batch,
         time, input_dims] and tasks [batch]. Another possibility is to have
         inputs with shape [batch, time, input_dims] and tasks [batch, time].
+      add_residual: whether to add residual connection.
 
     Returns:
       A tensor containing the adapted activations with the same shape as inputs.
@@ -144,17 +149,86 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
       up_b = jnp.expand_dims(up_b, -2)
 
     # Norm -> down-projection -> non-linearity -> up-projection
-    norm_inputs = self.norm(inputs)
-    if p.norm_tpl.cls in {
-        normalizations.BatchNorm, normalizations.GroupNorm,
-        normalizations.LayerNorm
-    }:
-      norm_inputs = self.norm(inputs, paddings)
+    if p.norm_tpl:
+      if p.norm_tpl.cls in {
+          normalizations.BatchNorm, normalizations.GroupNorm,
+          normalizations.LayerNorm
+      }:
+        norm_inputs = self.norm(inputs, paddings)
+      else:
+        raise NotImplementedError('%s is not supported' % p.norm_tpl.cls)
     else:
-      raise NotImplementedError('%s is not supported' % p.norm_tpl.cls)
+      norm_inputs = inputs
 
     down_projected = jnp.einsum('...i,...in->...n', norm_inputs,
                                 down_w) + down_b
     down_projected = self.activation(down_projected)
     up_projected = jnp.einsum('...n,...ni->...i', down_projected, up_w) + up_b
-    return inputs + up_projected
+    if add_residual:
+      return inputs + up_projected
+    else:
+      return up_projected
+
+
+class AdaptedTransformerFeedForward(transformers.TransformerFeedForward):
+  """This layer is a wrapper designed for MultitaskResidualAdapter.
+
+  MultitaskResidualAdapter should be inserted before residual connection and
+  possible layer normalization. This class implements two different ways to
+  include the residual adapter: sequential, parallel. scaled_parallel should be
+  supported by specifying residual_weight.
+
+  https://openreview.net/pdf?id=0RDcd5Axok
+
+  sequential adds it to the main branch before residual connection.
+  parallel adds it to the residual branch.
+
+  It is recommended to set norm_tpl to None.
+  """
+
+  class HParams(transformers.TransformerFeedForward.HParams):
+    """Associated hyperparams for this layer class.
+
+    Attributes:
+      adapter_tpl: Parameterization of adapter layer added after each block.
+      mode: sequential or parallel.
+    """
+    adapter_tpl: BaseHParams = None
+    mode: str = 'sequential'
+
+  def setup(self):
+    p = self.hparams
+    super(AdaptedTransformerFeedForward, self).setup()
+    assert p.mode in ['sequential', 'parallel']
+    self.create_child('adapters', p.adapter_tpl)
+
+    if p.residual_droppath_prob:
+      raise NotImplementedError(
+          'residual droppath prob is not supported by adapter')
+
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None,
+               segment_ids: Optional[JTensor] = None,
+               tasks: Optional[JTensor] = None) -> JTensor:
+    p = self.hparams
+
+    x = super(AdaptedTransformerFeedForward, self).__call__(
+        inputs, paddings, segment_ids=segment_ids)
+
+    # Revert residual connection
+    if p.add_skip_connection:
+      x = (x - inputs) / p.residual_weight
+
+    if p.mode == 'sequential':
+      x = self.adapters(x, paddings, add_residual=False, tasks=tasks) + x
+    elif p.mode == 'parallel':
+      x = self.adapters(inputs, paddings, add_residual=False, tasks=tasks) + x
+    else:
+      raise ValueError(f'Wrong adapter type: {p.mode}')
+
+    if p.add_skip_connection:
+      assert not p.residual_droppath_prob
+      x = inputs + x * p.residual_weight
+
+    return x
