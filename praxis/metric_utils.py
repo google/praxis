@@ -53,6 +53,8 @@ def top_k_accuracy(top_k: int,
     raise ValueError("One of label_ids and label_probs should be given.")
   if label_ids is None:
     label_ids = jnp.argmax(label_probs, axis=-1)
+  if weights is None:
+    weights = jnp.ones(logits.shape[:-1])
 
   values, _ = jax.lax.top_k(logits, k=top_k)
   threshold = jnp.min(values, axis=-1)
