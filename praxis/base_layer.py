@@ -1622,7 +1622,12 @@ class _SharedBaseLayer(nn.Module):
   @nn.nowrap
   def _create_child(self, name: str, params: BaseLayer.HParams) -> BaseLayer:
     """Creates and returns a child (w/o adding it as an attribute of `self`)."""
-    assert name not in self._private_children
+
+    if name is self._private_children:
+      raise ValueError(
+          f'Child `{name}` already exists: make sure to use unique child names.'
+      )
+
     p = params.clone()
     self.copy_base_hparams(self.hparams, p)  # mutates p in place.
     p.name = name
