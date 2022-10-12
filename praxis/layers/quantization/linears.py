@@ -24,6 +24,7 @@ QuantizationHParams = base_layer.QuantizationHParams
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
 JTensor = pytypes.JTensor
+NestedJTensor = pytypes.NestedJTensor
 
 
 class Linear(linears.Linear):
@@ -73,3 +74,10 @@ class Linear(linears.Linear):
       ap_out = [ap_out[0], ap_out[2]]
     out = base_layer.maybe_shard(out, ap_out, p.mesh_axis_names)
     return out
+
+  def quantize_weight(self) -> NestedJTensor:
+    theta = self.theta
+    eqn = 'xy,yz->xz'
+    q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
+    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    return {'w': q_w, scale_name: q_s}

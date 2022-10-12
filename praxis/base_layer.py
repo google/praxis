@@ -106,7 +106,7 @@ RANDOM = 'random'
 NON_PAX_RNG_KEY = 'dropout'
 
 # Postfix for quantized scale name.
-_QUANTIZED_NAME_POSTFIX = '_quantized_scale'
+QUANTIZED_NAME_POSTFIX = '_quantized_scale'
 
 # Public aliase of base_hyperparams.instantiate() for convenience.
 instantiate = base_hyperparams.instantiate
@@ -1455,7 +1455,7 @@ class _SharedBaseLayer(nn.Module):
     quantized_weight_hparams.init = WeightInit.Constant(0)
     self.create_variable(name=name, var_hparams=quantized_weight_hparams)
     self.create_variable(
-        name=name + _QUANTIZED_NAME_POSTFIX,
+        name=name + QUANTIZED_NAME_POSTFIX,
         var_hparams=WeightHParams(shape=scale_shape))
 
   @nn.nowrap
@@ -1475,7 +1475,7 @@ class _SharedBaseLayer(nn.Module):
       A Tuple of two elements for weight Tensor and scale Tensor.
     """
 
-    scale_name = name + _QUANTIZED_NAME_POSTFIX
+    scale_name = name + QUANTIZED_NAME_POSTFIX
     return self.theta[name], self.theta[scale_name]
 
   @nn.nowrap
@@ -1659,6 +1659,32 @@ class _SharedBaseLayer(nn.Module):
       return x
 
     return tf.nest.map_structure(_cast, value)
+
+  def quantize_weight(self) -> NestedJTensor:
+    """quantize_weight() quantize the current layer and it's children layer(s).
+
+    Quantization applies to only PARAMS and NON_TRAINABLE collection.
+
+    a) the provided default implementation here simply returns the weight
+       verbatim.
+    b) concrete layers should overwrite the default implementation with
+       potentially different quantization strategies. They should take care of
+       quantization of their children's layers, too.
+
+    Returns:
+      a nested map between names to quantized layer.
+    """
+    res = {}
+    for name, child in self._private_children.items():
+      res[name] = child.quantize_weight()
+    for target_collection in [PARAMS, NON_TRAINABLE]:
+      if target_collection not in self.variables:
+        continue
+      for var_name, var_val in self.variables[target_collection].items():
+        if var_name in self._private_children:
+          continue
+        res[var_name] = var_val
+    return res
 
 
 # Inherit from Flax Linen Module.

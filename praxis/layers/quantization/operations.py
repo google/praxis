@@ -15,9 +15,10 @@
 
 """Operations for quantization."""
 
+from typing import List, Tuple
+
 from jax import numpy as jnp
 from praxis import pytypes
-from typing import List
 
 JTensor = pytypes.JTensor
 
@@ -73,3 +74,41 @@ def einsum(eqn: str, x: JTensor, w: JTensor, scale: JTensor) -> JTensor:
     scale = jnp.expand_dims(scale, filling_dims)
 
   return jnp.multiply(ret, scale)
+
+
+def reduce_einsum_weight_precision(
+    eqn: str,
+    t: JTensor,
+    calculation_type: jnp.dtype = jnp.bfloat16,
+    output_type: jnp.dtype = jnp.bfloat16) -> Tuple[JTensor, JTensor]:
+  """Reduce the precision of the weight of einsum.
+
+  It uses per-channel quantization so einsum equantion is passed in as well.
+
+  Args:
+    eqn: the equation for the einsum.
+    t: the weight tensor for the einsum.
+    calculation_type: the type for calculation.
+    output_type: the output type of scale.
+
+  Returns:
+    A tuple of JTensors. The first one is the quantized weight and the second
+    one is the scaling factor.
+  """
+  segs = eqn.split('->')
+  ins = segs[0].split(',')
+  w, out = ins[1].replace('.', ''), segs[1].replace('.', '')
+
+  contract_dims = [i for i, val in enumerate(w) if val not in out]
+
+  if t.dtype != calculation_type:
+    t = t.astype(calculation_type)
+  bound = jnp.maximum(
+      jnp.abs(jnp.max(t, axis=contract_dims, keepdims=True)),
+      jnp.abs(jnp.min(t, axis=contract_dims, keepdims=True)))
+  scale = bound / 127.0
+  t = jnp.divide(t, scale)
+  t = jnp.round(t)
+  t = jnp.clip(t, -128.0, 127.0).astype(jnp.int8)
+  scale = jnp.squeeze(scale).astype(output_type)
+  return t, scale

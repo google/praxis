@@ -18,6 +18,7 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 from jax import numpy as jnp
+import numpy as np
 from praxis import test_utils
 from praxis.layers.quantization import operations
 from typing import List
@@ -51,6 +52,29 @@ class QuantizationUtilsTest(test_utils.TestCase):
     ret = operations.einsum('ABD,KDNH->KABNH', x, w, s)
     expected = jnp.ones([K, A, B, N, H], dtype=jnp.bfloat16) * D
     self.assertArraysEqual(ret, expected)
+
+
+class ReducePrecisionEinsumTest(test_utils.TestCase):
+
+  @parameterized.named_parameters(
+      ('eqn1', 'ab,bc->ac', (4, 3), (3,), ()),
+      ('eqn2', '...y,yz->...z', (6, 5), (5,), ()),
+      ('eqn3', 'ABD,KDNH->KABNH', (2, 3, 4, 5), (2, 4, 5), (1)),
+  )
+  def test_reduce_einsum_weight_precision(self, eqn, w_shape,
+                                          expected_scale_shape, expand_dims):
+
+    weight = np.random.normal(1.5, 2.0, w_shape).astype(np.float32)
+    reduced_weight, scale = operations.reduce_einsum_weight_precision(
+        eqn, weight)
+    self.assertEqual(scale.shape, expected_scale_shape)
+    if expand_dims:
+      scale = jnp.expand_dims(scale, expand_dims)
+    self.assertAllClose(
+        weight,
+        jnp.multiply(reduced_weight, scale).astype(jnp.float32),
+        rtol=0.02,
+        atol=0.02)
 
 
 if __name__ == '__main__':

@@ -208,6 +208,23 @@ class Repeat(base_layer.BaseLayer):
     layer_out, _ = mapped_scan_fn(self.sublayer, inputs)
     return layer_out
 
+  def quantize_weight(self) -> NestedJTensor:
+    """Quantize the weight of the sublayer."""
+    p = self.hparams
+
+    def body_fn(sub, _):
+      res = sub.quantize_weight()
+      return None, res
+
+    scan_fn = nn.scan(
+        body_fn,
+        variable_axes=SCAN_VARIABLE_AXES,
+        split_rngs={RANDOM: True},
+        length=p.x_times)
+
+    _, res = scan_fn(self.sublayer, None)
+    return {p.sublayer_name: res}
+
   @property
   def sublayer(self) -> base_layer.BaseLayer:
     p = self.hparams

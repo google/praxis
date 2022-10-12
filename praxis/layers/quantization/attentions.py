@@ -30,6 +30,7 @@ WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
 JTensor = pytypes.JTensor
+NestedJTensor = pytypes.NestedJTensor
 
 
 class AttentionProjection(attentions.AttentionProjection):
@@ -159,6 +160,22 @@ class AttentionProjection(attentions.AttentionProjection):
       ret += theta.b
     return ret
 
+  def quantize_weight(self) -> NestedJTensor:
+    p = self.hparams
+    assert p.quantization.mode == base_layer.QuantizationMode.QUANTIZE
+    eqn = ''
+    # This matches the equantion logic in __call__ for weights.
+    if p.is_output_projection:
+      if p.use_nhd_shape:
+        eqn = 'ANH,NHD->AD'
+      else:
+        eqn = 'ANH,DNH->AD'
+    else:
+      eqn = 'AD,DNH->ANH'
+    q_w, q_s = operations.reduce_einsum_weight_precision(eqn, self.theta.w)
+    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    return {'w': q_w, scale_name: q_s}
+
 
 class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
   """Layer that computes quantized QKV projection with a combined weight.
@@ -284,3 +301,12 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     key_proj = checkpoint_name(key_proj, 'key_proj')
     value_proj = checkpoint_name(value_proj, 'value_proj')
     return query_proj, key_proj, value_proj
+
+  def quantize_weight(self) -> NestedJTensor:
+    theta = self.theta
+    p = self.hparams
+    assert p.quantization.mode == base_layer.QuantizationMode.QUANTIZE
+    eqn = 'AD,KDNH->KANH'
+    q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
+    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    return {'w': q_w, scale_name: q_s}

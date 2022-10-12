@@ -220,5 +220,51 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     self.run_and_compare(p_f, p_q, inputs)
 
 
+class QuantizeAttentionTest(test_utils.TestCase):
+  """Quantize attention."""
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
+  def test_quantize_attention_projection(self):
+    p = qattentions.AttentionProjection.HParams(
+        name='_attn_proj_q',
+        quantization=base_layer.QuantizationHParams(
+            mode=base_layer.QuantizationMode.QUANTIZE))
+    p.input_dim = 16
+    p.num_heads = 2
+    p.dim_per_head = 5
+    p.is_output_projection = True
+    p.use_nhd_shape = True
+    layer = instantiate(p)
+
+    inputs = np.random.normal(1.5, 2.0, [5, 2, 5]).astype(np.float32)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = layer.init(prng_key, inputs)
+
+    res, _ = layer.apply(initial_vars, mutable=[], method=layer.quantize_weight)
+    self.assertEqual(len(res), 2)
+    self.assertEqual(res['w'].shape, (2, 5, 16))
+    self.assertEqual(res['w_quantized_scale'].shape, (16,))
+
+  def test_quantize_attention_qkv(self):
+    p = qattentions.CombinedQKVProjectionLayer.HParams(
+        name='_combined_qkv',
+        input_dim=5,
+        num_heads=6,
+        dim_per_head=2,
+        quantization=base_layer.QuantizationHParams(
+            mode=base_layer.QuantizationMode.QUANTIZE))
+    layer = instantiate(p)
+    inputs = jnp.ones((4, 5), dtype=jnp.bfloat16)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = layer.init(prng_key, inputs)
+
+    res, _ = layer.apply(initial_vars, mutable=[], method=layer.quantize_weight)
+    self.assertEqual(len(res), 2)
+    self.assertEqual(res['w'].shape, (3, 5, 6, 2))
+    self.assertEqual(res['w_quantized_scale'].shape, (3, 6, 2))
+
 if __name__ == '__main__':
   absltest.main()

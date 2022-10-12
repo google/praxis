@@ -237,5 +237,26 @@ class RepeatsTest(test_utils.TestCase):
     print('weight_hparams = ', weight_hparams)
 
 
+class RepeatsQuantizeTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
+  def test_quantize_repeats(self):
+
+    sub_p = FeedForward.HParams(input_dim=2, output_dim=2)
+    p = repeats.Repeat.HParams(name='ffn', sub_tpl=sub_p, x_times=5)
+    ffn = instantiate(p)
+
+    inputs = np.random.normal(1.0, 1.5, [2, 2]).astype(np.float32)
+    prng_key = jax.random.PRNGKey(seed=123)
+    init_vars = ffn.init(prng_key, inputs)
+
+    res, _ = ffn.apply(init_vars, mutable=[], method=ffn.quantize_weight)
+    shapes = jax.tree_map(lambda x: x.shape, res)
+    expected_shapes = {'sub': {'step': (5,), 'w': (5, 2, 2)}}
+    self.assertEqual(shapes, expected_shapes)
+
 if __name__ == '__main__':
   absltest.main()

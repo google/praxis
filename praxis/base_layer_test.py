@@ -181,6 +181,15 @@ class BaseLayerTest(test_utils.TestCase):
         base_layer.get_summary_base_type(
             base_layer.SummaryType.TEXT))
 
+  def test_quantize(self):
+    layer_p = Identity.HParams(name='test_identity')
+    layer = base_layer.instantiate(layer_p)
+
+    x = jnp.array([1., 2.], dtype=jnp.float32)
+    init_vars = layer.init(jax.random.PRNGKey(0), x)
+    res, _ = layer.apply(init_vars, mutable=[], method=layer.quantize_weight)
+    self.assertEqual(res, {})
+
   @parameterized.parameters((0, 2), (3, 0), (1, 4))
   def test_layer_building_nn_compact(self, num_child: int, num_children: int):
     x = jnp.array([[0., 1.], [2., 3.]], dtype=jnp.float32)

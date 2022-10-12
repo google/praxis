@@ -109,6 +109,7 @@ py_strict_test(
         "//praxis:py_utils",
         "//praxis:test_utils",
         "//praxis/layers:linears",
+        "//praxis/layers:repeats",
         # Implicit tensorflow_no_contrib dependency.
     ],
 )
@@ -144,5 +145,27 @@ py_strict_test(
         "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:test_utils",
+    ],
+)
+
+py_strict_test(
+    name = "quantization_test",
+    srcs = ["quantization_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":linears",
+        ":operations",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        # Implicit lingvo.core.batch_major_attention dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:decoder_utils",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        "//praxis/layers:linears",
+        "//praxis/layers:repeats",
+        # Implicit tensorflow_no_contrib dependency.
     ],
 )

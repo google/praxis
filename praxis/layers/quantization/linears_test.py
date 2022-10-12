@@ -26,6 +26,9 @@ from praxis.layers import linears
 from praxis.layers.quantization import linears as qlinears
 
 instantiate = base_layer.instantiate
+BaseHParams = base_layer.BaseLayer.HParams
+WeightInit = base_layer.WeightInit
+WeightHParams = base_layer.WeightHParams
 
 
 class QuantizedAttentionTest(test_utils.TestCase):
@@ -87,6 +90,33 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
 
     inputs = np.random.normal(1.5, 2.0, [5, 16]).astype(np.float32)
     self.run_and_compare(p_f, p_q, inputs)
+
+
+class QuantizeLinearTest(test_utils.TestCase):
+  """Quantize Linear."""
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
+  def test_quantize_linear(self):
+    p = qlinears.Linear.HParams(
+        name='_linear_q',
+        quantization=base_layer.QuantizationHParams(
+            mode=base_layer.QuantizationMode.QUANTIZE))
+    p.input_dims = 6
+    p.output_dims = 4
+    layer = instantiate(p)
+
+    inputs = np.random.normal(1.5, 2.0, [5, 6]).astype(np.float32)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = layer.init(prng_key, inputs)
+
+    res, _ = layer.apply(initial_vars, mutable=[], method=layer.quantize_weight)
+    shapes = jax.tree_map(lambda x: x.shape, res)
+    types = jax.tree_map(lambda x: x.dtype, res)
+    self.assertEqual(shapes, {'w': (6, 4), 'w_quantized_scale': (4,)})
+    self.assertEqual(types, {'w': jnp.int8, 'w_quantized_scale': jnp.bfloat16})
 
 
 if __name__ == '__main__':
