@@ -895,6 +895,8 @@ class DotProductAttention(base_layer.BaseLayer):
       use_rotary_position_emb: Whether to add rotary position embedding to the
         queries and keys before computing self attention scores. This was
         proposed in https://arxiv.org/abs/2104.09864.
+      cast_rotary_position_emb: Whether to cast the return vars of
+        rotary_position_emb to save memory.
       relative_bias_tpl: Optional parameterization of relative bias.
       attention_extra_logit: Extra logit for attention softmax.
       ngrammer_tpl: Params for the Ngrammer layer. This param must correspond to
@@ -922,7 +924,8 @@ class DotProductAttention(base_layer.BaseLayer):
     internal_enable_per_dim_scale: bool = True
     atten_logit_cap: float = 0.0
     use_rotary_position_emb: bool = False
-    relative_bias_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
+    cast_rotary_position_emb: bool = True
+    relative_bias_tpl: Optional[BaseHParams] = None
     attention_extra_logit: Optional[float] = None
     ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
     decode_cache: bool = True
@@ -1031,6 +1034,7 @@ class DotProductAttention(base_layer.BaseLayer):
     if p.use_rotary_position_emb:
       pos_emb_p = embedding_softmax.RotaryPositionalEmbedding.HParams()
       pos_emb_p.embedding_dims = dim_per_head
+      pos_emb_p.cast_as_fprop_dtype = p.cast_rotary_position_emb
       self.create_child('rotary_position_emb', pos_emb_p)
 
     if p.relative_bias_tpl is not None:

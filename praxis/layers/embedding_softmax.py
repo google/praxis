@@ -787,6 +787,15 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
   The Rotary position embedding is described in https://arxiv.org/abs/2104.09864
   """
 
+  class HParams(PositionalEmbedding.HParams):
+    """Associated hyper-params for this layer class.
+
+    Attributes:
+      cast_as_fprop_dtype: If True, the returned vars are cast as fprop_dtype
+      to save some memory.
+    """
+    cast_as_fprop_dtype: bool = True
+
   def __call__(self,
                inputs: JTensor,
                position: Optional[JTensor] = None) -> JTensor:
@@ -826,8 +835,12 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     sin = jnp.sin(sinusoid_inp)
     cos = jnp.cos(sinusoid_inp)
     first_half, second_half = jnp.split(inputs, 2, axis=-1)
-    first_part = first_half * cos - second_half * sin
-    second_part = second_half * cos + first_half * sin
+    first_part = (first_half * cos - second_half * sin)
+    second_part = (second_half * cos + first_half * sin)
+    # TODO(b/252874053): Clean this up after phase 3 is done.
+    if p.cast_as_fprop_dtype:
+      first_part = first_part.astype(self.fprop_dtype)
+      second_part = second_part.astype(self.fprop_dtype)
     return jnp.concatenate([first_part, second_part], axis=-1)
 
   def extend_step(self,
