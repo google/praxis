@@ -235,6 +235,7 @@ class VitExitLayers(base_layer.BaseLayer):
       output_dim: Number of channels of the output tensor.
       output_dropout_prob: Probability to apply dropout on the output tensor.
       pooled: Global max pooling over all output tokens.
+      pre_ln: If true, add a layer norm at the beginning of this layer.
       output_fc_tanh: Whether to include a linear projection layer with tanh
         activation on the output.
     """
@@ -242,13 +243,15 @@ class VitExitLayers(base_layer.BaseLayer):
     output_dim: int = 0
     output_dropout_prob: float = 0.0
     pooled: bool = True
+    pre_ln: bool = True
     output_fc_tanh: bool = True
 
   def setup(self) -> None:
     p = self.hparams
 
-    p_ln = normalizations.LayerNorm.HParams(name='ln', dim=p.hidden_dim)
-    self.create_child('ln', p_ln)
+    if p.pre_ln:
+      p_ln = normalizations.LayerNorm.HParams(name='ln', dim=p.hidden_dim)
+      self.create_child('ln', p_ln)
 
     if p.pooled:
       p_pooling = poolings.GlobalPooling.HParams(
@@ -283,7 +286,8 @@ class VitExitLayers(base_layer.BaseLayer):
       Output tensor of shape [B, D] or [B, N, D] if pooled == False.
     """
     p = self.hparams
-    inputs = self.ln(inputs)
+    if p.pre_ln:
+      inputs = self.ln(inputs)
     if p.pooled:
       inputs = self.pooling(inputs)
     if p.output_fc_tanh:
