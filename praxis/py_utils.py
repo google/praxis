@@ -119,7 +119,7 @@ def _unreplicate(x):
   if jax.config.jax_array and isinstance(x, jax.Array):
     return x.addressable_data(0)
   elif isinstance(x, gda_lib.GlobalDeviceArray):
-    return x.local_data(0)
+    return x.addressable_data(0)
   elif isinstance(x, pxla.ShardedDeviceArray):
     val = x.device_buffers[0]
     # DeviceArrays returned by the `.device_buffers` property of SDA might not
@@ -351,7 +351,7 @@ def copy_gda(x):
   if jax.config.jax_array and isinstance(x, jax.Array):
     return jnp.copy(x)
   assert isinstance(x, gda_lib.GlobalDeviceArray)
-  buffers = [jnp.copy(s.data) for s in x.local_shards]
+  buffers = [jnp.copy(s.data) for s in x.addressable_shards]
   return gda_lib.GlobalDeviceArray(x.shape, x.mesh, x.mesh_axes, buffers)
 
 
