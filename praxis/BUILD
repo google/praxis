@@ -95,7 +95,6 @@ pytype_strict_library(
         ":base_layer",
         ":py_utils",
         ":pytypes",
-        # Implicit clu.metrics dependency.
     ],
 )
 

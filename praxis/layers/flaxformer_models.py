@@ -567,6 +567,7 @@ class LanguageModel(base_model.BaseModel):
         perfix_len]., "paddings", the paddings for input prefix.
 
     Returns:
+      A 3-tuple with:
       - weighted scalars, a NestedMap containing str keys and (value, weight)
         pairs for the current batch (a tuple of two scalars).
       - results, a `.NestedMap` as decoder output.
@@ -815,6 +816,7 @@ class EncoderDecoderModel(base_model.BaseModel):
         input tokens of shape [batch, target_len].
 
     Returns:
+      A 3-tuple with:
       - weighted scalars, a NestedMap containing str keys and (value, weight)
         pairs for the current batch (a tuple of two scalars).
       - results, a `.NestedMap` as decoder output.

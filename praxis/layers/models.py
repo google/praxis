@@ -14,7 +14,8 @@
 # limitations under the License.
 
 """Definition of specific models."""
-from typing import Any, Dict, Tuple, Union
+
+from typing import Any, Dict, Tuple
 
 from absl import logging
 import clu.metrics as clu_metrics
@@ -42,7 +43,7 @@ NestedMap = py_utils.NestedMap
 Predictions = base_model.Predictions
 Metrics = base_model.Metrics
 WeightedScalars = base_model.WeightedScalars
-LegacyProcessDecodeOut = base_model.LegacyProcessDecodeOut
+DecodeOut = base_model.DecodeOut
 ProcessDecodeOut = base_model.ProcessDecodeOut
 DecoderHParams = decoder_hparams.DecoderHParams
 BeamSearchHParams = decoder_hparams.BeamSearchHParams
@@ -194,11 +195,9 @@ class LanguageModel(base_model.BaseModel):
     return _compute_xent_loss_helper(predictions, input_batch,
                                      self.hparams.return_predictions)
 
-  def decode(
-      self,
-      input_batch: NestedMap,
-      return_result_for_suffix_score=False
-  ) -> Tuple[WeightedScalars, NestedMap, Metrics]:
+  def decode(self,
+             input_batch: NestedMap,
+             return_result_for_suffix_score=False) -> DecodeOut:
     """Greedy decodes the input_batch.
 
     Args:
@@ -212,6 +211,7 @@ class LanguageModel(base_model.BaseModel):
       return_result_for_suffix_score: Whether return results for suffix score.
 
     Returns:
+      A 3-tuple with:
       - weighted_scalars, a NestedMap containing str keys and (metrics, weight)
         pairs.
       - A NestedMap like `input_batch`, with `.prefix_lengths` (vector of
@@ -442,11 +442,11 @@ class LanguageModel(base_model.BaseModel):
     else:
       num_decoded = jnp.array(result.ids.shape[0], jnp.float32)
     metrics = NestedMap(num_decoded=(num_decoded, jnp.array(1, jnp.float32)))
-    return metrics, result, {}
+    out_clu_metrics = NestedMap()
+    return metrics, result, out_clu_metrics
 
-  def process_decode_out(
-      self, input_obj: base_input.BaseInput,
-      decode_out: NestedMap) -> Union[LegacyProcessDecodeOut, ProcessDecodeOut]:
+  def process_decode_out(self, input_obj: base_input.BaseInput,
+                         decode_out: NestedMap) -> ProcessDecodeOut:
     """Processes one batch of decoded outputs.
 
     Args:
@@ -454,10 +454,13 @@ class LanguageModel(base_model.BaseModel):
       decode_out: The output from decode(). May have an extra leading axis.
 
     Returns:
+      A 3-tuple with:
       - metrics, a NestedMap containing str keys and (metric, weight) pairs for
         the current batch (a tuple of two scalars).
       - A list of dict where each entry corresponds to a row in the batch. The
         keys should be unique across the entire decode dataset.
+      - out_clu_metrics, a NestedMap containing str keys and clu_metrics.Metric
+        objects. This is currently unused.
     """
     # Get the first output within a batch.
     decode_out.output_ids = decode_out.output_ids[:, 0, :]
@@ -509,7 +512,8 @@ class LanguageModel(base_model.BaseModel):
     decoded_lengths = np.average(decode_out.decode_lengths).astype(np.float32)
     metrics = NestedMap(
         decoded_length=(decoded_lengths, np.array(1.0, np.float32)))
-    return metrics, ret
+    out_clu_metrics = NestedMap()
+    return metrics, ret, out_clu_metrics
 
 
 class SequenceModel(base_model.BaseModel):
@@ -589,9 +593,7 @@ class SequenceModel(base_model.BaseModel):
     return _compute_xent_loss_helper(predictions, input_batch.tgt,
                                      self.hparams.return_predictions)
 
-  def decode(
-      self,
-      input_batch: NestedMap) -> Tuple[WeightedScalars, NestedMap, Metrics]:
+  def decode(self, input_batch: NestedMap) -> DecodeOut:
     """Decodes input_batch.
 
     Args:
@@ -599,6 +601,7 @@ class SequenceModel(base_model.BaseModel):
         to source and target, which itself contains the `.ids` and `.paddings.`
 
     Returns:
+      A 3-tuple with:
       - weighted_scalars, a nestedmap of (scalar, weight) pairs.
       - results, a NestedMap like `input_batch`, with `.output_ids` (matrix of
         int ids with the decoded output) as well as the decoded length.
@@ -671,11 +674,11 @@ class SequenceModel(base_model.BaseModel):
     else:
       num_decoded = jnp.array(batch_size, jnp.float32)
     metrics = NestedMap(num_decoded=(num_decoded, jnp.array(1, jnp.float32)))
-    return metrics, result, {}
+    out_clu_metrics = NestedMap()
+    return metrics, result, out_clu_metrics
 
-  def process_decode_out(
-      self, input_obj: base_input.BaseInput,
-      decode_out: NestedMap) -> Union[LegacyProcessDecodeOut, ProcessDecodeOut]:
+  def process_decode_out(self, input_obj: base_input.BaseInput,
+                         decode_out: NestedMap) -> ProcessDecodeOut:
     """Processes one batch of decoded outputs.
 
     Args:
@@ -683,10 +686,13 @@ class SequenceModel(base_model.BaseModel):
       decode_out: The output from decode(). May have an extra leading axis.
 
     Returns:
+      A 3-tuple with:
       - metrics, a NestedMap containing str keys and (metric, weight) pairs for
         the current batch (a tuple of two scalars).
       - A list of dict where each entry corresponds to a row in the batch. The
         keys should be unique across the entire decode dataset.
+      - out_clu_metrics, a NestedMap containing str keys and clu_metrics.Metric
+        objects. This is currently unused.
     """
     # Get the first output within a batch.
     decode_out.output_ids = decode_out.output_ids[:, 0, :]
@@ -722,7 +728,8 @@ class SequenceModel(base_model.BaseModel):
     decode_lengths = np.average(decode_out.decode_lengths).astype(np.float32)
     metrics = NestedMap(
         decode_length=(decode_lengths, np.array(1.0, np.float32)))
-    return metrics, ret
+    out_clu_metrics = NestedMap()
+    return metrics, ret, out_clu_metrics
 
 
 class ClassificationModel(base_model.BaseModel):
@@ -837,9 +844,7 @@ class ClassificationModel(base_model.BaseModel):
     logp = self.softmax.logits_to_logp(logits)
     return py_utils.NestedMap(logits=logits, logp=logp)
 
-  def decode(
-      self,
-      input_batch: NestedMap) -> Tuple[WeightedScalars, NestedMap, Metrics]:
+  def decode(self, input_batch: NestedMap) -> DecodeOut:
     """Computes predictions and runs metrics."""
     predictions = self.compute_predictions(input_batch)
     losses, _ = self.compute_loss(predictions, input_batch)
@@ -852,10 +857,9 @@ class ClassificationModel(base_model.BaseModel):
         labels=jnp.argmax(input_batch.label_probs, axis=-1))
     return losses, per_example_out, eval_metrics
 
-  def process_decode_out(
-      self, input_obj: base_input.BaseInput,
-      decode_out: NestedMap) -> Union[LegacyProcessDecodeOut, ProcessDecodeOut]:
-    return NestedMap(), []
+  def process_decode_out(self, input_obj: base_input.BaseInput,
+                         decode_out: NestedMap) -> ProcessDecodeOut:
+    return NestedMap(), [], NestedMap()
 
 
 class BertModel(base_model.BaseModel):

@@ -54,8 +54,9 @@ SplitDimsMapping = Optional[Sequence[DimShardingAnnotation]]
 # Note(b/238657605): pytypes Metrics were renamed to WeightedScalars
 # and Metrics are now true metric objects using clu.metrics
 WeightedScalar = Tuple[JTensor, JTensor]
-WeightedScalars = Dict[str, WeightedScalar]
-WeightedScalarsList = Dict[str, Sequence[WeightedScalar]]
+WeightedScalars = Union[Dict[str, WeightedScalar], py_utils.NestedMap]
+WeightedScalarsList = Union[Dict[str, Sequence[WeightedScalar]],
+                            py_utils.NestedMap]
 Metrics = Union[py_utils.NestedMap, Dict[str, clu_metrics.Metric]]
 
 LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]
