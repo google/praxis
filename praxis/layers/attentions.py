@@ -2367,7 +2367,6 @@ class DotProductAttentionXL(DotProductAttention):
 
     Attributes:
       rel_pos_emb_dim: Dimension of relative positional embedding.
-      skip_term_b: If True, skip term_b in the paper section 3.3.
     """
     rel_pos_emb_dim: int = 0
 
@@ -2401,7 +2400,6 @@ class DotProductAttentionXL(DotProductAttention):
     Returns:
       The attention logits tensor. [B, N, T, T].
     """
-    params = self.hparams
     b, t, n = content.shape[:3]
     l = 2 * t - 1
 
@@ -2416,7 +2414,6 @@ class DotProductAttentionXL(DotProductAttention):
     return term_bd[:, :, :, t - 1::-1]
 
   def _atten_logits(self, query, key):
-    p = self.hparams
     b, t, n, h = query.shape
 
     # This layer only supports self-attention.
