@@ -56,7 +56,7 @@ BaseHParams = base_layer.BaseLayer.HParams
 sub_config_field = base_layer.sub_config_field
 
 
-def _compute_xent_loss_helper(
+def compute_xent_loss_helper(
     predictions: NestedMap, input_batch: NestedMap,
     return_predictions: bool) -> Tuple[WeightedScalars, Dict[str, Any]]:
   """Helper for computing the xent loss for Language model and Sequence model.
@@ -192,8 +192,8 @@ class LanguageModel(base_model.BaseModel):
         training example, where the first dimension of each tensor is the batch
         index.
     """
-    return _compute_xent_loss_helper(predictions, input_batch,
-                                     self.hparams.return_predictions)
+    return compute_xent_loss_helper(predictions, input_batch,
+                                    self.hparams.return_predictions)
 
   def decode(self,
              input_batch: NestedMap,
@@ -590,8 +590,8 @@ class SequenceModel(base_model.BaseModel):
         training example, where the first dimension of each tensor is the batch
         index.
     """
-    return _compute_xent_loss_helper(predictions, input_batch.tgt,
-                                     self.hparams.return_predictions)
+    return compute_xent_loss_helper(predictions, input_batch.tgt,
+                                    self.hparams.return_predictions)
 
   def decode(self, input_batch: NestedMap) -> DecodeOut:
     """Decodes input_batch.
