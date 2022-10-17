@@ -525,6 +525,15 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       with base_layer.JaxContext.new_context():
         SomeFlaxModel().init(jax.random.PRNGKey(1), jnp.ones((4, 4, 3)))
 
+  def test_fiddle_base_layer_may_not_have_hparams(self):
+    with self.assertRaisesRegex(ValueError,
+                                'should not have a nested HParams class.'):
+
+      class Layer(base_layer.FiddleBaseLayer):  # pylint: disable=unused-variable
+
+        class HParams:
+          x: int = 0
+
   def test_check_template_has_do_not_build_tag(self):
 
     # pylint: disable=unused-variable

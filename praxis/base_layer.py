@@ -2060,6 +2060,9 @@ class FiddleBaseLayer(_SharedBaseLayer):
   @classmethod
   def __init_subclass__(cls, **kwargs: Any):
     cls._override_split_dim_mapping_fields()
+    if 'HParams' in cls.__dict__:
+      raise ValueError(f'Layer {cls} is a subclass of FiddleBaseLayer, so '
+                       'it should not have a nested HParams class.')
     super().__init_subclass__(**kwargs)
     for field in dataclasses.fields(cls):
       if isinstance(field.default, fdl.Buildable):
