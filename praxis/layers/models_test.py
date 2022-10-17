@@ -55,7 +55,7 @@ class MockLM(base_layer.BaseLayer):
 
   def setup(self) -> None:
     p = self.hparams
-    self.logits = jnp.array(p.logits, dtype=jnp.float32)
+    self._logits = jnp.array(p.logits, dtype=jnp.float32)
 
   def __call__(self, *args: Any, **kwargs: Any) -> None:
     self.put_variable(DECODE_CACHE, 'time_step', 0)
@@ -68,7 +68,7 @@ class MockLM(base_layer.BaseLayer):
     del inputs
     ret = NestedMap()
     time_step = self.get_variable(DECODE_CACHE, 'time_step')
-    ret.logits = self.logits.at[time_step].get()
+    ret.logits = self._logits.at[time_step].get()
     self.put_variable(DECODE_CACHE, 'time_step', time_step + 1)
     return ret
 
