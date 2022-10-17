@@ -15,6 +15,7 @@
 
 """Tests for base_layer."""
 
+import copy
 import dataclasses
 import functools
 import typing
@@ -364,41 +365,47 @@ class FiddleBaseLayerTest(test_utils.TestCase):
         mesh_axis_names=['a', 'b'])
 
     hparams_stub = layer.hparams
-    self.assertIsInstance(hparams_stub, base_layer._FiddleHParamsInstanceStub)
-    self.assertEqual(hparams_stub.cls, Layer)
-    self.assertEqual(hparams_stub.x, 3)
-    self.assertEqual(hparams_stub.fprop_dtype, jnp.float16)
-    self.assertEqual(hparams_stub.dtype, jnp.float32)
-    self.assertEqual(hparams_stub.mesh_shape, [3, 8])
+    with self.subTest('fields'):
+      self.assertIsInstance(hparams_stub, base_layer._FiddleHParamsInstanceStub)
+      self.assertEqual(hparams_stub.cls, Layer)
+      self.assertEqual(hparams_stub.x, 3)
+      self.assertEqual(hparams_stub.fprop_dtype, jnp.float16)
+      self.assertEqual(hparams_stub.dtype, jnp.float32)
+      self.assertEqual(hparams_stub.mesh_shape, [3, 8])
 
-    cloned = hparams_stub.clone()
-    self.assertIsInstance(cloned, pax_fiddle.Config)
-    self.assertEqual(cloned.cls, Layer)
-    self.assertEqual(fdl.get_callable(cloned), Layer)
-    self.assertEqual(cloned.x, 3)
-    self.assertEqual(cloned.fprop_dtype, jnp.float16)
-    self.assertEqual(cloned.dtype, jnp.float32)
+    with self.subTest('clone'):
+      cloned = hparams_stub.clone()
+      self.assertIsInstance(cloned, pax_fiddle.Config)
+      self.assertEqual(cloned.cls, Layer)
+      self.assertEqual(fdl.get_callable(cloned), Layer)
+      self.assertEqual(cloned.x, 3)
+      self.assertEqual(cloned.fprop_dtype, jnp.float16)
+      self.assertEqual(cloned.dtype, jnp.float32)
 
-    expected_to_text = '\n'.join([
-        f'.__fn_or_cls__ : {Layer!r}',
-        '.activation_split_dims_mapping' +
-        ' : FiddleBaseLayer.ActivationShardingHParams(out=None)',
-        '.dcn_mesh_shape : [3, 4]',
-        '.dtype : type/jax.numpy/float32',
-        '.fprop_dtype : type/jax.numpy/float16',
-        '.ici_mesh_shape : [1, 2]',
-        ".mesh_axis_names : ['a', 'b']",
-        '.name : NoneType',
-        ".params_init.method : 'xavier'",
-        '.params_init.scale : 1.000001',
-        '.parent : NoneType',
-        '.shared_weight_layer_id : NoneType',
-        '.skip_lp_regularization : NoneType',
-        '.weight_split_dims_mapping' +
-        ' : FiddleBaseLayer.WeightShardingHParams(wt=None)',
-        '.x : 3',
-    ]) + '\n'
-    self.assertEqual(hparams_stub.to_text(), expected_to_text)
+    with self.subTest('to_text'):
+      expected_to_text = '\n'.join([
+          f'.__fn_or_cls__ : {Layer!r}',
+          '.activation_split_dims_mapping' +
+          ' : FiddleBaseLayer.ActivationShardingHParams(out=None)',
+          '.dcn_mesh_shape : [3, 4]',
+          '.dtype : type/jax.numpy/float32',
+          '.fprop_dtype : type/jax.numpy/float16',
+          '.ici_mesh_shape : [1, 2]',
+          ".mesh_axis_names : ['a', 'b']",
+          '.name : NoneType',
+          ".params_init.method : 'xavier'",
+          '.params_init.scale : 1.000001',
+          '.parent : NoneType',
+          '.shared_weight_layer_id : NoneType',
+          '.skip_lp_regularization : NoneType',
+          '.weight_split_dims_mapping' +
+          ' : FiddleBaseLayer.WeightShardingHParams(wt=None)',
+          '.x : 3',
+      ]) + '\n'
+      self.assertEqual(hparams_stub.to_text(), expected_to_text)
+
+    with self.subTest('can_deepcopy'):
+      copy.deepcopy(hparams_stub)
 
   def test_hparams_class_stub(self):
 

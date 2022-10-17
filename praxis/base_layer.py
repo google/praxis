@@ -1934,6 +1934,10 @@ class _FiddleHParamsInstanceStub:
     self._base_layer = base_layer
 
   def __getattr__(self, name):
+    if '_base_layer' not in self.__dict__:
+      # `copy.copy` bypasses the constructor, so it's possible to have a
+      # _FiddleHParamsInstanceStub that doesn't have a _base_layer yet.
+      raise AttributeError(f'{self} has no attribute {name!r}')
     if name not in self._base_layer._hparam_fields():
       raise AttributeError(
           f'{type(self._base_layer)}.HParams has no attribute {name!r}')
