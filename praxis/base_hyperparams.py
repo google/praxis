@@ -370,7 +370,7 @@ class BaseHyperParams:
   @classmethod
   def partial(cls: Type[BaseHyperParamsSelf],
               **kwargs: Any) -> fdl.Partial[BaseHyperParamsSelf]:
-    return fdl.Partial(cls.config(**kwargs))
+    return fdl.cast(fdl.Partial, cls.config(**kwargs))
 
   @classmethod
   def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -514,8 +514,8 @@ class BaseHyperParams:
 
     Args:
       source: HParams which will be copied.
-      missing_fields_in_self: List of field names of source which are allowed
-        to be missing in self.
+      missing_fields_in_self: List of field names of source which are allowed to
+        be missing in self.
     """
     if not isinstance(source, BaseHyperParams):
       raise TypeError(
@@ -627,8 +627,8 @@ def sub_config_field(
 
   Args:
     sub_config_cls: A reference to a sub-configuration class, e.g.
-      `sub_config_cls=Linear.HParams`.  If `None`, then the sub-config
-      defaults to `None`.
+      `sub_config_cls=Linear.HParams`.  If `None`, then the sub-config defaults
+      to `None`.
     lazy_ref: In the rare corner case that a class is not immediately known,
       provide `lazy_ref` as a lambda function which returns `sub_config_cls`.
   """
@@ -729,7 +729,7 @@ class BaseParameterizable:
   @classmethod
   def partial(cls: Type[BaseParameterizableSelf],
               **kwargs) -> fdl.Partial[BaseParameterizableSelf]:
-    return fdl.Partial(cls.config(**kwargs))
+    return fdl.cast(fdl.Partial, cls.config(**kwargs))
 
   @classmethod
   def __init_subclass__(cls,
