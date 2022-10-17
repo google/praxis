@@ -570,12 +570,14 @@ py_strict_test(
     srcs = ["pax_fiddle_test.py"],
     deps = [
         ":base_hyperparams",
+        ":base_layer",
         ":pax_fiddle",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit fiddle dependency.
         # Implicit fiddle.testing dependency.
         # Implicit flax.core dependency.
+        # Implicit jax dependency.
     ],
 )
 

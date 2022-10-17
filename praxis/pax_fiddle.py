@@ -269,7 +269,11 @@ def build(buildable):
         if DoNotBuild in value.__argument_tags__.get(key, ()):
           arguments[key] = sub_value
         else:
-          arguments[key] = state.call(sub_value, daglish.Attr(key))
+          # Clear the flax module stack, to avoid having `nn.Module`s be auto-
+          # parented to the current module.  This is important for directly
+          # instantiated *nested* descendents.
+          with empty_flax_module_stack():
+            arguments[key] = state.call(sub_value, daglish.Attr(key))
       try:
         return value.__build__(**arguments)
       except tagging.TaggedValueNotFilledError:
@@ -280,11 +284,7 @@ def build(buildable):
     else:
       return state.map_children(value)
 
-  # Clear the flax module stack, to avoid having `nn.Module`s be automatically
-  # parented to the current module.  This is important for modules that are
-  # supposed to be nested descendents (not direct children).
-  with empty_flax_module_stack():
-    return _build(buildable, daglish.MemoizedTraversal.begin(_build, buildable))
+  return _build(buildable, daglish.MemoizedTraversal.begin(_build, buildable))
 
 
 @contextlib.contextmanager

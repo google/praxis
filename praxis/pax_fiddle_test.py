@@ -22,9 +22,12 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import fiddle as fdl
+import jax
+from jax import numpy as jnp
 from fiddle import testing
 from flax import core as flax_core
 from flax import linen as nn
+from praxis import base_layer
 from praxis import base_hyperparams
 from praxis import pax_fiddle
 
@@ -426,19 +429,37 @@ class LayerC(nn.Module):
 
   def setup(self):
     self.b = pax_fiddle.build(self.b_tpl)
+    if self.b.parent is not self:
+      raise AssertionError(
+          "Expected self.b.parent to be self (inside self.setup).")
     if self.b.a.parent is not None:
       raise AssertionError(
-          "Expected self.b.a.parent to be None (before b.setup).")
+          "Expected self.b.a.parent to be None (inside self.setup).")
 
   def __call__(self, x):
+    if self.b.parent is not self:
+      raise AssertionError(
+          "Expected self.b.parent to be self (before b.setup).")
     if self.b.a.parent is not None:
       raise AssertionError(
           "Expected self.b.a.parent to be None (before b.setup).")
-    self.b()
+    self.b()  # Causes b.setup() to be called.
     if self.b.a.parent is not self.b:
       raise AssertionError(
           "Expected self.b.a.parent to be self.b (after b.setup).")
     return 0
+
+
+class LayerD(base_layer.FiddleBaseLayer):
+
+  def setup(self):
+    self.create_variable(
+        "v",
+        base_layer.WeightHParams(
+            shape=[], init=base_layer.WeightInit.Constant(3)))
+
+  def __call__(self, x):
+    return self.theta.v * x
 
 
 class BuildTest(testing.TestCase, parameterized.TestCase):
@@ -451,17 +472,33 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
   def test_parent_links_are_not_set_to_outer_scope(self, build_func):
     # This test checks that using the `empty_flax_module_stack` decorator is
     # effective at preventing modules from being built with the wrong parent.
-    with self.subTest("pax_fiddle_build"):
+    with self.subTest(build_func.__qualname__):
       cfg = pax_fiddle.Config(LayerC)
       cfg.parent = flax_core.Scope({})
       c = build_func(cfg)
-      self.assertEqual(c(5), 0)
+      self.assertIs(c.b.parent, c)
+      self.assertIsNone(c.b.a.parent)
+      self.assertEqual(c(5), 0)  # Causes c.setup() and c.__call__() to be run.
+      self.assertIs(c.b.parent, c)
+      self.assertIs(c.b.a.parent, c.b)
 
-    with self.subTest("base_hyperparams_instantiate"):
-      cfg = pax_fiddle.Config(LayerC)
-      cfg.parent = flax_core.Scope({})
-      c = base_hyperparams.instantiate(cfg)
-      self.assertEqual(c(5), 0)
+  def test_build_works_with_nn_compact(self):
+
+    class SomeFlaxModel(nn.Module):
+      tpl: pax_fiddle.Config
+
+      @nn.compact
+      def __call__(self, x):
+        layer = self.tpl.Instantiate()
+        assert layer.parent is self
+        # Calling `layer(x)` would raise an exception (can't read unbound
+        # variables) if the parent of `layer` were `None`.
+        return layer(x)
+
+    m = SomeFlaxModel(pax_fiddle.Config(LayerD))
+    inputs = jnp.array(22)
+    with base_layer.JaxContext.new_context():
+      m.init(jax.random.PRNGKey(1), inputs)
 
 
 if __name__ == "__main__":
