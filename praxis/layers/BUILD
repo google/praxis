@@ -193,6 +193,7 @@ pytype_strict_library(
     deps = [
         ":activations",
         # Implicit jax dependency.
+        # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:pytypes",

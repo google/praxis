@@ -304,97 +304,108 @@ class StackingOverTime(base_layer.BaseLayer):
     p = self.hparams
     return p.left_context + p.right_context + 1
 
-  def _applystack(self, inputs, pad_value=0.0):
+  def _pad_ends(self, inputs, pad_value):
+    """Applies left and right padding to inputs."""
+    p = self.hparams
+    left_to_pad = p.left_context
+    right_to_pad = p.right_context
+
+    # optionally copy left frame N times
+    if left_to_pad and p.pad_with_left_frame:
+      left_pad = jnp.repeat(inputs[:, :1, :], repeats=left_to_pad, axis=1)
+      inputs = jnp.concatenate([left_pad, inputs], axis=1)
+      left_to_pad = 0
+
+    # optionally copy right frame N times
+    if right_to_pad and p.pad_with_right_frame:
+      right_pad = jnp.repeat(inputs[:, -1:, :], repeats=right_to_pad, axis=1)
+      inputs = jnp.concatenate([inputs, right_pad], axis=1)
+      right_to_pad = 0
+
+    # Add zero paddings to the left and right of the input sequence.
+    if left_to_pad or right_to_pad:
+      inputs = jnp.pad(
+          inputs, [[0, 0], [left_to_pad, right_to_pad], [0, 0]],
+          constant_values=pad_value)
+
+    return inputs
+
+  def _apply_stack(self, inputs):
     """The core function to apply the stacking to inputs.
 
     Args:
-      inputs: [batch, time, depth].
-      pad_value: the padding value for left/right context.
+      inputs: [batch, timesteps, depth].
 
     Returns:
-      [batch, ceil(time / stride), depth * stacking_window_length] tensor.
+      [batch, out_timesteps, window_size * depth] tensor.
     """
     p = self.hparams
     if p.left_context == 0 and p.right_context == 0:
       out = inputs
     else:
-      inputs_max_len = inputs.shape[1]
-      left_to_pad = p.left_context
-      right_to_pad = p.right_context
-      # optionally copy left frame N times
-      if p.pad_with_left_frame:
-        left_pad = jnp.repeat(inputs[:, :1, :], repeats=p.left_context, axis=1)
-        inputs = jnp.concatenate([left_pad, inputs], axis=1)
-        left_to_pad = 0
-
-      # optionally copy right frame N times
-      if p.pad_with_right_frame:
-        right_pad = jnp.repeat(
-            inputs[:, -1:, :], repeats=p.right_context, axis=1)
-        inputs = jnp.concatenate([inputs, right_pad], axis=1)
-        right_to_pad = 0
-
-      # Add zero paddings to the left and right of the input sequence.
-      inputs = jnp.pad(
-          inputs, [[0, 0], [left_to_pad, right_to_pad], [0, 0]],
-          constant_values=pad_value)
-
-      # Make window_size() copies of the padded sequence with the original
-      # sequence length, where each copy is offset by 1 time step.
+      # Slide a window of size stack_width to extract window_size() slices from
+      # the inputs, each offset by a single timestep. In non-streaming mode
+      # stack_width is equivalent to the length of the unpadded input.
+      stack_width = inputs.shape[1] - self.window_size + 1
       pieces = []
       for i in range(self.window_size):
-        pieces.append(inputs[:, i:i + inputs_max_len])
+        pieces.append(inputs[:, i:i + stack_width])
       # Apply stacking.
       out = jnp.concatenate(pieces, 2)
 
     # Apply striding.
-    out = out[:, ::p.stride]
+    if p.stride > 1:
+      out = out[:, ::p.stride]
     return out
+
+  def _stack_inputs(self, inputs, pad_ends: bool = True):
+    # Checks the inputs have 3 dims.
+    base_layer.assert_has_shape(inputs, [-1, -1, -1])
+    if pad_ends:
+      inputs = self._pad_ends(inputs, pad_value=0.0)
+    return self._apply_stack(inputs)
+
+  def _stack_paddings(self, outputs, paddings, pad_ends: bool = True):
+    if paddings is None:
+      out_paddings = jnp.zeros(outputs.shape[:-1] + (1,), dtype=outputs.dtype)
+    else:
+      # Check that the paddings have 3 dims and a singleton final dim.
+      base_layer.assert_has_shape(paddings, [-1, -1, 1])
+      if pad_ends:
+        paddings = self._pad_ends(paddings, pad_value=1.0)
+      out_paddings = self._apply_stack(paddings)
+
+      # The default is to take the minimum padding values within each stacking
+      # window, so that an output time step becomes a padded one only if all of
+      # the underlying stacked steps are padded ones.
+      if self.hparams.padding_reduce_option == 'reduce_min':
+        out_paddings = jnp.amin(out_paddings, axis=2, keepdims=True)
+      else:
+        out_paddings = jnp.amax(out_paddings, axis=2, keepdims=True)
+    return out_paddings
 
   def __call__(self, inputs, paddings=None):
     """Apply the stacking to inputs along the time axis.
 
     Args:
-      inputs: The inputs tensor. It is expected to be of shape [batch, time,
-        feature].
-      paddings: The paddings tensor. It is expected to be of shape [batch, time,
-        1], where all but the last dimension match inputs. Each value is 0 or 1
-        indicating whether a time step of a sequence is padded in the inputs to
-        reach the max length in the batch.
+      inputs: The inputs tensor with shape [batch, time, depth].
+      paddings: The paddings tensor with shape [batch, time, 1], where all but
+        the last dimension match inputs. Each value is 0 or 1 indicating whether
+        a time step of a sequence is padded in the inputs to reach the max
+        length in the batch.
 
     Returns:
       (outputs, out_paddings) pair.
-        outputs is of shape [batch, ceil(time / stride), feature * stacking].
+        outputs is of shape [batch, ceil(time / stride), window_size * depth].
         out_paddings is of shape [batch, ceil(time / stride), 1]. out_paddings
         will be 0 if any of the corresponding input padding is 0.
     """
     p = self.hparams
-    if paddings is None:
-      paddings = jnp.zeros(
-          jnp.concatenate([jnp.array(inputs.shape[:-1]),
-                           jnp.array([1])]),
-          dtype=inputs.dtype)
-
-    # Checks the inputs shape, paddings has 3 dimensions.
-    base_layer.assert_has_shape(inputs, [-1, -1, -1])
-    base_layer.assert_has_shape(paddings, [-1, -1, 1])
-
     # Trivial case.
     if 0 == p.left_context == p.right_context and 1 == p.stride:
       return inputs, paddings
-
-    outputs = self._applystack(inputs)
-
-    # Stack the padding values with the same context and stride parameters.
-    # Then take the minimum padding values within each stacking window, since
-    # an output time step becomes a padded one only if all of the underlying
-    # stacked steps are padded ones.
-    out_paddings = self._applystack(paddings, pad_value=1)
-    if p.padding_reduce_option == 'reduce_min':
-      out_paddings = jnp.amin(out_paddings, axis=2, keepdims=True)
-    else:
-      out_paddings = jnp.amax(out_paddings, axis=2, keepdims=True)
-
+    outputs = self._stack_inputs(inputs, pad_ends=True)
+    out_paddings = self._stack_paddings(outputs, paddings, pad_ends=True)
     return outputs, out_paddings
 
   def unstack(self, stacked):
