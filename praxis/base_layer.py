@@ -1938,7 +1938,7 @@ class _FiddleHParamsInstanceStub:
       # `copy.copy` bypasses the constructor, so it's possible to have a
       # _FiddleHParamsInstanceStub that doesn't have a _base_layer yet.
       raise AttributeError(f'{self} has no attribute {name!r}')
-    if name not in self._base_layer._hparam_fields():
+    if name not in self._base_layer._hparam_fields() or name == 'parent':
       raise AttributeError(
           f'{type(self._base_layer)}.HParams has no attribute {name!r}')
     value = getattr(self._base_layer, name)
@@ -1957,7 +1957,7 @@ class _FiddleHParamsInstanceStub:
     """
     kwargs = {}
     for field in dataclasses.fields(self._base_layer):
-      if not field.init:
+      if field.name == 'parent' or not field.init:
         continue
       value = getattr(self._base_layer, field.name)
       if isinstance(value, _SharedBaseLayer):

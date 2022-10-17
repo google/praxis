@@ -23,6 +23,7 @@ from typing import Any, Optional
 from absl.testing import absltest
 from absl.testing import parameterized
 import fiddle as fdl
+from flax import core as flax_core
 from flax import linen as nn
 import jax
 import jax.numpy as jnp
@@ -362,7 +363,9 @@ class FiddleBaseLayerTest(test_utils.TestCase):
         fprop_dtype=jnp.float16,
         ici_mesh_shape=[1, 2],
         dcn_mesh_shape=[3, 4],
-        mesh_axis_names=['a', 'b'])
+        mesh_axis_names=['a', 'b'],
+        parent=flax_core.Scope({}),
+        name='my_layer')
 
     hparams_stub = layer.hparams
     with self.subTest('fields'):
@@ -372,6 +375,9 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       self.assertEqual(hparams_stub.fprop_dtype, jnp.float16)
       self.assertEqual(hparams_stub.dtype, jnp.float32)
       self.assertEqual(hparams_stub.mesh_shape, [3, 8])
+      self.assertEqual(hparams_stub.name, 'my_layer')
+      with self.assertRaises(AttributeError):
+        hparams_stub.parent  # pylint: disable=pointless-statement
 
     with self.subTest('clone'):
       cloned = hparams_stub.clone()
@@ -381,21 +387,23 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       self.assertEqual(cloned.x, 3)
       self.assertEqual(cloned.fprop_dtype, jnp.float16)
       self.assertEqual(cloned.dtype, jnp.float32)
+      self.assertEqual(cloned.name, 'my_layer')
+      self.assertNotIn('parent', cloned.__arguments__)
 
     with self.subTest('to_text'):
       expected_to_text = '\n'.join([
           f'.__fn_or_cls__ : {Layer!r}',
           '.activation_split_dims_mapping' +
           ' : FiddleBaseLayer.ActivationShardingHParams(out=None)',
-          '.dcn_mesh_shape : [3, 4]',
+          '.dcn_mesh_shape : (3, 4)',
           '.dtype : type/jax.numpy/float32',
           '.fprop_dtype : type/jax.numpy/float16',
-          '.ici_mesh_shape : [1, 2]',
-          ".mesh_axis_names : ['a', 'b']",
-          '.name : NoneType',
+          '.ici_mesh_shape : (1, 2)',
+          ".mesh_axis_names : ('a', 'b')",
+          ".name : 'my_layer'",
           ".params_init.method : 'xavier'",
           '.params_init.scale : 1.000001',
-          '.parent : NoneType',
+          '.parent : _Sentinel',
           '.shared_weight_layer_id : NoneType',
           '.skip_lp_regularization : NoneType',
           '.weight_split_dims_mapping' +
