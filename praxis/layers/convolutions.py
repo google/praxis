@@ -458,7 +458,7 @@ class LightConv1D(base_layer.BaseLayer):
       dropout_tpl:          Parameterization of residual dropout layer.
       is_causal:            Whether this is a causal layer.
       use_2d_conv_norm:     Whether to expand the input to conv_norm to 2d. This
-        is for compatibility with with old models trained in TF lingvo.
+        is for compatibility with old models trained in TF lingvo.
     """
     input_dims: Optional[int] = None
     kernel_size: Optional[int] = None
