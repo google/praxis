@@ -138,6 +138,6 @@ class DpSgdStochasticGradient(BaseStochasticGradient):
         jax.tree_util.Partial(jnp.expand_dims, axis=1), inputs)
     (values, aux), grads = grad_fn(mdl_vars, inputs, prng_key)
 
-    grads, _ = self._clip_and_noise(grads, prng_key, aux.loss_weight)
     aux = self.process_aux_info(aux)
+    grads, _ = self._clip_and_noise(grads, prng_key, aux.loss_weight)
     return (values, aux), grads
