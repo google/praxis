@@ -868,7 +868,7 @@ class JaxContext:
     return self._root_scope_to_shared_layers_map[root_scope][shared_layer_id]
 
   def set_shared_layer(self, root_scope: flax_core.Scope, shared_layer_id: str,
-                       layer: BaseLayer, layer_hparams):
+                       layer: BaseLayerApi, layer_hparams):
     logging.info('set_shared_layer called with id: %s in the scope of %s',
                  shared_layer_id, root_scope)
     existing = self.lookup_shared_layer(root_scope, shared_layer_id)
@@ -1022,7 +1022,7 @@ def _maybe_to_bfloat16_dtype(x):
     return jax.ShapeDtypeStruct(x.shape, x.dtype)
 
 
-class _SharedBaseLayer(nn.Module):
+class BaseLayerApi(nn.Module):
   """Common subclass for `BaseLayer` and `FiddleBaseLayer`.
 
   `BaseLayer` is used for layers that are configured using `HParams`.
@@ -1054,9 +1054,9 @@ class _SharedBaseLayer(nn.Module):
     if isinstance(target, BaseLayer.HParams):
       assert issubclass(target.cls, BaseLayer)
     if isinstance(target, BaseLayer.HParams):
-      _SharedBaseLayer._copy_base_params_to_hparams(source, target)
+      BaseLayerApi._copy_base_params_to_hparams(source, target)
     else:
-      _SharedBaseLayer._copy_base_params_to_fdl_config(source, target)
+      BaseLayerApi._copy_base_params_to_fdl_config(source, target)
 
   _BASE_PARAMS_TO_INHERIT = ('dtype', 'fprop_dtype', 'skip_lp_regularization',
                              'ici_mesh_shape', 'dcn_mesh_shape',
@@ -1100,8 +1100,8 @@ class _SharedBaseLayer(nn.Module):
       # Copy params if `value` is a FiddleBaseLayer config.
       if (isinstance(value, pax_fiddle.Config) and
           isinstance(fdl.get_callable(value), type) and
-          issubclass(fdl.get_callable(value), _SharedBaseLayer)):
-        for name in _SharedBaseLayer._BASE_PARAMS_TO_INHERIT:
+          issubclass(fdl.get_callable(value), BaseLayerApi)):
+        for name in BaseLayerApi._BASE_PARAMS_TO_INHERIT:
           if name not in value.__arguments__:
             setattr(value, name, getattr(source, name))
 
@@ -1148,7 +1148,7 @@ class _SharedBaseLayer(nn.Module):
         continue  # don't create recursion loop!
 
       def force(v):
-        if isinstance(v, _SharedBaseLayer):
+        if isinstance(v, BaseLayerApi):
           # pass dummy args through - again only needed for scan.
           v.post_init_hparams(*args)
 
@@ -1690,7 +1690,7 @@ class _SharedBaseLayer(nn.Module):
 # Inherit from Flax Linen Module.
 class BaseLayer(
     BaseParameterizable,
-    _SharedBaseLayer,
+    BaseLayerApi,
     init_params_arg_name='_hparams',
     nonconfigurable_init_arg_names=('name', 'parent')):
   r"""Base class for all the layer object.
@@ -1942,7 +1942,7 @@ class _FiddleHParamsInstanceStub:
       raise AttributeError(
           f'{type(self._base_layer)}.HParams has no attribute {name!r}')
     value = getattr(self._base_layer, name)
-    if isinstance(value, _SharedBaseLayer):
+    if isinstance(value, BaseLayerApi):
       value = value.hparams
     return value
 
@@ -1960,7 +1960,7 @@ class _FiddleHParamsInstanceStub:
       if field.name == 'parent' or not field.init:
         continue
       value = getattr(self._base_layer, field.name)
-      if isinstance(value, _SharedBaseLayer):
+      if isinstance(value, BaseLayerApi):
         continue  # For now all children are built by setup().
       kwargs[field.name] = value
     return pax_fiddle.Config(type(self._base_layer), **kwargs)
@@ -1974,7 +1974,7 @@ class _FiddleHParamsInstanceStub:
         self.clone(), include_types, separator)
 
 
-class FiddleBaseLayer(_SharedBaseLayer):
+class FiddleBaseLayer(BaseLayerApi):
   """Base class for layers that are configured using Fiddle.
 
   Subclasses are expected to:

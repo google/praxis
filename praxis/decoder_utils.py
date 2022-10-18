@@ -22,13 +22,14 @@ from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pytypes
 
+# TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 JTensor = pytypes.JTensor
-ExtendStepFn = Callable[[base_layer.BaseLayer, JTensor, JTensor], JTensor]
-FPropFn = Callable[[base_layer.BaseLayer, JTensor, JTensor], None]
+ExtendStepFn = Callable[[base_layer.BaseLayerApi, JTensor, JTensor], JTensor]
+FPropFn = Callable[[base_layer.BaseLayerApi, JTensor, JTensor], None]
 TransformStateFn = Callable[
-    [base_layer.BaseLayer, base_layer.DecodeStateTransformFn], None]
+    [base_layer.BaseLayerApi, base_layer.DecodeStateTransformFn], None]
 # lazy_broadcast_prefix_fn(model, num_suffix_samples, suffix_length)
-LazyBroadcastPrefixFn = Callable[[base_layer.BaseLayer, int, int], None]
+LazyBroadcastPrefixFn = Callable[[base_layer.BaseLayerApi, int, int], None]
 
 
 def length_norm(t, length_norm_alpha) -> jnp.ndarray:

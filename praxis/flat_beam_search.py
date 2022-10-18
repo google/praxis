@@ -208,7 +208,8 @@ def post_process(result: NestedMap, eos_id: int,
   return result
 
 
-def flat_beam_search(model: base_layer.BaseLayer,
+# TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
+def flat_beam_search(model: base_layer.BaseLayerApi,
                      extend_step_fn: decoder_utils.ExtendStepFn,
                      target_prefix_ids: JTensor,
                      target_prefix_paddings: JTensor,

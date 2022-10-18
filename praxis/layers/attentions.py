@@ -1670,8 +1670,12 @@ class DotProductAttention(base_layer.BaseLayer):
 #     need to be sliced on the time dim for the chunk.
 #   states: a list of chunks for useful decoding states.
 FnOnDecodeStateChunk = Callable[[
-    base_layer
-    .BaseLayer, NestedJTensor, NestedJTensor, NestedJTensor, Sequence[JTensor]
+    # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
+    base_layer.BaseLayerApi,
+    NestedJTensor,
+    NestedJTensor,
+    NestedJTensor,
+    Sequence[JTensor]
 ], NestedJTensor]
 
 
@@ -2321,7 +2325,9 @@ class DotProductAttentionWithLPB(DotProductAttention):
     return encoded
 
 
-def create_relative_positional_embedding(layer: base_layer.BaseLayer) -> None:
+# TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
+def create_relative_positional_embedding(
+    layer: base_layer.BaseLayerApi) -> None:
   params = layer.hparams
   wp = params.weight_split_dims_mapping
 

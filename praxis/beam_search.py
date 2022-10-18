@@ -96,7 +96,8 @@ def broadcast_beam_dim(x: JTensor, beam_dim: int, beam_size: int) -> JTensor:
       jnp.expand_dims(x, beam_dim), repeats=beam_size, axis=beam_dim)
 
 
-def beam_search(model: base_layer.BaseLayer,
+# TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
+def beam_search(model: base_layer.BaseLayerApi,
                 extend_step_fn: decoder_utils.ExtendStepFn,
                 fprop_fn: decoder_utils.FPropFn,
                 transform_state_fn: decoder_utils.TransformStateFn,

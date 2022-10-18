@@ -241,7 +241,8 @@ def top_p_mask_logits(logits: JTensor, p: Union[float, JTensor]) -> JTensor:
   return logits
 
 
-def sample_decode(model: base_layer.BaseLayer,
+# TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
+def sample_decode(model: base_layer.BaseLayerApi,
                   extend_step_fn: decoder_utils.ExtendStepFn,
                   transform_state_fn: Optional[decoder_utils.TransformStateFn],
                   lazy_broadcast_prefix_fn: Optional[
@@ -610,8 +611,9 @@ def sample_decode(model: base_layer.BaseLayer,
   return result
 
 
+# TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def greedy_decode(
-    model: base_layer.BaseLayer,
+    model: base_layer.BaseLayerApi,
     extend_step_fn: decoder_utils.ExtendStepFn,
     target_ids: JTensor,
     target_paddings: JTensor,
