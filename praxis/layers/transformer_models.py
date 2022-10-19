@@ -534,6 +534,7 @@ class TransformerLm(base_layer.BaseLayer):
                segment_ids: Optional[JTensor] = None,
                segment_pos: Optional[JTensor] = None,
                causal_attention_mask: Optional[JTensor] = None,
+               segment_mask: Optional[JTensor] = None,
                start_time_step: int = 0) -> NestedMap:
     """Computes xent loss given the language model inputs.
 
@@ -552,6 +553,9 @@ class TransformerLm(base_layer.BaseLayer):
       causal_attention_mask: A JTensor of shape [B, T] where 1 indicates a token
         position with causal attention and 0 indicates bidirectional attention.
         This overrides part of the causal mask.
+      segment_mask: Optional pre-defined segment_mask passed to the transformer.
+        A JTensor of shape [B, 1, T, T]. If it is None, the segment_mask will be
+        inferred from the LanguageModelType `model_type` hparam.
       start_time_step: Decode extend_step start time step. When decoding after
         prefix, start_time_step will be prefix_len.
 
@@ -604,12 +608,13 @@ class TransformerLm(base_layer.BaseLayer):
     else:
       inputs = input_emb
 
-    if p.model_type == LanguageModelType.BIDIRECTIONAL:
-      segment_mask = attentions.segment_mask(segment_ids, segment_ids,
-                                             inputs.dtype)
-    else:
-      segment_mask = attentions.causal_segment_mask(segment_ids, inputs.dtype,
-                                                    causal_attention_mask)
+    if segment_mask is None:
+      if p.model_type == LanguageModelType.BIDIRECTIONAL:
+        segment_mask = attentions.segment_mask(segment_ids, segment_ids,
+                                               inputs.dtype)
+      else:
+        segment_mask = attentions.causal_segment_mask(segment_ids, inputs.dtype,
+                                                      causal_attention_mask)
 
     self.update_decode_state('time_step', start_time_step)
     output = self.transformer(
