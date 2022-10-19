@@ -1888,7 +1888,22 @@ class _FiddleHParamsClassStub(type,
   """
   fiddle_base_layer_cls: Type[FiddleBaseLayer]
 
-  def __new__(cls, fiddle_base_layer_cls):
+  def __new__(cls, fiddle_base_layer_cls, *args):
+    if args:
+      # The code in this block ensures that if the user does:
+      #   class Parent(FiddleBaseLayer):
+      #     x: int = 0
+      #   class Child(Parent):
+      #     class HParams(Parent.HParams):  # [*]
+      #       y: int = 0
+      # then an exception will be raised on the line marked with [*].
+      bases, cls_dict = args  # pylint: disable=unused-variable
+      assert len(bases) == 1, 'Expected HParams to have a single base'
+      base_cls = bases[0].fiddle_base_layer_cls
+      raise ValueError(
+          f'{base_cls} was converted to a `FiddleBaseLayer`, but this '
+          'subclass was not converted.  To fix, convert this subclass to a '
+          '`FiddleBaseLayer`.')
     name = 'HParams'
     qualname = f'{fiddle_base_layer_cls.__qualname__}.{name}'
     namespace = {'__qualname__': qualname,

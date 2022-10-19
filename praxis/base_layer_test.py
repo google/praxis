@@ -449,6 +449,19 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       self.assertNotIsInstance(pax_fiddle, AnotherLayer.HParams)
       self.assertNotIsInstance(123, Layer.HParams)
 
+  def test_converted_base_class_but_not_sub_class(self):
+
+    expected_error = (
+        "<class '.*SimpleFiddleBaseLayer'> was converted to a "
+        '`FiddleBaseLayer`, but this subclass was not converted.  To fix, '
+        'convert this subclass to a `FiddleBaseLayer`.')
+    with self.assertRaisesRegex(ValueError, expected_error):
+
+      class Child(SimpleFiddleBaseLayer):  # pylint: disable=unused-variable
+
+        class HParams(SimpleFiddleBaseLayer.HParams):
+          y: int = 0
+
   def test_override_weight_sharding_hparams(self):
 
     class Layer(base_layer.FiddleBaseLayer):
