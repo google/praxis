@@ -910,7 +910,7 @@ def add_global_summary(
   if verbosity > context.summary_verbosity:
     return
 
-  global_namespace_name = '/' + name
+  global_namespace_name = name
   if jnp.issubdtype(tensor.dtype, jnp.floating):
     tensor = tensor.astype(jnp.float32)
   context.summary_dict.add_summary(global_namespace_name, tensor, summary_type)

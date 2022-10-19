@@ -159,9 +159,9 @@ class BaseLayerTest(test_utils.TestCase):
                                     verbosity=summary_verbosity)
       all_summaries = base_layer.all_global_summaries()
 
-      self.assertEqual('/test_scalar' in all_summaries, should_log)
+      self.assertEqual('test_scalar' in all_summaries, should_log)
       if should_log:
-        self.assertArraysEqual(summary, all_summaries['/test_scalar'])
+        self.assertArraysEqual(summary, all_summaries['test_scalar'])
 
   def test_get_summary_base_type(self):
     self.assertEqual(
