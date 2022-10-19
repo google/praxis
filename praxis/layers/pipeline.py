@@ -15,7 +15,6 @@
 
 """GSPMD pipeline parallelism implementations."""
 
-import contextlib
 import functools
 from typing import Callable, List, Optional
 
@@ -24,7 +23,6 @@ from flax import linen as nn
 import jax
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
-from jax.experimental import maps
 from praxis import base_layer
 from praxis import flax_utils
 from praxis import py_utils
@@ -45,22 +43,6 @@ SUMMARIES = base_layer.SUMMARIES
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 RANDOM = base_layer.RANDOM
 AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
-
-
-# TODO(pax-dev): This function is not needed when Array is enabled. Remove it
-# when jax.Array is enabled globally in PAX.
-@contextlib.contextmanager
-def _maybe_set_global_semantics():
-  """Sets global semantics within the context manager."""
-  prev_positional_val = maps._positional_semantics.val  # pylint: disable=protected-access
-  try:
-    if py_utils.gda_or_jax_array():
-      maps._positional_semantics.val = maps._PositionalSemantics.GLOBAL  # pylint: disable=protected-access
-    else:
-      maps._positional_semantics.val = prev_positional_val  # pylint: disable=protected-access
-    yield
-  finally:
-    maps._positional_semantics.val = prev_positional_val  # pylint: disable=protected-access
 
 
 # Ported from LayerwiseShardablePipelinedLayer in gshard_layers.py.
@@ -151,7 +133,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       stages: How the num_stages dimension should be sharded. This must be a
         list/tuple of one element.
     """
-    stages: SplitDimsMapping = (1,)
+    stages: SplitDimsMapping = (None,)
 
   def setup(self) -> None:
     """Constructs a LayerwiseShardablePipelined object."""
@@ -159,8 +141,19 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     assert p.single_stage_body
     self.create_child('body', p.single_stage_body)
 
-  def _xmap_gather(self, xs, ids, ids_dim):
-    """Use xmap to implement a stage-wise sharded gather.
+  def _shard_dim_by_stages(self, x: JTensor, dim: int) -> JTensor:
+    p = self.hparams
+    unconstrained_dims = list(range(0, dim)) + list(range(dim + 1, x.ndim))
+    dims_mapping = [None] * x.ndim
+    dims_mapping[dim] = p.weight_split_dims_mapping.stages[0]
+    return base_layer.maybe_shard(
+        x,
+        dims_mapping,
+        p.mesh_axis_names,
+        unconstrained_dims=unconstrained_dims)
+
+  def _vmap_gather(self, xs, ids, ids_dim):
+    """Use vmap to implement a stage-wise sharded gather.
 
     The stages share the same input, but they have different offsets.
 
@@ -174,43 +167,16 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       The per-stage gathered values. The shape is xs.shape but with ids_dim size
         replaced with [num_stages].
     """
-    p = self.hparams
-
     def _gather_one(x, i):
       return jnp.squeeze(
           jax.lax.dynamic_slice_in_dim(x, i, 1, ids_dim), ids_dim)
 
-    if p.mesh_axis_names is not None:
-      # When the stage dim is partitioned, we use xmap (with manual sharding
-      # implementation) to make sure it's trivially partitioned on the stage
-      # dim and work around some potential optimization problems in XLA.
-      # TODO(yuanzx): Use xmap on the whole body fprop.
-      mesh_axis = base_layer.to_partition_spec(
-          p.weight_split_dims_mapping.stages, p.mesh_axis_names)[0]
-      if mesh_axis is not None:
-        axis_resources = {'num_stages': mesh_axis}
-        # Setting the global semantics temporarily because when this
-        # function is called inside `eval_shape` with a non-contiguous mesh,
-        # it receives abstract values. Abstract values cannot be given
-        # global semantics because currently there is no way to
-        # get that information from abstract values.
-        # TODO(yashkatariya): Remove this workaround when everything inside
-        # pjit/xmap has global semantics.
-        xs_axes = [None] * xs.ndim
-        out_axes = [None] * xs.ndim
-        out_axes[ids_dim] = 'num_stages'
-        with _maybe_set_global_semantics():
-          return maps.xmap(
-              _gather_one,
-              # broadcast_inputs are replicated across stages, but IDs are
-              # per-stage.
-              in_axes=(xs_axes, ['num_stages']),
-              out_axes=out_axes,
-              axis_resources=axis_resources)(xs, ids)
-    return jax.vmap(_gather_one, in_axes=(None, 0), out_axes=ids_dim)(xs, ids)
+    ids = self._shard_dim_by_stages(ids, 0)
+    outs = jax.vmap(_gather_one, in_axes=(None, 0), out_axes=ids_dim)(xs, ids)
+    return self._shard_dim_by_stages(outs, ids_dim)
 
-  def _xmap_parallel_gather(self, xs, ids, ids_dim, xs_dim):
-    """Use xmap to implement a sharded parallel gather.
+  def _vmap_parallel_gather(self, xs, ids, ids_dim, xs_dim):
+    """Use vmap to implement a sharded parallel gather.
 
     Parallel gather means each stage has its own xs, and gets one slice from it.
 
@@ -225,8 +191,6 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       The per-stage gathered values. The shape is xs.shape but with ids_dim
         removed.
     """
-    p = self.hparams
-
     def _gather_one(x, i):
       dim = ids_dim
       if xs_dim < dim:
@@ -237,25 +201,13 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     if ids_dim < xs_dim:
       out_dim -= 1
 
-    if p.mesh_axis_names is not None:
-      mesh_axis = base_layer.to_partition_spec(
-          p.weight_split_dims_mapping.stages, p.mesh_axis_names)[0]
-      if mesh_axis is not None:
-        axis_resources = {'num_stages': mesh_axis}
-        xs_axes = [None] * xs.ndim
-        xs_axes[xs_dim] = 'num_stages'
-        out_axes = [None] * (xs.ndim - 1)
-        out_axes[out_dim] = 'num_stages'
-        with _maybe_set_global_semantics():
-          return maps.xmap(
-              _gather_one,
-              in_axes=(xs_axes, ['num_stages']),
-              out_axes=out_axes,
-              axis_resources=axis_resources)(xs, ids)
-    return jax.vmap(_gather_one, in_axes=(xs_dim, 0), out_axes=out_dim)(xs, ids)
+    ids = self._shard_dim_by_stages(ids, 0)
+    xs = self._shard_dim_by_stages(xs, xs_dim)
+    outs = jax.vmap(_gather_one, in_axes=(xs_dim, 0), out_axes=out_dim)(xs, ids)
+    return self._shard_dim_by_stages(outs, out_dim)
 
-  def _xmap_scatter(self, xs, updates, ids, ids_dim, xs_dim, updates_dim):
-    """Use xmap to implement a sharded parallel scatter.
+  def _vmap_scatter(self, xs, updates, ids, ids_dim, xs_dim, updates_dim):
+    """Use vmap to implement a sharded parallel scatter.
 
     Parallel scatter means each stage has its own xs and updates.
 
@@ -271,8 +223,6 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     Returns:
       The per-stage gathered values. The shape is xs.shape.
     """
-    p = self.hparams
-
     def _scatter_one(x, update, i):
       dim = ids_dim
       if xs_dim < dim:
@@ -280,26 +230,13 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       update = jnp.expand_dims(update, dim)
       return jax.lax.dynamic_update_slice_in_dim(x, update, i, dim)
 
-    if p.mesh_axis_names is not None:
-      mesh_axis = base_layer.to_partition_spec(
-          p.weight_split_dims_mapping.stages, p.mesh_axis_names)[0]
-      if mesh_axis is not None:
-        axis_resources = {'num_stages': mesh_axis}
-        xs_axes = [None] * xs.ndim
-        xs_axes[xs_dim] = 'num_stages'
-        out_axes = [None] * xs.ndim
-        out_axes[xs_dim] = 'num_stages'
-        updates_axes = [None] * updates.ndim
-        updates_axes[updates_dim] = 'num_stages'
-        with _maybe_set_global_semantics():
-          return maps.xmap(
-              _scatter_one,
-              in_axes=(xs_axes, updates_axes, ['num_stages']),
-              out_axes=out_axes,
-              axis_resources=axis_resources)(xs, updates, ids)
-    return jax.vmap(
+    ids = self._shard_dim_by_stages(ids, 0)
+    xs = self._shard_dim_by_stages(xs, xs_dim)
+    updates = self._shard_dim_by_stages(updates, updates_dim)
+    outs = jax.vmap(
         _scatter_one, in_axes=(xs_dim, updates_dim, 0),
         out_axes=xs_dim)(xs, updates, ids)
+    return self._shard_dim_by_stages(outs, xs_dim)
 
   def _get_body_fprop_fn(self, loop_iteration: JTensor,
                          num_microbatches: int) -> Callable[..., JTensor]:
@@ -451,11 +388,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     if p.mesh_axis_names is not None:
 
       def annotate(x):
-        unconstrained_dims = list(range(1, x.ndim))
-        dims_mapping = (
-            list(p.weight_split_dims_mapping.stages) + [None] * (x.ndim - 1))
-        return base_layer.maybe_shard(x, dims_mapping, p.mesh_axis_names,
-                                      unconstrained_dims)
+        return self._shard_dim_by_stages(x, 0)
 
       per_stage_inputs = jax.tree_map(annotate, per_stage_inputs)
       per_stage_args = jax.tree_map(annotate, per_stage_args)
@@ -489,11 +422,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       # used and shifted.
       def _to_stream(x):
         reshaped = jnp.reshape(x, (L, num_microbatches // L) + x.shape[1:])
-        return base_layer.maybe_shard(
-            reshaped,
-            list(p.weight_split_dims_mapping.stages) + [None] * x.ndim,
-            p.mesh_axis_names,
-            unconstrained_dims=list(range(1, reshaped.ndim)))
+        return self._shard_dim_by_stages(reshaped, 0)
 
       state.stream = jax.tree_map(_to_stream, microbatched_inputs)
 
@@ -711,10 +640,10 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         stages_in = stages_in.inputs
       else:
         per_stage_args = jax.tree_map(
-            functools.partial(self._xmap_gather, ids=microbatch_ids, ids_dim=0),
+            functools.partial(self._vmap_gather, ids=microbatch_ids, ids_dim=0),
             broadcast_inputs)
         per_stage_kwargs = jax.tree_map(
-            functools.partial(self._xmap_gather, ids=microbatch_ids, ids_dim=0),
+            functools.partial(self._vmap_gather, ids=microbatch_ids, ids_dim=0),
             broadcast_kwargs)
       # Run through pipeline body.
       out_state = model.body_fprop(loop_iter, num_microbatches, stages_in,
@@ -960,7 +889,7 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
       assert SUMMARIES not in var_tree
       return jax.tree_map(
           functools.partial(
-              self._xmap_parallel_gather, ids=repeat_ids, ids_dim=0, xs_dim=1),
+              self._vmap_parallel_gather, ids=repeat_ids, ids_dim=0, xs_dim=1),
           var_tree)
 
     def trans_out(var_tree: pytypes.PyTreeDef) -> pytypes.PyTreeDef:
@@ -974,7 +903,7 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
               tree)
         mapped_vars[collection] = jax.tree_map(
             functools.partial(
-                self._xmap_scatter,
+                self._vmap_scatter,
                 ids=repeat_ids,
                 ids_dim=0,
                 xs_dim=1,
