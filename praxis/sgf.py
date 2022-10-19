@@ -91,7 +91,7 @@ class DpSgdStochasticGradient(BaseStochasticGradient):
   class HParams(BaseStochasticGradient.HParams):
     """Returns the PrivateGradient params."""
     l2_norm_clip: float = None
-    noise_multiplier: float = None
+    noise_multiplier: float = 0.0
 
   def _clip_and_noise(
       self,
