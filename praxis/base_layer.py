@@ -1926,6 +1926,9 @@ class _FiddleHParamsClassStub(type,
   def __call__(cls, *args, **kwargs):
     return pax_fiddle.Config(cls.fiddle_base_layer_cls, *args, **kwargs)
 
+  def config(cls, **kwargs):
+    return cls(**kwargs)
+
 
 class _FiddleHParamsClassStubDescriptor:
   """Descriptor used to implement FiddleBaseLayer.HParams stub."""

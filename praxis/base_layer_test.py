@@ -449,6 +449,15 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       self.assertNotIsInstance(pax_fiddle, AnotherLayer.HParams)
       self.assertNotIsInstance(123, Layer.HParams)
 
+    with self.subTest('config'):
+      cfg = layer.HParams.config(x=3, fprop_dtype=jnp.float16)
+      self.assertIsInstance(cfg, pax_fiddle.Config)
+      self.assertEqual(cfg.cls, Layer)
+      self.assertEqual(fdl.get_callable(cfg), Layer)
+      self.assertEqual(cfg.x, 3)
+      self.assertEqual(cfg.fprop_dtype, jnp.float16)
+      self.assertEqual(cfg.dtype, jnp.float32)
+
   def test_converted_base_class_but_not_sub_class(self):
 
     expected_error = (
