@@ -20,12 +20,12 @@ from __future__ import annotations
 import contextlib
 import copy
 import dataclasses
-from typing import overload, TypeVar, Callable, Any, Union, Optional, Collection, Generic
+from typing import overload, TypeVar, Callable, Any, Union, Optional, Collection, Generic, Dict
 
 import fiddle as fdl
 from fiddle import daglish
 from fiddle import tagging
-from fiddle.experimental import auto_config
+from fiddle.experimental import auto_config as fdl_auto_config
 from fiddle.experimental import dataclasses as fdl_dataclasses
 from fiddle.experimental.dataclasses import field as fdl_field
 from flax.linen import module as flax_module
@@ -175,15 +175,27 @@ def sub_field(
   # Using auto_unconfig here ensures that the factory will return a PaxConfig
   # object in the Fiddle.as_buildable path, but an object of type `field_type`
   # in the Python path.
-  @auto_config.auto_unconfig
+  @fdl_auto_config.auto_unconfig
   def factory():
     return PaxConfig(field_type)
 
   return fdl_field(default_factory=factory, tags=tags)
 
 
+def _auto_config_exemption_policy(fn_or_cls):
+  return (fn_or_cls is PaxConfig or
+          fdl_auto_config.auto_config_policy.latest(fn_or_cls))
+
+
+def auto_config(fn=None, **kwargs):
+  """Version of Fiddle's auto_config that excludes PaxConfig."""
+  kwargs['experimental_exemption_policy'] = _auto_config_exemption_policy
+  return fdl_auto_config.auto_config(fn, **kwargs)
+
+
 def template_field(
-    template: Optional[Callable[..., Any]], tags: Optional[TagOrTags] = tuple()
+    template: Optional[Callable[..., Any]],
+    tags: Optional[TagOrTags] = tuple(),
 ) -> Union[dataclasses.Field, Any]:  # pylint: disable=g-bare-generic
   """Dataclass field specification for a Fiddle-configurable template field.
 
@@ -210,13 +222,9 @@ def template_field(
   if template is None:
     return fdl_field(default=None, tags=tags)
 
-  always_true = lambda _: True
-
   # Using auto_config here ensures that this will return a PaxConfig object
-  # in both the Fiddle.as_buildable path and the Python path.  (The custom
-  # exemption policy is needed because `fdl.auto_config` doesn't know about
-  # PaxConfig -- this tells it not to create a Config for it.)
-  @auto_config.auto_config(experimental_exemption_policy=always_true)
+  # in both the Fiddle.as_buildable path and the Python path.
+  @auto_config
   def factory():
     return PaxConfig(template)
 
