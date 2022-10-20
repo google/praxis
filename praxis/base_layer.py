@@ -930,19 +930,34 @@ class Theta:
   """Dot syntax accession helper to be used inside a descriptor."""
 
   def __init__(self, module):
+    # module is a BaseLayer instance.
     self.module = module
 
   def __getattr__(self, k):
     self.module._try_setup()
     if not self.module.has_variable('params', k):
       raise ValueError(f'Module {self.module} has no theta.{k} defined.')
-    return self.module.get_variable('params', k)
+    # Cast BaseLayer.theta to fprop_dtype to ensure BaseLayer.init respects
+    # fprop_dtype.
+    variable = self.module.get_variable('params', k)
+    var_hparams = self.module._weight_hparams[k]
+    if (self.module.fprop_dtype == jnp.bfloat16 and
+        var_disallow_bfloat16_conversion(var_hparams)):
+      return variable
+    return self.module._cast_to_fprop_dtype(variable)
 
   def __getitem__(self, k):
     self.module._try_setup()
     if not self.module.has_variable('params', k):
       raise ValueError(f'Module {self.module} has no theta[{k}] defined.')
-    return self.module.get_variable('params', k)
+    # Cast BaseLayer.theta to fprop_dtype to ensure BaseLayer.init respects
+    # fprop_dtype.
+    variable = self.module.get_variable('params', k)
+    var_hparams = self.module._weight_hparams[k]
+    if (self.module.fprop_dtype == jnp.bfloat16 and
+        var_disallow_bfloat16_conversion(var_hparams)):
+      return variable
+    return self.module._cast_to_fprop_dtype(variable)
 
 
 class ThetaDescriptor:
@@ -953,8 +968,8 @@ class ThetaDescriptor:
 
 
 _BaseLayerRecursionDictKeysToIgnore = [
-    'parent', '_theta', '_state', 'scope', '_private_hparams', 'hparams',
-    '_private_children'
+    'parent', '_theta', '_weight_hparams', '_state', 'scope',
+    '_private_hparams', 'hparams', '_private_children'
 ]
 
 
@@ -1161,6 +1176,7 @@ class BaseLayerApi(nn.Module):
 
   def __post_init__(self):
     object.__setattr__(self, '_theta', set())
+    object.__setattr__(self, '_weight_hparams', {})
     object.__setattr__(self, '_private_children', {})
     super().__post_init__()
 
@@ -1540,6 +1556,9 @@ class BaseLayerApi(nn.Module):
       var_hparams.collections = var_hparams.collections + [
           WeightHParamsCollection.NON_TRAINABLE
       ]
+
+    # Store a private copy of var_hparams.
+    self._weight_hparams[name] = var_hparams.clone()
 
     if trainable:
       # This is a param in Flax terminology.
