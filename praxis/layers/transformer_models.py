@@ -430,12 +430,11 @@ class TransformerLm(base_layer.BaseLayer):
     assert (xformer_params.model_dims == 0 or
             xformer_params.model_dims == p.model_dims)
     xformer_params.model_dims = p.model_dims
-    if p.model_type in {
-        LanguageModelType.PREFIX, LanguageModelType.BIDIRECTIONAL
-    }:
-      xformer_params.mask_self_attention = False
-    else:
+    # TODO(pax): we shouldn't override mask_self_attention here.
+    if p.model_type == LanguageModelType.CAUSAL:
       xformer_params.mask_self_attention = True
+    else:
+      xformer_params.mask_self_attention = False
     xformer_params.packed_input = p.packed_input
     xformer_params.fold_padding_with_segment_mask = True
     if p.post_attention_ngrammer_tpls is not None:
