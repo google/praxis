@@ -28,10 +28,15 @@ from praxis.layers import linears
 from praxis.layers import normalizations
 from praxis.layers import stochastics
 
+BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
+BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
+
 NestedMap = py_utils.NestedMap
+SplitDimsMapping = pytypes.SplitDimsMapping
+sub_config_field = base_layer.sub_config_field
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
-sub_config_field = base_layer.sub_config_field
+
 
 JTensor = pytypes.JTensor
 
@@ -336,8 +341,8 @@ class BaseDepthwiseConv1D(base_layer.BaseLayer):
       bias:         Whether or not to apply a bias before activation.
       bias_init:    Bias initializer to use if bias is to be applied.
       is_causal:    Whether this is a causal layer.
-      use_2d_conv_weight_shape: Whether to use 2d conv weight shape. This is for
-        checkpoint compatibility with old models.
+      use_2d_conv_weight_shape: Whether to use 2d conv's weight shape. This is
+        for checkpoint backwards-compatibility.
       rhs_dilation_rate: The dilation rate in atrous convolution.
     """
     filter_shape: Sequence[int] = (0, 0, 0)
@@ -366,24 +371,53 @@ class BaseDepthwiseConv1D(base_layer.BaseLayer):
 class DepthwiseConv1D(BaseDepthwiseConv1D):
   """Depthwise 1D convolution based on lax implementation."""
 
+  # SPMD partition related params.
+  # h - height
+  # w - width
+  # i - in_channels
+  # m - channel_multiplier
+  class WeightShardingHParams(BaseWtShardingHParams):
+    """Represents how layer's learned parameters are partitioned across a mesh.
+
+    Attributes:
+      him:  Mesh split for weight. If use_2d_conv_weight_shape is set, the
+        weight shape is actually him, and w dim is not sharded.
+    """
+    him: SplitDimsMapping = None
+
   def setup(self) -> None:
     p = self.hparams
+    wp_him = p.weight_split_dims_mapping.clone().him
+
     assert len(p.filter_shape) == 3
     assert p.rhs_dilation_rate > 0
 
     w_shape = [p.filter_shape[0], 1, p.filter_shape[1] * p.filter_shape[2]]
     bias_shape = w_shape[-1]
+
     if p.use_2d_conv_weight_shape:
       w_shape = w_shape + [1]
-    self.create_variable('w', WeightHParams(shape=w_shape))
+      if wp_him:
+        # [h, None, i, m]
+        wp_him.insert(1, None)
+
+    self.create_variable(
+        'w',
+        WeightHParams(
+            shape=w_shape,
+            mesh_shape=p.mesh_shape,
+            tensor_split_dims_mapping=wp_him))
     if p.bias:
       self.create_variable(
           'b', WeightHParams(shape=[bias_shape], init=p.bias_init))
 
   def get_w(self) -> JTensor:
     p = self.hparams
+    wp_him = p.weight_split_dims_mapping.him
     if p.use_2d_conv_weight_shape:
-      return jnp.squeeze(self.theta.w, -1)
+      w = jnp.squeeze(self.theta.w, -1)
+      w = base_layer.maybe_shard(w, wp_him, p.mesh_axis_names)
+      return w
     else:
       return self.theta.w
 
@@ -477,10 +511,42 @@ class LightConv1D(base_layer.BaseLayer):
     is_causal: bool = False
     use_2d_conv_norm: bool = False
 
+  # SPMD partition related params.
+  #
+  # d - model_dim
+  # f - ff_hidden_dim (here ff_hidden_dim has the same size as model_dim)
+  # h - height
+  # i - in_channels
+  # m - channel_multiplier
+  # b - batch_size
+  # l - seq_len
+  class WeightShardingHParams(BaseWtShardingHParams):
+    """Represents how layer's learned parameters are partitioned across a mesh.
+
+    Attributes:
+      df:    Mesh split for lconv linear start weight.
+      him:  Mesh split for lconv depthwise conv weight.
+    """
+    df: SplitDimsMapping = None
+    him: SplitDimsMapping = None
+
+  class ActivationShardingHParams(BaseActShardingHParams):
+    """Represents how intermediate values should be partitioned across a mesh.
+
+    Attributes:
+      blf: Mesh split for lconv linear start act and lconv depthwise conv after
+        normalization.
+      bld: Mesh split for lconv linear end act.
+    """
+    blf: SplitDimsMapping = None
+    bld: SplitDimsMapping = None
+
   def _create_conv(self):
     p = self.hparams
+    wp = p.weight_split_dims_mapping
     depthwise_conv_p = p.depthwise_conv_tpl.clone().set(
         filter_shape=(p.kernel_size, p.input_dims, 1), is_causal=p.is_causal)
+    depthwise_conv_p.weight_split_dims_mapping.him = wp.him
     self.create_child('depthwise_conv1d', depthwise_conv_p)
 
   def _create_conv_norm_layer(self):
@@ -490,6 +556,8 @@ class LightConv1D(base_layer.BaseLayer):
 
   def setup(self) -> None:
     p = self.hparams
+    wp = p.weight_split_dims_mapping
+    ap = p.activation_split_dims_mapping
 
     ln_p = p.ln_tpl.clone().set(name='ln', dim=p.input_dims)
     self.create_child('ln', ln_p)
@@ -505,17 +573,18 @@ class LightConv1D(base_layer.BaseLayer):
         output_dims=p.input_dims,
         activation_tpl=activations.Identity.HParams(),
         params_init=WeightInit.Xavier(math.sqrt(3 / 2)))
+    linear_start_act_p.weight_split_dims_mapping.wt = wp.df
+    linear_start_act_p.activation_split_dims_mapping.out = ap.blf
+    self.create_child('linear_start_act', linear_start_act_p)
+
     linear_start_gated_p = p.linear_start_tpl.clone().set(
         input_dims=p.input_dims,
         output_dims=p.input_dims,
         activation_tpl=activations.Identity.HParams(),
         params_init=WeightInit.Xavier(math.sqrt(3 / 2)))
-    self.create_child('linear_start_act', linear_start_act_p)
+    linear_start_gated_p.weight_split_dims_mapping.wt = wp.df
+    linear_start_gated_p.activation_split_dims_mapping.out = ap.blf
     self.create_child('linear_start_gated', linear_start_gated_p)
-
-    self._create_conv()
-    self._create_conv_norm_layer()
-    self.create_child('conv_activation', p.conv_activation_tpl.clone())
 
     # TODO(nanxinchen): the end layer doesn't split so it shouldn't use 3/2
     linear_end_p = p.linear_end_tpl.clone().set(
@@ -523,7 +592,14 @@ class LightConv1D(base_layer.BaseLayer):
         output_dims=p.input_dims,
         activation_tpl=activations.Identity.HParams(),
         params_init=WeightInit.Xavier(math.sqrt(3 / 2)))
+    if wp.df:
+      linear_end_p.weight_split_dims_mapping.wt = list(reversed(wp.df))
+    linear_end_p.activation_split_dims_mapping.out = ap.bld
     self.create_child('linear_end', linear_end_p)
+
+    self._create_conv()
+    self._create_conv_norm_layer()
+    self.create_child('conv_activation', p.conv_activation_tpl.clone())
 
     dropout_p = p.dropout_tpl.clone().set(keep_prob=1. - p.dropout_prob)
     self.create_child('dropout', dropout_p)
@@ -549,6 +625,9 @@ class LightConv1D(base_layer.BaseLayer):
     Returns:
       The lconv output with shape [B, T, H].
     """
+    p = self.hparams
+    ap = p.activation_split_dims_mapping
+
     unnormalized_inputs = inputs
 
     inputs = self.ln(inputs)
@@ -557,8 +636,11 @@ class LightConv1D(base_layer.BaseLayer):
     inputs = act_inputs * jax.nn.sigmoid(gated_inputs)
 
     inputs = self.depthwise_conv1d(inputs, paddings)
+    inputs = base_layer.maybe_shard(inputs, ap.blf, p.mesh_axis_names)
 
     inputs = self._conv_norm(inputs, paddings)
+
+    inputs = base_layer.maybe_shard(inputs, ap.blf, p.mesh_axis_names)
     inputs = self.conv_activation(inputs)
 
     inputs = self.linear_end(inputs)
