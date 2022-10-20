@@ -193,7 +193,6 @@ pytype_strict_library(
     deps = [
         ":activations",
         # Implicit jax dependency.
-        # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:pytypes",
@@ -278,11 +277,9 @@ pytype_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        # Implicit absl.logging dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         # Implicit optax dependency.
-        "//praxis:py_utils",
         "//praxis:pytypes",
     ],
 )
@@ -585,7 +582,6 @@ pytype_strict_library(
         ":stochastics",
         # Implicit absl.logging dependency.
         # Implicit jax dependency.
-        # Implicit jax.experimental_host_callback dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:gshard_utils",
@@ -602,7 +598,6 @@ pytype_strict_library(
         ":embedding_softmax",
         ":multi_query_attention",
         ":normalizations",
-        ":stochastics",
         ":transformers",
         # Implicit jax dependency.
         "//praxis:asserts",
@@ -691,7 +686,6 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":objectives",
-        # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit jax dependency.
         # Implicit jax.experimental.jax2tf dependency.
