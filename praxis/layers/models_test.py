@@ -28,6 +28,7 @@ from praxis import py_utils
 from praxis import pytypes
 from praxis import test_utils
 from praxis.layers import models
+from praxis.layers import resnets
 from praxis.layers import transformer_models
 
 NestedMap = py_utils.NestedMap
@@ -730,6 +731,29 @@ class LanguageModelTest(test_utils.TestCase):
                  dtype=np.int32))
     self.assertArraysEqual(results.decode_lengths,
                            np.array([[5], [4], [3]], dtype=np.int32))
+
+
+class ClassifierModelTest(test_utils.TestCase):
+
+  @parameterized.parameters([2, 6])
+  def test_fprop(self, num_classes: int):
+
+    p = models.ClassificationModel.HParams(
+        name='classifier', network_tpl=resnets.ResNet.HParamsResNet5())
+    p.softmax_tpl.num_classes = num_classes
+    p.softmax_tpl.input_dims = 16
+
+    inputs = NestedMap(
+        image=jnp.zeros((1, 25, 25, 3), jnp.float32),
+        label_probs=jax.nn.one_hot(
+            jnp.array([0]), num_classes, dtype=jnp.float32))
+    model = instantiate(p)
+    with base_layer.JaxContext.new_context():
+      (metrics, _), _ = model.init_with_output(jax.random.PRNGKey(42), inputs)
+
+    self.assertContainsSubset(['accuracy', 'error'], metrics)
+    if num_classes > 5:
+      self.assertContainsSubset(['acc5', 'error5'], metrics)
 
 
 if __name__ == '__main__':

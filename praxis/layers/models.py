@@ -813,19 +813,24 @@ class ClassificationModel(base_model.BaseModel):
         predictions.softmax_output.logits,
         label_probs=input_batch.label_probs,
         weights=predictions.example_weights)
-    acc5 = metric_utils.top_k_accuracy(
-        5,
-        predictions.softmax_output.logits,
-        label_probs=input_batch.label_probs,
-        weights=predictions.example_weights)
     metrics.update(
         accuracy=(acc1, predictions.softmax_output.total_weight),
-        acc5=(acc5, predictions.softmax_output.total_weight),
         error=(1.0 - acc1, predictions.softmax_output.total_weight),
-        error5=(1.0 - acc5, predictions.softmax_output.total_weight))
-    # Add top-1 and top-5 accuracies to summaries.
+    )
     self.add_summary('acc1', acc1)
-    self.add_summary('acc5', acc5)
+
+    num_classes = predictions.softmax_output.logits.shape[-1]
+    if num_classes > 5:
+      acc5 = metric_utils.top_k_accuracy(
+          5,
+          predictions.softmax_output.logits,
+          label_probs=input_batch.label_probs,
+          weights=predictions.example_weights)
+      metrics.update(
+          acc5=(acc5, predictions.softmax_output.total_weight),
+          error5=(1.0 - acc5, predictions.softmax_output.total_weight),
+      )
+      self.add_summary('acc5', acc5)
     return metrics, {}
 
   def predict(self, input_batch: NestedMap) -> Predictions:
