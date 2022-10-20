@@ -78,9 +78,14 @@ class SharedLayersTest(test_utils.TestCase):
     initial_vars = foo_shared.init(prng_key, inputs)
     logging.info('initial_vars=%s', initial_vars)
 
+    # Note: foo_shared.linear1 has the name 'linear' before the Fiddle
+    # migration, but the name changes to 'linear1' after the migration.
+    # TODO(b/249483164): Replace linear_name w/ 'linear1' after migration.
+    linear_name = 'linear' if 'linear' in initial_vars['params'] else 'linear1'
+
     expected_shape = {
         'params': {
-            'linear': {
+            linear_name: {
                 'w': (2, 2)
             },
             'linear_private': {
@@ -96,7 +101,7 @@ class SharedLayersTest(test_utils.TestCase):
 
     shared_sublayer_initial_vars = {
         'params': {
-            'w': initial_vars['params']['linear']['w']
+            'w': initial_vars['params'][linear_name]['w']
         }
     }
     private_sublayer_initial_vars = {
@@ -129,8 +134,9 @@ class SharedLayersTest(test_utils.TestCase):
 
     # This is the actual value of input_dims and output_dims, not the default
     # values.
-    self.assertEqual(2, hyper_params['linear']['_hparams'].input_dims)
-    self.assertEqual(2, hyper_params['linear']['_hparams'].output_dims)
+    self.assertEqual(2, hyper_params[linear_name]['_hparams'].input_dims)
+    self.assertEqual(2,
+                     hyper_params[linear_name]['_hparams'].output_dims)
 
     logging.info('hyper_params: \n%s',
                  base_hyperparams.nested_struct_to_text(hyper_params))
