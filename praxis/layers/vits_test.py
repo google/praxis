@@ -204,6 +204,17 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
           features.shape,
           (exp_params.batch_size, num_patches, exp_params.hidden_dim))
 
+  def test_patch_image_conversion(self):
+    batch, height, width, patch_size, channels = 8, 12, 16, 4, 3
+    expected_image = np.random.normal(size=[batch, height, width, channels])
+    image = jnp.asarray(expected_image)
+
+    with base_layer.JaxContext.new_context():
+      patches = vits.image_to_patch(image, patch_size)
+      actual_image = vits.patch_to_image(patches, image.shape, patch_size)
+
+    self.assertAllClose(expected_image, test_utils.to_np(actual_image))
+
 
 if __name__ == '__main__':
   absltest.main()

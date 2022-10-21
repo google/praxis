@@ -32,7 +32,7 @@ D = hidden dims
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Tuple, Sequence
 
 import einops
 import jax
@@ -90,6 +90,40 @@ def image_to_patch(img: JTensor, patch_size: int) -> JTensor:
       q=patch_size,
       c=channels)
   return img
+
+
+def patch_to_image(patches: JTensor, img_shape: Sequence[int], patch_size: int):
+  """Converts patches to an image with the given image shape and the patch size.
+
+  Args:
+    patches: JTensor, [batch_size, num_patches, patch_content].
+    img_shape: A sequence of 4 integers specifying
+      [batch_size, image_height, image_width, image_channel].
+    patch_size: An integer specifying the patch size.
+
+  Returns:
+    The image converted from patches of the shape specified by img_shape.
+  """
+  if len(img_shape) != 4:
+    raise ValueError(
+        f'Image shape is expected to be [B, H, W, C], got {img_shape}.')
+  height, width, channels = img_shape[1:]
+
+  if height % patch_size != 0 or width % patch_size != 0:
+    raise ValueError(
+        f'Image height ({height}) and width ({width}) should be multiples '
+        f'of patch_size ({patch_size}).')
+
+  row_blocks = height // patch_size
+  column_blocks = width // patch_size
+  return einops.rearrange(
+      patches,
+      '... (m n)(p q c) -> ... (m p)(n q) c',
+      m=row_blocks,
+      n=column_blocks,
+      p=patch_size,
+      q=patch_size,
+      c=channels)
 
 
 def interpolate_embedding_2d(emb, source_emb_shape, target_emb_shape):
