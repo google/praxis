@@ -1097,7 +1097,7 @@ class Adafactor(BaseOptimizer):
         of the finetuning phase.
       multiply_by_parameter_scale: If True, then scale learning_rate by
         parameter norm. if False, provided learning_rate is absolute step size.
-      clipping_threshold: Optional value; if None, clipping disabled.
+      clip_threshold: Optional value; if None, clipping disabled.
       momentum: Optional value between 0 and 1, enables momentum and uses extra
         memory if non-None! None by default.
       dtype_momentum: dtype of momentum buffers.
@@ -1109,7 +1109,7 @@ class Adafactor(BaseOptimizer):
     decay_rate: float = 0.8
     decay_offset: float = 0.
     multiply_by_parameter_scale: bool = True
-    clipping_threshold: Optional[float] = 1.
+    clip_threshold: Optional[float] = 1.
     momentum: Optional[float] = None
     dtype_momentum: str = 'float32'
     weight_decay_rate: Optional[float] = None
@@ -1127,7 +1127,7 @@ class Adafactor(BaseOptimizer):
         decay_rate=p.decay_rate,
         decay_offset=p.decay_offset,
         multiply_by_parameter_scale=p.multiply_by_parameter_scale,
-        clipping_threshold=p.clipping_threshold,
+        clipping_threshold=p.clip_threshold,
         momentum=p.momentum,
         dtype_momentum=getattr(jnp, p.dtype_momentum),
         weight_decay_rate=p.weight_decay_rate,
@@ -1691,7 +1691,7 @@ class _ShardedAdafactorHelper:
       decay_adam: float,
       decay_pow: float,
       beta1: float,
-      clipping_threshold: Optional[float],
+      clip_threshold: Optional[float],
       factored: bool,
       epsilon1_grad_sq_reg: float,
       quantized_dtype: jnp.dtype,
@@ -1715,7 +1715,7 @@ class _ShardedAdafactorHelper:
     self._decay_adam = decay_adam
     self._decay_pow = decay_pow
     self._beta1 = beta1
-    self._clipping_threshold = clipping_threshold
+    self._clip_threshold = clip_threshold
     self._factored = factored
     self._epsilon1 = epsilon1_grad_sq_reg
     self._quantized_dtype = quantized_dtype
@@ -2065,8 +2065,8 @@ class _ShardedAdafactorHelper:
       base_layer.add_global_summary(f'sharded_adafactor_learning/{var_name}',
                                     x_l2_scale)
 
-    if self._clipping_threshold is not None:
-      clipping_denom = jnp.maximum(1., reduce_rms(x) / self._clipping_threshold)
+    if self._clip_threshold is not None:
+      clipping_denom = jnp.maximum(1., reduce_rms(x) / self._clip_threshold)
       clipping_denom = self.inf_to_nan(clipping_denom)
       x /= clipping_denom
       if self._per_var_learning_summary:
@@ -2150,7 +2150,7 @@ def sharded_adafactor(
     decay_adam: float = 0.,
     decay_pow: float = 0.,
     beta1: float = 0.,
-    clipping_threshold: Optional[float] = 1.,
+    clip_threshold: Optional[float] = 1.,
     factored: bool = True,
     epsilon1_grad_sq_reg: float = 1e-30,
     quantized_dtype: jnp.dtype = jnp.int8,
@@ -2206,7 +2206,7 @@ def sharded_adafactor(
     decay_adam: a float, decay if decay_method == 'adam'.
     decay_pow: a float, decay if decay_method == 'pow'.
     beta1: a float value between 0 and 1 for momentum.
-    clipping_threshold: an optional float >= 1
+    clip_threshold: an optional float >= 1
     factored: a boolean, whether or not to use factored second order momentum.
     epsilon1_grad_sq_reg: Regularization constant for squared gradient.
     quantized_dtype: type of the quantized input. Allowed options are jnp.int8,
@@ -2252,7 +2252,7 @@ def sharded_adafactor(
       decay_adam=decay_adam,
       decay_pow=decay_pow,
       beta1=beta1,
-      clipping_threshold=clipping_threshold,
+      clip_threshold=clip_threshold,
       factored=factored,
       epsilon1_grad_sq_reg=epsilon1_grad_sq_reg,
       quantized_dtype=quantized_dtype,
@@ -2332,7 +2332,7 @@ class ShardedAdafactor(BaseOptimizer):
       decay_adam: A float, decay if decay_method == `adam`.
       decay_pow: A float, decay if decay_method == `pow`.
       beta1: A float value between 0 and 1 for the momentum.
-      clipping_threshold: An optional float >= 1.
+      clip_threshold: An optional float >= 1.
       factored: A boolean, whether or not to use factored second order momentum.
       epsilon1_grad_sq_reg: Regularization constant for squared gradient.
       quantized_dtype: Type of the quantized input. Allowed options are
@@ -2358,7 +2358,7 @@ class ShardedAdafactor(BaseOptimizer):
     decay_adam: float = 0.
     decay_pow: float = 0.
     beta1: float = 0.
-    clipping_threshold: Optional[float] = 1.
+    clip_threshold: Optional[float] = 1.
     factored: bool = True
     epsilon1_grad_sq_reg: float = 1e-30
     quantized_dtype: str = 'int8'
@@ -2390,7 +2390,7 @@ class ShardedAdafactor(BaseOptimizer):
         decay_adam=p.decay_adam,
         decay_pow=p.decay_pow,
         beta1=p.beta1,
-        clipping_threshold=p.clipping_threshold,
+        clip_threshold=p.clip_threshold,
         factored=p.factored,
         epsilon1_grad_sq_reg=p.epsilon1_grad_sq_reg,
         quantized_dtype=getattr(jnp, p.quantized_dtype),
