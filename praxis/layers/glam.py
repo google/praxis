@@ -15,6 +15,7 @@
 
 """Helper function to config GLaM models."""
 
+from praxis import base_layer
 from praxis.layers import activations
 from praxis.layers import attentions
 from praxis.layers import embedding_softmax
@@ -113,8 +114,15 @@ def GlamStackedTransformerHParams(
   p.mask_self_attention = mask_self_attention
   p.use_cross_attention = cross_attention
   # Attention setup
-  p.transformer_layer_params_tpl.ln_tpl = normalizations.RmsNorm.HParams()
-  p.transformer_layer_params_tpl.ln_tpl.direct_scale = True
+  if isinstance(p.transformer_layer_params_tpl, (list, tuple)):
+    for pt in p.transformer_layer_params_tpl:
+      pt.ln_tpl = normalizations.RmsNorm.HParams()
+      pt.ln_tpl.direct_scale = True
+  else:
+    assert isinstance(p.transformer_layer_params_tpl,
+                      base_layer.BaseLayer.HParams)
+    p.transformer_layer_params_tpl.ln_tpl = normalizations.RmsNorm.HParams()
+    p.transformer_layer_params_tpl.ln_tpl.direct_scale = True
   tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl  # pytype: disable=attribute-error  # enable-nested-classes
   assert tr_atten_tpl.cls == attentions.DotProductAttention
   tr_atten_tpl.attention_extra_logit = attention_extra_logit

@@ -1476,8 +1476,9 @@ class StackedTransformer(base_layer.BaseLayer):
     input_dropout_prob: float = 0.0
     gating_func: str = 'top2'
     unadjusted_expert_capacity_factor: float = 2.0
-    transformer_layer_params_tpl: BaseHParams = sub_config_field(
-        Transformer.HParams)
+    transformer_layer_params_tpl: Union[
+        BaseHParams,
+        Sequence[BaseHParams]] = sub_config_field(Transformer.HParams)
     packed_input: bool = False
     fold_padding_with_segment_mask: bool = False
     moe_layer_tpl: BaseHParams = sub_config_field(
@@ -1500,7 +1501,12 @@ class StackedTransformer(base_layer.BaseLayer):
 
     def _layer_params(i):
       """Construct i-th layer params."""
-      p_i = p.transformer_layer_params_tpl.clone()
+      if isinstance(p.transformer_layer_params_tpl, (list, tuple)):
+        factor = p.num_layers // len(p.transformer_layer_params_tpl)
+        ii = i // factor
+        p_i = p.transformer_layer_params_tpl[ii].clone()
+      else:
+        p_i = p.transformer_layer_params_tpl.clone()
       p_i.name = f'layer_{i}'
       p_i.use_cross_attention = p.use_cross_attention
       p_i.mask_self_attention = p.mask_self_attention
@@ -1533,6 +1539,11 @@ class StackedTransformer(base_layer.BaseLayer):
         if p.ngrammer_tpls[i] is not None:
           p_i.ngrammer_tpl = p.ngrammer_tpls[i]
       return p_i
+
+    if isinstance(p.transformer_layer_params_tpl, (list, tuple)):
+      if p.num_layers % len(p.transformer_layer_params_tpl):
+        raise ValueError('num_layers should be divisible by '
+                         'transformer_layer_params_tpl')
 
     layer_params = [_layer_params(i) for i in range(p.num_layers)]
     self.create_children('x_layers', layer_params)

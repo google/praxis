@@ -951,6 +951,69 @@ class TransformersTest(test_utils.TestCase):
           cross_segment_mask=cross_segment_mask)
     self.assertAllClose(outputs, outputs_repeated, atol=1e-5)
 
+  def test_repeated_stacked_xformer_layer(self):
+    model_dims = 16
+    num_layers = 4
+    p1 = transformers.StackedTransformer.HParams(
+        name='jax_stacked_transformer_layer',
+        model_dims=model_dims,
+        hidden_dims=64,
+        num_heads=8,
+        mask_self_attention=False,
+        num_layers=num_layers,
+        packed_input=False,
+        use_cross_attention=False)
+    p2 = copy.deepcopy(p1)
+    p2.name = 'jax_stacked_transformer_layer_list_tpl'
+    p2.transformer_layer_params_tpl = [
+        transformers.Transformer.HParams() for _ in range(4)
+    ]
+    seq_len = np.random.randint(10, 32)
+    batch_size = 10
+    npy_inputs = np.random.normal(
+        1.0, 0.5, [batch_size, seq_len, model_dims]).astype('float32')
+    inputs = jnp.asarray(npy_inputs)
+    npy_paddings = np.random.randint(0, 1,
+                                     [batch_size, seq_len]).astype('float32')
+    paddings = jnp.asarray(npy_paddings)
+    segment_mask = None
+    cross_inputs = None
+    cross_paddings = None
+    cross_segment_mask = None
+
+    with base_layer.JaxContext.new_context():
+      stacked_transformer_layer_1 = instantiate(p1)
+      stacked_transformer_layer_2 = instantiate(p2)
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = stacked_transformer_layer_1.init(
+          prng_key,
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask)
+
+      outputs_1 = stacked_transformer_layer_1.apply(
+          initial_vars,
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask)
+
+      outputs_2 = stacked_transformer_layer_2.apply(
+          initial_vars,
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask)
+
+    self.assertAllClose(outputs_1, outputs_2, atol=1e-5)
+
   @parameterized.parameters(*list(itertools.product([True, False], repeat=5)))
   def test_stacked_transformer_layer_extendstep(self, packed_input,
                                                 cross_attention, combine_qkv,

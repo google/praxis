@@ -183,6 +183,7 @@ pytype_strict_library(
         ":normalizations",
         ":transformer_models",
         ":transformers",
+        "//praxis:base_layer",
     ],
 )
 

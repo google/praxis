@@ -101,30 +101,35 @@ def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
   if issubclass(stacked_p.cls, transformers.StackedTransformerRepeated):
     stacked_p = stacked_p.block
   transformer_p = stacked_p.transformer_layer_params_tpl
-  for atten_p in (transformer_p.tr_atten_tpl, transformer_p.cross_atten_tpl):
-    if atten_p is None:
-      continue
-    atten_wp = atten_p.weight_split_dims_mapping
-    atten_wp.proj = w_dnh
-    w_n_sharding = None if w_dnh is None else w_dnh[1]
-    atten_wp.dconv = [w_n_sharding, None]
-    atten_ap = atten_p.activation_split_dims_mapping
-    atten_ap.blnh = a_blnh
-    atten_ap.bld = a_bld
-    if atten_p.cls == multi_query_attention.MultiQueryDotProductAttention:
-      atten_wp.proj_headless = [w_dnh[0], w_dnh[2]]
-      atten_ap.blh = [a_blnh[0], a_blnh[1], a_blnh[3]]
-
-  ff_p = transformer_p.tr_fflayer_tpl
-  ff_wp = ff_p.weight_split_dims_mapping
-  ff_wp.ffn0 = w_df
-  if w_df is None:
-    ff_wp.ffn1 = None
+  if isinstance(transformer_p, (list, tuple)):
+    transformer_p_lst = transformer_p
   else:
-    ff_wp.ffn1 = [w_df[1], w_df[0]]
-  ff_ap = ff_p.activation_split_dims_mapping
-  ff_ap.ffn0 = a_blf
-  ff_ap.ffn1 = a_bld
+    transformer_p_lst = [transformer_p]
+  for t_p in transformer_p_lst:
+    for atten_p in (t_p.tr_atten_tpl, t_p.cross_atten_tpl):
+      if atten_p is None:
+        continue
+      atten_wp = atten_p.weight_split_dims_mapping
+      atten_wp.proj = w_dnh
+      w_n_sharding = None if w_dnh is None else w_dnh[1]
+      atten_wp.dconv = [w_n_sharding, None]
+      atten_ap = atten_p.activation_split_dims_mapping
+      atten_ap.blnh = a_blnh
+      atten_ap.bld = a_bld
+      if atten_p.cls == multi_query_attention.MultiQueryDotProductAttention:
+        atten_wp.proj_headless = [w_dnh[0], w_dnh[2]]
+        atten_ap.blh = [a_blnh[0], a_blnh[1], a_blnh[3]]
+
+    ff_p = t_p.tr_fflayer_tpl
+    ff_wp = ff_p.weight_split_dims_mapping
+    ff_wp.ffn0 = w_df
+    if w_df is None:
+      ff_wp.ffn1 = None
+    else:
+      ff_wp.ffn1 = [w_df[1], w_df[0]]
+    ff_ap = ff_p.activation_split_dims_mapping
+    ff_ap.ffn0 = a_blf
+    ff_ap.ffn1 = a_bld
 
   if stacked_p.moe_layer_tpl is not None:
     # Set Moe layer sharding hparams.
@@ -1044,8 +1049,11 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     # No decode cache is needed in the encoder.
     if stacked_encoder_block_params.transformer_layer_params_tpl is not None:
       layer_tpl = stacked_encoder_block_params.transformer_layer_params_tpl
-      tr_atten_tpl = layer_tpl.tr_atten_tpl
-      tr_atten_tpl.decode_cache = False
+      if isinstance(layer_tpl, (list, tuple)):
+        for tpl in layer_tpl:
+          tpl.tr_atten_tpl.decode_cache = False
+      else:
+        layer_tpl.tr_atten_tpl.decode_cache = False
 
     if mask_self_attention:
       raise ValueError(
