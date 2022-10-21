@@ -55,13 +55,24 @@ class RepeatsLinearQuantizeTest(test_utils.TestCase):
 
     res, _ = ffn.apply(init_vars, mutable=[], method=ffn.quantize_weight)
     shapes = jax.tree_map(lambda x: x.shape, res)
-    expected_shapes = {'sub': {'w': (3, 2, 2), 'w_quantized_scale': (3, 2)}}
+    expected_shapes = {
+        base_layer.PARAMS: {
+            'sub': {
+                'w': (3, 2, 2),
+                'w_quantized_scale': (3, 2)
+            }
+        }
+    }
     self.assertEqual(shapes, expected_shapes)
     rescaled = jnp.multiply(
-        res['sub']['w'],
-        jnp.expand_dims(res['sub']['w_quantized_scale'], 1).astype(jnp.float32))
+        res[base_layer.PARAMS]['sub']['w'],
+        jnp.expand_dims(res[base_layer.PARAMS]['sub']['w_quantized_scale'],
+                        1).astype(jnp.float32))
     self.assertAllClose(
-        rescaled, init_vars['params']['sub']['w'], rtol=0.02, atol=0.02)
+        rescaled,
+        init_vars[base_layer.PARAMS]['sub']['w'],
+        rtol=0.02,
+        atol=0.02)
 
 
 class FeedForwardQuant(base_layer.BaseLayer):
@@ -86,7 +97,7 @@ class FeedForwardQuant(base_layer.BaseLayer):
     eqn = 'xy,yz->xz'
     q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
-    return {'w': q_w, scale_name: q_s}
+    return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
 
 
 class FeedForward(base_layer.BaseLayer):
@@ -148,24 +159,28 @@ class ChildrenQuantizeTest(test_utils.TestCase):
     types = jax.tree_map(lambda x: x.dtype, res)
     self.assertEqual(
         shapes, {
-            'ff1': {
-                'w': (3, 2),
-                'w_quantized_scale': (2,)
-            },
-            'ff2': {
-                'b': (3,),
-                'w': (2, 3)
+            base_layer.PARAMS: {
+                'ff1': {
+                    'w': (3, 2),
+                    'w_quantized_scale': (2,)
+                },
+                'ff2': {
+                    'b': (3,),
+                    'w': (2, 3)
+                }
             }
         })
     self.assertEqual(
         types, {
-            'ff1': {
-                'w': jnp.int8,
-                'w_quantized_scale': jnp.bfloat16
-            },
-            'ff2': {
-                'b': jnp.float32,
-                'w': jnp.float32
+            base_layer.PARAMS: {
+                'ff1': {
+                    'w': jnp.int8,
+                    'w_quantized_scale': jnp.bfloat16
+                },
+                'ff2': {
+                    'b': jnp.float32,
+                    'w': jnp.float32
+                }
             }
         })
 

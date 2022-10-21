@@ -115,8 +115,17 @@ class QuantizeLinearTest(test_utils.TestCase):
     res, _ = layer.apply(initial_vars, mutable=[], method=layer.quantize_weight)
     shapes = jax.tree_map(lambda x: x.shape, res)
     types = jax.tree_map(lambda x: x.dtype, res)
-    self.assertEqual(shapes, {'w': (6, 4), 'w_quantized_scale': (4,)})
-    self.assertEqual(types, {'w': jnp.int8, 'w_quantized_scale': jnp.bfloat16})
+    self.assertEqual(
+        shapes, {base_layer.PARAMS: {
+            'w': (6, 4),
+            'w_quantized_scale': (4,)
+        }})
+    self.assertEqual(
+        types,
+        {base_layer.PARAMS: {
+            'w': jnp.int8,
+            'w_quantized_scale': jnp.bfloat16
+        }})
 
 
 if __name__ == '__main__':

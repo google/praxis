@@ -1694,15 +1694,24 @@ class BaseLayerApi(nn.Module):
       a nested map between names to quantized layer.
     """
     res = {}
+    # collections to quantize.
+    targets = [PARAMS, NON_TRAINABLE]
     for name, child in self._private_children.items():
-      res[name] = child.quantize_weight()
-    for target_collection in [PARAMS, NON_TRAINABLE]:
-      if target_collection not in self.variables:
+      # example child_res {'params': {a:{}, b:{}}, 'non-trainable':{a:{}}}
+      child_res = child.quantize_weight()
+      for child_target in child_res:
+        if child_target not in res:
+          res[child_target] = {}
+        res[child_target][name] = child_res[child_target]
+    for target in targets:
+      if target not in self.variables:
         continue
-      for var_name, var_val in self.variables[target_collection].items():
+      for var_name, var_val in self.variables[target].items():
         if var_name in self._private_children:
           continue
-        res[var_name] = var_val
+        if target not in res:
+          res[target] = {}
+        res[target][var_name] = var_val
     return res
 
 

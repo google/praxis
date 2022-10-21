@@ -244,9 +244,10 @@ class QuantizeAttentionTest(test_utils.TestCase):
     initial_vars = layer.init(prng_key, inputs)
 
     res, _ = layer.apply(initial_vars, mutable=[], method=layer.quantize_weight)
-    self.assertEqual(len(res), 2)
-    self.assertEqual(res['w'].shape, (2, 5, 16))
-    self.assertEqual(res['w_quantized_scale'].shape, (16,))
+    self.assertEqual(len(res), 1)
+    self.assertEqual(len(res[base_layer.PARAMS]), 2)
+    self.assertEqual(res[base_layer.PARAMS]['w'].shape, (2, 5, 16))
+    self.assertEqual(res[base_layer.PARAMS]['w_quantized_scale'].shape, (16,))
 
   def test_quantize_attention_qkv(self):
     p = qattentions.CombinedQKVProjectionLayer.HParams(
@@ -262,9 +263,11 @@ class QuantizeAttentionTest(test_utils.TestCase):
     initial_vars = layer.init(prng_key, inputs)
 
     res, _ = layer.apply(initial_vars, mutable=[], method=layer.quantize_weight)
-    self.assertEqual(len(res), 2)
-    self.assertEqual(res['w'].shape, (3, 5, 6, 2))
-    self.assertEqual(res['w_quantized_scale'].shape, (3, 6, 2))
+    self.assertEqual(len(res), 1)
+    self.assertEqual(len(res[base_layer.PARAMS]), 2)
+    self.assertEqual(res[base_layer.PARAMS]['w'].shape, (3, 5, 6, 2))
+    self.assertEqual(res[base_layer.PARAMS]['w_quantized_scale'].shape,
+                     (3, 6, 2))
 
 if __name__ == '__main__':
   absltest.main()

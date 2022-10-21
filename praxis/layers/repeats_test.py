@@ -255,7 +255,18 @@ class RepeatsQuantizeTest(test_utils.TestCase):
 
     res, _ = ffn.apply(init_vars, mutable=[], method=ffn.quantize_weight)
     shapes = jax.tree_map(lambda x: x.shape, res)
-    expected_shapes = {'sub': {'step': (5,), 'w': (5, 2, 2)}}
+    expected_shapes = {
+        'non_trainable': {
+            'sub': {
+                'step': (5,)
+            }
+        },
+        'params': {
+            'sub': {
+                'w': (5, 2, 2)
+            }
+        }
+    }
     self.assertEqual(shapes, expected_shapes)
 
 if __name__ == '__main__':

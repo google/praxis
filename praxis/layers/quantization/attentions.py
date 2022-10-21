@@ -174,7 +174,7 @@ class AttentionProjection(attentions.AttentionProjection):
       eqn = 'AD,DNH->ANH'
     q_w, q_s = operations.reduce_einsum_weight_precision(eqn, self.theta.w)
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
-    return {'w': q_w, scale_name: q_s}
+    return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
 
 
 class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
@@ -309,4 +309,4 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     eqn = 'AD,KDNH->KANH'
     q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
-    return {'w': q_w, scale_name: q_s}
+    return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

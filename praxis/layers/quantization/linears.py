@@ -80,4 +80,4 @@ class Linear(linears.Linear):
     eqn = 'xy,yz->xz'
     q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
-    return {'w': q_w, scale_name: q_s}
+    return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

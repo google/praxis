@@ -223,7 +223,11 @@ class Repeat(base_layer.BaseLayer):
         length=p.x_times)
 
     _, res = scan_fn(self.sublayer, None)
-    return {p.sublayer_name: res}
+    ret = {}
+    for collection in [PARAMS, NON_TRAINABLE]:
+      if collection in res:
+        ret[collection] = {p.sublayer_name: res[collection]}
+    return ret
 
   @property
   def sublayer(self) -> base_layer.BaseLayer:
