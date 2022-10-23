@@ -42,7 +42,7 @@ instantiate = base_hyperparams.instantiate
 
 
 class BaseInput(base_hyperparams.BaseParameterizable):
-  """Base class for Jax input classes.
+  """Base class for Praxis input pipelines.
 
   During paxml's train, on each host an input instance will be
   created (instantiate(input_p)), and then get_next() is iteratively
@@ -57,7 +57,7 @@ class BaseInput(base_hyperparams.BaseParameterizable):
   training and eval data, please refer to the implementation of
   TFRecordBertInput at tasks/lm/input_generator.py.
 
-  If there is already an Lingvo TF input generator that one would like to
+  If there is already a Lingvo TF input generator that one would like to
   use directly, please use LingvoInputAdaptor below.
   """
   _VALIDATE_BATCH_SIZE_NOT_NONE = True
@@ -210,15 +210,15 @@ class BaseInput(base_hyperparams.BaseParameterizable):
 
 
 class LingvoInputAdaptor(BaseInput):
-  """Syntactic sugar for adapting a Lingvo style input for Jax.
+  """Syntactic sugar for adapting a Lingvo style input for Pax.
 
   This should be able to wrap any Lingvo TF input generator to be used in
-  Lingvo Jax. Remember to set `p.is_training=True` on the training dataset.
+  Pax. Remember to set `p.is_training=True` on the training dataset.
 
   Some usage caveats below.
 
   For eval, `p.num_samples` or other similar params like samples_per_summary are
-  completely ignored by Lingvo Jax. Caller should instead set `p.num_batches` to
+  completely ignored by Pax. Caller should instead set `p.num_batches` to
   (p.num_samples // batch_size) with `p.reset_for_eval=True` so that each eval
   step reads (approximately) one epoch of eval data. This might not be needed if
   the input already is finite (e.g. with p.repeat_count=1).
@@ -537,7 +537,7 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
 class MultiInput(BaseInput):
   """Wraps children inputs and outputs a combined batch at each step.
 
-  During Lingvo Jax's train, on each host input instances for all children
+  During Pax's train, on each host input instances for all children
   inputs will be created (instantiate(input_p)), and then get_next() is
   iteratively called for each child in eager mode to generate one batch of
   data for each step. Each batch will contain a batch from all children

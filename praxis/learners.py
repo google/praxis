@@ -140,12 +140,12 @@ class Learner(base_hyperparams.BaseParameterizable):
 
   @property
   def optimizer(self) -> optimizers.BaseOptimizer:
-    """Return the Optimizer object of this learner."""
+    """Returns the Optimizer object of this learner."""
     return self._optimizer
 
   @property
   def stochastic_gradient(self) -> Optional[sgf.BaseStochasticGradient]:
-    """Return the stochastic gradient function object of this learner."""
+    """Returns the stochastic gradient function object of this learner."""
     return self._stochastic_gradient
 
   def plot_learning_rate(self, step: int) -> None:

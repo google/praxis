@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Description:
-#   Lingvo Jax layers. The public API is defined in __init__.py.
+#   Praxis layers. The public API is defined in __init__.py.
 
 load("//praxis:praxis.bzl", "py_strict_test")
 load("//praxis:praxis.bzl", "pytype_strict_library")

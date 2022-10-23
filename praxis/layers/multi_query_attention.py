@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Attention layers."""
+"""Multi-Query Attention layers."""
 
 from typing import Dict, Optional, Tuple, Union
 
@@ -41,7 +41,7 @@ BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
 class OneHeadedAttentionProjection(base_layer.BaseLayer):
   """Layer that computes projection with one head.
 
-    This layer is expected to be used within MultiQueryAttention below.
+  This layer is expected to be used within MultiQueryAttention below.
   """
 
   class HParams(BaseHParams):
@@ -355,7 +355,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     return base_layer.maybe_shard(x, bd, p.mesh_axis_names)
 
   def _scale_query(self, query: JTensor) -> JTensor:
-    """When enabled, scale the query vector."""
+    """Scales the query vector if enabled."""
     p = self.hparams
     if p.internal_enable_query_scale:
       query *= (p.hidden_dim // p.num_heads)**-0.5
@@ -374,10 +374,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     return logits
 
   def _log_softmax_with_extra_logit(self, logits: JTensor) -> JTensor:
-    """Compute log softmax with extra logit.
+    """Computes log softmax with extra logit.
 
     self.hparams.attention_extra_logit is a user defined float value that
-    helps to stablize logit values so that they don't drift too much from it.
+    helps to stabilize logit values so that they don't drift too much from it.
 
     Args:
       logits: input logit tensor

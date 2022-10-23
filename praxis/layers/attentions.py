@@ -56,9 +56,8 @@ def limited_context_mask_from_padding(
     dtype: jnp.dtype = jnp.float32) -> JTensor:
   """Generates a logit mask from padding and window configuration.
 
-  left_context includes the current timestep and left
-  ones while right_context includes only future timesteps. None represents
-  infinity.
+  left_context includes the current timestep and left ones while right_context
+  includes only future timesteps. None represents infinity.
 
   Args:
     paddings: binary JTensor of shape [B, T], with 1 denoting padding token.
@@ -181,11 +180,11 @@ def convert_paddings_to_mask(paddings: JTensor,
 
 
 def shift_1d(inputs: JTensor, offset: int, axis: int):
-  """Shift the input tensor by offset in the dimension axis.
+  """Shifts the input tensor by offset in the dimension axis.
 
-    To shift right the offset is positive and the input is padded at the
-    beginning, while to shift left the offset is negative and the input is
-    padded at the end.
+  To shift right the offset is positive and the input is padded at the
+  beginning, while to shift left the offset is negative and the input is
+  padded at the end.
 
   Args:
     inputs: The input tensor to shift.
@@ -1129,7 +1128,7 @@ class DotProductAttention(base_layer.BaseLayer):
     return base_layer.maybe_shard(x, bd, p.mesh_axis_names)
 
   def _scale_query(self, query: JTensor) -> JTensor:
-    """When enabled, scale the query vector."""
+    """Scales the query vector if enabled."""
     p = self.hparams
     if p.internal_enable_query_scale:
       if p.internal_enable_per_dim_scale:
@@ -1139,7 +1138,7 @@ class DotProductAttention(base_layer.BaseLayer):
     return query
 
   def _cap_logits(self, logits: JTensor) -> JTensor:
-    """When enabled, caps the logits by p.atten_logit_cap with tanh."""
+    """Caps the logits by p.atten_logit_cap with tanh, if enabled."""
     p = self.hparams
     if not p.atten_logit_cap or p.atten_logit_cap <= 0.:
       return logits
@@ -1151,7 +1150,7 @@ class DotProductAttention(base_layer.BaseLayer):
     return logits
 
   def _log_softmax_with_extra_logit(self, logits: JTensor) -> JTensor:
-    """Compute log softmax with extra logit.
+    """Computes log softmax with extra logit.
 
     self.hparams.attention_extra_logit is a user defined float value that
     helps to stabilize logit values so that they don't drift too much from it.
@@ -1439,6 +1438,7 @@ class DotProductAttention(base_layer.BaseLayer):
     """Updates decode state in fprop.
 
     This is a no-op in training.
+
     Args:
       name: Variable name in decoder cache.
       value: Value to extend at time step.
@@ -2536,7 +2536,7 @@ class LocalSelfAttention(DotProductAttention):
     right_context: Optional[int] = None
 
   def _atten_logits(self, query: JTensor, key: JTensor) -> JTensor:
-    """Compute logits from query and key."""
+    """Computes logits from query and key."""
     logits = jnp.einsum('buwnh,bucnh->bnuwc', query, key)
     return logits
 
