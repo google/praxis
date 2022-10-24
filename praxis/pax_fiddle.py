@@ -61,6 +61,16 @@ class PaxConfig(Generic[T], fdl.Config[T], CloneAndSetMixin):
     """Builds `self` with optional argument overrides."""
     return instantiate(self, **kwargs)
 
+  @property
+  def mesh_shape(self):
+    if self.ici_mesh_shape is not None:
+      assert len(self.ici_mesh_shape) == len(self.mesh_axis_names)
+    if self.dcn_mesh_shape is None:
+      return self.ici_mesh_shape
+    else:
+      assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)
+      return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
+
   def copy_fields_from(self, source: PaxConfig, missing_fields_in_self=()):
     """Copies fields from `source`.
 

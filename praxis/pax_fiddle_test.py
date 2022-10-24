@@ -409,6 +409,15 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
           ValueError, "Copying incompatible HParams: 'radius' not in self"):
         target.copy_fields_from(source)
 
+  def test_mesh_shape(self):
+    cfg = pax_fiddle.Config(base_layer.FiddleBaseLayer)
+    self.assertIsNone(cfg.mesh_shape)
+    cfg.mesh_axis_names = ["a", "b"]
+    cfg.ici_mesh_shape = [1, 2]
+    self.assertEqual(cfg.mesh_shape, [1, 2])
+    cfg.dcn_mesh_shape = [3, 4]
+    self.assertEqual(cfg.mesh_shape, [1 * 3, 2 * 4])
+
 
 class LayerA(nn.Module):
   x: int = 0
