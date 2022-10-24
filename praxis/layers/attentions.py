@@ -18,7 +18,7 @@
 import functools
 import math
 import string
-from typing import Callable, Dict, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, Optional, Sequence, Tuple, Union, Mapping
 
 from absl import logging
 from flax import linen as nn
@@ -998,7 +998,7 @@ class DotProductAttention(base_layer.BaseLayer):
       proj_p.weight_split_dims_mapping.wt = wp.proj
       return proj_p
 
-    if isinstance(p.input_dim, dict):
+    if isinstance(p.input_dim, Mapping):
       key_input_dim = p.input_dim['key']
       value_input_dim = p.input_dim['value']
       query_input_dim = p.input_dim['query']
