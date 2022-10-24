@@ -18,9 +18,9 @@
 from typing import List
 
 from flax import struct as flax_struct
+import jax
 import optax
 from praxis import base_layer
-import tensorflow.compat.v2 as tf
 
 NestedJTensor = base_layer.NestedJTensor
 JTensorOrPartitionSpec = base_layer.JTensorOrPartitionSpec
@@ -40,7 +40,7 @@ class TrainState(flax_struct.PyTreeNode):
   def new_state(self, mdl_vars: NestedJTensor,
                 opt_states: List[optax.OptState]) -> 'TrainState':
     """Returns a new TrainState with updated mdl_vars and opt_states."""
-    mdl_vars = tf.nest.map_structure(lambda x: x, mdl_vars)
-    opt_states = tf.nest.map_structure(lambda x: x, opt_states)
+    mdl_vars = jax.tree_util.tree_map(lambda x: x, mdl_vars)
+    opt_states = jax.tree_util.tree_map(lambda x: x, opt_states)
     return TrainState(
         step=self.step + 1, mdl_vars=mdl_vars, opt_states=opt_states)

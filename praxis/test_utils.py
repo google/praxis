@@ -86,10 +86,10 @@ def unshard_input_nmap(x_nmap: NestedMap) -> NestedMap:
   def unshard(x: JTensor) -> JTensor:
     num_devices = x.shape[0]
     batch_size = x.shape[1]
-    new_shape = [num_devices * batch_size] + x.shape[2:]
-    return tf.reshape(x, new_shape)
+    new_shape = [num_devices * batch_size] + list(x.shape[2:])
+    return jnp.reshape(x, new_shape)
 
-  return tf.nest.map_structure(unshard, x_nmap)
+  return jax.tree_util.tree_map(unshard, x_nmap)
 
 
 def to_tf_nmap(x_nmap: NestedMap) -> NestedMap:

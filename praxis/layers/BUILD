@@ -359,11 +359,11 @@ pytype_strict_library(
         ":checkpoint_policy",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
+        "//praxis:asserts",
         "//praxis:base_layer",
         "//praxis:flax_utils",
         "//praxis:py_utils",
         "//praxis:pytypes",
-        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 

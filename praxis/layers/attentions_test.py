@@ -292,7 +292,8 @@ class AttentionsTest(test_utils.TestCase):
         is_output_projection=True)
     tf_layer = tf_layer_p.Instantiate()
 
-    tf_initial_vars = tf.nest.map_structure(lambda x: x.numpy(), tf_layer.theta)
+    tf_initial_vars = jax.tree_util.tree_map(lambda x: x.numpy(),
+                                             tf_layer.theta)
     initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars['params'])
     assert_var_stats_close(initial_vars, tf_initial_vars, self)
 

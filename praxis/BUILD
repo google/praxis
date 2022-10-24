@@ -85,7 +85,6 @@ pytype_strict_library(
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
-        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 
@@ -187,7 +186,6 @@ pytype_strict_library(
         ":sgf",
         # Implicit jax dependency.
         # Implicit optax dependency.
-        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 
@@ -330,8 +328,8 @@ pytype_strict_library(
     deps = [
         ":base_layer",
         # Implicit flax.core dependency.
+        # Implicit jax dependency.
         # Implicit optax dependency.
-        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 
@@ -479,6 +477,7 @@ py_strict_test(
     name = "learners_test",
     srcs = ["learners_test.py"],
     deps = [
+        ":asserts",
         ":base_hyperparams",
         ":base_layer",
         ":learners",
@@ -493,7 +492,6 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         # Implicit optax dependency.
-        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 
@@ -527,7 +525,6 @@ py_strict_test(
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
-        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 

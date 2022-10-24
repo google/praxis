@@ -21,6 +21,7 @@ import jax
 from jax import numpy as jnp
 import numpy as np
 import optax
+from praxis import asserts
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import learners
@@ -29,7 +30,6 @@ from praxis import optimizers
 from praxis import py_utils
 from praxis import schedules
 from praxis import test_utils
-import tensorflow.compat.v2 as tf
 
 NestedMap = py_utils.NestedMap
 instantiate = base_hyperparams.instantiate
@@ -451,7 +451,7 @@ class LearnersTest(test_utils.TestCase):
     # Optimizers are chained as l1 - l2 - optimizer update - weight_decay.
     for k in partition_spec_single[0][2]._fields:
       for p in partition_spec:
-        tf.nest.assert_same_structure(
+        asserts.assert_same_structure(
             getattr(p[0][2], k), getattr(partition_spec_single[0][2], k))
 
   def test_vectorized_prefix(self):

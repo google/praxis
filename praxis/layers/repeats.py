@@ -24,12 +24,12 @@ from typing import Any, Callable, Optional
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
+from praxis import asserts
 from praxis import base_layer
 from praxis import flax_utils
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import checkpoint_policy
-import tensorflow.compat.v2 as tf
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
@@ -121,7 +121,7 @@ class Repeat(base_layer.BaseLayer):
 
     def body_fn(sub, layer_in):
       layer_out = sub(layer_in, *args, **kwargs)
-      tf.nest.assert_same_structure(layer_in, layer_out)
+      asserts.assert_same_structure(layer_in, layer_out)
       return layer_out, None
 
     # TODO(zhangqiaorjc): Use remat-scan?
@@ -371,7 +371,7 @@ class Repeat(base_layer.BaseLayer):
     # TODO(zhangqiaorjc): Apply remat?
     def body_fn(sub, layer_in):
       layer_out = sub.extend_step(layer_in, *args, **kwargs)
-      tf.nest.assert_same_structure(layer_in, layer_out)
+      asserts.assert_same_structure(layer_in, layer_out)
       return layer_out, None
 
     if p.unroll_in_decode:

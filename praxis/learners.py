@@ -31,7 +31,6 @@ from praxis import optimizer_prefix_vectorization as opt_vec
 from praxis import optimizers
 from praxis import py_utils
 from praxis import sgf
-import tensorflow.compat.v2 as tf
 
 JTensor = jnp.ndarray
 NestedMap = py_utils.NestedMap
@@ -313,8 +312,8 @@ class Learner(base_hyperparams.BaseParameterizable):
       updated variables. Only learnable variables are updated.
     """
     p = self._hparams
-    tf.nest.assert_same_structure(old_vars, transformed_grads)
-    tf.nest.assert_same_structure(old_vars, var_weight_hparams)
+    asserts.assert_same_structure(old_vars, transformed_grads)
+    asserts.assert_same_structure(old_vars, var_weight_hparams)
 
     assert p.skip_zero_gradients is None
 
@@ -335,11 +334,11 @@ class Learner(base_hyperparams.BaseParameterizable):
       else:
         return old_var
 
-    var_is_learnable = tf.nest.map_structure(
+    var_is_learnable = jax.tree_util.tree_map(
         lambda x: not base_layer.var_not_trainable(x), var_weight_hparams)
 
-    return tf.nest.map_structure(_adjust_var, old_vars, transformed_grads,
-                                 var_is_learnable)
+    return jax.tree_util.tree_map(_adjust_var, old_vars, transformed_grads,
+                                  var_is_learnable)
     # TODO(yonghui): export gradient / variable summaries.
 
   @property

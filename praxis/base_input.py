@@ -135,7 +135,7 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     pad_size = self.hparams.batch_padding_size
     if pad_size == 0:
       return unpadded
-    return tf.nest.map_structure(
+    return jax.tree_util.tree_map(
         lambda x: np.pad(x, [[0, pad_size]] + [[0, 0]] * (x.ndim - 1)),
         unpadded)
 
@@ -205,7 +205,7 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     """
     py_utils.assert_same_shape_and_dtype(
         global_shapes,
-        tf.nest.map_structure(py_utils.get_global_input_shape_dtype, arrays))
+        jax.tree_util.tree_map(py_utils.get_global_input_shape_dtype, arrays))
     return py_utils.create_gda(arrays, global_shapes, global_mesh, pspecs)
 
 
@@ -348,8 +348,8 @@ class LingvoInputAdaptor(BaseInput):
             message=f'num_batches exceeding {self._num_batches_produced}')
       self._num_batches_produced += 1
     ret = self._get_next_fn()
-    ret = tf.nest.map_structure(lambda x: x.numpy(), ret)
-    batch_size = tf.nest.flatten(ret)[0].shape[0]
+    ret = jax.tree_util.tree_map(lambda x: x.numpy(), ret)
+    batch_size = jax.tree_util.tree_leaves(ret)[0].shape[0]
     ret.eval_sample_weights = np.ones([batch_size], np.float32)
     return ret
 
@@ -406,7 +406,8 @@ class LingvoInputAdaptorNewBatchSize(LingvoInputAdaptor):
   def __init__(self, hparams: LingvoInputAdaptor.HParams):
     super().__init__(hparams)
     self._current_batch = super().get_next()
-    self._inner_batch_size = tf.nest.flatten(self._current_batch)[0].shape[0]
+    self._inner_batch_size = jax.tree_util.tree_leaves(
+        self._current_batch)[0].shape[0]
     logging.info(
         'The wrapped Lingvo input has batch size %d, the actual input '
         'has batch size %d.', self._inner_batch_size, hparams.batch_size)
@@ -426,7 +427,7 @@ class LingvoInputAdaptorNewBatchSize(LingvoInputAdaptor):
       start = self._current_batch_index
       return b[start:start + p.batch_size]
 
-    ret = tf.nest.map_structure(_get_subrows, self._current_batch)
+    ret = jax.tree_util.tree_map(_get_subrows, self._current_batch)
     self._current_batch_index += p.batch_size
     return ret
 
@@ -519,7 +520,7 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
         new_data = super().get_next()
       except (tf.errors.OutOfRangeError, StopIteration):
         break
-      data_tensor = tf.nest.map_structure(
+      data_tensor = jax.tree_util.tree_map(
           lambda x, y: tf.concat([x, y], axis=0), data_tensor, new_data)
     ds = tf.data.Dataset.from_tensor_slices(data_tensor)
     ds = self._pad(ds)

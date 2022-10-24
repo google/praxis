@@ -31,14 +31,13 @@ from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
 from praxis import train_states
-import tensorflow.compat.v2 as tf
 
 
 class PyUtilsTest(test_utils.TestCase):
 
   def test_reshard_empty_array(self):
     batch_size = 128
-    empty_inputs = tf.ones(shape=(batch_size, 0))
+    empty_inputs = np.ones(shape=(batch_size, 0))
     sharded_inputs = py_utils.reshard(empty_inputs)
     # Check the shape of returned inputs.
     num_devices = jax.local_device_count()

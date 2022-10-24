@@ -45,7 +45,6 @@ from praxis import layer_utils
 from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
-import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 
@@ -1677,7 +1676,7 @@ class BaseLayerApi(nn.Module):
           return x.astype(self.fprop_dtype)
       return x
 
-    return tf.nest.map_structure(_cast, value)
+    return jax.tree_util.tree_map(_cast, value)
 
   def quantize_weight(self) -> NestedJTensor:
     """quantize_weight() quantize the current layer and it's children layer(s).
