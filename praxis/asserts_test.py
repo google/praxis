@@ -18,6 +18,7 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 from praxis import asserts
+from praxis import py_utils
 
 
 class AssertsTest(parameterized.TestCase):
@@ -243,6 +244,28 @@ class AssertsTest(parameterized.TestCase):
           max_value,
           left_strict=left_strict,
           right_strict=right_strict)
+
+  def test_assert_same_structure(self):
+    x = {'text': 1, 'id': None}
+    y = {'text': 3, 'id': 2}
+    asserts.assert_same_structure(x, y)
+
+  def test_assert_same_structure_raises(self):
+    x = {'text': 1, 'id': None}
+    y = {'text': 3, 'id': [None]}
+    with self.assertRaisesRegex(ValueError, 'Not the same structure.*'):
+      asserts.assert_same_structure(x, y)
+
+  def test_assert_dict_nestedmap_same_structure(self):
+    x = {'text': 1, 'id': None}
+    y = py_utils.NestedMap(text=3, id=4)
+    asserts.assert_same_structure(x, y)
+
+  def test_assert_dict_tuple_different(self):
+    x = {'text': [3, 4]}
+    y = {'text': (3, 4)}
+    with self.assertRaisesRegex(ValueError, 'Not the same structure.*'):
+      asserts.assert_same_structure(x, y)
 
 
 if __name__ == '__main__':

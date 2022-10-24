@@ -29,6 +29,9 @@ exports_files(["LICENSE"])
 pytype_strict_library(
     name = "asserts",
     srcs = ["asserts.py"],
+    deps = [
+        # Implicit jax dependency.
+    ],
 )
 
 pytype_strict_library(
@@ -366,6 +369,7 @@ py_strict_test(
     srcs = ["asserts_test.py"],
     deps = [
         ":asserts",
+        ":py_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
     ],

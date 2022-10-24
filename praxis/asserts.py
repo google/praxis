@@ -50,6 +50,7 @@ explicitly set `value_str`-like argument to get nice error message, e.g.:
 """
 
 import inspect
+import jax
 from typing import Any, List, Optional, Sequence, Type
 
 
@@ -520,4 +521,36 @@ def between(value: Any,
     right_bracket = ')' if right_strict else ']'
     error_msg = (f'`{value_str}` must be in the range '
                  f'`{left_bracket}{min_value}, {max_value}{right_bracket}`.')
+  raise exception_type(error_msg)
+
+
+def assert_same_structure(x: Any,
+                          y: Any,
+                          msg: Optional[str] = None,
+                          exception_type: Type[Exception] = ValueError) -> None:
+  # Jax doesn't recognize NestedMap so it is treated as a customnode
+  if hasattr(x, 'ToNestedDict'):
+    x = x.ToNestedDict()
+  if hasattr(y, 'ToNestedDict'):
+    y = y.ToNestedDict()
+
+  def is_leaf(i: Any):
+    if isinstance(i, dict):
+      return False
+    if isinstance(i, list):
+      return False
+    if isinstance(i, tuple):
+      return False
+    return True
+
+  x = jax.tree_util.tree_structure(x, is_leaf)
+  y = jax.tree_util.tree_structure(y, is_leaf)
+  if x == y:
+    return
+  if msg:
+    error_msg = msg
+  else:
+    error_msg = ('Not the same structure\n'
+                 f'Entire first structure: `{x}`\n'
+                 f'Entire second structure: `{y}`\n')
   raise exception_type(error_msg)
