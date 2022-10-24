@@ -398,7 +398,7 @@ def get_global_input_shape_dtype(x: jnp.ndarray) -> jax.ShapeDtypeStruct:
   """Get global input shape/dtype assuming fully sharded batch dim."""
   assert len(x.shape) >= 1
   # Assume fully sharded batch dim.
-  x_shape = (x.shape[0] * jax.process_count(),) + x.shape[1:]
+  x_shape = (x.shape[0] * jax.process_count(),) + tuple(x.shape[1:])
   return jax.ShapeDtypeStruct(x_shape, x.dtype)
 
 
