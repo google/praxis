@@ -37,6 +37,7 @@ NestedMap = py_utils.NestedMap
 NestedJTensor = base_layer.NestedJTensor
 NestedBool = base_layer.NestedBool
 NestedWeightHParams = base_layer.NestedWeightHParams
+SummaryType = base_layer.SummaryType
 InstantiableHyperParams = base_hyperparams.InstantiableHyperParams
 instantiate = base_hyperparams.instantiate
 
@@ -149,8 +150,10 @@ class Learner(base_hyperparams.BaseParameterizable):
 
   def plot_learning_rate(self, step: int) -> None:
     learning_rate = self.optimizer.get_learning_rate(step)
-    base_layer.add_global_summary('lr', learning_rate)
-    base_layer.add_global_summary('learning/lr', learning_rate)
+    base_layer.add_global_summary('lr', learning_rate,
+                                  SummaryType.AGGREGATE_SCALAR)
+    base_layer.add_global_summary('learning/lr', learning_rate,
+                                  SummaryType.AGGREGATE_SCALAR)
 
   def get_grad_tx(
       self, var_weight_hparams: NestedWeightHParams
@@ -181,7 +184,8 @@ class Learner(base_hyperparams.BaseParameterizable):
       var_keys = py_utils.extract_prefixed_keys_from_nested_map(grad_norms)
 
       def add_grad_norm_summary(key, value):
-        base_layer.add_global_summary(f'per_var_grad_norm/{key}', value)
+        base_layer.add_global_summary(f'per_var_grad_norm/{key}', value,
+                                      SummaryType.AGGREGATE_SCALAR)
 
       jax.tree_map(add_grad_norm_summary, var_keys, grad_norms)
 
@@ -190,7 +194,8 @@ class Learner(base_hyperparams.BaseParameterizable):
         p.optimizer.clip_gradient_single_norm_to_value):
       raw_grad_norm = _compute_grad_norm(raw_grads)
       if p.grad_norm_summary:
-        base_layer.add_global_summary('learning/raw_grad_norm', raw_grad_norm)
+        base_layer.add_global_summary('learning/raw_grad_norm', raw_grad_norm,
+                                      SummaryType.AGGREGATE_SCALAR)
     else:
       raw_grad_norm = None
 
@@ -234,16 +239,19 @@ class Learner(base_hyperparams.BaseParameterizable):
       # or Inf, or excessively big gradient norm).
       valid_step = keep_step(raw_grad_norm)
       base_layer.add_global_summary('learning/is_valid_step',
-                                    valid_step.astype(jnp.float32))
+                                    valid_step.astype(jnp.float32),
+                                    SummaryType.AGGREGATE_SCALAR)
     else:
       valid_step = True
     grads, grad_scale = clip_grads(raw_grads, raw_grad_norm)
-    base_layer.add_global_summary('learning/grad_scale', grad_scale)
+    base_layer.add_global_summary('learning/grad_scale', grad_scale,
+                                  SummaryType.AGGREGATE_SCALAR)
 
     if p.grad_norm_summary:
       clipped_grad_norm = _compute_grad_norm(grads)
       base_layer.add_global_summary('learning/clipped_grad_norm',
-                                    clipped_grad_norm)
+                                    clipped_grad_norm,
+                                    SummaryType.AGGREGATE_SCALAR)
     return grads, valid_step
 
   def update_states(
@@ -284,7 +292,8 @@ class Learner(base_hyperparams.BaseParameterizable):
     if p.grad_norm_summary:
       applied_grad_norm = _compute_grad_norm(transformed_grad)
       base_layer.add_global_summary('learning/applied_grad_norm',
-                                    applied_grad_norm)
+                                    applied_grad_norm,
+                                    SummaryType.AGGREGATE_SCALAR)
     return transformed_grad, new_states
 
   def apply_gradient(
@@ -323,7 +332,8 @@ class Learner(base_hyperparams.BaseParameterizable):
       var_squared, _ = jax.tree_util.tree_flatten(var_squared)
       var_squared = jnp.concatenate([x[jnp.newaxis] for x in var_squared])
       var_norm = jnp.sqrt(jnp.sum(var_squared))
-      base_layer.add_global_summary('learning/var_norm', var_norm)
+      base_layer.add_global_summary('learning/var_norm', var_norm,
+                                    SummaryType.AGGREGATE_SCALAR)
 
     # TODO(yonghui): implement skip_zero_gradients.
     # TODO(yonghui): implement numerical checks.
@@ -396,11 +406,13 @@ class MultiOptimizerLearner(Learner):
   def plot_learning_rate(self, step: int) -> None:
     p = self._hparams
     learning_rate = self.optimizer.get_learning_rate(step)
-    base_layer.add_global_summary('learning/lr_main', learning_rate)
+    base_layer.add_global_summary('learning/lr_main', learning_rate,
+                                  SummaryType.AGGREGATE_SCALAR)
 
     for name, optimizer in zip(p.auxiliary_names, self._auxiliary_optimizers):
       learning_rate = optimizer.get_learning_rate(step)
-      base_layer.add_global_summary(f'learning/lr_{name}', learning_rate)
+      base_layer.add_global_summary(f'learning/lr_{name}', learning_rate,
+                                    SummaryType.AGGREGATE_SCALAR)
 
   def get_grad_tx(
       self, var_weight_hparams: NestedWeightHParams

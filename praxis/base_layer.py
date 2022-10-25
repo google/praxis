@@ -701,7 +701,7 @@ def get_summary_base_type(summary_type: SummaryType) -> SummaryType:
 
 
 def get_summary_type_suffix(summary_type: SummaryType) -> str:
-  return '_' + summary_type.name.lower()
+  return '_' + get_summary_base_type(summary_type).name.lower()
 
 
 def get_summary_type_from_key(key: str) -> SummaryType:

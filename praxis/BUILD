@@ -182,7 +182,6 @@ pytype_strict_library(
         ":optimizer_prefix_vectorization",
         ":optimizers",
         ":py_utils",
-        ":pytypes",
         ":sgf",
         # Implicit jax dependency.
         # Implicit optax dependency.
