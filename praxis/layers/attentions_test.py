@@ -959,8 +959,8 @@ class AttentionsTest(test_utils.TestCase):
       (8, 8, 3, None),
       (9, 6, 3, 3),
   )
-  def test_limited_context_mask_from_padding(self, batch_size, max_length,
-                                             left_context, right_context):
+  def test_limited_context_mask(self, batch_size, max_length,
+                                left_context, right_context):
 
     def get_padding_from_length(length):
       idx = np.tile(np.arange(max_length), [batch_size, 1])
@@ -971,8 +971,14 @@ class AttentionsTest(test_utils.TestCase):
     ])
     padding = jnp.asarray(get_padding_from_length(length))
 
-    result = attentions.limited_context_mask_from_padding(
-        padding, left_context, right_context)
+    mask = attentions.limited_context_mask(left_context, right_context,
+                                           padding.shape[1], np.float32)
+
+    # Merge the above mask with paddings:
+    padding_mask = attentions.convert_paddings_to_mask(padding)
+    rev_padding_mask = jnp.transpose(padding_mask, (0, 1, 3, 2))
+    result = jnp.minimum(jnp.minimum(mask, padding_mask), rev_padding_mask)
+
     expect = np.zeros((batch_size, 1, max_length, max_length))
     for b in range(batch_size):
       for t1 in range(max_length):

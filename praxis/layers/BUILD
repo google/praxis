@@ -526,6 +526,7 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        ":attentions",
         ":conformers",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.

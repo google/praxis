@@ -35,7 +35,6 @@ from praxis.layers.attentions import CausalDepthwiseConv1D
 from praxis.layers.attentions import convert_paddings_to_mask
 from praxis.layers.attentions import DotProductAttention
 from praxis.layers.attentions import DotProductAttentionXL
-from praxis.layers.attentions import limited_context_mask_from_padding
 from praxis.layers.attentions import LocalSelfAttention
 from praxis.layers.attentions import LocalSelfAttentionXL
 from praxis.layers.attentions import PerDimScale
@@ -45,6 +44,8 @@ from praxis.layers.augmentations import MaskedLmDataAugmenter
 from praxis.layers.bregman import BregmanPCA
 from praxis.layers.checkpoint_policy import AutodiffCheckpointType
 from praxis.layers.conformers import Conformer
+from praxis.layers.conformers import DotProductAttentionWithContext
+from praxis.layers.conformers import DotProductAttentionWithContextXL
 from praxis.layers.conformers import SelfAttentionWithNormAndResidual
 from praxis.layers.convolutions import Conv2D
 from praxis.layers.convolutions import ConvBNAct

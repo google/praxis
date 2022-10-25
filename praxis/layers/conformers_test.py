@@ -25,6 +25,7 @@ import numpy as np
 from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
+from praxis.layers import attentions
 from praxis.layers import conformers
 import tensorflow as tf
 
@@ -103,6 +104,87 @@ class ConformerTest(test_utils.TestCase):
     np_output = to_np(output)
     tf_np_output = to_np(tf_output.features)
     self.assertAllClose(tf_np_output, np_output, atol=1e-5)
+
+  @parameterized.parameters([(10, None, None),
+                             (16, 2, None),
+                             (16, None, 2),
+                             (10, 0, None),
+                             (10, None, 0)])
+  def test_local_global_attention_xl(self, rel_pos_emb_dim, left_context,
+                                     right_context):
+    mdl_dim = 16
+    hidden_dim = 32
+    num_heads = 4
+
+    # Layer which can do both local and global self attention.
+    local_layer_p = conformers.DotProductAttentionWithContextXL.HParams(
+        name='local_mh',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        rel_pos_emb_dim=rel_pos_emb_dim,
+        left_context=left_context,
+        right_context=right_context
+    )
+
+    # Layer which can do only global self attention.
+    global_layer_p = attentions.DotProductAttentionXL.HParams(
+        name='global_mh',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        rel_pos_emb_dim=rel_pos_emb_dim
+    )
+
+    # Prepare input data.
+    target_batch_size = 3
+    source_max_length = 8
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    key_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    value_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    def get_padding_from_length(length):
+      idx = np.tile(np.arange(source_max_length), [target_batch_size, 1])
+      return np.asarray(idx >= np.expand_dims(length, -1)).astype('float32')
+    length = np.random.randint(source_max_length // 2, source_max_length,
+                               (target_batch_size,))
+    paddings = get_padding_from_length(length)
+
+    # Convert paddings to atten_mask:
+    atten_mask_padding = attentions.convert_paddings_to_mask(
+        paddings, np.float32)
+    rev_padding_mask = jnp.transpose(atten_mask_padding, (0, 1, 3, 2))
+    atten_mask_padding = jnp.minimum(atten_mask_padding, rev_padding_mask)
+
+    # Emulate local attention for DotProductAttentionXL.
+    context_mask = attentions.limited_context_mask(left_context, right_context,
+                                                   paddings.shape[1])
+    local_atten_mask_padding = jnp.minimum(atten_mask_padding, context_mask)
+
+    # Run DotProductAttentionWithContextXL which will compute its own local mask
+    # vs DotProductAttentionXL which uses local_atten_mask_padding.
+    global_layer = instantiate(global_layer_p)
+    local_layer = instantiate(local_layer_p)
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = global_layer.init(init_key, query_vec, key_vec, value_vec,
+                                       atten_mask_padding)
+      out_local = local_layer.apply(
+          initial_vars,
+          query_vec=query_vec,
+          key_vec=key_vec,
+          value_vec=value_vec,
+          atten_mask=atten_mask_padding)[0]
+      out_global = global_layer.apply(
+          initial_vars,
+          query_vec=query_vec,
+          key_vec=key_vec,
+          value_vec=value_vec,
+          atten_mask=local_atten_mask_padding)[0]
+      self.assertAllClose(out_local, out_global, atol=1e-5)
 
 
 if __name__ == '__main__':
