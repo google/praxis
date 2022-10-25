@@ -69,6 +69,11 @@ class Vehicle:
 
 
 @dataclasses.dataclass
+class ColoredVehicle(Vehicle):
+  color: str = "white"
+
+
+@dataclasses.dataclass
 class Fleet:
   vehicle_tpl: pax_fiddle.Config[Vehicle] = pax_fiddle.template_field(Vehicle)
   num_vehicles: int = 1
@@ -281,9 +286,16 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
   def test_cls_property(self):
     cfg = pax_fiddle.Config(
         Vehicle, wheel_tpl=pax_fiddle.Config(Wheel), num_wheels=3)
-    self.assertEqual(cfg.cls, Vehicle)
-    self.assertEqual(cfg.wheel_tpl.cls, Wheel)
-    self.assertEqual(cfg.owner.cls, Person)
+    with self.subTest("read"):
+      self.assertEqual(cfg.cls, Vehicle)
+      self.assertEqual(cfg.wheel_tpl.cls, Wheel)
+      self.assertEqual(cfg.owner.cls, Person)
+
+    with self.subTest("write"):
+      cfg.cls = ColoredVehicle
+      cfg.wheel_tpl.cls = ColoredWheel
+      self.assertEqual(cfg.cls, ColoredVehicle)
+      self.assertEqual(cfg.wheel_tpl.cls, ColoredWheel)
 
   def test_clone(self):
     cfg = pax_fiddle.Config(
