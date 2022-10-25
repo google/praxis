@@ -16,6 +16,7 @@
 """Helper function to config GLaM models."""
 
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis.layers import activations
 from praxis.layers import attentions
 from praxis.layers import embedding_softmax
@@ -120,7 +121,7 @@ def GlamStackedTransformerHParams(
       pt.ln_tpl.direct_scale = True
   else:
     assert isinstance(p.transformer_layer_params_tpl,
-                      base_layer.BaseLayer.HParams)
+                      (base_layer.BaseLayer.HParams, pax_fiddle.Config))
     p.transformer_layer_params_tpl.ln_tpl = normalizations.RmsNorm.HParams()
     p.transformer_layer_params_tpl.ln_tpl.direct_scale = True
   tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl  # pytype: disable=attribute-error  # enable-nested-classes

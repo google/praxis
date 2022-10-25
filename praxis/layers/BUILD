@@ -184,6 +184,7 @@ pytype_strict_library(
         ":transformer_models",
         ":transformers",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
     ],
 )
 
