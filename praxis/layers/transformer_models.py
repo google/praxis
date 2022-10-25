@@ -215,7 +215,8 @@ class TransformerLm(base_layer.BaseLayer):
     packed_input: bool = False
     model_type: LanguageModelType = LanguageModelType.CAUSAL
     ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
-    post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = None
+    post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = (
+        base_layer.sub_config_field(None))
     separate_embedding_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
         None)
     final_ln_tpl: BaseHParams = sub_config_field(
@@ -805,7 +806,8 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
         BaseHParams] = base_layer.sub_config_field(None)
     encoder_ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
         None)
-    encoder_post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = None
+    encoder_post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = (
+        base_layer.sub_config_field(None))
     encoder_embedding_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
         None)
     decoder_position_emb_tpl: Optional[
@@ -814,7 +816,8 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
         BaseHParams] = base_layer.sub_config_field(None)
     decoder_ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
         None)
-    decoder_post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = None
+    decoder_post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = (
+        base_layer.sub_config_field(None))
     decoder_embedding_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
         None)
     model_dims: int = 0

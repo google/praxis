@@ -1487,7 +1487,7 @@ class StackedTransformer(base_layer.BaseLayer):
     num_groups: int = 1
     min_group_size: Optional[int] = None
     moe_layers: Optional[Sequence[int]] = ()
-    ngrammer_tpls: Optional[Sequence[BaseHParams]] = None
+    ngrammer_tpls: Optional[Sequence[BaseHParams]] = sub_config_field(None)
 
   def setup(self) -> None:
     p = self.hparams
