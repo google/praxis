@@ -106,35 +106,45 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
   """
 
   class HParams(BaseHParams):
+    # pyformat: disable
     """Associated hyper-params for this layer class.
 
     Attributes:
-      latent_dim:         Input dimension.
-      projection_dim:     Projection dimension.
-      num_latent_classes: Number of random quantized classes.
-      num_groups:         Number of quantized projections
-      stack_ratio:        Stacking layer ratio.
-      normalize_latent_vector: Normalize the L2 norm of each latent input vector
-        to 1.
-      normalize_codebook: Normalize the L2 norm of each codebook vector to 1.
-      codebook_init:      Initialization for codebook.
-      low_rank_codebook:  If true, when num_groups is 1, the shape of the
+      latent_dim:          Input dimension.
+      projection_dim:      Projection dimension.
+      num_latent_classes:  Number of random quantized classes.
+      num_groups:          Number of quantized projections
+      stack_ratio:         Stacking layer ratio.
+
+      codebook_init:       Initialization for codebook.
+      low_rank_codebook:   If true, when num_groups is 1, the shape of the
         codebook weight is [num_latent_classes, projection_dim] instead of
         [num_latent_classes, 1, projection_dim]. This is for checkpoint
         compatibility with old models.
-      plot_codebook:      Whether to plot the codebook as an image summary.
+      plot_codebook:       Whether to plot the codebook as an image summary.
+
+      normalize_latent_vector:    Normalize the L2 norm of each latent input
+        vector to 1.
+      normalize_codebook:         Normalize the L2 norm of each codebook vector
+        to 1.
+      normalize_latent_per_group: If True, do per-group l2 normalize for the
+        latent vector (the codebook is already done per-group). The only reason
+        for setting this to False is backwards-compatibility.
     """
-    latent_dim: Optional[int] = None
-    projection_dim: int = 16
-    num_latent_classes: Optional[int] = None
-    num_groups: int = 1
-    stack_ratio: int = 1
-    normalize_latent_vector: bool = False
-    normalize_codebook: bool = False
-    codebook_init: WeightInit = dataclasses.field(
+    latent_dim:              Optional[int] = None
+    projection_dim:          int = 16
+    num_latent_classes:      Optional[int] = None
+    num_groups:              int = 1
+    stack_ratio:             int = 1
+    codebook_init:           WeightInit = dataclasses.field(
         default_factory=WeightInit.Gaussian)
-    low_rank_codebook: bool = False
-    plot_codebook: bool = False
+    low_rank_codebook:       bool = False
+    plot_codebook:           bool = False
+
+    normalize_latent_vector:        bool = False
+    normalize_codebook:             bool = False
+    normalize_latent_per_group:     bool = True
+    # pyformat: enable
 
   def setup(self) -> None:
     p = self.hparams
@@ -230,12 +240,15 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     proj_vec = jnp.einsum('dh,bld->blh', self.theta.random_proj, z)
     proj_vec = proj_vec + self.theta.random_bias
 
-    if p.normalize_latent_vector:
+    if p.normalize_latent_vector and not p.normalize_latent_per_group:
       proj_vec = _l2_normalize(proj_vec, -1)
 
     b, l, d = proj_vec.shape
     g = p.num_groups
     proj_vec = jnp.reshape(proj_vec, [b, l, g, d // g])
+
+    if p.normalize_latent_vector and p.normalize_latent_per_group:
+      proj_vec = _l2_normalize(proj_vec, -1)
 
     codebook = self._get_codebook()
 
@@ -305,27 +318,37 @@ class VectorQuantizer(base_layer.BaseLayer):
   """
 
   class HParams(BaseHParams):
+    # pyformat: disable
     """Associated hyper-params for this layer class.
 
     Attributes:
       num_latent_classes: Number of latent classes.
-      latent_dim: Latent vector dimension.
-      beta: Scale of the commitment loss.
+      latent_dim:         Latent vector dimension.
+      beta:               Scale of the commitment loss.
+      num_groups:         Num of codebook groups.
+
       normalize_latent_vector: Normalize the L2 norm of each latent input vector
         to 1.
-      normalize_codebook: Normalize the L2 norm of each codebook vector to 1.
-      num_groups: Num of codebook groups.
+      normalize_codebook:      Normalize the L2 norm of each codebook vector
+        to 1.
+      normalize_latent_per_group: If True, do per-group l2 normalize for the
+        latent vector (the codebook is already done per-group). The only reason
+        for setting this to False is backwards-compatibility.
     """
     _attribute_overrides = ('params_init',)
 
-    num_latent_classes: Optional[int] = None
-    latent_dim: Optional[int] = None
-    beta: Optional[float] = None
-    normalize_latent_vector: bool = True
-    normalize_codebook: bool = True
-    num_groups: int = 1
-    params_init: WeightInit = dataclasses.field(
+    num_latent_classes:      Optional[int] = None
+    latent_dim:              Optional[int] = None
+    beta:                    Optional[float] = None
+    num_groups:              int = 1
+
+    normalize_latent_vector:        bool = True
+    normalize_codebook:             bool = True
+    normalize_latent_per_group:     bool = True
+
+    params_init:             WeightInit = dataclasses.field(
         default_factory=WeightInit.UniformSqrtDim)
+    # pyformat: enable
 
   def setup(self) -> None:
     p = self.hparams
@@ -386,12 +409,17 @@ class VectorQuantizer(base_layer.BaseLayer):
     num_frames = jnp.sum(mask)
     z = self._apply_mask(z, mask)
 
-    if p.normalize_latent_vector:
+    if p.normalize_latent_vector and not p.normalize_latent_per_group:
       z = _l2_normalize(z, axis=-1)
 
+    reshape_z = jnp.reshape(z, [b, t, g, d // g])
+
+    if p.normalize_latent_vector and p.normalize_latent_per_group:
+      reshape_z = _l2_normalize(reshape_z, axis=-1)
+
     # [b, t, g, h], [b, t, g], [b, t, g, c]
-    z_q, z_codes, z_onehot = quantize_vector(
-        jnp.reshape(z, [b, t, g, d // g]), self._get_latent_embedding())
+    z_q, z_codes, z_onehot = quantize_vector(reshape_z,
+                                             self._get_latent_embedding())
     z_q = jnp.reshape(z_q, [b, t, d])
 
     # Padded locations are all 0s without any 1.
