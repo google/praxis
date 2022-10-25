@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# pylint: disable=bad-whitespace
 """Vector Quantization layers."""
 
 import dataclasses
+import string
 from typing import Optional
 
 import jax
@@ -26,13 +28,20 @@ from praxis import pytypes
 from praxis.layers import linears
 from praxis.layers import quantizer_objectives as objectives
 
-JTensor = jnp.ndarray
+BaseHParams = base_layer.BaseLayer.HParams
+BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
+BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
+
+JTensor = pytypes.JTensor
 NestedMap = py_utils.NestedMap
+SplitDimsMapping = pytypes.SplitDimsMapping
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
-JTensor = pytypes.JTensor
 
-BaseHParams = base_layer.BaseLayer.HParams
+
+def _l2_normalize(x, axis, epsilon=1e-12):
+  dis = jnp.sum(x * x, axis=axis, keepdims=True) + epsilon
+  return x * jax.lax.rsqrt(dis)
 
 
 # TODO(nanxinchen): merge this with ngrammer.VectorQuantization
@@ -42,51 +51,59 @@ def quantize_vector(latent: JTensor, codebook: JTensor):
   (port from TF impl of ... speech/quantizer/layers.py)
 
   Symbols in comments:
-  B: batch_size.
-  D: latent_dim.
-  C: num_latent_classes per group
+  H: per-group latent dim.
   G: num of codebook groups.
+  V: num_latent_classes per group.
 
   Args:
-    latent:   [B, D]
-    codebook: [C, G, D // G]
+    latent:   [..., G, H]
+    codebook: [V, G, H]
 
   Returns:
     (quantized, codes, onehot).
-    - quantized: [B, D]
-    - codes:     [B, G]
-    - onehot:    [B, G, C]
+    - quantized: [..., G, H]
+    - codes:     [..., G]
+    - onehot:    [..., G, V]
   """
   # For lower HBM footprint.
   assert len(codebook.shape) == 3
-  b, d = latent.shape
-  c, g = codebook.shape[:2]
-  assert d % g == 0
+  v, _ = codebook.shape[:2]
+  rank = latent.ndim
+  einsum_syms = string.ascii_uppercase
+  einsum_prefix = einsum_syms[:(rank - 2)]
 
-  latent = jnp.reshape(latent, [b, g, d // g])
-
-  # [B, G, C]
+  # [..., G, V]
   distance = (
-      # [b, g, 1]
+      # [..., G, 1]
       jnp.sum(latent**2, -1, keepdims=True) -
-      # [b, g, c]
-      2 * jnp.einsum('bgd,cgd->bgc', latent, codebook) +
-      # [1, g, c]
-      jnp.sum(jnp.transpose(codebook, [2, 1, 0])**2, 0, keepdims=True))
-  # distance = py_utils.check_numerics(distance, 'quantization NaN')
+      # [..., G, V]
+      2 * jnp.einsum(f'{einsum_prefix}gh,vgh->{einsum_prefix}gv', latent,
+                     codebook) +
+      # [V, G, H] -> [V, G, 1] -> [1, G, V]
+      jnp.transpose(jnp.sum(codebook**2, axis=-1, keepdims=True), [2, 1, 0]))
 
-  # [B, G]
+  # [..., G]
   codes = jnp.argmin(distance, axis=-1)
 
-  # [B, G, C]
-  one_hot = jax.nn.one_hot(codes, c, axis=-1, dtype=jnp.float32)
-  quantized = jnp.einsum('bgc,cgd->bgd', one_hot, codebook)
-  quantized = jnp.reshape(quantized, [b, d])
+  # [..., G, V]
+  one_hot = jax.nn.one_hot(codes, v, axis=-1, dtype=jnp.float32)
+  quantized = jnp.einsum(f'{einsum_prefix}gv,vgh->{einsum_prefix}gh', one_hot,
+                         codebook)
   return quantized, codes, one_hot
 
 
 class RandomVectorQuantizer(base_layer.BaseLayer):
-  """Random quantization for BEST-RQ: https://arxiv.org/pdf/2202.01855.pdf."""
+  """Random quantization for BEST-RQ: https://arxiv.org/pdf/2202.01855.pdf.
+
+  Symbols in comments:
+  B:   batch size.
+  L:   seq_len.
+  G:   num of codebook groups.
+  D_z: latent_dim (input dim).
+  D:   projection_dim.
+  H:   per-group projection dim.
+  V:   num_latent_classes.
+  """
 
   class HParams(BaseHParams):
     """Associated hyper-params for this layer class.
@@ -119,12 +136,9 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     low_rank_codebook: bool = False
     plot_codebook: bool = False
 
-  def _l2_normalize(self, x, axis, epsilon=1e-12):
-    dis = jnp.sum(x * x, axis=axis, keepdims=True) + epsilon
-    return x * jax.lax.rsqrt(dis)
-
   def setup(self) -> None:
     p = self.hparams
+
     assert p.stack_ratio >= 1
 
     if p.stack_ratio != 1:
@@ -161,6 +175,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
       codebook_shape = [
           p.num_latent_classes, p.num_groups, p.projection_dim // p.num_groups
       ]
+
     self.create_variable(
         'random_codebook',
         WeightHParams(
@@ -182,11 +197,28 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
       codebook = self.theta.random_codebook
 
     if p.normalize_codebook:
-      codebook = self._l2_normalize(codebook, -1)
+      codebook = _l2_normalize(codebook, -1)
 
     return codebook
 
   def __call__(self, z: JTensor, paddings: JTensor) -> NestedMap:
+    """Fprop.
+
+    Args:
+      z:        [..., D_z].
+      paddings: [...].
+
+    Returns:
+      a NestedMap with the following fields:
+      - z_q:      [..., D].
+      - z_codes:  [..., G].
+      - z_onehot: [..., G, V].
+      - paddings: [...].
+      - codebook_coverage:          [], group-averged coverage.
+      - codebok_num_covered_codes:  [].
+      - pplx:     [], avg pplx of quantized distribution over the codebook.
+      - entropy:  [], exp(pplx).
+    """
     p = self.hparams
 
     # Stacking.
@@ -195,14 +227,15 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
       z, paddings = self.stack(z, paddings[:, :, jnp.newaxis])
       paddings = jnp.squeeze(paddings, -1)
 
-    proj_vec = jnp.einsum('dh,btd->bth', self.theta.random_proj, z)
+    proj_vec = jnp.einsum('dh,bld->blh', self.theta.random_proj, z)
     proj_vec = proj_vec + self.theta.random_bias
 
-    batch_size, time_steps, dim = proj_vec.shape
-    proj_vec = jnp.reshape(proj_vec, [batch_size * time_steps, dim])
-
     if p.normalize_latent_vector:
-      proj_vec = self._l2_normalize(proj_vec, -1)
+      proj_vec = _l2_normalize(proj_vec, -1)
+
+    b, l, d = proj_vec.shape
+    g = p.num_groups
+    proj_vec = jnp.reshape(proj_vec, [b, l, g, d // g])
 
     codebook = self._get_codebook()
 
@@ -216,10 +249,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
           summary_type=base_layer.SummaryType.IMAGE)
 
     q, c, onehot = quantize_vector(proj_vec, codebook)
-    q = jnp.reshape(q, [batch_size, time_steps, dim])
-    c = jnp.reshape(c, [batch_size, time_steps, p.num_groups])
-    onehot = jnp.reshape(
-        onehot, [batch_size, time_steps, p.num_groups, p.num_latent_classes])
+    q = jnp.reshape(q, [b, l, d])
 
     # Add number of groups
     if base_layer.is_running_under_pmap():
@@ -244,7 +274,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
         z_q=jax.lax.stop_gradient(q),
         z_codes=jax.lax.stop_gradient(c),
         z_onehot=jax.lax.stop_gradient(onehot),
-        paddings=paddings,
+        paddings=jax.lax.stop_gradient(paddings),
         codebook_coverage=codebook_coverage,
         codebook_num_covered_codes=codebook_num_covered_codes,
         pplx=pplx,
@@ -313,16 +343,12 @@ class VectorQuantizer(base_layer.BaseLayer):
     # [C, D]
     self.create_variable('w', wp)
 
-  def _l2_normalize(self, x, axis, epsilon=1e-12):
-    norm = jnp.sqrt(jnp.sum(x * x, axis=axis, keepdims=True) + epsilon)
-    return x / norm
-
   def _get_latent_embedding(self):
     """Gets the latent embedding."""
     p = self.hparams
     w = self.theta.w
     if p.normalize_codebook:
-      w = self._l2_normalize(w, -1)
+      w = _l2_normalize(w, -1)
     return w
 
   def _apply_mask(self, x, mask):
@@ -361,15 +387,12 @@ class VectorQuantizer(base_layer.BaseLayer):
     z = self._apply_mask(z, mask)
 
     if p.normalize_latent_vector:
-      z = self._l2_normalize(z, axis=-1)
+      z = _l2_normalize(z, axis=-1)
 
-    # [b * t, d], [b * t, g], [b * t, g, c]
+    # [b, t, g, h], [b, t, g], [b, t, g, c]
     z_q, z_codes, z_onehot = quantize_vector(
-        jnp.reshape(z, [b * t, d]), self._get_latent_embedding())
-
+        jnp.reshape(z, [b, t, g, d // g]), self._get_latent_embedding())
     z_q = jnp.reshape(z_q, [b, t, d])
-    z_codes = jnp.reshape(z_codes, [b, t, g])
-    z_onehot = jnp.reshape(z_onehot, [b, t, g, c])
 
     # Padded locations are all 0s without any 1.
     z_q = self._apply_mask(z_q, mask)
