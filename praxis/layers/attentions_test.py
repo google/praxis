@@ -557,6 +557,89 @@ class AttentionsTest(test_utils.TestCase):
     self.assertAllClose(
         test_utils.to_np(jax_atten_prob), test_utils.to_np(tf_atten_prob))
 
+  def text_attention_xl_step(self):
+    mdl_dim = 16
+    hidden_dim = 32
+    num_heads = 4
+    test_layer_p = DotProductAttentionXL.HParams(
+        name='mh',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        rel_pos_emb_dim=10,
+        atten_logit_cap=20.0)
+    layer = test_layer_p.Instantiate()
+    prng_key = jax.random.PRNGKey(seed=123)
+    prng_key, init_key = jax.random.split(prng_key)
+    target_batch_size = 3
+    source_max_length = 8
+    target_max_length = 8
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    key_vec = query_vec
+    value_vec = query_vec
+    fake_query_vec = jnp.zeros_like(query_vec)
+    atten_mask = attentions.causal_mask(query_vec)
+    segment_pos = np.tile(np.arange(source_max_length), (target_batch_size, 1))
+
+    starting_index = 0
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(
+          init_key,
+          fake_query_vec,
+          fake_query_vec,
+          fake_query_vec,
+          atten_mask,
+          query_segment_pos=segment_pos,
+          key_segment_pos=segment_pos)
+      logging.info('initial_vars: %s', initial_vars)
+      _, attention_states = layer.apply(
+          initial_vars,
+          fake_query_vec,
+          fake_query_vec,
+          fake_query_vec,
+          atten_mask,
+          query_segment_pos=segment_pos,
+          key_segment_pos=segment_pos,
+          method=layer.__call__,
+          mutable=[base_layer.DECODE_CACHE])
+      fprop_out, _ = layer.apply(
+          initial_vars,
+          query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+          query_segment_pos=segment_pos,
+          key_segment_pos=segment_pos,
+          method=layer.__call__)
+
+      decoder_output = jnp.zeros(
+          shape=[target_max_length, target_batch_size, mdl_dim])
+
+      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
+                                                       initial_vars)
+      for t in range(starting_index, target_max_length):
+        encoded, attention_states = layer.apply(
+            updated_vars,
+            query_vec=query_vec[:, t, :],
+            atten_mask=atten_mask[:, :, t, :],
+            time_step=t,
+            segment_pos=None,
+            method=layer.extend_step,
+            mutable=[base_layer.DECODE_CACHE])
+        updated_vars = py_utils.MergeDictsWithValueCheck(
+            attention_states, initial_vars)
+        decoder_output = decoder_output.at[t].set(encoded)
+
+    decoder_output = decoder_output[starting_index:]
+    decoder_out_transposed = jnp.transpose(decoder_output, [1, 0, 2])
+    fprop_out = fprop_out[:, starting_index:]
+
+    logging.info('fprop_out: %s', fprop_out)
+    logging.info('decoder_out: %s', decoder_output)
+    self.assertAllClose(fprop_out, decoder_out_transposed)
+
   @parameterized.product(
       rel_pos_emb_dim=[10, 16],
       left_context=[1, 2],

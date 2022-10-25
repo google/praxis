@@ -1262,7 +1262,8 @@ class DotProductAttention(base_layer.BaseLayer):
                           key_state_name: str,
                           value_state_name: str,
                           atten_mask: JTensor,
-                          relative_bias: Optional[JTensor] = None) -> JTensor:
+                          relative_bias: Optional[JTensor] = None,
+                          time_step: Optional[JTensor] = None) -> JTensor:
     """Dot attention function for queries with 1 time step.
 
     Args:
@@ -1275,11 +1276,13 @@ class DotProductAttention(base_layer.BaseLayer):
         be of size 1, if the mask is shared by all items in the batch (e.g.,
         only a causal mask).
       relative_bias: Relative bias of shape [1|B, N, 1, S].
+      time_step: A scalar. The time step tensor.
 
     Returns:
       encoded: JTensor of shape [B, N, H].
       probs: JTensor of shape [B, N, S].
     """
+    del time_step
 
     p = self.hparams
     key = self._shard_blnh(self.get_decode_state(key_state_name))
@@ -1599,10 +1602,13 @@ class DotProductAttention(base_layer.BaseLayer):
     else:
       relative_bias = None
 
-    encoded, atten_prob = self._dot_atten_one_step(new_query_proj,
-                                                   key_state_name,
-                                                   value_state_name, atten_mask,
-                                                   relative_bias)
+    encoded, atten_prob = self._dot_atten_one_step(
+        new_query_proj,
+        key_state_name,
+        value_state_name,
+        atten_mask,
+        relative_bias,
+        time_step=time_step)
     # TODO(yonghui): return atten_probs back to the caller.
 
     # Apply NGrammer to the output of the attention.
@@ -1966,7 +1972,8 @@ class DotProductAttentionWithLPB(DotProductAttention):
                           key_state_name: str,
                           value_state_name: str,
                           atten_mask: JTensor,
-                          relative_bias: Optional[JTensor] = None) -> JTensor:
+                          relative_bias: Optional[JTensor] = None,
+                          time_step: Optional[JTensor] = None) -> JTensor:
     """Dot attention function for queries with 1 time step.
 
     In the shapes listed below, `...` means potential sample dims added for lazy
@@ -1982,10 +1989,12 @@ class DotProductAttentionWithLPB(DotProductAttention):
         is allowed to be of size 1, if the mask is shared by all items in the
         batch (e.g., only a causal mask).
       relative_bias: Relative bias of shape [1|B, N, 1, S].
+      time_step: The time step tensor.
 
     Returns:
       encoded: JTensor of shape [B, ..., N, H] or [B, ..., T, N, H]
     """
+    del time_step
 
     p = self.hparams
     pfx_count = self._broadcast_prefixes_count
@@ -2440,14 +2449,99 @@ class DotProductAttentionXL(DotProductAttention):
     term_bd = self._rel_position_bias(content, sin_emb)
     return term_ac + term_bd
 
+  def _atten_logits_one_step(self, query, key, step):
+    b, n, h = query.shape
+
+    t = step + 1
+    key = key[:, :t]
+
+    # [1, T - 1]
+    pos = jnp.expand_dims(jnp.arange(0, t), 0)
+    sin_emb = self.pos_emb(position=pos)
+    # [1, T - 1, N, H]
+    sin_emb = self.pos_proj(sin_emb)
+    # [T - 1, N, H]
+    sin_emb = jnp.squeeze(sin_emb, 0)
+
+    # [B, N, T, S=T]
+    content = query + self.theta.u
+    term_ac = jnp.einsum('BNH,BSNH->BNS', content, key)
+
+    content = query + self.theta.v
+    term_bd = jnp.einsum('BNH,TNH->BNT', content, sin_emb)
+    return term_ac + term_bd
+
   def _dot_atten_one_step(self,
                           query: JTensor,
                           key_state_name: str,
                           value_state_name: str,
                           atten_mask: JTensor,
-                          relative_bias: Optional[JTensor] = None) -> JTensor:
-    raise NotImplementedError('One step is not implemented for %s' %
-                              self.__name__)
+                          relative_bias: Optional[JTensor] = None,
+                          time_step: Optional[JTensor] = None) -> JTensor:
+    """Dot attention function for queries with 1 time step.
+
+    Args:
+      query: JTensor of shape [B, N, H].
+      key_state_name: Name of the decoding key state variable.
+      value_state_name: Name of the decoding value state variable.
+      atten_mask: JTensor of shape [1|B, 1, S] which is a mask that is applied
+        to prevent attention between unwanted pairs. This has already been
+        converted into large negative logits. The first dimension is allowed to
+        be of size 1, if the mask is shared by all items in the batch (e.g.,
+        only a causal mask).
+      relative_bias: Relative bias of shape [1|B, N, 1, S].
+      time_step: The time step tensor.
+
+    Returns:
+      encoded: JTensor of shape [B, N, H].
+      probs: JTensor of shape [B, N, S].
+    """
+
+    p = self.hparams
+    key = self._shard_blnh(self.get_decode_state(key_state_name))
+    value = self._shard_blnh(self.get_decode_state(value_state_name))
+    k_b = key.shape[0]
+    q_b = query.shape[0]
+    if q_b != k_b:
+      if q_b % k_b != 0:
+        raise ValueError(
+            f'q batch size {q_b} is not divisible by state batch size {k_b}')
+      key = jnp.repeat(key, q_b // k_b, axis=0)
+      value = jnp.repeat(value, q_b // k_b, axis=0)
+    if atten_mask.shape[0] != 1 and atten_mask.shape[0] != q_b:
+      assert atten_mask.shape[0] == k_b
+      atten_mask = jnp.repeat(atten_mask, q_b // k_b, axis=0)
+    # query is 3d.
+    query = self._shard_bnh(query)
+
+    b, s, n, h = key.shape
+    base_layer.assert_has_shape(value, [b, s, n, h])
+    base_layer.assert_has_shape(query, [b, n, h])
+    base_layer.assert_has_shape(atten_mask, [-1, 1, s])
+    assert atten_mask.shape[0] in [1, b]
+    query = self._scale_query(query)
+    #logits = jnp.einsum('BNH,BSNH->BNS', query, key)
+    logits = self._atten_logits_one_step(query, key, time_step)
+    if relative_bias is not None:
+      base_layer.assert_has_shape(relative_bias, [-1, n, 1, s])
+      assert relative_bias.shape[0] in [1, b]
+      relative_bias = jnp.squeeze(relative_bias, axis=2)
+      logits += relative_bias
+    logits = self._cap_logits(logits)
+    # Attention softmax is always carried out in fp32.
+    logits = logits.astype(jnp.float32)
+    # Apply attention masking
+    padded_logits = logits + atten_mask.astype(jnp.float32)
+    # Of shape [b, n, s]
+    if p.attention_extra_logit is None:
+      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
+    else:
+      probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
+          key.dtype)
+    # Compute the attention context.
+    encoded = jnp.einsum('BNS,BSNH->BNH', probs, value)
+    encoded = self._shard_bnh(encoded)
+    return encoded, probs
 
   def init_states(self, target_batch_size: int,
                   target_max_length: int) -> NestedMap:
@@ -2695,7 +2789,8 @@ class LocalSelfAttention(DotProductAttention):
                           key_state_name: str,
                           value_state_name: str,
                           atten_mask: JTensor,
-                          relative_bias: Optional[JTensor] = None) -> JTensor:
+                          relative_bias: Optional[JTensor] = None,
+                          time_step: Optional[JTensor] = None) -> JTensor:
     raise NotImplementedError('One step is not implemented for %s' %
                               self.__name__)
 
