@@ -259,6 +259,8 @@ class FullSoftmax(base_layer.BaseLayer):
       - total_xent: A scalar. The sum of per_example_weight * per_example_xent.
       - total_weight: A scalar. The sum of per_example_weight.
       - avg_xent: A scalar. total_loss / total_weight.
+      - z_loss [optional]: A scalar. The square of logsum logits when 
+        z_loss_weight > 0.
     """
     p = self.hparams
     # Assert one of class_ids or class_probabilities is not None
@@ -317,7 +319,8 @@ class FullSoftmax(base_layer.BaseLayer):
         total_xent=total_xent,
         total_weight=total_weight,
         avg_xent=(total_xent / (total_weight + 1e-6)).astype(jnp.float32))
-
+    if p.z_loss_weight > 0.0:
+      output_nmap['z_loss'] = z_loss
     return output_nmap
 
 
