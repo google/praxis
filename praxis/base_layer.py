@@ -765,8 +765,10 @@ class _SummaryDict:
 # A small structure that stores a shared layer and the hparams that were used in
 # creating the layer. Note, hparams might be different from layer.hparam as
 # during creation of layer, layer.hparams might have undergone modifications.
+# We also keep a reference to the wrapper layer, to prevent it from being
+# garbage-collected.
 _SharedLayerCacheEntry = collections.namedtuple('_SharedLayerCacheEntry',
-                                                ['layer', 'hparams'])
+                                                ['layer', 'hparams', 'wrapper'])
 
 
 class JaxContext:
@@ -867,14 +869,14 @@ class JaxContext:
     return self._root_scope_to_shared_layers_map[root_scope][shared_layer_id]
 
   def set_shared_layer(self, root_scope: flax_core.Scope, shared_layer_id: str,
-                       layer: BaseLayerApi, layer_hparams):
+                       wrapper: _WrapperLayer, layer_hparams):
     logging.info('set_shared_layer called with id: %s in the scope of %s',
                  shared_layer_id, root_scope)
     existing = self.lookup_shared_layer(root_scope, shared_layer_id)
     assert existing is None
     self._root_scope_to_shared_layers_map[root_scope][
         shared_layer_id] = _SharedLayerCacheEntry(
-            layer=layer, hparams=layer_hparams.clone())
+            layer=wrapper.cld, hparams=layer_hparams.clone(), wrapper=wrapper)
 
 
 def cur_jax_context() -> JaxContext:
@@ -1008,9 +1010,10 @@ def instantiate_layer(layer_p: Union[BaseLayer.HParams, pax_fiddle.Config],
       wrapped_p.shared_weight_layer_id = None
       wrapper_p = _WrapperLayer.HParams(
           name=layer_p.shared_weight_layer_id, cld=wrapped_p)
-      layer = instantiate(wrapper_p, parent=scope).cld
-      jax_context.set_shared_layer(scope, layer_p.shared_weight_layer_id, layer,
-                                   layer_p.clone())
+      wrapper = instantiate(wrapper_p, parent=scope)
+      layer = wrapper.cld
+      jax_context.set_shared_layer(scope, layer_p.shared_weight_layer_id,
+                                   wrapper, layer_p.clone())
   else:
     # simply create the child
     layer = layer_p.Instantiate()
