@@ -919,7 +919,11 @@ class DotProductAttention(base_layer.BaseLayer):
     internal_enable_query_scale: bool = True
     internal_enable_per_dim_scale: bool = True
     atten_logit_cap: float = 0.0
+    # TODO(pax-dev): merge use_rotary_position_emb and rotary_position_emb_tpl
+    # by initializing rotary_position_emb_tpl = None.
     use_rotary_position_emb: bool = False
+    rotary_position_emb_tpl: Optional[BaseHParams] = sub_config_field(
+        embedding_softmax.RotaryPositionalEmbedding.HParams)
     cast_rotary_position_emb: bool = True
     relative_bias_tpl: Optional[BaseHParams] = None
     attention_extra_logit: Optional[float] = None
@@ -1028,7 +1032,7 @@ class DotProductAttention(base_layer.BaseLayer):
       self.create_child('value', project_input(value_input_dim, value_std))
 
     if p.use_rotary_position_emb:
-      pos_emb_p = embedding_softmax.RotaryPositionalEmbedding.HParams()
+      pos_emb_p = p.rotary_position_emb_tpl.clone()
       pos_emb_p.embedding_dims = dim_per_head
       pos_emb_p.cast_as_fprop_dtype = p.cast_rotary_position_emb
       self.create_child('rotary_position_emb', pos_emb_p)
