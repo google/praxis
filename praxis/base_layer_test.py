@@ -622,6 +622,11 @@ class FiddleBaseLayerTest(test_utils.TestCase):
         class Layer5(base_layer.FiddleBaseLayer):
           child_tpl: Optional[pax_fiddle.Config[TrivialFiddleLayer]] = None
 
+    with self.subTest('tuple_int_int'):
+
+      class Layer6(base_layer.FiddleBaseLayer):
+        child: tuple[int, int] = (1, 2)
+
 
 if __name__ == '__main__':
   absltest.main()

@@ -2167,16 +2167,22 @@ class FiddleBaseLayer(BaseLayerApi):
 
 def _is_template_type(typ):
   """Returns true if `typ` is a type expression for a template."""
-  if isinstance(typ, type) and issubclass(typ, pax_fiddle.Config):
+  # if `typ` is a generic type, then `origin` is its unparameterized type.
+  # E.g., if `typ = tuple[int, int]`, then `origin = tuple`.  If `typ` is not
+  # generic, then `origin` is `None`.  Also, if we are using Python 3.7 or
+  # earlier, then `typing.get_origin` doesn't exist, so `origin` will be `None`.
+  origin = typing.get_origin(typ) if hasattr(typing, 'get_origin') else None
+
+  if (origin is None and isinstance(typ, type) and
+      issubclass(typ, pax_fiddle.Config)):
     return True
   if isinstance(typ, _FiddleHParamsClassStub):
     return True
-  if hasattr(typing, 'get_origin'):
-    if typing.get_origin(typ) == pax_fiddle.Config:
-      return True
-    if (typing.get_origin(typ) == Union and
-        any(_is_template_type(arg) for arg in typing.get_args(typ))):
-      return True
+  if origin == pax_fiddle.Config:
+    return True
+  if (origin == Union and
+      any(_is_template_type(arg) for arg in typing.get_args(typ))):
+    return True
   return False
 
 
