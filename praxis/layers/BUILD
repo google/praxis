@@ -236,6 +236,7 @@ pytype_strict_library(
         "//praxis:decoder_utils",
         "//praxis:flat_beam_search",
         "//praxis:metric_utils",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:sample_decode",
     ],

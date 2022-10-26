@@ -31,6 +31,7 @@ from praxis import decoder_hparams
 from praxis import decoder_utils
 from praxis import flat_beam_search
 from praxis import metric_utils
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import sample_decode
 from praxis.layers import augmentations
@@ -127,7 +128,8 @@ class LanguageModel(base_model.BaseModel):
     lm_tpl: BaseHParams = sub_config_field(
         transformer_models.TransformerLm.HParams)
     return_predictions: bool = False
-    decoder_tpl: DecoderHParams = sub_config_field(GreedyDecoderHParams)
+    decoder_tpl: DecoderHParams = pax_fiddle.sub_field(
+        GreedyDecoderHParams)
     model_type: LanguageModelType = LanguageModelType.CAUSAL
     count_tokens: bool = False
 
@@ -225,7 +227,7 @@ class LanguageModel(base_model.BaseModel):
       - A dict of [str, clu_metrics.Metric] objects with metric objects.
     """
     p = self.hparams
-    if not isinstance(p.decoder_tpl, DecoderHParams):
+    if not template_has_type(p.decoder_tpl, DecoderHParams):
       raise ValueError('p.decoder_tpl must be DecoderHParams type, but it is a '
                        f'type of {type(p.decoder_tpl)}')
     if p.decoder_tpl.seqlen <= 0:
@@ -316,7 +318,7 @@ class LanguageModel(base_model.BaseModel):
       mdl.lm.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
 
     # Flat beam search doesn't work yet.
-    if isinstance(p.decoder_tpl, FlatBeamSearchHParams):
+    if template_has_type(p.decoder_tpl, FlatBeamSearchHParams):
       # Init cache states.
       self.lm(
           fprop_input_ids,
@@ -340,7 +342,7 @@ class LanguageModel(base_model.BaseModel):
           max_decode_steps=p.decoder_tpl.max_decode_steps,
           eos_id=p.decoder_tpl.eos_id,
           length_norm_alpha=p.decoder_tpl.length_norm_alpha)
-    elif isinstance(p.decoder_tpl, BeamSearchHParams):
+    elif template_has_type(p.decoder_tpl, BeamSearchHParams):
       assert p.decoder_tpl.fprop_for_prefix
 
       def fprop_fn(mdl, ids, paddings):
@@ -357,7 +359,7 @@ class LanguageModel(base_model.BaseModel):
                                        transform_decode_state_fn,
                                        fprop_input_ids, fprop_input_paddings,
                                        p.decoder_tpl)
-    elif isinstance(p.decoder_tpl, SampleDecoderHParams):
+    elif template_has_type(p.decoder_tpl, SampleDecoderHParams):
       # Init cache states, batch size needs to multiply by num_samples.
       self.lm(
           fprop_input_ids,
@@ -406,7 +408,7 @@ class LanguageModel(base_model.BaseModel):
           eos_id=p.decoder_tpl.eos_id,
           return_result_for_suffix_score=return_result_for_suffix_score,
       )
-    elif isinstance(p.decoder_tpl, GreedyDecoderHParams):
+    elif template_has_type(p.decoder_tpl, GreedyDecoderHParams):
       # Init cache states.
       self.lm(
           fprop_input_ids,
@@ -533,7 +535,8 @@ class SequenceModel(base_model.BaseModel):
     model_tpl: BaseHParams = sub_config_field(
         transformer_models.TransformerEncoderDecoder.HParams)
     return_predictions: bool = False
-    decoder_tpl: DecoderHParams = sub_config_field(GreedyDecoderHParams)
+    decoder_tpl: DecoderHParams = pax_fiddle.sub_field(
+        GreedyDecoderHParams)
     label_smoothing_prob: float = 0.0
 
   def setup(self) -> None:
@@ -608,7 +611,7 @@ class SequenceModel(base_model.BaseModel):
       - metrics, A NestedMap of clu.metrics objects.
     """
     p = self.hparams
-    if not isinstance(p.decoder_tpl, DecoderHParams):
+    if not template_has_type(p.decoder_tpl, DecoderHParams):
       raise ValueError('p.decoder must be DecoderHParams type, but it is a '
                        f'type of {type(p.decoder_tpl)}')
     if p.decoder_tpl.seqlen <= 0:
@@ -625,9 +628,9 @@ class SequenceModel(base_model.BaseModel):
       mdl.model.transform_decode_state(transform_fn)
 
     # Flat beam search doesn't work yet.
-    if isinstance(p.decoder_tpl, FlatBeamSearchHParams):
+    if template_has_type(p.decoder_tpl, FlatBeamSearchHParams):
       raise NotImplementedError('flat beam search not supported')
-    elif isinstance(p.decoder_tpl, BeamSearchHParams):
+    elif template_has_type(p.decoder_tpl, BeamSearchHParams):
       assert not p.decoder_tpl.fprop_for_prefix
       start_time_step = 0
 
@@ -648,9 +651,9 @@ class SequenceModel(base_model.BaseModel):
                                        transform_decode_state_fn,
                                        fprop_input_ids, fprop_input_paddings,
                                        p.decoder_tpl)
-    elif isinstance(p.decoder_tpl, SampleDecoderHParams):
+    elif template_has_type(p.decoder_tpl, SampleDecoderHParams):
       raise NotImplementedError('sample decode not supported')
-    elif isinstance(p.decoder_tpl, GreedyDecoderHParams):
+    elif template_has_type(p.decoder_tpl, GreedyDecoderHParams):
       self.model(
           inputs=input_batch.src.ids,
           input_paddings=input_batch.src.paddings,
@@ -1023,3 +1026,8 @@ class ClassificationMLPModel(base_model.BaseModel):
     metrics = NestedMap(total_loss=(mean_acc, mean_acc),)
 
     return metrics, NestedMap()
+
+
+def template_has_type(template, cls):
+  return (isinstance(template, cls) or
+          (isinstance(template, pax_fiddle.Config) and template.cls == cls))
