@@ -20,7 +20,7 @@ import dataclasses
 import functools
 import re
 import time
-from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Sequence, Tuple, TypeVar, Union
 
 from absl import flags
 from absl import logging
@@ -466,18 +466,32 @@ def is_optax_masked_node(x: Any) -> bool:
   return isinstance(x, optax.MaskedNode)
 
 
-def maybe_pad_uneven_sharding(x: JTensor, partition_spec: pjit.PartitionSpec,
-                              shape: Sequence[int], mesh_shape: Sequence[int],
+def maybe_pad_uneven_sharding(xs: JTensor,
+                              partition_specs: Union[pjit.PartitionSpec,
+                                                     flax.struct.PyTreeNode],
+                              unpadded_shapes: Sequence[int],
+                              mesh_shape: Sequence[int],
                               mesh_axis_names: Sequence[str]) -> JTensor:
   """Pads x to make it evenly shardable, if needed."""
-  paddings = get_uneven_sharding_paddings(partition_spec, shape, mesh_shape,
-                                          mesh_axis_names)
-  if all([p == 0 for p in paddings]):
-    return x
-  # Annotate before pad to make sure they have the same sharding. (Pad does not
-  # have the highest sharding propgation priority.)
-  x = with_sharding_constraint(x, partition_spec)
-  return jnp.pad(x, [[0, p] for p in paddings])
+
+  def _maybe_pad(x, pspec, shape):
+    if is_optax_masked_node(x):
+      return x
+    paddings = get_uneven_sharding_paddings(pspec, shape, mesh_shape,
+                                            mesh_axis_names)
+    if all([p == 0 for p in paddings]):
+      return x
+    # Annotate before pad to make sure they have the same sharding. (Pad does not
+    # have the highest sharding propgation priority.)
+    x = with_sharding_constraint(x, pspec)
+    return jnp.pad(x, [[0, p] for p in paddings])
+
+  return jax.tree_map(
+      _maybe_pad,
+      xs,
+      partition_specs,
+      unpadded_shapes,
+      is_leaf=is_optax_masked_node)
 
 
 def maybe_slice_uneven_sharding(x: JTensor, partition_spec: pjit.PartitionSpec,
