@@ -1643,7 +1643,14 @@ class BaseLayerApi(nn.Module):
   @nn.nowrap
   def _create_child(self, name: str, params: BaseLayer.HParams) -> BaseLayer:
     """Creates and returns a child (w/o adding it as an attribute of `self`)."""
-
+    if not isinstance(params, (BaseLayer.HParams, pax_fiddle.Config,
+                               _FiddleHParamsInstanceStub)):
+      msg = ('Expected templates for `create_child` to be HParams or Fiddle '
+             f'Configs; got {type(params)}.')
+      if isinstance(params, BaseLayerApi):
+        msg += (' This may be caused by a missing DoNotBuild tag on a field '
+                'that contains a Fiddle Config.')
+      raise ValueError(msg + f'\nparams={params}')
     if name is self._private_children:
       raise ValueError(
           f'Child `{name}` already exists: make sure to use unique child names.'

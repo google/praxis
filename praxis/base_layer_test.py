@@ -629,6 +629,27 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       class Layer6(base_layer.FiddleBaseLayer):
         child: tuple[int, int] = (1, 2)
 
+  def testMissingDoNotFieldTagError(self):
+
+    class Parent(base_layer.FiddleBaseLayer):
+
+      child_tpl: Any = None
+
+      def setup(self):
+        self.create_child('child', self.child_tpl)
+
+      def __call__(self):
+        return None
+
+    cfg = pax_fiddle.Config(
+        Parent, child_tpl=pax_fiddle.Config(TrivialFiddleLayer))
+    layer = pax_fiddle.build(cfg)
+    with self.assertRaisesRegex(
+        ValueError,
+        'Expected .* to be HParams or Fiddle Configs.* This may be caused by '
+        'a missing DoNotBuild tag on a field that contains a Fiddle Config.'):
+      layer.init(jax.random.PRNGKey(0), 0)
+
 
 if __name__ == '__main__':
   absltest.main()
