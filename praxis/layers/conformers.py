@@ -188,12 +188,8 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
         stochastics.Dropout.HParams)
 
   def _create_self_atten(self):
-    p = self.hparams
-    if p.self_atten_tpl.cls not in [
-        DotProductAttentionWithContext, DotProductAttentionWithContextXL,
-        attentions.LocalSelfAttention, attentions.LocalSelfAttentionXL]:
-      raise ValueError(f'Not supported self_atten_tpl {p.self_atten_tpl}')
-    self.create_child('self_atten', p.self_atten_tpl)
+    """Expects to be overridden in subclasses."""
+    self.create_child('self_atten', self.hparams.self_atten_tpl)
 
   def setup(self) -> None:
     p = self.hparams
