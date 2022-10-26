@@ -368,6 +368,19 @@ def convert_fully_replicated_sda_to_gda(sda):
       sorted(sda.device_buffers, key=lambda x: x.device().id))
 
 
+def convert_fully_replicated_gda_to_sda(gda):
+  """Convert a fully replicated GDA to SDA."""
+  with jax.transfer_guard('disallow'):
+    local_shape = (jax.local_device_count(),) + gda.shape
+    local_aval = jax.core.ShapedArray(local_shape, gda.dtype)
+    sharded_aval = jax.core.ShapedArray(local_shape[1:], gda.dtype)
+    sharding_spec = pxla._pmap_sharding_spec(  # pylint: disable=protected-access
+        local_shape[0], local_shape[0], 1, None, sharded_aval, 0)
+    indices = pxla.spec_to_indices(local_shape, sharding_spec)
+    return pxla.make_sharded_device_array(local_aval, sharding_spec,
+                                          list(gda._device_buffers), indices)  # pylint: disable=protected-access
+
+
 def gda_or_jax_array():
   return jax.config.jax_array or jax.config.jax_parallel_functions_output_gda
 
