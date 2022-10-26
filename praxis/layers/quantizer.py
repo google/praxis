@@ -79,8 +79,8 @@ def quantize_vector(latent: JTensor, codebook: JTensor):
       # [..., G, V]
       2 * jnp.einsum(f'{einsum_prefix}gh,vgh->{einsum_prefix}gv', latent,
                      codebook) +
-      # [V, G, H] -> [V, G, 1] -> [1, G, V]
-      jnp.transpose(jnp.sum(codebook**2, axis=-1, keepdims=True), [2, 1, 0]))
+      # [V, G, H] -> [V, G] -> [G, V] (broadcast to [..., G, V])
+      jnp.transpose(jnp.sum(codebook**2, axis=-1)))
 
   # [..., G]
   codes = jnp.argmin(distance, axis=-1)
@@ -146,8 +146,26 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     normalize_latent_per_group:     bool = True
     # pyformat: enable
 
+  class WeightShardingHParams(BaseWtShardingHParams):
+    """Represents how layer's learned parameters are partitioned across a mesh.
+
+    Attributes:
+      vgh:  Mesh split for codebook weight. If hparams.num_groups is 1 and
+        hparams.low_rank_codebook is True, then the n dim is ignored.
+    """
+    vgh: SplitDimsMapping = None
+
+  class ActivationShardingHParams(BaseActShardingHParams):
+    """Represents how intermediate values should be partitioned across a mesh.
+
+    Attributes:
+      blgh: Mesh split for input before quantization.
+    """
+    blgh: SplitDimsMapping = None
+
   def setup(self) -> None:
     p = self.hparams
+    wp = p.weight_split_dims_mapping
 
     assert p.stack_ratio >= 1
 
@@ -179,8 +197,11 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
                 base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
             ]))
 
+    wt = wp.clone().vgh
     if p.num_groups == 1 and p.low_rank_codebook:
       codebook_shape = [p.num_latent_classes, p.projection_dim]
+      if wt:
+        del wt[1]
     else:
       codebook_shape = [
           p.num_latent_classes, p.num_groups, p.projection_dim // p.num_groups
@@ -192,6 +213,8 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
             shape=codebook_shape,
             init=p.codebook_init,
             dtype=jnp.float32,
+            mesh_shape=p.mesh_shape,
+            tensor_split_dims_mapping=wt,
             collections=[
                 base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
             ]))
@@ -199,10 +222,16 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
   def _get_codebook(self):
     """Gets the latent embedding."""
     p = self.hparams
+    wp = p.weight_split_dims_mapping
 
     # Recovers codebook to 3d.
     if p.low_rank_codebook and p.num_groups == 1:
       codebook = self.theta.random_codebook[:, jnp.newaxis, :]
+
+      wt = wp.clone().vgh
+      if wt:
+        wt[1] = None
+      codebook = base_layer.maybe_shard(codebook, wt, p.mesh_axis_names)
     else:
       codebook = self.theta.random_codebook
 
@@ -230,6 +259,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
       - entropy:  [], exp(pplx).
     """
     p = self.hparams
+    ap = p.activation_split_dims_mapping
 
     # Stacking.
     # [b, t // s, s * input_dim]
@@ -246,6 +276,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     b, l, d = proj_vec.shape
     g = p.num_groups
     proj_vec = jnp.reshape(proj_vec, [b, l, g, d // g])
+    proj_vec = base_layer.maybe_shard(proj_vec, ap.blgh, p.mesh_axis_names)
 
     if p.normalize_latent_vector and p.normalize_latent_per_group:
       proj_vec = _l2_normalize(proj_vec, -1)

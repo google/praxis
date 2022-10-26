@@ -28,8 +28,8 @@ from praxis.layers import linears
 from praxis.layers import normalizations
 from praxis.layers import stochastics
 
-BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
+BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 
 NestedMap = py_utils.NestedMap
 SplitDimsMapping = pytypes.SplitDimsMapping
@@ -270,8 +270,9 @@ class ConvBNActWithPadding(ConvBNAct):
       assert tuple(
           p.dilations) == (1, 1), ('compat_with_lingvo supports no dilation.')
 
-  def __call__(self, inputs: JTensor,
-               paddings: JTensor) -> Tuple[JTensor, JTensor]:
+  def __call__(
+      self, inputs: JTensor, paddings: JTensor
+  ) -> Tuple[JTensor, JTensor]:  # pytype:disable=signature-mismatch
     """Forward prop which applies conv-bn-activation with time paddings.
 
     Args:
