@@ -18,6 +18,7 @@
 import copy
 import dataclasses
 import functools
+import sys
 import typing
 from typing import Any, Optional
 from absl.testing import absltest
@@ -625,6 +626,9 @@ class FiddleBaseLayerTest(test_utils.TestCase):
           child_tpl: Optional[pax_fiddle.Config[TrivialFiddleLayer]] = None
 
     with self.subTest('tuple_int_int'):
+
+      if (sys.version_info.major, sys.version_info.minor) < (3, 9):
+        self.skipTest('tuple[int, int] not supported in this Python version')
 
       class Layer6(base_layer.FiddleBaseLayer):
         child: tuple[int, int] = (1, 2)
