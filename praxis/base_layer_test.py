@@ -227,14 +227,16 @@ class BaseLayerTest(test_utils.TestCase):
       source = source_factory(
           dtype=jnp.float64,
           ici_mesh_shape=[2, 3, 4],
+          dcn_mesh_shape=[5, 6, 7],
           params_init=base_layer.default_param_init())
 
       for target_name, target_factory in config_factories.items():
         with self.subTest(f'{source_name}_to_{target_name}'):
-          target = target_factory(dtype=jnp.float16)
+          target = target_factory(dtype=jnp.float16, ici_mesh_shape=None)
           base_layer.BaseLayerApi.copy_base_hparams(source, target)
           self.assertEqual(target.dtype, jnp.float16)
           self.assertEqual(target.ici_mesh_shape, [2, 3, 4])
+          self.assertEqual(target.dcn_mesh_shape, [5, 6, 7])
 
       with self.subTest(f'{source_name}_to_fiddle_subfield'):
         target_parent = pax_fiddle.Config(

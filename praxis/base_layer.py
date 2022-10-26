@@ -1119,7 +1119,7 @@ class BaseLayerApi(nn.Module):
           isinstance(fdl.get_callable(value), type) and
           issubclass(fdl.get_callable(value), BaseLayerApi)):
         for name in BaseLayerApi._BASE_PARAMS_TO_INHERIT:
-          if name not in value.__arguments__:
+          if value.__arguments__.get(name, None) is None:
             setattr(value, name, getattr(source, name))
 
       # Recurse to child objects (skipping fields tagged "DoNotBuild").
