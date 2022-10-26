@@ -82,6 +82,8 @@ from praxis.layers.normalizations import BatchNorm
 from praxis.layers.normalizations import compute_moments
 from praxis.layers.normalizations import GroupNorm
 from praxis.layers.normalizations import LayerNorm
+from praxis.layers.normalizations import RmsNorm
+from praxis.layers.normalizations import RmsNormNoScale
 from praxis.layers.pipeline import LayerwiseShardablePipelined
 from praxis.layers.poolings import GlobalPooling
 from praxis.layers.poolings import Pooling
@@ -111,3 +113,4 @@ from praxis.layers.vanillanets import VanillaBlock
 from praxis.layers.vanillanets import VanillaNet
 from praxis.layers.vits import VisionTransformer
 from praxis.layers.vits import VitEntryLayers
+from praxis.layers.vits import VitExitLayers

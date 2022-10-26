@@ -616,6 +616,7 @@ py_strict_test(
     srcs = ["vits_test.py"],
     deps = [
         ":activations",
+        ":embedding_softmax",
         ":transformers",
         ":vits",
         # Implicit absl.testing.absltest dependency.

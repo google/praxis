@@ -25,6 +25,7 @@ from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import activations
+from praxis.layers import embedding_softmax
 from praxis.layers import transformers
 from praxis.layers import vits
 
@@ -48,6 +49,7 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
     )
 
   def _vit_entry_layers(self, exp_params):
+    num_patches = np.prod(exp_params.pos_embed_shapes)
     p_entry = vits.VitEntryLayers.HParams(
         name='entry',
         pos_embed_shapes=exp_params.pos_embed_shapes,
@@ -55,6 +57,10 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
         input_dims=exp_params.patch_size ** 2 * 3,
         output_dims=exp_params.hidden_dim,
         pos_emb_dropout_prob=0.1,
+        pos_emb_tpl=embedding_softmax.TrainablePositionalEmbedding.HParams(
+            max_seq_length=num_patches,
+            embedding_dims=exp_params.hidden_dim,
+            params_init=base_layer.WeightInit.Gaussian(scale=0.02)),
     )
     return p_entry
 

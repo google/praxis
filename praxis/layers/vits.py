@@ -178,12 +178,16 @@ class VitEntryLayers(base_layer.BaseLayer):
       input_dims: Dims per patch before input patch projection.
       output_dims: Dims per patch after input patch projection.
       image_channels: Number of channels of the input image.
+      pos_emb_tpl: template for positional embeddings.
     """
     pos_embed_shapes: Tuple[int, int] = (0, 0)
     patch_size: int = 0
     input_dims: int = 0
     output_dims: int = 0
     pos_emb_dropout_prob: float = 0.0
+    # configurable components
+    pos_emb_tpl: BaseHParams = sub_config_field(
+        embedding_softmax.TrainablePositionalEmbedding.HParams)
 
   def setup(self) -> None:
     p = self.hparams
@@ -195,15 +199,8 @@ class VitEntryLayers(base_layer.BaseLayer):
         activation_tpl=activations.Identity.HParams())
     self.create_child('patch_projection', p_patch_projection)
 
-    num_patches = np.prod(p.pos_embed_shapes)
-
-    p_emb = embedding_softmax.TrainablePositionalEmbedding.HParams(
-        name='emb',
-        max_seq_length=num_patches,
-        embedding_dims=p.output_dims,
-        params_init=base_layer.WeightInit.Gaussian(scale=0.02))
-
-    self.create_child('pos_emb', p_emb)
+    pos_emb = p.pos_emb_tpl.clone().set(name='emb')
+    self.create_child('pos_emb', pos_emb)
 
     if p.pos_emb_dropout_prob > 0.0:
       p_dropout = stochastics.Dropout.HParams(
@@ -416,12 +413,18 @@ def build_vision_transformer_hparams_for_test(
   Returns:
     A HParams of the VisionTransformer layer.
   """
+  pos_emb_tpl = embedding_softmax.TrainablePositionalEmbedding.HParams(
+      max_seq_length=np.prod(pos_embed_shapes),
+      embedding_dims=model_dims,
+      params_init=base_layer.WeightInit.Gaussian(scale=0.02),
+  )
   p_entry = VitEntryLayers.HParams(
       name='entry',
       pos_embed_shapes=pos_embed_shapes,
       patch_size=patch_size,
       input_dims=patch_size ** 2 * image_channels,
       output_dims=model_dims,
+      pos_emb_tpl=pos_emb_tpl,
   )
 
   p_stacked_tfm = transformers.StackedTransformer.HParams(
