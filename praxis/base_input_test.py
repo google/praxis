@@ -449,6 +449,13 @@ class InputTest(test_utils.TestCase):
       with self.assertRaises(StopIteration):
         inputs[i].get_next()
 
+  def test_lingvo_eval_adaptor_get_batch_size(self):
+    input_p = base_input_generator.BaseSequenceInputGenerator.Params().Set(
+        bucket_batch_limit=[1])
+    adaptor_p = base_input.LingvoEvalAdaptor.HParams(
+        input=input_p, batch_size=2)
+    self.assertEqual(adaptor_p.cls.get_batch_size(adaptor_p), 2)
+
   def test_multi_input(self):
     tmp_1 = os.path.join(FLAGS.test_tmpdir, 'tmptest_1')
     tmp_2 = os.path.join(FLAGS.test_tmpdir, 'tmptest_2')

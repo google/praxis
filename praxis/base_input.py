@@ -461,6 +461,10 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
   _VALIDATE_BATCH_SIZE_NOT_NONE = True
   _VALIDATE_BATCH_SIZE_NONE = False
 
+  @classmethod
+  def get_batch_size(cls, hparams: LingvoInputAdaptor.HParams) -> int:
+    return hparams.batch_size
+
   def __init__(self, hparams: LingvoInputAdaptor.HParams):
     super().__init__(hparams)
     if hparams.is_training:
