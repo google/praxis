@@ -1263,12 +1263,9 @@ class BaseLayerApi(nn.Module):
   # the unpadded variable shapes and SPMD annotations for
   # PARAMS and NON_TRAINABLE collections.
   def abstract_init_with_metadata(self,
-                                  rngs,
                                   *args,
                                   do_eval=False,
                                   **kwargs) -> NestedWeightHParams:
-    # TODO(zhangqiaorjc): Remove `rngs` args?
-    del rngs
     # Dummy key is enough because we eval_shape only.
     k = jax.random.PRNGKey(1)
     rngs = {PARAMS: k, RANDOM: k, NON_PAX_RNG_KEY: k}

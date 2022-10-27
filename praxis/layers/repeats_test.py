@@ -154,7 +154,7 @@ class RepeatsTest(test_utils.TestCase):
     x = jax.random.uniform(input_random_key, shape=(4, 2))
 
     k, init_key = jax.random.split(k)
-    weight_hparams = repeated_ffn.abstract_init_with_metadata(init_key, x)
+    weight_hparams = repeated_ffn.abstract_init_with_metadata(x)
     self.assertEqual(set(weight_hparams), {PARAMS, NON_TRAINABLE})
     self.assertEqual(weight_hparams[PARAMS]['sub']['w'].shape, [2, 2])
     self.assertEqual(weight_hparams[PARAMS]['sub']['w'].repeat_prefix, [5])
@@ -233,7 +233,7 @@ class RepeatsTest(test_utils.TestCase):
     k, input_random_key = jax.random.split(k)
     x = jax.random.uniform(input_random_key, shape=(4, 2))
     k, init_key = jax.random.split(k)
-    weight_hparams = repeated_layer.abstract_init_with_metadata(init_key, x)
+    weight_hparams = repeated_layer.abstract_init_with_metadata(x)
     print('weight_hparams = ', weight_hparams)
 
 

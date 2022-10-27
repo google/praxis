@@ -189,7 +189,7 @@ class LinearsTest(test_utils.TestCase):
     logging.info('hyper_params: \n%s',
                  base_hyperparams.nested_struct_to_text(hyper_params))
 
-    params_inits = ffn.abstract_init_with_metadata(prng_key, jnp.zeros((1, 3)))
+    params_inits = ffn.abstract_init_with_metadata(jnp.zeros((1, 3)))
     logging.info('params_inits: \n%s',
                  base_hyperparams.nested_struct_to_text(params_inits))
 

@@ -343,8 +343,7 @@ class FlaxFormerModelsTest(test_utils.TestCase):
         decoder_positions=decoder_positions,
         decoder_loss_weights=decoder_loss_weights)
 
-    init_vars = decoder_mdl.abstract_init_with_metadata(
-        jax.random.PRNGKey(0), input_batch)
+    init_vars = decoder_mdl.abstract_init_with_metadata(input_batch)
 
     dec = init_vars['params']['decoder']['dec']['cld']['decoder']
     # Tests sharding for embedding variable.
@@ -395,8 +394,7 @@ class FlaxFormerModelsTest(test_utils.TestCase):
         encoder_segment_ids=encoder_segment_ids,
         encoder_positions=encoder_positions,
         decoder_loss_weights=decoder_loss_weights)
-    init_vars = encdec_mdl.abstract_init_with_metadata(
-        jax.random.PRNGKey(0), input_batch)
+    init_vars = encdec_mdl.abstract_init_with_metadata(input_batch)
 
     encdec = init_vars['params']['encoder_decoder']['enc_dec']['cld']
     # Tests sharding for embedding variable.

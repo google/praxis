@@ -106,7 +106,7 @@ class FlaxWrapperTest(test_utils.TestCase):
 
     input_x = jnp.zeros((256, 256, 3))
     with base_layer.JaxContext.new_context():
-      init_var_meta = test_layer.abstract_init_with_metadata(prng_key, input_x)
+      init_var_meta = test_layer.abstract_init_with_metadata(input_x)
 
       def assert_learnable(x):
         assert not x.collections
@@ -163,8 +163,7 @@ class FlaxWrapperTest(test_utils.TestCase):
         mesh_axis_names=['data', 'model'],
     )
     layer = instantiate(layer_p)
-    variables = layer.abstract_init_with_metadata(
-        jax.random.PRNGKey(0), jnp.ones((2, 3)))
+    variables = layer.abstract_init_with_metadata(jnp.ones((2, 3)))
     w_sharding = variables['params']['cld']['w'].tensor_split_dims_mapping
     self.assertEqual(w_sharding, ['mdl', 'data'])
     b_sharding = variables['params']['cld']['b'].tensor_split_dims_mapping
