@@ -1472,6 +1472,9 @@ class StackedTransformer(base_layer.BaseLayer):
     num_heads: int = 0
     dim_per_head: Optional[int] = None
     dropout_prob: float = 0.0
+    atten_dropout_prob: Optional[float] = None
+    residual_dropout_prob: Optional[float] = None
+    relu_dropout_prob: Optional[float] = None
     residual_droppath_prob: float = 0.0
     input_dropout_prob: float = 0.0
     gating_func: str = 'top2'
@@ -1514,9 +1517,9 @@ class StackedTransformer(base_layer.BaseLayer):
       p_i.dim_per_head = p.dim_per_head
       p_i.input_dims = p.model_dims
       p_i.packed_input = p.packed_input
-      p_i.atten_dropout_prob = p.dropout_prob
-      p_i.residual_dropout_prob = p.dropout_prob
-      p_i.relu_dropout_prob = p.dropout_prob
+      p_i.atten_dropout_prob = p.atten_dropout_prob or p.dropout_prob
+      p_i.residual_dropout_prob = p.residual_dropout_prob or p.dropout_prob
+      p_i.relu_dropout_prob = p.relu_dropout_prob or p.dropout_prob
       p_i.hidden_dims = p.hidden_dims
 
       if p.residual_droppath_prob > 0.0:
