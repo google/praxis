@@ -41,7 +41,6 @@ from jax.experimental import pjit
 import numpy as np
 from praxis import asserts
 from praxis import base_hyperparams
-from praxis import layer_utils
 from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
@@ -1604,7 +1603,7 @@ class BaseLayerApi(nn.Module):
     Returns:
       The created sub layer, or makes the sub layer an assess of this layer.
     """
-    self._add_child_to_layer_registry(name)
+    self._check_child_layername_conflict(name)
     child = self._create_child(name, params)
     if self._state.in_setup:
       setattr(self, name, child)
@@ -1634,7 +1633,7 @@ class BaseLayerApi(nn.Module):
     def _instantiate(p: InstantiableHyperParams) -> BaseLayerT:
       return self._create_child(f'{name}_{next(uid)}', p)
 
-    self._add_child_to_layer_registry(name)
+    self._check_child_layername_conflict(name)
     children = jax.tree_map(_instantiate, params)
     if self._state.in_setup:
       setattr(self, name, children)
@@ -1664,7 +1663,7 @@ class BaseLayerApi(nn.Module):
     return child
 
   @nn.nowrap
-  def _add_child_to_layer_registry(self, name: str):
+  def _check_child_layername_conflict(self, name: str):
     """Registers child creation with LayerRegistry."""
     if name in self._hparam_fields():
       raise AttributeError(
@@ -1672,7 +1671,6 @@ class BaseLayerApi(nn.Module):
           'disallowing creating children of the same name, since those will '
           'result in a name collision after Fiddle migration (which moves '
           'HParams fields to root-level Flax module fields).')
-    layer_utils.LayerRegistry().add_layer(name, self, conflict=False)
 
   @nn.nowrap
   def _cast_to_fprop_dtype(self, value: Any) -> Any:

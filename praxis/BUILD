@@ -74,7 +74,6 @@ pytype_strict_library(
     deps = [
         ":asserts",
         ":base_hyperparams",
-        ":layer_utils",
         ":pax_fiddle",
         ":py_utils",
         ":pytypes",
@@ -346,14 +345,6 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
-    name = "layer_utils",
-    srcs = ["layer_utils.py"],
-    deps = [
-        # Implicit absl.logging dependency.
-    ],
-)
-
-pytype_strict_library(
     name = "fiddle_tags",
     srcs = ["fiddle_tags.py"],
     deps = [
@@ -578,15 +569,5 @@ py_strict_test(
         # Implicit fiddle.testing dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.
-    ],
-)
-
-py_strict_test(
-    name = "layer_utils_test",
-    srcs = ["layer_utils_test.py"],
-    deps = [
-        ":layer_utils",
-        ":test_utils",
-        # Implicit absl.testing.absltest dependency.
     ],
 )
