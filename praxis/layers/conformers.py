@@ -40,9 +40,12 @@ class DotProductAttentionWithContext(attentions.DotProductAttention):
   """Dot-product attention with given left and right context.
 
   It covers several use cases:
-    * global self attention when left_context=right_context=None
-    * local self attention when left_context!=None and right_context!=None
-    * hybrid self attention when left_context or right_context is None
+    1 global self attention when left_context=right_context=None
+    2 local self attention when left_context!=None and right_context!=None
+    3 hybrid self attention when left_context or right_context is None
+
+  For use cases (2,3) it will use emulated local self attention.
+  For use case (2) it is more efficient to use LocalSelfAttention.
   """
 
   class HParams(attentions.DotProductAttention.HParams):
@@ -97,9 +100,12 @@ class DotProductAttentionWithContextXL(attentions.DotProductAttentionXL):
   """Dot-product attention with given left and right context.
 
   It covers several use cases:
-    * global self attention when left_context=right_context=None
-    * local self attention when left_context!=None and right_context!=None
-    * hybrid self attention when left_context or right_context is None
+    1 global self attention when left_context=right_context=None
+    2 local self attention when left_context!=None and right_context!=None
+    3 hybrid self attention when left_context or right_context is None
+
+  For use cases (2,3) it will use emulated local self attention.
+  For use case (2) it is more efficient to use LocalSelfAttentionXL.
   """
 
   class HParams(attentions.DotProductAttentionXL.HParams):
@@ -216,7 +222,6 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     # Convert padding to mask for attention.
     padding_mask = attentions.convert_paddings_to_mask(paddings, inputs.dtype)
     if p.self_atten_tpl.right_context is not None or p.self_atten_tpl.left_context is not None:
-      # It is for DotProductAttentionWithContext and XL.
       rev_padding_mask = jnp.transpose(padding_mask, (0, 1, 3, 2))
       padding_mask = jnp.minimum(padding_mask, rev_padding_mask)
 
