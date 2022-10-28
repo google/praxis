@@ -2263,3 +2263,26 @@ class QuantizationHParams(base_hyperparams.BaseHyperParams):
   """
 
   mode: QuantizationMode = QuantizationMode.INFERENCE
+
+
+def get_template_fields(
+    template: Union[BaseHyperParams, pax_fiddle.Config]) -> List[str]:
+  """Returns the names of the configurable fields for `template`.
+
+  Does not include `"cls"`.
+
+  Args:
+    template: The HParams or fdl.Config whose field names should be returned.
+  """
+  if isinstance(template, pax_fiddle.Config):
+    return list(
+        fdl.ordered_arguments(
+            template, include_defaults=True, include_unset=True))
+  elif isinstance(template, BaseHyperParams):
+    return [
+        field.name
+        for field in dataclasses.fields(template)
+        if field.name != 'cls'
+    ]
+  else:
+    raise TypeError(f'Unexpected type for template: {type(template)}')
