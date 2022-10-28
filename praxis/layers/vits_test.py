@@ -46,27 +46,28 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
         num_xformer_layers=4,
         atten_dropout_prob=0.1,
         stochastic_depth_dropout_prob=0.1,
-        prepend_cls_token=False,
-        output_cls_token=False,
+        prepend_cls_tokens=0,
+        append_cls_tokens=0,
         pooled=True,
     )
 
   def _vit_entry_layers(self, exp_params):
     num_patches = np.prod(exp_params.pos_embed_shapes)
-    if exp_params.prepend_cls_token:
-      num_patches += 1
+    num_patches += exp_params.prepend_cls_tokens
+    num_patches += exp_params.append_cls_tokens
     p_entry = vits.VitEntryLayers.HParams(
         name='entry',
         pos_embed_shapes=exp_params.pos_embed_shapes,
         patch_size=exp_params.patch_size,
-        input_dims=exp_params.patch_size ** 2 * 3,
+        input_dims=exp_params.patch_size**2 * 3,
         output_dims=exp_params.hidden_dim,
         pos_emb_dropout_prob=0.1,
         pos_emb_tpl=embedding_softmax.TrainablePositionalEmbedding.HParams(
             max_seq_length=num_patches,
             embedding_dims=exp_params.hidden_dim,
             params_init=base_layer.WeightInit.Gaussian(scale=0.02)),
-        prepend_cls_token=exp_params.prepend_cls_token,
+        prepend_cls_tokens=exp_params.prepend_cls_tokens,
+        append_cls_tokens=exp_params.append_cls_tokens,
     )
     return p_entry
 
@@ -97,20 +98,17 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
         hidden_dim=exp_params.hidden_dim,
         output_dim=exp_params.hidden_dim,
         pooled=exp_params.pooled,
-        output_dropout_prob=0.1,
-        output_cls_token=exp_params.output_cls_token)
+        output_dropout_prob=0.1)
     return p_exit
 
   @parameterized.named_parameters(
-      ('square_image_square_embeddings_no_interp', (32, 32, 3), (8, 8), False),
-      ('square_image_square_embeddings_interp', (64, 64, 3), (8, 8), False),
-      ('rec_image_rec_embeddings_interp', (16, 24, 3), (2, 3), False),
-      ('sequence_input', (16, 4**2 * 3), (4, 4), False),
-      ('rec_image_rec_embeddings_interp_cls', (16, 24, 3), (2, 3), True))
-  def test_vit_entry_layers(self, input_shapes, pos_embed_shapes, cls_token):
+      ('square_image_square_embeddings_no_interp', (32, 32, 3), (8, 8)),
+      ('square_image_square_embeddings_interp', (64, 64, 3), (8, 8)),
+      ('rec_image_rec_embeddings_interp', (16, 24, 3), (2, 3)),
+      ('sequence_input', (16, 4**2 * 3), (4, 4)))
+  def test_vit_entry_layers(self, input_shapes, pos_embed_shapes):
     exp_params = self._exp_params()
     exp_params.pos_embed_shapes = pos_embed_shapes
-    exp_params.prepend_cls_token = cls_token
     p_entry = self._vit_entry_layers(exp_params)
     entry = instantiate(p_entry)
 
@@ -130,19 +128,14 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
       seq_len = row_patch_count * col_patch_count
     elif len(input_shapes) == 2:
       seq_len = input_shapes[0]
-    if cls_token:
-      seq_len += 1
     self.assertEqual(features.shape,
                      (exp_params.batch_size, seq_len, exp_params.hidden_dim))
 
-  @parameterized.named_parameters(
-      ('pooled_exit_layer', True, False),
-      ('cls_token_exit_layer', False, True),
-      ('invalid_both_pooled_and_cls_token', True, True))
-  def test_vit_exit_layers(self, pooled, output_cls_token):
+  @parameterized.named_parameters(('pooled_exit_layer', True),
+                                  ('no_pooled_exit_layer', False))
+  def test_vit_exit_layers(self, pooled):
     exp_params = self._exp_params()
     exp_params.pooled = pooled
-    exp_params.output_cls_token = output_cls_token
     p_exit = self._vit_exit_layers(exp_params)
     exit_module = instantiate(p_exit)
 
@@ -154,21 +147,18 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
       prng_key, subkey = jax.random.split(prng_key)
-      if pooled and output_cls_token:
-        with self.assertRaises(ValueError):
-          initial_vars = exit_module.init({
-              PARAMS: prng_key,
-              RANDOM: subkey
-          }, inputs)
-      else:
-        initial_vars = exit_module.init({
-            PARAMS: prng_key,
-            RANDOM: subkey
-        }, inputs)
-        features = exit_module.apply(
-            initial_vars, inputs, rngs={RANDOM: subkey})
-        self.assertEqual(features.shape,
-                         (exp_params.batch_size, exp_params.hidden_dim))
+      initial_vars = exit_module.init({
+          PARAMS: prng_key,
+          RANDOM: subkey
+      }, inputs)
+      features = exit_module.apply(initial_vars, inputs, rngs={RANDOM: subkey})
+    if pooled:
+      self.assertEqual(features.shape,
+                       (exp_params.batch_size, exp_params.hidden_dim))
+    else:
+      self.assertEqual(
+          features.shape,
+          (exp_params.batch_size, exp_params.num_tokens, exp_params.hidden_dim))
 
   def test_interpolate_embedding_2d(self):
     source_shapes = (3, 5)
@@ -198,16 +188,16 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
     self.assertAllClose(resized_emb, test_utils.to_np(resized_emb_expected))
 
   @parameterized.product(
-      pooled=[False, True], image_sizes=[(16, 16), (20, 24)],
-      prepend_cls_token=[False, True], output_cls_token=[False, True])
+      pooled=[False, True],
+      image_sizes=[(16, 16), (20, 24)],
+      prepend_cls_tokens=[0, 1, 2],
+      append_cls_tokens=[0, 1, 2])
   def test_vit(self, pooled: bool, image_sizes: Tuple[int, int],
-               prepend_cls_token: bool, output_cls_token: bool):
-    if output_cls_token and pooled:
-      return  # Invalid configuration. Exception covered in other tests.
+               prepend_cls_tokens: int, append_cls_tokens: int):
     exp_params = self._exp_params()
     exp_params.pos_embed_shapes = (3, 5)
-    exp_params.prepend_cls_token = prepend_cls_token
-    exp_params.output_cls_token = output_cls_token
+    exp_params.prepend_cls_tokens = prepend_cls_tokens
+    exp_params.append_cls_tokens = append_cls_tokens
     exp_params.pooled = pooled
 
     entry_p = self._vit_entry_layers(exp_params)
@@ -233,13 +223,13 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
 
       features = vit_model.apply(initial_vars, inputs, rngs={RANDOM: subkey})
 
-    if pooled or output_cls_token:
+    if pooled:
       self.assertEqual(features.shape,
                        (exp_params.batch_size, exp_params.hidden_dim))
     else:
       num_patches = np.prod(image_sizes) / (exp_params.patch_size**2)
-      if prepend_cls_token:
-        num_patches += 1
+      num_patches += prepend_cls_tokens
+      num_patches += append_cls_tokens
       self.assertEqual(
           features.shape,
           (exp_params.batch_size, num_patches, exp_params.hidden_dim))

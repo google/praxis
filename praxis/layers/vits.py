@@ -180,8 +180,10 @@ class VitEntryLayers(base_layer.BaseLayer):
       input_dims: Dims per patch before input patch projection.
       output_dims: Dims per patch after input patch projection.
       image_channels: Number of channels of the input image.
-      prepend_cls_token: If True, the layer will prepend a CLS token before the
-        patch features.
+      prepend_cls_tokens: If > 0, the layer will prepend N CLS token before
+        the patch features.
+      append_cls_tokens: If > 0, the layer will append N CLS token after
+        the patch features.
       pos_emb_tpl: template for positional embeddings.
     """
     pos_embed_shapes: Tuple[int, int] = (0, 0)
@@ -189,7 +191,8 @@ class VitEntryLayers(base_layer.BaseLayer):
     input_dims: int = 0
     output_dims: int = 0
     pos_emb_dropout_prob: float = 0.0
-    prepend_cls_token: bool = False
+    prepend_cls_tokens: int = 0
+    append_cls_tokens: int = 0
     # configurable components
     pos_emb_tpl: BaseHParams = sub_config_field(
         embedding_softmax.TrainablePositionalEmbedding.HParams)
@@ -212,11 +215,18 @@ class VitEntryLayers(base_layer.BaseLayer):
           name='dropout', keep_prob=1.0 - p.pos_emb_dropout_prob)
       self.create_child('dropout', p_dropout)
 
-    if p.prepend_cls_token:
-      self.create_variable('cls_token',
-                           WeightHParams(
-                               shape=[1, 1, p.output_dims],
-                               init=WeightInit.Constant(0.0)))
+    if p.prepend_cls_tokens > 0:
+      self.create_variable(
+          'prepend_cls_embs',
+          WeightHParams(
+              shape=[1, p.prepend_cls_tokens, p.output_dims],
+              init=WeightInit.Constant(0.0)))
+    if p.append_cls_tokens > 0:
+      self.create_variable(
+          'append_cls_embs',
+          WeightHParams(
+              shape=[1, p.append_cls_tokens, p.output_dims],
+              init=WeightInit.Constant(0.0)))
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the vit entry operations to the input image.
@@ -246,29 +256,39 @@ class VitEntryLayers(base_layer.BaseLayer):
     features = self.patch_projection(patches)
 
     num_pos_embed = np.prod(p.pos_embed_shapes)
-    if p.prepend_cls_token:
-      num_pos_embed += 1  # Add 1 for CLS token.
+    num_pos_embed += p.prepend_cls_tokens
+    num_pos_embed += p.append_cls_tokens
     pos_emb = self.pos_emb(seq_length=num_pos_embed)
-    if p.prepend_cls_token:
-      cls_pos_emb = pos_emb[:, :1, :]  # Positional embedding for CLS token.
-      pos_emb = pos_emb[:, 1:, :]  # Positional embeddings for patches.
+
+    prepend_cls_pos_emb = pos_emb[:, :p.prepend_cls_tokens, :]
+    input_pos_emb = pos_emb[:, p.prepend_cls_tokens:num_pos_embed -
+                            p.append_cls_tokens]
+    append_cls_pos_emb = pos_emb[:, -p.append_cls_tokens:, :]
 
     # Only support image shape for pos interpolation.
     if len(inputs.shape) == 4:
       row_patch_count = height // p.patch_size
       col_patch_count = width // p.patch_size
       if p.pos_embed_shapes != (row_patch_count, col_patch_count):
-        pos_emb = interpolate_embedding_2d(pos_emb, p.pos_embed_shapes,
-                                           (row_patch_count, col_patch_count))
+        input_pos_emb = interpolate_embedding_2d(
+            input_pos_emb, p.pos_embed_shapes,
+            (row_patch_count, col_patch_count))
 
-    features = features + pos_emb
+    features = features + input_pos_emb
     if self.hparams.pos_emb_dropout_prob > 0.0:
       features = self.dropout(features)
 
-    if p.prepend_cls_token:
-      cls_token = jnp.tile(self.theta.cls_token, (features.shape[0], 1, 1))
-      cls_token = cls_token + cls_pos_emb
-      features = jnp.concatenate((cls_token, features), axis=1)
+    batch_size = inputs.shape[0]
+    if p.prepend_cls_tokens > 0:
+      prepend_cls_embs = jnp.tile(self.theta.prepend_cls_embs,
+                                  (batch_size, 1, 1))
+      prepend_cls_embs = prepend_cls_embs + prepend_cls_pos_emb
+      features = jnp.concatenate((prepend_cls_embs, features), axis=1)
+
+    if p.append_cls_tokens > 0:
+      append_cls_embs = jnp.tile(self.theta.append_cls_embs, (batch_size, 1, 1))
+      append_cls_embs = append_cls_embs + append_cls_pos_emb
+      features = jnp.concatenate((features, append_cls_embs), axis=1)
 
     return features
 
@@ -286,10 +306,7 @@ class VitExitLayers(base_layer.BaseLayer):
       hidden_dim: Number of channels of the input tensor.
       output_dim: Number of channels of the output tensor.
       output_dropout_prob: Probability to apply dropout on the output tensor.
-      pooled: Global max pooling over all output tokens. pooled and
-        output_cls_token cannot be True at the same time.
-      output_cls_token: If True, the layer outputs the first embedding as the
-        CLS token. pooled and output_cls_token cannot be True at the same time.
+      pooled: Global max pooling over all output tokens.
       pre_ln: If true, add a layer norm at the beginning of this layer.
       output_fc_tanh: Whether to include a linear projection layer with tanh
         activation on the output.
@@ -298,16 +315,11 @@ class VitExitLayers(base_layer.BaseLayer):
     output_dim: int = 0
     output_dropout_prob: float = 0.0
     pooled: bool = True
-    output_cls_token: bool = False
     pre_ln: bool = True
     output_fc_tanh: bool = True
 
   def setup(self) -> None:
     p = self.hparams
-
-    if p.pooled and p.output_cls_token:
-      raise ValueError('ViT exit layer cannot set pooled and output_cls_token '
-                       'at the same time.')
 
     if p.pre_ln:
       p_ln = normalizations.LayerNorm.HParams(name='ln', dim=p.hidden_dim)
@@ -350,8 +362,6 @@ class VitExitLayers(base_layer.BaseLayer):
       inputs = self.ln(inputs)
     if p.pooled:
       inputs = self.pooling(inputs)
-    if p.output_cls_token:
-      inputs = inputs[:, 0, :]
     if p.output_fc_tanh:
       inputs = self.fc_tanh(inputs)
     elif p.output_dim != 0 and p.hidden_dim != p.output_dim:
