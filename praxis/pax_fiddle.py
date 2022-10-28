@@ -20,11 +20,12 @@ from __future__ import annotations
 import contextlib
 import copy
 import dataclasses
-from typing import overload, TypeVar, Callable, Any, Union, Optional, Collection, Generic, Dict
+from typing import overload, TypeVar, Callable, Any, Union, Optional, Collection, Generic
 
 import fiddle as fdl
+from fiddle import building
 from fiddle import daglish
-from fiddle import tagging
+from fiddle import history
 from fiddle.experimental import auto_config as fdl_auto_config
 from fiddle.experimental import dataclasses as fdl_dataclasses
 from fiddle.experimental.dataclasses import field as fdl_field
@@ -33,6 +34,8 @@ from flax.linen import module as flax_module
 fdl_field = fdl_dataclasses.field
 TagOrTags = Union[type(fdl.Tag), Collection[type(fdl.Tag)]]
 T = TypeVar('T')
+
+history.add_exclude_location('praxis/pax_fiddle.py')
 
 
 class CloneAndSetMixin:
@@ -225,8 +228,8 @@ def template_field(
   ...   child_tpl: fdl.Config[Child] = pax_fiddle.template_field(Child)
 
   Args:
-    template: The template type (or factory function).  If `None`, then
-      the field defaults to `None`.
+    template: The template type (or factory function).  If `None`, then the
+      field defaults to `None`.
     tags: One or more tags to attach to the `fdl.Buildable`'s argument
       corresponding to the field, when building a `fdl.Buildable`.
 
@@ -298,13 +301,8 @@ def build(buildable):
           # instantiated *nested* descendents.
           with empty_flax_module_stack():
             arguments[key] = state.call(sub_value, daglish.Attr(key))
-      try:
-        return value.__build__(**arguments)
-      except tagging.TaggedValueNotFilledError:
-        raise
-      except Exception as e:
-        path_str = '<root>' + daglish.path_str(state.current_path)
-        raise fdl.BuildError(value, path_str, e, (), arguments) from e
+      return building.call_buildable(
+          value, arguments, current_path=state.current_path)
     else:
       return state.map_children(value)
 

@@ -336,8 +336,9 @@ pytype_strict_library(
     srcs = ["pax_fiddle.py"],
     deps = [
         # Implicit fiddle dependency.
+        # Implicit fiddle.building dependency.
         # Implicit fiddle.daglish dependency.
-        # Implicit fiddle.tagging dependency.
+        # Implicit fiddle.history dependency.
         # Implicit fiddle.experimental.auto_config dependency.
         # Implicit fiddle.experimental.dataclasses dependency.
         # Implicit flax.core dependency.
