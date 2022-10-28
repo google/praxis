@@ -291,9 +291,12 @@ def sync_global_devices(name: str) -> None:
                name, global_device_count)
 
 
-def create_gda(host_arrays: np.ndarray, global_shapes: jax.ShapeDtypeStruct,
-               global_mesh: maps.Mesh,
-               pspecs: Any) -> gda_lib.GlobalDeviceArray:
+# We use Any types to allow nested data structures. They are defined in pytypes
+# which would cause a circular dependency.
+def create_gda(host_arrays: Union[np.ndarray, Any],
+               global_shapes: Union[jax.ShapeDtypeStruct,
+                                    Any], global_mesh: maps.Mesh,
+               pspecs: Any) -> Union[gda_lib.GlobalDeviceArray, Any]:
   """Create GDA from host array.
 
   Evenly partitioning x along axis 0 and device_put shards to local devices.
