@@ -27,6 +27,7 @@ from praxis.layers.activations import SiLU
 from praxis.layers.activations import SquaredReLU
 from praxis.layers.activations import Swish
 from praxis.layers.activations import Tanh
+from praxis.layers.adapters import AdaptedTransformerFeedForward
 from praxis.layers.adapters import MultitaskResidualAdapter
 from praxis.layers.attentions import AttentionProjection
 from praxis.layers.attentions import causal_mask

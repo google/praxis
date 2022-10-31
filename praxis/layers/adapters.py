@@ -81,17 +81,20 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
         raise NotImplementedError('%s is not supported' % norm_tpl.cls)
       self.create_child('norm', norm_tpl)
 
+    # down_b_pc could be zero-initialized but no performance gain is observed
+    # up_b_pc should not be zero-initialized from results
+
     down_w_pc = WeightHParams(
         shape=[p.num_tasks, p.input_dims, p.bottleneck_dims])
     self.create_variable('down_w', down_w_pc)
     down_b_pc = WeightHParams(
-        shape=[p.num_tasks, p.bottleneck_dims], init=weight_init.Constant(0.))
+        shape=[p.num_tasks, p.bottleneck_dims])
     self.create_variable('down_b', down_b_pc)
     up_w_pc = WeightHParams(
-        shape=[p.num_tasks, p.bottleneck_dims, p.input_dims])
+        shape=[p.num_tasks, p.bottleneck_dims, p.input_dims],
+        init=weight_init.Constant(0.))
     self.create_variable('up_w', up_w_pc)
-    up_b_pc = WeightHParams(
-        shape=[p.num_tasks, p.input_dims], init=weight_init.Constant(0.))
+    up_b_pc = WeightHParams(shape=[p.num_tasks, p.input_dims])
     self.create_variable('up_b', up_b_pc)
 
     self.create_child('activation', p.activation_tpl)
