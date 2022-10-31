@@ -182,11 +182,11 @@ def visit_nested_struct(obj_to_visit: Any,
       else:
         visit_fn(key, val)
     elif isinstance(val, fdl.Buildable):
-      val = copy.deepcopy(val)
-      fdl.materialize_defaults(val)
+      cls = fdl.get_callable(val)
+      args = fdl.ordered_arguments(val, include_defaults=True)
       if enter_fn(key, val):
-        _visit(f'{key}.__fn_or_cls__', fdl.get_callable(val))
-        for param_name, param_val in val.__arguments__.items():
+        _visit(f'{key}.cls', cls)
+        for param_name, param_val in args.items():
           _visit(f'{key}.{param_name}', param_val)
         exit_fn(key, val)
       else:

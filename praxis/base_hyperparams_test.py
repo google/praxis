@@ -166,10 +166,10 @@ class HyperParamsTest(absltest.TestCase):
         x.to_text(),
         textwrap.dedent("""\
         cls : type/__main__/FiddleTestClass
-        f.__fn_or_cls__ : callable/__main__/sample_fn
+        f.cls : callable/__main__/sample_fn
         f.x : 10
         f.y : 5
-        g.__fn_or_cls__ : type/__main__/SimpleTestClass
+        g.cls : type/__main__/SimpleTestClass
         g.hparams.a : 12
         g.hparams.b : 'b'
         g.hparams.cls : type/__main__/SimpleTestClass

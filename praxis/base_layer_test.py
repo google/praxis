@@ -395,9 +395,9 @@ class FiddleBaseLayerTest(test_utils.TestCase):
 
     with self.subTest('to_text'):
       expected_to_text = '\n'.join([
-          f'.__fn_or_cls__ : {Layer!r}',
           '.activation_split_dims_mapping' +
           ' : FiddleBaseLayer.ActivationShardingHParams(out=None)',
+          f'.cls : {Layer!r}',
           '.dcn_mesh_shape : (3, 4)',
           '.dtype : type/jax.numpy/float32',
           '.fprop_dtype : type/jax.numpy/float16',
