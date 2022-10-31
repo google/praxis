@@ -1865,6 +1865,9 @@ class BaseLayer(
     # Note: self.hparams is a property defined on BaseParameterizable that
     # returns self._hparams, which is why we set it like this.
     object.__setattr__(self, '_hparams', self._hparams.clone())
+    assert isinstance(self._hparams, BaseLayer.HParams)
+    if self._hparams.fprop_dtype is None:  # pytype: disable=attribute-error
+      self._hparams.fprop_dtype = self._hparams.dtype  # pytype: disable=attribute-error
     # Freeze the layer hparams. This is to prevent accidental config mutations
     # that may lead to subtle bugs.
     self._hparams.freeze()
@@ -1887,10 +1890,7 @@ class BaseLayer(
 
   @property
   def fprop_dtype(self) -> Any:
-    if self.hparams.fprop_dtype is not None:
-      return self.hparams.fprop_dtype
-    else:
-      return self.hparams.dtype
+    return self.hparams.fprop_dtype
 
 
 @dataclasses.dataclass(frozen=True)
