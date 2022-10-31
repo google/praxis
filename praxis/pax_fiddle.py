@@ -29,12 +29,14 @@ from fiddle import history
 from fiddle.experimental import auto_config as fdl_auto_config
 from fiddle.experimental import dataclasses as fdl_dataclasses
 from fiddle.experimental.dataclasses import field as fdl_field
+import fiddle.extensions.jax
 from flax.linen import module as flax_module
 
 fdl_field = fdl_dataclasses.field
 TagOrTags = Union[type(fdl.Tag), Collection[type(fdl.Tag)]]
 T = TypeVar('T')
 
+fiddle.extensions.jax.enable()
 history.add_exclude_location('praxis/pax_fiddle.py')
 
 

@@ -341,6 +341,7 @@ pytype_strict_library(
         # Implicit fiddle.history dependency.
         # Implicit fiddle.experimental.auto_config dependency.
         # Implicit fiddle.experimental.dataclasses dependency.
+        # Implicit fiddle.extensions.jax dependency.
         # Implicit flax.core dependency.
     ],
 )
