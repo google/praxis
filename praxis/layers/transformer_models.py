@@ -532,6 +532,42 @@ class TransformerLm(base_layer.BaseLayer):
       xent_output.total_loss = xent_output.avg_xent + xent_output.aux_loss
     return xent_output
 
+  def _prepare_input(self,
+                     inputs: JTensor,
+                     paddings: JTensor,
+                     segment_pos: Optional[JTensor] = None,
+                     **input_kwargs) -> JTensor:
+    del input_kwargs
+    p = self.hparams
+    _, seq_length = inputs.shape
+
+    # Get the input embeddings.
+    if self.hparams.separate_embedding_tpl is not None:
+      input_emb = self.embedding_lookup.emb_lookup(inputs)
+    else:
+      input_emb = self.softmax.emb_lookup(inputs)
+
+    # Add NGrammer to the source embeddings.
+    if p.ngrammer_tpl is not None:
+      if self.hparams.separate_embedding_tpl is not None:
+        emb_var = self.embedding_lookup.theta.emb_var
+      else:
+        emb_var = jnp.transpose(self.softmax.logits_ffn.linear.theta.w)
+      input_emb = self.ngrammer(
+          input_ids=inputs,
+          input_embs=input_emb,
+          paddings=paddings,
+          segment_pos=segment_pos,
+          emb_var=emb_var)
+
+    if p.position_emb_tpl is not None:
+      position_emb = self.position_emb(
+          seq_length=seq_length, position=segment_pos)
+      inputs = input_emb + position_emb
+    else:
+      inputs = input_emb
+    return inputs
+
   def __call__(self,
                inputs: JTensor,
                paddings: JTensor,
@@ -540,7 +576,8 @@ class TransformerLm(base_layer.BaseLayer):
                segment_pos: Optional[JTensor] = None,
                causal_attention_mask: Optional[JTensor] = None,
                segment_mask: Optional[JTensor] = None,
-               start_time_step: int = 0) -> NestedMap:
+               start_time_step: int = 0,
+               **input_kwargs) -> NestedMap:
     """Computes xent loss given the language model inputs.
 
     Args:
@@ -563,6 +600,7 @@ class TransformerLm(base_layer.BaseLayer):
         inferred from the LanguageModelType `model_type` hparam.
       start_time_step: Decode extend_step start time step. When decoding after
         prefix, start_time_step will be prefix_len.
+      **input_kwargs: additional input kwargs to be sent to the transformer.
 
     Returns:
       Returns xent_output, where
@@ -571,11 +609,6 @@ class TransformerLm(base_layer.BaseLayer):
       for tokens in a sequence.
     """
     p = self.hparams
-    # Get the input embeddings.
-    if self.hparams.separate_embedding_tpl is not None:
-      input_emb = self.embedding_lookup.emb_lookup(inputs)
-    else:
-      input_emb = self.softmax.emb_lookup(inputs)
     batch, seq_length = inputs.shape
 
     paddings_float32 = paddings.astype(jnp.float32)
@@ -593,25 +626,8 @@ class TransformerLm(base_layer.BaseLayer):
       segment_pos = jnp.tile(
           jnp.arange(seq_length, dtype=jnp.int32)[None, :], [batch, 1])
 
-    # Add NGrammer to the source embeddings.
-    if p.ngrammer_tpl is not None:
-      if self.hparams.separate_embedding_tpl is not None:
-        emb_var = self.embedding_lookup.theta.emb_var
-      else:
-        emb_var = jnp.transpose(self.softmax.logits_ffn.linear.theta.w)
-      input_emb = self.ngrammer(
-          input_ids=inputs,
-          input_embs=input_emb,
-          paddings=paddings,
-          segment_pos=segment_pos,
-          emb_var=emb_var)
-
-    if p.position_emb_tpl is not None:
-      position_emb = self.position_emb(
-          seq_length=seq_length, position=segment_pos)
-      inputs = input_emb + position_emb
-    else:
-      inputs = input_emb
+    inputs = self._prepare_input(inputs, paddings, segment_pos=segment_pos,
+                                 **input_kwargs)
 
     if segment_mask is None:
       if p.model_type == LanguageModelType.BIDIRECTIONAL:
