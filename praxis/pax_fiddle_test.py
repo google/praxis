@@ -22,13 +22,13 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import fiddle as fdl
-import jax
-from jax import numpy as jnp
 from fiddle import testing
 from flax import core as flax_core
 from flax import linen as nn
-from praxis import base_layer
+import jax
+from jax import numpy as jnp
 from praxis import base_hyperparams
+from praxis import base_layer
 from praxis import pax_fiddle
 
 
@@ -71,6 +71,9 @@ class Vehicle:
 @dataclasses.dataclass
 class ColoredVehicle(Vehicle):
   color: str = "white"
+  wheel_tpl: pax_fiddle.Config[Wheel] = pax_fiddle.template_field(
+      lambda: ColoredWheel(color="red")  # override color
+  )
 
 
 @dataclasses.dataclass
@@ -296,6 +299,12 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
       cfg.wheel_tpl.cls = ColoredWheel
       self.assertEqual(cfg.cls, ColoredVehicle)
       self.assertEqual(cfg.wheel_tpl.cls, ColoredWheel)
+
+  def test_sub_template_field_with_lambda(self):
+    cfg = pax_fiddle.Config(ColoredVehicle)
+    self.assertIsInstance(cfg.wheel_tpl, pax_fiddle.Config)
+    self.assertEqual(cfg.wheel_tpl.cls, ColoredWheel)
+    self.assertEqual(cfg.wheel_tpl.color, "red")
 
   def test_clone(self):
     cfg = pax_fiddle.Config(

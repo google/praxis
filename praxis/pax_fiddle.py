@@ -170,14 +170,60 @@ def has_do_not_build_tag(field: dataclasses.Field):  # pylint: disable=g-bare-ge
   return fdl_dataclasses.field_has_tag(field, DoNotBuild)
 
 
+def _auto_config_exemption_policy(fn_or_cls):
+  return (fn_or_cls is PaxConfig or
+          fdl_auto_config.auto_config_policy.latest(fn_or_cls))
+
+
+def auto_config(fn=None, **auto_config_kwargs) -> Any:
+  """Version of Fiddle's auto_config that generates PaxConfig objects."""
+  auto_config_kwargs['experimental_exemption_policy'] = (
+      _auto_config_exemption_policy)
+  auto_config_kwargs['experimental_allow_control_flow'] = True
+
+  def replace_configs(value, state):
+    """Replaces fdl.Config with PaxConfig."""
+    if isinstance(value, fdl.Config):
+      result = state.flattened_map_children(value)
+      return PaxConfig.__unflatten__(result.values, result.metadata)
+    else:
+      return state.map_children(value)
+
+  def make_auto_config(fn):
+
+    # If `pax_fiddle.auto_config` is applied to a class, then return the
+    # result of applying it to the constructor.  This is helpful for the
+    # automatic `auto_config` wrapping done by `sub_field` and `template_field`.
+    if isinstance(fn, type):
+      original_fn = fn
+      fn = lambda: original_fn()  # pylint: disable=unnecessary-lambda
+
+    # If `fn` is already an auto-config function, then don't double-wrap it.
+    if fdl_auto_config.is_auto_config(fn):
+      return fn
+
+    # Wrap `fn` using Fiddle auto_config.
+    auto_config_obj = fdl_auto_config.auto_config(fn, **auto_config_kwargs)
+
+    # Replace the original `as_buildable` method (which returns `fdl.Config`
+    # objects with one that returns `PaxConfig` objects.
+    old_as_buildable = auto_config_obj.as_buildable
+    def new_as_buildable(*args, **kwargs):
+      cfg = old_as_buildable(*args, **kwargs)
+      return daglish.MemoizedTraversal.run(replace_configs, cfg)
+    return dataclasses.replace(auto_config_obj, buildable_func=new_as_buildable)
+
+  return make_auto_config if fn is None else make_auto_config(fn)
+
+
 def sub_field(
-    field_type: Callable[..., Any], tags: Optional[TagOrTags] = tuple()
+    default_factory: Callable[..., Any], tags: Optional[TagOrTags] = tuple(),
 ) -> Union[dataclasses.Field, Any]:  # pylint: disable=g-bare-generic
   """Dataclass field specification for a Fiddle-configurable dataclass field.
 
   This can be used to specify that a dataclass should have a default value of
-  `field_type`; and that when Fiddle builds a `fdl.Buildable` for the dataclass,
-  it should be initialized with `fdl.Config(field_type)`.
+  `default_factory`; and that when Fiddle builds a `fdl.Buildable` for the
+  dataclass, it should be initialized with `fdl.Config(default_factory)`.
 
   Example usage:
 
@@ -185,33 +231,17 @@ def sub_field(
   ...   child: Child = pax_fiddle.sub_field(Child)
 
   Args:
-    field_type: The dataclass type used by the field.
+    default_factory: The dataclass type used by the field.
     tags: One or more tags to attach to the `fdl.Buildable`'s argument
       corresponding to the field, when building a `fdl.Buildable`.
 
   Returns:
     A `dataclasses.Field` specification for the field.
   """
-
-  # Using auto_unconfig here ensures that the factory will return a PaxConfig
-  # object in the Fiddle.as_buildable path, but an object of type `field_type`
-  # in the Python path.
-  @fdl_auto_config.auto_unconfig
-  def factory():
-    return PaxConfig(field_type)
-
+  # `factory` will return a PaxConfig object in the Fiddle.as_buildable path,
+  # but will be `default_factory()` in the Python path.
+  factory = auto_config(default_factory)
   return fdl_field(default_factory=factory, tags=tags)
-
-
-def _auto_config_exemption_policy(fn_or_cls):
-  return (fn_or_cls is PaxConfig or
-          fdl_auto_config.auto_config_policy.latest(fn_or_cls))
-
-
-def auto_config(fn=None, **kwargs):
-  """Version of Fiddle's auto_config that excludes PaxConfig."""
-  kwargs['experimental_exemption_policy'] = _auto_config_exemption_policy
-  return fdl_auto_config.auto_config(fn, **kwargs)
 
 
 def template_field(
@@ -243,12 +273,10 @@ def template_field(
   if template is None:
     return fdl_field(default=None, tags=tags)
 
-  # Using auto_config here ensures that this will return a PaxConfig object
-  # in both the Fiddle.as_buildable path and the Python path.
-  @auto_config
-  def factory():
-    return PaxConfig(template)
-
+  # `factory` will return a PaxConfig object in both the Fiddle.as_buildable
+  # path and the Python path.
+  factory = auto_config(template)
+  factory = dataclasses.replace(factory, func=factory.as_buildable)
   return fdl_field(default_factory=factory, tags=tags)
 
 
