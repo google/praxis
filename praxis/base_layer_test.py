@@ -395,8 +395,9 @@ class FiddleBaseLayerTest(test_utils.TestCase):
 
     with self.subTest('to_text'):
       expected_to_text = '\n'.join([
-          '.activation_split_dims_mapping' +
-          ' : FiddleBaseLayer.ActivationShardingHParams(out=None)',
+          '.activation_split_dims_mapping.cls : <class ' +
+          "'praxis.base_layer.FiddleBaseLayer.ActivationShardingHParams'>",
+          '.activation_split_dims_mapping.out : NoneType',
           f'.cls : {Layer!r}',
           '.dcn_mesh_shape : (3, 4)',
           '.dtype : type/jax.numpy/float32',
@@ -409,8 +410,9 @@ class FiddleBaseLayerTest(test_utils.TestCase):
           '.parent : _Sentinel',
           '.shared_weight_layer_id : NoneType',
           '.skip_lp_regularization : NoneType',
-          '.weight_split_dims_mapping' +
-          ' : FiddleBaseLayer.WeightShardingHParams(wt=None)',
+          '.weight_split_dims_mapping.cls : <class ' +
+          "'praxis.base_layer.FiddleBaseLayer.WeightShardingHParams'>",
+          '.weight_split_dims_mapping.wt : NoneType',
           '.x : 3',
       ]) + '\n'
       self.assertEqual(hparams_stub.to_text(), expected_to_text)
@@ -489,11 +491,15 @@ class FiddleBaseLayerTest(test_utils.TestCase):
     with self.subTest('construct_layer_directly'):
       layer = Layer()
       self.assertIsInstance(layer.weight_split_dims_mapping,
-                            Layer.WeightShardingHParams)
+                            pax_fiddle.Config)
+      self.assertEqual(fdl.get_callable(layer.weight_split_dims_mapping),
+                       Layer.WeightShardingHParams)
       self.assertIsNone(layer.weight_split_dims_mapping.wt)
       self.assertEqual(layer.weight_split_dims_mapping.x, 5)
       self.assertIsInstance(layer.activation_split_dims_mapping,
-                            Layer.ActivationShardingHParams)
+                            pax_fiddle.Config)
+      self.assertEqual(fdl.get_callable(layer.activation_split_dims_mapping),
+                       Layer.ActivationShardingHParams)
       self.assertIsNone(layer.activation_split_dims_mapping.out)
       self.assertEqual(layer.activation_split_dims_mapping.y, 'y')
 

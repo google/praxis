@@ -2092,10 +2092,12 @@ class FiddleBaseLayer(BaseLayerApi):
   dcn_mesh_shape: Optional[Sequence[int]] = None
   mesh_axis_names: Optional[Sequence[str]] = None
   shared_weight_layer_id: Optional[str] = None
-  weight_split_dims_mapping: Optional[WeightShardingHParams] = (
-      pax_fiddle.sub_field(WeightShardingHParams))
-  activation_split_dims_mapping: Optional[ActivationShardingHParams] = (
-      pax_fiddle.sub_field(ActivationShardingHParams))
+  # TODO(b/249483164): Change these to use sub_field rather than template_field
+  # after the Fiddle migration.
+  weight_split_dims_mapping: pax_fiddle.Config[WeightShardingHParams] = (
+      pax_fiddle.template_field(WeightShardingHParams))
+  activation_split_dims_mapping: pax_fiddle.Config[ActivationShardingHParams] = (
+      pax_fiddle.template_field(ActivationShardingHParams))
 
   @property
   def mesh_shape(self):
@@ -2167,9 +2169,11 @@ class FiddleBaseLayer(BaseLayerApi):
             'FiddleBaseLayer.WeightShardingHParams')
       if not typing.TYPE_CHECKING:
         dataclasses.dataclass(frozen=True)(cls.WeightShardingHParams)
+      # TODO(b/249483164): Change this to use sub_field rather than
+      # template_field after the Fiddle migration.
       cls.__annotations__['weight_split_dims_mapping'] = (
-          cls.WeightShardingHParams)
-      cls.weight_split_dims_mapping = pax_fiddle.sub_field(
+          pax_fiddle.Config[cls.WeightShardingHParams])
+      cls.weight_split_dims_mapping = pax_fiddle.template_field(
           cls.WeightShardingHParams)
     if 'ActivationShardingHParams' in cls.__dict__:
       if not issubclass(cls.ActivationShardingHParams,
@@ -2179,9 +2183,11 @@ class FiddleBaseLayer(BaseLayerApi):
             'FiddleBaseLayer.ActivationShardingHParams')
       if not typing.TYPE_CHECKING:
         dataclasses.dataclass(frozen=True)(cls.ActivationShardingHParams)
+      # TODO(b/249483164): Change this to use sub_field rather than
+      # template_field after the Fiddle migration.
       cls.__annotations__['activation_split_dims_mapping'] = (
-          cls.ActivationShardingHParams)
-      cls.activation_split_dims_mapping = pax_fiddle.sub_field(
+          pax_fiddle.Config[cls.ActivationShardingHParams])
+      cls.activation_split_dims_mapping = pax_fiddle.template_field(
           cls.ActivationShardingHParams)
 
 
