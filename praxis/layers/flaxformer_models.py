@@ -505,17 +505,44 @@ class LanguageModel(base_model.BaseModel):
         that each token belongs to, of shape [batch_size, seq_len].
         "decoder_positions" - the position from the beginning of a segment that
         token is at. 'decoder_loss_weights' - the weight of each target token.
+        If the input_batch comes from serving, there will be "ids" for the input
+        tokens and "labels" for the target tokens.
 
     Returns:
       A NestedMap of predictions.
     """
+    p = self.hparams
     get_elem = lambda x, k: x[k] if k in x else None
+    decoder_input_tokens = (
+        input_batch.ids
+        if 'ids' in input_batch else input_batch.decoder_input_tokens)
+    decoder_target_tokens = (
+        input_batch.labels
+        if 'labels' in input_batch else input_batch.decoder_target_tokens)
     logits = self.decoder(
-        decoder_input_tokens=input_batch.decoder_input_tokens,
-        decoder_target_tokens=input_batch.decoder_target_tokens,
+        decoder_input_tokens=decoder_input_tokens,
+        decoder_target_tokens=decoder_target_tokens,
         decoder_segment_ids=get_elem(input_batch, 'decoder_segment_ids'),
         decoder_positions=get_elem(input_batch, 'decoder_positions'))
-    return NestedMap(logits=logits)
+    class_probabilities = jax.nn.one_hot(
+        decoder_target_tokens,
+        p.flax_decoder_tpl.num_embeddings,
+        dtype=jnp.float32)
+    class_probabilities = jax.lax.stop_gradient(class_probabilities)
+    log_probs = jax.nn.log_softmax(logits)
+
+    per_example_xent = -jnp.sum(
+        log_probs * class_probabilities, axis=-1, dtype=jnp.float32)
+
+    if 'weights' in input_batch:
+      decoder_loss_weight = input_batch.weights
+    elif 'decoder_loss_weight' in input_batch:
+      decoder_loss_weight = input_batch.decoder_loss_weight
+    else:
+      decoder_loss_weight = jnp.ones_like(per_example_xent)
+    per_token_xent = per_example_xent * decoder_loss_weight
+
+    return NestedMap(logits=logits, per_token_xent=per_token_xent)
 
   def compute_loss(
       self, predictions: Predictions,
