@@ -329,21 +329,25 @@ class WeightInit(BaseHyperParams):
   scale: float
 
   @staticmethod
+  @pax_fiddle.auto_config
   def Gaussian(scale: float = 1.0):
     """scale * jax.random.normal(0, 1.0)."""
     return WeightInit('gaussian', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def Uniform(scale: float = 1.0):
     """scale * jax.random.uniform(-1.0, 1.0)."""
     return WeightInit('uniform', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def Xavier(scale: float = 1.0):
     """Xavier initialization (x = sqrt(6. / (in + out)); [-x, x])."""
     return WeightInit('xavier', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def XavierWithFixupParams(scale: float = 1.0,
                             depth: float = 1.0,
                             layers_per_residual_block: float = 1.0):
@@ -352,61 +356,73 @@ class WeightInit(BaseHyperParams):
     return WeightInit('xavier', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def Constant(scale: float = 1.0):
     """scale."""
     return WeightInit('constant', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def TruncatedGaussian(scale: float = 1.0):
     """scale * jax.random.truncated_normal(-2.0, 2.0)."""
     return WeightInit('truncated_gaussian', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def GaussianSqrtDim(scale: float = 1.0):
     """scale * jax.random.normal(0, 1 / sqrt(dim0))."""
     return WeightInit('gaussian_sqrt_dim', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def GaussianSqrtFanIn(scale: float = 1.0):
     """scale * jax.random.normal(0, 1 / sqrt(fan_in))."""
     return WeightInit('gaussian_sqrt_fanin', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def GaussianSqrtFanOut(scale: float = 1.0):
     """scale * jax.random.normal(0, 1 / sqrt(fan_out))."""
     return WeightInit('gaussian_sqrt_fanout', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def GaussianSqrtFanAvg(scale: float = 1.0):
     """jax.random.normal(0, sqrt(2.0 / (in + out)))."""
     return WeightInit('gaussian_sqrt_fanavg', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def UniformSqrtDim(scale: float = 1.0):
     """scale * jax.random.uniform(-1 / sqrt(dim0), 1 / sqrt(dim0))."""
     return WeightInit('uniform_sqrt_dim', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def UniformUnitScaling(scale: float = 1.0):
     """scale * sqrt(3) / sqrt(dim0) * jax.random.uniform(-1, 1)."""
     return WeightInit('uniform_unit_scaling', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def TruncatedGaussianSqrtDim(scale: float = 1.0):
     """scale * jax.random.truncated_normal(0, 1 / sqrt(dim0))."""
     return WeightInit('truncated_gaussian_sqrt_dim', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def TruncatedGaussianSqrtFanIn(scale: float = 1.0):
     """scale * jax.random.truncated_normal(0, 1 / sqrt(fan_in))."""
     return WeightInit('truncated_gaussian_sqrt_fanin', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def TruncatedGaussianSqrtFanOut(scale: float = 1.0):
     """scale * jax.random.truncated_normal(0, 1 / sqrt(fan_out))."""
     return WeightInit('truncated_gaussian_sqrt_fanout', scale)
 
   @staticmethod
+  @pax_fiddle.auto_config
   def ScaledDeltaOrthogonal(scale: float = 1.0):
     return WeightInit('delta_orthogonal', scale)
 
@@ -414,6 +430,7 @@ class WeightInit(BaseHyperParams):
 _DEFAULT_XAVIER_INIT = 1.000001
 
 
+@pax_fiddle.auto_config
 def default_param_init():
   # Here we use 1.000001 as a signature for user picking up the
   # default param initializer.
@@ -1120,6 +1137,8 @@ class BaseLayerApi(nn.Module):
         for name in BaseLayerApi._BASE_PARAMS_TO_INHERIT:
           if value.__arguments__.get(name, None) is None:
             setattr(value, name, getattr(source, name))
+        if is_default_param_init(target.params_init):
+          target.params_init = copy.deepcopy(source.params_init)
 
       # Recurse to child objects (skipping fields tagged "DoNotBuild").
       # We skip DoNotBuild objects, because those are child-templates, and
@@ -2067,8 +2086,7 @@ class FiddleBaseLayer(BaseLayerApi):
   # The following configuration fields correspond 1:1 with BaseLayer.HParams.
   dtype: jnp.dtype = jnp.float32
   fprop_dtype: Optional[Any] = None
-  params_init: WeightInit = dataclasses.field(
-      default_factory=default_param_init)
+  params_init: WeightInit = pax_fiddle.sub_field(default_param_init)
   skip_lp_regularization: Optional[bool] = None
   ici_mesh_shape: Optional[Sequence[int]] = None
   dcn_mesh_shape: Optional[Sequence[int]] = None
