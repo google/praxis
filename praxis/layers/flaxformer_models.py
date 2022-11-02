@@ -286,6 +286,9 @@ class EncoderDecoder(base_layer.BaseLayer):
   def decode(self, *args, **kwargs):
     return self.enc_dec.decode(*args, **kwargs)
 
+  def compute_logits(self, *args, **kwargs):
+    return self.enc_dec.compute_logits(*args, **kwargs)
+
 
 class FactoryBasedEncoderDecoder(EncoderDecoder):
   """Legacy EncoderDecoder that exposes a few common settings.

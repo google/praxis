@@ -127,6 +127,12 @@ class EncoderDecoderFlaxModuleAdaptor(FlaxModuleAdapter):
     with flax_partitioning.axis_rules(self.hparams.logical_axes_rules):
       return self.cld.decode(*args, **kwargs)
 
+  def compute_logits(self, *args, **kwargs):
+    # axis_rules context manager is used to map activation sharding logical
+    # axes to mesh axes names that pjit expects.
+    with flax_partitioning.axis_rules(self.hparams.logical_axes_rules):
+      return self.cld.compute_logits(*args, **kwargs)
+
 
 # TODO(austinwaters): verify that post_init_hparams does something reasonable
 # when hparams contain a fdl.Config.
