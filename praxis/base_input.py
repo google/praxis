@@ -539,6 +539,126 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
     self._iter = self._dataset.as_numpy_iterator()
 
 
+class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
+  """A similar adapter as LingvoEvalAdaptor, but not load all data to memory.
+
+  LingvoLazyEvalAdaptor helps multi-host evaluation to get the same set of
+  examples as the single-host evaluation gets, by returning data in a sharded
+  manner. The main difference from `LingvoEvalAdaptor` is that this class
+  (`LingvoLazyEvalAdaptor`) does NOT read the whole dataset into memory. This
+  can be helpful if the eval set is quite large.
+
+  We make the following assumptions on the underlying Lingvo input p.input:
+  * it returns the entire data in a deterministic manner;
+  * it knows the number of samples in p.input.num_samples;
+  * it has a feature named `eval_sample_weights` to represent the validity of
+      each sample, 1 for valid and 0 for invalid;
+  * it repeats after all samples are exhausted (this requirement can be easily
+      lifted in the future if necessary).
+
+  The batch_size is handled by the underlying Lingvo input: p.input.batch_size.
+
+  Example usage:
+      input_p.batch_size = 4
+      p = LingvoLazyEvalAdaptor.HParams(input_p)
+  """
+  _VALIDATE_BATCH_SIZE_NOT_NONE = False
+  _VALIDATE_BATCH_SIZE_NONE = True
+
+  def __init__(self, hparams: LingvoInputAdaptor.HParams):
+    super().__init__(hparams)
+    if hparams.is_training:
+      raise ValueError('LingvoLazyEvalAdaptor requires p.is_traing=False.')
+    if not hparams.reset_for_eval:
+      raise ValueError('LingvoLazyEvalAdaptor requires p.reset_for_eval=True.')
+    if hparams.infeed_host_index >= hparams.num_infeed_hosts:
+      raise ValueError('Must have infeed_host_index < num_infeed_hosts')
+    if (not isinstance(hparams.input.batch_size, int) or
+        hparams.input.batch_size <= 0):
+      raise ValueError('Must have positive batch_size in the underlying input: '
+                       f'get {hparams.input.batch_size} instead.')
+    self.batch_size = self.get_batch_size(hparams)
+    # Global batch size across all hosts
+    global_batch_size = hparams.num_infeed_hosts * self.batch_size
+    # Global number of samples across all hosts
+    global_num_samples = hparams.input.num_samples
+    # Number of batches each host should at least have
+    num_batches = hparams.input.num_samples // global_batch_size
+    # Number of samples each host should at least have
+    num_samples = num_batches * self.batch_size
+    # The remaining samples after distributing evenly across hosts
+    num_samples_remainder = global_num_samples - num_batches * global_batch_size
+    # One more batch to handle the remaining samples.
+    if num_samples_remainder > 0:
+      num_batches += 1
+    # Number of hosts which handle a full batch for the remaining samples.
+    num_full_batches_remainder = num_samples_remainder // self.batch_size
+    # Number of samples less than a full batch, assigned to the last host.
+    num_samples_remainder -= num_full_batches_remainder * self.batch_size
+    if hparams.infeed_host_index < num_full_batches_remainder:
+      # These hosts need to handle a full batch for the remaining samples.
+      num_samples += self.batch_size
+    elif hparams.infeed_host_index == num_full_batches_remainder:
+      # This host needs to handle a partial (possibly empty) batch for the
+      # remaining samples.
+      num_samples += num_samples_remainder
+    self._num_samples = num_samples
+    self.num_batches = num_batches
+    self.reset()
+
+  def _update_file_random_seed(self) -> None:
+    """Updates file random seed.
+
+    This overrides LingvoInputAdaptor._update_file_random_seed where each host
+    is assigned a different file random seed. It does nothing to make sure every
+    host uses the same file random seed in hparams.input.
+    """
+    pass
+
+  @property
+  def num_samples(self) -> int:
+    return self._num_samples
+
+  def get_next(self):
+    # If this host has emitted enough number of batches, it should stop. Please
+    # note that a host may not have emitted enough batches even if it has
+    # emitted all its samples. For example, there are 2 hosts with batch size 1,
+    # and there are totally only 1 sample. In this case, the first host has 1
+    # sample and the second host has 0 samples. But the second host should still
+    # emit 1 batch, with all invalid samples.
+    if self._num_batches_emitted == self.num_batches:
+      raise tf.errors.OutOfRangeError(
+          node_def=None,
+          op=None,
+          message=f'{self.num_batches} batches have been exhausted.')
+    # Number of remaining samples this host has.
+    remaining_samples = self._num_samples - self._num_examples_emitted
+    ret = super().get_next()
+    self._num_batches_emitted += 1
+    # Number of valid samples this batch has.
+    num_valid_samples = min(self.batch_size, remaining_samples)
+    if 'eval_sample_weights' not in ret:
+      raise ValueError('eval_sample_weights must be included in the data')
+    # Sets the weight of invalid samples to 0.
+    ret.eval_sample_weights[num_valid_samples:] = 0.
+    self._num_examples_emitted += num_valid_samples
+    remaining_samples -= num_valid_samples
+    # If there are still remaining samples in this host, skip n-1 batches which
+    # belong to other hosts.
+    if remaining_samples > 0:
+      for _ in range(self.hparams.num_infeed_hosts - 1):
+        super().get_next()
+    return ret
+
+  def reset(self):
+    super().reset()
+    # Skips k batches which belong to other hosts.
+    for _ in range(self.hparams.infeed_host_index):
+      super().get_next()
+    self._num_examples_emitted = 0
+    self._num_batches_emitted = 0
+
+
 class MultiInput(BaseInput):
   """Wraps children inputs and outputs a combined batch at each step.
 

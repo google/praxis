@@ -456,6 +456,69 @@ class InputTest(test_utils.TestCase):
         input=input_p, batch_size=2)
     self.assertEqual(adaptor_p.cls.get_batch_size(adaptor_p), 2)
 
+  def test_lingvo_lazy_eval_adaptor(self):
+    tmp = os.path.join(FLAGS.test_tmpdir, 'lazy_eval_adaptor')
+    num_data = 13
+    with tf.io.TFRecordWriter(tmp) as w:
+      for i in range(num_data):
+        w.write(('%04d' % i).encode('utf-8'))
+
+    input_p = LingvoInput.Params().Set(
+        file_pattern='tfrecord:' + tmp, file_random_seed=301, repeat_count=-1)
+    input_p.batch_size = 3
+    input_p.num_samples = num_data
+    input_p.file_buffer_size = 1
+    input_p.file_parallelism = 1
+    eval_p = base_input.LingvoLazyEvalAdaptor.HParams(
+        input=input_p,
+        is_training=False,
+        cluster_do_eval=True,
+        reset_for_eval=True,
+        num_infeed_hosts=3,
+        allow_fixed_file_random_seed=True)
+    input_params = [
+        eval_p.clone().set(infeed_host_index=i)
+        for i in range(eval_p.num_infeed_hosts)
+    ]
+    inputs = [instantiate(p) for p in input_params]
+    num_samples = [input.num_samples for input in inputs]
+    self.assertArraysEqual(num_samples, [6, 4, 3])
+    batches = []
+    # We have 13 examples and global batch size of 9=3x3, hence 2 batches.
+    num_batches = input_p.num_samples // (input_p.batch_size *
+                                          eval_p.num_infeed_hosts) + 1
+    for i in range(num_batches):
+      batches.extend([inp.get_next() for inp in inputs])
+    self.assertArraysEqual(batches[0].num, np.array([0, 1, 2], dtype=np.int32))
+    self.assertArraysEqual(batches[1].num, np.array([3, 4, 5], dtype=np.int32))
+    self.assertArraysEqual(batches[2].num, np.array([6, 7, 8], dtype=np.int32))
+    self.assertArraysEqual(batches[3].num, np.array([9, 10, 11],
+                                                    dtype=np.int32))
+    self.assertArraysEqual(batches[4].num, np.array([12, 0, 1], dtype=np.int32))
+    self.assertArraysEqual(batches[5].num, np.array([9, 10, 11],
+                                                    dtype=np.int32))
+    self.assertArraysEqual(batches[0].eval_sample_weights,
+                           np.array([1., 1., 1.], dtype=np.float32))
+    self.assertArraysEqual(batches[1].eval_sample_weights,
+                           np.array([1., 1., 1.], dtype=np.float32))
+    self.assertArraysEqual(batches[2].eval_sample_weights,
+                           np.array([1., 1., 1.], dtype=np.float32))
+    self.assertArraysEqual(batches[3].eval_sample_weights,
+                           np.array([1., 1., 1.], dtype=np.float32))
+    # Starts to emit paddings after the 13-th example.
+    self.assertArraysEqual(batches[4].eval_sample_weights,
+                           np.array([1., 0., 0.], dtype=np.float32))
+    self.assertArraysEqual(batches[5].eval_sample_weights,
+                           np.array([0., 0., 0.], dtype=np.float32))
+    # After 2 batches, all 3 inputs raise at the same time.
+    for i in range(eval_p.num_infeed_hosts):
+      with self.assertRaisesRegex(tf.errors.OutOfRangeError,
+                                  '2 batches have been exhausted.'):
+        inputs[i].get_next()
+    inputs[0].reset()
+    self.assertArraysEqual(inputs[0].get_next().num,
+                           np.array([0, 1, 2], dtype=np.int32))
+
   def test_multi_input(self):
     tmp_1 = os.path.join(FLAGS.test_tmpdir, 'tmptest_1')
     tmp_2 = os.path.join(FLAGS.test_tmpdir, 'tmptest_2')
