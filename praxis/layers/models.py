@@ -743,16 +743,26 @@ class SequenceModel(base_model.BaseModel):
       if (hasattr(decode_out, 'eval_sample_weights') and
           not decode_out.eval_sample_weights[idx]):
         continue
+
+      ex = jax.tree_map(lambda x: x[idx], decode_out)  # pylint: disable=cell-var-from-loop
+      key = py_utils.get_enumeration_id(ex)
+      if not key:
+        # not using seqio input's use_enumeration matching
+        key = source_strs[idx]
+
       logging.info('SRC: %s\n', source_strs[idx])
       logging.info('TGT: %s\n', target_strs[idx])
       logging.info('OUT: %s\n', decoded_str)
-      ret.append((source_strs[idx], {
+      ret.append((key, {
           'source': source_strs[idx],
           'decoded': decoded_str,
           'target': target_strs[idx],
           'ids': decode_out.output_ids[idx],
           'logprobs': decode_out.logprobs[idx],
           'decode_length': decode_out.decode_lengths[idx],
+          # TODO(b/244434890): remove workaround with more robust integration
+          'prefix': source_strs[idx],  # for seqio metrics
+          'decoded_substr': decoded_str,  # for seqio metrics
       }))
     decode_lengths = np.average(decode_out.decode_lengths).astype(np.float32)
     metrics = NestedMap(
