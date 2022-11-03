@@ -396,8 +396,6 @@ class FiddleBaseLayerTest(test_utils.TestCase):
 
     with self.subTest('to_text'):
       expected_to_text = '\n'.join([
-          '.activation_split_dims_mapping.cls : <class ' +
-          "'praxis.base_layer.FiddleBaseLayer.ActivationShardingHParams'>",
           '.activation_split_dims_mapping.out : NoneType',
           f'.cls : {Layer!r}',
           '.dcn_mesh_shape : (3, 4)',
@@ -408,11 +406,8 @@ class FiddleBaseLayerTest(test_utils.TestCase):
           ".name : 'my_layer'",
           ".params_init.method : 'xavier'",
           '.params_init.scale : 1.000001',
-          '.parent : _Sentinel',
           '.shared_weight_layer_id : NoneType',
           '.skip_lp_regularization : NoneType',
-          '.weight_split_dims_mapping.cls : <class ' +
-          "'praxis.base_layer.FiddleBaseLayer.WeightShardingHParams'>",
           '.weight_split_dims_mapping.wt : NoneType',
           '.x : 3',
       ]) + '\n'

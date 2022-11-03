@@ -182,10 +182,15 @@ def visit_nested_struct(obj_to_visit: Any,
       else:
         visit_fn(key, val)
     elif isinstance(val, fdl.Buildable):
-      cls = fdl.get_callable(val)
-      args = fdl.ordered_arguments(val, include_defaults=True)
       if enter_fn(key, val):
-        _visit(f'{key}.cls', cls)
+        cls = fdl.get_callable(val)
+        args = fdl.ordered_arguments(val, include_defaults=True)
+        # Don't display the default _Sentinel value for linen parent layers.
+        if 'parent' in args and type(args['parent']).__name__ == '_Sentinel':
+          args.pop('parent')
+        # Add cls (except for *_split_dims_mapping -- for compat w/ HParams).
+        if not key.endswith('_split_dims_mapping'):
+          _visit(f'{key}.cls', cls)
         for param_name, param_val in args.items():
           _visit(f'{key}.{param_name}', param_val)
         exit_fn(key, val)
