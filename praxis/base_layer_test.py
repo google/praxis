@@ -311,6 +311,7 @@ class BaseLayerTest(test_utils.TestCase):
           self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
           self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
           self.assertEqual(hyper_params['child']['_hparams'].x, 7)
+          self.assertIsNone(hyper_params['_hparams'].child_tpl)
 
   @parameterized.parameters([
       # Hparams compared w/ HParams

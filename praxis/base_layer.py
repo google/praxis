@@ -1171,7 +1171,7 @@ class BaseLayerApi(nn.Module):
       if (isinstance(
           p_value,
           (base_hyperparams.InstantiableHyperParams, pax_fiddle.Config)) and
-          issubclass(p_value.cls, BaseLayer)):
+          issubclass(p_value.cls, BaseLayerApi)):
         # No need to include sub-layer template params, since the instantiated
         # sub-layer will show up in its own collection anyways.
         setattr(hparams, p_name, None)
@@ -2096,8 +2096,9 @@ class FiddleBaseLayer(BaseLayerApi):
   # after the Fiddle migration.
   weight_split_dims_mapping: pax_fiddle.Config[WeightShardingHParams] = (
       pax_fiddle.template_field(WeightShardingHParams))
-  activation_split_dims_mapping: pax_fiddle.Config[ActivationShardingHParams] = (
-      pax_fiddle.template_field(ActivationShardingHParams))
+  activation_split_dims_mapping: pax_fiddle.Config[
+      ActivationShardingHParams] = (
+          pax_fiddle.template_field(ActivationShardingHParams))
 
   @property
   def mesh_shape(self):
