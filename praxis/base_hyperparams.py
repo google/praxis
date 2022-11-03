@@ -320,7 +320,7 @@ def _get_sub_config(field: dataclasses.Field) -> Optional[fdl.Buildable]:
 
 
 def _fill_sub_config_fields(
-    cfg: fdl.Config,
+    cfg: pax_fiddle.Config,
     fields: Tuple[dataclasses.Field, ...],
 ) -> None:
   """Fills sub-config fields based on their dataclass annotations.
@@ -337,7 +337,7 @@ def _fill_sub_config_fields(
 
   then BarParams.config() will return
 
-  fdl.Config(BarParams, foo_params=fdl.Config(FooParams))
+  pax_fiddle.Config(BarParams, foo_params=pax_fiddle.Config(FooParams))
 
   Args:
     cfg: Fiddle buildable.
@@ -367,8 +367,8 @@ class BaseHyperParams:
 
   @classmethod
   def config(cls: Type[BaseHyperParamsSelf],
-             **kwargs: Any) -> fdl.Config[BaseHyperParamsSelf]:
-    cfg = fdl.Config(cls, **kwargs)
+             **kwargs: Any) -> pax_fiddle.Config[BaseHyperParamsSelf]:
+    cfg = pax_fiddle.Config(cls, **kwargs)
     _fill_sub_config_fields(cfg, dataclasses.fields(cls))
     return cfg
 
@@ -437,10 +437,11 @@ class BaseHyperParams:
         not isinstance(value, pax_fiddle.Config)):
       logging.warning(
           'It is forbidden (almost always a mistake) to put Fiddle config '
-          'objects inside dataclasses. Instead, create a fdl.Config of '
-          'this Params class as well. For example, write fdl.Config(ParamsA, '
-          'a=fdl.Config(ParamsB)), not ParamsA(a=fdl.Config(ParamsB)). '
-          'However, using pax_fiddle.Config is ok for template fields.')
+          'objects inside dataclasses. Instead, create a pax_fiddle.Config of '
+          'this Params class as well. For example, write '
+          'pax_fiddle.Config(ParamsA, a=pax_fiddle.Config(ParamsB)), not '
+          'ParamsA(a=pax_fiddle.Config(ParamsB)). However, using '
+          'pax_fiddle.Config is ok for template fields.')
 
     if isinstance(value, BaseParameterizable):
       logging.warning(
@@ -726,8 +727,8 @@ class BaseParameterizable:
 
   @classmethod
   def config(cls: Type[BaseParameterizableSelf],
-             **kwargs) -> fdl.Config[BaseParameterizableSelf]:
-    cfg = fdl.Config(cls.make, **kwargs)
+             **kwargs) -> pax_fiddle.Config[BaseParameterizableSelf]:
+    cfg = pax_fiddle.Config(cls.make, **kwargs)
     _fill_sub_config_fields(cfg, dataclasses.fields(cls.HParams))
     return cfg
 

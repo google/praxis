@@ -22,6 +22,7 @@ import jax
 from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import flaxformer_models
@@ -246,7 +247,7 @@ class FlaxFormerModelsTest(test_utils.TestCase):
         t5_1_1.small_fixture(),)
     fdl.update_callable(t5x_model_config, FakeLogitsEncoder)
     t5x_model_config.loss_normalizing_factor = 'NUM_REAL_TARGET_TOKENS'
-    t5x_model = fdl.build(t5x_model_config)
+    t5x_model = pax_fiddle.build(t5x_model_config)
     t5x_loss, unused_t5x_metrics = t5x_model.loss_fn(
         params=init_vars['params']['encoder_decoder']['enc_dec']['cld'],
         batch={
@@ -262,7 +263,7 @@ class FlaxFormerModelsTest(test_utils.TestCase):
     pax_model = fiddle_configured_model()
     t5x_model_cfg = t5x_model_configs.t5x_model_fixture.as_buildable(
         t5_1_1.small_fixture(),)
-    t5x_model = fdl.build(t5x_model_cfg)
+    t5x_model = pax_fiddle.build(t5x_model_cfg)
 
     prng_key = {
         'params': jax.random.PRNGKey(seed=123),

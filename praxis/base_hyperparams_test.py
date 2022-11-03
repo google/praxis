@@ -383,7 +383,7 @@ class HyperParamsTest(absltest.TestCase):
                           base_hyperparams.SubConfigFactory)
     cfg = Bar.HParams.config()
     cfg.foo_tpl.foo_a = 1
-    bar_params = fdl.build(cfg)
+    bar_params = pax_fiddle.build(cfg)
     self.assertEqual(bar_params.foo_tpl.foo_a, 1)
 
   def test_hparams_special_attributes(self):
