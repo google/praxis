@@ -24,6 +24,7 @@ import jax
 from jax import numpy as jnp
 from lingvo.core import gshard_builder
 import numpy as np
+from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
@@ -1280,10 +1281,12 @@ class TransformerModelsTest(test_utils.TestCase):
           dcn_mesh_shape=None,
           mesh_axis_names=None)
 
-      print('lm_p_1', lm_p_1.to_text())
-      print('lm_p_2', lm_p_2.to_text())
+      lm_p_1_txt = base_hyperparams.nested_struct_to_text(lm_p_1)
+      lm_p_2_txt = base_hyperparams.nested_struct_to_text(lm_p_2)
+      print('lm_p_1', lm_p_1_txt)
+      print('lm_p_2', lm_p_2_txt)
       # Assert the sharding strategy of the two lms are the same!
-      self.assertEqual(lm_p_1.to_text(), lm_p_2.to_text())
+      self.assertEqual(lm_p_1_txt, lm_p_2_txt)
 
 
 if __name__ == '__main__':

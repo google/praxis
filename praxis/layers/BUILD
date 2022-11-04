@@ -970,6 +970,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit lingvo.core.gshard_builder dependency.
         # Implicit numpy dependency.
+        "//praxis:base_hyperparams",
         "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:test_utils",
