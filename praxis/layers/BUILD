@@ -1028,6 +1028,7 @@ pytype_strict_library(
         "//praxis:base_layer",
         "//praxis:base_model",
         "//praxis:decoder_hparams",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
         # Implicit t5x.decoding dependency.

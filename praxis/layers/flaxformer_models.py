@@ -26,6 +26,7 @@ from jax import numpy as jnp
 from praxis import base_layer
 from praxis import base_model
 from praxis import decoder_hparams
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import flax_adapter
@@ -484,7 +485,7 @@ class LanguageModel(base_model.BaseModel):
     z_loss: float = 0.0001
     logical_axes_rules: Optional[LogicalAxisRules] = None
     decoding_fn: Optional[Callable[..., Any]] = t5x_decoding.temperature_sample
-    decoder_tpl: DecoderHParams = sub_config_field(GreedyDecoderHParams)
+    decoder_tpl: DecoderHParams = pax_fiddle.sub_field(GreedyDecoderHParams)
 
   def setup(self):
     p = self.hparams
