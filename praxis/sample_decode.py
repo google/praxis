@@ -20,7 +20,7 @@ Greedy decode is a special case for sample decode.
 """
 
 import functools
-from typing import List, Optional, Union
+from typing import List, Sequence, Optional, Union
 
 from flax import linen as nn
 import jax
@@ -362,7 +362,7 @@ def sample_decode(model: base_layer.BaseLayerApi,
 
     # If cf guidance scale is a list floats with length == num_samples, we
     # convert it to the target shape to be used in decode loop_body.
-    if isinstance(cf_guidance_scale, list):
+    if isinstance(cf_guidance_scale, Sequence):
       assert len(cf_guidance_scale) == num_samples
       cf_guidance_scale = jnp.array(cf_guidance_scale)
       cf_guidance_scale = cf_guidance_scale[jnp.newaxis, :, jnp.newaxis]
