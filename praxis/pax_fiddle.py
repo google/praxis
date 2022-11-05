@@ -210,7 +210,8 @@ def auto_config(fn=None, **auto_config_kwargs) -> Any:
     old_as_buildable = auto_config_obj.as_buildable
     def new_as_buildable(*args, **kwargs):
       cfg = old_as_buildable(*args, **kwargs)
-      return daglish.MemoizedTraversal.run(replace_configs, cfg)
+      with history.suspend_tracking():
+        return daglish.MemoizedTraversal.run(replace_configs, cfg)
     return dataclasses.replace(auto_config_obj, buildable_func=new_as_buildable)
 
   return make_auto_config if fn is None else make_auto_config(fn)
