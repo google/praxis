@@ -457,7 +457,7 @@ def build_vision_transformer_hparams_for_test(
   pos_emb_tpl = embedding_softmax.TrainablePositionalEmbedding.HParams(
       max_seq_length=np.prod(pos_embed_shapes),
       embedding_dims=model_dims,
-      params_init=base_layer.WeightInit.Gaussian(scale=0.02),
+      params_init=WeightInit.Gaussian(scale=0.02),
   )
   p_entry = VitEntryLayers.HParams(
       name='entry',
