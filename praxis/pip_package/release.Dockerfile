@@ -8,7 +8,8 @@ LABEL maintainer="Pax team <pax-dev@google.com>"
 # instruction after a FROM.
 ARG cpu_base_image="ubuntu:20.04"
 ARG base_image=$cpu_base_image
-
+ARG wheel_folder
+ENV WHEEL_FOLDER $wheel_folder
 ENV PYTHON_VERSION="3"
 ENV PYTHON_MINOR_VERSION="8"
 
@@ -64,8 +65,7 @@ RUN mkdir /bazel && \
     rm -f /bazel/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
 
 COPY . /praxis
-RUN mkdir /tmp/paxml_pip_package_build/
-
+RUN mkdir $WHEEL_FOLDER
 RUN pip3 install /praxis/praxis/pip_package
 
 RUN git clone https://github.com/google/flaxformer.git

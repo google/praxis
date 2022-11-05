@@ -5,10 +5,10 @@ set -e
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
 
 PIP_FILE_PREFIX="praxis/pip_package/"
-DEST="/tmp/paxml_pip_package_build"
 ROOT_DIR="."
 export PYTHON_VERSION="${PYTHON_VERSION:-3}"
 export PYTHON_MINOR_VERSION="${PYTHON_MINOR_VERSION}"
+export DEST="${WHEEL_FOLDER:-/tmp/wheels}"
 
 if [[ -z "${PYTHON_MINOR_VERSION}" ]]; then
   PYTHON="python${PYTHON_VERSION}"
