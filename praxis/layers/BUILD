@@ -238,6 +238,7 @@ pytype_strict_library(
         "//praxis:metric_utils",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
+        "//praxis:pytypes",
         "//praxis:sample_decode",
     ],
 )

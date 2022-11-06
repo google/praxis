@@ -107,6 +107,119 @@ class LanguageModelTest(test_utils.TestCase):
     _, results, _ = results
     return results
 
+  @parameterized.named_parameters(('_with_eval_sample_weights', True),
+                                  ('_without_eval_sample_weights', False))
+  def test_fprop(self, apply_eval_sample_weights):
+    p = models.LanguageModel.HParams(
+        name='LM',
+        lm_tpl=transformer_models.TransformerLm.HParams(
+            model_dims=3, vocab_size=5),
+        apply_eval_sample_weights=apply_eval_sample_weights)
+    stacked_transformer_tpl = p.lm_tpl.stacked_transformer_tpl
+    stacked_transformer_tpl.model_dims = 3
+    stacked_transformer_tpl.hidden_dims = 4 * 3
+    stacked_transformer_tpl.dim_per_head = 3
+    stacked_transformer_tpl.num_heads = 1
+    stacked_transformer_tpl.num_layers = 1
+    # We use full paddings to force prefix lengths to be 0 (since it is capped
+    # at the lengths of input ids.
+    input_batch = NestedMap(
+        ids=jnp.array([[11, 12, 13, 14, 15]], dtype=jnp.int32),
+        paddings=jnp.array([[0, 1, 1, 1, 1]], dtype=jnp.float32),
+        weights=jnp.array([[1., 1., 1., 1., 1.]], dtype=jnp.float32),
+        labels=jnp.array([[0, 1, 2, 3, 4]], dtype=jnp.int32),
+        eval_sample_weights=jnp.array([1.], dtype=jnp.float32),
+    )
+    lang_model = instantiate(p)
+    prng_key = jax.random.PRNGKey(1234)
+    with base_layer.JaxContext.new_context():
+      initial_vars = lang_model.init(prng_key, input_batch)
+      metrics, per_example_out = lang_model.apply(
+          initial_vars, input_batch, rngs={RANDOM: prng_key})
+    self.assertIn('total_loss', metrics)
+    self.assertIn('avg_xent', metrics)
+    self.assertIn('fraction_of_correct_next_step_preds', metrics)
+    self.assertIn('num_predictions', metrics)
+    self.assertIn('labels', per_example_out)
+    self.assertIn('scores', per_example_out)
+    if apply_eval_sample_weights:
+      self.assertIn('eval_sample_weights', per_example_out)
+
+  def test_fprop_eval_sample_weights(self):
+    p = models.LanguageModel.HParams(
+        name='LM',
+        lm_tpl=transformer_models.TransformerLm.HParams(
+            model_dims=3, vocab_size=5),
+        apply_eval_sample_weights=True)
+    stacked_transformer_tpl = p.lm_tpl.stacked_transformer_tpl
+    stacked_transformer_tpl.model_dims = 3
+    stacked_transformer_tpl.hidden_dims = 4 * 3
+    stacked_transformer_tpl.dim_per_head = 3
+    stacked_transformer_tpl.num_heads = 1
+    stacked_transformer_tpl.num_layers = 1
+    lang_model = instantiate(p)
+    prng_key = jax.random.PRNGKey(1234)
+
+    batch_size = 3
+    seq_len = 5
+
+    input_batch = NestedMap(
+        ids=np.array(
+            [[1, 2, 3, 4, 5], [10, 20, 30, 40, 50], [100, 200, 300, 400, 500]],
+            dtype=np.int32),
+        paddings=np.zeros(shape=(batch_size, seq_len), dtype=np.float32),
+        weights=np.ones(shape=(batch_size, seq_len), dtype=np.float32),
+        labels=np.array([[0, 1, 2, 3, 4], [4, 3, 2, 1, 0], [1, 1, 1, 1, 1]],
+                        dtype=np.int32),
+        eval_sample_weights=np.ones(shape=(batch_size,), dtype=np.float32),
+    )
+    with base_layer.JaxContext.new_context():
+      initial_vars = lang_model.init(prng_key, input_batch)
+      metrics_all, per_example_out_all = lang_model.apply(
+          initial_vars, input_batch, rngs={RANDOM: prng_key})
+    total_loss_all, total_loss_w_all = metrics_all.total_loss
+    avg_xent_all, avg_xent_w_all = metrics_all.avg_xent
+    accuracy_all, accuracy_w_all = metrics_all.fraction_of_correct_next_step_preds
+    num_predictions_all, _ = metrics_all.num_predictions
+    scores_all = per_example_out_all.scores
+
+    input_batch_1 = input_batch.copy()
+    input_batch_1.eval_sample_weights = np.array([1., 0., 0.], dtype=np.float32)
+    with base_layer.JaxContext.new_context():
+      metrics_1, per_example_out_1 = lang_model.apply(
+          initial_vars, input_batch_1, rngs={RANDOM: prng_key})
+    total_loss_1, total_loss_w_1 = metrics_1.total_loss
+    avg_xent_1, avg_xent_w_1 = metrics_1.avg_xent
+    accuracy_1, accuracy_w_1 = metrics_1.fraction_of_correct_next_step_preds
+    num_predictions_1, _ = metrics_1.num_predictions
+    scores_1 = per_example_out_1.scores
+
+    input_batch_2 = input_batch.copy()
+    input_batch_2.eval_sample_weights = np.array([0., 1., 1.], dtype=np.float32)
+    with base_layer.JaxContext.new_context():
+      metrics_2, per_example_out_2 = lang_model.apply(
+          initial_vars, input_batch_2, rngs={RANDOM: prng_key})
+    total_loss_2, total_loss_w_2 = metrics_2.total_loss
+    avg_xent_2, avg_xent_w_2 = metrics_2.avg_xent
+    accuracy_2, accuracy_w_2 = metrics_2.fraction_of_correct_next_step_preds
+    num_predictions_2, _ = metrics_2.num_predictions
+    scores_2 = per_example_out_2.scores
+
+    # Ensure that we can recover the eval metrics for the large unpadded batch
+    # from the two smaller padded batches.
+    self.assertAllClose(total_loss_all,
+                        1 / 3 * total_loss_1 + 2 / 3 * total_loss_2)
+    self.assertAllClose(total_loss_w_all, total_loss_w_1 + total_loss_w_2)
+    self.assertAllClose(avg_xent_all, 1 / 3 * avg_xent_1 + 2 / 3 * avg_xent_2)
+    self.assertAllClose(avg_xent_w_all, avg_xent_w_1 + avg_xent_w_2)
+    self.assertAllClose(accuracy_all, 1 / 3 * accuracy_1 + 2 / 3 * accuracy_2)
+    self.assertAllClose(accuracy_w_all, accuracy_w_1 + accuracy_w_2)
+    self.assertAllClose(num_predictions_all,
+                        num_predictions_1 + num_predictions_2)
+    # The following per-example metric is purely additive, since padded examples
+    # provide 0. values.
+    self.assertAllClose(scores_all, scores_1 + scores_2)
+
   @parameterized.parameters([True, False])
   def test_base_case(self, fprop_for_prefix):
     p = models.LanguageModel.HParams().decoder_tpl

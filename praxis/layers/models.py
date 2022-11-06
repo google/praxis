@@ -33,6 +33,7 @@ from praxis import flat_beam_search
 from praxis import metric_utils
 from praxis import pax_fiddle
 from praxis import py_utils
+from praxis import pytypes
 from praxis import sample_decode
 from praxis.layers import augmentations
 from praxis.layers import embedding_softmax
@@ -41,6 +42,7 @@ from praxis.layers import resnets
 from praxis.layers import transformer_models
 
 NestedMap = py_utils.NestedMap
+JTensor = pytypes.JTensor
 Predictions = base_model.Predictions
 Metrics = base_model.Metrics
 WeightedScalars = base_model.WeightedScalars
@@ -57,9 +59,30 @@ BaseHParams = base_layer.BaseLayer.HParams
 sub_config_field = base_layer.sub_config_field
 
 
+def _merge_per_token_and_per_example_weights(
+    per_token_weights: JTensor, per_example_weights: JTensor) -> JTensor:
+  """Merges the per token and per example weights into per token weights.
+
+  Args:
+    per_token_weights: A float32 tensor of shape [B, T].
+    per_example_weights: A float32 tensor of shape [B].
+
+  Returns:
+    A merged per token weights tensor of shape [B, T].
+  """
+  seq_len = per_token_weights.shape[1]
+  # Shape [B, T].
+  per_example_weights_tiled = jnp.tile(
+      jnp.expand_dims(per_example_weights, axis=-1), (1, seq_len))
+  return per_token_weights * per_example_weights_tiled
+
+
 def compute_xent_loss_helper(
-    predictions: NestedMap, input_batch: NestedMap,
-    return_predictions: bool) -> Tuple[WeightedScalars, Dict[str, Any]]:
+    predictions: NestedMap,
+    input_batch: NestedMap,
+    return_predictions: bool,
+    apply_eval_sample_weights: bool = False,
+) -> Tuple[WeightedScalars, Dict[str, Any]]:
   """Helper for computing the xent loss for Language model and Sequence model.
 
   Args:
@@ -71,6 +94,10 @@ def compute_xent_loss_helper(
       `weights` for each token in the sequence.
     return_predictions: Whether to return predictions, which can be more
       expensive.
+    apply_eval_sample_weights: Boolean indicating whether to apply the per
+      example weights from the input `eval_sample_weights` or not. When enabled,
+      these per-example weights will be merged with the per token
+      `input_batch.weights`.
 
   Returns:
     - A dict or NestedMap containing str keys and (value, weight) pairs as
@@ -82,6 +109,13 @@ def compute_xent_loss_helper(
 
   labels = input_batch.labels
   weights = input_batch.weights
+  if apply_eval_sample_weights:
+    if not hasattr(input_batch, 'eval_sample_weights'):
+      logging.warning(
+          '`apply_eval_sample_weights` enabled, but the input batch does not '
+          'provide the necessary `eval_sample_weights` field.')
+    weights = _merge_per_token_and_per_example_weights(
+        weights, input_batch.eval_sample_weights)
   predicted_labels = predictions.per_example_argmax.astype(labels.dtype)
   num_preds = predictions.total_weight
   mean_acc = jnp.sum(
@@ -106,6 +140,8 @@ def compute_xent_loss_helper(
   # entropy, which is the (weighted) sum of log probs on the tokens.
   per_example_output = NestedMap(
       labels=labels, scores=-predictions.per_sequence_xent)
+  if apply_eval_sample_weights and hasattr(input_batch, 'eval_sample_weights'):
+    per_example_output.eval_sample_weights = input_batch.eval_sample_weights
   if return_predictions:
     per_example_output = predictions
   return metrics, per_example_output
@@ -124,6 +160,8 @@ class LanguageModel(base_model.BaseModel):
       decoder_tpl: Parameterization of the decoder.
       model_type: The type of language model based on the tokens visibility.
       count_tokens: Whether to track total tokens trained on in the checkpoint.
+      apply_eval_sample_weights: Boolean indicating whether to apply the per
+        example weights from the input `eval_sample_weights` or not.
     """
     lm_tpl: BaseHParams = sub_config_field(
         transformer_models.TransformerLm.HParams)
@@ -132,6 +170,7 @@ class LanguageModel(base_model.BaseModel):
         GreedyDecoderHParams)
     model_type: LanguageModelType = LanguageModelType.CAUSAL
     count_tokens: bool = False
+    apply_eval_sample_weights: bool = False
 
   def setup(self) -> None:
     super().setup()
@@ -150,6 +189,13 @@ class LanguageModel(base_model.BaseModel):
     p = self.hparams
     paddings = input_batch.paddings
     weights = input_batch.weights
+    if p.apply_eval_sample_weights:
+      if not hasattr(input_batch, 'eval_sample_weights'):
+        logging.warning(
+            '`apply_eval_sample_weights` enabled, but the input batch does not '
+            'provide the necessary `eval_sample_weights` field.')
+      weights = _merge_per_token_and_per_example_weights(
+          weights, input_batch.eval_sample_weights)
     inputs = input_batch.ids
     if p.count_tokens:
       self.token_counter(inputs, paddings)
@@ -200,8 +246,10 @@ class LanguageModel(base_model.BaseModel):
         training example, where the first dimension of each tensor is the batch
         index.
     """
+    p = self.hparams
     return compute_xent_loss_helper(predictions, input_batch,
-                                    self.hparams.return_predictions)
+                                    p.return_predictions,
+                                    p.apply_eval_sample_weights)
 
   def _prepare_decode_data(self, input_batch: NestedMap) -> NestedMap:
     p = self.hparams
@@ -619,6 +667,7 @@ class SequenceModel(base_model.BaseModel):
         training example, where the first dimension of each tensor is the batch
         index.
     """
+    # TODO(pax-dev): Add support for eval_sample_weights.
     return compute_xent_loss_helper(predictions, input_batch.tgt,
                                     self.hparams.return_predictions)
 
