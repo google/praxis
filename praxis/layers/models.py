@@ -567,13 +567,7 @@ class LanguageModel(base_model.BaseModel):
           decoded_ids[None, :],
           np.array([decode_length - prefix_length], dtype=np.int32))[0]
 
-      ex = jax.tree_map(lambda x: x[idx], decode_out)  # pylint: disable=cell-var-from-loop
-      key = py_utils.get_enumeration_id(ex)
-      if not key:
-        # not using seqio input's use_enumeration matching
-        key = prefix_strs[idx]
-
-      ret.append((key, {
+      ret.append((prefix_strs[idx], {
           'prefix': prefix_strs[idx],
           'decoded': decoded_str,
           'original': original_strs[idx],
@@ -793,16 +787,10 @@ class SequenceModel(base_model.BaseModel):
           not decode_out.eval_sample_weights[idx]):
         continue
 
-      ex = jax.tree_map(lambda x: x[idx], decode_out)  # pylint: disable=cell-var-from-loop
-      key = py_utils.get_enumeration_id(ex)
-      if not key:
-        # not using seqio input's use_enumeration matching
-        key = source_strs[idx]
-
       logging.info('SRC: %s\n', source_strs[idx])
       logging.info('TGT: %s\n', target_strs[idx])
       logging.info('OUT: %s\n', decoded_str)
-      ret.append((key, {
+      ret.append((source_strs[idx], {
           'source': source_strs[idx],
           'decoded': decoded_str,
           'target': target_strs[idx],
