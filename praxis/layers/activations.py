@@ -134,6 +134,22 @@ class Swish(BaseActivation):
     return jax.nn.swish(inputs)
 
 
+class Softplus(BaseActivation):
+  """Softplus activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    return jax.nn.softplus(inputs)
+
+
+class Exp(BaseActivation):
+  """Exp activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    return jnp.exp(inputs)
+
+
 class Identity(BaseActivation):
   """Identity (or lack of non-linear) activation layer."""
 

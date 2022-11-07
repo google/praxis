@@ -70,6 +70,20 @@ pytype_strict_library(
     ],
 )
 
+py_strict_test(
+    name = "activations_test",
+    srcs = ["activations_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":activations",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:test_utils",
+    ],
+)
+
 pytype_strict_library(
     name = "adapters",
     srcs = ["adapters.py"],
