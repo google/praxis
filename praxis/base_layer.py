@@ -1446,7 +1446,7 @@ class BaseLayerApi(nn.Module):
     Returns:
       Decode state with the given name.
     """
-    assert self.has_variable(DECODE_CACHE, name)
+    assert self.has_variable(DECODE_CACHE, name), name
     return self.get_variable(DECODE_CACHE, name)
 
   @nn.nowrap

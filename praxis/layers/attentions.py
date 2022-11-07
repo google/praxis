@@ -1300,7 +1300,7 @@ class DotProductAttention(base_layer.BaseLayer):
       key = jnp.repeat(key, q_b // k_b, axis=0)
       value = jnp.repeat(value, q_b // k_b, axis=0)
     if atten_mask.shape[0] != 1 and atten_mask.shape[0] != q_b:
-      assert atten_mask.shape[0] == k_b
+      assert atten_mask.shape[0] == k_b, (atten_mask.shape, k_b)
       atten_mask = jnp.repeat(atten_mask, q_b // k_b, axis=0)
     # query is 3d.
     query = self._shard_bnh(query)
@@ -2454,8 +2454,6 @@ class DotProductAttentionXL(DotProductAttention):
     return term_ac + term_bd
 
   def _atten_logits_one_step(self, query, key, step):
-    b, n, h = query.shape
-
     t = step + 1
     key = key[:, :t]
 
@@ -2524,7 +2522,6 @@ class DotProductAttentionXL(DotProductAttention):
     base_layer.assert_has_shape(atten_mask, [-1, 1, s])
     assert atten_mask.shape[0] in [1, b]
     query = self._scale_query(query)
-    #logits = jnp.einsum('BNH,BSNH->BNS', query, key)
     logits = self._atten_logits_one_step(query, key, time_step)
     if relative_bias is not None:
       base_layer.assert_has_shape(relative_bias, [-1, n, 1, s])

@@ -259,7 +259,7 @@ class FullSoftmax(base_layer.BaseLayer):
       - total_xent: A scalar. The sum of per_example_weight * per_example_xent.
       - total_weight: A scalar. The sum of per_example_weight.
       - avg_xent: A scalar. total_loss / total_weight.
-      - z_loss [optional]: A scalar. The square of logsum logits when 
+      - z_loss [optional]: A scalar. The square of logsum logits when
         z_loss_weight > 0.
     """
     p = self.hparams

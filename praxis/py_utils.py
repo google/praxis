@@ -20,7 +20,7 @@ import dataclasses
 import functools
 import re
 import time
-from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Sequence, Tuple, Union
 
 from absl import flags
 from absl import logging
@@ -484,8 +484,8 @@ def maybe_pad_uneven_sharding(xs: JTensor,
                                             mesh_axis_names)
     if all([p == 0 for p in paddings]):
       return x
-    # Annotate before pad to make sure they have the same sharding. (Pad does not
-    # have the highest sharding propgation priority.)
+    # Annotate before pad to make sure they have the same sharding.
+    # (Pad does not have the highest sharding propagation priority.)
     x = with_sharding_constraint(x, pspec)
     return jnp.pad(x, [[0, p] for p in paddings])
 
