@@ -1301,9 +1301,10 @@ class Transformer(base_layer.BaseLayer):
                   inputs: JTensor,
                   *,
                   time_step: JTensor,
-                  attention_mask: JTensor,
                   segment_pos: Optional[JTensor] = None,
+                  attention_mask: JTensor,
                   cross_attention_mask: Optional[JTensor] = None) -> JTensor:
+    # pyformat:disabled
     """Transformer decoder layer, autoregressive cached decoding.
 
     For cross attention, the key/value cache may have a smaller batch size b
@@ -1313,27 +1314,28 @@ class Transformer(base_layer.BaseLayer):
     (B // b) chunk in B correspond to multiple samples for the same cross
     # inputs.
 
-    When `inputs` has shape [B, L, D], it will do extend_step on N tokenks per
-    batch. This is used to do suffix scoring after autoregressive decoding.
-
     When `inputs` has shape [B, D], it will do extend_step on one token per
     batch in regular autoregressive decoding.
 
+    When `inputs` has shape [B, L, D], it will do extend_step on L tokens per
+    batch. This is used to do suffix scoring after autoregressive decoding.
+
     Args:
-      inputs: Target sequence of shape [B, D] or [B, L, D] corresponding to
-        target sequence at index time_step.
-      time_step: A scalar, the current decode step, 0-based.
-      attention_mask: per step attention mask for this time step, of shape [B,
-        1, T]. This combines causal mask with any segment mask if applicable.
-      segment_pos: An optional JTensor of shape [B]. Current position in the
-        same segment. If unspecified, time_step will be used.
-      cross_attention_mask: if not None, cross_segment_mask for this time step,
-        of shape [b|B, 1, 1, S]. This combines padding mask with any segment
-        mask if applicable.
+      inputs:         [B, D] or [B, L, D], target sequence at index time_step.
+      time_step:      a 0-based scalar, the current decode step.
+      segment_pos:    [B] or [B, L], the current position in the same segment.
+        If unspecified, time_step will be used.
+
+      attention_mask: [B, 1|L, T], per step attention mask for this time step.
+        This combines causal mask with any segment mask if applicable.
+      cross_attention_mask: [b|B, 1, 1 S], optional, cross_segment_mask for
+        this time step. This combines padding mask with any segment mask if
+        applicable.
 
     Returns:
-      cur_output: [B, D]
+      output: [B, D] or [B, L, D].
     """
+    # pyformat:enabled
     p = self.hparams
     # Layer normalize input
     if p.norm_policy == 'primer_hybrid':
