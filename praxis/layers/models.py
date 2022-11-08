@@ -201,9 +201,9 @@ class LanguageModel(base_model.BaseModel):
       self.token_counter(inputs, paddings)
     labels = NestedMap(class_ids=input_batch.labels, class_weights=weights)
 
-    other_input_kwargs = {}
+    extra_input_kwargs = {}
     if p.lm_tpl.packed_input:
-      other_input_kwargs = {
+      extra_input_kwargs = {
           'segment_ids': input_batch.segment_ids,
           'segment_pos': input_batch.segment_pos,
       }
@@ -216,7 +216,7 @@ class LanguageModel(base_model.BaseModel):
       causal_attention_mask = None
     return NestedMap(inputs=inputs, paddings=paddings, labels=labels,
                      causal_attention_mask=causal_attention_mask,
-                     other_input_kwargs=other_input_kwargs)
+                     extra_input_kwargs=extra_input_kwargs)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
     """Computes predictions for `input_batch`."""
@@ -226,7 +226,7 @@ class LanguageModel(base_model.BaseModel):
         paddings=predict_data.paddings,
         labels=predict_data.labels,
         causal_attention_mask=predict_data.causal_attention_mask,
-        **predict_data.other_input_kwargs)
+        **predict_data.extra_input_kwargs)
 
     return predictions
 
@@ -339,6 +339,7 @@ class LanguageModel(base_model.BaseModel):
         causal_attention_mask=causal_attention_mask,
         state_padding_size=state_padding_size,
         prefix_lengths=prefix_lengths,
+        extra_input_kwargs={},
     )
 
   def decode(self,
@@ -400,6 +401,7 @@ class LanguageModel(base_model.BaseModel):
           segment_pos=decode_data.fprop_segment_pos,
           start_time_step=decode_data.start_time_step,
           causal_attention_mask=decode_data.causal_attention_mask,
+          **decode_data.extra_input_kwargs
       )
       # Pad to full-sequence length.
       self.lm.transform_decode_state(
@@ -442,6 +444,7 @@ class LanguageModel(base_model.BaseModel):
           segment_pos=decode_data.fprop_segment_pos,
           start_time_step=decode_data.start_time_step,
           causal_attention_mask=decode_data.causal_attention_mask,
+          **decode_data.extra_input_kwargs
       )
 
       if not p.decoder_tpl.lazy_prefix_broadcast:
@@ -491,6 +494,7 @@ class LanguageModel(base_model.BaseModel):
           segment_pos=decode_data.fprop_segment_pos,
           start_time_step=decode_data.start_time_step,
           causal_attention_mask=decode_data.causal_attention_mask,
+          **decode_data.extra_input_kwargs,
       )
       # Pad to full-sequence length.
       self.lm.transform_decode_state(
