@@ -751,20 +751,22 @@ class PositionalEmbedding(base_layer.BaseLayer):
     """Generates a JTensor of sinusoids with different frequencies.
 
     Args:
-      seq_length: Sequence length of the embeddings to be generated. This may be
-        omitted if an explicit position JTensor is specified.
-      position: Optional position JTensor which denotes the position of each
-        token in the sequence. This only needs to be supplied when the sequence
-        is packed. It is of shape [batch, seq_length].
+      seq_length: an optional Python int definiing the output sequence length.
+        if the `position` argument is specified.
+      position:   [B, seq_length], optional position for each token in the
+        sequence, only required when the sequence is packed.
 
     Returns:
-      a JTensor of shape [batch, seq_length, embedding_dim] if position JTensor
-      is specified, else of shape [1, seq_length, embedding_dim].
+      [B, seqlen, D] if `position` is specified, else [1, seqlen, D]
     """
     p = self.hparams
     if position is None:
       assert seq_length is not None
+      # [1, seqlen]
       position = jnp.arange(seq_length, dtype=jnp.float32)[jnp.newaxis, :]
+    else:
+      assert position.ndim == 2, position.shape
+
     num_timescales = p.embedding_dims // 2
     log_timescale_increment = (
         math.log(float(p.max_timescale) / float(p.min_timescale)) /

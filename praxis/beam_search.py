@@ -184,8 +184,7 @@ def beam_search(model: base_layer.BaseLayerApi,
   val.end_ids = val.output_ids
   # Update loop init states with prefix.
   val.step = max_prefix_len - 1
-  val.segment_pos = jnp.reshape(prefix_lengths - 1,
-                                (batch_size * beam_size, -1))
+  val.segment_pos = jnp.reshape(prefix_lengths - 1, (batch_size * beam_size,))
   val.end_decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
 
   def cond_func(model, val):
@@ -196,8 +195,8 @@ def beam_search(model: base_layer.BaseLayerApi,
   def loop_body(model, val):
     """From ids at `step`, update output ids at `step + 1`."""
     step = val.step
-    logits = extend_step_fn(model, jnp.reshape(val.output_ids[:, :, step],
-                                               (-1)), val.segment_pos)
+    extend_ids = jnp.reshape(val.output_ids[:, :, step], (-1,))
+    logits = extend_step_fn(model, extend_ids, val.segment_pos)
     logits = jnp.reshape(logits, (batch_size, beam_size, -1))
     # TODO(b/229679837): consider add logprobs to while loop state and
     # shuffle it.

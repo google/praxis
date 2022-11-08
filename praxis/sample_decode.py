@@ -387,7 +387,7 @@ def sample_decode(model: base_layer.BaseLayerApi,
     assert max_prefix_len is not None
     # Update loop init states with prefix.
     val.step = max_prefix_len - 1
-    val.segment_pos = jnp.expand_dims(prefix_lengths, 1) - 1
+    val.segment_pos = prefix_lengths - 1
   else:
     output_ids = output_ids.at[:, 0].set(target_prefix_ids[:, 0])
     val.step = 0
@@ -487,7 +487,6 @@ def sample_decode(model: base_layer.BaseLayerApi,
     val.logprobs = val.logprobs.at[:, step + 1].set(logprobs_at_new_ids)
     val.step += 1
     return val
-
 
   if early_exit:
     result = nn.while_loop(

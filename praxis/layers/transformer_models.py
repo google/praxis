@@ -650,6 +650,88 @@ class TransformerLm(base_layer.BaseLayer):
     else:
       return self.compute_loss(output, labels)
 
+  def _emb_lookup(self, input_ids):
+    """Token emb lookup.
+
+    Args:
+      input_ids: [B, T].
+
+    Returns:
+      input_emb: [B, T, D]
+    """
+    assert input_ids.ndim == 2, input_ids.shape
+
+    p = self.hparams
+    if p.separate_embedding_tpl is not None:
+      # [B, ?, D]
+      input_emb = self.embedding_lookup.emb_lookup(input_ids)
+    else:
+      # [B, ?, D]
+      input_emb = self.softmax.emb_lookup(input_ids)
+    return input_emb
+
+  def _add_pos_emb(self, input_emb, segment_pos):
+    """Adds positional emb to input_emb.
+
+    Args:
+      input_emb:   [B, T, D].
+      segment_pos:  None or [B, T].
+
+    Returns:
+      [B, T, D]
+    """
+    assert input_emb.ndim == 3, input_emb.shape
+
+    p = self.hparams
+    if not p.position_emb_tpl:
+      return input_emb
+
+    b, t = input_emb.shape[:2]
+    time_step = self.get_decode_state('time_step')
+
+    position = segment_pos
+    if segment_pos is None:
+      # [1, T]
+      position = (jnp.arange(t) + time_step)[jnp.newaxis, :]
+      # [B, T]
+      position = jnp.tile(position, (b, 1))
+
+    # [B, T, D]
+    pos_emb = self.position_emb(position=position)
+    return input_emb + pos_emb
+
+  def _emb_ngrammer(self, input_ids, input_emb, segment_pos):
+    """Applies Ngrammer embedding.
+
+    Args:
+      input_ids:    [B, T].
+      input_emb:    [B, T, D].
+      segment_pos:  None or [B, T].
+
+    Returns:
+      if has ngrammer: ([B, 1], [B, 1, D], [B, 1])
+      else, the same as the inputs.
+    """
+    assert input_ids.ndim == 2, input_ids.shape
+    assert input_emb.ndim == 3, input_emb.shape
+    if segment_pos is not None:
+      assert segment_pos.ndim == 2, segment_pos.shape
+
+    p = self.hparams
+    if p.ngrammer_tpl is None:
+      return input_ids, input_emb, segment_pos
+
+    # [B, T, D]
+    input_emb = self.ngrammer(input_ids, input_emb, segment_pos=segment_pos)
+    # [B, 1, D]
+    input_emb = input_emb[:, -1:, :]
+    # [B, 1]
+    input_ids = input_ids[:, -1:]
+    if segment_pos is not None:
+      segment_pos = segment_pos[:, -1:]
+
+    return input_ids, input_emb, segment_pos
+
   def extend_step(
       self,
       inputs: JTensor,
@@ -658,71 +740,75 @@ class TransformerLm(base_layer.BaseLayer):
   ) -> NestedMap:
     """Autoregressive cached decoding of Transformer LM.
 
-    In most of the cases, when `inputs` has shape [B, P], it will do
-    extend_step on N tokenks per batch. This is used to do suffix scoring after
-    autoregressive decoding.
+    When `inputs`'s shape is [B], it does single-token extend_step per batch,
+    as in regular autoregressive decoding.
 
-    When `inputs` has shape [B], it will do extend_step
-    on one token per batch in regular autoregressive decoding.
+    When `inputs`'s shape is [B, L], it does time-batched extend_step on L
+    tokens per batch. This is for suffix scoring after autoregressive decoding.
 
     Args:
-      inputs: Target sequence of shape [B] or [B, P] corresponding to target
-        sequence at index time_step. Note that the shape [B, P] corresponds to a
-        prefix which is useful for decoding in some special architectures such
-        as Primer or Ngrammer, it can also be used as suffix scoring after
+      inputs:       [B] or [B, L], target sequence at time_step.
+        The latter is useful for Primer, Ngrammer, and suffix-scoring post
         autoregressive decoding.
-      segment_pos: Optional segment position of shape [B, T].
-      atten_mask: Optional attention mask of shape [B, 1, T, S].
+      segment_pos:  [B] or [B, L], optional segment pos of each input token.
+      atten_mask:   [B, 1, L, S], optional attention mask.
 
     Returns:
-      xent_output: A `.NestedMap` object containing the log probabilities and
+      xent_output: a `.NestedMap` object containing the log probabilities and
         probabilities.
     """
     p = self.hparams
+    b = inputs.shape[0]
     # Extend step should only be called with causal or prefix LM.
-    assert p.model_type != LanguageModelType.BIDIRECTIONAL
+    assert p.model_type != LanguageModelType.BIDIRECTIONAL, p.model_type
 
-    if len(inputs.shape) == 1:
-      inputs = inputs[:, jnp.newaxis]
+    # Input shape sanity checks.
+    assert inputs.ndim in (1, 2), inputs.ndim
+    if segment_pos is not None:
+      assert inputs.shape == segment_pos.shape, (inputs.shape,
+                                                 segment_pos.shape)
+    if atten_mask is not None:
+      prefix_len = inputs.shape[1] if inputs.ndim == 2 else 1
+      assert atten_mask.shape[:3] == (b, 1, prefix_len), atten_mask.shape
+
+    is_single_token = inputs.ndim == 1
+
+    # Makes ids rank=2 for uniformity.
+    # [B, T]
+    input_ids = inputs[:, jnp.newaxis] if is_single_token else inputs
+
+    # Makes segment_pos rank=2 for uniformity.
+    if segment_pos is not None:
+      # [B, T]
+      segment_pos = (
+          segment_pos[:, jnp.newaxis] if is_single_token else segment_pos)
 
     # Get the input embeddings.
-    if self.hparams.separate_embedding_tpl is not None:
-      input_emb = self.embedding_lookup.emb_lookup(inputs)
-    else:
-      input_emb = self.softmax.emb_lookup(inputs)
+    # [B, T, D]
+    input_emb = self._emb_lookup(input_ids)
 
     # Add Ngrammer layer if applicable.
-    if p.ngrammer_tpl is not None:
-      input_emb = self.ngrammer(
-          inputs, input_emb, paddings=None, segment_pos=segment_pos)
-      inputs = inputs[:, -1][:, jnp.newaxis]
-      input_emb = input_emb[:, -1, :][:, jnp.newaxis, :]
+    # [B, ?], [B, ?, D], [B, ?]
+    input_ids, input_emb, segment_pos = self._emb_ngrammer(
+        input_ids, input_emb, segment_pos)
+
+    # [B, ?, D]
+    transformer_inputs = self._add_pos_emb(input_emb, segment_pos)
+
+    if is_single_token or p.ngrammer_tpl is not None:
+      # Ngrammer always collapses output.
+      # [B, D]
+      transformer_inputs = jnp.squeeze(transformer_inputs, 1)
+      # [B]
+      if segment_pos is not None:
+        segment_pos = jnp.squeeze(segment_pos, 1)
 
     time_step = self.get_decode_state('time_step')
-    if p.position_emb_tpl is not None:
-      if segment_pos is None:
-        position = jnp.zeros((inputs.shape[0], 1)) + time_step
-      else:
-        position = segment_pos
-      position_emb = self.position_emb(seq_length=1, position=position)
-
-      inputs = input_emb + position_emb
-    else:
-      inputs = input_emb
-
-    if inputs.shape[-1] > 1 and segment_pos is not None and (
-        segment_pos.shape[-1] > 1):
-      outputs = self.transformer.extend_step(
-          inputs,
-          time_step=time_step,
-          segment_pos=segment_pos,
-          atten_mask=atten_mask)
-    else:
-      if segment_pos is not None:
-        # self.transformer expects shape [B].
-        segment_pos = jnp.squeeze(segment_pos, 1)
-      outputs = self.transformer.extend_step(
-          inputs[:, 0, :], time_step=time_step, segment_pos=segment_pos)
+    outputs = self.transformer.extend_step(
+        transformer_inputs,
+        time_step=time_step,
+        segment_pos=segment_pos,
+        atten_mask=atten_mask)
 
     self.update_decode_state('time_step', time_step + 1)
     if p.final_ln_tpl is not None:
@@ -1483,7 +1569,6 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     """
     p = self.hparams
     # Fetch encoder output from the cache.
-    encoder_output = self.get_decode_state('encoder_output')
     input_paddings = self.get_decode_state('input_paddings')
 
     # During autoregressive decoding inputs and targets are not packed.

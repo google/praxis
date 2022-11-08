@@ -58,9 +58,11 @@ class TestModel(base_model.BaseModel):
   # do something here
   def extend_step(self, ids, segment_pos):
     p = self.hparams
-    assert segment_pos.shape == (p.batch_size * p.num_samples, 1), (
-        segment_pos.shape)
-    time_step = segment_pos[0][0] + 1
+    assert segment_pos.shape == (p.batch_size *
+                                 p.num_samples,), (segment_pos.shape,
+                                                   (p.batch_size *
+                                                    p.num_samples,))
+    time_step = segment_pos[0] + 1
     logits_at_t = self.theta.logits[time_step, :, :]
     self.add_summary('logits', logits_at_t)
     self.add_summary('time_step', time_step)
