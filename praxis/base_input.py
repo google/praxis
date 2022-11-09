@@ -20,10 +20,11 @@ from __future__ import annotations
 import abc
 import copy
 import re
-from typing import Any, Callable, Dict, Iterable, Optional, Sequence
+from typing import Dict, Optional, Sequence
 
 from absl import logging
 import jax
+from jax._src.lib import xla_client as xc
 from jax.experimental import maps
 from lingvo.core import cluster_factory
 from lingvo.core import datasource
@@ -92,6 +93,10 @@ class BaseInput(base_hyperparams.BaseParameterizable):
       batch_padding_size: The amount of right-padding applied to each invocation
         of get_next_padded(). Useful when the batch_size is smaller than the
         number of devices.
+      custom_device_order: Custom order of devices in GSPMD sharding for the
+        inputs. This is needed when there are data paddings on some devices in
+        a multi-process environment. Values in the list are logical partition
+        IDs (offsets in global_mesh.devices.flat) in the global mesh.
     """
     batch_size: Optional[int] = None
     # Sharding behavior. If num_infeed_hosts is 0, it will be given a default
@@ -106,6 +111,7 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     is_training: bool = False
     experimental_remote_input: bool = False
     batch_padding_size: int = 0
+    custom_device_order: Optional[Sequence[int]] = None
 
   @classmethod
   def get_batch_size(cls, hparams: BaseInput.HParams) -> int:
@@ -163,8 +169,7 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     """
     raise NotImplementedError
 
-  @classmethod
-  def reshard_for_pmap(cls, arrays: NestedJTensor) -> NestedJTensor:
+  def reshard_for_pmap(self, arrays: NestedJTensor) -> NestedJTensor:
     """Reshards inputs for pmap.
 
     This function reshards `arrays`, inputs returned by this input class, to be
@@ -179,10 +184,10 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     Returns:
       Resharded inputs.
     """
+    assert self.hparams.custom_device_order is None
     return jax.tree_util.tree_map(py_utils.reshard, arrays)
 
-  @classmethod
-  def reshard_for_spmd(cls, arrays: NestedJTensor,
+  def reshard_for_spmd(self, arrays: NestedJTensor,
                        global_shapes: NestedShapeDtypeStruct,
                        global_mesh: maps.Mesh,
                        pspecs: NestedPartitionSpec) -> NestedJTensor:
@@ -207,7 +212,28 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     py_utils.assert_same_shape_and_dtype(
         global_shapes,
         jax.tree_util.tree_map(py_utils.get_global_input_shape_dtype, arrays))
-    return py_utils.create_gda(arrays, global_shapes, global_mesh, pspecs)
+    device_order = self.hparams.custom_device_order
+    if device_order is None:
+      return py_utils.create_gda(arrays, global_shapes, global_mesh, pspecs)
+    assert jax.config.jax_array
+    assert len(device_order) == jax.device_count()
+
+    # Use custom device order to create OpSharding in jax.Array.
+    def _create_array(x, global_shape):
+      op_sharding = xc.OpSharding()
+      op_sharding.type = xc.OpSharding.Type.OTHER
+      # Fully sharded on the batch dim.
+      op_sharding.tile_assignment_dimensions = [len(device_order)] + [1] * (
+          len(global_shape.shape) - 1)
+      # Custom device order.
+      op_sharding.tile_assignment_devices = device_order
+      dbs = py_utils.put_to_devices(x, global_mesh.local_devices)
+      sharding = jax.sharding.OpShardingSharding(
+          list(global_mesh.devices.flat), op_sharding)
+      return jax.make_array_from_single_device_arrays(global_shape.shape,
+                                                      sharding, dbs)
+
+    return jax.tree_util.tree_map(_create_array, arrays, global_shapes)
 
 
 class LingvoInputAdaptor(BaseInput):

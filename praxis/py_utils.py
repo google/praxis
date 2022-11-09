@@ -20,7 +20,7 @@ import dataclasses
 import functools
 import re
 import time
-from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
 
 from absl import flags
 from absl import logging
@@ -291,6 +291,22 @@ def sync_global_devices(name: str) -> None:
                name, global_device_count)
 
 
+def put_to_devices(host_array: np.ndarray,
+                   local_devices: Sequence[Any]) -> List[Any]:
+  """Transfers a host array to the local devices."""
+  local_device_count = len(local_devices)
+  try:
+    per_device_arrays = np.split(host_array, local_device_count, axis=0)
+  except ValueError as array_split_error:
+    raise ValueError(
+        f'Unable to put to devices shape {host_array.shape} with '
+        f'local device count {local_device_count}') from array_split_error
+  device_buffers = [
+      jax.device_put(arr, d) for arr, d in zip(per_device_arrays, local_devices)
+  ]
+  return device_buffers
+
+
 # We use Any types to allow nested data structures. They are defined in pytypes
 # which would cause a circular dependency.
 def create_gda(host_arrays: Union[np.ndarray, Any],
@@ -312,20 +328,9 @@ def create_gda(host_arrays: Union[np.ndarray, Any],
   """
 
   local_devices = global_mesh.local_devices
-  local_device_count = jax.local_device_count()
 
   def _put_to_devices(x):
-    try:
-      per_device_arrays = np.split(x, local_device_count, axis=0)
-    except ValueError as array_split_error:
-      raise ValueError(
-          f'Unable to put to devices shape {x.shape} with '
-          f'local device count {local_device_count}') from array_split_error
-    device_buffers = [
-        jax.device_put(arr, d)
-        for arr, d in zip(per_device_arrays, local_devices)
-    ]
-    return device_buffers
+    return put_to_devices(x, local_devices)
 
   device_buffers = jax.tree_map(_put_to_devices, host_arrays)
 
