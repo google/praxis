@@ -295,8 +295,8 @@ class TransformerLm(base_layer.BaseLayer):
     a_egcm = egcm
     return cls.set_custom_sharding_params(
         lm_p,
-        ici_mesh_shape=lm_p.ici_mesh_shape,
-        dcn_mesh_shape=lm_p.dcn_mesh_shape,
+        ici_mesh_shape=ici_mesh_shape,
+        dcn_mesh_shape=dcn_mesh_shape,
         mesh_axis_names=mesh_axis_names,
         w_df=w_df,
         w_dnh=w_dnh,
