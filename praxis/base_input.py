@@ -31,6 +31,7 @@ import numpy as np
 from praxis import base_hyperparams
 from praxis import py_utils
 from praxis import pytypes
+import tensorflow.compat.v1 as tf_v1
 import tensorflow.compat.v2 as tf
 
 NestedMap = py_utils.NestedMap
@@ -370,7 +371,11 @@ class LingvoInputAdaptor(BaseInput):
     """Converts int ids into strings."""
     bytes_list = self.input.IdsToStrings(ids, lengths, key=key)
     if isinstance(bytes_list, tf.Tensor):
-      bytes_list = bytes_list.numpy()
+      if tf.executing_eagerly():
+        bytes_list = bytes_list.numpy()
+      else:
+        with tf_v1.Session().as_default():
+          bytes_list = bytes_list.eval()
     return [b.decode('utf-8') for b in bytes_list]
 
 
