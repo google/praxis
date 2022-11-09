@@ -44,3 +44,7 @@ class TrainState(flax_struct.PyTreeNode):
     opt_states = jax.tree_util.tree_map(lambda x: x, opt_states)
     return TrainState(
         step=self.step + 1, mdl_vars=mdl_vars, opt_states=opt_states)
+
+  def to_eval_state(self):
+    """Returns a new TrainState with opt_states removed, for eval purpose."""
+    return TrainState(step=self.step, mdl_vars=self.mdl_vars, opt_states={})
