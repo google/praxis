@@ -211,7 +211,7 @@ def auto_config(fn=None, **auto_config_kwargs) -> Any:
     def new_as_buildable(*args, **kwargs):
       cfg = old_as_buildable(*args, **kwargs)
       suspend_tracking = getattr(history, 'suspend_tracking',
-                                 contextlib.nullcontext())
+                                 contextlib.nullcontext)
       with suspend_tracking():
         return daglish.MemoizedTraversal.run(replace_configs, cfg)
     return dataclasses.replace(auto_config_obj, buildable_func=new_as_buildable)
