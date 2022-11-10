@@ -63,13 +63,12 @@ TransformInitPartitionSpecFn = Callable[[NestedHParams],
 instantiate = base_hyperparams.instantiate
 
 _WEIGHT_DECAY_DEPRECATION_TEMPLATE = (
-    'DEPRECATION WARNING: p.{0} is deprecated. Currently, setting '
-    'p.{0} will have no effect on the optimizer. In the future, '
-    'p.{0} will be removed and setting it will throw an exception. '
-    'Please use p.l2_regularizer_weight for coupled weight decay (i.e., '
-    'weight decays that affect optimizer slots), and use '
-    'p.decoupled_weight_decay for decoupled weight decay (i.e., weight decays '
-    'that are added only to the final update).')
+    'DEPRECATION WARNING: p.{0} will be deprecated. In future, '
+    'we will do a migration to remove p.{0} and after that, setting it will '
+    'throw an exception. In future, we will use p.l2_regularizer_weight for '
+    'coupled weight decay (i.e., weight decays that affect optimizer slots), '
+    'and use p.decoupled_weight_decay for decoupled weight decay (i.e., '
+    'weight decays that are added only to the final update).')
 
 _WEIGHT_DECAY_DEPRECATION = _WEIGHT_DECAY_DEPRECATION_TEMPLATE.format(
     'weight_decay')
