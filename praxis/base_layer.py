@@ -1877,9 +1877,8 @@ class BaseLayer(
     return [field.name for field in dataclasses.fields(self.hparams)]
 
   def __post_init__(self):
-    assert self._hparams.name, (
-        f'{type(self).__name__} HParams must define the layer\'s "name"')
-    object.__setattr__(self, 'name', self._hparams.name)
+    if self._hparams.name:
+      object.__setattr__(self, 'name', self._hparams.name)
     # We make a copy of the `_hparams` passed to __init__ the very first time in
     # case `_hparams` refers to a shared params object that gets mutated by
     # something outside this class.
@@ -1907,6 +1906,8 @@ class BaseLayer(
 
   @property
   def name(self) -> str:
+    assert self.hparams.name, (
+        f'{type(self).__name__} HParams must define the layer\'s "name"')
     return self.hparams.name
 
   @property

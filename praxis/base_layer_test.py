@@ -20,7 +20,7 @@ import dataclasses
 import functools
 import sys
 import typing
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 from absl.testing import absltest
 from absl.testing import parameterized
 import fiddle as fdl
@@ -349,6 +349,36 @@ class BaseLayerTest(test_utils.TestCase):
     else:
       with self.assertRaises(ValueError):
         base_layer.compatible_hparams(lhs, rhs)
+
+  def test_flax_parent_can_assign_name(self):
+
+    class Parent(nn.Module):
+      get_layer: Callable[[], nn.Module]
+
+      def setup(self):
+        self.layer = self.get_layer()
+
+      def __call__(self, x):
+        return self.layer(x)
+
+    class CompactParent(nn.Module):
+      get_layer: Callable[[], nn.Module]
+
+      @nn.compact
+      def __call__(self, x):
+        return self.get_layer()(x)
+
+    key = jax.random.PRNGKey(0)
+    for parent_cls, assigned_name in [(Parent, 'layer'),
+                                      (CompactParent, 'AddBias_0')]:
+      mod = parent_cls(get_layer=lambda: AddBias.HParams().Instantiate())
+      prms = mod.init({'params': key}, jnp.ones((3, 3)))
+      self.assertIn(assigned_name, prms['params'])
+
+      mod = parent_cls(
+          get_layer=lambda: AddBias.HParams(name='x').Instantiate())
+      prms = mod.init({'params': key}, jnp.ones((3, 3)))
+      self.assertIn('x', prms['params'])
 
 
 class FiddleBaseLayerTest(test_utils.TestCase):
