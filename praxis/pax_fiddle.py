@@ -196,7 +196,13 @@ def auto_config(fn=None, **auto_config_kwargs) -> Any:
     # automatic `auto_config` wrapping done by `sub_field` and `template_field`.
     if isinstance(fn, type):
       original_fn = fn
-      fn = lambda: original_fn()  # pylint: disable=unnecessary-lambda
+
+      # Note: We intentionally use a named function here rather than a lambda,
+      # since auto_config can handle named functions more efficiently.
+      def call_constructor():
+        return original_fn()
+
+      fn = call_constructor
 
     # If `fn` is already an auto-config function, then don't double-wrap it.
     if fdl_auto_config.is_auto_config(fn):
@@ -208,19 +214,22 @@ def auto_config(fn=None, **auto_config_kwargs) -> Any:
     # Replace the original `as_buildable` method (which returns `fdl.Config`
     # objects with one that returns `PaxConfig` objects.
     old_as_buildable = auto_config_obj.as_buildable
+
     def new_as_buildable(*args, **kwargs):
       cfg = old_as_buildable(*args, **kwargs)
       suspend_tracking = getattr(history, 'suspend_tracking',
                                  contextlib.nullcontext)
       with suspend_tracking():
         return daglish.MemoizedTraversal.run(replace_configs, cfg)
+
     return dataclasses.replace(auto_config_obj, buildable_func=new_as_buildable)
 
   return make_auto_config if fn is None else make_auto_config(fn)
 
 
 def sub_field(
-    default_factory: Callable[..., Any], tags: Optional[TagOrTags] = tuple(),
+    default_factory: Callable[..., Any],
+    tags: Optional[TagOrTags] = tuple(),
 ) -> Union[dataclasses.Field, Any]:  # pylint: disable=g-bare-generic
   """Dataclass field specification for a Fiddle-configurable dataclass field.
 
