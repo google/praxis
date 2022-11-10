@@ -215,11 +215,15 @@ class BaseLayerTest(test_utils.TestCase):
   def test_copy_base_hparams(self):
 
     class ChildLayer(base_layer.FiddleBaseLayer):
-      pass
+      params_init: base_layer.WeightInit = pax_fiddle.sub_field(
+          lambda: base_layer.WeightInit.Uniform(0.5)  # override default
+      )
 
     class ParentLayer(base_layer.FiddleBaseLayer):
       child: Any = None
       child_tpl: pax_fiddle.Config = pax_fiddle.template_field(ChildLayer)
+      params_init: base_layer.WeightInit = pax_fiddle.sub_field(
+          base_layer.WeightInit.Gaussian)
 
     config_factories = dict(
         hparams=base_layer.BaseLayer.HParams,
@@ -242,16 +246,21 @@ class BaseLayerTest(test_utils.TestCase):
       with self.subTest(f'{source_name}_to_fiddle_subfield'):
         target_parent = pax_fiddle.Config(
             ParentLayer,
-            dtype=jnp.float32,
+            dtype=jnp.int64,
             child=pax_fiddle.Config(ChildLayer, dtype=jnp.float16),
             child_tpl=pax_fiddle.Config(ChildLayer, dtype=jnp.int32))
         base_layer.BaseLayerApi.copy_base_hparams(source, target_parent)
-        self.assertEqual(target_parent.dtype, jnp.float32)
+        self.assertEqual(target_parent.dtype, jnp.int64)
         self.assertEqual(target_parent.ici_mesh_shape, [2, 3, 4])
+        self.assertEqual(target_parent.params_init.method, 'gaussian')
+        self.assertEqual(target_parent.params_init.scale, 1.0)
         self.assertEqual(target_parent.child.dtype, jnp.float16)
         self.assertEqual(target_parent.child.ici_mesh_shape, [2, 3, 4])
+        self.assertEqual(target_parent.child.params_init.method, 'uniform')
+        self.assertEqual(target_parent.child.params_init.scale, 0.5)
         self.assertEqual(target_parent.child_tpl.dtype, jnp.int32)
         self.assertIsNone(target_parent.child_tpl.ici_mesh_shape)
+        self.assertEqual(target_parent.child_tpl.params_init.scale, 0.5)
 
   def test_post_init_hparams(self):
 
@@ -656,12 +665,49 @@ class FiddleBaseLayerTest(test_utils.TestCase):
         'a missing DoNotBuild tag on a field that contains a Fiddle Config.'):
       layer.init(jax.random.PRNGKey(0), 0)
 
+  def testOverrideParamsInit(self):
+
+    class Child(base_layer.FiddleBaseLayer):
+      params_init: base_layer.WeightInit = (
+          base_layer.WeightInit.UniformUnitScaling(scale=0.5))
+
+    class Parent(base_layer.FiddleBaseLayer):
+
+      child_tpl: Any = base_layer.sub_config_field(Child.HParams)
+
+      def setup(self):
+        self.create_child('child', self.child_tpl)
+
+      def __call__(self):
+        return None
+
+    cfg = pax_fiddle.Config(Parent)
+    layer = pax_fiddle.build(cfg)
+    layer.init(jax.random.PRNGKey(0))
+    prng_key = jax.random.PRNGKey(seed=123)
+
+    def gen_post_init_hparams(prng_key):
+      return layer.apply({},
+                         rngs={base_layer.PARAMS: prng_key},
+                         method=layer.post_init_hparams,
+                         mutable=True)[1]
+
+    variables_abstract = jax.eval_shape(gen_post_init_hparams, prng_key)
+    assert base_layer.HYPER_PARAMS in variables_abstract
+    hyper_params = jax.tree_map(
+        lambda x: x.meta,
+        variables_abstract[base_layer.HYPER_PARAMS],
+        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
+
+    self.assertEqual(0.5, hyper_params['child']['_hparams'].params_init.scale)
+    self.assertEqual('uniform_unit_scaling',
+                     hyper_params['child']['_hparams'].params_init.method)
+
   def testTypeCheckingForDtype(self):
     layer_p = SimpleFiddleBaseLayer.HParams()
     with self.assertRaisesRegexp(
         TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
       SimpleFiddleBaseLayer(layer_p)
-
 
 if __name__ == '__main__':
   absltest.main()

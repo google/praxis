@@ -23,6 +23,7 @@ from typing import Optional
 import jax
 import jax.numpy as jnp
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import linears
@@ -377,8 +378,7 @@ class VectorQuantizer(base_layer.BaseLayer):
     normalize_codebook:             bool = True
     normalize_latent_per_group:     bool = True
 
-    params_init:             WeightInit = dataclasses.field(
-        default_factory=WeightInit.UniformSqrtDim)
+    params_init: WeightInit = pax_fiddle.sub_field(WeightInit.UniformSqrtDim)
     # pyformat: enable
 
   def setup(self) -> None:

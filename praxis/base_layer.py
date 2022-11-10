@@ -437,7 +437,7 @@ def default_param_init():
   return WeightInit.Xavier(_DEFAULT_XAVIER_INIT)
 
 
-def is_default_param_init(p):
+def is_default_param_init(p: Union[WeightInit, pax_fiddle.Config[WeightInit]]):
   return p.method == 'xavier' and abs(p.scale - _DEFAULT_XAVIER_INIT) < 1e-7
 
 
@@ -1087,18 +1087,13 @@ class BaseLayerApi(nn.Module):
     if isinstance(target, BaseLayer.HParams):
       assert issubclass(target.cls, BaseLayer)
     if isinstance(target, BaseLayer.HParams):
-      BaseLayerApi._copy_base_params_to_hparams(source, target)
+      BaseLayerApi._copy_base_hparams(source, target)
     else:
       BaseLayerApi._copy_base_params_to_fdl_config(source, target)
 
-  _BASE_PARAMS_TO_INHERIT = ('dtype', 'fprop_dtype', 'skip_lp_regularization',
-                             'ici_mesh_shape', 'dcn_mesh_shape',
-                             'mesh_axis_names', 'params_init')
-
   @staticmethod
-  def _copy_base_params_to_hparams(source: Union[BaseLayer.HParams,
-                                                 pax_fiddle.Config],
-                                   target: BaseLayer.HParams):
+  def _copy_base_hparams(source: Union[BaseLayer.HParams, pax_fiddle.Config],
+                         target: Union[BaseLayer.HParams, pax_fiddle.Config]):
     if target.dtype == jnp.float32:
       target.dtype = source.dtype
     if target.fprop_dtype is None:
@@ -1129,16 +1124,20 @@ class BaseLayerApi(nn.Module):
     # to copy base hparams here -- e.g. to handle the case where a (non-fiddle)
     # BaseLayer's child is a FiddleBaseLayer.
 
+    # We copy from parent to child, then from child to grandchild, etc.  This
+    # stack keeps track of the ancestors of `value` in `visit` (defined below).
+    source_stack = [source]
+
     def visit(value, state: daglish.State) -> None:
+
       # Copy params if `value` is a FiddleBaseLayer config.
-      if (isinstance(value, pax_fiddle.Config) and
+      value_is_base_layer = (
+          isinstance(value, pax_fiddle.Config) and
           isinstance(fdl.get_callable(value), type) and
-          issubclass(fdl.get_callable(value), BaseLayerApi)):
-        for name in BaseLayerApi._BASE_PARAMS_TO_INHERIT:
-          if value.__arguments__.get(name, None) is None:
-            setattr(value, name, getattr(source, name))
-        if is_default_param_init(target.params_init):
-          target.params_init = copy.deepcopy(source.params_init)
+          issubclass(fdl.get_callable(value), BaseLayerApi))
+      if value_is_base_layer:
+        BaseLayerApi._copy_base_hparams(source_stack[-1], value)
+        source_stack.append(source)
 
       # Recurse to child objects (skipping fields tagged "DoNotBuild").
       # We skip DoNotBuild objects, because those are child-templates, and
@@ -1151,6 +1150,9 @@ class BaseLayerApi(nn.Module):
             state.call(arg_val, daglish.Attr(arg_name))
       elif state.is_traversable(value):
         state.flattened_map_children(value)
+
+      if value_is_base_layer:
+        source_stack.pop()
 
     daglish.MemoizedTraversal.run(visit, target)
 
