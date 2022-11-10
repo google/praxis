@@ -96,6 +96,20 @@ jax.tree_util.register_pytree_node(NestedMap,
                                    lambda keys, xs: NestedMap(zip(keys, xs)))
 
 
+def _nested_map_to_state_dict(xs: NestedMap) -> Dict[str, Any]:
+  return flax.serialization.to_state_dict(dict(xs))
+
+
+def _nested_map_from_state_dict(xs: NestedMap, states: Dict[str,
+                                                            Any]) -> NestedMap:
+  return NestedMap(flax.serialization.from_state_dict(dict(xs), states))
+
+
+flax.serialization.register_serialization_state(NestedMap,
+                                                _nested_map_to_state_dict,
+                                                _nested_map_from_state_dict)
+
+
 @functools.partial(functools.partial, jax.tree_map)
 def assert_same_shape_and_dtype(x, y):
   assert x.shape == y.shape and x.dtype == y.dtype, f'x={x}, y={y}'

@@ -22,6 +22,7 @@ from typing import Any
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import flax
 from flax import struct
 import jax
 from jax import numpy as jnp
@@ -266,6 +267,36 @@ class PyUtilsTest(test_utils.TestCase):
     with py_utils.timeit(min_elapsed=1.) as period:
       _ = 0
     self.assertEqual(period.elapsed, 1.)
+
+  def test_nestedmap_serialization(self):
+    # Note that NestedMap keys cannot start with a number.
+    # See lingvo/core/nested_map.py for details.
+    p1 = py_utils.NestedMap(
+        x=[1, {
+            2: '3'
+        }], y=(4, '5'), z=py_utils.NestedMap(a='6'))
+    p2 = py_utils.NestedMap(
+        x=[0, {
+            2: '0'
+        }], y=(0, '0'), z=py_utils.NestedMap(a='0'))
+    state_dict = flax.serialization.to_state_dict(p1)
+    self.assertEqual(state_dict, {
+        'x': {
+            '0': 1,
+            '1': {
+                '2': '3'
+            }
+        },
+        'y': {
+            '0': 4,
+            '1': '5'
+        },
+        'z': {
+            'a': '6'
+        }
+    })
+    restored_p1 = flax.serialization.from_state_dict(p2, state_dict)
+    self.assertEqual(restored_p1, p1)
 
 
 if __name__ == '__main__':
