@@ -2083,6 +2083,7 @@ class FiddleBaseLayer(BaseLayerApi):
     """
     out: SplitDimsMapping = None
 
+
   # The following configuration fields correspond 1:1 with BaseLayer.HParams.
   dtype: jnp.dtype = jnp.float32
   fprop_dtype: Optional[Any] = None
@@ -2111,6 +2112,15 @@ class FiddleBaseLayer(BaseLayerApi):
       return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
 
   def __post_init__(self):
+    if isinstance(self.dtype, (BaseHyperParams, fdl.Config)):
+      type_name = f'{type(self).__module__}.{type(self).__qualname__}'
+      raise TypeError(
+          f'Expected first argument to {type_name} to be a dtype, '
+          f'but got a {type(self.dtype)} instead.  This can happen if '
+          f'you try to instantiate {type_name} using '
+          f'`{type_name}(layer_p)`, which is no longer supported for '
+          'Fiddle-configured layers.  Please use `layer_p.Instantiate()` '
+          'instead.')
     # Note: we need to set fprop_dtype before we call super().__post_init__(),
     # because super().__post_init__() can mark `self` as frozen in some
     # contexts.

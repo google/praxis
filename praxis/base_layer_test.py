@@ -656,6 +656,12 @@ class FiddleBaseLayerTest(test_utils.TestCase):
         'a missing DoNotBuild tag on a field that contains a Fiddle Config.'):
       layer.init(jax.random.PRNGKey(0), 0)
 
+  def testTypeCheckingForDtype(self):
+    layer_p = SimpleFiddleBaseLayer.HParams()
+    with self.assertRaisesRegexp(
+        TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
+      SimpleFiddleBaseLayer(layer_p)
+
 
 if __name__ == '__main__':
   absltest.main()
