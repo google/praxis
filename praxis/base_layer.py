@@ -25,7 +25,7 @@ import functools
 import itertools
 import math
 import typing
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 from absl import flags
 from absl import logging
@@ -1168,7 +1168,7 @@ class BaseLayerApi(nn.Module):
       *args: used for scan's rigid signature requirements.
     """
     hparams = self.hparams.clone()
-    for p_name in self._hparam_fields():
+    for p_name in self._hparam_fields:
       p_value = getattr(hparams, p_name)
       if (isinstance(
           p_value,
@@ -1192,7 +1192,8 @@ class BaseLayerApi(nn.Module):
       jax.tree_map(force, val)
     return None
 
-  def _hparam_fields(self) -> List[str]:
+  @property
+  def _hparam_fields(self) -> Set[str]:
     """Returns a list of hyperparameter field names for `self`."""
     raise ValueError(f'Abstract method {type(self)}._hparam_fields')
 
@@ -1683,7 +1684,7 @@ class BaseLayerApi(nn.Module):
   @nn.nowrap
   def _check_child_layername_conflict(self, name: str):
     """Registers child creation with LayerRegistry."""
-    if name in self._hparam_fields():
+    if name in self._hparam_fields:
       raise AttributeError(
           f'{self.__class__}.HParams has a field named {name!r}. We are '
           'disallowing creating children of the same name, since those will '
@@ -1873,8 +1874,9 @@ class BaseLayer(
     cls.HParams.__module__ = cls.__module__
     cls.HParams.__qualname__ = f'{cls.__name__}.HParams'
 
-  def _hparam_fields(self) -> List[str]:
-    return [field.name for field in dataclasses.fields(self.hparams)]
+  @functools.cached_property
+  def _hparam_fields(self) -> Set[str]:
+    return set(field.name for field in dataclasses.fields(self.hparams))
 
   def __post_init__(self):
     if self._hparams.name:
@@ -2010,7 +2012,7 @@ class _FiddleHParamsInstanceStub:
       # `copy.copy` bypasses the constructor, so it's possible to have a
       # _FiddleHParamsInstanceStub that doesn't have a _base_layer yet.
       raise AttributeError(f'{self} has no attribute {name!r}')
-    if name not in self._base_layer._hparam_fields() or name == 'parent':
+    if name not in self._base_layer._hparam_fields or name == 'parent':
       raise AttributeError(
           f'{type(self._base_layer)}.HParams has no attribute {name!r}')
     value = getattr(self._base_layer, name)
@@ -2135,15 +2137,16 @@ class FiddleBaseLayer(BaseLayerApi):
   # * `self.hparams` returns a Fiddle Config that can be used to build self.
   # * `self.HParams` returns a stub class that can be called to generate a
   #   `fdl.Config`; or can be used with `base_hyperparams.sub_config_field`.
-  hparams = property(_FiddleHParamsInstanceStub)
+  hparams = functools.cached_property(_FiddleHParamsInstanceStub)
   HParams = _FiddleHParamsClassStubDescriptor()  # pylint: disable=invalid-name
 
   @classmethod
   def config(cls, **kwargs) -> pax_fiddle.Config:
     return pax_fiddle.Config(cls, **kwargs)
 
-  def _hparam_fields(self) -> List[str]:
-    return [field.name for field in dataclasses.fields(self) if field.init]
+  @functools.cached_property
+  def _hparam_fields(self) -> Set[str]:
+    return set(field.name for field in dataclasses.fields(self) if field.init)
 
   @classmethod
   def __init_subclass__(cls, **kwargs: Any):
