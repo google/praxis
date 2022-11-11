@@ -18,7 +18,7 @@ fi
 
 function main() {
   cp ${PIP_FILE_PREFIX}setup.py "${ROOT_DIR}"
-  cp ${PIP_FILE_PREFIX}requirements.txt "${ROOT_DIR}"
+  cp ${PIP_FILE_PREFIX}requirements.in "${ROOT_DIR}"
   ${PYTHON} setup.py bdist_wheel
 
   if [ ! -d "${DEST}" ]; then
