@@ -76,23 +76,25 @@ class Dropout(base_layer.BaseLayer):
       inputs with dropout applied at training time.
     """
     p = self.hparams
-    if not self.do_eval or p.dropout_at_eval:
-      if isinstance(p.keep_prob, numbers.Real) and p.keep_prob == 1.0:
-        return inputs
-      if p.noise_shape_broadcast_dims:
-        noise_shape = p.noise_shape or list(inputs.shape)
-        if isinstance(noise_shape, tuple):
-          noise_shape = list(noise_shape)
-        for dim in p.noise_shape_broadcast_dims:
-          if dim >= len(noise_shape):
-            raise ValueError('Invalid broadcasted dim {}'.format(dim))
-          noise_shape[dim] = 1
-      else:
-        noise_shape = p.noise_shape
-      ret = self._dropout(inputs, noise_shape)
-      return ret
-    else:
+    if isinstance(p.keep_prob, numbers.Real) and p.keep_prob == 1.0:
       return inputs
+
+    if self.do_eval and not p.dropout_at_eval:
+      return inputs
+
+    if not p.noise_shape_broadcast_dims:
+      noise_shape = p.noise_shape
+    else:
+      noise_shape = p.noise_shape or list(inputs.shape)
+      if isinstance(noise_shape, tuple):
+        noise_shape = list(noise_shape)
+      for dim in p.noise_shape_broadcast_dims:
+        if dim >= len(noise_shape):
+          raise ValueError('Invalid broadcasted dim {}'.format(dim))
+        noise_shape[dim] = 1
+
+    ret = self._dropout(inputs, noise_shape)
+    return ret
 
 
 class StochasticResidual(base_layer.BaseLayer):
