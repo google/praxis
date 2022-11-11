@@ -19,6 +19,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
+from jax.experimental import pjit
 import numpy as np
 from praxis import base_layer
 from praxis import py_utils
@@ -268,6 +269,26 @@ class RepeatsQuantizeTest(test_utils.TestCase):
         }
     }
     self.assertEqual(shapes, expected_shapes)
+
+    pspecs, _ = ffn.apply(
+        init_vars, mutable=[], method=ffn.quantized_partitioned_specs)
+    expected_pspecs = {
+        'non_trainable': {
+            'sub': {
+                'step':
+                    base_layer.BoxedPartitionSpec(
+                        meta=pjit.PartitionSpec(None,))
+            }
+        },
+        'params': {
+            'sub': {
+                'w':
+                    base_layer.BoxedPartitionSpec(
+                        meta=pjit.PartitionSpec(None, None, None))
+            }
+        }
+    }
+    self.assertEqual(pspecs, expected_pspecs)
 
 if __name__ == '__main__':
   absltest.main()

@@ -192,6 +192,9 @@ class BaseLayerTest(test_utils.TestCase):
     init_vars = layer.init(jax.random.PRNGKey(0), x)
     res, _ = layer.apply(init_vars, mutable=[], method=layer.quantize_weight)
     self.assertEqual(res, {})
+    pspec, _ = layer.apply(
+        init_vars, mutable=[], method=layer.quantized_partitioned_specs)
+    self.assertEqual(pspec, {})
 
   @parameterized.parameters((0, 2), (3, 0), (1, 4))
   def test_layer_building_nn_compact(self, num_child: int, num_children: int):

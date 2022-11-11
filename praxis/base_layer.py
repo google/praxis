@@ -1055,6 +1055,28 @@ def _maybe_to_bfloat16_dtype(x):
     return jax.ShapeDtypeStruct(x.shape, x.dtype)
 
 
+# BoxedPartitionSpec holds the PartitionSpec in 'meta'.
+@struct.dataclass
+class BoxedPartitionSpec:
+  meta: Any = struct.field(pytree_node=False)
+
+
+def _weight_hparam_to_pspec(hparam, mesh_axis_names) -> BoxedPartitionSpec:
+  """Converts split_dims_mapping weight hparam to BoxedPartitionSpec.
+
+  Args:
+    hparam: the weight hparam to be converted.
+    mesh_axis_names: A tuple/list of strings of the name of the device mesh.
+
+  Returns:
+    A BoxedPartitionSpec.
+  """
+  mapping = hparam.tensor_split_dims_mapping
+  if mapping is None:
+    mapping = [None] * len(hparam.shape)
+  return BoxedPartitionSpec(meta=to_partition_spec(mapping, mesh_axis_names))
+
+
 class BaseLayerApi(nn.Module):
   """Common subclass for `BaseLayer` and `FiddleBaseLayer`.
 
@@ -1706,6 +1728,22 @@ class BaseLayerApi(nn.Module):
     return jax.tree_util.tree_map(_cast, value)
 
   def quantize_weight(self) -> NestedJTensor:
+    """Quantize the current layer and it's children layer(s).
+
+    Returns:
+      a nested map from names to quantized weights.
+    """
+    return self._quantize_fn(return_pspec=False)
+
+  def quantized_partitioned_specs(self) -> Any:
+    """Get quantization spec for the current layer and it's children layer(s).
+
+    Returns:
+      a nested map from names to partition spec.
+    """
+    return self._quantize_fn(return_pspec=True)
+
+  def _quantize_fn(self, return_pspec: bool) -> Union[NestedJTensor, Any]:
     """quantize_weight() quantize the current layer and it's children layer(s).
 
     Quantization applies to only PARAMS and NON_TRAINABLE collection.
@@ -1716,15 +1754,24 @@ class BaseLayerApi(nn.Module):
        potentially different quantization strategies. They should take care of
        quantization of their children's layers, too.
 
+    Args:
+      return_pspec: a boolean to control if returning ParititionSpecs for
+      quantized tensors.
+          If True, returns the partition specs.
+          If False, returns quantized tensors.
+
     Returns:
-      a nested map between names to quantized layer.
+      a nested map from names to quantized layer or partition spec.
     """
     res = {}
     # collections to quantize.
     targets = [PARAMS, NON_TRAINABLE]
     for name, child in self._private_children.items():
       # example child_res {'params': {a:{}, b:{}}, 'non-trainable':{a:{}}}
-      child_res = child.quantize_weight()
+      if return_pspec:
+        child_res = child.quantized_partitioned_specs()
+      else:
+        child_res = child.quantize_weight()
       for child_target in child_res:
         if child_target not in res:
           res[child_target] = {}
@@ -1737,6 +1784,9 @@ class BaseLayerApi(nn.Module):
           continue
         if target not in res:
           res[target] = {}
+        if return_pspec:
+          var_val = _weight_hparam_to_pspec(self._weight_hparams[var_name],
+                                            self.hparams.mesh_axis_names)
         res[target][var_name] = var_val
     return res
 

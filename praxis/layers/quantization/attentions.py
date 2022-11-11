@@ -16,7 +16,7 @@
 """Quantized Attention Layers."""
 
 import string
-from typing import Tuple
+from typing import Tuple, Any
 
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
@@ -160,7 +160,35 @@ class AttentionProjection(attentions.AttentionProjection):
       ret += theta.b
     return ret
 
+  def quantized_partitioned_specs(self) -> Any:
+    """Get quantized PartitionSpec.
+
+    Returns:
+      a map from names to partition spec.
+    """
+    p = self.hparams
+    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    weight_pspec = base_layer._weight_hparam_to_pspec(
+        self._weight_hparams['w'], self.hparams.mesh_axis_names)
+    wp = p.weight_split_dims_mapping
+    if p.is_output_projection:
+      scale_split_dims_mapping = [wp.wt[0]]
+    else:
+      scale_split_dims_mapping = [wp.wt[1], wp.wt[2]]
+    # scale_weight_hparam is unmaterialized so shape is irrelevant.
+    scale_weight_hparam = WeightHParams(
+        shape=(), tensor_split_dims_mapping=scale_split_dims_mapping)
+    scale_pspec = base_layer._weight_hparam_to_pspec(
+        scale_weight_hparam, self.hparams.mesh_axis_names)
+    partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
+    return {base_layer.PARAMS: partitionspec}
+
   def quantize_weight(self) -> NestedJTensor:
+    """Get quantized weight.
+
+    Returns:
+      a map from names to quantized weights.
+    """
     p = self.hparams
     assert p.quantization.mode == base_layer.QuantizationMode.QUANTIZE
     eqn = ''
@@ -302,7 +330,35 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     value_proj = checkpoint_name(value_proj, 'value_proj')
     return query_proj, key_proj, value_proj
 
+  def quantized_partitioned_specs(self) -> Any:
+    """Get quantized PartitionSpec.
+
+    Returns:
+      a map from names to partition spec.
+    """
+    p = self.hparams
+    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    weight_pspec = base_layer._weight_hparam_to_pspec(
+        self._weight_hparams['w'], self.hparams.mesh_axis_names)
+    wp = p.weight_split_dims_mapping
+    if p.attention_combine_dims:
+      scale_split_dims_mapping = [None, wp.wt[1]]
+    else:
+      scale_split_dims_mapping = [None, wp.wt[1], wp.wt[2]]
+    # scale_weight_hparam is unmaterialized so shape is irrelevant.
+    scale_weight_hparam = WeightHParams(
+        shape=(), tensor_split_dims_mapping=scale_split_dims_mapping)
+    scale_pspec = base_layer._weight_hparam_to_pspec(
+        scale_weight_hparam, self.hparams.mesh_axis_names)
+    partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
+    return {base_layer.PARAMS: partitionspec}
+
   def quantize_weight(self) -> NestedJTensor:
+    """Get quantized weight.
+
+    Returns:
+      a map from names to quantized weights.
+    """
     theta = self.theta
     p = self.hparams
     assert p.quantization.mode == base_layer.QuantizationMode.QUANTIZE

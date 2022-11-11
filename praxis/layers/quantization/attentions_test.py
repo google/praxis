@@ -19,6 +19,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
+from jax.experimental import pjit
 import numpy as np
 from praxis import base_layer
 from praxis import py_utils
@@ -230,6 +231,9 @@ class QuantizeAttentionTest(test_utils.TestCase):
   def test_quantize_attention_projection(self):
     p = qattentions.AttentionProjection.HParams(
         name='_attn_proj_q',
+        mesh_axis_names=['replica', 'mdl', 'data'],
+        weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
+            wt=['mdl', 'data']),
         quantization=base_layer.QuantizationHParams(
             mode=base_layer.QuantizationMode.QUANTIZE))
     p.input_dim = 16
@@ -249,12 +253,29 @@ class QuantizeAttentionTest(test_utils.TestCase):
     self.assertEqual(res[base_layer.PARAMS]['w'].shape, (2, 5, 16))
     self.assertEqual(res[base_layer.PARAMS]['w_quantized_scale'].shape, (16,))
 
+    pspec, _ = layer.apply(
+        initial_vars, mutable=[], method=layer.quantized_partitioned_specs)
+    exepected_pspec = {
+        'params': {
+            'w':
+                base_layer.BoxedPartitionSpec(
+                    meta=pjit.PartitionSpec('mdl', 'data')),
+            'w_quantized_scale':
+                base_layer.BoxedPartitionSpec(meta=pjit.PartitionSpec('mdl'))
+        }
+    }
+    self.assertEqual(pspec, exepected_pspec)
+
   def test_quantize_attention_qkv(self):
     p = qattentions.CombinedQKVProjectionLayer.HParams(
         name='_combined_qkv',
         input_dim=5,
         num_heads=6,
         dim_per_head=2,
+        ici_mesh_shape=[0, 1, 2],
+        mesh_axis_names=['replica', 'mdl', 'data'],
+        weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
+            wt=['replica', 'mdl', 'data']),
         quantization=base_layer.QuantizationHParams(
             mode=base_layer.QuantizationMode.QUANTIZE))
     layer = instantiate(p)
@@ -268,6 +289,20 @@ class QuantizeAttentionTest(test_utils.TestCase):
     self.assertEqual(res[base_layer.PARAMS]['w'].shape, (3, 5, 6, 2))
     self.assertEqual(res[base_layer.PARAMS]['w_quantized_scale'].shape,
                      (3, 6, 2))
+
+    pspec, _ = layer.apply(
+        initial_vars, mutable=[], method=layer.quantized_partitioned_specs)
+    exepected_pspec = {
+        'params': {
+            'w':
+                base_layer.BoxedPartitionSpec(
+                    meta=pjit.PartitionSpec(None, 'replica', 'mdl', 'data')),
+            'w_quantized_scale':
+                base_layer.BoxedPartitionSpec(
+                    meta=pjit.PartitionSpec(None, 'mdl', 'data'))
+        }
+    }
+    self.assertEqual(pspec, exepected_pspec)
 
 if __name__ == '__main__':
   absltest.main()

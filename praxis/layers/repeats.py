@@ -19,11 +19,12 @@ This simply passes input through the layer stack.
 """
 
 import functools
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
+from jax.experimental import pjit
 from praxis import asserts
 from praxis import base_layer
 from praxis import flax_utils
@@ -209,12 +210,48 @@ class Repeat(base_layer.BaseLayer):
     return layer_out
 
   def quantize_weight(self) -> NestedJTensor:
-    """Quantize the weight of the sublayer."""
+    """Quantize the current layer and it's children layer(s).
+
+    Returns:
+      a nested map from names to quantized weights.
+    """
+    return self._quantize_fn(return_pspec=False)
+
+  def quantized_partitioned_specs(self) -> Any:
+    """Get quantization spec for the current layer and it's children layer(s).
+
+    Returns:
+      a nested map from names to partition spec.
+    """
+    return self._quantize_fn(return_pspec=True)
+
+  def _quantize_fn(self, return_pspec: bool) -> Union[NestedJTensor, Any]:
+    """Get the quantized weight or partition specs of the sublayer.
+
+    Args:
+      return_pspec: a boolean to control if returning ParititionSpecs for
+        quantized tensors. If True, returns the partition specs. If False,
+        returns quantized tensors.
+
+    Returns:
+      a nested map from names to quantized layer or partition spec.
+    """
     p = self.hparams
 
     def body_fn(sub, _):
-      res = sub.quantize_weight()
+      if return_pspec:
+        res = sub.quantized_partitioned_specs()
+      else:
+        res = sub.quantize_weight()
       return None, res
+
+    def add_leading_none(x):
+      # Adding a leading 'None' to PartitionSpec for repeats.
+      if isinstance(x, base_layer.BoxedPartitionSpec):
+        return base_layer.BoxedPartitionSpec(
+            meta=pjit.PartitionSpec(None, *x.meta))
+      else:
+        return x
 
     scan_fn = nn.scan(
         body_fn,
@@ -227,6 +264,12 @@ class Repeat(base_layer.BaseLayer):
     for collection in [PARAMS, NON_TRAINABLE]:
       if collection in res:
         ret[collection] = {p.sublayer_name: res[collection]}
+
+    if return_pspec:
+      ret = jax.tree_map(
+          add_leading_none,
+          ret,
+          is_leaf=lambda x: isinstance(x, base_layer.BoxedPartitionSpec))
     return ret
 
   @property

@@ -15,6 +15,8 @@
 
 """Quantized Linear Layers."""
 
+from typing import Any
+
 from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import linears
@@ -75,7 +77,32 @@ class Linear(linears.Linear):
     out = base_layer.maybe_shard(out, ap_out, p.mesh_axis_names)
     return out
 
+  def quantized_partitioned_specs(self) -> Any:
+    """Get quantized PartitionSpec.
+
+    Returns:
+      a map from names to partition spec.
+    """
+    p = self.hparams
+    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    weight_pspec = base_layer._weight_hparam_to_pspec(
+        self._weight_hparams['w'], self.hparams.mesh_axis_names)
+    wp = p.weight_split_dims_mapping
+    scale_split_dims_mapping = [wp.wt[1]]
+    # scale_weight_hparam is unmaterialized so shape is irrelevant.
+    scale_weight_hparam = WeightHParams(
+        shape=(), tensor_split_dims_mapping=scale_split_dims_mapping)
+    scale_pspec = base_layer._weight_hparam_to_pspec(
+        scale_weight_hparam, self.hparams.mesh_axis_names)
+    partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
+    return {base_layer.PARAMS: partitionspec}
+
   def quantize_weight(self) -> NestedJTensor:
+    """Get quantized weight.
+
+    Returns:
+      a map from names to quantized weights.
+    """
     theta = self.theta
     eqn = 'xy,yz->xz'
     q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)

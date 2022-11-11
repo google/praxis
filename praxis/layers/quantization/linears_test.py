@@ -19,6 +19,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
+from jax.experimental import pjit
 import numpy as np
 from praxis import base_layer
 from praxis import test_utils
@@ -102,6 +103,9 @@ class QuantizeLinearTest(test_utils.TestCase):
   def test_quantize_linear(self):
     p = qlinears.Linear.HParams(
         name='_linear_q',
+        mesh_axis_names=['replica', 'mdl', 'data'],
+        weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
+            wt=['mdl', 'data']),
         quantization=base_layer.QuantizationHParams(
             mode=base_layer.QuantizationMode.QUANTIZE))
     p.input_dims = 6
@@ -126,6 +130,20 @@ class QuantizeLinearTest(test_utils.TestCase):
             'w': jnp.int8,
             'w_quantized_scale': jnp.bfloat16
         }})
+
+    # Check ParititionSpecs.
+    pspec, _ = layer.apply(
+        initial_vars, mutable=[], method=layer.quantized_partitioned_specs)
+    exepected_pspec = {
+        'params': {
+            'w':
+                base_layer.BoxedPartitionSpec(
+                    meta=pjit.PartitionSpec('mdl', 'data')),
+            'w_quantized_scale':
+                base_layer.BoxedPartitionSpec(meta=pjit.PartitionSpec('data'))
+        }
+    }
+    self.assertEqual(pspec, exepected_pspec)
 
 
 if __name__ == '__main__':
