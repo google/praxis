@@ -391,7 +391,15 @@ def convert_fully_replicated_sda_to_gda(sda):
 
 
 def convert_fully_replicated_gda_to_sda(gda):
-  """Convert a fully replicated GDA to SDA."""
+  """Converts a fully replicated GDA to SDA.
+
+  Args:
+    gda: Fully replicated GDA.
+
+  Returns:
+    Fully replicated SDA.
+  """
+  assert isinstance(gda, gda_lib.GlobalDeviceArray)
   with jax.transfer_guard('disallow'):
     local_shape = (jax.local_device_count(),) + gda.shape
     local_aval = jax.core.ShapedArray(local_shape, gda.dtype)
@@ -401,6 +409,29 @@ def convert_fully_replicated_gda_to_sda(gda):
     indices = pxla.spec_to_indices(local_shape, sharding_spec)
     return pxla.make_sharded_device_array(local_aval, sharding_spec,
                                           list(gda._device_buffers), indices)  # pylint: disable=protected-access
+
+
+def convert_fully_replicated_array_to_pmap_array(arr):
+  """Converts a fully replicated Array to Array with PmapSharding.
+
+  Args:
+    arr: Fully replicated jax.Array.
+
+  Returns:
+    Fully replicated jax.Array with PmapSharding. This is suitable as an
+    input to pmap.
+  """
+  assert isinstance(arr, jax.Array)
+  with jax.transfer_guard('disallow'):
+    local_shape = (jax.local_device_count(),) + arr.shape
+    sharded_aval = jax.core.ShapedArray(local_shape[1:], arr.dtype)
+    sharding_spec = pxla._pmap_sharding_spec(  # pylint: disable=protected-access
+        local_shape[0], local_shape[0], 1, None, sharded_aval, 0)
+    device_buffers = arr.device_buffers  # pytype: disable=attribute-error
+    devices = np.array([d.device() for d in device_buffers])
+    s = sharding.PmapSharding(devices, sharding_spec)
+    return jax.make_array_from_single_device_arrays(local_shape, s,
+                                                    device_buffers)
 
 
 def gda_or_jax_array():
