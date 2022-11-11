@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from flax.core import frozen_dict
 import copy
 import dataclasses
 import enum
@@ -145,7 +146,7 @@ def visit_nested_struct(obj_to_visit: Any,
         exit_fn(key, val)
       else:
         visit_fn(key, val)
-    elif isinstance(val, dict):
+    elif isinstance(val, (dict, frozen_dict.FrozenDict)):
       if enter_fn(key, val):
         for k, v in val.items():
           _visit(_sub_key(key, k), v)
@@ -231,7 +232,7 @@ def nested_struct_to_text(obj_to_visit: Any,
     """Get the representation of `val`."""
     if isinstance(val, HParams):
       return _SortedDict({k: get_repr(v) for k, v in val.IterParams()})
-    if isinstance(val, dict):
+    if isinstance(val, (dict, frozen_dict.FrozenDict)):
       return _SortedDict({k: get_repr(v) for k, v in val.items()})
     if isinstance(val, np.ndarray):
       return np.array2string(val, separator=', ')
@@ -282,7 +283,7 @@ def nested_struct_to_text(obj_to_visit: Any,
     # List[(str, HParams)] pattern and remove redundancies.
     elif _is_str_param_pairs(val):
       return True
-    elif isinstance(val, dict):
+    elif isinstance(val, (dict, frozen_dict.FrozenDict)):
       return True
     elif isinstance(val, fdl.Buildable):
       return True

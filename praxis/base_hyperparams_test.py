@@ -15,6 +15,7 @@
 
 """Tests for base_hyperparams."""
 
+from flax.core import frozen_dict
 import dataclasses
 import functools
 import inspect
@@ -175,6 +176,14 @@ class HyperParamsTest(absltest.TestCase):
         g.hparams.cls : type/__main__/SimpleTestClass
         h : 3.0
         """))
+
+  def test_frozen_dict_to_text(self):
+    x = frozen_dict.FrozenDict(foo=12, bar=55)
+    self.assertEqual(base_hyperparams.nested_struct_to_text(x),
+                     textwrap.dedent("""\
+                     bar : 55
+                     foo : 12
+                     """))
 
   # Internal test test_config_dict_to_text
   def test_freeze_params(self):
