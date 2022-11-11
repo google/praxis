@@ -4,7 +4,7 @@ FROM $base_image
 
 RUN rm -rf /praxis
 COPY . /praxis
-RUN pip3 install -U --no-deps -r /praxis/praxis/pip_package/requirements.txt
+RUN pip3 install -r /praxis/praxis/pip_package/requirements.txt
 
 RUN cd /praxis && bazel build ...
 
