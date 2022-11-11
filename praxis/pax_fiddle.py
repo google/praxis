@@ -180,14 +180,7 @@ def auto_config(fn=None, **auto_config_kwargs) -> Any:
   auto_config_kwargs['experimental_exemption_policy'] = (
       _auto_config_exemption_policy)
   auto_config_kwargs['experimental_allow_control_flow'] = True
-
-  def replace_configs(value, state):
-    """Replaces fdl.Config with PaxConfig."""
-    if isinstance(value, fdl.Config):
-      result = state.flattened_map_children(value)
-      return PaxConfig.__unflatten__(result.values, result.metadata)
-    else:
-      return state.map_children(value)
+  auto_config_kwargs['experimental_config_cls'] = PaxConfig
 
   def make_auto_config(fn):
 
@@ -209,20 +202,7 @@ def auto_config(fn=None, **auto_config_kwargs) -> Any:
       return fn
 
     # Wrap `fn` using Fiddle auto_config.
-    auto_config_obj = fdl_auto_config.auto_config(fn, **auto_config_kwargs)
-
-    # Replace the original `as_buildable` method (which returns `fdl.Config`
-    # objects with one that returns `PaxConfig` objects.
-    old_as_buildable = auto_config_obj.as_buildable
-
-    def new_as_buildable(*args, **kwargs):
-      cfg = old_as_buildable(*args, **kwargs)
-      suspend_tracking = getattr(history, 'suspend_tracking',
-                                 contextlib.nullcontext)
-      with suspend_tracking():
-        return daglish.MemoizedTraversal.run(replace_configs, cfg)
-
-    return dataclasses.replace(auto_config_obj, buildable_func=new_as_buildable)
+    return fdl_auto_config.auto_config(fn, **auto_config_kwargs)
 
   return make_auto_config if fn is None else make_auto_config(fn)
 
