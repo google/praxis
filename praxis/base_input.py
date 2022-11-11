@@ -137,6 +137,9 @@ class BaseInput(base_hyperparams.BaseParameterizable):
   def get_next(self) -> NestedJTensor:
     raise NotImplementedError
 
+  def get_child(self, input_name: str) -> NestedJTensor:
+    raise NotImplementedError
+
   def get_next_padded(self) -> NestedJTensor:
     unpadded = self.get_next()
     pad_size = self.hparams.batch_padding_size
@@ -761,6 +764,9 @@ class MultiInput(BaseInput):
     for input_name, input_gen in self._inputs.items():
       input_batches[input_name] = input_gen.get_next()
     return NestedMap(input_batches)
+
+  def get_child(self, input_name: str) -> NestedJTensor:
+    return self._inputs[input_name]
 
   def reset(self) -> None:
     for _, input_gen in self._inputs.items():
