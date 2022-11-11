@@ -2620,6 +2620,10 @@ class ShardedStaticAccumulator(BaseOptimizer):
 
   Note we accumulate the gradients in whatever dtype they are, and then call the
   base optimizer transformation using the mean of the updates.
+
+  When used with ShardedAdafactor turn off per_var_learning_summary since
+  accessing global summary within lax.while_loop won't work. Other summaries
+  should work ok.
   """
 
   class HParams(BaseOptimizer.HParams):
