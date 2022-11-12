@@ -213,7 +213,7 @@ libclang==14.0.6
     # via tensorflow
 libcst==0.4.9
     # via fiddle
-lingvo==0.12.4
+lingvo==0.12.5
     # via -r praxis-requirements.in
 markdown==3.4.1
     # via tensorboard
@@ -473,7 +473,7 @@ tensorflow-hub==0.12.0
     #   tensorflow-text
 tensorflow-io-gcs-filesystem==0.27.0
     # via tensorflow
-tensorflow-metadata==1.10.0
+tensorflow-metadata==1.11.0
     # via tensorflow-datasets
 tensorflow-text==2.9.0
     # via

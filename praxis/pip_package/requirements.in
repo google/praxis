@@ -8,7 +8,7 @@ fiddle @ git+https://github.com/google/fiddle
 flax
 jax
 jax-bitempered-loss
-lingvo~=0.12.3
+lingvo
 numpy
 optax
 optax-shampoo
