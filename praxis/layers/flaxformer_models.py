@@ -605,6 +605,7 @@ class LanguageModel(base_model.BaseModel):
       - metrics, a NestedMap containing str keys and clu_metrics.Metric
         objects. This is currently optional.
     """
+    assert isinstance(self.hparams.decoder_tpl, SampleDecoderHParams)
     num_decodes = self.hparams.decoder_tpl.num_samples
     params = self.decoder.variables['params']
     decoder_params = {'eos_id': self.hparams.decoder_tpl.eos_id}
