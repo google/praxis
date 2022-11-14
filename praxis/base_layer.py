@@ -1669,13 +1669,10 @@ class BaseLayerApi(nn.Module):
     Returns:
       The created sub layers, or makes the sub layers an assess of this layer.
     """
+    assert isinstance(params, Sequence)
     uid = itertools.count()
-
-    def _instantiate(p: InstantiableHyperParams) -> BaseLayerT:
-      return self._create_child(f'{name}_{next(uid)}', p)
-
     self._check_child_layername_conflict(name)
-    children = jax.tree_map(_instantiate, params)
+    children = [self._create_child(f'{name}_{next(uid)}', p) for p in params]
     if self._state.in_setup:
       setattr(self, name, children)
     return children
