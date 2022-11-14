@@ -1898,6 +1898,11 @@ class BaseLayer(
         assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)
         return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
 
+    @classmethod
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+      # Skip registration, since we override it below.
+      super().__init_subclass__(__register_traverser__=False, **kwargs)
+
   @classmethod
   def __init_subclass__(cls, **kwargs: Any) -> None:
     """Automatically initializes all subclasses as custom dataclasses."""
@@ -1920,6 +1925,8 @@ class BaseLayer(
     # serialization and debugging information.
     cls.HParams.__module__ = cls.__module__
     cls.HParams.__qualname__ = f'{cls.__name__}.HParams'
+
+    pax_fiddle._register_traversers_for_subclass(cls.HParams)  # pylint: disable=protected-access
 
   @functools.cached_property
   def _hparam_fields(self) -> Set[str]:

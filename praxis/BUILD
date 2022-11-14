@@ -570,6 +570,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit fiddle dependency.
+        # Implicit fiddle.daglish dependency.
         # Implicit fiddle.testing dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.

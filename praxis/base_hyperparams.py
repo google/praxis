@@ -379,7 +379,10 @@ class BaseHyperParams:
     return fdl.cast(fdl.Partial, cls.config(**kwargs))
 
   @classmethod
-  def __init_subclass__(cls, **kwargs: Any) -> None:
+  def __init_subclass__(cls,
+                        *,
+                        __register_traverser__=True,
+                        **kwargs: Any) -> None:
     """Verifies properties about subclasses.
 
     Properties verified:
@@ -387,6 +390,8 @@ class BaseHyperParams:
       `_attribute_overrides` (which is always allowed to be redeclared).
 
     Args:
+      __register_traverser__: Internal argument signaling whether to register
+        a node traverser.
       **kwargs: Arguments passed to the corresponding base method.
     """
     super().__init_subclass__(**kwargs)
@@ -420,6 +425,9 @@ class BaseHyperParams:
         raise AttributeError(f'Attribute {key} was overridden while it is not '
                              f'explicitly listed in the _attribute_overrides '
                              f'list.')
+
+    if __register_traverser__:
+      pax_fiddle._register_traversers_for_subclass(cls)  # pylint: disable=protected-access
 
   def _check_assignment(self, field: dataclasses.Field[Any],
                         value: Any) -> None:

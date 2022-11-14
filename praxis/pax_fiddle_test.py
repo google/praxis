@@ -17,11 +17,12 @@
 
 import copy
 import dataclasses
-from typing import Optional, List
+from typing import List, Optional
+
 from absl.testing import absltest
 from absl.testing import parameterized
-
 import fiddle as fdl
+from fiddle import daglish
 from fiddle import testing
 from flax import core as flax_core
 from flax import linen as nn
@@ -529,6 +530,89 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
     inputs = jnp.array(22)
     with base_layer.JaxContext.new_context():
       m.init(jax.random.PRNGKey(1), inputs)
+
+
+class LayerE(base_layer.BaseLayer):
+
+  class HParams(base_layer.BaseLayer.HParams):
+    tpl: pax_fiddle.Config[LayerD] = base_layer.sub_config_field(LayerD.HParams)
+
+
+class DaglishTest(testing.TestCase, parameterized.TestCase):
+
+  def test_hparams_with_fiddle_subconfig(self):
+    config = LayerE.HParams()
+
+    all_sub_values = {
+        daglish.path_str(path): value
+        for value, path in pax_fiddle.iterate(config)
+    }
+    self.assertDictEqual(
+        all_sub_values, {
+            "":
+                config,
+            ".activation_split_dims_mapping":
+                base_layer.BaseLayer.ActivationShardingHParams(out=None),
+            ".cls":
+                LayerE,
+            ".dtype":
+                jnp.float32,
+            ".fprop_dtype":
+                None,
+            ".name":
+                "",
+            ".params_init":
+                base_layer.WeightInit(method="xavier", scale=1.000001),
+            ".params_init.method":
+                "xavier",
+            ".params_init.scale":
+                1.000001,
+            ".tpl":
+                config.tpl,
+            ".tpl.activation_split_dims_mapping":
+                config.tpl.activation_split_dims_mapping,
+            ".tpl.params_init":
+                config.tpl.params_init,
+            ".tpl.weight_split_dims_mapping":
+                config.tpl.weight_split_dims_mapping,
+            ".weight_split_dims_mapping":
+                base_layer.BaseLayer.WeightShardingHParams(wt=None)
+        })
+
+  def test_non_memoized_iterate(self):
+    config = LayerE.HParams()
+    paths = [
+        daglish.path_str(path)
+        for value, path in pax_fiddle.iterate(config, memoized=False)
+    ]
+
+    # These were absent above because their values were memoized.
+    self.assertIn(".weight_split_dims_mapping.wt", paths)
+    self.assertIn(".tpl.params_init.scale", paths)
+
+  def test_doesnt_recurse_generic_dataclass(self):
+
+    @dataclasses.dataclass(frozen=True)
+    class MyDataclass:
+      a: int = 4
+      b: int = 5
+
+    value = MyDataclass(6, 7)
+    self.assertLen(list(pax_fiddle.iterate(value)), 1)
+
+  @parameterized.parameters(pax_fiddle.BasicTraversal,
+                            pax_fiddle.MemoizedTraversal)
+  def test_replacement(self, traversal_cls):
+    config = LayerE.HParams()
+
+    def traverse(value, state: daglish.State):
+      if value == jnp.float32:
+        return jnp.bfloat16
+      else:
+        return state.map_children(value)
+
+    replaced_config = traversal_cls.run(traverse, config)
+    self.assertEqual(replaced_config.dtype, jnp.bfloat16)
 
 
 if __name__ == "__main__":

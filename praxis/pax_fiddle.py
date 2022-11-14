@@ -20,7 +20,8 @@ from __future__ import annotations
 import contextlib
 import copy
 import dataclasses
-from typing import overload, TypeVar, Callable, Any, Union, Optional, Collection, Generic
+import functools
+from typing import overload, Any, Callable, Collection, Generic, Optional, TypeVar, Union
 
 import fiddle as fdl
 from fiddle import building
@@ -341,3 +342,48 @@ def empty_flax_module_stack():
     yield
   finally:
     module_stack[:] = old_modules  # Restore module stack.
+
+
+_hparams_node_traverser_registry = daglish.NodeTraverserRegistry()
+
+# Copy existing traversers.
+_hparams_node_traverser_registry._node_traversers = (  # pylint: disable=protected-access
+    daglish._default_traverser_registry._node_traversers.copy())  # pylint: disable=protected-access
+
+
+def _register_traversers_for_subclass(subclass):
+  """Registers traversal routines for an HParams subclass."""
+  fields = dataclasses.fields(subclass)
+  names = tuple(field.name for field in fields)
+  path_elements = tuple(daglish.Attr(field.name) for field in fields)
+
+  def _flatten(value):
+    return tuple(getattr(value, name) for name in names), ()
+
+  def _unflatten(values, unused_metadata):
+    return subclass(**dict(zip(names, values)))
+
+  def _path_elements(unused_value):
+    return list(path_elements)
+
+  _hparams_node_traverser_registry.register_node_traverser(
+      subclass,
+      flatten_fn=_flatten,
+      unflatten_fn=_unflatten,
+      path_elements_fn=_path_elements,
+  )
+
+
+# APIs from fiddle.daglish, that are HParams-aware.
+@dataclasses.dataclass
+class BasicTraversal(daglish.BasicTraversal):
+  registry: daglish.NodeTraverserRegistry = _hparams_node_traverser_registry
+
+
+@dataclasses.dataclass
+class MemoizedTraversal(daglish.MemoizedTraversal):
+  registry: daglish.NodeTraverserRegistry = _hparams_node_traverser_registry
+
+
+iterate = functools.partial(
+    daglish.iterate, registry=_hparams_node_traverser_registry)
