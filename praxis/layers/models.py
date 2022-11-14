@@ -1076,14 +1076,17 @@ class ClassificationMLPModel(base_model.BaseModel):
   def setup(self) -> None:
     super().setup()
     p = self.hparams
-    self.create_children('mlp_layers', p.mlp_tpl.clone())
-    self.create_child('softmax', p.softmax_tpl.clone())
+    # Note: We add a `_0` suffix here because this child was previously created
+    # using create_children; and we want to ensure that its name stays the
+    # same (for checkpoints, etc).
+    self.create_child('mlp_layers_0', p.mlp_tpl)
+    self.create_child('softmax', p.softmax_tpl)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
 
     input_emb = self.softmax.emb_lookup(input_batch.ids)
 
-    output = self.mlp_layers(input_emb)
+    output = self.mlp_layers_0(input_emb)
     predictions = self.softmax(
         inputs=output,
         class_weights=input_batch.weights[:, :, jnp.newaxis],
