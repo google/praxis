@@ -809,6 +809,11 @@ def apply_padding(inputs: JTensor,
   return result
 
 
+def is_tpu() -> bool:
+  """Whether the process runs on TPU."""
+  return jax.local_devices()[0].platform == 'tpu'
+
+
 @dataclasses.dataclass
 class RunningPeriod:
   """Information about a running period."""
