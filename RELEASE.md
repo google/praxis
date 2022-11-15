@@ -1,7 +1,27 @@
 # Version: 0.2.0
 ## Major Features and Improvements
-## Breaking changes
+*  Preparatory work for Fiddle integration
+*  Support for Flax shape inference
+*  Support for Jax Array
+*  Optimizer additions and improvements:
+   - HeroLion
+   - ShardedAdagrad
+   - ShardedStaticAccumulator optimizer wrapper to do a fixed number of gradient
+     accumulations
+   - Shampoo improvements
+   - Fix for multi-optimizer following the introduction of optax.MaskedNode
+   - Improve sanitization of NaNs/Infs gradients during training
+* Decoding
+   - Add support for ExtendNSteps
+   - Add beam search support for sequence models
+   - Set prefix_lengths by input_indicator for PrefixLM
+   - Move decode post-processing tensors into host memory
+* Summaries
+   - Add support for verbosity level
+   - Add more knobs to the learner to control summary generation
 ## Deprecations
+*  Disallow hparams override in setup()
+*  Hparams and layer names must now be distinct
 ## Note
 *   Version: 0.2.0
 *   Build Date: 20221114
