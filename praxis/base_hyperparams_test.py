@@ -180,14 +180,20 @@ class HyperParamsTest(absltest.TestCase):
 
   def test_fdl_config_to_text(self):
     x = FiddleTestClass.HParams(
-        f=pax_fiddle.Config(sample_fn, x=10),
+        f=pax_fiddle.Config(sample_fn, x=[pax_fiddle.Config(sample_fn, 2),
+                                          pax_fiddle.Config(sample_fn, 3, 4)]),
         g=pax_fiddle.Config(SimpleTestClass, SimpleTestClass.HParams(a=12)))
     self.assertEqual(
         x.to_text(),
         textwrap.dedent("""\
         cls : type/__main__/FiddleTestClass
         f.cls : callable/__main__/sample_fn
-        f.x : 10
+        f.x[0].cls : callable/__main__/sample_fn
+        f.x[0].x : 2
+        f.x[0].y : 5
+        f.x[1].cls : callable/__main__/sample_fn
+        f.x[1].x : 3
+        f.x[1].y : 4
         f.y : 5
         g.cls : type/__main__/SimpleTestClass
         g.hparams.a : 12

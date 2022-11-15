@@ -278,6 +278,9 @@ def nested_struct_to_text(obj_to_visit: Any,
     elif (isinstance(val, (list, tuple)) and
           all(isinstance(x, BaseHyperParams) for x in val)):
       return True
+    elif (isinstance(val, (list, tuple)) and
+          all(isinstance(x, fdl.Buildable) for x in val)):
+      return True
     # Internal handle of config_dict.ConfigDict sequence in nested_struct_to_text
     # TODO(jiahuiyu): Create single-direction DebugString for
     # List[(str, HParams)] pattern and remove redundancies.
