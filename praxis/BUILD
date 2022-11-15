@@ -379,7 +379,10 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit fiddle dependency.
         # Implicit flax.core dependency.
+        # Implicit jax dependency.
         # Implicit ml_collections config_dict dependency.
+        # Implicit numpy dependency.
+        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 
