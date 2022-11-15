@@ -27,6 +27,10 @@ from typing import List
 
 class QuantizationUtilsTest(test_utils.TestCase):
 
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
   @parameterized.named_parameters(
       ('regular_eqn', 'ab,bc->ac'),
       ('eqn_with_dot', '...y,yz->...z'),
@@ -55,6 +59,10 @@ class QuantizationUtilsTest(test_utils.TestCase):
 
 
 class ReducePrecisionEinsumTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
 
   @parameterized.named_parameters(
       ('eqn1', 'ab,bc->ac', (4, 3), (3,), ()),
