@@ -16,25 +16,12 @@ ENV PYTHON_MINOR_VERSION="8"
 # Pick up some TF dependencies
 RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends software-properties-common
 RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
-        aria2 \
         build-essential \
         curl \
-        dirmngr \
-        emacs \
         git \
-        gpg-agent \
-        less \
-        libfreetype6-dev \
-        libhdf5-serial-dev \
-        libpng-dev \
-        libzmq3-dev \
-        lsof \
         pkg-config \
         rename \
         rsync \
-        python-dev \
-        python3-distutils \
-        sox \
         unzip \
         vim \
         && \
@@ -66,7 +53,7 @@ RUN mkdir /bazel && \
 
 COPY . /praxis
 RUN mkdir $WHEEL_FOLDER
-RUN pip3 install /praxis/praxis/pip_package
+RUN pip3 install -r /praxis/praxis/pip_package/requirements.txt
 
 RUN git clone https://github.com/google/flaxformer.git
 RUN cd flaxformer && pip3 install .
