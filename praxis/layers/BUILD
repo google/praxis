@@ -1137,6 +1137,7 @@ py_strict_test(
     shard_count = 10,
     srcs_version = "PY3",
     deps = [
+        ":activations",
         ":convolutions",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.

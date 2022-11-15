@@ -27,6 +27,7 @@ import numpy as np
 from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
+from praxis.layers import activations
 from praxis.layers import convolutions
 import tensorflow.compat.v2 as tf
 
@@ -136,6 +137,60 @@ class ConvolutionsTest(test_utils.TestCase):
     # TF implementation returns both output and padding
     tf_np_output = to_np(tf_output[0])[:, :, 0, :]
     self.assertAllClose(tf_np_output, np_output)
+
+  @parameterized.product(
+      batch_size=[2, 7],
+      seq_len=[7, 12],
+      kernel_size=[2, 3, 5],
+      input_dims=[5, 11],
+      dilations=[(1, 1), (1, 2), (2, 1)],
+      channel_multipliers=[1, 3])
+  def test_depthwise_conv2d_layer(self, batch_size, seq_len, kernel_size,
+                                  input_dims, dilations, channel_multipliers):
+    # Create fake inputs.
+    npy_inputs = np.random.normal(
+        1.0, 0.5, [batch_size, seq_len, seq_len, input_dims]).astype('float32')
+    inputs = jnp.asarray(npy_inputs)
+    npy_paddings = np.random.randint(0, 2,
+                                     [batch_size, seq_len]).astype('float32')
+    paddings = jnp.asarray(npy_paddings)
+
+    # Use ConvBNActWithPadding to test paddings.
+    kernel_shape = (kernel_size, kernel_size)
+    p = convolutions.ConvBNActWithPadding.HParamsDepthwise(
+        name='jax_depthwise_conv2d',
+        kernel_shape=kernel_shape,
+        in_channels=input_dims,
+        channel_multipliers=channel_multipliers,
+        filter_stride=(1, 1),
+        dilations=dilations,
+        bias=True,
+        tf_equivalent_padding=True,
+        batch_norm_tpl=None,
+        activation_tpl=activations.Identity.HParams())
+    depthwiseconv2d = instantiate(p)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = depthwiseconv2d.init(prng_key, inputs, paddings)
+    output, out_paddings = depthwiseconv2d.apply(initial_vars, inputs, paddings)
+
+    # Test whether tf DepthwiseConv layer returns the same output
+    # Modify initial_vars to use TF compatible params
+    tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars[PARAMS])
+    tf_filter_shape = kernel_shape + (input_dims, channel_multipliers)
+    tf_initial_vars.w = tf.reshape(tf_initial_vars.w, tf_filter_shape)
+
+    tf_l = clwp.DepthwiseConv2DLayer.Params().Set(
+        name='tf_depthwise_conv_layer',
+        filter_shape=tf_filter_shape,
+        filter_stride=(1, 1),
+        dilation_rate=dilations,
+        bias=True)
+    tf_depthwiseconv2d = tf_l.Instantiate()
+    tf_output, tf_out_paddings = tf_depthwiseconv2d.FProp(
+        tf_initial_vars, tf.constant(inputs), tf.constant(paddings))
+
+    self.assertAllClose(to_np(tf_out_paddings), to_np(out_paddings))
+    self.assertAllClose(to_np(tf_output), to_np(output))
 
   @parameterized.parameters(
       (2, 10, 3, 10, 0.0, True),

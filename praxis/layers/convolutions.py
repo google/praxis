@@ -79,6 +79,22 @@ class Conv2D(base_layer.BaseLayer):
     tf_equivalent_padding: bool = False
     is_causal: bool = False
 
+  @classmethod
+  def HParamsDepthwise(cls,
+                       *,
+                       kernel_shape: Sequence[int],
+                       in_channels: int,
+                       channel_multipliers: int = 1,
+                       **hparams):
+    """DepthwiseConv2D configuration for Conv2D and its subclasses."""
+    if len(kernel_shape) != 2:
+      raise ValueError(
+          f'kernel_shape must have two elements, got {len(kernel_shape)}')
+    if 'filter_shape' in hparams:
+      raise ValueError('filter_shape cannot be specified in HParamsDepthwise')
+    filter_shape = tuple(kernel_shape) + (1, in_channels * channel_multipliers)
+    return cls.HParams(filter_shape=filter_shape, **hparams)
+
   def setup(self) -> None:
     p = self.hparams
     assert p.name
@@ -329,7 +345,6 @@ class ConvBNActWithPadding(ConvBNAct):
     return outputs, out_padding
 
 
-# TODO(nanxinchen): add Depthwise Conv2D support
 class BaseDepthwiseConv1D(base_layer.BaseLayer):
   """Base class for Depthwise 1D convolution."""
 
