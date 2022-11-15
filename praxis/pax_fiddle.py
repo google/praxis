@@ -103,12 +103,12 @@ class PaxConfig(Generic[T], fdl.Config[T], CloneAndSetMixin):
     source_fields = {
         field.name: field
         for field in dataclasses.fields(source.__fn_or_cls__)
-        if field.init and field.name not in ('parent', 'name')
+        if field.init and field.name != 'parent'
     }
     self_fields = {
         field.name: field
         for field in dataclasses.fields(self.__fn_or_cls__)
-        if field.init and field.name not in ('parent', 'name')
+        if field.init and field.name != 'parent'
     }
 
     for name in source_fields:

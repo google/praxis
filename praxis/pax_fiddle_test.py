@@ -371,11 +371,22 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
     target.copy_fields_from(source)
     self.assertEqual(target, expected)
 
-  def test_copy_fields_from_does_not_copy_name(self):
+  def test_copy_fields_from_does_copy_name(self):
     source = pax_fiddle.Config(Person, "A")
     target = pax_fiddle.Config(Person, "B")
     target.copy_fields_from(source)
-    self.assertEqual(target, pax_fiddle.Config(Person, "B"))
+    self.assertEqual(target, pax_fiddle.Config(Person, "A"))
+
+  def test_copy_fields_from_does_not_copy_parent(self):
+
+    @dataclasses.dataclass
+    class TestCls:
+      parent: str
+
+    source = pax_fiddle.Config(TestCls, "A")
+    target = pax_fiddle.Config(TestCls, "B")
+    target.copy_fields_from(source)
+    self.assertEqual(target, pax_fiddle.Config(TestCls, "B"))
 
   def test_copy_fields_from_missing_fields_in_source(self):
     source = pax_fiddle.Config(Wheel, radius=10)
