@@ -210,16 +210,15 @@ class PyUtilsTest(test_utils.TestCase):
         a=np_module.reshape(np_module.arange(batch_size), (batch_size, 1)),
         b=py_utils.NestedMap(
             c=np_module.reshape(
-                np_module.arange(batch_size * 2 * 3), (batch_size, 2, 3)),
-        ),
+                np_module.arange(batch_size * 2 * 3), (batch_size, 2, 3)),),
     )
 
     flat_trees = py_utils.tree_unstack(tree, batch_axis)
     self.assertLen(flat_trees, batch_size)
 
     # Merge tree back
-    merged_tree = jax.tree_map(
-        lambda x: np_module.expand_dims(x, batch_axis), flat_trees[0])
+    merged_tree = jax.tree_map(lambda x: np_module.expand_dims(x, batch_axis),
+                               flat_trees[0])
 
     def _concat_tree_with_batch(x_batch, y):
       y_batch = np_module.expand_dims(y, batch_axis)
@@ -254,6 +253,57 @@ class PyUtilsTest(test_utils.TestCase):
         padding=np.array([[0.0], [1.0], [0.0]]),
         use_select=False)
     self.assertAllClose(y, [[1.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
+
+  def test_apply_padding_with_axis_0(self):
+    y = py_utils.apply_padding(
+        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=np.array([[0.0], [1.0], [0.0]]),
+        axis=0)
+    self.assertAllClose(y, [[1.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
+
+  def test_apply_padding_with_axis_0_and_one_more_dim(self):
+    # inputs=[3, 2] and paddings=[3, 2, 1]
+    y = py_utils.apply_padding(
+        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=np.expand_dims(
+            np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]), -1),
+        axis=0)
+    self.assertAllClose(y, [[1.0, 2.0], [0.0, 4.0], [5.0, 0.0]])
+
+  def test_pad_inputs_with_axis_0_and_one_less_dim(self):
+    # inputs=[1, 2, 3] and paddings=[1, 2]
+    y = py_utils.apply_padding(
+        inputs=np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]]),
+        padding=np.array([[1.0, 0.0]]),
+        axis=0)
+    self.assertAllClose(y, [[[0.0, 0.0, 0.0], [4.0, 5.0, 6.0]]])
+
+  def test_apply_padding_with_axis_1_and_one_more_dim(self):
+    # inputs=[3, 2] and paddings=[3, 2, 1]
+    y = py_utils.apply_padding(
+        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=np.expand_dims(
+            np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]), -1),
+        axis=1)
+    self.assertAllClose(y, [[1.0, 2.0], [0.0, 4.0], [5.0, 0.0]])
+
+  def test_pad_inputs_with_axis_1_and_same_rank(self):
+    # inputs=[5, 1, 2, 3] and paddings=[1, 2, 1]
+    batch = 5
+    y = py_utils.apply_padding(
+        inputs=np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]] * batch),
+        padding=np.expand_dims(np.array([[1.0, 0.0]]), -1),
+        axis=1)
+    self.assertAllClose(y, [[[0.0, 0.0, 0.0], [4.0, 5.0, 6.0]]] * batch)
+
+  def test_pad_inputs_with_axis_1_and_one_less_dim(self):
+    # inputs=[5, 1, 2, 3] and paddings=[1, 2]
+    batch = 5
+    y = py_utils.apply_padding(
+        inputs=np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]] * batch),
+        padding=np.array([[1.0, 0.0]]),
+        axis=1)
+    self.assertAllClose(y, [[[0.0, 0.0, 0.0], [4.0, 5.0, 6.0]]] * batch)
 
   def test_timeit(self):
     start_time = time.time()

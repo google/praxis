@@ -44,7 +44,6 @@ flags.DEFINE_bool(
     'pmap_use_tensorstore', False,
     'Temporary flag to allow pmap users to fall back to flax checkpointing.')
 
-
 # SeqIOInput enumeration provenance keys
 PROVENANCE_PREFIX = '_seqio_provenance'
 INDEX_WITHIN_SHARD_KEY = f'{PROVENANCE_PREFIX}/index_within_shard'
@@ -233,7 +232,8 @@ def extract_prefixed_keys_from_nested_map(
     left_separator: str = '[',
     right_separator: str = ']',
     is_leaf: Optional[Callable[[Any], bool]] = None) -> Any:
-  """Extracts a NestedMap with the nested prefix keys from its NestedMap node."""
+  """Extracts a NestedMap with the nested prefix keys from its NestedMap node.
+  """
   if is_leaf is not None and is_leaf(node):
     return None
   elif isinstance(node, dict):  # NestedMap inherits from dict.
@@ -353,8 +353,8 @@ def create_gda(host_arrays: Union[np.ndarray, Any],
       # This is cached because creating new sharding objects everytime is
       # expensive in pjit dispatch path for inputs.
       s = cached_mesh_pspec_sharding(global_mesh, pspec)
-      return jax.make_array_from_single_device_arrays(
-          global_shape.shape, s, dbs)
+      return jax.make_array_from_single_device_arrays(global_shape.shape, s,
+                                                      dbs)
     else:
       return gda_lib.GlobalDeviceArray(global_shape.shape, global_mesh, pspec,
                                        dbs)
@@ -748,8 +748,8 @@ def tree_unstack(tree: Any, axis: int) -> Sequence[Any]:
   """Extracts an axis' dimension to the list dimension of the output.
 
   Args:
-    tree: PyTree which must have the above axis dimension with same size for
-      all leaf nodes. All leafs must be one of (np.ndarray, jnp.ndarray) types.
+    tree: PyTree which must have the above axis dimension with same size for all
+      leaf nodes. All leafs must be one of (np.ndarray, jnp.ndarray) types.
     axis: int, the axis to extract into the list dimension. All leafs in the
       pytree must have this dimension and must have the same shape.
 
@@ -780,8 +780,15 @@ def tree_unstack(tree: Any, axis: int) -> Sequence[Any]:
 def apply_padding(inputs: JTensor,
                   padding: JTensor,
                   pad_value: Optional[JTensor] = None,
-                  use_select: bool = True) -> JTensor:
+                  use_select: bool = True,
+                  axis: Optional[int] = None) -> JTensor:
   """Applies padding to a tensor.
+
+  `inputs` and `padding` should be broadcast compatible.
+
+  `axis` defines the leading dimensions along which to broadcast. Specifically,
+  `padding` is reshaped from [head|tail] -> [head|new_tail] such that the new
+  tail has the same rank as inputs' tail.
 
   Args:
     inputs: JTensor to apply padding to.
@@ -792,10 +799,16 @@ def apply_padding(inputs: JTensor,
       (True/default) or arithmetically (False). Some platforms have a
       sensitivity to one or the other and this is used to work around such
       issues.
+   axis: Optional axis from where broadcasting starts.
 
   Returns:
     A tensor with the same shape as x with padded values masked.
   """
+  if axis is not None:
+    head, tail = list(padding.shape[:axis]), list(padding.shape[axis:])
+    in_tail_len = len(inputs.shape[axis:])
+    ones = [1] * max(in_tail_len - len(tail), 0)
+    padding = jnp.reshape(padding, head + tail[:in_tail_len] + ones)
   if use_select:
     if pad_value is None:
       pad_value = jnp.zeros([], inputs.dtype)
@@ -853,10 +866,11 @@ def timeit(min_elapsed: float = 1e-6) -> Iterator[RunningPeriod]:
     period.end = time.time()
 
 
-def filter_by_matching_keys(batch: NestedMap,
-                            prefixes: Sequence[str] = ()) -> Tuple[
-                                NestedMap, NestedMap]:
+def filter_by_matching_keys(
+    batch: NestedMap,
+    prefixes: Sequence[str] = ()) -> Tuple[NestedMap, NestedMap]:
   """Filter a map into one that matches any prefix and one that doesn't."""
+
   def _matching_fn(k: str) -> bool:
     for prefix in prefixes:
       if k.startswith(prefix):
@@ -884,8 +898,9 @@ def get_enumeration_id(example: Dict[str, Any],
     a string represending the enumeration ID which should be globally unique
       within a given dataset. If enum fields DNE in example, returns None.
   """
-  if not all(k in example for k in (
-      INDEX_WITHIN_SHARD_KEY, SHARD_INDEX_KEY, NUM_SHARDS_KEY)):
+  if not all(
+      k in example
+      for k in (INDEX_WITHIN_SHARD_KEY, SHARD_INDEX_KEY, NUM_SHARDS_KEY)):
     return
 
   if pop:
@@ -893,7 +908,6 @@ def get_enumeration_id(example: Dict[str, Any],
   else:
     get_fn = lambda ex, key: int(ex[key])
 
-  return (
-      f'{INDEX_WITHIN_SHARD_KEY}={get_fn(example, INDEX_WITHIN_SHARD_KEY)}/'
-      f'{SHARD_INDEX_KEY}={get_fn(example, SHARD_INDEX_KEY)}/'
-      f'{NUM_SHARDS_KEY}={get_fn(example, NUM_SHARDS_KEY)}')
+  return (f'{INDEX_WITHIN_SHARD_KEY}={get_fn(example, INDEX_WITHIN_SHARD_KEY)}/'
+          f'{SHARD_INDEX_KEY}={get_fn(example, SHARD_INDEX_KEY)}/'
+          f'{NUM_SHARDS_KEY}={get_fn(example, NUM_SHARDS_KEY)}')
