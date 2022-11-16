@@ -633,6 +633,7 @@ py_strict_test(
     deps = [
         ":activations",
         ":embedding_softmax",
+        ":poolings",
         ":transformers",
         ":vits",
         # Implicit absl.testing.absltest dependency.

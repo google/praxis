@@ -26,6 +26,7 @@ from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import activations
 from praxis.layers import embedding_softmax
+from praxis.layers import poolings
 from praxis.layers import transformers
 from praxis.layers import vits
 
@@ -98,6 +99,8 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
         hidden_dim=exp_params.hidden_dim,
         output_dim=exp_params.hidden_dim,
         pooled=exp_params.pooled,
+        pooling_tpl=poolings.GlobalPooling.HParams(
+            pooling_type='MAX', pooling_dims=[1], keepdims=False),
         output_dropout_prob=0.1)
     return p_exit
 
