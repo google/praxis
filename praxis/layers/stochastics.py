@@ -86,7 +86,7 @@ class Dropout(base_layer.BaseLayer):
       noise_shape = p.noise_shape
     else:
       noise_shape = p.noise_shape or list(inputs.shape)
-      if isinstance(noise_shape, tuple):
+      if not isinstance(noise_shape, list):
         noise_shape = list(noise_shape)
       for dim in p.noise_shape_broadcast_dims:
         if dim >= len(noise_shape):
