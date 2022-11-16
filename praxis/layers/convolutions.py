@@ -234,7 +234,7 @@ class ConvBNAct(Conv2D):
     """
     batch_norm_tpl: Optional[BaseHParams] = sub_config_field(
         normalizations.BatchNorm.HParams)
-    activation_tpl: activations.BaseActivation = sub_config_field(
+    activation_tpl: activations.BaseActivation.HParams = sub_config_field(
         activations.ReLU.HParams)
 
   def setup(self) -> None:
