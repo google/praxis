@@ -337,7 +337,10 @@ def sample_decode(model: base_layer.BaseLayerApi,
 
     # Broadcast temperature if it is a JTensor.
     if isinstance(temperature, JTensor):
-      temperature_expected_shape = (original_batch_size,)
+      if cf_guidance_scale is not None:
+        temperature_expected_shape = (original_batch_size // 2,)
+      else:
+        temperature_expected_shape = (original_batch_size,)
       if temperature.shape != temperature_expected_shape:  # pytype: disable=attribute-error
         raise ValueError('Dynamic temperature should have shape: '
                          f'{temperature_expected_shape}, but it has shape: '
