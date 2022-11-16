@@ -87,7 +87,7 @@ fiddle @ git+https://github.com/google/fiddle
     # via -r praxis-requirements.in
 flatbuffers==1.12
     # via tensorflow
-flax==0.6.1
+flax==0.6.2
     # via
     #   -r praxis-requirements.in
     #   clu
@@ -103,7 +103,7 @@ google-auth-oauthlib==0.4.6
     # via tensorboard
 google-pasta==0.2.0
     # via tensorflow
-googleapis-common-protos==1.56.4
+googleapis-common-protos==1.57.0
     # via tensorflow-metadata
 graph-compression-google-research==0.0.4
     # via lingvo
@@ -147,7 +147,7 @@ ipython-genutils==0.2.0
     #   qtconsole
 ipywidgets==8.0.2
     # via jupyter
-jax==0.3.24
+jax==0.3.25
     # via
     #   -r praxis-requirements.in
     #   chex
@@ -156,7 +156,7 @@ jax==0.3.24
     #   optax
 jax-bitempered-loss==0.0.2
     # via -r praxis-requirements.in
-jaxlib==0.3.24
+jaxlib==0.3.25
     # via
     #   chex
     #   clu
@@ -173,7 +173,7 @@ jsonschema==4.17.0
     # via nbformat
 jupyter==1.0.0
     # via lingvo
-jupyter-client==7.4.5
+jupyter-client==7.4.7
     # via
     #   ipykernel
     #   jupyter-console
@@ -195,7 +195,7 @@ jupyter-core==5.0.0
     #   qtconsole
 jupyter-http-over-ws==0.0.8
     # via lingvo
-jupyter-server==1.23.1
+jupyter-server==1.23.2
     # via
     #   nbclassic
     #   notebook-shim
@@ -246,7 +246,7 @@ nbclassic==0.4.8
     # via notebook
 nbclient==0.7.0
     # via nbconvert
-nbconvert==7.2.4
+nbconvert==7.2.5
     # via
     #   jupyter
     #   jupyter-server
@@ -291,6 +291,7 @@ numpy==1.23.4
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-hub
+    #   tensorstore
 oauthlib==3.2.2
     # via requests-oauthlib
 opt-einsum==3.3.0
@@ -326,7 +327,7 @@ pillow==9.3.0
     #   matplotlib
 pkgutil-resolve-name==1.3.10
     # via jsonschema
-platformdirs==2.5.3
+platformdirs==2.5.4
     # via jupyter-core
 prometheus-client==0.15.0
     # via
@@ -339,7 +340,7 @@ prompt-toolkit==3.0.32
     # via
     #   ipython
     #   jupyter-console
-protobuf==3.15.0
+protobuf==3.19.5
     # via
     #   -r praxis-requirements.in
     #   googleapis-common-protos
@@ -433,7 +434,6 @@ six==1.16.0
     #   keras-preprocessing
     #   ml-collections
     #   promise
-    #   protobuf
     #   python-dateutil
     #   tensorflow
     #   tensorflow-datasets
@@ -443,7 +443,7 @@ sniffio==1.3.0
     # via anyio
 soupsieve==2.3.2.post1
     # via beautifulsoup4
-stack-data==0.6.0
+stack-data==0.6.1
     # via ipython
 sympy==1.11.1
     # via lingvo
@@ -455,7 +455,7 @@ tensorboard-data-server==0.6.1
     # via tensorboard
 tensorboard-plugin-wit==1.8.1
     # via tensorboard
-tensorflow==2.9.2
+tensorflow==2.9.3
     # via
     #   -r praxis-requirements.in
     #   clu
@@ -479,6 +479,8 @@ tensorflow-text==2.9.0
     # via
     #   -r praxis-requirements.in
     #   lingvo
+tensorstore==0.1.28
+    # via flax
 termcolor==2.1.0
     # via
     #   tensorflow
