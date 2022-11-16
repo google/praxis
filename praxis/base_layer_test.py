@@ -283,6 +283,8 @@ class BaseLayerTest(test_utils.TestCase):
 
           child_tpl: child_cls.HParams = base_layer.sub_config_field(
               child_cls.HParams)
+          child_tpl_list: Any = base_layer.sub_config_field(None)
+          child_tpl_dict: Any = base_layer.sub_config_field(None)
 
         def setup(self):
           child_tpl = self.hparams.child_tpl.clone()
@@ -295,6 +297,8 @@ class BaseLayerTest(test_utils.TestCase):
       class FiddleParent(base_layer.FiddleBaseLayer):
 
         child_tpl: Any = base_layer.sub_config_field(child_cls.HParams)
+        child_tpl_list: Any = base_layer.sub_config_field(None)
+        child_tpl_dict: Any = base_layer.sub_config_field(None)
 
         def setup(self):
           child_tpl = self.child_tpl.clone()
@@ -309,6 +313,8 @@ class BaseLayerTest(test_utils.TestCase):
         with self.subTest(f'{parent_cls.__name__}_{child_cls.__name__}'):
           p = parent_cls.HParams(name='test')
           p.child_tpl = child_cls.HParams(x=5)
+          p.child_tpl_list = [child_cls.HParams(x=7), child_cls.HParams(x=12)]
+          p.child_tpl_dict = {'x': child_cls.HParams(x=12)}
           layer = p.Instantiate()
 
           model = layer.bind(
@@ -324,6 +330,8 @@ class BaseLayerTest(test_utils.TestCase):
           self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
           self.assertEqual(hyper_params['child']['_hparams'].x, 7)
           self.assertIsNone(hyper_params['_hparams'].child_tpl)
+          self.assertIsNone(hyper_params['_hparams'].child_tpl_list)
+          self.assertIsNone(hyper_params['_hparams'].child_tpl_dict)
 
   @parameterized.parameters([
       # Hparams compared w/ HParams

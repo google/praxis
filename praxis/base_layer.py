@@ -25,7 +25,7 @@ import functools
 import itertools
 import math
 import typing
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union, Mapping
 
 from absl import flags
 from absl import logging
@@ -1189,13 +1189,26 @@ class BaseLayerApi(nn.Module):
     Args:
       *args: used for scan's rigid signature requirements.
     """
+
+    def is_sublayer_template(val):
+      template_types = (base_hyperparams.InstantiableHyperParams,
+                        pax_fiddle.Config)
+      if isinstance(val, template_types) and issubclass(val.cls, BaseLayerApi):
+        return True
+
+      # Check if val is a container of sub-layer templates.
+      if isinstance(val, Mapping) and all(isinstance(key, str) for key in val):
+        return is_sublayer_template(list(val.values()))
+      if isinstance(val, (list, tuple)):
+        if any(is_sublayer_template(child) for child in val):
+          if all(is_sublayer_template(child) or child is None for child in val):
+            return True
+      return False
+
     hparams = self.hparams.clone()
     for p_name in self._hparam_fields:
       p_value = getattr(hparams, p_name)
-      if (isinstance(
-          p_value,
-          (base_hyperparams.InstantiableHyperParams, pax_fiddle.Config)) and
-          issubclass(p_value.cls, BaseLayerApi)):
+      if is_sublayer_template(p_value):
         # No need to include sub-layer template params, since the instantiated
         # sub-layer will show up in its own collection anyways.
         setattr(hparams, p_name, None)
