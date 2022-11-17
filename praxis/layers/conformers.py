@@ -219,11 +219,19 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     if p.pre_layer_norm:
       inputs = self.norm(inputs)
 
-    # Convert padding to mask for attention.
+    # Convert padding to mask for attention: [B, 1, 1, S]
     padding_mask = attentions.convert_paddings_to_mask(paddings, inputs.dtype)
-    if p.self_atten_tpl.right_context is not None or p.self_atten_tpl.left_context is not None:
-      rev_padding_mask = jnp.transpose(padding_mask, (0, 1, 3, 2))
-      padding_mask = jnp.minimum(padding_mask, rev_padding_mask)
+
+    # Compute full attention mask [B, 1, T, S] only for layers
+    # based on DotProductAttention with emulated self attention.
+    # If full attention mask is computed for LocalSelfAttention then
+    # it can introduce additional jit computation as in b/259460599.
+    if isinstance(p.self_atten_tpl,
+                  (DotProductAttentionWithContext.HParams,
+                   DotProductAttentionWithContextXL.HParams)):
+      if p.self_atten_tpl.right_context is not None or p.self_atten_tpl.left_context is not None:
+        rev_padding_mask = jnp.transpose(padding_mask, (0, 1, 3, 2))
+        padding_mask = jnp.minimum(padding_mask, rev_padding_mask)
 
     # Merge padding mask with atten_mask.
     if atten_mask is None:
