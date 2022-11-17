@@ -108,9 +108,11 @@ class ConvolutionsTest(test_utils.TestCase):
     depthwiseconv1d = instantiate(p)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
+    npy_inputs[:, -1, :] = np.nan
     inputs = jnp.asarray(npy_inputs)
     npy_paddings = np.random.randint(0, 2,
                                      [batch_size, seq_len]).astype('float32')
+    npy_paddings[0, -1] = 1.
     paddings = jnp.asarray(npy_paddings)
 
     prng_key = jax.random.PRNGKey(seed=123)
@@ -282,6 +284,8 @@ class ConvolutionsTest(test_utils.TestCase):
     logging.info('length:%s', str(length))
     npy_features = np.random.uniform(size=[batch_size, max_t, 80, 1])
     npy_paddings = get_padding_from_length(length)
+    npy_features[0, -1, :] = np.nan
+    npy_paddings[0, -1] = 1.
 
     features = jnp.asarray(npy_features)
     paddings = jnp.asarray(npy_paddings)
@@ -292,6 +296,10 @@ class ConvolutionsTest(test_utils.TestCase):
         theta, features, paddings)
     if padding == 'SAME':
       expect_output = get_padding_from_length((length + stride - 1) // stride)
+      # get_padding_from_length() doesn't consider paddings, here we fix it for
+      # stride 1. But this may break for other inputs.
+      if stride == 1:
+        expect_output[0, -1] = 1.
     elif padding == 'VALID':
       expect_output = get_padding_from_length(
           (length - kernel_size + 1 + stride - 1) // stride)

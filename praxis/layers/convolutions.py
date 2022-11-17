@@ -305,7 +305,7 @@ class ConvBNActWithPadding(ConvBNAct):
     p = self.hparams
 
     # Applying padding.
-    inputs *= (1 - paddings)[:, :, None, None]
+    inputs = py_utils.apply_padding(inputs, paddings[:, :, None, None])
 
     outputs = super().__call__(inputs)
 
@@ -453,7 +453,7 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
 
     # Applying padding.
     if paddings is not None:
-      inputs = inputs * (1.0 - jnp.expand_dims(paddings, axis=-1))
+      inputs = py_utils.apply_padding(inputs, paddings[:, :, None])
 
     dn = jax.lax.conv_dimension_numbers(inputs.shape,
                                         self.get_w().shape,
@@ -646,7 +646,7 @@ class LightConv1D(base_layer.BaseLayer):
 
     unnormalized_inputs = inputs
 
-    inputs = self.ln(inputs)
+    inputs = self.ln(inputs, paddings)
     act_inputs = self.linear_start_act(inputs)
     gated_inputs = self.linear_start_gated(inputs)
     inputs = act_inputs * jax.nn.sigmoid(gated_inputs)
