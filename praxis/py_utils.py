@@ -364,7 +364,7 @@ def create_gda(host_arrays: Union[np.ndarray, Any],
 
 @functools.lru_cache()
 def cached_mesh_pspec_sharding(mesh, pspec):
-  return sharding.MeshPspecSharding(mesh, pspec)
+  return sharding.NamedSharding(mesh, pspec)
 
 
 # TODO(b/248152817): Delete this function when jax.Array is enabled globally.
