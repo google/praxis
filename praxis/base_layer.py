@@ -1913,6 +1913,15 @@ class BaseLayer(
 
     @classmethod
     def __init_subclass__(cls, **kwargs: Any) -> None:
+      allowed_names = set(cls.__annotations__)
+      allowed_names.update(
+          {'__annotations__', '__module__', '__doc__', '_attribute_overrides'})
+      for name in vars(cls).keys() - allowed_names:
+        raise ValueError(
+            f'Unsupported declaration `{name}` on `{cls}`. Defining non-field '
+            'methods or attributes on HParams objects is disallowed, as they '
+            'will be lost during the Fiddle migration.')
+
       # Skip registration, since we override it below.
       super().__init_subclass__(__register_traverser__=False, **kwargs)
 

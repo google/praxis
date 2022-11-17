@@ -391,6 +391,48 @@ class BaseLayerTest(test_utils.TestCase):
       prms = mod.init({'params': key}, jnp.ones((3, 3)))
       self.assertIn('x', prms['params'])
 
+  def test_hparam_methods_are_disallowed(self):
+
+    expected_msg = 'Unsupported declaration `some_method` on `<class '
+    with self.assertRaisesRegex(ValueError, expected_msg):
+
+      class Layer(base_layer.BaseLayer):  # pylint: disable=unused-variable
+        """Test layer, inheriting from BaseLayer."""
+
+        class HParams(base_layer.BaseLayer.HParams):
+          """Test HParams, inheriting from BaseLayer.HParams."""
+
+          def some_method(self):
+            pass
+
+  def test_hparam_properties_are_disallowed(self):
+
+    expected_msg = 'Unsupported declaration `some_property` on `<class '
+    with self.assertRaisesRegex(ValueError, expected_msg):
+
+      class Layer(base_layer.BaseLayer):  # pylint: disable=unused-variable
+        """Test layer, inheriting from BaseLayer."""
+
+        class HParams(base_layer.BaseLayer.HParams):
+          """Test HParams, inheriting from BaseLayer.HParams."""
+
+          @property
+          def some_property(self):
+            return 42
+
+  def test_hparam_unannotated_attributes_are_disallowed(self):
+
+    expected_msg = 'Unsupported declaration `x` on `<class '
+    with self.assertRaisesRegex(ValueError, expected_msg):
+
+      class Layer(base_layer.BaseLayer):  # pylint: disable=unused-variable
+        """Test layer, inheriting from BaseLayer."""
+
+        class HParams(base_layer.BaseLayer.HParams):
+          """Test HParams, inheriting from BaseLayer.HParams."""
+
+          x = 42
+
 
 class FiddleBaseLayerTest(test_utils.TestCase):
 
