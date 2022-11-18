@@ -16,7 +16,7 @@
 """Quantized Attention Layers."""
 
 import string
-from typing import Tuple, Any
+from typing import Tuple, Any, Sequence
 
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
@@ -227,7 +227,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     if p.mesh_shape is not None:
       assert wp.wt is not None, ('Must provide sharding annotations for the '
                                  'weights if mesh shape is provided')
-      if (p.attention_combine_dims and isinstance(wp.wt, list) and
+      if (p.attention_combine_dims and isinstance(wp.wt, Sequence) and
           len(wp.wt) == 3):
         wt = [axis for axis in wp.wt if axis is not None]
         assert len(wt) == 2, ('wp.wt only specifies the sharding for '
