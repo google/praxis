@@ -39,7 +39,7 @@ install_requires = _get_requirements()
 
 setup(
     name='praxis',
-    version='0.2.0',
+    version='0.2.1',
     description=(
         'Functionalities such as a layers for building neural networks in Jax.'
     ),

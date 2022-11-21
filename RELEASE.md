@@ -1,3 +1,8 @@
+# Version: 0.2.1
+## Note
+*   Version: 0.2.1
+*   Build Date: 20221121
+*   Praxis commit: f7e98026c1c5ecbc6e4aff175621d443fa37fcf2
 # Version: 0.2.0
 ## Major Features and Improvements
 *  Preparatory work for Fiddle integration
