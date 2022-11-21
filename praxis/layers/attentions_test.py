@@ -557,11 +557,11 @@ class AttentionsTest(test_utils.TestCase):
     self.assertAllClose(
         test_utils.to_np(jax_atten_prob), test_utils.to_np(tf_atten_prob))
 
-  def text_attention_xl_step(self):
+  def test_attention_xl_step(self):
     mdl_dim = 16
     hidden_dim = 32
     num_heads = 4
-    test_layer_p = DotProductAttentionXL.HParams(
+    test_layer_p = attentions.DotProductAttentionXL.HParams(
         name='mh',
         input_dim=mdl_dim,
         hidden_dim=hidden_dim,

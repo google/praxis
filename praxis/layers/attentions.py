@@ -2451,14 +2451,14 @@ class DotProductAttentionXL(DotProductAttention):
 
   def _atten_logits_one_step(self, query, key, step):
     t = step + 1
-    key = key[:, :t]
+    s = key.shape[1]
 
-    # [1, T - 1]
-    pos = jnp.expand_dims(jnp.arange(0, t), 0)
+    # [1, S]
+    pos = jnp.expand_dims(jnp.arange(t - 1, t - s - 1, -1), 0)
     sin_emb = self.pos_emb(position=pos)
-    # [1, T - 1, N, H]
+    # [1, S, N, H]
     sin_emb = self.pos_proj(sin_emb)
-    # [T - 1, N, H]
+    # [S, N, H]
     sin_emb = jnp.squeeze(sin_emb, 0)
 
     # [B, N, T, S=T]
@@ -2498,6 +2498,7 @@ class DotProductAttentionXL(DotProductAttention):
     p = self.hparams
     key = self._shard_blnh(self.get_decode_state(key_state_name))
     value = self._shard_blnh(self.get_decode_state(value_state_name))
+
     k_b = key.shape[0]
     q_b = query.shape[0]
     if q_b != k_b:
@@ -2544,12 +2545,6 @@ class DotProductAttentionXL(DotProductAttention):
                   target_max_length: int) -> NestedMap:
 
     raise NotImplementedError('init_states is not implemented for %s' %
-                              self.__name__)
-
-  def extend_step(self, cached_states: NestedMap, query_vec: JTensor, *,
-                  atten_mask: JTensor,
-                  time_step: JTensor) -> Tuple[JTensor, NestedMap]:
-    raise NotImplementedError('extend_step is not implemented for %s' %
                               self.__name__)
 
 
