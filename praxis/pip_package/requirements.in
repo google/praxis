@@ -4,7 +4,7 @@
 absl-py
 clu
 einops
-fiddle
+fiddle==0.2.5
 flax
 jax
 jax-bitempered-loss
