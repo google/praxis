@@ -344,11 +344,8 @@ def empty_flax_module_stack():
     module_stack[:] = old_modules  # Restore module stack.
 
 
-_hparams_node_traverser_registry = daglish.NodeTraverserRegistry()
-
-# Copy existing traversers.
-_hparams_node_traverser_registry._node_traversers = (  # pylint: disable=protected-access
-    daglish._default_traverser_registry._node_traversers.copy())  # pylint: disable=protected-access
+_hparams_node_traverser_registry = daglish.NodeTraverserRegistry(
+    use_fallback=True)
 
 
 def _register_traversers_for_subclass(subclass):
