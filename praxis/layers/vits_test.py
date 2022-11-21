@@ -53,12 +53,12 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
     )
 
   def _vit_entry_layers(self, exp_params):
-    num_patches = np.prod(exp_params.pos_embed_shapes)
+    num_patches = np.prod(exp_params.pos_emb_shapes)
     num_patches += exp_params.prepend_cls_tokens
     num_patches += exp_params.append_cls_tokens
     p_entry = vits.VitEntryLayers.HParams(
         name='entry',
-        pos_embed_shapes=exp_params.pos_embed_shapes,
+        pos_emb_shapes=exp_params.pos_emb_shapes,
         patch_size=exp_params.patch_size,
         input_dims=exp_params.patch_size**2 * 3,
         output_dims=exp_params.hidden_dim,
@@ -109,9 +109,9 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
       ('square_image_square_embeddings_interp', (64, 64, 3), (8, 8)),
       ('rec_image_rec_embeddings_interp', (16, 24, 3), (2, 3)),
       ('sequence_input', (16, 4**2 * 3), (4, 4)))
-  def test_vit_entry_layers(self, input_shapes, pos_embed_shapes):
+  def test_vit_entry_layers(self, input_shapes, pos_emb_shapes):
     exp_params = self._exp_params()
-    exp_params.pos_embed_shapes = pos_embed_shapes
+    exp_params.pos_emb_shapes = pos_emb_shapes
     p_entry = self._vit_entry_layers(exp_params)
     entry = instantiate(p_entry)
 
@@ -198,7 +198,7 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
   def test_vit(self, pooled: bool, image_sizes: Tuple[int, int],
                prepend_cls_tokens: int, append_cls_tokens: int):
     exp_params = self._exp_params()
-    exp_params.pos_embed_shapes = (3, 5)
+    exp_params.pos_emb_shapes = (3, 5)
     exp_params.prepend_cls_tokens = prepend_cls_tokens
     exp_params.append_cls_tokens = append_cls_tokens
     exp_params.pooled = pooled

@@ -32,7 +32,7 @@ D = hidden dims
 
 from __future__ import annotations
 
-from typing import Tuple, Sequence
+from typing import Optional, Tuple, Sequence
 
 import einops
 import jax
@@ -173,7 +173,7 @@ class VitEntryLayers(base_layer.BaseLayer):
     """Associated hyper-params for this layer class.
 
     Attributes:
-      pos_embed_shapes: Height/width of the positional embedding. This param is
+      pos_emb_shapes: Height/width of the positional embedding. This param is
         used to support images of different shapes. When the embedding_size is
         not equal to image_size / patch_size, interpolation will be employed to
         generate embeddings of image_size / patch_size.
@@ -186,7 +186,7 @@ class VitEntryLayers(base_layer.BaseLayer):
         the patch features.
       pos_emb_tpl: template for positional embeddings.
     """
-    pos_embed_shapes: Tuple[int, int] = (0, 0)
+    pos_emb_shapes: Tuple[int, int] = (0, 0)
     patch_size: int = 0
     input_dims: int = 0
     output_dims: int = 0
@@ -194,7 +194,7 @@ class VitEntryLayers(base_layer.BaseLayer):
     prepend_cls_tokens: int = 0
     append_cls_tokens: int = 0
     # configurable components
-    pos_emb_tpl: BaseHParams = sub_config_field(
+    pos_emb_tpl: Optional[BaseHParams] = sub_config_field(
         embedding_softmax.TrainablePositionalEmbedding.HParams)
 
   def setup(self) -> None:
@@ -207,8 +207,9 @@ class VitEntryLayers(base_layer.BaseLayer):
         activation_tpl=activations.Identity.HParams())
     self.create_child('patch_projection', p_patch_projection)
 
-    pos_emb = p.pos_emb_tpl.clone().set(name='emb')
-    self.create_child('pos_emb', pos_emb)
+    if p.pos_emb_tpl:
+      pos_emb = p.pos_emb_tpl.clone().set(name='emb')
+      self.create_child('pos_emb', pos_emb)
 
     if p.pos_emb_dropout_prob > 0.0:
       p_dropout = stochastics.Dropout.HParams(
@@ -255,26 +256,18 @@ class VitEntryLayers(base_layer.BaseLayer):
 
     features = self.patch_projection(patches)
 
-    num_pos_embed = np.prod(p.pos_embed_shapes)
-    num_pos_embed += p.prepend_cls_tokens
-    num_pos_embed += p.append_cls_tokens
-    pos_emb = self.pos_emb(seq_length=num_pos_embed)
+    if p.pos_emb_tpl:
+      num_pos_embed = np.prod(p.pos_emb_shapes)
+      pos_emb = self.pos_emb(seq_length=num_pos_embed)
+      # Only support image shape for pos interpolation.
+      if len(inputs.shape) == 4:
+        row_patch_count = height // p.patch_size
+        col_patch_count = width // p.patch_size
+        if p.pos_emb_shapes != (row_patch_count, col_patch_count):
+          pos_emb = interpolate_embedding_2d(pos_emb, p.pos_emb_shapes,
+                                             (row_patch_count, col_patch_count))
+      features = features + pos_emb
 
-    prepend_cls_pos_emb = pos_emb[:, :p.prepend_cls_tokens, :]
-    input_pos_emb = pos_emb[:, p.prepend_cls_tokens:num_pos_embed -
-                            p.append_cls_tokens]
-    append_cls_pos_emb = pos_emb[:, -p.append_cls_tokens:, :]
-
-    # Only support image shape for pos interpolation.
-    if len(inputs.shape) == 4:
-      row_patch_count = height // p.patch_size
-      col_patch_count = width // p.patch_size
-      if p.pos_embed_shapes != (row_patch_count, col_patch_count):
-        input_pos_emb = interpolate_embedding_2d(
-            input_pos_emb, p.pos_embed_shapes,
-            (row_patch_count, col_patch_count))
-
-    features = features + input_pos_emb
     if self.hparams.pos_emb_dropout_prob > 0.0:
       features = self.dropout(features)
 
@@ -282,12 +275,10 @@ class VitEntryLayers(base_layer.BaseLayer):
     if p.prepend_cls_tokens > 0:
       prepend_cls_embs = jnp.tile(self.theta.prepend_cls_embs,
                                   (batch_size, 1, 1))
-      prepend_cls_embs = prepend_cls_embs + prepend_cls_pos_emb
       features = jnp.concatenate((prepend_cls_embs, features), axis=1)
 
     if p.append_cls_tokens > 0:
       append_cls_embs = jnp.tile(self.theta.append_cls_embs, (batch_size, 1, 1))
-      append_cls_embs = append_cls_embs + append_cls_pos_emb
       features = jnp.concatenate((features, append_cls_embs), axis=1)
 
     return features
@@ -433,7 +424,7 @@ class VisionTransformer(base_layer.BaseLayer):
 
 
 def build_vision_transformer_hparams_for_test(
-    pos_embed_shapes: Tuple[int, int], patch_size: int, image_channels: int,
+    pos_emb_shapes: Tuple[int, int], patch_size: int, image_channels: int,
     model_dims: int, mlp_dims: int, num_xformer_layers: int,
     num_heads: int) -> VisionTransformer.HParams:
   """Builds a minimal vision transformer layer for unit tests.
@@ -443,7 +434,7 @@ def build_vision_transformer_hparams_for_test(
   droppath, atten_logit_caps, etc.
 
   Args:
-    pos_embed_shapes: A tuple of (int, int), height and width of the positional
+    pos_emb_shapes: A tuple of (int, int), height and width of the positional
       embedding.
     patch_size: An integer specifying the size of patch for ViT.
     image_channels: An integer specifying the number of channels of input image.
@@ -456,15 +447,15 @@ def build_vision_transformer_hparams_for_test(
     A HParams of the VisionTransformer layer.
   """
   pos_emb_tpl = embedding_softmax.TrainablePositionalEmbedding.HParams(
-      max_seq_length=np.prod(pos_embed_shapes),
+      max_seq_length=np.prod(pos_emb_shapes),
       embedding_dims=model_dims,
       params_init=WeightInit.Gaussian(scale=0.02),
   )
   p_entry = VitEntryLayers.HParams(
       name='entry',
-      pos_embed_shapes=pos_embed_shapes,
+      pos_emb_shapes=pos_emb_shapes,
       patch_size=patch_size,
-      input_dims=patch_size ** 2 * image_channels,
+      input_dims=patch_size**2 * image_channels,
       output_dims=model_dims,
       pos_emb_tpl=pos_emb_tpl,
   )
