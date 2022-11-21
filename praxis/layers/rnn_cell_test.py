@@ -85,6 +85,50 @@ class RnnCellTest(test_utils.TestCase):
     self.assertAllClose(m_expected, output.m)
     self.assertAllClose(c_expected, output.c)
 
+  def test_LayerNormedLstmSimple(self):
+    np.random.seed(_NUMPY_RANDOM_SEED)
+    inputs = tf_py_utils.NestedMap(
+        act=[np.random.uniform(size=(3, 2))], padding=jnp.zeros([3, 1]))
+    state0 = tf_py_utils.NestedMap(
+        c=np.random.uniform(size=(3, 2)), m=np.random.uniform(size=(3, 2)))
+    tf_inputs = tf_py_utils.NestedMap(
+        act=[tf.constant(inputs.act[0], tf.float32)], padding=tf.zeros([3, 1]))
+    tf_state0 = tf_py_utils.NestedMap(
+        c=tf.constant(state0.c, tf.float32),
+        m=tf.constant(state0.m, tf.float32))
+
+    params = rnn_cell.LayerNormalizedLSTMCellSimple.Params().Set(
+        name='lstm',
+        params_init=tf_py_utils.WeightInit.Uniform(1.24, _INIT_RANDOM_SEED),
+        bias_init=tf_py_utils.WeightInit.Uniform(1.24, _INIT_RANDOM_SEED),
+        num_input_nodes=2,
+        num_output_nodes=2,
+        couple_input_forget_gates=False,
+        enable_lstm_bias=True,
+        output_nonlinearity=True)
+    lstm = rnn_cell.LayerNormalizedLSTMCellSimple(params)
+    res, _ = lstm.FPropDefaultTheta(tf_state0, tf_inputs)
+    m_expected = res.m.numpy()
+    c_expected = res.c.numpy()
+
+    p = jax_rnn_cell.LayerNormalizedLstmCellSimple.HParams(
+        num_input_nodes=2,
+        num_output_nodes=2,
+        name='lstm',
+        output_nonlinearity=True,
+    )
+    model = instantiate(p)
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = model.init(jax.random.PRNGKey(5678), state0, inputs)
+      initial_vars[PARAMS]['wm'] = lstm.vars['wm'].numpy()
+      initial_vars[PARAMS]['b'] = lstm.vars['b'].numpy()
+      initial_vars[PARAMS]['ln_scale'] = lstm.vars['ln_scale'].numpy()
+      print(initial_vars[PARAMS])
+      output = model.apply(initial_vars, state0, inputs)
+    self.assertAllClose(m_expected, output.m)
+    self.assertAllClose(c_expected, output.c)
+
 
 if __name__ == '__main__':
   absltest.main()

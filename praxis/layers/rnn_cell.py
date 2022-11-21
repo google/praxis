@@ -391,6 +391,68 @@ class LstmCellSimple(BaseRnnCell):
     return state1
 
 
+class LayerNormalizedLstmCellSimple(LstmCellSimple):
+  """An implementation of layer normalized LSTM based on LSTMCellSimple.
+
+  Implements normalization scheme as described in
+  https://arxiv.org/pdf/1607.06450.pdf
+  """
+
+  class HParams(LstmCellSimple.HParams):
+    """Associated hyper-params for this layer class.
+
+    Attributes:
+      layer_norm_epsilon: A small float added to variance.
+    """
+    layer_norm_epsilon: float = 1e-8
+
+  def setup(self) -> None:
+    """Initializes LayerNormalizedLstmCellSimple."""
+    super().setup()
+    ln_scale_pc = WeightHParams(
+        shape=[self.num_gates * self.hidden_size],
+        init=WeightInit.Constant(1.0))
+    self.create_variable('ln_scale', ln_scale_pc)
+
+  def __call__(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
+    """Forward function.
+
+    The only difference to base class is a LayerNorm applied before gating. Also
+    see base class docstrings.
+
+    Args:
+      state0: The previous recurrent state.
+      inputs: The inputs to the cell.
+
+    Returns:
+      state1: The next recurrent state.
+    """
+    p = self.hparams
+    inputs = jax.tree_map(lambda x: x, inputs)
+    if not isinstance(inputs.act, (list, tuple)):
+      inputs.act = [inputs.act]
+    asserts.eq(self.hparams.inputs_arity, len(inputs.act))
+
+    if p.reset_cell_state:
+      state0 = self._reset_state(state0, inputs)
+
+    concat = jnp.concatenate(inputs.act + [state0.m], 1)
+    xmw = jnp.einsum('bd,dc->bc', concat, self.theta.wm)
+    b = xmw.shape[0]
+    xmw_reshape = jnp.reshape(xmw, [b, self.num_gates, -1])
+    xmw_mean = jnp.mean(xmw_reshape, axis=2, keepdims=True)
+    xmw_variance = jnp.mean(
+        jnp.square(xmw_reshape - xmw_mean), axis=2, keepdims=True)
+    xmw_normed = (xmw_reshape - xmw_mean) * jax.lax.rsqrt(xmw_variance +
+                                                          p.layer_norm_epsilon)
+    xmw = jnp.reshape(xmw_normed, [b, -1]) * self.theta.ln_scale
+    xmw += self._bias_adjustment()
+    i_i, i_g, f_g, o_g = jnp.split(xmw, self.num_gates, axis=1)
+    state1 = self._gates_internal(state0, i_i, i_g, f_g, o_g)
+    state1 = self._apply_zoneout(state0, inputs, state1)
+    return state1
+
+
 class CifgLstmCellSimple(LstmCellSimple):
   """CIFG variant LSTM which couple the input and output gate."""
 

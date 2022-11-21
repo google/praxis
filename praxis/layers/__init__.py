@@ -95,6 +95,7 @@ from praxis.layers.repeats import Repeat
 from praxis.layers.resnets import ResNet
 from praxis.layers.resnets import ResNetBlock
 from praxis.layers.rnn_cell import CifgLstmCellSimple
+from praxis.layers.rnn_cell import LayerNormalizedLstmCellSimple
 from praxis.layers.rnn_cell import LstmCellSimple
 from praxis.layers.spectrum_augmenter import SpectrumAugmenter
 from praxis.layers.stochastics import Dropout
