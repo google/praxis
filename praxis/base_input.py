@@ -118,6 +118,11 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     assert hparams.batch_size is not None
     return hparams.batch_size
 
+  @classmethod
+  def get_global_batch_size(cls, hparams: BaseInput.HParams) -> int:
+    assert hparams.num_infeed_hosts is not None
+    return cls.get_batch_size(hparams) * hparams.num_infeed_hosts
+
   def __init__(self, hparams: BaseInput.HParams) -> None:
     if self._VALIDATE_BATCH_SIZE_NOT_NONE and (hparams.batch_size is None):
       raise ValueError('Must specify p.batch_size.')
