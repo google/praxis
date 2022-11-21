@@ -310,6 +310,7 @@ class VitExitLayers(base_layer.BaseLayer):
     pooled: bool = True
     pre_ln: bool = True
     output_fc_tanh: bool = True
+    output_fc_has_bias: bool = True
     pooling_tpl: BaseHParams = sub_config_field(poolings.GlobalPooling.HParams)
 
   def setup(self) -> None:
@@ -326,12 +327,14 @@ class VitExitLayers(base_layer.BaseLayer):
       p_fc_tanh = linears.FeedForward.HParams(
           input_dims=p.hidden_dim,
           output_dims=p.output_dim,
+          has_bias=p.output_fc_has_bias,
           activation_tpl=activations.Tanh.HParams())
       self.create_child('fc_tanh', p_fc_tanh)
     elif p.output_dim != 0 and p.hidden_dim != p.output_dim:
       p_fc = linears.FeedForward.HParams(
           input_dims=p.hidden_dim,
           output_dims=p.output_dim,
+          has_bias=p.output_fc_has_bias,
           activation_tpl=activations.Identity.HParams())
       self.create_child('output_projection', p_fc)
 
