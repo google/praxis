@@ -295,7 +295,8 @@ class FullSoftmax(base_layer.BaseLayer):
           log_probs * class_probabilities, axis=-1, dtype=jnp.float32)
     else:
       per_example_xent = self.bi_tempered_loss(logits, class_probabilities)
-    per_example_argmax = jax.lax.stop_gradient(jnp.argmax(logits, axis=-1))
+    per_example_argmax = jax.lax.stop_gradient(
+        jnp.argmax(logits.astype(jnp.float32), axis=-1))
 
     # Compute total softmax cross-entropy loss for the output tensor.
     total_xent = jnp.sum(
@@ -314,7 +315,7 @@ class FullSoftmax(base_layer.BaseLayer):
     output_nmap = NestedMap(
         logits=logits.astype(inputs_dtype),
         log_probs=log_probs.astype(inputs_dtype),
-        per_example_argmax=per_example_argmax.astype(inputs_dtype),
+        per_example_argmax=per_example_argmax,
         per_example_xent=per_example_xent.astype(jnp.float32),
         total_xent=total_xent,
         total_weight=total_weight,
@@ -502,7 +503,8 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
     per_example_xent = jnp.sum(
         per_class_xent * per_class_weight, axis=-1, dtype=jnp.float32)
 
-    per_example_argmax = jax.lax.stop_gradient(jnp.argmax(logits, axis=-1))
+    per_example_argmax = jax.lax.stop_gradient(
+        jnp.argmax(logits.astype(jnp.float32), axis=-1))
 
     # Compute total sigmoid cross-entropy loss for the output tensor.
     total_xent = jnp.sum(
@@ -513,7 +515,7 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
     output_nmap = NestedMap(
         logits=logits.astype(inputs_dtype),
         log_probs=log_probs.astype(inputs_dtype),
-        per_example_argmax=per_example_argmax.astype(inputs_dtype),
+        per_example_argmax=per_example_argmax,
         per_example_xent=per_example_xent.astype(inputs_dtype),
         total_xent=total_xent.astype(inputs_dtype),
         total_weight=total_weight,
@@ -676,7 +678,8 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
     per_example_xent = -jnp.sum(
         log_probs * class_probabilities, axis=-1, dtype=jnp.float32)
 
-    per_example_argmax = jax.lax.stop_gradient(jnp.argmax(logits, axis=-1))
+    per_example_argmax = jax.lax.stop_gradient(
+        jnp.argmax(logits.astype(jnp.float32), axis=-1))
 
     # Compute total softmax for the entire sequence
     total_xent = jnp.sum(
@@ -715,7 +718,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
     output_nmap = NestedMap(
         logits=logits.astype(inputs_dtype),
         log_probs=log_probs.astype(inputs_dtype),
-        per_example_argmax=per_example_argmax.astype(inputs_dtype),
+        per_example_argmax=per_example_argmax,
         per_example_xent=per_example_xent.astype(jnp.float32),
         total_xent=total_xent.astype(inputs_dtype),
         # base_model.py _compute_xent_loss_helper uses avg_xent_weight if set,

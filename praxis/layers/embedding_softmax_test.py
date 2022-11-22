@@ -192,6 +192,7 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     # Note: The argmax-related values are very sensitive to numerical errors.
     for k in outputs.keys():
       self.assertAllClose(to_np(outputs[k]), to_np(tf_output[k]), atol=1e-6)
+    self.assertEqual(outputs.per_example_argmax.dtype, jnp.int32)
 
   def test_simple_softmax_layer_class_ids(self):
     batch_size = 8
@@ -488,6 +489,7 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     self.assertAllClose(np_get_logits, tf_np_get_logits)
     for k in outputs.keys():
       self.assertAllClose(to_np(outputs[k]), to_np(tf_output[k]))
+    self.assertEqual(outputs.per_example_argmax.dtype, jnp.int32)
 
   @parameterized.parameters(8, 1)
   def test_sigmoid_cross_entropy_class_weights(self, num_classes):
