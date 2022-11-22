@@ -185,6 +185,7 @@ class VitEntryLayers(base_layer.BaseLayer):
       append_cls_tokens: If > 0, the layer will append N CLS token after
         the patch features.
       pos_emb_tpl: template for positional embeddings.
+      input_fc_has_bias: Whether the input projection layer has bias.
     """
     pos_emb_shapes: Tuple[int, int] = (0, 0)
     patch_size: int = 0
@@ -193,9 +194,9 @@ class VitEntryLayers(base_layer.BaseLayer):
     pos_emb_dropout_prob: float = 0.0
     prepend_cls_tokens: int = 0
     append_cls_tokens: int = 0
-    # configurable components
     pos_emb_tpl: Optional[BaseHParams] = sub_config_field(
         embedding_softmax.TrainablePositionalEmbedding.HParams)
+    input_fc_has_bias: bool = True
 
   def setup(self) -> None:
     p = self.hparams
@@ -204,6 +205,7 @@ class VitEntryLayers(base_layer.BaseLayer):
         name='proj',
         input_dims=p.input_dims,
         output_dims=p.output_dims,
+        has_bias=p.input_fc_has_bias,
         activation_tpl=activations.Identity.HParams())
     self.create_child('patch_projection', p_patch_projection)
 
@@ -301,6 +303,7 @@ class VitExitLayers(base_layer.BaseLayer):
       pre_ln: If true, add a layer norm at the beginning of this layer.
       output_fc_tanh: Whether to include a linear projection layer with tanh
         activation on the output.
+      output_fc_has_bias: Whether the output projection layer has bias.
       pooling_tpl: Pooling layer config to use, defaults to global
         max pooling if not set.
     """
