@@ -122,9 +122,12 @@ def beam_search(model: base_layer.BaseLayerApi,
 
   Returns:
     A NestedMap with `.decode_lengths` (vector of ints indicating the lengths
-    of non-padding tokens in `.output_ids`, which includes the prefix)`,
+    of non-padding tokens in `.output_ids`, which includes the prefix),
     `.output_ids` (matrix of int ids with the
-    decoded output), `.scores` (Scores of decoding sequence).
+    decoded output), `.scores` (Scores of decoding sequence), `.log_probs`
+    (matrix of floats indicating log probabilities for each output),
+    `prefix_lengths` (vector of ints for prefix length),
+    `prefix_ids` (matrix of ints for prefix ids).
   """
   # TODO(b/229679837): Move right align prefix ids and paddings logic inside
   # the beam_search function.
@@ -282,6 +285,7 @@ def beam_search(model: base_layer.BaseLayerApi,
   result.decode_lengths = result.end_decode_lengths
   result.original_lengths = prefix_lengths
   result.prefix_lengths = prefix_lengths
+  result.prefix_ids = target_prefix_ids
   del (result.end_ids, result.end_scores, result.end_decode_lengths,
        result.end_scores_norm, result.hyp_scores)
   return result
