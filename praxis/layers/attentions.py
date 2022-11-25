@@ -2792,9 +2792,12 @@ class LocalSelfAttention(DotProductAttention):
     raise NotImplementedError('init_states is not implemented for %s' %
                               self.__name__)
 
-  def extend_step(self, cached_states: NestedMap, query_vec: JTensor, *,
+  def extend_step(self, query_vec: JTensor,
+                  *,
                   atten_mask: JTensor,
-                  time_step: JTensor) -> Tuple[JTensor, NestedMap]:
+                  time_step: JTensor,
+                  segment_pos: Optional[JTensor],
+                  is_cross_attention: bool = False) -> JTensor:
     raise NotImplementedError('extend_step is not implemented for %s' %
                               self.__name__)
 
