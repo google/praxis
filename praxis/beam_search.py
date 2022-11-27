@@ -270,6 +270,11 @@ def beam_search(model: base_layer.BaseLayerApi,
       val,
       carry_variables=[base_layer.DECODE_CACHE])
 
+  prefix_ids = decoder_utils.left_align_tensor(target_prefix_ids[:, 0, :],
+                                               prefix_lengths[:, 0],
+                                               max_prefix_len)
+  prefix_ids = jnp.expand_dims(prefix_ids, 1)
+
   result.output_ids = result.end_ids
   result.output_ids = decoder_utils.left_align_tensor(
       jnp.reshape(result.output_ids, (batch_size * beam_size, -1)),
@@ -285,7 +290,7 @@ def beam_search(model: base_layer.BaseLayerApi,
   result.decode_lengths = result.end_decode_lengths
   result.original_lengths = prefix_lengths
   result.prefix_lengths = prefix_lengths
-  result.prefix_ids = target_prefix_ids
+  result.prefix_ids = prefix_ids
   del (result.end_ids, result.end_scores, result.end_decode_lengths,
        result.end_scores_norm, result.hyp_scores)
   return result
