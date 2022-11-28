@@ -53,8 +53,6 @@ chex==0.1.5
     # via optax
 clu==0.0.7
     # via -r praxis-requirements.in
-comm==0.1.0
-    # via ipykernel
 commonmark==0.9.1
     # via rich
 contextlib2==21.6.0
@@ -119,7 +117,7 @@ idna==3.4
     # via
     #   anyio
     #   requests
-importlib-metadata==5.0.0
+importlib-metadata==5.1.0
     # via
     #   markdown
     #   nbconvert
@@ -128,7 +126,7 @@ importlib-resources==5.10.0
     #   etils
     #   jsonschema
     #   tensorflow-datasets
-ipykernel==6.18.0
+ipykernel==6.17.1
     # via
     #   ipywidgets
     #   jupyter
@@ -163,7 +161,7 @@ jaxlib==0.3.25
     #   chex
     #   clu
     #   optax
-jedi==0.18.1
+jedi==0.18.2
     # via ipython
 jinja2==3.1.2
     # via
@@ -171,7 +169,7 @@ jinja2==3.1.2
     #   nbclassic
     #   nbconvert
     #   notebook
-jsonschema==4.17.0
+jsonschema==4.17.1
     # via nbformat
 jupyter==1.0.0
     # via lingvo
@@ -445,7 +443,7 @@ sniffio==1.3.0
     # via anyio
 soupsieve==2.3.2.post1
     # via beautifulsoup4
-stack-data==0.6.1
+stack-data==0.6.2
     # via ipython
 sympy==1.11.1
     # via lingvo
@@ -473,7 +471,7 @@ tensorflow-hub==0.12.0
     # via
     #   lingvo
     #   tensorflow-text
-tensorflow-io-gcs-filesystem==0.27.0
+tensorflow-io-gcs-filesystem==0.28.0
     # via tensorflow
 tensorflow-metadata==1.11.0
     # via tensorflow-datasets
@@ -511,7 +509,6 @@ tqdm==4.64.1
     # via tensorflow-datasets
 traitlets==5.5.0
     # via
-    #   comm
     #   ipykernel
     #   ipython
     #   ipywidgets
@@ -538,7 +535,7 @@ typing-extensions==4.4.0
     #   typing-inspect
 typing-inspect==0.8.0
     # via libcst
-urllib3==1.26.12
+urllib3==1.26.13
     # via requests
 wcwidth==0.2.5
     # via prompt-toolkit
@@ -558,7 +555,7 @@ widgetsnbextension==4.0.3
     # via ipywidgets
 wrapt==1.14.1
     # via tensorflow
-zipp==3.10.0
+zipp==3.11.0
     # via
     #   etils
     #   importlib-metadata
