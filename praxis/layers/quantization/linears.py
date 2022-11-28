@@ -66,8 +66,13 @@ class Linear(linears.Linear):
     ap = p.activation_split_dims_mapping
     if p.quantization.mode == base_layer.QuantizationMode.INFERENCE:
       w, s = self.get_quantized_weight('w')
-      out = operations.einsum('...y,yz->...z', inputs, w, s)
+      if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+        out = operations.einsum('...y,yz->...z', inputs, w, s)
+      elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+        raise NotImplementedError('AQT is not supported yet.')
     else:
+      if p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+        raise NotImplementedError('AQT is not supported yet.')
       out = linears.project_last_dim(inputs, self.theta.w)
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
@@ -104,7 +109,10 @@ class Linear(linears.Linear):
       a map from names to quantized weights.
     """
     theta = self.theta
-    eqn = 'xy,yz->xz'
-    q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    if self.hparams.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+      eqn = 'xy,yz->xz'
+      q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
+    elif self.hparams.quantization.quantization_type == base_layer.QuantizationType.AQT:
+      raise NotImplementedError('AQT quantization is not added yet')
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

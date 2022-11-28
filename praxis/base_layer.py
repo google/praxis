@@ -2357,27 +2357,40 @@ class _WrapperLayer(BaseLayer):
 
 
 @enum.unique
+class QuantizationType(str, enum.Enum):
+  """The different types for quantization.
+
+  PTQ indicates Post Training Quantization.
+  AQT indicates Accurate Quantized Training.
+  """
+
+  PTQ = 'ptq'
+  AQT = 'aqt'
+
+
+@enum.unique
 class QuantizationMode(str, enum.Enum):
   """The different modes for quantization.
 
-  INFERENCE indicates that the model is already quantized and is ready to run
-    inference with the previously set dtypes.
-  QUANTIZE indicates that the model is still float and is going to be quantized
-    according to the provided dtypes.
+  TRAINING indicates that the model is in the training mode.
+  MATERIALIZE indicates that the model weights are being materialized as
+    quantized weights and scales. After materialization mode is set to
+    inference.
+  INFERENCE indicates that the model is in inference mode.
   """
+  TRAINING = 'training'
+  MATERIALIZE = 'materialize'
   INFERENCE = 'inference'
-  QUANTIZE = 'quantize'
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):
   """Parameters for quantization.
 
-  Currently supports only post-training quantization.
-
   Attributes:
     mode: the quantization mode associated with this quantization parameter.
   """
 
+  quantization_type: QuantizationType = QuantizationType.PTQ
   mode: QuantizationMode = QuantizationMode.INFERENCE
 
 

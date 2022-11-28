@@ -153,8 +153,13 @@ class AttentionProjection(attentions.AttentionProjection):
 
     if p.quantization.mode == base_layer.QuantizationMode.INFERENCE:
       w, s = self.get_quantized_weight('w')
-      ret = operations.einsum(eqn, inputs, w, s)
+      if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+        ret = operations.einsum(eqn, inputs, w, s)
+      elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+        raise NotImplementedError('AQT is not yet implemented')
     else:
+      if p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+        raise NotImplementedError('AQT is not yet implemented')
       ret = jnp.einsum(eqn, inputs, w)
     if p.use_bias:
       ret += theta.b
@@ -190,17 +195,19 @@ class AttentionProjection(attentions.AttentionProjection):
       a map from names to quantized weights.
     """
     p = self.hparams
-    assert p.quantization.mode == base_layer.QuantizationMode.QUANTIZE
-    eqn = ''
-    # This matches the equantion logic in __call__ for weights.
-    if p.is_output_projection:
-      if p.use_nhd_shape:
-        eqn = 'ANH,NHD->AD'
+    if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+      eqn = ''
+      # This matches the equantion logic in __call__ for weights.
+      if p.is_output_projection:
+        if p.use_nhd_shape:
+          eqn = 'ANH,NHD->AD'
+        else:
+          eqn = 'ANH,DNH->AD'
       else:
-        eqn = 'ANH,DNH->AD'
-    else:
-      eqn = 'AD,DNH->ANH'
-    q_w, q_s = operations.reduce_einsum_weight_precision(eqn, self.theta.w)
+        eqn = 'AD,DNH->ANH'
+      q_w, q_s = operations.reduce_einsum_weight_precision(eqn, self.theta.w)
+    elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+      raise NotImplementedError('AQT quantization is not added yet')
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
 
@@ -315,8 +322,13 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     eqn = f'{batch_eqn}D,KDNH->K{batch_eqn}NH'
     if p.quantization.mode == base_layer.QuantizationMode.INFERENCE:
       w, s = self.get_quantized_weight('w')
-      ret = operations.einsum(eqn, inputs, w, s)
+      if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+        ret = operations.einsum(eqn, inputs, w, s)
+      elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+        raise NotImplementedError('AQT is not yet implemented')
     else:
+      if p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+        raise NotImplementedError('AQT is not yet implemented')
       ret = jnp.einsum(eqn, inputs, w)
     ret = checkpoint_name(ret, 'combined_qkv_proj')
     if p.use_bias:
@@ -361,8 +373,10 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     """
     theta = self.theta
     p = self.hparams
-    assert p.quantization.mode == base_layer.QuantizationMode.QUANTIZE
-    eqn = 'AD,KDNH->KANH'
-    q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
+    if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+      eqn = 'AD,KDNH->KANH'
+      q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
+    elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+      raise NotImplementedError('AQT quantization is not added yet')
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

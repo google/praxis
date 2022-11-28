@@ -44,7 +44,7 @@ class RepeatsLinearQuantizeTest(test_utils.TestCase):
         input_dims=2,
         output_dims=2,
         quantization=base_layer.QuantizationHParams(
-            mode=base_layer.QuantizationMode.QUANTIZE))
+            mode=base_layer.QuantizationMode.MATERIALIZE))
     p = repeats.Repeat.HParams(name='ffn', sub_tpl=sub_p, x_times=3)
     ffn = instantiate(p)
 

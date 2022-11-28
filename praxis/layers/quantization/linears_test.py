@@ -40,7 +40,7 @@ class QuantizedAttentionTest(test_utils.TestCase):
 
   @parameterized.named_parameters(
       ('inference', base_layer.QuantizationMode.INFERENCE),
-      ('quantize', base_layer.QuantizationMode.QUANTIZE),
+      ('quantize', base_layer.QuantizationMode.MATERIALIZE),
   )
   def test_linear_quantized(self, mode):
     p = qlinears.Linear.HParams(
@@ -56,13 +56,16 @@ class QuantizedAttentionTest(test_utils.TestCase):
     self.assertEqual(outputs.shape, (2, 4))
     if mode == base_layer.QuantizationMode.INFERENCE:
       self.assertAllClose(jnp.full((2, 4), 0.0), outputs)
+    else:
+      self.assertRaises(AssertionError, self.assertAllClose,
+                        jnp.full((2, 4), 0.0, dtype=jnp.bfloat16), outputs)
 
 
 class QuantizedLinearsSyncTest(test_utils.TestCase):
   """Sync tests between quantized Linear and regular Linear.
 
   Quantized Linear is expected to be identical to regular linear when
-  running with mode = QUANTIZE.
+  running with mode = MATERIALIZE.
   """
 
   def setUp(self):
@@ -84,7 +87,7 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
     p_q = qlinears.Linear.HParams(
         name='_linear_q',
         quantization=base_layer.QuantizationHParams(
-            mode=base_layer.QuantizationMode.QUANTIZE))
+            mode=base_layer.QuantizationMode.MATERIALIZE))
     for p in [p_f, p_q]:
       p.input_dims = 16
       p.output_dims = 24
@@ -107,7 +110,7 @@ class QuantizeLinearTest(test_utils.TestCase):
         weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
             wt=['mdl', 'data']),
         quantization=base_layer.QuantizationHParams(
-            mode=base_layer.QuantizationMode.QUANTIZE))
+            mode=base_layer.QuantizationMode.MATERIALIZE))
     p.input_dims = 6
     p.output_dims = 4
     layer = instantiate(p)
