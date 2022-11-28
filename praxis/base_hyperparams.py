@@ -643,6 +643,9 @@ def sub_config_field(
 ):
   """Returns an instance of the sub-config factory.
 
+  By supplying a factory method to the datacalsses.field, this function avoids
+  multiple sub_config_cls instances referencing the same mutable default value.
+
   Args:
     sub_config_cls: A reference to a sub-configuration class, e.g.
       `sub_config_cls=Linear.HParams`.  If `None`, then the sub-config defaults
