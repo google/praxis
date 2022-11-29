@@ -17,6 +17,7 @@
 
 from typing import Any
 
+from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import linears
@@ -49,7 +50,17 @@ class Linear(linears.Linear):
         mesh_shape=p.mesh_shape,
         tensor_split_dims_mapping=wp.wt)
     if p.quantization.mode == base_layer.QuantizationMode.INFERENCE:
+      if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.')
+        # Additionally add activation scale.
       self.create_quantized_variable('w', pc, [p.output_dims])
+    elif p.quantization.mode == base_layer.QuantizationMode.TRAINING:
+      if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.')
+        # Additionally add mutable tensor to record activation range.
+      self.create_variable('w', pc)
     else:
       self.create_variable('w', pc)
 
@@ -64,16 +75,28 @@ class Linear(linears.Linear):
     """
     p = self.hparams
     ap = p.activation_split_dims_mapping
+    eqn = '...y,yz->...z'
     if p.quantization.mode == base_layer.QuantizationMode.INFERENCE:
+      # PTQ, QAT has the same inference graph, only difference is on activation.
       w, s = self.get_quantized_weight('w')
-      if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
-        out = operations.einsum('...y,yz->...z', inputs, w, s)
-      elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
-        raise NotImplementedError('AQT is not supported yet.')
+      if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.')
+      elif p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.DYNAMIC:
+        inputs, act_scale = operations.reduce_precision_activation(inputs)
+        out = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
+      elif p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.NONE:
+        out = operations.einsum(eqn, inputs, w, s)
     else:
+      w = self.theta.w
       if p.quantization.quantization_type == base_layer.QuantizationType.AQT:
         raise NotImplementedError('AQT is not supported yet.')
-      out = linears.project_last_dim(inputs, self.theta.w)
+      elif p.quantization.quantization_type == base_layer.QuantizationType.FQ:
+        inputs = operations.fakequant_activation(inputs)
+        w = operations.fakequant_einsum(eqn, w)
+        out = linears.project_last_dim(inputs, w)
+      elif p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+        out = linears.project_last_dim(inputs, w)
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
     ap_out = ap.out
@@ -100,7 +123,22 @@ class Linear(linears.Linear):
     scale_pspec = base_layer._weight_hparam_to_pspec(
         scale_weight_hparam, self.hparams.mesh_axis_names)
     partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
-    return {base_layer.PARAMS: partitionspec}
+    if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+      if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.')
+      else:
+        # qunatize only weight for activation == NONE and DYNAMIC
+        return {base_layer.PARAMS: partitionspec}
+    elif p.quantization.quantization_type == base_layer.QuantizationType.FQ:
+      if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.')
+      else:
+        # qunatize only weight for activation == NONE and DYNAMIC
+        return {base_layer.PARAMS: partitionspec}
+    elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+      raise NotImplementedError('AQT quantization is not added yet')
 
   def quantize_weight(self) -> NestedJTensor:
     """Get quantized weight.
@@ -108,11 +146,25 @@ class Linear(linears.Linear):
     Returns:
       a map from names to quantized weights.
     """
+    p = self.hparams
     theta = self.theta
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
-    if self.hparams.quantization.quantization_type == base_layer.QuantizationType.PTQ:
-      eqn = 'xy,yz->xz'
-      q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
-    elif self.hparams.quantization.quantization_type == base_layer.QuantizationType.AQT:
+    eqn = 'xy,yz->xz'
+    if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+      if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.')
+      else:
+        # qunatize only weight for activation == NONE and DYNAMIC
+        q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
+        return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
+    elif p.quantization.quantization_type == base_layer.QuantizationType.FQ:
+      if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.')
+      else:
+        # qunatize only weight for activation == NONE and DYNAMIC
+        q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
+        return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
+    elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
       raise NotImplementedError('AQT quantization is not added yet')
-    return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

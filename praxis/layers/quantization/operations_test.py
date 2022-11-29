@@ -83,6 +83,13 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
         jnp.multiply(reduced_weight, scale).astype(jnp.float32),
         rtol=0.02,
         atol=0.02)
+    weight_nudged = operations.fakequant_einsum(eqn, weight)
+    self.assertAllClose(weight, weight_nudged, rtol=0.02, atol=0.02)
+
+  def test_reduce_activation_precision(self):
+    act = np.random.normal(-1.0, 1.0, [10, 100]).astype(np.float32)
+    act_nudged = operations.fakequant_activation(act)
+    self.assertAllClose(act, act_nudged, rtol=0.02, atol=0.02)
 
 
 if __name__ == '__main__':

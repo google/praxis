@@ -17,6 +17,7 @@
 
 from typing import List, Tuple
 
+import jax
 from jax import numpy as jnp
 from praxis import pytypes
 
@@ -76,11 +77,18 @@ def einsum(eqn: str, x: JTensor, w: JTensor, scale: JTensor) -> JTensor:
   return jnp.multiply(ret, scale)
 
 
+def _round_with_gradient(x):
+  zero = x - jax.lax.stop_gradient(x)
+  return zero + jax.lax.stop_gradient(jnp.round(x))
+
+
 def reduce_einsum_weight_precision(
     eqn: str,
     t: JTensor,
     calculation_type: jnp.dtype = jnp.bfloat16,
-    output_type: jnp.dtype = jnp.bfloat16) -> Tuple[JTensor, JTensor]:
+    output_type: jnp.dtype = jnp.bfloat16,
+    squeeze: bool = True,
+    need_gradient=False) -> Tuple[JTensor, JTensor]:
   """Reduce the precision of the weight of einsum.
 
   It uses per-channel quantization so einsum equantion is passed in as well.
@@ -90,6 +98,8 @@ def reduce_einsum_weight_precision(
     t: the weight tensor for the einsum.
     calculation_type: the type for calculation.
     output_type: the output type of scale.
+    squeeze: if the output scale is squeezed.
+    need_gradient: if gradient is needed out of this function.
 
   Returns:
     A tuple of JTensors. The first one is the quantized weight and the second
@@ -108,7 +118,64 @@ def reduce_einsum_weight_precision(
       jnp.abs(jnp.min(t, axis=contract_dims, keepdims=True)))
   scale = bound / 127.0
   t = jnp.divide(t, scale)
-  t = jnp.round(t)
+  if need_gradient:
+    t = _round_with_gradient(t)
+  else:
+    t = jnp.round(t)
   t = jnp.clip(t, -128.0, 127.0).astype(jnp.int8)
-  scale = jnp.squeeze(scale).astype(output_type)
+  if squeeze:
+    scale = jnp.squeeze(scale).astype(output_type)
   return t, scale
+
+
+def fakequant_einsum(eqn: str, t: JTensor) -> JTensor:
+  """Nudges weight of einsum with FakeQuant.
+
+  Args:
+    eqn: the equantion for the einsum. Determines the channel dimension.
+    t: the weight tensor for the einsum.
+
+  Returns:
+    The nudged weight tensor.
+  """
+  q, scale = reduce_einsum_weight_precision(
+      eqn, t, squeeze=False, need_gradient=True)
+  return jnp.multiply(q, scale).astype(jnp.float32).astype(t.dtype)
+
+
+def reduce_precision_activation(t: JTensor,
+                                need_gradient=False) -> Tuple[JTensor, JTensor]:
+  """Reduce the precision of activation.
+
+  Args:
+    t: input tensor.
+    need_gradient: if gradient is needed out of this function.
+
+  Returns:
+    A tuple of JTensors. The first one is the quantized activation and the
+    second one is the scaling factor.
+  """
+  # TODO(jianlijianli): enable zero point as well.
+  bound = jnp.maximum(
+      jnp.abs(jnp.max(t, keepdims=True)), jnp.abs(jnp.min(t, keepdims=True)))
+  scale = bound / 127.0
+  t = jnp.divide(t, scale)
+  if need_gradient:
+    t = _round_with_gradient(t)
+  else:
+    t = jnp.round(t)
+  t = jnp.clip(t, -128.0, 127.0).astype(jnp.int8)
+  return t, scale
+
+
+def fakequant_activation(t: JTensor) -> JTensor:
+  """FakeQuant activation.
+
+  Args:
+    t: activation tensor
+
+  Returns:
+    nudged activation.
+  """
+  qt, scale = reduce_precision_activation(t, need_gradient=True)
+  return jnp.multiply(qt, scale).astype(t.dtype)
