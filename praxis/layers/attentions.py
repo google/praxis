@@ -600,13 +600,22 @@ class AttentionProjection(base_layer.BaseLayer):
 
     if p.attention_combine_dims and has_sharding:
       if len(wp.wt) == 3:
-        h_sharding = ()
-        for axes in (wp.wt[0], wp.wt[1]):
-          if isinstance(axes, (str, int)):
-            h_sharding += (axes,)
-          elif axes is not None:
-            h_sharding += axes
-        wt = [h_sharding, wp.wt[2]]
+        if p.is_output_projection and p.use_nhd_shape:
+          h_sharding = ()
+          for axes in (wp.wt[0], wp.wt[1]):
+            if isinstance(axes, (str, int)):
+              h_sharding += (axes,)
+            elif axes is not None:
+              h_sharding += axes
+          wt = [h_sharding, wp.wt[2]]
+        else:
+          h_sharding = ()
+          for axes in (wp.wt[1], wp.wt[2]):
+            if isinstance(axes, (str, int)):
+              h_sharding += (axes,)
+            elif axes is not None:
+              h_sharding += axes
+          wt = [wp.wt[0], h_sharding]
       assert len(wt) == 2
     else:
       wt = wp.wt
