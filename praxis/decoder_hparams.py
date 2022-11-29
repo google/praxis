@@ -17,9 +17,13 @@
 from typing import List, Optional, Union
 
 from praxis import base_hyperparams
+from praxis import base_layer
 from praxis import pytypes
+from praxis import sample_decode
 BaseHyperParams = base_hyperparams.BaseHyperParams
 JTensor = pytypes.JTensor
+
+sub_config_field = base_layer.sub_config_field
 
 
 class DecoderHParams(BaseHyperParams):
@@ -81,9 +85,13 @@ class SampleDecoderHParams(DecoderHParams):
     p: if not None, use the smallest number of logits whose cumulative sum of
       probs adds up to (at least) p. Notice that it should not be used with k
       at the same time.
+    next_token_sampler_tpl: HParams for the layer used to sample next token ids
+      given the logits output.
   """
   num_samples: int = 1
   # TODO(wangtao): supports per-example temperature.
   temperature: float = 1.0
   k: int = 40
   p: Optional[Union[float, JTensor]] = None
+  next_token_sampler_tpl: sample_decode.BaseNextTokenSampler.HParams = (
+      sub_config_field(sample_decode.DefaultNextTokenSampler.HParams))

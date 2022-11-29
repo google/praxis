@@ -19,12 +19,14 @@ This file contains sample decode with temperature and greedy decode algorithms.
 Greedy decode is a special case for sample decode.
 """
 
+import abc
 import functools
 from typing import List, Sequence, Optional, Union
 
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
+from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import decoder_utils
 from praxis import py_utils
@@ -32,6 +34,7 @@ from praxis import pytypes
 
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
+BaseHParams = base_layer.BaseLayer.HParams
 
 RANDOM = base_layer.RANDOM
 PARAMS = base_layer.PARAMS
@@ -241,18 +244,79 @@ def top_p_mask_logits(logits: JTensor, p: Union[float, JTensor]) -> JTensor:
   return logits
 
 
+class BaseNextTokenSampler(
+    base_hyperparams.BaseParameterizable, metaclass=abc.ABCMeta):
+
+  @abc.abstractmethod
+  def __call__(self, model: base_layer.BaseLayerApi, logits: JTensor,
+               temperature: Union[float, JTensor],
+               decode_loop_state: NestedMap) -> JTensor:
+    """Samples the next token ids given the logits output.
+
+    Args:
+      model: The model object.
+      logits: Logits at current step during decoding. This is a JTensor of [B,
+        V] where B is the batch size and V is the vocab_size.
+      temperature: Temperature of sampling decoding. It could be a float or a
+        JTensor of shape [B].
+      decode_loop_state: Decode loop state at current time step.
+
+    Returns:
+      JTensor of shape [B] containing the selected next token for each sequence
+        in the batch.
+    """
+
+
+class DefaultNextTokenSampler(BaseNextTokenSampler):
+  """The default sampling logic implementing top-K and top-P sampling."""
+
+  class HParams(BaseNextTokenSampler.HParams):
+    """Associated hyper-params for this layer class.
+
+    Attributes:
+      top_k: if nonzero, use top-k sampling, only selecting amongthe most likely
+        k tokens at each step.
+      top_p: if not None, use the smallest number of logits whose cumulative sum
+        of probs adds up to (at least) p. Notice that it should not be used with
+        k at the same time.
+    """
+    top_k: int = 40
+    top_p: Optional[Union[float, JTensor]] = None
+
+  def __call__(self, model: base_layer.BaseLayerApi, logits: JTensor,
+               temperature: Union[float, JTensor],
+               decode_loop_state: NestedMap) -> JTensor:
+    """The default sampling logic implementing top-K and top-P sampling."""
+    del decode_loop_state
+    p = self.hparams
+
+    if p.top_p is not None:
+      logits = top_p_mask_logits(logits, p.top_p)
+    if p.top_k > 1:
+      new_ids = sample_from_topk(
+          logits, model.next_prng_key(), temperature=temperature, topk=p.top_k)
+    elif p.top_k == 0:
+      if isinstance(temperature, JTensor) or temperature > 0.0:
+        gumbel_noise = jax.random.gumbel(
+            model.next_prng_key(), shape=logits.shape).astype(logits.dtype)
+        logits += gumbel_noise * temperature
+      new_ids = jnp.argmax(logits, axis=1)
+    else:
+      new_ids = jnp.argmax(logits, axis=1)
+    return new_ids
+
+
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def sample_decode(model: base_layer.BaseLayerApi,
                   extend_step_fn: decoder_utils.ExtendStepFn,
                   transform_state_fn: Optional[decoder_utils.TransformStateFn],
                   lazy_broadcast_prefix_fn: Optional[
                       decoder_utils.LazyBroadcastPrefixFn],
+                  next_token_sampler: base_layer.BaseLayerApi,
                   target_prefix_ids: JTensor,
                   target_prefix_paddings: JTensor,
                   seq_len: int,
                   num_samples: int,
-                  k: int,
-                  p: Optional[Union[float, JTensor]] = None,
                   cf_guidance_scale: Optional[Union[List[float], float]] = None,
                   fprop_for_prefix: bool = False,
                   temperature: Union[float, JTensor] = 1.0,
@@ -279,6 +343,9 @@ def sample_decode(model: base_layer.BaseLayerApi,
       next step.
     transform_state_fn: A function that transforms the decode state.
     lazy_broadcast_prefix_fn: A function that lazily broadcasts decode prefix.
+    next_token_sampler: Layer used to sample next token ids given the logits
+      output. See DefaultNextTokenSampler for an example. This can be used to
+      implement decoding techniques such repetition penalty.
     target_prefix_ids: The token ids that correspond to the target sequence. A
       JTensor of shape [batch, target_sequence_length].
     target_prefix_paddings: The paddings corresponding to the target sequence,
@@ -286,10 +353,6 @@ def sample_decode(model: base_layer.BaseLayerApi,
       JTensor of shape [batch, target_sequence_length].
     seq_len: The output sequence length to decode to. seq_len contains prefix.
     num_samples: Number of samples.
-    k: If nonzero, use top-k sampling, only selecting among the most likely k
-      tokens at each step.
-    p: If not None, use the smallest number of logits whose cumulative sum of
-      probs adds up to (at least) p.
     cf_guidance_scale: If not 1.0, apply classifier-free guidance for
       conditioned generation assuming the inputs are with [cond_a, uncond_a,
       cond_b, uncond_b, ...]. Before sampling, we modify logits as
@@ -426,22 +489,9 @@ def sample_decode(model: base_layer.BaseLayerApi,
       uncond_logits = logits_split[:, num_samples:]
       logits = uncond_logits + cf_guidance_scale * (cond_logits - uncond_logits)
       logits = jnp.reshape(logits, (-1,) + logits.shape[2:])
-    if p is not None:
-      logits = top_p_mask_logits(logits, p)
-    if k > 1:
-      new_ids = sample_from_topk(
-          logits,
-          model.next_prng_key(),
-          temperature=temperature,
-          topk=k)
-    elif k == 0:
-      if isinstance(temperature, JTensor) or temperature > 0.0:
-        gumbel_noise = jax.random.gumbel(
-            model.next_prng_key(), shape=logits.shape).astype(logits.dtype)
-        logits += gumbel_noise * temperature
-      new_ids = jnp.argmax(logits, axis=1)
-    else:
-      new_ids = jnp.argmax(logits, axis=1)
+    new_ids = next_token_sampler(model, logits, temperature, val)
+    assert new_ids.shape == (logits.shape[0],)
+    assert new_ids.dtype == jnp.int32
 
     model.add_summary('new_ids', new_ids)
     model.add_summary('sample_logits', logits)
@@ -660,12 +710,14 @@ def greedy_decode(
     `.logprobs` (the log probability of selected tokens, including the prefix,
     where a positive value of 1.0 is used to indicate padded positions).
   """
-
+  next_token_sampler = base_layer.instantiate(
+      DefaultNextTokenSampler.HParams(top_k=1))
   return sample_decode(
       model,
       extend_step_fn,
       transform_state_fn=None,
       lazy_broadcast_prefix_fn=None,
+      next_token_sampler=next_token_sampler,
       target_prefix_ids=target_ids,
       target_prefix_paddings=target_paddings,
       seq_len=seq_len,
@@ -675,5 +727,4 @@ def greedy_decode(
       prefix_lengths=prefix_lengths,
       eos_id=eos_id,
       num_samples=1,
-      k=1,
       temperature=0.0)

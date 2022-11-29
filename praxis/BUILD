@@ -120,7 +120,9 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
+        ":base_layer",
         ":pytypes",
+        ":sample_decode",
     ],
 )
 
@@ -267,7 +269,7 @@ pytype_strict_library(
     srcs = ["sample_decode.py"],
     srcs_version = "PY3",
     deps = [
-        ":asserts",
+        ":base_hyperparams",
         ":base_layer",
         ":decoder_utils",
         ":py_utils",

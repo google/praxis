@@ -36,6 +36,13 @@ DECODE_CACHE = base_layer.DECODE_CACHE
 SUMMARIES = base_layer.SUMMARIES
 
 
+class TestNextTokenSampler(sample_decode.BaseNextTokenSampler):
+
+  def __call__(self, mdl, logits, temperature, decode_loop_state):
+    del mdl, logits, temperature, decode_loop_state
+    return jnp.array([1234, 2345])
+
+
 class TestModel(base_model.BaseModel):
 
   class HParams(base_model.BaseModel.HParams):
@@ -50,6 +57,8 @@ class TestModel(base_model.BaseModel):
     logits_wp = base_layer.WeightHParams(
         shape=[p.seq_len, p.batch_size * p.num_samples, p.vocab_size])
     self.create_variable('logits', logits_wp)
+    self.next_token_sampler = base_layer.instantiate(
+        TestNextTokenSampler.HParams())
 
   def __call__(self, *args, **kwargs):
     # A dummy __call__ function
@@ -290,12 +299,12 @@ class SampleDecodeHelperTest(test_utils.TestCase):
           extend_step_fn,
           transform_decode_state_fn,
           None,
+          model.next_token_sampler,
           input_ids,
           input_paddings,
           prefix_lengths=jnp.zeros([batch_size], dtype=jnp.int32),
           seq_len=seq_len,
           num_samples=num_samples,
-          k=0,
           max_prefix_len=0,
           max_decode_steps=seq_len,
           fprop_for_prefix=True,
@@ -310,11 +319,14 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         decode_fn, model, mutable=mutables)(
             init_vars, input_ids, input_paddings, rngs=rngs)
     logits_summary = updated_vars['summaries']['logits_scalar']
+    new_ids_summary = updated_vars['summaries']['new_ids_scalar']
     time_step_summary = updated_vars['summaries']['time_step_scalar']
     print('logits_var', logits_var)
     print('logits_summary', logits_summary)
     print('time_step_summary', time_step_summary)
     self.assertAllClose(logits_var, logits_summary)
+    self.assertAllClose(new_ids_summary,
+                        jnp.tile(jnp.array([1234, 2345]), [3, 1]))
 
 
 if __name__ == '__main__':

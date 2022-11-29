@@ -185,6 +185,13 @@ class LanguageModel(base_model.BaseModel):
     lm_p.model_type = p.model_type
     self.create_child('lm', lm_p)
 
+    if template_has_type(p.decoder_tpl, SampleDecoderHParams):
+      next_token_sampler_p = p.decoder_tpl.next_token_sampler_tpl.clone()
+      # TODO(b/260646361): Avoid this param propagation.
+      next_token_sampler_p.top_k = p.decoder_tpl.k
+      next_token_sampler_p.top_p = p.decoder_tpl.p
+      self.next_token_sampler = base_layer.instantiate(next_token_sampler_p)
+
   def _prepare_predict_data(self, input_batch: NestedMap) -> NestedMap:
     p = self.hparams
     paddings = input_batch.paddings
@@ -471,12 +478,11 @@ class LanguageModel(base_model.BaseModel):
           transform_decode_state_fn,
           lazy_broadcast_prefix_fn
           if p.decoder_tpl.lazy_prefix_broadcast else None,
+          self.next_token_sampler,
           decode_data.input_ids,
           decode_data.input_paddings,
           decode_data.seqlen,
           num_samples=p.decoder_tpl.num_samples,
-          k=p.decoder_tpl.k,
-          p=p.decoder_tpl.p,
           fprop_for_prefix=p.decoder_tpl.fprop_for_prefix,
           temperature=temperature,
           max_prefix_len=max_prefix_len,
