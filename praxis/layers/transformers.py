@@ -1628,6 +1628,7 @@ class StackedTransformer(base_layer.BaseLayer):
           cross_inputs,
           cross_attention_mask,
           segment_pos=segment_pos)
+      x_out = checkpoint_name(x_out, 'transformer_layer_out')
     return x_out
 
   def extend_step(self,
