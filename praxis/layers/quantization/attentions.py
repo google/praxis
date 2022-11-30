@@ -24,8 +24,11 @@ from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import attentions
 from praxis.layers.quantization import operations
+from praxis.layers.quantization import quantization_hparams
 
-QuantizationHParams = base_layer.QuantizationHParams
+QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationMode = quantization_hparams.QuantizationMode
+QuantizationType = quantization_hparams.QuantizationType
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
@@ -75,7 +78,7 @@ class AttentionProjection(attentions.AttentionProjection):
       pc_shape = hd_shape + [p.input_dim]
     pc = WeightHParams(
         shape=pc_shape, mesh_shape=p.mesh_shape, tensor_split_dims_mapping=wt)
-    if p.quantization.mode == base_layer.QuantizationMode.INFERENCE:
+    if p.quantization.mode == QuantizationMode.INFERENCE:
       if p.is_output_projection:
         self.create_quantized_variable('w', pc, [p.input_dim])
       else:
@@ -151,14 +154,14 @@ class AttentionProjection(attentions.AttentionProjection):
       batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
 
-    if p.quantization.mode == base_layer.QuantizationMode.INFERENCE:
+    if p.quantization.mode == QuantizationMode.INFERENCE:
       w, s = self.get_quantized_weight('w')
-      if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+      if p.quantization.quantization_type == QuantizationType.PTQ:
         ret = operations.einsum(eqn, inputs, w, s)
-      elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+      elif p.quantization.quantization_type == QuantizationType.AQT:
         raise NotImplementedError('AQT is not yet implemented')
     else:
-      if p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+      if p.quantization.quantization_type == QuantizationType.AQT:
         raise NotImplementedError('AQT is not yet implemented')
       ret = jnp.einsum(eqn, inputs, w)
     if p.use_bias:
@@ -195,7 +198,7 @@ class AttentionProjection(attentions.AttentionProjection):
       a map from names to quantized weights.
     """
     p = self.hparams
-    if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+    if p.quantization.quantization_type == QuantizationType.PTQ:
       eqn = ''
       # This matches the equantion logic in __call__ for weights.
       if p.is_output_projection:
@@ -206,7 +209,7 @@ class AttentionProjection(attentions.AttentionProjection):
       else:
         eqn = 'AD,DNH->ANH'
       q_w, q_s = operations.reduce_einsum_weight_precision(eqn, self.theta.w)
-    elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+    elif p.quantization.quantization_type == QuantizationType.AQT:
       raise NotImplementedError('AQT quantization is not added yet')
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
@@ -225,8 +228,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       quantization: Information related to the quantization applied to this
         layer, such as dtype for the quantized weight.
     """
-    quantization: base_layer.QuantizationHParams = sub_config_field(
-        base_layer.QuantizationHParams)
+    quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
   def setup(self) -> None:
     p = self.hparams
@@ -266,7 +268,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
         dtype=p.dtype,
         mesh_shape=p.mesh_shape,
         tensor_split_dims_mapping=weight_split_dims_mapping)
-    if p.quantization.mode == base_layer.QuantizationMode.INFERENCE:
+    if p.quantization.mode == QuantizationMode.INFERENCE:
       self.create_quantized_variable('w', pc, [3] + hd_shape)
     else:
       self.create_variable('w', pc)
@@ -320,14 +322,14 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
 
     # K indexes qkv.
     eqn = f'{batch_eqn}D,KDNH->K{batch_eqn}NH'
-    if p.quantization.mode == base_layer.QuantizationMode.INFERENCE:
+    if p.quantization.mode == QuantizationMode.INFERENCE:
       w, s = self.get_quantized_weight('w')
-      if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+      if p.quantization.quantization_type == QuantizationType.PTQ:
         ret = operations.einsum(eqn, inputs, w, s)
-      elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+      elif p.quantization.quantization_type == QuantizationType.AQT:
         raise NotImplementedError('AQT is not yet implemented')
     else:
-      if p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+      if p.quantization.quantization_type == QuantizationType.AQT:
         raise NotImplementedError('AQT is not yet implemented')
       ret = jnp.einsum(eqn, inputs, w)
     ret = checkpoint_name(ret, 'combined_qkv_proj')
@@ -373,10 +375,10 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     """
     theta = self.theta
     p = self.hparams
-    if p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+    if p.quantization.quantization_type == QuantizationType.PTQ:
       eqn = 'AD,KDNH->KANH'
       q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
-    elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+    elif p.quantization.quantization_type == QuantizationType.AQT:
       raise NotImplementedError('AQT quantization is not added yet')
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

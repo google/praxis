@@ -25,11 +25,15 @@ from praxis import base_layer
 from praxis import test_utils
 from praxis.layers import linears
 from praxis.layers.quantization import linears as qlinears
+from praxis.layers.quantization import quantization_hparams
 
 instantiate = base_layer.instantiate
 BaseHParams = base_layer.BaseLayer.HParams
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
+QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationMode = quantization_hparams.QuantizationMode
+QuantizationType = quantization_hparams.QuantizationType
 
 
 class QuantizedAttentionTest(test_utils.TestCase):
@@ -39,22 +43,22 @@ class QuantizedAttentionTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.named_parameters(
-      ('inference', base_layer.QuantizationMode.INFERENCE),
-      ('quantize', base_layer.QuantizationMode.MATERIALIZE),
+      ('inference', QuantizationMode.INFERENCE),
+      ('quantize', QuantizationMode.MATERIALIZE),
   )
   def test_linear_quantized(self, mode):
     p = qlinears.Linear.HParams(
         name='_linear',
         input_dims=5,
         output_dims=4,
-        quantization=base_layer.QuantizationHParams(mode=mode))
+        quantization=QuantizationHParams(mode=mode))
     linear = instantiate(p)
     inputs = jnp.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]], dtype=jnp.bfloat16)
     prng_key = jax.random.PRNGKey(seed=123)
     initial_vars = linear.init(prng_key, inputs)
     outputs = linear.apply(initial_vars, inputs)
     self.assertEqual(outputs.shape, (2, 4))
-    if mode == base_layer.QuantizationMode.INFERENCE:
+    if mode == QuantizationMode.INFERENCE:
       self.assertAllClose(jnp.full((2, 4), 0.0), outputs)
     else:
       self.assertRaises(AssertionError, self.assertAllClose,
@@ -86,8 +90,8 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
     p_f = linears.Linear.HParams(name='_linear_f')
     p_q = qlinears.Linear.HParams(
         name='_linear_q',
-        quantization=base_layer.QuantizationHParams(
-            mode=base_layer.QuantizationMode.MATERIALIZE))
+        quantization=QuantizationHParams(
+            mode=QuantizationMode.MATERIALIZE))
     for p in [p_f, p_q]:
       p.input_dims = 16
       p.output_dims = 24
@@ -104,9 +108,9 @@ class QuantizeLinearTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.named_parameters(
-      ('PTQ', base_layer.QuantizationType.PTQ),
-      ('FQ', base_layer.QuantizationType.FQ),
-      ('AQT', base_layer.QuantizationType.AQT),
+      ('PTQ', QuantizationType.PTQ),
+      ('FQ', QuantizationType.FQ),
+      ('AQT', QuantizationType.AQT),
   )
   def test_quantize_linear(self, quantization_type):
     p = qlinears.Linear.HParams(
@@ -114,9 +118,9 @@ class QuantizeLinearTest(test_utils.TestCase):
         mesh_axis_names=['replica', 'mdl', 'data'],
         weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
             wt=['mdl', 'data']),
-        quantization=base_layer.QuantizationHParams(
+        quantization=QuantizationHParams(
             quantization_type=quantization_type,
-            mode=base_layer.QuantizationMode.MATERIALIZE))
+            mode=QuantizationMode.MATERIALIZE))
     p.input_dims = 6
     p.output_dims = 4
     layer = instantiate(p)

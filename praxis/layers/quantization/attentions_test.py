@@ -26,7 +26,10 @@ from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import attentions
 from praxis.layers.quantization import attentions as qattentions
+from praxis.layers.quantization import quantization_hparams
 
+QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationMode = quantization_hparams.QuantizationMode
 instantiate = base_layer.instantiate
 
 
@@ -37,8 +40,8 @@ class QuantizedAttentionTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.named_parameters(
-      ('inference', base_layer.QuantizationMode.INFERENCE),
-      ('quantize', base_layer.QuantizationMode.MATERIALIZE),
+      ('inference', QuantizationMode.INFERENCE),
+      ('quantize', QuantizationMode.MATERIALIZE),
   )
   def test_attention_projection_quantized(self, mode):
     p = qattentions.AttentionProjection.HParams(
@@ -47,22 +50,22 @@ class QuantizedAttentionTest(test_utils.TestCase):
         num_heads=2,
         dim_per_head=3,
         is_output_projection=True,
-        quantization=base_layer.QuantizationHParams(mode=mode))
+        quantization=QuantizationHParams(mode=mode))
     attn = instantiate(p)
     inputs = jnp.ones((4, 2, 3), dtype=jnp.bfloat16)
     prng_key = jax.random.PRNGKey(seed=123)
     initial_vars = attn.init(prng_key, inputs)
     outputs = attn.apply(initial_vars, inputs)
     self.assertEqual(outputs.shape, (4, 5))
-    if mode == base_layer.QuantizationMode.INFERENCE:
+    if mode == QuantizationMode.INFERENCE:
       self.assertAllClose(jnp.full((4, 5), 0.0), outputs)
     else:
       self.assertRaises(AssertionError, self.assertAllClose,
                         jnp.full((4, 5), 0.0), outputs)
 
   @parameterized.named_parameters(
-      ('inference', base_layer.QuantizationMode.INFERENCE),
-      ('quantize', base_layer.QuantizationMode.MATERIALIZE),
+      ('inference', QuantizationMode.INFERENCE),
+      ('quantize', QuantizationMode.MATERIALIZE),
   )
   def test_attention_projection_no_output_proj_quantized(self, mode):
     p = qattentions.AttentionProjection.HParams(
@@ -71,22 +74,22 @@ class QuantizedAttentionTest(test_utils.TestCase):
         num_heads=2,
         dim_per_head=3,
         is_output_projection=False,
-        quantization=base_layer.QuantizationHParams(mode=mode))
+        quantization=QuantizationHParams(mode=mode))
     attn = instantiate(p)
     inputs = jnp.ones((4, 3, 5), dtype=jnp.bfloat16)
     prng_key = jax.random.PRNGKey(seed=123)
     initial_vars = attn.init(prng_key, inputs)
     outputs = attn.apply(initial_vars, inputs)
     self.assertEqual(outputs.shape, (4, 3, 2, 3))
-    if mode == base_layer.QuantizationMode.INFERENCE:
+    if mode == QuantizationMode.INFERENCE:
       self.assertAllClose(jnp.full((4, 3, 2, 3), 0.0), outputs)
     else:
       self.assertRaises(AssertionError, self.assertAllClose,
                         jnp.full((4, 3, 2, 3), 0.0), outputs)
 
   @parameterized.named_parameters(
-      ('inference', base_layer.QuantizationMode.INFERENCE),
-      ('quantize', base_layer.QuantizationMode.MATERIALIZE),
+      ('inference', QuantizationMode.INFERENCE),
+      ('quantize', QuantizationMode.MATERIALIZE),
   )
   def test_combined_projection_quantized(self, mode):
     p = qattentions.CombinedQKVProjectionLayer.HParams(
@@ -94,7 +97,7 @@ class QuantizedAttentionTest(test_utils.TestCase):
         input_dim=5,
         num_heads=3,
         dim_per_head=2,
-        quantization=base_layer.QuantizationHParams(mode=mode))
+        quantization=QuantizationHParams(mode=mode))
     attn = instantiate(p)
     inputs = jnp.ones((4, 5), dtype=jnp.bfloat16)
     prng_key = jax.random.PRNGKey(seed=123)
@@ -104,7 +107,7 @@ class QuantizedAttentionTest(test_utils.TestCase):
     self.assertEqual(out_q.shape, expected_shape)
     self.assertEqual(out_k.shape, expected_shape)
     self.assertEqual(out_v.shape, expected_shape)
-    if mode == base_layer.QuantizationMode.INFERENCE:
+    if mode == QuantizationMode.INFERENCE:
       self.assertAllClose(jnp.full(expected_shape, 0.0), out_q)
       self.assertAllClose(jnp.full(expected_shape, 0.0), out_k)
       self.assertAllClose(jnp.full(expected_shape, 0.0), out_v)
@@ -157,8 +160,8 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_f = attentions.AttentionProjection.HParams(name='_attn_proj_f')
     p_q = qattentions.AttentionProjection.HParams(
         name='_attn_proj_q',
-        quantization=base_layer.QuantizationHParams(
-            mode=base_layer.QuantizationMode.MATERIALIZE))
+        quantization=QuantizationHParams(
+            mode=QuantizationMode.MATERIALIZE))
     for p in [p_f, p_q]:
       p.input_dim = 16
       p.num_heads = 2
@@ -174,8 +177,8 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_f = attentions.AttentionProjection.HParams(name='_attn_proj_f')
     p_q = qattentions.AttentionProjection.HParams(
         name='_attn_proj_q',
-        quantization=base_layer.QuantizationHParams(
-            mode=base_layer.QuantizationMode.MATERIALIZE))
+        quantization=QuantizationHParams(
+            mode=QuantizationMode.MATERIALIZE))
     for p in [p_f, p_q]:
       p.input_dim = 16
       p.num_heads = 2
@@ -191,8 +194,8 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_f = attentions.AttentionProjection.HParams(name='_attn_proj_f')
     p_q = qattentions.AttentionProjection.HParams(
         name='_attn_proj_q',
-        quantization=base_layer.QuantizationHParams(
-            mode=base_layer.QuantizationMode.MATERIALIZE))
+        quantization=QuantizationHParams(
+            mode=QuantizationMode.MATERIALIZE))
     for p in [p_f, p_q]:
       p.input_dim = 256
       p.num_heads = 16
@@ -215,8 +218,8 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_f = attentions.CombinedQKVProjectionLayer.HParams(name='_attn_qkv_f')
     p_q = qattentions.CombinedQKVProjectionLayer.HParams(
         name='_attn_qkv_q',
-        quantization=base_layer.QuantizationHParams(
-            mode=base_layer.QuantizationMode.MATERIALIZE))
+        quantization=QuantizationHParams(
+            mode=QuantizationMode.MATERIALIZE))
     for p in [p_f, p_q]:
       p.input_dim = 64
       p.num_heads = 8
@@ -240,8 +243,8 @@ class QuantizeAttentionTest(test_utils.TestCase):
         mesh_axis_names=['replica', 'mdl', 'data'],
         weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
             wt=['mdl', 'data']),
-        quantization=base_layer.QuantizationHParams(
-            mode=base_layer.QuantizationMode.MATERIALIZE))
+        quantization=QuantizationHParams(
+            mode=QuantizationMode.MATERIALIZE))
     p.input_dim = 16
     p.num_heads = 2
     p.dim_per_head = 5
@@ -282,8 +285,8 @@ class QuantizeAttentionTest(test_utils.TestCase):
         mesh_axis_names=['replica', 'mdl', 'data'],
         weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
             wt=['replica', 'mdl', 'data']),
-        quantization=base_layer.QuantizationHParams(
-            mode=base_layer.QuantizationMode.MATERIALIZE))
+        quantization=QuantizationHParams(
+            mode=QuantizationMode.MATERIALIZE))
     layer = instantiate(p)
     inputs = jnp.ones((4, 5), dtype=jnp.bfloat16)
     prng_key = jax.random.PRNGKey(seed=123)

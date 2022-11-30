@@ -24,8 +24,8 @@ from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
 from praxis import test_utils
-from praxis.layers.quantization import operations
 from praxis.layers.quantization import aqt
+from praxis.layers.quantization import operations
 
 
 class QuantizationUtilsTest(test_utils.TestCase):

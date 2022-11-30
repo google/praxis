@@ -2356,62 +2356,6 @@ class _WrapperLayer(BaseLayer):
     self.cld = getattr(self, name)
 
 
-@enum.unique
-class QuantizationType(str, enum.Enum):
-  """The different types for quantization.
-
-  PTQ indicates Post Training Quantization.
-  AQT indicates Accurate Quantized Training, which is one flavor of QAT.
-  FQ  indicates Fake Quantization, which is one flavor of QAT.
-  """
-
-  PTQ = 'ptq'
-  AQT = 'aqt'
-  FQ = 'fq'
-
-
-@enum.unique
-class ActivationQuantizationType(str, enum.Enum):
-  """The different types for activation quantization.
-
-  NONE indicates no quantization on the activation.
-  DYNAMIC indicates dynamic quantization on the activation.
-  STATIC indicates static quantization on the activation.
-  """
-  NONE = 'none'
-  DYNAMIC = 'dynamic'
-  STATIC = 'static'
-
-
-@enum.unique
-class QuantizationMode(str, enum.Enum):
-  """The different modes for quantization.
-
-  TRAINING indicates that the model is in the training mode.
-  MATERIALIZE indicates that the model weights are being materialized as
-    quantized weights and scales. After materialization mode is set to
-    inference.
-  INFERENCE indicates that the model is in inference mode.
-  """
-  TRAINING = 'training'
-  MATERIALIZE = 'materialize'
-  INFERENCE = 'inference'
-
-
-class QuantizationHParams(base_hyperparams.BaseHyperParams):
-  """Parameters for quantization.
-
-  Attributes:
-    quantization_type: quantization type.
-    mode: the quantization mode associated with this quantization parameter.
-    activation_quantization_type: quantization type for activation.
-  """
-
-  quantization_type: QuantizationType = QuantizationType.PTQ
-  mode: QuantizationMode = QuantizationMode.INFERENCE
-  activation_quantization_type: ActivationQuantizationType = ActivationQuantizationType.NONE
-
-
 def get_template_fields(
     template: Union[BaseHyperParams, pax_fiddle.Config]) -> List[str]:
   """Returns the names of the configurable fields for `template`.

@@ -41,6 +41,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":operations",
+        ":quantization_hparams",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -59,6 +60,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":attentions",
+        ":quantization_hparams",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
@@ -81,6 +83,7 @@ pytype_strict_library(
     deps = [
         ":aqt",
         ":operations",
+        ":quantization_hparams",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -99,6 +102,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":linears",
+        ":quantization_hparams",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
@@ -159,6 +163,7 @@ py_strict_test(
     deps = [
         ":linears",
         ":operations",
+        ":quantization_hparams",
         # Implicit absl.testing.absltest dependency.
         # Implicit jax dependency.
         # Implicit lingvo.core.batch_major_attention dependency.
@@ -196,5 +201,14 @@ py_strict_test(
         # Implicit jax dependency.
         "//praxis:pytypes",
         "//praxis:test_utils",
+    ],
+)
+
+pytype_strict_library(
+    name = "quantization_hparams",
+    srcs = ["quantization_hparams.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//praxis:base_hyperparams",
     ],
 )

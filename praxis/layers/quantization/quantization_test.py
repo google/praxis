@@ -24,6 +24,7 @@ from praxis import test_utils
 from praxis.layers import repeats
 from praxis.layers.quantization import linears as qlinears
 from praxis.layers.quantization import operations
+from praxis.layers.quantization import quantization_hparams
 
 instantiate = base_layer.instantiate
 BaseHParams = base_layer.BaseLayer.HParams
@@ -43,8 +44,8 @@ class RepeatsLinearQuantizeTest(test_utils.TestCase):
         name='_linear_q',
         input_dims=2,
         output_dims=2,
-        quantization=base_layer.QuantizationHParams(
-            mode=base_layer.QuantizationMode.MATERIALIZE))
+        quantization=quantization_hparams.QuantizationHParams(
+            mode=quantization_hparams.QuantizationMode.MATERIALIZE))
     p = repeats.Repeat.HParams(name='ffn', sub_tpl=sub_p, x_times=3)
     ffn = instantiate(p)
 
