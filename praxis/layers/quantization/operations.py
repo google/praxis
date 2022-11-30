@@ -15,11 +15,14 @@
 
 """Operations for quantization."""
 
+import functools
 from typing import List, Tuple
 
 import jax
+from jax import lax
 from jax import numpy as jnp
 from praxis import pytypes
+from praxis.layers.quantization import aqt
 
 JTensor = pytypes.JTensor
 
@@ -179,3 +182,85 @@ def fakequant_activation(t: JTensor) -> JTensor:
   """
   qt, scale = reduce_precision_activation(t, need_gradient=True)
   return jnp.multiply(qt, scale).astype(t.dtype)
+
+
+@functools.partial(jax.custom_jvp, nondiff_argnums=(2, 3))
+def _dot_general_aqt(lhs, rhs, dimension_numbers, should_int8_quantize):
+  """Wrapper around lax.dot_general, but with option to use integer dot."""
+  def dot_general_float(ops):
+    lhs_, rhs_ = ops
+    return lax.dot_general(lhs_, rhs_, dimension_numbers=dimension_numbers)
+
+  def dot_general_int(ops):
+    lhs_, rhs_ = ops
+    lhs_int = lhs_.astype(jnp.int8)
+    rhs_int = rhs_.astype(jnp.int8)
+    return lax.dot_general(
+        lhs_int,
+        rhs_int,
+        dimension_numbers=dimension_numbers,
+        preferred_element_type=jnp.int32).astype(jnp.float32)
+
+  if should_int8_quantize:
+    return dot_general_int((lhs, rhs))
+  else:
+    return dot_general_float((lhs, rhs))
+
+
+@_dot_general_aqt.defjvp
+def _dot_general_aqt_jvp(
+    dimension_numbers,
+    should_int8_quantize,
+    primals,
+    tangents):
+  """Custom gradient for dot_general_aqt that ignores integer casts."""
+  lhs, rhs = primals
+  lhs_dot, rhs_dot = tangents
+  y = _dot_general_aqt(
+      lhs,
+      rhs,
+      dimension_numbers=dimension_numbers,
+      should_int8_quantize=should_int8_quantize)
+
+  def differentiable_dot_general(lhs_, rhs_):
+    return lax.dot_general(lhs_, rhs_, dimension_numbers=dimension_numbers)
+
+  _, y_tangent = jax.jvp(
+      differentiable_dot_general,
+      (lhs, rhs),
+      (lhs_dot, rhs_dot))
+  return y, y_tangent
+
+
+def dot_general(
+    lhs: JTensor,
+    rhs: JTensor,
+    lhs_quantizer: aqt.TensorQuantizer,
+    rhs_quantizer: aqt.TensorQuantizer,
+    dimension_numbers: lax.DotDimensionNumbers,
+    train: bool
+) -> JTensor:
+  """Quantized lax.dot_general."""
+  if train:
+    lhs_quantizer.update(lhs)
+    rhs_quantizer.update(rhs)
+
+  lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
+  lhs_scale = lhs_quantizer.get_quant_scale(lhs, lhs_contract_dims)
+  rhs_scale = rhs_quantizer.get_quant_scale(rhs, rhs_contract_dims)
+
+  lhs = lhs_scale * lhs
+  rhs = rhs_scale * rhs
+
+  lhs = lhs_quantizer.to_quant(lhs)
+  rhs = rhs_quantizer.to_quant(rhs)
+
+  out = _dot_general_aqt(
+      lhs,
+      rhs,
+      dimension_numbers=dimension_numbers,
+      should_int8_quantize=False)
+
+  inv_scale = 1 / (lhs_scale * rhs_scale)
+  return out * inv_scale
+

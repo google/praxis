@@ -21,6 +21,7 @@ from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import linears
+from praxis.layers.quantization import aqt
 from praxis.layers.quantization import operations
 
 QuantizationHParams = base_layer.QuantizationHParams
@@ -42,6 +43,18 @@ class Linear(linears.Linear):
     """
     quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
+  def create_tensor_quantizers(self):
+    # TODO(jihwanlee): Make `precision` to be configurable. For now, they are
+    # hard-coded for int8 weight only quantization.
+    # TODO(jihwanlee): `precision=None` for activation should be derived from
+    # activation_quantization_type in QuantizationHParams.
+    self.create_child(
+        'act_quantizer',
+        aqt.TensorQuantizer.HParams(name='act_quantizer', precision=None))
+    self.create_child(
+        'weight_quantizer',
+        aqt.TensorQuantizer.HParams(name='weight_quantizer', precision=8))
+
   def setup(self) -> None:
     p = self.hparams
     wp = p.weight_split_dims_mapping
@@ -56,12 +69,19 @@ class Linear(linears.Linear):
         # Additionally add activation scale.
       self.create_quantized_variable('w', pc, [p.output_dims])
     elif p.quantization.mode == base_layer.QuantizationMode.TRAINING:
+      # TODO(jihwanlee): Now, having many different branches and non-unified
+      # quantization logic between PTQ, FQ, and AQT, the overall code is quite
+      # complex. DO simplfy.
       if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
         # Additionally add mutable tensor to record activation range.
+      if p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+        self.create_tensor_quantizers()
       self.create_variable('w', pc)
     else:
+      if p.quantization.quantization_type == base_layer.QuantizationType.AQT:
+        self.create_tensor_quantizers()
       self.create_variable('w', pc)
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -78,6 +98,8 @@ class Linear(linears.Linear):
     eqn = '...y,yz->...z'
     if p.quantization.mode == base_layer.QuantizationMode.INFERENCE:
       # PTQ, QAT has the same inference graph, only difference is on activation.
+      # No matter which quantization type is used, the weight and scale
+      # dimensions are the same for all types.
       w, s = self.get_quantized_weight('w')
       if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
         raise NotImplementedError(
@@ -90,12 +112,19 @@ class Linear(linears.Linear):
     else:
       w = self.theta.w
       if p.quantization.quantization_type == base_layer.QuantizationType.AQT:
-        raise NotImplementedError('AQT is not supported yet.')
+        dimension_numbers = (((len(inputs.shape) - 1,), (0,)), ((), ()))
+        out = operations.dot_general(
+            lhs=inputs,
+            rhs=w,
+            lhs_quantizer=self.act_quantizer,
+            rhs_quantizer=self.weight_quantizer,
+            dimension_numbers=dimension_numbers,
+            train=not self.do_eval)
       elif p.quantization.quantization_type == base_layer.QuantizationType.FQ:
         inputs = operations.fakequant_activation(inputs)
         w = operations.fakequant_einsum(eqn, w)
         out = linears.project_last_dim(inputs, w)
-      elif p.quantization.quantization_type == base_layer.QuantizationType.PTQ:
+      else:
         out = linears.project_last_dim(inputs, w)
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
@@ -128,17 +157,22 @@ class Linear(linears.Linear):
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
       else:
-        # qunatize only weight for activation == NONE and DYNAMIC
+        # quantize only weight for activation == NONE and DYNAMIC
         return {base_layer.PARAMS: partitionspec}
     elif p.quantization.quantization_type == base_layer.QuantizationType.FQ:
       if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
       else:
-        # qunatize only weight for activation == NONE and DYNAMIC
+        # quantize only weight for activation == NONE and DYNAMIC
         return {base_layer.PARAMS: partitionspec}
     elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
-      raise NotImplementedError('AQT quantization is not added yet')
+      if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.')
+      else:
+        # quantize only weight for activation == NONE and DYNAMIC
+        return {base_layer.PARAMS: partitionspec}
 
   def quantize_weight(self) -> NestedJTensor:
     """Get quantized weight.
@@ -155,7 +189,7 @@ class Linear(linears.Linear):
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
       else:
-        # qunatize only weight for activation == NONE and DYNAMIC
+        # quantize only weight for activation == NONE and DYNAMIC
         q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
     elif p.quantization.quantization_type == base_layer.QuantizationType.FQ:
@@ -163,8 +197,18 @@ class Linear(linears.Linear):
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
       else:
-        # qunatize only weight for activation == NONE and DYNAMIC
+        # quantize only weight for activation == NONE and DYNAMIC
         q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
     elif p.quantization.quantization_type == base_layer.QuantizationType.AQT:
-      raise NotImplementedError('AQT quantization is not added yet')
+      if p.quantization.activation_quantization_type == base_layer.ActivationQuantizationType.STATIC:
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.')
+      else:
+        # quantize only weight for activation == NONE and DYNAMIC
+        q_s = self.weight_quantization.get_quant_scale(
+            theta.w, contract_dims=[0])
+        q_s = jnp.squeeze(q_s)
+        q_w = q_s * theta.w
+        q_w = self.weight_quantization.to_quant(q_w)
+        return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

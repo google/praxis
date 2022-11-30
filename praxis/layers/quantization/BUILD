@@ -79,6 +79,7 @@ pytype_strict_library(
     srcs = ["linears.py"],
     srcs_version = "PY3",
     deps = [
+        ":aqt",
         ":operations",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
@@ -119,6 +120,7 @@ pytype_strict_library(
     srcs = ["operations.py"],
     srcs_version = "PY3",
     deps = [
+        ":aqt",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -135,6 +137,7 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        ":aqt",
         ":attentions",
         ":linears",
         ":operations",
@@ -167,5 +170,31 @@ py_strict_test(
         "//praxis/layers:linears",
         "//praxis/layers:repeats",
         # Implicit tensorflow_no_contrib dependency.
+    ],
+)
+
+pytype_strict_library(
+    name = "aqt",
+    srcs = ["aqt.py"],
+    srcs_version = "PY3",
+    deps = [
+        # Implicit jax dependency.
+        "//praxis:base_hyperparams",
+        "//praxis:base_layer",
+        "//praxis:pytypes",
+    ],
+)
+
+py_strict_test(
+    name = "aqt_test",
+    srcs = ["aqt_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":aqt",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        "//praxis:pytypes",
+        "//praxis:test_utils",
     ],
 )
