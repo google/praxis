@@ -206,9 +206,9 @@ class Linear(linears.Linear):
             'Static activation quantization is not supported yet.')
       else:
         # quantize only weight for activation == NONE and DYNAMIC
-        q_s = self.weight_quantization.get_quant_scale(
+        q_s = self.weight_quantizer.get_quant_scale(
             theta.w, contract_dims=[0])
-        q_s = jnp.squeeze(q_s)
+        q_s = jnp.squeeze(q_s).astype(jnp.bfloat16)
         q_w = q_s * theta.w
-        q_w = self.weight_quantization.to_quant(q_w)
+        q_w = self.weight_quantizer.to_quant(q_w).astype(jnp.int8)
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

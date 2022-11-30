@@ -103,23 +103,32 @@ class QuantizeLinearTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(123456)
 
-  def test_quantize_linear(self):
+  @parameterized.named_parameters(
+      ('PTQ', base_layer.QuantizationType.PTQ),
+      ('FQ', base_layer.QuantizationType.FQ),
+      ('AQT', base_layer.QuantizationType.AQT),
+  )
+  def test_quantize_linear(self, quantization_type):
     p = qlinears.Linear.HParams(
         name='_linear_q',
         mesh_axis_names=['replica', 'mdl', 'data'],
         weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
             wt=['mdl', 'data']),
         quantization=base_layer.QuantizationHParams(
+            quantization_type=quantization_type,
             mode=base_layer.QuantizationMode.MATERIALIZE))
     p.input_dims = 6
     p.output_dims = 4
     layer = instantiate(p)
 
     inputs = np.random.normal(1.5, 2.0, [5, 6]).astype(np.float32)
-    prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = layer.init(prng_key, inputs)
 
-    res, _ = layer.apply(initial_vars, mutable=[], method=layer.quantize_weight)
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = layer.init(prng_key, inputs)
+
+      res, _ = layer.apply(
+          initial_vars, mutable=[], method=layer.quantize_weight)
     shapes = jax.tree_map(lambda x: x.shape, res)
     types = jax.tree_map(lambda x: x.dtype, res)
     self.assertEqual(
