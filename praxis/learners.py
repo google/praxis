@@ -53,6 +53,7 @@ class Learner(base_hyperparams.BaseParameterizable):
   """A learner.
 
   Example client code:
+
   p = Learner.HParams().set(...)
   learner = base_hyperparams.instantiate(p)
 
@@ -60,12 +61,12 @@ class Learner(base_hyperparams.BaseParameterizable):
   var_weight_hparams = jax.tree_map(
     lambda v: base_layer.WeightHParams(v.shape), mdl_vars)
 
-  grad_tx = pax_l_.get_grad_tx(var_weight_hparams)
-  states0 = grad_tx.init(mdl_vars)
+  grad_tx = learner.get_grad_tx(var_weight_hparams)
+  opt_states0 = grad_tx.init(mdl_vars)
 
   grads0 = ...
-  grads1, states1 = learner.update_states(
-    grads0, states0, mdl_vars, var_weight_hparams)
+  grads1, opt_states1 = learner.update_states(
+    grads0, opt_states0, mdl_vars, var_weight_hparams)
   updated_mdl_vars = learner.apply_gradient(
     mdl_vars, grads1, var_weight_hparams)
   """
