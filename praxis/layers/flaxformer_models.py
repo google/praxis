@@ -23,6 +23,8 @@ from flax import linen
 from flax.linen import partitioning as flax_partitioning
 import jax
 from jax import numpy as jnp
+import numpy as np
+from praxis import base_input
 from praxis import base_layer
 from praxis import base_model
 from praxis import decoder_hparams
@@ -48,6 +50,7 @@ BaseHParams = base_layer.BaseLayer.HParams
 sub_config_field = base_layer.sub_config_field
 LogicalAxisRules = pytypes.LogicalAxisRules
 DecodeOut = base_model.DecodeOut
+ProcessDecodeOut = base_model.ProcessDecodeOut
 PyTreeDef = type(jax.tree_util.tree_structure(None))
 SampleDecoderHParams = decoder_hparams.SampleDecoderHParams
 DecoderHParams = decoder_hparams.DecoderHParams
@@ -928,10 +931,74 @@ class EncoderDecoderModel(base_model.BaseModel):
     decode_out = (
         NestedMap(num_decoded=(num_decodes, jnp.array(1, jnp.float32))),
         NestedMap(output_ids=decodes[:, -1, :],
-                  logprobs=scores[:, -1]),
+                  logprobs=scores[:, -1],
+                  input_batch=input_batch),
         NestedMap())
     # pyformat: enable
     return decode_out
+
+  def process_decode_out(self, input_obj: base_input.BaseInput,
+                         decode_out: base_model.NestedMap) -> ProcessDecodeOut:
+    """Processes one batch of decoded outputs.
+
+    Args:
+      input_obj: The input object where a tokenizer is accessible.
+      decode_out: The output from decode(). May have an extra leading axis.
+
+    Returns:
+      A 3-tuple with:
+      - metrics, a NestedMap containing str keys and (metric, weight) pairs for
+        the current batch (a tuple of two scalars).
+      - A list of dict where each entry corresponds to a row in the batch. The
+        keys should be unique across the entire decode dataset.
+      - out_clu_metrics, a NestedMap containing str keys and clu_metrics.Metric
+        objects. This is currently unused.
+    """
+    # Get the first output within a batch.
+    target_ids = decode_out.input_batch.decoder_target_tokens
+    input_ids = decode_out.input_batch.encoder_input_tokens
+
+    decode_out.decode_lengths = jnp.count_nonzero(
+        decode_out.output_ids, axis=-1
+    )
+    decoded_strs = input_obj.ids_to_strings(
+        decode_out.output_ids, decode_out.decode_lengths, key='tgt'
+    )
+    source_lengths = jnp.count_nonzero(input_ids, axis=-1)
+    source_strs = input_obj.ids_to_strings(input_ids, source_lengths, key='src')
+    target_lengths = jnp.count_nonzero(target_ids, axis=1)
+    target_strs = input_obj.ids_to_strings(
+        target_ids, target_lengths, key='tgt'
+    )
+    ret = list()
+    for idx, decoded_str in enumerate(decoded_strs):
+      if (
+          hasattr(decode_out, 'eval_sample_weights')
+          and not decode_out.eval_sample_weights[idx]
+      ):
+        continue
+
+      ret.append((
+          source_strs[idx],
+          {
+              'source': source_strs[idx],
+              'decoded': decoded_str,
+              'target': target_strs[idx],
+              'ids': decode_out.output_ids[idx],
+              'logprobs': decode_out.logprobs[idx],
+              'decode_length': decode_out.decode_lengths[idx],
+              # TODO(b/244434890): Replace workaround with more robust
+              # integration.
+              'prefix': source_strs[idx],  # for seqio metrics
+              'decoded_substr': decoded_str,  # for seqio metrics
+          },
+      ))
+    decode_lengths = np.average(decode_out.decode_lengths).astype(np.float32)
+    metrics = NestedMap(
+        decode_length=(decode_lengths, np.array(1.0, np.float32))
+    )
+    out_clu_metrics = NestedMap()
+    return metrics, ret, out_clu_metrics
 
   def _compute_logits_from_slice(
       self, decoding_state: t5x_decoding.DecodingState, params: Any,

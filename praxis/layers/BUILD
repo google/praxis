@@ -1042,6 +1042,8 @@ pytype_strict_library(
         # Implicit clu dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_input",
         "//praxis:base_layer",
         "//praxis:base_model",
         "//praxis:decoder_hparams",
@@ -1104,9 +1106,11 @@ py_strict_test(
         # Implicit fiddle dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
+        "//praxis:base_input",
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
+        "//praxis:pytypes",
         "//praxis:test_utils",
         # Implicit t5x.models dependency.
         # Implicit t5x.partitioning dependency.

@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """Tests for flaxformer_model."""
+from typing import Optional, List
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -21,9 +22,11 @@ import fiddle as fdl
 import jax
 from jax import numpy as jnp
 import numpy as np
+from praxis import base_input
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import py_utils
+from praxis import pytypes
 from praxis import test_utils
 from praxis.layers import flaxformer_models
 from t5x import models as t5x_models
@@ -80,6 +83,28 @@ def factory_configured_model():
   mdl_p = flaxformer_models.EncoderDecoderModel.config(
       encoder_decoder_tpl=encdec_p, name='mdl')
   return instantiate(mdl_p)
+
+
+class MockInput(base_input.BaseInput):
+  _VOCAB = {
+      1: 'a',
+      2: 'b',
+      3: 'c',
+      4: 'd',
+      5: 'e',
+      6: 'f',
+  }
+
+  def ids_to_strings(self, ids: pytypes.NpTensor,
+                     lengths: pytypes.NpTensor,
+                     key: Optional[str] = None) -> List[str]:
+    """Converts int ids into strings."""
+    del key
+
+    ret = []
+    for i, l in zip(ids, lengths):
+      ret.append(''.join([self._VOCAB[int(token)] for token in i[:int(l)]]))
+    return ret
 
 
 class FlaxFormerModelsTest(test_utils.TestCase):
@@ -313,6 +338,57 @@ class FlaxFormerModelsTest(test_utils.TestCase):
 
     # Test whether they are the same.
     np.testing.assert_array_equal(pax_result_ids, t5x_result_ids)
+
+  def test_encoder_decoder_process_decode_out(self):
+    pax_model = fiddle_configured_model()
+
+    prng_key = {
+        'params': jax.random.PRNGKey(seed=123),
+        'dropout': jax.random.PRNGKey(seed=456)
+    }
+
+    batch_size = 2
+
+    p_input = MockInput.HParams()
+    p_input.name = 'mock_input'
+    p_input.batch_size = batch_size
+    input_obj = instantiate(p_input)
+
+    encoder_input_tokens = jnp.array([
+        [1, 2, 3, 4, 5, 6, 0, 0],
+        [1, 2, 3, 4, 5, 0, 0, 0],
+    ])
+    decoder_target_tokens = jnp.array([
+        [6, 5, 4, 3, 2, 1, 0, 0, 0, 0],
+        [1, 2, 3, 1, 2, 0, 0, 0, 0, 0],
+    ])
+
+    out = py_utils.NestedMap(
+        input_batch=py_utils.NestedMap(
+            encoder_input_tokens=encoder_input_tokens,
+            decoder_target_tokens=decoder_target_tokens
+        ),
+        output_ids=decoder_target_tokens,
+        logprobs=jnp.array([1.5, 2.5]),
+    )
+
+    metrics, ret, _ = pax_model.process_decode_out(input_obj, out)
+
+    self.assertEqual(metrics.decode_length[0], 5.5)
+
+    self.assertEqual(ret[0][0], 'abcdef')
+    self.assertEqual(ret[0][1]['source'], 'abcdef')
+    self.assertEqual(ret[0][1]['decoded'], 'fedcba')
+    self.assertEqual(ret[0][1]['target'], 'fedcba')
+    self.assertEqual(ret[0][1]['prefix'], 'abcdef')
+    self.assertEqual(ret[0][1]['decoded_substr'], 'fedcba')
+
+    self.assertEqual(ret[1][0], 'abcde')
+    self.assertEqual(ret[1][1]['source'], 'abcde')
+    self.assertEqual(ret[1][1]['decoded'], 'abcab')
+    self.assertEqual(ret[1][1]['target'], 'abcab')
+    self.assertEqual(ret[1][1]['prefix'], 'abcde')
+    self.assertEqual(ret[1][1]['decoded_substr'], 'abcab')
 
   def test_sharded_flaxformer_model(self):
     decoder_p = flaxformer_models.FlaxFormerDecoder.HParams(num_layers=2)
