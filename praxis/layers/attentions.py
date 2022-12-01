@@ -2131,7 +2131,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
 
   # TODO(b/247837331): Separate extend n steps from extend_step API if there
   # are  more use cases to run scoring right after decoding.
-  def extend_step(self, query_vec: JTensor, *, atten_mask: JTensor,
+  def extend_step(self, query_vec: JTensor, *, atten_mask: JTensor,  # pytype: disable=signature-mismatch  # overriding-parameter-name-checks
                   time_step: JTensor,
                   segment_pos: Optional[JTensor]) -> JTensor:
     """Computes the value vector given the query of the current step.
@@ -2801,7 +2801,7 @@ class LocalSelfAttention(DotProductAttention):
     raise NotImplementedError('init_states is not implemented for %s' %
                               self.__name__)
 
-  def extend_step(self, query_vec: JTensor,
+  def extend_step(self, query_vec: JTensor,  # pytype: disable=signature-mismatch  # overriding-parameter-name-checks
                   *,
                   atten_mask: JTensor,
                   time_step: JTensor,
