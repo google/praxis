@@ -15,9 +15,10 @@
 
 """Data augmentation layers."""
 
-from typing import Tuple
+from typing import Tuple, Optional
 
 import jax
+from jax import lax
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import py_utils
@@ -117,3 +118,80 @@ class MaskedLmDataAugmenter(base_layer.BaseLayer):
         inputs * self_pos.astype(input_dtype))
 
     return augmented, replacement_pos
+
+
+# TODO(meadowlark): Add temporal warping layer.
+class TemporalShifting(base_layer.BaseLayer):
+  """Shifts audio signals by a random amount during training."""
+
+  class HParams(BaseHParams):
+    """Associated hyper-params for this layer class.
+
+    Attributes:
+      shift_range_ms: The maximum milliseconds to shift the signal forward or
+        backward by. Must be smaller than the input signal length.
+      sample_rate: The sample rate of the input signal.
+      axis: The axis to treat and the time axis. Must be greater than 0.
+    """
+    shift_range_ms: float = 0.0
+    sample_rate: float = 16000.0
+    axis: int = 1
+
+  def setup(self) -> None:
+    super().setup()
+    p = self.hparams
+    assert p.shift_range_ms > 0.0, p.shift_range_ms
+    assert p.axis > 0, p.axis
+
+  def _shift_tensor(self, x, axis, shift_range, shift_size, *, pad_value=0.0):
+    """Dynamically shifts x along axis by |shift_size| <= shift_range."""
+    pad_width = [[0, 0]] * x.ndim
+    pad_width[axis] = [shift_range, shift_range]
+    x_padded = jnp.pad(x, pad_width, constant_values=pad_value)
+    return lax.dynamic_slice_in_dim(
+        x_padded,
+        start_index=shift_range + shift_size,
+        slice_size=x.shape[axis],
+        axis=axis)
+
+  def _shift(self, features: JTensor, paddings: Optional[JTensor],
+             shift_range: int) -> Tuple[JTensor, Optional[JTensor]]:
+    """Randomly shifts features and paddings by as much as shift_range.
+
+    For example, if features is [1 2 3 4] and shift_range is 2, then the
+    output features could be shifted as far as [0 0 1 2] or [3 4 0 0] in each
+    direction. Each example in the batch is shifted independently.
+    """
+    p = self.hparams
+
+    def shift_example(features, paddings, shift_size):
+      axis = p.axis - 1  # Subtract 1 to account for the vmaped batch dim.
+      features = self._shift_tensor(features, axis, shift_range, shift_size)
+      if paddings is not None:
+        paddings = self._shift_tensor(
+            paddings, axis, shift_range, shift_size, pad_value=1.0)
+      return features, paddings
+
+    # Generate a random amount to shift each example by. A negative shift_size
+    # corresponds to shifting the signal to the left and then right-padding it
+    # with zeros.
+    shift_sizes = jax.random.randint(self.next_prng_key(), [features.shape[0]],
+                                     -shift_range, shift_range + 1)
+    # Use jax.vmap to independently shift each example without using gather.
+    return jax.vmap(shift_example)(features, paddings, shift_sizes)
+
+  def __call__(
+      self,
+      features: JTensor,
+      paddings: Optional[JTensor] = None) -> Tuple[JTensor, Optional[JTensor]]:
+    p = self.hparams
+    if self.do_eval or p.shift_range_ms == 0.0:
+      return features, paddings
+
+    shift_range = int(round(p.sample_rate * p.shift_range_ms / 1000.0))
+    if shift_range >= features.shape[p.axis]:
+      signal_length_ms = features.shape[p.axis] / p.sample_rate * 1000.0
+      raise ValueError(f'p.shift_range_ms={p.shift_range_ms} is large enough '
+                       f'to blank out the entire {signal_length_ms}ms signal')
+
+    return self._shift(features, paddings, shift_range)

@@ -42,6 +42,7 @@ from praxis.layers.attentions import PerDimScale
 from praxis.layers.attentions import RelativeBias
 from praxis.layers.attentions import segment_mask
 from praxis.layers.augmentations import MaskedLmDataAugmenter
+from praxis.layers.augmentations import TemporalShifting
 from praxis.layers.bregman import BregmanPCA
 from praxis.layers.checkpoint_policy import AutodiffCheckpointType
 from praxis.layers.conformers import Conformer

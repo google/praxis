@@ -95,6 +95,53 @@ class AugmentationsTest(test_utils.TestCase):
     self.assertAllClose(to_np(expected_ids), to_np(augmented_ids))
     self.assertAllClose(to_np(expected_pos), to_np(augmented_pos))
 
+  def test_shifting(self):
+    p = augmentations.TemporalShifting.HParams(
+        name='shifting', shift_range_ms=13.3, sample_rate=1000.0)
+    layer = instantiate(p)
+    batch_size = 2
+    audio_len = 20
+    channels = 2
+    shape = [batch_size, audio_len, channels]
+    # Add 1 to distinguish the shifted signal from the added zeros.
+    features = jnp.arange(np.prod(shape)).reshape(shape) + 1
+    # Use 2 to distinguish the default np.pad value from the signal paddings.
+    paddings = 2.0 * jnp.ones(shape[:-1])
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(12345)
+      prng_key, init_key = jax.random.split(prng_key)
+      prng_key, shift_key1, shift_key2 = jax.random.split(prng_key, 3)
+      initial_vars = layer.init({
+          'random': shift_key1,
+          'params': init_key
+      }, features, paddings)
+      logging.info('initial_vars: %s', initial_vars)
+      output1, out_paddings1 = layer.apply(
+          initial_vars, features, paddings, rngs={'random': shift_key1})
+      output2, out_paddings2 = layer.apply(
+          initial_vars, features, paddings, rngs={'random': shift_key2})
+
+    logging.info('output1:\n%s', output1)
+    logging.info('output2:\n%s', output2)
+
+    # Check that the outputs are shifted by the expected ammount along the batch
+    # dimension. Also checks that each channel is shifted by the same amount.
+    self.assertArraysEqual(output1[0, 2:], features[0, :-2])
+    self.assertArraysEqual(output1[1, :-4], features[1, 4:])
+
+    self.assertArraysEqual(output2[0, :-4], features[0, 4:])
+    self.assertArraysEqual(output2[1, 8:], features[1, :-8])
+
+    # Check that the zeros added to the signal are padded and that the shifted
+    # signal is unpadded (which artificially corresponds to a padding value of
+    # 2.0).
+    self.assertArraysEqual(output1[..., 0] == 0.0, out_paddings1 == 1.0)
+    self.assertArraysEqual(output1[..., 0] != 0.0, out_paddings1 == 2.0)
+
+    self.assertArraysEqual(output2[..., 0] == 0.0, out_paddings2 == 1.0)
+    self.assertArraysEqual(output2[..., 0] != 0.0, out_paddings2 == 2.0)
+
 
 if __name__ == '__main__':
   absltest.main()
