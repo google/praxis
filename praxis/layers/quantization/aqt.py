@@ -51,6 +51,7 @@ class TensorQuantizer(base_layer.BaseLayer):
         'Too many bits, float32 has less precision.')
 
   def __call__(self):
+    # Since TensorQuantizer does nothing when initialized, __call__ is a no-op.
     pass
 
   def _get_clip_bound(self) -> float:

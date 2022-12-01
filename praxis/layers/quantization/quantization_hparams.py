@@ -15,7 +15,9 @@
 
 """Collection of hyper-parameters for quantization."""
 
+import dataclasses
 import enum
+from typing import Optional
 
 from praxis import base_hyperparams
 
@@ -35,19 +37,6 @@ class QuantizationType(str, enum.Enum):
 
 
 @enum.unique
-class ActivationQuantizationType(str, enum.Enum):
-  """The different types for activation quantization.
-
-  NONE indicates no quantization on the activation.
-  DYNAMIC indicates dynamic quantization on the activation.
-  STATIC indicates static quantization on the activation.
-  """
-  NONE = 'none'
-  DYNAMIC = 'dynamic'
-  STATIC = 'static'
-
-
-@enum.unique
 class QuantizationMode(str, enum.Enum):
   """The different modes for quantization.
 
@@ -62,15 +51,35 @@ class QuantizationMode(str, enum.Enum):
   INFERENCE = 'inference'
 
 
+@dataclasses.dataclass
+class ActQuantizationParams:
+  """Parameters for activation quantization."""
+  precision: int = 8
+  unsigned_int_bounds: bool = False
+  clipping_coeff: float = 0.0
+  # TODO(jihwanlee): Define stats config for static quantization
+  stats_config = None
+
+
+@dataclasses.dataclass
+class WeightQuantizationParams:
+  """Parameters for weight quantization."""
+  precision: int = 8
+  unsigned_int_bounds: bool = False
+  clipping_coeff: float = 0.0
+
+
 class QuantizationHParams(base_hyperparams.BaseHyperParams):
   """Parameters for quantization.
 
   Attributes:
     quantization_type: quantization type.
     mode: the quantization mode associated with this quantization parameter.
-    activation_quantization_type: quantization type for activation.
+    act_params: Config for activation quantization.
+    weight_params: Config for weight quantization.
   """
 
   quantization_type: QuantizationType = QuantizationType.PTQ
   mode: QuantizationMode = QuantizationMode.INFERENCE
-  activation_quantization_type: ActivationQuantizationType = ActivationQuantizationType.NONE
+  act_params: Optional[ActQuantizationParams] = None
+  weight_params: WeightQuantizationParams = WeightQuantizationParams()

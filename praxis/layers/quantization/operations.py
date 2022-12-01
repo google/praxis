@@ -255,11 +255,15 @@ def dot_general(
   lhs = lhs_quantizer.to_quant(lhs)
   rhs = rhs_quantizer.to_quant(rhs)
 
+  should_int8_quantize = (
+      lhs_quantizer.hparams.precision is not None and
+      rhs_quantizer.hparams.precision is not None)
+
   out = _dot_general_aqt(
       lhs,
       rhs,
       dimension_numbers=dimension_numbers,
-      should_int8_quantize=False)
+      should_int8_quantize=should_int8_quantize)
 
   inv_scale = 1 / (lhs_scale * rhs_scale)
   return out * inv_scale
