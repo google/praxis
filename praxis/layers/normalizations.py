@@ -106,6 +106,26 @@ class BaseNormalization(base_layer.FiddleBaseLayer):
         'Normalization layers are expected to implement fprop().')
 
 
+class IdentityNorm(BaseNormalization):
+  """Return the input as-is with BaseNormalization-compatible HParams."""
+
+
+  def __call__(self,
+               inputs: JTensor,
+               paddings: Optional[JTensor] = None) -> JTensor:
+    """Returns inputs.
+
+    Args:
+      inputs: The inputs JTensor. Shaped [..., dim].
+      paddings: unused.
+
+    Returns:
+      Output as inputs.
+    """
+    del paddings  # Unused.
+    return inputs
+
+
 class BatchNorm(BaseNormalization):
   """Batch normalization layer.
 

@@ -80,6 +80,7 @@ from praxis.layers.ngrammer import Ngrammer
 from praxis.layers.ngrammer import VectorQuantization
 from praxis.layers.ngrammer import VQNgrammer
 from praxis.layers.normalizations import BaseNormalization
+from praxis.layers.normalizations import IdentityNorm
 from praxis.layers.normalizations import BatchNorm
 from praxis.layers.normalizations import compute_moments
 from praxis.layers.normalizations import GroupNorm
