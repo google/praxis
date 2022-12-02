@@ -91,6 +91,31 @@ class ConvolutionsTest(test_utils.TestCase):
     self.assertAllClose(to_np(output[0, :, :, 0]), np_output)
 
   @parameterized.parameters(
+      ((2, 5, 4, 24, 36), (1, 1, 1), [2, 4, 16, 36, 72]),
+      ((2, 2, 4, 16, 8), (2, 2, 2), [2, 8, 16, 32, 128]),
+      ((2, 4, 8, 16, 32), (1, 1, 1), [2, 8, 16, 32, 64]),
+  )
+  def test_conv3d_layer_same_padding(self, filter_shape, filter_stride,
+                                     input_shape):
+    p = convolutions.Conv3D.HParams(
+        name='jax_conv3d',
+        filter_shape=filter_shape,
+        filter_stride=filter_stride,
+        dilations=(1, 1, 1),
+        padding='SAME')
+    conv_layer = instantiate(p)
+    npy_inputs = np.random.normal(1.0, 0.5, input_shape).astype('float32')
+    inputs = jnp.asarray(npy_inputs)
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = conv_layer.init(prng_key, inputs)
+
+    output = conv_layer.apply(initial_vars, inputs)
+    # Test whether output has same shape as input in time, height and width
+    for i in [1, 2, 3]:
+      self.assertEqual(output.shape[i], inputs.shape[i] // filter_stride[i - 1])
+
+  @parameterized.parameters(
       (2, 10, 3, 10, 1, True),
       (3, 12, 5, 11, 1, False),
       (5, 7, 2, 8, 1, True),
@@ -193,6 +218,40 @@ class ConvolutionsTest(test_utils.TestCase):
 
     self.assertAllClose(to_np(tf_out_paddings), to_np(out_paddings))
     self.assertAllClose(to_np(tf_output), to_np(output))
+
+  @parameterized.product(
+      batch_size=[2, 7],
+      seq_len=[7, 12],
+      kernel_size=[2, 3, 5],
+      input_dims=[5, 11],
+      channel_multipliers=[1, 3])
+  def test_depthwise_conv3d_layer(self, batch_size, seq_len, kernel_size,
+                                  input_dims, channel_multipliers):
+    # Create fake inputs.
+    npy_inputs = np.random.normal(
+        1.0,
+        0.5,
+        [batch_size, seq_len, seq_len, seq_len, input_dims]).astype('float32')
+    inputs = jnp.asarray(npy_inputs)
+    kernel_shape = (kernel_size, kernel_size, kernel_size)
+    p = convolutions.Conv3D.HParamsDepthwise(
+        name='jax_depthwise_conv3d',
+        kernel_shape=kernel_shape,
+        in_channels=input_dims,
+        channel_multipliers=channel_multipliers,
+        filter_stride=(1, 1, 1),
+        bias=True,
+        tf_equivalent_padding=True)
+    depthwiseconv3d = instantiate(p)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = depthwiseconv3d.init(prng_key, inputs)
+    output = depthwiseconv3d.apply(initial_vars, inputs)
+    # check time, height, width shape.
+    for i in [1, 2, 3]:
+      self.assertEqual(output.shape[i], inputs.shape[i])
+    # Check channels shape.
+    self.assertEqual(output.shape[-1], input_dims*channel_multipliers)
+
 
   @parameterized.parameters(
       (2, 10, 3, 10, 0.0, True),

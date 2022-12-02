@@ -45,6 +45,23 @@ JTensor = pytypes.JTensor
 BaseHParams = base_layer.BaseLayer.HParams
 
 
+def _extract_pad_beg_end(size: int) -> Tuple[int, int]:
+  """Gets the beginning and ending padding for a dimension."""
+  pad_total = size -  1
+  pad_beg = pad_total // 2
+  pad_end = pad_total - pad_beg
+  return pad_beg, pad_end
+
+
+def _causal_padding(size: int, filter_shape: int, filter_stride: int) -> int:
+  """Gets the padding for a causal convolution."""
+  if size % filter_stride == 0:
+    return max(filter_shape - filter_stride, 0)
+  else:
+    return max(filter_shape - (size % filter_stride), 0)
+
+
+
 class Conv2D(base_layer.FiddleBaseLayer):
   """Conv2D with support of SAME/VALID paddings.
 
@@ -96,22 +113,31 @@ class Conv2D(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     p = self.hparams
-    assert p.name
-    assert p.padding in ['SAME', 'VALID']
-    assert len(p.filter_shape) == 4
-    assert len(p.filter_stride) == 2
-    assert len(p.dilations) == 2
-    assert all(x > 0 for x in p.filter_stride)
+    if not p.name:
+      raise ValueError('self.hparams.name needs to be set.')
+    if p.padding not in ['SAME', 'VALID']:
+      raise ValueError(f'padding should be SAME or VALID, got {p.padding}')
+    if len(p.filter_shape) != 4:
+      raise ValueError(
+          f'filter_shape should have 4 values, got {p.filter_shape}')
+    if len(p.filter_stride) != 2:
+      raise ValueError(
+          f'filter_stride should have 2 values, got {p.filter_stride}')
+    if len(p.dilations) != 2:
+      raise ValueError(
+          f'dilations should have 2 values, got {p.dilations}')
+    if not all(x > 0 for x in p.filter_stride):
+      raise ValueError(f'filter_stide should be > 0, got f{p.filter_stride}')
 
     # error if is_causal but not tf_equivalent_padding
     if p.is_causal and (not p.tf_equivalent_padding):
-      raise Exception(
+      raise ValueError(
           'Causal convolution is only supported for tf equivalent padding')
 
     # error if is_causal but padding == 'valid'
     if p.is_causal and p.padding == 'VALID':
       raise NotImplementedError(
-          'Causal convlution doesn\'t support valid padding')
+          'Causal convolution doesn\'t support valid padding')
 
     wp = p.weight_split_dims_mapping
     self.create_variable(
@@ -128,12 +154,8 @@ class Conv2D(base_layer.FiddleBaseLayer):
     p = self.hparams
     if not p.tf_equivalent_padding:
       if p.padding == 'SAME':
-        pad_height_total = p.filter_shape[0] - 1
-        pad_height_beg = pad_height_total // 2
-        pad_height_end = pad_height_total - pad_height_beg
-        pad_width_total = p.filter_shape[1] - 1
-        pad_width_beg = pad_width_total // 2
-        pad_width_end = pad_width_total - pad_width_beg
+        pad_height_beg, pad_height_end = _extract_pad_beg_end(p.filter_shape[0])
+        pad_width_beg, pad_width_end = _extract_pad_beg_end(p.filter_shape[1])
       else:
         assert p.padding == 'VALID', p.padding
         pad_height_beg = 0
@@ -151,16 +173,10 @@ class Conv2D(base_layer.FiddleBaseLayer):
         # https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2
         filter_height = (p.filter_shape[0] - 1) * p.dilations[0] + 1
         filter_width = (p.filter_shape[1] - 1) * p.dilations[1] + 1
-        if inputs_shape[1] % p.filter_stride[0] == 0:
-          pad_height_total = max(filter_height - p.filter_stride[0], 0)
-        else:
-          pad_height_total = max(
-              filter_height - (inputs_shape[1] % p.filter_stride[0]), 0)
-        if inputs_shape[2] % p.filter_stride[1] == 0:
-          pad_width_total = max(filter_width - p.filter_stride[1], 0)
-        else:
-          pad_width_total = max(
-              filter_width - (inputs_shape[2] % p.filter_stride[1]), 0)
+        pad_height_total = _causal_padding(
+            inputs_shape[1], filter_height, p.filter_stride[0])
+        pad_width_total = _causal_padding(
+            inputs_shape[2], filter_width, p.filter_stride[1])
 
         # first dimension is causal
         pad_height_beg = 0 if pad_height_zero else pad_height_total
@@ -212,6 +228,185 @@ class Conv2D(base_layer.FiddleBaseLayer):
         padding=padding,
         rhs_dilation=p.dilations,
         dimension_numbers=('NHWC', 'HWIO', 'NHWC'),
+        feature_group_count=feature_group_count)
+    if p.bias:
+      outputs += jnp.reshape(self.theta.b, (1,) * (outputs.ndim - 1) + (-1,))
+    return outputs
+
+
+class Conv3D(base_layer.FiddleBaseLayer):
+  """Conv3D with support of SAME/VALID paddings.
+
+  Attributes:
+    filter_shape: Must be a sequence of length 5. Elements are ordered:
+      time, height, width, in_channel, out_channel.
+    filter_stride: Filter stride to use. Must be a three ints. The first int
+      specifies the stride on the time, then height, then width.
+    dilations: An optional list of ints. Defaults to (1, 1, 1). 1-D tensor of
+      length 3. The dilation factor for each dimension of input. If set to k >
+      1, there will be k-1 skipped cells between each filter element on that
+      dimension.
+    bias: Whether or not to apply a bias before activation.
+    bias_init: Bias initializer to use if bias is to be applied.
+    padding: The type of padding to use.
+    tf_equivalent_padding: Whether to make it equivalent to tf. By default we
+      apply extra padding that is different than tf conv when stride > 1. This
+      is mainly used for multimodal which leads to better accuracy.
+    is_causal: Whether this is a causal convolution. This assumes the first
+      dimension of filter is time and if is_causal=True, each position would
+      not observe any positions in the right. This is achieved by adding
+      extra padding in the left to shift the whole convolution.
+  """
+  filter_shape: Sequence[int] = (0, 0, 0, 0, 0)
+  filter_stride: Sequence[int] = (0, 0, 0)
+  dilations: Sequence[int] = (1, 1, 1)
+  bias: bool = False
+  bias_init: WeightInit = WeightInit.Constant(0.0)
+  padding: str = 'SAME'
+  tf_equivalent_padding: bool = False
+  is_causal: bool = False
+
+  @classmethod
+  def HParamsDepthwise(cls,
+                       *,
+                       kernel_shape: Sequence[int],
+                       in_channels: int,
+                       channel_multipliers: int = 1,
+                       **hparams):
+    """DepthwiseConv3D configuration for Conv3D and its subclasses."""
+    if len(kernel_shape) != 3:
+      raise ValueError(
+          f'kernel_shape must have three elements, got {len(kernel_shape)}')
+    if 'filter_shape' in hparams:
+      raise ValueError('filter_shape cannot be specified in HParamsDepthwise')
+    filter_shape = tuple(kernel_shape) + (1, in_channels * channel_multipliers)
+    return cls.HParams(filter_shape=filter_shape, **hparams)
+
+  def setup(self) -> None:
+    p = self.hparams
+    if not p.name:
+      raise ValueError('self.hparams.name needs to be set.')
+    if p.padding not in ['SAME', 'VALID']:
+      raise ValueError(f'padding should be SAME or VALID, got {p.padding}')
+    if len(p.filter_shape) != 5:
+      raise ValueError(
+          f'filter_shape should have 5 values, got {p.filter_shape}')
+    if len(p.filter_stride) != 3:
+      raise ValueError(
+          f'filter_stride should have 3 values, got {p.filter_stride}')
+    if len(p.dilations) != 3:
+      raise ValueError(
+          f'dilations should have 3 values, got {p.dilations}')
+    if not all(x > 0 for x in p.filter_stride):
+      raise ValueError(f'filter_stide should be > 0, got f{p.filter_stride}')
+
+    # error if is_causal but not tf_equivalent_padding
+    if p.is_causal and (not p.tf_equivalent_padding):
+      raise ValueError(
+          'Causal convolution is only supported for tf equivalent padding')
+
+    # error if is_causal but padding == 'valid'
+    if p.is_causal and p.padding == 'VALID':
+      raise NotImplementedError(
+          'Causal convolution doesn\'t support valid padding')
+
+    wp = p.weight_split_dims_mapping
+    self.create_variable(
+        'w',
+        WeightHParams(
+            shape=p.filter_shape,
+            mesh_shape=p.mesh_shape,
+            tensor_split_dims_mapping=wp.wt))
+    if p.bias:
+      self.create_variable(
+          'b', WeightHParams(shape=[p.filter_shape[-1]], init=p.bias_init))
+
+  def _compute_padding(self, inputs_shape, pad_height_zero=False):
+    p = self.hparams
+    if not p.tf_equivalent_padding:
+      if p.padding == 'SAME':
+        pad_time_beg, pad_time_end = _extract_pad_beg_end(p.filter_shape[0])
+        pad_height_beg, pad_height_end = _extract_pad_beg_end(p.filter_shape[1])
+        pad_width_beg, pad_width_end = _extract_pad_beg_end(p.filter_shape[2])
+      else:
+        assert p.padding == 'VALID', p.padding
+        pad_time_beg = 0
+        pad_time_end = 0
+        pad_height_beg = 0
+        pad_height_end = 0
+        pad_width_beg = 0
+        pad_width_end = 0
+      padding = [(pad_time_beg, pad_time_end),
+                 (pad_height_beg, pad_height_end),
+                 (pad_width_beg, pad_width_end)]
+    else:
+      if not p.is_causal:
+        padding = p.padding
+      else:
+        # Compute padding for causal convolution
+        # Reference:
+        # https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2
+        filter_time = (p.filter_shape[0] - 1) * p.dilations[0] + 1
+        filter_height = (p.filter_shape[1] - 1) * p.dilations[1] + 1
+        filter_width = (p.filter_shape[2] - 1) * p.dilations[2] + 1
+        pad_time_total = _causal_padding(
+            inputs_shape[1], filter_time, p.filter_stride[0])
+        pad_height_total = _causal_padding(
+            inputs_shape[2], filter_height, p.filter_stride[1])
+        pad_width_total = _causal_padding(
+            inputs_shape[3], filter_width, p.filter_stride[2])
+
+        # first dimension is causal
+        pad_time_beg = 0 if pad_height_zero else pad_time_total
+        pad_time_end = 0
+        pad_height_beg = pad_height_total // 2
+        pad_height_end = pad_height_total - pad_height_beg
+        pad_width_beg = pad_width_total // 2
+        pad_width_end = pad_width_total - pad_width_beg
+
+        padding = [(pad_time_beg, pad_time_end),
+                   (pad_height_beg, pad_height_end),
+                   (pad_width_beg, pad_width_end)]
+    return padding
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """FProp that supports strided, dilated convolution, depthwise convolution.
+
+    Args:
+      inputs: Input sequence of shape [B, T, H, W, D_in].
+
+    Returns:
+      Output sequence after applying convolution, shape [B, T', H', W', D_out].
+      Note that if the padding is SAME and there is no dilation and striding,
+      then H' = H and W' = W.
+    """
+    p = self.hparams
+    # Check if the feature_group_count is compatible with the inputs and filter
+    # For more information see XLA docs on ConvWithGeneralPadding below
+    # https://www.tensorflow.org/xla/operation_semantics#convwithgeneralpadding_convolution
+    if inputs.shape[4] % p.filter_shape[3] != 0:
+      raise ValueError(f'Input features {inputs.shape[4]} must be a'
+                       f'multiple of filter input dim {p.filter_shape[3]} '
+                       f'(Input shape: {inputs.shape}, '
+                       f'filter shape: {p.filter_shape}).')
+    # feature group count is D_in // filter input dim
+    feature_group_count = inputs.shape[4] // p.filter_shape[3]
+    if p.filter_shape[4] % feature_group_count != 0:
+      raise ValueError(f'Filter output dim {p.filter_shape[4]} must be a '
+                       f'multiple of feature group count {feature_group_count} '
+                       f'(Input shape: {inputs.shape}, '
+                       f'filter shape: {p.filter_shape}).')
+    padding = self._compute_padding(inputs.shape)
+
+    # The `dimension_numbers=('NTHWC', 'THWIO', 'NTHWC')` is to be consistent
+    # with tf.conv3d.
+    outputs = jax.lax.conv_general_dilated(
+        lhs=inputs,
+        rhs=self.theta.w,
+        window_strides=p.filter_stride,
+        padding=padding,
+        rhs_dilation=p.dilations,
+        dimension_numbers=('NTHWC', 'THWIO', 'NTHWC'),
         feature_group_count=feature_group_count)
     if p.bias:
       outputs += jnp.reshape(self.theta.b, (1,) * (outputs.ndim - 1) + (-1,))
