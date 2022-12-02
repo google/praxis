@@ -422,7 +422,6 @@ def sample_decode(model: base_layer.BaseLayerApi,
     # Broadcast temperature if it is a JTensor.
     if isinstance(temperature, JTensor):
       temperature = _broadcast_input(temperature, 'temperature')
-      temperature = jnp.reshape(temperature, (-1, 1))
 
     # Broadcast per_example_max_decode_steps if it is a JTensor.
     if per_example_max_decode_steps is not None:
@@ -450,6 +449,9 @@ def sample_decode(model: base_layer.BaseLayerApi,
       assert len(cf_guidance_scale) == num_samples
       cf_guidance_scale = jnp.array(cf_guidance_scale)
       cf_guidance_scale = cf_guidance_scale[jnp.newaxis, :, jnp.newaxis]
+
+  if isinstance(temperature, JTensor):
+    temperature = temperature[:, jnp.newaxis]
 
   if seq_len <= 0:
     raise ValueError('The sequence length for decoding must be > 0, '
