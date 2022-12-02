@@ -58,6 +58,7 @@ from praxis.layers.embedding_softmax import Embedding
 from praxis.layers.embedding_softmax import FullSoftmax
 from praxis.layers.embedding_softmax import GShardSharedEmbeddingSoftmax
 from praxis.layers.embedding_softmax import PositionalEmbedding
+from praxis.layers.embedding_softmax import PositionalEmbedding2D
 from praxis.layers.embedding_softmax import SharedEmbeddingSoftmax
 from praxis.layers.embedding_softmax import SigmoidCrossEntropy
 from praxis.layers.embedding_softmax import TrainablePositionalEmbedding

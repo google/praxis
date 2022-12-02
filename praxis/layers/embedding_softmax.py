@@ -771,6 +771,85 @@ class PositionalEmbedding(base_layer.FiddleBaseLayer):
     return signal
 
 
+class PositionalEmbedding2D(base_layer.BaseLayer):
+  """Generates 2-d position embedding for sequence of flattened patches.
+
+  See description in the ViT paper section D4. The only difference is that we
+  allow the number of patches along the h and w dimensions to be different.
+  https://arxiv.org/pdf/2010.11929v2.pdf
+  """
+
+  class HParams(BaseHParams):
+    """Associated hyper-params for this layer class.
+
+    Attributes:
+      h: An integer as fixed length of image height.
+      w: An integer as fixed length of image width.
+      embedding_dims: An integer as dimension of embedding.
+      pos_transform: Indicate how to merge the h and w.
+      num_prepend_cls_tokens: Number of prepended CLS tokens.
+      num_append_cls_tokens: Number of appended CLS tokens.
+    """
+    h: int = 0
+    w: int = 0
+    embedding_dims: int = 0
+    pos_transform: str = 'hwd->(hw)d'
+    num_prepend_cls_tokens: int = 0
+    num_append_cls_tokens: int = 0
+
+  def _compute_1d_embeddings(self,
+                             position: JTensor,
+                             hidden_dim: int,
+                             dtype: jnp.dtype = jnp.float32):
+    position = position.astype(dtype)
+    half_hid = hidden_dim // 2
+    freq_seq = jnp.arange(half_hid, dtype=dtype)
+    # the base 10000 is from the original sinusoidal positional embedding
+    # formulation introduced in "attention is all you need" section 3.5.
+    # https://arxiv.org/pdf/1706.03762.pdf
+    inv_freq = 1 / (10000**(freq_seq/half_hid))
+    positions = jnp.einsum('S,D->SD', position, inv_freq)
+    sin = jnp.sin(positions)
+    cos = jnp.cos(positions)
+    return jnp.concatenate([sin, cos], axis=-1)
+
+  def _compute_2d_embeddings(self):
+    p = self.hparams
+    dim = p.embedding_dims
+    h_seq = jnp.arange(-p.h / 2, p.h / 2)
+    w_seq = jnp.arange(-p.w / 2, p.w / 2)
+    pos_emb_h = self._compute_1d_embeddings(
+        h_seq, dim // 2, dtype=jnp.float32)
+    pos_emb_w = self._compute_1d_embeddings(
+        w_seq, dim // 2, dtype=jnp.float32)
+    pos_emb_2d = jnp.concatenate([
+        jnp.tile(pos_emb_h[:, None, :], [1, p.w, 1]),
+        jnp.tile(pos_emb_w[None, :, :], [p.h, 1, 1])
+        ], axis=-1)
+    return pos_emb_2d
+
+  def __call__(self) -> JTensor:
+    """Generates a JTensor of sinusoids with different frequencies.
+
+    Returns:
+      2D positional embedding Tensor of shape
+        [1, p.num_prepend_cls_tokens + p.h * p.w + p.num_append_cls_tokens, D].
+    """
+    p = self.hparams
+    pos_emb = self._compute_2d_embeddings()
+    pos_emb = jnp.reshape(pos_emb, (p.h * p.w, p.embedding_dims))
+    if p.num_prepend_cls_tokens:
+      pos_emb = jnp.concatenate(
+          [jnp.zeros([p.num_prepend_cls_tokens, p.embedding_dims]), pos_emb],
+          axis=0)
+    if p.num_append_cls_tokens:
+      pos_emb = jnp.concatenate(
+          [pos_emb, jnp.zeros([p.num_append_cls_tokens, p.embedding_dims])],
+          axis=0)
+    pos_emb = jnp.expand_dims(pos_emb, axis=0)
+    return pos_emb
+
+
 class RotaryPositionalEmbedding(PositionalEmbedding):
   """Applies rotary position embedding for a given 1-d sequence.
 
