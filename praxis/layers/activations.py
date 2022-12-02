@@ -23,7 +23,7 @@ from praxis import pytypes
 JTensor = pytypes.JTensor
 
 
-class BaseActivation(base_layer.BaseLayer):
+class BaseActivation(base_layer.FiddleBaseLayer):
   """Base class for activation functions."""
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -68,15 +68,12 @@ class CubedReLU(BaseActivation):
 
 
 class LeakyReLU(BaseActivation):
-  """Leaky ReLU activation layer."""
+  """Leaky ReLU activation layer.
 
-  class HParams(base_layer.BaseLayer.HParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      negative_slope: Negative slope of LEAKY_RELU.
-    """
-    negative_slope: float = 0.01
+  Attributes:
+    negative_slope: Negative slope of LEAKY_RELU.
+  """
+  negative_slope: float = 0.01
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the activation function."""
@@ -101,16 +98,13 @@ class Tanh(BaseActivation):
 
 
 class GELU(BaseActivation):
-  """Gaussian Error Linear Unit (GELU) activation layer."""
+  """Gaussian Error Linear Unit (GELU) activation layer.
 
-  class HParams(base_layer.BaseLayer.HParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      approximate: Whtether to use the approximate or exact formulation.
-    """
-    # By default `tf.nn.gelu` is exact.
-    approximate: bool = True
+  Attributes:
+    approximate: Whtether to use the approximate or exact formulation.
+  """
+  # By default `tf.nn.gelu` is exact.
+  approximate: bool = True
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the activation function."""

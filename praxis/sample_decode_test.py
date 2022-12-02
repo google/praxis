@@ -44,12 +44,10 @@ class TestNextTokenSampler(sample_decode.BaseNextTokenSampler):
 
 
 class TestModel(base_model.BaseModel):
-
-  class HParams(base_model.BaseModel.HParams):
-    vocab_size: int = 0
-    num_samples: int = 0
-    seq_len: int = 0
-    batch_size: int = 0
+  vocab_size: int = 0
+  num_samples: int = 0
+  seq_len: int = 0
+  batch_size: int = 0
 
   def setup(self) -> None:
     p = self.hparams

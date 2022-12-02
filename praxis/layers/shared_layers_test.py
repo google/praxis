@@ -24,20 +24,20 @@ from jax import numpy as jnp
 import numpy as np
 from praxis import base_hyperparams
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import linears
 
 instantiate = base_layer.instantiate
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
 
 
-class FooShared(base_layer.BaseLayer):
+class FooShared(base_layer.FiddleBaseLayer):
   linear1: Optional[linears.Linear] = None
   linear2: Optional[linears.Linear] = None
-
-  class HParams(BaseHParams):
-    linear_private_tpl: BaseHParams = sub_config_field(linears.Linear.HParams)
+  linear_private_tpl: LayerTpl = sub_config_field(linears.Linear.HParams)
 
   def setup(self):
     p = self.hparams
@@ -142,12 +142,10 @@ class SharedLayersTest(test_utils.TestCase):
                  base_hyperparams.nested_struct_to_text(hyper_params))
 
 
-class SimpleShared01(base_layer.BaseLayer):
+class SimpleShared01(base_layer.FiddleBaseLayer):
   """A layer to test weight sharing."""
-
-  class HParams(BaseHParams):
-    sub1_tpl: BaseHParams = sub_config_field(None)
-    sub2_tpl: BaseHParams = sub_config_field(None)
+  sub1_tpl: LayerTpl = sub_config_field(None)
+  sub2_tpl: LayerTpl = sub_config_field(None)
 
   def setup(self) -> None:
     p = self.hparams

@@ -16,9 +16,10 @@
 """ResNet layers."""
 
 import dataclasses
-
 from typing import Optional, Sequence
+
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
@@ -32,35 +33,33 @@ WeightInit = base_layer.WeightInit
 JTensor = pytypes.JTensor
 
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
 
 
-class ResNetBlock(base_layer.BaseLayer):
-  """ResNet Block as in https://arxiv.org/abs/1512.03385."""
+class ResNetBlock(base_layer.FiddleBaseLayer):
+  """ResNet Block as in https://arxiv.org/abs/1512.03385.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dim: Input dimension.
-      output_dim: Output dimension.
-      conv_params: Parameterization of the convolution layer.
-      kernel_size: Kernel sizes of the block.
-      stride: Stride.
-      activation_tpl: Activation function to use.
-      residual_droppath_prob: Probability for residual path.
-      zero_init_residual: zero-initialize the gamma of the last BN in each
-        residual branch. From https://arxiv.org/abs/2105.07576.
-    """
-    input_dim: int = 0
-    output_dim: int = 0
-    conv_params: BaseHParams = sub_config_field(convolutions.ConvBNAct.HParams)
-    kernel_size: int = 3
-    stride: int = 1
-    activation_tpl: activations.BaseActivation.HParams = sub_config_field(
-        activations.ReLU.HParams)
-    residual_droppath_prob: float = 0.0
-    zero_init_residual: bool = False
+  Attributes:
+    input_dim: Input dimension.
+    output_dim: Output dimension.
+    conv_params: Parameterization of the convolution layer.
+    kernel_size: Kernel sizes of the block.
+    stride: Stride.
+    activation_tpl: Activation function to use.
+    residual_droppath_prob: Probability for residual path.
+    zero_init_residual: zero-initialize the gamma of the last BN in each
+      residual branch. From https://arxiv.org/abs/2105.07576.
+  """
+  input_dim: int = 0
+  output_dim: int = 0
+  conv_params: LayerTpl = sub_config_field(convolutions.ConvBNAct.HParams)
+  kernel_size: int = 3
+  stride: int = 1
+  activation_tpl: pax_fiddle.Config[
+      activations.BaseActivation] = sub_config_field(activations.ReLU.HParams)
+  residual_droppath_prob: float = 0.0
+  zero_init_residual: bool = False
 
   def setup(self) -> None:
     p = self.hparams
@@ -228,7 +227,20 @@ class ResNetBasicBlock(ResNetBlock):
     return outputs
 
 
-class ResNet(base_layer.BaseLayer):
+@pax_fiddle.auto_config
+def _res_net_conv_params_default():
+  return pax_fiddle.Config(
+      convolutions.ConvBNAct,
+      batch_norm_tpl=pax_fiddle.Config(normalizations.BatchNorm, decay=0.9),
+      params_init=WeightInit.GaussianSqrtFanOut(1.4141))
+
+
+@pax_fiddle.auto_config
+def _res_net_output_spatial_pooling_params_default():
+  return pax_fiddle.Config(poolings.GlobalPooling, pooling_dims=(1, 2))
+
+
+class ResNet(base_layer.FiddleBaseLayer):
   """Resnet model with default params matching Resnet-50.
 
   Additionally, params are also provided for Resnet-101 and Resnet-152.
@@ -237,51 +249,46 @@ class ResNet(base_layer.BaseLayer):
   Raises:
     ValueError if length of `strides`, `channels`, `blocks` and `kernels` do
     not match.
+
+  Attributes:
+  conv_params: A layer params template specifying Conv-BN-Activation template
+    used by the ResNet model.
+  block_params: A layer params template specifying Convolution Block used in
+    each stage. We use the same ResNetBlock tpl in all stages (4 stages in
+    total) in ResNet.
+  strides: A list of integers specifying the stride for each stage. A stage is
+    defined as a stack of Convolution Blocks that share same type, channels
+    and kernels. The stride is always applied only at the beginning of each
+    stage, while within that stage, all other strides are set to 1 (no
+    stride).
+  channels: A list of integers specifying the number of channels at different
+    stages. The first channel is usually 4x the input dim.
+  blocks: A list of integers specifying the number of blocks at different
+    stages.
+  kernels: A list of integers specifying the number of kernel sizes at
+    different stages.
+  entryflow_conv_kernel: A tuple of three integers as the kernel size of
+    entryflow convolution.
+  entryflow_conv_stride: A tuple of two integers as the stride of entryflow
+    convolution.
+  output_spatial_pooling_params: A layer params template specifying spatial
+    pooling before output. If None, spatial pooling is not added.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-    conv_params: A layer params template specifying Conv-BN-Activation template
-      used by the ResNet model.
-    block_params: A layer params template specifying Convolution Block used in
-      each stage. We use the same ResNetBlock tpl in all stages (4 stages in
-      total) in ResNet.
-    strides: A list of integers specifying the stride for each stage. A stage is
-      defined as a stack of Convolution Blocks that share same type, channels
-      and kernels. The stride is always applied only at the beginning of each
-      stage, while within that stage, all other strides are set to 1 (no
-      stride).
-    channels: A list of integers specifying the number of channels at different
-      stages. The first channel is usually 4x the input dim.
-    blocks: A list of integers specifying the number of blocks at different
-      stages.
-    kernels: A list of integers specifying the number of kernel sizes at
-      different stages.
-    entryflow_conv_kernel: A tuple of three integers as the kernel size of
-      entryflow convolution.
-    entryflow_conv_stride: A tuple of two integers as the stride of entryflow
-      convolution.
-    output_spatial_pooling_params: A layer params template specifying spatial
-      pooling before output. If None, spatial pooling is not added.
-    """
-    # pylint: disable=g-long-lambda
-    conv_params: BaseHParams = dataclasses.field(
-        default_factory=lambda: convolutions.ConvBNAct.HParams(
-            batch_norm_tpl=normalizations.BatchNorm.HParams(decay=0.9),
-            params_init=WeightInit.GaussianSqrtFanOut(1.4141)))
-    # pylint: enable=g-long-lambda
-    block_params: BaseHParams = sub_config_field(ResNetBlock.HParams)
-    strides: Sequence[int] = (1, 2, 2, 2)
-    channels: Sequence[int] = (256, 512, 1024, 2048)
-    blocks: Sequence[int] = (3, 4, 6, 3)
-    kernels: Sequence[int] = (3, 3, 3, 3)
-    entryflow_conv_kernel: Sequence[int] = (7, 7, 3)
-    entryflow_conv_stride: Sequence[int] = (2, 2)
-    output_spatial_pooling_params: Optional[
-        BaseHParams] = poolings.GlobalPooling.HParams(pooling_dims=(1, 2))
-    return_block_features: bool = False
+  # pylint: disable=g-long-lambda
+  conv_params: LayerTpl = pax_fiddle.fdl_field(
+      default_factory=_res_net_conv_params_default, tags=pax_fiddle.DoNotBuild)
+  # pylint: enable=g-long-lambda
+  block_params: LayerTpl = sub_config_field(ResNetBlock.HParams)
+  strides: Sequence[int] = (1, 2, 2, 2)
+  channels: Sequence[int] = (256, 512, 1024, 2048)
+  blocks: Sequence[int] = (3, 4, 6, 3)
+  kernels: Sequence[int] = (3, 3, 3, 3)
+  entryflow_conv_kernel: Sequence[int] = (7, 7, 3)
+  entryflow_conv_stride: Sequence[int] = (2, 2)
+  output_spatial_pooling_params: Optional[LayerTpl] = pax_fiddle.fdl_field(
+      default_factory=_res_net_output_spatial_pooling_params_default,
+      tags=pax_fiddle.DoNotBuild)
+  return_block_features: bool = False
 
   @classmethod
   def HParamsResNet5(cls) -> BaseHParams:

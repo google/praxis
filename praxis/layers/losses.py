@@ -26,7 +26,7 @@ WeightInit = base_layer.WeightInit
 JTensor = pytypes.JTensor
 
 
-class BiTemperedLoss(base_layer.BaseLayer):
+class BiTemperedLoss(base_layer.FiddleBaseLayer):
   """Bi-tempered logitstic loss.
 
   Bi-Tempered logistic loss is a generalized softmax cross-entropy loss function
@@ -40,24 +40,20 @@ class BiTemperedLoss(base_layer.BaseLayer):
   are set to (t1, t2) throughout.
 
   Source: https://bit.ly/3jSol8T
+
+  Attributes:
+    t1: Temperature 1 (log).
+    t2: Temperature 2 (exp).
+    label_smoothing: Label smoothing.
+    start_step: Step number to start transitioning from CE loss.
+    end_step: Step number to reach the final temperature pairs (t1, t2). When
+      end_step == 0, the temperatures are set to (t1, t2) throughout.
   """
-
-  class HParams(base_layer.BaseLayer.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      t1: Temperature 1 (log).
-      t2: Temperature 2 (exp).
-      label_smoothing: Label smoothing.
-      start_step: Step number to start transitioning from CE loss.
-      end_step: Step number to reach the final temperature pairs (t1, t2). When
-        end_step == 0, the temperatures are set to (t1, t2) throughout.
-    """
-    t1: float = 1.0
-    t2: float = 1.0
-    label_smoothing: float = 0.0
-    start_step: int = 0
-    end_step: int = 0
+  t1: float = 1.0
+  t2: float = 1.0
+  label_smoothing: float = 0.0
+  start_step: int = 0
+  end_step: int = 0
 
   def setup(self) -> None:
     """Initialize the step variable."""

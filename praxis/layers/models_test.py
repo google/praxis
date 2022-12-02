@@ -41,18 +41,16 @@ RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
 
 
-class MockLM(base_layer.BaseLayer):
+class MockLM(base_layer.FiddleBaseLayer):
+  """Mock l m.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      logits: results returned by extend_step(), of shape [max step, batch size,
-        vocab size].
-      model_type:
-    """
-    logits: Any = None
-    model_type: LanguageModelType = LanguageModelType.CAUSAL
+  Attributes:
+    logits: results returned by extend_step(), of shape [max step, batch size,
+      vocab size].
+    model_type:
+  """
+  logits: Any = None
+  model_type: LanguageModelType = LanguageModelType.CAUSAL
 
   def setup(self) -> None:
     p = self.hparams

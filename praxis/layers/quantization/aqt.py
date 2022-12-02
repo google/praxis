@@ -33,17 +33,13 @@ def _pass_through(x: JTensor, fn) -> JTensor:
   return x - jax.lax.stop_gradient(x) + jax.lax.stop_gradient(fn(x))
 
 
-class TensorQuantizer(base_layer.BaseLayer):
-  """Maintains state associated with the quantization of an input tensor."""
+class TensorQuantizer(base_layer.FiddleBaseLayer):
+  """Maintains state associated with the quantization of an input tensor.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      precision: Number of bits to quantize to (e.g 4 for int4). Must be
-        positive.
-    """
-    precision: Optional[int] = None
+  Attributes:
+    precision: Number of bits to quantize to (e.g 4 for int4). Must be positive.
+  """
+  precision: Optional[int] = None
 
   def setup(self):
     p = self.hparams

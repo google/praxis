@@ -39,17 +39,13 @@ NestedJTensor = pytypes.NestedJTensor
 class AttentionProjection(attentions.AttentionProjection):
   """Layer that computes quantized multi heads projection.
 
-    This layer is expected to be used within DotProductAttention.
+  This layer is expected to be used within DotProductAttention.
+
+  Attributes:
+    quantization: Information related to the quantization applied to this
+      layer, such as dtype for the quantized weight.
   """
-
-  class HParams(attentions.AttentionProjection.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      quantization: Information related to the quantization applied to this
-        layer, such as dtype for the quantized weight.
-    """
-    quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
   def setup(self) -> None:
     p = self.hparams
@@ -219,16 +215,12 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
   """Layer that computes quantized QKV projection with a combined weight.
 
   This layer is expected to be used within DotProductAttention below.
+
+  Attributes:
+    quantization: Information related to the quantization applied to this
+      layer, such as dtype for the quantized weight.
   """
-
-  class HParams(attentions.CombinedQKVProjectionLayer.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      quantization: Information related to the quantization applied to this
-        layer, such as dtype for the quantized weight.
-    """
-    quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
   def setup(self) -> None:
     p = self.hparams

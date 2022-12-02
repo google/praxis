@@ -118,7 +118,7 @@ class ActivationType(str, enum.Enum):
   SOFTMAX = 'SOFTMAX'
 
 
-class BregmanPCA(base_layer.BaseLayer):
+class BregmanPCA(base_layer.FiddleBaseLayer):
   """Implements an online Bregman PCA layer.
 
   Bregman PCA is a generalized form of standard PCA that replaces the squared
@@ -135,41 +135,37 @@ class BregmanPCA(base_layer.BaseLayer):
   We use the following capital letters to denote shape parameters:
     B = batch size
     K = number of components
+
+  Attributes:
+    num_components: Number of PCA components.
+    input_dims: Dimensions of input
+    activation_type: The type of the activation function to use. See the
+      supported activation functions in the ActivationType enum above.
+    negative_slope: Negative slope for leaky ReLU.
+    mean_beta: EMA constant for updating the mean.
+    coefficients_lr: Learning rate for the coefficients.
+    coefficients_beta: EMA constant for the coefficients updates.
+    coefficients_steps: Number of steps for solving the coefficients.
+    components_lr: Learning rate for the PCA components.
+    components_beta: EMA constant for the PCA components updates.
+    start_step: Step number to start updating the components.
+    end_step: Step number to end updating the components.
+    constant_lr_schedule: Whether to use a constant learning rate schedule for
+      the components. Applies a linearly decaying schedule if False.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      num_components: Number of PCA components.
-      input_dims: Dimensions of input
-      activation_type: The type of the activation function to use. See the
-        supported activation functions in the ActivationType enum above.
-      negative_slope: Negative slope for leaky ReLU.
-      mean_beta: EMA constant for updating the mean.
-      coefficients_lr: Learning rate for the coefficients.
-      coefficients_beta: EMA constant for the coefficients updates.
-      coefficients_steps: Number of steps for solving the coefficients.
-      components_lr: Learning rate for the PCA components.
-      components_beta: EMA constant for the PCA components updates.
-      start_step: Step number to start updating the components.
-      end_step: Step number to end updating the components.
-      constant_lr_schedule: Whether to use a constant learning rate schedule for
-        the components. Applies a linearly decaying schedule if False.
-    """
-    num_components: int = 0
-    input_dims: Union[int, Sequence[int]] = 0
-    activation_type: ActivationType = ActivationType.IDENTITY
-    negative_slope: float = 0.0
-    mean_beta: float = 0.99
-    coefficients_lr: float = 0.01
-    coefficients_beta: float = 0.9
-    coefficients_steps: int = 20
-    components_lr: float = 0.01
-    components_beta: float = 0.9
-    start_step: int = 0
-    end_step: int = 0
-    constant_lr_schedule: bool = True
+  num_components: int = 0
+  input_dims: Union[int, Sequence[int]] = 0
+  activation_type: ActivationType = ActivationType.IDENTITY
+  negative_slope: float = 0.0
+  mean_beta: float = 0.99
+  coefficients_lr: float = 0.01
+  coefficients_beta: float = 0.9
+  coefficients_steps: int = 20
+  components_lr: float = 0.01
+  components_beta: float = 0.9
+  start_step: int = 0
+  end_step: int = 0
+  constant_lr_schedule: bool = True
 
   def setup(self) -> None:
     """Constructs an instance with a mean and K principal components."""

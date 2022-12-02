@@ -24,6 +24,7 @@ import jax
 from jax import numpy as jnp
 from praxis import asserts
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import attentions
@@ -36,6 +37,7 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 AuxLossStruct = base_layer.AuxLossStruct
 
 AUX_LOSS = base_layer.AUX_LOSS
@@ -166,62 +168,56 @@ class LanguageModelType(str, enum.Enum):
   BIDIRECTIONAL = 'bidirectional'
 
 
-class TransformerLm(base_layer.BaseLayer):
+class TransformerLm(base_layer.FiddleBaseLayer):
   """Packed Transformer LM with position embedding and shared softmax layer.
 
   This folds the padding with the segment mask when the inputs are not packed.
+
+  Attributes:
+    position_emb_tpl: The Positional Embedding layer params.
+    model_dims: Model dimension in Transformer layers.
+    stacked_transformer_tpl: StackedTransformer params tpl for the
+      TransformerLm.
+    softmax_tpl: The softmax layer params. By default the softmax layer is of
+      type SharedEmbeddingSoftmax so the softmax and embedding lookup share
+      parameters in this case.
+    vocab_size: Size of the vocabulary for LM.
+    packed_input: Whether the inputs are packed.
+    model_type: The type of language model based on the tokens visibility.
+    ngrammer_tpl: Params or list of params for the Ngrammer layer applied to
+      the input sequence (at the beginning of the network). This param may be
+      of type Ngrammer as well as VQNgrammer layer. If this is None then the
+      Ngrammer layer is not used.
+    post_attention_ngrammer_tpls: Sequence of params for the Ngrammer layer
+      applied after every attention layer. This param must be of the form
+      VQNgrammer layer, since we do not have any input ids for intermediate
+      layers. The length of this sequence must match the number of layers of
+      the model. To disable the application at a particular layer, set its
+      value to None. To completely disable this layer set it to either None or
+      a sequence of all Nones.
+    separate_embedding_tpl: Optional separate embedding lookup layer params.
+      By default this is None since the softmax and embedding lookup share
+      parameters, however if we wish to separate the parameters of embedding
+      lookup and softmax then we can set this param.
+    final_ln_tpl: Parameterization of the layer normalization layer.
+    skip_compute_loss: Set to skip compute_loss and output activations.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      position_emb_tpl: The Positional Embedding layer params.
-      model_dims: Model dimension in Transformer layers.
-      stacked_transformer_tpl: StackedTransformer params tpl for the
-        TransformerLm.
-      softmax_tpl: The softmax layer params. By default the softmax layer is of
-        type SharedEmbeddingSoftmax so the softmax and embedding lookup share
-        parameters in this case.
-      vocab_size: Size of the vocabulary for LM.
-      packed_input: Whether the inputs are packed.
-      model_type: The type of language model based on the tokens visibility.
-      ngrammer_tpl: Params or list of params for the Ngrammer layer applied to
-        the input sequence (at the beginning of the network). This param may be
-        of type Ngrammer as well as VQNgrammer layer. If this is None then the
-        Ngrammer layer is not used.
-      post_attention_ngrammer_tpls: Sequence of params for the Ngrammer layer
-        applied after every attention layer. This param must be of the form
-        VQNgrammer layer, since we do not have any input ids for intermediate
-        layers. The length of this sequence must match the number of layers of
-        the model. To disable the application at a particular layer, set its
-        value to None. To completely disable this layer set it to either None or
-        a sequence of all Nones.
-      separate_embedding_tpl: Optional separate embedding lookup layer params.
-        By default this is None since the softmax and embedding lookup share
-        parameters, however if we wish to separate the parameters of embedding
-        lookup and softmax then we can set this param.
-      final_ln_tpl: Parameterization of the layer normalization layer.
-      skip_compute_loss: Set to skip compute_loss and output activations.
-    """
-    position_emb_tpl: BaseHParams = sub_config_field(
-        embedding_softmax.PositionalEmbedding.HParams)
-    model_dims: int = 0
-    stacked_transformer_tpl: BaseHParams = sub_config_field(
-        transformers.StackedTransformer.HParams)
-    softmax_tpl: BaseHParams = sub_config_field(
-        embedding_softmax.SharedEmbeddingSoftmax.HParams)
-    vocab_size: int = 0
-    packed_input: bool = False
-    model_type: LanguageModelType = LanguageModelType.CAUSAL
-    ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
-    post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = (
-        base_layer.sub_config_field(None))
-    separate_embedding_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
-        None)
-    final_ln_tpl: BaseHParams = sub_config_field(
-        normalizations.LayerNorm.HParams)
-    skip_compute_loss: bool = False
+  position_emb_tpl: LayerTpl = sub_config_field(
+      embedding_softmax.PositionalEmbedding.HParams)
+  model_dims: int = 0
+  stacked_transformer_tpl: LayerTpl = sub_config_field(
+      transformers.StackedTransformer.HParams)
+  softmax_tpl: LayerTpl = sub_config_field(
+      embedding_softmax.SharedEmbeddingSoftmax.HParams)
+  vocab_size: int = 0
+  packed_input: bool = False
+  model_type: LanguageModelType = LanguageModelType.CAUSAL
+  ngrammer_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  post_attention_ngrammer_tpls: Optional[Sequence[LayerTpl]] = (
+      base_layer.sub_config_field(None))
+  separate_embedding_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  final_ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  skip_compute_loss: bool = False
 
   @classmethod
   def set_sharding_params_v1(cls,
@@ -848,92 +844,82 @@ class TransformerLm(base_layer.BaseLayer):
         max_prefix_size, right_align_fn)
 
 
-class TransformerEncoderDecoder(base_layer.BaseLayer):
+class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
   """Transformer encoder/decoder class.
 
   This uses the param `encoder_stacked_transformer_tpl` to set the configuration
   for the encoder stack, and the param `decoder_stacked_transformer_tpl` to set
   the configuration for the decoder stack.
+
+  Attributes:
+    position_emb_tpl: The Positional Embedding layer params for encoder and
+      decoder. If this is set then encoder_position_emb_tpl and
+      decoder_position_emb_tpl must be set to None.
+    encoder_position_emb_tpl: Optional separate position embedding layer for
+      the input ids. If this is set then position_emb_tpl must be set to None.
+    encoder_stacked_transformer_tpl: StackedTransformer params tpl for the
+      encoder. This must be set with a value that is not None at
+      initialization time.
+    encoder_ngrammer_tpl: Optional params for the Ngrammer layer for the
+      encoder. This param is shared between the Ngrammer layer as well as the
+      VQNgrammer layer. If this is None then the Ngrammer layer is not used.
+    encoder_post_attention_ngrammer_tpls: Sequence of params for the Ngrammer
+      layer applied after every attention layer in the encoder. This param
+      must be of the form VQNgrammer layer, since we do not have any input ids
+      for intermediate layers.
+    encoder_embedding_tpl: Optional separate embedding layer for the source
+      ids. By default this is set to None, so the inputs and targets share the
+      same set of embeddings.
+    decoder_position_emb_tpl: Optional separate position embedding layer for
+      the target ids. If this is set then position_emb_tpl must be set to
+      None.
+    decoder_stacked_transformer_tpl: StackedTransformer params tpl for the
+      decoder. This must be set with a value that is not None at
+      initialization time.
+    decoder_ngrammer_tpl: Optional params for the Ngrammer layer for the
+      decoder. This param is shared between the Ngrammer layer as well as the
+      VQNgrammer layer. If this is None then the Ngrammer layer is not used.
+    decoder_post_attention_ngrammer_tpls: Sequence of params for the Ngrammer
+      layer applied after every attention layer in the decoder. This param
+      must be of the form VQNgrammer layer, since we do not have any input ids
+      for intermediate layers.
+    decoder_embedding_tpl: Optional separate embedding layer for the target
+      ids. By default this is set to None, so the embedding parameters are
+      shared with the softmax layer.
+    model_dims: Model dimension of the Transformer layers. This must match the
+      model dimension of the encoder stack and the decoder stack, as well as
+      the embedding and softmax dimensions.
+    softmax_tpl: The softmax layer params. By default the softmax layer is of
+      type SharedEmbeddingSoftmax so the softmax and embedding lookup share
+      parameters in this case.
+    packed_input: Whether the inputs are packed.
+    encoder_ln_tpl: Parameterization of the encoder layer normalization layer.
+    decoder_ln_tpl: Parameterization of the decoder layer normalization layer.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      position_emb_tpl: The Positional Embedding layer params for encoder and
-        decoder. If this is set then encoder_position_emb_tpl and
-        decoder_position_emb_tpl must be set to None.
-      encoder_position_emb_tpl: Optional separate position embedding layer for
-        the input ids. If this is set then position_emb_tpl must be set to None.
-      encoder_stacked_transformer_tpl: StackedTransformer params tpl for the
-        encoder. This must be set with a value that is not None at
-        initialization time.
-      encoder_ngrammer_tpl: Optional params for the Ngrammer layer for the
-        encoder. This param is shared between the Ngrammer layer as well as the
-        VQNgrammer layer. If this is None then the Ngrammer layer is not used.
-      encoder_post_attention_ngrammer_tpls: Sequence of params for the Ngrammer
-        layer applied after every attention layer in the encoder. This param
-        must be of the form VQNgrammer layer, since we do not have any input ids
-        for intermediate layers.
-      encoder_embedding_tpl: Optional separate embedding layer for the source
-        ids. By default this is set to None, so the inputs and targets share the
-        same set of embeddings.
-      decoder_position_emb_tpl: Optional separate position embedding layer for
-        the target ids. If this is set then position_emb_tpl must be set to
-        None.
-      decoder_stacked_transformer_tpl: StackedTransformer params tpl for the
-        decoder. This must be set with a value that is not None at
-        initialization time.
-      decoder_ngrammer_tpl: Optional params for the Ngrammer layer for the
-        decoder. This param is shared between the Ngrammer layer as well as the
-        VQNgrammer layer. If this is None then the Ngrammer layer is not used.
-      decoder_post_attention_ngrammer_tpls: Sequence of params for the Ngrammer
-        layer applied after every attention layer in the decoder. This param
-        must be of the form VQNgrammer layer, since we do not have any input ids
-        for intermediate layers.
-      decoder_embedding_tpl: Optional separate embedding layer for the target
-        ids. By default this is set to None, so the embedding parameters are
-        shared with the softmax layer.
-      model_dims: Model dimension of the Transformer layers. This must match the
-        model dimension of the encoder stack and the decoder stack, as well as
-        the embedding and softmax dimensions.
-      softmax_tpl: The softmax layer params. By default the softmax layer is of
-        type SharedEmbeddingSoftmax so the softmax and embedding lookup share
-        parameters in this case.
-      packed_input: Whether the inputs are packed.
-      encoder_ln_tpl: Parameterization of the encoder layer normalization layer.
-      decoder_ln_tpl: Parameterization of the decoder layer normalization layer.
-    """
-    position_emb_tpl: BaseHParams = sub_config_field(
-        embedding_softmax.PositionalEmbedding.HParams)
-    encoder_position_emb_tpl: Optional[
-        BaseHParams] = base_layer.sub_config_field(None)
-    encoder_stacked_transformer_tpl: Optional[
-        BaseHParams] = base_layer.sub_config_field(None)
-    encoder_ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
-        None)
-    encoder_post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = (
-        base_layer.sub_config_field(None))
-    encoder_embedding_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
-        None)
-    decoder_position_emb_tpl: Optional[
-        BaseHParams] = base_layer.sub_config_field(None)
-    decoder_stacked_transformer_tpl: Optional[
-        BaseHParams] = base_layer.sub_config_field(None)
-    decoder_ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
-        None)
-    decoder_post_attention_ngrammer_tpls: Optional[Sequence[BaseHParams]] = (
-        base_layer.sub_config_field(None))
-    decoder_embedding_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
-        None)
-    model_dims: int = 0
-    softmax_tpl: BaseHParams = sub_config_field(
-        embedding_softmax.SharedEmbeddingSoftmax.HParams)
-    packed_input: bool = False
-    encoder_ln_tpl: BaseHParams = sub_config_field(
-        normalizations.LayerNorm.HParams)
-    decoder_ln_tpl: BaseHParams = sub_config_field(
-        normalizations.LayerNorm.HParams)
+  position_emb_tpl: LayerTpl = sub_config_field(
+      embedding_softmax.PositionalEmbedding.HParams)
+  encoder_position_emb_tpl: Optional[LayerTpl] = base_layer.sub_config_field(
+      None)
+  encoder_stacked_transformer_tpl: Optional[
+      LayerTpl] = base_layer.sub_config_field(None)
+  encoder_ngrammer_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  encoder_post_attention_ngrammer_tpls: Optional[Sequence[LayerTpl]] = (
+      base_layer.sub_config_field(None))
+  encoder_embedding_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  decoder_position_emb_tpl: Optional[LayerTpl] = base_layer.sub_config_field(
+      None)
+  decoder_stacked_transformer_tpl: Optional[
+      LayerTpl] = base_layer.sub_config_field(None)
+  decoder_ngrammer_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  decoder_post_attention_ngrammer_tpls: Optional[Sequence[LayerTpl]] = (
+      base_layer.sub_config_field(None))
+  decoder_embedding_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  model_dims: int = 0
+  softmax_tpl: LayerTpl = sub_config_field(
+      embedding_softmax.SharedEmbeddingSoftmax.HParams)
+  packed_input: bool = False
+  encoder_ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  decoder_ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
 
   @classmethod
   def set_sharding_params_v1(cls,

@@ -30,39 +30,35 @@ BaseHParams = base_layer.BaseLayer.HParams
 
 
 # TODO(nanxinchen): add time wrap and frequency wrap
-class SpectrumAugmenter(base_layer.BaseLayer):
+class SpectrumAugmenter(base_layer.FiddleBaseLayer):
   """Performs data augmentation as according to the SpecAug paper.
 
-    https://arxiv.org/pdf/1904.08779.pdf
+  https://arxiv.org/pdf/1904.08779.pdf
+
+  Attributes:
+    freq_mask_max_bins: Maximum number of frequency bins of frequency masking.
+    freq_mask_count: Number of times we apply masking on the frequency axis.
+    use_dynamic_time_mask_max_frames: If true, time_mask_max_frames is
+      determined by time_mask_max_ratio * utterance_length.
+    time_mask_max_frames: Maximum number of frames of time masking. Overridden
+      when use_dynamic_time_mask_max_frames = True.
+    time_mask_count: Number of times we apply masking on the time axis. Acts
+      as upper-bound when time_masks_per_frame > 0.
+    time_mask_max_ratio: Maximum portion allowed for time masking.
+    time_masks_per_frame: Ratio of number of time masks to be applied against
+      the number of frames. If > 0, multiplicity of the time mask is
+      determined by min(time_masks_per_frame * utterance_length,
+      time_mask_count).
+
+  TODO(hankliao): add augmentation policies from paper in HParam classmethods.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      freq_mask_max_bins: Maximum number of frequency bins of frequency masking.
-      freq_mask_count: Number of times we apply masking on the frequency axis.
-      use_dynamic_time_mask_max_frames: If true, time_mask_max_frames is
-        determined by time_mask_max_ratio * utterance_length.
-      time_mask_max_frames: Maximum number of frames of time masking. Overridden
-        when use_dynamic_time_mask_max_frames = True.
-      time_mask_count: Number of times we apply masking on the time axis. Acts
-        as upper-bound when time_masks_per_frame > 0.
-      time_mask_max_ratio: Maximum portion allowed for time masking.
-      time_masks_per_frame: Ratio of number of time masks to be applied against
-        the number of frames. If > 0, multiplicity of the time mask is
-        determined by min(time_masks_per_frame * utterance_length,
-        time_mask_count).
-
-    TODO(hankliao): add augmentation policies from paper in HParam classmethods.
-    """
-    freq_mask_max_bins: int = 27
-    freq_mask_count: int = 2
-    use_dynamic_time_mask_max_frames: bool = True
-    time_mask_max_frames: int = 40
-    time_mask_count: int = 10
-    time_mask_max_ratio: float = 0.05
-    time_masks_per_frame: float = 0.0
+  freq_mask_max_bins: int = 27
+  freq_mask_count: int = 2
+  use_dynamic_time_mask_max_frames: bool = True
+  time_mask_max_frames: int = 40
+  time_mask_count: int = 10
+  time_mask_max_ratio: float = 0.05
+  time_masks_per_frame: float = 0.0
 
   def _get_mask(self,
                 batch_size: int,

@@ -18,7 +18,7 @@
 import functools
 import math
 import string
-from typing import Callable, Dict, Optional, Sequence, Tuple, Union, Mapping
+from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple, Union
 
 from absl import logging
 from flax import linen as nn
@@ -28,6 +28,7 @@ from jax.ad_checkpoint import checkpoint_name
 import numpy as np
 from praxis import asserts
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import embedding_softmax
@@ -37,6 +38,7 @@ NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 NestedInt = pytypes.NestedInt
@@ -351,16 +353,13 @@ def _make_local_mask(seq_len: int, block_size: int, left_context: int,
   return valid_atten
 
 
-class PerDimScale(base_layer.BaseLayer):
-  """A layer to scale individual dims of the input."""
+class PerDimScale(base_layer.FiddleBaseLayer):
+  """A layer to scale individual dims of the input.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      dim: Number of individual dims.
-    """
-    dim: int = 0
+  Attributes:
+    dim: Number of individual dims.
+  """
+  dim: int = 0
 
   def setup(self) -> None:
     p = self.hparams
@@ -388,7 +387,7 @@ class PerDimScale(base_layer.BaseLayer):
     return inputs * scale
 
 
-class RelativeBias(base_layer.BaseLayer):
+class RelativeBias(base_layer.FiddleBaseLayer):
   """A layer for Relative Attention Bias.
 
   Paper: https://aclanthology.org/N18-2074.pdf.
@@ -405,29 +404,25 @@ class RelativeBias(base_layer.BaseLayer):
     dimension_numbers=jax.lax.GatherDimensionNumbers(
         offset_dims=tuple(1)),
   to compute per position-pair bias.
+
+  Attributes:
+    num_heads: Number of attention heads.
+    use_length_as_position: If true, use length as position to save some
+      memory. Relative bias is based on relative position indexes thus we can
+      ignore segments.
+    relative_attention_num_buckets: Number of buckers for relative attention.
+    relative_attention_max_distance: Maximum relative distance (outer bucket
+      boundary).
+    bidirectional: If true, use half of the buckets for forward-looking
+      attention.
+    use_xavier_init: If true, use xavier init for the buckets.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      num_heads: Number of attention heads.
-      use_length_as_position: If true, use length as position to save some
-        memory. Relative bias is based on relative position indexes thus we can
-        ignore segments.
-      relative_attention_num_buckets: Number of buckers for relative attention.
-      relative_attention_max_distance: Maximum relative distance (outer bucket
-        boundary).
-      bidirectional: If true, use half of the buckets for forward-looking
-        attention.
-      use_xavier_init: If true, use xavier init for the buckets.
-    """
-    num_heads: int = 1
-    use_length_as_position: bool = False
-    relative_attention_num_buckets: int = 32
-    relative_attention_max_distance: int = 128
-    bidirectional: bool = False
-    use_xavier_init: bool = False
+  num_heads: int = 1
+  use_length_as_position: bool = False
+  relative_attention_num_buckets: int = 32
+  relative_attention_max_distance: int = 128
+  bidirectional: bool = False
+  use_xavier_init: bool = False
 
   def setup(self) -> None:
     p = self.hparams
@@ -558,35 +553,31 @@ class RelativeBias(base_layer.BaseLayer):
     return relative_bias
 
 
-class AttentionProjection(base_layer.BaseLayer):
+class AttentionProjection(base_layer.FiddleBaseLayer):
   """Layer that computes multi heads projection.
 
-    This layer is expected to be used within DotProductAttention below.
+  This layer is expected to be used within DotProductAttention below.
+
+  Attributes:
+    input_dim: Input dimension.
+    num_heads: Number of attention heads.
+    dim_per_head: Size of each head.
+    is_output_projection: Whether it is out projection or not. If False, we
+      use "...D,DNH->...NH" for query,key,value projection. Otherwise we use
+      "...NH,DNH->...D" for output projection.
+    use_bias: Whether to add bias in projection or not.
+    attention_combine_dims: The heads and key/value dimensions are combined in
+      the variables and the computation.
+    use_nhd_shape: Whether to use NHD shape for the variable, useful for dot
+      attention output layer.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dim: Input dimension.
-      num_heads: Number of attention heads.
-      dim_per_head: Size of each head.
-      is_output_projection: Whether it is out projection or not. If False, we
-        use "...D,DNH->...NH" for query,key,value projection. Otherwise we use
-        "...NH,DNH->...D" for output projection.
-      use_bias: Whether to add bias in projection or not.
-      attention_combine_dims: The heads and key/value dimensions are combined in
-        the variables and the computation.
-      use_nhd_shape: Whether to use NHD shape for the variable, useful for dot
-        attention output layer.
-    """
-    input_dim: int = 0
-    num_heads: int = 0
-    dim_per_head: int = 0
-    is_output_projection: bool = False
-    use_bias: bool = True
-    attention_combine_dims: bool = False
-    use_nhd_shape: bool = False
+  input_dim: int = 0
+  num_heads: int = 0
+  dim_per_head: int = 0
+  is_output_projection: bool = False
+  use_bias: bool = True
+  attention_combine_dims: bool = False
+  use_nhd_shape: bool = False
 
   def setup(self) -> None:
     p = self.hparams
@@ -699,30 +690,26 @@ class AttentionProjection(base_layer.BaseLayer):
     return ret
 
 
-class CombinedQKVProjectionLayer(base_layer.BaseLayer):
+class CombinedQKVProjectionLayer(base_layer.FiddleBaseLayer):
   """Layer that computes QKV projection with a combined weight.
 
   It may lead to faster collectives and step-time on TPU.
 
   This layer is expected to be used within DotProductAttention below.
+
+  Attributes:
+    input_dim: Input dimension.
+    num_heads: Number of heads.
+    dim_per_head: Size of each head.
+    use_bias: Whether to add bias in the projection layer.
+    attention_combine_dims: If set, the heads and key/value dimensions are
+      combined in the variables and the computation.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dim: Input dimension.
-      num_heads: Number of heads.
-      dim_per_head: Size of each head.
-      use_bias: Whether to add bias in the projection layer.
-      attention_combine_dims: If set, the heads and key/value dimensions are
-        combined in the variables and the computation.
-    """
-    input_dim: int = 0
-    num_heads: int = 0
-    dim_per_head: int = 0
-    use_bias: bool = True
-    attention_combine_dims: bool = False
+  input_dim: int = 0
+  num_heads: int = 0
+  dim_per_head: int = 0
+  use_bias: bool = True
+  attention_combine_dims: bool = False
 
   def setup(self) -> None:
     p = self.hparams
@@ -827,7 +814,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
     return query_proj, key_proj, value_proj
 
 
-class DotProductAttention(base_layer.BaseLayer):
+class DotProductAttention(base_layer.FiddleBaseLayer):
   """Dot-product attention with multiple attention heads.
 
   This implementation heavily uses einsum to be efficient on TPUs.  We use the
@@ -859,86 +846,82 @@ class DotProductAttention(base_layer.BaseLayer):
   probs:  [B, N, T, S] = softmax(logits, axis=-1)
   context:[B, T, N, H] = einsum('BNTS,BSNH->BTNH', probs, v_proj)
   output: [B, T, Dq]   = einsum('BTNH,DNH>BTD', context, Wout)
-  """
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dim: An integer or a dict of integer values as number of input
-        nodes. If input_dim is a dict, keys must be key, value and query.
-      hidden_dim: Number of hidden nodes.
-      num_heads: Number of attention heads.
-      dim_per_head: Dimension of each attention head. If None then dim_per_head
-        == hidden_dim // num_heads.
-      dropout_tpl: Parameterization for the dropout layer.
-      atten_dropout_prob: Probability at which we apply dropout to the attention
-        weights.
-      proj_tpl: Parameterization for the projection layer.
-      dconv_qkv: If True then apply a depth-wise convolution of
-        `dconv_kernel_size`x1 after the key, query and value projection as in
-        Primer https://arxiv.org/abs/2109.08668. Note that this is currently
-          only supported for self-attention.
-      dconv_kernel_size: Size of the kernel window over the sequence dimension
-        in the depth-wise convolution.
-      internal_gshard_gaussian_init: Projection weight init follows Gaussian
-        distribution.
-      combine_qkv: Whether to combine qkv tensor for optimizing qkv input
-        gradient computation with SPMD. Only supports self-attention.
-      combined_qkv_proj_tpl: Parameterization for combined QKV projection layer.
-      use_bias: Whether to use bias for projection layers.
-      output_proj_use_nhd_shape: Whether to use NHD variable shape in output
-        projection layer.
-      internal_enable_query_scale: Internal. Enable scaling of query vector.
-      internal_enable_per_dim_scale: Internal. Setting to False disables
-        rescaling of attention logits with 1/sqrt(dim) factor. Some Transformer
-        variants (GShard, T5) use internal_enable_per_dim_scale=False and adjust
-        initialization of the linear transformations(einsums), in conjunction
-        with Adafactor optimizer.
-      atten_logit_cap: Cap the absolute values of logits by tanh. Enabled when a
-        positive value is specified. May not be supported by a subclass.
-      use_rotary_position_emb: Whether to add rotary position embedding to the
-        queries and keys before computing self attention scores. This was
-        proposed in https://arxiv.org/abs/2104.09864.
-      cast_rotary_position_emb: Whether to cast the return vars of
-        rotary_position_emb to save memory.
-      relative_bias_tpl: Optional parameterization of relative bias.
-      attention_extra_logit: Extra logit for attention softmax.
-      ngrammer_tpl: Params for the Ngrammer layer. This param must correspond to
-        the VQNgrammer layer. If this is None, then there is no NGrammer layer
-        present in this layer.
-      decode_cache: if the attention layer needs decode cache.
-      attention_mask_summary: bool = False
-    """
-    input_dim: Union[int, Dict[str, int]] = 0
-    hidden_dim: int = 0
-    num_heads: int = 1
-    dim_per_head: Optional[int] = None
-    dropout_tpl: BaseHParams = sub_config_field(stochastics.Dropout.HParams)
-    atten_dropout_prob: float = 0.0
-    proj_tpl: BaseHParams = sub_config_field(AttentionProjection.HParams)
-    dconv_qkv: bool = False
-    dconv_kernel_size: int = 3
-    internal_gshard_gaussian_init: bool = False
-    combine_qkv: bool = False
-    combined_qkv_proj_tpl: BaseHParams = sub_config_field(
-        CombinedQKVProjectionLayer.HParams)
-    use_bias: bool = True
-    output_proj_use_nhd_shape: bool = False
-    internal_enable_query_scale: bool = True
-    internal_enable_per_dim_scale: bool = True
-    atten_logit_cap: float = 0.0
-    # TODO(pax-dev): merge use_rotary_position_emb and rotary_position_emb_tpl
-    # by initializing rotary_position_emb_tpl = None.
-    use_rotary_position_emb: bool = False
-    rotary_position_emb_tpl: Optional[BaseHParams] = sub_config_field(
-        embedding_softmax.RotaryPositionalEmbedding.HParams)
-    cast_rotary_position_emb: bool = True
-    relative_bias_tpl: Optional[BaseHParams] = None
-    attention_extra_logit: Optional[float] = None
-    ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
-    decode_cache: bool = True
+  Attributes:
+    input_dim: An integer or a dict of integer values as number of input
+      nodes. If input_dim is a dict, keys must be key, value and query.
+    hidden_dim: Number of hidden nodes.
+    num_heads: Number of attention heads.
+    dim_per_head: Dimension of each attention head. If None then dim_per_head
+      == hidden_dim // num_heads.
+    dropout_tpl: Parameterization for the dropout layer.
+    atten_dropout_prob: Probability at which we apply dropout to the attention
+      weights.
+    proj_tpl: Parameterization for the projection layer.
+    dconv_qkv: If True then apply a depth-wise convolution of
+      `dconv_kernel_size`x1 after the key, query and value projection as in
+      Primer https://arxiv.org/abs/2109.08668. Note that this is currently
+        only supported for self-attention.
+    dconv_kernel_size: Size of the kernel window over the sequence dimension
+      in the depth-wise convolution.
+    internal_gshard_gaussian_init: Projection weight init follows Gaussian
+      distribution.
+    combine_qkv: Whether to combine qkv tensor for optimizing qkv input
+      gradient computation with SPMD. Only supports self-attention.
+    combined_qkv_proj_tpl: Parameterization for combined QKV projection layer.
+    use_bias: Whether to use bias for projection layers.
+    output_proj_use_nhd_shape: Whether to use NHD variable shape in output
+      projection layer.
+    internal_enable_query_scale: Internal. Enable scaling of query vector.
+    internal_enable_per_dim_scale: Internal. Setting to False disables
+      rescaling of attention logits with 1/sqrt(dim) factor. Some Transformer
+      variants (GShard, T5) use internal_enable_per_dim_scale=False and adjust
+      initialization of the linear transformations(einsums), in conjunction
+      with Adafactor optimizer.
+    atten_logit_cap: Cap the absolute values of logits by tanh. Enabled when a
+      positive value is specified. May not be supported by a subclass.
+    use_rotary_position_emb: Whether to add rotary position embedding to the
+      queries and keys before computing self attention scores. This was
+      proposed in https://arxiv.org/abs/2104.09864.
+    cast_rotary_position_emb: Whether to cast the return vars of
+      rotary_position_emb to save memory.
+    relative_bias_tpl: Optional parameterization of relative bias.
+    attention_extra_logit: Extra logit for attention softmax.
+    ngrammer_tpl: Params for the Ngrammer layer. This param must correspond to
+      the VQNgrammer layer. If this is None, then there is no NGrammer layer
+      present in this layer.
+    decode_cache: if the attention layer needs decode cache.
     attention_mask_summary: bool = False
+  """
+  input_dim: Union[int, Dict[str, int]] = 0
+  hidden_dim: int = 0
+  num_heads: int = 1
+  dim_per_head: Optional[int] = None
+  dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  atten_dropout_prob: float = 0.0
+  proj_tpl: LayerTpl = sub_config_field(AttentionProjection.HParams)
+  dconv_qkv: bool = False
+  dconv_kernel_size: int = 3
+  internal_gshard_gaussian_init: bool = False
+  combine_qkv: bool = False
+  combined_qkv_proj_tpl: LayerTpl = sub_config_field(
+      CombinedQKVProjectionLayer.HParams)
+  use_bias: bool = True
+  output_proj_use_nhd_shape: bool = False
+  internal_enable_query_scale: bool = True
+  internal_enable_per_dim_scale: bool = True
+  atten_logit_cap: float = 0.0
+  # TODO(pax-dev): merge use_rotary_position_emb and rotary_position_emb_tpl
+  # by initializing rotary_position_emb_tpl = None.
+  use_rotary_position_emb: bool = False
+  rotary_position_emb_tpl: Optional[LayerTpl] = sub_config_field(
+      embedding_softmax.RotaryPositionalEmbedding.HParams)
+  cast_rotary_position_emb: bool = True
+  relative_bias_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  attention_extra_logit: Optional[float] = None
+  ngrammer_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  decode_cache: bool = True
+  attention_mask_summary: bool = False
 
   # SPMD partition related params.
   #
@@ -948,7 +931,7 @@ class DotProductAttention(base_layer.BaseLayer):
   # b - batch_size
   # l - seq_len
 
-  class WeightShardingHParams(BaseWtShardingHParams):
+  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -960,7 +943,8 @@ class DotProductAttention(base_layer.BaseLayer):
     proj: SplitDimsMapping = None
     dconv: SplitDimsMapping = None
 
-  class ActivationShardingHParams(BaseActShardingHParams):
+  class ActivationShardingHParams(
+      base_layer.FiddleBaseLayer.ActivationShardingHParams):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -2383,15 +2367,11 @@ class DotProductAttentionXL(DotProductAttention):
   https://arxiv.org/pdf/1901.02860.pdf section 3.3.
 
   Notice this is only intended for self-attention.
+
+  Attributes:
+    rel_pos_emb_dim: Dimension of relative positional embedding.
   """
-
-  class HParams(DotProductAttention.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      rel_pos_emb_dim: Dimension of relative positional embedding.
-    """
-    rel_pos_emb_dim: int = 0
+  rel_pos_emb_dim: int = 0
 
   def setup(self) -> None:
     """Constructs a DotProductAttentionXL object."""
@@ -2611,21 +2591,17 @@ class LocalSelfAttention(DotProductAttention):
 
   Note: Key and query need to have the same length. Ideally one can support
   cross attention. So far this class is only used for encoder in speech models.
+
+  Attributes:
+    block_size: Size of a processing block,
+      if unset, default to max(1, right_context, left_context-1).
+    left_context: Number of left positions to attend (including current
+      position).
+    right_context: Number of right positions to attend.
   """
-
-  class HParams(DotProductAttention.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      block_size: Size of a processing block,
-        if unset, default to max(1, right_context, left_context-1).
-      left_context: Number of left positions to attend (including current
-        position).
-      right_context: Number of right positions to attend.
-    """
-    block_size: Optional[int] = None
-    left_context: Optional[int] = None
-    right_context: Optional[int] = None
+  block_size: Optional[int] = None
+  left_context: Optional[int] = None
+  right_context: Optional[int] = None
 
   def _atten_logits(self, query: JTensor, key: JTensor) -> JTensor:
     """Computes logits from query and key."""
@@ -2812,15 +2788,12 @@ class LocalSelfAttention(DotProductAttention):
 
 
 class LocalSelfAttentionXL(LocalSelfAttention):
-  """Local causal version of transformer-xl self attention."""
+  """Local causal version of transformer-xl self attention.
 
-  class HParams(LocalSelfAttention.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      rel_pos_emb_dim: Dimension of relative positional embedding.
-    """
-    rel_pos_emb_dim: int = 0
+  Attributes:
+    rel_pos_emb_dim: Dimension of relative positional embedding.
+  """
+  rel_pos_emb_dim: int = 0
 
   def setup(self) -> None:
     """Constructs a LocalSelfAttentionXL object."""
@@ -2866,25 +2839,21 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     return term_ac + term_bd
 
 
-class CausalDepthwiseConv1D(base_layer.BaseLayer):
+class CausalDepthwiseConv1D(base_layer.FiddleBaseLayer):
   """Causal depth-wise convolution applied to a 1-d sequence as in Primer.
 
   See https://arxiv.org/abs/2109.08668 for more details.
+
+  Attributes:
+    kernel_size: Kernel size for the causal depth-wise convolution on the 1-D
+      sequence.
+    hidden_dims: Dimensions of the convolution filter. It can be a list to
+      signify if we convolve multiple dimensions from the end of the sequence.
+      Alternatively, if just convolving over the last dimension, it can be a
+      positive integer.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      kernel_size: Kernel size for the causal depth-wise convolution on the 1-D
-        sequence.
-      hidden_dims: Dimensions of the convolution filter. It can be a list to
-        signify if we convolve multiple dimensions from the end of the sequence.
-        Alternatively, if just convolving over the last dimension, it can be a
-        positive integer.
-    """
-    kernel_size: int = 3
-    hidden_dims: Union[int, Sequence[int]] = 0
+  kernel_size: int = 3
+  hidden_dims: Union[int, Sequence[int]] = 0
 
   def setup(self) -> None:
     p = self.hparams

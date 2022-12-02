@@ -30,7 +30,7 @@ BaseHParams = base_layer.BaseLayer.HParams
 LogicalAxisRules = pytypes.LogicalAxisRules
 
 
-class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
+class FlaxModuleAdapterBase(base_layer.FiddleBaseLayer, metaclass=abc.ABCMeta):
   """Base class for converting an arbitrary nn.Module into a proper Pax Layer.
 
   Subclasses must implement a `_build_wrapped_module()` method that instantiates
@@ -38,16 +38,12 @@ class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
 
   This adapter assumes that the module has a single compact method __call__. If
   this constraint is not satisfied, a similar adapter can be easily constructed.
+
+  Attributes:
+    logical_axes_rules: Optional logical axes rules, e.g., [('input', 'mdl'),
+      ('output', 'data')]
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      logical_axes_rules: Optional logical axes rules, e.g., [('input', 'mdl'),
-        ('output', 'data')]
-    """
-    logical_axes_rules: Optional[LogicalAxisRules] = None
+  logical_axes_rules: Optional[LogicalAxisRules] = None
 
   def setup(self) -> None:
     # Construct the child, which can be an arbitrary nn.Module.
@@ -95,15 +91,12 @@ class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
 
 
 class FlaxModuleAdapter(FlaxModuleAdapterBase):
-  """Adapts an nn.Module built from a factory function."""
+  """Adapts an nn.Module built from a factory function.
 
-  class HParams(FlaxModuleAdapterBase.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      module_factory_method: A callable that constructs an instance of a module.
-    """
-    module_factory_method: Optional[Callable[[], Any]] = None
+  Attributes:
+    module_factory_method: A callable that constructs an instance of a module.
+  """
+  module_factory_method: Optional[Callable[[], Any]] = None
 
   def _build_wrapped_module(self) -> nn.Module:
     p = self.hparams
@@ -137,15 +130,12 @@ class EncoderDecoderFlaxModuleAdaptor(FlaxModuleAdapter):
 # TODO(austinwaters): verify that post_init_hparams does something reasonable
 # when hparams contain a fdl.Config.
 class FiddleFlaxModuleAdapter(FlaxModuleAdapterBase):
-  """Adapts an nn.Module built from a fdl.Config."""
+  """Adapts an nn.Module built from a fdl.Config.
 
-  class HParams(FlaxModuleAdapterBase.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      fdl_config: A fdl.Config expressing the module to be created.
-    """
-    flax_module_factory: Optional[Callable[[], nn.Module]] = None
+  Attributes:
+    fdl_config: A fdl.Config expressing the module to be created.
+  """
+  flax_module_factory: Optional[Callable[[], nn.Module]] = None
 
   def _build_wrapped_module(self) -> nn.Module:
     p = self.hparams

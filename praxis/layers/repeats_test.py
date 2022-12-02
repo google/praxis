@@ -41,18 +41,15 @@ AUX_LOSS = base_layer.AUX_LOSS
 DECODE_CACHE = base_layer.DECODE_CACHE
 
 
-class FeedForward(base_layer.BaseLayer):
-  """Feedforward layer."""
+class FeedForward(base_layer.FiddleBaseLayer):
+  """Feedforward layer.
 
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      input_dim: Input dimension size.
-      output_dim: Output dimension size.
-    """
-    input_dim: int = 0
-    output_dim: int = 0
+  Attributes:
+    input_dim: Input dimension size.
+    output_dim: Output dimension size.
+  """
+  input_dim: int = 0
+  output_dim: int = 0
 
   def setup(self):
     p = self.hparams
@@ -78,7 +75,7 @@ class FeedForward(base_layer.BaseLayer):
     return out
 
 
-class RepeatCalledTwice(base_layer.BaseLayer):
+class RepeatCalledTwice(base_layer.FiddleBaseLayer):
 
   def setup(self):
     sub_p = FeedForward.HParams(input_dim=2, output_dim=2)
@@ -95,16 +92,13 @@ class RepeatCalledTwice(base_layer.BaseLayer):
     return x
 
 
-class Decoder(base_layer.BaseLayer):
-  """Decoder layer."""
+class Decoder(base_layer.FiddleBaseLayer):
+  """Decoder layer.
 
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      model_dim: Model dimension size.
-    """
-    model_dim: int = 0
+  Attributes:
+    model_dim: Model dimension size.
+  """
+  model_dim: int = 0
 
   def setup(self):
     p = self.hparams

@@ -29,27 +29,23 @@ JTensor = pytypes.JTensor
 BaseHParams = base_layer.BaseLayer.HParams
 
 
-class Pooling(base_layer.BaseLayer):
-  """Pooling layer, which by default performs max pooling."""
+class Pooling(base_layer.FiddleBaseLayer):
+  """Pooling layer, which by default performs max pooling.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      window_shape: Window shape which determines the window sizes over which
-        the pooling is computed. It is given as a Sequence of ints of size 2.
-        Elements are in the order of height and width, and assumes inputs are in
-        NHWC.
-      window_stride: Window stride to use. Must be a pair of ints. The first int
-        specifies the stride on the height dimension. The second int specifies
-        the stride on the width dimension.
-      pooling_type: Pooling type: MAX|AVG.
-      padding: Padding type: SAME|VALID.
-    """
-    window_shape: Sequence[int] = (0, 0)
-    window_stride: Sequence[int] = (0, 0)
-    pooling_type: str = 'MAX'
-    padding: str = 'SAME'
+  Attributes:
+    window_shape: Window shape which determines the window sizes over which the
+      pooling is computed. It is given as a Sequence of ints of size 2. Elements
+      are in the order of height and width, and assumes inputs are in NHWC.
+    window_stride: Window stride to use. Must be a pair of ints. The first int
+      specifies the stride on the height dimension. The second int specifies the
+      stride on the width dimension.
+    pooling_type: Pooling type: MAX|AVG.
+    padding: Padding type: SAME|VALID.
+  """
+  window_shape: Sequence[int] = (0, 0)
+  window_stride: Sequence[int] = (0, 0)
+  pooling_type: str = 'MAX'
+  padding: str = 'SAME'
 
   def setup(self) -> None:
     p = self.hparams
@@ -171,25 +167,21 @@ class Pooling(base_layer.BaseLayer):
     return out, paddings
 
 
-class GlobalPooling(base_layer.BaseLayer):
+class GlobalPooling(base_layer.FiddleBaseLayer):
   """Performs a simple global pooling over the input with optional paddings.
 
   Raises:
     ValueError if `pooling_dims` is not a list or if any of their entries is
     negative.
+
+  Attributes:
+    pooling_type: Pooling type, can be MAX|AVG.
+    pooling_dims: A list of dims to perform pooling over.
+    keepdims: If True, keep dimension of inputs after pooling.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      pooling_type: Pooling type, can be MAX|AVG.
-      pooling_dims: A list of dims to perform pooling over.
-      keepdims: If True, keep dimension of inputs after pooling.
-    """
-    pooling_type: str = 'AVG'
-    pooling_dims: Optional[Sequence[int]] = None
-    keepdims: bool = False
+  pooling_type: str = 'AVG'
+  pooling_dims: Optional[Sequence[int]] = None
+  keepdims: bool = False
 
   def setup(self) -> None:
     p = self.hparams

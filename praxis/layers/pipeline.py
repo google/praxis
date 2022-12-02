@@ -25,6 +25,7 @@ from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
 from praxis import base_layer
 from praxis import flax_utils
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import checkpoint_policy
@@ -35,6 +36,7 @@ NestedJTensor = pytypes.NestedJTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 
 PARAMS = base_layer.PARAMS
@@ -46,7 +48,7 @@ AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 
 # Ported from LayerwiseShardablePipelinedLayer in gshard_layers.py.
-class LayerwiseShardablePipelined(base_layer.BaseLayer):
+class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
   """A layer that implements pipelining across stages.
 
   It creates a loop over microbatches around a loop-body layer. The wrapped body
@@ -80,53 +82,49 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         in_mask = jnp.equal(jnp.arange(num_stages), 0)
         stages_in = jnp.where(in_mask, padded_input[i],  shifted_state)
         state = vmap(single_stage_body.fprop)(stages_in)
+
+  Attributes:
+    num_stages: Number of pipeline stages. Each variable in the wrapped layer
+      will be prepended with a dimension of size `num_stages`.
+    single_stage_body: Single Stage body. A leading num_stages dimension will
+      be added automatically by the pipeline layer.
+    num_microbatches: If not None, the input is not yet microbatched, and will
+      be reshaped to [num_microbatches, microbatch_size] here. Either
+      num_microbatches or microbatch_size must be set for input microbatching.
+    microbatch_size: If not None, the input is not yet microbatched, and will
+      be reshaped to [num_microbatches, microbatch_size] here. Either
+      num_microbatches or microbatch_size must be set for input microbatching.
+    unpack_summaries: If true, unpack summaries to the individual values from
+      each stage.
+    stream_io: If true, inputs will be initially sharded along microbatches
+      across stages, but each iteration new data will be shifted towards the
+      first stage. Outputs will also be stored in the same shifting buffer.
+      This can help hide the input-transfer latency if 1) the collective
+      permute can be implemented as asynchronous send/receive, and 2) the
+      inputs are already sharded before/after the pipeline across the cores
+      used as stages. It requires the number of microbatches to be divisible
+      by the number of stages. This option is particularly important for
+      pipelining with DCN connections where an initial blocking transfer of
+      all inputs would be slow.
+    polluting_bubbles_with_nan: If True, inputs to bubble iterations will be
+      filled with NaNs instead of zeros. This is for testing purpose, and the
+      value should not affect correctness.
+    pipeline_broadcast_inputs: If true, broadcast inputs (shared between
+      all stages instead of being computed by the previous stage) will be
+      passed stage-by-stage instead of being replicated.
+    checkpoint_policy: How to checkpoint residuals for BProp.
   """
+  num_stages: int = 1
+  single_stage_body: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  num_microbatches: Optional[int] = None
+  microbatch_size: Optional[int] = None
+  unpack_summaries: bool = True
+  stream_io: bool = False
+  polluting_bubbles_with_nan: bool = False
+  pipeline_broadcast_inputs: bool = False
+  checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
 
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      num_stages: Number of pipeline stages. Each variable in the wrapped layer
-        will be prepended with a dimension of size `num_stages`.
-      single_stage_body: Single Stage body. A leading num_stages dimension will
-        be added automatically by the pipeline layer.
-      num_microbatches: If not None, the input is not yet microbatched, and will
-        be reshaped to [num_microbatches, microbatch_size] here. Either
-        num_microbatches or microbatch_size must be set for input microbatching.
-      microbatch_size: If not None, the input is not yet microbatched, and will
-        be reshaped to [num_microbatches, microbatch_size] here. Either
-        num_microbatches or microbatch_size must be set for input microbatching.
-      unpack_summaries: If true, unpack summaries to the individual values from
-        each stage.
-      stream_io: If true, inputs will be initially sharded along microbatches
-        across stages, but each iteration new data will be shifted towards the
-        first stage. Outputs will also be stored in the same shifting buffer.
-        This can help hide the input-transfer latency if 1) the collective
-        permute can be implemented as asynchronous send/receive, and 2) the
-        inputs are already sharded before/after the pipeline across the cores
-        used as stages. It requires the number of microbatches to be divisible
-        by the number of stages. This option is particularly important for
-        pipelining with DCN connections where an initial blocking transfer of
-        all inputs would be slow.
-      polluting_bubbles_with_nan: If True, inputs to bubble iterations will be
-        filled with NaNs instead of zeros. This is for testing purpose, and the
-        value should not affect correctness.
-      pipeline_broadcast_inputs: If true, broadcast inputs (shared between
-        all stages instead of being computed by the previous stage) will be
-        passed stage-by-stage instead of being replicated.
-      checkpoint_policy: How to checkpoint residuals for BProp.
-    """
-    num_stages: int = 1
-    single_stage_body: Optional[BaseHParams] = base_layer.sub_config_field(None)
-    num_microbatches: Optional[int] = None
-    microbatch_size: Optional[int] = None
-    unpack_summaries: bool = True
-    stream_io: bool = False
-    polluting_bubbles_with_nan: bool = False
-    pipeline_broadcast_inputs: bool = False
-    checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
-
-  class WeightShardingHParams(BaseWtShardingHParams):
+  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -826,19 +824,15 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
   go back to stage 0 and begin the next repeat_index of all stages. This is used
   to reduce the ratio of pipeline bubbles when the number of microbatches is
   small, but adds more cross-stage transfers.
+
+  Attributes:
+    circular_repeat: Number of round-robin layers in each stage for the
+      circular pipeline schedule.
+    share_weights: Whether layers in the same stage share the weights. This
+      can be useful for token-level autoregressive decoding.
   """
-
-  class HParams(LayerwiseShardablePipelined.HParams):
-    """Associated hyperparams for this layer class in addition to.
-
-    Attributes:
-      circular_repeat: Number of round-robin layers in each stage for the
-        circular pipeline schedule.
-      share_weights: Whether layers in the same stage share the weights. This
-        can be useful for token-level autoregressive decoding.
-    """
-    circular_repeat: int = 1
-    share_weights: bool = False
+  circular_repeat: int = 1
+  share_weights: bool = False
 
   def _async_circular_transfer(self, num_microbatches: int) -> bool:
     """Whether to delay circular transfers by 1 iteration."""

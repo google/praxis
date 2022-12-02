@@ -22,6 +22,7 @@ from typing import Optional, Sequence
 
 from jax import nn
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import convolutions
@@ -31,6 +32,7 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
 
 
@@ -39,29 +41,34 @@ def tailored_lrelu(negative_slope, x):
       x, negative_slope=negative_slope)
 
 
-class VanillaBlock(base_layer.BaseLayer):
-  """Vanilla Block."""
+@pax_fiddle.auto_config
+def _vanilla_block_conv_params_default():
+  return pax_fiddle.Config(
+      # TODO(b/225770692): Migrate weight initializer into dataclasses.
+      convolutions.Conv2D,
+      bias=True,
+      params_init=base_layer.WeightInit.ScaledDeltaOrthogonal(1.0))
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
 
-    Attributes:
-      input_dim: Input dimension.
-      output_dim: Output dimension.
-      conv_params: Which Conv block to use.
-      kernel_size: Kernel sizes of the block.
-      stride: Stride.
-      negative_slope: Negative slope for leaky relu.
-    """
-    input_dim: int = 0
-    output_dim: int = 0
-    conv_params: BaseHParams = convolutions.Conv2D.HParams(
-        # TODO(b/225770692): Migrate weight initializer into dataclasses.
-        bias=True,
-        params_init=base_layer.WeightInit.ScaledDeltaOrthogonal(1.0))
-    kernel_size: int = 3
-    stride: int = 1
-    negative_slope: float = 0.4
+class VanillaBlock(base_layer.FiddleBaseLayer):
+  """Vanilla Block.
+
+  Attributes:
+    input_dim: Input dimension.
+    output_dim: Output dimension.
+    conv_params: Which Conv block to use.
+    kernel_size: Kernel sizes of the block.
+    stride: Stride.
+    negative_slope: Negative slope for leaky relu.
+  """
+  input_dim: int = 0
+  output_dim: int = 0
+  conv_params: LayerTpl = pax_fiddle.fdl_field(
+      default_factory=_vanilla_block_conv_params_default,
+      tags=pax_fiddle.DoNotBuild)
+  kernel_size: int = 3
+  stride: int = 1
+  negative_slope: float = 0.4
 
   def setup(self) -> None:
     p = self.hparams
@@ -105,7 +112,15 @@ class VanillaBlock(base_layer.BaseLayer):
     return outputs
 
 
-class VanillaNet(base_layer.BaseLayer):
+@pax_fiddle.auto_config
+def _vanilla_net_conv_params_default():
+  return pax_fiddle.Config(
+      convolutions.Conv2D,
+      bias=True,
+      params_init=base_layer.WeightInit.ScaledDeltaOrthogonal(1.0))
+
+
+class VanillaNet(base_layer.FiddleBaseLayer):
   """VanillaNet model without skip-connection or batch-norm mirroring ResNets.
 
   https://openreview.net/forum?id=U0k7XNTiFEq
@@ -113,48 +128,45 @@ class VanillaNet(base_layer.BaseLayer):
   Raises:
     ValueError if length of `strides`, `channels`, `blocks` and `kernels` do
     not match.
+
+  Attributes:
+    conv_params: A layer params template specifying Conv-BN-Activation
+      template used by the VanillaNet model.
+    block_params: A layer params template specifying Convolution Block used in
+      each stage. We use the same VanillaNetBlock tpl in all stages (4 stages
+      in total) in VanillaNet.
+    strides: A list of integers specifying the stride for each stage. A stage
+      is defined as a stack of Convolution Blocks that share same type,
+      channels and kernels. The stride is always applied only at the beginning
+      of each stage, while within that stage, all other strides are set to 1
+      (no stride).
+    channels: A list of integers specifying the number of channels at
+      different stages. The first channel is usually 4x the input dim.
+    blocks: A list of integers specifying the number of blocks at different
+      stages.
+    kernels: A list of integers specifying the number of kernel sizes at
+      different stages.
+    entryflow_conv_kernel: A tuple of two integers as the kernel size of
+      entryflow convolution.
+    entryflow_conv_stride: A tuple of two integers as the stride of entryflow
+      convolution.
+    output_spatial_pooling_params: A layer params template specifying spatial
+      pooling before output. If None, spatial pooling is not added.
+    negative_slope: Negative slope for leaky relu.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      conv_params: A layer params template specifying Conv-BN-Activation
-        template used by the VanillaNet model.
-      block_params: A layer params template specifying Convolution Block used in
-        each stage. We use the same VanillaNetBlock tpl in all stages (4 stages
-        in total) in VanillaNet.
-      strides: A list of integers specifying the stride for each stage. A stage
-        is defined as a stack of Convolution Blocks that share same type,
-        channels and kernels. The stride is always applied only at the beginning
-        of each stage, while within that stage, all other strides are set to 1
-        (no stride).
-      channels: A list of integers specifying the number of channels at
-        different stages. The first channel is usually 4x the input dim.
-      blocks: A list of integers specifying the number of blocks at different
-        stages.
-      kernels: A list of integers specifying the number of kernel sizes at
-        different stages.
-      entryflow_conv_kernel: A tuple of two integers as the kernel size of
-        entryflow convolution.
-      entryflow_conv_stride: A tuple of two integers as the stride of entryflow
-        convolution.
-      output_spatial_pooling_params: A layer params template specifying spatial
-        pooling before output. If None, spatial pooling is not added.
-      negative_slope: Negative slope for leaky relu.
-    """
-    conv_params: BaseHParams = convolutions.Conv2D.HParams(
-        bias=True, params_init=base_layer.WeightInit.ScaledDeltaOrthogonal(1.0))
-    block_params: BaseHParams = sub_config_field(VanillaBlock.HParams)
-    strides: Sequence[int] = (1, 2, 2, 2)
-    channels: Sequence[int] = (256, 512, 1024, 2048)
-    blocks: Sequence[int] = (3, 4, 6, 3)
-    kernels: Sequence[int] = (3, 3, 3, 3)
-    entryflow_conv_kernel: Sequence[int] = (7, 7)
-    entryflow_conv_stride: Sequence[int] = (2, 2)
-    output_spatial_pooling_params: Optional[BaseHParams] = sub_config_field(
-        poolings.GlobalPooling.HParams)
-    negative_slope: float = 0.4
+  conv_params: LayerTpl = pax_fiddle.fdl_field(
+      default_factory=_vanilla_net_conv_params_default,
+      tags=pax_fiddle.DoNotBuild)
+  block_params: LayerTpl = sub_config_field(VanillaBlock.HParams)
+  strides: Sequence[int] = (1, 2, 2, 2)
+  channels: Sequence[int] = (256, 512, 1024, 2048)
+  blocks: Sequence[int] = (3, 4, 6, 3)
+  kernels: Sequence[int] = (3, 3, 3, 3)
+  entryflow_conv_kernel: Sequence[int] = (7, 7)
+  entryflow_conv_stride: Sequence[int] = (2, 2)
+  output_spatial_pooling_params: Optional[LayerTpl] = sub_config_field(
+      poolings.GlobalPooling.HParams)
+  negative_slope: float = 0.4
 
   @classmethod
   def HParamsVanillaNet5(cls) -> VanillaNet.HParams:

@@ -20,6 +20,7 @@ from typing import Tuple
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import base_model
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import linears
@@ -30,21 +31,19 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
 
 
-class ProjectionLayer(base_layer.BaseLayer):
-  """A simple projection layer."""
+class ProjectionLayer(base_layer.FiddleBaseLayer):
+  """A simple projection layer.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dims: Depth of the input.
-      output_dims: Depth of the output.
-    """
-    input_dims: int = 0
-    output_dims: int = 0
+  Attributes:
+    input_dims: Depth of the input.
+    output_dims: Depth of the output.
+  """
+  input_dims: int = 0
+  output_dims: int = 0
 
   def setup(self) -> None:
     p = self.hparams
@@ -58,14 +57,14 @@ class ProjectionLayer(base_layer.BaseLayer):
     return self.bias(self.linear(inputs))
 
 
-class AddOneLayer(base_layer.BaseLayer):
+class AddOneLayer(base_layer.FiddleBaseLayer):
   """A layers without any variables."""
 
   def __call__(self, inputs: JTensor) -> JTensor:
     return inputs + 1.0
 
 
-class TestLayer(base_layer.BaseLayer):
+class TestLayer(base_layer.FiddleBaseLayer):
   """A test layer which is a composite of multiple layers."""
 
   def setup(self) -> None:
@@ -90,18 +89,15 @@ class TestLayer(base_layer.BaseLayer):
     return x6
 
 
-class VarUnusedLayer(base_layer.BaseLayer):
-  """A test where some of the vars are not used in fprop."""
+class VarUnusedLayer(base_layer.FiddleBaseLayer):
+  """A test where some of the vars are not used in fprop.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dims: Depth of the input.
-      output_dims: Depth of the output.
-    """
-    input_dims: int = 0
-    output_dims: int = 0
+  Attributes:
+    input_dims: Depth of the input.
+    output_dims: Depth of the output.
+  """
+  input_dims: int = 0
+  output_dims: int = 0
 
   def setup(self) -> None:
     p = self.hparams
@@ -118,17 +114,14 @@ class VarUnusedLayer(base_layer.BaseLayer):
 
 
 class TestModel01(base_model.BaseModel):
-  """Simple model for testing."""
+  """Simple model for testing.
 
-  class HParams(base_model.BaseModel.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dims: Depth of the input.
-      output_dims: Depth of the output.
-    """
-    input_dims: int = 0
-    output_dims: int = 0
+  Attributes:
+    input_dims: Depth of the input.
+    output_dims: Depth of the output.
+  """
+  input_dims: int = 0
+  output_dims: int = 0
 
   def setup(self) -> None:
     p = self.hparams
@@ -159,19 +152,16 @@ class TestModel01(base_model.BaseModel):
 
 
 class TestLinearRegressionModel(base_model.BaseModel):
-  """Linear regression model."""
+  """Linear regression model.
 
-  class HParams(base_model.BaseModel.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dims: Depth of the input.
-      output_dims: Depth of the output.
-      linear_p: Params for the linear layer.
-    """
-    input_dims: int = 0
-    output_dims: int = 0
-    linear_p: BaseHParams = sub_config_field(linears.Linear.HParams)
+  Attributes:
+    input_dims: Depth of the input.
+    output_dims: Depth of the output.
+    linear_p: Params for the linear layer.
+  """
+  input_dims: int = 0
+  output_dims: int = 0
+  linear_p: LayerTpl = sub_config_field(linears.Linear.HParams)
 
   def setup(self) -> None:
     p = self.hparams
@@ -192,15 +182,12 @@ class TestLinearRegressionModel(base_model.BaseModel):
 
 
 class TestBatchNormalizationModel(base_model.BaseModel):
-  """Test batch normalization correctness using a regression task."""
+  """Test batch normalization correctness using a regression task.
 
-  class HParams(base_model.BaseModel.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dims: Depth of the input.
-    """
-    input_dims: int = 0
+  Attributes:
+    input_dims: Depth of the input.
+  """
+  input_dims: int = 0
 
   def setup(self):
     p = self.hparams
@@ -223,16 +210,13 @@ class TestBatchNormalizationModel(base_model.BaseModel):
 
 
 class TestSpmdModel(base_model.BaseModel):
-  """A simple spmd model for testing purposes."""
+  """A simple spmd model for testing purposes.
 
-  class HParams(base_model.BaseModel.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      xformer_ffw: Parameterization of the feedforward layer.
-    """
-    xformer_ffw: BaseHParams = sub_config_field(
-        transformers.TransformerFeedForward.HParams)
+  Attributes:
+    xformer_ffw: Parameterization of the feedforward layer.
+  """
+  xformer_ffw: LayerTpl = sub_config_field(
+      transformers.TransformerFeedForward.HParams)
 
   def setup(self):
     p = self.hparams

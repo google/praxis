@@ -57,7 +57,7 @@ DecoderHParams = decoder_hparams.DecoderHParams
 GreedyDecoderHParams = decoder_hparams.GreedyDecoderHParams
 
 
-class FlaxFormerDecoder(base_layer.BaseLayer):
+class FlaxFormerDecoder(base_layer.FiddleBaseLayer):
   """A wrapper of a Flaxformer decoder.
 
   This model architecture is derived from the following gin config:
@@ -67,37 +67,33 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
   manual translation.
   TODO(Pax): Enable spmd sharding of the flaxformer models / t5x
   models.
+
+  Attributes:
+    num_layers: Number of decoder layers.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      num_layers: Number of decoder layers.
-    """
-    num_layers: int = 2
-    activation_dtype: str = 'bfloat16'
-    embed_dim: int = 2048
-    num_embeddings: int = 32128
-    num_heads: int = 32
-    head_dim: int = 64
-    init_scale: float = 1.0
-    dropout_rate: float = 0.0
-    mlp_activations: Sequence[str] = ('gelu', 'linear')
-    mlp_dim: int = 5120
-    mlp_out_dim: Optional[int] = None
-    mlp_precomputed_intermediates: bool = False
-    activation_partitioning_dims: int = 1
-    logical_axes_rules: Optional[LogicalAxisRules] = None
-    scan_layers: bool = False
-    shared_relative_bias: bool = True
-    decode_layer_norm_use_scale: bool = True
-    final_layer_norm_use_scale: bool = True
-    layer_norm_center_scale_at_zero: bool = False
-    use_multi_query_attention: bool = False
-    use_rotary_embedding: bool = False
-    parallel_fused_decoder_layer: bool = False
-    use_output_logits: bool = True
+  num_layers: int = 2
+  activation_dtype: str = 'bfloat16'
+  embed_dim: int = 2048
+  num_embeddings: int = 32128
+  num_heads: int = 32
+  head_dim: int = 64
+  init_scale: float = 1.0
+  dropout_rate: float = 0.0
+  mlp_activations: Sequence[str] = ('gelu', 'linear')
+  mlp_dim: int = 5120
+  mlp_out_dim: Optional[int] = None
+  mlp_precomputed_intermediates: bool = False
+  activation_partitioning_dims: int = 1
+  logical_axes_rules: Optional[LogicalAxisRules] = None
+  scan_layers: bool = False
+  shared_relative_bias: bool = True
+  decode_layer_norm_use_scale: bool = True
+  final_layer_norm_use_scale: bool = True
+  layer_norm_center_scale_at_zero: bool = False
+  use_multi_query_attention: bool = False
+  use_rotary_embedding: bool = False
+  parallel_fused_decoder_layer: bool = False
+  use_output_logits: bool = True
 
   def setup(self) -> None:
     p = self.hparams
@@ -255,17 +251,14 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
     return self.dec(*args, **kwargs)
 
 
-class EncoderDecoder(base_layer.BaseLayer):
-  """A wrapper of a T5 Encoder Decoder."""
+class EncoderDecoder(base_layer.FiddleBaseLayer):
+  """A wrapper of a T5 Encoder Decoder.
 
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      encoder_decoder_factory: Callable which will generate a Flaxformer model.
-    """
-    encoder_decoder_factory: Optional[Callable[[], linen.Module]] = None
-    logical_axes_rules: Optional[LogicalAxisRules] = None
+  Attributes:
+    encoder_decoder_factory: Callable which will generate a Flaxformer model.
+  """
+  encoder_decoder_factory: Optional[Callable[[], linen.Module]] = None
+  logical_axes_rules: Optional[LogicalAxisRules] = None
 
   def _build_wrapped_module(self) -> linen.Module:
     if self.hparams.encoder_decoder_factory is None:
@@ -299,26 +292,22 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
 
   In general, we recommend using Fiddle to configure Flaxformer models; this
   allows deep overrides in model settings.
+
+  Attributes:
+    num_encoder_layers: Number of encoder layers.
+    num_decoder_layers: Number of decoder layers.
   """
-
-  class HParams(EncoderDecoder.HParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      num_encoder_layers: Number of encoder layers.
-      num_decoder_layers: Number of decoder layers.
-    """
-    num_encoder_layers: int = 12
-    num_decoder_layers: int = 12
-    activation_dtype: str = 'bfloat16'
-    embed_dim: int = 768
-    num_embeddings: int = 250112
-    num_heads: int = 12
-    head_dim: int = 64
-    init_scale: float = 1.0
-    dropout_rate: float = 0.1
-    mlp_dim: int = 2048
-    activation_partitioning_dims: int = 2
+  num_encoder_layers: int = 12
+  num_decoder_layers: int = 12
+  activation_dtype: str = 'bfloat16'
+  embed_dim: int = 768
+  num_embeddings: int = 250112
+  num_heads: int = 12
+  head_dim: int = 64
+  init_scale: float = 1.0
+  dropout_rate: float = 0.1
+  mlp_dim: int = 2048
+  activation_partitioning_dims: int = 2
 
   def _build_wrapped_module(self) -> linen.Module:
     p: FactoryBasedEncoderDecoder.HParams = self.hparams
@@ -468,27 +457,24 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
 
 
 class LanguageModel(base_model.BaseModel):
-  """Language Model base task."""
+  """Language Model base task.
 
-  class HParams(base_model.BaseModel.HParams):
-    """Associated hyperparams for this model class.
-
-    Attributes:
-      flax_decoder_tpl: Flaxformer decoder params.
-      loss_normalizing_factor: Normalization factor for loss.
-      label_smoothing: Amount of label smoothing to apply.
-      z_loss: Coefficient for auxiliary z-loss loss term.
-      decoding_fn: Decoding function used in autoregressive decoding.
-      decoder_tpl: Parameterization of the autoregressive decoder.
-    """
-    flax_decoder_tpl: base_layer.BaseLayer.HParams = sub_config_field(
-        FlaxFormerDecoder.HParams)
-    loss_normalizing_factor: str = 'NUM_REAL_TARGET_TOKENS'
-    label_smoothing: float = 0.0
-    z_loss: float = 0.0001
-    logical_axes_rules: Optional[LogicalAxisRules] = None
-    decoding_fn: Optional[Callable[..., Any]] = t5x_decoding.temperature_sample
-    decoder_tpl: DecoderHParams = pax_fiddle.sub_field(GreedyDecoderHParams)
+  Attributes:
+    flax_decoder_tpl: Flaxformer decoder params.
+    loss_normalizing_factor: Normalization factor for loss.
+    label_smoothing: Amount of label smoothing to apply.
+    z_loss: Coefficient for auxiliary z-loss loss term.
+    decoding_fn: Decoding function used in autoregressive decoding.
+    decoder_tpl: Parameterization of the autoregressive decoder.
+  """
+  flax_decoder_tpl: pax_fiddle.Config[base_layer.BaseLayer] = sub_config_field(
+      FlaxFormerDecoder.HParams)
+  loss_normalizing_factor: str = 'NUM_REAL_TARGET_TOKENS'
+  label_smoothing: float = 0.0
+  z_loss: float = 0.0001
+  logical_axes_rules: Optional[LogicalAxisRules] = None
+  decoding_fn: Optional[Callable[..., Any]] = t5x_decoding.temperature_sample
+  decoder_tpl: DecoderHParams = pax_fiddle.sub_field(GreedyDecoderHParams)
 
   def setup(self):
     p = self.hparams
@@ -736,26 +722,23 @@ class LanguageModel(base_model.BaseModel):
 
 
 class EncoderDecoderModel(base_model.BaseModel):
-  """EncoderDecoder base task."""
+  """EncoderDecoder base task.
 
-  class HParams(base_model.BaseModel.HParams):
-    """Associated hyperparams for this model class.
-
-    Attributes:
-      encoder_decoder_tpl: Flaxformer encoder decoder params.
-      loss_normalizing_factor: Normalization factor for loss.
-      label_smoothing: Amount of label smoothing to apply.
-      z_loss: Coefficient for auxiliary z-loss loss term.
-      decoding_fn: Decoding function to be used during the prediction. The
-        default is t5x_decoding.beam_search.
-    """
-    encoder_decoder_tpl: base_layer.BaseLayer.HParams = sub_config_field(
-        EncoderDecoder.HParams)
-    loss_normalizing_factor: str = 'NUM_REAL_TARGET_TOKENS'
-    label_smoothing: float = 0.0
-    z_loss: float = 0.0001
-    logical_axes_rules: Optional[LogicalAxisRules] = None
-    decoding_fn: Optional[Callable[..., Any]] = t5x_decoding.beam_search
+  Attributes:
+    encoder_decoder_tpl: Flaxformer encoder decoder params.
+    loss_normalizing_factor: Normalization factor for loss.
+    label_smoothing: Amount of label smoothing to apply.
+    z_loss: Coefficient for auxiliary z-loss loss term.
+    decoding_fn: Decoding function to be used during the prediction. The default
+      is t5x_decoding.beam_search.
+  """
+  encoder_decoder_tpl: pax_fiddle.Config[
+      base_layer.BaseLayer] = sub_config_field(EncoderDecoder.HParams)
+  loss_normalizing_factor: str = 'NUM_REAL_TARGET_TOKENS'
+  label_smoothing: float = 0.0
+  z_loss: float = 0.0001
+  logical_axes_rules: Optional[LogicalAxisRules] = None
+  decoding_fn: Optional[Callable[..., Any]] = t5x_decoding.beam_search
 
   def setup(self):
     p = self.hparams

@@ -21,6 +21,7 @@ import jax
 import jax.numpy as jnp
 from praxis import asserts
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
@@ -32,11 +33,12 @@ JTensor = pytypes.JTensor
 weight_init = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
 BaseHParams = base_layer.BaseLayer.HParams
 
 
-class MultitaskResidualAdapter(base_layer.BaseLayer):
+class MultitaskResidualAdapter(base_layer.FiddleBaseLayer):
   """A multitask residual adapter layer.
 
   https://arxiv.org/pdf/1902.00751.pdf
@@ -48,25 +50,20 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
   This is a multi-task residual adapter and each task has its own adapter
   conditioning on the task id which is provided during fprop.
 
+  Attributes:
+    input_dims: input dimension to the Adapter
+    bottleneck_dims: bottleneck dimension of the adapter
+    num_tasks: total number of tasks
+    norm_tpl: normalization used in the beginning
+    activation_tpl: activation template to use.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      input_dims: input dimension to the Adapter
-      bottleneck_dims: bottleneck dimension of the adapter
-      num_tasks: total number of tasks
-      norm_tpl: normalization used in the beginning
-      activation_tpl: activation template to use.
-    """
-    input_dims: int = 0
-    bottleneck_dims: int = 0
-    num_tasks: int = 1
-    norm_tpl: Optional[BaseHParams] = sub_config_field(
-        normalizations.LayerNorm.HParams)
-    activation_tpl: activations.BaseActivation.HParams = sub_config_field(
-        activations.ReLU.HParams)
+  input_dims: int = 0
+  bottleneck_dims: int = 0
+  num_tasks: int = 1
+  norm_tpl: Optional[LayerTpl] = sub_config_field(
+      normalizations.LayerNorm.HParams)
+  activation_tpl: pax_fiddle.Config[
+      activations.BaseActivation] = sub_config_field(activations.ReLU.HParams)
 
   def setup(self) -> None:
     p = self.hparams
@@ -187,17 +184,13 @@ class AdaptedTransformerFeedForward(transformers.TransformerFeedForward):
   parallel adds it to the residual branch.
 
   It is recommended to set norm_tpl to None.
+
+  Attributes:
+    adapter_tpl: Parameterization of adapter layer added after each block.
+    mode: sequential or parallel.
   """
-
-  class HParams(transformers.TransformerFeedForward.HParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      adapter_tpl: Parameterization of adapter layer added after each block.
-      mode: sequential or parallel.
-    """
-    adapter_tpl: BaseHParams = None
-    mode: str = 'sequential'
+  adapter_tpl: LayerTpl = base_layer.sub_config_field(None)
+  mode: str = 'sequential'
 
   def setup(self):
     p = self.hparams

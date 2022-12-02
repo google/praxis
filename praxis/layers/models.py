@@ -56,6 +56,7 @@ GreedyDecoderHParams = decoder_hparams.GreedyDecoderHParams
 LanguageModelType = transformer_models.LanguageModelType
 
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
 
 
@@ -148,29 +149,24 @@ def compute_xent_loss_helper(
 
 
 class LanguageModel(base_model.BaseModel):
-  """Language Model base task."""
+  """Language Model base task.
 
-  class HParams(base_model.BaseModel.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      lm_tpl: LM layer.
-      return_predictions: Whether to return predictions during eval. Returning
-        predictions is more expensive, but may be useful for debugging.
-      decoder_tpl: Parameterization of the decoder.
-      model_type: The type of language model based on the tokens visibility.
-      count_tokens: Whether to track total tokens trained on in the checkpoint.
-      apply_eval_sample_weights: Boolean indicating whether to apply the per
-        example weights from the input `eval_sample_weights` or not.
-    """
-    lm_tpl: BaseHParams = sub_config_field(
-        transformer_models.TransformerLm.HParams)
-    return_predictions: bool = False
-    decoder_tpl: DecoderHParams = pax_fiddle.sub_field(
-        GreedyDecoderHParams)
-    model_type: LanguageModelType = LanguageModelType.CAUSAL
-    count_tokens: bool = False
-    apply_eval_sample_weights: bool = False
+  Attributes:
+    lm_tpl: LM layer.
+    return_predictions: Whether to return predictions during eval. Returning
+      predictions is more expensive, but may be useful for debugging.
+    decoder_tpl: Parameterization of the decoder.
+    model_type: The type of language model based on the tokens visibility.
+    count_tokens: Whether to track total tokens trained on in the checkpoint.
+    apply_eval_sample_weights: Boolean indicating whether to apply the per
+      example weights from the input `eval_sample_weights` or not.
+  """
+  lm_tpl: LayerTpl = sub_config_field(transformer_models.TransformerLm.HParams)
+  return_predictions: bool = False
+  decoder_tpl: DecoderHParams = pax_fiddle.sub_field(GreedyDecoderHParams)
+  model_type: LanguageModelType = LanguageModelType.CAUSAL
+  count_tokens: bool = False
+  apply_eval_sample_weights: bool = False
 
   def setup(self) -> None:
     super().setup()
@@ -597,25 +593,21 @@ class LanguageModel(base_model.BaseModel):
 
 
 class SequenceModel(base_model.BaseModel):
-  """Sequence Model base task."""
+  """Sequence Model base task.
 
-  class HParams(base_model.BaseModel.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      model_tpl: Sequence model layer for this task.
-      return_predictions: Whether to return predictions during eval. Returning
-        predictions is more expensive, but may be useful for debugging.
-      decoder_tpl: Parameterization of the decoder.
-      label_smoothing_prob: If > 0.0, smooth out one-hot prob by spreading this
-        amount ofprob mass to all other tokens.
-    """
-    model_tpl: BaseHParams = sub_config_field(
-        transformer_models.TransformerEncoderDecoder.HParams)
-    return_predictions: bool = False
-    decoder_tpl: DecoderHParams = pax_fiddle.sub_field(
-        GreedyDecoderHParams)
-    label_smoothing_prob: float = 0.0
+  Attributes:
+    model_tpl: Sequence model layer for this task.
+    return_predictions: Whether to return predictions during eval. Returning
+      predictions is more expensive, but may be useful for debugging.
+    decoder_tpl: Parameterization of the decoder.
+    label_smoothing_prob: If > 0.0, smooth out one-hot prob by spreading this
+      amount ofprob mass to all other tokens.
+  """
+  model_tpl: LayerTpl = sub_config_field(
+      transformer_models.TransformerEncoderDecoder.HParams)
+  return_predictions: bool = False
+  decoder_tpl: DecoderHParams = pax_fiddle.sub_field(GreedyDecoderHParams)
+  label_smoothing_prob: float = 0.0
 
   def setup(self) -> None:
     super().setup()
@@ -819,21 +811,18 @@ class SequenceModel(base_model.BaseModel):
 
 
 class ClassificationModel(base_model.BaseModel):
-  """Classification task for images and video."""
+  """Classification task for images and video.
 
-  class HParams(base_model.BaseModel.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      network_tpl: The classifier network_tpl, which is ResNet-50 by default.
-      softmax_tpl: The softmax_tpl layer used for the classification.
-      input_field: The input field which contains the image or video features to
-        pass to the classification network.
-    """
-    network_tpl: BaseHParams = sub_config_field(resnets.ResNet.HParams)
-    softmax_tpl: BaseHParams = sub_config_field(
-        embedding_softmax.FullSoftmax.HParams)
-    input_field: str = 'image'
+  Attributes:
+    network_tpl: The classifier network_tpl, which is ResNet-50 by default.
+    softmax_tpl: The softmax_tpl layer used for the classification.
+    input_field: The input field which contains the image or video features to
+      pass to the classification network.
+  """
+  network_tpl: LayerTpl = sub_config_field(resnets.ResNet.HParams)
+  softmax_tpl: LayerTpl = sub_config_field(
+      embedding_softmax.FullSoftmax.HParams)
+  input_field: str = 'image'
 
   def setup(self) -> None:
     super().setup()
@@ -954,21 +943,17 @@ class ClassificationModel(base_model.BaseModel):
 
 
 class BertModel(base_model.BaseModel):
-  """Bert Model base task."""
+  """Bert Model base task.
 
-  class HParams(base_model.BaseModel.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      lm: BERT LM layer.
-      label_smoothing_prob: If > 0.0, smooth out one-hot prob by spreading this
-        amount of prob mass to all other tokens.
-      mask_token_id: Mask token id.
-    """
-    lm_tpl: BaseHParams = sub_config_field(
-        transformer_models.TransformerLm.HParams)
-    label_smoothing_prob: float = 0.0
-    mask_token_id: int = 0
+  Attributes:
+    lm: BERT LM layer.
+    label_smoothing_prob: If > 0.0, smooth out one-hot prob by spreading this
+      amount of prob mass to all other tokens.
+    mask_token_id: Mask token id.
+  """
+  lm_tpl: LayerTpl = sub_config_field(transformer_models.TransformerLm.HParams)
+  label_smoothing_prob: float = 0.0
+  mask_token_id: int = 0
 
   def setup(self) -> None:
     super().setup()
@@ -1066,18 +1051,15 @@ class BertModel(base_model.BaseModel):
 
 
 class ClassificationMLPModel(base_model.BaseModel):
-  """Language Model task with a simple MLP model."""
+  """Language Model task with a simple MLP model.
 
-  class HParams(base_model.BaseModel.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      mlp_tpl: MLP model parameters.
-      softmax_tpl: Input softmax_tpl embedding lookup layer.
-    """
-    mlp_tpl: BaseHParams = sub_config_field(linears.MLPBlock.HParams)
-    softmax_tpl: BaseHParams = sub_config_field(
-        embedding_softmax.SharedEmbeddingSoftmax.HParams)
+  Attributes:
+    mlp_tpl: MLP model parameters.
+    softmax_tpl: Input softmax_tpl embedding lookup layer.
+  """
+  mlp_tpl: LayerTpl = sub_config_field(linears.MLPBlock.HParams)
+  softmax_tpl: LayerTpl = sub_config_field(
+      embedding_softmax.SharedEmbeddingSoftmax.HParams)
 
   def setup(self) -> None:
     super().setup()

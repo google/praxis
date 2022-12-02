@@ -75,7 +75,7 @@ def _zoneout_helper(prev_v: JTensor, cur_v: JTensor, padding_v: JTensor,
     return jnp.where(zo_p, prev_v, cur_v)
 
 
-class BaseRnnCell(base_layer.BaseLayer):
+class BaseRnnCell(base_layer.FiddleBaseLayer):
   """Base class for all RnnCell.
 
   An RNN cell encapsulates the logic for performing one single step in an RNN
@@ -143,41 +143,37 @@ class LstmCellSimple(BaseRnnCell):
   - padding: the padding. [batch, 1].
   - reset_mask: optional 0/1 float input to support packed input training.
     Shape [batch, 1]
+
+  Attributes:
+    inputs_arity: Number of tensors expected for the inputs.act field.
+    num_input_nodes: Number of input nodes.
+    num_output_nodes: Number of output nodes. If num_hidden_nodes is 0, also
+      used as cell size.
+    num_hidden_nodes: Number of projection hidden nodes (see
+      https://arxiv.org/abs/1603.08042). Set to 0 to disable projection.
+    reset_cell_state: Set True to support resetting cell state in scenarios
+      where multiple inputs are packed into a single training example. The RNN
+      layer should provide reset_mask inputs in addition to act and padding if
+      this flag is set.
+    cell_value_cap: Cell values are capped to be within [-cell_value_cap,
+      +cell_value_cap] if the value is not None. It can be a scalar, a scalar
+      tensor or None. When set to None, no capping is applied.
+    forget_gate_bias: Bias to apply to the forget gate.
+    output_nonlinearity: Whether or not to apply tanh non-linearity on lstm
+      output.
+    zo_prob: If > 0, applies ZoneOut regularization with the given prob.
+    bias_init: Initialization parameters for bias.
   """
-
-  class HParams(BaseRnnCell.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      inputs_arity: Number of tensors expected for the inputs.act field.
-      num_input_nodes: Number of input nodes.
-      num_output_nodes: Number of output nodes. If num_hidden_nodes is 0, also
-        used as cell size.
-      num_hidden_nodes: Number of projection hidden nodes (see
-        https://arxiv.org/abs/1603.08042). Set to 0 to disable projection.
-      reset_cell_state: Set True to support resetting cell state in scenarios
-        where multiple inputs are packed into a single training example. The RNN
-        layer should provide reset_mask inputs in addition to act and padding if
-        this flag is set.
-      cell_value_cap: Cell values are capped to be within [-cell_value_cap,
-        +cell_value_cap] if the value is not None. It can be a scalar, a scalar
-        tensor or None. When set to None, no capping is applied.
-      forget_gate_bias: Bias to apply to the forget gate.
-      output_nonlinearity: Whether or not to apply tanh non-linearity on lstm
-        output.
-      zo_prob: If > 0, applies ZoneOut regularization with the given prob.
-      bias_init: Initialization parameters for bias.
-    """
-    inputs_arity: int = 1
-    num_input_nodes: int = 0
-    num_output_nodes: int = 0
-    num_hidden_nodes: int = 0
-    reset_cell_state: bool = False
-    cell_value_cap: float = 10.0
-    forget_gate_bias: float = 0.0
-    output_nonlinearity: bool = True
-    zo_prob: float = 0.0
-    bias_init: WeightInit = WeightInit.Constant(0.0)
+  inputs_arity: int = 1
+  num_input_nodes: int = 0
+  num_output_nodes: int = 0
+  num_hidden_nodes: int = 0
+  reset_cell_state: bool = False
+  cell_value_cap: float = 10.0
+  forget_gate_bias: float = 0.0
+  output_nonlinearity: bool = True
+  zo_prob: float = 0.0
+  bias_init: WeightInit = WeightInit.Constant(0.0)
 
   @property
   def num_gates(self) -> int:
@@ -396,15 +392,11 @@ class LayerNormalizedLstmCellSimple(LstmCellSimple):
 
   Implements normalization scheme as described in
   https://arxiv.org/pdf/1607.06450.pdf
+
+  Attributes:
+    layer_norm_epsilon: A small float added to variance.
   """
-
-  class HParams(LstmCellSimple.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      layer_norm_epsilon: A small float added to variance.
-    """
-    layer_norm_epsilon: float = 1e-8
+  layer_norm_epsilon: float = 1e-8
 
   def setup(self) -> None:
     """Initializes LayerNormalizedLstmCellSimple."""

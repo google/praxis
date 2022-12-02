@@ -95,6 +95,7 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -113,6 +114,7 @@ pytype_strict_library(
         # Implicit numpy dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -152,6 +154,7 @@ pytype_strict_library(
         ":stochastics",
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -167,6 +170,7 @@ pytype_strict_library(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -181,6 +185,7 @@ pytype_strict_library(
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -210,6 +215,7 @@ pytype_strict_library(
         ":activations",
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -337,6 +343,7 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:flax_utils",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -380,6 +387,7 @@ pytype_strict_library(
         "//praxis:asserts",
         "//praxis:base_layer",
         "//praxis:flax_utils",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -413,6 +421,7 @@ pytype_strict_library(
         ":poolings",
         ":stochastics",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -467,6 +476,7 @@ pytype_strict_library(
         ":poolings",
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -510,6 +520,7 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:base_model",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -573,6 +584,7 @@ pytype_strict_library(
         "//praxis:asserts",
         "//praxis:base_hyperparams",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
     ],
 )
@@ -605,6 +617,7 @@ pytype_strict_library(
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:gshard_utils",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -622,6 +635,7 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -793,6 +807,7 @@ py_strict_test(
         # Implicit numpy dependency.
         "//praxis:base_hyperparams",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
     ],
 )
@@ -1071,6 +1086,7 @@ pytype_strict_library(
         # Implicit numpy dependency.
         "//praxis:base_hyperparams",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -1086,6 +1102,7 @@ pytype_strict_library(
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:pytypes",
     ],
 )

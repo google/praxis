@@ -95,6 +95,7 @@ pytype_strict_library(
     deps = [
         ":base_input",
         ":base_layer",
+        ":pax_fiddle",
         ":py_utils",
         ":pytypes",
     ],
@@ -534,17 +535,14 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":base_layer",
-        ":decoder_utils",
+        ":base_model",
         ":py_utils",
         ":sample_decode",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
-        # Implicit absl.testing.parameterized dependency.
-        # Implicit flax dependency.
+        # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
-        "//praxis:base_model",
-        "//praxis/layers:models",
     ],
 )
 

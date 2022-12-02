@@ -30,28 +30,24 @@ JTensor = pytypes.JTensor
 BaseHParams = base_layer.BaseLayer.HParams
 
 
-class MaskedLmDataAugmenter(base_layer.BaseLayer):
+class MaskedLmDataAugmenter(base_layer.FiddleBaseLayer):
   """Performs data augmentation according to the BERT paper.
 
   https://arxiv.org/pdf/1810.04805.pdf
+
+  Attributes:
+    vocab_size: The total vocabulary size.
+    mask_prob: Probability at which a token is replaced by the special <MASK>
+      token.
+    random_prob: Probability at which a token is replaced by a random token.
+    same_prob: Probability at which a token is replaced by itself.
+    mask_token_id: Id of the special <MASK> token.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      vocab_size: The total vocabulary size.
-      mask_prob: Probability at which a token is replaced by the special <MASK>
-        token.
-      random_prob: Probability at which a token is replaced by a random token.
-      same_prob: Probability at which a token is replaced by itself.
-      mask_token_id: Id of the special <MASK> token.
-    """
-    vocab_size: int = 0
-    mask_prob: float = 0.12
-    random_prob: float = 0.015
-    same_prob: float = 0.015
-    mask_token_id: int = -1
+  vocab_size: int = 0
+  mask_prob: float = 0.12
+  random_prob: float = 0.015
+  same_prob: float = 0.015
+  mask_token_id: int = -1
 
   def __call__(self, inputs: JTensor,
                paddings: JTensor) -> Tuple[JTensor, JTensor]:
@@ -121,21 +117,18 @@ class MaskedLmDataAugmenter(base_layer.BaseLayer):
 
 
 # TODO(meadowlark): Add temporal warping layer.
-class TemporalShifting(base_layer.BaseLayer):
-  """Shifts audio signals by a random amount during training."""
+class TemporalShifting(base_layer.FiddleBaseLayer):
+  """Shifts audio signals by a random amount during training.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      shift_range_ms: The maximum milliseconds to shift the signal forward or
-        backward by. Must be smaller than the input signal length.
-      sample_rate: The sample rate of the input signal.
-      axis: The axis to treat and the time axis. Must be greater than 0.
-    """
-    shift_range_ms: float = 0.0
-    sample_rate: float = 16000.0
-    axis: int = 1
+  Attributes:
+    shift_range_ms: The maximum milliseconds to shift the signal forward or
+      backward by. Must be smaller than the input signal length.
+    sample_rate: The sample rate of the input signal.
+    axis: The axis to treat and the time axis. Must be greater than 0.
+  """
+  shift_range_ms: float = 0.0
+  sample_rate: float = 16000.0
+  axis: int = 1
 
   def setup(self) -> None:
     super().setup()

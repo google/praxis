@@ -20,6 +20,7 @@ from typing import Optional
 from jax import numpy as jnp
 from jax import vmap
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
@@ -28,6 +29,7 @@ NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
 BaseHParams = base_layer.BaseLayer.HParams
 JTensor = pytypes.JTensor
@@ -57,18 +59,15 @@ def project_last_dim(inputs: JTensor, weight: JTensor) -> JTensor:
   return jnp.einsum('...y,yz->...z', inputs, weight)
 
 
-class Linear(base_layer.BaseLayer):
-  """Linear layer without bias."""
+class Linear(base_layer.FiddleBaseLayer):
+  """Linear layer without bias.
 
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      input_dims: Depth of the input.
-      output_dims: Depth of the output.
-    """
-    input_dims: int = 0
-    output_dims: int = 0
+  Attributes:
+    input_dims: Depth of the input.
+    output_dims: Depth of the output.
+  """
+  input_dims: int = 0
+  output_dims: int = 0
 
   def setup(self) -> None:
     p = self.hparams
@@ -101,18 +100,15 @@ class Linear(base_layer.BaseLayer):
     return out
 
 
-class Bias(base_layer.BaseLayer):
-  """Bias layer."""
+class Bias(base_layer.FiddleBaseLayer):
+  """Bias layer.
 
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      dims: Depth of the input.
-      bias_init: Init scale (constant) of bias terms.
-    """
-    dims: int = 0
-    bias_init: Optional[float] = 0.0
+  Attributes:
+    dims: Depth of the input.
+    bias_init: Init scale (constant) of bias terms.
+  """
+  dims: int = 0
+  bias_init: Optional[float] = 0.0
 
   def setup(self) -> None:
     p = self.hparams
@@ -137,27 +133,24 @@ class Bias(base_layer.BaseLayer):
     return inputs + self.theta.b
 
 
-class FeedForward(base_layer.BaseLayer):
-  """Feedforward layer with activation."""
+class FeedForward(base_layer.FiddleBaseLayer):
+  """Feedforward layer with activation.
 
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      input_dims: Depth of the input.
-      output_dims: Depth of the output.
-      has_bias: Adds bias weights or not.
-      linear_tpl: Linear layer params.
-      activation_tpl: Activation layer params.
-      bias_init: Init scale (constant) of bias terms.
-    """
-    input_dims: int = 0
-    output_dims: int = 0
-    has_bias: bool = True
-    linear_tpl: BaseHParams = sub_config_field(Linear.HParams)
-    activation_tpl: activations.BaseActivation.HParams = sub_config_field(
-        activations.ReLU.HParams)
-    bias_init: Optional[float] = 0.0
+  Attributes:
+    input_dims: Depth of the input.
+    output_dims: Depth of the output.
+    has_bias: Adds bias weights or not.
+    linear_tpl: Linear layer params.
+    activation_tpl: Activation layer params.
+    bias_init: Init scale (constant) of bias terms.
+  """
+  input_dims: int = 0
+  output_dims: int = 0
+  has_bias: bool = True
+  linear_tpl: LayerTpl = sub_config_field(Linear.HParams)
+  activation_tpl: pax_fiddle.Config[
+      activations.BaseActivation] = sub_config_field(activations.ReLU.HParams)
+  bias_init: Optional[float] = 0.0
 
   def setup(self) -> None:
     p = self.hparams
@@ -192,20 +185,17 @@ class FeedForward(base_layer.BaseLayer):
     return output
 
 
-class MLPBlock(base_layer.BaseLayer):
-  """Feedforward layer with activation."""
+class MLPBlock(base_layer.FiddleBaseLayer):
+  """Feedforward layer with activation.
 
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      num_layers: Number of FeedForward layers.
-      hidden_dims: Dimension of hidden layers.
-      ff_tpl: Feedforward layer params.
-    """
-    num_layers: int = 3
-    hidden_dims: int = 128
-    ff_tpl: BaseHParams = sub_config_field(FeedForward.HParams)
+  Attributes:
+    num_layers: Number of FeedForward layers.
+    hidden_dims: Dimension of hidden layers.
+    ff_tpl: Feedforward layer params.
+  """
+  num_layers: int = 3
+  hidden_dims: int = 128
+  ff_tpl: LayerTpl = sub_config_field(FeedForward.HParams)
 
   def setup(self) -> None:
     p = self.hparams
@@ -244,45 +234,41 @@ class MLPBlock(base_layer.BaseLayer):
     return output
 
 
-class StackingOverTime(base_layer.BaseLayer):
+class StackingOverTime(base_layer.FiddleBaseLayer):
   """Stacking applied along the time axis.
 
-     At each time step of an input sequence, elements are stacked over the
-     window of ('left_context' + 1 + 'right_context') steps around the current
-     time step. Zeros will be padded to the left or right of the sequence for
-     elements around the boundaries. Finally the stacked outputs are emitted
-     once every 'stride' steps.
+  At each time step of an input sequence, elements are stacked over the
+  window of ('left_context' + 1 + 'right_context') steps around the current
+  time step. Zeros will be padded to the left or right of the sequence for
+  elements around the boundaries. Finally the stacked outputs are emitted
+  once every 'stride' steps.
 
-     E.g. if an input sequence is: [4], [1], [9], [3], [5], [2], [8]
-     left_context = 1, right_context = 1, stride = 3,
-     then the output sequence would be: [0, 4, 1], [9, 3, 5], [2, 8, 0]
+  E.g. if an input sequence is: [4], [1], [9], [3], [5], [2], [8]
+  left_context = 1, right_context = 1, stride = 3,
+  then the output sequence would be: [0, 4, 1], [9, 3, 5], [2, 8, 0]
 
-     Note that this layer only performs tensor transformation, so there are no
-     learnable parameters.
+  Note that this layer only performs tensor transformation, so there are no
+  learnable parameters.
+
+  Attributes:
+    left_context: Number of time steps to stack on the left to the central
+      step.
+    right_context: Number of time steps to stack on the right to the central
+      step.
+    stride: The stride for emitting the stacked output.
+    pad_with_left_frame: Whether to use the left frame for padding instead of
+      0s.
+    pad_with_right_frame: Whether to use the right frame for padding instead
+      of 0s.
+    padding_reduce_option: reduce_max or reduce_min. How to reduce stacked
+      padding from [b, t / stride, stride] to [b, t / stride, 1].
   """
-
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      left_context: Number of time steps to stack on the left to the central
-        step.
-      right_context: Number of time steps to stack on the right to the central
-        step.
-      stride: The stride for emitting the stacked output.
-      pad_with_left_frame: Whether to use the left frame for padding instead of
-        0s.
-      pad_with_right_frame: Whether to use the right frame for padding instead
-        of 0s.
-      padding_reduce_option: reduce_max or reduce_min. How to reduce stacked
-        padding from [b, t / stride, stride] to [b, t / stride, 1].
-    """
-    left_context: int = 0
-    right_context: int = 0
-    stride: int = 0
-    pad_with_left_frame: bool = False
-    pad_with_right_frame: bool = False
-    padding_reduce_option: str = 'reduce_min'
+  left_context: int = 0
+  right_context: int = 0
+  stride: int = 0
+  pad_with_left_frame: bool = False
+  pad_with_right_frame: bool = False
+  padding_reduce_option: str = 'reduce_min'
 
   def setup(self) -> None:
     p = self.hparams

@@ -60,16 +60,13 @@ class CNN(flax_nn.Module):
     return x
 
 
-class MixLayer(base_layer.BaseLayer):
-  """A layer that mixes Pax native layer with nn.Module wrapper layer."""
+class MixLayer(base_layer.FiddleBaseLayer):
+  """A layer that mixes Pax native layer with nn.Module wrapper layer.
 
-  class HParams(base_layer.BaseLayer.HParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-    use_running_average: bool as if BN layers are using running average or not.
-    """
-    use_running_average: bool = False
+  Attributes:
+  use_running_average: bool as if BN layers are using running average or not.
+  """
+  use_running_average: bool = False
 
   def setup(self) -> None:
     super().setup()

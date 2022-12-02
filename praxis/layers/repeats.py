@@ -28,6 +28,7 @@ from jax.experimental import pjit
 from praxis import asserts
 from praxis import base_layer
 from praxis import flax_utils
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import checkpoint_policy
@@ -38,6 +39,7 @@ NestedJTensor = pytypes.NestedJTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 
 PARAMS = base_layer.PARAMS
@@ -62,33 +64,30 @@ def _sum_aux_loss(tree):
   return jax.tree_map(jnp.sum, tree)
 
 
-class Repeat(base_layer.BaseLayer):
-  """A generic repeat layer."""
+class Repeat(base_layer.FiddleBaseLayer):
+  """A generic repeat layer.
 
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
+  Attributes:
+    sub_tpl: The parameterization of the sub-layer.
+    x_times: The number of times to repeat sub.
+    unpack_summaries: If true, unpack summaries to the individual values from
+      each loop iterations.
+    checkpoint_policy: How to checkpoint residuals for BProp: save nothing, dot
+      only or dot with no batch dimensions.
+    unroll_in_decode: Whether to unroll the layers during extend_step. The scan
+      loop within a decoding loop can cause large overheads for data
+      copy/formatting.
+    sublayer_name: Name of the sublayer. This affects the checkpoint variable
+      paths.
+  """
+  sub_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  x_times: int = 0
+  unpack_summaries: bool = False
+  checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_NOTHING
+  unroll_in_decode: bool = False
+  sublayer_name: str = 'sub'
 
-    Attributes:
-      sub_tpl: The parameterization of the sub-layer.
-      x_times: The number of times to repeat sub.
-      unpack_summaries: If true, unpack summaries to the individual values from
-        each loop iterations.
-      checkpoint_policy: How to checkpoint residuals for BProp: save nothing,
-        dot only or dot with no batch dimensions.
-      unroll_in_decode: Whether to unroll the layers during extend_step. The
-        scan loop within a decoding loop can cause large overheads for data
-        copy/formatting.
-      sublayer_name: Name of the sublayer. This affects the checkpoint variable
-        paths.
-    """
-    sub_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
-    x_times: int = 0
-    unpack_summaries: bool = False
-    checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_NOTHING
-    unroll_in_decode: bool = False
-    sublayer_name: str = 'sub'
-
-  class WeightShardingHParams(BaseWtShardingHParams):
+  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:

@@ -24,6 +24,7 @@ from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
 from praxis import base_input
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 
@@ -33,12 +34,13 @@ Metrics = pytypes.Metrics
 WeightedScalars = pytypes.WeightedScalars
 Predictions = Union[JTensor, NestedMap, Dict[str, Any], Dict[int, Any]]
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
 DecodeOut = Tuple[WeightedScalars, NestedMap, Metrics]
 ProcessDecodeOut = Tuple[WeightedScalars, Sequence[Tuple[str, Any]], Metrics]
 
 
-class BaseModel(base_layer.BaseLayer):
+class BaseModel(base_layer.FiddleBaseLayer):
   """An API that every model should be derived from."""
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
@@ -142,15 +144,12 @@ class BaseModel(base_layer.BaseLayer):
 
 
 class LegosModel(BaseModel):
-  """Legos - A set of components that can be co-trained or trained in parts."""
+  """Legos - A set of components that can be co-trained or trained in parts.
 
-  class HParams(BaseModel.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      components: List of model components aggregated into a single legos model.
-    """
-    components: Optional[BaseHParams] = base_layer.sub_config_field(None)
+  Attributes:
+    components: List of model components aggregated into a single legos model.
+  """
+  components: Optional[LayerTpl] = base_layer.sub_config_field(None)
 
   def setup(self) -> None:
     """Build the mixer from the collection of components."""

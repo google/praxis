@@ -20,6 +20,7 @@ import jax
 from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import repeats
 from praxis.layers.quantization import linears as qlinears
@@ -28,6 +29,7 @@ from praxis.layers.quantization import quantization_hparams
 
 instantiate = base_layer.instantiate
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 
@@ -76,12 +78,10 @@ class RepeatsLinearQuantizeTest(test_utils.TestCase):
         atol=0.02)
 
 
-class FeedForwardQuant(base_layer.BaseLayer):
+class FeedForwardQuant(base_layer.FiddleBaseLayer):
   """Feedforward layer with quantize_weight() method."""
-
-  class HParams(BaseHParams):
-    input_dim: int = 0
-    output_dim: int = 0
+  input_dim: int = 0
+  output_dim: int = 0
 
   def setup(self):
     p = self.hparams
@@ -101,12 +101,10 @@ class FeedForwardQuant(base_layer.BaseLayer):
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
 
 
-class FeedForward(base_layer.BaseLayer):
+class FeedForward(base_layer.FiddleBaseLayer):
   """Feedforward layer with default method."""
-
-  class HParams(BaseHParams):
-    input_dim: int = 0
-    output_dim: int = 0
+  input_dim: int = 0
+  output_dim: int = 0
 
   def setup(self):
     p = self.hparams
@@ -122,11 +120,9 @@ class FeedForward(base_layer.BaseLayer):
     return jnp.add(res, self.theta.b)
 
 
-class ParentLayer(base_layer.BaseLayer):
-
-  class HParams(BaseHParams):
-    ff1_tpl: BaseHParams = base_layer.sub_config_field(FeedForwardQuant.HParams)
-    ff2_tpl: BaseHParams = base_layer.sub_config_field(FeedForward.HParams)
+class ParentLayer(base_layer.FiddleBaseLayer):
+  ff1_tpl: LayerTpl = base_layer.sub_config_field(FeedForwardQuant.HParams)
+  ff2_tpl: LayerTpl = base_layer.sub_config_field(FeedForward.HParams)
 
   def setup(self):
     p = self.hparams

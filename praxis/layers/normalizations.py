@@ -90,16 +90,13 @@ def compute_moments(
   return mean, variance
 
 
-class BaseNormalization(base_layer.BaseLayer):
-  """Base class for normalization layers."""
+class BaseNormalization(base_layer.FiddleBaseLayer):
+  """Base class for normalization layers.
 
-  class HParams(base_layer.BaseLayer.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      dim: Depth of the input and output.
-    """
-    dim: int = 0
+  Attributes:
+    dim: Depth of the input and output.
+  """
+  dim: int = 0
 
   def __call__(self,
                inputs: JTensor,
@@ -120,32 +117,28 @@ class BatchNorm(BaseNormalization):
   Flax, tf.layers, PyTorch etc., where gamma is by default 1-initialized
   and used to scale the input. The difference is that in our version,
   weight decay encourages gamma to move towards 1, instead of 0.
+
+  Attributes:
+    decay: Decay in updating the mean and variance moving average used in
+      batch normalization.
+    use_moving_avg_in_training: If True, use global moving avg (mean,
+      variance) during training to avoid mismatch between train and eval,
+      which then essentially acts as an adaptive normalization step. When this
+      is set to True, it also disables the use of beta and gamma variables.
+    set_padded_output_to_zero: If True, sets the padded outputs to zero.
+    force_eval_mode: If True, puts the layer in eval mode even if
+      self.do_eval is False. This does not disable training of beta/gamma,
+      which has to be done separately (e.g. via bprop_variable_exclusion).
+      This is commonly used in object detection when using pretrained
+      backbones.
+    gamma_init: Initializer for gamma. It defaults to zero (which scales the
+      input by 1.0) due to the reparameterization.
   """
-
-  class HParams(BaseNormalization.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      decay: Decay in updating the mean and variance moving average used in
-        batch normalization.
-      use_moving_avg_in_training: If True, use global moving avg (mean,
-        variance) during training to avoid mismatch between train and eval,
-        which then essentially acts as an adaptive normalization step. When this
-        is set to True, it also disables the use of beta and gamma variables.
-      set_padded_output_to_zero: If True, sets the padded outputs to zero.
-      force_eval_mode: If True, puts the layer in eval mode even if
-        self.do_eval is False. This does not disable training of beta/gamma,
-        which has to be done separately (e.g. via bprop_variable_exclusion).
-        This is commonly used in object detection when using pretrained
-        backbones.
-      gamma_init: Initializer for gamma. It defaults to zero (which scales the
-        input by 1.0) due to the reparameterization.
-    """
-    decay: float = 0.999
-    use_moving_avg_in_training: bool = False
-    set_padded_output_to_zero: bool = True
-    force_eval_mode: bool = False
-    gamma_init: WeightInit = WeightInit.Constant(0.0)
+  decay: float = 0.999
+  use_moving_avg_in_training: bool = False
+  set_padded_output_to_zero: bool = True
+  force_eval_mode: bool = False
+  gamma_init: WeightInit = WeightInit.Constant(0.0)
 
   def _get_weight_shape(self) -> JTensor:
     return [self.hparams.dim]
@@ -286,19 +279,16 @@ class BatchNorm(BaseNormalization):
 
 
 class LayerNorm(BaseNormalization):
-  """Layer normalization."""
+  """Layer normalization.
 
-  class HParams(BaseNormalization.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      epsilon: Tiny value to guard rsqrt.
-      scale: Whether to use a learned scaling.
-      bias: Whether to use bias.
-    """
-    epsilon: float = 1e-6
-    use_scale: bool = True
-    use_bias: bool = True
+  Attributes:
+    epsilon: Tiny value to guard rsqrt.
+    scale: Whether to use a learned scaling.
+    bias: Whether to use bias.
+  """
+  epsilon: float = 1e-6
+  use_scale: bool = True
+  use_bias: bool = True
 
   def setup(self) -> None:
     """Creates layer normalization variables."""
@@ -358,19 +348,16 @@ class LayerNorm(BaseNormalization):
 
 
 class RmsNorm(BaseNormalization):
-  """RMS normalization: https://arxiv.org/abs/1910.07467."""
+  """RMS normalization: https://arxiv.org/abs/1910.07467.
 
-  class HParams(BaseNormalization.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      epsilon: Tiny value to guard rsqrt.
-      direct_scale: Whether to apply scale directly without a +1.0. Var is
-        initialized to 1.0 instead when true. This makes the weight compatible
-        with the implementation in gshard/glam.
-    """
-    epsilon: float = 1e-6
-    direct_scale: bool = True
+  Attributes:
+    epsilon: Tiny value to guard rsqrt.
+    direct_scale: Whether to apply scale directly without a +1.0. Var is
+      initialized to 1.0 instead when true. This makes the weight compatible
+      with the implementation in gshard/glam.
+  """
+  epsilon: float = 1e-6
+  direct_scale: bool = True
 
   def setup(self) -> None:
     """Creates RMS normalization variables."""
@@ -412,15 +399,12 @@ class RmsNorm(BaseNormalization):
 
 
 class RmsNormNoScale(BaseNormalization):
-  """RMS normalization: https://arxiv.org/abs/1910.07467 without scale."""
+  """RMS normalization: https://arxiv.org/abs/1910.07467 without scale.
 
-  class HParams(BaseNormalization.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      epsilon: Tiny value to guard rsqrt.
-    """
-    epsilon: float = 1e-6
+  Attributes:
+    epsilon: Tiny value to guard rsqrt.
+  """
+  epsilon: float = 1e-6
 
   def __call__(self,
                inputs: JTensor,
@@ -444,25 +428,22 @@ class RmsNormNoScale(BaseNormalization):
 
 
 class GroupNorm(BaseNormalization):
-  """Group normalization layer (https://arxiv.org/abs/1803.08494)."""
+  """Group normalization layer (https://arxiv.org/abs/1803.08494).
 
-  class HParams(BaseNormalization.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      num_groups: Number of groups for GroupNorm.
-      min_group_size: Minimum group size for GroupNorm.
-      cumulative: If true, only normalize by current and previous time steps.
-      input_rank: Rank of input. Only 3(BTD) and 4(NHWC) are supported.
-      epsilon: Epsilon added when computing the rsqrt.
-      set_padded_output_to_zero: bool. whether to pad padding part to zero.
-    """
-    num_groups: int = 32
-    min_group_size: int = 1
-    cumulative: bool = False
-    input_rank: Optional[int] = None
-    epsilon: float = 0.001
-    set_padded_output_to_zero: bool = True
+  Attributes:
+    num_groups: Number of groups for GroupNorm.
+    min_group_size: Minimum group size for GroupNorm.
+    cumulative: If true, only normalize by current and previous time steps.
+    input_rank: Rank of input. Only 3(BTD) and 4(NHWC) are supported.
+    epsilon: Epsilon added when computing the rsqrt.
+    set_padded_output_to_zero: bool. whether to pad padding part to zero.
+  """
+  num_groups: int = 32
+  min_group_size: int = 1
+  cumulative: bool = False
+  input_rank: Optional[int] = None
+  epsilon: float = 0.001
+  set_padded_output_to_zero: bool = True
 
   def setup(self) -> None:
     """Initializes GroupNorm layer and checks parameters."""

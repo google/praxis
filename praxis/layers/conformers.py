@@ -21,6 +21,7 @@ import jax.numpy as jnp
 from praxis import asserts
 from praxis import base_hyperparams
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis.layers import activations
 from praxis.layers import attentions
@@ -28,9 +29,11 @@ from praxis.layers import convolutions
 from praxis.layers import normalizations
 from praxis.layers import stochastics
 from praxis.layers import transformers
+
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
 sub_config_field = base_layer.sub_config_field
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
 BaseHParams = base_layer.BaseLayer.HParams
 BaseHyperParams = base_hyperparams.BaseHyperParams
@@ -47,19 +50,8 @@ class DotProductAttentionWithContext(attentions.DotProductAttention):
   For use cases (2,3) it will use emulated local self attention.
   For use case (2) it is more efficient to use LocalSelfAttention.
   """
-
-  class HParams(attentions.DotProductAttention.HParams):
-    left_context: Optional[int] = None
-    right_context: Optional[int] = None
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      left_context: Number of left positions to attend (including current
-        position). If set, use a limited attention context from the left.
-      right_context: Number of right positions to attend. If set, use a limited
-        attention context from the right. Otherwise if it is None, use all the
-        frames in the right with DotProductAttention. For causal, set it to 0.
-    """
+  left_context: Optional[int] = None
+  right_context: Optional[int] = None
 
   def _dot_atten(
       self,
@@ -107,19 +99,8 @@ class DotProductAttentionWithContextXL(attentions.DotProductAttentionXL):
   For use cases (2,3) it will use emulated local self attention.
   For use case (2) it is more efficient to use LocalSelfAttentionXL.
   """
-
-  class HParams(attentions.DotProductAttentionXL.HParams):
-    left_context: Optional[int] = None
-    right_context: Optional[int] = None
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      left_context: Number of left positions to attend (including current
-        position). If set, use a limited attention context from the left.
-      right_context: Number of right positions to attend. If set, use a limited
-        attention context from the right. Otherwise if it is None, use all the
-        frames in the right with DotProductAttentionXL. For causal, set it to 0.
-    """
+  left_context: Optional[int] = None
+  right_context: Optional[int] = None
 
   def _dot_atten(
       self,
@@ -156,7 +137,7 @@ class DotProductAttentionWithContextXL(attentions.DotProductAttentionXL):
     return super()._dot_atten(query, key, value, atten_mask, relative_bias)
 
 
-class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
+class SelfAttentionWithNormAndResidual(base_layer.FiddleBaseLayer):
   """Self attention sub-layer used in the Conformer layer.
 
   Input is first normalized using norm_tpl. Output is processed using
@@ -165,33 +146,28 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
 
   For the normalization, we can specify pre norm or post norm.
   For the residual connection, we can specify the residual weight.
+
+  Attributes:
+    residual_weight: Weight of the residual connection. Output = fn(x) *
+      residual_weight + x * input_weight.
+    input_weight: Weight of the input connection. Output = fn(x) *
+      residual_weight + x * input_weight.
+    self_atten_tpl: Parameterization of the self attention layer.
+    norm_tpl: Parameterization of the normalization layer.
+    pre_layer_norm: Whether to apply norm before or after the layer.
+    residual_dropout_prob: Probability at which we apply dropout to the
+      residual layers, such that, residual(x, y) = (x + dropout(y)).
+    residual_dropout_tpl: Parameterization of residual dropout layer.
+      keep_prop will be reset to (1.0 - residual_dropout_prob).
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      residual_weight: Weight of the residual connection. Output = fn(x) *
-        residual_weight + x * input_weight.
-      input_weight: Weight of the input connection. Output = fn(x) *
-        residual_weight + x * input_weight.
-      self_atten_tpl: Parameterization of the self attention layer.
-      norm_tpl: Parameterization of the normalization layer.
-      pre_layer_norm: Whether to apply norm before or after the layer.
-      residual_dropout_prob: Probability at which we apply dropout to the
-        residual layers, such that, residual(x, y) = (x + dropout(y)).
-      residual_dropout_tpl: Parameterization of residual dropout layer.
-        keep_prop will be reset to (1.0 - residual_dropout_prob).
-    """
-    residual_weight: float = 1.0
-    input_weight: float = 1.0
-    self_atten_tpl: BaseHParams = sub_config_field(
-        DotProductAttentionWithContext.HParams)
-    norm_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
-    pre_layer_norm: bool = True
-    residual_dropout_prob: float = 0.0
-    residual_dropout_tpl: BaseHParams = sub_config_field(
-        stochastics.Dropout.HParams)
+  residual_weight: float = 1.0
+  input_weight: float = 1.0
+  self_atten_tpl: LayerTpl = sub_config_field(
+      DotProductAttentionWithContext.HParams)
+  norm_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  pre_layer_norm: bool = True
+  residual_dropout_prob: float = 0.0
+  residual_dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
 
   def _create_self_atten(self):
     """Expects to be overridden in subclasses."""
@@ -253,86 +229,82 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     return result
 
 
-class Conformer(base_layer.BaseLayer):
+class Conformer(base_layer.FiddleBaseLayer):
   """Conformer layer as in https://arxiv.org/abs/2005.08100.
 
-    Canonical version (with default params.)
-      x = x + 1/2 * FFN(x)
-      x = x + MHSA(x)
-      x = x + Lconv(x)
-      x = x + 1/2 * FFN(x)
-      y = ln(x)
+  Canonical version (with default params.)
+    x = x + 1/2 * FFN(x)
+    x = x + MHSA(x)
+    x = x + Lconv(x)
+    x = x + 1/2 * FFN(x)
+    y = ln(x)
 
-    Residual connections are implemented inside each individual block:
-      FFN, MHSA, LConv.
-    Optionally one can change the order of MHSA and conv.
+  Residual connections are implemented inside each individual block:
+    FFN, MHSA, LConv.
+  Optionally one can change the order of MHSA and conv.
+
+  Attributes:
+    input_dims: Input dimension.
+    model_dims: Encoder model dimension.
+    kernel_size: Conv kernel size.
+    ff_activation_tpl: Activation function used in the feedforward network.
+    ff_residual_weight: Residual weight used in the fflayer.
+    ffn_dim_multiplier: Feed forward hidden dimension will be
+      ffn_dim_multiplier * model_dims.
+    atten_num_heads: Number of attention heads.
+    layer_order: Only mhsa, conv, mhsa_before_conv or conv_before_mhsa are
+      supported
+    dropout_prob: Dropout prob of inner components.
+    conv_residual_dropout: Conv block residual dropout. Will be overwritten by
+      p.dropout if it is not None.
+    atten_residual_dropout: Attention block residual dropout. Will be
+      overwritten by p.dropout if it is not None.
+    ffn_residual_dropout: Feed forward block residual dropout. Will be
+      overwritten by p.dropout if it is not None.
+    atten_dropout: Dropout in Attention layer. Will be overwritten by
+      p.dropout if it is not None.
+    ffn_relu_dropout: Post activation dropout in Feed-forward layer. Will be
+      overwritten by p.dropout if it is not None.
+    fflayer_start_tpl: Parameterization for the Feed forward layer at the
+      beginning. If set to None, this layer is excluded.
+    trans_atten_tpl: Parameterization of self-attention layer.
+    lconv_tpl: Parameterization of convolution layer. If set to None, this
+      layer is excluded.
+    fflayer_end_tpl: Parameterization for Feed forward layer at the end. If
+      set to None, this layer is excluded.
+    fflayer_weight_sharing: If True, will ignore `fflayer_end_tpl`, and will
+      make the fflayer_end layer as a weight-shared copy of the fflayer_start
+      layer.
+    final_ln_tpl: Parameterization of the final layer norm.
   """
 
   # TODO(nanxinchen): add causal support
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dims: Input dimension.
-      model_dims: Encoder model dimension.
-      kernel_size: Conv kernel size.
-      ff_activation_tpl: Activation function used in the feedforward network.
-      ff_residual_weight: Residual weight used in the fflayer.
-      ffn_dim_multiplier: Feed forward hidden dimension will be
-        ffn_dim_multiplier * model_dims.
-      atten_num_heads: Number of attention heads.
-      layer_order: Only mhsa, conv, mhsa_before_conv or conv_before_mhsa are
-        supported
-      dropout_prob: Dropout prob of inner components.
-      conv_residual_dropout: Conv block residual dropout. Will be overwritten by
-        p.dropout if it is not None.
-      atten_residual_dropout: Attention block residual dropout. Will be
-        overwritten by p.dropout if it is not None.
-      ffn_residual_dropout: Feed forward block residual dropout. Will be
-        overwritten by p.dropout if it is not None.
-      atten_dropout: Dropout in Attention layer. Will be overwritten by
-        p.dropout if it is not None.
-      ffn_relu_dropout: Post activation dropout in Feed-forward layer. Will be
-        overwritten by p.dropout if it is not None.
-      fflayer_start_tpl: Parameterization for the Feed forward layer at the
-        beginning. If set to None, this layer is excluded.
-      trans_atten_tpl: Parameterization of self-attention layer.
-      lconv_tpl: Parameterization of convolution layer. If set to None, this
-        layer is excluded.
-      fflayer_end_tpl: Parameterization for Feed forward layer at the end. If
-        set to None, this layer is excluded.
-      fflayer_weight_sharing: If True, will ignore `fflayer_end_tpl`, and will
-        make the fflayer_end layer as a weight-shared copy of the fflayer_start
-        layer.
-      final_ln_tpl: Parameterization of the final layer norm.
-    """
-    input_dims: Optional[int] = None
-    model_dims: int = 512
-    kernel_size: int = 32
-    ff_activation_tpl: activations.BaseActivation.HParams = sub_config_field(
-        activations.Swish.HParams)
-    ff_residual_weight: float = 0.5
-    ffn_dim_multiplier: int = 4
-    atten_num_heads: int = 8
-    layer_order: str = 'mhsa_before_conv'
-    dropout_prob: Optional[float] = None
-    conv_residual_dropout: Optional[float] = None
-    atten_residual_dropout: Optional[float] = None
-    ffn_residual_dropout: Optional[float] = None
-    atten_dropout: Optional[float] = None
-    ffn_relu_dropout: Optional[float] = None
-    fflayer_start_tpl: Optional[BaseHParams] = sub_config_field(
-        transformers.TransformerFeedForward.HParams)
-    trans_atten_tpl: BaseHParams = sub_config_field(
-        SelfAttentionWithNormAndResidual.HParams)
-    lconv_tpl: Optional[BaseHParams] = sub_config_field(
-        convolutions.LightConv1D.HParams)
-    fflayer_end_tpl: Optional[BaseHParams] = sub_config_field(
-        transformers.TransformerFeedForward.HParams)
-    fflayer_weight_sharing: bool = False
-    final_ln_tpl: BaseHParams = sub_config_field(
-        normalizations.LayerNorm.HParams)
+  input_dims: Optional[int] = None
+  model_dims: int = 512
+  kernel_size: int = 32
+  ff_activation_tpl: pax_fiddle.Config[
+      activations.BaseActivation] = sub_config_field(activations.Swish.HParams)
+  ff_residual_weight: float = 0.5
+  ffn_dim_multiplier: int = 4
+  atten_num_heads: int = 8
+  layer_order: str = 'mhsa_before_conv'
+  dropout_prob: Optional[float] = None
+  conv_residual_dropout: Optional[float] = None
+  atten_residual_dropout: Optional[float] = None
+  ffn_residual_dropout: Optional[float] = None
+  atten_dropout: Optional[float] = None
+  ffn_relu_dropout: Optional[float] = None
+  fflayer_start_tpl: Optional[LayerTpl] = sub_config_field(
+      transformers.TransformerFeedForward.HParams)
+  trans_atten_tpl: LayerTpl = sub_config_field(
+      SelfAttentionWithNormAndResidual.HParams)
+  lconv_tpl: Optional[LayerTpl] = sub_config_field(
+      convolutions.LightConv1D.HParams)
+  fflayer_end_tpl: Optional[LayerTpl] = sub_config_field(
+      transformers.TransformerFeedForward.HParams)
+  fflayer_weight_sharing: bool = False
+  final_ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
 
   def _dropout_prob(self, prob):
     p = self.hparams

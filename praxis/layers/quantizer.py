@@ -93,7 +93,7 @@ def quantize_vector(latent: JTensor, codebook: JTensor):
   return quantized, codes, one_hot
 
 
-class RandomVectorQuantizer(base_layer.BaseLayer):
+class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
   """Random quantization for BEST-RQ: https://arxiv.org/pdf/2202.01855.pdf.
 
   Symbols in comments:
@@ -104,50 +104,44 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
   D:   projection_dim.
   H:   per-group projection dim.
   V:   num_latent_classes.
+
+  Attributes:
+    latent_dim:          Input dimension.
+    projection_dim:      Projection dimension.
+    num_latent_classes:  Number of random quantized classes.
+    num_groups:          Number of quantized projections
+    stack_ratio:         Stacking layer ratio.
+
+    codebook_init:       Initialization for codebook.
+    low_rank_codebook:   If true, when num_groups is 1, the shape of the
+      codebook weight is [num_latent_classes, projection_dim] instead of
+      [num_latent_classes, 1, projection_dim]. This is for checkpoint
+      compatibility with old models.
+    plot_codebook:       Whether to plot the codebook as an image summary.
+
+    normalize_latent_vector:    Normalize the L2 norm of each latent input
+      vector to 1.
+    normalize_codebook:         Normalize the L2 norm of each codebook vector
+      to 1.
+    normalize_latent_per_group: If True, do per-group l2 normalize for the
+      latent vector (the codebook is already done per-group). The only reason
+      for setting this to False is backwards-compatibility.
   """
+  latent_dim: Optional[int] = None
+  projection_dim: int = 16
+  num_latent_classes: Optional[int] = None
+  num_groups: int = 1
+  stack_ratio: int = 1
+  codebook_init: WeightInit = dataclasses.field(
+      default_factory=WeightInit.Gaussian)
+  low_rank_codebook: bool = False
+  plot_codebook: bool = False
 
-  class HParams(BaseHParams):
-    # pyformat: disable
-    """Associated hyper-params for this layer class.
+  normalize_latent_vector: bool = False
+  normalize_codebook: bool = False
+  normalize_latent_per_group: bool = True
 
-    Attributes:
-      latent_dim:          Input dimension.
-      projection_dim:      Projection dimension.
-      num_latent_classes:  Number of random quantized classes.
-      num_groups:          Number of quantized projections
-      stack_ratio:         Stacking layer ratio.
-
-      codebook_init:       Initialization for codebook.
-      low_rank_codebook:   If true, when num_groups is 1, the shape of the
-        codebook weight is [num_latent_classes, projection_dim] instead of
-        [num_latent_classes, 1, projection_dim]. This is for checkpoint
-        compatibility with old models.
-      plot_codebook:       Whether to plot the codebook as an image summary.
-
-      normalize_latent_vector:    Normalize the L2 norm of each latent input
-        vector to 1.
-      normalize_codebook:         Normalize the L2 norm of each codebook vector
-        to 1.
-      normalize_latent_per_group: If True, do per-group l2 normalize for the
-        latent vector (the codebook is already done per-group). The only reason
-        for setting this to False is backwards-compatibility.
-    """
-    latent_dim:              Optional[int] = None
-    projection_dim:          int = 16
-    num_latent_classes:      Optional[int] = None
-    num_groups:              int = 1
-    stack_ratio:             int = 1
-    codebook_init:           WeightInit = dataclasses.field(
-        default_factory=WeightInit.Gaussian)
-    low_rank_codebook:       bool = False
-    plot_codebook:           bool = False
-
-    normalize_latent_vector:        bool = False
-    normalize_codebook:             bool = False
-    normalize_latent_per_group:     bool = True
-    # pyformat: enable
-
-  class WeightShardingHParams(BaseWtShardingHParams):
+  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -156,7 +150,8 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     """
     vgh: SplitDimsMapping = None
 
-  class ActivationShardingHParams(BaseActShardingHParams):
+  class ActivationShardingHParams(
+      base_layer.FiddleBaseLayer.ActivationShardingHParams):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -336,7 +331,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     return jax.lax.stop_gradient(jnp.reshape(latent, [b, t, -1]))
 
 
-class VectorQuantizer(base_layer.BaseLayer):
+class VectorQuantizer(base_layer.FiddleBaseLayer):
   """The VQ-VAE sequence vector quantizer.
 
   https://arxiv.org/abs/1711.00937
@@ -347,39 +342,32 @@ class VectorQuantizer(base_layer.BaseLayer):
   D: latent_dim.
   C: num_latent_classes.
   G: num of codebook groups.
+
+  Attributes:
+    num_latent_classes: Number of latent classes.
+    latent_dim:         Latent vector dimension.
+    beta:               Scale of the commitment loss.
+    num_groups:         Num of codebook groups.
+
+    normalize_latent_vector: Normalize the L2 norm of each latent input vector
+      to 1.
+    normalize_codebook:      Normalize the L2 norm of each codebook vector
+      to 1.
+    normalize_latent_per_group: If True, do per-group l2 normalize for the
+      latent vector (the codebook is already done per-group). The only reason
+      for setting this to False is backwards-compatibility.
   """
 
-  class HParams(BaseHParams):
-    # pyformat: disable
-    """Associated hyper-params for this layer class.
+  num_latent_classes: Optional[int] = None
+  latent_dim: Optional[int] = None
+  beta: Optional[float] = None
+  num_groups: int = 1
 
-    Attributes:
-      num_latent_classes: Number of latent classes.
-      latent_dim:         Latent vector dimension.
-      beta:               Scale of the commitment loss.
-      num_groups:         Num of codebook groups.
+  normalize_latent_vector: bool = True
+  normalize_codebook: bool = True
+  normalize_latent_per_group: bool = True
 
-      normalize_latent_vector: Normalize the L2 norm of each latent input vector
-        to 1.
-      normalize_codebook:      Normalize the L2 norm of each codebook vector
-        to 1.
-      normalize_latent_per_group: If True, do per-group l2 normalize for the
-        latent vector (the codebook is already done per-group). The only reason
-        for setting this to False is backwards-compatibility.
-    """
-    _attribute_overrides = ('params_init',)
-
-    num_latent_classes:      Optional[int] = None
-    latent_dim:              Optional[int] = None
-    beta:                    Optional[float] = None
-    num_groups:              int = 1
-
-    normalize_latent_vector:        bool = True
-    normalize_codebook:             bool = True
-    normalize_latent_per_group:     bool = True
-
-    params_init: WeightInit = pax_fiddle.sub_field(WeightInit.UniformSqrtDim)
-    # pyformat: enable
+  params_init: WeightInit = pax_fiddle.sub_field(WeightInit.UniformSqrtDim)
 
   def setup(self) -> None:
     p = self.hparams

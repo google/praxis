@@ -35,16 +35,13 @@ NestedJTensor = pytypes.NestedJTensor
 
 
 class Linear(linears.Linear):
-  """Quantized Linear layer without bias."""
+  """Quantized Linear layer without bias.
 
-  class HParams(linears.Linear.HParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-      quantization: Information related to the quantization applied to this
-        layer, such as the mode for the quantization.
-    """
-    quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  Attributes:
+    quantization: Information related to the quantization applied to this layer,
+      such as the mode for the quantization.
+  """
+  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
   def create_tensor_quantizers(self):
     p = self.hparams

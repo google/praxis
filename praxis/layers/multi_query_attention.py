@@ -22,6 +22,7 @@ import jax
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import pytypes
 from praxis.layers import attentions
 from praxis.layers import embedding_softmax
@@ -30,6 +31,7 @@ from praxis.layers import stochastics
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 JTensor = pytypes.JTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
@@ -38,23 +40,19 @@ BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
 
 
-class OneHeadedAttentionProjection(base_layer.BaseLayer):
+class OneHeadedAttentionProjection(base_layer.FiddleBaseLayer):
   """Layer that computes projection with one head.
 
   This layer is expected to be used within MultiQueryAttention below.
+
+  Attributes:
+    input_dim: Input dimension.
+    output_dim: Size of output.
+    use_bias: Whether to add bias in projection or not.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dim: Input dimension.
-      output_dim: Size of output.
-      use_bias: Whether to add bias in projection or not.
-    """
-    input_dim: int = 0
-    output_dim: int = 0
-    use_bias: bool = True
+  input_dim: int = 0
+  output_dim: int = 0
+  use_bias: bool = True
 
   def setup(self) -> None:
     p = self.hparams
@@ -104,7 +102,7 @@ class OneHeadedAttentionProjection(base_layer.BaseLayer):
     return ret
 
 
-class MultiQueryDotProductAttention(base_layer.BaseLayer):
+class MultiQueryDotProductAttention(base_layer.FiddleBaseLayer):
   """Dot-product attention sharing keys and values across heads.
 
   This implementation heavily uses einsum to be efficient on TPUs.  We use the
@@ -137,59 +135,54 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   probs:[B, N, T, S] = softmax(logits)
   context:[B, T, N, H] = einsum('BNTS,BSH->BTNH', probs, v_proj)
   Output y:[B, T, D] = einsum('BTNH,DNH>BTD', context, Wout)
+
+  Attributes:
+    input_dim: An integer or a dict of integer values as number of input
+      nodes. If input_dim is a dict, keys must be key, value and query.
+    hidden_dim: Number of hidden nodes.
+    num_heads: Number of attention heads.
+    dim_per_head: Dimension of each attention head. If None then dim_per_head
+      == hidden_dim // num_heads.
+    dropout_tpl: Parameterization for the dropout layer.
+    atten_dropout_prob: Probability at which we apply dropout to the attention
+      weights.
+    proj_tpl: Parameterization for the query projection_tpl layer.
+    headless_proj_tpl: Parameterization for the key/value projection_tpl
+      layer.
+    use_bias: Whether to use bias for projection_tpl layers.
+    output_proj_use_nhd_shape: Whether to use NHD variable shape in output
+      projection layer.
+    internal_enable_query_scale: Internal. Enable scaling of query vector.
+    atten_logit_cap: Cap the absolute values of logits by tanh. Enabled when a
+      positive value is specified. May not be supported by a subclass.
+    use_rotary_position_emb: Whether to add rotary position embedding to the
+      queries and keys before computing self attention scores. This was
+      proposed in https://arxiv.org/abs/2104.09864.
+    relative_bias_tpl: Optional parameterization of relative bias.
+    attention_extra_logit: Extra logit for attention softmax.
+    combine_qkv: Whether to combine qkv tensor for optimizing qkv input
+      gradient computation with SPMD. Only supports self-attention.
+    Note: dconv_qkv and ngrammer are not supported.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dim: An integer or a dict of integer values as number of input
-        nodes. If input_dim is a dict, keys must be key, value and query.
-      hidden_dim: Number of hidden nodes.
-      num_heads: Number of attention heads.
-      dim_per_head: Dimension of each attention head. If None then dim_per_head
-        == hidden_dim // num_heads.
-      dropout_tpl: Parameterization for the dropout layer.
-      atten_dropout_prob: Probability at which we apply dropout to the attention
-        weights.
-      proj_tpl: Parameterization for the query projection_tpl layer.
-      headless_proj_tpl: Parameterization for the key/value projection_tpl
-        layer.
-      use_bias: Whether to use bias for projection_tpl layers.
-      output_proj_use_nhd_shape: Whether to use NHD variable shape in output
-        projection layer.
-      internal_enable_query_scale: Internal. Enable scaling of query vector.
-      atten_logit_cap: Cap the absolute values of logits by tanh. Enabled when a
-        positive value is specified. May not be supported by a subclass.
-      use_rotary_position_emb: Whether to add rotary position embedding to the
-        queries and keys before computing self attention scores. This was
-        proposed in https://arxiv.org/abs/2104.09864.
-      relative_bias_tpl: Optional parameterization of relative bias.
-      attention_extra_logit: Extra logit for attention softmax.
-      combine_qkv: Whether to combine qkv tensor for optimizing qkv input
-        gradient computation with SPMD. Only supports self-attention.
-      Note: dconv_qkv and ngrammer are not supported.
-    """
-    input_dim: Union[int, Dict[str, int]] = 0
-    hidden_dim: int = 0
-    num_heads: int = 1
-    dim_per_head: Optional[int] = None
-    dropout_tpl: BaseHParams = sub_config_field(stochastics.Dropout.HParams)
-    atten_dropout_prob: float = 0.0
-    proj_tpl: BaseHParams = sub_config_field(
-        attentions.AttentionProjection.HParams)
-    headless_proj_tpl: BaseHParams = sub_config_field(
-        OneHeadedAttentionProjection.HParams)
-    internal_gshard_gaussian_init: bool = False
-    use_bias: bool = True
-    output_proj_use_nhd_shape: bool = False
-    internal_enable_query_scale: bool = True
-    atten_logit_cap: float = 0.0
-    use_rotary_position_emb: bool = False
-    relative_bias_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
-    attention_extra_logit: Optional[float] = None
-    dconv_qkv: bool = False
-    combine_qkv: bool = False
+  input_dim: Union[int, Dict[str, int]] = 0
+  hidden_dim: int = 0
+  num_heads: int = 1
+  dim_per_head: Optional[int] = None
+  dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  atten_dropout_prob: float = 0.0
+  proj_tpl: LayerTpl = sub_config_field(attentions.AttentionProjection.HParams)
+  headless_proj_tpl: LayerTpl = sub_config_field(
+      OneHeadedAttentionProjection.HParams)
+  internal_gshard_gaussian_init: bool = False
+  use_bias: bool = True
+  output_proj_use_nhd_shape: bool = False
+  internal_enable_query_scale: bool = True
+  atten_logit_cap: float = 0.0
+  use_rotary_position_emb: bool = False
+  relative_bias_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  attention_extra_logit: Optional[float] = None
+  dconv_qkv: bool = False
+  combine_qkv: bool = False
 
   # SPMD partition related params.
   #
@@ -199,7 +192,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   # b - batch_size
   # l - seq_len
 
-  class WeightShardingHParams(BaseWtShardingHParams):
+  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -212,7 +205,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     dconv: SplitDimsMapping = None
     proj_headless: SplitDimsMapping = None
 
-  class ActivationShardingHParams(BaseActShardingHParams):
+  class ActivationShardingHParams(
+      base_layer.FiddleBaseLayer.ActivationShardingHParams):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:

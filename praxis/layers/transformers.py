@@ -26,6 +26,7 @@ from jax.ad_checkpoint import checkpoint_name
 import numpy as np
 from praxis import base_layer
 from praxis import gshard_utils
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations as activations_lib
@@ -42,6 +43,7 @@ NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
@@ -224,68 +226,64 @@ def _get_sentence_embeddings(inputs: JTensor, segment_ids: JTensor) -> JTensor:
   return sentence_embeddings
 
 
-class TransformerFeedForward(base_layer.BaseLayer):
-  """Transformer feedforward layer with residual connection and dropout."""
+class TransformerFeedForward(base_layer.FiddleBaseLayer):
+  """Transformer feedforward layer with residual connection and dropout.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
+  Attributes:
+    input_dims: Depth of the input.
+    output_dims: Depth of the output. If unset or output_dims == input_dims,
+      there is no residual projection layer. Otherwise, add a residual
+      projection layer followed by batch normalization.
+    hidden_dims: Hidden dimension of FFN.
+    has_bias: Adds bias weights to Feedforward or not.
+    apply_padding_first: Apply padding to inputs before everything else or not.
+      For example, it is better to apply padding before batch norm.
+    activation_tpl: Activation function to use.
+    use_gated_activation: Boolean indicating whether to use a gated activation
+      function for the second feedforward layer or not.
+    fflayer_tpl: Parameterization of the feedforward layer.
+    ln_tpl: Parameterization of the layer normalization layer. Other options
+      include RmsNorm as well.
+    residual_dropout_prob: Residual dropout.
+    relu_dropout_tpl: Parameterization of the relu dropout layer. keep_prop will
+      be reset to (1.0 - relu_dropout_prob).
+    relu_dropout_prob: FFN dropout.
+    residual_dropout_tpl: Parameterization of the residual dropout params
+      template. keep_prop will be reset to (1.0 - residual_dropout_prob).
+    add_skip_connection: Whether to add residual connection.
+    residual_weight: Weight of the residual connection. Output = fn(x) *
+      residual_weight + x.
+    residual_droppath_prob: Probability at which we drop the entire residual
+      path.
+    norm_policy: Policy for applying normaliztion wrt. transformations. Options
+      are: (1) "pre", applied before transformation. (2) "primer_hybrid",
+      applied before and after transformation. (3) "post", applied after
+      transformation.
+    internal_gshard_variance_scaling_fan_in_init: Feedforward weight init
+      follows uniform distribution withbound = 1.0 / sqrt(3 / dim_0).
+  """
+  input_dims: int = 0
+  output_dims: int = 0
+  hidden_dims: int = 0
+  has_bias: bool = True
+  apply_padding_first: bool = False
+  activation_tpl: pax_fiddle.Config[
+      activations_lib.BaseActivation] = sub_config_field(
+          activations_lib.ReLU.HParams)
+  use_gated_activation: bool = False
+  fflayer_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
+  ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  residual_dropout_prob: float = 0.0
+  relu_dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  relu_dropout_prob: float = 0.0
+  residual_dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  add_skip_connection: bool = True
+  residual_weight: float = 1.0
+  residual_droppath_prob: float = 0.0
+  norm_policy: str = 'pre'
+  internal_gshard_variance_scaling_fan_in_init: bool = False
 
-    Attributes:
-      input_dims: Depth of the input.
-      output_dims: Depth of the output. If unset or output_dims == input_dims,
-        there is no residual projection layer. Otherwise, add a residual
-        projection layer followed by batch normalization.
-      hidden_dims: Hidden dimension of FFN.
-      has_bias: Adds bias weights to Feedforward or not.
-      apply_padding_first: Apply padding to inputs before everything else or
-        not. For example, it is better to apply padding before batch norm.
-      activation_tpl: Activation function to use.
-      use_gated_activation: Boolean indicating whether to use a gated activation
-        function for the second feedforward layer or not.
-      fflayer_tpl: Parameterization of the feedforward layer.
-      ln_tpl: Parameterization of the layer normalization layer. Other options
-        include RmsNorm as well.
-      residual_dropout_prob: Residual dropout.
-      relu_dropout_tpl: Parameterization of the relu dropout layer. keep_prop
-        will be reset to (1.0 - relu_dropout_prob).
-      relu_dropout_prob: FFN dropout.
-      residual_dropout_tpl: Parameterization of the residual dropout params
-        template. keep_prop will be reset to (1.0 - residual_dropout_prob).
-      add_skip_connection: Whether to add residual connection.
-      residual_weight: Weight of the residual connection. Output = fn(x) *
-        residual_weight + x.
-      residual_droppath_prob: Probability at which we drop the entire residual
-        path.
-      norm_policy: Policy for applying normaliztion wrt. transformations.
-        Options are: (1) "pre", applied before transformation. (2)
-        "primer_hybrid", applied before and after transformation. (3) "post",
-        applied after transformation.
-      internal_gshard_variance_scaling_fan_in_init: Feedforward weight init
-        follows uniform distribution withbound = 1.0 / sqrt(3 / dim_0).
-    """
-    input_dims: int = 0
-    output_dims: int = 0
-    hidden_dims: int = 0
-    has_bias: bool = True
-    apply_padding_first: bool = False
-    activation_tpl: activations_lib.BaseActivation.HParams = sub_config_field(
-        activations_lib.ReLU.HParams)
-    use_gated_activation: bool = False
-    fflayer_tpl: BaseHParams = sub_config_field(linears.FeedForward.HParams)
-    ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
-    residual_dropout_prob: float = 0.0
-    relu_dropout_tpl: BaseHParams = sub_config_field(
-        stochastics.Dropout.HParams)
-    relu_dropout_prob: float = 0.0
-    residual_dropout_tpl: BaseHParams = sub_config_field(
-        stochastics.Dropout.HParams)
-    add_skip_connection: bool = True
-    residual_weight: float = 1.0
-    residual_droppath_prob: float = 0.0
-    norm_policy: str = 'pre'
-    internal_gshard_variance_scaling_fan_in_init: bool = False
-
-  class WeightShardingHParams(BaseWtShardingHParams):
+  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -295,7 +293,8 @@ class TransformerFeedForward(base_layer.BaseLayer):
     ffn0: SplitDimsMapping = None
     ffn1: SplitDimsMapping = None
 
-  class ActivationShardingHParams(BaseActShardingHParams):
+  class ActivationShardingHParams(
+      base_layer.FiddleBaseLayer.ActivationShardingHParams):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -462,7 +461,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
     return projected_inputs
 
 
-class TransformerFeedForwardMoe(base_layer.BaseLayer):
+class TransformerFeedForwardMoe(base_layer.FiddleBaseLayer):
   """A sharded MoE Layer.
 
   This is a drop-in replacement of the transformer feedforward layer. It is a
@@ -472,101 +471,96 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
   moe_output = moe(ln_inputs)
   drop_output = dropout(moe_output)
   output = inputs + drop_output
+
+  Attributes:
+    input_dims: Dimension of the layer input.
+    hidden_dims: Dimension of the hidden layer.
+    apply_padding_first: Apply padding to inputs before everything else or
+      not. For example, it is better to apply padding before batch norm.
+    ln_tpl: Parameterization of the layer normalization layer.
+    activation_tpl: Activation function to use.
+    relu_dropout_tpl: Parameterization of the relu dropout layer. keep_prop
+      will be reset to (1.0 - relu_dropout_prob).
+    relu_dropout_prob: Probability at which we apply dropout to the hidden
+      layer of feedforward network..
+    residual_dropout_tpl: Parameterization of the residual dropout params
+      template. keep_prop will be reset to (1.0 - residual_dropout_prob).
+    residual_dropout_prob: Probability at which we apply dropout to the
+      residual layers, such that, residual(x, y) = (x + dropout(y)).
+    add_skip_connection: If True, add skip_connection from input to output.
+    residual_weight: Weight applied on residual connection. Final output is
+      residual_weight * residual_fn(x) + x. Only in effect when
+      add_skip_connection is True.
+    norm_policy: Policy for applying normaliztion wrt. transformations.
+      Options are: (1) "pre", applied before transformation. (2)
+      "primer_hybrid", applied before and after transformation. (3) "post",
+      applied after transformation.
+    residual_droppath_prob: Probability at which we drop the entire residual
+      path.
+    gating_func: Gating function type--can be one of the following options:
+      'top2', based on the GShard paper: https://arxiv.org/abs/2006.16668,
+      'expert_choice', based on https://arxiv.org/abs/2202.09368,
+      'dense_top2': experimental gating function for decodiing. Similar to
+      'top2' gating, but no capacity constrainst for each expert.
+    num_experts: Total number of experts in this layer.
+    num_groups: Total number of groups for dispatching. num_groups typically
+      should be the same as num devices.
+    min_group_size: If not None, num_groups will be adjusted so that there
+      will be at least min_group_size tokens in each group.
+    expert_capacity_dim: Internal. Exact expert capacity. Setting non-zero
+      unadjusted_expert_capacity_factor is a preferred way.
+    unadjusted_expert_capacity_factor: Expert capacity factor. This is the
+      ratio between global batch size and total capacity across all experts
+      and all routing groups. If the global batch size is G*S (num_groups*
+      group_size) or B*L(batch*length) and the total expert capacity across
+      all routing groups is E*G*C (num_experts*num_groups*expert_capacity),
+      then unadjusted_expert_capacity_factor == (E*G*C)/(G*S)
+      unadjusted_expert_capacity_factor is set to 2 by default for top-2
+      routing.
+    expert_weight_shards: Shard each expert params into this many number of
+      shards to reduce the size of individual weight params.
+    second_expert_policy: How to pick second expert: all, sampling or random.
+    internal_gshard_variance_scaling_fan_in_init: Internal. Do not use. To
+      study MoE layer init.
+    moe_load_balance_loss_weight: Weight for the load balancing loss of the
+      MoE layer.
+    gating_logit_cap:  Cap the absolute values of MoE gating logits by tanh.
+      Enabled when a positive value is specified.
+    moe_gating_embedding_level: Specifies the type of MOE gating embedding
+    used.
+    See Section 3.1 https://arxiv.org/pdf/2110.03742.pdf.
+    Options are:
+      (1) "token" -> The gating function uses tokens to route.
+      (2) "sentence" -> The gating function uses the sentence embeddings,
+          calculated by taking the average token representation, to route.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dims: Dimension of the layer input.
-      hidden_dims: Dimension of the hidden layer.
-      apply_padding_first: Apply padding to inputs before everything else or
-        not. For example, it is better to apply padding before batch norm.
-      ln_tpl: Parameterization of the layer normalization layer.
-      activation_tpl: Activation function to use.
-      relu_dropout_tpl: Parameterization of the relu dropout layer. keep_prop
-        will be reset to (1.0 - relu_dropout_prob).
-      relu_dropout_prob: Probability at which we apply dropout to the hidden
-        layer of feedforward network..
-      residual_dropout_tpl: Parameterization of the residual dropout params
-        template. keep_prop will be reset to (1.0 - residual_dropout_prob).
-      residual_dropout_prob: Probability at which we apply dropout to the
-        residual layers, such that, residual(x, y) = (x + dropout(y)).
-      add_skip_connection: If True, add skip_connection from input to output.
-      residual_weight: Weight applied on residual connection. Final output is
-        residual_weight * residual_fn(x) + x. Only in effect when
-        add_skip_connection is True.
-      norm_policy: Policy for applying normaliztion wrt. transformations.
-        Options are: (1) "pre", applied before transformation. (2)
-        "primer_hybrid", applied before and after transformation. (3) "post",
-        applied after transformation.
-      residual_droppath_prob: Probability at which we drop the entire residual
-        path.
-      gating_func: Gating function type--can be one of the following options:
-        'top2', based on the GShard paper: https://arxiv.org/abs/2006.16668,
-        'expert_choice', based on https://arxiv.org/abs/2202.09368,
-        'dense_top2': experimental gating function for decodiing. Similar to
-        'top2' gating, but no capacity constrainst for each expert.
-      num_experts: Total number of experts in this layer.
-      num_groups: Total number of groups for dispatching. num_groups typically
-        should be the same as num devices.
-      min_group_size: If not None, num_groups will be adjusted so that there
-        will be at least min_group_size tokens in each group.
-      expert_capacity_dim: Internal. Exact expert capacity. Setting non-zero
-        unadjusted_expert_capacity_factor is a preferred way.
-      unadjusted_expert_capacity_factor: Expert capacity factor. This is the
-        ratio between global batch size and total capacity across all experts
-        and all routing groups. If the global batch size is G*S (num_groups*
-        group_size) or B*L(batch*length) and the total expert capacity across
-        all routing groups is E*G*C (num_experts*num_groups*expert_capacity),
-        then unadjusted_expert_capacity_factor == (E*G*C)/(G*S)
-        unadjusted_expert_capacity_factor is set to 2 by default for top-2
-        routing.
-      expert_weight_shards: Shard each expert params into this many number of
-        shards to reduce the size of individual weight params.
-      second_expert_policy: How to pick second expert: all, sampling or random.
-      internal_gshard_variance_scaling_fan_in_init: Internal. Do not use. To
-        study MoE layer init.
-      moe_load_balance_loss_weight: Weight for the load balancing loss of the
-        MoE layer.
-      gating_logit_cap:  Cap the absolute values of MoE gating logits by tanh.
-        Enabled when a positive value is specified.
-      moe_gating_embedding_level: Specifies the type of MOE gating embedding
-      used.
-      See Section 3.1 https://arxiv.org/pdf/2110.03742.pdf.
-      Options are:
-        (1) "token" -> The gating function uses tokens to route.
-        (2) "sentence" -> The gating function uses the sentence embeddings,
-            calculated by taking the average token representation, to route.
-    """
-    input_dims: int = 0
-    hidden_dims: int = 0
-    apply_padding_first: bool = False
-    ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
-    activation_tpl: activations_lib.BaseActivation.HParams = sub_config_field(
-        activations_lib.ReLU.HParams)
-    relu_dropout_tpl: BaseHParams = sub_config_field(
-        stochastics.Dropout.HParams)
-    relu_dropout_prob: float = 0.0
-    residual_dropout_tpl: BaseHParams = sub_config_field(
-        stochastics.Dropout.HParams)
-    residual_dropout_prob: float = 0.0
-    add_skip_connection: bool = True
-    residual_weight: float = 1.0
-    norm_policy: str = 'pre'
-    residual_droppath_prob: float = 0.0
-    gating_func: str = 'top2'
-    num_experts: int = 0
-    num_groups: int = 0
-    min_group_size: Optional[int] = None
-    expert_capacity_dim: int = 0
-    unadjusted_expert_capacity_factor: float = 2.0
-    expert_weight_shards: int = 1
-    second_expert_policy: str = 'all'
-    internal_gshard_variance_scaling_fan_in_init: bool = True
-    moe_load_balance_loss_weight: float = 1.0
-    gating_logit_cap: float = 0.0
-    moe_gating_embedding_level: str = 'token'
+  input_dims: int = 0
+  hidden_dims: int = 0
+  apply_padding_first: bool = False
+  ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  activation_tpl: pax_fiddle.Config[
+      activations_lib.BaseActivation] = sub_config_field(
+          activations_lib.ReLU.HParams)
+  relu_dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  relu_dropout_prob: float = 0.0
+  residual_dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  residual_dropout_prob: float = 0.0
+  add_skip_connection: bool = True
+  residual_weight: float = 1.0
+  norm_policy: str = 'pre'
+  residual_droppath_prob: float = 0.0
+  gating_func: str = 'top2'
+  num_experts: int = 0
+  num_groups: int = 0
+  min_group_size: Optional[int] = None
+  expert_capacity_dim: int = 0
+  unadjusted_expert_capacity_factor: float = 2.0
+  expert_weight_shards: int = 1
+  second_expert_policy: str = 'all'
+  internal_gshard_variance_scaling_fan_in_init: bool = True
+  moe_load_balance_loss_weight: float = 1.0
+  gating_logit_cap: float = 0.0
+  moe_gating_embedding_level: str = 'token'
 
   # SPMD partition related params.
   # M - model_dim, for both inputs and outputs
@@ -576,7 +570,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
   # H - hidden dim
   # S - sequence dim
 
-  class WeightShardingHParams(BaseWtShardingHParams):
+  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -591,7 +585,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     emh: SplitDimsMapping = None
     ehm: SplitDimsMapping = None
 
-  class ActivationShardingHParams(BaseActShardingHParams):
+  class ActivationShardingHParams(
+      base_layer.FiddleBaseLayer.ActivationShardingHParams):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -1023,72 +1018,67 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     return out
 
 
-class Transformer(base_layer.BaseLayer):
-  """Transformer layer with multi-headed attention."""
+class Transformer(base_layer.FiddleBaseLayer):
+  """Transformer layer with multi-headed attention.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dims: Dimension of the transformer block input.
-      hidden_dims: Hidden dimension of FFN layer.
-      num_heads: Number of heads in self-attention.
-      dim_per_head: Dimension of each attention head. If None then dim_per_head
-        == hidden_dim // num_heads.
-      dropout_tpl: Residual dropout params template. keep_prop will be reset to
-        (1.0 - residual_dropout_prob).
-      atten_dropout_prob: Probability at which we apply dropout to the attention
-        weights.
-      residual_dropout_prob: Probability at which we apply dropout to the
-        residual layers, such that, residual(x, y) = (x + dropout(y)).
-      relu_dropout_prob: Probability at which we apply dropout to the FFN
-        layers.
-      residual_droppath_prob: Probability at which we drop the entire residual
-        path.
-      mask_self_attention: If True, use causal mask.
-      cross_attention: If True, perform cross encoder-decoder attention.
-      allow_skip_cross_attention: If True, allow skipping cross attention during
-        forward pass and decoding. This allows to skip cross attention when
-        cross inputs are not available. For example, if we want to train the
-        model with paired data and unimodal data. For paired data, we need cross
-        attention but for unimodal data, we don't have cross inputs.
-      cross_atten_tpl: Optional cross attention params template that can be set
-        when cross attention is enabled. If cross-attention is enabled and this
-        is set to None, then cross-attention params will be inherited from
-        tr_atten_tpl.
-      ln_tpl: Parameterization of the layer normalization layer.
-      norm_policy: Policy for applying normaliztion wrt. transformations.
-        Options are: (1) "pre", applied before transformation. (2)
-        "primer_hybrid", applied before and after transformation. (3) "post",
-        applied after transformation.
-      tr_atten_tpl: Parameterization of the DotProductAttention layer.
-      packed_input: If True, each training example may pack multiple sequences.
-      tr_fflayer_tpl: Parameterization of the transformer Feed-Forward Layer.
-      ngrammer_tpl: Params for the Ngrammer layer. This param must correspond to
-        the VQNgrammer layer. If this is None, then there is no NGrammer layer
-        present in this layer.
-    """
-    input_dims: int = 0
-    hidden_dims: int = 0
-    num_heads: Optional[int] = None
-    dim_per_head: Optional[int] = None
-    dropout_tpl: BaseHParams = sub_config_field(stochastics.Dropout.HParams)
-    atten_dropout_prob: float = 0.0
-    residual_dropout_prob: float = 0.0
-    relu_dropout_prob: float = 0.0
-    residual_droppath_prob: float = 0.0
-    mask_self_attention: bool = False
-    use_cross_attention: bool = False
-    allow_skip_cross_attention: bool = False
-    cross_atten_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
-    ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
-    norm_policy: str = 'pre'
-    tr_atten_tpl: BaseHParams = sub_config_field(
-        attentions.DotProductAttention.HParams)
-    packed_input: bool = False
-    tr_fflayer_tpl: BaseHParams = sub_config_field(
-        TransformerFeedForward.HParams)
-    ngrammer_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
+  Attributes:
+    input_dims: Dimension of the transformer block input.
+    hidden_dims: Hidden dimension of FFN layer.
+    num_heads: Number of heads in self-attention.
+    dim_per_head: Dimension of each attention head. If None then dim_per_head ==
+      hidden_dim // num_heads.
+    dropout_tpl: Residual dropout params template. keep_prop will be reset to
+      (1.0 - residual_dropout_prob).
+    atten_dropout_prob: Probability at which we apply dropout to the attention
+      weights.
+    residual_dropout_prob: Probability at which we apply dropout to the residual
+      layers, such that, residual(x, y) = (x + dropout(y)).
+    relu_dropout_prob: Probability at which we apply dropout to the FFN layers.
+    residual_droppath_prob: Probability at which we drop the entire residual
+      path.
+    mask_self_attention: If True, use causal mask.
+    cross_attention: If True, perform cross encoder-decoder attention.
+    allow_skip_cross_attention: If True, allow skipping cross attention during
+      forward pass and decoding. This allows to skip cross attention when cross
+      inputs are not available. For example, if we want to train the model with
+      paired data and unimodal data. For paired data, we need cross attention
+      but for unimodal data, we don't have cross inputs.
+    cross_atten_tpl: Optional cross attention params template that can be set
+      when cross attention is enabled. If cross-attention is enabled and this is
+      set to None, then cross-attention params will be inherited from
+      tr_atten_tpl.
+    ln_tpl: Parameterization of the layer normalization layer.
+    norm_policy: Policy for applying normaliztion wrt. transformations. Options
+      are: (1) "pre", applied before transformation. (2) "primer_hybrid",
+      applied before and after transformation. (3) "post", applied after
+      transformation.
+    tr_atten_tpl: Parameterization of the DotProductAttention layer.
+    packed_input: If True, each training example may pack multiple sequences.
+    tr_fflayer_tpl: Parameterization of the transformer Feed-Forward Layer.
+    ngrammer_tpl: Params for the Ngrammer layer. This param must correspond to
+      the VQNgrammer layer. If this is None, then there is no NGrammer layer
+      present in this layer.
+  """
+  input_dims: int = 0
+  hidden_dims: int = 0
+  num_heads: Optional[int] = None
+  dim_per_head: Optional[int] = None
+  dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  atten_dropout_prob: float = 0.0
+  residual_dropout_prob: float = 0.0
+  relu_dropout_prob: float = 0.0
+  residual_droppath_prob: float = 0.0
+  mask_self_attention: bool = False
+  use_cross_attention: bool = False
+  allow_skip_cross_attention: bool = False
+  cross_atten_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  norm_policy: str = 'pre'
+  tr_atten_tpl: LayerTpl = sub_config_field(
+      attentions.DotProductAttention.HParams)
+  packed_input: bool = False
+  tr_fflayer_tpl: LayerTpl = sub_config_field(TransformerFeedForward.HParams)
+  ngrammer_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
 
   def setup(self) -> None:
     p = self.hparams
@@ -1417,82 +1407,77 @@ class Transformer(base_layer.BaseLayer):
         max_prefix_size, right_align_fn)
 
 
-class StackedTransformer(base_layer.BaseLayer):
-  """A stack of Transformer layers."""
+class StackedTransformer(base_layer.FiddleBaseLayer):
+  """A stack of Transformer layers.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      use_cross_attention: If True, introduces cross encoder-decoder attention
-        layer.
-      mask_self_attention: Use masked self-attention.
-      num_layers: Number of layers in this stack.
-      model_dims: Model dimension in Transformer layers.
-      hidden_dims: The hidden layer dimension of FFN in Transformer layers.
-      num_heads: Number of attention heads.
-      dim_per_head: Dimension of each attention head. If None then dim_per_head
-        == hidden_dim // num_heads.
-      dropout_prob: Apply dropout at this prob at various places.
-      residual_droppath_prob: Probability at which we drop the entire residual
-        path.
-      input_dropout_prob: Dropout probability applied to the input before any
-        processing happens.
-      gating_func: Gating function type--can be one of the following options:
-        'top2', based on the GShard paper: https://arxiv.org/abs/2006.16668,
-        'expert_choice', based on https://arxiv.org/abs/2202.09368,
-        'dense_top2': experimental gating function for decodiing. Similar to
-        'top2' gating, but no capacity constrainst for each expert.
-      unadjusted_expert_capacity_factor: Unadjusted expert capacity_factor. This
-        is the ratio between global batch size and total capacity across all
-        experts and all routing groups.
-      transformer_layer_params_tpl: A template of Transformer.params, can be a
-        list of params of length equal to the num_layers or a factor of
-        num_layers. For a factor, the params are tiled as [a, a, ..., b,
-        b,...,].
-      packed_input: If True, each training example may pack multiple sequences.
-      fold_padding_with_segment_mask: If True then segment mask is supposed to
-        include the padding mask as well, i.e. treating PADs as one sequence and
-        non-PADs as another.
-      moe_layer_tpl: Template configuration for the moe feedforward layer.
-      num_experts: Total number of experts.
-      num_groups: Number of groups for dispathcing.
-      min_group_size: If not None, num_groups will be adjusted so that there
-        will be at least min_group_size tokens in each group.
-      moe_layers: List of MoE layer indices, e.g. [0, 2, 4].
-      ngrammer_tpls: Sequence of params for the Ngrammer layer. This param is
-        shared between the Ngrammer layer as well as the VQNgrammer layer. The
-        length of the sequence must match the number of attention layers. If an
-        entry in the sequence is None, then there is no NGrammer layer present
-        in that corresponding layer.
-    """
-    use_cross_attention: bool = False
-    mask_self_attention: bool = False
-    num_layers: int = 0
-    model_dims: int = 0
-    hidden_dims: int = 0
-    num_heads: int = 0
-    dim_per_head: Optional[int] = None
-    dropout_prob: float = 0.0
-    atten_dropout_prob: Optional[float] = None
-    residual_dropout_prob: Optional[float] = None
-    relu_dropout_prob: Optional[float] = None
-    residual_droppath_prob: float = 0.0
-    input_dropout_prob: float = 0.0
-    gating_func: str = 'top2'
-    unadjusted_expert_capacity_factor: float = 2.0
-    transformer_layer_params_tpl: Union[
-        BaseHParams,
-        Sequence[BaseHParams]] = sub_config_field(Transformer.HParams)
-    packed_input: bool = False
-    fold_padding_with_segment_mask: bool = False
-    moe_layer_tpl: BaseHParams = sub_config_field(
-        TransformerFeedForwardMoe.HParams)
-    num_experts: int = 0
-    num_groups: int = 1
-    min_group_size: Optional[int] = None
-    moe_layers: Optional[Sequence[int]] = ()
-    ngrammer_tpls: Optional[Sequence[BaseHParams]] = sub_config_field(None)
+  Attributes:
+    use_cross_attention: If True, introduces cross encoder-decoder attention
+      layer.
+    mask_self_attention: Use masked self-attention.
+    num_layers: Number of layers in this stack.
+    model_dims: Model dimension in Transformer layers.
+    hidden_dims: The hidden layer dimension of FFN in Transformer layers.
+    num_heads: Number of attention heads.
+    dim_per_head: Dimension of each attention head. If None then dim_per_head ==
+      hidden_dim // num_heads.
+    dropout_prob: Apply dropout at this prob at various places.
+    residual_droppath_prob: Probability at which we drop the entire residual
+      path.
+    input_dropout_prob: Dropout probability applied to the input before any
+      processing happens.
+    gating_func: Gating function type--can be one of the following options:
+      'top2', based on the GShard paper: https://arxiv.org/abs/2006.16668,
+      'expert_choice', based on https://arxiv.org/abs/2202.09368, 'dense_top2':
+      experimental gating function for decodiing. Similar to 'top2' gating, but
+      no capacity constrainst for each expert.
+    unadjusted_expert_capacity_factor: Unadjusted expert capacity_factor. This
+      is the ratio between global batch size and total capacity across all
+      experts and all routing groups.
+    transformer_layer_params_tpl: A template of Transformer.params, can be a
+      list of params of length equal to the num_layers or a factor of
+      num_layers. For a factor, the params are tiled as [a, a, ..., b, b,...,].
+    packed_input: If True, each training example may pack multiple sequences.
+    fold_padding_with_segment_mask: If True then segment mask is supposed to
+      include the padding mask as well, i.e. treating PADs as one sequence and
+      non-PADs as another.
+    moe_layer_tpl: Template configuration for the moe feedforward layer.
+    num_experts: Total number of experts.
+    num_groups: Number of groups for dispathcing.
+    min_group_size: If not None, num_groups will be adjusted so that there will
+      be at least min_group_size tokens in each group.
+    moe_layers: List of MoE layer indices, e.g. [0, 2, 4].
+    ngrammer_tpls: Sequence of params for the Ngrammer layer. This param is
+      shared between the Ngrammer layer as well as the VQNgrammer layer. The
+      length of the sequence must match the number of attention layers. If an
+      entry in the sequence is None, then there is no NGrammer layer present in
+      that corresponding layer.
+  """
+  use_cross_attention: bool = False
+  mask_self_attention: bool = False
+  num_layers: int = 0
+  model_dims: int = 0
+  hidden_dims: int = 0
+  num_heads: int = 0
+  dim_per_head: Optional[int] = None
+  dropout_prob: float = 0.0
+  atten_dropout_prob: Optional[float] = None
+  residual_dropout_prob: Optional[float] = None
+  relu_dropout_prob: Optional[float] = None
+  residual_droppath_prob: float = 0.0
+  input_dropout_prob: float = 0.0
+  gating_func: str = 'top2'
+  unadjusted_expert_capacity_factor: float = 2.0
+  transformer_layer_params_tpl: Union[LayerTpl,
+                                      Sequence[LayerTpl]] = sub_config_field(
+                                          Transformer.HParams)
+  packed_input: bool = False
+  fold_padding_with_segment_mask: bool = False
+  moe_layer_tpl: LayerTpl = sub_config_field(TransformerFeedForwardMoe.HParams)
+  num_experts: int = 0
+  num_groups: int = 1
+  min_group_size: Optional[int] = None
+  moe_layers: Optional[Sequence[int]] = ()
+  ngrammer_tpls: Optional[Sequence[LayerTpl]] = sub_config_field(None)
 
   def setup(self) -> None:
     p = self.hparams
@@ -1740,29 +1725,26 @@ class StackedTransformer(base_layer.BaseLayer):
                                                  right_align_fn)
 
 
-class StackedTransformerRepeated(base_layer.BaseLayer):
-  """A StackedTransformer implemented using the generic Repeat."""
+class StackedTransformerRepeated(base_layer.FiddleBaseLayer):
+  """A StackedTransformer implemented using the generic Repeat.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
+  Attributes:
+    block: The params of a block. A block can be a single transformer
+      layer,multiple layers, or a dense layer followed by a sparse layer, a.k.a.
+      MOE block.
+    x_times: Num times to repeat a block.
+    checkpoint_policy: How to checkpoint residuals for BProp: save nothing, dot
+      only or dot with no batch dimensions.
+    unroll_in_decode: Whether to unroll the layers during extend_step.
+  """
+  block: LayerTpl = sub_config_field(StackedTransformer.HParams)
+  x_times: int = 0
+  checkpoint_policy: repeats.AutodiffCheckpointType = repeats.AutodiffCheckpointType.SAVE_NOTHING
+  unroll_in_decode: bool = True
+  repeat_layer_name: str = 'repeat'
+  sublayer_name: str = 'sub'
 
-    Attributes:
-      block: The params of a block. A block can be a single transformer
-        layer,multiple layers, or a dense layer followed by a sparse layer,
-        a.k.a. MOE block.
-      x_times: Num times to repeat a block.
-      checkpoint_policy: How to checkpoint residuals for BProp: save nothing,
-        dot only or dot with no batch dimensions.
-      unroll_in_decode: Whether to unroll the layers during extend_step.
-    """
-    block: BaseHParams = sub_config_field(StackedTransformer.HParams)
-    x_times: int = 0
-    checkpoint_policy: repeats.AutodiffCheckpointType = repeats.AutodiffCheckpointType.SAVE_NOTHING
-    unroll_in_decode: bool = True
-    repeat_layer_name: str = 'repeat'
-    sublayer_name: str = 'sub'
-
-  class WeightShardingHParams(BaseWtShardingHParams):
+  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -1901,35 +1883,32 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         max_prefix_size, right_align_fn)
 
 
-class PipelinedTransformer(base_layer.BaseLayer):
-  """A pipelined Transformer."""
+class PipelinedTransformer(base_layer.FiddleBaseLayer):
+  """A pipelined Transformer.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
+  Attributes:
+    pipeline_stage: The layer params of each stage.
+    circular_repeat: Number of round-robin layers in each stage for the circular
+      pipeline schedule. If 1, this will be basic GPipe schedule.
+    num_pipeline_stages: Number of pipeline stages.
+    num_pipeline_microbatches: Number of pipeline microbatches.
+    pipeline_microbatch_size: Size of each pipeline microbatch.
+    stream_io: Whether to enable input/output streaming across stages. This is
+      typically useful for DCN.
+    pipeline_broadcast_inputs: If true, broadcast inputs (shared between all
+      stages instead of being computed by the previous stage) will be passed
+      stage-by-stage instead of being replicated.
+  """
+  pipeline_stage: LayerTpl = sub_config_field(StackedTransformer.HParams)
+  circular_repeat: int = 1
+  num_pipeline_stages: Optional[int] = None
+  num_pipeline_microbatches: Optional[int] = None
+  pipeline_microbatch_size: Optional[int] = None
+  stream_io: bool = False
+  pipeline_broadcast_inputs: bool = False
+  checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
 
-    Attributes:
-      pipeline_stage: The layer params of each stage.
-      circular_repeat: Number of round-robin layers in each stage for the
-        circular pipeline schedule. If 1, this will be basic GPipe schedule.
-      num_pipeline_stages: Number of pipeline stages.
-      num_pipeline_microbatches: Number of pipeline microbatches.
-      pipeline_microbatch_size: Size of each pipeline microbatch.
-      stream_io: Whether to enable input/output streaming across stages. This is
-        typically useful for DCN.
-      pipeline_broadcast_inputs: If true, broadcast inputs (shared between all
-        stages instead of being computed by the previous stage) will be passed
-        stage-by-stage instead of being replicated.
-    """
-    pipeline_stage: BaseHParams = sub_config_field(StackedTransformer.HParams)
-    circular_repeat: int = 1
-    num_pipeline_stages: Optional[int] = None
-    num_pipeline_microbatches: Optional[int] = None
-    pipeline_microbatch_size: Optional[int] = None
-    stream_io: bool = False
-    pipeline_broadcast_inputs: bool = False
-    checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
-
-  class WeightShardingHParams(BaseWtShardingHParams):
+  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -1937,7 +1916,8 @@ class PipelinedTransformer(base_layer.BaseLayer):
     """
     stages: SplitDimsMapping = (None,)
 
-  class ActivationShardingHParams(BaseActShardingHParams):
+  class ActivationShardingHParams(
+      base_layer.FiddleBaseLayer.ActivationShardingHParams):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:

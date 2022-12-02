@@ -98,17 +98,15 @@ class BeamSearchHelperTest(test_utils.TestCase):
                            np.array([[3, 2]], dtype=np.float32))
 
 
-class MockLM(base_layer.BaseLayer):
+class MockLM(base_layer.FiddleBaseLayer):
+  """Mock l m.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      logits: results returned by extend_step(), of shape [max step, batch size,
-        vocab size].
-    """
-    logits: Any = None
-    model_type: LanguageModelType = LanguageModelType.CAUSAL
+  Attributes:
+    logits: results returned by extend_step(), of shape [max step, batch size,
+      vocab size].
+  """
+  logits: Any = None
+  model_type: LanguageModelType = LanguageModelType.CAUSAL
 
   def setup(self) -> None:
     p = self.hparams

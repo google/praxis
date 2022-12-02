@@ -42,12 +42,8 @@ pytype_strict_library(
     deps = [
         ":operations",
         ":quantization_hparams",
-        # Implicit flax.core dependency.
         # Implicit jax dependency.
-        # Implicit numpy dependency.
-        "//praxis:asserts",
         "//praxis:base_layer",
-        "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis/layers:attentions",
     ],
@@ -84,12 +80,8 @@ pytype_strict_library(
         ":aqt",
         ":operations",
         ":quantization_hparams",
-        # Implicit flax.core dependency.
         # Implicit jax dependency.
-        # Implicit numpy dependency.
-        "//praxis:asserts",
         "//praxis:base_layer",
-        "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis/layers:linears",
     ],
@@ -142,15 +134,12 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":aqt",
-        ":attentions",
-        ":linears",
         ":operations",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
-        "//praxis:py_utils",
         "//praxis:test_utils",
     ],
 )
@@ -166,15 +155,11 @@ py_strict_test(
         ":quantization_hparams",
         # Implicit absl.testing.absltest dependency.
         # Implicit jax dependency.
-        # Implicit lingvo.core.batch_major_attention dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
-        "//praxis:decoder_utils",
-        "//praxis:py_utils",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
-        "//praxis/layers:linears",
         "//praxis/layers:repeats",
-        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 
@@ -184,7 +169,6 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
-        "//praxis:base_hyperparams",
         "//praxis:base_layer",
         "//praxis:pytypes",
     ],

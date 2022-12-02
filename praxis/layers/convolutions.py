@@ -21,6 +21,7 @@ from typing import Optional, Sequence, Tuple
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
@@ -34,6 +35,7 @@ BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 NestedMap = py_utils.NestedMap
 SplitDimsMapping = pytypes.SplitDimsMapping
 sub_config_field = base_layer.sub_config_field
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 
@@ -43,41 +45,38 @@ JTensor = pytypes.JTensor
 BaseHParams = base_layer.BaseLayer.HParams
 
 
-class Conv2D(base_layer.BaseLayer):
-  """Conv2D with support of SAME/VALID paddings."""
+class Conv2D(base_layer.FiddleBaseLayer):
+  """Conv2D with support of SAME/VALID paddings.
 
-  class HParams(BaseHParams):
-    """Associated hyperparams for this layer class.
-
-    Attributes:
-    filter_shape: Filter shape. Must be a sequence of length 4. Elements are in
-      the order of height (time), width (frequency), in_channel, out_channel.
-      filter_stride: Filter stride to use. Must be a pair of ints. The first int
-        specifies the stride on the height dimension. The second int specifies
-        the stride on the width dimension.
-      dilations: An optional list of ints. Defaults to (1, 1). 1-D tensor of
-        length 2. The dilation factor for each dimension of input. If set to k >
-        1, there will be k-1 skipped cells between each filter element on that
-        dimension.
-      bias: Whether or not to apply a bias before activation.
-      bias_init: Bias initializer to use if bias is to be applied.
-      padding: The type of padding to use.
-      tf_equivalent_padding: Whether to make it equivalent to tf. By default we
-        apply extra padding that is different than tf conv when stride > 1. This
-        is mainly used for multimodal which leads to better accuracy.
-      is_causal: Whether this is a causal convolution. This assumes the first
-        dimension of filter is time and if is_causal=True, each position would
-        not observe any positions in the right. This is achieved by adding
-        extra padding in the left to shift the whole convolution.
-    """
-    filter_shape: Sequence[int] = (0, 0, 0, 0)
-    filter_stride: Sequence[int] = (0, 0)
-    dilations: Sequence[int] = (1, 1)
-    bias: bool = False
-    bias_init: WeightInit = WeightInit.Constant(0.0)
-    padding: str = 'SAME'
-    tf_equivalent_padding: bool = False
-    is_causal: bool = False
+  Attributes:
+  filter_shape: Filter shape. Must be a sequence of length 4. Elements are in
+    the order of height (time), width (frequency), in_channel, out_channel.
+    filter_stride: Filter stride to use. Must be a pair of ints. The first int
+      specifies the stride on the height dimension. The second int specifies the
+      stride on the width dimension.
+    dilations: An optional list of ints. Defaults to (1, 1). 1-D tensor of
+      length 2. The dilation factor for each dimension of input. If set to k >
+      1, there will be k-1 skipped cells between each filter element on that
+      dimension.
+    bias: Whether or not to apply a bias before activation.
+    bias_init: Bias initializer to use if bias is to be applied.
+    padding: The type of padding to use.
+    tf_equivalent_padding: Whether to make it equivalent to tf. By default we
+      apply extra padding that is different than tf conv when stride > 1. This
+      is mainly used for multimodal which leads to better accuracy.
+    is_causal: Whether this is a causal convolution. This assumes the first
+      dimension of filter is time and if is_causal=True, each position would not
+      observe any positions in the right. This is achieved by adding extra
+      padding in the left to shift the whole convolution.
+  """
+  filter_shape: Sequence[int] = (0, 0, 0, 0)
+  filter_stride: Sequence[int] = (0, 0)
+  dilations: Sequence[int] = (1, 1)
+  bias: bool = False
+  bias_init: WeightInit = WeightInit.Constant(0.0)
+  padding: str = 'SAME'
+  tf_equivalent_padding: bool = False
+  is_causal: bool = False
 
   @classmethod
   def HParamsDepthwise(cls,
@@ -223,19 +222,15 @@ class ConvBNAct(Conv2D):
   """A block of conv-bn-activation layers used for image encoders.
 
   By default, we use cross-replica sum on TPUs.
+
+  Attributes:
+    batch_norm_tpl: The batchnorm layer template.
+    activation_tpl: Activation function to use.
   """
-
-  class HParams(Conv2D.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      batch_norm_tpl: The batchnorm layer template.
-      activation_tpl: Activation function to use.
-    """
-    batch_norm_tpl: Optional[BaseHParams] = sub_config_field(
-        normalizations.BatchNorm.HParams)
-    activation_tpl: activations.BaseActivation.HParams = sub_config_field(
-        activations.ReLU.HParams)
+  batch_norm_tpl: Optional[LayerTpl] = sub_config_field(
+      normalizations.BatchNorm.HParams)
+  activation_tpl: pax_fiddle.Config[
+      activations.BaseActivation] = sub_config_field(activations.ReLU.HParams)
 
   def setup(self) -> None:
     super().setup()
@@ -269,15 +264,12 @@ class ConvBNAct(Conv2D):
 
 
 class ConvBNActWithPadding(ConvBNAct):
-  """A block of conv-bn-activation layers with padding processing."""
+  """A block of conv-bn-activation layers with padding processing.
 
-  class HParams(ConvBNAct.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      compat_with_lingvo: If use lingvo-compatible logic.
-    """
-    compat_with_lingvo: bool = False
+  Attributes:
+    compat_with_lingvo: If use lingvo-compatible logic.
+  """
+  compat_with_lingvo: bool = False
 
   def setup(self) -> None:
     super().setup()
@@ -345,28 +337,25 @@ class ConvBNActWithPadding(ConvBNAct):
     return outputs, out_padding
 
 
-class BaseDepthwiseConv1D(base_layer.BaseLayer):
-  """Base class for Depthwise 1D convolution."""
+class BaseDepthwiseConv1D(base_layer.FiddleBaseLayer):
+  """Base class for Depthwise 1D convolution.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      filter_shape: Filter shape. Must be a sequence of length 3. Elements are
-        in the order of kernel_size, in_channels, channel_multipliers.
-      bias:         Whether or not to apply a bias before activation.
-      bias_init:    Bias initializer to use if bias is to be applied.
-      is_causal:    Whether this is a causal layer.
-      use_2d_conv_weight_shape: Whether to use 2d conv's weight shape. This is
-        for checkpoint backwards-compatibility.
-      rhs_dilation_rate: The dilation rate in atrous convolution.
-    """
-    filter_shape: Sequence[int] = (0, 0, 0)
-    bias: bool = False
-    bias_init: WeightInit = WeightInit.Constant(0.0)
-    is_causal: bool = False
-    use_2d_conv_weight_shape: bool = False
-    rhs_dilation_rate: int = 1
+  Attributes:
+    filter_shape: Filter shape. Must be a sequence of length 3. Elements are in
+      the order of kernel_size, in_channels, channel_multipliers.
+    bias:         Whether or not to apply a bias before activation.
+    bias_init:    Bias initializer to use if bias is to be applied.
+    is_causal:    Whether this is a causal layer.
+    use_2d_conv_weight_shape: Whether to use 2d conv's weight shape. This is for
+      checkpoint backwards-compatibility.
+    rhs_dilation_rate: The dilation rate in atrous convolution.
+  """
+  filter_shape: Sequence[int] = (0, 0, 0)
+  bias: bool = False
+  bias_init: WeightInit = WeightInit.Constant(0.0)
+  is_causal: bool = False
+  use_2d_conv_weight_shape: bool = False
+  rhs_dilation_rate: int = 1
 
   def __call__(self,
                inputs: JTensor,
@@ -392,7 +381,7 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
   # w - width
   # i - in_channels
   # m - channel_multiplier
-  class WeightShardingHParams(BaseWtShardingHParams):
+  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -479,7 +468,7 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
     return out
 
 
-class LightConv1D(base_layer.BaseLayer):
+class LightConv1D(base_layer.FiddleBaseLayer):
   """Lightweight conv layer.
 
   architecture::
@@ -487,45 +476,40 @@ class LightConv1D(base_layer.BaseLayer):
   input-ln()-ff()-glu()-depthwise_conv1d()-norm()-act()-ff()-dropout()-+-output
     |__________________________________________________________________|
 
+  Attributes:
+    input_dims:      Input and (in fact,) output dimension.
+    kernel_size:     Kernel size of 1d deptwise conv.
+    conv_activation_tpl: Activation after normalization.
+    dropout_prob:    Dropout probability.
+    ln_tpl:          Parameterization of input layer normalization.
+    linear_start_tpl:     Parameterization of linear start layer.
+    depthwise_conv_tpl:   Parameterization of depthwise conv layer.
+    conv_norm_layer_tpl:  Parameterization of normalization layer after conv.
+    linear_end_tpl:       Parameterization of linear end layer.
+    dropout_tpl:          Parameterization of residual dropout layer.
+    is_causal:            Whether this is a causal layer.
+    use_2d_conv_norm:     Whether to expand the input to conv_norm to 2d. This
+      is for compatibility with old models trained in TF lingvo.
   """
 
   # TODO(nanxinchen): add causal support
   # TODO(nanxinchen): add SPMD partitioning support
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
+  input_dims: Optional[int] = None
+  kernel_size: Optional[int] = None
+  conv_activation_tpl: pax_fiddle.Config[
+      activations.BaseActivation] = sub_config_field(activations.Swish.HParams)
+  dropout_prob: float = 0.0
+  ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
 
-    Attributes:
-      input_dims:      Input and (in fact,) output dimension.
-      kernel_size:     Kernel size of 1d deptwise conv.
-      conv_activation_tpl: Activation after normalization.
-      dropout_prob:    Dropout probability.
-      ln_tpl:          Parameterization of input layer normalization.
-      linear_start_tpl:     Parameterization of linear start layer.
-      depthwise_conv_tpl:   Parameterization of depthwise conv layer.
-      conv_norm_layer_tpl:  Parameterization of normalization layer after conv.
-      linear_end_tpl:       Parameterization of linear end layer.
-      dropout_tpl:          Parameterization of residual dropout layer.
-      is_causal:            Whether this is a causal layer.
-      use_2d_conv_norm:     Whether to expand the input to conv_norm to 2d. This
-        is for compatibility with old models trained in TF lingvo.
-    """
-    input_dims: Optional[int] = None
-    kernel_size: Optional[int] = None
-    conv_activation_tpl: activations.BaseActivation.HParams = sub_config_field(
-        activations.Swish.HParams)
-    dropout_prob: float = 0.0
-    ln_tpl: BaseHParams = sub_config_field(normalizations.LayerNorm.HParams)
-
-    linear_start_tpl: BaseHParams = sub_config_field(
-        linears.FeedForward.HParams)
-    depthwise_conv_tpl: BaseHParams = sub_config_field(DepthwiseConv1D.HParams)
-    conv_norm_layer_tpl: BaseHParams = sub_config_field(
-        normalizations.BatchNorm.HParams)
-    linear_end_tpl: BaseHParams = sub_config_field(linears.FeedForward.HParams)
-    dropout_tpl: BaseHParams = sub_config_field(stochastics.Dropout.HParams)
-    is_causal: bool = False
-    use_2d_conv_norm: bool = False
+  linear_start_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
+  depthwise_conv_tpl: LayerTpl = sub_config_field(DepthwiseConv1D.HParams)
+  conv_norm_layer_tpl: LayerTpl = sub_config_field(
+      normalizations.BatchNorm.HParams)
+  linear_end_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
+  dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  is_causal: bool = False
+  use_2d_conv_norm: bool = False
 
   # SPMD partition related params.
   #
@@ -536,7 +520,7 @@ class LightConv1D(base_layer.BaseLayer):
   # m - channel_multiplier
   # b - batch_size
   # l - seq_len
-  class WeightShardingHParams(BaseWtShardingHParams):
+  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -546,7 +530,8 @@ class LightConv1D(base_layer.BaseLayer):
     df: SplitDimsMapping = None
     him: SplitDimsMapping = None
 
-  class ActivationShardingHParams(BaseActShardingHParams):
+  class ActivationShardingHParams(
+      base_layer.FiddleBaseLayer.ActivationShardingHParams):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:

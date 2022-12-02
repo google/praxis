@@ -32,7 +32,7 @@ D = hidden dims
 
 from __future__ import annotations
 
-from typing import Optional, Tuple, Sequence
+from typing import Optional, Sequence, Tuple
 
 import einops
 import jax
@@ -40,6 +40,7 @@ from jax import numpy as jnp
 import numpy as np
 from praxis import base_hyperparams
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
@@ -54,6 +55,7 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 WeightHParams = base_layer.WeightHParams
 WeightInit = base_layer.WeightInit
 sub_config_field = base_hyperparams.sub_config_field
@@ -158,7 +160,7 @@ def interpolate_embedding_2d(emb, source_emb_shape, target_emb_shape):
   return target_emb
 
 
-class VitEntryLayers(base_layer.BaseLayer):
+class VitEntryLayers(base_layer.FiddleBaseLayer):
   """Entry block of ViT.
 
   It performs the following operations:
@@ -166,37 +168,34 @@ class VitEntryLayers(base_layer.BaseLayer):
     - linear projection
     - adding positional embedding
     - adding potential dropouts
+
+  Attributes:
+    pos_emb_shapes: Height/width of the positional embedding. This param is
+      used to support images of different shapes. When the embedding_size is
+      not equal to image_size / patch_size, interpolation will be employed to
+      generate embeddings of image_size / patch_size.
+    input_dims: Dims per patch before input patch projection.
+    output_dims: Dims per patch after input patch projection.
+    image_channels: Number of channels of the input image.
+    prepend_cls_tokens: If > 0, the layer will prepend N CLS token before
+      the patch features.
+    append_cls_tokens: If > 0, the layer will append N CLS token after
+      the patch features.
+    pos_emb_tpl: template for positional embeddings.
+    input_fc_has_bias: Whether the input projection layer has bias.
   """
 
   # TODO(zhangzd): If needed, add support for non-square patches.
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      pos_emb_shapes: Height/width of the positional embedding. This param is
-        used to support images of different shapes. When the embedding_size is
-        not equal to image_size / patch_size, interpolation will be employed to
-        generate embeddings of image_size / patch_size.
-      input_dims: Dims per patch before input patch projection.
-      output_dims: Dims per patch after input patch projection.
-      image_channels: Number of channels of the input image.
-      prepend_cls_tokens: If > 0, the layer will prepend N CLS token before
-        the patch features.
-      append_cls_tokens: If > 0, the layer will append N CLS token after
-        the patch features.
-      pos_emb_tpl: template for positional embeddings.
-      input_fc_has_bias: Whether the input projection layer has bias.
-    """
-    pos_emb_shapes: Tuple[int, int] = (0, 0)
-    patch_size: int = 0
-    input_dims: int = 0
-    output_dims: int = 0
-    pos_emb_dropout_prob: float = 0.0
-    prepend_cls_tokens: int = 0
-    append_cls_tokens: int = 0
-    pos_emb_tpl: Optional[BaseHParams] = sub_config_field(
-        embedding_softmax.TrainablePositionalEmbedding.HParams)
-    input_fc_has_bias: bool = True
+  pos_emb_shapes: Tuple[int, int] = (0, 0)
+  patch_size: int = 0
+  input_dims: int = 0
+  output_dims: int = 0
+  pos_emb_dropout_prob: float = 0.0
+  prepend_cls_tokens: int = 0
+  append_cls_tokens: int = 0
+  pos_emb_tpl: Optional[LayerTpl] = sub_config_field(
+      embedding_softmax.TrainablePositionalEmbedding.HParams)
+  input_fc_has_bias: bool = True
 
   def setup(self) -> None:
     p = self.hparams
@@ -286,35 +285,31 @@ class VitEntryLayers(base_layer.BaseLayer):
     return features
 
 
-class VitExitLayers(base_layer.BaseLayer):
+class VitExitLayers(base_layer.FiddleBaseLayer):
   """Exit block of ViT.
 
   It consists of layer norm, pooling, projection and dropout.
+
+  Attributes:
+    hidden_dim: Number of channels of the input tensor.
+    output_dim: Number of channels of the output tensor.
+    output_dropout_prob: Probability to apply dropout on the output tensor.
+    pooled: Apply pooling layer over all output tokens.
+    pre_ln: If true, add a layer norm at the beginning of this layer.
+    output_fc_tanh: Whether to include a linear projection layer with tanh
+      activation on the output.
+    output_fc_has_bias: Whether the output projection layer has bias.
+    pooling_tpl: Pooling layer config to use, defaults to global
+      max pooling if not set.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      hidden_dim: Number of channels of the input tensor.
-      output_dim: Number of channels of the output tensor.
-      output_dropout_prob: Probability to apply dropout on the output tensor.
-      pooled: Apply pooling layer over all output tokens.
-      pre_ln: If true, add a layer norm at the beginning of this layer.
-      output_fc_tanh: Whether to include a linear projection layer with tanh
-        activation on the output.
-      output_fc_has_bias: Whether the output projection layer has bias.
-      pooling_tpl: Pooling layer config to use, defaults to global
-        max pooling if not set.
-    """
-    hidden_dim: int = 0
-    output_dim: int = 0
-    output_dropout_prob: float = 0.0
-    pooled: bool = True
-    pre_ln: bool = True
-    output_fc_tanh: bool = True
-    output_fc_has_bias: bool = True
-    pooling_tpl: BaseHParams = sub_config_field(poolings.GlobalPooling.HParams)
+  hidden_dim: int = 0
+  output_dim: int = 0
+  output_dropout_prob: float = 0.0
+  pooled: bool = True
+  pre_ln: bool = True
+  output_fc_tanh: bool = True
+  output_fc_has_bias: bool = True
+  pooling_tpl: LayerTpl = sub_config_field(poolings.GlobalPooling.HParams)
 
   def setup(self) -> None:
     p = self.hparams
@@ -370,26 +365,23 @@ class VitExitLayers(base_layer.BaseLayer):
     return inputs
 
 
-class VisionTransformer(base_layer.BaseLayer):
-  """Vision transformer model."""
+class VisionTransformer(base_layer.FiddleBaseLayer):
+  """Vision transformer model.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
+  This class follows a minimalistic design pattern. Users need to configure
+  the templates for the submodules themselves; this increases the
+  generalizability of this class.
 
-    This class follows a minimalistic design pattern. Users need to configure
-    the templates for the submodules themselves; this increases the
-    generalizability of this class.
-
-    Attributes:
-      entry_layers_tpl: An integer specifying hidden dimension of transformers.
-      transformer_layers_tpl: An integer specifying number of transformers.
-      exit_layers_tpl: An integer specifying number of attention heads in
-        transformers.
-    """
-    entry_layers_tpl: BaseHParams = sub_config_field(VitEntryLayers.HParams)
-    transformer_layers_tpl: BaseHParams = sub_config_field(
-        transformers.StackedTransformer.HParams)
-    exit_layers_tpl: BaseHParams = sub_config_field(VitExitLayers.HParams)
+  Attributes:
+    entry_layers_tpl: An integer specifying hidden dimension of transformers.
+    transformer_layers_tpl: An integer specifying number of transformers.
+    exit_layers_tpl: An integer specifying number of attention heads in
+      transformers.
+  """
+  entry_layers_tpl: LayerTpl = sub_config_field(VitEntryLayers.HParams)
+  transformer_layers_tpl: LayerTpl = sub_config_field(
+      transformers.StackedTransformer.HParams)
+  exit_layers_tpl: LayerTpl = sub_config_field(VitExitLayers.HParams)
 
   def setup(self) -> None:
     p = self.hparams

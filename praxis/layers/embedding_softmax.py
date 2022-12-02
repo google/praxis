@@ -22,6 +22,7 @@ import jax
 from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
@@ -34,6 +35,7 @@ JTensor = pytypes.JTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
 
@@ -50,7 +52,7 @@ def _compute_z_loss(logits):
   return jnp.square(log_z)
 
 
-class TokenCounter(base_layer.BaseLayer):
+class TokenCounter(base_layer.FiddleBaseLayer):
   """Keep track of total tokens seen during training."""
 
   def setup(self) -> None:
@@ -89,31 +91,28 @@ class TokenCounter(base_layer.BaseLayer):
       self.update_var('approx_total_tokens_mm', new_approx_total_tokens_mm)
 
 
-class Embedding(base_layer.BaseLayer):
-  """A simple embedding layer that performs embedding lookups from ids."""
+class Embedding(base_layer.FiddleBaseLayer):
+  """A simple embedding layer that performs embedding lookups from ids.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
+  Attributes:
+    num_classes: Number of tokens in the vocabulary.
+    input_dims: Depth of the embedding output. This is called `input_dims` as
+      opposed to the more appropriate `embedding_dims` to be compatible with
+      other softmax/embedding layers defined in this file.
+    lookup_style: Style of lookup, one of index or matmul.
+    scale_sqrt_depth: If set to True, activations are scaled with
+      sqrt(embedding_dim) in emb_lookup.
+    set_nan_for_oob_id: If set to True, embeddings corresponding to
+      out-of-boundaries ids will be set to NaN. Useful for debugging purposes.
+  """
+  num_classes: int = 0
+  input_dims: int = 0
+  lookup_style: str = 'index'
+  scale_sqrt_depth: bool = False
+  set_nan_for_oob_id: bool = False
 
-    Attributes:
-      num_classes: Number of tokens in the vocabulary.
-      input_dims: Depth of the embedding output. This is called `input_dims` as
-        opposed to the more appropriate `embedding_dims` to be compatible with
-        other softmax/embedding layers defined in this file.
-      lookup_style: Style of lookup, one of index or matmul.
-      scale_sqrt_depth: If set to True, activations are scaled with
-        sqrt(embedding_dim) in emb_lookup.
-      set_nan_for_oob_id: If set to True, embeddings corresponding to
-        out-of-boundaries ids will be set to NaN. Useful for debugging
-        purposes.
-    """
-    num_classes: int = 0
-    input_dims: int = 0
-    lookup_style: str = 'index'
-    scale_sqrt_depth: bool = False
-    set_nan_for_oob_id: bool = False
-
-  class ActivationShardingHParams(BaseActShardingHParams):
+  class ActivationShardingHParams(
+      base_layer.FiddleBaseLayer.ActivationShardingHParams):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -159,40 +158,35 @@ class Embedding(base_layer.BaseLayer):
     return embs
 
 
-class FullSoftmax(base_layer.BaseLayer):
-  """A simple softmax layer with cross-entropy outputs."""
+class FullSoftmax(base_layer.FiddleBaseLayer):
+  """A simple softmax layer with cross-entropy outputs.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
+  Attributes:
+    input_dims: Dimension of the input when used as a softmax layer. This is
+      also the depth of the output when used as an embedding layer.
+    num_classes: Total number of target classes when used as a softmax layer.
+      This is also the size of the vocabulary when used as an embedding layer.
+    soft_cap_logits: If not None logits are soft capped to this value.
+    bi_tempered_loss: If not None applies bi-tempered loss.
+    label_smoothing_prob: Label smoothing probability.
+    label_smoothing_apply_for_eval: If False, disables label smoothing at eval
+      time, even if p.label_smoothing_prob > 0. Label smoothing is a form of
+      regularization and we may want to disable it at eval time.
+    z_loss_weight: If z_loss_weight is nonzero, we add a loss equal to
+      z_loss_weight * square(logsumexp(logits, -1))
+    bias_init: Init scale (constant) of bias terms.
+    feed_forward_tpl: Sub configurable field for the feed-forward layer.
+  """
+  input_dims: int = 0
+  num_classes: int = 0
+  soft_cap_logits: Optional[float] = 0.0
+  bi_tempered_loss_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  label_smoothing_prob: float = 0.0
+  label_smoothing_apply_for_eval: bool = True
+  z_loss_weight: float = 0.
+  bias_init: Optional[float] = 0.0
 
-    Attributes:
-      input_dims: Dimension of the input when used as a softmax layer. This is
-        also the depth of the output when used as an embedding layer.
-      num_classes: Total number of target classes when used as a softmax layer.
-        This is also the size of the vocabulary when used as an embedding layer.
-      soft_cap_logits: If not None logits are soft capped to this value.
-      bi_tempered_loss: If not None applies bi-tempered loss.
-      label_smoothing_prob: Label smoothing probability.
-      label_smoothing_apply_for_eval: If False, disables label smoothing at eval
-        time, even if p.label_smoothing_prob > 0. Label smoothing is a form of
-        regularization and we may want to disable it at eval time.
-      z_loss_weight: If z_loss_weight is nonzero, we add a loss equal to
-        z_loss_weight * square(logsumexp(logits, -1))
-      bias_init: Init scale (constant) of bias terms.
-      feed_forward_tpl: Sub configurable field for the feed-forward layer.
-    """
-    input_dims: int = 0
-    num_classes: int = 0
-    soft_cap_logits: Optional[float] = 0.0
-    bi_tempered_loss_tpl: Optional[BaseHParams] = base_layer.sub_config_field(
-        None)
-    label_smoothing_prob: float = 0.0
-    label_smoothing_apply_for_eval: bool = True
-    z_loss_weight: float = 0.
-    bias_init: Optional[float] = 0.0
-
-    feed_forward_tpl: BaseHParams = sub_config_field(
-        linears.FeedForward.HParams)
+  feed_forward_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
 
   def setup(self) -> None:
     p = self.hparams
@@ -326,20 +320,18 @@ class FullSoftmax(base_layer.BaseLayer):
 
 
 class SharedEmbeddingSoftmax(FullSoftmax):
-  """A softmax layer that also supports embedding lookups."""
+  """A softmax layer that also supports embedding lookups.
 
-  class HParams(FullSoftmax.HParams):
-    """Associated hyper-params for this layer class.
+  Attributes:
+    lookup_style: Style of lookup, one of index or matmul.
+    scale_sqrt_depth: If set True, activations are scaled with
+      sqrt(embedding_dim) in emb_lookup.
+  """
+  lookup_style: str = 'index'
+  scale_sqrt_depth: bool = False
 
-    Attributes:
-      lookup_style: Style of lookup, one of index or matmul.
-      scale_sqrt_depth: If set True, activations are scaled with
-        sqrt(embedding_dim) in emb_lookup.
-    """
-    lookup_style: str = 'index'
-    scale_sqrt_depth: bool = False
-
-  class ActivationShardingHParams(BaseActShardingHParams):
+  class ActivationShardingHParams(
+      base_layer.FiddleBaseLayer.ActivationShardingHParams):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -368,28 +360,24 @@ class SharedEmbeddingSoftmax(FullSoftmax):
     return embs
 
 
-class SigmoidCrossEntropy(base_layer.BaseLayer):
-  """A sigmoid cross-entropy loss layer with logits projection."""
+class SigmoidCrossEntropy(base_layer.FiddleBaseLayer):
+  """A sigmoid cross-entropy loss layer with logits projection.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dims: Dimension of the input when used as a softmax layer. This is
-        also the depth of the output when used as an embedding layer.
-      num_classes: Total number of target classes when used as a softmax layer.
-        This is also the size of the vocabulary when used as an embedding layer.
-      soft_cap_logits: If not None logits are soft capped to this value.
-      bias_init: Init scale (constant) of bias terms.
-      feed_forward_tpl: Sub configurable field for the feed-forward layer. If
-        None, skip the FFN projection.
-    """
-    input_dims: int = 0
-    num_classes: int = 0
-    soft_cap_logits: Optional[float] = 0.0
-    bias_init: Optional[float] = 0.0
-    feed_forward_tpl: BaseHParams = sub_config_field(
-        linears.FeedForward.HParams)
+  Attributes:
+    input_dims: Dimension of the input when used as a softmax layer. This is
+      also the depth of the output when used as an embedding layer.
+    num_classes: Total number of target classes when used as a softmax layer.
+      This is also the size of the vocabulary when used as an embedding layer.
+    soft_cap_logits: If not None logits are soft capped to this value.
+    bias_init: Init scale (constant) of bias terms.
+    feed_forward_tpl: Sub configurable field for the feed-forward layer. If
+      None, skip the FFN projection.
+  """
+  input_dims: int = 0
+  num_classes: int = 0
+  soft_cap_logits: Optional[float] = 0.0
+  bias_init: Optional[float] = 0.0
+  feed_forward_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
 
   def setup(self) -> None:
     p = self.hparams
@@ -523,7 +511,7 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
     return output_nmap
 
 
-class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
+class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
   """Softmax layer with embedding lookup and Gaussian init used in gshard.
 
   Features:
@@ -532,32 +520,29 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
   3) Apply 1/sqrt(M) to the input activations before computing the logits.
   4) Optionally using soft clipping and absolute value clipping of logits.
   5) Optional label smoothing.
+
+  Attributes:
+    input_dims: Dimension of the input.
+    num_classes: Total number of target classes.
+    use_tgt_labels_size_as_loss_denominator: False to use total number of
+      non-padding tokens instead of fixed tgt_labels tensor size.
+    soft_cap_logits: If not None logits are soft capped to this value before
+      the absolute value clipping with p.logits_abs_max.
+    logits_abs_max: Absolute logits clipping.
+    z_loss_weight: If z_loss_weight is nonzero, we add a loss equal to
+      z_loss_weight * square(logsumexp(logits, -1))
+    label_smoothing_prob: Optional label smoothing.
   """
+  input_dims: int = 0
+  num_classes: int = 0
+  use_tgt_labels_size_as_loss_denominator: bool = True
+  soft_cap_logits: Optional[float] = 0.0
+  logits_abs_max: Optional[float] = 0.0
+  z_loss_weight: float = 0.
+  label_smoothing_prob: float = 0.0
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      input_dims: Dimension of the input.
-      num_classes: Total number of target classes.
-      use_tgt_labels_size_as_loss_denominator: False to use total number of
-        non-padding tokens instead of fixed tgt_labels tensor size.
-      soft_cap_logits: If not None logits are soft capped to this value before
-        the absolute value clipping with p.logits_abs_max.
-      logits_abs_max: Absolute logits clipping.
-      z_loss_weight: If z_loss_weight is nonzero, we add a loss equal to
-        z_loss_weight * square(logsumexp(logits, -1))
-      label_smoothing_prob: Optional label smoothing.
-    """
-    input_dims: int = 0
-    num_classes: int = 0
-    use_tgt_labels_size_as_loss_denominator: bool = True
-    soft_cap_logits: Optional[float] = 0.0
-    logits_abs_max: Optional[float] = 0.0
-    z_loss_weight: float = 0.
-    label_smoothing_prob: float = 0.0
-
-  class ActivationShardingHParams(BaseActShardingHParams):
+  class ActivationShardingHParams(
+      base_layer.FiddleBaseLayer.ActivationShardingHParams):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -731,22 +716,19 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
     return output_nmap
 
 
-class PositionalEmbedding(base_layer.BaseLayer):
-  """Generates position embedding for a given 1-d sequence."""
+class PositionalEmbedding(base_layer.FiddleBaseLayer):
+  """Generates position embedding for a given 1-d sequence.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      min_timescale: Start of the geometric index. Determines the periodicity of
-        the added signal.
-      max_timescale: End of the geometric index. Determines the frequency of the
-        added signal.
-      embedding_dims: Dimension of the embedding to be generated.
-    """
-    min_timescale: int = 1
-    max_timescale: int = 10_000
-    embedding_dims: int = 0
+  Attributes:
+    min_timescale: Start of the geometric index. Determines the periodicity of
+      the added signal.
+    max_timescale: End of the geometric index. Determines the frequency of the
+      added signal.
+    embedding_dims: Dimension of the embedding to be generated.
+  """
+  min_timescale: int = 1
+  max_timescale: int = 10_000
+  embedding_dims: int = 0
 
   def __call__(self,
                seq_length: Optional[int] = None,
@@ -793,16 +775,12 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
   """Applies rotary position embedding for a given 1-d sequence.
 
   The Rotary position embedding is described in https://arxiv.org/abs/2104.09864
+
+  Attributes:
+    cast_as_fprop_dtype: If True, the returned vars are cast as fprop_dtype
+    to save some memory.
   """
-
-  class HParams(PositionalEmbedding.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      cast_as_fprop_dtype: If True, the returned vars are cast as fprop_dtype
-      to save some memory.
-    """
-    cast_as_fprop_dtype: bool = True
+  cast_as_fprop_dtype: bool = True
 
   def __call__(self,
                inputs: JTensor,
@@ -892,17 +870,14 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
 
 
 class TrainablePositionalEmbedding(PositionalEmbedding):
-  """Generates trainable position embedding for a given 1-d sequence."""
+  """Generates trainable position embedding for a given 1-d sequence.
 
-  class HParams(PositionalEmbedding.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      max_seq_length: Max sequence length.
-      lookup_style: Style of lookup, one of index or matmul.
-    """
-    max_seq_length: int = 10_240
-    lookup_style: str = 'matmul'
+  Attributes:
+    max_seq_length: Max sequence length.
+    lookup_style: Style of lookup, one of index or matmul.
+  """
+  max_seq_length: int = 10_240
+  lookup_style: str = 'matmul'
 
   def setup(self) -> None:
     super().setup()

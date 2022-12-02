@@ -91,7 +91,7 @@ def get_bigram_ids(ids: JTensor,
   return ngram_ids
 
 
-class VectorQuantization(base_layer.BaseLayer):
+class VectorQuantization(base_layer.FiddleBaseLayer):
   """Implements vector quantization (VQ)/online k-means clustering.
 
   This layer computes a discrete latent representation of a sequence, in a
@@ -109,25 +109,21 @@ class VectorQuantization(base_layer.BaseLayer):
     N = number of attention heads
     H = dimensions of each attention head
     K = number of clusters
+
+  Attributes:
+    num_clusters: Number of clusters, typically around the square root of the
+      sequence length.
+    num_heads: Number of attention heads.
+    decay: The decay with which to update centroids.
+    epsilon: Tiny value to guard against divide by 0.
+    dim_per_head: The last dimension of the inputs on which to apply Vector
+      Quantization.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      num_clusters: Number of clusters, typically around the square root of the
-        sequence length.
-      num_heads: Number of attention heads.
-      decay: The decay with which to update centroids.
-      epsilon: Tiny value to guard against divide by 0.
-      dim_per_head: The last dimension of the inputs on which to apply Vector
-        Quantization.
-    """
-    num_clusters: int = 0
-    num_heads: int = 0
-    decay: float = 0.999
-    epsilon: float = 1e-6
-    dim_per_head: int = 0
+  num_clusters: int = 0
+  num_heads: int = 0
+  decay: float = 0.999
+  epsilon: float = 1e-6
+  dim_per_head: int = 0
 
   def setup(self) -> None:
     """Constructs an instance which tracks its own set of centroids."""
@@ -233,7 +229,7 @@ class VectorQuantization(base_layer.BaseLayer):
     return dists, nearest_centroid
 
 
-class BregmanCompression(base_layer.BaseLayer):
+class BregmanCompression(base_layer.FiddleBaseLayer):
   """Implements Bregman compression via Bregman PCA.
 
   This layer computes a continuous latent representation of a sequence, in a
@@ -248,43 +244,39 @@ class BregmanCompression(base_layer.BaseLayer):
     N = number of attention heads
     H = dimensions of each attention head
     C = dimensions of compression coefficients.
+
+  Attributes:
+    num_heads: Number of attention heads.
+    dim_per_head: The dimension per each head of the input.
+    num_components: Number of PCA components, which is the same as the
+      dimensionality of the compression coefficients.
+    activation_type: Type of the activation function.
+    negative_slope: Negative slope for leaky ReLU.
+    mean_beta: EMA constant for updating the mean.
+    coefficients_lr: Learning rate for the coefficients.
+    coefficients_beta: EMA constant for the coefficients updates.
+    coefficients_steps: Number of steps for solving the coefficients.
+    components_lr: Learning rate for the PCA components.
+    components_beta: EMA constant for the PCA components updates.
+    start_step: Step number to start updating the components.
+    end_step: Step number to end updating the components.
+    constant_lr_schedule: Whether to use a constant learning rate schedule for
+      the components. Applies a linearly decaying schedule if False.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      num_heads: Number of attention heads.
-      dim_per_head: The dimension per each head of the input.
-      num_components: Number of PCA components, which is the same as the
-        dimensionality of the compression coefficients.
-      activation_type: Type of the activation function.
-      negative_slope: Negative slope for leaky ReLU.
-      mean_beta: EMA constant for updating the mean.
-      coefficients_lr: Learning rate for the coefficients.
-      coefficients_beta: EMA constant for the coefficients updates.
-      coefficients_steps: Number of steps for solving the coefficients.
-      components_lr: Learning rate for the PCA components.
-      components_beta: EMA constant for the PCA components updates.
-      start_step: Step number to start updating the components.
-      end_step: Step number to end updating the components.
-      constant_lr_schedule: Whether to use a constant learning rate schedule for
-        the components. Applies a linearly decaying schedule if False.
-    """
-    num_heads: int = 0
-    dim_per_head: int = 0
-    num_components: int = 0
-    activation_type: bregman.ActivationType = bregman.ActivationType.IDENTITY
-    negative_slope: float = 0.0
-    mean_beta: float = 0.99
-    coefficients_lr: float = 0.01
-    coefficients_beta: float = 0.9
-    coefficients_steps: int = 20
-    components_lr: float = 0.01
-    components_beta: float = 0.9
-    start_step: int = 0
-    end_step: int = 0
-    constant_lr_schedule: bool = True
+  num_heads: int = 0
+  dim_per_head: int = 0
+  num_components: int = 0
+  activation_type: bregman.ActivationType = bregman.ActivationType.IDENTITY
+  negative_slope: float = 0.0
+  mean_beta: float = 0.99
+  coefficients_lr: float = 0.01
+  coefficients_beta: float = 0.9
+  coefficients_steps: int = 20
+  components_lr: float = 0.01
+  components_beta: float = 0.9
+  start_step: int = 0
+  end_step: int = 0
+  constant_lr_schedule: bool = True
 
   def setup(self) -> None:
     """Constructs an instance which updates PCA components."""
@@ -351,7 +343,7 @@ class BregmanCompression(base_layer.BaseLayer):
     return coefficients
 
 
-class Ngrammer(base_layer.BaseLayer):
+class Ngrammer(base_layer.FiddleBaseLayer):
   """Implements a generic N-grammer layer which looks up latent bi-gram id.
 
   We use the following capital letters to denote shape parameters:
@@ -361,25 +353,21 @@ class Ngrammer(base_layer.BaseLayer):
     H = dimensions of each attention head
     K = number of clusters
     D = total dimension which is H * N
+
+  Attributes:
+    ngram_vocab_size: Size of the ngram vocabulary.
+    unigram_vocab_size: Size of the unigram vocabulary.
+    ngram_emb_dim: Size of the ngram dimension per head.
+    concat_ngrams: If True, then concat ngrams.
+    num_heads: Number of attention heads.
+    dim_per_head: The dimension per each head of the input.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      ngram_vocab_size: Size of the ngram vocabulary.
-      unigram_vocab_size: Size of the unigram vocabulary.
-      ngram_emb_dim: Size of the ngram dimension per head.
-      concat_ngrams: If True, then concat ngrams.
-      num_heads: Number of attention heads.
-      dim_per_head: The dimension per each head of the input.
-    """
-    ngram_vocab_size: int = 768 * 256
-    unigram_vocab_size: int = 0
-    ngram_emb_dim: int = 8
-    concat_ngrams: bool = True
-    num_heads: int = 0
-    dim_per_head: int = 0
+  ngram_vocab_size: int = 768 * 256
+  unigram_vocab_size: int = 0
+  ngram_emb_dim: int = 8
+  concat_ngrams: bool = True
+  num_heads: int = 0
+  dim_per_head: int = 0
 
   def setup(self) -> None:
     """Constructs an instance which looks up ngrams."""
@@ -543,7 +531,7 @@ class Ngrammer(base_layer.BaseLayer):
     return input_embs
 
 
-class VQNgrammer(base_layer.BaseLayer):
+class VQNgrammer(base_layer.FiddleBaseLayer):
   """Implements a VQ based ngrammer layer which looks up latent ngram id.
 
   We use the following capital letters to denote shape parameters:
@@ -553,45 +541,41 @@ class VQNgrammer(base_layer.BaseLayer):
     H = dimensions of each attention head
     K = number of clusters
     D = total dimension which is H * N
+
+  Attributes:
+    ngram_vocab_size: Size of the ngram vocabulary.
+
+    ngram_emb_dim: Size of the ngram dimension per head.
+    unigram_vocab_size: Size of the unigram vocabulary.
+    ngram_using_attention_scores: Whether to compute n-grams using attention
+      scores. If True, then consecutive tokens are not used to compute n-grams
+      rather it is computed by taking the maximum over the attention scores.
+    causal_attention: This argument is only relevant when using attention
+      scores to compute n-grams. If this is True, then the causal order is
+      respected while taking n-grams, so that a token at position i can only
+      form bi-grams with tokens at position < i.
+    concat_ngrams: If True, then concat ngrams.
+    num_clusters: Number of clusters.
+    num_heads: Number of attention heads.
+    decay: The decay with which to update centroids.
+    epsilon: Tiny value to guard against divide by 0.
+    dim_per_head: The last dimension of the inputs on which to apply Vector
+      Quantization.
+    use_cached_input_ids_to_cluster_ids: Whether to use cached input ids to
+      cluster ids.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      ngram_vocab_size: Size of the ngram vocabulary.
-
-      ngram_emb_dim: Size of the ngram dimension per head.
-      unigram_vocab_size: Size of the unigram vocabulary.
-      ngram_using_attention_scores: Whether to compute n-grams using attention
-        scores. If True, then consecutive tokens are not used to compute n-grams
-        rather it is computed by taking the maximum over the attention scores.
-      causal_attention: This argument is only relevant when using attention
-        scores to compute n-grams. If this is True, then the causal order is
-        respected while taking n-grams, so that a token at position i can only
-        form bi-grams with tokens at position < i.
-      concat_ngrams: If True, then concat ngrams.
-      num_clusters: Number of clusters.
-      num_heads: Number of attention heads.
-      decay: The decay with which to update centroids.
-      epsilon: Tiny value to guard against divide by 0.
-      dim_per_head: The last dimension of the inputs on which to apply Vector
-        Quantization.
-      use_cached_input_ids_to_cluster_ids: Whether to use cached input ids to
-        cluster ids.
-    """
-    ngram_vocab_size: int = 768 * 256
-    unigram_vocab_size: int = 0
-    ngram_emb_dim: int = 8
-    ngram_using_attention_scores: bool = False
-    causal_attention: bool = True
-    concat_ngrams: bool = False
-    num_clusters: int = 0
-    num_heads: int = 0
-    decay: float = 0.999
-    epsilon: float = 1e-6
-    dim_per_head: int = 0
-    use_cached_input_ids_to_cluster_ids: bool = False
+  ngram_vocab_size: int = 768 * 256
+  unigram_vocab_size: int = 0
+  ngram_emb_dim: int = 8
+  ngram_using_attention_scores: bool = False
+  causal_attention: bool = True
+  concat_ngrams: bool = False
+  num_clusters: int = 0
+  num_heads: int = 0
+  decay: float = 0.999
+  epsilon: float = 1e-6
+  dim_per_head: int = 0
+  use_cached_input_ids_to_cluster_ids: bool = False
 
   @classmethod
   def set_canonical_sharding_params(cls, vqngrammer_p, *, replica_axis,
@@ -805,7 +789,7 @@ class VQNgrammer(base_layer.BaseLayer):
     return jnp.squeeze(output_embs, axis=1)
 
 
-class BregmanNgrammer(base_layer.BaseLayer):
+class BregmanNgrammer(base_layer.FiddleBaseLayer):
   """Implements a Bregman PCA based ngrammer layer to form bi-grams.
 
   We use the following capital letters to denote shape parameters:
@@ -815,49 +799,45 @@ class BregmanNgrammer(base_layer.BaseLayer):
     H = dimensions of each attention head
     C = dimensions of compression coefficients.
     V = n-gram vocab size.
+
+  Attributes:
+    ngram_vocab_size: Size of the ngram vocabulary.
+    ngram_emb_dim: Size of the ngram dimension per head.
+    concat_ngrams: If True, then concat ngrams.
+    num_heads: Number of attention heads.
+    dim_per_head: The dimension per each head of the input.
+    num_components: Number of PCA components, which is the same as the
+      dimensionality of the compression coefficients.
+    activation_type: Type of the activation function.
+    negative_slope: Negative slope for leaky ReLU.
+    mean_beta: EMA constant for updating the mean.
+    coefficients_lr: Learning rate for the coefficients.
+    coefficients_beta: EMA constant for the coefficients updates.
+    coefficients_steps: Number of steps for solving the coefficients.
+    components_lr: Learning rate for the PCA components.
+    components_beta: EMA constant for the PCA components updates.
+    start_step: Step number to start updating the components.
+    end_step: Step number to end updating the components.
+    constant_lr_schedule: Whether to use a constant learning rate schedule for
+      the components. Applies a linearly decaying schedule if False.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      ngram_vocab_size: Size of the ngram vocabulary.
-      ngram_emb_dim: Size of the ngram dimension per head.
-      concat_ngrams: If True, then concat ngrams.
-      num_heads: Number of attention heads.
-      dim_per_head: The dimension per each head of the input.
-      num_components: Number of PCA components, which is the same as the
-        dimensionality of the compression coefficients.
-      activation_type: Type of the activation function.
-      negative_slope: Negative slope for leaky ReLU.
-      mean_beta: EMA constant for updating the mean.
-      coefficients_lr: Learning rate for the coefficients.
-      coefficients_beta: EMA constant for the coefficients updates.
-      coefficients_steps: Number of steps for solving the coefficients.
-      components_lr: Learning rate for the PCA components.
-      components_beta: EMA constant for the PCA components updates.
-      start_step: Step number to start updating the components.
-      end_step: Step number to end updating the components.
-      constant_lr_schedule: Whether to use a constant learning rate schedule for
-        the components. Applies a linearly decaying schedule if False.
-    """
-    ngram_vocab_size: int = 768 * 256
-    ngram_emb_dim: int = 8
-    concat_ngrams: bool = True
-    num_heads: int = 0
-    dim_per_head: int = 0
-    num_components: int = 0
-    activation_type: bregman.ActivationType = bregman.ActivationType.IDENTITY
-    negative_slope: float = 0.0
-    mean_beta: float = 0.99
-    coefficients_lr: float = 0.01
-    coefficients_beta: float = 0.9
-    coefficients_steps: int = 20
-    components_lr: float = 0.01
-    components_beta: float = 0.9
-    start_step: int = 0
-    end_step: int = 0
-    constant_lr_schedule: bool = True
+  ngram_vocab_size: int = 768 * 256
+  ngram_emb_dim: int = 8
+  concat_ngrams: bool = True
+  num_heads: int = 0
+  dim_per_head: int = 0
+  num_components: int = 0
+  activation_type: bregman.ActivationType = bregman.ActivationType.IDENTITY
+  negative_slope: float = 0.0
+  mean_beta: float = 0.99
+  coefficients_lr: float = 0.01
+  coefficients_beta: float = 0.9
+  coefficients_steps: int = 20
+  components_lr: float = 0.01
+  components_beta: float = 0.9
+  start_step: int = 0
+  end_step: int = 0
+  constant_lr_schedule: bool = True
 
   def setup(self) -> None:
     """Constructs an instance which looks up ngrams."""

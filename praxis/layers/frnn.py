@@ -21,6 +21,7 @@ from flax import linen as nn
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import rnn_cell
@@ -30,6 +31,7 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
 BaseHParams = base_layer.BaseLayer.HParams
+LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
 PARAMS = base_layer.PARAMS
 AUX_LOSS = base_layer.AUX_LOSS
@@ -45,18 +47,15 @@ def _sum_aux_loss(tree):
   return jax.tree_map(jnp.sum, tree)
 
 
-class FRnn(base_layer.BaseLayer):
-  """A generic Rnn layer that works with any RnnCell."""
+class FRnn(base_layer.FiddleBaseLayer):
+  """A generic Rnn layer that works with any RnnCell.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      cell_tpl: Configs for the RnnCell.
-      reverse: Whether or not to unroll the sequence in reversed order.
-    """
-    cell_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
-    reverse: bool = False
+  Attributes:
+    cell_tpl: Configs for the RnnCell.
+    reverse: Whether or not to unroll the sequence in reversed order.
+  """
+  cell_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  reverse: bool = False
 
   def setup(self) -> None:
     p = self.hparams
@@ -163,23 +162,20 @@ class FRnn(base_layer.BaseLayer):
     return act, final_state
 
 
-class StackFrnn(base_layer.BaseLayer):
-  """A stacked FRNN which includes multiple layers."""
+class StackFrnn(base_layer.FiddleBaseLayer):
+  """A stacked FRNN which includes multiple layers.
 
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      frnn_tpl: Configs for the frnn.
-      num_layers: number of frnn layers.
-      num_input_nodes: Number of input nodes.
-      num_output_nodes: Number of output nodes. If num_hidden_nodes is 0, also
-        used as cell size.
-    """
-    frnn_tpl: Optional[BaseHParams] = base_layer.sub_config_field(None)
-    num_layers: int = 1
-    num_input_nodes: int = 0
-    num_output_nodes: int = 0
+  Attributes:
+    frnn_tpl: Configs for the frnn.
+    num_layers: number of frnn layers.
+    num_input_nodes: Number of input nodes.
+    num_output_nodes: Number of output nodes. If num_hidden_nodes is 0, also
+      used as cell size.
+  """
+  frnn_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  num_layers: int = 1
+  num_input_nodes: int = 0
+  num_output_nodes: int = 0
 
   def setup(self) -> None:
     p = self.hparams
@@ -195,14 +191,6 @@ class StackFrnn(base_layer.BaseLayer):
       input_nodes = p.num_output_nodes
 
     self.create_children('frnn', frnns_p)
-
-  @property
-  def num_input_nodes(self) -> int:
-    return self.hparams.num_input_nodes
-
-  @property
-  def num_output_nodes(self) -> int:
-    return self.hparams.num_output_nodes
 
   def init_states(self, batch_size: int) -> List[NestedMap]:
     return [
