@@ -771,31 +771,27 @@ class PositionalEmbedding(base_layer.FiddleBaseLayer):
     return signal
 
 
-class PositionalEmbedding2D(base_layer.BaseLayer):
+class PositionalEmbedding2D(base_layer.FiddleBaseLayer):
   """Generates 2-d position embedding for sequence of flattened patches.
 
   See description in the ViT paper section D4. The only difference is that we
   allow the number of patches along the h and w dimensions to be different.
   https://arxiv.org/pdf/2010.11929v2.pdf
+
+  Attributes:
+    h: An integer as fixed length of image height.
+    w: An integer as fixed length of image width.
+    embedding_dims: An integer as dimension of embedding.
+    pos_transform: Indicate how to merge the h and w.
+    num_prepend_cls_tokens: Number of prepended CLS tokens.
+    num_append_cls_tokens: Number of appended CLS tokens.
   """
-
-  class HParams(BaseHParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      h: An integer as fixed length of image height.
-      w: An integer as fixed length of image width.
-      embedding_dims: An integer as dimension of embedding.
-      pos_transform: Indicate how to merge the h and w.
-      num_prepend_cls_tokens: Number of prepended CLS tokens.
-      num_append_cls_tokens: Number of appended CLS tokens.
-    """
-    h: int = 0
-    w: int = 0
-    embedding_dims: int = 0
-    pos_transform: str = 'hwd->(hw)d'
-    num_prepend_cls_tokens: int = 0
-    num_append_cls_tokens: int = 0
+  h: int = 0
+  w: int = 0
+  embedding_dims: int = 0
+  pos_transform: str = 'hwd->(hw)d'
+  num_prepend_cls_tokens: int = 0
+  num_append_cls_tokens: int = 0
 
   def _compute_1d_embeddings(self,
                              position: JTensor,
