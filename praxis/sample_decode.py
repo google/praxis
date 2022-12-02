@@ -322,6 +322,7 @@ def sample_decode(model: base_layer.BaseLayerApi,
                   temperature: Union[float, JTensor] = 1.0,
                   max_prefix_len: Optional[int] = None,
                   max_decode_steps: Optional[int] = None,
+                  per_example_max_decode_steps: Optional[JTensor] = None,
                   prefix_lengths: Optional[JTensor] = None,
                   eos_id: Optional[int] = None,
                   return_result_for_suffix_score: bool = False,
@@ -367,6 +368,13 @@ def sample_decode(model: base_layer.BaseLayerApi,
       prefix (if any). Since the prefixes might be of unequal lengths, this
       value is not equivalent with `seq_len` above. When None, decode steps is
       only limited by `seq_len` above.
+    per_example_max_decode_steps: Optional JTensor of shape [B], the maximum
+      decode steps defined for each batch. If per_example_max_decode_steps is
+      defined, the decoding for each example will be stopped either 
+      `per_example_max_decode_steps` is reached or `max_decode_steps` is 
+      reached. If EOS is reached, will also stop early. Normally,
+      `per_example_max_decode_steps` should not be set to values larger than
+      `max_decode_steps`.
     prefix_lengths: Optional argument supplying prefix sizes to initialize the
       model to decode from a certain target prefix for each position in the
       batch. This can either be None or a JTensor of shape [batch] signifying
@@ -398,19 +406,29 @@ def sample_decode(model: base_layer.BaseLayerApi,
         target_prefix_paddings, axis=0, repeats=num_samples)
     prefix_lengths = jnp.repeat(prefix_lengths, axis=0, repeats=num_samples)
 
+    def _broadcast_input(x: JTensor, name: str) -> JTensor:
+      if cf_guidance_scale is not None:
+        x_expected_shape = (original_batch_size // 2,)
+      else:
+        x_expected_shape = (original_batch_size,)
+      if x.shape != x_expected_shape:  # pytype: disable=attribute-error
+        raise ValueError(f'Dynamic {name} should have shape: '
+                         f'{x_expected_shape}, but it has shape: '
+                         f'{x.shape}.'  # pytype: disable=attribute-error
+                        )
+      x = jnp.repeat(x, axis=0, repeats=num_samples)
+      return x
+
     # Broadcast temperature if it is a JTensor.
     if isinstance(temperature, JTensor):
-      if cf_guidance_scale is not None:
-        temperature_expected_shape = (original_batch_size // 2,)
-      else:
-        temperature_expected_shape = (original_batch_size,)
-      if temperature.shape != temperature_expected_shape:  # pytype: disable=attribute-error
-        raise ValueError('Dynamic temperature should have shape: '
-                         f'{temperature_expected_shape}, but it has shape: '
-                         f'{temperature.shape}.'  # pytype: disable=attribute-error
-                        )
-      temperature = jnp.repeat(temperature, axis=0, repeats=num_samples)
+      temperature = _broadcast_input(temperature, 'temperature')
       temperature = jnp.reshape(temperature, (-1, 1))
+
+    # Broadcast per_example_max_decode_steps if it is a JTensor.
+    if per_example_max_decode_steps is not None:
+      per_example_max_decode_steps = _broadcast_input(
+          per_example_max_decode_steps.astype(jnp.int32),
+          'per_example_max_decode_steps')
 
     if lazy_broadcast_prefix_fn is not None:
       assert fprop_for_prefix
@@ -437,6 +455,11 @@ def sample_decode(model: base_layer.BaseLayerApi,
     raise ValueError('The sequence length for decoding must be > 0, '
                      f'current value = {seq_len}.')
   max_decode_steps = max_decode_steps or seq_len
+  per_example_max_decode_steps = (
+      max_decode_steps
+      if per_example_max_decode_steps is None else per_example_max_decode_steps)
+  per_example_max_decode_steps = jnp.minimum(per_example_max_decode_steps,
+                                             max_decode_steps)
   batch_size = target_prefix_ids.shape[0]
 
   # If prefix length is not specified, set it to 0.
@@ -527,7 +550,7 @@ def sample_decode(model: base_layer.BaseLayerApi,
     val.segment_pos += 1
 
     max_decoding_steps_reached = (jnp.ones_like(prefix_lengths) * (step + 2) -
-                                  prefix_offset) >= max_decode_steps
+                                  prefix_offset) >= per_example_max_decode_steps
     val.done = jnp.logical_or(val.done, max_decoding_steps_reached)
     done_at_this_step = jnp.logical_and(jnp.logical_not(prev_done), val.done)
     val.decode_lengths = jnp.where(done_at_this_step, decode_lengths,

@@ -723,7 +723,7 @@ class LanguageModelTest(test_utils.TestCase):
       (2, True),
   )
   def test_sample_decoding_prefix_and_eos_fprop_for_prefix(
-      self, k, is_dynamic_temp):
+      self, k, is_dynamic_input):
     p = models.SampleDecoderHParams(
         fprop_for_prefix=True,
         seqlen=7,
@@ -763,9 +763,10 @@ class LanguageModelTest(test_utils.TestCase):
         prefix_lengths=jnp.array([2, 1, 1], dtype=jnp.int32),
     )
 
-    if is_dynamic_temp:
+    if is_dynamic_input:
       # Test if JTensor type temperature could work.
       input_batch['temperature'] = jnp.array([0.5, 0.5, 0.5], dtype=jnp.float32)
+      input_batch['stop_decode_steps'] = jnp.array([4, 4, 3], dtype=jnp.int32)
 
     results = self._run_decode(p, sample_logits, input_batch)
 

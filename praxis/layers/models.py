@@ -358,6 +358,8 @@ class LanguageModel(base_model.BaseModel):
         `.temperature` of shape [batch_size] has the temperature for each
         example. If `.temperature` is not set in the input_batch,
         p.decoder_tpl.temperature will be used in sampling decode.
+        Optional `.per_example_max_decode_steps` of shape [batch_size] has the 
+        maximum decoding steps for each example.
       return_result_for_suffix_score: Whether return results for suffix score.
 
     Returns:
@@ -468,6 +470,12 @@ class LanguageModel(base_model.BaseModel):
       else:
         temperature = p.decoder_tpl.temperature
 
+      # Fetch dynamic per_example_max_decode_steps from input_batch if the
+      # input_batch has this information.
+      per_example_max_decode_steps = getattr(input_batch,
+                                             'per_example_max_decode_steps',
+                                             None)
+
       result = sample_decode.sample_decode(
           self,
           extend_step_fn,
@@ -483,6 +491,7 @@ class LanguageModel(base_model.BaseModel):
           temperature=temperature,
           max_prefix_len=max_prefix_len,
           max_decode_steps=p.decoder_tpl.max_decode_steps,
+          per_example_max_decode_steps=per_example_max_decode_steps,
           prefix_lengths=decode_data.prefix_lengths,
           eos_id=p.decoder_tpl.eos_id,
           return_result_for_suffix_score=return_result_for_suffix_score,
