@@ -24,6 +24,7 @@ import enum
 import functools
 import itertools
 import math
+import sys
 import typing
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union, Mapping
 
@@ -1930,10 +1931,18 @@ class BaseLayer(
     """Automatically initializes all subclasses as custom dataclasses."""
     super().__init_subclass__(**kwargs)
 
+    if not (hasattr(cls, '_USE_DEPRECATED_HPARAMS_BASE_LAYER') or
+            'google.colab' in sys.modules):
+      raise ValueError(
+          'New base layers should be subclassed from FiddleBaseLayer. '
+          'If you need to override this, then add '
+          '_USE_DEPRECATED_HPARAMS_BASE_LAYER=True to your class definition.')
+
     # Update the Params to dynamically bind a few fields.
     fields = [
         ('_attribute_overrides', Tuple[str, ...],
-         ('cls', 'weight_split_dims_mapping', 'activation_split_dims_mapping')),
+         ('cls', 'weight_split_dims_mapping', 'activation_split_dims_mapping',
+          '_USE_DEPRECATED_HPARAMS_BASE_LAYER')),
         ('cls', Type[Any], cls),
         ('weight_split_dims_mapping', BaseHyperParams,
          cls.WeightShardingHParams()),
@@ -2342,6 +2351,8 @@ def compatible_hparams(
 
 class _WrapperLayer(BaseLayer):
   """A simple wrapper layer."""
+
+  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
 
   class HParams(BaseLayer.HParams):
     """Hyperparameters for this layer."""

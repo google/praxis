@@ -545,6 +545,8 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
 
 class LayerE(base_layer.BaseLayer):
 
+  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
+
   class HParams(base_layer.BaseLayer.HParams):
     tpl: pax_fiddle.Config[LayerD] = base_layer.sub_config_field(LayerD.HParams)
 

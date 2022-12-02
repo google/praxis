@@ -36,6 +36,8 @@ from praxis import test_utils
 class Identity(base_layer.BaseLayer):
   """Layer for testing summary writing."""
 
+  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
+
   def setup(self):
     pass
 
@@ -48,6 +50,8 @@ class Identity(base_layer.BaseLayer):
 class AddBias(base_layer.BaseLayer):
   """A layer that adds bias to an input tensor."""
 
+  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
+
   @nn.compact
   def __call__(self, x: base_layer.JTensor) -> base_layer.JTensor:
     var_p = base_layer.WeightHParams(
@@ -59,6 +63,8 @@ class AddBias(base_layer.BaseLayer):
 
 class MultipleBiasLayer(base_layer.BaseLayer):
   """A dummy layer that adds multiple biases to an input tensor."""
+
+  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
 
   class HParams(base_layer.BaseLayer.HParams):
     """Attributes for MultipleBiasLayer.
@@ -91,6 +97,8 @@ class SimpleFiddleBaseLayer(base_layer.FiddleBaseLayer):
 
 
 class SimpleHParamsBaseLayer(base_layer.BaseLayer):
+
+  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
 
   class HParams(base_layer.BaseLayer.HParams):
     x: int = 0
@@ -269,6 +277,8 @@ class BaseLayerTest(test_utils.TestCase):
 
     class HParamsChild(base_layer.BaseLayer):
 
+      _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
+
       class HParams(base_layer.BaseLayer.HParams):
         x: int = 0
 
@@ -278,6 +288,8 @@ class BaseLayerTest(test_utils.TestCase):
     for child_cls in (HParamsChild, FiddleChild):
 
       class HParamsParent(base_layer.BaseLayer):
+
+        _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
 
         class HParams(base_layer.BaseLayer.HParams):
 
@@ -399,6 +411,8 @@ class BaseLayerTest(test_utils.TestCase):
       class Layer(base_layer.BaseLayer):  # pylint: disable=unused-variable
         """Test layer, inheriting from BaseLayer."""
 
+        _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
+
         class HParams(base_layer.BaseLayer.HParams):
           """Test HParams, inheriting from BaseLayer.HParams."""
 
@@ -412,6 +426,8 @@ class BaseLayerTest(test_utils.TestCase):
 
       class Layer(base_layer.BaseLayer):  # pylint: disable=unused-variable
         """Test layer, inheriting from BaseLayer."""
+
+        _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
 
         class HParams(base_layer.BaseLayer.HParams):
           """Test HParams, inheriting from BaseLayer.HParams."""
@@ -428,10 +444,21 @@ class BaseLayerTest(test_utils.TestCase):
       class Layer(base_layer.BaseLayer):  # pylint: disable=unused-variable
         """Test layer, inheriting from BaseLayer."""
 
+        _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
+
         class HParams(base_layer.BaseLayer.HParams):
           """Test HParams, inheriting from BaseLayer.HParams."""
 
           x = 42
+
+  def test_no_new_hparams_base_layers(self):
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'New base layers should be subclassed from FiddleBaseLayer'):
+
+      class TestLayer(base_layer.BaseLayer):  # pylint: disable=unused-variable
+        pass
 
 
 class FiddleBaseLayerTest(test_utils.TestCase):
