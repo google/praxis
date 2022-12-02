@@ -66,7 +66,7 @@ class BaseModel(base_layer.FiddleBaseLayer):
     raise NotImplementedError('Abstract method')
 
   def compute_loss(
-      self, predictions: Union[JTensor, NestedMap],
+      self, predictions: Predictions,
       input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
