@@ -751,7 +751,7 @@ class TransformerLm(base_layer.FiddleBaseLayer):
         The latter is useful for Primer, Ngrammer, and suffix-scoring post
         autoregressive decoding.
       segment_pos:  [B] or [B, L], optional segment pos of each input token.
-      atten_mask:   [B, 1, L, S], optional attention mask.
+      atten_mask:   [B, 1, L, S] or [B, 1, S], optional attention mask.
 
     Returns:
       xent_output: a `.NestedMap` object containing the log probabilities and
@@ -767,11 +767,19 @@ class TransformerLm(base_layer.FiddleBaseLayer):
     if segment_pos is not None:
       assert inputs.shape == segment_pos.shape, (inputs.shape,
                                                  segment_pos.shape)
-    if atten_mask is not None:
-      prefix_len = inputs.shape[1] if inputs.ndim == 2 else 1
-      assert atten_mask.shape[:3] == (b, 1, prefix_len), atten_mask.shape
 
     is_single_token = inputs.ndim == 1
+
+    if atten_mask is not None:
+      prefix_len = 1 if is_single_token else inputs.shape[1]
+      # TODO(pax): consider to consolidate the atten_mask shape to [B, L, S]
+      # regardless of extending one or more steps.
+      if is_single_token:
+        assert atten_mask.ndim == 3, atten_mask.shape
+        assert atten_mask.shape[:2] == (b, 1), atten_mask.shape
+      else:
+        assert atten_mask.ndim == 4, atten_mask.shape
+        assert atten_mask.shape[:3] == (b, 1, prefix_len), atten_mask.shape
 
     # Makes ids rank=2 for uniformity.
     # [B, T]

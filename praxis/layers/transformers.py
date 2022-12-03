@@ -146,7 +146,7 @@ def compute_attention_masks_for_extend_step(
 
   Returns:
     attention_mask: Attention mask JTensor ready to add to logits for self
-      attention of shape [1|B, 1, 1, T].
+      attention of shape [1|B, 1, T].
     cross_attention_mask: Attention mask JTensor ready to add to logits for
       cross attention of shape [1|B, 1, 1, S]. This will be None if
       cross_paddings are None.
@@ -1316,8 +1316,10 @@ class Transformer(base_layer.FiddleBaseLayer):
       segment_pos:    [B] or [B, L], the current position in the same segment.
         If unspecified, time_step will be used.
 
-      attention_mask: [B, 1|L, T], per step attention mask for this time step.
-        This combines causal mask with any segment mask if applicable.
+      attention_mask: [B, 1, L, S] if extends multiple steps (i.e. `inputs` is
+        of shape [B, L, D]) or [B, 1, T] if extends one step (i.e. `inputs` is
+        of shape [B, D]), optional attention mask for this time step. This
+        combines causal mask with any segment mask if applicable.
       cross_attention_mask: [b|B, 1, 1 S], optional, cross_segment_mask for
         this time step. This combines padding mask with any segment mask if
         applicable.
@@ -1637,9 +1639,9 @@ class StackedTransformer(base_layer.FiddleBaseLayer):
       time_step:      a 0-based scalar, the current decode step.
       segment_pos:    [B] or [B, L], the current position in the same segment.
         If unspecified, time_step will be used.
-      atten_mask:     [B, 1, L, S], optional. If None, a causal mask on a
-        contiguous sequence is used by default. This is unsupported for
-        cross-attention.
+      atten_mask:     [B, 1, S] or [B, 1, L, S], optional. If None, a causal
+        mask on a contiguous sequence is used by default. This is unsupported
+        for cross-attention.
       cross_paddings: [B|b, S], optional 0/1 JTensor.
       cross_segment_mask: [B|b, 1, S], optional.
 
@@ -1835,10 +1837,10 @@ class StackedTransformerRepeated(base_layer.FiddleBaseLayer):
       time_step: A scalar, the current decode step, 0-based.
       segment_pos: An optional JTensor of shape [B]. Current position in the
         same segment. If unspecified, time_step will be used.
-      atten_mask: An optional JTensor of shape [B, 1, L, S] for attention mask
-        between inputs and the whole sequence. If it is None, it will be
-        computed as a causal mask on a contiguous sequence. This passed in
-        atten_mask is unsupported with cross-attention.
+      atten_mask: An optional JTensor of shape [B, 1, L, S] or [B, 1, S] for
+        attention mask between inputs and the whole sequence. If it is None, it
+        will be computed as a causal mask on a contiguous sequence. This passed
+        in atten_mask is unsupported with cross-attention.
       cross_paddings: Source paddings - [b|B, S].
       cross_segment_mask: if not None, cross_segment_mask for this time step, of
         shape [b|B, 1, S].

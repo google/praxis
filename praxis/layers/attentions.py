@@ -2125,9 +2125,9 @@ class DotProductAttentionWithLPB(DotProductAttention):
     Args:
       query_vec: JTensor of shape [B, D] corresponding to query vector at index
         time_step or JTensor of shape [B, T, D] to support extend n steps.
-      atten_mask: JTensor of shape [1|B, 1, S]. atten_mask should have already
-        taken care of causal masking for decoding, plus other maskings
-        necessary.
+      atten_mask: JTensor of shape [1|B, 1, S] or of shape [1|B, 1, T, S] to
+        support extend n steps. atten_mask should have already taken care of
+        causal masking for decoding, plus other maskings necessary.
       time_step: A scalar or JTensor. Current time-step, 0-based.
       segment_pos: An optional JTensor of shape [B]. Current position in the
         same segment. If unspecified, time_step will be used.

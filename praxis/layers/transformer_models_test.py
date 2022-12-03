@@ -348,6 +348,17 @@ class TransformerModelsTest(test_utils.TestCase):
           atten_mask=segment_mask,
           mutable=[DECODE_CACHE])
       self.assertAllClose(logits, xent_output.logits)
+      for step_i in range(seq_len):
+        xent_output, decoder_state = transformer_lm.apply(
+            updated_vars,
+            inputs[:, step_i],
+            method=transformer_lm.extend_step,
+            segment_pos=segment_pos[:, step_i],
+            atten_mask=segment_mask[..., step_i, :],
+            mutable=[DECODE_CACHE])
+        updated_vars = py_utils.MergeDictsWithValueCheck(
+            decoder_state, initial_vars)
+        self.assertAllClose(logits[:, step_i, :], xent_output.logits)
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=5)))
   def test_ngrammer_primer_lm_extendstep(self, use_vq_ngrams,
