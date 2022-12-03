@@ -824,13 +824,20 @@ class PositionalEmbedding2D(base_layer.FiddleBaseLayer):
         ], axis=-1)
     return pos_emb_2d
 
-  def __call__(self) -> JTensor:
+  def __call__(self,
+               seq_length: Optional[int] = None,
+               position: Optional[JTensor] = None) -> JTensor:
     """Generates a JTensor of sinusoids with different frequencies.
+
+    Args:
+      seq_length: Only to follow signature of PositionalEmbedding layer.
+      position: Only to follow signature of PositionalEmbedding layer.
 
     Returns:
       2D positional embedding Tensor of shape
         [1, p.num_prepend_cls_tokens + p.h * p.w + p.num_append_cls_tokens, D].
     """
+    del seq_length, position
     p = self.hparams
     pos_emb = self._compute_2d_embeddings()
     pos_emb = jnp.reshape(pos_emb, (p.h * p.w, p.embedding_dims))
