@@ -124,6 +124,9 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     return cls.get_batch_size(hparams) * hparams.num_infeed_hosts
 
   def __init__(self, hparams: BaseInput.HParams) -> None:
+    # Ensure hparams are not mutated.
+    hparams = hparams.clone()
+
     if self._VALIDATE_BATCH_SIZE_NOT_NONE and (hparams.batch_size is None):
       raise ValueError('Must specify p.batch_size.')
     if not hparams.name:
