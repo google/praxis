@@ -170,9 +170,9 @@ class VitEntryLayers(base_layer.FiddleBaseLayer):
     - adding potential dropouts
 
   Attributes:
-    pos_emb_shapes: Height/width of the positional embedding. This param is
-      used to support images of different shapes. When the embedding_size is
-      not equal to image_size / patch_size, interpolation will be employed to
+    pos_emb_shapes: Shape of the positional embedding. This param is used to
+      support images of different shapes. When the embedding is 2d and its shape
+      is not equal to image_size / patch_size, interpolation will be employed to
       generate embeddings of image_size / patch_size.
     input_dims: Dims per patch before input patch projection.
     output_dims: Dims per patch after input patch projection.
@@ -260,8 +260,8 @@ class VitEntryLayers(base_layer.FiddleBaseLayer):
     if p.pos_emb_tpl:
       num_pos_embed = np.prod(p.pos_emb_shapes)
       pos_emb = self.pos_emb(seq_length=num_pos_embed)
-      # Only support image shape for pos interpolation.
-      if len(inputs.shape) == 4:
+      # Only support image shape and 2d pos_emb_shape for pos interpolation.
+      if len(inputs.shape) == 4 and len(p.pos_emb_shapes) == 2:
         row_patch_count = height // p.patch_size
         col_patch_count = width // p.patch_size
         if p.pos_emb_shapes != (row_patch_count, col_patch_count):
