@@ -243,6 +243,25 @@ def top_p_mask_logits(logits: JTensor, p: Union[float, JTensor]) -> JTensor:
   return logits
 
 
+def epsilon_mask_logits(logits: JTensor, epsilon: float) -> JTensor:
+  """Mask logits with absolute probability below epsilon.
+
+  Args:
+    logits: logits of shape [B, T].
+    epsilon: a scalar.
+
+  Returns:
+    The masked logits.
+  """
+  if epsilon <= 0:
+    return logits
+  probs = jax.nn.softmax(logits.astype(jnp.float32), axis=-1)
+  logits = jnp.where(probs < epsilon,
+                     py_utils.get_large_negative_number(logits.dtype), logits)
+  # note: logits are no longer normalized after this, sum(exp(logits)) < 1
+  return logits
+
+
 class BaseNextTokenSampler(
     base_hyperparams.BaseParameterizable, metaclass=abc.ABCMeta):
 
@@ -278,9 +297,12 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
       top_p: if not None, use the smallest number of logits whose cumulative sum
         of probs adds up to (at least) p. Notice that it should not be used with
         k at the same time.
+      epsilon_p: if positive, use epsilon sampling, only selecting among the
+        tokens with probability at least epsilon at each step.
     """
     top_k: int = 40
     top_p: Optional[Union[float, JTensor]] = None
+    epsilon_p: float = 0.
 
   def __call__(self, model: base_layer.BaseLayerApi, logits: JTensor,
                temperature: Union[float, JTensor],
@@ -291,6 +313,8 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
 
     if p.top_p is not None:
       logits = top_p_mask_logits(logits, p.top_p)
+    if p.epsilon_p > 0.:
+      logits = epsilon_mask_logits(logits, p.epsilon_p)
     if p.top_k > 1:
       new_ids = sample_from_topk(
           logits, model.next_prng_key(), temperature=temperature, topk=p.top_k)
@@ -369,8 +393,8 @@ def sample_decode(model: base_layer.BaseLayerApi,
       only limited by `seq_len` above.
     per_example_max_decode_steps: Optional JTensor of shape [B], the maximum
       decode steps defined for each batch. If per_example_max_decode_steps is
-      defined, the decoding for each example will be stopped either 
-      `per_example_max_decode_steps` is reached or `max_decode_steps` is 
+      defined, the decoding for each example will be stopped either
+      `per_example_max_decode_steps` is reached or `max_decode_steps` is
       reached. If EOS is reached, will also stop early. Normally,
       `per_example_max_decode_steps` should not be set to values larger than
       `max_decode_steps`.

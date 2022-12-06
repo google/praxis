@@ -265,6 +265,12 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     self.assertAllClose(logits[:, :-1], masked[:, :-1])
     self.assertLess(masked[0, -1], 1e-10)
 
+  def test_epsilon_mask_logits(self):
+    logits = jnp.array([[1.0, 1.0, 0.5, -1e6]])
+    masked = sample_decode.epsilon_mask_logits(logits, epsilon=0.1)
+    self.assertAllClose(logits[:, :-1], masked[:, :-1])
+    self.assertLess(masked[0, -1], 1e-10)
+
   def test_sample_decode(self):
     batch_size = 1
     num_samples = 2
