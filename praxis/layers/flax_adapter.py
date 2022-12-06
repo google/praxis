@@ -82,9 +82,10 @@ class FlaxModuleAdapterBase(base_layer.FiddleBaseLayer, metaclass=abc.ABCMeta):
         trans_in_fn=base_layer.maybe_unbox_value,
         trans_out_fn=functools.partial(
             flax_utils.convert_to_boxed_params,
-            logical_axes_rules=p.logical_axes_rules,
-            mesh_shape=p.mesh_shape,
-        ))
+            logical_axes_rules=self.logical_axes_rules,
+            mesh_shape=self.mesh_shape,
+        ),
+    )
 
     # Call the final mapped_fn.
     return mapped_fn(self.cld, *args, **kwargs)
@@ -106,10 +107,9 @@ class FlaxModuleAdapter(FlaxModuleAdapterBase):
   module_factory_method: Optional[Callable[[], Any]] = None
 
   def _build_wrapped_module(self) -> nn.Module:
-    p = self.hparams
-    if p.module_factory_method is None:
+    if self.module_factory_method is None:
       raise ValueError('module_factory_method must be set.')
-    return p.module_factory_method()
+    return self.module_factory_method()
 
 
 class EncoderDecoderFlaxModuleAdaptor(FlaxModuleAdapter):
@@ -142,7 +142,6 @@ class FiddleFlaxModuleAdapter(FlaxModuleAdapterBase):
   flax_module_factory: Optional[Callable[[], nn.Module]] = None
 
   def _build_wrapped_module(self) -> nn.Module:
-    p = self.hparams
-    if p.flax_module_factory is None:
+    if self.flax_module_factory is None:
       raise ValueError('flax_module_factory must be set.')
-    return p.flax_module_factory()
+    return self.flax_module_factory()

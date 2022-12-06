@@ -48,18 +48,17 @@ class Pooling(base_layer.FiddleBaseLayer):
   padding: str = 'SAME'
 
   def setup(self) -> None:
-    p = self.hparams
-    if len(p.window_shape) != 2:
+    if len(self.window_shape) != 2:
       raise ValueError('window_shape must be a sequence of length 2.')
-    if len(p.window_stride) != 2:
+    if len(self.window_stride) != 2:
       raise ValueError('window_stride must be a sequence of length 2.')
-    if not all([w_shape > 0 for w_shape in p.window_shape]):
+    if not all([w_shape > 0 for w_shape in self.window_shape]):
       raise ValueError('window_shape entries must be positive integers.')
-    if not all([w_stride > 0 for w_stride in p.window_stride]):
+    if not all([w_stride > 0 for w_stride in self.window_stride]):
       raise ValueError('window_stride entries must be positive integers.')
-    if p.pooling_type not in ['MAX', 'AVG']:
+    if self.pooling_type not in ['MAX', 'AVG']:
       raise ValueError('pooling_type must be one of AVG or MAX.')
-    if p.padding not in ['SAME', 'VALID']:
+    if self.padding not in ['SAME', 'VALID']:
       raise ValueError('padding must be one of SAME or VALID.')
 
   def __call__(
@@ -80,14 +79,13 @@ class Pooling(base_layer.FiddleBaseLayer):
     Raises:
       ValueError: If the input dtype is not one of integer or floating point.
     """
-    p = self.hparams
     if jnp.issubdtype(inputs.dtype, jnp.inexact):
       dtype_min = -jnp.inf
     elif jnp.issubdtype(inputs.dtype, jnp.integer):
       dtype_min = jnp.iinfo(inputs.dtype).min
     else:
       raise ValueError('Unsupported dtype for inputs.')
-    if p.pooling_type == 'MAX':
+    if self.pooling_type == 'MAX':
       init_value = dtype_min
       computation = jax.lax.max
       # If paddings are provided and pooling type is 'MAX', replace the pads
@@ -98,33 +96,35 @@ class Pooling(base_layer.FiddleBaseLayer):
         compatible_paddings = paddings[..., jnp.newaxis, jnp.newaxis]
         inputs = jnp.where(compatible_paddings > 0, min_value, inputs)
     else:
-      assert p.pooling_type == 'AVG'
+      assert self.pooling_type == 'AVG'
       init_value = 0
       computation = jax.lax.add
     # The vars `window_shape` and `window_stride` are given only for [H, W].
     # Make it compatible with inputs of shape [N, H, W, C].
-    window_shape = [1, p.window_shape[0], p.window_shape[1], 1]
-    window_stride = [1, p.window_stride[0], p.window_stride[1], 1]
+    window_shape = [1, self.window_shape[0], self.window_shape[1], 1]
+    window_stride = [1, self.window_stride[0], self.window_stride[1], 1]
     out = jax.lax.reduce_window(
         inputs,
         init_value=init_value,
         computation=computation,
         window_dimensions=window_shape,
         window_strides=window_stride,
-        padding=p.padding)
+        padding=self.padding,
+    )
     # If average pooling, rescale outputs by the window size.
-    if p.pooling_type == 'AVG':
+    if self.pooling_type == 'AVG':
       ones = jnp.ones((inputs.shape[1], inputs.shape[2]), dtype=inputs.dtype)
       window_sizes = jax.lax.reduce_window(
           ones,
           init_value=0,
           computation=jax.lax.add,
-          window_dimensions=p.window_shape,
-          window_strides=p.window_stride,
-          padding=p.padding)
+          window_dimensions=self.window_shape,
+          window_strides=self.window_stride,
+          padding=self.padding,
+      )
       out *= jnp.reciprocal(window_sizes[jnp.newaxis, ..., jnp.newaxis])
     if paddings is not None:
-      if p.pooling_type == 'AVG':
+      if self.pooling_type == 'AVG':
         # Shape of paddings is [N, H]. Renormalize by count of non-padding items
         # in a window.
         non_padding_items = 1 - paddings
@@ -132,16 +132,18 @@ class Pooling(base_layer.FiddleBaseLayer):
             non_padding_items,
             init_value=0,
             computation=jax.lax.add,
-            window_dimensions=(1, p.window_shape[0]),
-            window_strides=(1, p.window_stride[0]),
-            padding=p.padding)
+            window_dimensions=(1, self.window_shape[0]),
+            window_strides=(1, self.window_stride[0]),
+            padding=self.padding,
+        )
         non_pad_window_sizes = jax.lax.reduce_window(
             jnp.ones((inputs.shape[1]), dtype=inputs.dtype),
             init_value=0,
             computation=jax.lax.add,
-            window_dimensions=(p.window_shape[0],),
-            window_strides=(p.window_stride[0],),
-            padding=p.padding)
+            window_dimensions=(self.window_shape[0],),
+            window_strides=(self.window_stride[0],),
+            padding=self.padding,
+        )
         # Do a safe division, where if denominator is 0, return 0.
         # This is because some `non_padding_window_sizes` may be 0, if an
         # entire window is full of PADs.
@@ -150,15 +152,16 @@ class Pooling(base_layer.FiddleBaseLayer):
                          0)
         out *= non_pad_window_sizes[jnp.newaxis, ..., jnp.newaxis, jnp.newaxis]
       # Compute the output paddings.
-      if p.window_stride[0] > 1 or p.padding == 'VALID':
+      if self.window_stride[0] > 1 or self.padding == 'VALID':
         # Output paddings are simply max-pooled since they are 0/1.
         paddings = jax.lax.reduce_window(
             paddings,
             init_value=dtype_min,
             computation=jax.lax.max,
-            window_dimensions=(1, p.window_shape[0]),
-            window_strides=(1, p.window_stride[0]),
-            padding=p.padding)
+            window_dimensions=(1, self.window_shape[0]),
+            window_strides=(1, self.window_stride[0]),
+            padding=self.padding,
+        )
       # Apply the paddings back to the output.
       # Note that here we shouldn't multiply the output by (1 - paddings)
       # Since the output may contain - np.inf, and -np.inf * 0 = nan.
@@ -184,13 +187,12 @@ class GlobalPooling(base_layer.FiddleBaseLayer):
   keepdims: bool = False
 
   def setup(self) -> None:
-    p = self.hparams
-    if p.pooling_type not in ['MAX', 'AVG']:
+    if self.pooling_type not in ['MAX', 'AVG']:
       raise ValueError('pooling_type must be one of AVG or MAX.')
-    if p.pooling_dims is None:
+    if self.pooling_dims is None:
       raise ValueError('pooling_dims must be set as a list.')
     else:
-      if not all([p_dims >= 0 for p_dims in p.pooling_dims]):
+      if not all([p_dims >= 0 for p_dims in self.pooling_dims]):
         raise ValueError('pooling_dims must be non-negative integers.')
 
   def __call__(self,
@@ -209,35 +211,39 @@ class GlobalPooling(base_layer.FiddleBaseLayer):
     Returns:
       Output tensor with global pooling applied.
     """
-    p = self.hparams
 
     if compatible_paddings is not None:
-      if p.pooling_type == 'MAX':
+      if self.pooling_type == 'MAX':
         if jnp.issubdtype(inputs.dtype, jnp.inexact):
           padded_value = -jnp.inf
         elif jnp.issubdtype(inputs.dtype, jnp.integer):
           padded_value = jnp.iinfo(inputs.dtype).min
         else:
           raise ValueError('Unsupported dtype for inputs.')
-      elif p.pooling_type == 'AVG':
+      elif self.pooling_type == 'AVG':
         padded_value = jnp.zeros(shape=(), dtype=inputs.dtype)
       padded_value = jnp.ones_like(inputs) * padded_value
       inputs = jnp.where(compatible_paddings > 0, padded_value, inputs)
 
-    if p.pooling_type == 'MAX':
-      outputs = jnp.max(inputs, p.pooling_dims, keepdims=p.keepdims)
-    elif p.pooling_type == 'AVG':
+    if self.pooling_type == 'MAX':
+      outputs = jnp.max(inputs, self.pooling_dims, keepdims=self.keepdims)
+    elif self.pooling_type == 'AVG':
       if compatible_paddings is not None:
-        valid_inputs = jnp.sum(
-            1.0 - compatible_paddings,
-            p.pooling_dims,
-            keepdims=True,
-            dtype=inputs.dtype) + epsilon
-        inputs_sum = jnp.sum(inputs, p.pooling_dims, keepdims=True)
+        valid_inputs = (
+            jnp.sum(
+                1.0 - compatible_paddings,
+                self.pooling_dims,
+                keepdims=True,
+                dtype=inputs.dtype,
+            )
+            + epsilon
+        )
+        inputs_sum = jnp.sum(inputs, self.pooling_dims, keepdims=True)
         outputs = jnp.divide(inputs_sum, valid_inputs).astype(inputs.dtype)
-        if not p.keepdims:
-          outputs = jnp.squeeze(outputs, axis=p.pooling_dims)
+        if not self.keepdims:
+          outputs = jnp.squeeze(outputs, axis=self.pooling_dims)
       else:
         outputs = jnp.mean(
-            inputs, p.pooling_dims, keepdims=p.keepdims).astype(inputs.dtype)
+            inputs, self.pooling_dims, keepdims=self.keepdims
+        ).astype(inputs.dtype)
     return outputs

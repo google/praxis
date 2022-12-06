@@ -46,11 +46,11 @@ class ProjectionLayer(base_layer.FiddleBaseLayer):
   output_dims: int = 0
 
   def setup(self) -> None:
-    p = self.hparams
     linear_layer_p = linears.Linear.HParams(
-        input_dims=p.input_dims, output_dims=p.output_dims)
+        input_dims=self.input_dims, output_dims=self.output_dims
+    )
     self.create_child('linear', linear_layer_p)
-    bias_layer_p = linears.Bias.HParams(dims=p.output_dims)
+    bias_layer_p = linears.Bias.HParams(dims=self.output_dims)
     self.create_child('bias', bias_layer_p)
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -100,12 +100,15 @@ class VarUnusedLayer(base_layer.FiddleBaseLayer):
   output_dims: int = 0
 
   def setup(self) -> None:
-    p = self.hparams
     self.create_variable(
-        'var01', base_layer.WeightHParams(shape=[p.input_dims, p.output_dims]))
+        'var01',
+        base_layer.WeightHParams(shape=[self.input_dims, self.output_dims]),
+    )
     # var02 is not used.
     self.create_variable(
-        'var02', base_layer.WeightHParams(shape=[p.input_dims, p.output_dims]))
+        'var02',
+        base_layer.WeightHParams(shape=[self.input_dims, self.output_dims]),
+    )
 
   def __call__(self, inputs: JTensor) -> JTensor:
     out = jnp.einsum('bi,io->bo', inputs, self.theta.var01)
@@ -124,15 +127,18 @@ class TestModel01(base_model.BaseModel):
   output_dims: int = 0
 
   def setup(self) -> None:
-    p = self.hparams
-    bn_params = normalizations.BatchNorm.HParams(name='bn', dim=p.input_dims)
+    bn_params = normalizations.BatchNorm.HParams(name='bn', dim=self.input_dims)
     self.create_child('bn', bn_params)
 
     self.create_variable(
-        'var01', base_layer.WeightHParams(shape=[p.input_dims, p.output_dims]))
+        'var01',
+        base_layer.WeightHParams(shape=[self.input_dims, self.output_dims]),
+    )
     # var02 is not used.
     self.create_variable(
-        'var02', base_layer.WeightHParams(shape=[p.input_dims, p.output_dims]))
+        'var02',
+        base_layer.WeightHParams(shape=[self.input_dims, self.output_dims]),
+    )
 
   def compute_predictions(self, input_batch: NestedMap) -> JTensor:
     in_normed = self.bn(input_batch.inputs)
@@ -164,10 +170,9 @@ class TestLinearRegressionModel(base_model.BaseModel):
   linear_p: LayerTpl = sub_config_field(linears.Linear.HParams)
 
   def setup(self) -> None:
-    p = self.hparams
-    params = p.linear_p.clone()
-    params.input_dims = p.input_dims
-    params.output_dims = p.output_dims
+    params = self.linear_p.clone()
+    params.input_dims = self.input_dims
+    params.output_dims = self.output_dims
     self.create_child('linear', params)
 
   def compute_predictions(self, input_batch: NestedMap) -> JTensor:
@@ -190,8 +195,7 @@ class TestBatchNormalizationModel(base_model.BaseModel):
   input_dims: int = 0
 
   def setup(self):
-    p = self.hparams
-    bn_params = normalizations.BatchNorm.HParams(name='bn', dim=p.input_dims)
+    bn_params = normalizations.BatchNorm.HParams(name='bn', dim=self.input_dims)
     self.create_child('bn', bn_params)
 
   def compute_predictions(self, input_batch: NestedMap) -> JTensor:
@@ -219,8 +223,7 @@ class TestSpmdModel(base_model.BaseModel):
       transformers.TransformerFeedForward.HParams)
 
   def setup(self):
-    p = self.hparams
-    self.create_child('ffwd', p.xformer_ffw)
+    self.create_child('ffwd', self.xformer_ffw)
 
   def compute_predictions(self, input_batch: NestedMap) -> JTensor:
     return self.ffwd(input_batch.inputs)

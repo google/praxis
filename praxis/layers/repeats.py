@@ -97,11 +97,10 @@ class Repeat(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     """Constructor."""
-    p = self.hparams
-    assert p.x_times > 0
-    assert p.sub_tpl is not None
+    assert self.x_times > 0
+    assert self.sub_tpl is not None
 
-    self.create_child(p.sublayer_name, p.sub_tpl)
+    self.create_child(self.sublayer_name, self.sub_tpl)
 
   def __call__(self, inputs: NestedJTensor, *args: Any, **kwargs: Any) -> Any:
     """FProp inputs through the sub layer stack.
@@ -128,19 +127,18 @@ class Repeat(base_layer.FiddleBaseLayer):
     rematted_body_fn = nn.remat(
         body_fn,
         prevent_cse=False,  # prevent_cse not required for scan.
-        policy=checkpoint_policy.custom_policy(p.checkpoint_policy))
+        policy=checkpoint_policy.custom_policy(self.checkpoint_policy),
+    )
 
     scan_fn = nn.scan(
         rematted_body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
-        split_rngs={
-            PARAMS: self.is_initializing(),
-            RANDOM: True
-        },
-        length=p.x_times)
+        split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
+        length=self.x_times,
+    )
 
     if self.is_initializing():
-      wp = p.weight_split_dims_mapping
+      wp = self.weight_split_dims_mapping
       if wp.sub is not None:
         assert isinstance(wp.sub, (list, tuple))
         assert len(wp.sub) == 1
@@ -156,11 +154,14 @@ class Repeat(base_layer.FiddleBaseLayer):
             trans_in_fn=functools.partial(
                 flax_utils.remove_axis_to_metadata,
                 sub_weight_split_dims_mapping=wp_sub,
-                x_times=p.x_times),
+                x_times=self.x_times,
+            ),
             trans_out_fn=functools.partial(
                 flax_utils.add_axis_to_metadata,
                 sub_weight_split_dims_mapping=wp_sub,
-                x_times=p.x_times))
+                x_times=self.x_times,
+            ),
+        )
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -168,12 +169,15 @@ class Repeat(base_layer.FiddleBaseLayer):
         mutable=self.is_mutable_collection(SUMMARIES),
         trans_in_fn=functools.partial(
             flax_utils.maybe_repack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times),
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
         trans_out_fn=functools.partial(
             flax_utils.maybe_unpack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times))
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
+    )
 
     mapped_scan_fn = nn.map_variables(
         mapped_scan_fn,
@@ -181,8 +185,7 @@ class Repeat(base_layer.FiddleBaseLayer):
         mutable=self.is_mutable_collection(AUX_LOSS),
         trans_out_fn=_sum_aux_loss)
 
-    if p.unroll_in_decode:
-
+    if self.unroll_in_decode:
       def _clear_decode_cache(tree):
         del tree
         return {}
@@ -235,7 +238,6 @@ class Repeat(base_layer.FiddleBaseLayer):
     Returns:
       a nested map from names to quantized layer or partition spec.
     """
-    p = self.hparams
 
     def body_fn(sub, _):
       if return_pspec:
@@ -256,13 +258,14 @@ class Repeat(base_layer.FiddleBaseLayer):
         body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
         split_rngs={RANDOM: True},
-        length=p.x_times)
+        length=self.x_times,
+    )
 
     _, res = scan_fn(self.sublayer, None)
     ret = {}
     for collection in [PARAMS, NON_TRAINABLE]:
       if collection in res:
-        ret[collection] = {p.sublayer_name: res[collection]}
+        ret[collection] = {self.sublayer_name: res[collection]}
 
     if return_pspec:
       ret = jax.tree_map(
@@ -273,8 +276,7 @@ class Repeat(base_layer.FiddleBaseLayer):
 
   @property
   def sublayer(self) -> base_layer.BaseLayer:
-    p = self.hparams
-    return getattr(self, p.sublayer_name)
+    return getattr(self, self.sublayer_name)
 
   def init_states(self, *args: Any, **kwargs: Any) -> Any:
     """Inits decoder states for all sub layers.
@@ -290,8 +292,6 @@ class Repeat(base_layer.FiddleBaseLayer):
     Returns:
       Initial decoder states.
     """
-    # TODO(team): Configure for spmd.
-    p = self.hparams
 
     assert not self.is_initializing()
 
@@ -302,11 +302,9 @@ class Repeat(base_layer.FiddleBaseLayer):
     scan_fn = nn.scan(
         body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
-        split_rngs={
-            PARAMS: self.is_initializing(),
-            RANDOM: True
-        },
-        length=p.x_times)
+        split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
+        length=self.x_times,
+    )
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -314,12 +312,15 @@ class Repeat(base_layer.FiddleBaseLayer):
         mutable=self.is_mutable_collection(SUMMARIES),
         trans_in_fn=functools.partial(
             flax_utils.maybe_repack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times),
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
         trans_out_fn=functools.partial(
             flax_utils.maybe_unpack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times))
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
+    )
 
     # Calls scan_fn with a None carry_in and ignores the carry_out.
     mapped_scan_fn(self.sublayer, None)
@@ -389,7 +390,7 @@ class Repeat(base_layer.FiddleBaseLayer):
       return mapped_fn(self.sublayer, inp)
 
     out = inputs
-    for i in range(p.x_times):
+    for i in range(self.x_times):
       out, _ = _run_one_layer(i, out)
     return out
 
@@ -406,7 +407,6 @@ class Repeat(base_layer.FiddleBaseLayer):
       new_states, top_decoder_out, where new_states is the updated decoder
       states, and top_decoder_out is the output from the top decoder layer.
     """
-    p = self.hparams
 
     assert not self.is_initializing()
 
@@ -416,7 +416,7 @@ class Repeat(base_layer.FiddleBaseLayer):
       asserts.assert_same_structure(layer_in, layer_out)
       return layer_out, None
 
-    if p.unroll_in_decode:
+    if self.unroll_in_decode:
       return self._run_unrolled_for_decoding(body_fn, step_inputs)
 
     # Note that in_axes specification skips `carry` and supports prefix spec.
@@ -425,7 +425,8 @@ class Repeat(base_layer.FiddleBaseLayer):
         in_axes=0,  # scan over axis 0 for layer_states
         variable_axes=SCAN_VARIABLE_AXES,
         split_rngs={RANDOM: True},
-        length=p.x_times)
+        length=self.x_times,
+    )
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -433,12 +434,15 @@ class Repeat(base_layer.FiddleBaseLayer):
         mutable=self.is_mutable_collection(SUMMARIES),
         trans_in_fn=functools.partial(
             flax_utils.maybe_repack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times),
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
         trans_out_fn=functools.partial(
             flax_utils.maybe_unpack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times))
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
+    )
 
     mapped_scan_fn = nn.map_variables(
         mapped_scan_fn,
@@ -456,7 +460,6 @@ class Repeat(base_layer.FiddleBaseLayer):
   def transform_decode_state(
       self, transform_fn: base_layer.DecodeStateTransformFn) -> None:
     """Transforms all decode state variables based on transform_fn."""
-    p = self.hparams
 
     assert not self.is_initializing()
 
@@ -464,7 +467,7 @@ class Repeat(base_layer.FiddleBaseLayer):
       sub.transform_decode_state(transform_fn)
       return None, None
 
-    if p.unroll_in_decode:
+    if self.unroll_in_decode:
       self._run_unrolled_for_decoding(body_fn, None)
       return
 
@@ -472,7 +475,8 @@ class Repeat(base_layer.FiddleBaseLayer):
         body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
         split_rngs={RANDOM: True},
-        length=p.x_times)
+        length=self.x_times,
+    )
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -480,12 +484,15 @@ class Repeat(base_layer.FiddleBaseLayer):
         mutable=self.is_mutable_collection(SUMMARIES),
         trans_in_fn=functools.partial(
             flax_utils.maybe_repack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times),
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
         trans_out_fn=functools.partial(
             flax_utils.maybe_unpack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times))
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
+    )
 
     mapped_scan_fn(self.sublayer, None)
 
@@ -502,7 +509,6 @@ class Repeat(base_layer.FiddleBaseLayer):
         decoding state.
       suffix_length: The length of the new suffix samples.
     """
-    p = self.hparams
 
     assert not self.is_initializing()
 
@@ -510,14 +516,15 @@ class Repeat(base_layer.FiddleBaseLayer):
       sub.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
       return None, None
 
-    if p.unroll_in_decode:
+    if self.unroll_in_decode:
       return self._run_unrolled_for_decoding(body_fn, None)
 
     scan_fn = nn.scan(
         body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
         split_rngs={RANDOM: True},
-        length=p.x_times)
+        length=self.x_times,
+    )
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -525,12 +532,15 @@ class Repeat(base_layer.FiddleBaseLayer):
         mutable=self.is_mutable_collection(SUMMARIES),
         trans_in_fn=functools.partial(
             flax_utils.maybe_repack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times),
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
         trans_out_fn=functools.partial(
             flax_utils.maybe_unpack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times))
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
+    )
 
     mapped_scan_fn(self.sublayer, None)
 
@@ -543,20 +553,20 @@ class Repeat(base_layer.FiddleBaseLayer):
       max_prefix_size: Max prefix length of the decode state.
       right_align_fn: Right align function for decode state.
     """
-    p = self.hparams
 
     def body_fn(sub, _):
       sub.right_align_decode_state_with_prefix(max_prefix_size, right_align_fn)
       return None, None
 
-    if p.unroll_in_decode:
+    if self.unroll_in_decode:
       return self._run_unrolled_for_decoding(body_fn, None)
 
     scan_fn = nn.scan(
         body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
         split_rngs={RANDOM: True},
-        length=p.x_times)
+        length=self.x_times,
+    )
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -564,11 +574,14 @@ class Repeat(base_layer.FiddleBaseLayer):
         mutable=self.is_mutable_collection(SUMMARIES),
         trans_in_fn=functools.partial(
             flax_utils.maybe_repack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times),
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
         trans_out_fn=functools.partial(
             flax_utils.maybe_unpack_summary,
-            unpack_summaries=p.unpack_summaries,
-            x_times=p.x_times))
+            unpack_summaries=self.unpack_summaries,
+            x_times=self.x_times,
+        ),
+    )
 
     mapped_scan_fn(self.sublayer, None)

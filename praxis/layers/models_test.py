@@ -53,8 +53,7 @@ class MockLM(base_layer.FiddleBaseLayer):
   model_type: LanguageModelType = LanguageModelType.CAUSAL
 
   def setup(self) -> None:
-    p = self.hparams
-    self._logits = jnp.array(p.logits, dtype=jnp.float32)
+    self._logits = jnp.array(self.logits, dtype=jnp.float32)
 
   def __call__(self, *args: Any, **kwargs: Any) -> None:
     self.put_variable(DECODE_CACHE, 'time_step', 0)

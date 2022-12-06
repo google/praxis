@@ -66,14 +66,13 @@ class MultitaskResidualAdapter(base_layer.FiddleBaseLayer):
       activations.BaseActivation] = sub_config_field(activations.ReLU.HParams)
 
   def setup(self) -> None:
-    p = self.hparams
-    if p.norm_tpl:
-      norm_tpl = p.norm_tpl.clone()
+    if self.norm_tpl:
+      norm_tpl = self.norm_tpl.clone()
       if norm_tpl.cls in {
           normalizations.BatchNorm, normalizations.GroupNorm,
           normalizations.LayerNorm
       }:
-        norm_tpl.dim = p.input_dims
+        norm_tpl.dim = self.input_dims
       else:
         raise NotImplementedError('%s is not supported' % norm_tpl.cls)
       self.create_child('norm', norm_tpl)
@@ -82,19 +81,20 @@ class MultitaskResidualAdapter(base_layer.FiddleBaseLayer):
     # up_b_pc should not be zero-initialized from results
 
     down_w_pc = WeightHParams(
-        shape=[p.num_tasks, p.input_dims, p.bottleneck_dims])
+        shape=[self.num_tasks, self.input_dims, self.bottleneck_dims]
+    )
     self.create_variable('down_w', down_w_pc)
-    down_b_pc = WeightHParams(
-        shape=[p.num_tasks, p.bottleneck_dims])
+    down_b_pc = WeightHParams(shape=[self.num_tasks, self.bottleneck_dims])
     self.create_variable('down_b', down_b_pc)
     up_w_pc = WeightHParams(
-        shape=[p.num_tasks, p.bottleneck_dims, p.input_dims],
-        init=weight_init.Constant(0.))
+        shape=[self.num_tasks, self.bottleneck_dims, self.input_dims],
+        init=weight_init.Constant(0.0),
+    )
     self.create_variable('up_w', up_w_pc)
-    up_b_pc = WeightHParams(shape=[p.num_tasks, p.input_dims])
+    up_b_pc = WeightHParams(shape=[self.num_tasks, self.input_dims])
     self.create_variable('up_b', up_b_pc)
 
-    self.create_child('activation', p.activation_tpl)
+    self.create_child('activation', self.activation_tpl)
 
   def __call__(self,
                inputs: JTensor,
@@ -118,17 +118,19 @@ class MultitaskResidualAdapter(base_layer.FiddleBaseLayer):
     Returns:
       A tensor containing the adapted activations with the same shape as inputs.
     """
-    p = self.hparams
 
     if tasks is None:
-      asserts.eq(1, p.num_tasks, msg='tasks is not specified but num_tasks!=1')
+      asserts.eq(
+          1, self.num_tasks, msg='tasks is not specified but num_tasks!=1'
+      )
       tasks = jnp.zeros(shape=inputs.shape[:-1])
 
     asserts.eq(tasks.shape, inputs.shape[:len(tasks.shape)])
     asserts.gt(len(inputs.shape) - len(tasks.shape), 0)
     asserts.le(len(inputs.shape) - len(tasks.shape), 2)
     tasks_onehot = jax.nn.one_hot(
-        tasks, p.num_tasks, axis=-1, dtype=inputs.dtype)
+        tasks, self.num_tasks, axis=-1, dtype=inputs.dtype
+    )
 
     # Einsum axis names:
     # k - task
@@ -149,14 +151,15 @@ class MultitaskResidualAdapter(base_layer.FiddleBaseLayer):
       up_b = jnp.expand_dims(up_b, -2)
 
     # Norm -> down-projection -> non-linearity -> up-projection
-    if p.norm_tpl:
-      if p.norm_tpl.cls in {
-          normalizations.BatchNorm, normalizations.GroupNorm,
-          normalizations.LayerNorm
+    if self.norm_tpl:
+      if self.norm_tpl.cls in {
+          normalizations.BatchNorm,
+          normalizations.GroupNorm,
+          normalizations.LayerNorm,
       }:
         norm_inputs = self.norm(inputs, paddings)
       else:
-        raise NotImplementedError('%s is not supported' % p.norm_tpl.cls)
+        raise NotImplementedError('%s is not supported' % self.norm_tpl.cls)
     else:
       norm_inputs = inputs
 
@@ -193,12 +196,11 @@ class AdaptedTransformerFeedForward(transformers.TransformerFeedForward):
   mode: str = 'sequential'
 
   def setup(self):
-    p = self.hparams
     super(AdaptedTransformerFeedForward, self).setup()
-    assert p.mode in ['sequential', 'parallel']
-    self.create_child('adapters', p.adapter_tpl)
+    assert self.mode in ['sequential', 'parallel']
+    self.create_child('adapters', self.adapter_tpl)
 
-    if p.residual_droppath_prob:
+    if self.residual_droppath_prob:
       raise NotImplementedError(
           'residual droppath prob is not supported by adapter')
 
@@ -207,24 +209,23 @@ class AdaptedTransformerFeedForward(transformers.TransformerFeedForward):
                paddings: Optional[JTensor] = None,
                segment_ids: Optional[JTensor] = None,
                tasks: Optional[JTensor] = None) -> JTensor:
-    p = self.hparams
 
     x = super(AdaptedTransformerFeedForward, self).__call__(
         inputs, paddings, segment_ids=segment_ids)
 
     # Revert residual connection
-    if p.add_skip_connection:
-      x = (x - inputs) / p.residual_weight
+    if self.add_skip_connection:
+      x = (x - inputs) / self.residual_weight
 
-    if p.mode == 'sequential':
+    if self.mode == 'sequential':
       x = self.adapters(x, paddings, add_residual=False, tasks=tasks) + x
-    elif p.mode == 'parallel':
+    elif self.mode == 'parallel':
       x = self.adapters(inputs, paddings, add_residual=False, tasks=tasks) + x
     else:
-      raise ValueError(f'Wrong adapter type: {p.mode}')
+      raise ValueError(f'Wrong adapter type: {self.mode}')
 
-    if p.add_skip_connection:
-      assert not p.residual_droppath_prob
-      x = inputs + x * p.residual_weight
+    if self.add_skip_connection:
+      assert not self.residual_droppath_prob
+      x = inputs + x * self.residual_weight
 
     return x

@@ -362,8 +362,7 @@ class PerDimScale(base_layer.FiddleBaseLayer):
   dim: int = 0
 
   def setup(self) -> None:
-    p = self.hparams
-    pc = WeightHParams(shape=[p.dim], init=WeightInit.Constant(0.0))
+    pc = WeightHParams(shape=[self.dim], init=WeightInit.Constant(0.0))
     self.create_variable('per_dim_scale', pc)
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -375,14 +374,13 @@ class PerDimScale(base_layer.FiddleBaseLayer):
     Returns:
       outputs: A JTensor with shape [..., p.dim].
     """
-    p = self.hparams
     inputs_shape = inputs.shape
-    assert inputs_shape[-1] == p.dim
+    assert inputs_shape[-1] == self.dim
 
     # 1.0/jax.nn.softplus(0.0) = 1.442695041. Hard code this number so that we
     # can avoid unnecessary XLA op fusion mess on TPU.
     r_softplus_0 = 1.442695041
-    scale = jnp.array(r_softplus_0 / np.sqrt(p.dim), dtype=inputs.dtype)
+    scale = jnp.array(r_softplus_0 / np.sqrt(self.dim), dtype=inputs.dtype)
     scale *= jax.nn.softplus(self.theta.per_dim_scale)
     return inputs * scale
 
@@ -425,14 +423,14 @@ class RelativeBias(base_layer.FiddleBaseLayer):
   use_xavier_init: bool = False
 
   def setup(self) -> None:
-    p = self.hparams
-    if p.use_xavier_init:
+    if self.use_xavier_init:
       init = WeightInit.Xavier()
     else:
-      rb_stddev = (p.num_heads * p.relative_attention_num_buckets)**-0.5
+      rb_stddev = (self.num_heads * self.relative_attention_num_buckets) ** -0.5
       init = WeightInit.Gaussian(rb_stddev)
     pc = WeightHParams(
-        shape=[p.num_heads, p.relative_attention_num_buckets], init=init)
+        shape=[self.num_heads, self.relative_attention_num_buckets], init=init
+    )
     self.create_variable('wrb', pc)
 
   def _relative_position_bucket(self, relative_position: JTensor) -> JTensor:
@@ -445,13 +443,14 @@ class RelativeBias(base_layer.FiddleBaseLayer):
       A JTensor with the same shape as relative_position, containing int32
       values in the range [0, num_buckets)
     """
-    p = self.hparams
 
-    num_buckets = p.relative_attention_num_buckets
-    max_distance = jnp.array(p.relative_attention_max_distance).astype(p.dtype)
+    num_buckets = self.relative_attention_num_buckets
+    max_distance = jnp.array(self.relative_attention_max_distance).astype(
+        self.dtype
+    )
     ret = 0
     n = -relative_position
-    if p.bidirectional:
+    if self.bidirectional:
       num_buckets //= 2
       ret += ((n < 0) * num_buckets).astype(jnp.int32)
       n = jnp.abs(n)
@@ -460,9 +459,11 @@ class RelativeBias(base_layer.FiddleBaseLayer):
     # now n is in the range [0, inf)
     max_exact = num_buckets // 2
     is_small = jnp.less(n, max_exact)
-    val_if_large = max_exact + (jnp.log(n.astype(p.dtype) / max_exact) /
-                                jnp.log(max_distance / max_exact) *
-                                (num_buckets - max_exact)).astype(jnp.int32)
+    val_if_large = max_exact + (
+        jnp.log(n.astype(self.dtype) / max_exact)
+        / jnp.log(max_distance / max_exact)
+        * (num_buckets - max_exact)
+    ).astype(jnp.int32)
     val_if_large = jnp.minimum(val_if_large, num_buckets - 1)
     ret += jnp.where(is_small, n, val_if_large)
     return ret
@@ -491,14 +492,13 @@ class RelativeBias(base_layer.FiddleBaseLayer):
       relative_bias: A JTensor with shape [B, N, T, S], where batch == 1 if
         p.use_length_as_position is True.
     """
-    p = self.hparams
     asserts.not_none(query_segment_pos)
     if key_segment_pos is None:
       key_segment_pos = query_segment_pos
 
     # Relative position is defined in such a way that when query is in the
     # future relative to the key, the value of relative position is negative.
-    if p.use_length_as_position:
+    if self.use_length_as_position:
       klen = key_segment_pos.shape[1]
       qlen = query_segment_pos.shape[1]
       key_pos = np.arange(klen, dtype=jnp.int32)[None, None, :]
@@ -511,7 +511,8 @@ class RelativeBias(base_layer.FiddleBaseLayer):
     relative_bucket = self._relative_position_bucket(relative_position)
 
     relative_bucket_one_hot = jax.nn.one_hot(
-        relative_bucket, p.relative_attention_num_buckets, dtype=p.dtype)
+        relative_bucket, self.relative_attention_num_buckets, dtype=self.dtype
+    )
     # relative_bucket_one_hot:
     # BTSX - [batch, length, memory_length, num_buckets]
     #
@@ -580,18 +581,17 @@ class AttentionProjection(base_layer.FiddleBaseLayer):
   use_nhd_shape: bool = False
 
   def setup(self) -> None:
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
-    has_sharding = p.mesh_shape is not None and wp.wt is not None
-    if p.attention_combine_dims:
-      assert not p.use_bias
-      hd_shape = [p.num_heads * p.dim_per_head]
+    wp = self.weight_split_dims_mapping
+    has_sharding = self.mesh_shape is not None and wp.wt is not None
+    if self.attention_combine_dims:
+      assert not self.use_bias
+      hd_shape = [self.num_heads * self.dim_per_head]
     else:
-      hd_shape = [p.num_heads, p.dim_per_head]
+      hd_shape = [self.num_heads, self.dim_per_head]
 
-    if p.attention_combine_dims and has_sharding:
+    if self.attention_combine_dims and has_sharding:
       if len(wp.wt) == 3:
-        if p.is_output_projection and p.use_nhd_shape:
+        if self.is_output_projection and self.use_nhd_shape:
           h_sharding = ()
           for axes in (wp.wt[0], wp.wt[1]):
             if isinstance(axes, (str, int)):
@@ -610,33 +610,36 @@ class AttentionProjection(base_layer.FiddleBaseLayer):
       assert len(wt) == 2
     else:
       wt = wp.wt
-    pc_shape = [p.input_dim] + hd_shape
-    if p.is_output_projection and p.use_nhd_shape:
-      pc_shape = hd_shape + [p.input_dim]
+    pc_shape = [self.input_dim] + hd_shape
+    if self.is_output_projection and self.use_nhd_shape:
+      pc_shape = hd_shape + [self.input_dim]
     pc = WeightHParams(
-        shape=pc_shape, mesh_shape=p.mesh_shape, tensor_split_dims_mapping=wt)
+        shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
+    )
     self.create_variable('w', pc)
-    if p.use_bias:
-      if p.is_output_projection:
+    if self.use_bias:
+      if self.is_output_projection:
         if has_sharding:
           bias_split_dims_mapping = [wp.wt[0]]
         else:
           bias_split_dims_mapping = None
         pc_bias = WeightHParams(
-            shape=[p.input_dim],
+            shape=[self.input_dim],
             init=WeightInit.Constant(0.0),
-            mesh_shape=p.mesh_shape,
-            tensor_split_dims_mapping=bias_split_dims_mapping)
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=bias_split_dims_mapping,
+        )
       else:
         if has_sharding:
           bias_split_dims_mapping = [wp.wt[1], wp.wt[2]]
         else:
           bias_split_dims_mapping = None
         pc_bias = WeightHParams(
-            shape=[p.num_heads, p.dim_per_head],
+            shape=[self.num_heads, self.dim_per_head],
             init=WeightInit.Constant(0.0),
-            mesh_shape=p.mesh_shape,
-            tensor_split_dims_mapping=bias_split_dims_mapping)
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=bias_split_dims_mapping,
+        )
       self.create_variable('b', pc_bias)
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -651,7 +654,6 @@ class AttentionProjection(base_layer.FiddleBaseLayer):
       p.is_output_projection is True or [..., num_heads, dim_per_head]
       otherwise.
     """
-    p = self.hparams
     theta = self.theta
 
     # Because tf.einsum is not fully optimized unless all the dimensions are
@@ -664,28 +666,29 @@ class AttentionProjection(base_layer.FiddleBaseLayer):
     rank = len(shape)
 
     inputs = self._cast_to_fprop_dtype(inputs)
-    if p.attention_combine_dims:
-      pc_shape = [p.input_dim, p.num_heads, p.dim_per_head]
-      if p.is_output_projection and p.use_nhd_shape:
-        pc_shape = [p.num_heads, p.dim_per_head, p.input_dim]
+    if self.attention_combine_dims:
+      pc_shape = [self.input_dim, self.num_heads, self.dim_per_head]
+      if self.is_output_projection and self.use_nhd_shape:
+        pc_shape = [self.num_heads, self.dim_per_head, self.input_dim]
       w = jnp.reshape(theta.w, pc_shape)
     else:
       w = theta.w
 
-    if p.is_output_projection:
-      assert shape[-2:] == (p.num_heads, p.dim_per_head)
+    if self.is_output_projection:
+      assert shape[-2:] == (self.num_heads, self.dim_per_head)
       batch_eqn = eqn_sym[:(rank - 2)]
-      if p.use_nhd_shape:
+      if self.use_nhd_shape:
         eqn = f'{batch_eqn}NH,NHD->{batch_eqn}D'
       else:
         eqn = f'{batch_eqn}NH,DNH->{batch_eqn}D'
     else:
-      assert shape[-1] == p.input_dim, (
-          f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {p.input_dim}')
+      assert (
+          shape[-1] == self.input_dim
+      ), f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {self.input_dim}'
       batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
     ret = jnp.einsum(eqn, inputs, w)
-    if p.use_bias:
+    if self.use_bias:
       ret += theta.b
     return ret
 
@@ -712,13 +715,12 @@ class CombinedQKVProjectionLayer(base_layer.FiddleBaseLayer):
   attention_combine_dims: bool = False
 
   def setup(self) -> None:
-    p = self.hparams
     # Sharding has the same convention of AttentionProjection, which doesn't
     # contain the leading stacking dimension.
-    wt = p.weight_split_dims_mapping.wt
+    wt = self.weight_split_dims_mapping.wt
     if wt is not None:
       assert isinstance(wt, (list, tuple))
-      if p.attention_combine_dims:
+      if self.attention_combine_dims:
         if len(wt) == 3:
           hd_sharding = ()
           for s in wt[1:]:
@@ -734,7 +736,7 @@ class CombinedQKVProjectionLayer(base_layer.FiddleBaseLayer):
         assert len(wt) == 3, ('wp.wt only specifies the sharding for '
                               'the last three dims of the weight tensor.')
       weight_split_dims_mapping = [None] + list(wt)
-      if p.attention_combine_dims:
+      if self.attention_combine_dims:
         bias_split_dims_mapping = [None, wt[1]]
       else:
         bias_split_dims_mapping = [None, wt[1], wt[2]]
@@ -742,27 +744,29 @@ class CombinedQKVProjectionLayer(base_layer.FiddleBaseLayer):
       weight_split_dims_mapping = None
       bias_split_dims_mapping = None
 
-    if p.attention_combine_dims:
-      hd_shape = [p.num_heads * p.dim_per_head]
+    if self.attention_combine_dims:
+      hd_shape = [self.num_heads * self.dim_per_head]
     else:
-      hd_shape = [p.num_heads, p.dim_per_head]
+      hd_shape = [self.num_heads, self.dim_per_head]
 
-    pc_shape = [3, p.input_dim] + hd_shape
+    pc_shape = [3, self.input_dim] + hd_shape
     # Combined weight for q, k, v projections.
     pc = WeightHParams(
         shape=pc_shape,
-        init=p.params_init,
-        dtype=p.dtype,
-        mesh_shape=p.mesh_shape,
-        tensor_split_dims_mapping=weight_split_dims_mapping)
+        init=self.params_init,
+        dtype=self.dtype,
+        mesh_shape=self.mesh_shape,
+        tensor_split_dims_mapping=weight_split_dims_mapping,
+    )
     self.create_variable('w', pc)
-    if p.use_bias:
+    if self.use_bias:
       # Combined bias weight for q, k, v projections.
       pc_bias = WeightHParams(
           shape=[3] + hd_shape,
           init=WeightInit.Constant(0.0),
-          mesh_shape=p.mesh_shape,
-          tensor_split_dims_mapping=bias_split_dims_mapping)
+          mesh_shape=self.mesh_shape,
+          tensor_split_dims_mapping=bias_split_dims_mapping,
+      )
       self.create_variable('b', pc_bias)
 
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
@@ -777,7 +781,6 @@ class CombinedQKVProjectionLayer(base_layer.FiddleBaseLayer):
       The three projected JTensor with shape [..., num_heads, dim_per_head]
       in q_proj, k_proj and v_proj order.
     """
-    p = self.hparams
     theta = self.theta
 
     # Because tf.einsum is not fully optimized unless all the dimensions are
@@ -790,25 +793,25 @@ class CombinedQKVProjectionLayer(base_layer.FiddleBaseLayer):
     rank = len(shape)
     assert rank > 0
 
-    assert shape[-1] == p.input_dim
+    assert shape[-1] == self.input_dim
     batch_dims_rank = rank - 1
     batch_eqn = eqn_sym[:batch_dims_rank] if rank else '...'
-    if p.attention_combine_dims:
-      pc_shape = [3, p.input_dim, p.num_heads, p.dim_per_head]
+    if self.attention_combine_dims:
+      pc_shape = [3, self.input_dim, self.num_heads, self.dim_per_head]
       w = jnp.reshape(theta.w, pc_shape)
-      if p.use_bias:
-        b_shape = [3, p.num_heads, p.dim_per_head]
+      if self.use_bias:
+        b_shape = [3, self.num_heads, self.dim_per_head]
         b = jnp.reshape(theta.b, b_shape)
     else:
       w = theta.w
-      if p.use_bias:
+      if self.use_bias:
         b = theta.b
 
     # K indexes qkv.
     eqn = f'{batch_eqn}D,KDNH->K{batch_eqn}NH'
     ret = jnp.einsum(eqn, inputs, w)
     ret = checkpoint_name(ret, 'combined_qkv_proj')
-    if p.use_bias:
+    if self.use_bias:
       # Add newaxis to bias weight for each batch dim since ret is K...NH
       # and theta.b is KNH. Need to reshape theta.b to K...NH
       ret += jnp.expand_dims(b, list(range(1, batch_dims_rank + 1)))
@@ -964,19 +967,20 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     p = self.hparams
-    wp = p.weight_split_dims_mapping
-    assert p.input_dim, 'input_dim is {}'.format(p.input_dim)
-    assert p.hidden_dim, 'hidden_dim is {}'.format(p.hidden_dim)
+    wp = self.weight_split_dims_mapping
+    assert self.input_dim, 'input_dim is {}'.format(self.input_dim)
+    assert self.hidden_dim, 'hidden_dim is {}'.format(self.hidden_dim)
 
-    dim_per_head = p.dim_per_head
+    dim_per_head = self.dim_per_head
     if dim_per_head is None:
-      dim_per_head = p.hidden_dim // p.num_heads
-      assert dim_per_head * p.num_heads == p.hidden_dim, (
-          f'{dim_per_head} * {p.num_heads} != {p.hidden_dim}')
+      dim_per_head = self.hidden_dim // self.num_heads
+      assert (
+          dim_per_head * self.num_heads == self.hidden_dim
+      ), f'{dim_per_head} * {self.num_heads} != {self.hidden_dim}'
 
-    if p.mesh_shape is not None:
-      assert p.weight_split_dims_mapping is not None
-      assert p.activation_split_dims_mapping is not None
+    if self.mesh_shape is not None:
+      assert self.weight_split_dims_mapping is not None
+      assert self.activation_split_dims_mapping is not None
 
     def project_input(input_dim, gaussian_std=None):
       proj_p = p.proj_tpl.clone().set(
@@ -998,29 +1002,29 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
       proj_p.weight_split_dims_mapping.wt = wp.proj
       return proj_p
 
-    if isinstance(p.input_dim, Mapping):
-      key_input_dim = p.input_dim['key']
-      value_input_dim = p.input_dim['value']
-      query_input_dim = p.input_dim['query']
+    if isinstance(self.input_dim, Mapping):
+      key_input_dim = self.input_dim['key']
+      value_input_dim = self.input_dim['value']
+      query_input_dim = self.input_dim['query']
       assert key_input_dim, f'key_input_dim is {key_input_dim}'
       assert query_input_dim, f'query_input_dim is {query_input_dim}'
     else:
-      key_input_dim = p.input_dim
-      value_input_dim = p.input_dim
-      query_input_dim = p.input_dim
+      key_input_dim = self.input_dim
+      value_input_dim = self.input_dim
+      query_input_dim = self.input_dim
 
-    if p.internal_gshard_gaussian_init:
+    if self.internal_gshard_gaussian_init:
       query_std = (query_input_dim * dim_per_head)**-0.5
       key_std = (key_input_dim)**-0.5
       value_std = (value_input_dim)**-0.5
-      post_std = (p.num_heads * dim_per_head)**-0.5
+      post_std = (self.num_heads * dim_per_head) ** -0.5
     else:
       query_std = None
       key_std = None
       value_std = None
       post_std = None
 
-    if p.combine_qkv:
+    if self.combine_qkv:
       assert key_input_dim == value_input_dim
       assert key_input_dim == query_input_dim
       self.create_child('combined_qkv',
@@ -1030,21 +1034,21 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
       self.create_child('query', project_input(query_input_dim, query_std))
       self.create_child('value', project_input(value_input_dim, value_std))
 
-    if p.use_rotary_position_emb:
-      pos_emb_p = p.rotary_position_emb_tpl.clone()
+    if self.use_rotary_position_emb:
+      pos_emb_p = self.rotary_position_emb_tpl.clone()
       pos_emb_p.embedding_dims = dim_per_head
-      pos_emb_p.cast_as_fprop_dtype = p.cast_rotary_position_emb
+      pos_emb_p.cast_as_fprop_dtype = self.cast_rotary_position_emb
       self.create_child('rotary_position_emb', pos_emb_p)
 
-    if p.relative_bias_tpl is not None:
-      relative_bias_p = p.relative_bias_tpl.clone()
-      relative_bias_p.num_heads = p.num_heads
+    if self.relative_bias_tpl is not None:
+      relative_bias_p = self.relative_bias_tpl.clone()
+      relative_bias_p.num_heads = self.num_heads
       self.create_child('relative_bias', relative_bias_p)
 
-    if p.dconv_qkv:
+    if self.dconv_qkv:
       causal_dconv_p = CausalDepthwiseConv1D.HParams(
-          kernel_size=p.dconv_kernel_size,
-          hidden_dims=[p.num_heads, dim_per_head],
+          kernel_size=self.dconv_kernel_size,
+          hidden_dims=[self.num_heads, dim_per_head],
       )
       causal_dconv_p.weight_split_dims_mapping.wt = wp.dconv
       self.create_child('dconv_q', causal_dconv_p)
@@ -1052,27 +1056,32 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
       self.create_child('dconv_v', causal_dconv_p)
 
     # Initialize NGrammer layer if present
-    if p.ngrammer_tpl is not None:
-      self.create_child('ngrammer', p.ngrammer_tpl)
+    if self.ngrammer_tpl is not None:
+      self.create_child('ngrammer', self.ngrammer_tpl)
 
-    if p.internal_enable_query_scale and p.internal_enable_per_dim_scale:
+    if self.internal_enable_query_scale and self.internal_enable_per_dim_scale:
       self.create_child('per_dim_scale', PerDimScale.HParams(dim=dim_per_head))
     self.create_child(
         'atten_dropout',
-        p.dropout_tpl.clone().set(keep_prob=1.0 - p.atten_dropout_prob))
+        self.dropout_tpl.clone().set(keep_prob=1.0 - self.atten_dropout_prob),
+    )
     # Setting is_output_projection=True to set the projection direction
     # from hidden dim to input dim. Output projection follows query_input_dim.
-    post_proj_p = p.proj_tpl.clone().set(
+    post_proj_p = self.proj_tpl.clone().set(
         input_dim=query_input_dim,
-        num_heads=p.num_heads,
+        num_heads=self.num_heads,
         dim_per_head=dim_per_head,
         is_output_projection=True,
-        use_bias=p.use_bias,
-        use_nhd_shape=p.output_proj_use_nhd_shape)
+        use_bias=self.use_bias,
+        use_nhd_shape=self.output_proj_use_nhd_shape,
+    )
     if post_std is not None:
       post_proj_p.params_init = WeightInit.Gaussian(post_std)
-    if (p.output_proj_use_nhd_shape and isinstance(wp.proj, (list, tuple)) and
-        len(wp.proj) == 3):
+    if (
+        self.output_proj_use_nhd_shape
+        and isinstance(wp.proj, (list, tuple))
+        and len(wp.proj) == 3
+    ):
       permutation = [1, 2, 0]
       post_proj_p.weight_split_dims_mapping.wt = [
           wp.proj[i] for i in permutation
@@ -1093,56 +1102,50 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
     Returns:
       x with proper sharding annotations.
     """
-    p = self.hparams
-    ap = p.activation_split_dims_mapping
-    if p.mesh_axis_names is None:
+    ap = self.activation_split_dims_mapping
+    if self.mesh_axis_names is None:
       return x
     if ap.blnh is None:
       return x
     assert len(ap.blnh) == 4
     bnh = [ap.blnh[0], ap.blnh[2], ap.blnh[3]]
-    return base_layer.maybe_shard(x, bnh, p.mesh_axis_names)
+    return base_layer.maybe_shard(x, bnh, self.mesh_axis_names)
 
   def _shard_blnh(self, x: JTensor) -> JTensor:
     """Adds sharding annotations to tensors of shape [b, l, n, h]."""
-    p = self.hparams
-    ap = p.activation_split_dims_mapping
-    return base_layer.maybe_shard(x, ap.blnh, p.mesh_axis_names)
+    ap = self.activation_split_dims_mapping
+    return base_layer.maybe_shard(x, ap.blnh, self.mesh_axis_names)
 
   def _shard_bld(self, x: JTensor) -> JTensor:
     """Adds sharding annotations to tensors of shape [b, l, d]."""
-    p = self.hparams
-    ap = p.activation_split_dims_mapping
-    return base_layer.maybe_shard(x, ap.bld, p.mesh_axis_names)
+    ap = self.activation_split_dims_mapping
+    return base_layer.maybe_shard(x, ap.bld, self.mesh_axis_names)
 
   def _shard_bd(self, x: JTensor) -> JTensor:
     """Adds sharding annotations to tensors of shape [b, d]."""
-    p = self.hparams
-    ap = p.activation_split_dims_mapping
-    if p.mesh_axis_names is None:
+    ap = self.activation_split_dims_mapping
+    if self.mesh_axis_names is None:
       return x
     if ap.bld is None:
       return x
     assert len(ap.bld) == 3
     bd = [ap.bld[0], ap.bld[2]]
-    return base_layer.maybe_shard(x, bd, p.mesh_axis_names)
+    return base_layer.maybe_shard(x, bd, self.mesh_axis_names)
 
   def _scale_query(self, query: JTensor) -> JTensor:
     """Scales the query vector if enabled."""
-    p = self.hparams
-    if p.internal_enable_query_scale:
-      if p.internal_enable_per_dim_scale:
+    if self.internal_enable_query_scale:
+      if self.internal_enable_per_dim_scale:
         query = self.per_dim_scale(query)
       else:
-        query *= (p.hidden_dim // p.num_heads)**-0.5
+        query *= (self.hidden_dim // self.num_heads) ** -0.5
     return query
 
   def _cap_logits(self, logits: JTensor) -> JTensor:
     """Caps the logits by p.atten_logit_cap with tanh, if enabled."""
-    p = self.hparams
-    if not p.atten_logit_cap or p.atten_logit_cap <= 0.:
+    if not self.atten_logit_cap or self.atten_logit_cap <= 0.0:
       return logits
-    cap = jnp.array(p.atten_logit_cap, dtype=logits.dtype)
+    cap = jnp.array(self.atten_logit_cap, dtype=logits.dtype)
     # Note that since this caps the negative side as well, caller
     # must defer the pad-with-very-negative-logits logic to after
     # this function returns.
@@ -1163,7 +1166,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
     """
     # Applies stop_gradient to max_logit instead of logits.
     max_logit = jnp.max(jax.lax.stop_gradient(logits), axis=-1, keepdims=True)
-    extra_logit = self.hparams.attention_extra_logit
+    extra_logit = self.attention_extra_logit
     if extra_logit is not None:
       extra_logit = jnp.asarray(extra_logit, dtype=max_logit.dtype)
       max_logit = jnp.maximum(max_logit, extra_logit)
@@ -1202,8 +1205,6 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
       encoded: JTensor of shape [B, T, N, H].
       atten_probs: JTensor of shape [B, N, T, S].
     """
-    # Add key sharding annotations.
-    p = self.hparams
     query = self._shard_blnh(query)
     key = self._shard_blnh(key)
     value = self._shard_blnh(value)
@@ -1237,9 +1238,9 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
     logits = logits.astype(jnp.float32)
     # Apply attention masking
     padded_logits = logits + atten_mask.astype(jnp.float32)
-    if p.attention_mask_summary:
+    if self.attention_mask_summary:
       self.add_summary('attention_mask', atten_mask)
-    if p.attention_extra_logit is None:
+    if self.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
     else:
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
@@ -1282,8 +1283,6 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
       probs: JTensor of shape [B, N, S].
     """
     del time_step
-
-    p = self.hparams
     key = self._shard_blnh(self.get_decode_state(key_state_name))
     value = self._shard_blnh(self.get_decode_state(value_state_name))
     k_b = key.shape[0]
@@ -1318,7 +1317,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
     # Apply attention masking
     padded_logits = logits + atten_mask.astype(jnp.float32)
     # Of shape [b, n, s]
-    if p.attention_extra_logit is None:
+    if self.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
     else:
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
@@ -1354,8 +1353,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
       encoded: JTensor of shape [B, T, D].
       atten_probs: JTensor of shape [B, N, T, S].
     """
-    p = self.hparams
-    if p.combine_qkv:
+    if self.combine_qkv:
       # Only supports self attention.
       assert query_vec is key_vec
       assert query_vec is value_vec
@@ -1374,7 +1372,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
 
     # Apply depth-wise convolution as in Primer.
     # Paper: https://arxiv.org/abs/2109.08668.
-    if p.dconv_qkv:
+    if self.dconv_qkv:
       self._fprop_update_decode_state('query_state', query_proj)
       query_proj = self.dconv_q(
           query_proj, axis=1, segment_pos=query_segment_pos)
@@ -1386,14 +1384,14 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
 
     # Apply rotary position embeddings.
     # Paper: https://arxiv.org/abs/2104.09864.
-    if p.use_rotary_position_emb:
+    if self.use_rotary_position_emb:
       query_proj = self.rotary_position_emb(query_proj, query_segment_pos)
       key_proj = self.rotary_position_emb(key_proj, key_segment_pos)
       self._fprop_update_decode_state('key_post_rotary_pos_emb', key_proj)
 
     # Apply relative bias.
     # Paper: https://aclanthology.org/N18-2074.pdf.
-    if p.relative_bias_tpl:
+    if self.relative_bias_tpl:
       relative_bias = self.relative_bias(query_segment_pos, key_segment_pos)
     else:
       relative_bias = None
@@ -1403,10 +1401,10 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
 
     # Apply NGrammer to the output of the attention layer.
     # Paper: https://openreview.net/forum?id=GxjCYmQAody.
-    if p.ngrammer_tpl is not None:
+    if self.ngrammer_tpl is not None:
       self._fprop_update_decode_state('encoded_pre_ngrammer', encoded)
       attention_scores = None
-      if p.ngrammer_tpl.ngram_using_attention_scores:
+      if self.ngrammer_tpl.ngram_using_attention_scores:
         attention_scores = atten_probs
       encoded = self.ngrammer(
           input_ids=None,
@@ -1443,8 +1441,10 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
       value: Value to extend at time step.
     """
     # Only update the state if it is decoding.
-    if not self.is_mutable_collection(
-        base_layer.DECODE_CACHE) or not self.hparams.decode_cache:
+    if (
+        not self.is_mutable_collection(base_layer.DECODE_CACHE)
+        or not self.decode_cache
+    ):
       return
     self.update_decode_state(name, value)
 
@@ -1512,7 +1512,6 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
       encoded: JTensor of shape [B, D] which returns the attention output at
         `time_step`.
     """
-    p = self.hparams
     asserts.eq(
         len(query_vec.shape),
         2,
@@ -1522,7 +1521,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
     # Batch major.
     time_dim = 1
     assert time_step.ndim == 0
-    if p.combine_qkv:
+    if self.combine_qkv:
       # Project inputs to key, value and query using a combined weight for
       # faster performance on TPU.
       new_query_proj, new_key_proj, new_value_proj = self.combined_qkv(
@@ -1553,7 +1552,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
 
     # Apply depth-wise convolution as in Primer.
     # Paper: https://arxiv.org/abs/2109.08668.
-    if p.dconv_qkv:
+    if self.dconv_qkv:
       assert not is_cross_attention
       # Update query in cache.
       query_state = _extend_decode_state_and_shard('query_state',
@@ -1579,7 +1578,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
 
     # Apply rotary position embeddings.
     # Paper: https://arxiv.org/abs/2104.09864.
-    if p.use_rotary_position_emb:
+    if self.use_rotary_position_emb:
       assert not is_cross_attention
       if segment_pos is None:
         position = jnp.broadcast_to(time_step, [query_vec.shape[0]])
@@ -1594,7 +1593,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
       key_state_name = 'key_post_rotary_pos_emb'
       key_state = _extend_decode_state_and_shard(key_state_name, new_key_proj)
 
-    if p.relative_bias_tpl:
+    if self.relative_bias_tpl:
       # Relative bias uses time_step instead of segment_pos.
       relative_bias = self.relative_bias.extend_step(
           seq_length=self.decoding_state_sequence_length(), time_step=time_step)
@@ -1612,12 +1611,12 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
 
     # Apply NGrammer to the output of the attention.
     # Paper: https://openreview.net/forum?id=GxjCYmQAody.
-    if p.ngrammer_tpl is not None:
+    if self.ngrammer_tpl is not None:
       encoded_state = _extend_decode_state_and_shard('encoded_pre_ngrammer',
                                                      encoded)
       # TODO(pax-dev): May need to fix segment_pos.
       attention_score = None
-      if p.ngrammer_tpl.ngram_using_attention_scores:
+      if self.ngrammer_tpl.ngram_using_attention_scores:
         attention_score = atten_prob
       encoded = self.ngrammer.extend_step(
           encoded_state,
@@ -1722,13 +1721,12 @@ class DotProductAttentionWithLPB(DotProductAttention):
 
   def _shard_blnh(self, x: JTensor) -> JTensor:
     """Adds sharding annotations to tensors of shape [b, l, n, h]."""
-    p = self.hparams
-    blnh = p.activation_split_dims_mapping.blnh
+    blnh = self.activation_split_dims_mapping.blnh
     if blnh is None:
       return x
     # It is possible that we added prefix-broadcast dimensions.
     blnh = [blnh[0]] + [None] * (x.ndim - 4) + list(blnh[1:])
-    return base_layer.maybe_shard(x, blnh, p.mesh_axis_names)
+    return base_layer.maybe_shard(x, blnh, self.mesh_axis_names)
 
   def transform_decode_state(self,
                              transform_fn: base_layer.DecodeStateTransformFn):
@@ -1994,8 +1992,6 @@ class DotProductAttentionWithLPB(DotProductAttention):
       encoded: JTensor of shape [B, ..., N, H] or [B, ..., T, N, H]
     """
     del time_step
-
-    p = self.hparams
     pfx_count = self._broadcast_prefixes_count
     # When query has shape of [B, ..., N, H], will apply extend_step to a single
     # token per batch, normal autoregressive decoding logic is applied.
@@ -2098,7 +2094,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
 
     # Of shape [b, ..., n, s]
     key_dtype = self.get_decode_state(key_state_name).dtype
-    if p.attention_extra_logit is None:
+    if self.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key_dtype)
     else:
       probs = jnp.exp(
@@ -2217,7 +2213,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
 
     # Apply depth-wise convolution as in Primer.
     # Paper: https://arxiv.org/abs/2109.08668.
-    if p.dconv_qkv:
+    if self.dconv_qkv:
       if not extend_one_step:
         raise NotImplementedError(
             'DotProductAttentionWithLPB does not support extend n steps '
@@ -2259,7 +2255,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
 
     # Apply rotary position embeddings.
     # Paper: https://arxiv.org/abs/2104.09864.
-    if p.use_rotary_position_emb:
+    if self.use_rotary_position_emb:
       if segment_pos is None:
         position = jnp.broadcast_to(time_step, batch_dims)
       else:
@@ -2289,7 +2285,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
       key_state_name = 'key_post_rotary_pos_emb'
       _extend_decode_state_and_shard(key_state_name, new_key_proj)
 
-    if p.relative_bias_tpl:
+    if self.relative_bias_tpl:
       # Relative bias uses time_step instead of segment_pos.
       if not extend_one_step:
         raise NotImplementedError(
@@ -2308,7 +2304,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
 
     # Apply NGrammer to the output of the attention.
     # Paper: https://openreview.net/forum?id=GxjCYmQAody.
-    if p.ngrammer_tpl is not None:
+    if self.ngrammer_tpl is not None:
       if pfx_count > 0:
         raise NotImplementedError(
             'ngrammer does not yet support lazy prefix broadcast')
@@ -2489,8 +2485,6 @@ class DotProductAttentionXL(DotProductAttention):
       encoded: JTensor of shape [B, N, H].
       probs: JTensor of shape [B, N, S].
     """
-
-    p = self.hparams
     key = self._shard_blnh(self.get_decode_state(key_state_name))
     value = self._shard_blnh(self.get_decode_state(value_state_name))
 
@@ -2526,7 +2520,7 @@ class DotProductAttentionXL(DotProductAttention):
     # Apply attention masking
     padded_logits = logits + atten_mask.astype(jnp.float32)
     # Of shape [b, n, s]
-    if p.attention_extra_logit is None:
+    if self.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
     else:
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
@@ -2642,13 +2636,14 @@ class LocalSelfAttention(DotProductAttention):
     if relative_bias is not None:
       raise NotImplementedError(
           'relative bias for localattention is not supported yet')
-    # Add key sharding annotations.
-    p = self.hparams
 
-    block_size = p.block_size
-    if (block_size is None and p.left_context is not None and
-        p.right_context is not None):
-      block_size = max(1, p.right_context, p.left_context - 1)
+    block_size = self.block_size
+    if (
+        block_size is None
+        and self.left_context is not None
+        and self.right_context is not None
+    ):
+      block_size = max(1, self.right_context, self.left_context - 1)
       # Note: if query_stride will be added in parameters
       # then it has to be taken into account here.
       logging.warning('block_size not set, use default value = %d', block_size)
@@ -2675,8 +2670,9 @@ class LocalSelfAttention(DotProductAttention):
     key_block_context = extract_block_context(
         key,
         block_size=block_size,
-        left_context=p.left_context,
-        right_context=p.right_context)
+        left_context=self.left_context,
+        right_context=self.right_context,
+    )
     _, u, c, _, _ = key_block_context.shape
 
     # -> [B, U, W, N, H]
@@ -2693,9 +2689,10 @@ class LocalSelfAttention(DotProductAttention):
       mask_block_context = extract_block_context(
           mask,
           block_size=block_size,
-          left_context=p.left_context,
-          right_context=p.right_context,
-          padding_val=minus_inf)
+          left_context=self.left_context,
+          right_context=self.right_context,
+          padding_val=minus_inf,
+      )
 
       # -> [B, N, U, W, C]
       mask = jnp.tile(
@@ -2713,9 +2710,10 @@ class LocalSelfAttention(DotProductAttention):
       mask_block_context = extract_block_context(
           mask_block_context,
           block_size=block_size,
-          left_context=p.left_context,
-          right_context=p.right_context,
-          padding_val=minus_inf)
+          left_context=self.left_context,
+          right_context=self.right_context,
+          padding_val=minus_inf,
+      )
       mask_block_context = jnp.reshape(mask_block_context, [b, u, w, u, c])
       mask_block_context = jnp.einsum('buwuc->buwc', mask_block_context)
 
@@ -2728,8 +2726,9 @@ class LocalSelfAttention(DotProductAttention):
     local_causal_mask = _make_local_mask(
         seq_len=t,
         block_size=block_size,
-        left_context=p.left_context,
-        right_context=p.right_context)
+        left_context=self.left_context,
+        right_context=self.right_context,
+    )
     mask = jnp.minimum(mask, (1. - local_causal_mask) * minus_inf)
 
     # -> [B, N, U, W, C]
@@ -2742,7 +2741,7 @@ class LocalSelfAttention(DotProductAttention):
     padded_logits = logits * (mask > minus_inf / 2).astype(
         jnp.float32) + mask.astype(jnp.float32)
 
-    if p.attention_extra_logit is None:
+    if self.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
     else:
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
@@ -2753,8 +2752,9 @@ class LocalSelfAttention(DotProductAttention):
     value_block_context = extract_block_context(
         value,
         block_size=block_size,
-        left_context=p.left_context,
-        right_context=p.right_context)
+        left_context=self.left_context,
+        right_context=self.right_context,
+    )
 
     # Compute the attention context vector.
     # -> [B, U, W, N, H]
@@ -2807,13 +2807,12 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     create_relative_positional_embedding(self)
 
   def _atten_logits(self, query, key):
-    p = self.hparams
 
     b, u, w = query.shape[:3]
     c = key.shape[2]
-    n = p.num_heads
-    l = p.left_context
-    r = p.right_context
+    n = self.num_heads
+    l = self.left_context
+    r = self.right_context
     f = l + r
     # term a and c
     term_ac = jnp.einsum('BUWNH,BUCNH->BNUWC', query + self.theta.u, key)
@@ -2862,34 +2861,36 @@ class CausalDepthwiseConv1D(base_layer.FiddleBaseLayer):
   hidden_dims: Union[int, Sequence[int]] = 0
 
   def setup(self) -> None:
-    p = self.hparams
-    assert p.name
-    assert isinstance(p.hidden_dims,
-                      (list, tuple)) or isinstance(p.hidden_dims, int)
-    assert p.kernel_size > 0
-    if isinstance(p.hidden_dims, (list, tuple)):
-      for dim in p.hidden_dims:
+    assert self.name
+    assert isinstance(self.hidden_dims, (list, tuple)) or isinstance(
+        self.hidden_dims, int
+    )
+    assert self.kernel_size > 0
+    if isinstance(self.hidden_dims, (list, tuple)):
+      for dim in self.hidden_dims:
         assert dim > 0
     else:
-      assert p.hidden_dims > 0
+      assert self.hidden_dims > 0
 
-    wp = p.weight_split_dims_mapping
-    for i in range(p.kernel_size):
+    wp = self.weight_split_dims_mapping
+    for i in range(self.kernel_size):
       if i == 0:
         params_init = base_layer.WeightInit.Constant(0.5)
       else:
-        params_init = base_layer.WeightInit.Constant(0.5 / p.kernel_size)
-      if isinstance(p.hidden_dims, (list, tuple)):
-        shape = p.hidden_dims
+        params_init = base_layer.WeightInit.Constant(0.5 / self.kernel_size)
+      if isinstance(self.hidden_dims, (list, tuple)):
+        shape = self.hidden_dims
       else:
-        shape = [p.hidden_dims]
+        shape = [self.hidden_dims]
       self.create_variable(
           f'dconv_{i}',
           WeightHParams(
               shape=shape,
               init=params_init,
-              mesh_shape=p.mesh_shape,
-              tensor_split_dims_mapping=wp.wt))
+              mesh_shape=self.mesh_shape,
+              tensor_split_dims_mapping=wp.wt,
+          ),
+      )
 
   def __call__(self,
                inputs: JTensor,
@@ -2907,9 +2908,8 @@ class CausalDepthwiseConv1D(base_layer.FiddleBaseLayer):
     Returns:
       Output sequence after applying the depth-wise convolution on the sequence.
     """
-    p = self.hparams
     outputs = inputs * self.theta.dconv_0
-    for i in range(1, p.kernel_size):
+    for i in range(1, self.kernel_size):
       inputs = shift_1d(inputs, offset=1, axis=axis)
       if segment_pos is None:
         outputs += inputs * getattr(self.theta, f'dconv_{i}')
@@ -2938,7 +2938,6 @@ class CausalDepthwiseConv1D(base_layer.FiddleBaseLayer):
       Output sequence at the step after applying the depth-wise convolution
       on the sequence.
     """
-    p = self.hparams
     get_single_slice_at_index = functools.partial(
         jax.lax.dynamic_slice_in_dim, inputs, slice_size=1, axis=axis)
     outputs = get_single_slice_at_index(start_index=step)
@@ -2949,7 +2948,7 @@ class CausalDepthwiseConv1D(base_layer.FiddleBaseLayer):
       new_shape = [segment_pos.shape[0]] + [1] * (inputs.ndim - 1)
       segment_pos = jnp.reshape(segment_pos, new_shape)
     use_where = not isinstance(segment_pos, int)
-    for i in range(1, p.kernel_size):
+    for i in range(1, self.kernel_size):
       if use_where:
         prev_slice = jnp.where(
             jnp.greater_equal(segment_pos - i, 0),

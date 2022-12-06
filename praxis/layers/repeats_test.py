@@ -52,15 +52,17 @@ class FeedForward(base_layer.FiddleBaseLayer):
   output_dim: int = 0
 
   def setup(self):
-    p = self.hparams
-    assert p.name
-    assert p.input_dim > 0
-    assert p.output_dim > 0
+    assert self.name
+    assert self.input_dim > 0
+    assert self.output_dim > 0
 
     self.create_variable(
         'w',
         WeightHParams(
-            shape=[p.input_dim, p.output_dim], init=WeightInit.Gaussian(1.0)))
+            shape=[self.input_dim, self.output_dim],
+            init=WeightInit.Gaussian(1.0),
+        ),
+    )
     self.create_variable(
         'step',
         WeightHParams(shape=[], dtype=jnp.int32, init=WeightInit.Constant(0)),
@@ -101,14 +103,16 @@ class Decoder(base_layer.FiddleBaseLayer):
   model_dim: int = 0
 
   def setup(self):
-    p = self.hparams
-    assert p.name
-    assert p.model_dim > 0
+    assert self.name
+    assert self.model_dim > 0
 
     self.create_variable(
         'w',
         WeightHParams(
-            shape=[p.model_dim, p.model_dim], init=WeightInit.Gaussian(1.0)))
+            shape=[self.model_dim, self.model_dim],
+            init=WeightInit.Gaussian(1.0),
+        ),
+    )
 
   def __call__(self, inputs):
     x = jnp.einsum('bty,yz->btz', inputs, self.theta.w)

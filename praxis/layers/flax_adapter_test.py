@@ -79,12 +79,11 @@ class MixLayer(base_layer.FiddleBaseLayer):
     self.create_child('bn', bn_p)
 
   def __call__(self, x: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
-    p = self.hparams
     # Call cnn_p1 twice to verify this doesn't break initialization.
-    out1 = (
-        self.cnn_p1(x, use_running_average=p.use_running_average) +
-        self.cnn_p1(x / 2., use_running_average=p.use_running_average))
-    out2 = self.cnn_p2(x, use_running_average=p.use_running_average)
+    out1 = self.cnn_p1(
+        x, use_running_average=self.use_running_average
+    ) + self.cnn_p1(x / 2.0, use_running_average=self.use_running_average)
+    out2 = self.cnn_p2(x, use_running_average=self.use_running_average)
     out = self.bn(out1 + out2)
     return out1, out2, out
 

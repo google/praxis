@@ -198,37 +198,42 @@ class VitEntryLayers(base_layer.FiddleBaseLayer):
   input_fc_has_bias: bool = True
 
   def setup(self) -> None:
-    p = self.hparams
 
     p_patch_projection = linears.FeedForward.HParams(
         name='proj',
-        input_dims=p.input_dims,
-        output_dims=p.output_dims,
-        has_bias=p.input_fc_has_bias,
-        activation_tpl=activations.Identity.HParams())
+        input_dims=self.input_dims,
+        output_dims=self.output_dims,
+        has_bias=self.input_fc_has_bias,
+        activation_tpl=activations.Identity.HParams(),
+    )
     self.create_child('patch_projection', p_patch_projection)
 
-    if p.pos_emb_tpl:
-      pos_emb = p.pos_emb_tpl.clone().set(name='emb')
+    if self.pos_emb_tpl:
+      pos_emb = self.pos_emb_tpl.clone().set(name='emb')
       self.create_child('pos_emb', pos_emb)
 
-    if p.pos_emb_dropout_prob > 0.0:
+    if self.pos_emb_dropout_prob > 0.0:
       p_dropout = stochastics.Dropout.HParams(
-          name='dropout', keep_prob=1.0 - p.pos_emb_dropout_prob)
+          name='dropout', keep_prob=1.0 - self.pos_emb_dropout_prob
+      )
       self.create_child('dropout', p_dropout)
 
-    if p.prepend_cls_tokens > 0:
+    if self.prepend_cls_tokens > 0:
       self.create_variable(
           'prepend_cls_embs',
           WeightHParams(
-              shape=[1, p.prepend_cls_tokens, p.output_dims],
-              init=WeightInit.Constant(0.0)))
-    if p.append_cls_tokens > 0:
+              shape=[1, self.prepend_cls_tokens, self.output_dims],
+              init=WeightInit.Constant(0.0),
+          ),
+      )
+    if self.append_cls_tokens > 0:
       self.create_variable(
           'append_cls_embs',
           WeightHParams(
-              shape=[1, p.append_cls_tokens, p.output_dims],
-              init=WeightInit.Constant(0.0)))
+              shape=[1, self.append_cls_tokens, self.output_dims],
+              init=WeightInit.Constant(0.0),
+          ),
+      )
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the vit entry operations to the input image.
@@ -241,15 +246,15 @@ class VitEntryLayers(base_layer.FiddleBaseLayer):
     Returns:
       Output tensor of shape [B, N, D].
     """
-    p = self.hparams
 
     if len(inputs.shape) == 4:
       height, width = inputs.shape[1:3]
-      if height % p.patch_size != 0 or width % p.patch_size != 0:
+      if height % self.patch_size != 0 or width % self.patch_size != 0:
         raise ValueError(
             f'Image height ({height}) and width ({width}) should be multiples '
-            f'of p.patch_size ({p.patch_size}).')
-      patches = image_to_patch(inputs, p.patch_size)
+            f'of p.patch_size ({self.patch_size}).'
+        )
+      patches = image_to_patch(inputs, self.patch_size)
     elif len(inputs.shape) == 3:
       patches = inputs
     else:
@@ -257,28 +262,29 @@ class VitEntryLayers(base_layer.FiddleBaseLayer):
 
     features = self.patch_projection(patches)
 
-    if p.pos_emb_tpl:
-      num_pos_embed = np.prod(p.pos_emb_shapes)
+    if self.pos_emb_tpl:
+      num_pos_embed = np.prod(self.pos_emb_shapes)
       pos_emb = self.pos_emb(seq_length=num_pos_embed)
       # Only support image shape and 2d pos_emb_shape for pos interpolation.
-      if len(inputs.shape) == 4 and len(p.pos_emb_shapes) == 2:
-        row_patch_count = height // p.patch_size
-        col_patch_count = width // p.patch_size
-        if p.pos_emb_shapes != (row_patch_count, col_patch_count):
-          pos_emb = interpolate_embedding_2d(pos_emb, p.pos_emb_shapes,
-                                             (row_patch_count, col_patch_count))
+      if len(inputs.shape) == 4 and len(self.pos_emb_shapes) == 2:
+        row_patch_count = height // self.patch_size
+        col_patch_count = width // self.patch_size
+        if self.pos_emb_shapes != (row_patch_count, col_patch_count):
+          pos_emb = interpolate_embedding_2d(
+              pos_emb, self.pos_emb_shapes, (row_patch_count, col_patch_count)
+          )
       features = features + pos_emb
 
-    if self.hparams.pos_emb_dropout_prob > 0.0:
+    if self.pos_emb_dropout_prob > 0.0:
       features = self.dropout(features)
 
     batch_size = inputs.shape[0]
-    if p.prepend_cls_tokens > 0:
+    if self.prepend_cls_tokens > 0:
       prepend_cls_embs = jnp.tile(self.theta.prepend_cls_embs,
                                   (batch_size, 1, 1))
       features = jnp.concatenate((prepend_cls_embs, features), axis=1)
 
-    if p.append_cls_tokens > 0:
+    if self.append_cls_tokens > 0:
       append_cls_embs = jnp.tile(self.theta.append_cls_embs, (batch_size, 1, 1))
       features = jnp.concatenate((features, append_cls_embs), axis=1)
 
@@ -312,33 +318,35 @@ class VitExitLayers(base_layer.FiddleBaseLayer):
   pooling_tpl: LayerTpl = sub_config_field(poolings.GlobalPooling.HParams)
 
   def setup(self) -> None:
-    p = self.hparams
 
-    if p.pre_ln:
-      p_ln = normalizations.LayerNorm.HParams(name='ln', dim=p.hidden_dim)
+    if self.pre_ln:
+      p_ln = normalizations.LayerNorm.HParams(name='ln', dim=self.hidden_dim)
       self.create_child('ln', p_ln)
 
-    if p.pooled:
-      self.create_child('pooling', p.pooling_tpl)
+    if self.pooled:
+      self.create_child('pooling', self.pooling_tpl)
 
-    if p.output_fc_tanh:
+    if self.output_fc_tanh:
       p_fc_tanh = linears.FeedForward.HParams(
-          input_dims=p.hidden_dim,
-          output_dims=p.output_dim,
-          has_bias=p.output_fc_has_bias,
-          activation_tpl=activations.Tanh.HParams())
+          input_dims=self.hidden_dim,
+          output_dims=self.output_dim,
+          has_bias=self.output_fc_has_bias,
+          activation_tpl=activations.Tanh.HParams(),
+      )
       self.create_child('fc_tanh', p_fc_tanh)
-    elif p.output_dim != 0 and p.hidden_dim != p.output_dim:
+    elif self.output_dim != 0 and self.hidden_dim != self.output_dim:
       p_fc = linears.FeedForward.HParams(
-          input_dims=p.hidden_dim,
-          output_dims=p.output_dim,
-          has_bias=p.output_fc_has_bias,
-          activation_tpl=activations.Identity.HParams())
+          input_dims=self.hidden_dim,
+          output_dims=self.output_dim,
+          has_bias=self.output_fc_has_bias,
+          activation_tpl=activations.Identity.HParams(),
+      )
       self.create_child('output_projection', p_fc)
 
-    if p.output_dropout_prob > 0.0:
-      p_dropout = stochastics.Dropout.HParams(keep_prob=1.0 -
-                                              p.output_dropout_prob)
+    if self.output_dropout_prob > 0.0:
+      p_dropout = stochastics.Dropout.HParams(
+          keep_prob=1.0 - self.output_dropout_prob
+      )
       self.create_child('dropout', p_dropout)
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -350,17 +358,16 @@ class VitExitLayers(base_layer.FiddleBaseLayer):
     Returns:
       Output tensor of shape [B, D] or [B, N, D] if pooled == False.
     """
-    p = self.hparams
-    if p.pre_ln:
+    if self.pre_ln:
       inputs = self.ln(inputs)
-    if p.pooled:
+    if self.pooled:
       inputs = self.pooling(inputs)
-    if p.output_fc_tanh:
+    if self.output_fc_tanh:
       inputs = self.fc_tanh(inputs)
-    elif p.output_dim != 0 and p.hidden_dim != p.output_dim:
+    elif self.output_dim != 0 and self.hidden_dim != self.output_dim:
       inputs = self.output_projection(inputs)
 
-    if p.output_dropout_prob > 0.0:
+    if self.output_dropout_prob > 0.0:
       inputs = self.dropout(inputs)
     return inputs
 
@@ -384,17 +391,16 @@ class VisionTransformer(base_layer.FiddleBaseLayer):
   exit_layers_tpl: LayerTpl = sub_config_field(VitExitLayers.HParams)
 
   def setup(self) -> None:
-    p = self.hparams
 
-    if p.entry_layers_tpl is not None:
-      self.create_child('entry_stack', p.entry_layers_tpl)
+    if self.entry_layers_tpl is not None:
+      self.create_child('entry_stack', self.entry_layers_tpl)
 
-    if p.transformer_layers_tpl is None:
+    if self.transformer_layers_tpl is None:
       raise ValueError('transformer_layers_tpl should not be None')
-    self.create_child('transformers_stack', p.transformer_layers_tpl)
+    self.create_child('transformers_stack', self.transformer_layers_tpl)
 
-    if p.exit_layers_tpl is not None:
-      self.create_child('exit_stack', p.exit_layers_tpl)
+    if self.exit_layers_tpl is not None:
+      self.create_child('exit_stack', self.exit_layers_tpl)
 
   def __call__(self, inputs: JTensor, paddings: JTensor = None) -> JTensor:
     """Applies the Vit model to the inputs.
@@ -409,14 +415,13 @@ class VisionTransformer(base_layer.FiddleBaseLayer):
     Returns:
       Output tensor of shape [B, D] or [B, N, D] if pooled == False.
     """
-    p = self.hparams
     features = inputs
-    if p.entry_layers_tpl:
+    if self.entry_layers_tpl:
       features = self.entry_stack(features)  # [B, N, D]
     if paddings is None:
       paddings = jnp.zeros(features.shape[:-1], dtype=features.dtype)
     features = self.transformers_stack(features, paddings)  # [B, N, D]
-    if p.exit_layers_tpl:
+    if self.exit_layers_tpl:
       features = self.exit_stack(features)  # [B, D] or [B, N, D]
     return features
 

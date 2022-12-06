@@ -135,20 +135,19 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     """Constructs a LayerwiseShardablePipelined object."""
-    p = self.hparams
-    assert p.single_stage_body
-    self.create_child('body', p.single_stage_body)
+    assert self.single_stage_body
+    self.create_child('body', self.single_stage_body)
 
   def _shard_dim_by_stages(self, x: JTensor, dim: int) -> JTensor:
-    p = self.hparams
     unconstrained_dims = list(range(0, dim)) + list(range(dim + 1, x.ndim))
     dims_mapping = [None] * x.ndim
-    dims_mapping[dim] = p.weight_split_dims_mapping.stages[0]
+    dims_mapping[dim] = self.weight_split_dims_mapping.stages[0]
     return base_layer.maybe_shard(
         x,
         dims_mapping,
-        p.mesh_axis_names,
-        unconstrained_dims=unconstrained_dims)
+        self.mesh_axis_names,
+        unconstrained_dims=unconstrained_dims,
+    )
 
   def _vmap_gather(self, xs, ids, ids_dim):
     """Use vmap to implement a stage-wise sharded gather.
@@ -333,8 +332,7 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
         })
 
     if self.is_initializing():
-      p = self.hparams
-      wp = p.weight_split_dims_mapping
+      wp = self.weight_split_dims_mapping
       assert wp.stages is not None
       assert isinstance(wp.stages, (list, tuple))
       assert len(wp.stages) == 1
@@ -355,24 +353,25 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
             trans_in_fn=functools.partial(
                 flax_utils.remove_axis_to_metadata,
                 sub_weight_split_dims_mapping=wp_sub,
-                x_times=p.num_stages),
+                x_times=self.num_stages,
+            ),
             trans_out_fn=functools.partial(
                 flax_utils.add_axis_to_metadata,
                 sub_weight_split_dims_mapping=wp_sub,
-                x_times=p.num_stages))
+                x_times=self.num_stages,
+            ),
+        )
     return vmapped_fn
 
   def num_total_iterations(self, num_microbatches: int) -> int:
-    p = self.hparams
-    return num_microbatches + p.num_stages - 1
+    return num_microbatches + self.num_stages - 1
 
   def num_valid_iterations(self, num_microbatches: int) -> int:
     return num_microbatches
 
   def get_valid_microbatch_mask(self, loop_iteration: JTensor,
                                 num_microbatches: int):
-    p = self.hparams
-    stage_id = jnp.arange(p.num_stages, dtype=jnp.int32)
+    stage_id = jnp.arange(self.num_stages, dtype=jnp.int32)
     return jnp.logical_and(
         stage_id <= loop_iteration,
         loop_iteration - stage_id < self.num_valid_iterations(num_microbatches))
@@ -380,11 +379,9 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
   def body_fprop(self, loop_iteration: JTensor, num_microbatches: int,
                  per_stage_inputs: JTensor, *per_stage_args,
                  **per_stage_kwargs) -> NestedJTensor:
-    p = self.hparams
     per_stage_is_valid_mb = self.get_valid_microbatch_mask(
         loop_iteration, num_microbatches)
-    if p.mesh_axis_names is not None:
-
+    if self.mesh_axis_names is not None:
       def annotate(x):
         return self._shard_dim_by_stages(x, 0)
 
@@ -406,15 +403,14 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
 
   def _get_init_loop_state(self, microbatched_inputs: NestedJTensor,
                            num_microbatches: int) -> NestedJTensor:
-    p = self.hparams
-    L = p.num_stages  # pylint: disable=invalid-name
+    L = self.num_stages  # pylint: disable=invalid-name
     # The shifting loop state has shape [num_stages, ...]
     # Inputs are not the loop state: they are not changed during the loop. The
     # state (shifting buffer) does not have a num_microbatches dimension.
     shift = jax.tree_map(lambda x: jnp.zeros((L,) + x.shape[1:], dtype=x.dtype),
                          microbatched_inputs)
     state = py_utils.NestedMap(shift=shift)
-    if p.stream_io:
+    if self.stream_io:
       # The streaming buffer has shape [L, num_microbatches // L, ...]. In each
       # iteration, one slice of it (at the num_microbatches // L dim) will be
       # used and shifted.
@@ -429,15 +425,14 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
   def _should_checkpoint_stages_in(self) -> bool:
     # We use a slice of the stream buffer at a time, so we checkpoint the slice
     # to avoid saving full buffers in each iteration.
-    return self.hparams.stream_io
+    return self.stream_io
 
   def _get_iteration_inputs(self, loop_iteration: JTensor,
                             num_microbatches: int,
                             per_stage_inputs: Optional[NestedJTensor],
                             loop_state: NestedJTensor) -> NestedJTensor:
-    p = self.hparams
-    if p.stream_io:
-      stream_buf_idx = loop_iteration % (num_microbatches // p.num_stages)
+    if self.stream_io:
+      stream_buf_idx = loop_iteration % (num_microbatches // self.num_stages)
       stream_slice = jax.tree_map(lambda x: x[:, stream_buf_idx],
                                   loop_state.stream)
       inputs = stream_slice
@@ -449,8 +444,7 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
   def _get_new_loop_state(self, loop_iteration: JTensor, num_microbatches: int,
                           body_outputs: NestedJTensor,
                           old_state: NestedJTensor) -> NestedJTensor:
-    p = self.hparams
-    L = p.num_stages  # pylint: disable=invalid-name
+    L = self.num_stages  # pylint: disable=invalid-name
 
     # Shift state to the right by 1.
     def _shift_right(x):
@@ -461,7 +455,7 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
     shifted_out_state = jax.tree_map(_shift_right, body_outputs)
     new_state = NestedMap(shift=shifted_out_state)
 
-    if p.stream_io:
+    if self.stream_io:
       stream_buf_idx = loop_iteration % (num_microbatches // L)
       stream_slice = jax.tree_map(lambda x: x[:, stream_buf_idx],
                                   old_state.stream)
@@ -486,10 +480,9 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
 
   def _unpack_summary(self, key: str, vectorized_summary: JTensor):
     """Unpack vectorized summaries to per-stage ones."""
-    p = self.hparams
-    assert p.num_stages == vectorized_summary.shape[0]
+    assert self.num_stages == vectorized_summary.shape[0]
     per_stage = {}
-    for i in range(p.num_stages):
+    for i in range(self.num_stages):
       per_stage[f'{key}.stage{i}'] = vectorized_summary[i]
     return per_stage
 
@@ -512,7 +505,7 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
       Output from the last pipeline stage.
     """
     p = self.hparams
-    L = p.num_stages  # pylint: disable=invalid-name
+    L = self.num_stages  # pylint: disable=invalid-name
 
     # If inputs are already microbatched, the leading dimension is the number of
     # microbatches.
@@ -523,17 +516,19 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
 
     # If not, users must only specify either num_microbatches or microbatch_size
     # but not both.
-    if p.num_microbatches is not None:
-      assert p.microbatch_size is None
-      num_microbatches = p.num_microbatches
+    if self.num_microbatches is not None:
+      assert self.microbatch_size is None
+      num_microbatches = self.num_microbatches
       needs_microbatching = True
 
-    if p.microbatch_size is not None:
-      assert p.num_microbatches is None
+    if self.microbatch_size is not None:
+      assert self.num_microbatches is None
       batch_size = flat_inputs[0].shape[0]
-      assert batch_size % p.microbatch_size == 0, (batch_size,
-                                                   p.microbatch_size)
-      num_microbatches = batch_size // p.microbatch_size
+      assert batch_size % self.microbatch_size == 0, (
+          batch_size,
+          self.microbatch_size,
+      )
+      num_microbatches = batch_size // self.microbatch_size
       needs_microbatching = True
 
     # Reshape inputs into [num_microbatches, microbatch_size, ...] if needed.
@@ -563,7 +558,7 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
       broadcast_inputs = jax.tree_map(_to_microbatches, broadcast_inputs)
       broadcast_kwargs = jax.tree_map(_to_microbatches, broadcast_kwargs)
 
-    if p.pipeline_broadcast_inputs:
+    if self.pipeline_broadcast_inputs:
       inputs = py_utils.NestedMap(
           inputs=inputs,
           broadcast_inputs=broadcast_inputs,
@@ -573,7 +568,7 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
 
     total_iterations = self.num_total_iterations(num_microbatches)
 
-    if p.stream_io:
+    if self.stream_io:
       per_stage_inputs = None
 
       # Broadcast inputs need to be replicated across stages.
@@ -669,9 +664,12 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
         _scan_fn,
         prevent_cse=False,  # prevent_cse not required for scan.
         policy=jax.checkpoint_policies.save_from_both_policies(
-            checkpoint_policy.custom_policy(p.checkpoint_policy),
+            checkpoint_policy.custom_policy(self.checkpoint_policy),
             checkpoint_policy.custom_policy(
-                AutodiffCheckpointType.SAVE_ITERATION_INPUT)))
+                AutodiffCheckpointType.SAVE_ITERATION_INPUT
+            ),
+        ),
+    )
 
     # This nn.scan morally iterates through microbatches and feed each
     # microbatch to a full pipeline body (N layers, not 1 layer).
@@ -763,7 +761,7 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
       out, accum = _scan_fn(self, init_carry)
       # Get a single-stage output and broadcast it to the right output shape.
       shift_buf = out.data.shift
-      if p.pipeline_broadcast_inputs:
+      if self.pipeline_broadcast_inputs:
         shift_buf = shift_buf.inputs
       output = jax.tree_map(
           lambda x: jax.lax.broadcast(x[0], [num_microbatches]), shift_buf)
@@ -771,7 +769,7 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
       # The following is layer.apply codepath.
       out, accum = after_post_process(self, init_carry)
 
-      if not p.stream_io:
+      if not self.stream_io:
         # Extract output from the last stage after num_stages-1 bubbles.
         def _extract_out(x):
           # Use lax.slice to guarantee the gradient is a pad.
@@ -795,7 +793,7 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
                 [x[:, first_last_offset:], x[:, :first_last_offset]], axis=1)
           return jnp.reshape(x, (num_microbatches,) + x.shape[2:])
 
-        if p.pipeline_broadcast_inputs:
+        if self.pipeline_broadcast_inputs:
           output = jax.tree_map(_extract_out, out.data.stream.inputs)
         else:
           output = jax.tree_map(_extract_out, out.data.stream)
@@ -836,27 +834,25 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
 
   def _async_circular_transfer(self, num_microbatches: int) -> bool:
     """Whether to delay circular transfers by 1 iteration."""
-    p = self.hparams
-    if num_microbatches < p.num_stages:
+    if num_microbatches < self.num_stages:
       # TODO(yuanzx): Implement padding on small number of microbatches.
       raise NotImplementedError('num_microbatches must be at least num_stages')
     # If we have at least num_stages + 1 microbatches, we can delay the
     # transfer. This is to overlap it with the computation of the next
     # iteration.
-    return p.num_stages < num_microbatches
+    return self.num_stages < num_microbatches
 
   def num_total_iterations(self, num_microbatches: int) -> int:
-    p = self.hparams
-    return num_microbatches * p.circular_repeat + p.num_stages - 1
+    return num_microbatches * self.circular_repeat + self.num_stages - 1
 
   def num_valid_iterations(self, num_microbatches: int) -> int:
-    return num_microbatches * self.hparams.circular_repeat
+    return num_microbatches * self.circular_repeat
 
   def _get_body_fprop_fn(self, loop_iteration: JTensor,
                          num_microbatches: int) -> Callable[..., JTensor]:
     p = self.hparams
     vmapped_fn = super()._get_body_fprop_fn(loop_iteration, num_microbatches)
-    if p.share_weights:
+    if self.share_weights:
       return vmapped_fn
 
     if self.is_initializing():
@@ -868,14 +864,19 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
             trans_in_fn=functools.partial(
                 flax_utils.remove_axis_to_metadata,
                 sub_weight_split_dims_mapping=(None,),
-                x_times=p.circular_repeat),
+                x_times=self.circular_repeat,
+            ),
             trans_out_fn=functools.partial(
                 flax_utils.add_axis_to_metadata,
                 sub_weight_split_dims_mapping=(None,),
-                x_times=p.circular_repeat))
+                x_times=self.circular_repeat,
+            ),
+        )
 
     backup_vars = self.body.variables
-    microbatch_ids = jnp.maximum(loop_iteration - jnp.arange(p.num_stages), 0)
+    microbatch_ids = jnp.maximum(
+        loop_iteration - jnp.arange(self.num_stages), 0
+    )
     repeat_ids = microbatch_ids // num_microbatches
 
     # Gather per-stage layers; they have different repeat_ids.
@@ -950,8 +951,7 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
   def _get_new_loop_state(self, loop_iteration: JTensor, num_microbatches: int,
                           body_outputs: NestedJTensor,
                           old_state: NestedJTensor) -> NestedJTensor:
-    p = self.hparams
-    L = p.num_stages  # pylint: disable=invalid-name
+    L = self.num_stages  # pylint: disable=invalid-name
     new_state = super()._get_new_loop_state(loop_iteration, num_microbatches,
                                             body_outputs, old_state)
 
@@ -987,16 +987,16 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
 
   def _unpack_summary(self, key: str, vectorized_summary: JTensor):
     """Unpack vectorized summaries to per-stage ones."""
-    p = self.hparams
-    if p.share_weights:
+    if self.share_weights:
       # Average over layers sharing the weights.
-      return super()._unpack_summary(key,
-                                     vectorized_summary / p.circular_repeat)
+      return super()._unpack_summary(
+          key, vectorized_summary / self.circular_repeat
+      )
     per_layer = {}
-    assert vectorized_summary.shape[0] == p.circular_repeat
-    assert vectorized_summary.shape[1] == p.num_stages
-    for i in range(p.circular_repeat):
-      for j in range(p.num_stages):
+    assert vectorized_summary.shape[0] == self.circular_repeat
+    assert vectorized_summary.shape[1] == self.num_stages
+    for i in range(self.circular_repeat):
+      for j in range(self.num_stages):
         per_layer[f'{key}.circular_layer{i}.stage{j}'] = vectorized_summary[i][
             j]
     return per_layer

@@ -96,30 +96,29 @@ class FlaxFormerDecoder(base_layer.FiddleBaseLayer):
   use_output_logits: bool = True
 
   def setup(self) -> None:
-    p = self.hparams
     super().setup()
-    activation_dtype = p.activation_dtype
-    embed_dim = p.embed_dim
-    num_embeddings = p.num_embeddings
-    num_heads = p.num_heads
-    head_dim = p.head_dim
-    init_scale = p.init_scale
-    dropout_rate = p.dropout_rate
-    mlp_activations = p.mlp_activations
-    mlp_dim = p.mlp_dim
-    activation_partitioning_dims = p.activation_partitioning_dims
-    num_decoder_layers = p.num_layers
-    scan_layers = p.scan_layers
-    shared_relative_bias = p.shared_relative_bias
-    decode_layer_norm_use_scale = p.decode_layer_norm_use_scale
-    final_layer_norm_use_scale = p.final_layer_norm_use_scale
-    layer_norm_center_scale_at_zero = p.layer_norm_center_scale_at_zero
-    use_multi_query_attention = p.use_multi_query_attention
-    use_rotary_embedding = p.use_rotary_embedding
-    parallel_fused_decoder_layer = p.parallel_fused_decoder_layer
-    mlp_out_dim = p.mlp_out_dim
-    mlp_precomputed_intermediates = p.mlp_precomputed_intermediates
-    use_output_logits = p.use_output_logits
+    activation_dtype = self.activation_dtype
+    embed_dim = self.embed_dim
+    num_embeddings = self.num_embeddings
+    num_heads = self.num_heads
+    head_dim = self.head_dim
+    init_scale = self.init_scale
+    dropout_rate = self.dropout_rate
+    mlp_activations = self.mlp_activations
+    mlp_dim = self.mlp_dim
+    activation_partitioning_dims = self.activation_partitioning_dims
+    num_decoder_layers = self.num_layers
+    scan_layers = self.scan_layers
+    shared_relative_bias = self.shared_relative_bias
+    decode_layer_norm_use_scale = self.decode_layer_norm_use_scale
+    final_layer_norm_use_scale = self.final_layer_norm_use_scale
+    layer_norm_center_scale_at_zero = self.layer_norm_center_scale_at_zero
+    use_multi_query_attention = self.use_multi_query_attention
+    use_rotary_embedding = self.use_rotary_embedding
+    parallel_fused_decoder_layer = self.parallel_fused_decoder_layer
+    mlp_out_dim = self.mlp_out_dim
+    mlp_precomputed_intermediates = self.mlp_precomputed_intermediates
+    use_output_logits = self.use_output_logits
 
     def token_embedder_factory():
       emb_init_kwargs = dict(
@@ -243,7 +242,8 @@ class FlaxFormerDecoder(base_layer.FiddleBaseLayer):
 
     flaxformer_decoder = flax_adapter.FlaxModuleAdapter.HParams(
         module_factory_method=decoder_only_factory,
-        logical_axes_rules=p.logical_axes_rules)
+        logical_axes_rules=self.logical_axes_rules,
+    )
 
     self.create_child('dec', flaxformer_decoder)
 
@@ -261,16 +261,17 @@ class EncoderDecoder(base_layer.FiddleBaseLayer):
   logical_axes_rules: Optional[LogicalAxisRules] = None
 
   def _build_wrapped_module(self) -> linen.Module:
-    if self.hparams.encoder_decoder_factory is None:
+    if self.encoder_decoder_factory is None:
       raise ValueError('encoder_decoder_factory is required!')
-    return self.hparams.encoder_decoder_factory()
+    return self.encoder_decoder_factory()
 
   def setup(self) -> None:
     super().setup()
 
     encoder_decoder_tpl = flax_adapter.EncoderDecoderFlaxModuleAdaptor.HParams(
         module_factory_method=self._build_wrapped_module,
-        logical_axes_rules=self.hparams.logical_axes_rules)
+        logical_axes_rules=self.logical_axes_rules,
+    )
 
     self.create_child('enc_dec', encoder_decoder_tpl)
 
@@ -477,11 +478,10 @@ class LanguageModel(base_model.BaseModel):
   decoder_tpl: DecoderHParams = pax_fiddle.sub_field(GreedyDecoderHParams)
 
   def setup(self):
-    p = self.hparams
-    self._decoding_fn = p.decoding_fn
+    self._decoding_fn = self.decoding_fn
     # Propagate partitioning information from BaseModel to BaseLayer.
-    decoder_p = p.flax_decoder_tpl.clone()
-    decoder_p.logical_axes_rules = p.logical_axes_rules
+    decoder_p = self.flax_decoder_tpl.clone()
+    decoder_p.logical_axes_rules = self.logical_axes_rules
     self.create_child('decoder', decoder_p)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
@@ -501,7 +501,6 @@ class LanguageModel(base_model.BaseModel):
     Returns:
       A NestedMap of predictions.
     """
-    p = self.hparams
     get_elem = lambda x, k: x[k] if k in x else None
     decoder_input_tokens = (
         input_batch.ids
@@ -516,8 +515,9 @@ class LanguageModel(base_model.BaseModel):
         decoder_positions=get_elem(input_batch, 'decoder_positions'))
     class_probabilities = jax.nn.one_hot(
         decoder_target_tokens,
-        p.flax_decoder_tpl.num_embeddings,
-        dtype=jnp.float32)
+        self.flax_decoder_tpl.num_embeddings,
+        dtype=jnp.float32,
+    )
     class_probabilities = jax.lax.stop_gradient(class_probabilities)
     log_probs = jax.nn.log_softmax(logits)
 
@@ -537,15 +537,16 @@ class LanguageModel(base_model.BaseModel):
   def compute_loss(
       self, predictions: Predictions,
       input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
-    p = self.hparams
     assert 'decoder_loss_weights' in input_batch
     loss_weights = input_batch.decoder_loss_weights
 
-    if p.loss_normalizing_factor == 'NUM_REAL_TARGET_TOKENS':
+    if self.loss_normalizing_factor == 'NUM_REAL_TARGET_TOKENS':
       loss_normalizing_factor = jnp.sum(loss_weights)
     else:
-      assert NotImplementedError('loss_normalizing_factor: %s not implemented' %
-                                 p.loss_normalizing_factor)
+      assert NotImplementedError(
+          'loss_normalizing_factor: %s not implemented'
+          % self.loss_normalizing_factor
+      )
 
     # TODO(yonghui): reimplement the loss in pax instead of having a dependency
     # on t5x for loss computations.
@@ -554,9 +555,10 @@ class LanguageModel(base_model.BaseModel):
         predictions.logits,
         targets=targets,
         weights=loss_weights,
-        label_smoothing=p.label_smoothing,
-        z_loss=p.z_loss,
-        loss_normalizing_factor=loss_normalizing_factor)
+        label_smoothing=self.label_smoothing,
+        z_loss=self.z_loss,
+        loss_normalizing_factor=loss_normalizing_factor,
+    )
     accuracy = clu_metrics.Accuracy.from_model_output(
         logits=predictions.logits,
         labels=targets.astype(jnp.int32),
@@ -594,11 +596,11 @@ class LanguageModel(base_model.BaseModel):
       - metrics, a NestedMap containing str keys and clu_metrics.Metric
         objects. This is currently optional.
     """
-    assert isinstance(self.hparams.decoder_tpl, SampleDecoderHParams)
-    num_decodes = self.hparams.decoder_tpl.num_samples
+    assert isinstance(self.decoder_tpl, SampleDecoderHParams)
+    num_decodes = self.decoder_tpl.num_samples
     params = self.decoder.variables['params']
-    decoder_params = {'eos_id': self.hparams.decoder_tpl.eos_id}
-    max_decode_length = self.hparams.decoder_tpl.max_decode_steps
+    decoder_params = {'eos_id': self.decoder_tpl.eos_id}
+    max_decode_length = self.decoder_tpl.max_decode_steps
 
     # Prepare zeroed-out autoregressive cache.
     # [batch, input_len]
@@ -651,7 +653,7 @@ class LanguageModel(base_model.BaseModel):
         prefill_lengths=inputs_lengths)
     prefilled_cache = variables_with_cache['cache']
 
-    scanned = self.hparams.flax_decoder_tpl.scan_layers
+    scanned = self.flax_decoder_tpl.scan_layers
 
     # Single step decoder function.
     tokens_ids_to_logits = functools.partial(
@@ -669,8 +671,9 @@ class LanguageModel(base_model.BaseModel):
         tokens_to_logits=tokens_ids_to_logits,
         num_decodes=1,
         cache_offset=1 if scanned else 0,
-        topk=self.hparams.decoder_tpl.k,
-        **decoder_params)
+        topk=self.decoder_tpl.k,
+        **decoder_params,
+    )
 
     eos_position = jnp.argmax(
         jnp.equal(decodes, decoder_params['eos_id']), axis=-1)
@@ -741,11 +744,10 @@ class EncoderDecoderModel(base_model.BaseModel):
   decoding_fn: Optional[Callable[..., Any]] = t5x_decoding.beam_search
 
   def setup(self):
-    p = self.hparams
     # Propagate partitioning information from BaseModel to BaseLayer.
-    encoder_decoder_p = p.encoder_decoder_tpl.clone()
-    encoder_decoder_p.logical_axes_rules = p.logical_axes_rules
-    self._decoding_fn = p.decoding_fn
+    encoder_decoder_p = self.encoder_decoder_tpl.clone()
+    encoder_decoder_p.logical_axes_rules = self.logical_axes_rules
+    self._decoding_fn = self.decoding_fn
     self.create_child('encoder_decoder', encoder_decoder_p)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
@@ -783,15 +785,16 @@ class EncoderDecoderModel(base_model.BaseModel):
   def compute_loss(
       self, predictions: Predictions,
       input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
-    p = self.hparams
     assert 'decoder_loss_weights' in input_batch
     loss_weights = input_batch.decoder_loss_weights
 
-    if p.loss_normalizing_factor == 'NUM_REAL_TARGET_TOKENS':
+    if self.loss_normalizing_factor == 'NUM_REAL_TARGET_TOKENS':
       loss_normalizing_factor = jnp.sum(loss_weights)
     else:
-      assert NotImplementedError('loss_normalizing_factor: %s not implemented' %
-                                 p.loss_normalizing_factor)
+      assert NotImplementedError(
+          'loss_normalizing_factor: %s not implemented'
+          % self.loss_normalizing_factor
+      )
 
     # TODO(yonghui): reimplement the loss in pax instead of having a dependency
     # on t5x for loss computations.
@@ -800,9 +803,10 @@ class EncoderDecoderModel(base_model.BaseModel):
         predictions.logits,
         targets=targets,
         weights=loss_weights,
-        label_smoothing=p.label_smoothing,
-        z_loss=p.z_loss,
-        loss_normalizing_factor=loss_normalizing_factor)
+        label_smoothing=self.label_smoothing,
+        z_loss=self.z_loss,
+        loss_normalizing_factor=loss_normalizing_factor,
+    )
     accuracy = clu_metrics.Accuracy.from_model_output(
         logits=predictions.logits,
         labels=targets.astype(jnp.int32),

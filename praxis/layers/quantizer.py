@@ -160,78 +160,86 @@ class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
     blgh: SplitDimsMapping = None
 
   def setup(self) -> None:
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
+    wp = self.weight_split_dims_mapping
 
-    assert p.stack_ratio >= 1
+    assert self.stack_ratio >= 1
 
-    if p.stack_ratio != 1:
+    if self.stack_ratio != 1:
       self.create_child(
           'stack',
           linears.StackingOverTime.HParams(
               left_context=0,
-              right_context=p.stack_ratio - 1,
-              stride=p.stack_ratio,
-              padding_reduce_option='reduce_max'))
+              right_context=self.stack_ratio - 1,
+              stride=self.stack_ratio,
+              padding_reduce_option='reduce_max',
+          ),
+      )
 
     self.create_variable(
         'random_proj',
         WeightHParams(
-            shape=[p.latent_dim * p.stack_ratio, p.projection_dim],
-            init=p.params_init,
+            shape=[self.latent_dim * self.stack_ratio, self.projection_dim],
+            init=self.params_init,
             dtype=jnp.float32,
             collections=[
                 base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
-            ]))
+            ],
+        ),
+    )
     self.create_variable(
         'random_bias',
         WeightHParams(
-            shape=[p.projection_dim],
+            shape=[self.projection_dim],
             init=WeightInit.Constant(0.0),
             dtype=jnp.float32,
             collections=[
                 base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
-            ]))
+            ],
+        ),
+    )
 
     wt = wp.clone().vgh
-    if p.num_groups == 1 and p.low_rank_codebook:
-      codebook_shape = [p.num_latent_classes, p.projection_dim]
+    if self.num_groups == 1 and self.low_rank_codebook:
+      codebook_shape = [self.num_latent_classes, self.projection_dim]
       if wt:
         del wt[1]
     else:
       codebook_shape = [
-          p.num_latent_classes, p.num_groups, p.projection_dim // p.num_groups
+          self.num_latent_classes,
+          self.num_groups,
+          self.projection_dim // self.num_groups,
       ]
 
     self.create_variable(
         'random_codebook',
         WeightHParams(
             shape=codebook_shape,
-            init=p.codebook_init,
+            init=self.codebook_init,
             dtype=jnp.float32,
-            mesh_shape=p.mesh_shape,
+            mesh_shape=self.mesh_shape,
             tensor_split_dims_mapping=wt,
             collections=[
                 base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
-            ]))
+            ],
+        ),
+    )
 
   def _get_codebook(self):
     """Gets the latent embedding."""
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
+    wp = self.weight_split_dims_mapping
 
     # Recovers codebook to 3d.
-    if p.low_rank_codebook and p.num_groups == 1:
+    if self.low_rank_codebook and self.num_groups == 1:
       codebook = self.theta.random_codebook[:, jnp.newaxis, :]
 
       wt = wp.clone().vgh
       if wt:
         wt[1] = None
-      codebook = base_layer.maybe_shard(codebook, wt, p.mesh_axis_names)
+      codebook = base_layer.maybe_shard(codebook, wt, self.mesh_axis_names)
     else:
       codebook = self.theta.random_codebook
 
-    if p.normalize_codebook:
+    if self.normalize_codebook:
       codebook = _l2_normalize(codebook, -1)
 
     return codebook
@@ -254,32 +262,31 @@ class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
       - pplx:     [], avg pplx of quantized distribution over the codebook.
       - entropy:  [], exp(pplx).
     """
-    p = self.hparams
-    ap = p.activation_split_dims_mapping
+    ap = self.activation_split_dims_mapping
 
     # Stacking.
     # [b, t // s, s * input_dim]
-    if p.stack_ratio > 1:
+    if self.stack_ratio > 1:
       z, paddings = self.stack(z, paddings[:, :, jnp.newaxis])
       paddings = jnp.squeeze(paddings, -1)
 
     proj_vec = jnp.einsum('dh,bld->blh', self.theta.random_proj, z)
     proj_vec = proj_vec + self.theta.random_bias
 
-    if p.normalize_latent_vector and not p.normalize_latent_per_group:
+    if self.normalize_latent_vector and not self.normalize_latent_per_group:
       proj_vec = _l2_normalize(proj_vec, -1)
 
     b, l, d = proj_vec.shape
-    g = p.num_groups
+    g = self.num_groups
     proj_vec = jnp.reshape(proj_vec, [b, l, g, d // g])
-    proj_vec = base_layer.maybe_shard(proj_vec, ap.blgh, p.mesh_axis_names)
+    proj_vec = base_layer.maybe_shard(proj_vec, ap.blgh, self.mesh_axis_names)
 
-    if p.normalize_latent_vector and p.normalize_latent_per_group:
+    if self.normalize_latent_vector and self.normalize_latent_per_group:
       proj_vec = _l2_normalize(proj_vec, -1)
 
     codebook = self._get_codebook()
 
-    if p.plot_codebook:
+    if self.plot_codebook:
       # Considered as [B, H, W, C] in summaries.
       codebook_plots = jnp.einsum('cgd->gcd', codebook)
       codebook_plots = jnp.tile(codebook_plots[..., jnp.newaxis], [1, 1, 1, 3])
@@ -295,21 +302,25 @@ class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
     if base_layer.is_running_under_pmap():
       pplx, entropy, _ = objectives.batch_pplx_entropy_from_codes(
           c,
-          p.num_latent_classes,
+          self.num_latent_classes,
           paddings=paddings,
-          data_parallel_axis=base_layer.PMAP_PARALLEL_AXIS_NAME)
+          data_parallel_axis=base_layer.PMAP_PARALLEL_AXIS_NAME,
+      )
       codebook_coverage = objectives.batch_codebook_coverage(
           c,
-          p.num_latent_classes,
+          self.num_latent_classes,
           paddings=paddings,
-          data_parallel_axis=base_layer.PMAP_PARALLEL_AXIS_NAME)
+          data_parallel_axis=base_layer.PMAP_PARALLEL_AXIS_NAME,
+      )
     else:
       pplx, entropy, _ = objectives.batch_pplx_entropy_from_codes(
-          c, p.num_latent_classes, paddings=paddings)
+          c, self.num_latent_classes, paddings=paddings
+      )
       codebook_coverage = objectives.batch_codebook_coverage(
-          c, p.num_latent_classes, paddings=paddings)
+          c, self.num_latent_classes, paddings=paddings
+      )
 
-    codebook_num_covered_codes = codebook_coverage * p.num_latent_classes
+    codebook_num_covered_codes = codebook_coverage * self.num_latent_classes
     return NestedMap(
         z_q=jax.lax.stop_gradient(q),
         z_codes=jax.lax.stop_gradient(c),
@@ -322,11 +333,12 @@ class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
 
   def look_up(self, z_codes):
     """Looks up latent vectors [B, T, D] by z_codes [B, T, G]."""
-    p = self.hparams
     b, t = z_codes.shape[:2]
-    latent = jnp.einsum('btgc,cgd->btgd',
-                        jax.nn.one_hot(z_codes, p.num_latent_classes),
-                        self._get_codebook())
+    latent = jnp.einsum(
+        'btgc,cgd->btgd',
+        jax.nn.one_hot(z_codes, self.num_latent_classes),
+        self._get_codebook(),
+    )
     # Stops the gradient to keep the codebook frozen.
     return jax.lax.stop_gradient(jnp.reshape(latent, [b, t, -1]))
 
@@ -370,26 +382,27 @@ class VectorQuantizer(base_layer.FiddleBaseLayer):
   params_init: WeightInit = pax_fiddle.sub_field(WeightInit.UniformSqrtDim)
 
   def setup(self) -> None:
-    p = self.hparams
-    assert p.num_latent_classes
-    assert p.latent_dim
-    assert p.beta is not None
-    assert p.beta >= 0
-    assert p.latent_dim % p.num_groups == 0
+    assert self.num_latent_classes
+    assert self.latent_dim
+    assert self.beta is not None
+    assert self.beta >= 0
+    assert self.latent_dim % self.num_groups == 0
     wp = base_layer.WeightHParams(
         shape=[
-            p.num_latent_classes, p.num_groups, p.latent_dim // p.num_groups
+            self.num_latent_classes,
+            self.num_groups,
+            self.latent_dim // self.num_groups,
         ],
-        dtype=jnp.float32)
+        dtype=jnp.float32,
+    )
 
     # [C, D]
     self.create_variable('w', wp)
 
   def _get_latent_embedding(self):
     """Gets the latent embedding."""
-    p = self.hparams
     w = self.theta.w
-    if p.normalize_codebook:
+    if self.normalize_codebook:
       w = _l2_normalize(w, -1)
     return w
 
@@ -420,20 +433,19 @@ class VectorQuantizer(base_layer.FiddleBaseLayer):
           codebook.
         - entropy:           [], exp(pplx).
     """
-    p = self.hparams
     b, t, d = z.shape
-    g, c = p.num_groups, p.num_latent_classes
+    g, c = self.num_groups, self.num_latent_classes
 
     mask = 1.0 - paddings
     num_frames = jnp.sum(mask)
     z = self._apply_mask(z, mask)
 
-    if p.normalize_latent_vector and not p.normalize_latent_per_group:
+    if self.normalize_latent_vector and not self.normalize_latent_per_group:
       z = _l2_normalize(z, axis=-1)
 
     reshape_z = jnp.reshape(z, [b, t, g, d // g])
 
-    if p.normalize_latent_vector and p.normalize_latent_per_group:
+    if self.normalize_latent_vector and self.normalize_latent_per_group:
       reshape_z = _l2_normalize(reshape_z, axis=-1)
 
     # [b, t, g, h], [b, t, g], [b, t, g, c]
@@ -460,7 +472,7 @@ class VectorQuantizer(base_layer.FiddleBaseLayer):
     loss_z = (z_q - jax.lax.stop_gradient(z))**2
     loss_z = jnp.sum(jnp.mean(loss_z, -1)) / normalizer
     # loss_z = py_utils.check_numerics(loss_z, 'loss_z has NaN.')
-    loss = loss_z + p.beta * loss_c
+    loss = loss_z + self.beta * loss_c
 
     # Straight-through estimator.
     # Doesn't look like this line does anyhing besides stopping gradient ??
@@ -497,9 +509,10 @@ class VectorQuantizer(base_layer.FiddleBaseLayer):
 
   def look_up(self, z_codes):
     """Looks up latent vectors [B, T, D] by z_codes [B, T, G]."""
-    p = self.hparams
     b, t = z_codes.shape[:2]
-    latent = jnp.einsum('btgc,cgd->btgd',
-                        jax.nn.one_hot(z_codes, p.num_latent_classes),
-                        self._get_latent_embedding())
+    latent = jnp.einsum(
+        'btgc,cgd->btgd',
+        jax.nn.one_hot(z_codes, self.num_latent_classes),
+        self._get_latent_embedding(),
+    )
     return jnp.reshape(latent, [b, t, -1])

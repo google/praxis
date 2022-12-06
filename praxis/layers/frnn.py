@@ -58,8 +58,7 @@ class FRnn(base_layer.FiddleBaseLayer):
   reverse: bool = False
 
   def setup(self) -> None:
-    p = self.hparams
-    self.create_child('cell', p.cell_tpl)
+    self.create_child('cell', self.cell_tpl)
 
   def init_states(self, batch_size: int) -> NestedMap:
     return self.cell.init_states(batch_size)
@@ -101,7 +100,6 @@ class FRnn(base_layer.FiddleBaseLayer):
       act: A tensor of shape [batch, time, dims]. The output.
       state: Final state.
     """
-    p = self.hparams
     # Make a copy of the input structure to avoid side-effect.
     inputs = jax.tree_map(lambda x: x, inputs)
     assert isinstance(inputs, NestedMap)
@@ -109,7 +107,7 @@ class FRnn(base_layer.FiddleBaseLayer):
     assert hasattr(inputs, 'padding')
     assert isinstance(self.cell, rnn_cell.BaseRnnCell)
 
-    if p.reverse:
+    if self.reverse:
       inputs = jax.tree_map(lambda x: jnp.flip(x, axis=[1]), inputs)
 
     if not state0:
@@ -157,7 +155,7 @@ class FRnn(base_layer.FiddleBaseLayer):
 
     final_state, act = mapped_scan_fn(self.cell, state0, inputs)
 
-    if p.reverse:
+    if self.reverse:
       act = jnp.flip(act, axis=[1])
     return act, final_state
 
@@ -178,32 +176,30 @@ class StackFrnn(base_layer.FiddleBaseLayer):
   num_output_nodes: int = 0
 
   def setup(self) -> None:
-    p = self.hparams
 
-    assert p.num_layers > 0
-    input_nodes = p.num_input_nodes
+    assert self.num_layers > 0
+    input_nodes = self.num_input_nodes
     frnns_p = []
-    for _ in range(p.num_layers):
-      frnn_p = p.frnn_tpl.clone()
+    for _ in range(self.num_layers):
+      frnn_p = self.frnn_tpl.clone()
       frnn_p.cell_tpl.set(
-          num_input_nodes=input_nodes, num_output_nodes=p.num_output_nodes)
+          num_input_nodes=input_nodes, num_output_nodes=self.num_output_nodes
+      )
       frnns_p.append(frnn_p)
-      input_nodes = p.num_output_nodes
+      input_nodes = self.num_output_nodes
 
     self.create_children('frnn', frnns_p)
 
   def init_states(self, batch_size: int) -> List[NestedMap]:
     return [
-        self.frnn[i].init_states(batch_size)
-        for i in range(self.hparams.num_layers)
+        self.frnn[i].init_states(batch_size) for i in range(self.num_layers)
     ]
 
   def extend_step(self, inputs: NestedMap,
                   state: List[NestedMap]) -> Tuple[List[NestedMap], JTensor]:
-    p = self.hparams
     inputs = jax.tree_map(lambda x: x, inputs)
     new_states = []
-    for i in range(p.num_layers):
+    for i in range(self.num_layers):
       new_state, act_i = self.frnn[i].extend_step(inputs, state[i])
       inputs.act = act_i
       new_states.append(new_state)
@@ -229,7 +225,6 @@ class StackFrnn(base_layer.FiddleBaseLayer):
       act: A tensor of [batch, time, dims]. The output.
       state: Final state.
     """
-    p = self.hparams
     inputs = jax.tree_map(lambda x: x, inputs)
 
     if not state0:
@@ -237,7 +232,7 @@ class StackFrnn(base_layer.FiddleBaseLayer):
       state0 = self.init_states(batch_size)
 
     final_states = []
-    for i in range(p.num_layers):
+    for i in range(self.num_layers):
       act_i, state = self.frnn[i](inputs=inputs, state0=state0[i])
       inputs.act = act_i
       final_states.append(state)
@@ -276,7 +271,6 @@ class LstmFrnn(FRnn):
       act: A tensor of [batch, time, dims]. The output.
       state: Final state.
     """
-    p = self.hparams
     # Make a copy of the inputs nested structure.
     inputs = jax.tree_map(lambda x: x, inputs)
     assert isinstance(self.cell, rnn_cell.BaseRnnCell)
@@ -287,7 +281,7 @@ class LstmFrnn(FRnn):
     # TODO(pax): support packed input.
     inputs.reset_mask = jnp.zeros_like(inputs.padding)
 
-    if p.reverse:
+    if self.reverse:
       inputs = jax.tree_map(lambda x: jnp.flip(x, axis=[1]), inputs)
 
     if not state0:
@@ -337,6 +331,6 @@ class LstmFrnn(FRnn):
 
     final_state, act = mapped_scan_fn(self.cell, state0, inputs)
 
-    if p.reverse:
+    if self.reverse:
       act = jnp.flip(act, axis=[1])
     return act, final_state

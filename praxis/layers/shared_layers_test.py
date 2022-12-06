@@ -40,9 +40,8 @@ class FooShared(base_layer.FiddleBaseLayer):
   linear_private_tpl: LayerTpl = sub_config_field(linears.Linear.HParams)
 
   def setup(self):
-    p = self.hparams
     # Note submodule name must be unique.
-    self.create_child('linear_private', p.linear_private_tpl)
+    self.create_child('linear_private', self.linear_private_tpl)
 
   def __call__(self, x):
     x = self.linear1(x)
@@ -148,9 +147,8 @@ class SimpleShared01(base_layer.FiddleBaseLayer):
   sub2_tpl: LayerTpl = sub_config_field(None)
 
   def setup(self) -> None:
-    p = self.hparams
-    self.create_child('sub1', p.sub1_tpl)
-    self.create_child('sub2', p.sub2_tpl)
+    self.create_child('sub1', self.sub1_tpl)
+    self.create_child('sub2', self.sub2_tpl)
 
   def __call__(self, x_in):
     return self.sub2(self.sub1(x_in))

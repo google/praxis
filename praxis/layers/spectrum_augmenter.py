@@ -173,14 +173,13 @@ class SpectrumAugmenter(base_layer.FiddleBaseLayer):
     Returns:
       Inputs with random time masking applied.
     """
-    p = self.hparams
 
     # Get time masking parameters.
-    time_mask_max_frames = p.time_mask_max_frames
-    time_masks_per_frame = p.time_masks_per_frame
-    use_dynamic_time_mask_max_frames = p.use_dynamic_time_mask_max_frames
-    multiplicity = p.time_mask_count
-    max_ratio = p.time_mask_max_ratio
+    time_mask_max_frames = self.time_mask_max_frames
+    time_masks_per_frame = self.time_masks_per_frame
+    use_dynamic_time_mask_max_frames = self.use_dynamic_time_mask_max_frames
+    multiplicity = self.time_mask_count
+    max_ratio = self.time_mask_max_ratio
 
     # If maximum mask length is zero, do nothing.
     if ((time_mask_max_frames == 0 and not use_dynamic_time_mask_max_frames) or
@@ -218,11 +217,10 @@ class SpectrumAugmenter(base_layer.FiddleBaseLayer):
     Returns:
       Inputs with random frequency masking applied.
     """
-    p = self.hparams
 
     # Mask parameters.
-    freq_mask_max_bins = p.freq_mask_max_bins
-    multiplicity = p.freq_mask_count
+    freq_mask_max_bins = self.freq_mask_max_bins
+    multiplicity = self.freq_mask_count
 
     # If masking length or count is zero, do nothing.
     if freq_mask_max_bins == 0 or multiplicity == 0:

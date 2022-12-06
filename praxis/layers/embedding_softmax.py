@@ -121,40 +121,43 @@ class Embedding(base_layer.FiddleBaseLayer):
     emb_out_split_dims_mapping: SplitDimsMapping = None
 
   def setup(self) -> None:
-    p = self.hparams
-    assert p.num_classes > 0
-    assert p.input_dims > 0
+    assert self.num_classes > 0
+    assert self.input_dims > 0
 
-    wp = p.weight_split_dims_mapping
+    wp = self.weight_split_dims_mapping
     self.create_variable(
         'emb_var',
         WeightHParams(
-            shape=[p.num_classes, p.input_dims],
-            mesh_shape=p.mesh_shape,
-            tensor_split_dims_mapping=wp.wt))
+            shape=[self.num_classes, self.input_dims],
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=wp.wt,
+        ),
+    )
 
   def emb_lookup(self, ids: JTensor) -> JTensor:
-    p = self.hparams
-    ap = p.activation_split_dims_mapping
+    ap = self.activation_split_dims_mapping
 
-    if p.lookup_style == 'index':
+    if self.lookup_style == 'index':
       embs = jnp.asarray(self.theta.emb_var)[(ids,)]
-    elif p.lookup_style == 'matmul':
+    elif self.lookup_style == 'matmul':
       # Explicit casting to fprop_dtype needed for bf16.
-      one_hot_ids = jax.nn.one_hot(ids, p.num_classes, dtype=self.fprop_dtype)
+      one_hot_ids = jax.nn.one_hot(
+          ids, self.num_classes, dtype=self.fprop_dtype
+      )
       embs = linears.project_last_dim(one_hot_ids, self.theta.emb_var)
     else:
       raise ValueError('Unknown lookup style.')
 
     # map out-of-boundary ids to nan for easier debug
-    if p.set_nan_for_oob_id:
-      embs = jnp.where(ids[..., jnp.newaxis] < p.num_classes, embs, jnp.nan)
+    if self.set_nan_for_oob_id:
+      embs = jnp.where(ids[..., jnp.newaxis] < self.num_classes, embs, jnp.nan)
 
-    if p.scale_sqrt_depth:
-      embs *= p.input_dims**0.5
+    if self.scale_sqrt_depth:
+      embs *= self.input_dims**0.5
 
-    embs = base_layer.maybe_shard(embs, ap.emb_out_split_dims_mapping,
-                                  p.mesh_axis_names)
+    embs = base_layer.maybe_shard(
+        embs, ap.emb_out_split_dims_mapping, self.mesh_axis_names
+    )
     return embs
 
 
@@ -189,19 +192,19 @@ class FullSoftmax(base_layer.FiddleBaseLayer):
   feed_forward_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
 
   def setup(self) -> None:
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
-    ap = p.activation_split_dims_mapping
-    ff_p = p.feed_forward_tpl.clone().set(
-        input_dims=p.input_dims,
-        output_dims=p.num_classes,
+    wp = self.weight_split_dims_mapping
+    ap = self.activation_split_dims_mapping
+    ff_p = self.feed_forward_tpl.clone().set(
+        input_dims=self.input_dims,
+        output_dims=self.num_classes,
         activation_tpl=activations.Identity.HParams(),
-        bias_init=p.bias_init,
+        bias_init=self.bias_init,
         weight_split_dims_mapping=wp.clone(),
-        activation_split_dims_mapping=ap.clone())
+        activation_split_dims_mapping=ap.clone(),
+    )
     self.create_child('logits_ffn', ff_p)
-    if p.bi_tempered_loss_tpl:
-      self.create_child('bi_tempered_loss', p.bi_tempered_loss_tpl)
+    if self.bi_tempered_loss_tpl:
+      self.create_child('bi_tempered_loss', self.bi_tempered_loss_tpl)
 
   def get_logits(self, inputs: JTensor) -> JTensor:
     """Returns logits given the inputs with an option to soft cap it.
@@ -212,13 +215,12 @@ class FullSoftmax(base_layer.FiddleBaseLayer):
     Returns:
       logits: with shape [..., num_classes]. Unnormalized softmax's logits.
     """
-    p = self.hparams
     # Compute logits.
     logits = self.logits_ffn(inputs)
 
     # Soft cap logits if applicable.
-    if p.soft_cap_logits:
-      logits = p.soft_cap_logits * jnp.tanh(logits / p.soft_cap_logits)
+    if self.soft_cap_logits:
+      logits = self.soft_cap_logits * jnp.tanh(logits / self.soft_cap_logits)
     return logits
 
   def logits_to_logp(self, logits: JTensor) -> JTensor:
@@ -256,7 +258,6 @@ class FullSoftmax(base_layer.FiddleBaseLayer):
       - z_loss [optional]: A scalar. The square of logsum logits when
         z_loss_weight > 0.
     """
-    p = self.hparams
     # Assert one of class_ids or class_probabilities is not None
     if class_ids is None and class_probabilities is None:
       raise ValueError('One of class_ids or class_probabilities must be given.')
@@ -270,21 +271,23 @@ class FullSoftmax(base_layer.FiddleBaseLayer):
 
     if class_probabilities is None:
       class_probabilities = jax.nn.one_hot(
-          jnp.squeeze(class_ids, axis=-1), p.num_classes, dtype=jnp.float32)
-      if p.label_smoothing_prob > 0.0:
+          jnp.squeeze(class_ids, axis=-1), self.num_classes, dtype=jnp.float32
+      )
+      if self.label_smoothing_prob > 0.0:
         # Label smoothing reduce the probability of the label from 1 to
         # 1 - label_smoothing_prob, and redistribute label_smoothing_prob to the
         # rest of num_classes - 1 classes where each class has a probability of
         # label_smoothing_prob / (num_classes - 1).
-        if not self.do_eval or p.label_smoothing_apply_for_eval:
+        if not self.do_eval or self.label_smoothing_apply_for_eval:
           # We may want to disable label smoothing at eval time.
-          other_prob = p.label_smoothing_prob / (p.num_classes - 1)
+          other_prob = self.label_smoothing_prob / (self.num_classes - 1)
           class_probabilities = (
-              (1.0 - p.label_smoothing_prob) * class_probabilities +
-              other_prob * (1.0 - class_probabilities)).astype(jnp.float32)
+              (1.0 - self.label_smoothing_prob) * class_probabilities
+              + other_prob * (1.0 - class_probabilities)
+          ).astype(jnp.float32)
       class_probabilities = jax.lax.stop_gradient(class_probabilities)
 
-    if p.bi_tempered_loss_tpl is None:
+    if self.bi_tempered_loss_tpl is None:
       per_example_xent = -jnp.sum(
           log_probs * class_probabilities, axis=-1, dtype=jnp.float32)
     else:
@@ -298,11 +301,11 @@ class FullSoftmax(base_layer.FiddleBaseLayer):
         dtype=jnp.float32)
     total_weight = jnp.sum(class_weights, dtype=jnp.float32)
 
-    if p.z_loss_weight > 0.0:
+    if self.z_loss_weight > 0.0:
       z_loss = jnp.sum(
           _compute_z_loss(logits) * class_weights,
           dtype=jnp.float32) / total_weight
-      z_loss *= p.z_loss_weight
+      z_loss *= self.z_loss_weight
       self.add_summary('aux_z_loss', z_loss)
       self.add_aux_loss('aux_z_loss', z_loss)
 
@@ -314,7 +317,7 @@ class FullSoftmax(base_layer.FiddleBaseLayer):
         total_xent=total_xent,
         total_weight=total_weight,
         avg_xent=(total_xent / (total_weight + 1e-6)).astype(jnp.float32))
-    if p.z_loss_weight > 0.0:
+    if self.z_loss_weight > 0.0:
       output_nmap['z_loss'] = z_loss
     return output_nmap
 
@@ -340,23 +343,25 @@ class SharedEmbeddingSoftmax(FullSoftmax):
     emb_out_split_dims_mapping: SplitDimsMapping = None
 
   def emb_lookup(self, ids: JTensor) -> JTensor:
-    p = self.hparams
-    ap = p.activation_split_dims_mapping
+    ap = self.activation_split_dims_mapping
     emb_var = jnp.transpose(self.logits_ffn.linear.theta.w)
-    if p.lookup_style == 'index':
+    if self.lookup_style == 'index':
       embs = jnp.asarray(emb_var)[(ids,)]
-    elif p.lookup_style == 'matmul':
+    elif self.lookup_style == 'matmul':
       # Explicit casting to fprop_dtype needed for bf16.
-      one_hot_ids = jax.nn.one_hot(ids, p.num_classes, dtype=self.fprop_dtype)
+      one_hot_ids = jax.nn.one_hot(
+          ids, self.num_classes, dtype=self.fprop_dtype
+      )
       embs = linears.project_last_dim(one_hot_ids, emb_var)
     else:
       raise ValueError('Unknown lookup style.')
     # Scale with sqrt(embedding dims)
-    if p.scale_sqrt_depth:
-      embs *= p.input_dims**0.5
+    if self.scale_sqrt_depth:
+      embs *= self.input_dims**0.5
 
-    embs = base_layer.maybe_shard(embs, ap.emb_out_split_dims_mapping,
-                                  p.mesh_axis_names)
+    embs = base_layer.maybe_shard(
+        embs, ap.emb_out_split_dims_mapping, self.mesh_axis_names
+    )
     return embs
 
 
@@ -380,23 +385,24 @@ class SigmoidCrossEntropy(base_layer.FiddleBaseLayer):
   feed_forward_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
 
   def setup(self) -> None:
-    p = self.hparams
-    if p.feed_forward_tpl:
-      wp = p.weight_split_dims_mapping
-      ap = p.activation_split_dims_mapping
-      ff_p = p.feed_forward_tpl.clone().set(
-          input_dims=p.input_dims,
-          output_dims=p.num_classes,
+    if self.feed_forward_tpl:
+      wp = self.weight_split_dims_mapping
+      ap = self.activation_split_dims_mapping
+      ff_p = self.feed_forward_tpl.clone().set(
+          input_dims=self.input_dims,
+          output_dims=self.num_classes,
           activation_tpl=activations.Identity.HParams(),
-          bias_init=p.bias_init,
+          bias_init=self.bias_init,
           weight_split_dims_mapping=wp.clone(),
-          activation_split_dims_mapping=ap.clone())
+          activation_split_dims_mapping=ap.clone(),
+      )
       self.create_child('logits_ffn', ff_p)
     else:
-      if p.input_dims != p.num_classes:
+      if self.input_dims != self.num_classes:
         raise ValueError(
-            f'SigmoidCrossEntropy\'s input_dims {p.input_dims} has to match '
-            f'num_classes if ffn is disabled.')
+            f"SigmoidCrossEntropy's input_dims {self.input_dims} has to match "
+            'num_classes if ffn is disabled.'
+        )
 
   def get_logits(self, inputs: JTensor) -> JTensor:
     """Returns logits given the inputs with an option to soft cap it.
@@ -407,15 +413,14 @@ class SigmoidCrossEntropy(base_layer.FiddleBaseLayer):
     Returns:
       logits: with shape [..., num_classes]. Unnormalized softmax's logits.
     """
-    p = self.hparams
-    if not p.feed_forward_tpl:
+    if not self.feed_forward_tpl:
       return inputs
     # Compute logits.
     logits = self.logits_ffn(inputs)
 
     # Soft cap logits if applicable.
-    if p.soft_cap_logits:
-      logits = p.soft_cap_logits * jnp.tanh(logits / p.soft_cap_logits)
+    if self.soft_cap_logits:
+      logits = self.soft_cap_logits * jnp.tanh(logits / self.soft_cap_logits)
     return logits
 
   def __call__(self,
@@ -446,7 +451,6 @@ class SigmoidCrossEntropy(base_layer.FiddleBaseLayer):
       - total_weight: A scalar. The sum of per_example_weight.
       - avg_xent: A scalar. total_loss / total_weight.
     """
-    p = self.hparams
     # Assert one of class_ids or class_probabilities is not None
     if class_ids is None and class_probabilities is None:
       raise ValueError('One of class_ids or class_probabilities must be given.')
@@ -459,26 +463,30 @@ class SigmoidCrossEntropy(base_layer.FiddleBaseLayer):
     log_probs = jax.nn.log_sigmoid(logits)
 
     if class_probabilities is None:
-      if p.num_classes == 1:
+      if self.num_classes == 1:
         raise ValueError(
             'one_hot with num_classes=1 has a strange behavior. Please double '
             'check this is what you intended to do.')
       class_probabilities = jax.nn.one_hot(
-          jnp.squeeze(class_ids, axis=-1), p.num_classes, dtype=jnp.float32)
+          jnp.squeeze(class_ids, axis=-1), self.num_classes, dtype=jnp.float32
+      )
       class_probabilities = jax.lax.stop_gradient(class_probabilities)
 
-    if class_weights.shape[-1] == p.num_classes:
+    if class_weights.shape[-1] == self.num_classes:
       per_class_weight = class_weights
       per_example_weight = jnp.ones(class_weights.shape[:-1] + (1,))
     elif class_weights.shape[-1] == 1:
-      per_class_weight = jnp.ones(class_weights.shape[:-1] + (p.num_classes,))
+      per_class_weight = jnp.ones(
+          class_weights.shape[:-1] + (self.num_classes,)
+      )
       per_example_weight = class_weights
     else:
       raise ValueError(
           f'Wrong shape of class_weights {class_weights.shape} vs '
           f'logits shape {logits.shape} vs '
           f'class_probabilities shape {class_probabilities.shape} vs '
-          f'num_classes {p.num_classes}')
+          f'num_classes {self.num_classes}'
+      )
 
     # A stable implementation of sigmoid cross entropy loss.
     zeros = jnp.zeros_like(logits)
@@ -551,27 +559,27 @@ class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
     emb_out_split_dims_mapping: SplitDimsMapping = None
 
   def setup(self) -> None:
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
-    ap = p.activation_split_dims_mapping
+    wp = self.weight_split_dims_mapping
+    ap = self.activation_split_dims_mapping
     emb_p = linears.Linear.HParams(
-        input_dims=p.num_classes,
-        output_dims=p.input_dims,
+        input_dims=self.num_classes,
+        output_dims=self.input_dims,
         # Same as in gshard_builder.DenseBuilder.Embedding
         params_init=base_layer.WeightInit.Gaussian(),
         weight_split_dims_mapping=wp.clone(),
-        activation_split_dims_mapping=ap.clone())
+        activation_split_dims_mapping=ap.clone(),
+    )
     self.create_child('embedding', emb_p)
 
   def emb_lookup(self, ids: JTensor) -> JTensor:
-    p = self.hparams
-    ap = p.activation_split_dims_mapping
+    ap = self.activation_split_dims_mapping
     # BL -> BLV
-    one_hot_ids = jax.nn.one_hot(ids, p.num_classes, dtype=self.fprop_dtype)
+    one_hot_ids = jax.nn.one_hot(ids, self.num_classes, dtype=self.fprop_dtype)
     # BLV,VH -> BLH
     embs = linears.project_last_dim(one_hot_ids, self.embedding.theta.w)
-    embs = base_layer.maybe_shard(embs, ap.emb_out_split_dims_mapping,
-                                  p.mesh_axis_names)
+    embs = base_layer.maybe_shard(
+        embs, ap.emb_out_split_dims_mapping, self.mesh_axis_names
+    )
     return embs
 
   def get_logits(self, inputs: JTensor) -> JTensor:
@@ -583,10 +591,9 @@ class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
     Returns:
       logits: with shape [..., num_classes]. Unnormalized softmax's logits.
     """
-    p = self.hparams
-    ap = p.activation_split_dims_mapping
+    ap = self.activation_split_dims_mapping
     # activations are scaled with 1/sqrt(input_dims)
-    inputs *= (p.input_dims**-0.5)
+    inputs *= self.input_dims**-0.5
     # VH -> HV
     softmax_var = jnp.transpose(self.embedding.theta.w)
     # Compute logits:  BLH,HV -> BLV
@@ -595,15 +602,15 @@ class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
     ap_out = ap.out
     if ap_out is not None and len(ap_out) == 3 and logits.ndim == 2:
       ap_out = [ap_out[0], ap_out[2]]
-    logits = base_layer.maybe_shard(logits, ap_out, p.mesh_axis_names)
+    logits = base_layer.maybe_shard(logits, ap_out, self.mesh_axis_names)
 
     # Soft cap logits if applicable
-    if p.soft_cap_logits:
-      logits = p.soft_cap_logits * jnp.tanh(logits / p.soft_cap_logits)
+    if self.soft_cap_logits:
+      logits = self.soft_cap_logits * jnp.tanh(logits / self.soft_cap_logits)
 
     # abs cap logits if applicable
-    if p.logits_abs_max:
-      logits = jnp.clip(logits, -p.logits_abs_max, p.logits_abs_max)
+    if self.logits_abs_max:
+      logits = jnp.clip(logits, -self.logits_abs_max, self.logits_abs_max)
     return logits
 
   def __call__(self,
@@ -635,7 +642,6 @@ class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
       - total_weight: A scalar. The sum of per_example_weight.
       - avg_xent: A scalar. total_loss / total_weight.
     """
-    p = self.hparams
     # Assert one of class_ids or class_probabilities is not None
     if class_ids is None and class_probabilities is None:
       raise ValueError('One of class_ids or class_probabilities must be given.')
@@ -649,13 +655,14 @@ class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
 
     if class_probabilities is None:
       class_probabilities = jax.nn.one_hot(
-          jnp.squeeze(class_ids, axis=-1), p.num_classes, dtype=jnp.float32)
+          jnp.squeeze(class_ids, axis=-1), self.num_classes, dtype=jnp.float32
+      )
 
     class_probabilities_prior_to_label_smoothing = None
-    if p.label_smoothing_prob > 0.0 and not self.do_eval:
+    if self.label_smoothing_prob > 0.0 and not self.do_eval:
       class_probabilities_prior_to_label_smoothing = class_probabilities
-      off_value = p.label_smoothing_prob / p.num_classes
-      on_value = 1.0 - p.label_smoothing_prob + off_value
+      off_value = self.label_smoothing_prob / self.num_classes
+      on_value = 1.0 - self.label_smoothing_prob + off_value
       class_probabilities = (on_value * class_probabilities + off_value *
                              (1.0 - class_probabilities)).astype(jnp.float32)
     class_probabilities = jax.lax.stop_gradient(class_probabilities)
@@ -673,7 +680,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
 
     total_weight = jnp.sum(class_weights, dtype=jnp.float32)
 
-    if p.use_tgt_labels_size_as_loss_denominator:
+    if self.use_tgt_labels_size_as_loss_denominator:
       loss_denominator = jnp.sum(
           jnp.ones_like(class_weights), dtype=jnp.float32)
     else:
@@ -681,7 +688,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
     avg_xent = (total_xent / loss_denominator).astype(jnp.float32)
     z_loss = (
         jnp.sum(_compute_z_loss(logits) * class_weights) / loss_denominator)
-    z_loss *= p.z_loss_weight
+    z_loss *= self.z_loss_weight
     self.add_summary('aux_z_loss', z_loss)
     self.add_aux_loss('aux_z_loss', z_loss)
 
@@ -744,7 +751,6 @@ class PositionalEmbedding(base_layer.FiddleBaseLayer):
     Returns:
       [B, seqlen, D] if `position` is specified, else [1, seqlen, D]
     """
-    p = self.hparams
     if position is None:
       assert seq_length is not None
       # [1, seqlen]
@@ -752,13 +758,13 @@ class PositionalEmbedding(base_layer.FiddleBaseLayer):
     else:
       assert position.ndim == 2, position.shape
 
-    num_timescales = p.embedding_dims // 2
-    log_timescale_increment = (
-        math.log(float(p.max_timescale) / float(p.min_timescale)) /
-        jnp.maximum(jnp.asarray(num_timescales, dtype=jnp.float32) - 1, 1))
-    inv_timescales = p.min_timescale * jnp.exp(
-        jnp.arange(num_timescales, dtype=jnp.float32) *
-        -log_timescale_increment)
+    num_timescales = self.embedding_dims // 2
+    log_timescale_increment = math.log(
+        float(self.max_timescale) / float(self.min_timescale)
+    ) / jnp.maximum(jnp.asarray(num_timescales, dtype=jnp.float32) - 1, 1)
+    inv_timescales = self.min_timescale * jnp.exp(
+        jnp.arange(num_timescales, dtype=jnp.float32) * -log_timescale_increment
+    )
     scaled_time = (
         position[:, :, jnp.newaxis] *
         inv_timescales[jnp.newaxis, jnp.newaxis, :])
@@ -767,7 +773,9 @@ class PositionalEmbedding(base_layer.FiddleBaseLayer):
         axis=2).astype(self.fprop_dtype)
     # Force usage of `np` rather than `jnp` to compute static values at trace
     # time.
-    signal = jnp.pad(signal, [[0, 0], [0, 0], [0, np.mod(p.embedding_dims, 2)]])
+    signal = jnp.pad(
+        signal, [[0, 0], [0, 0], [0, np.mod(self.embedding_dims, 2)]]
+    )
     return signal
 
 
@@ -810,18 +818,20 @@ class PositionalEmbedding2D(base_layer.FiddleBaseLayer):
     return jnp.concatenate([sin, cos], axis=-1)
 
   def _compute_2d_embeddings(self):
-    p = self.hparams
-    dim = p.embedding_dims
-    h_seq = jnp.arange(-p.h / 2, p.h / 2)
-    w_seq = jnp.arange(-p.w / 2, p.w / 2)
+    dim = self.embedding_dims
+    h_seq = jnp.arange(-self.h / 2, self.h / 2)
+    w_seq = jnp.arange(-self.w / 2, self.w / 2)
     pos_emb_h = self._compute_1d_embeddings(
         h_seq, dim // 2, dtype=jnp.float32)
     pos_emb_w = self._compute_1d_embeddings(
         w_seq, dim // 2, dtype=jnp.float32)
-    pos_emb_2d = jnp.concatenate([
-        jnp.tile(pos_emb_h[:, None, :], [1, p.w, 1]),
-        jnp.tile(pos_emb_w[None, :, :], [p.h, 1, 1])
-        ], axis=-1)
+    pos_emb_2d = jnp.concatenate(
+        [
+            jnp.tile(pos_emb_h[:, None, :], [1, self.w, 1]),
+            jnp.tile(pos_emb_w[None, :, :], [self.h, 1, 1]),
+        ],
+        axis=-1,
+    )
     return pos_emb_2d
 
   def __call__(self,
@@ -838,17 +848,24 @@ class PositionalEmbedding2D(base_layer.FiddleBaseLayer):
         [1, p.num_prepend_cls_tokens + p.h * p.w + p.num_append_cls_tokens, D].
     """
     del seq_length, position
-    p = self.hparams
     pos_emb = self._compute_2d_embeddings()
-    pos_emb = jnp.reshape(pos_emb, (p.h * p.w, p.embedding_dims))
-    if p.num_prepend_cls_tokens:
+    pos_emb = jnp.reshape(pos_emb, (self.h * self.w, self.embedding_dims))
+    if self.num_prepend_cls_tokens:
       pos_emb = jnp.concatenate(
-          [jnp.zeros([p.num_prepend_cls_tokens, p.embedding_dims]), pos_emb],
-          axis=0)
-    if p.num_append_cls_tokens:
+          [
+              jnp.zeros([self.num_prepend_cls_tokens, self.embedding_dims]),
+              pos_emb,
+          ],
+          axis=0,
+      )
+    if self.num_append_cls_tokens:
       pos_emb = jnp.concatenate(
-          [pos_emb, jnp.zeros([p.num_append_cls_tokens, p.embedding_dims])],
-          axis=0)
+          [
+              pos_emb,
+              jnp.zeros([self.num_append_cls_tokens, self.embedding_dims]),
+          ],
+          axis=0,
+      )
     pos_emb = jnp.expand_dims(pos_emb, axis=0)
     return pos_emb
 
@@ -881,19 +898,21 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
       a JTensor of shape [B, S, N, H] which includes the inputs together with
       the rotary position embedding incorporated in it.
     """
-    p = self.hparams
     if len(inputs.shape) != 4:
       raise ValueError('Input is assumed to be a rank 4 tensor of shape'
                        '[batch, sequence, heads, dims].')
-    if p.embedding_dims % 2:
+    if self.embedding_dims % 2:
       raise ValueError('Embedding dim for rotary position embedding must be a'
                        'multiple of 2.')
-    if p.embedding_dims != inputs.shape[3]:
+    if self.embedding_dims != inputs.shape[3]:
       raise ValueError('The embedding dims of the rotary position embedding'
                        'must match the hidden dimension of the inputs.')
-    half_embedding_dim = p.embedding_dims // 2
-    fraction = 2 * jnp.arange(0, half_embedding_dim) / p.embedding_dims
-    timescale = p.min_timescale * (p.max_timescale / p.min_timescale)**fraction
+    half_embedding_dim = self.embedding_dims // 2
+    fraction = 2 * jnp.arange(0, half_embedding_dim) / self.embedding_dims
+    timescale = (
+        self.min_timescale
+        * (self.max_timescale / self.min_timescale) ** fraction
+    )
     if position is None:
       seq_length = inputs.shape[1]
       position = jnp.arange(seq_length, dtype=jnp.float32)[jnp.newaxis, :]
@@ -906,7 +925,7 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     first_part = (first_half * cos - second_half * sin)
     second_part = (second_half * cos + first_half * sin)
     # TODO(b/252874053): Clean this up after phase 3 is done.
-    if p.cast_as_fprop_dtype:
+    if self.cast_as_fprop_dtype:
       first_part = first_part.astype(self.fprop_dtype)
       second_part = second_part.astype(self.fprop_dtype)
     return jnp.concatenate([first_part, second_part], axis=-1)
@@ -963,14 +982,15 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
 
   def setup(self) -> None:
     super().setup()
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
+    wp = self.weight_split_dims_mapping
     self.create_variable(
         'emb_var',
         WeightHParams(
-            shape=[p.max_seq_length, p.embedding_dims],
-            mesh_shape=p.mesh_shape,
-            tensor_split_dims_mapping=wp.wt))
+            shape=[self.max_seq_length, self.embedding_dims],
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=wp.wt,
+        ),
+    )
 
   def __call__(self,
                seq_length: Optional[int] = None,
@@ -988,16 +1008,15 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
       a JTensor of shape [batch, seq_length, embedding_dim] if position JTensor
       is specified, else of shape [1, seq_length, embedding_dim].
     """
-    p = self.hparams
     if position is None:
       assert seq_length is not None
       position = jnp.arange(seq_length, dtype=jnp.float32)[jnp.newaxis, :]
 
     pos_emb_var = self.theta.emb_var
     pos_emb_var = jax.lax.slice_in_dim(pos_emb_var, 0, seq_length, axis=0)
-    if p.lookup_style == 'index':
+    if self.lookup_style == 'index':
       embs = jnp.asarray(pos_emb_var)[(position,)]
-    elif p.lookup_style == 'matmul':
+    elif self.lookup_style == 'matmul':
       one_hot_ids = jax.nn.one_hot(position, seq_length, dtype=self.fprop_dtype)
       embs = jnp.matmul(one_hot_ids, pos_emb_var)
     else:

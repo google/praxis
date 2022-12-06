@@ -71,27 +71,39 @@ class VanillaBlock(base_layer.FiddleBaseLayer):
   negative_slope: float = 0.4
 
   def setup(self) -> None:
-    p = self.hparams
 
     body = []
     # conv_in, reduce the hidden dims by 4
-    body.append(p.conv_params.clone().set(
-        name='conv_in',
-        filter_shape=(1, 1, p.input_dim, p.output_dim // 4),
-        filter_stride=(1, 1)))
+    body.append(
+        self.conv_params.clone().set(
+            name='conv_in',
+            filter_shape=(1, 1, self.input_dim, self.output_dim // 4),
+            filter_stride=(1, 1),
+        )
+    )
 
     # conv_mid using the kernel size and stride provided
-    body.append(p.conv_params.clone().set(
-        name='conv_mid',
-        filter_shape=(p.kernel_size, p.kernel_size, p.output_dim // 4,
-                      p.output_dim // 4),
-        filter_stride=(p.stride, p.stride)))
+    body.append(
+        self.conv_params.clone().set(
+            name='conv_mid',
+            filter_shape=(
+                self.kernel_size,
+                self.kernel_size,
+                self.output_dim // 4,
+                self.output_dim // 4,
+            ),
+            filter_stride=(self.stride, self.stride),
+        )
+    )
 
     # conv_out, expand back to hidden dim
-    body.append(p.conv_params.clone().set(
-        name='conv_out',
-        filter_shape=(1, 1, p.output_dim // 4, p.output_dim),
-        filter_stride=(1, 1)))
+    body.append(
+        self.conv_params.clone().set(
+            name='conv_out',
+            filter_shape=(1, 1, self.output_dim // 4, self.output_dim),
+            filter_stride=(1, 1),
+        )
+    )
     self.create_children('body', body)
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -104,11 +116,10 @@ class VanillaBlock(base_layer.FiddleBaseLayer):
     Returns:
       A `.JTensor` as outputs of shape [B, H', W', D_out].
     """
-    p = self.hparams
     outputs = inputs
 
     for i in range(len(self.body)):
-      outputs = tailored_lrelu(p.negative_slope, self.body[i](outputs))
+      outputs = tailored_lrelu(self.negative_slope, self.body[i](outputs))
     return outputs
 
 
@@ -189,28 +200,35 @@ class VanillaNet(base_layer.FiddleBaseLayer):
     return cls.HParams(blocks=[3, 8, 36, 3])
 
   def setup(self) -> None:
-    p = self.hparams
-    num_stages = len(p.strides)
-    if num_stages != len(p.channels):
+    num_stages = len(self.strides)
+    if num_stages != len(self.channels):
       raise ValueError(
-          f'num_stages {num_stages} != channels {len(p.channels)}.')
-    if num_stages != len(p.blocks):
-      raise ValueError(f'num_stages {num_stages} != blocks {len(p.blocks)}.')
-    if num_stages != len(p.kernels):
-      raise ValueError(f'num_stages {num_stages} != kernels {len(p.kernels)}.')
+          f'num_stages {num_stages} != channels {len(self.channels)}.'
+      )
+    if num_stages != len(self.blocks):
+      raise ValueError(f'num_stages {num_stages} != blocks {len(self.blocks)}.')
+    if num_stages != len(self.kernels):
+      raise ValueError(
+          f'num_stages {num_stages} != kernels {len(self.kernels)}.'
+      )
 
-    block_p_tpl = p.block_params.clone().set(negative_slope=p.negative_slope)
+    block_p_tpl = self.block_params.clone().set(
+        negative_slope=self.negative_slope
+    )
     # Set the convolution type used in the Resnet block.
     if hasattr(block_p_tpl, 'conv_params'):
-      block_p_tpl.conv_params = p.conv_params
+      block_p_tpl.conv_params = self.conv_params
 
     # Create the entryflow convolution layer.
-    input_dim = p.channels[0] // 4
-    entryflow_conv_params = p.conv_params.clone()
-    entryflow_conv_params.filter_shape = (p.entryflow_conv_kernel[0],
-                                          p.entryflow_conv_kernel[1], 3,
-                                          input_dim)
-    entryflow_conv_params.filter_stride = p.entryflow_conv_stride
+    input_dim = self.channels[0] // 4
+    entryflow_conv_params = self.conv_params.clone()
+    entryflow_conv_params.filter_shape = (
+        self.entryflow_conv_kernel[0],
+        self.entryflow_conv_kernel[1],
+        3,
+        input_dim,
+    )
+    entryflow_conv_params.filter_stride = self.entryflow_conv_stride
     self.create_child('entryflow_conv', entryflow_conv_params)
 
     # Create the entryflow max pooling layer.
@@ -223,7 +241,8 @@ class VanillaNet(base_layer.FiddleBaseLayer):
 
     # Create the chain of ResNet blocks.
     for stage_id, (channel, num_blocks, kernel, stride) in enumerate(
-        zip(p.channels, p.blocks, p.kernels, p.strides)):
+        zip(self.channels, self.blocks, self.kernels, self.strides)
+    ):
       for block_id in range(num_blocks):
         name = f'stage_{stage_id}_block_{block_id}'
         output_dim = channel
@@ -238,9 +257,10 @@ class VanillaNet(base_layer.FiddleBaseLayer):
         input_dim = output_dim
 
     # Add optional spatial global pooling.
-    if p.output_spatial_pooling_params is not None:
-      self.create_child('output_spatial_pooling',
-                        p.output_spatial_pooling_params)
+    if self.output_spatial_pooling_params is not None:
+      self.create_child(
+          'output_spatial_pooling', self.output_spatial_pooling_params
+      )
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the VanillaNet model to the inputs.
@@ -255,21 +275,20 @@ class VanillaNet(base_layer.FiddleBaseLayer):
       output will be of a shape that depends on which dims are pooled. For e.g.,
       if the pooling dims are [1, 2], then output shape will be [B, D].
     """
-    p = self.hparams
 
     # Apply the entryflow conv.
-    outputs = tailored_lrelu(p.negative_slope, self.entryflow_conv(inputs))
+    outputs = tailored_lrelu(self.negative_slope, self.entryflow_conv(inputs))
 
     # Apply the entryflow maxpooling layer.
     outputs, _ = self.entryflow_maxpool(outputs)
 
     # Apply the VanillaNet blocks.
-    for stage_id, num_blocks in enumerate(p.blocks):
+    for stage_id, num_blocks in enumerate(self.blocks):
       for block_id in range(num_blocks):
         block_name = f'stage_{stage_id}_block_{block_id}'
         outputs = getattr(self, block_name)(outputs)
 
     # Apply optional spatial global pooling.
-    if p.output_spatial_pooling_params is not None:
+    if self.output_spatial_pooling_params is not None:
       outputs = self.output_spatial_pooling(outputs)
     return outputs

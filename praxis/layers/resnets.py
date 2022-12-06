@@ -62,27 +62,36 @@ class ResNetBlock(base_layer.FiddleBaseLayer):
   zero_init_residual: bool = False
 
   def setup(self) -> None:
-    p = self.hparams
 
     body = []
     # conv_in, reduce the hidden dims by 4
-    body.append(p.conv_params.clone().set(
-        name='conv_in',
-        filter_shape=(1, 1, p.input_dim, p.output_dim // 4),
-        filter_stride=(1, 1),
-        activation_tpl=p.activation_tpl))
+    body.append(
+        self.conv_params.clone().set(
+            name='conv_in',
+            filter_shape=(1, 1, self.input_dim, self.output_dim // 4),
+            filter_stride=(1, 1),
+            activation_tpl=self.activation_tpl,
+        )
+    )
 
     # conv_mid using the kernel size and stride provided
-    body.append(p.conv_params.clone().set(
-        name='conv_mid',
-        filter_shape=(p.kernel_size, p.kernel_size, p.output_dim // 4,
-                      p.output_dim // 4),
-        filter_stride=(p.stride, p.stride),
-        activation_tpl=p.activation_tpl))
+    body.append(
+        self.conv_params.clone().set(
+            name='conv_mid',
+            filter_shape=(
+                self.kernel_size,
+                self.kernel_size,
+                self.output_dim // 4,
+                self.output_dim // 4,
+            ),
+            filter_stride=(self.stride, self.stride),
+            activation_tpl=self.activation_tpl,
+        )
+    )
 
     # conv_out, expand back to hidden dim
-    last_bn_tpl = p.conv_params.batch_norm_tpl
-    if p.zero_init_residual:
+    last_bn_tpl = self.conv_params.batch_norm_tpl
+    if self.zero_init_residual:
       if last_bn_tpl is None:
         # This can be implemented by zero-init the weights of conv layer.
         raise NotImplementedError(
@@ -90,31 +99,38 @@ class ResNetBlock(base_layer.FiddleBaseLayer):
       else:
         last_bn_tpl = last_bn_tpl.clone().set(
             gamma_init=WeightInit.Constant(
-                -1.0 if p.zero_init_residual else 0.0))
-    body.append(p.conv_params.clone().set(
-        name='conv_out',
-        filter_shape=(1, 1, p.output_dim // 4, p.output_dim),
-        filter_stride=(1, 1),
-        activation_tpl=activations.Identity.HParams(),
-        batch_norm_tpl=last_bn_tpl))
+                -1.0 if self.zero_init_residual else 0.0
+            )
+        )
+    body.append(
+        self.conv_params.clone().set(
+            name='conv_out',
+            filter_shape=(1, 1, self.output_dim // 4, self.output_dim),
+            filter_stride=(1, 1),
+            activation_tpl=activations.Identity.HParams(),
+            batch_norm_tpl=last_bn_tpl,
+        )
+    )
     self.create_children('body', body)
 
     # projection with 1x1 if input dim and output dim are not the same
     if not self._in_out_same_shape:
-      shortcut = p.conv_params.clone().set(
+      shortcut = self.conv_params.clone().set(
           name='shortcut',
-          filter_shape=(1, 1, p.input_dim, p.output_dim),
-          filter_stride=(p.stride, p.stride),
-          activation_tpl=activations.Identity.HParams())
+          filter_shape=(1, 1, self.input_dim, self.output_dim),
+          filter_stride=(self.stride, self.stride),
+          activation_tpl=activations.Identity.HParams(),
+      )
       self.create_child('shortcut', shortcut)
 
     # Initialize droppath layer
-    if p.residual_droppath_prob > 0:
+    if self.residual_droppath_prob > 0:
       droppath_p = stochastics.StochasticResidual.HParams(
-          survival_prob=1.0 - p.residual_droppath_prob)
+          survival_prob=1.0 - self.residual_droppath_prob
+      )
       self.create_child('residual_droppath', droppath_p)
 
-    post_activation = p.activation_tpl.clone().set(name='post_activation')
+    post_activation = self.activation_tpl.clone().set(name='post_activation')
     self.create_child('postact', post_activation)
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -127,7 +143,6 @@ class ResNetBlock(base_layer.FiddleBaseLayer):
     Returns:
       A `.JTensor` as outputs of shape [B, H', W', D_out].
     """
-    p = self.hparams
     outputs = inputs
 
     # body
@@ -139,7 +154,7 @@ class ResNetBlock(base_layer.FiddleBaseLayer):
       inputs = self.shortcut(inputs)
 
     # residual
-    if p.residual_droppath_prob:
+    if self.residual_droppath_prob:
       outputs = self.residual_droppath(inputs, outputs)
     else:
       outputs += inputs
@@ -151,48 +166,64 @@ class ResNetBlock(base_layer.FiddleBaseLayer):
   @property
   def _in_out_same_shape(self):
     """Indicates whether the input/output have the same shape or not."""
-    p = self.hparams
-    return p.input_dim == p.output_dim and p.stride == 1
+    return self.input_dim == self.output_dim and self.stride == 1
 
 
 class ResNetBasicBlock(ResNetBlock):
   """ResNet Basic Block as in https://arxiv.org/abs/1512.03385."""
 
   def setup(self) -> None:
-    p = self.hparams
 
     body = []
     # first conv
-    body.append(p.conv_params.clone().set(
-        name='conv_in',
-        filter_shape=(p.kernel_size, p.kernel_size, p.input_dim, p.output_dim),
-        filter_stride=(p.stride, p.stride),
-        activation_tpl=p.activation_tpl.clone()))
+    body.append(
+        self.conv_params.clone().set(
+            name='conv_in',
+            filter_shape=(
+                self.kernel_size,
+                self.kernel_size,
+                self.input_dim,
+                self.output_dim,
+            ),
+            filter_stride=(self.stride, self.stride),
+            activation_tpl=self.activation_tpl.clone(),
+        )
+    )
 
     # second conv
-    body.append(p.conv_params.clone().set(
-        name='conv_mid',
-        filter_shape=(p.kernel_size, p.kernel_size, p.output_dim, p.output_dim),
-        filter_stride=(1, 1),
-        activation_tpl=activations.Identity.HParams()))
+    body.append(
+        self.conv_params.clone().set(
+            name='conv_mid',
+            filter_shape=(
+                self.kernel_size,
+                self.kernel_size,
+                self.output_dim,
+                self.output_dim,
+            ),
+            filter_stride=(1, 1),
+            activation_tpl=activations.Identity.HParams(),
+        )
+    )
     self.create_children('body', body)
 
     # projection with 1x1 if input dim and output dim are not the same
     if not self._in_out_same_shape:
-      shortcut = p.conv_params.clone().set(
+      shortcut = self.conv_params.clone().set(
           name='shortcut',
-          filter_shape=(1, 1, p.input_dim, p.output_dim),
-          filter_stride=(p.stride, p.stride),
-          activation_tpl=activations.Identity.HParams())
+          filter_shape=(1, 1, self.input_dim, self.output_dim),
+          filter_stride=(self.stride, self.stride),
+          activation_tpl=activations.Identity.HParams(),
+      )
       self.create_child('shortcut', shortcut)
 
     # Initialize droppath layer
-    if p.residual_droppath_prob > 0:
+    if self.residual_droppath_prob > 0:
       droppath_p = stochastics.StochasticResidual.HParams(
-          survival_prob=1.0 - p.residual_droppath_prob)
+          survival_prob=1.0 - self.residual_droppath_prob
+      )
       self.create_child('residual_droppath', droppath_p)
 
-    post_activation = p.activation_tpl.clone().set(name='post_activation')
+    post_activation = self.activation_tpl.clone().set(name='post_activation')
     self.create_child('postact', post_activation)
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -205,7 +236,6 @@ class ResNetBasicBlock(ResNetBlock):
     Returns:
       A `.JTensor` as outputs of shape [B, H', W', D_out].
     """
-    p = self.hparams
     outputs = inputs
 
     # body
@@ -217,7 +247,7 @@ class ResNetBasicBlock(ResNetBlock):
       inputs = self.shortcut(inputs)
 
     # residual
-    if p.residual_droppath_prob:
+    if self.residual_droppath_prob:
       outputs = self.residual_droppath(inputs, outputs)
     else:
       outputs += inputs
@@ -327,29 +357,34 @@ class ResNet(base_layer.FiddleBaseLayer):
     return cls.HParams(blocks=[3, 8, 36, 3])
 
   def setup(self) -> None:
-    p = self.hparams
-    num_stages = len(p.strides)
-    if num_stages != len(p.channels):
+    num_stages = len(self.strides)
+    if num_stages != len(self.channels):
       raise ValueError(
-          f'num_stages {num_stages} != channels {len(p.channels)}.')
-    if num_stages != len(p.blocks):
-      raise ValueError(f'num_stages {num_stages} != blocks {len(p.blocks)}.')
-    if num_stages != len(p.kernels):
-      raise ValueError(f'num_stages {num_stages} != kernels {len(p.kernels)}.')
+          f'num_stages {num_stages} != channels {len(self.channels)}.'
+      )
+    if num_stages != len(self.blocks):
+      raise ValueError(f'num_stages {num_stages} != blocks {len(self.blocks)}.')
+    if num_stages != len(self.kernels):
+      raise ValueError(
+          f'num_stages {num_stages} != kernels {len(self.kernels)}.'
+      )
 
     # Set the convolution type used in the Resnet block.
-    block_params = p.block_params.clone()
+    block_params = self.block_params.clone()
     if hasattr(block_params, 'conv_params'):
-      block_params.conv_params = p.conv_params.clone()
+      block_params.conv_params = self.conv_params.clone()
 
     # Create the entryflow convolution layer.
-    entryflow_contraction = 4 if p.block_params.cls == ResNetBlock else 1
-    input_dim = p.channels[0] // entryflow_contraction
-    entryflow_conv_params = p.conv_params.clone()
-    entryflow_conv_params.filter_shape = (p.entryflow_conv_kernel[0],
-                                          p.entryflow_conv_kernel[1],
-                                          p.entryflow_conv_kernel[2], input_dim)
-    entryflow_conv_params.filter_stride = p.entryflow_conv_stride
+    entryflow_contraction = 4 if self.block_params.cls == ResNetBlock else 1
+    input_dim = self.channels[0] // entryflow_contraction
+    entryflow_conv_params = self.conv_params.clone()
+    entryflow_conv_params.filter_shape = (
+        self.entryflow_conv_kernel[0],
+        self.entryflow_conv_kernel[1],
+        self.entryflow_conv_kernel[2],
+        input_dim,
+    )
+    entryflow_conv_params.filter_stride = self.entryflow_conv_stride
     self.create_child('entryflow_conv', entryflow_conv_params)
 
     # Create the entryflow max pooling layer.
@@ -362,7 +397,8 @@ class ResNet(base_layer.FiddleBaseLayer):
 
     # Create the chain of ResNet blocks.
     for stage_id, (channel, num_blocks, kernel, stride) in enumerate(
-        zip(p.channels, p.blocks, p.kernels, p.strides)):
+        zip(self.channels, self.blocks, self.kernels, self.strides)
+    ):
       for block_id in range(num_blocks):
         name = f'stage_{stage_id}_block_{block_id}'
         output_dim = channel
@@ -377,9 +413,10 @@ class ResNet(base_layer.FiddleBaseLayer):
         input_dim = output_dim
 
     # Add optional spatial global pooling.
-    if p.output_spatial_pooling_params is not None:
-      self.create_child('output_spatial_pooling',
-                        p.output_spatial_pooling_params)
+    if self.output_spatial_pooling_params is not None:
+      self.create_child(
+          'output_spatial_pooling', self.output_spatial_pooling_params
+      )
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the ResNet model to the inputs.
@@ -393,7 +430,6 @@ class ResNet(base_layer.FiddleBaseLayer):
       output will be of a shape that depends on which dims are pooled. For e.g.,
       if the pooling dims are [1, 2], then output shape will be [B, D].
     """
-    p = self.hparams
     block_group_features = {}
 
     # Apply the entryflow conv.
@@ -403,19 +439,19 @@ class ResNet(base_layer.FiddleBaseLayer):
     outputs, _ = self.entryflow_maxpool(outputs)
 
     # Apply the ResNet blocks.
-    for stage_id, num_blocks in enumerate(p.blocks):
+    for stage_id, num_blocks in enumerate(self.blocks):
       for block_id in range(num_blocks):
         block_name = f'stage_{stage_id}_block_{block_id}'
         instance = getattr(self, block_name)
         outputs = instance(outputs)
 
-      if p.return_block_features:
+      if self.return_block_features:
         block_group_features[2 + stage_id] = outputs
 
-    if p.return_block_features:
+    if self.return_block_features:
       return block_group_features
 
     # Apply optional spatial global pooling.
-    if p.output_spatial_pooling_params is not None:
+    if self.output_spatial_pooling_params is not None:
       outputs = self.output_spatial_pooling(outputs)
     return outputs

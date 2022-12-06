@@ -77,13 +77,13 @@ class DotProductAttentionWithContext(attentions.DotProductAttention):
       encoded: JTensor of shape [B, T, N, H].
       atten_probs: JTensor of shape [B, N, T, S].
     """
-    p = self.hparams
     time_size = query.shape[1]
 
-    if p.left_context is not None or p.right_context is not None:
+    if self.left_context is not None or self.right_context is not None:
       input_atten_mask = atten_mask
-      atten_mask = attentions.limited_context_mask(p.left_context,
-                                                   p.right_context, time_size)
+      atten_mask = attentions.limited_context_mask(
+          self.left_context, self.right_context, time_size
+      )
       atten_mask = jnp.minimum(atten_mask, input_atten_mask)
     return super()._dot_atten(query, key, value, atten_mask, relative_bias)
 
@@ -126,13 +126,13 @@ class DotProductAttentionWithContextXL(attentions.DotProductAttentionXL):
       encoded: JTensor of shape [B, T, N, H].
       atten_probs: JTensor of shape [B, N, T, S].
     """
-    p = self.hparams
     time_size = query.shape[1]
 
-    if p.left_context is not None or p.right_context is not None:
+    if self.left_context is not None or self.right_context is not None:
       input_atten_mask = atten_mask
-      atten_mask = attentions.limited_context_mask(p.left_context,
-                                                   p.right_context, time_size)
+      atten_mask = attentions.limited_context_mask(
+          self.left_context, self.right_context, time_size
+      )
       atten_mask = jnp.minimum(atten_mask, input_atten_mask)
     return super()._dot_atten(query, key, value, atten_mask, relative_bias)
 
@@ -171,28 +171,26 @@ class SelfAttentionWithNormAndResidual(base_layer.FiddleBaseLayer):
 
   def _create_self_atten(self):
     """Expects to be overridden in subclasses."""
-    self.create_child('self_atten', self.hparams.self_atten_tpl)
+    self.create_child('self_atten', self.self_atten_tpl)
 
   def setup(self) -> None:
-    p = self.hparams
-    asserts.not_none(p.self_atten_tpl)
+    asserts.not_none(self.self_atten_tpl)
     self._create_self_atten()
-    self.create_child('norm', p.norm_tpl)
+    self.create_child('norm', self.norm_tpl)
 
     # Initialize residual dropout.
-    params = p.residual_dropout_tpl.clone()
-    params.keep_prob = (1.0 - p.residual_dropout_prob)
+    params = self.residual_dropout_tpl.clone()
+    params.keep_prob = 1.0 - self.residual_dropout_prob
     self.create_child('residual_dropout', params)
 
   def __call__(self,
                inputs: JTensor,
                paddings: JTensor,
                atten_mask: Optional[JTensor] = None) -> JTensor:
-    p = self.hparams
 
     unnormalized_inputs = inputs
 
-    if p.pre_layer_norm:
+    if self.pre_layer_norm:
       inputs = self.norm(inputs)
 
     # Convert padding to mask for attention: [B, 1, 1, S]
@@ -202,10 +200,17 @@ class SelfAttentionWithNormAndResidual(base_layer.FiddleBaseLayer):
     # based on DotProductAttention with emulated self attention.
     # If full attention mask is computed for LocalSelfAttention then
     # it can introduce additional jit computation as in b/259460599.
-    if isinstance(p.self_atten_tpl,
-                  (DotProductAttentionWithContext.HParams,
-                   DotProductAttentionWithContextXL.HParams)):
-      if p.self_atten_tpl.right_context is not None or p.self_atten_tpl.left_context is not None:
+    if isinstance(
+        self.self_atten_tpl,
+        (
+            DotProductAttentionWithContext.HParams,
+            DotProductAttentionWithContextXL.HParams,
+        ),
+    ):
+      if (
+          self.self_atten_tpl.right_context is not None
+          or self.self_atten_tpl.left_context is not None
+      ):
         rev_padding_mask = jnp.transpose(padding_mask, (0, 1, 3, 2))
         padding_mask = jnp.minimum(padding_mask, rev_padding_mask)
 
@@ -222,9 +227,10 @@ class SelfAttentionWithNormAndResidual(base_layer.FiddleBaseLayer):
         atten_mask=atten_mask)[0]
 
     result = (
-        self.residual_dropout(result) * p.residual_weight +
-        unnormalized_inputs * p.input_weight)
-    if not p.pre_layer_norm:
+        self.residual_dropout(result) * self.residual_weight
+        + unnormalized_inputs * self.input_weight
+    )
+    if not self.pre_layer_norm:
       result = self.norm(result)
     return result
 
@@ -307,90 +313,95 @@ class Conformer(base_layer.FiddleBaseLayer):
   final_ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
 
   def _dropout_prob(self, prob):
-    p = self.hparams
-    return p.dropout_prob if p.dropout_prob is not None else prob
+    return self.dropout_prob if self.dropout_prob is not None else prob
 
   def _create_trans_atten(self):
-    p = self.hparams
-    if 'mhsa' in p.layer_order:
-      trans_atten_p = p.trans_atten_tpl.clone().set(
-          residual_dropout_prob=self._dropout_prob(p.atten_residual_dropout),
-          self_atten_tpl=p.trans_atten_tpl.self_atten_tpl.clone().set(
-              input_dim=p.model_dims,
-              hidden_dim=p.model_dims,
-              atten_dropout_prob=self._dropout_prob(p.atten_dropout),
-              num_heads=p.atten_num_heads))
+    if 'mhsa' in self.layer_order:
+      trans_atten_p = self.trans_atten_tpl.clone().set(
+          residual_dropout_prob=self._dropout_prob(self.atten_residual_dropout),
+          self_atten_tpl=self.trans_atten_tpl.self_atten_tpl.clone().set(
+              input_dim=self.model_dims,
+              hidden_dim=self.model_dims,
+              atten_dropout_prob=self._dropout_prob(self.atten_dropout),
+              num_heads=self.atten_num_heads,
+          ),
+      )
       trans_atten_p.norm_tpl = trans_atten_p.norm_tpl.clone().set(
-          dim=p.model_dims)
+          dim=self.model_dims
+      )
       self.create_child('trans_atten', trans_atten_p)
 
   def _create_conv(self):
-    p = self.hparams
-    if 'conv' in p.layer_order:
-      lconv_p = p.lconv_tpl.clone().set(
-          input_dims=p.model_dims,
-          kernel_size=p.kernel_size,
-          dropout_prob=self._dropout_prob(p.conv_residual_dropout))
+    if 'conv' in self.layer_order:
+      lconv_p = self.lconv_tpl.clone().set(
+          input_dims=self.model_dims,
+          kernel_size=self.kernel_size,
+          dropout_prob=self._dropout_prob(self.conv_residual_dropout),
+      )
       self.create_child('lconv', lconv_p)
 
   def setup(self) -> None:
-    p = self.hparams
-    asserts.in_set(p.layer_order,
-                   ['mhsa', 'conv', 'mhsa_before_conv', 'conv_before_mhsa'])
+    asserts.in_set(
+        self.layer_order,
+        ['mhsa', 'conv', 'mhsa_before_conv', 'conv_before_mhsa'],
+    )
 
-    if p.dropout_prob is not None:
+    if self.dropout_prob is not None:
       all_dropouts = [
-          p.atten_dropout, p.atten_residual_dropout, p.conv_residual_dropout,
-          p.ffn_residual_dropout, p.ffn_relu_dropout
+          self.atten_dropout,
+          self.atten_residual_dropout,
+          self.conv_residual_dropout,
+          self.ffn_residual_dropout,
+          self.ffn_relu_dropout,
       ]
       for prob in all_dropouts:
-        assert prob is None or prob == p.dropout_prob
+        assert prob is None or prob == self.dropout_prob
 
-    if p.fflayer_start_tpl:
-      if p.input_dims == p.model_dims:
-        fflayer_start_p = p.fflayer_start_tpl.clone().set(
+    if self.fflayer_start_tpl:
+      if self.input_dims == self.model_dims:
+        fflayer_start_p = self.fflayer_start_tpl.clone().set(
             name='fflayer_start',
-            activation_tpl=p.ff_activation_tpl.clone(),
-            input_dims=p.input_dims,
-            hidden_dims=p.model_dims * p.ffn_dim_multiplier,
-            residual_weight=p.ff_residual_weight,
-            residual_dropout_prob=self._dropout_prob(p.ffn_residual_dropout),
-            relu_dropout_prob=self._dropout_prob(p.ffn_relu_dropout),
+            activation_tpl=self.ff_activation_tpl.clone(),
+            input_dims=self.input_dims,
+            hidden_dims=self.model_dims * self.ffn_dim_multiplier,
+            residual_weight=self.ff_residual_weight,
+            residual_dropout_prob=self._dropout_prob(self.ffn_residual_dropout),
+            relu_dropout_prob=self._dropout_prob(self.ffn_relu_dropout),
         )
       else:
         # Need to add another projection layer in fflayer
-        fflayer_start_p = p.fflayer_start_tpl.clone().set(
+        fflayer_start_p = self.fflayer_start_tpl.clone().set(
             name='fflayer_start',
-            activation_tpl=p.ff_activation_tpl.clone(),
-            input_dims=p.input_dims,
-            output_dims=p.model_dims,
-            hidden_dims=p.model_dims * p.ffn_dim_multiplier,
-            residual_weight=p.ff_residual_weight,
-            residual_dropout_prob=self._dropout_prob(p.ffn_residual_dropout),
-            relu_dropout_prob=self._dropout_prob(p.ffn_relu_dropout),
+            activation_tpl=self.ff_activation_tpl.clone(),
+            input_dims=self.input_dims,
+            output_dims=self.model_dims,
+            hidden_dims=self.model_dims * self.ffn_dim_multiplier,
+            residual_weight=self.ff_residual_weight,
+            residual_dropout_prob=self._dropout_prob(self.ffn_residual_dropout),
+            relu_dropout_prob=self._dropout_prob(self.ffn_relu_dropout),
         )
       self.create_child(fflayer_start_p.name, fflayer_start_p)
 
-    if p.fflayer_end_tpl:
-      fflayer_end_p = p.fflayer_end_tpl.clone().set(
+    if self.fflayer_end_tpl:
+      fflayer_end_p = self.fflayer_end_tpl.clone().set(
           name='fflayer_end',
-          activation_tpl=p.ff_activation_tpl.clone(),
-          input_dims=p.model_dims,
-          hidden_dims=p.model_dims * p.ffn_dim_multiplier,
-          residual_weight=p.ff_residual_weight,
-          residual_dropout_prob=self._dropout_prob(p.ffn_residual_dropout),
-          relu_dropout_prob=self._dropout_prob(p.ffn_relu_dropout),
+          activation_tpl=self.ff_activation_tpl.clone(),
+          input_dims=self.model_dims,
+          hidden_dims=self.model_dims * self.ffn_dim_multiplier,
+          residual_weight=self.ff_residual_weight,
+          residual_dropout_prob=self._dropout_prob(self.ffn_residual_dropout),
+          relu_dropout_prob=self._dropout_prob(self.ffn_relu_dropout),
       )
-      if not p.fflayer_weight_sharing:
+      if not self.fflayer_weight_sharing:
         self.create_child(fflayer_end_p.name, fflayer_end_p)
       else:
-        asserts.not_none(p.fflayer_start_tpl)
+        asserts.not_none(self.fflayer_start_tpl)
 
     self._create_trans_atten()
     self._create_conv()
 
-    if p.final_ln_tpl:
-      ln_p = p.final_ln_tpl.clone().set(name='final_ln', dim=p.model_dims)
+    if self.final_ln_tpl:
+      ln_p = self.final_ln_tpl.clone().set(name='final_ln', dim=self.model_dims)
       self.create_child('final_ln', ln_p)
 
   @property
@@ -418,32 +429,31 @@ class Conformer(base_layer.FiddleBaseLayer):
     Returns:
       The conformer output with shape [B, T, D].
     """
-    p = self.hparams
 
-    if atten_mask is not None and 'mhsa' not in p.layer_order:
+    if atten_mask is not None and 'mhsa' not in self.layer_order:
       raise RuntimeError('Attention mask is provided but no attention layer.')
 
     if self.has_fflayer_start:
       inputs = self.fflayer_start(inputs, paddings)
 
-    if p.layer_order == 'mhsa':
+    if self.layer_order == 'mhsa':
       inputs = self.trans_atten(
           inputs=inputs, paddings=paddings, atten_mask=atten_mask)
-    elif p.layer_order == 'conv':
+    elif self.layer_order == 'conv':
       inputs = self.lconv(inputs, paddings)
-    elif p.layer_order == 'mhsa_before_conv':
+    elif self.layer_order == 'mhsa_before_conv':
       inputs = self.trans_atten(
           inputs=inputs, paddings=paddings, atten_mask=atten_mask)
       inputs = self.lconv(inputs, paddings)
     else:
-      assert p.layer_order == 'conv_before_mhsa'
+      assert self.layer_order == 'conv_before_mhsa'
       inputs = self.lconv(inputs, paddings)
       inputs = self.trans_atten(
           inputs=inputs, paddings=paddings, atten_mask=atten_mask)
 
     if self.has_fflayer_end:
       inputs = self.fflayer_end(inputs, paddings)
-    elif p.fflayer_weight_sharing:
+    elif self.fflayer_weight_sharing:
       # With the weight sharing, we apply fflayer_start again
       inputs = self.fflayer_start(inputs, paddings)
 

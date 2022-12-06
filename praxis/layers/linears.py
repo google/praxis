@@ -70,14 +70,15 @@ class Linear(base_layer.FiddleBaseLayer):
   output_dims: int = 0
 
   def setup(self) -> None:
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
+    wp = self.weight_split_dims_mapping
     self.create_variable(
         'w',
         WeightHParams(
-            shape=[p.input_dims, p.output_dims],
-            mesh_shape=p.mesh_shape,
-            tensor_split_dims_mapping=wp.wt))
+            shape=[self.input_dims, self.output_dims],
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=wp.wt,
+        ),
+    )
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Apply projection to inputs.
@@ -88,15 +89,14 @@ class Linear(base_layer.FiddleBaseLayer):
     Returns:
       Projected inputs.
     """
-    p = self.hparams
-    ap = p.activation_split_dims_mapping
+    ap = self.activation_split_dims_mapping
     out = project_last_dim(inputs, self.theta.w)
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
     ap_out = ap.out
     if ap_out is not None and len(ap_out) == 3 and out.ndim == 2:
       ap_out = [ap_out[0], ap_out[2]]
-    out = base_layer.maybe_shard(out, ap_out, p.mesh_axis_names)
+    out = base_layer.maybe_shard(out, ap_out, self.mesh_axis_names)
     return out
 
 
@@ -111,15 +111,16 @@ class Bias(base_layer.FiddleBaseLayer):
   bias_init: Optional[float] = 0.0
 
   def setup(self) -> None:
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
+    wp = self.weight_split_dims_mapping
     self.create_variable(
         'b',
         WeightHParams(
-            shape=[p.dims],
-            init=WeightInit.Constant(p.bias_init),
-            mesh_shape=p.mesh_shape,
-            tensor_split_dims_mapping=wp.wt))
+            shape=[self.dims],
+            init=WeightInit.Constant(self.bias_init),
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=wp.wt,
+        ),
+    )
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Adds bias to inputs.
@@ -153,21 +154,23 @@ class FeedForward(base_layer.FiddleBaseLayer):
   bias_init: Optional[float] = 0.0
 
   def setup(self) -> None:
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
-    ap = p.activation_split_dims_mapping
-    linear_layer_p = p.linear_tpl.clone()
+    wp = self.weight_split_dims_mapping
+    ap = self.activation_split_dims_mapping
+    linear_layer_p = self.linear_tpl.clone()
     linear_layer_p.set(
-        input_dims=p.input_dims,
-        output_dims=p.output_dims,
+        input_dims=self.input_dims,
+        output_dims=self.output_dims,
         weight_split_dims_mapping=wp.clone(),
-        activation_split_dims_mapping=ap.clone())
+        activation_split_dims_mapping=ap.clone(),
+    )
     # Provide type hint.
     self.linear: Linear
     self.create_child('linear', linear_layer_p)
-    if p.has_bias:
-      bias_layer_p = Bias.HParams(dims=p.output_dims, bias_init=p.bias_init)
-      if p.mesh_shape is not None and ap.out is not None:
+    if self.has_bias:
+      bias_layer_p = Bias.HParams(
+          dims=self.output_dims, bias_init=self.bias_init
+      )
+      if self.mesh_shape is not None and ap.out is not None:
         wp_bias = [ap.out[-1]]
         bias_layer_p.weight_split_dims_mapping.wt = wp_bias
       # Provide type hint.
@@ -175,11 +178,11 @@ class FeedForward(base_layer.FiddleBaseLayer):
       self.create_child('bias', bias_layer_p)
     # Provide type hints
     self.activation: activations.BaseActivation
-    self.create_child('activation', p.activation_tpl.clone())
+    self.create_child('activation', self.activation_tpl.clone())
 
   def __call__(self, inputs: JTensor) -> JTensor:
     projected_inputs = self.linear(inputs)
-    if self.hparams.has_bias:
+    if self.has_bias:
       projected_inputs = self.bias(projected_inputs)
     output = self.activation(projected_inputs)
     return output
@@ -198,38 +201,39 @@ class MLPBlock(base_layer.FiddleBaseLayer):
   ff_tpl: LayerTpl = sub_config_field(FeedForward.HParams)
 
   def setup(self) -> None:
-    p = self.hparams
 
-    wp = p.weight_split_dims_mapping
-    ap = p.activation_split_dims_mapping
-    input_layer_p = p.ff_tpl.clone()
+    wp = self.weight_split_dims_mapping
+    ap = self.activation_split_dims_mapping
+    input_layer_p = self.ff_tpl.clone()
     input_layer_p.set(
-        input_dims=p.ff_tpl.input_dims,
-        output_dims=p.hidden_dims,
+        input_dims=self.ff_tpl.input_dims,
+        output_dims=self.hidden_dims,
         weight_split_dims_mapping=wp.clone(),
-        activation_split_dims_mapping=ap.clone())
-    hidden_layer_p = p.ff_tpl.clone()
+        activation_split_dims_mapping=ap.clone(),
+    )
+    hidden_layer_p = self.ff_tpl.clone()
     hidden_layer_p.set(
-        input_dims=p.hidden_dims,
-        output_dims=p.hidden_dims,
+        input_dims=self.hidden_dims,
+        output_dims=self.hidden_dims,
         weight_split_dims_mapping=wp.clone(),
-        activation_split_dims_mapping=ap.clone())
-    output_layer_p = p.ff_tpl.clone()
+        activation_split_dims_mapping=ap.clone(),
+    )
+    output_layer_p = self.ff_tpl.clone()
     output_layer_p.set(
-        input_dims=p.hidden_dims,
-        output_dims=p.ff_tpl.output_dims,
+        input_dims=self.hidden_dims,
+        output_dims=self.ff_tpl.output_dims,
         weight_split_dims_mapping=wp.clone(),
-        activation_split_dims_mapping=ap.clone())
+        activation_split_dims_mapping=ap.clone(),
+    )
     mlp_layers = [input_layer_p]
-    for _ in range(p.num_layers - 2):
+    for _ in range(self.num_layers - 2):
       mlp_layers.append(hidden_layer_p)
     mlp_layers.append(output_layer_p)
     self.create_children('mlp_layers', mlp_layers)
 
   def __call__(self, inputs: JTensor) -> JTensor:
     output = inputs
-    p = self.hparams
-    for i in range(p.num_layers):
+    for i in range(self.num_layers):
       output = self.mlp_layers[i](output)
     return output
 
@@ -271,12 +275,11 @@ class StackingOverTime(base_layer.FiddleBaseLayer):
   padding_reduce_option: str = 'reduce_min'
 
   def setup(self) -> None:
-    p = self.hparams
-    assert p.name
-    assert p.left_context >= 0, p.left_context
-    assert p.right_context >= 0, p.right_context
-    assert p.stride >= 1
-    assert p.padding_reduce_option in ('reduce_min', 'reduce_max')
+    assert self.name
+    assert self.left_context >= 0, self.left_context
+    assert self.right_context >= 0, self.right_context
+    assert self.stride >= 1
+    assert self.padding_reduce_option in ('reduce_min', 'reduce_max')
 
   @property
   def window_size(self):
@@ -287,23 +290,21 @@ class StackingOverTime(base_layer.FiddleBaseLayer):
     Returns:
       Window size.
     """
-    p = self.hparams
-    return p.left_context + p.right_context + 1
+    return self.left_context + self.right_context + 1
 
   def _pad_ends(self, inputs, pad_value):
     """Applies left and right padding to inputs."""
-    p = self.hparams
-    left_to_pad = p.left_context
-    right_to_pad = p.right_context
+    left_to_pad = self.left_context
+    right_to_pad = self.right_context
 
     # optionally copy left frame N times
-    if left_to_pad and p.pad_with_left_frame:
+    if left_to_pad and self.pad_with_left_frame:
       left_pad = jnp.repeat(inputs[:, :1, :], repeats=left_to_pad, axis=1)
       inputs = jnp.concatenate([left_pad, inputs], axis=1)
       left_to_pad = 0
 
     # optionally copy right frame N times
-    if right_to_pad and p.pad_with_right_frame:
+    if right_to_pad and self.pad_with_right_frame:
       right_pad = jnp.repeat(inputs[:, -1:, :], repeats=right_to_pad, axis=1)
       inputs = jnp.concatenate([inputs, right_pad], axis=1)
       right_to_pad = 0
@@ -325,8 +326,7 @@ class StackingOverTime(base_layer.FiddleBaseLayer):
     Returns:
       [batch, out_timesteps, window_size * depth] tensor.
     """
-    p = self.hparams
-    if p.left_context == 0 and p.right_context == 0:
+    if self.left_context == 0 and self.right_context == 0:
       out = inputs
     else:
       # Slide a window of size stack_width to extract window_size() slices from
@@ -340,8 +340,8 @@ class StackingOverTime(base_layer.FiddleBaseLayer):
       out = jnp.concatenate(pieces, 2)
 
     # Apply striding.
-    if p.stride > 1:
-      out = out[:, ::p.stride]
+    if self.stride > 1:
+      out = out[:, :: self.stride]
     return out
 
   def _stack_inputs(self, inputs, pad_ends: bool = True):
@@ -364,7 +364,7 @@ class StackingOverTime(base_layer.FiddleBaseLayer):
       # The default is to take the minimum padding values within each stacking
       # window, so that an output time step becomes a padded one only if all of
       # the underlying stacked steps are padded ones.
-      if self.hparams.padding_reduce_option == 'reduce_min':
+      if self.padding_reduce_option == 'reduce_min':
         out_paddings = jnp.amin(out_paddings, axis=2, keepdims=True)
       else:
         out_paddings = jnp.amax(out_paddings, axis=2, keepdims=True)
@@ -386,9 +386,8 @@ class StackingOverTime(base_layer.FiddleBaseLayer):
         out_paddings is of shape [batch, ceil(time / stride), 1]. out_paddings
         will be 0 if any of the corresponding input padding is 0.
     """
-    p = self.hparams
     # Trivial case.
-    if 0 == p.left_context == p.right_context and 1 == p.stride:
+    if 0 == self.left_context == self.right_context and 1 == self.stride:
       return inputs, paddings
     outputs = self._stack_inputs(inputs, pad_ends=True)
     out_paddings = self._stack_paddings(outputs, paddings, pad_ends=True)
@@ -451,14 +450,14 @@ class StackingOverTime(base_layer.FiddleBaseLayer):
     Raises:
       ValueError: if stride > window_size.
     """
-    p = self.hparams
-    if 0 == p.left_context == p.right_context and 1 == p.stride:
+    if 0 == self.left_context == self.right_context and 1 == self.stride:
       return stacked
 
-    if p.stride > self.window_size:
+    if self.stride > self.window_size:
       raise ValueError(
-          "Can't invert StackingOverTime with stride (%d) > window_size (%d)" %
-          (p.stride, self.window_size))
+          "Can't invert StackingOverTime with stride (%d) > window_size (%d)"
+          % (self.stride, self.window_size)
+      )
 
     # Reshape to allow indexing individual frames within each stacked window.
     batch_size, stacked_length, _ = stacked.shape
@@ -469,21 +468,23 @@ class StackingOverTime(base_layer.FiddleBaseLayer):
     # the original input is located, and extract them with tf.gather_nd.
     # First compute for all except the last window, since these elements have
     # the potential of being looked up from the next window.
-    input_indices = jnp.arange(0, (stacked_length - 1) * p.stride)
-    mod = input_indices % p.stride
-    in_next_window = jnp.greater(mod, p.right_context).astype(jnp.int32)
-    window_index = input_indices // p.stride + in_next_window
-    frame_index = p.left_context + mod - p.stride * in_next_window
+    input_indices = jnp.arange(0, (stacked_length - 1) * self.stride)
+    mod = input_indices % self.stride
+    in_next_window = jnp.greater(mod, self.right_context).astype(jnp.int32)
+    window_index = input_indices // self.stride + in_next_window
+    frame_index = self.left_context + mod - self.stride * in_next_window
     # Now handle the last window explicitly and concatenate onto the existing
     # window_index/frame_index tensors.
-    last_window_length = p.right_context + 1
+    last_window_length = self.right_context + 1
     window_index = jnp.concatenate([
         window_index,
         jnp.repeat(jnp.array([stacked_length - 1]), last_window_length)
     ],
                                    axis=0)
     frame_index = jnp.concatenate(
-        [frame_index, p.left_context + jnp.arange(last_window_length)], axis=0)
+        [frame_index, self.left_context + jnp.arange(last_window_length)],
+        axis=0,
+    )
     # Stack the indices for gather_nd operation below
     window_and_frame_indices = jnp.stack([window_index, frame_index], axis=1)
     window_and_frame_indices = jnp.tile(

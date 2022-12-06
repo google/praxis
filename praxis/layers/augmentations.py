@@ -64,11 +64,10 @@ class MaskedLmDataAugmenter(base_layer.FiddleBaseLayer):
       mask: A 0/1 tensor. A "1" indicates the corresponding token at that
         position had undergone the data augmentation process.
     """
-    p = self.hparams
-    assert p.vocab_size > 0
-    assert p.mask_token_id >= 0
-    assert p.mask_prob + p.random_prob + p.same_prob < 1.0
-    assert p.mask_prob + p.random_prob + p.same_prob > 0.0
+    assert self.vocab_size > 0
+    assert self.mask_token_id >= 0
+    assert self.mask_prob + self.random_prob + self.same_prob < 1.0
+    assert self.mask_prob + self.random_prob + self.same_prob > 0.0
 
     fprop_dtype = self.fprop_dtype
 
@@ -77,7 +76,7 @@ class MaskedLmDataAugmenter(base_layer.FiddleBaseLayer):
       rnd_sample = jax.random.uniform(prng_key, inputs.shape)
       return (rnd_sample < sample_p).astype(fprop_dtype)
 
-    total_replacement_prob = p.mask_prob + p.random_prob + p.same_prob
+    total_replacement_prob = self.mask_prob + self.random_prob + self.same_prob
     # valid_tokens == 1.0 if the corresponding position is a valid token.
     valid_tokens = 1.0 - paddings.astype(fprop_dtype)
     # replacement == 1.0 if the corresponding token is to be replaced by
@@ -88,23 +87,24 @@ class MaskedLmDataAugmenter(base_layer.FiddleBaseLayer):
     # First sample the token positions to be masked out.
     remaining_prob = total_replacement_prob
     remaining_pos = replacement_pos
-    mask_prob = p.mask_prob / remaining_prob
+    mask_prob = self.mask_prob / remaining_prob
     # mask_pos == 1.0 if the corresponding token should be masked.
     mask_pos = remaining_pos * _uniform_sample(mask_prob)
 
     # Next sample the token positions to be replaced by random tokens.
-    remaining_prob -= p.mask_prob
+    remaining_prob -= self.mask_prob
     remaining_pos -= mask_pos
     assert remaining_prob > 0.0
-    random_prob = p.random_prob / remaining_prob
+    random_prob = self.random_prob / remaining_prob
     random_pos = remaining_pos * _uniform_sample(random_prob)
 
     # Lastly, token positions to be replaced by self.
     self_pos = remaining_pos - random_pos
 
-    random_tokens = jax.random.randint(self.next_prng_key(), inputs.shape, 0,
-                                       p.vocab_size, inputs.dtype)
-    mask_tokens = jnp.zeros_like(inputs) + p.mask_token_id
+    random_tokens = jax.random.randint(
+        self.next_prng_key(), inputs.shape, 0, self.vocab_size, inputs.dtype
+    )
+    mask_tokens = jnp.zeros_like(inputs) + self.mask_token_id
 
     input_dtype = inputs.dtype
     augmented = (
@@ -132,9 +132,8 @@ class TemporalShifting(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     super().setup()
-    p = self.hparams
-    assert p.shift_range_ms > 0.0, p.shift_range_ms
-    assert p.axis > 0, p.axis
+    assert self.shift_range_ms > 0.0, self.shift_range_ms
+    assert self.axis > 0, self.axis
 
   def _shift_tensor(self, x, axis, shift_range, shift_size, *, pad_value=0.0):
     """Dynamically shifts x along axis by |shift_size| <= shift_range."""
@@ -177,14 +176,15 @@ class TemporalShifting(base_layer.FiddleBaseLayer):
       self,
       features: JTensor,
       paddings: Optional[JTensor] = None) -> Tuple[JTensor, Optional[JTensor]]:
-    p = self.hparams
-    if self.do_eval or p.shift_range_ms == 0.0:
+    if self.do_eval or self.shift_range_ms == 0.0:
       return features, paddings
 
-    shift_range = int(round(p.sample_rate * p.shift_range_ms / 1000.0))
-    if shift_range >= features.shape[p.axis]:
-      signal_length_ms = features.shape[p.axis] / p.sample_rate * 1000.0
-      raise ValueError(f'p.shift_range_ms={p.shift_range_ms} is large enough '
-                       f'to blank out the entire {signal_length_ms}ms signal')
+    shift_range = int(round(self.sample_rate * self.shift_range_ms / 1000.0))
+    if shift_range >= features.shape[self.axis]:
+      signal_length_ms = features.shape[self.axis] / self.sample_rate * 1000.0
+      raise ValueError(
+          f'p.shift_range_ms={self.shift_range_ms} is large enough '
+          f'to blank out the entire {signal_length_ms}ms signal'
+      )
 
     return self._shift(features, paddings, shift_range)

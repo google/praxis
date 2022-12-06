@@ -77,8 +77,7 @@ class LeakyReLU(BaseActivation):
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the activation function."""
-    p = self.hparams
-    return jax.nn.leaky_relu(inputs, negative_slope=p.negative_slope)
+    return jax.nn.leaky_relu(inputs, negative_slope=self.negative_slope)
 
 
 class Sigmoid(BaseActivation):
@@ -108,8 +107,7 @@ class GELU(BaseActivation):
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the activation function."""
-    p = self.hparams
-    return jax.nn.gelu(inputs, approximate=p.approximate)
+    return jax.nn.gelu(inputs, approximate=self.approximate)
 
 
 class SiLU(BaseActivation):

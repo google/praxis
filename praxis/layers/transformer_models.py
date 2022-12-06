@@ -401,27 +401,26 @@ class TransformerLm(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     """Constructor."""
-    p = self.hparams
 
     # Optional positional embedding layer.
-    if p.position_emb_tpl is not None:
-      pos_params = p.position_emb_tpl.clone()
-      pos_params.embedding_dims = p.model_dims
+    if self.position_emb_tpl is not None:
+      pos_params = self.position_emb_tpl.clone()
+      pos_params.embedding_dims = self.model_dims
       self.create_child('position_emb', pos_params)
 
     # Optional separate embedding layer.
-    if p.separate_embedding_tpl is not None:
-      emb_params = p.separate_embedding_tpl.clone()
-      emb_params.input_dims = p.model_dims
-      emb_params.num_classes = p.vocab_size
+    if self.separate_embedding_tpl is not None:
+      emb_params = self.separate_embedding_tpl.clone()
+      emb_params.input_dims = self.model_dims
+      emb_params.num_classes = self.vocab_size
       self.create_child('embedding_lookup', emb_params)
 
     # Ngrammer layer.
-    if p.ngrammer_tpl is not None:
-      self.create_child('ngrammer', p.ngrammer_tpl)
+    if self.ngrammer_tpl is not None:
+      self.create_child('ngrammer', self.ngrammer_tpl)
 
     # Transformer layers.
-    stacked_xformer_params = p.stacked_transformer_tpl.clone()
+    stacked_xformer_params = self.stacked_transformer_tpl.clone()
     xformer_params = stacked_xformer_params
     if xformer_params.cls == transformers.PipelinedTransformer:
       xformer_params = xformer_params.pipeline_stage
@@ -429,32 +428,34 @@ class TransformerLm(base_layer.FiddleBaseLayer):
       xformer_params = xformer_params.block
     if not issubclass(xformer_params.cls, transformers.StackedTransformer):
       assert False, f'{xformer_params.cls} not supported.'
-    assert (xformer_params.model_dims == 0 or
-            xformer_params.model_dims == p.model_dims)
-    xformer_params.model_dims = p.model_dims
+    assert (
+        xformer_params.model_dims == 0
+        or xformer_params.model_dims == self.model_dims
+    )
+    xformer_params.model_dims = self.model_dims
     # TODO(pax): we shouldn't override mask_self_attention here.
-    if p.model_type == LanguageModelType.CAUSAL:
+    if self.model_type == LanguageModelType.CAUSAL:
       xformer_params.mask_self_attention = True
     else:
       xformer_params.mask_self_attention = False
-    xformer_params.packed_input = p.packed_input
+    xformer_params.packed_input = self.packed_input
     xformer_params.fold_padding_with_segment_mask = True
-    if p.post_attention_ngrammer_tpls is not None:
-      if len(p.post_attention_ngrammer_tpls) != xformer_params.num_layers:
+    if self.post_attention_ngrammer_tpls is not None:
+      if len(self.post_attention_ngrammer_tpls) != xformer_params.num_layers:
         raise ValueError('The length of post_attention_ngrammer_tpls must match'
                          'the number of attention layers.')
-      xformer_params.ngrammer_tpls = p.post_attention_ngrammer_tpls
+      xformer_params.ngrammer_tpls = self.post_attention_ngrammer_tpls
     self.create_child('transformer', stacked_xformer_params)
 
     # Final layer norm.
-    if p.final_ln_tpl is not None:
-      ln_params = p.final_ln_tpl.clone().set(dim=p.model_dims)
+    if self.final_ln_tpl is not None:
+      ln_params = self.final_ln_tpl.clone().set(dim=self.model_dims)
       self.create_child('final_ln', ln_params)
 
     # Final softmax
-    softmax_params = p.softmax_tpl.clone()
-    softmax_params.input_dims = p.model_dims
-    softmax_params.num_classes = p.vocab_size
+    softmax_params = self.softmax_tpl.clone()
+    softmax_params.input_dims = self.model_dims
+    softmax_params.num_classes = self.vocab_size
     self.create_child('softmax', softmax_params)
 
   def init_states(self, *args: Any, **kwargs: Any) -> None:
@@ -538,18 +539,17 @@ class TransformerLm(base_layer.FiddleBaseLayer):
                      segment_pos: Optional[JTensor] = None,
                      **input_kwargs) -> JTensor:
     del input_kwargs
-    p = self.hparams
     _, seq_length = inputs.shape
 
     # Get the input embeddings.
-    if self.hparams.separate_embedding_tpl is not None:
+    if self.separate_embedding_tpl is not None:
       input_emb = self.embedding_lookup.emb_lookup(inputs)
     else:
       input_emb = self.softmax.emb_lookup(inputs)
 
     # Add NGrammer to the source embeddings.
-    if p.ngrammer_tpl is not None:
-      if self.hparams.separate_embedding_tpl is not None:
+    if self.ngrammer_tpl is not None:
+      if self.separate_embedding_tpl is not None:
         emb_var = self.embedding_lookup.theta.emb_var
       else:
         emb_var = jnp.transpose(self.softmax.logits_ffn.linear.theta.w)
@@ -560,7 +560,7 @@ class TransformerLm(base_layer.FiddleBaseLayer):
           segment_pos=segment_pos,
           emb_var=emb_var)
 
-    if p.position_emb_tpl is not None:
+    if self.position_emb_tpl is not None:
       position_emb = self.position_emb(
           seq_length=seq_length, position=segment_pos)
       inputs = input_emb + position_emb
@@ -608,7 +608,6 @@ class TransformerLm(base_layer.FiddleBaseLayer):
       addition, per_sequence_xent is added which equal to the sum of xent loss
       for tokens in a sequence.
     """
-    p = self.hparams
     batch, seq_length = inputs.shape
 
     paddings_float32 = paddings.astype(jnp.float32)
@@ -630,7 +629,7 @@ class TransformerLm(base_layer.FiddleBaseLayer):
                                  **input_kwargs)
 
     if segment_mask is None:
-      if p.model_type == LanguageModelType.BIDIRECTIONAL:
+      if self.model_type == LanguageModelType.BIDIRECTIONAL:
         segment_mask = attentions.segment_mask(segment_ids, segment_ids,
                                                inputs.dtype)
       else:
@@ -642,10 +641,10 @@ class TransformerLm(base_layer.FiddleBaseLayer):
         inputs, paddings, segment_mask=segment_mask, segment_pos=segment_pos)
 
     # Final layer norm
-    if p.final_ln_tpl is not None:
+    if self.final_ln_tpl is not None:
       output = self.final_ln(output)
 
-    if p.skip_compute_loss:
+    if self.skip_compute_loss:
       return output
     else:
       return self.compute_loss(output, labels)
@@ -660,9 +659,7 @@ class TransformerLm(base_layer.FiddleBaseLayer):
       input_emb: [B, T, D]
     """
     assert input_ids.ndim == 2, input_ids.shape
-
-    p = self.hparams
-    if p.separate_embedding_tpl is not None:
+    if self.separate_embedding_tpl is not None:
       # [B, ?, D]
       input_emb = self.embedding_lookup.emb_lookup(input_ids)
     else:
@@ -681,9 +678,7 @@ class TransformerLm(base_layer.FiddleBaseLayer):
       [B, T, D]
     """
     assert input_emb.ndim == 3, input_emb.shape
-
-    p = self.hparams
-    if not p.position_emb_tpl:
+    if not self.position_emb_tpl:
       return input_emb
 
     b, t = input_emb.shape[:2]
@@ -716,9 +711,7 @@ class TransformerLm(base_layer.FiddleBaseLayer):
     assert input_emb.ndim == 3, input_emb.shape
     if segment_pos is not None:
       assert segment_pos.ndim == 2, segment_pos.shape
-
-    p = self.hparams
-    if p.ngrammer_tpl is None:
+    if self.ngrammer_tpl is None:
       return input_ids, input_emb, segment_pos
 
     # [B, T, D]
@@ -757,10 +750,9 @@ class TransformerLm(base_layer.FiddleBaseLayer):
       xent_output: a `.NestedMap` object containing the log probabilities and
         probabilities.
     """
-    p = self.hparams
     b = inputs.shape[0]
     # Extend step should only be called with causal or prefix LM.
-    assert p.model_type != LanguageModelType.BIDIRECTIONAL, p.model_type
+    assert self.model_type != LanguageModelType.BIDIRECTIONAL, self.model_type
 
     # Input shape sanity checks.
     assert inputs.ndim in (1, 2), inputs.ndim
@@ -803,7 +795,7 @@ class TransformerLm(base_layer.FiddleBaseLayer):
     # [B, ?, D]
     transformer_inputs = self._add_pos_emb(input_emb, segment_pos)
 
-    if is_single_token or p.ngrammer_tpl is not None:
+    if is_single_token or self.ngrammer_tpl is not None:
       # Ngrammer always collapses output.
       # [B, D]
       transformer_inputs = jnp.squeeze(transformer_inputs, 1)
@@ -819,7 +811,7 @@ class TransformerLm(base_layer.FiddleBaseLayer):
         atten_mask=atten_mask)
 
     self.update_decode_state('time_step', time_step + 1)
-    if p.final_ln_tpl is not None:
+    if self.final_ln_tpl is not None:
       outputs = self.final_ln(outputs)
     xent_output = self.compute_loss(outputs)
     return xent_output
@@ -1100,38 +1092,49 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
         raise ValueError(f'{stacked_transformer_tpl.cls} not supported.')
 
     # Create position embeddings.
-    if p.position_emb_tpl is not None:
+    if self.position_emb_tpl is not None:
       asserts.none(
-          p.encoder_position_emb_tpl,
-          msg=('Separate encoder position embeddings must not be set when '
-               'shared position embeddings are specified.'))
+          self.encoder_position_emb_tpl,
+          msg=(
+              'Separate encoder position embeddings must not be set when '
+              'shared position embeddings are specified.'
+          ),
+      )
       asserts.none(
-          p.decoder_position_emb_tpl,
-          msg=('Separate decoder position embeddings must not be set when '
-               'shared position embeddings are specified.'))
-      position_emb_tpl = p.position_emb_tpl.clone()
-      set_position_emb_model_dims(position_emb_tpl, p.model_dims)
+          self.decoder_position_emb_tpl,
+          msg=(
+              'Separate decoder position embeddings must not be set when '
+              'shared position embeddings are specified.'
+          ),
+      )
+      position_emb_tpl = self.position_emb_tpl.clone()
+      set_position_emb_model_dims(position_emb_tpl, self.model_dims)
       self.create_child('position_emb', position_emb_tpl)
 
     # Optional separate encoder position embeddings.
-    if p.encoder_position_emb_tpl is not None:
+    if self.encoder_position_emb_tpl is not None:
       asserts.none(
-          p.position_emb_tpl,
-          msg=('Shared position embeddings must not be set when separate '
-               'encoder position embeddings are specified.'))
-      encoder_position_emb_tpl = p.encoder_position_emb_tpl.clone()
-      set_position_emb_model_dims(encoder_position_emb_tpl, p.model_dims)
+          self.position_emb_tpl,
+          msg=(
+              'Shared position embeddings must not be set when separate '
+              'encoder position embeddings are specified.'
+          ),
+      )
+      encoder_position_emb_tpl = self.encoder_position_emb_tpl.clone()
+      set_position_emb_model_dims(encoder_position_emb_tpl, self.model_dims)
       self.create_child('encoder_position_emb', encoder_position_emb_tpl)
 
     # Create the encoder.
-    if p.encoder_stacked_transformer_tpl is None:
+    if self.encoder_stacked_transformer_tpl is None:
       raise ValueError(
           'Encoder stack must be specified for TransformerEncoderDecoder.')
 
     # Use the user specified StackedTransformer for the encoder, assuming
     # everything is set up appropriately.
-    encoder_params = p.encoder_stacked_transformer_tpl.clone()
-    set_model_dims_and_packing(encoder_params, p.model_dims, p.packed_input)
+    encoder_params = self.encoder_stacked_transformer_tpl.clone()
+    set_model_dims_and_packing(
+        encoder_params, self.model_dims, self.packed_input
+    )
     # Assert that encoder is not masked.
     if encoder_params.cls == transformers.StackedTransformer:
       mask_self_attention = encoder_params.mask_self_attention
@@ -1164,50 +1167,57 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
     self.create_child('encoder', encoder_params)
 
     # Optional separate embedding layer for source ids.
-    if p.encoder_embedding_tpl is not None:
-      encoder_embedding_params = p.encoder_embedding_tpl.clone()
-      assert (encoder_embedding_params.input_dims == 0 or
-              encoder_embedding_params.input_dims == p.model_dims)
-      encoder_embedding_params.input_dims = p.model_dims
+    if self.encoder_embedding_tpl is not None:
+      encoder_embedding_params = self.encoder_embedding_tpl.clone()
+      assert (
+          encoder_embedding_params.input_dims == 0
+          or encoder_embedding_params.input_dims == self.model_dims
+      )
+      encoder_embedding_params.input_dims = self.model_dims
       self.create_child('encoder_embedding_lookup', encoder_embedding_params)
 
     # Optional NGrammer layer for the encoder.
     # Paper: https://openreview.net/forum?id=GxjCYmQAody
-    if p.encoder_ngrammer_tpl is not None:
-      self.create_child('encoder_ngrammer', p.encoder_ngrammer_tpl)
+    if self.encoder_ngrammer_tpl is not None:
+      self.create_child('encoder_ngrammer', self.encoder_ngrammer_tpl)
 
     # Optional post attention NGrammer layer for the encoder.
-    if p.encoder_post_attention_ngrammer_tpls is not None:
-      ngrammer_tpls = p.encoder_post_attention_ngrammer_tpls
+    if self.encoder_post_attention_ngrammer_tpls is not None:
+      ngrammer_tpls = self.encoder_post_attention_ngrammer_tpls
       if len(ngrammer_tpls) != encoder_num_layers:
         raise ValueError('The length of encoder_post_attention_ngrammer_tpls'
                          'must match the number of encoder layers.')
       stacked_encoder_block_params.ngrammer_tpls = ngrammer_tpls
 
     # Encoder output layer norm.
-    if p.encoder_ln_tpl is not None:
-      encoder_ln_params = p.encoder_ln_tpl.clone().set(dim=p.model_dims)
+    if self.encoder_ln_tpl is not None:
+      encoder_ln_params = self.encoder_ln_tpl.clone().set(dim=self.model_dims)
       self.create_child('encoder_ln', encoder_ln_params)
 
     # Optional separate decoder position embeddings.
-    if p.decoder_position_emb_tpl is not None:
+    if self.decoder_position_emb_tpl is not None:
       asserts.none(
-          p.position_emb_tpl,
-          msg=('Shared position embeddings must not be set when separate '
-               'decoder position embeddings are specified.'))
-      decoder_position_emb_tpl = p.decoder_position_emb_tpl.clone()
-      set_position_emb_model_dims(decoder_position_emb_tpl, p.model_dims)
+          self.position_emb_tpl,
+          msg=(
+              'Shared position embeddings must not be set when separate '
+              'decoder position embeddings are specified.'
+          ),
+      )
+      decoder_position_emb_tpl = self.decoder_position_emb_tpl.clone()
+      set_position_emb_model_dims(decoder_position_emb_tpl, self.model_dims)
       self.create_child('decoder_position_emb', decoder_position_emb_tpl)
 
     # Create the decoder.
-    if p.decoder_stacked_transformer_tpl is None:
+    if self.decoder_stacked_transformer_tpl is None:
       raise ValueError(
           'Decoder stack must be specified for TransformerEncoderDecoder.')
 
     # Use the user specified StackedTransformer for the decoder, assuming
     # everything is set up appropriately.
-    decoder_hparams = p.decoder_stacked_transformer_tpl.clone()
-    set_model_dims_and_packing(decoder_hparams, p.model_dims, p.packed_input)
+    decoder_hparams = self.decoder_stacked_transformer_tpl.clone()
+    set_model_dims_and_packing(
+        decoder_hparams, self.model_dims, self.packed_input
+    )
     # Assert that decoder is masked.
     # Assert that encoder is not masked.
     if decoder_hparams.cls == transformers.StackedTransformer:
@@ -1232,36 +1242,40 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
     self.create_child('decoder', decoder_hparams)
 
     # Optional separate embedding layer for target ids.
-    if p.decoder_embedding_tpl is not None:
-      decoder_embedding_params = p.decoder_embedding_tpl.clone()
-      assert (decoder_embedding_params.input_dims == 0 or
-              decoder_embedding_params.input_dims == p.model_dims)
-      decoder_embedding_params.input_dims = p.model_dims
+    if self.decoder_embedding_tpl is not None:
+      decoder_embedding_params = self.decoder_embedding_tpl.clone()
+      assert (
+          decoder_embedding_params.input_dims == 0
+          or decoder_embedding_params.input_dims == self.model_dims
+      )
+      decoder_embedding_params.input_dims = self.model_dims
       self.create_child('decoder_embedding_lookup', decoder_embedding_params)
 
     # Optional NGrammer layer for the decoder.
     # Paper: https://openreview.net/forum?id=GxjCYmQAody
-    if p.decoder_ngrammer_tpl is not None:
-      self.create_child('decoder_ngrammer', p.decoder_ngrammer_tpl)
+    if self.decoder_ngrammer_tpl is not None:
+      self.create_child('decoder_ngrammer', self.decoder_ngrammer_tpl)
 
     # Optional post attention NGrammer layer for the decoder.
-    if p.decoder_post_attention_ngrammer_tpls is not None:
-      ngrammer_tpls = p.decoder_post_attention_ngrammer_tpls
+    if self.decoder_post_attention_ngrammer_tpls is not None:
+      ngrammer_tpls = self.decoder_post_attention_ngrammer_tpls
       if len(ngrammer_tpls) != num_decoder_layers:
         raise ValueError('The length of decoder_post_attention_ngrammer_tpls'
                          'must match the number of decoder layers.')
       stacked_decoder_block_params.ngrammer_tpls = ngrammer_tpls
 
     # Decoder output layer norm.
-    if p.decoder_ln_tpl:
-      decoder_ln_params = p.decoder_ln_tpl.clone().set(dim=p.model_dims)
+    if self.decoder_ln_tpl:
+      decoder_ln_params = self.decoder_ln_tpl.clone().set(dim=self.model_dims)
       self.create_child('decoder_ln', decoder_ln_params)
 
     # Final softmax.
-    softmax_params = p.softmax_tpl.clone()
-    assert (softmax_params.input_dims == 0 or
-            softmax_params.input_dims == p.model_dims)
-    softmax_params.input_dims = p.model_dims
+    softmax_params = self.softmax_tpl.clone()
+    assert (
+        softmax_params.input_dims == 0
+        or softmax_params.input_dims == self.model_dims
+    )
+    softmax_params.input_dims = self.model_dims
     self.create_child('softmax', softmax_params)
 
   def encode(self,
@@ -1286,12 +1300,11 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
     Returns:
       The encoded sequence after applying the Transformer encoder.
     """
-    p = self.hparams
     batch, seq_length = inputs.shape
-    if p.encoder_embedding_tpl is not None:
+    if self.encoder_embedding_tpl is not None:
       # Encoder has its own embedding lookup table for source ids.
       input_emb = self.encoder_embedding_lookup.emb_lookup(inputs)
-    elif p.decoder_embedding_tpl is not None:
+    elif self.decoder_embedding_tpl is not None:
       # Encoder shares the same embedding as the target ids.
       # The embedding lookup for target ids is separate from the softmax.
       input_emb = self.decoder_embedding_lookup.emb_lookup(inputs)
@@ -1309,18 +1322,18 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
     assert input_segment_pos is not None
 
     # Add NGrammer to the source embeddings.
-    if p.encoder_ngrammer_tpl is not None:
+    if self.encoder_ngrammer_tpl is not None:
       input_emb = self.encoder_ngrammer(
           input_ids=inputs,
           input_embs=input_emb,
           paddings=input_paddings,
           segment_pos=input_segment_pos)
 
-    if p.position_emb_tpl is not None:
+    if self.position_emb_tpl is not None:
       position_emb = self.position_emb(
           seq_length=seq_length, position=input_segment_pos)
       input_emb += position_emb
-    elif p.encoder_position_emb_tpl is not None:
+    elif self.encoder_position_emb_tpl is not None:
       position_emb = self.encoder_position_emb(
           seq_length=seq_length, position=input_segment_pos)
       input_emb += position_emb
@@ -1457,33 +1470,31 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
       addition, per_sequence_xent is added which equal to the sum of xent loss
       for tokens in a sequence.
     """
-    # Get the input embeddings.
-    p = self.hparams
     batch, seq_length = inputs.shape
     _, target_seq_length = targets.shape
 
     encoder_output = self.encode(inputs, input_paddings, input_segment_ids,
                                  input_segment_pos, input_segment_mask)
 
-    if p.decoder_embedding_tpl is not None:
+    if self.decoder_embedding_tpl is not None:
       # Targets have separate embedding params.
       target_emb = self.decoder_embedding_lookup.emb_lookup(targets)
     else:
       # Embedding parameters are shared with targets and softmax.
       target_emb = self.softmax.emb_lookup(targets)
 
-    if p.decoder_ngrammer_tpl is not None:
+    if self.decoder_ngrammer_tpl is not None:
       target_emb = self.decoder_ngrammer(
           input_ids=targets,
           input_embs=target_emb,
           paddings=target_paddings,
           segment_pos=target_segment_pos)
 
-    if p.position_emb_tpl is not None:
+    if self.position_emb_tpl is not None:
       targets_position_emb = self.position_emb(
           seq_length=target_seq_length, position=target_segment_pos)
       target_emb += targets_position_emb
-    elif p.decoder_position_emb_tpl is not None:
+    elif self.decoder_position_emb_tpl is not None:
       targets_position_emb = self.decoder_position_emb(
           seq_length=target_seq_length, position=target_segment_pos)
       target_emb += targets_position_emb
@@ -1565,7 +1576,6 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
       xent_output: A `.NestedMap` object containing the log probabilities and
         probabilities.
     """
-    p = self.hparams
     # Fetch encoder output from the cache.
     input_paddings = self.get_decode_state('input_paddings')
 
@@ -1573,7 +1583,7 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
     if len(targets.shape) == 1:
       targets = targets[:, jnp.newaxis]
 
-    if p.decoder_embedding_tpl is not None:
+    if self.decoder_embedding_tpl is not None:
       # Targets have separate embedding params.
       target_emb = self.decoder_embedding_lookup.emb_lookup(targets)
     else:
@@ -1581,7 +1591,7 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
       target_emb = self.softmax.emb_lookup(targets)
 
     time_step = self.get_decode_state('time_step')
-    if p.decoder_ngrammer_tpl is not None:
+    if self.decoder_ngrammer_tpl is not None:
       target_emb = self.decoder_ngrammer(
           targets, target_emb, paddings=None, segment_pos=None)
 
@@ -1592,11 +1602,11 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
     segment_pos = jnp.zeros((targets.shape[0], 1)) + time_step
 
     # Add position embeddings to target ids.
-    if p.position_emb_tpl is not None:
+    if self.position_emb_tpl is not None:
       target_position_emb = self.position_emb(
           seq_length=1, position=segment_pos)
       target_emb += target_position_emb
-    elif p.decoder_position_emb_tpl is not None:
+    elif self.decoder_position_emb_tpl is not None:
       target_position_emb = self.decoder_position_emb(
           seq_length=1, position=segment_pos)
       target_emb += target_position_emb

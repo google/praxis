@@ -52,11 +52,10 @@ class Dropout(base_layer.FiddleBaseLayer):
   dropout_at_eval: bool = False
 
   def _dropout(self, inputs: JTensor, noise_shape: List[int]) -> JTensor:
-    p = self.hparams
     if noise_shape is None:
       noise_shape = inputs.shape
     prng_key = self.next_prng_key()
-    keep_prob = p.keep_prob
+    keep_prob = self.keep_prob
     assert keep_prob > 0.0
     random_nums = keep_prob + jax.random.uniform(
         prng_key, noise_shape, inputs.dtype, minval=0.0, maxval=1.0)
@@ -72,20 +71,19 @@ class Dropout(base_layer.FiddleBaseLayer):
     Returns:
       inputs with dropout applied at training time.
     """
-    p = self.hparams
-    if isinstance(p.keep_prob, numbers.Real) and p.keep_prob == 1.0:
+    if isinstance(self.keep_prob, numbers.Real) and self.keep_prob == 1.0:
       return inputs
 
-    if self.do_eval and not p.dropout_at_eval:
+    if self.do_eval and not self.dropout_at_eval:
       return inputs
 
-    if not p.noise_shape_broadcast_dims:
-      noise_shape = p.noise_shape
+    if not self.noise_shape_broadcast_dims:
+      noise_shape = self.noise_shape
     else:
-      noise_shape = p.noise_shape or list(inputs.shape)
+      noise_shape = self.noise_shape or list(inputs.shape)
       if not isinstance(noise_shape, list):
         noise_shape = list(noise_shape)
-      for dim in p.noise_shape_broadcast_dims:
+      for dim in self.noise_shape_broadcast_dims:
         if dim >= len(noise_shape):
           raise ValueError('Invalid broadcasted dim {}'.format(dim))
         noise_shape[dim] = 1
@@ -122,13 +120,14 @@ class StochasticResidual(base_layer.FiddleBaseLayer):
     prng_key = self.next_prng_key()
     batch_size = inputs.shape[0]
     shape = [batch_size] + [1] * (len(inputs.shape) - 1)
-    random_tensor = self.hparams.survival_prob + jax.random.uniform(
-        prng_key, shape, dtype=inputs.dtype)
+    random_tensor = self.survival_prob + jax.random.uniform(
+        prng_key, shape, dtype=inputs.dtype
+    )
     binary_tensor = jnp.floor(random_tensor)
     # Unlike conventional way that multiply survival_prob at test time, here we
     # divide survival_prob at training time, such that no additional compute is
     # needed at test time.
-    output = inputs / self.hparams.survival_prob * binary_tensor
+    output = inputs / self.survival_prob * binary_tensor
     return output
 
   def __call__(self, inputs: JTensor, residual: JTensor) -> JTensor:
@@ -141,4 +140,4 @@ class StochasticResidual(base_layer.FiddleBaseLayer):
     Returns:
       Output `.JTensor` which is residual added to inputs with dropout.
     """
-    return inputs + self.hparams.residual_weight * self._drop_connect(residual)
+    return inputs + self.residual_weight * self._drop_connect(residual)

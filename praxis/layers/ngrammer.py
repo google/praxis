@@ -127,13 +127,13 @@ class VectorQuantization(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     """Constructs an instance which tracks its own set of centroids."""
-    p = self.hparams
-    assert p.num_clusters
-    assert p.dim_per_head
+    assert self.num_clusters
+    assert self.dim_per_head
 
     means = WeightHParams(
-        shape=[p.num_heads, p.num_clusters, p.dim_per_head],
-        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
+        shape=[self.num_heads, self.num_clusters, self.dim_per_head],
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
+    )
     self.create_variable('means', means, trainable=False)
 
   def __call__(self,
@@ -153,14 +153,14 @@ class VectorQuantization(base_layer.FiddleBaseLayer):
              centroid embeddings, it has the same shape as the inputs i.e.,
              [B, L, N, H].
     """
-    p = self.hparams
     means = self.get_var('means')
     inputs = self._cast_to_fprop_dtype(inputs)
     inputs_shape = inputs.shape
     if len(inputs_shape) == 3:
       inputs = jnp.reshape(
           inputs,
-          [inputs_shape[0], inputs_shape[1], p.num_heads, p.dim_per_head])
+          [inputs_shape[0], inputs_shape[1], self.num_heads, self.dim_per_head],
+      )
 
     if paddings is not None:
       # Shape [B, L, 1, 1]
@@ -178,10 +178,11 @@ class VectorQuantization(base_layer.FiddleBaseLayer):
     # Shape [B, L, N, K], the same as 'dists' above.
     nearest_ids = jnp.argmin(dists, axis=-1)
     nearest_one_hot = jax.nn.one_hot(
-        nearest_ids, p.num_clusters, dtype=means.dtype)
+        nearest_ids, self.num_clusters, dtype=means.dtype
+    )
     # [B, L, N].
     # Renormalize between [0, 1] and scale to 256.
-    nearest_ids /= p.num_clusters
+    nearest_ids /= self.num_clusters
     nearest_ids *= 256
     self.add_summary(
         'k_means/centroid/cluster_ids',
@@ -222,8 +223,9 @@ class VectorQuantization(base_layer.FiddleBaseLayer):
       # cluster's position will always be 0, hence 'sum_x' in that dimension
       # will be 0.
       new_means = sum_x / (
-          p.epsilon + jnp.expand_dims(per_cluster_count, axis=-1))
-      updated_means = (1.0 - p.decay) * new_means + p.decay * means
+          self.epsilon + jnp.expand_dims(per_cluster_count, axis=-1)
+      )
+      updated_means = (1.0 - self.decay) * new_means + self.decay * means
       updated_means = jnp.array(updated_means, means.dtype)
       self.update_var('means', updated_means)
     return dists, nearest_centroid
@@ -280,26 +282,27 @@ class BregmanCompression(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     """Constructs an instance which updates PCA components."""
-    p = self.hparams
-    assert p.dim_per_head
+    assert self.dim_per_head
 
     bregman_layers = []
-    for _ in range(p.num_heads):
+    for _ in range(self.num_heads):
       bregman_layers.append(
           bregman.BregmanPCA.HParams(
-              num_components=p.num_components,
-              input_dims=p.dim_per_head,
-              activation_type=p.activation_type,
-              negative_slope=p.negative_slope,
-              mean_beta=p.mean_beta,
-              coefficients_lr=p.coefficients_lr,
-              coefficients_beta=p.coefficients_beta,
-              coefficients_steps=p.coefficients_steps,
-              components_lr=p.components_lr,
-              components_beta=p.components_beta,
-              start_step=p.start_step,
-              end_step=p.end_step,
-              constant_lr_schedule=p.constant_lr_schedule))
+              num_components=self.num_components,
+              input_dims=self.dim_per_head,
+              activation_type=self.activation_type,
+              negative_slope=self.negative_slope,
+              mean_beta=self.mean_beta,
+              coefficients_lr=self.coefficients_lr,
+              coefficients_beta=self.coefficients_beta,
+              coefficients_steps=self.coefficients_steps,
+              components_lr=self.components_lr,
+              components_beta=self.components_beta,
+              start_step=self.start_step,
+              end_step=self.end_step,
+              constant_lr_schedule=self.constant_lr_schedule,
+          )
+      )
     self.create_children('bregman_layers', bregman_layers)
 
   def __call__(self,
@@ -316,26 +319,27 @@ class BregmanCompression(base_layer.FiddleBaseLayer):
       coefficients: "compression" coefficients of the inputs.
         Shape [B, L, N, C].
     """
-    p = self.hparams
     inputs = self._cast_to_fprop_dtype(inputs)
     inputs_shape = inputs.shape
     # Shape [B * L, N, H].
     inputs = jnp.reshape(
         inputs,
-        [inputs_shape[0] * inputs_shape[1], p.num_heads, p.dim_per_head])
+        [inputs_shape[0] * inputs_shape[1], self.num_heads, self.dim_per_head],
+    )
     paddings_2d = None
     if paddings is not None:
       # Shape [B * L, 1].
       paddings_2d = jnp.reshape(paddings, [-1, 1])
 
     coefficients = []
-    for i in range(p.num_heads):
+    for i in range(self.num_heads):
       # Shape [B * L, C].
       _, coefficients_i = self.bregman_layers[i](inputs[:, i, :], paddings_2d)
       # Shape [B, L, 1, C].
       coefficients_i = jnp.reshape(
           coefficients_i,
-          [inputs_shape[0], inputs_shape[1], 1, p.num_components])
+          [inputs_shape[0], inputs_shape[1], 1, self.num_components],
+      )
       coefficients.append(coefficients_i)
     # Shape [B, L, N, C].
     coefficients = jnp.concatenate(coefficients, axis=2)
@@ -371,38 +375,37 @@ class Ngrammer(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     """Constructs an instance which looks up ngrams."""
-    p = self.hparams
 
-    if p.concat_ngrams:
+    if self.concat_ngrams:
       # The ngram_emb_dim must be smaller than dim_per_head.
-      assert p.ngram_emb_dim <= p.dim_per_head
+      assert self.ngram_emb_dim <= self.dim_per_head
     else:
       # If not concatenating ngram embeddings, check the dims are compatible.
-      assert p.ngram_emb_dim == p.dim_per_head
+      assert self.ngram_emb_dim == self.dim_per_head
 
     # Create a separate layer norm per head for embedding normalization.
     # Create a separate layer norm per head for ngram embedding normalization.
     emb_layer_norm_p = []
     ngram_emb_layer_norm_p = []
     ngram_emb_table_p = []
-    for i in range(p.num_heads):
+    for i in range(self.num_heads):
       layer_norm_p = normalizations.LayerNorm.HParams().clone()
-      layer_norm_p.dim = p.dim_per_head
+      layer_norm_p.dim = self.dim_per_head
       layer_norm_p.name = f'layer_norm_{i}'
 
       emb_layer_norm_p.append(layer_norm_p)
       ngram_layer_norm_p = normalizations.LayerNorm.HParams().clone()
-      ngram_layer_norm_p.dim = p.ngram_emb_dim
+      ngram_layer_norm_p.dim = self.ngram_emb_dim
       ngram_emb_layer_norm_p.append(ngram_layer_norm_p)
 
       # Create embedding table for ngram lookup.
       embedding_p = embedding_softmax.Embedding.HParams().clone()
       embedding_p.name = f'embedding_{i}'
-      embedding_p.num_classes = p.ngram_vocab_size
-      embedding_p.input_dims = p.ngram_emb_dim
-      embedding_p.params_init = p.params_init
+      embedding_p.num_classes = self.ngram_vocab_size
+      embedding_p.input_dims = self.ngram_emb_dim
+      embedding_p.params_init = self.params_init
       # Copy sharding annotations.
-      embedding_p.weight_split_dims_mapping = p.weight_split_dims_mapping
+      embedding_p.weight_split_dims_mapping = self.weight_split_dims_mapping
       ngram_emb_table_p.append(embedding_p)
 
     self.create_children('emb_layer_norm', emb_layer_norm_p)
@@ -443,7 +446,6 @@ class Ngrammer(base_layer.FiddleBaseLayer):
         `merge_heads` is True, or [B, L, N, H] if False.
     """
     del emb_var  # Unused.
-    p = self.hparams
     if paddings is not None:
       # Shape [B, L, 1, 1]
       paddings_4d = paddings[:, :, jnp.newaxis, jnp.newaxis]
@@ -456,34 +458,36 @@ class Ngrammer(base_layer.FiddleBaseLayer):
 
     # [B, L].
     if len(inputs_shape) == 2:
-      input_ids_per_head = [input_ids] * p.num_heads
+      input_ids_per_head = [input_ids] * self.num_heads
     else:
-      input_ids_per_head = jnp.split(input_ids, p.num_heads, axis=-1)
+      input_ids_per_head = jnp.split(input_ids, self.num_heads, axis=-1)
       input_ids_per_head = [
           jnp.squeeze(ids, axis=-1) for ids in input_ids_per_head
       ]
 
     # Reshape to [B, L, N, H].
-    input_embs = jnp.reshape(input_embs,
-                             [batch_size, seq_length, p.num_heads, -1])
+    input_embs = jnp.reshape(
+        input_embs, [batch_size, seq_length, self.num_heads, -1]
+    )
 
     def _multi_way_hash_ids(x, a, b, prime, buckets):
       return ((x * a + b) % prime) % buckets
 
     ngram_embs_to_concat = []
-    vocab_size = p.ngram_vocab_size
+    vocab_size = self.ngram_vocab_size
     primes = list(
-        sympy.primerange(p.ngram_vocab_size + 1,
-                         2 * p.ngram_vocab_size))[0:p.num_heads]
-    for i in range(p.num_heads):
+        sympy.primerange(self.ngram_vocab_size + 1, 2 * self.ngram_vocab_size)
+    )[0 : self.num_heads]
+    for i in range(self.num_heads):
       pair_ids_per_head = None
       if pair_ids is not None:
         pair_ids_per_head = pair_ids[:, i, :]
       ngram_ids = get_bigram_ids(
           input_ids_per_head[i],
-          p.unigram_vocab_size,
+          self.unigram_vocab_size,
           segment_pos,
-          pair_ids=pair_ids_per_head)
+          pair_ids=pair_ids_per_head,
+      )
 
       ngram_ids_for_head = _multi_way_hash_ids(ngram_ids, i + 1, i + 1,
                                                primes[i], vocab_size)
@@ -496,23 +500,27 @@ class Ngrammer(base_layer.FiddleBaseLayer):
     # [B * L, N * H].
     ngram_embs = jnp.concatenate(ngram_embs_to_concat, 1)
     ngram_embs = jnp.reshape(
-        ngram_embs, [batch_size, seq_length, p.num_heads, p.ngram_emb_dim])
+        ngram_embs, [batch_size, seq_length, self.num_heads, self.ngram_emb_dim]
+    )
 
     # Layer norm input embeddings independently for each head.
-    input_embs_per_head = jnp.split(input_embs, p.num_heads, 2)
-    for i in range(p.num_heads):
+    input_embs_per_head = jnp.split(input_embs, self.num_heads, 2)
+    for i in range(self.num_heads):
       # Reshape into [B * L, H]
-      per_head_emb = jnp.reshape(input_embs_per_head[i], [-1, p.dim_per_head])
+      per_head_emb = jnp.reshape(
+          input_embs_per_head[i], [-1, self.dim_per_head]
+      )
       input_embs_per_head[i] = self.emb_layer_norm[i](per_head_emb)
       # Reshape to [B, L, H]
       input_embs_per_head[i] = jnp.reshape(
-          input_embs_per_head[i], [batch_size, seq_length, p.dim_per_head])
+          input_embs_per_head[i], [batch_size, seq_length, self.dim_per_head]
+      )
 
     # [B, L, N, H].
     input_embs = jnp.stack(input_embs_per_head, 2)
 
-    if p.concat_ngrams:
-      d = p.dim_per_head - p.ngram_emb_dim
+    if self.concat_ngrams:
+      d = self.dim_per_head - self.ngram_emb_dim
       input_embs_slice = jax.lax.dynamic_slice_in_dim(
           input_embs, start_index=0, slice_size=d, axis=-1)
       input_embs = jnp.concatenate([input_embs_slice, ngram_embs], axis=-1)
@@ -592,44 +600,47 @@ class VQNgrammer(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     """Constructs a VQ layer and an N-grammer layer."""
-    p = self.hparams
 
-    if p.concat_ngrams:
+    if self.concat_ngrams:
       # The ngram_emb_dim must be smaller than dim_per_head.
-      assert p.ngram_emb_dim <= p.dim_per_head
+      assert self.ngram_emb_dim <= self.dim_per_head
     else:
       # If not concatenating ngram embeddings, check the dims are compatible.
-      assert p.ngram_emb_dim == p.dim_per_head
+      assert self.ngram_emb_dim == self.dim_per_head
 
     # Create VQ layer.
     vq_layer_p = VectorQuantization.HParams(
-        num_clusters=p.num_clusters,
-        num_heads=p.num_heads,
-        dim_per_head=p.dim_per_head,
-        decay=p.decay,
-        epsilon=p.epsilon,
-        params_init=p.params_init)
+        num_clusters=self.num_clusters,
+        num_heads=self.num_heads,
+        dim_per_head=self.dim_per_head,
+        decay=self.decay,
+        epsilon=self.epsilon,
+        params_init=self.params_init,
+    )
     self.create_child('vq_layer', vq_layer_p)
 
     # Create the input id to cluster id cache.
-    if p.unigram_vocab_size:
+    if self.unigram_vocab_size:
       input_id_to_cluster_id_cache = WeightHParams(
-          shape=[p.unigram_vocab_size, p.num_heads], dtype=jnp.int32,
-          init=base_layer.WeightInit.Constant(0))
+          shape=[self.unigram_vocab_size, self.num_heads],
+          dtype=jnp.int32,
+          init=base_layer.WeightInit.Constant(0),
+      )
       self.create_variable('input_id_to_cluster_id_cache',
                            input_id_to_cluster_id_cache,
                            trainable=False)
 
     # Create N-gram lookup layer.
     ngram_layer_p = Ngrammer.HParams(
-        ngram_vocab_size=p.ngram_vocab_size,
-        unigram_vocab_size=p.num_clusters,
-        ngram_emb_dim=p.ngram_emb_dim,
-        concat_ngrams=p.concat_ngrams,
-        num_heads=p.num_heads,
-        dim_per_head=p.dim_per_head,
-        params_init=p.params_init,
-        weight_split_dims_mapping=p.weight_split_dims_mapping)
+        ngram_vocab_size=self.ngram_vocab_size,
+        unigram_vocab_size=self.num_clusters,
+        ngram_emb_dim=self.ngram_emb_dim,
+        concat_ngrams=self.concat_ngrams,
+        num_heads=self.num_heads,
+        dim_per_head=self.dim_per_head,
+        params_init=self.params_init,
+        weight_split_dims_mapping=self.weight_split_dims_mapping,
+    )
     self.create_child('ngram_layer', ngram_layer_p)
 
   def __call__(self,
@@ -663,11 +674,10 @@ class VQNgrammer(base_layer.FiddleBaseLayer):
         `merge_heads` is True, and shape [B, L, N, H] otherwise.
     """
     del emb_var  # Unused.
-    p = self.hparams
     pair_ids = None
-    if p.use_cached_input_ids_to_cluster_ids:
-      assert self.hparams.unigram_vocab_size > 0
-      if not self.hparams.unigram_vocab_size:
+    if self.use_cached_input_ids_to_cluster_ids:
+      assert self.unigram_vocab_size > 0
+      if not self.unigram_vocab_size:
         raise ValueError('unigram_vocab_size must be set if using VQ NGrammer'
                          'with use_cached_input_ids_to_cluster_ids = True.')
       if input_ids is None:
@@ -675,19 +685,19 @@ class VQNgrammer(base_layer.FiddleBaseLayer):
                          'use_cached_input_ids_to_cluster_ids = True.')
       cache = self.get_var('input_id_to_cluster_id_cache')
       cluster_ids_list = []
-      for i in range(p.num_heads):
+      for i in range(self.num_heads):
         cluster_ids_list.append(cache[:, i][(input_ids,)])
       cluster_ids = jnp.stack(cluster_ids_list, axis=-1)
     else:
       # Check if `ngram_using_attention_scores` is set to True, then attention
       # scores is not None.
-      if self.hparams.ngram_using_attention_scores:
+      if self.ngram_using_attention_scores:
         if attention_scores is None:
           raise ValueError('If ngram_using_attention_scores is set, then'
                            'attention_scores must be provided.')
         # Compute the pair ids for each token in the sequence by taking the
         # argmax at each position of the attention score.
-        if self.hparams.causal_attention:
+        if self.causal_attention:
           seq_len = attention_scores.shape[2]
           pair_ids = jnp.zeros(attention_scores.shape[:-1], dtype=jnp.int32)
           for i in range(seq_len):
@@ -712,11 +722,11 @@ class VQNgrammer(base_layer.FiddleBaseLayer):
       cluster_ids = jnp.argmin(distances, -1)
 
       # Cache the cluster ids for future use.
-      if not self.do_eval and p.unigram_vocab_size and input_ids is not None:
+      if not self.do_eval and self.unigram_vocab_size and input_ids is not None:
         cache = self.get_var('input_id_to_cluster_id_cache')
         input_ids_flat = jnp.reshape(input_ids, [-1])
-        cluster_ids_flat = jnp.reshape(cluster_ids, [-1, p.num_heads])
-        for i in range(p.num_heads):
+        cluster_ids_flat = jnp.reshape(cluster_ids, [-1, self.num_heads])
+        for i in range(self.num_heads):
           cache = cache.at[input_ids_flat, i].set(cluster_ids_flat[:, i])
         self.update_var('input_id_to_cluster_id_cache', cache)
 
@@ -758,11 +768,11 @@ class VQNgrammer(base_layer.FiddleBaseLayer):
     # Check if `ngram_using_attention_scores` is set to True, then attention
     # score is not None.
     pair_ids = None
-    if self.hparams.ngram_using_attention_scores:
+    if self.ngram_using_attention_scores:
       if attention_score is None:
         raise ValueError('If ngram_using_attention_scores is set, then'
                          'attention_score must be provided.')
-      if not self.hparams.causal_attention:
+      if not self.causal_attention:
         raise ValueError('Extend step for NGrammer must have causal attention')
       seq_len = attention_score.shape[2]
       if step > 0:
@@ -841,30 +851,31 @@ class BregmanNgrammer(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     """Constructs an instance which looks up ngrams."""
-    p = self.hparams
 
-    asserts.gt(p.dim_per_head, 0)
-    asserts.gt(p.num_heads, 0)
-    asserts.gt(p.num_components, 0)
-    asserts.le(p.num_components, p.dim_per_head)
-    if p.concat_ngrams:
+    asserts.gt(self.dim_per_head, 0)
+    asserts.gt(self.num_heads, 0)
+    asserts.gt(self.num_components, 0)
+    asserts.le(self.num_components, self.dim_per_head)
+    if self.concat_ngrams:
       # The ngram_emb_dim must be smaller than dim_per_head.
-      asserts.le(p.ngram_emb_dim, p.dim_per_head)
+      asserts.le(self.ngram_emb_dim, self.dim_per_head)
     else:
       # If not concatenating ngram embeddings, check the dims are compatible.
-      asserts.eq(p.ngram_emb_dim, p.dim_per_head)
+      asserts.eq(self.ngram_emb_dim, self.dim_per_head)
 
     # Create a separate layer norm per head for embedding normalization.
     # Create a separate layer norm per head for ngram embedding normalization.
     emb_layer_norm_p = []
     ngram_emb_layer_norm_p = []
-    for i in range(p.num_heads):
+    for i in range(self.num_heads):
       layer_norm_p = normalizations.LayerNorm.HParams(
-          dim=p.dim_per_head, name=f'emb_layer_norm_{i}')
+          dim=self.dim_per_head, name=f'emb_layer_norm_{i}'
+      )
       emb_layer_norm_p.append(layer_norm_p)
 
       ngram_layer_norm_p = normalizations.LayerNorm.HParams(
-          dim=p.ngram_emb_dim, name=f'ngram_layer_norm_{i}')
+          dim=self.ngram_emb_dim, name=f'ngram_layer_norm_{i}'
+      )
       ngram_emb_layer_norm_p.append(ngram_layer_norm_p)
 
     self.create_children('emb_layer_norm', emb_layer_norm_p)
@@ -874,38 +885,44 @@ class BregmanNgrammer(base_layer.FiddleBaseLayer):
     # [C, C, V, N]
     correlation_p = WeightHParams(
         shape=[
-            p.num_components, p.num_components, p.ngram_vocab_size, p.num_heads
+            self.num_components,
+            self.num_components,
+            self.ngram_vocab_size,
+            self.num_heads,
         ],
-        init=p.params_init,
-        tensor_split_dims_mapping=p.weight_split_dims_mapping,
-        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
+        init=self.params_init,
+        tensor_split_dims_mapping=self.weight_split_dims_mapping,
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
+    )
     # [V, H, N]
     embedding_table_p = WeightHParams(
-        shape=[p.ngram_vocab_size, p.ngram_emb_dim, p.num_heads],
-        init=p.params_init,
-        tensor_split_dims_mapping=p.weight_split_dims_mapping,
-        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
+        shape=[self.ngram_vocab_size, self.ngram_emb_dim, self.num_heads],
+        init=self.params_init,
+        tensor_split_dims_mapping=self.weight_split_dims_mapping,
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
+    )
 
     self.create_variable('correlation', correlation_p)
     self.create_variable('embedding_table', embedding_table_p)
 
     # Create a Bregman compression layer.
     bregman_compression_layer_p = BregmanCompression.HParams(
-        params_init=p.params_init,
-        num_heads=p.num_heads,
-        dim_per_head=p.dim_per_head,
-        num_components=p.num_components,
-        activation_type=p.activation_type,
-        negative_slope=p.negative_slope,
-        mean_beta=p.mean_beta,
-        coefficients_lr=p.coefficients_lr,
-        coefficients_beta=p.coefficients_beta,
-        coefficients_steps=p.coefficients_steps,
-        components_lr=p.components_lr,
-        components_beta=p.components_beta,
-        start_step=p.start_step,
-        end_step=p.end_step,
-        constant_lr_schedule=p.constant_lr_schedule)
+        params_init=self.params_init,
+        num_heads=self.num_heads,
+        dim_per_head=self.dim_per_head,
+        num_components=self.num_components,
+        activation_type=self.activation_type,
+        negative_slope=self.negative_slope,
+        mean_beta=self.mean_beta,
+        coefficients_lr=self.coefficients_lr,
+        coefficients_beta=self.coefficients_beta,
+        coefficients_steps=self.coefficients_steps,
+        components_lr=self.components_lr,
+        components_beta=self.components_beta,
+        start_step=self.start_step,
+        end_step=self.end_step,
+        constant_lr_schedule=self.constant_lr_schedule,
+    )
 
     self.create_child('bregman_compression_layer', bregman_compression_layer_p)
 
@@ -932,8 +949,6 @@ class BregmanNgrammer(base_layer.FiddleBaseLayer):
         `merge_heads` is True, or [B, L, N, H] if False.
     """
     del input_ids
-
-    p = self.hparams
     if paddings is not None:
       # Shape [B, L, 1, 1].
       paddings_4d = paddings[:, :, jnp.newaxis, jnp.newaxis]
@@ -945,20 +960,22 @@ class BregmanNgrammer(base_layer.FiddleBaseLayer):
     seq_length = inputs_shape[1]
 
     # Reshape to [B, L, N, H].
-    input_embs = jnp.reshape(input_embs,
-                             [batch_size, seq_length, p.num_heads, -1])
+    input_embs = jnp.reshape(
+        input_embs, [batch_size, seq_length, self.num_heads, -1]
+    )
 
     # This step can be more efficient using a lookup during inference. During
     # training, we can calculate the compression coefficeints and update the
     # coefficients table.
     input_coeffs = self.bregman_compression_layer(input_embs, paddings)
 
-    correlations = jnp.split(self.theta.correlation, p.num_heads, axis=-1)
+    correlations = jnp.split(self.theta.correlation, self.num_heads, axis=-1)
     correlations = [
         jnp.squeeze(correlation, axis=-1) for correlation in correlations
     ]
     embedding_tables = jnp.split(
-        self.theta.embedding_table, p.num_heads, axis=-1)
+        self.theta.embedding_table, self.num_heads, axis=-1
+    )
     embedding_tables = [
         jnp.squeeze(embedding_table, axis=-1)
         for embedding_table in embedding_tables
@@ -971,7 +988,7 @@ class BregmanNgrammer(base_layer.FiddleBaseLayer):
     curr_token_id = token_id[:, 1:]
     prev_token_id = token_id[:, :-1]
     ngram_embs_to_concat = []
-    for i in range(p.num_heads):
+    for i in range(self.num_heads):
       # [B, L, C].
       curr_coeffs_i = jnp.take_along_axis(
           input_coeffs[:, :, i, :], curr_token_id[:, :, jnp.newaxis], axis=1)
@@ -988,7 +1005,7 @@ class BregmanNgrammer(base_layer.FiddleBaseLayer):
       ngram_embs_i = jnp.einsum('BLV, VH -> BLH', ngram_corrs_i,
                                 embedding_tables[i])
       # [B * L, H]
-      ngram_embs_i = jnp.reshape(ngram_embs_i, [-1, p.ngram_emb_dim])
+      ngram_embs_i = jnp.reshape(ngram_embs_i, [-1, self.ngram_emb_dim])
       ngram_embs_to_concat.append(ngram_embs_i)
 
       ngram_embs_to_concat[i] = self.ngram_layer_norm[i](
@@ -998,23 +1015,27 @@ class BregmanNgrammer(base_layer.FiddleBaseLayer):
     ngram_embs = jnp.concatenate(ngram_embs_to_concat, axis=-1)
     # [B, L, N, H]
     ngram_embs = jnp.reshape(
-        ngram_embs, [batch_size, seq_length, p.num_heads, p.ngram_emb_dim])
+        ngram_embs, [batch_size, seq_length, self.num_heads, self.ngram_emb_dim]
+    )
 
     # Layer norm input embeddings independently for each head.
-    input_embs_per_head = jnp.split(input_embs, p.num_heads, 2)
-    for i in range(p.num_heads):
+    input_embs_per_head = jnp.split(input_embs, self.num_heads, 2)
+    for i in range(self.num_heads):
       # Reshape into [B * L, H]
-      per_head_emb = jnp.reshape(input_embs_per_head[i], [-1, p.dim_per_head])
+      per_head_emb = jnp.reshape(
+          input_embs_per_head[i], [-1, self.dim_per_head]
+      )
       input_embs_per_head[i] = self.emb_layer_norm[i](per_head_emb)
       # Reshape to [B, L, H]
       input_embs_per_head[i] = jnp.reshape(
-          input_embs_per_head[i], [batch_size, seq_length, p.dim_per_head])
+          input_embs_per_head[i], [batch_size, seq_length, self.dim_per_head]
+      )
 
     # [B, L, N, H].
     input_embs = jnp.stack(input_embs_per_head, 2)
 
-    if p.concat_ngrams:
-      d = p.dim_per_head - p.ngram_emb_dim
+    if self.concat_ngrams:
+      d = self.dim_per_head - self.ngram_emb_dim
       input_embs_slice = jax.lax.dynamic_slice_in_dim(
           input_embs, start_index=0, slice_size=d, axis=-1)
       input_embs = jnp.concatenate([input_embs_slice, ngram_embs], axis=-1)

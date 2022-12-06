@@ -161,32 +161,35 @@ class BatchNorm(BaseNormalization):
   gamma_init: WeightInit = WeightInit.Constant(0.0)
 
   def _get_weight_shape(self) -> JTensor:
-    return [self.hparams.dim]
+    return [self.dim]
 
   def setup(self) -> None:
     """Creates batch normalization layer variables."""
-    p = self.hparams
     self._epsilon = 0.001
-    self._decay = p.decay
+    self._decay = self.decay
 
     beta_pc = WeightHParams(
         shape=self._get_weight_shape(), init=WeightInit.Constant(0.0))
     self.create_variable('beta', beta_pc)
 
     # gamma = self.theta.gamma + 1.0
-    gamma_pc = WeightHParams(shape=self._get_weight_shape(), init=p.gamma_init)
+    gamma_pc = WeightHParams(
+        shape=self._get_weight_shape(), init=self.gamma_init
+    )
     self.create_variable('gamma', gamma_pc)
 
     mva = WeightHParams(
-        shape=[p.dim],
+        shape=[self.dim],
         init=WeightInit.Constant(0.0),
-        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
+    )
     self.create_variable('moving_mean', mva, trainable=False)
 
     mvv = WeightHParams(
-        shape=[p.dim],
+        shape=[self.dim],
         init=WeightInit.Constant(1.0),
-        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
+    )
     self.create_variable('moving_variance', mvv, trainable=False)
 
   def _get_default_paddings(self, inputs: JTensor) -> JTensor:
@@ -197,8 +200,7 @@ class BatchNorm(BaseNormalization):
     return jnp.zeros(in_shape, dtype=inputs.dtype)
 
   def _get_beta_gamma(self) -> Tuple[JTensor, JTensor]:
-    p = self.hparams
-    if p.use_moving_avg_in_training:
+    if self.use_moving_avg_in_training:
       beta = 0.0
       gamma = 1.0
     else:
@@ -219,8 +221,7 @@ class BatchNorm(BaseNormalization):
     Returns:
       Tuple of (mean, variance, beta, gamma).
     """
-    p = self.hparams
-    if self.do_eval or p.force_eval_mode:
+    if self.do_eval or self.force_eval_mode:
       # The mean and variance used for normalization.
       norm_mean = self.get_var('moving_mean')
       norm_variance = self.get_var('moving_variance')
@@ -236,12 +237,13 @@ class BatchNorm(BaseNormalization):
           keepdims=False,  # Reduce to [p.dim] the same as moving mean/var.
       )
 
-      new_moving_mean = (
-          self.get_var('moving_mean') * p.decay + mean * (1.0 - p.decay))
+      new_moving_mean = self.get_var('moving_mean') * self.decay + mean * (
+          1.0 - self.decay
+      )
       self.update_var('moving_mean', new_moving_mean)
-      new_moving_variance = (
-          self.get_var('moving_variance') * p.decay + variance *
-          (1.0 - p.decay))
+      new_moving_variance = self.get_var(
+          'moving_variance'
+      ) * self.decay + variance * (1.0 - self.decay)
       self.update_var('moving_variance', new_moving_variance)
 
       # Add some summaries for visualization.
@@ -250,7 +252,7 @@ class BatchNorm(BaseNormalization):
       self.add_summary('moving_mean', self.get_var('moving_mean'), verbosity=4)
       self.add_summary(
           'moving_variance', self.get_var('moving_variance'), verbosity=4)
-      if p.use_moving_avg_in_training:
+      if self.use_moving_avg_in_training:
         # Use the global statistics for normalization.
         norm_mean = self.get_var('moving_mean')
         norm_variance = self.get_var('moving_variance')
@@ -275,7 +277,6 @@ class BatchNorm(BaseNormalization):
       Output after applying batch normalization, with the same shape as
       'inputs'.
     """
-    p = self.hparams
     inputs, paddings = self._cast_to_fprop_dtype((inputs, paddings))
     if paddings is None:
       paddings = self._get_default_paddings(inputs)
@@ -292,7 +293,7 @@ class BatchNorm(BaseNormalization):
     inv = gamma / jnp.sqrt(norm_variance + self._epsilon)
     bn_output = (inputs - norm_mean) * inv + beta
 
-    if p.set_padded_output_to_zero:
+    if self.set_padded_output_to_zero:
       bn_output *= 1.0 - paddings
 
     return bn_output
@@ -312,35 +313,38 @@ class LayerNorm(BaseNormalization):
 
   def setup(self) -> None:
     """Creates layer normalization variables."""
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
+    wp = self.weight_split_dims_mapping
     wp_scale = wp.wt
-    if p.mesh_shape is not None and wp.wt is None:
+    if self.mesh_shape is not None and wp.wt is None:
       # Simply replicate the weights.
       wp_scale = [-1]
-    if p.use_scale:
+    if self.use_scale:
       self.create_variable(
           'scale',
           WeightHParams(
-              shape=[p.dim],
+              shape=[self.dim],
               init=WeightInit.Constant(0.0),
-              mesh_shape=p.mesh_shape,
+              mesh_shape=self.mesh_shape,
               tensor_split_dims_mapping=wp_scale,
               collections=[
                   base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
-              ]))
-    if p.use_bias:
+              ],
+          ),
+      )
+    if self.use_bias:
       wp_bias = wp_scale  # bias should use the same sharding as scale.
       self.create_variable(
           'bias',
           WeightHParams(
-              shape=[p.dim],
+              shape=[self.dim],
               init=WeightInit.Constant(0.0),
-              mesh_shape=p.mesh_shape,
+              mesh_shape=self.mesh_shape,
               tensor_split_dims_mapping=wp_bias,
               collections=[
                   base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
-              ]))
+              ],
+          ),
+      )
 
   def __call__(self,
                inputs: JTensor,
@@ -356,13 +360,12 @@ class LayerNorm(BaseNormalization):
       'inputs'.
     """
     del paddings  # Unused.
-    p = self.hparams
     mean = jnp.mean(inputs, axis=[-1], keepdims=True)
     var = jnp.mean(jnp.square(inputs - mean), axis=[-1], keepdims=True)
-    normed_inputs = (inputs - mean) * jax.lax.rsqrt(var + self.hparams.epsilon)
-    if p.use_scale:
+    normed_inputs = (inputs - mean) * jax.lax.rsqrt(var + self.epsilon)
+    if self.use_scale:
       normed_inputs *= (1 + self.theta.scale)
-    if p.use_bias:
+    if self.use_bias:
       normed_inputs += self.theta.bias
     return normed_inputs
 
@@ -381,21 +384,22 @@ class RmsNorm(BaseNormalization):
 
   def setup(self) -> None:
     """Creates RMS normalization variables."""
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
+    wp = self.weight_split_dims_mapping
     wp_scale = wp.wt
-    if p.mesh_shape is not None and wp.wt is None:
+    if self.mesh_shape is not None and wp.wt is None:
       # Simply replicate the weights.
       wp_scale = [-1]
     # Scale variable that scales the RMS norm output by (1 + scale).
-    init_value = 1.0 if p.direct_scale else 0.0
+    init_value = 1.0 if self.direct_scale else 0.0
     self.create_variable(
         'scale',
         WeightHParams(
-            shape=[p.dim],
+            shape=[self.dim],
             init=WeightInit.Constant(init_value),
-            mesh_shape=p.mesh_shape,
-            tensor_split_dims_mapping=wp_scale))
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=wp_scale,
+        ),
+    )
 
   def __call__(self,
                inputs: JTensor,
@@ -411,9 +415,8 @@ class RmsNorm(BaseNormalization):
     """
     del paddings  # Unused.
     var = jnp.mean(jnp.square(inputs), axis=[-1], keepdims=True)
-    normed_inputs = inputs * jax.lax.rsqrt(var + self.hparams.epsilon)
-    scale = (
-        self.theta.scale if self.hparams.direct_scale else 1 + self.theta.scale)
+    normed_inputs = inputs * jax.lax.rsqrt(var + self.epsilon)
+    scale = self.theta.scale if self.direct_scale else 1 + self.theta.scale
     normed_inputs *= scale
     return normed_inputs
 
@@ -442,8 +445,9 @@ class RmsNormNoScale(BaseNormalization):
     del paddings  # Unused.
     var = jnp.mean(
         jnp.square(inputs), axis=[-1], keepdims=True, dtype=jnp.float32)
-    normed_inputs = (inputs * jax.lax.rsqrt(var + self.hparams.epsilon)).astype(
-        inputs.dtype)
+    normed_inputs = (inputs * jax.lax.rsqrt(var + self.epsilon)).astype(
+        inputs.dtype
+    )
     return normed_inputs
 
 
@@ -467,23 +471,24 @@ class GroupNorm(BaseNormalization):
 
   def setup(self) -> None:
     """Initializes GroupNorm layer and checks parameters."""
-    p = self.hparams
-    asserts.not_none(p.name)
-    asserts.gt(p.num_groups, 0)
-    asserts.gt(p.min_group_size, 0)
-    asserts.le(p.min_group_size, p.dim)
-    asserts.eq(p.dim % p.min_group_size, 0)
+    asserts.not_none(self.name)
+    asserts.gt(self.num_groups, 0)
+    asserts.gt(self.min_group_size, 0)
+    asserts.le(self.min_group_size, self.dim)
+    asserts.eq(self.dim % self.min_group_size, 0)
 
-    if p.dim >= p.num_groups:
+    if self.dim >= self.num_groups:
       asserts.eq(
-          p.dim % p.num_groups,
+          self.dim % self.num_groups,
           0,
           msg='p.dim({0}) is not dividable by p.num_groups({1})'.format(
-              p.dim, p.num_groups))
+              self.dim, self.num_groups
+          ),
+      )
 
-    asserts.in_set(p.input_rank, (3, 4))
+    asserts.in_set(self.input_rank, (3, 4))
 
-    shape = [1, 1, 1, p.dim] if p.input_rank == 4 else [1, 1, p.dim]
+    shape = [1, 1, 1, self.dim] if self.input_rank == 4 else [1, 1, self.dim]
     pc = WeightHParams(
         shape,
         init=WeightInit.Constant(0.0),
@@ -494,27 +499,24 @@ class GroupNorm(BaseNormalization):
 
   @property
   def _group_size(self) -> int:
-    p = self.hparams
-    return max(p.dim // p.num_groups, p.min_group_size)
+    return max(self.dim // self.num_groups, self.min_group_size)
 
   @property
   def _num_groups(self) -> int:
-    p = self.hparams
-    return p.dim // self._group_size
+    return self.dim // self._group_size
 
   def _normalize(self, grouped_inputs: JTensor, group_mean: JTensor,
                  group_variance: JTensor) -> JTensor:
-    p = self.hparams
     moment_shape = list(grouped_inputs.shape)
-    if p.input_rank == 4:
+    if self.input_rank == 4:
       moment_shape[2] = 1
     moment_shape[-1] = 1
 
-    if not p.cumulative:
+    if not self.cumulative:
       # If not cumulative, the seqlen dimension is also reduced.
       moment_shape[1] = 1
 
-    group_stddev_inv = jax.lax.rsqrt(group_variance + p.epsilon)
+    group_stddev_inv = jax.lax.rsqrt(group_variance + self.epsilon)
 
     grouped_inputs = (grouped_inputs - group_mean) * group_stddev_inv
     # Merges the last two dims.
@@ -540,23 +542,22 @@ class GroupNorm(BaseNormalization):
       Output after applying group normalization, with the same shape as
       'inputs'.
     """
-    p = self.hparams
     inputs, paddings = self._cast_to_fprop_dtype((inputs, paddings))
-    asserts.eq(inputs.ndim, p.input_rank)
+    asserts.eq(inputs.ndim, self.input_rank)
 
     x = jnp.reshape(
         inputs,
         list(inputs.shape[:-1]) + [self._num_groups, self._group_size])
-    expanded_rank = p.input_rank + 1
+    expanded_rank = self.input_rank + 1
     all_dims = list(range(expanded_rank))
-    if paddings is None or not p.cumulative:
+    if paddings is None or not self.cumulative:
       # Skips batch and num_groups.
       reduce_over_dims = all_dims[1:-2] + all_dims[-1:]
     else:
       # Skips batch, seqlen and num_groups.
       reduce_over_dims = all_dims[2:-2] + all_dims[-1:]
 
-    if paddings is None and not p.cumulative:
+    if paddings is None and not self.cumulative:
       group_mean = jnp.mean(x, axis=reduce_over_dims, keepdims=True)
       group_variance = jnp.mean(
           jnp.square(x - jax.lax.stop_gradient(group_mean)),
@@ -574,7 +575,7 @@ class GroupNorm(BaseNormalization):
           keepdims=True)
 
     gn_output = self._normalize(x, group_mean, group_variance)
-    if p.set_padded_output_to_zero and paddings is not None:
+    if self.set_padded_output_to_zero and paddings is not None:
       expanded_paddings = jnp.reshape(
           paddings,
           list(inputs.shape[:2]) + [1] * (expanded_rank - 3))
