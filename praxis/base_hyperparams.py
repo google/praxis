@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from flax.core import frozen_dict
+import abc
 import copy
 import dataclasses
 import enum
@@ -29,6 +29,7 @@ from typing import Any, Callable, Optional, Sequence, Tuple, Type, TypeVar, Unio
 
 from absl import logging
 import fiddle as fdl
+from flax.core import frozen_dict
 # Internal config_dict import from ml_collections
 import numpy as np
 from praxis import pax_fiddle
@@ -203,6 +204,13 @@ def visit_nested_struct(obj_to_visit: Any,
   _visit('', obj_to_visit)
 
 
+class StrOverride(abc.ABC):
+
+  @abc.abstractmethod
+  def __str__(self):
+    """Must provide custom str representation to be dumped into hparams file."""
+
+
 def nested_struct_to_text(obj_to_visit: Any,
                           include_types: bool = False,
                           separator: str = ':'):
@@ -257,6 +265,8 @@ def nested_struct_to_text(obj_to_visit: Any,
       proto_str = text_format.MessageToString(val, as_one_line=True)
       return 'proto/%s/%s/%s' % (inspect.getmodule(val).__name__,
                                  type(val).__name__, proto_str)
+    if isinstance(val, StrOverride):
+      return str(val)
     if isinstance(val, type):
       return 'type/' + inspect.getmodule(val).__name__ + '/' + val.__name__
     if callable(val) and hasattr(val, '__qualname__'):
@@ -289,6 +299,8 @@ def nested_struct_to_text(obj_to_visit: Any,
     elif isinstance(val, (dict, frozen_dict.FrozenDict)):
       return True
     elif isinstance(val, fdl.Buildable):
+      return True
+    elif isinstance(val, StrOverride):
       return True
     return False
 
