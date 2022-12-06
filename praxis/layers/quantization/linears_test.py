@@ -31,7 +31,6 @@ from praxis.layers.quantization import linears as qlinears
 from praxis.layers.quantization import quantization_hparams
 
 instantiate = base_layer.instantiate
-BaseHParams = base_layer.BaseLayer.HParams
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 QuantizationHParams = quantization_hparams.QuantizationHParams

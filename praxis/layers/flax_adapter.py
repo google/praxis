@@ -26,7 +26,6 @@ from praxis import flax_utils
 from praxis import pytypes
 
 JTensor = pytypes.JTensor
-BaseHParams = base_layer.BaseLayer.HParams
 LogicalAxisRules = pytypes.LogicalAxisRules
 
 

@@ -29,8 +29,6 @@ from praxis.layers import rnn_cell
 NestedMap = py_utils.NestedMap
 
 JTensor = pytypes.JTensor
-
-BaseHParams = base_layer.BaseLayer.HParams
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
 PARAMS = base_layer.PARAMS

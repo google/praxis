@@ -26,8 +26,6 @@ from praxis import pytypes
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
-BaseHParams = base_layer.BaseLayer.HParams
-
 
 class Pooling(base_layer.FiddleBaseLayer):
   """Pooling layer, which by default performs max pooling.

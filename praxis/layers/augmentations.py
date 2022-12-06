@@ -27,8 +27,6 @@ from praxis import pytypes
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
-BaseHParams = base_layer.BaseLayer.HParams
-
 
 class MaskedLmDataAugmenter(base_layer.FiddleBaseLayer):
   """Performs data augmentation according to the BERT paper.

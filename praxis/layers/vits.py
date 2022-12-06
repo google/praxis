@@ -53,8 +53,6 @@ from praxis.layers import transformers
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
-
-BaseHParams = base_layer.BaseLayer.HParams
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 WeightHParams = base_layer.WeightHParams
 WeightInit = base_layer.WeightInit

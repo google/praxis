@@ -33,7 +33,6 @@ JTensor = pytypes.JTensor
 Metrics = pytypes.Metrics
 WeightedScalars = pytypes.WeightedScalars
 Predictions = Union[JTensor, NestedMap, Dict[str, Any], Dict[int, Any]]
-BaseHParams = base_layer.BaseLayer.HParams
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
 DecodeOut = Tuple[WeightedScalars, NestedMap, Metrics]

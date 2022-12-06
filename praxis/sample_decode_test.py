@@ -27,7 +27,6 @@ from praxis import sample_decode
 from praxis import test_utils
 
 NestedMap = py_utils.NestedMap
-BaseHParams = base_layer.BaseLayer.HParams
 WeightHPrams = base_layer.WeightHParams
 instantiate = base_layer.instantiate
 

@@ -28,7 +28,6 @@ from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 
 instantiate = base_layer.instantiate
-BaseHParams = base_layer.BaseLayer.HParams
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams

@@ -30,7 +30,6 @@ from praxis.layers import models
 from praxis.layers import transformer_models
 
 NestedMap = py_utils.NestedMap
-BaseHParams = base_layer.BaseLayer.HParams
 instantiate = base_layer.instantiate
 LanguageModelType = transformer_models.LanguageModelType
 

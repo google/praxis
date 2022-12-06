@@ -42,8 +42,6 @@ WeightHParams = base_layer.WeightHParams
 
 JTensor = pytypes.JTensor
 
-BaseHParams = base_layer.BaseLayer.HParams
-
 
 def _extract_pad_beg_end(size: int) -> Tuple[int, int]:
   """Gets the beginning and ending padding for a dimension."""

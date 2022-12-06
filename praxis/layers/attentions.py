@@ -44,7 +44,6 @@ NestedJTensor = pytypes.NestedJTensor
 NestedInt = pytypes.NestedInt
 
 SplitDimsMapping = pytypes.SplitDimsMapping
-BaseHParams = base_layer.BaseLayer.HParams
 BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
 

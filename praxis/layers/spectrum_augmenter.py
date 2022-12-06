@@ -26,8 +26,6 @@ from praxis import pytypes
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
-BaseHParams = base_layer.BaseLayer.HParams
-
 
 # TODO(nanxinchen): add time wrap and frequency wrap
 class SpectrumAugmenter(base_layer.FiddleBaseLayer):

@@ -29,8 +29,6 @@ WeightHParams = base_layer.WeightHParams
 Params = py_utils.HParams
 JTensor = pytypes.JTensor
 
-BaseHParams = base_layer.BaseLayer.HParams
-
 
 def _zoneout_helper(prev_v: JTensor, cur_v: JTensor, padding_v: JTensor,
                     zo_prob: float, is_eval: bool,

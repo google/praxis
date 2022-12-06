@@ -30,8 +30,6 @@ from praxis.layers import poolings
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
-
-BaseHParams = base_layer.BaseLayer.HParams
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
 

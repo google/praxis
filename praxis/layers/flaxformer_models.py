@@ -46,7 +46,6 @@ from flaxformer.components.attention import dense_attention
 NestedMap = py_utils.NestedMap
 Predictions = base_model.Predictions
 WeightedScalars = pytypes.WeightedScalars
-BaseHParams = base_layer.BaseLayer.HParams
 sub_config_field = base_layer.sub_config_field
 LogicalAxisRules = pytypes.LogicalAxisRules
 DecodeOut = base_model.DecodeOut

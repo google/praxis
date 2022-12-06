@@ -31,8 +31,6 @@ NestedMap = py_utils.NestedMap
 WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
 
-BaseHParams = base_layer.BaseLayer.HParams
-
 
 def get_bigram_ids(ids: JTensor,
                    vocab_size: int,

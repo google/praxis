@@ -35,8 +35,6 @@ WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
-BaseHParams = base_layer.BaseLayer.HParams
-
 
 class MultitaskResidualAdapter(base_layer.FiddleBaseLayer):
   """A multitask residual adapter layer.

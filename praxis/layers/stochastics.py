@@ -27,8 +27,6 @@ from praxis import pytypes
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
-BaseHParams = base_layer.BaseLayer.HParams
-
 
 class Dropout(base_layer.FiddleBaseLayer):
   """Apply dropout during training.

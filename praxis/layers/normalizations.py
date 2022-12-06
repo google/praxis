@@ -31,8 +31,6 @@ PMAP_PARALLEL_AXIS_NAME = base_layer.PMAP_PARALLEL_AXIS_NAME
 JTensor = pytypes.JTensor
 PARAMS = base_layer.PARAMS
 
-BaseHParams = base_layer.BaseLayer.HParams
-
 
 def compute_moments(
     inputs: JTensor,

@@ -35,7 +35,6 @@ LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 JTensor = pytypes.JTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
-BaseHParams = base_layer.BaseLayer.HParams
 BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
 

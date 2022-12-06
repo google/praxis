@@ -34,7 +34,6 @@ from praxis import pytypes
 
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
-BaseHParams = base_layer.BaseLayer.HParams
 
 RANDOM = base_layer.RANDOM
 PARAMS = base_layer.PARAMS

@@ -54,8 +54,6 @@ FlatBeamSearchHParams = decoder_hparams.FlatBeamSearchHParams
 SampleDecoderHParams = decoder_hparams.SampleDecoderHParams
 GreedyDecoderHParams = decoder_hparams.GreedyDecoderHParams
 LanguageModelType = transformer_models.LanguageModelType
-
-BaseHParams = base_layer.BaseLayer.HParams
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
 

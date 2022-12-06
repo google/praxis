@@ -23,7 +23,6 @@ from praxis import base_layer
 from praxis import pytypes
 
 WeightHParams = base_layer.WeightHParams
-BaseHParams = base_layer.BaseLayer.HParams
 JTensor = pytypes.JTensor
 
 

@@ -29,8 +29,6 @@ from praxis.layers import repeats
 NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
-
-BaseHParams = base_layer.BaseLayer.HParams
 SplitDimsMapping = base_layer.SplitDimsMapping
 
 instantiate = base_layer.instantiate
