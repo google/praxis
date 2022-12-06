@@ -130,7 +130,7 @@ class TemporalShifting(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     super().setup()
-    assert self.shift_range_ms > 0.0, self.shift_range_ms
+    assert self.shift_range_ms >= 0.0, self.shift_range_ms
     assert self.axis > 0, self.axis
 
   def _shift_tensor(self, x, axis, shift_range, shift_size, *, pad_value=0.0):
