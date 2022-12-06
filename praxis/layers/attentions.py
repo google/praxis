@@ -597,7 +597,7 @@ class AttentionProjection(base_layer.FiddleBaseLayer):
             if isinstance(axes, (str, int)):
               h_sharding += (axes,)
             elif axes is not None:
-              h_sharding += axes
+              h_sharding += tuple(axes)
           wt = [h_sharding, wp.wt[2]]
         else:
           h_sharding = ()
@@ -605,7 +605,7 @@ class AttentionProjection(base_layer.FiddleBaseLayer):
             if isinstance(axes, (str, int)):
               h_sharding += (axes,)
             elif axes is not None:
-              h_sharding += axes
+              h_sharding += tuple(axes)
           wt = [wp.wt[0], h_sharding]
       assert len(wt) == 2
     else:
@@ -713,17 +713,23 @@ class CombinedQKVProjectionLayer(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
     p = self.hparams
-    wp = p.weight_split_dims_mapping
-    if p.mesh_shape is not None:
-      assert wp.wt is not None, ('Must provide sharding annotations for the '
-                                 'weights if mesh shape is provided')
-      if (p.attention_combine_dims and isinstance(wp.wt, (list, tuple)) and
-          len(wp.wt) == 3):
-        wt = [axis for axis in wp.wt if axis is not None]
-        assert len(wt) == 2, ('wp.wt only specifies the sharding for '
-                              'the last two dims of the weight tensor.')
+    # Sharding has the same convention of AttentionProjection, which doesn't
+    # contain the leading stacking dimension.
+    wt = p.weight_split_dims_mapping.wt
+    if wt is not None:
+      assert isinstance(wt, (list, tuple))
+      if p.attention_combine_dims:
+        if len(wt) == 3:
+          hd_sharding = ()
+          for s in wt[1:]:
+            if isinstance(s, (list, tuple)):
+              hd_sharding += tuple(s)
+            elif s is not None:
+              hd_sharding += (s,)
+          wt = [wt[0], hd_sharding]
+        else:
+          assert len(wt) == 2
       else:
-        wt = wp.wt
         # Replicate the concat axis.
         assert len(wt) == 3, ('wp.wt only specifies the sharding for '
                               'the last three dims of the weight tensor.')
