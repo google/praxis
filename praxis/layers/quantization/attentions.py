@@ -50,30 +50,33 @@ class AttentionProjection(attentions.AttentionProjection):
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
   def create_tensor_quantizer(self):
-    p = self.hparams
     self.create_child(
         'act_quantizer',
         aqt.TensorQuantizer.HParams(
             name='act_quantizer',
-            precision=p.quantization.act_params.precision
-            if p.quantization.act_params else None))
+            precision=self.quantization.act_params.precision
+            if self.quantization.act_params
+            else None,
+        ),
+    )
     self.create_child(
         'weight_quantizer',
         aqt.TensorQuantizer.HParams(
             name='weight_quantizer',
-            precision=p.quantization.weight_params.precision))
+            precision=self.quantization.weight_params.precision,
+        ),
+    )
 
   def setup(self) -> None:
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
-    has_sharding = p.mesh_shape is not None and wp.wt is not None
-    if p.attention_combine_dims:
-      assert not p.use_bias
-      hd_shape = [p.num_heads * p.dim_per_head]
+    wp = self.weight_split_dims_mapping
+    has_sharding = self.mesh_shape is not None and wp.wt is not None
+    if self.attention_combine_dims:
+      assert not self.use_bias
+      hd_shape = [self.num_heads * self.dim_per_head]
     else:
-      hd_shape = [p.num_heads, p.dim_per_head]
+      hd_shape = [self.num_heads, self.dim_per_head]
 
-    if p.attention_combine_dims and has_sharding:
+    if self.attention_combine_dims and has_sharding:
       if len(wp.wt) == 3:
         h_sharding = ()
         for axes in (wp.wt[0], wp.wt[1]):
@@ -85,42 +88,45 @@ class AttentionProjection(attentions.AttentionProjection):
       assert len(wt) == 2
     else:
       wt = wp.wt
-    pc_shape = [p.input_dim] + hd_shape
-    if p.is_output_projection and p.use_nhd_shape:
-      pc_shape = hd_shape + [p.input_dim]
+    pc_shape = [self.input_dim] + hd_shape
+    if self.is_output_projection and self.use_nhd_shape:
+      pc_shape = hd_shape + [self.input_dim]
     pc = WeightHParams(
-        shape=pc_shape, mesh_shape=p.mesh_shape, tensor_split_dims_mapping=wt)
-    if p.quantization.mode == QuantizationMode.INFERENCE:
-      if p.is_output_projection:
-        self.create_quantized_variable('w', pc, [p.input_dim])
+        shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
+    )
+    if self.quantization.mode == QuantizationMode.INFERENCE:
+      if self.is_output_projection:
+        self.create_quantized_variable('w', pc, [self.input_dim])
       else:
         self.create_quantized_variable('w', pc, hd_shape)
     else:
       self.create_variable('w', pc)
-    if p.use_bias:
-      if p.is_output_projection:
+    if self.use_bias:
+      if self.is_output_projection:
         if has_sharding:
           bias_split_dims_mapping = [wp.wt[0]]
         else:
           bias_split_dims_mapping = None
         pc_bias = WeightHParams(
-            shape=[p.input_dim],
+            shape=[self.input_dim],
             init=WeightInit.Constant(0.0),
-            mesh_shape=p.mesh_shape,
-            tensor_split_dims_mapping=bias_split_dims_mapping)
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=bias_split_dims_mapping,
+        )
       else:
         if has_sharding:
           bias_split_dims_mapping = [wp.wt[1], wp.wt[2]]
         else:
           bias_split_dims_mapping = None
         pc_bias = WeightHParams(
-            shape=[p.num_heads, p.dim_per_head],
+            shape=[self.num_heads, self.dim_per_head],
             init=WeightInit.Constant(0.0),
-            mesh_shape=p.mesh_shape,
-            tensor_split_dims_mapping=bias_split_dims_mapping)
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=bias_split_dims_mapping,
+        )
       self.create_variable('b', pc_bias)
 
-    if p.quantization.quantization_type == QuantizationType.AQT:
+    if self.quantization.quantization_type == QuantizationType.AQT:
       self.create_tensor_quantizer()
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -135,7 +141,6 @@ class AttentionProjection(attentions.AttentionProjection):
       p.is_output_projection is True or [..., num_heads, dim_per_head]
       otherwise.
     """
-    p = self.hparams
     theta = self.theta
 
     # Because tf.einsum is not fully optimized unless all the dimensions are
@@ -148,32 +153,33 @@ class AttentionProjection(attentions.AttentionProjection):
     rank = len(shape)
 
     inputs = self._cast_to_fprop_dtype(inputs)
-    if p.attention_combine_dims:
-      pc_shape = [p.input_dim, p.num_heads, p.dim_per_head]
-      if p.is_output_projection and p.use_nhd_shape:
-        pc_shape = [p.num_heads, p.dim_per_head, p.input_dim]
+    if self.attention_combine_dims:
+      pc_shape = [self.input_dim, self.num_heads, self.dim_per_head]
+      if self.is_output_projection and self.use_nhd_shape:
+        pc_shape = [self.num_heads, self.dim_per_head, self.input_dim]
       w = jnp.reshape(theta.w, pc_shape)
     else:
       w = theta.w
 
-    if p.is_output_projection:
-      assert shape[-2:] == (p.num_heads, p.dim_per_head)
+    if self.is_output_projection:
+      assert shape[-2:] == (self.num_heads, self.dim_per_head)
       batch_eqn = eqn_sym[:(rank - 2)]
-      if p.use_nhd_shape:
+      if self.use_nhd_shape:
         eqn = f'{batch_eqn}NH,NHD->{batch_eqn}D'
       else:
         eqn = f'{batch_eqn}NH,DNH->{batch_eqn}D'
     else:
-      assert shape[-1] == p.input_dim, (
-          f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {p.input_dim}')
+      assert (
+          shape[-1] == self.input_dim
+      ), f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {self.input_dim}'
       batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
 
-    if p.quantization.mode == QuantizationMode.INFERENCE:
+    if self.quantization.mode == QuantizationMode.INFERENCE:
       w, s = self.get_quantized_weight('w')
-      if p.quantization.quantization_type == QuantizationType.PTQ:
+      if self.quantization.quantization_type == QuantizationType.PTQ:
         ret = operations.einsum(eqn, inputs, w, s)
-      elif p.quantization.quantization_type == QuantizationType.AQT:
+      elif self.quantization.quantization_type == QuantizationType.AQT:
         dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
             eqn)
         ret = operations.dot_general(
@@ -185,8 +191,11 @@ class AttentionProjection(attentions.AttentionProjection):
             is_eval=True,
             perm=perm,
             rhs_quantized=(w, s))
-    elif p.quantization.mode == QuantizationMode.TRAINING or p.quantization.mode == QuantizationMode.MATERIALIZE:
-      if p.quantization.quantization_type == QuantizationType.AQT:
+    elif (
+        self.quantization.mode == QuantizationMode.TRAINING
+        or self.quantization.mode == QuantizationMode.MATERIALIZE
+    ):
+      if self.quantization.quantization_type == QuantizationType.AQT:
         dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
             eqn)
         ret = operations.dot_general(
@@ -197,15 +206,19 @@ class AttentionProjection(attentions.AttentionProjection):
             dimension_numbers=dimension_numbers,
             is_eval=self.do_eval,
             perm=perm)
-      elif p.quantization.quantization_type == QuantizationType.PTQ:
+      elif self.quantization.quantization_type == QuantizationType.PTQ:
         ret = jnp.einsum(eqn, inputs, w)
       else:
         raise ValueError(
-            f'Unsupported quantization_type {p.quantization.quantization_type}')
+            'Unsupported quantization_type'
+            f' {self.quantization.quantization_type}'
+        )
     else:
-      raise ValueError(f'Unsupported quantization_mode {p.quantization.mode}')
+      raise ValueError(
+          f'Unsupported quantization_mode {self.quantization.mode}'
+      )
 
-    if p.use_bias:
+    if self.use_bias:
       ret += theta.b
     return ret
 
@@ -215,12 +228,12 @@ class AttentionProjection(attentions.AttentionProjection):
     Returns:
       a map from names to partition spec.
     """
-    p = self.hparams
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     weight_pspec = base_layer._weight_hparam_to_pspec(
-        self._weight_hparams['w'], self.hparams.mesh_axis_names)
-    wp = p.weight_split_dims_mapping
-    if p.is_output_projection:
+        self._weight_hparams['w'], self.mesh_axis_names
+    )
+    wp = self.weight_split_dims_mapping
+    if self.is_output_projection:
       scale_split_dims_mapping = [wp.wt[0]]
     else:
       scale_split_dims_mapping = [wp.wt[1], wp.wt[2]]
@@ -228,7 +241,8 @@ class AttentionProjection(attentions.AttentionProjection):
     scale_weight_hparam = WeightHParams(
         shape=(), tensor_split_dims_mapping=scale_split_dims_mapping)
     scale_pspec = base_layer._weight_hparam_to_pspec(
-        scale_weight_hparam, self.hparams.mesh_axis_names)
+        scale_weight_hparam, self.mesh_axis_names
+    )
     partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
     return {base_layer.PARAMS: partitionspec}
 
@@ -238,11 +252,10 @@ class AttentionProjection(attentions.AttentionProjection):
     Returns:
       a map from names to quantized weights.
     """
-    p = self.hparams
     eqn = ''
     # This matches the equantion logic in __call__ for weights.
-    if p.is_output_projection:
-      if p.use_nhd_shape:
+    if self.is_output_projection:
+      if self.use_nhd_shape:
         eqn = 'ANH,NHD->AD'
       else:
         eqn = 'ANH,DNH->AD'
@@ -250,9 +263,9 @@ class AttentionProjection(attentions.AttentionProjection):
       eqn = 'AD,DNH->ANH'
 
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
-    if p.quantization.quantization_type == QuantizationType.PTQ:
+    if self.quantization.quantization_type == QuantizationType.PTQ:
       q_w, q_s = operations.reduce_einsum_weight_precision(eqn, self.theta.w)
-    elif p.quantization.quantization_type == QuantizationType.AQT:
+    elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.convert_einsum_eqn_to_dimension_numbers(
           eqn)
       weight_contract_dims = dimension_numbers[0][1]
@@ -260,10 +273,11 @@ class AttentionProjection(attentions.AttentionProjection):
           self.theta.w, contract_dims=weight_contract_dims)
       q_w = q_s * self.theta.w
       q_w = self.weight_quantizer.to_quant(q_w).astype(jnp.int8)
-      q_s = jnp.squeeze(q_s).astype(p.dtype)
+      q_s = jnp.squeeze(q_s).astype(self.dtype)
     else:
       raise ValueError(
-          f'Usupported quantization_type {p.quantization.quantization_type}')
+          f'Usupported quantization_type {self.quantization.quantization_type}'
+      )
 
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
@@ -281,27 +295,33 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
   def create_tensor_quantizer(self):
-    p = self.hparams
     self.create_child(
         'act_quantizer',
         aqt.TensorQuantizer.HParams(
             name='act_quantizer',
-            precision=p.quantization.act_params.precision
-            if p.quantization.act_params else None))
+            precision=self.quantization.act_params.precision
+            if self.quantization.act_params
+            else None,
+        ),
+    )
     self.create_child(
         'weight_quantizer',
         aqt.TensorQuantizer.HParams(
             name='weight_quantizer',
-            precision=p.quantization.weight_params.precision))
+            precision=self.quantization.weight_params.precision,
+        ),
+    )
 
   def setup(self) -> None:
-    p = self.hparams
-    wp = p.weight_split_dims_mapping
-    if p.mesh_shape is not None:
+    wp = self.weight_split_dims_mapping
+    if self.mesh_shape is not None:
       assert wp.wt is not None, ('Must provide sharding annotations for the '
                                  'weights if mesh shape is provided')
-      if (p.attention_combine_dims and isinstance(wp.wt, Sequence) and
-          len(wp.wt) == 3):
+      if (
+          self.attention_combine_dims
+          and isinstance(wp.wt, Sequence)
+          and len(wp.wt) == 3
+      ):
         wt = [axis for axis in wp.wt if axis is not None]
         assert len(wt) == 2, ('wp.wt only specifies the sharding for '
                               'the last two dims of the weight tensor.')
@@ -311,7 +331,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
         assert len(wt) == 3, ('wp.wt only specifies the sharding for '
                               'the last three dims of the weight tensor.')
       weight_split_dims_mapping = [None] + list(wt)
-      if p.attention_combine_dims:
+      if self.attention_combine_dims:
         bias_split_dims_mapping = [None, wt[1]]
       else:
         bias_split_dims_mapping = [None, wt[1], wt[2]]
@@ -319,33 +339,35 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       weight_split_dims_mapping = None
       bias_split_dims_mapping = None
 
-    if p.attention_combine_dims:
-      hd_shape = [p.num_heads * p.dim_per_head]
+    if self.attention_combine_dims:
+      hd_shape = [self.num_heads * self.dim_per_head]
     else:
-      hd_shape = [p.num_heads, p.dim_per_head]
+      hd_shape = [self.num_heads, self.dim_per_head]
 
-    pc_shape = [3, p.input_dim] + hd_shape
+    pc_shape = [3, self.input_dim] + hd_shape
     # Combined weight for q, k, v projections.
     pc = WeightHParams(
         shape=pc_shape,
-        init=p.params_init,
-        dtype=p.dtype,
-        mesh_shape=p.mesh_shape,
-        tensor_split_dims_mapping=weight_split_dims_mapping)
-    if p.quantization.mode == QuantizationMode.INFERENCE:
+        init=self.params_init,
+        dtype=self.dtype,
+        mesh_shape=self.mesh_shape,
+        tensor_split_dims_mapping=weight_split_dims_mapping,
+    )
+    if self.quantization.mode == QuantizationMode.INFERENCE:
       self.create_quantized_variable('w', pc, [3] + hd_shape)
     else:
       self.create_variable('w', pc)
-    if p.use_bias:
+    if self.use_bias:
       # Combined bias weight for q, k, v projections.
       pc_bias = WeightHParams(
           shape=[3] + hd_shape,
           init=WeightInit.Constant(0.0),
-          mesh_shape=p.mesh_shape,
-          tensor_split_dims_mapping=bias_split_dims_mapping)
+          mesh_shape=self.mesh_shape,
+          tensor_split_dims_mapping=bias_split_dims_mapping,
+      )
       self.create_variable('b', pc_bias)
 
-    if p.quantization.quantization_type == QuantizationType.AQT:
+    if self.quantization.quantization_type == QuantizationType.AQT:
       self.create_tensor_quantizer()
 
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
@@ -360,7 +382,6 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       The three projected JTensor with shape [..., num_heads, dim_per_head]
       in q_proj, k_proj and v_proj order.
     """
-    p = self.hparams
     theta = self.theta
 
     # Because tf.einsum is not fully optimized unless all the dimensions are
@@ -373,27 +394,27 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     rank = len(shape)
     assert rank > 0
 
-    assert shape[-1] == p.input_dim
+    assert shape[-1] == self.input_dim
     batch_dims_rank = rank - 1
     batch_eqn = eqn_sym[:batch_dims_rank] if rank else '...'
-    if p.attention_combine_dims:
-      pc_shape = [3, p.input_dim, p.num_heads, p.dim_per_head]
+    if self.attention_combine_dims:
+      pc_shape = [3, self.input_dim, self.num_heads, self.dim_per_head]
       w = jnp.reshape(theta.w, pc_shape)
-      if p.use_bias:
-        b_shape = [3, p.num_heads, p.dim_per_head]
+      if self.use_bias:
+        b_shape = [3, self.num_heads, self.dim_per_head]
         b = jnp.reshape(theta.b, b_shape)
     else:
       w = theta.w
-      if p.use_bias:
+      if self.use_bias:
         b = theta.b
 
     # K indexes qkv.
     eqn = f'{batch_eqn}D,KDNH->K{batch_eqn}NH'
     # TOOD(jihwanlee): Implement the inference logic that can be shared between
     # different quantization types.
-    if p.quantization.mode == QuantizationMode.INFERENCE:
+    if self.quantization.mode == QuantizationMode.INFERENCE:
       w, s = self.get_quantized_weight('w')
-      if p.quantization.quantization_type == QuantizationType.AQT:
+      if self.quantization.quantization_type == QuantizationType.AQT:
         dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
             eqn)
         ret = operations.dot_general(
@@ -405,13 +426,15 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             is_eval=True,
             perm=perm,
             rhs_quantized=(w, s))
-      elif p.quantization.quantization_type == QuantizationType.PTQ:
+      elif self.quantization.quantization_type == QuantizationType.PTQ:
         ret = operations.einsum(eqn, inputs, w, s)
       else:
         raise ValueError(
-            f'Usupported quantization_type {p.quantization.quantization_type}')
+            'Usupported quantization_type'
+            f' {self.quantization.quantization_type}'
+        )
     else:
-      if p.quantization.quantization_type == QuantizationType.AQT:
+      if self.quantization.quantization_type == QuantizationType.AQT:
         dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
             eqn)
         ret = operations.dot_general(
@@ -422,13 +445,15 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             dimension_numbers=dimension_numbers,
             is_eval=self.do_eval,
             perm=perm)
-      elif p.quantization.quantization_type == QuantizationType.PTQ:
+      elif self.quantization.quantization_type == QuantizationType.PTQ:
         ret = jnp.einsum(eqn, inputs, w)
       else:
         raise ValueError(
-            f'Usupported quantization_type {p.quantization.quantization_type}')
+            'Usupported quantization_type'
+            f' {self.quantization.quantization_type}'
+        )
     ret = checkpoint_name(ret, 'combined_qkv_proj')
-    if p.use_bias:
+    if self.use_bias:
       # Add newaxis to bias weight for each batch dim since ret is K...NH
       # and theta.b is KNH. Need to reshape theta.b to K...NH
       ret += jnp.expand_dims(b, list(range(1, batch_dims_rank + 1)))
@@ -445,12 +470,12 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     Returns:
       a map from names to partition spec.
     """
-    p = self.hparams
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     weight_pspec = base_layer._weight_hparam_to_pspec(
-        self._weight_hparams['w'], self.hparams.mesh_axis_names)
-    wp = p.weight_split_dims_mapping
-    if p.attention_combine_dims:
+        self._weight_hparams['w'], self.mesh_axis_names
+    )
+    wp = self.weight_split_dims_mapping
+    if self.attention_combine_dims:
       scale_split_dims_mapping = [None, wp.wt[1]]
     else:
       scale_split_dims_mapping = [None, wp.wt[1], wp.wt[2]]
@@ -458,7 +483,8 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     scale_weight_hparam = WeightHParams(
         shape=(), tensor_split_dims_mapping=scale_split_dims_mapping)
     scale_pspec = base_layer._weight_hparam_to_pspec(
-        scale_weight_hparam, self.hparams.mesh_axis_names)
+        scale_weight_hparam, self.mesh_axis_names
+    )
     partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
     return {base_layer.PARAMS: partitionspec}
 
@@ -469,12 +495,11 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       a map from names to quantized weights.
     """
     theta = self.theta
-    p = self.hparams
     eqn = 'AD,KDNH->KANH'
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
-    if p.quantization.quantization_type == QuantizationType.PTQ:
+    if self.quantization.quantization_type == QuantizationType.PTQ:
       q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
-    elif p.quantization.quantization_type == QuantizationType.AQT:
+    elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.convert_einsum_eqn_to_dimension_numbers(
           eqn)
       weight_contract_dims = dimension_numbers[0][1]
@@ -482,10 +507,11 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
           self.theta.w, contract_dims=weight_contract_dims)
       q_w = q_s * self.theta.w
       q_w = self.weight_quantizer.to_quant(q_w).astype(jnp.int8)
-      q_s = jnp.squeeze(q_s).astype(p.dtype)
+      q_s = jnp.squeeze(q_s).astype(self.dtype)
     else:
       raise ValueError(
-          f'Usupported quantization_type {p.quantization.quantization_type}')
+          f'Usupported quantization_type {self.quantization.quantization_type}'
+      )
 
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

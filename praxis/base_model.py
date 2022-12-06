@@ -153,9 +153,9 @@ class LegosModel(BaseModel):
   def setup(self) -> None:
     """Build the mixer from the collection of components."""
     # TODO(b/227407216): Check that this is robust enough and/or fix if needed.
-    for f in dataclasses.fields(self.hparams.components):
-      if hasattr(self.hparams.components, f.name):
-        self.create_child(f.name, getattr(self.hparams.components, f.name))
+    for f in dataclasses.fields(self.components):
+      if hasattr(self.components, f.name):
+        self.create_child(f.name, getattr(self.components, f.name))
 
   def get_model_params(self, name: str) -> BaseModel.HParams:
     raise NotImplementedError('Abstract method')

@@ -83,11 +83,13 @@ class FeedForwardQuant(base_layer.FiddleBaseLayer):
   output_dim: int = 0
 
   def setup(self):
-    p = self.hparams
     self.create_variable(
         'w',
         WeightHParams(
-            shape=[p.input_dim, p.output_dim], init=WeightInit.Gaussian(1.0)))
+            shape=[self.input_dim, self.output_dim],
+            init=WeightInit.Gaussian(1.0),
+        ),
+    )
 
   def __call__(self, inputs):
     return jnp.einsum('...y,yz->...z', inputs, self.theta.w)
@@ -106,13 +108,17 @@ class FeedForward(base_layer.FiddleBaseLayer):
   output_dim: int = 0
 
   def setup(self):
-    p = self.hparams
     self.create_variable(
         'w',
         WeightHParams(
-            shape=[p.input_dim, p.output_dim], init=WeightInit.Gaussian(1.0)))
+            shape=[self.input_dim, self.output_dim],
+            init=WeightInit.Gaussian(1.0),
+        ),
+    )
     self.create_variable(
-        'b', WeightHParams(shape=[p.output_dim], init=WeightInit.Gaussian(1.0)))
+        'b',
+        WeightHParams(shape=[self.output_dim], init=WeightInit.Gaussian(1.0)),
+    )
 
   def __call__(self, inputs):
     res = jnp.einsum('...y,yz->...z', inputs, self.theta.w)
@@ -124,13 +130,12 @@ class ParentLayer(base_layer.FiddleBaseLayer):
   ff2_tpl: LayerTpl = base_layer.sub_config_field(FeedForward.HParams)
 
   def setup(self):
-    p = self.hparams
     self.create_child(
-        'ff1',
-        p.ff1_tpl.clone().set(name='ff1', input_dim=3, output_dim=2))
+        'ff1', self.ff1_tpl.clone().set(name='ff1', input_dim=3, output_dim=2)
+    )
     self.create_child(
-        'ff2',
-        p.ff2_tpl.clone().set(name='ff2', input_dim=2, output_dim=3))
+        'ff2', self.ff2_tpl.clone().set(name='ff2', input_dim=2, output_dim=3)
+    )
 
   def __call__(self, inputs):
     return self.ff2(self.ff1(inputs))

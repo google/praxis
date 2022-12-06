@@ -41,30 +41,27 @@ class TensorQuantizer(base_layer.FiddleBaseLayer):
   precision: Optional[int] = None
 
   def setup(self):
-    p = self.hparams
-    assert p.precision is None or p.precision <= 23, (
-        'Too many bits, float32 has less precision.')
+    assert (
+        self.precision is None or self.precision <= 23
+    ), 'Too many bits, float32 has less precision.'
 
   def __call__(self):
     # Since TensorQuantizer does nothing when initialized, __call__ is a no-op.
     pass
 
   def _get_clip_bound(self) -> float:
-    p = self.hparams
-    bucket_count = 2**p.precision
+    bucket_count = 2**self.precision
     bucket_count -= 1
     return bucket_count / 2
 
   def _safe_clip_bound(self) -> float:
-    p = self.hparams
     cb_unsafe = self._get_clip_bound()
-    cb = cb_unsafe - 2.0**(-20 + p.precision)
+    cb = cb_unsafe - 2.0 ** (-20 + self.precision)
     assert cb < cb_unsafe, 'Internal error, epsilon too small.'
     return cb
 
   def get_quant_scale(self, sample, contract_dims) -> JTensor:
-    p = self.hparams
-    if p.precision is None:
+    if self.precision is None:
       return jnp.ones(shape=(1,) * sample.ndim)
 
     x_bound = jnp.max(
@@ -81,8 +78,7 @@ class TensorQuantizer(base_layer.FiddleBaseLayer):
     pass
 
   def to_quant(self, x: JTensor):
-    p = self.hparams
-    if p.precision is None:
+    if self.precision is None:
       return x
 
     clip_bound = self._safe_clip_bound()

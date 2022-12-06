@@ -49,10 +49,14 @@ class TestModel(base_model.BaseModel):
   batch_size: int = 0
 
   def setup(self) -> None:
-    p = self.hparams
     super().setup()
     logits_wp = base_layer.WeightHParams(
-        shape=[p.seq_len, p.batch_size * p.num_samples, p.vocab_size])
+        shape=[
+            self.seq_len,
+            self.batch_size * self.num_samples,
+            self.vocab_size,
+        ]
+    )
     self.create_variable('logits', logits_wp)
     self.next_token_sampler = base_layer.instantiate(
         TestNextTokenSampler.HParams())
@@ -63,11 +67,10 @@ class TestModel(base_model.BaseModel):
 
   # do something here
   def extend_step(self, ids, segment_pos):
-    p = self.hparams
-    assert segment_pos.shape == (p.batch_size *
-                                 p.num_samples,), (segment_pos.shape,
-                                                   (p.batch_size *
-                                                    p.num_samples,))
+    assert segment_pos.shape == (self.batch_size * self.num_samples,), (
+        segment_pos.shape,
+        (self.batch_size * self.num_samples,),
+    )
     time_step = segment_pos[0] + 1
     logits_at_t = self.theta.logits[time_step, :, :]
     self.add_summary('logits', logits_at_t)

@@ -100,13 +100,18 @@ class DotGeneral(base_layer.FiddleBaseLayer):
   rhs_prec: int = 8
 
   def setup(self):
-    p = self.hparams
     self.create_child(
         'lhs_quantizer',
-        aqt.TensorQuantizer.HParams(name='lhs_quantizer', precision=p.lhs_prec))
+        aqt.TensorQuantizer.HParams(
+            name='lhs_quantizer', precision=self.lhs_prec
+        ),
+    )
     self.create_child(
         'rhs_quantizer',
-        aqt.TensorQuantizer.HParams(name='rhs_quantizer', precision=p.rhs_prec))
+        aqt.TensorQuantizer.HParams(
+            name='rhs_quantizer', precision=self.rhs_prec
+        ),
+    )
 
   def __call__(self, lhs, rhs, is_eval=False):
     if not is_eval:
