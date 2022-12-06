@@ -1426,7 +1426,7 @@ class StackedTransformer(base_layer.FiddleBaseLayer):
     hidden_dims: The hidden layer dimension of FFN in Transformer layers.
     num_heads: Number of attention heads.
     dim_per_head: Dimension of each attention head. If None then dim_per_head ==
-      hidden_dim // num_heads.
+      model_dims // num_heads.
     dropout_prob: Apply dropout at this prob at various places.
     residual_droppath_prob: Probability at which we drop the entire residual
       path.
