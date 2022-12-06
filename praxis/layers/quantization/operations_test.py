@@ -108,14 +108,14 @@ class DotGeneral(base_layer.FiddleBaseLayer):
         'rhs_quantizer',
         aqt.TensorQuantizer.HParams(name='rhs_quantizer', precision=p.rhs_prec))
 
-  def __call__(self, lhs, rhs, train=True):
-    if train:
+  def __call__(self, lhs, rhs, is_eval=False):
+    if not is_eval:
       self.lhs_quantizer.update(lhs)
       self.rhs_quantizer.update(rhs)
 
     return lambda lhs, rhs, dimension_numbers: operations.dot_general(  # pylint: disable=g-long-lambda
         lhs, rhs, self.lhs_quantizer, self.rhs_quantizer, dimension_numbers,
-        train)
+        is_eval)
 
 
 def _generate_dimension_numbers() -> Sequence[Dict[str, Any]]:

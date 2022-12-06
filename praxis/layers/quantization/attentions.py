@@ -23,8 +23,10 @@ from jax.ad_checkpoint import checkpoint_name
 from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import attentions
+from praxis.layers.quantization import aqt
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import utils
 
 QuantizationHParams = quantization_hparams.QuantizationHParams
 QuantizationMode = quantization_hparams.QuantizationMode
@@ -46,6 +48,20 @@ class AttentionProjection(attentions.AttentionProjection):
       layer, such as dtype for the quantized weight.
   """
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+
+  def create_tensor_quantizer(self):
+    p = self.hparams
+    self.create_child(
+        'act_quantizer',
+        aqt.TensorQuantizer.HParams(
+            name='act_quantizer',
+            precision=p.quantization.act_params.precision
+            if p.quantization.act_params else None))
+    self.create_child(
+        'weight_quantizer',
+        aqt.TensorQuantizer.HParams(
+            name='weight_quantizer',
+            precision=p.quantization.weight_params.precision))
 
   def setup(self) -> None:
     p = self.hparams
@@ -104,6 +120,9 @@ class AttentionProjection(attentions.AttentionProjection):
             tensor_split_dims_mapping=bias_split_dims_mapping)
       self.create_variable('b', pc_bias)
 
+    if p.quantization.quantization_type == QuantizationType.AQT:
+      self.create_tensor_quantizer()
+
   def __call__(self, inputs: JTensor) -> JTensor:
     """Computes the multi headed projection for inputs.
 
@@ -155,11 +174,37 @@ class AttentionProjection(attentions.AttentionProjection):
       if p.quantization.quantization_type == QuantizationType.PTQ:
         ret = operations.einsum(eqn, inputs, w, s)
       elif p.quantization.quantization_type == QuantizationType.AQT:
-        raise NotImplementedError('AQT is not yet implemented')
-    else:
+        dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
+            eqn)
+        ret = operations.dot_general(
+            lhs=inputs,
+            rhs=None,
+            lhs_quantizer=self.act_quantizer,
+            rhs_quantizer=self.weight_quantizer,
+            dimension_numbers=dimension_numbers,
+            is_eval=True,
+            perm=perm,
+            rhs_quantized=(w, s))
+    elif p.quantization.mode == QuantizationMode.TRAINING or p.quantization.mode == QuantizationMode.MATERIALIZE:
       if p.quantization.quantization_type == QuantizationType.AQT:
-        raise NotImplementedError('AQT is not yet implemented')
-      ret = jnp.einsum(eqn, inputs, w)
+        dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
+            eqn)
+        ret = operations.dot_general(
+            lhs=inputs,
+            rhs=w,
+            lhs_quantizer=self.act_quantizer,
+            rhs_quantizer=self.weight_quantizer,
+            dimension_numbers=dimension_numbers,
+            is_eval=self.do_eval,
+            perm=perm)
+      elif p.quantization.quantization_type == QuantizationType.PTQ:
+        ret = jnp.einsum(eqn, inputs, w)
+      else:
+        raise ValueError(
+            f'Unsupported quantization_type {p.quantization.quantization_type}')
+    else:
+      raise ValueError(f'Unsupported quantization_mode {p.quantization.mode}')
+
     if p.use_bias:
       ret += theta.b
     return ret
@@ -194,19 +239,32 @@ class AttentionProjection(attentions.AttentionProjection):
       a map from names to quantized weights.
     """
     p = self.hparams
-    if p.quantization.quantization_type == QuantizationType.PTQ:
-      eqn = ''
-      # This matches the equantion logic in __call__ for weights.
-      if p.is_output_projection:
-        if p.use_nhd_shape:
-          eqn = 'ANH,NHD->AD'
-        else:
-          eqn = 'ANH,DNH->AD'
+    eqn = ''
+    # This matches the equantion logic in __call__ for weights.
+    if p.is_output_projection:
+      if p.use_nhd_shape:
+        eqn = 'ANH,NHD->AD'
       else:
-        eqn = 'AD,DNH->ANH'
+        eqn = 'ANH,DNH->AD'
+    else:
+      eqn = 'AD,DNH->ANH'
+
+    # TODO(jihwanlee): Handle the cases for FQ and static quantization.
+    if p.quantization.quantization_type == QuantizationType.PTQ:
       q_w, q_s = operations.reduce_einsum_weight_precision(eqn, self.theta.w)
     elif p.quantization.quantization_type == QuantizationType.AQT:
-      raise NotImplementedError('AQT quantization is not added yet')
+      dimension_numbers, _ = utils.convert_einsum_eqn_to_dimension_numbers(
+          eqn)
+      weight_contract_dims = dimension_numbers[0][1]
+      q_s = self.weight_quantizer.get_quant_scale(
+          self.theta.w, contract_dims=weight_contract_dims)
+      q_w = q_s * self.theta.w
+      q_w = self.weight_quantizer.to_quant(q_w).astype(jnp.int8)
+      q_s = jnp.squeeze(q_s).astype(p.dtype)
+    else:
+      raise ValueError(
+          f'Usupported quantization_type {p.quantization.quantization_type}')
+
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
 
@@ -221,6 +279,20 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       layer, such as dtype for the quantized weight.
   """
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+
+  def create_tensor_quantizer(self):
+    p = self.hparams
+    self.create_child(
+        'act_quantizer',
+        aqt.TensorQuantizer.HParams(
+            name='act_quantizer',
+            precision=p.quantization.act_params.precision
+            if p.quantization.act_params else None))
+    self.create_child(
+        'weight_quantizer',
+        aqt.TensorQuantizer.HParams(
+            name='weight_quantizer',
+            precision=p.quantization.weight_params.precision))
 
   def setup(self) -> None:
     p = self.hparams
@@ -273,6 +345,9 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
           tensor_split_dims_mapping=bias_split_dims_mapping)
       self.create_variable('b', pc_bias)
 
+    if p.quantization.quantization_type == QuantizationType.AQT:
+      self.create_tensor_quantizer()
+
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
   # attentions.
   def __call__(self, inputs: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
@@ -314,16 +389,44 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
 
     # K indexes qkv.
     eqn = f'{batch_eqn}D,KDNH->K{batch_eqn}NH'
+    # TOOD(jihwanlee): Implement the inference logic that can be shared between
+    # different quantization types.
     if p.quantization.mode == QuantizationMode.INFERENCE:
       w, s = self.get_quantized_weight('w')
-      if p.quantization.quantization_type == QuantizationType.PTQ:
+      if p.quantization.quantization_type == QuantizationType.AQT:
+        dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
+            eqn)
+        ret = operations.dot_general(
+            lhs=inputs,
+            rhs=None,
+            lhs_quantizer=self.act_quantizer,
+            rhs_quantizer=self.weight_quantizer,
+            dimension_numbers=dimension_numbers,
+            is_eval=True,
+            perm=perm,
+            rhs_quantized=(w, s))
+      elif p.quantization.quantization_type == QuantizationType.PTQ:
         ret = operations.einsum(eqn, inputs, w, s)
-      elif p.quantization.quantization_type == QuantizationType.AQT:
-        raise NotImplementedError('AQT is not yet implemented')
+      else:
+        raise ValueError(
+            f'Usupported quantization_type {p.quantization.quantization_type}')
     else:
       if p.quantization.quantization_type == QuantizationType.AQT:
-        raise NotImplementedError('AQT is not yet implemented')
-      ret = jnp.einsum(eqn, inputs, w)
+        dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
+            eqn)
+        ret = operations.dot_general(
+            lhs=inputs,
+            rhs=w,
+            lhs_quantizer=self.act_quantizer,
+            rhs_quantizer=self.weight_quantizer,
+            dimension_numbers=dimension_numbers,
+            is_eval=self.do_eval,
+            perm=perm)
+      elif p.quantization.quantization_type == QuantizationType.PTQ:
+        ret = jnp.einsum(eqn, inputs, w)
+      else:
+        raise ValueError(
+            f'Usupported quantization_type {p.quantization.quantization_type}')
     ret = checkpoint_name(ret, 'combined_qkv_proj')
     if p.use_bias:
       # Add newaxis to bias weight for each batch dim since ret is K...NH
@@ -367,10 +470,22 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     """
     theta = self.theta
     p = self.hparams
+    eqn = 'AD,KDNH->KANH'
+    # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if p.quantization.quantization_type == QuantizationType.PTQ:
-      eqn = 'AD,KDNH->KANH'
       q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
     elif p.quantization.quantization_type == QuantizationType.AQT:
-      raise NotImplementedError('AQT quantization is not added yet')
+      dimension_numbers, _ = utils.convert_einsum_eqn_to_dimension_numbers(
+          eqn)
+      weight_contract_dims = dimension_numbers[0][1]
+      q_s = self.weight_quantizer.get_quant_scale(
+          self.theta.w, contract_dims=weight_contract_dims)
+      q_w = q_s * self.theta.w
+      q_w = self.weight_quantizer.to_quant(q_w).astype(jnp.int8)
+      q_s = jnp.squeeze(q_s).astype(p.dtype)
+    else:
+      raise ValueError(
+          f'Usupported quantization_type {p.quantization.quantization_type}')
+
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

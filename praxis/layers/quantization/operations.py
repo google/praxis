@@ -16,7 +16,7 @@
 """Operations for quantization."""
 
 import functools
-from typing import List, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import jax
 from jax import lax
@@ -234,26 +234,66 @@ def _dot_general_aqt_jvp(
 
 def dot_general(
     lhs: JTensor,
-    rhs: JTensor,
+    rhs: Optional[JTensor],
     lhs_quantizer: aqt.TensorQuantizer,
     rhs_quantizer: aqt.TensorQuantizer,
     dimension_numbers: lax.DotDimensionNumbers,
-    train: bool
+    is_eval: bool,
+    perm: Optional[Sequence[int]] = None,
+    rhs_quantized: Optional[Tuple[JTensor, JTensor]] = None,
 ) -> JTensor:
-  """Quantized lax.dot_general."""
-  if train:
-    lhs_quantizer.update(lhs)
-    rhs_quantizer.update(rhs)
+  """Quantized jax.lax.dot_general.
+
+  Args:
+    lhs: Left-hand side of the dot_general.
+    rhs: Right-hand side of the dot_general.
+    lhs_quantizer: The tensor quantizer for lhs.
+    rhs_quantizer: The tensor quantizer for rhs.
+    dimension_numbers: a tuple of tuples of the form `((lhs_contracting_dims,
+      rhs_contracting_dims), (lhs_batch_dims, rhs_batch_dims))`
+    is_eval: If False, update the statistics in the tensor quantizers based on
+      lhs and rhs.
+    perm: Permutation of the desired axes of the output. For some einsum
+      equations, it is not possible to obtain their corresponding
+      dimension_numbers that yield the same results using dot_general. If it is
+      possible with a proper transposition, then one should pass a list of
+      dimenions to permute. This should be None if transposition is not needed.
+    rhs_quantized: A pair of quantized rhs and its scale. It should exist only
+      in the inference mode and both rhs and rhs_quantized cannot be passed
+      together.
+
+  Returns:
+    An array containing the result with the same dtype as 'lhs' and 'rhs'.
+  """
+  assert ((rhs is None and rhs_quantized is not None) or
+          (rhs is not None and rhs_quantized is None))
+
+  if not is_eval:
+    # TODO(jihwanlee): Stats should be updated during training.
+    pass
 
   lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
+
   lhs_scale = lhs_quantizer.get_quant_scale(lhs, lhs_contract_dims)
-  rhs_scale = rhs_quantizer.get_quant_scale(rhs, rhs_contract_dims)
-
   lhs = lhs_scale * lhs
-  rhs = rhs_scale * rhs
-
   lhs = lhs_quantizer.to_quant(lhs)
-  rhs = rhs_quantizer.to_quant(rhs)
+
+  if rhs_quantized is None:
+    rhs_scale = rhs_quantizer.get_quant_scale(rhs, rhs_contract_dims)
+    rhs = rhs_scale * rhs
+    rhs = rhs_quantizer.to_quant(rhs)
+  elif rhs is None:
+    assert is_eval, 'Expected inference when rhs_quantized is passed.'
+    # If rhs_quantized is passed, then it means the rhs is already quantized and
+    # its scale is provided. Thus, no need to get scale and quantize rhs again.
+    rhs, rhs_scale = rhs_quantized
+    # Make sure lhs and rhs have the same dtype.
+    rhs = rhs.astype(lhs.dtype)
+    rhs_scale = rhs_scale.astype(lhs_scale.dtype)
+    # Restore the contracting dimension.
+    rhs_scale = jnp.expand_dims(rhs_scale, axis=rhs_contract_dims)
+  else:
+    raise ValueError('Cannot reach here.')
 
   should_int8_quantize = (
       lhs_quantizer.hparams.precision is not None and
@@ -265,6 +305,13 @@ def dot_general(
       dimension_numbers=dimension_numbers,
       should_int8_quantize=should_int8_quantize)
 
-  inv_scale = 1 / (lhs_scale * rhs_scale)
+  inv_scale = lax.dot_general(
+      1 / lhs_scale, 1 / rhs_scale, dimension_numbers=dimension_numbers)
+
+  if perm is not None:
+    assert len(perm) == len(out.shape)
+    out = lax.transpose(out, perm)
+    inv_scale = lax.transpose(inv_scale, perm)
+
   return out * inv_scale
 

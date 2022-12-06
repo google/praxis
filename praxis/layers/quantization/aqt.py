@@ -66,7 +66,7 @@ class TensorQuantizer(base_layer.FiddleBaseLayer):
   def get_quant_scale(self, sample, contract_dims) -> JTensor:
     p = self.hparams
     if p.precision is None:
-      return jnp.array(1.0)
+      return jnp.ones(shape=(1,) * sample.ndim)
 
     x_bound = jnp.max(
         jnp.abs(sample),

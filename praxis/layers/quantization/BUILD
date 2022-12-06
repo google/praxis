@@ -40,8 +40,10 @@ pytype_strict_library(
     srcs = ["attentions.py"],
     srcs_version = "PY3",
     deps = [
+        ":aqt",
         ":operations",
         ":quantization_hparams",
+        ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pytypes",
@@ -194,5 +196,28 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         "//praxis:base_hyperparams",
+    ],
+)
+
+pytype_strict_library(
+    name = "utils",
+    srcs = ["utils.py"],
+    srcs_version = "PY3",
+    deps = [
+        # Implicit jax dependency.
+    ],
+)
+
+py_strict_test(
+    name = "utils_test",
+    srcs = ["utils_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":utils",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        "//praxis:test_utils",
     ],
 )

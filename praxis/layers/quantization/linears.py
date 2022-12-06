@@ -78,13 +78,12 @@ class Linear(linears.Linear):
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
         # Additionally add mutable tensor to record activation range.
-      if p.quantization.quantization_type == QuantizationType.AQT:
-        self.create_tensor_quantizers()
       self.create_variable('w', pc)
     else:
-      if p.quantization.quantization_type == QuantizationType.AQT:
-        self.create_tensor_quantizers()
       self.create_variable('w', pc)
+
+    if p.quantization.quantization_type == QuantizationType.AQT:
+      self.create_tensor_quantizers()
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Apply projection to inputs.
@@ -98,19 +97,32 @@ class Linear(linears.Linear):
     p = self.hparams
     ap = p.activation_split_dims_mapping
     eqn = '...y,yz->...z'
+    # TOOD(jihwanlee): Implement the inference logic that can be shared between
+    # different quantization types.
     if p.quantization.mode == QuantizationMode.INFERENCE:
       # PTQ, QAT has the same inference graph, only difference is on activation.
       # No matter which quantization type is used, the weight and scale
       # dimensions are the same for all types.
       w, s = self.get_quantized_weight('w')
-      if p.quantization.act_params is not None and p.quantization.act_params.stats_config is not None:
-        raise NotImplementedError(
-            'Static activation quantization is not supported yet.')
-      elif p.quantization.act_params is not None and p.quantization.act_params.stats_config is None:
-        inputs, act_scale = operations.reduce_precision_activation(inputs)
-        out = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
-      elif p.quantization.act_params is None:
-        out = operations.einsum(eqn, inputs, w, s)
+      if p.quantization.quantization_type == QuantizationType.AQT:
+        dimension_numbers = (((len(inputs.shape) - 1,), (0,)), ((), ()))
+        out = operations.dot_general(
+            lhs=inputs,
+            rhs=None,
+            lhs_quantizer=self.act_quantizer,
+            rhs_quantizer=self.weight_quantizer,
+            dimension_numbers=dimension_numbers,
+            is_eval=True,
+            rhs_quantized=(w, s))
+      else:
+        if p.quantization.act_params is not None and p.quantization.act_params.stats_config is not None:
+          raise NotImplementedError(
+              'Static activation quantization is not supported yet.')
+        elif p.quantization.act_params is not None and p.quantization.act_params.stats_config is None:
+          inputs, act_scale = operations.reduce_precision_activation(inputs)
+          out = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
+        elif p.quantization.act_params is None:
+          out = operations.einsum(eqn, inputs, w, s)
     else:
       w = self.theta.w
       if p.quantization.quantization_type == QuantizationType.AQT:
@@ -121,7 +133,7 @@ class Linear(linears.Linear):
             lhs_quantizer=self.act_quantizer,
             rhs_quantizer=self.weight_quantizer,
             dimension_numbers=dimension_numbers,
-            train=not self.do_eval)
+            is_eval=self.do_eval)
       elif p.quantization.quantization_type == QuantizationType.FQ:
         inputs = operations.fakequant_activation(inputs)
         w = operations.fakequant_einsum(eqn, w)
