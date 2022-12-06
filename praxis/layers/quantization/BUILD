@@ -119,6 +119,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":aqt",
+        ":optimization",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -162,6 +163,31 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers:repeats",
+    ],
+)
+
+pytype_strict_library(
+    name = "optimization",
+    srcs = ["optimization.py"],
+    srcs_version = "PY3",
+    deps = [
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:pytypes",
+    ],
+)
+
+py_strict_test(
+    name = "optimization_test",
+    srcs = ["optimization_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":optimization",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:test_utils",
     ],
 )
 

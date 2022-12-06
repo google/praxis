@@ -23,6 +23,7 @@ from jax import lax
 from jax import numpy as jnp
 from praxis import pytypes
 from praxis.layers.quantization import aqt
+from praxis.layers.quantization import optimization
 
 JTensor = pytypes.JTensor
 
@@ -85,13 +86,49 @@ def _round_with_gradient(x):
   return zero + jax.lax.stop_gradient(jnp.round(x))
 
 
+def reduce_precision(
+    t: JTensor,
+    bound: JTensor,
+    need_gradient: bool = False,
+    optimization_on_bound: bool = False,
+) -> Tuple[JTensor, JTensor]:
+  """Reduce the precision of a tensor.
+
+  Generic for all tensors.
+
+  TODO(jianlijianli): support lower bits.
+
+  Args:
+    t: input tensor
+    bound: the bound value for the tensor.
+    need_gradient: if gradient is needed out of this function.
+    optimization_on_bound: if MAE bound optimizer is used.
+
+  Returns:
+    the quantized tensor.
+    the quantization scale.
+  """
+  if optimization_on_bound:
+    bound = optimization.get_best_bound(t, bound)
+  scale = bound / 127.0
+  t = jnp.divide(t, scale)
+  if need_gradient:
+    t = _round_with_gradient(t)
+    t = jnp.clip(t, -128.0, 127.0)
+  else:
+    t = jnp.round(t)
+    t = jnp.clip(t, -128.0, 127.0).astype(jnp.int8)
+  return t, scale
+
+
 def reduce_einsum_weight_precision(
     eqn: str,
     t: JTensor,
     calculation_type: jnp.dtype = jnp.bfloat16,
-    output_type: jnp.dtype = jnp.bfloat16,
     squeeze: bool = True,
-    need_gradient=False) -> Tuple[JTensor, JTensor]:
+    need_gradient: bool = False,
+    optimization_on_bound: bool = False,
+) -> Tuple[JTensor, JTensor]:
   """Reduce the precision of the weight of einsum.
 
   It uses per-channel quantization so einsum equantion is passed in as well.
@@ -100,9 +137,9 @@ def reduce_einsum_weight_precision(
     eqn: the equation for the einsum.
     t: the weight tensor for the einsum.
     calculation_type: the type for calculation.
-    output_type: the output type of scale.
     squeeze: if the output scale is squeezed.
     need_gradient: if gradient is needed out of this function.
+    optimization_on_bound: if MAE bound optimizer is used.
 
   Returns:
     A tuple of JTensors. The first one is the quantized weight and the second
@@ -119,15 +156,10 @@ def reduce_einsum_weight_precision(
   bound = jnp.maximum(
       jnp.abs(jnp.max(t, axis=contract_dims, keepdims=True)),
       jnp.abs(jnp.min(t, axis=contract_dims, keepdims=True)))
-  scale = bound / 127.0
-  t = jnp.divide(t, scale)
-  if need_gradient:
-    t = _round_with_gradient(t)
-  else:
-    t = jnp.round(t)
-  t = jnp.clip(t, -128.0, 127.0).astype(jnp.int8)
+
+  t, scale = reduce_precision(t, bound, need_gradient, optimization_on_bound)
   if squeeze:
-    scale = jnp.squeeze(scale).astype(output_type)
+    scale = jnp.squeeze(scale)
   return t, scale
 
 
@@ -143,11 +175,12 @@ def fakequant_einsum(eqn: str, t: JTensor) -> JTensor:
   """
   q, scale = reduce_einsum_weight_precision(
       eqn, t, squeeze=False, need_gradient=True)
-  return jnp.multiply(q, scale).astype(jnp.float32).astype(t.dtype)
+  return jnp.multiply(q, scale).astype(t.dtype)
 
 
-def reduce_precision_activation(t: JTensor,
-                                need_gradient=False) -> Tuple[JTensor, JTensor]:
+def reduce_precision_activation(
+    t: JTensor, need_gradient: bool = False
+) -> Tuple[JTensor, JTensor]:
   """Reduce the precision of activation.
 
   Args:
@@ -161,14 +194,7 @@ def reduce_precision_activation(t: JTensor,
   # TODO(jianlijianli): enable zero point as well.
   bound = jnp.maximum(
       jnp.abs(jnp.max(t, keepdims=True)), jnp.abs(jnp.min(t, keepdims=True)))
-  scale = bound / 127.0
-  t = jnp.divide(t, scale)
-  if need_gradient:
-    t = _round_with_gradient(t)
-  else:
-    t = jnp.round(t)
-  t = jnp.clip(t, -128.0, 127.0).astype(jnp.int8)
-  return t, scale
+  return reduce_precision(t, bound, need_gradient, False)
 
 
 def fakequant_activation(t: JTensor) -> JTensor:
@@ -314,4 +340,3 @@ def dot_general(
     inv_scale = lax.transpose(inv_scale, perm)
 
   return out * inv_scale
-
