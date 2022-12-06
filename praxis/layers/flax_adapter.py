@@ -55,14 +55,14 @@ class FlaxModuleAdapterBase(base_layer.FiddleBaseLayer, metaclass=abc.ABCMeta):
     """Builds the Flax module to be wrapped by this layer."""
     pass
 
-  def __call__(self, *args, **kwargs):
+  def _call_with_boxed_params_init(self, unbound_method, *args, **kwargs):
     p = self.hparams
 
     def call_fn(module, *args, **kwargs):
       # axis_rules context manager is used to map activation sharding logical
       # axes to mesh axes names that pjit expects.
       with flax_partitioning.axis_rules(p.logical_axes_rules):
-        return module.__call__(*args, **kwargs)
+        return unbound_method(module, *args, **kwargs)
 
     if not self.is_initializing():
       return call_fn(self.cld, *args, **kwargs)
@@ -89,6 +89,13 @@ class FlaxModuleAdapterBase(base_layer.FiddleBaseLayer, metaclass=abc.ABCMeta):
     # Call the final mapped_fn.
     return mapped_fn(self.cld, *args, **kwargs)
 
+  def __call__(self, *args, **kwargs):
+    # Note that `__func__` retrieves the unbound method that takes module as
+    # the first argument.
+    return self._call_with_boxed_params_init(
+        self.cld.__call__.__func__, *args, **kwargs  # pytype: disable=attribute-error
+    )
+
 
 class FlaxModuleAdapter(FlaxModuleAdapterBase):
   """Adapts an nn.Module built from a factory function.
@@ -109,22 +116,19 @@ class EncoderDecoderFlaxModuleAdaptor(FlaxModuleAdapter):
   """Similar to FlaxModuleAdapter, but it also have encode/decode methods."""
 
   def encode(self, *args, **kwargs):
-    # axis_rules context manager is used to map activation sharding logical
-    # axes to mesh axes names that pjit expects.
-    with flax_partitioning.axis_rules(self.hparams.logical_axes_rules):
-      return self.cld.encode(*args, **kwargs)
+    return self._call_with_boxed_params_init(
+        self.cld.encode.__func__, *args, **kwargs  # pytype: disable=attribute-error
+    )
 
   def decode(self, *args, **kwargs):
-    # axis_rules context manager is used to map activation sharding logical
-    # axes to mesh axes names that pjit expects.
-    with flax_partitioning.axis_rules(self.hparams.logical_axes_rules):
-      return self.cld.decode(*args, **kwargs)
+    return self._call_with_boxed_params_init(
+        self.cld.decode.__func__, *args, **kwargs  # pytype: disable=attribute-error
+    )
 
   def compute_logits(self, *args, **kwargs):
-    # axis_rules context manager is used to map activation sharding logical
-    # axes to mesh axes names that pjit expects.
-    with flax_partitioning.axis_rules(self.hparams.logical_axes_rules):
-      return self.cld.compute_logits(*args, **kwargs)
+    return self._call_with_boxed_params_init(
+        self.cld.compute_logits.__func__, *args, **kwargs  # pytype: disable=attribute-error
+    )
 
 
 # TODO(austinwaters): verify that post_init_hparams does something reasonable
