@@ -26,7 +26,6 @@ from absl import flags
 from absl import logging
 import flax
 import jax
-from jax import sharding
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental import maps
 from jax.experimental import mesh_utils
@@ -352,7 +351,7 @@ def create_gda(host_arrays: Union[np.ndarray, Any],
     if jax.config.jax_array:
       # This is cached because creating new sharding objects everytime is
       # expensive in pjit dispatch path for inputs.
-      s = cached_mesh_pspec_sharding(global_mesh, pspec)
+      s = jax.sharding.NamedSharding(global_mesh, pspec)
       return jax.make_array_from_single_device_arrays(global_shape.shape, s,
                                                       dbs)
     else:
@@ -360,11 +359,6 @@ def create_gda(host_arrays: Union[np.ndarray, Any],
                                        dbs)
 
   return jax.tree_map(_gda_or_jax_array, global_shapes, pspecs, device_buffers)
-
-
-@functools.lru_cache()
-def cached_mesh_pspec_sharding(mesh, pspec):
-  return sharding.NamedSharding(mesh, pspec)
 
 
 # TODO(b/248152817): Delete this function when jax.Array is enabled globally.
@@ -429,7 +423,7 @@ def convert_fully_replicated_array_to_pmap_array(arr):
         local_shape[0], local_shape[0], 1, None, sharded_aval, 0)
     device_buffers = arr.device_buffers  # pytype: disable=attribute-error
     devices = np.array([d.device() for d in device_buffers])
-    s = sharding.PmapSharding(devices, sharding_spec)
+    s = jax.sharding.PmapSharding(devices, sharding_spec)
     return jax.make_array_from_single_device_arrays(local_shape, s,
                                                     device_buffers)
 
@@ -457,7 +451,8 @@ def convert_host_local_array_to_global_array(arr):
   # pmap-produced Array has a "scrambled" device order.
   dbs = sorted(arr.device_buffers, key=lambda x: x.device().id)
   return jax.make_array_from_single_device_arrays(
-      global_shape, cached_mesh_pspec_sharding(mesh, partition_spec), dbs)
+      global_shape, jax.sharding.NamedSharding(mesh, partition_spec), dbs
+  )
 
 
 def get_global_input_shape_dtype(x: jnp.ndarray) -> jax.ShapeDtypeStruct:
