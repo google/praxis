@@ -37,8 +37,10 @@ SUMMARIES = base_layer.SUMMARIES
 
 class TestNextTokenSampler(sample_decode.BaseNextTokenSampler):
 
-  def __call__(self, mdl, logits, temperature, decode_loop_state):
-    del mdl, logits, temperature, decode_loop_state
+  def __call__(
+      self, mdl, logits, temperature, decode_loop_state, per_example_top_p
+  ):
+    del mdl, logits, temperature, decode_loop_state, per_example_top_p
     return jnp.array([1234, 2345])
 
 

@@ -479,11 +479,12 @@ class LanguageModel(base_model.BaseModel):
       else:
         temperature = self.decoder_tpl.temperature
 
-      # Fetch dynamic per_example_max_decode_steps from input_batch if the
+      # Fetch dynamic per params from input_batch if the
       # input_batch has this information.
       per_example_max_decode_steps = getattr(input_batch,
                                              'per_example_max_decode_steps',
                                              None)
+      per_example_top_p = getattr(input_batch, 'per_example_top_p', None)
 
       result = sample_decode.sample_decode(
           self,
@@ -499,6 +500,7 @@ class LanguageModel(base_model.BaseModel):
           num_samples=self.decoder_tpl.num_samples,
           fprop_for_prefix=self.decoder_tpl.fprop_for_prefix,
           temperature=temperature,
+          per_example_top_p=per_example_top_p,
           max_prefix_len=max_prefix_len,
           max_decode_steps=self.decoder_tpl.max_decode_steps,
           per_example_max_decode_steps=per_example_max_decode_steps,

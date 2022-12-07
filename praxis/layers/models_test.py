@@ -765,6 +765,9 @@ class LanguageModelTest(test_utils.TestCase):
       # Test if JTensor type temperature could work.
       input_batch['temperature'] = jnp.array([0.5, 0.5, 0.5], dtype=jnp.float32)
       input_batch['stop_decode_steps'] = jnp.array([4, 4, 3], dtype=jnp.int32)
+      input_batch['per_example_top_p'] = jnp.array(
+          [0.9, 0.9, 0.9], dtype=jnp.float32
+      )
 
     results = self._run_decode(p, sample_logits, input_batch)
 

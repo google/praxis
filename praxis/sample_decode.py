@@ -304,15 +304,26 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
     top_p: Optional[Union[float, JTensor]] = None
     epsilon_p: float = 0.
 
-  def __call__(self, model: base_layer.BaseLayerApi, logits: JTensor,
-               temperature: Union[float, JTensor],
-               decode_loop_state: NestedMap) -> JTensor:
+  def __call__(
+      self,
+      model: base_layer.BaseLayerApi,
+      logits: JTensor,
+      temperature: Union[float, JTensor],
+      decode_loop_state: NestedMap,
+      per_example_top_p: Optional[JTensor] = None,
+  ) -> JTensor:
     """The default sampling logic implementing top-K and top-P sampling."""
     del decode_loop_state
     p = self.hparams
 
-    if p.top_p is not None:
-      logits = top_p_mask_logits(logits, p.top_p)
+    top_p = (
+        per_example_top_p
+        if per_example_top_p is not None
+        else getattr(p, 'top_p', None)
+    )
+    if top_p is not None:
+      logits = top_p_mask_logits(logits, top_p)
+
     if p.epsilon_p > 0.:
       logits = epsilon_mask_logits(logits, p.epsilon_p)
     if p.top_k > 1:
@@ -330,27 +341,29 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
 
 
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
-def sample_decode(model: base_layer.BaseLayerApi,
-                  extend_step_fn: decoder_utils.ExtendStepFn,
-                  transform_state_fn: Optional[decoder_utils.TransformStateFn],
-                  lazy_broadcast_prefix_fn: Optional[
-                      decoder_utils.LazyBroadcastPrefixFn],
-                  next_token_sampler: base_layer.BaseLayerApi,
-                  target_prefix_ids: JTensor,
-                  target_prefix_paddings: JTensor,
-                  seq_len: int,
-                  num_samples: int,
-                  cf_guidance_scale: Optional[Union[List[float], float]] = None,
-                  fprop_for_prefix: bool = False,
-                  temperature: Union[float, JTensor] = 1.0,
-                  max_prefix_len: Optional[int] = None,
-                  max_decode_steps: Optional[int] = None,
-                  per_example_max_decode_steps: Optional[JTensor] = None,
-                  prefix_lengths: Optional[JTensor] = None,
-                  eos_id: Optional[int] = None,
-                  return_result_for_suffix_score: bool = False,
-                  sort_samples: bool = True,
-                  early_exit=True) -> NestedMap:
+def sample_decode(
+    model: base_layer.BaseLayerApi,
+    extend_step_fn: decoder_utils.ExtendStepFn,
+    transform_state_fn: Optional[decoder_utils.TransformStateFn],
+    lazy_broadcast_prefix_fn: Optional[decoder_utils.LazyBroadcastPrefixFn],
+    next_token_sampler: base_layer.BaseLayerApi,
+    target_prefix_ids: JTensor,
+    target_prefix_paddings: JTensor,
+    seq_len: int,
+    num_samples: int,
+    cf_guidance_scale: Optional[Union[List[float], float]] = None,
+    fprop_for_prefix: bool = False,
+    temperature: Union[float, JTensor] = 1.0,
+    per_example_top_p: Optional[JTensor] = None,
+    max_prefix_len: Optional[int] = None,
+    max_decode_steps: Optional[int] = None,
+    per_example_max_decode_steps: Optional[JTensor] = None,
+    prefix_lengths: Optional[JTensor] = None,
+    eos_id: Optional[int] = None,
+    return_result_for_suffix_score: bool = False,
+    sort_samples: bool = True,
+    early_exit=True,
+) -> NestedMap:
   """Sampling decode the input batch.
 
   Top-K sampling with num_samples for each batch, in which the K most likely
@@ -379,13 +392,15 @@ def sample_decode(model: base_layer.BaseLayerApi,
     num_samples: Number of samples.
     cf_guidance_scale: If not 1.0, apply classifier-free guidance for
       conditioned generation assuming the inputs are with [cond_a, uncond_a,
-      cond_b, uncond_b, ...]. Before sampling, we modify logits as
-      logits = uncond_logits + cf_guidance_scale * (cond_logits - uncond_logits)
-      while after sampling, we force align sampled token ids of conditioned and
+      cond_b, uncond_b, ...]. Before sampling, we modify logits as logits =
+      uncond_logits + cf_guidance_scale * (cond_logits - uncond_logits) while
+      after sampling, we force align sampled token ids of conditioned and
       unconditioned branch.
     fprop_for_prefix: Use one fprop for prefix.
-    temperature: Temperature of sampling decoding. It could be a float or
-      a JTensor of shape [B].
+    temperature: Temperature of sampling decoding. It could be a float or a
+      JTensor of shape [B].
+    per_example_top_p: Per example top_p of sampling decoding. Optional JTensor
+      of shape [B].
     max_prefix_len: Python int or None, the max prefix length for decoding.
     max_decode_steps: Python int or None, the max decode step to run after the
       prefix (if any). Since the prefixes might be of unequal lengths, this
@@ -452,6 +467,11 @@ def sample_decode(model: base_layer.BaseLayerApi,
           per_example_max_decode_steps.astype(jnp.int32),
           'per_example_max_decode_steps')
 
+    if per_example_top_p is not None:
+      per_example_top_p = _broadcast_input(
+          per_example_top_p, 'per_example_top_p'
+      )
+
     if lazy_broadcast_prefix_fn is not None:
       assert fprop_for_prefix
 
@@ -475,6 +495,9 @@ def sample_decode(model: base_layer.BaseLayerApi,
 
   if isinstance(temperature, JTensor):
     temperature = temperature[:, jnp.newaxis]
+
+  if isinstance(per_example_top_p, JTensor):
+    per_example_top_p = per_example_top_p[:, jnp.newaxis]
 
   if seq_len <= 0:
     raise ValueError('The sequence length for decoding must be > 0, '
@@ -537,7 +560,13 @@ def sample_decode(model: base_layer.BaseLayerApi,
       uncond_logits = logits_split[:, num_samples:]
       logits = uncond_logits + cf_guidance_scale * (cond_logits - uncond_logits)
       logits = jnp.reshape(logits, (-1,) + logits.shape[2:])
-    new_ids = next_token_sampler(model, logits, temperature, val)
+    new_ids = next_token_sampler(
+        model,
+        logits,
+        temperature,
+        val,
+        per_example_top_p=per_example_top_p,
+    )
     assert new_ids.shape == (logits.shape[0],)
     assert new_ids.dtype == jnp.int32
 
@@ -660,7 +689,6 @@ def sample_decode(model: base_layer.BaseLayerApi,
     if model.is_mutable_collection(base_layer.SUMMARIES):
       # recursively merge two dictionaries.
       reinsert_collection(model, base_layer.SUMMARIES, model_summaries_copy)
-
 
   del result.segment_pos
 
