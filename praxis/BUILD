@@ -297,6 +297,7 @@ pytype_strict_library(
     name = "sgf",
     srcs = ["sgf.py"],
     srcs_version = "PY3",
+    # Internal to be deprecated visibility
     deps = [
         ":base_hyperparams",
         ":py_utils",
