@@ -62,6 +62,8 @@ BaseHyperParams = base_hyperparams.BaseHyperParams
 BaseParameterizable = base_hyperparams.BaseParameterizable
 InstantiableHyperParams = base_hyperparams.InstantiableHyperParams
 sub_config_field = base_hyperparams.sub_config_field
+template_field = pax_fiddle.template_field
+instance_field = pax_fiddle.instance_field
 
 Nested = pytypes.Nested
 NestedJTensor = pytypes.NestedJTensor
@@ -1141,11 +1143,11 @@ class BaseLayerApi(nn.Module):
   def _copy_base_params_to_fdl_config(source: Union[BaseLayer.HParams,
                                                     pax_fiddle.Config],
                                       target: pax_fiddle.Config):
-    # TODO(edloper): Once we start using `pax_fiddle.sub_field`, we will also
-    # need to copy base hparams to child objects in `pax_fiddle.build` (because
-    # create_child won't get called for those sub-fields).  But we *also* need
-    # to copy base hparams here -- e.g. to handle the case where a (non-fiddle)
-    # BaseLayer's child is a FiddleBaseLayer.
+    # TODO(edloper): Once we start using `base_layer.instance_field`, we will
+    # also need to copy base hparams to child objects in `pax_fiddle.build`
+    # (because create_child won't get called for those sub-fields).  But we
+    # *also* need to copy base hparams here -- e.g. to handle the case where a
+    # (non-fiddle) BaseLayer's child is a FiddleBaseLayer.
 
     # We copy from parent to child, then from child to grandchild, etc.  This
     # stack keeps track of the ancestors of `value` in `visit` (defined below).
@@ -2062,7 +2064,7 @@ class _FiddleHParamsClassStub(type,
             issubclass(fdl.get_callable(instance), cls.fiddle_base_layer_cls))
 
   def __to_sub_config_field__(cls):
-    return pax_fiddle.template_field(cls.fiddle_base_layer_cls)
+    return template_field(cls.fiddle_base_layer_cls)
 
   def __call__(cls, *args, **kwargs):
     return pax_fiddle.Config(cls.fiddle_base_layer_cls, *args, **kwargs)
@@ -2176,19 +2178,19 @@ class FiddleBaseLayer(BaseLayerApi):
   # The following configuration fields correspond 1:1 with BaseLayer.HParams.
   dtype: jnp.dtype = jnp.float32
   fprop_dtype: Optional[Any] = None
-  params_init: WeightInit = pax_fiddle.sub_field(default_param_init)
+  params_init: WeightInit = instance_field(default_param_init)
   skip_lp_regularization: Optional[bool] = None
   ici_mesh_shape: Optional[Sequence[int]] = None
   dcn_mesh_shape: Optional[Sequence[int]] = None
   mesh_axis_names: Optional[Sequence[str]] = None
   shared_weight_layer_id: Optional[str] = None
-  # TODO(b/249483164): Change these to use sub_field rather than template_field
+  # TODO(b/249483164): Change these to use instance_field rather than template_field
   # after the Fiddle migration.
   weight_split_dims_mapping: pax_fiddle.Config[WeightShardingHParams] = (
-      pax_fiddle.template_field(WeightShardingHParams))
+      template_field(WeightShardingHParams))
   activation_split_dims_mapping: pax_fiddle.Config[
       ActivationShardingHParams] = (
-          pax_fiddle.template_field(ActivationShardingHParams))
+          template_field(ActivationShardingHParams))
 
   @property
   def mesh_shape(self):
@@ -2270,11 +2272,11 @@ class FiddleBaseLayer(BaseLayerApi):
             'FiddleBaseLayer.WeightShardingHParams')
       if not typing.TYPE_CHECKING:
         dataclasses.dataclass(frozen=True)(cls.WeightShardingHParams)
-      # TODO(b/249483164): Change this to use sub_field rather than
+      # TODO(b/249483164): Change this to use instance_field rather than
       # template_field after the Fiddle migration.
       cls.__annotations__['weight_split_dims_mapping'] = (
           pax_fiddle.Config[cls.WeightShardingHParams])
-      cls.weight_split_dims_mapping = pax_fiddle.template_field(
+      cls.weight_split_dims_mapping = template_field(
           cls.WeightShardingHParams)
     if 'ActivationShardingHParams' in cls.__dict__:
       if not issubclass(cls.ActivationShardingHParams,
@@ -2284,11 +2286,11 @@ class FiddleBaseLayer(BaseLayerApi):
             'FiddleBaseLayer.ActivationShardingHParams')
       if not typing.TYPE_CHECKING:
         dataclasses.dataclass(frozen=True)(cls.ActivationShardingHParams)
-      # TODO(b/249483164): Change this to use sub_field rather than
+      # TODO(b/249483164): Change this to use instance_field rather than
       # template_field after the Fiddle migration.
       cls.__annotations__['activation_split_dims_mapping'] = (
           pax_fiddle.Config[cls.ActivationShardingHParams])
-      cls.activation_split_dims_mapping = pax_fiddle.template_field(
+      cls.activation_split_dims_mapping = template_field(
           cls.ActivationShardingHParams)
 
 

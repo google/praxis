@@ -474,7 +474,7 @@ class LanguageModel(base_model.BaseModel):
   z_loss: float = 0.0001
   logical_axes_rules: Optional[LogicalAxisRules] = None
   decoding_fn: Optional[Callable[..., Any]] = t5x_decoding.temperature_sample
-  decoder_tpl: DecoderHParams = pax_fiddle.sub_field(GreedyDecoderHParams)
+  decoder_tpl: DecoderHParams = base_layer.instance_field(GreedyDecoderHParams)
 
   def setup(self):
     self._decoding_fn = self.decoding_fn

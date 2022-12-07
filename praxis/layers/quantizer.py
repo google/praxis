@@ -377,7 +377,7 @@ class VectorQuantizer(base_layer.FiddleBaseLayer):
   normalize_codebook: bool = True
   normalize_latent_per_group: bool = True
 
-  params_init: WeightInit = pax_fiddle.sub_field(WeightInit.UniformSqrtDim)
+  params_init: WeightInit = base_layer.instance_field(WeightInit.UniformSqrtDim)
 
   def setup(self) -> None:
     assert self.num_latent_classes

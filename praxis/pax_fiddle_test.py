@@ -58,7 +58,7 @@ class Person:
 class Vehicle:
   wheel_tpl: pax_fiddle.Config[Wheel] = pax_fiddle.template_field(Wheel)
   num_wheels: int = 4
-  owner: Person = pax_fiddle.sub_field(Person)
+  owner: Person = pax_fiddle.instance_field(Person)
   wheels: Optional[List[Wheel]] = None  # Initialized by setup.
 
   def setup(self):
@@ -81,7 +81,7 @@ class ColoredVehicle(Vehicle):
 class Fleet:
   vehicle_tpl: pax_fiddle.Config[Vehicle] = pax_fiddle.template_field(Vehicle)
   num_vehicles: int = 1
-  manager: Person = pax_fiddle.sub_field(Person)
+  manager: Person = pax_fiddle.instance_field(Person)
   vehicles: Optional[List[Vehicle]] = None  # Initialized by setup.
 
   def setup(self):
@@ -460,7 +460,7 @@ class LayerA(nn.Module):
 
 
 class LayerB(nn.Module):
-  a: LayerA = pax_fiddle.sub_field(LayerA)
+  a: LayerA = pax_fiddle.instance_field(LayerA)
 
   def __call__(self):
     return self.a()

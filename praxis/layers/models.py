@@ -161,7 +161,7 @@ class LanguageModel(base_model.BaseModel):
   """
   lm_tpl: LayerTpl = sub_config_field(transformer_models.TransformerLm.HParams)
   return_predictions: bool = False
-  decoder_tpl: DecoderHParams = pax_fiddle.sub_field(GreedyDecoderHParams)
+  decoder_tpl: DecoderHParams = base_layer.instance_field(GreedyDecoderHParams)
   model_type: LanguageModelType = LanguageModelType.CAUSAL
   count_tokens: bool = False
   apply_eval_sample_weights: bool = False
@@ -629,7 +629,7 @@ class SequenceModel(base_model.BaseModel):
   model_tpl: LayerTpl = sub_config_field(
       transformer_models.TransformerEncoderDecoder.HParams)
   return_predictions: bool = False
-  decoder_tpl: DecoderHParams = pax_fiddle.sub_field(GreedyDecoderHParams)
+  decoder_tpl: DecoderHParams = base_layer.instance_field(GreedyDecoderHParams)
   label_smoothing_prob: float = 0.0
 
   def setup(self) -> None:

@@ -226,14 +226,14 @@ class BaseLayerTest(test_utils.TestCase):
   def test_copy_base_hparams(self):
 
     class ChildLayer(base_layer.FiddleBaseLayer):
-      params_init: base_layer.WeightInit = pax_fiddle.sub_field(
+      params_init: base_layer.WeightInit = base_layer.instance_field(
           lambda: base_layer.WeightInit.Uniform(0.5)  # override default
       )
 
     class ParentLayer(base_layer.FiddleBaseLayer):
       child: Any = None
-      child_tpl: pax_fiddle.Config = pax_fiddle.template_field(ChildLayer)
-      params_init: base_layer.WeightInit = pax_fiddle.sub_field(
+      child_tpl: pax_fiddle.Config = base_layer.template_field(ChildLayer)
+      params_init: base_layer.WeightInit = base_layer.instance_field(
           base_layer.WeightInit.Gaussian)
 
     config_factories = dict(

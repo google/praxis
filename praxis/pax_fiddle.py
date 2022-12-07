@@ -185,9 +185,9 @@ def auto_config(fn=None, **auto_config_kwargs) -> Any:
 
   def make_auto_config(fn):
 
-    # If `pax_fiddle.auto_config` is applied to a class, then return the
-    # result of applying it to the constructor.  This is helpful for the
-    # automatic `auto_config` wrapping done by `sub_field` and `template_field`.
+    # If `pax_fiddle.auto_config` is applied to a class, then return the result
+    # of applying it to the constructor.  This is helpful for the automatic
+    # `auto_config` wrapping done by `instance_field` and `template_field`.
     if isinstance(fn, type):
       original_fn = fn
 
@@ -208,7 +208,7 @@ def auto_config(fn=None, **auto_config_kwargs) -> Any:
   return make_auto_config if fn is None else make_auto_config(fn)
 
 
-def sub_field(
+def instance_field(
     default_factory: Callable[..., Any],
     tags: Optional[TagOrTags] = tuple(),
 ) -> Union[dataclasses.Field, Any]:  # pylint: disable=g-bare-generic
@@ -221,7 +221,7 @@ def sub_field(
   Example usage:
 
   >>> class Parent(base_layer.BaseLayer):
-  ...   child: Child = pax_fiddle.sub_field(Child)
+  ...   child: Child = instance_field(Child)
 
   Args:
     default_factory: The dataclass type used by the field.
@@ -250,7 +250,7 @@ def template_field(
   Example usage:
 
   >>> class Parent(base_layer.BaseLayer):
-  ...   child_tpl: fdl.Config[Child] = pax_fiddle.template_field(Child)
+  ...   child_tpl: fdl.Config[Child] = template_field(Child)
 
   Args:
     template: The template type (or factory function).  If `None`, then the
