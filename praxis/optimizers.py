@@ -754,9 +754,15 @@ def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
     # https://github.com/tensorflow/tensorflow/blob/v2.9.1/tensorflow/python/training/moving_averages.py#L469
     ema_decay = jnp.minimum(decay, (1. + state.count) / (10. + state.count))
 
-    new_ema = jax.tree_map(
-        lambda old_v, new_v: old_v - (1. - ema_decay) * (old_v - new_v),
-        state.ema, params)
+    def update_func(old_v, new_v):
+      if old_v.dtype == jnp.bool_ or jnp.issubdtype(old_v, jnp.integer):
+        # If it is integer, we directly return the old variable
+        # This is mainly supported for non_trainable
+        return old_v
+      else:
+        return old_v - (1.0 - ema_decay) * (old_v - new_v)
+
+    new_ema = jax.tree_map(update_func, state.ema, params)
     count_inc = state.count + jnp.array(1, jnp.int32)
 
     return updates, NestedMap(count=count_inc, ema=new_ema)
@@ -1975,8 +1981,8 @@ class _ShardedAdafactorHelper:
                                   param, var_name):
     """Computes the var and optimizer slots updates for a single variable."""
     # We can probably skip this step
-    grad = self.inf_to_nan(grad)
     grad = grad.astype(jnp.float32)
+    grad = self.inf_to_nan(grad)
     grad_squared = jnp.square(grad)
 
     if self._per_var_learning_summary:
