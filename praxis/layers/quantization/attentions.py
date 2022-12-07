@@ -16,6 +16,7 @@
 """Quantized Attention Layers."""
 
 import string
+from praxis import pax_fiddle
 from typing import Tuple, Any, Sequence
 
 from jax import numpy as jnp
@@ -52,7 +53,8 @@ class AttentionProjection(attentions.AttentionProjection):
   def create_tensor_quantizer(self):
     self.create_child(
         'act_quantizer',
-        aqt.TensorQuantizer.HParams(
+        pax_fiddle.Config(
+            aqt.TensorQuantizer,
             name='act_quantizer',
             precision=self.quantization.act_params.precision
             if self.quantization.act_params
@@ -61,7 +63,8 @@ class AttentionProjection(attentions.AttentionProjection):
     )
     self.create_child(
         'weight_quantizer',
-        aqt.TensorQuantizer.HParams(
+        pax_fiddle.Config(
+            aqt.TensorQuantizer,
             name='weight_quantizer',
             precision=self.quantization.weight_params.precision,
         ),
@@ -297,7 +300,8 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
   def create_tensor_quantizer(self):
     self.create_child(
         'act_quantizer',
-        aqt.TensorQuantizer.HParams(
+        pax_fiddle.Config(
+            aqt.TensorQuantizer,
             name='act_quantizer',
             precision=self.quantization.act_params.precision
             if self.quantization.act_params
@@ -306,7 +310,8 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     )
     self.create_child(
         'weight_quantizer',
-        aqt.TensorQuantizer.HParams(
+        pax_fiddle.Config(
+            aqt.TensorQuantizer,
             name='weight_quantizer',
             precision=self.quantization.weight_params.precision,
         ),

@@ -16,6 +16,7 @@
 """Tests for quantized operations."""
 
 from typing import Any, Dict, Sequence
+from praxis import pax_fiddle
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -102,14 +103,14 @@ class DotGeneral(base_layer.FiddleBaseLayer):
   def setup(self):
     self.create_child(
         'lhs_quantizer',
-        aqt.TensorQuantizer.HParams(
-            name='lhs_quantizer', precision=self.lhs_prec
+        pax_fiddle.Config(
+            aqt.TensorQuantizer, name='lhs_quantizer', precision=self.lhs_prec
         ),
     )
     self.create_child(
         'rhs_quantizer',
-        aqt.TensorQuantizer.HParams(
-            name='rhs_quantizer', precision=self.rhs_prec
+        pax_fiddle.Config(
+            aqt.TensorQuantizer, name='rhs_quantizer', precision=self.rhs_prec
         ),
     )
 
@@ -141,8 +142,9 @@ def _generate_dimension_numbers() -> Sequence[Dict[str, Any]]:
 class AqtDotGeneralTest(test_utils.TestCase):
 
   def get_dot_general_module(self, lhs, rhs, lhs_prec, rhs_prec):
-    p_dot_general = DotGeneral.HParams(
-        name='dot_general', lhs_prec=lhs_prec, rhs_prec=rhs_prec)
+    p_dot_general = pax_fiddle.Config(
+        DotGeneral, name='dot_general', lhs_prec=lhs_prec, rhs_prec=rhs_prec
+    )
     module = base_layer.instantiate(p_dot_general)
     state = module.init(jax.random.PRNGKey(0), lhs, rhs)
     return module.apply(state, lhs, rhs, mutable=['non_trainable'])

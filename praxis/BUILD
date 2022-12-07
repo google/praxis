@@ -433,6 +433,7 @@ py_strict_test(
     deps = [
         ":base_layer",
         ":beam_search",
+        ":pax_fiddle",
         ":py_utils",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
@@ -537,6 +538,7 @@ py_strict_test(
     deps = [
         ":base_layer",
         ":base_model",
+        ":pax_fiddle",
         ":py_utils",
         ":sample_decode",
         ":test_utils",

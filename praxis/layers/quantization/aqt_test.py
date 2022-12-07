@@ -16,6 +16,7 @@
 """Tests for TensorQuantizer in Quantization-aware Training."""
 
 from typing import Tuple
+from praxis import pax_fiddle
 
 from absl.testing import absltest
 import jax
@@ -57,7 +58,7 @@ class AqtTest(test_utils.TestCase):
         [-4.00, -6.00, -6.00, -6.00],  #
     ], dtype=jnp.float32)
 
-    p_quant = aqt.TensorQuantizer.HParams(name='tq', precision=3)
+    p_quant = pax_fiddle.Config(aqt.TensorQuantizer, name='tq', precision=3)
 
     qx, scale = self.get_quantized_and_scale(p_quant, x)
 
@@ -67,7 +68,7 @@ class AqtTest(test_utils.TestCase):
   def test_none_prec_not_quantize(self):
     x = jax.random.uniform(
         jax.random.PRNGKey(0), shape=(4, 5), dtype=jnp.float32)
-    p_quant = aqt.TensorQuantizer.HParams(name='tq', precision=None)
+    p_quant = pax_fiddle.Config(aqt.TensorQuantizer, name='tq', precision=None)
     qx, scale = self.get_quantized_and_scale(p_quant, x)
 
     self.assertEqual(scale, jnp.full((1, 1), 1.0, dtype=jnp.float32))

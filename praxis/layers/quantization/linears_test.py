@@ -16,6 +16,7 @@
 """Tests for quantized linears."""
 
 import itertools
+from praxis import pax_fiddle
 from typing import Any, Dict, Sequence
 
 from absl.testing import absltest
@@ -62,12 +63,15 @@ class QuantizedLinearTest(test_utils.TestCase):
 
   @parameterized.named_parameters(_generate_quantization_types_modes())
   def test_linear_quantized(self, quantization_type, mode):
-    p = qlinears.Linear.HParams(
+    p = pax_fiddle.Config(
+        qlinears.Linear,
         name='_linear',
         input_dims=5,
         output_dims=4,
         quantization=QuantizationHParams(
-            quantization_type=quantization_type, mode=mode))
+            quantization_type=quantization_type, mode=mode
+        ),
+    )
     linear = instantiate(p)
     inputs = jnp.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]], dtype=p.dtype)
     with base_layer.JaxContext.new_context():
@@ -108,11 +112,12 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
       dict(testcase_name='materialize', mode=QuantizationMode.MATERIALIZE),
   )
   def test_linear_ptq_quantized(self, mode):
-    p_f = linears.Linear.HParams(name='_linear_f')
-    p_q = qlinears.Linear.HParams(
+    p_f = pax_fiddle.Config(linears.Linear, name='_linear_f')
+    p_q = pax_fiddle.Config(
+        qlinears.Linear,
         name='_linear_q',
-        quantization=QuantizationHParams(
-            mode=mode))
+        quantization=QuantizationHParams(mode=mode),
+    )
     for p in [p_f, p_q]:
       p.input_dims = 16
       p.output_dims = 24
@@ -125,15 +130,19 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
       dict(testcase_name='materialize', mode=QuantizationMode.MATERIALIZE),
   )
   def test_linear_aqt_quantized(self, mode):
-    p_f = linears.Linear.HParams(name='_linear_f')
-    p_q = qlinears.Linear.HParams(
+    p_f = pax_fiddle.Config(linears.Linear, name='_linear_f')
+    p_q = pax_fiddle.Config(
+        qlinears.Linear,
         name='_linear_q',
         quantization=QuantizationHParams(
             quantization_type=QuantizationType.AQT,
             mode=mode,
             act_params=quantization_hparams.ActQuantizationParams(precision=3),
             weight_params=quantization_hparams.WeightQuantizationParams(
-                precision=2)))
+                precision=2
+            ),
+        ),
+    )
     for p in [p_f, p_q]:
       p.input_dims = 3
       p.output_dims = 2
@@ -188,14 +197,18 @@ class QuantizeLinearTest(test_utils.TestCase):
       dict(testcase_name='AQT', quantization_type=QuantizationType.AQT)
   )
   def test_quantize_linear(self, quantization_type):
-    p = qlinears.Linear.HParams(
+    p = pax_fiddle.Config(
+        qlinears.Linear,
         name='_linear_q',
         mesh_axis_names=['replica', 'mdl', 'data'],
         weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
-            wt=['mdl', 'data']),
+            wt=['mdl', 'data']
+        ),
         quantization=QuantizationHParams(
             quantization_type=quantization_type,
-            mode=QuantizationMode.MATERIALIZE))
+            mode=QuantizationMode.MATERIALIZE,
+        ),
+    )
     p.input_dims = 6
     p.output_dims = 4
     layer = instantiate(p)
@@ -237,14 +250,18 @@ class QuantizeLinearTest(test_utils.TestCase):
     self.assertEqual(pspec, exepected_pspec)
 
   def test_aqt_quantize_weight(self):
-    p = qlinears.Linear.HParams(
+    p = pax_fiddle.Config(
+        qlinears.Linear,
         name='_linear_q',
         quantization=QuantizationHParams(
             quantization_type=QuantizationType.AQT,
             mode=QuantizationMode.MATERIALIZE,
             act_params=None,
             weight_params=quantization_hparams.WeightQuantizationParams(
-                precision=3)))
+                precision=3
+            ),
+        ),
+    )
 
     p.input_dims = 3
     p.output_dims = 3

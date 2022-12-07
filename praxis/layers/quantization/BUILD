@@ -46,6 +46,7 @@ pytype_strict_library(
         ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:pytypes",
         "//praxis/layers:attentions",
     ],
@@ -59,18 +60,15 @@ py_strict_test(
     deps = [
         ":attentions",
         ":quantization_hparams",
-        # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
-        # Implicit lingvo.core.batch_major_attention dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
-        "//praxis:decoder_utils",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         "//praxis/layers:attentions",
-        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 
@@ -84,6 +82,7 @@ pytype_strict_library(
         ":quantization_hparams",
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:pytypes",
         "//praxis/layers:linears",
     ],
@@ -97,19 +96,14 @@ py_strict_test(
     deps = [
         ":linears",
         ":quantization_hparams",
-        # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
-        # Implicit lingvo.core.batch_major_attention dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
-        "//praxis:decoder_utils",
-        "//praxis:py_utils",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers:linears",
-        "//praxis/layers:repeats",
-        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 
@@ -143,6 +137,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
     ],
 )
@@ -211,6 +206,7 @@ py_strict_test(
         ":aqt",
         # Implicit absl.testing.absltest dependency.
         # Implicit jax dependency.
+        "//praxis:pax_fiddle",
         "//praxis:pytypes",
         "//praxis:test_utils",
     ],

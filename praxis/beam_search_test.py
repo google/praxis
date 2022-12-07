@@ -16,6 +16,7 @@
 """Unit tests for beam_search."""
 
 from typing import Any
+from praxis import pax_fiddle
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -131,10 +132,12 @@ class MockLM(base_layer.FiddleBaseLayer):
 class BeamSearchTest(test_utils.TestCase):
 
   def _run_decode(self, decoder_p, logits, input_batch):
-    p = models.LanguageModel.HParams(
+    p = pax_fiddle.Config(
+        models.LanguageModel,
         name='mock_lm',
         decoder_tpl=decoder_p.clone(),
-        lm_tpl=MockLM.HParams(logits=logits))
+        lm_tpl=pax_fiddle.Config(MockLM, logits=logits),
+    )
     lang_model = instantiate(p)
     theta = NestedMap(lm_tpl=NestedMap())
     # We fix seed to 9 to get the desired prefix lengths below.

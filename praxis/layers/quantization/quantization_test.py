@@ -41,13 +41,16 @@ class RepeatsLinearQuantizeTest(test_utils.TestCase):
 
   def test_quantize_repeats(self):
 
-    sub_p = qlinears.Linear.HParams(
+    sub_p = pax_fiddle.Config(
+        qlinears.Linear,
         name='_linear_q',
         input_dims=2,
         output_dims=2,
         quantization=quantization_hparams.QuantizationHParams(
-            mode=quantization_hparams.QuantizationMode.MATERIALIZE))
-    p = repeats.Repeat.HParams(name='ffn', sub_tpl=sub_p, x_times=3)
+            mode=quantization_hparams.QuantizationMode.MATERIALIZE
+        ),
+    )
+    p = pax_fiddle.Config(repeats.Repeat, name='ffn', sub_tpl=sub_p, x_times=3)
     ffn = instantiate(p)
 
     inputs = np.random.normal(1.0, 1.5, [2, 2]).astype(np.float32)
@@ -148,7 +151,7 @@ class ChildrenQuantizeTest(test_utils.TestCase):
     np.random.seed(123456)
 
   def test_quantize_parent(self):
-    p = ParentLayer.HParams(name='_parent_q')
+    p = pax_fiddle.Config(ParentLayer, name='_parent_q')
     layer = instantiate(p)
 
     inputs = np.random.normal(1.5, 2.0, [5, 3]).astype(np.float32)

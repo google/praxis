@@ -16,6 +16,7 @@
 """Tests for quantized attentions."""
 
 import itertools
+from praxis import pax_fiddle
 from typing import Any, Dict, Sequence
 
 from absl.testing import absltest
@@ -61,14 +62,17 @@ class QuantizedAttentionTest(test_utils.TestCase):
 
   @parameterized.named_parameters(_generate_quantization_types_modes())
   def test_attention_projection_quantized(self, quantization_type, mode):
-    p = qattentions.AttentionProjection.HParams(
+    p = pax_fiddle.Config(
+        qattentions.AttentionProjection,
         name='_attn_proj',
         input_dim=5,
         num_heads=2,
         dim_per_head=3,
         is_output_projection=True,
         quantization=QuantizationHParams(
-            quantization_type=quantization_type, mode=mode))
+            quantization_type=quantization_type, mode=mode
+        ),
+    )
     attn = instantiate(p)
     inputs = jnp.ones((4, 2, 3), dtype=p.dtype)
     with base_layer.JaxContext.new_context():
@@ -85,14 +89,17 @@ class QuantizedAttentionTest(test_utils.TestCase):
   @parameterized.named_parameters(_generate_quantization_types_modes())
   def test_attention_projection_no_output_proj_quantized(
       self, quantization_type, mode):
-    p = qattentions.AttentionProjection.HParams(
+    p = pax_fiddle.Config(
+        qattentions.AttentionProjection,
         name='_attn_proj',
         input_dim=5,
         num_heads=2,
         dim_per_head=3,
         is_output_projection=False,
         quantization=QuantizationHParams(
-            quantization_type=quantization_type, mode=mode))
+            quantization_type=quantization_type, mode=mode
+        ),
+    )
     attn = instantiate(p)
     inputs = jnp.ones((4, 3, 5), dtype=p.dtype)
     with base_layer.JaxContext.new_context():
@@ -108,13 +115,16 @@ class QuantizedAttentionTest(test_utils.TestCase):
 
   @parameterized.named_parameters(_generate_quantization_types_modes())
   def test_combined_projection_quantized(self, quantization_type, mode):
-    p = qattentions.CombinedQKVProjectionLayer.HParams(
+    p = pax_fiddle.Config(
+        qattentions.CombinedQKVProjectionLayer,
         name='_combined_qkv',
         input_dim=5,
         num_heads=3,
         dim_per_head=2,
         quantization=QuantizationHParams(
-            quantization_type=quantization_type, mode=mode))
+            quantization_type=quantization_type, mode=mode
+        ),
+    )
     attn = instantiate(p)
     inputs = jnp.ones((4, 5), dtype=p.dtype)
     with base_layer.JaxContext.new_context():
@@ -175,11 +185,12 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
 
   # test case copied from test_mhd_projection_01.
   def test_mhd_projection_01_quantized(self):
-    p_f = attentions.AttentionProjection.HParams(name='_attn_proj_f')
-    p_q = qattentions.AttentionProjection.HParams(
+    p_f = pax_fiddle.Config(attentions.AttentionProjection, name='_attn_proj_f')
+    p_q = pax_fiddle.Config(
+        qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationHParams(
-            mode=QuantizationMode.MATERIALIZE))
+        quantization=QuantizationHParams(mode=QuantizationMode.MATERIALIZE),
+    )
     for p in [p_f, p_q]:
       p.input_dim = 16
       p.num_heads = 2
@@ -192,11 +203,12 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
   # test case copied from test_mhd_projection_02.
   @parameterized.parameters([False, True])
   def test_mhd_projection_02_quantized(self, use_nhd_shape):
-    p_f = attentions.AttentionProjection.HParams(name='_attn_proj_f')
-    p_q = qattentions.AttentionProjection.HParams(
+    p_f = pax_fiddle.Config(attentions.AttentionProjection, name='_attn_proj_f')
+    p_q = pax_fiddle.Config(
+        qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationHParams(
-            mode=QuantizationMode.MATERIALIZE))
+        quantization=QuantizationHParams(mode=QuantizationMode.MATERIALIZE),
+    )
     for p in [p_f, p_q]:
       p.input_dim = 16
       p.num_heads = 2
@@ -209,11 +221,12 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
 
   # test case copied from test_mhd_projection_var_stats.
   def test_mhd_projection_var_stats_quantized(self):
-    p_f = attentions.AttentionProjection.HParams(name='_attn_proj_f')
-    p_q = qattentions.AttentionProjection.HParams(
+    p_f = pax_fiddle.Config(attentions.AttentionProjection, name='_attn_proj_f')
+    p_q = pax_fiddle.Config(
+        qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationHParams(
-            mode=QuantizationMode.MATERIALIZE))
+        quantization=QuantizationHParams(mode=QuantizationMode.MATERIALIZE),
+    )
     for p in [p_f, p_q]:
       p.input_dim = 256
       p.num_heads = 16
@@ -233,11 +246,14 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
 
   # test case copied from test_combine_qkv_with_attention_combine_dims.
   def test_combine_qkv_with_attention_combine_dims_quantized(self):
-    p_f = attentions.CombinedQKVProjectionLayer.HParams(name='_attn_qkv_f')
-    p_q = qattentions.CombinedQKVProjectionLayer.HParams(
+    p_f = pax_fiddle.Config(
+        attentions.CombinedQKVProjectionLayer, name='_attn_qkv_f'
+    )
+    p_q = pax_fiddle.Config(
+        qattentions.CombinedQKVProjectionLayer,
         name='_attn_qkv_q',
-        quantization=QuantizationHParams(
-            mode=QuantizationMode.MATERIALIZE))
+        quantization=QuantizationHParams(mode=QuantizationMode.MATERIALIZE),
+    )
     for p in [p_f, p_q]:
       p.input_dim = 64
       p.num_heads = 8
@@ -260,14 +276,18 @@ class QuantizeAttentionTest(test_utils.TestCase):
       ('AQT', QuantizationType.AQT),
   )
   def test_quantize_attention_projection(self, quantization_type):
-    p = qattentions.AttentionProjection.HParams(
+    p = pax_fiddle.Config(
+        qattentions.AttentionProjection,
         name='_attn_proj_q',
         mesh_axis_names=['replica', 'mdl', 'data'],
         weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
-            wt=['mdl', 'data']),
+            wt=['mdl', 'data']
+        ),
         quantization=QuantizationHParams(
             quantization_type=quantization_type,
-            mode=QuantizationMode.MATERIALIZE))
+            mode=QuantizationMode.MATERIALIZE,
+        ),
+    )
     p.input_dim = 16
     p.num_heads = 2
     p.dim_per_head = 5
@@ -305,7 +325,8 @@ class QuantizeAttentionTest(test_utils.TestCase):
       ('AQT', QuantizationType.AQT),
   )
   def test_quantize_attention_qkv(self, quantization_type):
-    p = qattentions.CombinedQKVProjectionLayer.HParams(
+    p = pax_fiddle.Config(
+        qattentions.CombinedQKVProjectionLayer,
         name='_combined_qkv',
         input_dim=5,
         num_heads=6,
@@ -313,10 +334,13 @@ class QuantizeAttentionTest(test_utils.TestCase):
         ici_mesh_shape=[0, 1, 2],
         mesh_axis_names=['replica', 'mdl', 'data'],
         weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
-            wt=['replica', 'mdl', 'data']),
+            wt=['replica', 'mdl', 'data']
+        ),
         quantization=QuantizationHParams(
             quantization_type=quantization_type,
-            mode=QuantizationMode.MATERIALIZE))
+            mode=QuantizationMode.MATERIALIZE,
+        ),
+    )
     layer = instantiate(p)
     inputs = jnp.ones((4, 5), dtype=p.dtype)
 

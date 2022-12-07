@@ -16,6 +16,7 @@
 """Unit tests for sample_decode."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 import flax.linen as nn
 import jax
 from jax import numpy as jnp
@@ -278,12 +279,14 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     num_samples = 2
     seq_len = 3
     vocab_size = 4
-    model_p = TestModel.HParams(
+    model_p = pax_fiddle.Config(
+        TestModel,
         name='test_model',
         batch_size=batch_size,
         num_samples=num_samples,
         seq_len=seq_len,
-        vocab_size=vocab_size)
+        vocab_size=vocab_size,
+    )
 
     def extend_step_fn(mdl, ids, segment_pos):
       logits = mdl.extend_step(ids, segment_pos=segment_pos)

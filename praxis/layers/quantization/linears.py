@@ -16,6 +16,7 @@
 """Quantized Linear Layers."""
 
 from typing import Any
+from praxis import pax_fiddle
 
 from jax import numpy as jnp
 from praxis import base_layer
@@ -46,7 +47,8 @@ class Linear(linears.Linear):
   def create_tensor_quantizers(self):
     self.create_child(
         'act_quantizer',
-        aqt.TensorQuantizer.HParams(
+        pax_fiddle.Config(
+            aqt.TensorQuantizer,
             name='act_quantizer',
             precision=self.quantization.act_params.precision
             if self.quantization.act_params
@@ -55,7 +57,8 @@ class Linear(linears.Linear):
     )
     self.create_child(
         'weight_quantizer',
-        aqt.TensorQuantizer.HParams(
+        pax_fiddle.Config(
+            aqt.TensorQuantizer,
             name='weight_quantizer',
             precision=self.quantization.weight_params.precision,
         ),
