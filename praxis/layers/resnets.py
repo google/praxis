@@ -32,7 +32,6 @@ NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
 JTensor = pytypes.JTensor
 
-BaseHParams = base_layer.BaseLayer.HParams
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
 
@@ -321,12 +320,12 @@ class ResNet(base_layer.FiddleBaseLayer):
   return_block_features: bool = False
 
   @classmethod
-  def HParamsResNet5(cls) -> BaseHParams:
+  def HParamsResNet5(cls) -> LayerTpl:
     """Returns ResNet5 hyperparams for testing purposes."""
     return cls.HParams(strides=[1], channels=[16], blocks=[1], kernels=[1])
 
   @classmethod
-  def HParamsResNet18(cls) -> BaseHParams:
+  def HParamsResNet18(cls) -> LayerTpl:
     """Returns commonly used ResNet18 hyperparams."""
     return cls.HParams(
         channels=(64, 128, 256, 512),
@@ -334,7 +333,7 @@ class ResNet(base_layer.FiddleBaseLayer):
         blocks=[2, 2, 2, 2])
 
   @classmethod
-  def HParamsResNet34(cls) -> BaseHParams:
+  def HParamsResNet34(cls) -> LayerTpl:
     """Returns commonly used ResNet18 hyperparams."""
     return cls.HParams(
         channels=(64, 128, 256, 512),
@@ -342,17 +341,17 @@ class ResNet(base_layer.FiddleBaseLayer):
         blocks=[3, 4, 6, 3])
 
   @classmethod
-  def HParamsResNet50(cls) -> BaseHParams:
+  def HParamsResNet50(cls) -> LayerTpl:
     """Returns commonly used ResNet50 hyperparams."""
     return cls.HParams()
 
   @classmethod
-  def HParamsResNet101(cls) -> BaseHParams:
+  def HParamsResNet101(cls) -> LayerTpl:
     """Returns commonly used ResNet101 hyperparams."""
     return cls.HParams(blocks=[3, 4, 23, 3])
 
   @classmethod
-  def HParamsResNet152(cls) -> BaseHParams:
+  def HParamsResNet152(cls) -> LayerTpl:
     """Returns commonly used ResNet152 hyperparams."""
     return cls.HParams(blocks=[3, 8, 36, 3])
 
