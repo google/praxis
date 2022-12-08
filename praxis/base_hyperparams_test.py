@@ -350,12 +350,6 @@ class HyperParamsTest(absltest.TestCase):
     self.assertNotIn('_nonconfigurable_init_args',
                      child_init_signature.parameters)
 
-    layer_init_signature = inspect.signature(base_layer.BaseLayer)
-    self.assertNotIn('_config_init_name_for_params_object',
-                     layer_init_signature.parameters)
-    self.assertNotIn('_nonconfigurable_init_args',
-                     layer_init_signature.parameters)
-
   def test_duplicate_parameters(self):
     with self.assertRaisesRegex(TypeError, r'Duplicated parameter.*foo'):
 

@@ -33,10 +33,8 @@ from praxis import pax_fiddle
 from praxis import test_utils
 
 
-class Identity(base_layer.BaseLayer):
+class Identity(base_layer.FiddleBaseLayer):
   """Layer for testing summary writing."""
-
-  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
 
   def setup(self):
     pass
@@ -47,10 +45,8 @@ class Identity(base_layer.BaseLayer):
     return x
 
 
-class AddBias(base_layer.BaseLayer):
+class AddBias(base_layer.FiddleBaseLayer):
   """A layer that adds bias to an input tensor."""
-
-  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
 
   @nn.compact
   def __call__(self, x: base_layer.JTensor) -> base_layer.JTensor:
@@ -61,20 +57,15 @@ class AddBias(base_layer.BaseLayer):
     return x + b
 
 
-class MultipleBiasLayer(base_layer.BaseLayer):
-  """A dummy layer that adds multiple biases to an input tensor."""
+class MultipleBiasLayer(base_layer.FiddleBaseLayer):
+  """A dummy layer that adds multiple biases to an input tensor.
 
-  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
-
-  class HParams(base_layer.BaseLayer.HParams):
-    """Attributes for MultipleBiasLayer.
-
-    Attributes:
-      num_child: number of independent child AddBias layers to test.
-      num_children: number of children to be added into a self.create_children.
-    """
-    num_child: int = 0
-    num_children: int = 0
+  Attributes:
+    num_child: number of independent child AddBias layers to test.
+    num_children: number of children to be added into a self.create_children.
+  """
+  num_child: int = 0
+  num_children: int = 0
 
   @nn.compact
   def __call__(self, x: base_layer.JTensor) -> base_layer.JTensor:
@@ -94,14 +85,6 @@ class TrivialFiddleLayer(base_layer.FiddleBaseLayer):
 
 class SimpleFiddleBaseLayer(base_layer.FiddleBaseLayer):
   x: int = 0
-
-
-class SimpleHParamsBaseLayer(base_layer.BaseLayer):
-
-  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
-
-  class HParams(base_layer.BaseLayer.HParams):
-    x: int = 0
 
 
 class BaseLayerTest(test_utils.TestCase):
@@ -236,142 +219,91 @@ class BaseLayerTest(test_utils.TestCase):
       params_init: base_layer.WeightInit = base_layer.instance_field(
           base_layer.WeightInit.Gaussian)
 
-    config_factories = dict(
-        hparams=base_layer.BaseLayer.HParams,
-        fiddle=functools.partial(pax_fiddle.Config, base_layer.FiddleBaseLayer))
-    for source_name, source_factory in config_factories.items():
-      source = source_factory(
-          dtype=jnp.float64,
-          ici_mesh_shape=[2, 3, 4],
-          dcn_mesh_shape=[5, 6, 7],
-          params_init=base_layer.default_param_init())
+    source = pax_fiddle.Config(
+        base_layer.FiddleBaseLayer,
+        dtype=jnp.float64,
+        ici_mesh_shape=[2, 3, 4],
+        dcn_mesh_shape=[5, 6, 7],
+        params_init=base_layer.default_param_init())
 
-      for target_name, target_factory in config_factories.items():
-        with self.subTest(f'{source_name}_to_{target_name}'):
-          target = target_factory(dtype=jnp.float16, ici_mesh_shape=None)
-          base_layer.BaseLayerApi.copy_base_hparams(source, target)
-          self.assertEqual(target.dtype, jnp.float16)
-          self.assertEqual(target.ici_mesh_shape, [2, 3, 4])
-          self.assertEqual(target.dcn_mesh_shape, [5, 6, 7])
+    with self.subTest('fiddle_to_fiddle'):
+      target = pax_fiddle.Config(
+          base_layer.FiddleBaseLayer, dtype=jnp.float16, ici_mesh_shape=None)
+      base_layer.BaseLayerApi.copy_base_hparams(source, target)
+      self.assertEqual(target.dtype, jnp.float16)
+      self.assertEqual(target.ici_mesh_shape, [2, 3, 4])
+      self.assertEqual(target.dcn_mesh_shape, [5, 6, 7])
 
-      with self.subTest(f'{source_name}_to_fiddle_subfield'):
-        target_parent = pax_fiddle.Config(
-            ParentLayer,
-            dtype=jnp.int64,
-            child=pax_fiddle.Config(ChildLayer, dtype=jnp.float16),
-            child_tpl=pax_fiddle.Config(ChildLayer, dtype=jnp.int32))
-        base_layer.BaseLayerApi.copy_base_hparams(source, target_parent)
-        self.assertEqual(target_parent.dtype, jnp.int64)
-        self.assertEqual(target_parent.ici_mesh_shape, [2, 3, 4])
-        self.assertEqual(target_parent.params_init.method, 'gaussian')
-        self.assertEqual(target_parent.params_init.scale, 1.0)
-        self.assertEqual(target_parent.child.dtype, jnp.float16)
-        self.assertEqual(target_parent.child.ici_mesh_shape, [2, 3, 4])
-        self.assertEqual(target_parent.child.params_init.method, 'uniform')
-        self.assertEqual(target_parent.child.params_init.scale, 0.5)
-        self.assertEqual(target_parent.child_tpl.dtype, jnp.int32)
-        self.assertIsNone(target_parent.child_tpl.ici_mesh_shape)
-        self.assertEqual(target_parent.child_tpl.params_init.scale, 0.5)
+    with self.subTest('fiddle_to_fiddle_subfield'):
+      target_parent = pax_fiddle.Config(
+          ParentLayer,
+          dtype=jnp.int64,
+          child=pax_fiddle.Config(ChildLayer, dtype=jnp.float16),
+          child_tpl=pax_fiddle.Config(ChildLayer, dtype=jnp.int32))
+      base_layer.BaseLayerApi.copy_base_hparams(source, target_parent)
+      self.assertEqual(target_parent.dtype, jnp.int64)
+      self.assertEqual(target_parent.ici_mesh_shape, [2, 3, 4])
+      self.assertEqual(target_parent.params_init.method, 'gaussian')
+      self.assertEqual(target_parent.params_init.scale, 1.0)
+      self.assertEqual(target_parent.child.dtype, jnp.float16)
+      self.assertEqual(target_parent.child.ici_mesh_shape, [2, 3, 4])
+      self.assertEqual(target_parent.child.params_init.method, 'uniform')
+      self.assertEqual(target_parent.child.params_init.scale, 0.5)
+      self.assertEqual(target_parent.child_tpl.dtype, jnp.int32)
+      self.assertIsNone(target_parent.child_tpl.ici_mesh_shape)
+      self.assertEqual(target_parent.child_tpl.params_init.scale, 0.5)
 
   def test_post_init_hparams(self):
-
-    class HParamsChild(base_layer.BaseLayer):
-
-      _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
-
-      class HParams(base_layer.BaseLayer.HParams):
-        x: int = 0
 
     class FiddleChild(base_layer.FiddleBaseLayer):
       x: int = 0
 
-    for child_cls in (HParamsChild, FiddleChild):
+    class FiddleParent(base_layer.FiddleBaseLayer):
 
-      class HParamsParent(base_layer.BaseLayer):
+      child_tpl: Any = base_layer.sub_config_field(FiddleChild.HParams)
+      child_tpl_list: Any = base_layer.sub_config_field(None)
+      child_tpl_dict: Any = base_layer.sub_config_field(None)
 
-        _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
+      def setup(self):
+        child_tpl = self.child_tpl.clone()
+        child_tpl.x += 2
+        self.create_child('child', child_tpl)
 
-        class HParams(base_layer.BaseLayer.HParams):
+      def __call__(self):
+        return 0
 
-          child_tpl: child_cls.HParams = base_layer.sub_config_field(
-              child_cls.HParams)
-          child_tpl_list: Any = base_layer.sub_config_field(None)
-          child_tpl_dict: Any = base_layer.sub_config_field(None)
+    p = FiddleParent.HParams(name='test')
+    p.child_tpl = FiddleChild.HParams(x=5)
+    p.child_tpl_list = [FiddleChild.HParams(x=7), FiddleChild.HParams(x=12)]
+    p.child_tpl_dict = {'x': FiddleChild.HParams(x=12)}
+    layer = p.Instantiate()
 
-        def setup(self):
-          child_tpl = self.hparams.child_tpl.clone()
-          child_tpl.x += 2
-          self.create_child('child', child_tpl)
+    model = layer.bind(
+        layer.init(jax.random.PRNGKey(0)),
+        mutable=[base_layer.HYPER_PARAMS])
+    model.post_init_hparams()
+    hyper_params = jax.tree_map(
+        lambda x: x.meta,
+        model.variables[base_layer.HYPER_PARAMS],
+        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
 
-        def __call__(self):
-          return 0
-
-      class FiddleParent(base_layer.FiddleBaseLayer):
-
-        child_tpl: Any = base_layer.sub_config_field(child_cls.HParams)
-        child_tpl_list: Any = base_layer.sub_config_field(None)
-        child_tpl_dict: Any = base_layer.sub_config_field(None)
-
-        def setup(self):
-          child_tpl = self.child_tpl.clone()
-          child_tpl.x += 2
-          self.create_child('child', child_tpl)
-
-        def __call__(self):
-          return 0
-
-      for parent_cls in (HParamsParent, FiddleParent):
-
-        with self.subTest(f'{parent_cls.__name__}_{child_cls.__name__}'):
-          p = parent_cls.HParams(name='test')
-          p.child_tpl = child_cls.HParams(x=5)
-          p.child_tpl_list = [child_cls.HParams(x=7), child_cls.HParams(x=12)]
-          p.child_tpl_dict = {'x': child_cls.HParams(x=12)}
-          layer = p.Instantiate()
-
-          model = layer.bind(
-              layer.init(jax.random.PRNGKey(0)),
-              mutable=[base_layer.HYPER_PARAMS])
-          model.post_init_hparams()
-          hyper_params = jax.tree_map(
-              lambda x: x.meta,
-              model.variables[base_layer.HYPER_PARAMS],
-              is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
-
-          self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
-          self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
-          self.assertEqual(hyper_params['child']['_hparams'].x, 7)
-          self.assertIsNone(hyper_params['_hparams'].child_tpl)
-          self.assertIsNone(hyper_params['_hparams'].child_tpl_list)
-          self.assertIsNone(hyper_params['_hparams'].child_tpl_dict)
+    self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
+    self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
+    self.assertEqual(hyper_params['child']['_hparams'].x, 7)
+    self.assertIsNone(hyper_params['_hparams'].child_tpl)
+    self.assertIsNone(hyper_params['_hparams'].child_tpl_list)
+    self.assertIsNone(hyper_params['_hparams'].child_tpl_dict)
 
   @parameterized.parameters([
-      # Hparams compared w/ HParams
-      (SimpleHParamsBaseLayer.HParams(), SimpleHParamsBaseLayer.HParams(),
-       True),
-      (SimpleHParamsBaseLayer.HParams(),
-       SimpleHParamsBaseLayer.HParams(name='foo'), True),
-      (SimpleHParamsBaseLayer.HParams(),
-       SimpleHParamsBaseLayer.HParams(dtype=jnp.float16), False),
-      # fdl.Config compared w/ fdl.Config
       (pax_fiddle.Config(SimpleFiddleBaseLayer),
        pax_fiddle.Config(SimpleFiddleBaseLayer), True),
       (pax_fiddle.Config(SimpleFiddleBaseLayer),
        pax_fiddle.Config(SimpleFiddleBaseLayer, name='foo'), True),
       (pax_fiddle.Config(SimpleFiddleBaseLayer),
        pax_fiddle.Config(SimpleFiddleBaseLayer, dtype=jnp.float16), False),
-      # fdl.Config compared w/ HParams: raises ValueError
-      (SimpleHParamsBaseLayer.HParams(),
-       pax_fiddle.Config(SimpleFiddleBaseLayer), ValueError),
-      (pax_fiddle.Config(SimpleFiddleBaseLayer),
-       SimpleHParamsBaseLayer.HParams(), ValueError),
   ])
   def test_compatible_hparams(self, lhs, rhs, expected):
-    if expected is not ValueError:
-      self.assertEqual(base_layer.compatible_hparams(lhs, rhs), expected)
-    else:
-      with self.assertRaises(ValueError):
-        base_layer.compatible_hparams(lhs, rhs)
+    self.assertEqual(base_layer.compatible_hparams(lhs, rhs), expected)
 
   def test_flax_parent_can_assign_name(self):
 
@@ -402,63 +334,6 @@ class BaseLayerTest(test_utils.TestCase):
           get_layer=lambda: AddBias.HParams(name='x').Instantiate())
       prms = mod.init({'params': key}, jnp.ones((3, 3)))
       self.assertIn('x', prms['params'])
-
-  def test_hparam_methods_are_disallowed(self):
-
-    expected_msg = 'Unsupported declaration `some_method` on `<class '
-    with self.assertRaisesRegex(ValueError, expected_msg):
-
-      class Layer(base_layer.BaseLayer):  # pylint: disable=unused-variable
-        """Test layer, inheriting from BaseLayer."""
-
-        _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
-
-        class HParams(base_layer.BaseLayer.HParams):
-          """Test HParams, inheriting from BaseLayer.HParams."""
-
-          def some_method(self):
-            pass
-
-  def test_hparam_properties_are_disallowed(self):
-
-    expected_msg = 'Unsupported declaration `some_property` on `<class '
-    with self.assertRaisesRegex(ValueError, expected_msg):
-
-      class Layer(base_layer.BaseLayer):  # pylint: disable=unused-variable
-        """Test layer, inheriting from BaseLayer."""
-
-        _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
-
-        class HParams(base_layer.BaseLayer.HParams):
-          """Test HParams, inheriting from BaseLayer.HParams."""
-
-          @property
-          def some_property(self):
-            return 42
-
-  def test_hparam_unannotated_attributes_are_disallowed(self):
-
-    expected_msg = 'Unsupported declaration `x` on `<class '
-    with self.assertRaisesRegex(ValueError, expected_msg):
-
-      class Layer(base_layer.BaseLayer):  # pylint: disable=unused-variable
-        """Test layer, inheriting from BaseLayer."""
-
-        _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
-
-        class HParams(base_layer.BaseLayer.HParams):
-          """Test HParams, inheriting from BaseLayer.HParams."""
-
-          x = 42
-
-  def test_no_new_hparams_base_layers(self):
-
-    with self.assertRaisesRegex(
-        ValueError,
-        'New base layers should be subclassed from FiddleBaseLayer'):
-
-      class TestLayer(base_layer.BaseLayer):  # pylint: disable=unused-variable
-        pass
 
 
 class FiddleBaseLayerTest(test_utils.TestCase):
@@ -714,7 +589,7 @@ class FiddleBaseLayerTest(test_utils.TestCase):
 
         class Layer2(base_layer.FiddleBaseLayer):
           child_tpl: pax_fiddle.Config = dataclasses.field(
-              default_factory=lambda: pax_fiddle.Config(SimpleHParamsBaseLayer))
+              default_factory=lambda: pax_fiddle.Config(SimpleFiddleBaseLayer))
 
     with self.subTest('Optional_FiddleHParamsClassStub'):
       if not hasattr(typing, 'get_origin'):

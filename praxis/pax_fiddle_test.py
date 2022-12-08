@@ -543,12 +543,9 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
       m.init(jax.random.PRNGKey(1), inputs)
 
 
-class LayerE(base_layer.BaseLayer):
+class LayerE(base_layer.FiddleBaseLayer):
 
-  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
-
-  class HParams(base_layer.BaseLayer.HParams):
-    tpl: pax_fiddle.Config[LayerD] = base_layer.sub_config_field(LayerD.HParams)
+  tpl: pax_fiddle.Config[LayerD] = base_layer.sub_config_field(LayerD.HParams)
 
 
 class DaglishTest(testing.TestCase, parameterized.TestCase):
@@ -565,17 +562,12 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
             "":
                 config,
             ".activation_split_dims_mapping":
-                base_layer.BaseLayer.ActivationShardingHParams(out=None),
-            ".cls":
-                LayerE,
-            ".dtype":
-                jnp.float32,
-            ".fprop_dtype":
-                None,
-            ".name":
-                "",
+                pax_fiddle.Config(
+                    base_layer.FiddleBaseLayer.ActivationShardingHParams,
+                    out=None),
             ".params_init":
-                base_layer.WeightInit(method="xavier", scale=1.000001),
+                pax_fiddle.Config(
+                    base_layer.WeightInit, method="xavier", scale=1.000001),
             ".params_init.method":
                 "xavier",
             ".params_init.scale":
@@ -589,11 +581,14 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
             ".tpl.weight_split_dims_mapping":
                 config.tpl.weight_split_dims_mapping,
             ".weight_split_dims_mapping":
-                base_layer.BaseLayer.WeightShardingHParams(wt=None)
+                pax_fiddle.Config(
+                    base_layer.FiddleBaseLayer.WeightShardingHParams,
+                    wt=None)
         })
 
   def test_non_memoized_iterate(self):
     config = LayerE.HParams()
+    fdl.materialize_defaults(config)
     paths = [
         daglish.path_str(path)
         for value, path in pax_fiddle.iterate(config, memoized=False)
@@ -617,6 +612,7 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
                             pax_fiddle.MemoizedTraversal)
   def test_replacement(self, traversal_cls):
     config = LayerE.HParams()
+    fdl.materialize_defaults(config)
 
     def traverse(value, state: daglish.State):
       if value == jnp.float32:
