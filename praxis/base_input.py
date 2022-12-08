@@ -26,8 +26,6 @@ from absl import logging
 import jax
 from jax._src.lib import xla_client as xc
 from jax.experimental import maps
-from lingvo.core import cluster_factory
-from lingvo.core import datasource
 import numpy as np
 from praxis import base_hyperparams
 from praxis import py_utils
@@ -327,7 +325,7 @@ class LingvoInputAdaptor(BaseInput):
           'suppress this error by setting hparams.allow_fixed_file_random_seed '
           '= True.')
     super().__init__(hparams)
-    self._cluster = copy.deepcopy(cluster_factory.Current())
+    self._cluster = copy.deepcopy(py_utils.current_cluster())
     # For Lingvo's Cluster context that may impact the behavior of this input
     # generator, we always set use_tpu to True, and optionally set do_eval
     # for non-training data when configured to do so. All other Cluster params
@@ -358,7 +356,8 @@ class LingvoInputAdaptor(BaseInput):
       self.input = p.input.Instantiate()
 
     if hasattr(self.input, 'datasource') and isinstance(
-        self.input.datasource, datasource.TFDatasetSource):
+        self.input.datasource, py_utils.TFDatasetSource
+    ):
       # For the special case when the input is implemented by a tf.data.Dataset,
       # call eagerly. Using tf.function may result in returning duplicate
       # batches.
@@ -393,7 +392,8 @@ class LingvoInputAdaptor(BaseInput):
 
   def reset(self) -> None:
     if hasattr(self.input, 'datasource') and isinstance(
-        self.input.datasource, datasource.TFDatasetSource):
+        self.input.datasource, py_utils.TFDatasetSource
+    ):
       self.input.datasource.Reset()
       # reset counter to 0.
       self._num_batches_produced = 0

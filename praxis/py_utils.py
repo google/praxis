@@ -19,6 +19,7 @@ import contextlib
 import dataclasses
 import functools
 import re
+import threading
 import time
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
 
@@ -33,10 +34,8 @@ from jax.experimental import multihost_utils
 from jax.experimental import pjit
 from jax.interpreters import pxla
 import jax.numpy as jnp
-from lingvo.core import cluster
-from lingvo.core import hyperparams
-from lingvo.core import py_utils
 import numpy as np
+from praxis import lingvo_lib
 import optax
 
 flags.DEFINE_bool(
@@ -56,24 +55,14 @@ def pmap_use_tensorstore():
   return flags.FLAGS.pmap_use_tensorstore
 
 
-infeed_context_scope = cluster.InfeedContextScope
-# No more symbols from lingvo cluster should be accessed by JAX library.
+current_cluster = lingvo_lib.current_cluster
+infeed_context_scope = lingvo_lib.infeed_context_scope
+TFDatasetSource = lingvo_lib.TFDatasetSource
 
-flatten = py_utils.Flatten
-NestedMap = py_utils.NestedMap
-MergeDictsWithValueCheck = py_utils.MergeDictsWithValueCheck
-ThreadLocalDict = py_utils.ThreadLocalDict
-ThreadLocalStack = py_utils.ThreadLocalStack
-fprop_dtype = py_utils.FPropDtype
-sharded_file_pattern_to_glob = py_utils.ShardedFilePatternToGlob
-# No more symbols from lingvo py_utils should be accessed by JAX library.
-del py_utils
+NestedMap = lingvo_lib.NestedMap
 
-InstantiableParams = hyperparams.InstantiableParams
-# Rename to HParams.
-HParams = hyperparams.Params
-# No more symbols from lingvo hyperparams should be accessed by JAX library.
-del hyperparams
+InstantiableParams = lingvo_lib.InstantiableParams
+HParams = lingvo_lib.HParams
 
 # No more imports from lingvo should be accessed by core JAX library.
 JTensor = jnp.ndarray
@@ -92,6 +81,42 @@ def _unzip2(xys):
 jax.tree_util.register_pytree_node(NestedMap,
                                    lambda xs: _unzip2(sorted(xs.items()))[::-1],
                                    lambda keys, xs: NestedMap(zip(keys, xs)))
+
+
+# TODO(shafey): Rename to lowercase_underscore globally.
+def MergeDictsWithValueCheck(dict1, dict2):
+  """Merges two dictionaries and asserts keys in both have identical values."""
+  for key in set(dict1) & set(dict2):
+    # The values must be the same object
+    if dict1[key] is not dict2[key]:
+      raise ValueError(
+          f'The same key {key} corresponds to different values '
+          f'in the dictionaries: {dict1[key]} vs {dict2[key]}.'
+      )
+  return {**dict1, **dict2}
+
+
+class ThreadLocalStack(threading.local):
+  """Stack of thread-local data."""
+
+  def __init__(self):
+    """Constructor."""
+    super().__init__()
+    self.stack = []
+
+
+def sharded_file_pattern_to_glob(file_pattern: str) -> str:
+  """Converts a file pattern path@shards in to path-?????-of-shards."""
+  if ',' in file_pattern:
+    raise ValueError(
+        'sharded_file_pattern_to_glob does not support multiple file patterns.'
+    )
+  if '@' not in file_pattern:
+    return file_pattern
+  path, shards = file_pattern.split('@')
+  if shards == '*':
+    return f'{path}-?????-of-*'
+  return f'{path}-?????-of-{int(shards):05}'
 
 
 def _nested_map_to_state_dict(xs: NestedMap) -> Dict[str, Any]:

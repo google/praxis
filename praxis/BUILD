@@ -61,8 +61,6 @@ pytype_strict_library(
         ":pytypes",
         # Implicit absl.logging dependency.
         # Implicit jax dependency.
-        # Implicit lingvo.core.cluster_factory dependency.
-        # Implicit lingvo.core.datasource dependency.
         # Implicit numpy dependency.
         # Implicit tensorflow_no_contrib dependency.
     ],
@@ -192,6 +190,18 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "lingvo_lib",
+    srcs = ["lingvo_lib.py"],
+    deps = [
+        # Implicit lingvo.core.cluster dependency.
+        # Implicit lingvo.core.cluster_factory dependency.
+        # Implicit lingvo.core.datasource dependency.
+        # Implicit lingvo.core.hyperparams dependency.
+        # Implicit lingvo.core.py_utils dependency.
+    ],
+)
+
+pytype_strict_library(
     name = "metric_utils",
     srcs = ["metric_utils.py"],
     srcs_version = "PY3",
@@ -240,14 +250,12 @@ pytype_strict_library(
     srcs = ["py_utils.py"],
     srcs_version = "PY3",
     deps = [
+        ":lingvo_lib",
         # Implicit absl.flags dependency.
         # Implicit absl.logging dependency.
         # Implicit flax dependency.
         # Implicit jax dependency.
         # Implicit jax.mesh_utils dependency.
-        # Implicit lingvo.core.cluster dependency.
-        # Implicit lingvo.core.hyperparams dependency.
-        # Implicit lingvo.core.py_utils dependency.
         # Implicit numpy dependency.
         # Implicit optax dependency.
     ],
