@@ -16,6 +16,7 @@
 """Tests for activations."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
@@ -30,11 +31,13 @@ class ActivationsTest(test_utils.TestCase):
 
   def test_Exp(self):
     inputs = jnp.array([1.])
-    self._run(activations.Exp.HParams(), inputs, jnp.exp(inputs))
+    self._run(pax_fiddle.Config(activations.Exp), inputs, jnp.exp(inputs))
 
   def test_Softplus(self):
     inputs = jnp.array([1.])
-    self._run(activations.Softplus.HParams(), inputs, jax.nn.softplus(inputs))
+    self._run(
+        pax_fiddle.Config(activations.Softplus), inputs, jax.nn.softplus(inputs)
+    )
 
 
 if __name__ == '__main__':

@@ -16,6 +16,7 @@
 """Tests for ngrammer."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
@@ -97,7 +98,8 @@ class NgrammerTest(test_utils.TestCase):
     inputs = np.random.normal(1.5, 2.0, (2, 32, num_heads, dim_per_head))
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    vq_layer_p = ngrammer.VectorQuantization.HParams(
+    vq_layer_p = pax_fiddle.Config(
+        ngrammer.VectorQuantization,
         name='jax_vq_layer',
         num_clusters=num_clusters,
         num_heads=num_heads,
@@ -130,7 +132,8 @@ class NgrammerTest(test_utils.TestCase):
     inputs = np.random.normal(1.5, 2.0, (2, 32, num_heads, dim_per_head))
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    bregman_compression_layer_p = ngrammer.BregmanCompression.HParams(
+    bregman_compression_layer_p = pax_fiddle.Config(
+        ngrammer.BregmanCompression,
         name='jax_bregman_compression_layer',
         num_heads=num_heads,
         dim_per_head=dim_per_head,
@@ -139,7 +142,8 @@ class NgrammerTest(test_utils.TestCase):
         negative_slope=0.1,
         start_step=0,
         end_step=10,
-        constant_lr_schedule=True)
+        constant_lr_schedule=True,
+    )
     bregman_compression_layer_p = instantiate(bregman_compression_layer_p)
     with base_layer.JaxContext.new_context():
       initial_vars = bregman_compression_layer_p.init(init_key, inputs)
@@ -170,7 +174,8 @@ class NgrammerTest(test_utils.TestCase):
         1.5, 2.0, (batch_size, seq_len, num_heads * dim_per_head))
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    ngrammer_layer_p = ngrammer.Ngrammer.HParams(
+    ngrammer_layer_p = pax_fiddle.Config(
+        ngrammer.Ngrammer,
         name='jax_ngrammer_layer',
         unigram_vocab_size=unigram_vocab_size,
         ngram_vocab_size=num_heads * unigram_vocab_size**2,
@@ -235,7 +240,8 @@ class NgrammerTest(test_utils.TestCase):
         1.5, 2.0, (batch_size, seq_len, num_heads * dim_per_head))
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    ngrammer_layer_p = ngrammer.Ngrammer.HParams(
+    ngrammer_layer_p = pax_fiddle.Config(
+        ngrammer.Ngrammer,
         name='jax_ngrammer_layer',
         unigram_vocab_size=unigram_vocab_size,
         ngram_vocab_size=num_heads * unigram_vocab_size**2,
@@ -304,7 +310,8 @@ class NgrammerTest(test_utils.TestCase):
       pair_ids = np.argmax(attention_scores, axis=-1)
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    vq_ngrammer_layer_p = ngrammer.VQNgrammer.HParams(
+    vq_ngrammer_layer_p = pax_fiddle.Config(
+        ngrammer.VQNgrammer,
         name='jax_vq_ngrammer_layer',
         ngram_vocab_size=num_heads * num_clusters**2 + 1,
         ngram_emb_dim=ngram_emb_dim,
@@ -313,7 +320,8 @@ class NgrammerTest(test_utils.TestCase):
         dim_per_head=dim_per_head,
         concat_ngrams=concat_ngrams,
         ngram_using_attention_scores=use_attention_scores,
-        causal_attention=False)
+        causal_attention=False,
+    )
     vq_ngrammer_layer = instantiate(vq_ngrammer_layer_p)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
@@ -389,7 +397,8 @@ class NgrammerTest(test_utils.TestCase):
           low=0, high=1, size=(batch_size, num_heads, seq_len, seq_len))
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    vq_ngrammer_layer_p = ngrammer.VQNgrammer.HParams(
+    vq_ngrammer_layer_p = pax_fiddle.Config(
+        ngrammer.VQNgrammer,
         name='jax_vq_ngrammer_layer',
         ngram_vocab_size=num_heads * num_clusters**2 + 1,
         ngram_emb_dim=ngram_emb_dim,
@@ -398,7 +407,8 @@ class NgrammerTest(test_utils.TestCase):
         dim_per_head=dim_per_head,
         concat_ngrams=concat_ngrams,
         causal_attention=True,
-        ngram_using_attention_scores=use_attention_scores)
+        ngram_using_attention_scores=use_attention_scores,
+    )
     vq_ngrammer_layer = instantiate(vq_ngrammer_layer_p)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
@@ -442,7 +452,8 @@ class NgrammerTest(test_utils.TestCase):
     input_embs = embeddings[(input_ids,)]
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    vq_ngrammer_layer_p = ngrammer.VQNgrammer.HParams(
+    vq_ngrammer_layer_p = pax_fiddle.Config(
+        ngrammer.VQNgrammer,
         name='jax_vq_ngrammer_layer',
         ngram_vocab_size=num_heads * num_clusters**2 + 1,
         unigram_vocab_size=unigram_vocab_size,
@@ -453,11 +464,12 @@ class NgrammerTest(test_utils.TestCase):
         concat_ngrams=concat_ngrams,
         ngram_using_attention_scores=use_attention_scores,
         causal_attention=False,
-        use_cached_input_ids_to_cluster_ids=False
-        )
+        use_cached_input_ids_to_cluster_ids=False,
+    )
     vq_ngrammer_layer = instantiate(vq_ngrammer_layer_p)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
-    vq_ngrammer_layer_p_cached = ngrammer.VQNgrammer.HParams(
+    vq_ngrammer_layer_p_cached = pax_fiddle.Config(
+        ngrammer.VQNgrammer,
         name='jax_vq_ngrammer_layer',
         ngram_vocab_size=num_heads * num_clusters**2 + 1,
         unigram_vocab_size=unigram_vocab_size,
@@ -468,8 +480,8 @@ class NgrammerTest(test_utils.TestCase):
         concat_ngrams=concat_ngrams,
         ngram_using_attention_scores=use_attention_scores,
         causal_attention=False,
-        use_cached_input_ids_to_cluster_ids=True
-        )
+        use_cached_input_ids_to_cluster_ids=True,
+    )
     vq_ngrammer_layer_cached = instantiate(vq_ngrammer_layer_p_cached)
     with base_layer.JaxContext.new_context(hparams=context_params):
       initial_vars = vq_ngrammer_layer.init(
@@ -530,7 +542,8 @@ class NgrammerTest(test_utils.TestCase):
         1.5, 2.0, (batch_size, seq_len, num_heads, dim_per_head))
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
-    bregman_ngrammer_layer_p = ngrammer.BregmanNgrammer.HParams(
+    bregman_ngrammer_layer_p = pax_fiddle.Config(
+        ngrammer.BregmanNgrammer,
         name='jax_bregman_ngrammer_layer',
         ngram_vocab_size=ngram_vocab_size,
         ngram_emb_dim=ngram_emb_dim,
@@ -539,7 +552,8 @@ class NgrammerTest(test_utils.TestCase):
         dim_per_head=dim_per_head,
         concat_ngrams=concat_ngrams,
         start_step=0,
-        end_step=10)
+        end_step=10,
+    )
     bregman_ngrammer_layer = instantiate(bregman_ngrammer_layer_p)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):

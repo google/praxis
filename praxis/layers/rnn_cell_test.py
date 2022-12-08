@@ -16,6 +16,7 @@
 """Tests for Praxis rnn_cell layers."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
@@ -111,7 +112,8 @@ class RnnCellTest(test_utils.TestCase):
     m_expected = res.m.numpy()
     c_expected = res.c.numpy()
 
-    p = jax_rnn_cell.LayerNormalizedLstmCellSimple.HParams(
+    p = pax_fiddle.Config(
+        jax_rnn_cell.LayerNormalizedLstmCellSimple,
         num_input_nodes=2,
         num_output_nodes=2,
         name='lstm',

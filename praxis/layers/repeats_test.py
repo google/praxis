@@ -16,6 +16,7 @@
 """Tests for Praxis repeats layers."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
@@ -78,11 +79,10 @@ class FeedForward(base_layer.FiddleBaseLayer):
 class RepeatCalledTwice(base_layer.FiddleBaseLayer):
 
   def setup(self):
-    sub_p = FeedForward.HParams(input_dim=2, output_dim=2)
-    p = repeats.Repeat.HParams(
-        name='repeated_ffn',
-        sub_tpl=sub_p,
-        x_times=3)
+    sub_p = pax_fiddle.Config(FeedForward, input_dim=2, output_dim=2)
+    p = pax_fiddle.Config(
+        repeats.Repeat, name='repeated_ffn', sub_tpl=sub_p, x_times=3
+    )
 
     self.create_child('repeated_ffn', p)
 
@@ -138,12 +138,14 @@ class RepeatsTest(test_utils.TestCase):
   @parameterized.parameters((False,), (True,))
   def test_repeats(self, unpack_summaries):
 
-    sub_p = FeedForward.HParams(input_dim=2, output_dim=2)
-    p = repeats.Repeat.HParams(
+    sub_p = pax_fiddle.Config(FeedForward, input_dim=2, output_dim=2)
+    p = pax_fiddle.Config(
+        repeats.Repeat,
         name='repeated_ffn',
         sub_tpl=sub_p,
         x_times=5,
-        unpack_summaries=unpack_summaries)
+        unpack_summaries=unpack_summaries,
+    )
     repeated_ffn = instantiate(p)
 
     k = jax.random.PRNGKey(123)
@@ -195,12 +197,14 @@ class RepeatsTest(test_utils.TestCase):
   @parameterized.parameters((False,), (True,))
   def test_extend_step(self, unroll):
 
-    sub_p = Decoder.HParams(model_dim=4)
-    p = repeats.Repeat.HParams(
+    sub_p = pax_fiddle.Config(Decoder, model_dim=4)
+    p = pax_fiddle.Config(
+        repeats.Repeat,
         name='repeated_decoder',
         sub_tpl=sub_p,
         x_times=5,
-        unroll_in_decode=unroll)
+        unroll_in_decode=unroll,
+    )
     repeated_decoder = instantiate(p)
 
     k = jax.random.PRNGKey(123)
@@ -223,7 +227,7 @@ class RepeatsTest(test_utils.TestCase):
       self.assertAllClose(step_out, fprop_outs[:, t])
 
   def test_repeat_called_twice(self):
-    p = RepeatCalledTwice.HParams(name='repeat_called_twice')
+    p = pax_fiddle.Config(RepeatCalledTwice, name='repeat_called_twice')
     repeated_layer = instantiate(p)
 
     k = jax.random.PRNGKey(123)
@@ -242,8 +246,8 @@ class RepeatsQuantizeTest(test_utils.TestCase):
 
   def test_quantize_repeats(self):
 
-    sub_p = FeedForward.HParams(input_dim=2, output_dim=2)
-    p = repeats.Repeat.HParams(name='ffn', sub_tpl=sub_p, x_times=5)
+    sub_p = pax_fiddle.Config(FeedForward, input_dim=2, output_dim=2)
+    p = pax_fiddle.Config(repeats.Repeat, name='ffn', sub_tpl=sub_p, x_times=5)
     ffn = instantiate(p)
 
     inputs = np.random.normal(1.0, 1.5, [2, 2]).astype(np.float32)

@@ -16,6 +16,7 @@
 """N-grammer layers from https://arxiv.org/abs/2207.06366."""
 
 from typing import Optional, Tuple, Union
+from praxis import pax_fiddle
 import jax
 from jax import numpy as jnp
 from praxis import asserts
@@ -285,7 +286,8 @@ class BregmanCompression(base_layer.FiddleBaseLayer):
     bregman_layers = []
     for _ in range(self.num_heads):
       bregman_layers.append(
-          bregman.BregmanPCA.HParams(
+          pax_fiddle.Config(
+              bregman.BregmanPCA,
               num_components=self.num_components,
               input_dims=self.dim_per_head,
               activation_type=self.activation_type,
@@ -387,17 +389,17 @@ class Ngrammer(base_layer.FiddleBaseLayer):
     ngram_emb_layer_norm_p = []
     ngram_emb_table_p = []
     for i in range(self.num_heads):
-      layer_norm_p = normalizations.LayerNorm.HParams().clone()
+      layer_norm_p = pax_fiddle.Config(normalizations.LayerNorm).clone()
       layer_norm_p.dim = self.dim_per_head
       layer_norm_p.name = f'layer_norm_{i}'
 
       emb_layer_norm_p.append(layer_norm_p)
-      ngram_layer_norm_p = normalizations.LayerNorm.HParams().clone()
+      ngram_layer_norm_p = pax_fiddle.Config(normalizations.LayerNorm).clone()
       ngram_layer_norm_p.dim = self.ngram_emb_dim
       ngram_emb_layer_norm_p.append(ngram_layer_norm_p)
 
       # Create embedding table for ngram lookup.
-      embedding_p = embedding_softmax.Embedding.HParams().clone()
+      embedding_p = pax_fiddle.Config(embedding_softmax.Embedding).clone()
       embedding_p.name = f'embedding_{i}'
       embedding_p.num_classes = self.ngram_vocab_size
       embedding_p.input_dims = self.ngram_emb_dim
@@ -607,7 +609,8 @@ class VQNgrammer(base_layer.FiddleBaseLayer):
       assert self.ngram_emb_dim == self.dim_per_head
 
     # Create VQ layer.
-    vq_layer_p = VectorQuantization.HParams(
+    vq_layer_p = pax_fiddle.Config(
+        VectorQuantization,
         num_clusters=self.num_clusters,
         num_heads=self.num_heads,
         dim_per_head=self.dim_per_head,
@@ -629,7 +632,8 @@ class VQNgrammer(base_layer.FiddleBaseLayer):
                            trainable=False)
 
     # Create N-gram lookup layer.
-    ngram_layer_p = Ngrammer.HParams(
+    ngram_layer_p = pax_fiddle.Config(
+        Ngrammer,
         ngram_vocab_size=self.ngram_vocab_size,
         unigram_vocab_size=self.num_clusters,
         ngram_emb_dim=self.ngram_emb_dim,
@@ -866,13 +870,17 @@ class BregmanNgrammer(base_layer.FiddleBaseLayer):
     emb_layer_norm_p = []
     ngram_emb_layer_norm_p = []
     for i in range(self.num_heads):
-      layer_norm_p = normalizations.LayerNorm.HParams(
-          dim=self.dim_per_head, name=f'emb_layer_norm_{i}'
+      layer_norm_p = pax_fiddle.Config(
+          normalizations.LayerNorm,
+          dim=self.dim_per_head,
+          name=f'emb_layer_norm_{i}',
       )
       emb_layer_norm_p.append(layer_norm_p)
 
-      ngram_layer_norm_p = normalizations.LayerNorm.HParams(
-          dim=self.ngram_emb_dim, name=f'ngram_layer_norm_{i}'
+      ngram_layer_norm_p = pax_fiddle.Config(
+          normalizations.LayerNorm,
+          dim=self.ngram_emb_dim,
+          name=f'ngram_layer_norm_{i}',
       )
       ngram_emb_layer_norm_p.append(ngram_layer_norm_p)
 
@@ -904,7 +912,8 @@ class BregmanNgrammer(base_layer.FiddleBaseLayer):
     self.create_variable('embedding_table', embedding_table_p)
 
     # Create a Bregman compression layer.
-    bregman_compression_layer_p = BregmanCompression.HParams(
+    bregman_compression_layer_p = pax_fiddle.Config(
+        BregmanCompression,
         params_init=self.params_init,
         num_heads=self.num_heads,
         dim_per_head=self.dim_per_head,

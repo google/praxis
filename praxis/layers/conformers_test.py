@@ -16,6 +16,7 @@
 """Tests for conformers."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
@@ -45,7 +46,8 @@ class ConformerTest(test_utils.TestCase):
   def test_conformer_layer(self, batch_size, seq_len, kernel_size, input_dims,
                            model_dims, atten_num_heads, dropout_prob):
     # Lingvo TF layers only use dropout on FF and Attention layers
-    p = conformers.Conformer.HParams(
+    p = pax_fiddle.Config(
+        conformers.Conformer,
         name='jax_conformer_layer',
         input_dims=input_dims,
         conv_residual_dropout=0.0,
@@ -55,7 +57,8 @@ class ConformerTest(test_utils.TestCase):
         ffn_relu_dropout=dropout_prob,
         kernel_size=kernel_size,
         model_dims=model_dims,
-        atten_num_heads=atten_num_heads)
+        atten_num_heads=atten_num_heads,
+    )
     conformer = instantiate(p)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
@@ -121,23 +124,25 @@ class ConformerTest(test_utils.TestCase):
     num_heads = 4
 
     # Layer which can do both local emulated and global self attention.
-    local_layer_p = conformers.DotProductAttentionWithContextXL.HParams(
+    local_layer_p = pax_fiddle.Config(
+        conformers.DotProductAttentionWithContextXL,
         name='local_mh',
         input_dim=mdl_dim,
         hidden_dim=hidden_dim,
         num_heads=num_heads,
         rel_pos_emb_dim=rel_pos_emb_dim,
         left_context=left_context,
-        right_context=right_context
+        right_context=right_context,
     )
 
     # Layer which can do only global attention.
-    global_layer_p = attentions.DotProductAttentionXL.HParams(
+    global_layer_p = pax_fiddle.Config(
+        attentions.DotProductAttentionXL,
         name='global_mh',
         input_dim=mdl_dim,
         hidden_dim=hidden_dim,
         num_heads=num_heads,
-        rel_pos_emb_dim=rel_pos_emb_dim
+        rel_pos_emb_dim=rel_pos_emb_dim,
     )
 
     # Prepare input data.
@@ -198,7 +203,8 @@ class ConformerTest(test_utils.TestCase):
     num_heads = 4
 
     # Layer which can do only local self attention.
-    local_layer_p = attentions.LocalSelfAttentionXL.HParams(
+    local_layer_p = pax_fiddle.Config(
+        attentions.LocalSelfAttentionXL,
         name='local_mh',
         input_dim=mdl_dim,
         hidden_dim=hidden_dim,
@@ -209,12 +215,13 @@ class ConformerTest(test_utils.TestCase):
     )
 
     # Layer which can do only global attention.
-    global_layer_p = attentions.DotProductAttentionXL.HParams(
+    global_layer_p = pax_fiddle.Config(
+        attentions.DotProductAttentionXL,
         name='global_mh',
         input_dim=mdl_dim,
         hidden_dim=hidden_dim,
         num_heads=num_heads,
-        rel_pos_emb_dim=rel_pos_emb_dim
+        rel_pos_emb_dim=rel_pos_emb_dim,
     )
 
     # Prepare input data.

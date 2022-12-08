@@ -16,6 +16,7 @@
 """Tests for Praxis transformer layers."""
 
 import itertools
+from praxis import pax_fiddle
 
 from absl import logging
 from absl.testing import absltest
@@ -53,16 +54,21 @@ class TransformerModelsTest(test_utils.TestCase):
   def test_transformer_bert(self, trainable_position_emb):
     seq_len = 512
     if trainable_position_emb:
-      position_emb_tpl = embedding_softmax.TrainablePositionalEmbedding.HParams(
+      position_emb_tpl = pax_fiddle.Config(
+          embedding_softmax.TrainablePositionalEmbedding
       )
       position_emb_tpl.max_seq_length = seq_len
     else:
-      position_emb_tpl = embedding_softmax.PositionalEmbedding.HParams()
-    p = transformer_models.TransformerLm.HParams(
+      position_emb_tpl = pax_fiddle.Config(
+          embedding_softmax.PositionalEmbedding
+      )
+    p = pax_fiddle.Config(
+        transformer_models.TransformerLm,
         name='bert_lm',
         model_dims=32,
         vocab_size=52,
-        position_emb_tpl=position_emb_tpl)
+        position_emb_tpl=position_emb_tpl,
+    )
     stacked_transformer_tpl = p.stacked_transformer_tpl
     stacked_transformer_tpl.model_dims = 32
     stacked_transformer_tpl.hidden_dims = 4 * 32
@@ -113,23 +119,28 @@ class TransformerModelsTest(test_utils.TestCase):
     ngram_emb_dim = 4
     post_attention_ngrammer_tpls = None
     if use_vq_ngrams:
-      ngrammer_params = ngrammer.VQNgrammer.HParams(
+      ngrammer_params = pax_fiddle.Config(
+          ngrammer.VQNgrammer,
           ngram_vocab_size=64,
           ngram_emb_dim=ngram_emb_dim,
           num_heads=num_heads,
           concat_ngrams=True,
           num_clusters=2,
-          dim_per_head=dim_per_head)
+          dim_per_head=dim_per_head,
+      )
     else:
-      ngrammer_params = ngrammer.Ngrammer.HParams(
+      ngrammer_params = pax_fiddle.Config(
+          ngrammer.Ngrammer,
           ngram_vocab_size=64,
           unigram_vocab_size=vocab_size,
           ngram_emb_dim=ngram_emb_dim,
           num_heads=num_heads,
           concat_ngrams=True,
-          dim_per_head=dim_per_head)
+          dim_per_head=dim_per_head,
+      )
     if use_post_attention_ngrammer:
-      post_attn_ngrammer_params = ngrammer.VQNgrammer.HParams(
+      post_attn_ngrammer_params = pax_fiddle.Config(
+          ngrammer.VQNgrammer,
           ngram_vocab_size=8,
           ngram_emb_dim=ngram_emb_dim,
           ngram_using_attention_scores=ngram_using_attention_scores,
@@ -137,24 +148,27 @@ class TransformerModelsTest(test_utils.TestCase):
           concat_ngrams=True,
           causal_attention=True,
           num_clusters=2,
-          dim_per_head=dim_per_head)
+          dim_per_head=dim_per_head,
+      )
       post_attention_ngrammer_tpls = [post_attn_ngrammer_params] * num_layers
-    p = transformer_models.TransformerLm.HParams(
+    p = pax_fiddle.Config(
+        transformer_models.TransformerLm,
         name='jax_ngrammer_layer',
         model_dims=num_heads * dim_per_head,
         model_type=transformer_models.LanguageModelType.CAUSAL,
         packed_input=False,
         ngrammer_tpl=ngrammer_params,
         post_attention_ngrammer_tpls=post_attention_ngrammer_tpls,
-        vocab_size=vocab_size)
+        vocab_size=vocab_size,
+    )
     stacked_transformer_tpl = p.stacked_transformer_tpl
     stacked_transformer_tpl.model_dims = num_heads * dim_per_head
     stacked_transformer_tpl.hidden_dims = 4 * num_heads * dim_per_head
     stacked_transformer_tpl.num_heads = num_heads
     stacked_transformer_tpl.num_layers = num_layers
     if not share_embedding_and_softmax:
-      p.separate_embedding_tpl = embedding_softmax.Embedding.HParams()
-      p.softmax_tpl = embedding_softmax.FullSoftmax.HParams()
+      p.separate_embedding_tpl = pax_fiddle.Config(embedding_softmax.Embedding)
+      p.softmax_tpl = pax_fiddle.Config(embedding_softmax.FullSoftmax)
     # Rotary position embedding.
     params = p.stacked_transformer_tpl.transformer_layer_params_tpl
     params.tr_atten_tpl.use_rotary_position_emb = use_rotary_position_emb
@@ -210,20 +224,22 @@ class TransformerModelsTest(test_utils.TestCase):
     num_heads = 2
     dim_per_head = 4
     dconv_kernel_size = 3
-    p = transformer_models.TransformerLm.HParams(
+    p = pax_fiddle.Config(
+        transformer_models.TransformerLm,
         name='jax_primer_layer',
         model_dims=num_heads * dim_per_head,
         model_type=transformer_models.LanguageModelType.CAUSAL,
         packed_input=False,
-        vocab_size=vocab_size)
+        vocab_size=vocab_size,
+    )
     stacked_transformer_tpl = p.stacked_transformer_tpl
     stacked_transformer_tpl.model_dims = num_heads * dim_per_head
     stacked_transformer_tpl.hidden_dims = 2 * num_heads * dim_per_head
     stacked_transformer_tpl.num_heads = num_heads
     stacked_transformer_tpl.num_layers = num_layers
     if not share_embedding_and_softmax:
-      p.separate_embedding_tpl = embedding_softmax.Embedding.HParams()
-      p.softmax_tpl = embedding_softmax.FullSoftmax.HParams()
+      p.separate_embedding_tpl = pax_fiddle.Config(embedding_softmax.Embedding)
+      p.softmax_tpl = pax_fiddle.Config(embedding_softmax.FullSoftmax)
     seq_len = 4
     batch_size = 3
     # Turn on dconv as in Primer.
@@ -276,20 +292,22 @@ class TransformerModelsTest(test_utils.TestCase):
     num_layers = 2
     num_heads = 2
     dim_per_head = 4
-    p = transformer_models.TransformerLm.HParams(
+    p = pax_fiddle.Config(
+        transformer_models.TransformerLm,
         name='jax_lm_layer',
         model_dims=num_heads * dim_per_head,
         model_type=transformer_models.LanguageModelType.CAUSAL,
         packed_input=False,
-        vocab_size=vocab_size)
+        vocab_size=vocab_size,
+    )
     stacked_transformer_tpl = p.stacked_transformer_tpl
     stacked_transformer_tpl.model_dims = num_heads * dim_per_head
     stacked_transformer_tpl.hidden_dims = 2 * num_heads * dim_per_head
     stacked_transformer_tpl.num_heads = num_heads
     stacked_transformer_tpl.num_layers = num_layers
     if not share_embedding_and_softmax:
-      p.separate_embedding_tpl = embedding_softmax.Embedding.HParams()
-      p.softmax_tpl = embedding_softmax.FullSoftmax.HParams()
+      p.separate_embedding_tpl = pax_fiddle.Config(embedding_softmax.Embedding)
+      p.softmax_tpl = pax_fiddle.Config(embedding_softmax.FullSoftmax)
     seq_len = 4
     batch_size = 3
     # Turn on dconv as in Primer.
@@ -297,7 +315,8 @@ class TransformerModelsTest(test_utils.TestCase):
     params.tr_atten_tpl.dconv_qkv = False
     # Rotary position embedding.
     params = p.stacked_transformer_tpl.transformer_layer_params_tpl
-    params.tr_atten_tpl = attentions.DotProductAttentionWithLPB.HParams(
+    params.tr_atten_tpl = pax_fiddle.Config(
+        attentions.DotProductAttentionWithLPB,
         input_dim=num_heads * dim_per_head,
         hidden_dim=2 * num_heads * dim_per_head,
         num_heads=num_heads,
@@ -305,7 +324,8 @@ class TransformerModelsTest(test_utils.TestCase):
         atten_logit_cap=20.0,
         combine_qkv=True,
         dconv_qkv=False,
-        use_rotary_position_emb=use_rotary_position_emb)
+        use_rotary_position_emb=use_rotary_position_emb,
+    )
     transformer_lm = instantiate(p)
     npy_inputs = np.random.randint(
         vocab_size, size=(batch_size, seq_len)).astype('int32')
@@ -375,23 +395,28 @@ class TransformerModelsTest(test_utils.TestCase):
     post_attention_ngrammer_tpls = None
     ngram_using_attention_scores = False
     if use_vq_ngrams:
-      ngrammer_params = ngrammer.VQNgrammer.HParams(
+      ngrammer_params = pax_fiddle.Config(
+          ngrammer.VQNgrammer,
           ngram_vocab_size=64,
           ngram_emb_dim=ngram_emb_dim,
           num_heads=num_heads,
           concat_ngrams=True,
           num_clusters=2,
-          dim_per_head=dim_per_head)
+          dim_per_head=dim_per_head,
+      )
     else:
-      ngrammer_params = ngrammer.Ngrammer.HParams(
+      ngrammer_params = pax_fiddle.Config(
+          ngrammer.Ngrammer,
           ngram_vocab_size=64,
           unigram_vocab_size=vocab_size,
           ngram_emb_dim=ngram_emb_dim,
           num_heads=num_heads,
           concat_ngrams=True,
-          dim_per_head=dim_per_head)
+          dim_per_head=dim_per_head,
+      )
     if use_post_attention_ngrammer:
-      post_attn_ngrammer_params = ngrammer.VQNgrammer.HParams(
+      post_attn_ngrammer_params = pax_fiddle.Config(
+          ngrammer.VQNgrammer,
           ngram_vocab_size=8,
           ngram_emb_dim=ngram_emb_dim,
           ngram_using_attention_scores=ngram_using_attention_scores,
@@ -399,24 +424,27 @@ class TransformerModelsTest(test_utils.TestCase):
           concat_ngrams=True,
           causal_attention=True,
           num_clusters=2,
-          dim_per_head=dim_per_head)
+          dim_per_head=dim_per_head,
+      )
       post_attention_ngrammer_tpls = [post_attn_ngrammer_params] * num_layers
-    p = transformer_models.TransformerLm.HParams(
+    p = pax_fiddle.Config(
+        transformer_models.TransformerLm,
         name='jax_ngrammer_layer',
         model_dims=num_heads * dim_per_head,
         model_type=transformer_models.LanguageModelType.CAUSAL,
         packed_input=False,
         ngrammer_tpl=ngrammer_params,
         post_attention_ngrammer_tpls=post_attention_ngrammer_tpls,
-        vocab_size=vocab_size)
+        vocab_size=vocab_size,
+    )
     stacked_transformer_tpl = p.stacked_transformer_tpl
     stacked_transformer_tpl.model_dims = num_heads * dim_per_head
     stacked_transformer_tpl.hidden_dims = 4 * num_heads * dim_per_head
     stacked_transformer_tpl.num_heads = num_heads
     stacked_transformer_tpl.num_layers = num_layers
     if not share_embedding_and_softmax:
-      p.separate_embedding_tpl = embedding_softmax.Embedding.HParams()
-      p.softmax_tpl = embedding_softmax.FullSoftmax.HParams()
+      p.separate_embedding_tpl = pax_fiddle.Config(embedding_softmax.Embedding)
+      p.softmax_tpl = pax_fiddle.Config(embedding_softmax.FullSoftmax)
     seq_len = 4
     batch_size = 2
     # Turn on dconv as in Primer.
@@ -479,116 +507,143 @@ class TransformerModelsTest(test_utils.TestCase):
     decoder_ngrammer_params = None
     post_attention_ngrammer_tpls = None
     if use_encoder_vq_ngrams:
-      encoder_ngrammer_params = ngrammer.VQNgrammer.HParams(
+      encoder_ngrammer_params = pax_fiddle.Config(
+          ngrammer.VQNgrammer,
           ngram_vocab_size=8,
           ngram_emb_dim=ngram_emb_dim,
           num_heads=num_heads,
           concat_ngrams=True,
           num_clusters=2,
-          dim_per_head=dim_per_head)
+          dim_per_head=dim_per_head,
+      )
     if use_encoder_ngrams:
-      encoder_ngrammer_params = ngrammer.Ngrammer.HParams(
+      encoder_ngrammer_params = pax_fiddle.Config(
+          ngrammer.Ngrammer,
           ngram_vocab_size=16,
           unigram_vocab_size=vocab_size,
           ngram_emb_dim=ngram_emb_dim,
           num_heads=num_heads,
           concat_ngrams=True,
-          dim_per_head=dim_per_head)
+          dim_per_head=dim_per_head,
+      )
     if use_decoder_vq_ngrams:
-      decoder_ngrammer_params = ngrammer.VQNgrammer.HParams(
+      decoder_ngrammer_params = pax_fiddle.Config(
+          ngrammer.VQNgrammer,
           ngram_vocab_size=8,
           ngram_emb_dim=ngram_emb_dim,
           num_heads=num_heads,
           concat_ngrams=True,
           num_clusters=2,
-          dim_per_head=dim_per_head)
+          dim_per_head=dim_per_head,
+      )
     if use_decoder_ngrams:
-      decoder_ngrammer_params = ngrammer.Ngrammer.HParams(
+      decoder_ngrammer_params = pax_fiddle.Config(
+          ngrammer.Ngrammer,
           ngram_vocab_size=16,
           unigram_vocab_size=vocab_size,
           ngram_emb_dim=ngram_emb_dim,
           num_heads=num_heads,
           concat_ngrams=True,
-          dim_per_head=dim_per_head)
+          dim_per_head=dim_per_head,
+      )
     if use_post_attention_ngrammer:
-      ngrammer_params = ngrammer.Ngrammer.HParams(
+      ngrammer_params = pax_fiddle.Config(
+          ngrammer.Ngrammer,
           ngram_vocab_size=4,
           unigram_vocab_size=vocab_size,
           ngram_emb_dim=ngram_emb_dim,
           num_heads=num_heads,
           concat_ngrams=True,
-          dim_per_head=dim_per_head)
+          dim_per_head=dim_per_head,
+      )
       post_attention_ngrammer_tpls = [ngrammer_params] * 2
-    p = transformer_models.TransformerEncoderDecoder.HParams(
+    p = pax_fiddle.Config(
+        transformer_models.TransformerEncoderDecoder,
         name='jax_transformer_encoder_decoder',
         model_dims=num_heads * dim_per_head,
         decoder_ngrammer_tpl=decoder_ngrammer_params,
         encoder_ngrammer_tpl=encoder_ngrammer_params,
         encoder_post_attention_ngrammer_tpls=post_attention_ngrammer_tpls,
-        decoder_post_attention_ngrammer_tpls=post_attention_ngrammer_tpls)
+        decoder_post_attention_ngrammer_tpls=post_attention_ngrammer_tpls,
+    )
 
     # Encoder stack.
     if use_stacked_transformer_repeated:
-      block_param = transformers.StackedTransformer.HParams(
+      block_param = pax_fiddle.Config(
+          transformers.StackedTransformer,
           num_layers=num_layers,
           num_heads=num_heads,
           model_dims=num_heads * dim_per_head,
           hidden_dims=num_heads * dim_per_head,
           mask_self_attention=False,
-          fold_padding_with_segment_mask=True)
-      p.encoder_stacked_transformer_tpl = (
-          transformers.StackedTransformerRepeated.HParams(
-              block=block_param, x_times=1))
+          fold_padding_with_segment_mask=True,
+      )
+      p.encoder_stacked_transformer_tpl = pax_fiddle.Config(
+          transformers.StackedTransformerRepeated, block=block_param, x_times=1
+      )
     else:
-      p.encoder_stacked_transformer_tpl = (
-          transformers.StackedTransformer.HParams(
-              model_dims=num_heads * dim_per_head,
-              hidden_dims=num_heads * dim_per_head,
-              num_heads=num_heads,
-              num_layers=num_layers,
-              mask_self_attention=False,
-              fold_padding_with_segment_mask=True))
+      p.encoder_stacked_transformer_tpl = pax_fiddle.Config(
+          transformers.StackedTransformer,
+          model_dims=num_heads * dim_per_head,
+          hidden_dims=num_heads * dim_per_head,
+          num_heads=num_heads,
+          num_layers=num_layers,
+          mask_self_attention=False,
+          fold_padding_with_segment_mask=True,
+      )
 
     # Decoder stack.
     if use_stacked_transformer_repeated:
-      block_param = transformers.StackedTransformer.HParams(
+      block_param = pax_fiddle.Config(
+          transformers.StackedTransformer,
           num_layers=num_layers,
           num_heads=num_heads,
           model_dims=num_heads * dim_per_head,
           hidden_dims=num_heads * dim_per_head,
           mask_self_attention=True,
-          fold_padding_with_segment_mask=True)
-      p.decoder_stacked_transformer_tpl = (
-          transformers.StackedTransformerRepeated.HParams(
-              block=block_param, x_times=1))
+          fold_padding_with_segment_mask=True,
+      )
+      p.decoder_stacked_transformer_tpl = pax_fiddle.Config(
+          transformers.StackedTransformerRepeated, block=block_param, x_times=1
+      )
     else:
-      p.decoder_stacked_transformer_tpl = (
-          transformers.StackedTransformer.HParams(
-              model_dims=num_heads * dim_per_head,
-              hidden_dims=num_heads * dim_per_head,
-              num_heads=num_heads,
-              num_layers=num_layers,
-              mask_self_attention=True,
-              fold_padding_with_segment_mask=True))
+      p.decoder_stacked_transformer_tpl = pax_fiddle.Config(
+          transformers.StackedTransformer,
+          model_dims=num_heads * dim_per_head,
+          hidden_dims=num_heads * dim_per_head,
+          num_heads=num_heads,
+          num_layers=num_layers,
+          mask_self_attention=True,
+          fold_padding_with_segment_mask=True,
+      )
 
     if separate_encoder_embedding:
-      p.encoder_embedding_tpl = (
-          embedding_softmax.Embedding.HParams(
-              num_classes=vocab_size, input_dims=num_heads * dim_per_head))
+      p.encoder_embedding_tpl = pax_fiddle.Config(
+          embedding_softmax.Embedding,
+          num_classes=vocab_size,
+          input_dims=num_heads * dim_per_head,
+      )
 
     if separate_decoder_embedding:
-      p.decoder_embedding_tpl = (
-          embedding_softmax.Embedding.HParams(
-              num_classes=vocab_size, input_dims=num_heads * dim_per_head))
+      p.decoder_embedding_tpl = pax_fiddle.Config(
+          embedding_softmax.Embedding,
+          num_classes=vocab_size,
+          input_dims=num_heads * dim_per_head,
+      )
 
     # Softmax params.
     if separate_decoder_embedding:
-      p.softmax_tpl = embedding_softmax.FullSoftmax.HParams(
-          input_dims=num_heads * dim_per_head, num_classes=vocab_size)
+      p.softmax_tpl = pax_fiddle.Config(
+          embedding_softmax.FullSoftmax,
+          input_dims=num_heads * dim_per_head,
+          num_classes=vocab_size,
+      )
     else:
-      p.softmax_tpl = (
-          embedding_softmax.SharedEmbeddingSoftmax.HParams(
-              input_dims=num_heads * dim_per_head, num_classes=vocab_size))
+      p.softmax_tpl = pax_fiddle.Config(
+          embedding_softmax.SharedEmbeddingSoftmax,
+          input_dims=num_heads * dim_per_head,
+          num_classes=vocab_size,
+      )
 
     # Rotary position embedding.
     if use_rotary_position_emb:
@@ -1257,7 +1312,8 @@ class TransformerModelsTest(test_utils.TestCase):
       stacked_transformer_tpl = tfm_cls.HParams()
       softmax_tpl = softmax_cls.HParams()
 
-      lm_p = transformer_models.TransformerLm.HParams(
+      lm_p = pax_fiddle.Config(
+          transformer_models.TransformerLm,
           name='bert_lm',
           model_dims=32,
           vocab_size=52,

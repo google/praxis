@@ -16,6 +16,7 @@
 """Unit tests for model."""
 
 from typing import Any
+from praxis import pax_fiddle
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -85,11 +86,13 @@ class LanguageModelTest(test_utils.TestCase):
                   logits,
                   input_batch,
                   model_type=LanguageModelType.CAUSAL):
-    p = models.LanguageModel.HParams(
+    p = pax_fiddle.Config(
+        models.LanguageModel,
         name='mock_lm',
         decoder_tpl=decoder_p.clone(),
-        lm_tpl=MockLM.HParams(logits=logits),
-        model_type=model_type)
+        lm_tpl=pax_fiddle.Config(MockLM, logits=logits),
+        model_type=model_type,
+    )
     lang_model = instantiate(p)
     theta = NestedMap(lm=NestedMap())
     # We fix seed to 9 to get the desired prefix lengths below.
@@ -106,11 +109,14 @@ class LanguageModelTest(test_utils.TestCase):
   @parameterized.named_parameters(('_with_eval_sample_weights', True),
                                   ('_without_eval_sample_weights', False))
   def test_fprop(self, apply_eval_sample_weights):
-    p = models.LanguageModel.HParams(
+    p = pax_fiddle.Config(
+        models.LanguageModel,
         name='LM',
-        lm_tpl=transformer_models.TransformerLm.HParams(
-            model_dims=3, vocab_size=5),
-        apply_eval_sample_weights=apply_eval_sample_weights)
+        lm_tpl=pax_fiddle.Config(
+            transformer_models.TransformerLm, model_dims=3, vocab_size=5
+        ),
+        apply_eval_sample_weights=apply_eval_sample_weights,
+    )
     stacked_transformer_tpl = p.lm_tpl.stacked_transformer_tpl
     stacked_transformer_tpl.model_dims = 3
     stacked_transformer_tpl.hidden_dims = 4 * 3
@@ -142,11 +148,14 @@ class LanguageModelTest(test_utils.TestCase):
       self.assertIn('eval_sample_weights', per_example_out)
 
   def test_fprop_eval_sample_weights(self):
-    p = models.LanguageModel.HParams(
+    p = pax_fiddle.Config(
+        models.LanguageModel,
         name='LM',
-        lm_tpl=transformer_models.TransformerLm.HParams(
-            model_dims=3, vocab_size=5),
-        apply_eval_sample_weights=True)
+        lm_tpl=pax_fiddle.Config(
+            transformer_models.TransformerLm, model_dims=3, vocab_size=5
+        ),
+        apply_eval_sample_weights=True,
+    )
     stacked_transformer_tpl = p.lm_tpl.stacked_transformer_tpl
     stacked_transformer_tpl.model_dims = 3
     stacked_transformer_tpl.hidden_dims = 4 * 3
@@ -218,7 +227,7 @@ class LanguageModelTest(test_utils.TestCase):
 
   @parameterized.parameters([True, False])
   def test_base_case(self, fprop_for_prefix):
-    p = models.LanguageModel.HParams().decoder_tpl
+    p = pax_fiddle.Config(models.LanguageModel).decoder_tpl
     p.seqlen = 3
     p.min_prefix_len = 1
     p.fprop_for_prefix = fprop_for_prefix
@@ -304,7 +313,7 @@ class LanguageModelTest(test_utils.TestCase):
 
   @parameterized.parameters([True, False])
   def test_prefix(self, fprop_for_prefix):
-    p = models.LanguageModel.HParams().decoder_tpl
+    p = pax_fiddle.Config(models.LanguageModel).decoder_tpl
     p.seqlen = 5
     p.min_prefix_len = 2
     p.fprop_for_prefix = fprop_for_prefix
@@ -351,7 +360,7 @@ class LanguageModelTest(test_utils.TestCase):
 
   @parameterized.parameters([True, False])
   def test_prefix_lm(self, fprop_for_prefix):
-    p = models.LanguageModel.HParams().decoder_tpl
+    p = pax_fiddle.Config(models.LanguageModel).decoder_tpl
     p.seqlen = 5
     p.min_prefix_len = 2
     p.fprop_for_prefix = fprop_for_prefix
@@ -399,7 +408,7 @@ class LanguageModelTest(test_utils.TestCase):
                            np.array([[5]], dtype=np.int32))
 
   def test_eos_terminate(self):
-    p = models.LanguageModel.HParams().decoder_tpl
+    p = pax_fiddle.Config(models.LanguageModel).decoder_tpl
     p.seqlen = 6
     p.min_prefix_len = 0
     p.eos_id = 2
@@ -428,7 +437,7 @@ class LanguageModelTest(test_utils.TestCase):
                            np.array([[3]], dtype=np.int32))
 
   def test_eos_independent(self):
-    p = models.LanguageModel.HParams().decoder_tpl
+    p = pax_fiddle.Config(models.LanguageModel).decoder_tpl
     p.seqlen = 5
     p.min_prefix_len = 0
     p.eos_id = 2
@@ -462,7 +471,7 @@ class LanguageModelTest(test_utils.TestCase):
                            np.array([[3], [4]], dtype=np.int32))
 
   def test_prefix_and_eos(self):
-    p = models.LanguageModel.HParams().decoder_tpl
+    p = pax_fiddle.Config(models.LanguageModel).decoder_tpl
     p.seqlen = 5
     p.min_prefix_len = 0
     p.eos_id = 2
@@ -508,7 +517,7 @@ class LanguageModelTest(test_utils.TestCase):
                            np.array([[5], [4], [3]], dtype=np.int32))
 
   def test_prefix_and_eos_fprop_for_prefix(self):
-    p = models.LanguageModel.HParams().decoder_tpl
+    p = pax_fiddle.Config(models.LanguageModel).decoder_tpl
     p.seqlen = 7
     p.max_decode_steps = 4
     p.min_prefix_len = 0
@@ -559,7 +568,7 @@ class LanguageModelTest(test_utils.TestCase):
                            np.array([[6], [4], [3]], dtype=np.int32))
 
   def test_prefix_has_eos(self):
-    p = models.LanguageModel.HParams().decoder_tpl
+    p = pax_fiddle.Config(models.LanguageModel).decoder_tpl
     p.seqlen = 4
     p.min_prefix_len = 0
     p.eos_id = 2
@@ -595,7 +604,7 @@ class LanguageModelTest(test_utils.TestCase):
                            np.array([[4], [4]], dtype=np.int32))
 
   def test_max_decode_steps(self):
-    p = models.LanguageModel.HParams().decoder_tpl
+    p = pax_fiddle.Config(models.LanguageModel).decoder_tpl
     p.seqlen = 5
     p.min_prefix_len = 0
     p.eos_id = 2
@@ -851,8 +860,11 @@ class ClassifierModelTest(test_utils.TestCase):
   @parameterized.parameters([2, 6])
   def test_fprop(self, num_classes: int):
 
-    p = models.ClassificationModel.HParams(
-        name='classifier', network_tpl=resnets.ResNet.HParamsResNet5())
+    p = pax_fiddle.Config(
+        models.ClassificationModel,
+        name='classifier',
+        network_tpl=resnets.ResNet.HParamsResNet5(),
+    )
     p.softmax_tpl.num_classes = num_classes
     p.softmax_tpl.input_dims = 16
 

@@ -44,11 +44,11 @@ class ProjectionLayer(base_layer.FiddleBaseLayer):
   output_dims: int = 0
 
   def setup(self) -> None:
-    linear_layer_p = linears.Linear.HParams(
-        input_dims=self.input_dims, output_dims=self.output_dims
+    linear_layer_p = pax_fiddle.Config(
+        linears.Linear, input_dims=self.input_dims, output_dims=self.output_dims
     )
     self.create_child('linear', linear_layer_p)
-    bias_layer_p = linears.Bias.HParams(dims=self.output_dims)
+    bias_layer_p = pax_fiddle.Config(linears.Bias, dims=self.output_dims)
     self.create_child('bias', bias_layer_p)
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -66,13 +66,17 @@ class TestLayer(base_layer.FiddleBaseLayer):
   """A test layer which is a composite of multiple layers."""
 
   def setup(self) -> None:
-    linear_layer_p01 = linears.Linear.HParams(input_dims=2, output_dims=3)
-    linear_layer_p02 = linears.Linear.HParams(input_dims=3, output_dims=4)
+    linear_layer_p01 = pax_fiddle.Config(
+        linears.Linear, input_dims=2, output_dims=3
+    )
+    linear_layer_p02 = pax_fiddle.Config(
+        linears.Linear, input_dims=3, output_dims=4
+    )
     self.create_children('linear', [linear_layer_p01, linear_layer_p02])
-    bias_layer_p01 = linears.Bias.HParams(dims=3)
-    bias_layer_p02 = linears.Bias.HParams(dims=4)
+    bias_layer_p01 = pax_fiddle.Config(linears.Bias, dims=3)
+    bias_layer_p02 = pax_fiddle.Config(linears.Bias, dims=4)
     self.create_children('bias', [bias_layer_p01, bias_layer_p02])
-    add_one_layer_p = AddOneLayer.HParams()
+    add_one_layer_p = pax_fiddle.Config(AddOneLayer)
     self.create_child('add_one', add_one_layer_p)
 
     self.create_variable('final_proj', base_layer.WeightHParams(shape=[4, 5]))
@@ -125,7 +129,9 @@ class TestModel01(base_model.BaseModel):
   output_dims: int = 0
 
   def setup(self) -> None:
-    bn_params = normalizations.BatchNorm.HParams(name='bn', dim=self.input_dims)
+    bn_params = pax_fiddle.Config(
+        normalizations.BatchNorm, name='bn', dim=self.input_dims
+    )
     self.create_child('bn', bn_params)
 
     self.create_variable(
@@ -193,7 +199,9 @@ class TestBatchNormalizationModel(base_model.BaseModel):
   input_dims: int = 0
 
   def setup(self):
-    bn_params = normalizations.BatchNorm.HParams(name='bn', dim=self.input_dims)
+    bn_params = pax_fiddle.Config(
+        normalizations.BatchNorm, name='bn', dim=self.input_dims
+    )
     self.create_child('bn', bn_params)
 
   def compute_predictions(self, input_batch: NestedMap) -> JTensor:

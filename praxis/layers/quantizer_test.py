@@ -16,6 +16,7 @@
 """Tests for quantizer."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 from absl.testing import parameterized
 
 import jax
@@ -36,13 +37,15 @@ class VectorQuantizerTest(test_utils.TestCase):
                 [0.406187773, 0.304340839, 0.439772606, 0.368542314]])
 
   def _GetParams(self, num_classes, latent_dim):
-    return quantizer.VectorQuantizer.HParams(
+    return pax_fiddle.Config(
+        quantizer.VectorQuantizer,
         name='vq',
         normalize_latent_vector=True,
         normalize_codebook=True,
         num_latent_classes=num_classes,
         latent_dim=latent_dim,
-        beta=0.1)
+        beta=0.1,
+    )
 
   def testBase(self):
     num_classes = 4
@@ -108,12 +111,14 @@ class RandomVectorQuantizerTest(test_utils.TestCase):
     z = np.random.rand(b, t, latent_dim).astype(np.float32)
     paddings = np.zeros((b, t)).astype(np.float32)
 
-    rq = quantizer.RandomVectorQuantizer.HParams(
+    rq = pax_fiddle.Config(
+        quantizer.RandomVectorQuantizer,
         name='vq',
         num_latent_classes=num_classes,
         num_groups=num_groups,
         latent_dim=latent_dim,
-        projection_dim=projection_dim)
+        projection_dim=projection_dim,
+    )
     rq = instantiate(rq)
     rq_theta = rq.init(jax.random.PRNGKey(1), z, paddings)
     out = rq.apply(rq_theta, z, paddings)

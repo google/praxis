@@ -16,6 +16,7 @@
 """Tests for Praxis stochastic layers."""
 
 from absl import logging
+from praxis import pax_fiddle
 from absl.testing import absltest
 import jax
 from jax import numpy as jnp
@@ -29,7 +30,9 @@ instantiate = base_layer.instantiate
 class StochaticsTest(test_utils.TestCase):
 
   def test_dropout_layer01(self):
-    test_layer_p = stochastics.Dropout.HParams(name='dropout', keep_prob=0.8)
+    test_layer_p = pax_fiddle.Config(
+        stochastics.Dropout, name='dropout', keep_prob=0.8
+    )
     layer = instantiate(test_layer_p)
 
     inputs = jnp.ones([10, 1000], dtype=jnp.bfloat16)
@@ -62,11 +65,13 @@ class StochaticsTest(test_utils.TestCase):
     self.assertEqual(7952.0, out2_nonzero)
 
   def test_dropout_layer_02(self):
-    test_layer_p = stochastics.Dropout.HParams(
+    test_layer_p = pax_fiddle.Config(
+        stochastics.Dropout,
         name='dropout',
         keep_prob=0.8,
         noise_shape=[10, 6, 8],
-        noise_shape_broadcast_dims=[2])
+        noise_shape_broadcast_dims=[2],
+    )
     layer = instantiate(test_layer_p)
 
     inputs = jnp.ones([2, 10, 6, 8], dtype=jnp.bfloat16)
@@ -92,8 +97,12 @@ class StochaticsTest(test_utils.TestCase):
     self.assertEqual(784, out1_nonzero)
 
   def test_dropout_layer_03(self):
-    test_layer_p = stochastics.Dropout.HParams(
-        name='dropout', keep_prob=0.8, noise_shape_broadcast_dims=[0, 3])
+    test_layer_p = pax_fiddle.Config(
+        stochastics.Dropout,
+        name='dropout',
+        keep_prob=0.8,
+        noise_shape_broadcast_dims=[0, 3],
+    )
     layer = instantiate(test_layer_p)
 
     inputs = jnp.ones([2, 10, 6, 8], dtype=jnp.bfloat16)

@@ -16,6 +16,7 @@
 """Tests for Praxis augmentation layers."""
 
 from absl import logging
+from praxis import pax_fiddle
 from absl.testing import absltest
 import jax
 from jax import numpy as jnp
@@ -37,8 +38,12 @@ class AugmentationsTest(test_utils.TestCase):
     np.random.seed(123456)
 
   def testMaskedLmDataAugmenterSmall(self):
-    p = augmentations.MaskedLmDataAugmenter.HParams(
-        name='mlm', vocab_size=32000, mask_token_id=0)
+    p = pax_fiddle.Config(
+        augmentations.MaskedLmDataAugmenter,
+        name='mlm',
+        vocab_size=32000,
+        mask_token_id=0,
+    )
     layer = instantiate(p)
     inputs = jnp.arange(10, dtype=jnp.int32)
     paddings = jnp.array([0, 0, 0, 0, 0, 0, 0, 0, 1.0, 1.0], dtype=jnp.float32)
@@ -59,8 +64,12 @@ class AugmentationsTest(test_utils.TestCase):
     self.assertAllClose(to_np(expected_pos), to_np(augmented_pos))
 
   def testMaskedLmDataAugmenterLarge(self):
-    p = augmentations.MaskedLmDataAugmenter.HParams(
-        name='mlm', vocab_size=32000, mask_token_id=0)
+    p = pax_fiddle.Config(
+        augmentations.MaskedLmDataAugmenter,
+        name='mlm',
+        vocab_size=32000,
+        mask_token_id=0,
+    )
     layer = instantiate(p)
     inputs = jnp.arange(100, dtype=jnp.int32)
     paddings = jnp.zeros_like(inputs).astype(jnp.float32)
@@ -96,8 +105,12 @@ class AugmentationsTest(test_utils.TestCase):
     self.assertAllClose(to_np(expected_pos), to_np(augmented_pos))
 
   def test_shifting(self):
-    p = augmentations.TemporalShifting.HParams(
-        name='shifting', shift_range_ms=13.3, sample_rate=1000.0)
+    p = pax_fiddle.Config(
+        augmentations.TemporalShifting,
+        name='shifting',
+        shift_range_ms=13.3,
+        sample_rate=1000.0,
+    )
     layer = instantiate(p)
     batch_size = 2
     audio_len = 20

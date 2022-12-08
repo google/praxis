@@ -101,7 +101,7 @@ def GlamStackedTransformerHParams(
   """
   ffn_activation_tpl = getattr(ffn_activation_cls, 'HParams')()
 
-  p = transformers.StackedTransformer.HParams()
+  p = pax_fiddle.Config(transformers.StackedTransformer)
   p.name = name
   p.packed_input = True
   p.moe_layers = [0] if moe else None
@@ -117,11 +117,13 @@ def GlamStackedTransformerHParams(
   # Attention setup
   if isinstance(p.transformer_layer_params_tpl, (list, tuple)):
     for pt in p.transformer_layer_params_tpl:
-      pt.ln_tpl = normalizations.RmsNorm.HParams()
+      pt.ln_tpl = pax_fiddle.Config(normalizations.RmsNorm)
       pt.ln_tpl.direct_scale = True
   else:
     assert isinstance(p.transformer_layer_params_tpl, pax_fiddle.Config)
-    p.transformer_layer_params_tpl.ln_tpl = normalizations.RmsNorm.HParams()
+    p.transformer_layer_params_tpl.ln_tpl = pax_fiddle.Config(
+        normalizations.RmsNorm
+    )
     p.transformer_layer_params_tpl.ln_tpl.direct_scale = True
   tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl  # pytype: disable=attribute-error  # enable-nested-classes
   assert tr_atten_tpl.cls == attentions.DotProductAttention
@@ -133,10 +135,12 @@ def GlamStackedTransformerHParams(
   tr_atten_tpl.internal_enable_per_dim_scale = False
   assert tr_atten_tpl.proj_tpl.cls == attentions.AttentionProjection
   tr_atten_tpl.proj_tpl.attention_combine_dims = True
-  tr_atten_tpl.relative_bias_tpl = attentions.RelativeBias.HParams(
+  tr_atten_tpl.relative_bias_tpl = pax_fiddle.Config(
+      attentions.RelativeBias,
       relative_attention_num_buckets=relative_attention_num_buckets,
       relative_attention_max_distance=relative_attention_max_distance,
-      bidirectional=bidirectional)
+      bidirectional=bidirectional,
+  )
   tr_atten_tpl.output_proj_use_nhd_shape = True
   if combine_qkv:
     tr_atten_tpl.combine_qkv = True
@@ -149,7 +153,7 @@ def GlamStackedTransformerHParams(
   ff_tpl.hidden_dims = ff_dim
   ff_tpl.has_bias = False
   ff_tpl.apply_padding_first = True
-  ff_tpl.ln_tpl = normalizations.RmsNorm.HParams()
+  ff_tpl.ln_tpl = pax_fiddle.Config(normalizations.RmsNorm)
   ff_tpl.ln_tpl.direct_scale = True
   ff_tpl.add_skip_connection = True
   ff_tpl.activation_tpl = ffn_activation_tpl
@@ -160,7 +164,7 @@ def GlamStackedTransformerHParams(
   assert moe_p.cls == transformers.TransformerFeedForwardMoe
   moe_p.input_dims = model_dim
   moe_p.hidden_dims = moe_hidden_dim or ff_dim
-  moe_p.ln_tpl = normalizations.RmsNorm.HParams()
+  moe_p.ln_tpl = pax_fiddle.Config(normalizations.RmsNorm)
   moe_p.ln_tpl.direct_scale = True
   moe_p.num_experts = e_dim
   moe_p.num_groups = num_groups
@@ -261,7 +265,7 @@ def GlamUniTransformerLmHParams(
   Returns:
     A Params object to set up a StackedTransformer.
   """
-  p = transformer_models.TransformerLm.HParams()
+  p = pax_fiddle.Config(transformer_models.TransformerLm)
   p.name = name
   p.packed_input = True
   p.model_dims = model_dim
@@ -269,15 +273,17 @@ def GlamUniTransformerLmHParams(
   p.position_emb_tpl = None
   p.model_type = model_type
 
-  p.final_ln_tpl = normalizations.RmsNorm.HParams(
-      name='rms_norm', dim=model_dim)
+  p.final_ln_tpl = pax_fiddle.Config(
+      normalizations.RmsNorm, name='rms_norm', dim=model_dim
+  )
 
-  p.softmax_tpl = (
-      embedding_softmax.GShardSharedEmbeddingSoftmax.HParams(
-          name='emb',
-          input_dims=model_dim,
-          num_classes=vocab_size,
-          z_loss_weight=z_loss_weight))
+  p.softmax_tpl = pax_fiddle.Config(
+      embedding_softmax.GShardSharedEmbeddingSoftmax,
+      name='emb',
+      input_dims=model_dim,
+      num_classes=vocab_size,
+      z_loss_weight=z_loss_weight,
+  )
   p.softmax_tpl.use_tgt_labels_size_as_loss_denominator = (
       use_tgt_labels_size_as_loss_denominator)
   glam_p = GlamStackedTransformerHParams(
@@ -311,19 +317,22 @@ def GlamUniTransformerLmHParams(
   num_blocks = num_transformer_layers // 2 if moe else num_transformer_layers
 
   if num_pipeline_stages == 1:
-    p.stacked_transformer_tpl = (
-        transformers.StackedTransformerRepeated.HParams(
-            name='decoder',
-            unroll_in_decode=True,
-            block=glam_p,
-            x_times=num_blocks))
+    p.stacked_transformer_tpl = pax_fiddle.Config(
+        transformers.StackedTransformerRepeated,
+        name='decoder',
+        unroll_in_decode=True,
+        block=glam_p,
+        x_times=num_blocks,
+    )
   else:
     assert num_blocks % num_pipeline_stages == 0
     glam_p.num_layers = num_transformer_layers // num_pipeline_stages
     glam_p.moe_layers = list(range(0, glam_p.num_layers, 2))
-    p.stacked_transformer_tpl = transformers.PipelinedTransformer.HParams(
+    p.stacked_transformer_tpl = pax_fiddle.Config(
+        transformers.PipelinedTransformer,
         pipeline_stage=glam_p,
         num_pipeline_stages=num_pipeline_stages,
         num_pipeline_microbatches=num_pipeline_microbatches,
-        stream_io=True)
+        stream_io=True,
+    )
   return p

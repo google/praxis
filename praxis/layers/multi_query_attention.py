@@ -272,7 +272,7 @@ class MultiQueryDotProductAttention(base_layer.FiddleBaseLayer):
     self.create_child('value', project_input_no_heads(value_input_dim))
 
     if self.use_rotary_position_emb:
-      pos_emb_p = embedding_softmax.RotaryPositionalEmbedding.HParams()
+      pos_emb_p = pax_fiddle.Config(embedding_softmax.RotaryPositionalEmbedding)
       pos_emb_p.embedding_dims = dim_per_head
       self.create_child('rotary_position_emb', pos_emb_p)
 

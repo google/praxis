@@ -16,6 +16,7 @@
 """Tests for Flax adapter."""
 
 from typing import Any, Tuple
+from praxis import pax_fiddle
 
 from absl.testing import absltest
 import fiddle as fdl
@@ -71,11 +72,13 @@ class MixLayer(base_layer.FiddleBaseLayer):
   def setup(self) -> None:
     super().setup()
 
-    cnn_p = flax_adapter.FlaxModuleAdapter.HParams(module_factory_method=CNN)
+    cnn_p = pax_fiddle.Config(
+        flax_adapter.FlaxModuleAdapter, module_factory_method=CNN
+    )
 
     self.create_child('cnn_p1', cnn_p.clone())
     self.create_child('cnn_p2', cnn_p.clone())
-    bn_p = normalizations.BatchNorm.HParams(dim=10)
+    bn_p = pax_fiddle.Config(normalizations.BatchNorm, dim=10)
     self.create_child('bn', bn_p)
 
   def __call__(self, x: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
@@ -95,7 +98,7 @@ class FlaxWrapperTest(test_utils.TestCase):
     np.random.seed(123456)
 
   def test_mix_layer(self):
-    test_layer_p = MixLayer.HParams(name='test_layer')
+    test_layer_p = pax_fiddle.Config(MixLayer, name='test_layer')
     test_layer = instantiate(test_layer_p)
 
     prng_key = jax.random.PRNGKey(seed=123)
@@ -188,7 +191,7 @@ class PaxWrapperTest(test_utils.TestCase):
     np.random.seed(123456)
 
   def test_wrap_pax_params(self):
-    bn_p = normalizations.BatchNorm.HParams(name='pax_bn', dim=3)
+    bn_p = pax_fiddle.Config(normalizations.BatchNorm, name='pax_bn', dim=3)
 
     class SomeFlaxModel(flax_nn.Module):
       bn_p: Any
@@ -211,7 +214,7 @@ class PaxWrapperTest(test_utils.TestCase):
       self.assertAllClose(wrapped_layer_res, pax_layer_res)
 
   def test_wrap_pax_layer_then_adapter(self):
-    bn_p = normalizations.BatchNorm.HParams(name='pax_bn', dim=5)
+    bn_p = pax_fiddle.Config(normalizations.BatchNorm, name='pax_bn', dim=5)
 
     # The flax module contains praxis layers.
     # But it is also adapted into a praxis layer.
@@ -224,8 +227,11 @@ class PaxWrapperTest(test_utils.TestCase):
         x = self.bn_p.Instantiate()(x)
         return x
 
-    test_layer_p = flax_adapter.FlaxModuleAdapter.HParams(
-        module_factory_method=lambda: SomeFlaxModel(bn_p), name='test_layer')
+    test_layer_p = pax_fiddle.Config(
+        flax_adapter.FlaxModuleAdapter,
+        module_factory_method=lambda: SomeFlaxModel(bn_p),
+        name='test_layer',
+    )
     test_layer = instantiate(test_layer_p)
     inputs = jnp.zeros((5, 5))
     with base_layer.JaxContext.new_context():
@@ -238,7 +244,7 @@ class PaxWrapperTest(test_utils.TestCase):
       test_layer.apply(init_vars, inputs)
 
   def test_wrap_pax_layer(self):
-    bn_p = normalizations.BatchNorm.HParams(name='pax_bn', dim=3)
+    bn_p = pax_fiddle.Config(normalizations.BatchNorm, name='pax_bn', dim=3)
     pax_layer = bn_p.Instantiate()
 
     class SomeFlaxModel(flax_nn.Module):

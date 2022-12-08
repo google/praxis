@@ -230,11 +230,13 @@ class VanillaNet(base_layer.FiddleBaseLayer):
     self.create_child('entryflow_conv', entryflow_conv_params)
 
     # Create the entryflow max pooling layer.
-    maxpool_params = poolings.Pooling.HParams(
+    maxpool_params = pax_fiddle.Config(
+        poolings.Pooling,
         name='entryflow_maxpool',
         window_shape=(3, 3),
         window_stride=(2, 2),
-        pooling_type='MAX')
+        pooling_type='MAX',
+    )
     self.create_child('entryflow_maxpool', maxpool_params)
 
     # Create the chain of ResNet blocks.

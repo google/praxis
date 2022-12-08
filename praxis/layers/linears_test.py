@@ -16,6 +16,7 @@
 """Tests for Praxis linear layers."""
 
 from absl import logging
+from praxis import pax_fiddle
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -45,31 +46,38 @@ class LinearsTest(test_utils.TestCase):
   @parameterized.named_parameters(
       {
           'testcase_name': 'ReLU',
-          'activation_tpl': activations.ReLU.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.ReLU),
           'lingvo_activation_name': 'RELU',
-      }, {
+      },
+      {
           'testcase_name': 'Tanh',
-          'activation_tpl': activations.Tanh.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.Tanh),
           'lingvo_activation_name': 'TANH',
-      }, {
+      },
+      {
           'testcase_name': 'ReLU6',
-          'activation_tpl': activations.ReLU6.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.ReLU6),
           'lingvo_activation_name': 'RELU6',
-      }, {
+      },
+      {
           'testcase_name': 'Sigmoid',
-          'activation_tpl': activations.Sigmoid.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.Sigmoid),
           'lingvo_activation_name': 'SIGMOID',
-      }, {
+      },
+      {
           'testcase_name': 'Identity',
-          'activation_tpl': activations.Identity.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.Identity),
           'lingvo_activation_name': 'NONE',
-      })
+      },
+  )
   def test_feedforward_layer(self, activation_tpl, lingvo_activation_name):
-    p = linears.FeedForward.HParams(
+    p = pax_fiddle.Config(
+        linears.FeedForward,
         name='jax_ffn',
         input_dims=3,
         output_dims=20,
-        activation_tpl=activation_tpl.clone())
+        activation_tpl=activation_tpl.clone(),
+    )
     ffn = instantiate(p)
     npy_input = np.random.normal(1.0, 0.5,
                                  [10, 10, p.input_dims]).astype('float32')
@@ -102,33 +110,40 @@ class LinearsTest(test_utils.TestCase):
   @parameterized.named_parameters(
       {
           'testcase_name': 'ReLU',
-          'activation_tpl': activations.ReLU.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.ReLU),
           'lingvo_activation_name': 'RELU',
-      }, {
+      },
+      {
           'testcase_name': 'Tanh',
-          'activation_tpl': activations.Tanh.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.Tanh),
           'lingvo_activation_name': 'TANH',
-      }, {
+      },
+      {
           'testcase_name': 'ReLU6',
-          'activation_tpl': activations.ReLU6.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.ReLU6),
           'lingvo_activation_name': 'RELU6',
-      }, {
+      },
+      {
           'testcase_name': 'Sigmoid',
-          'activation_tpl': activations.Sigmoid.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.Sigmoid),
           'lingvo_activation_name': 'SIGMOID',
-      }, {
+      },
+      {
           'testcase_name': 'Identity',
-          'activation_tpl': activations.Identity.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.Identity),
           'lingvo_activation_name': 'NONE',
-      })
+      },
+  )
   def test_feedforward_layer_no_bias(self, activation_tpl,
                                      lingvo_activation_name):
-    p = linears.FeedForward.HParams(
+    p = pax_fiddle.Config(
+        linears.FeedForward,
         name='jax_ffn',
         input_dims=3,
         output_dims=20,
         has_bias=False,
-        activation_tpl=activation_tpl.clone())
+        activation_tpl=activation_tpl.clone(),
+    )
     ffn = instantiate(p)
     npy_input = np.random.normal(1.0, 0.5,
                                  [10, 10, p.input_dims]).astype('float32')
@@ -158,12 +173,14 @@ class LinearsTest(test_utils.TestCase):
     self.assertAllClose(tf_np_outputs, np_outputs, atol=1e-6)
 
   def test_feedforward_post_init_hparams(self):
-    p = linears.FeedForward.HParams(
+    p = pax_fiddle.Config(
+        linears.FeedForward,
         name='jax_ffn',
         input_dims=3,
         output_dims=20,
         has_bias=True,
-        activation_tpl=activations.ReLU.HParams())
+        activation_tpl=pax_fiddle.Config(activations.ReLU),
+    )
     ffn = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
 
@@ -211,7 +228,7 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
       },
   )
   def testStackingOverTimeFProp(self, pad_with_left_frame):
-    p = linears.StackingOverTime.HParams()
+    p = pax_fiddle.Config(linears.StackingOverTime)
     p.name = 'stackingOverTime'
     p.left_context = 2
     p.right_context = 0
@@ -260,7 +277,7 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
       },
   )
   def testStackingOverTimePadWithRightFrameFProp(self, pad_with_right_frame):
-    p = linears.StackingOverTime.HParams()
+    p = pax_fiddle.Config(linears.StackingOverTime)
     p.name = 'stackingOverTime'
     p.left_context = 0
     p.right_context = 1
@@ -303,7 +320,7 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
     self.assertAllClose(expected_output_paddings, output_paddings)
 
   def testStackingOverTimeFPropReduceMaxPadding(self):
-    p = linears.StackingOverTime.HParams()
+    p = pax_fiddle.Config(linears.StackingOverTime)
     p.name = 'stackingOverTime'
     p.left_context = 2
     p.right_context = 0
@@ -337,7 +354,7 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
     self.assertAllClose(expected_output_paddings, output_paddings)
 
   def testStackingOverTimeFProp2(self):
-    p = linears.StackingOverTime.HParams()
+    p = pax_fiddle.Config(linears.StackingOverTime)
     p.name = 'stackingOverTime'
     p.left_context = 0
     p.right_context = 1
@@ -366,7 +383,7 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
     self.assertAllClose(np.sum(inputs, (1, 2)), np.sum(outputs, (1, 2)))
 
   def testStackingOverTimeIdentityFProp(self):
-    p = linears.StackingOverTime.HParams()
+    p = pax_fiddle.Config(linears.StackingOverTime)
     p.name = 'stackingOverTime'
     p.left_context = 0
     p.right_context = 0
@@ -388,7 +405,9 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
     self.assertAllClose(expected_output_paddings, output_paddings)
 
   def _testUnstack(self, inputs, **kwargs):
-    p = linears.StackingOverTime.HParams(name='stackingOverTime', **kwargs)
+    p = pax_fiddle.Config(
+        linears.StackingOverTime, name='stackingOverTime', **kwargs
+    )
 
     stacker = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)

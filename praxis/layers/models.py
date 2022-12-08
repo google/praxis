@@ -170,7 +170,7 @@ class LanguageModel(base_model.BaseModel):
     super().setup()
 
     if self.count_tokens:
-      tc_p = embedding_softmax.TokenCounter.HParams()
+      tc_p = pax_fiddle.Config(embedding_softmax.TokenCounter)
       self.create_child('token_counter', tc_p)
 
     # Construct the model.
@@ -992,7 +992,7 @@ class BertModel(base_model.BaseModel):
 
     self.create_child('lm', self.lm_tpl)
 
-    mlm_augment_p = augmentations.MaskedLmDataAugmenter.HParams()
+    mlm_augment_p = pax_fiddle.Config(augmentations.MaskedLmDataAugmenter)
     mlm_augment_p.vocab_size = self.lm_tpl.vocab_size
     mlm_augment_p.mask_token_id = self.mask_token_id
     self.create_child('mlm_augmenter', mlm_augment_p)

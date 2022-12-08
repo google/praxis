@@ -165,8 +165,8 @@ class FeedForward(base_layer.FiddleBaseLayer):
     self.linear: Linear
     self.create_child('linear', linear_layer_p)
     if self.has_bias:
-      bias_layer_p = Bias.HParams(
-          dims=self.output_dims, bias_init=self.bias_init
+      bias_layer_p = pax_fiddle.Config(
+          Bias, dims=self.output_dims, bias_init=self.bias_init
       )
       if self.mesh_shape is not None and ap.out is not None:
         wp_bias = [ap.out[-1]]

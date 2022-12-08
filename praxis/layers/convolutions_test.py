@@ -16,6 +16,7 @@
 """Tests for Praxis convolutional layers."""
 
 from absl import logging
+from praxis import pax_fiddle
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -51,12 +52,14 @@ class ConvolutionsTest(test_utils.TestCase):
   )
   def test_conv2d_layer_same_padding(self, filter_shape, filter_stride,
                                      input_shape):
-    p = convolutions.Conv2D.HParams(
+    p = pax_fiddle.Config(
+        convolutions.Conv2D,
         name='jax_conv2d',
         filter_shape=filter_shape,
         filter_stride=filter_stride,
         dilations=(1, 1),
-        padding='SAME')
+        padding='SAME',
+    )
     conv_layer = instantiate(p)
     npy_inputs = np.random.normal(1.0, 0.5, input_shape).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -70,14 +73,16 @@ class ConvolutionsTest(test_utils.TestCase):
       self.assertEqual(output.shape[i], inputs.shape[i] // filter_stride[i - 1])
 
   def test_causal_conv2d_layer(self):
-    p = convolutions.Conv2D.HParams(
+    p = pax_fiddle.Config(
+        convolutions.Conv2D,
         name='jax_conv2d',
         filter_shape=[3, 3, 1, 1],
         filter_stride=[2, 2],
         dilations=[2, 2],
         padding='SAME',
         is_causal=True,
-        tf_equivalent_padding=True)
+        tf_equivalent_padding=True,
+    )
     conv_layer = instantiate(p)
     npy_inputs = np.arange(25).reshape((1, 5, 5, 1)).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -125,11 +130,13 @@ class ConvolutionsTest(test_utils.TestCase):
   )
   def test_depthwise_conv1d_layer(self, batch_size, seq_len, kernel_size,
                                   input_dims, rhs_dilation_rate, bias):
-    p = convolutions.DepthwiseConv1D.HParams(
+    p = pax_fiddle.Config(
+        convolutions.DepthwiseConv1D,
         name='jax_depthwise_conv1d',
         filter_shape=(kernel_size, input_dims, 1),
         rhs_dilation_rate=rhs_dilation_rate,
-        bias=bias)
+        bias=bias,
+    )
     depthwiseconv1d = instantiate(p)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
@@ -194,7 +201,8 @@ class ConvolutionsTest(test_utils.TestCase):
         bias=True,
         tf_equivalent_padding=True,
         batch_norm_tpl=None,
-        activation_tpl=activations.Identity.HParams())
+        activation_tpl=pax_fiddle.Config(activations.Identity),
+    )
     depthwiseconv2d = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
     initial_vars = depthwiseconv2d.init(prng_key, inputs, paddings)
@@ -252,7 +260,6 @@ class ConvolutionsTest(test_utils.TestCase):
     # Check channels shape.
     self.assertEqual(output.shape[-1], input_dims*channel_multipliers)
 
-
   @parameterized.parameters(
       (2, 10, 3, 10, 0.0, True),
       (3, 12, 5, 11, 0.1, False),
@@ -261,12 +268,14 @@ class ConvolutionsTest(test_utils.TestCase):
   )
   def test_light_conv1d_layer(self, batch_size, seq_len, kernel_size,
                               input_dims, dropout_prob, is_causal):
-    p = convolutions.LightConv1D.HParams(
+    p = pax_fiddle.Config(
+        convolutions.LightConv1D,
         name='jax_light_conv1d_layer',
         input_dims=input_dims,
         kernel_size=kernel_size,
         dropout_prob=dropout_prob,
-        is_causal=is_causal)
+        is_causal=is_causal,
+    )
     lconv = instantiate(p)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
@@ -320,13 +329,15 @@ class ConvolutionsTest(test_utils.TestCase):
       (5, 3, 'VALID'),
   )
   def test_conv_bnact_withpadding(self, stride, kernel_size, padding):
-    p = convolutions.ConvBNActWithPadding.HParams(
+    p = pax_fiddle.Config(
+        convolutions.ConvBNActWithPadding,
         name='jax_withpadding_convolution',
         filter_shape=(kernel_size, kernel_size, 1, 1),
         filter_stride=(stride, stride),
         bias=False,
         batch_norm_tpl=None,
-        padding=padding)
+        padding=padding,
+    )
     layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
 
@@ -366,11 +377,12 @@ class ConvolutionsTest(test_utils.TestCase):
 
   @parameterized.parameters(1, 2)
   def test_dilated_conv(self, rhs_dilation_rate):
-    test_layer_p = convolutions.DepthwiseConv1D.HParams(
+    test_layer_p = pax_fiddle.Config(
+        convolutions.DepthwiseConv1D,
         name='dw_1D',
         filter_shape=(3, 4, 1),  # kernel_size, in_channels, channel_multipliers
         is_causal=True,
-        rhs_dilation_rate=rhs_dilation_rate
+        rhs_dilation_rate=rhs_dilation_rate,
     )
     layer = instantiate(test_layer_p)
     prng_key = jax.random.PRNGKey(seed=123)

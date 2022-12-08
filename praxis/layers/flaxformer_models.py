@@ -239,7 +239,8 @@ class FlaxFormerDecoder(base_layer.FiddleBaseLayer):
           scan_layers=scan_layers)
       return t5_architecture.DecoderOnly(**init_kwargs)
 
-    flaxformer_decoder = flax_adapter.FlaxModuleAdapter.HParams(
+    flaxformer_decoder = pax_fiddle.Config(
+        flax_adapter.FlaxModuleAdapter,
         module_factory_method=decoder_only_factory,
         logical_axes_rules=self.logical_axes_rules,
     )
@@ -267,7 +268,8 @@ class EncoderDecoder(base_layer.FiddleBaseLayer):
   def setup(self) -> None:
     super().setup()
 
-    encoder_decoder_tpl = flax_adapter.EncoderDecoderFlaxModuleAdaptor.HParams(
+    encoder_decoder_tpl = pax_fiddle.Config(
+        flax_adapter.EncoderDecoderFlaxModuleAdaptor,
         module_factory_method=self._build_wrapped_module,
         logical_axes_rules=self.logical_axes_rules,
     )

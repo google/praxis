@@ -165,7 +165,8 @@ class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
     if self.stack_ratio != 1:
       self.create_child(
           'stack',
-          linears.StackingOverTime.HParams(
+          pax_fiddle.Config(
+              linears.StackingOverTime,
               left_context=0,
               right_context=self.stack_ratio - 1,
               stride=self.stack_ratio,

@@ -197,12 +197,13 @@ class VitEntryLayers(base_layer.FiddleBaseLayer):
 
   def setup(self) -> None:
 
-    p_patch_projection = linears.FeedForward.HParams(
+    p_patch_projection = pax_fiddle.Config(
+        linears.FeedForward,
         name='proj',
         input_dims=self.input_dims,
         output_dims=self.output_dims,
         has_bias=self.input_fc_has_bias,
-        activation_tpl=activations.Identity.HParams(),
+        activation_tpl=pax_fiddle.Config(activations.Identity),
     )
     self.create_child('patch_projection', p_patch_projection)
 
@@ -211,8 +212,10 @@ class VitEntryLayers(base_layer.FiddleBaseLayer):
       self.create_child('pos_emb', pos_emb)
 
     if self.pos_emb_dropout_prob > 0.0:
-      p_dropout = stochastics.Dropout.HParams(
-          name='dropout', keep_prob=1.0 - self.pos_emb_dropout_prob
+      p_dropout = pax_fiddle.Config(
+          stochastics.Dropout,
+          name='dropout',
+          keep_prob=1.0 - self.pos_emb_dropout_prob,
       )
       self.create_child('dropout', p_dropout)
 
@@ -318,32 +321,36 @@ class VitExitLayers(base_layer.FiddleBaseLayer):
   def setup(self) -> None:
 
     if self.pre_ln:
-      p_ln = normalizations.LayerNorm.HParams(name='ln', dim=self.hidden_dim)
+      p_ln = pax_fiddle.Config(
+          normalizations.LayerNorm, name='ln', dim=self.hidden_dim
+      )
       self.create_child('ln', p_ln)
 
     if self.pooled:
       self.create_child('pooling', self.pooling_tpl)
 
     if self.output_fc_tanh:
-      p_fc_tanh = linears.FeedForward.HParams(
+      p_fc_tanh = pax_fiddle.Config(
+          linears.FeedForward,
           input_dims=self.hidden_dim,
           output_dims=self.output_dim,
           has_bias=self.output_fc_has_bias,
-          activation_tpl=activations.Tanh.HParams(),
+          activation_tpl=pax_fiddle.Config(activations.Tanh),
       )
       self.create_child('fc_tanh', p_fc_tanh)
     elif self.output_dim != 0 and self.hidden_dim != self.output_dim:
-      p_fc = linears.FeedForward.HParams(
+      p_fc = pax_fiddle.Config(
+          linears.FeedForward,
           input_dims=self.hidden_dim,
           output_dims=self.output_dim,
           has_bias=self.output_fc_has_bias,
-          activation_tpl=activations.Identity.HParams(),
+          activation_tpl=pax_fiddle.Config(activations.Identity),
       )
       self.create_child('output_projection', p_fc)
 
     if self.output_dropout_prob > 0.0:
-      p_dropout = stochastics.Dropout.HParams(
-          keep_prob=1.0 - self.output_dropout_prob
+      p_dropout = pax_fiddle.Config(
+          stochastics.Dropout, keep_prob=1.0 - self.output_dropout_prob
       )
       self.create_child('dropout', p_dropout)
 
@@ -447,12 +454,14 @@ def build_vision_transformer_hparams_for_test(
   Returns:
     A HParams of the VisionTransformer layer.
   """
-  pos_emb_tpl = embedding_softmax.TrainablePositionalEmbedding.HParams(
+  pos_emb_tpl = pax_fiddle.Config(
+      embedding_softmax.TrainablePositionalEmbedding,
       max_seq_length=np.prod(pos_emb_shapes),
       embedding_dims=model_dims,
       params_init=WeightInit.Gaussian(scale=0.02),
   )
-  p_entry = VitEntryLayers.HParams(
+  p_entry = pax_fiddle.Config(
+      VitEntryLayers,
       name='entry',
       pos_emb_shapes=pos_emb_shapes,
       patch_size=patch_size,
@@ -461,7 +470,8 @@ def build_vision_transformer_hparams_for_test(
       pos_emb_tpl=pos_emb_tpl,
   )
 
-  p_stacked_tfm = transformers.StackedTransformer.HParams(
+  p_stacked_tfm = pax_fiddle.Config(
+      transformers.StackedTransformer,
       model_dims=model_dims,
       hidden_dims=mlp_dims,
       num_heads=num_heads,
@@ -473,10 +483,12 @@ def build_vision_transformer_hparams_for_test(
   p_tfm = p_stacked_tfm.transformer_layer_params_tpl
   p_tfm.tr_atten_tpl.internal_enable_per_dim_scale = False  # pytype: disable=attribute-error  # enable-nested-classes
 
-  p_exit = VitExitLayers.HParams(
-      name='exit', hidden_dim=model_dims, output_dim=model_dims)
+  p_exit = pax_fiddle.Config(
+      VitExitLayers, name='exit', hidden_dim=model_dims, output_dim=model_dims
+  )
 
-  p_vit = VisionTransformer.HParams(
+  p_vit = pax_fiddle.Config(
+      VisionTransformer,
       name='vit',
       entry_layers_tpl=p_entry,
       transformer_layers_tpl=p_stacked_tfm,

@@ -16,6 +16,7 @@
 """Tests for spectrum_augmenter."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 import jax
 from jax import numpy as jnp
 import numpy as np
@@ -40,12 +41,14 @@ class SpectrumAugmenterTest(test_utils.TestCase):
                           axis=1))
     paddings = jnp.concatenate(paddings, axis=0)
 
-    p = spectrum_augmenter.SpectrumAugmenter.HParams(
+    p = pax_fiddle.Config(
+        spectrum_augmenter.SpectrumAugmenter,
         name='specAug_layers',
         freq_mask_max_bins=0,
         time_mask_max_frames=5,
         time_mask_count=2,
-        time_mask_max_ratio=1.)
+        time_mask_max_ratio=1.0,
+    )
     specaug_layer = instantiate(p)
     expected_output = np.array(
         [[[1., 1.], [1., 1.], [1., 1.], [1., 1.], [1., 1.], [1., 1.], [1., 1.],
@@ -79,11 +82,13 @@ class SpectrumAugmenterTest(test_utils.TestCase):
   def testSpectrumAugmenterWithFrequencyMask(self):
     inputs = jnp.ones([3, 5, 10], dtype=jnp.float32)
     paddings = jnp.zeros([3, 5])
-    p = spectrum_augmenter.SpectrumAugmenter.HParams(
+    p = pax_fiddle.Config(
+        spectrum_augmenter.SpectrumAugmenter,
         name='specAug_layers',
         freq_mask_max_bins=6,
         freq_mask_count=2,
-        time_mask_max_frames=0)
+        time_mask_max_frames=0,
+    )
     specaug_layer = instantiate(p)
     expected_output = np.array([[[1., 1., 1., 0., 0., 0., 0., 0., 0., 0.],
                                  [1., 1., 1., 0., 0., 0., 0., 0., 0., 0.],
@@ -116,11 +121,13 @@ class SpectrumAugmenterTest(test_utils.TestCase):
   def testSpectrumEvalMode(self):
     inputs = jnp.ones([3, 5, 10], dtype=jnp.float32)
     paddings = jnp.zeros([3, 5])
-    p = spectrum_augmenter.SpectrumAugmenter.HParams(
+    p = pax_fiddle.Config(
+        spectrum_augmenter.SpectrumAugmenter,
         name='specAug_layers',
         freq_mask_max_bins=6,
         freq_mask_count=2,
-        time_mask_max_frames=0)
+        time_mask_max_frames=0,
+    )
     specaug_layer = instantiate(p)
     context_p = base_layer.JaxContext.HParams(do_eval=True)
     prng_key = jax.random.PRNGKey(seed=34567)

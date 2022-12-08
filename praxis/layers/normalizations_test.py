@@ -16,6 +16,7 @@
 """Tests for Praxis normalization layers."""
 
 from absl import logging
+from praxis import pax_fiddle
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -75,7 +76,9 @@ class NormalizationsTest(test_utils.TestCase):
     self.assertAllClose(to_np(jax_variance), to_np(tf_variance))
 
   def test_bn01(self):
-    test_layer_p = normalizations.BatchNorm.HParams(name='bn', decay=0.8, dim=8)
+    test_layer_p = pax_fiddle.Config(
+        normalizations.BatchNorm, name='bn', decay=0.8, dim=8
+    )
     layer = instantiate(test_layer_p)
 
     inputs = np.random.normal(1.5, 2.0, [2, 200, 8])
@@ -124,7 +127,9 @@ class NormalizationsTest(test_utils.TestCase):
     self.assertEqual(expected_moving_variance.shape, (8,))
 
   def test_bn02(self):
-    test_layer_p = normalizations.BatchNorm.HParams(name='bn', decay=0.8, dim=1)
+    test_layer_p = pax_fiddle.Config(
+        normalizations.BatchNorm, name='bn', decay=0.8, dim=1
+    )
     layer = instantiate(test_layer_p)
 
     inputs = np.random.normal(1.5, 2.0, [2, 200, 1])
@@ -158,7 +163,7 @@ class NormalizationsTest(test_utils.TestCase):
                             (0.5, 1.0))
   def test_layer_norm(self, scale, bias):
     dim = 3
-    p = normalizations.LayerNorm.HParams(name='jax_ln', dim=dim)
+    p = pax_fiddle.Config(normalizations.LayerNorm, name='jax_ln', dim=dim)
     layer_norm = instantiate(p)
     npy_input = np.random.normal(1.0, 0.5,
                                  [10, 10, 10, p.dim]).astype('float32')
@@ -186,8 +191,9 @@ class NormalizationsTest(test_utils.TestCase):
   @parameterized.parameters((0.0,), (0.5,))
   def test_rms_norm(self, scale):
     dim = 3
-    p = normalizations.RmsNorm.HParams(
-        name='jax_rmsn', dim=dim, direct_scale=False)
+    p = pax_fiddle.Config(
+        normalizations.RmsNorm, name='jax_rmsn', dim=dim, direct_scale=False
+    )
     rms_norm = instantiate(p)
     npy_input = np.random.normal(1.0, 0.5,
                                  [10, 10, 10, p.dim]).astype('float32')
@@ -233,14 +239,16 @@ class NormalizationsTest(test_utils.TestCase):
   )
   def test_group_norm(self, dim, num_groups, cumulative, input_rank, epsilon,
                       input_shape, input_dtype, paddings, fprop_dtype):
-    p = normalizations.GroupNorm.HParams(
+    p = pax_fiddle.Config(
+        normalizations.GroupNorm,
         name='jax_gn',
         dim=dim,
         num_groups=num_groups,
         cumulative=cumulative,
         input_rank=input_rank,
         epsilon=epsilon,
-        fprop_dtype=fprop_dtype)
+        fprop_dtype=fprop_dtype,
+    )
     group_norm = instantiate(p)
     npy_input = np.random.normal(1.0, 0.5, input_shape).astype(np.float32)
     inputs = jnp.asarray(npy_input, dtype=input_dtype)

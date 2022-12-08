@@ -16,6 +16,7 @@
 """Tests for Praxis transformer layers."""
 
 import copy
+from praxis import pax_fiddle
 import itertools
 
 from absl import logging
@@ -51,14 +52,16 @@ class TransformersTest(test_utils.TestCase):
   @parameterized.parameters(*list(itertools.product([True, False], repeat=3)))
   def test_transformer_layer(self, mask_self_attention, packed_input,
                              use_cross_attention):
-    p = transformers.Transformer.HParams(
+    p = pax_fiddle.Config(
+        transformers.Transformer,
         name='jax_transformer_layer',
         input_dims=32,
         hidden_dims=128,
         num_heads=8,
         mask_self_attention=mask_self_attention,
         packed_input=packed_input,
-        use_cross_attention=use_cross_attention)
+        use_cross_attention=use_cross_attention,
+    )
     seq_len = np.random.randint(10, 32)
     batch_size = 10
     transformer_layer = instantiate(p)
@@ -165,14 +168,16 @@ class TransformersTest(test_utils.TestCase):
   @parameterized.parameters(*list(itertools.product([True, False], repeat=4)))
   def test_transformer_layer_extendstep(self, packed_input, cross_attention,
                                         dconv_qkv, use_rotary_position_emb):
-    p = transformers.Transformer.HParams(
+    p = pax_fiddle.Config(
+        transformers.Transformer,
         name='jax_transformer_layer',
         input_dims=8,
         hidden_dims=32,
         num_heads=4,
         mask_self_attention=True,
         packed_input=packed_input,
-        use_cross_attention=cross_attention)
+        use_cross_attention=cross_attention,
+    )
     p.tr_atten_tpl.dconv_qkv = dconv_qkv
     p.tr_atten_tpl.use_rotary_position_emb = use_rotary_position_emb
     if cross_attention:
@@ -282,14 +287,16 @@ class TransformersTest(test_utils.TestCase):
     input_dims = 8
     hidden_dims = 32
     num_heads = 4
-    p = transformers.Transformer.HParams(
+    p = pax_fiddle.Config(
+        transformers.Transformer,
         name='jax_transformer_layer',
         input_dims=input_dims,
         hidden_dims=hidden_dims,
         num_heads=num_heads,
         mask_self_attention=True,
         packed_input=packed_input,
-        use_cross_attention=True)
+        use_cross_attention=True,
+    )
     seq_len = 5
     batch_size = 4
     npy_inputs = np.random.normal(
@@ -409,13 +416,15 @@ class TransformersTest(test_utils.TestCase):
         atol=5e-3)
 
   def test_transformer_layer_cross_attention_dconv_value_error(self):
-    p = transformers.Transformer.HParams(
+    p = pax_fiddle.Config(
+        transformers.Transformer,
         name='jax_transformer_layer',
         input_dims=8,
         hidden_dims=32,
         num_heads=4,
         use_cross_attention=True,
-        mask_self_attention=True)
+        mask_self_attention=True,
+    )
     # Enable cross attention.
     p.cross_atten_tpl = copy.deepcopy(p.tr_atten_tpl)
     # Enable depth-wise convolution.
@@ -431,13 +440,15 @@ class TransformersTest(test_utils.TestCase):
       _ = transformer_layer.init(prng_key, dummy_inputs, dummy_paddings)
 
   def test_transformer_layer_cross_attention_pos_emb_value_error(self):
-    p = transformers.Transformer.HParams(
+    p = pax_fiddle.Config(
+        transformers.Transformer,
         name='jax_transformer_layer',
         input_dims=8,
         hidden_dims=32,
         num_heads=4,
         use_cross_attention=True,
-        mask_self_attention=True)
+        mask_self_attention=True,
+    )
     # Enable cross attention.
     p.cross_atten_tpl = copy.deepcopy(p.tr_atten_tpl)
     # Enable rotary position embedding.
@@ -463,7 +474,8 @@ class TransformersTest(test_utils.TestCase):
   @parameterized.parameters('top2', 'expert_choice')
   def test_transformer_moe_dense_layer_gating(self, gating_function):
     # Comparing scan over blocks of layers and regular loop
-    block_p = transformers.StackedTransformer.HParams(
+    block_p = pax_fiddle.Config(
+        transformers.StackedTransformer,
         name='transformer_block',
         num_layers=2,
         model_dims=3,
@@ -474,14 +486,18 @@ class TransformersTest(test_utils.TestCase):
         use_cross_attention=False,
         num_experts=4,
         num_groups=1,
-        moe_layers=[0])
+        moe_layers=[0],
+    )
 
-    block_p_repeated = transformers.StackedTransformerRepeated.HParams(
+    block_p_repeated = pax_fiddle.Config(
+        transformers.StackedTransformerRepeated,
         name='stacked_transformer_layer_repeated',
         block=copy.deepcopy(block_p),
-        x_times=1)
+        x_times=1,
+    )
 
-    stack_p = transformers.StackedTransformer.HParams(
+    stack_p = pax_fiddle.Config(
+        transformers.StackedTransformer,
         name='transformer_stack',
         num_layers=2,  # moe + dense
         model_dims=block_p.model_dims,
@@ -492,7 +508,8 @@ class TransformersTest(test_utils.TestCase):
         use_cross_attention=block_p.use_cross_attention,
         num_experts=block_p.num_experts,
         num_groups=block_p.num_groups,
-        moe_layers=[0])
+        moe_layers=[0],
+    )
 
     moe_p = stack_p.moe_layer_tpl
     moe_p.gating_func = gating_function
@@ -584,7 +601,8 @@ class TransformersTest(test_utils.TestCase):
   def test_transformer_moe_dense_layer(self, mask_self_attention, packed_input,
                                        use_cross_attention):
     # Comparing scan over blocks of layers and regular loop
-    block_p = transformers.StackedTransformer.HParams(
+    block_p = pax_fiddle.Config(
+        transformers.StackedTransformer,
         name='transformer_block',
         num_layers=2,
         model_dims=3,
@@ -595,14 +613,18 @@ class TransformersTest(test_utils.TestCase):
         use_cross_attention=use_cross_attention,
         num_experts=4,
         num_groups=1,
-        moe_layers=[0])
+        moe_layers=[0],
+    )
 
-    block_p_repeated = transformers.StackedTransformerRepeated.HParams(
+    block_p_repeated = pax_fiddle.Config(
+        transformers.StackedTransformerRepeated,
         name='stacked_transformer_layer_repeated',
         block=copy.deepcopy(block_p),
-        x_times=1)
+        x_times=1,
+    )
 
-    stack_p = transformers.StackedTransformer.HParams(
+    stack_p = pax_fiddle.Config(
+        transformers.StackedTransformer,
         name='transformer_stack',
         num_layers=2,  # moe + dense
         model_dims=block_p.model_dims,
@@ -613,7 +635,8 @@ class TransformersTest(test_utils.TestCase):
         use_cross_attention=block_p.use_cross_attention,
         num_experts=block_p.num_experts,
         num_groups=block_p.num_groups,
-        moe_layers=[0])
+        moe_layers=[0],
+    )
 
     moe_p = stack_p.moe_layer_tpl
     moe_p.expert_capacity_dim = 2
@@ -713,7 +736,8 @@ class TransformersTest(test_utils.TestCase):
   @parameterized.parameters(*list(itertools.product([True, False], repeat=3)))
   def test_stacked_transformer_layer(self, mask_self_attention, packed_input,
                                      use_cross_attention):
-    p = transformers.StackedTransformer.HParams(
+    p = pax_fiddle.Config(
+        transformers.StackedTransformer,
         name='jax_stacked_transformer_layer',
         model_dims=16,
         hidden_dims=64,
@@ -721,7 +745,8 @@ class TransformersTest(test_utils.TestCase):
         mask_self_attention=mask_self_attention,
         num_layers=4,
         packed_input=packed_input,
-        use_cross_attention=use_cross_attention)
+        use_cross_attention=use_cross_attention,
+    )
     seq_len = np.random.randint(10, 32)
     batch_size = 10
     stacked_transformer_layer = instantiate(p)
@@ -843,7 +868,8 @@ class TransformersTest(test_utils.TestCase):
                                           packed_input, use_cross_attention):
     model_dims = 16
     num_layers = 4
-    p1 = transformers.StackedTransformer.HParams(
+    p1 = pax_fiddle.Config(
+        transformers.StackedTransformer,
         name='jax_stacked_transformer_layer',
         model_dims=model_dims,
         hidden_dims=64,
@@ -851,13 +877,16 @@ class TransformersTest(test_utils.TestCase):
         mask_self_attention=mask_self_attention,
         num_layers=num_layers,
         packed_input=packed_input,
-        use_cross_attention=use_cross_attention)
+        use_cross_attention=use_cross_attention,
+    )
     p1_one_layer = copy.deepcopy(p1)
     p1_one_layer.num_layers = 1
-    p2 = transformers.StackedTransformerRepeated.HParams(
+    p2 = pax_fiddle.Config(
+        transformers.StackedTransformerRepeated,
         name='jax_stacked_transformer_layer_repeated',
         block=p1_one_layer,
-        x_times=p1.num_layers)
+        x_times=p1.num_layers,
+    )
     seq_len = np.random.randint(10, 32)
     batch_size = 10
     npy_inputs = np.random.normal(
@@ -954,7 +983,8 @@ class TransformersTest(test_utils.TestCase):
   def test_repeated_stacked_xformer_layer(self):
     model_dims = 16
     num_layers = 4
-    p1 = transformers.StackedTransformer.HParams(
+    p1 = pax_fiddle.Config(
+        transformers.StackedTransformer,
         name='jax_stacked_transformer_layer',
         model_dims=model_dims,
         hidden_dims=64,
@@ -962,11 +992,12 @@ class TransformersTest(test_utils.TestCase):
         mask_self_attention=False,
         num_layers=num_layers,
         packed_input=False,
-        use_cross_attention=False)
+        use_cross_attention=False,
+    )
     p2 = copy.deepcopy(p1)
     p2.name = 'jax_stacked_transformer_layer_list_tpl'
     p2.transformer_layer_params_tpl = [
-        transformers.Transformer.HParams() for _ in range(4)
+        pax_fiddle.Config(transformers.Transformer) for _ in range(4)
     ]
     seq_len = np.random.randint(10, 32)
     batch_size = 10
@@ -1021,7 +1052,7 @@ class TransformersTest(test_utils.TestCase):
                                                 use_rotary_position_emb):
     if cross_attention and combine_qkv:
       self.skipTest('combine_qkv optimization only works for self-attention.')
-    layer_params = transformers.StackedTransformer.HParams()
+    layer_params = pax_fiddle.Config(transformers.StackedTransformer)
 
     num_layers = 2
     model_dims = 8
@@ -1049,7 +1080,7 @@ class TransformersTest(test_utils.TestCase):
 
     p_copy = copy.deepcopy(p)
     p_copy.num_layers = 1
-    p = transformers.StackedTransformerRepeated.HParams()
+    p = pax_fiddle.Config(transformers.StackedTransformerRepeated)
     p.name = 'jax_transformer_repeated_layer'
     p.block = p_copy
     p.x_times = num_layers
@@ -1165,7 +1196,7 @@ class TransformersTest(test_utils.TestCase):
     hidden_dims = 32
     num_heads = 2
 
-    layer_params = transformers.StackedTransformer.HParams()
+    layer_params = pax_fiddle.Config(transformers.StackedTransformer)
     p = layer_params.set(
         name='jax_transformer_layer',
         model_dims=model_dims,
@@ -1175,7 +1206,8 @@ class TransformersTest(test_utils.TestCase):
         packed_input=False,
         use_cross_attention=False,
         num_layers=num_layers)
-    p.transformer_layer_params_tpl.tr_atten_tpl = attentions.DotProductAttentionWithLPB.HParams(
+    p.transformer_layer_params_tpl.tr_atten_tpl = pax_fiddle.Config(
+        attentions.DotProductAttentionWithLPB,
         input_dim=model_dims,
         hidden_dim=hidden_dims,
         num_heads=num_heads,
@@ -1183,11 +1215,12 @@ class TransformersTest(test_utils.TestCase):
         atten_logit_cap=20.0,
         combine_qkv=combine_qkv,
         dconv_qkv=False,
-        use_rotary_position_emb=use_rotary_position_emb)
+        use_rotary_position_emb=use_rotary_position_emb,
+    )
 
     p_copy = copy.deepcopy(p)
     p_copy.num_layers = 1
-    p = transformers.StackedTransformerRepeated.HParams()
+    p = pax_fiddle.Config(transformers.StackedTransformerRepeated)
     p.name = 'jax_transformer_repeated_layer'
     p.block = p_copy
     p.x_times = num_layers
@@ -1246,28 +1279,33 @@ class TransformersTest(test_utils.TestCase):
   @parameterized.named_parameters(
       {
           'testcase_name': 'ReLU',
-          'activation_tpl': activations.ReLU.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.ReLU),
           'lingvo_activation_name': 'RELU',
           'use_gated_activation': False,
-      }, {
+      },
+      {
           'testcase_name': 'SiLU',
-          'activation_tpl': activations.SiLU.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.SiLU),
           'lingvo_activation_name': 'SILU',
           'use_gated_activation': False,
-      }, {
+      },
+      {
           'testcase_name': 'Gated_SiLU',
-          'activation_tpl': activations.SiLU.HParams(),
+          'activation_tpl': pax_fiddle.Config(activations.SiLU),
           'lingvo_activation_name': 'GATED_SILU',
           'use_gated_activation': True,
-      })
+      },
+  )
   def test_transformer_feedforward(self, activation_tpl, lingvo_activation_name,
                                    use_gated_activation):
-    p = transformers.TransformerFeedForward.HParams(
+    p = pax_fiddle.Config(
+        transformers.TransformerFeedForward,
         name='ffwd',
         input_dims=8,
         hidden_dims=32,
         activation_tpl=activation_tpl,
-        use_gated_activation=use_gated_activation)
+        use_gated_activation=use_gated_activation,
+    )
     batch_size = 8
     seq_len = 512
 
@@ -1313,7 +1351,8 @@ class TransformersTest(test_utils.TestCase):
 
   @parameterized.parameters(['pre', 'primer_hybrid', 'post'])
   def test_transformer_layer_norm_policies(self, norm_policy):
-    p = transformers.Transformer.HParams(
+    p = pax_fiddle.Config(
+        transformers.Transformer,
         name='jax_transformer_layer',
         input_dims=32,
         hidden_dims=128,
@@ -1321,7 +1360,8 @@ class TransformersTest(test_utils.TestCase):
         mask_self_attention=True,
         packed_input=True,
         use_cross_attention=False,
-        norm_policy=norm_policy)
+        norm_policy=norm_policy,
+    )
     seq_len = np.random.randint(10, 32)
     batch_size = 10
     npy_inputs = np.random.normal(
@@ -1353,7 +1393,8 @@ class TransformersTest(test_utils.TestCase):
 
   @parameterized.parameters(['pre', 'primer_hybrid', 'post'])
   def test_transformer_cross_attention_layer_norm_policies(self, norm_policy):
-    p = transformers.Transformer.HParams(
+    p = pax_fiddle.Config(
+        transformers.Transformer,
         name='jax_transformer_layer',
         input_dims=32,
         hidden_dims=128,
@@ -1361,7 +1402,8 @@ class TransformersTest(test_utils.TestCase):
         mask_self_attention=True,
         packed_input=True,
         use_cross_attention=True,
-        norm_policy=norm_policy)
+        norm_policy=norm_policy,
+    )
     seq_len = np.random.randint(10, 32)
     batch_size = 10
     transformer_layer = instantiate(p)
@@ -1403,19 +1445,24 @@ class TransformersTest(test_utils.TestCase):
 
   @parameterized.parameters([True, False])
   def test_transformer_relative_bias(self, use_relative_bias):
-    p = transformers.Transformer.HParams(
+    p = pax_fiddle.Config(
+        transformers.Transformer,
         name='jax_transformer_layer',
         input_dims=32,
         hidden_dims=128,
         num_heads=8,
         mask_self_attention=True,
         packed_input=True,
-        use_cross_attention=False)
+        use_cross_attention=False,
+    )
     seq_len = np.random.randint(10, 32)
     batch_size = 10
     if use_relative_bias:
-      p.tr_atten_tpl.relative_bias_tpl = attentions.RelativeBias.HParams(
-          relative_attention_num_buckets=2, relative_attention_max_distance=8)
+      p.tr_atten_tpl.relative_bias_tpl = pax_fiddle.Config(
+          attentions.RelativeBias,
+          relative_attention_num_buckets=2,
+          relative_attention_max_distance=8,
+      )
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)

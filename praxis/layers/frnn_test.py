@@ -16,6 +16,7 @@
 """Tests for Praxis rnn_cell layers."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
@@ -77,7 +78,7 @@ class FRNNTest(test_utils.TestCase):
   )
   def test_frnn_lstm_cell(self, jax_cell_class, output_nonlinearity):
     cell_p = self._get_cell_params(jax_cell_class, output_nonlinearity)
-    frnn_p = frnn.LstmFrnn.HParams(name='frnn', cell_tpl=cell_p)
+    frnn_p = pax_fiddle.Config(frnn.LstmFrnn, name='frnn', cell_tpl=cell_p)
 
     act_in, padding, m0, c0 = self._get_test_inputs()
     cell = instantiate(cell_p)
@@ -113,13 +114,15 @@ class FRNNTest(test_utils.TestCase):
                           num_layers):
     input_dim, output_dim = 7, 9
     cell_p = self._get_cell_params(jax_cell_class, output_nonlinearity)
-    frnn_p = frnn.LstmFrnn.HParams(name='frnn', cell_tpl=cell_p)
-    stack_frnn_p = frnn.StackFrnn.HParams(
+    frnn_p = pax_fiddle.Config(frnn.LstmFrnn, name='frnn', cell_tpl=cell_p)
+    stack_frnn_p = pax_fiddle.Config(
+        frnn.StackFrnn,
         name='stackfrnn',
         frnn_tpl=frnn_p,
         num_input_nodes=input_dim,
         num_output_nodes=output_dim,
-        num_layers=num_layers)
+        num_layers=num_layers,
+    )
 
     act_in, padding, m0, c0 = self._get_test_inputs()
     stack_frnn_model = instantiate(stack_frnn_p)
@@ -137,7 +140,7 @@ class FRNNTest(test_utils.TestCase):
     for ii in range(num_layers):
       cell_p.num_input_nodes = num_input_nodes
       cell_p.num_output_nodes = output_dim
-      frnn_p = frnn.LstmFrnn.HParams(name='frnn', cell_tpl=cell_p)
+      frnn_p = pax_fiddle.Config(frnn.LstmFrnn, name='frnn', cell_tpl=cell_p)
       frnn_model = instantiate(frnn_p)
       state0 = NestedMap(m=jnp.copy(m0), c=jnp.copy(c0))
 
@@ -160,20 +163,24 @@ class FRNNTest(test_utils.TestCase):
   def test_frnn_vs_lstm(self, jax_cell_class, output_nonlinearity, num_layers):
     input_dim, output_dim = 7, 9
     cell_p = self._get_cell_params(jax_cell_class, output_nonlinearity)
-    lstm_p = frnn.LstmFrnn.HParams(cell_tpl=cell_p)
-    frnn_p = frnn.FRnn.HParams(cell_tpl=cell_p)
-    stack_frnn_p = frnn.StackFrnn.HParams(
+    lstm_p = pax_fiddle.Config(frnn.LstmFrnn, cell_tpl=cell_p)
+    frnn_p = pax_fiddle.Config(frnn.FRnn, cell_tpl=cell_p)
+    stack_frnn_p = pax_fiddle.Config(
+        frnn.StackFrnn,
         name='stackfrnn',
         frnn_tpl=frnn_p,
         num_input_nodes=input_dim,
         num_output_nodes=output_dim,
-        num_layers=num_layers)
-    stack_lstm_p = frnn.StackFrnn.HParams(
+        num_layers=num_layers,
+    )
+    stack_lstm_p = pax_fiddle.Config(
+        frnn.StackFrnn,
         name='stackfrnn',
         frnn_tpl=lstm_p,
         num_input_nodes=input_dim,
         num_output_nodes=output_dim,
-        num_layers=num_layers)
+        num_layers=num_layers,
+    )
 
     act_in, padding, m0, c0 = self._get_test_inputs()
     stack_frnn_model = instantiate(stack_frnn_p)

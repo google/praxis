@@ -16,6 +16,7 @@
 """Tests for vanillanets."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
@@ -42,12 +43,14 @@ class VanillanetsTest(parameterized.TestCase):
   def test_vanilla_block(self, kernel_size, stride, activation, input_shape,
                          output_dim):
     input_dim = input_shape[-1]
-    p = vanillanets.VanillaBlock.HParams(
+    p = pax_fiddle.Config(
+        vanillanets.VanillaBlock,
         name='vanilla_block',
         input_dim=input_dim,
         output_dim=output_dim,
         kernel_size=kernel_size,
-        stride=stride)
+        stride=stride,
+    )
     resnet_layer = instantiate(p)
     npy_inputs = np.random.normal(1.0, 0.5, input_shape).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -65,8 +68,9 @@ class VanillanetsTest(parameterized.TestCase):
     p = vanillanets.VanillaNet.HParamsVanillaNet5().set(
         name='vanillanet', output_spatial_pooling_params=spatial_pooling_dims)
     if spatial_pooling_dims is not None:
-      p.output_spatial_pooling_params = poolings.GlobalPooling.HParams(
-          pooling_dims=spatial_pooling_dims)
+      p.output_spatial_pooling_params = pax_fiddle.Config(
+          poolings.GlobalPooling, pooling_dims=spatial_pooling_dims
+      )
     vanillanet_layer = instantiate(p)
     npy_inputs = np.random.normal(1.0, 0.5, input_shape).astype('float32')
     inputs = jnp.asarray(npy_inputs)

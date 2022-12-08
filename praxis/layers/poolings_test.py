@@ -16,6 +16,7 @@
 """Tests for Praxis pooling layers."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
@@ -50,12 +51,14 @@ class PoolingsTest(test_utils.TestCase):
   )
   def test_pooling_layer(self, window_shape, window_stride, padding,
                          pooling_type, input_shape, int_inputs):
-    p = poolings.Pooling.HParams(
+    p = pax_fiddle.Config(
+        poolings.Pooling,
         name='jax_pooling',
         window_shape=window_shape,
         window_stride=window_stride,
         pooling_type=pooling_type,
-        padding=padding)
+        padding=padding,
+    )
     pooling_layer = instantiate(p)
     if int_inputs:
       npy_inputs = np.random.randint(0, 100, input_shape).astype('int32')
@@ -99,12 +102,14 @@ class PoolingsTest(test_utils.TestCase):
   def test_pooling_layer_with_paddings(self, window_shape, window_stride,
                                        padding, pooling_type, input_shape,
                                        int_inputs, paddings_all_ones):
-    p = poolings.Pooling.HParams(
+    p = pax_fiddle.Config(
+        poolings.Pooling,
         name='jax_pooling',
         window_shape=window_shape,
         window_stride=window_stride,
         pooling_type=pooling_type,
-        padding=padding)
+        padding=padding,
+    )
     pooling_layer = instantiate(p)
     if int_inputs:
       npy_inputs = np.random.randint(0, 100, input_shape).astype('int32')
@@ -157,11 +162,13 @@ class PoolingsTest(test_utils.TestCase):
   )
   def test_global_pooling_layer(self, pooling_type, apply_padding, int_inputs,
                                 ground_truth):
-    p = poolings.GlobalPooling.HParams(
+    p = pax_fiddle.Config(
+        poolings.GlobalPooling,
         name='global_pooling',
         pooling_type=pooling_type,
         pooling_dims=[1],
-        keepdims=False)
+        keepdims=False,
+    )
     pooling_layer = instantiate(p)
     if int_inputs:
       inputs = jnp.asarray([[1, 2, 3, 4, 5],

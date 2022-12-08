@@ -60,8 +60,9 @@ class SharedLayersTest(test_utils.TestCase):
     linear_cfg = linears.Linear.config(
         name='linear', input_dims=2, output_dims=2)
     # Private layers should be passed `Params`.
-    linear_p = linears.Linear.HParams(
-        name='linear', input_dims=2, output_dims=2)
+    linear_p = pax_fiddle.Config(
+        linears.Linear, name='linear', input_dims=2, output_dims=2
+    )
     foo_shared_p = FooShared.config(
         name='foo_shared',
         linear1=linear_cfg,  # shared
@@ -151,11 +152,17 @@ class SimpleShared01(base_layer.FiddleBaseLayer):
 class SharedLayerTest(test_utils.TestCase):
 
   def testSharedLayer(self):
-    sub_params = linears.FeedForward.HParams(input_dims=8, output_dims=8)
+    sub_params = pax_fiddle.Config(
+        linears.FeedForward, input_dims=8, output_dims=8
+    )
     # Share the entire FeedForward layer.
     sub_params.shared_weight_layer_id = 'shared_layer'
-    test_layer_p = SimpleShared01.HParams(
-        name='test', sub1_tpl=sub_params.clone(), sub2_tpl=sub_params.clone())
+    test_layer_p = pax_fiddle.Config(
+        SimpleShared01,
+        name='test',
+        sub1_tpl=sub_params.clone(),
+        sub2_tpl=sub_params.clone(),
+    )
     x_in = jnp.ones([2, 8])
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(1234)
@@ -189,11 +196,17 @@ class SharedLayerTest(test_utils.TestCase):
       logging.info('out2: %s', out2)
 
   def testSharedTemplateLayer(self):
-    sub_params = linears.FeedForward.HParams(input_dims=8, output_dims=8)
+    sub_params = pax_fiddle.Config(
+        linears.FeedForward, input_dims=8, output_dims=8
+    )
     # Only share the linear projection, not the entire FeedForward layer.
     sub_params.linear_tpl.shared_weight_layer_id = 'shared_weight'
-    test_layer_p = SimpleShared01.HParams(
-        name='test', sub1_tpl=sub_params.clone(), sub2_tpl=sub_params.clone())
+    test_layer_p = pax_fiddle.Config(
+        SimpleShared01,
+        name='test',
+        sub1_tpl=sub_params.clone(),
+        sub2_tpl=sub_params.clone(),
+    )
     x_in = jnp.ones([2, 8])
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(1234)
@@ -232,15 +245,22 @@ class SharedLayerTest(test_utils.TestCase):
       logging.info('out2: %s', out2)
 
   def testRecursiveSharing(self):
-    sub_params = linears.FeedForward.HParams(input_dims=8, output_dims=8)
+    sub_params = pax_fiddle.Config(
+        linears.FeedForward, input_dims=8, output_dims=8
+    )
     # Share the linear projection.
     sub_params.linear_tpl.shared_weight_layer_id = 'shared_linear'
-    parent_p = SimpleShared01.HParams(
-        sub1_tpl=sub_params.clone(), sub2_tpl=sub_params.clone())
+    parent_p = pax_fiddle.Config(
+        SimpleShared01, sub1_tpl=sub_params.clone(), sub2_tpl=sub_params.clone()
+    )
     # Share parent nodes.
     parent_p.shared_weight_layer_id = 'shared'
-    root_layer_p = SimpleShared01.HParams(
-        name='root', sub1_tpl=parent_p.clone(), sub2_tpl=parent_p.clone())
+    root_layer_p = pax_fiddle.Config(
+        SimpleShared01,
+        name='root',
+        sub1_tpl=parent_p.clone(),
+        sub2_tpl=parent_p.clone(),
+    )
     x_in = jnp.ones([2, 8])
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(1234)

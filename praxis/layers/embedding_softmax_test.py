@@ -16,6 +16,7 @@
 """Tests for Praxis embedding and softmax layers."""
 
 import itertools
+from praxis import pax_fiddle
 
 from absl import logging
 from absl.testing import absltest
@@ -45,7 +46,7 @@ class TokenCounterTest(test_utils.TestCase):
     tf.random.set_seed(123)
 
   def test_token_counter(self):
-    test_layer_p = embedding_softmax.TokenCounter.HParams(name='tc')
+    test_layer_p = pax_fiddle.Config(embedding_softmax.TokenCounter, name='tc')
     layer = instantiate(test_layer_p)
 
     prng_key = jax.random.PRNGKey(seed=1234)
@@ -91,12 +92,14 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
   @parameterized.parameters(('index', True), ('index', False), ('matmul', True),
                             ('matmul', False))
   def test_single_sharded_embedding_layer(self, lookup_style, scale_sqrt_depth):
-    p = embedding_softmax.Embedding.HParams(
+    p = pax_fiddle.Config(
+        embedding_softmax.Embedding,
         name='jax_emb_lookup',
         num_classes=10,
         input_dims=40,
         lookup_style=lookup_style,
-        scale_sqrt_depth=scale_sqrt_depth)
+        scale_sqrt_depth=scale_sqrt_depth,
+    )
     emb_layer = instantiate(p)
     npy_input = np.random.randint(0, p.num_classes, [10, 20]).astype('int32')
     inputs = jnp.asarray(npy_input)
@@ -131,12 +134,14 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
       class_probabilities = np.random.normal(1.5, 2.0, [8, 10, 50])
     else:
       class_probabilities = None
-    p = embedding_softmax.FullSoftmax.HParams(
+    p = pax_fiddle.Config(
+        embedding_softmax.FullSoftmax,
         name='jax_softmax',
         num_classes=50,
         input_dims=40,
         soft_cap_logits=soft_cap_logits,
-        label_smoothing_prob=label_smoothing_prob)
+        label_smoothing_prob=label_smoothing_prob,
+    )
     softmax_layer = instantiate(p)
     npy_input = np.random.normal(1.5, 2.0, [8, 10, p.input_dims])
     inputs = jnp.asarray(npy_input)
@@ -198,8 +203,12 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     batch_size = 8
     num_classes = 50
     class_ids = np.random.randint(0, 50, [8, 1])
-    p = embedding_softmax.FullSoftmax.HParams(
-        name='jax_softmax', num_classes=num_classes, input_dims=40)
+    p = pax_fiddle.Config(
+        embedding_softmax.FullSoftmax,
+        name='jax_softmax',
+        num_classes=num_classes,
+        input_dims=40,
+    )
     softmax_layer = instantiate(p)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
@@ -247,11 +256,13 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     batch_size = 2
     num_classes = 10
     class_ids = np.random.randint(0, 50, [batch_size, 1])
-    p = embedding_softmax.FullSoftmax.HParams(
+    p = pax_fiddle.Config(
+        embedding_softmax.FullSoftmax,
         name='jax_softmax',
         num_classes=num_classes,
         input_dims=40,
-        label_smoothing_prob=0.5)  # build softmax with label smoothing.
+        label_smoothing_prob=0.5,
+    )  # build softmax with label smoothing.
     # Boiler-plate stuff, initialize weights and inputs/ class ids.
     softmax_layer = instantiate(p)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
@@ -305,8 +316,12 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     class_probabilities = np.random.normal(1.5, 2.0, [batch_size, num_classes])
     # Normalize class probabilities to be a probability distribution.
     class_probabilities /= np.sum(class_probabilities, axis=-1, keepdims=True)
-    p = embedding_softmax.FullSoftmax.HParams(
-        name='jax_softmax', num_classes=num_classes, input_dims=40)
+    p = pax_fiddle.Config(
+        embedding_softmax.FullSoftmax,
+        name='jax_softmax',
+        num_classes=num_classes,
+        input_dims=40,
+    )
     softmax_layer = instantiate(p)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
@@ -355,8 +370,12 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     num_classes = 50
     class_ids = None
     class_probabilities = None
-    p = embedding_softmax.FullSoftmax.HParams(
-        name='jax_softmax', num_classes=num_classes, input_dims=40)
+    p = pax_fiddle.Config(
+        embedding_softmax.FullSoftmax,
+        name='jax_softmax',
+        num_classes=num_classes,
+        input_dims=40,
+    )
     softmax_layer = instantiate(p)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
@@ -382,13 +401,15 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
   def test_single_sharded_shared_embedding_softmax_layer(
       self, soft_cap_logits, lookup_style, scale_sqrt_depth):
     class_ids = np.random.randint(1, 50, [8, 10, 1])
-    p = embedding_softmax.SharedEmbeddingSoftmax.HParams(
+    p = pax_fiddle.Config(
+        embedding_softmax.SharedEmbeddingSoftmax,
         name='jax_softmax',
         num_classes=50,
         input_dims=40,
         soft_cap_logits=soft_cap_logits,
         lookup_style=lookup_style,
-        scale_sqrt_depth=scale_sqrt_depth)
+        scale_sqrt_depth=scale_sqrt_depth,
+    )
     softmax_layer = instantiate(p)
     npy_input = np.random.normal(1.5, 2.0, [8, 10, p.input_dims])
     inputs = jnp.asarray(npy_input)
@@ -442,8 +463,12 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     class_probabilities = np.random.normal(1.5, 2.0, [batch_size, num_classes])
     # Normalize class probabilities to be a probability distribution.
     class_probabilities /= np.sum(class_probabilities, axis=-1, keepdims=True)
-    p = embedding_softmax.SigmoidCrossEntropy.HParams(
-        name='jax_softmax', num_classes=num_classes, input_dims=40)
+    p = pax_fiddle.Config(
+        embedding_softmax.SigmoidCrossEntropy,
+        name='jax_softmax',
+        num_classes=num_classes,
+        input_dims=40,
+    )
     sigmoid_xent_layer = instantiate(p)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
@@ -497,8 +522,12 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     class_probabilities = np.random.normal(1.5, 2.0, [batch_size, num_classes])
     # Normalize class probabilities to be a probability distribution.
     class_probabilities /= np.sum(class_probabilities, axis=-1, keepdims=True)
-    p = embedding_softmax.SigmoidCrossEntropy.HParams(
-        name='jax_softmax', num_classes=num_classes, input_dims=40)
+    p = pax_fiddle.Config(
+        embedding_softmax.SigmoidCrossEntropy,
+        name='jax_softmax',
+        num_classes=num_classes,
+        input_dims=40,
+    )
     sigmoid_xent_layer = instantiate(p)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
@@ -555,11 +584,13 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     class_probabilities = np.random.normal(1.5, 2.0, [batch_size, num_classes])
     # Normalize class probabilities to be a probability distribution.
     class_probabilities /= np.sum(class_probabilities, axis=-1, keepdims=True)
-    p = embedding_softmax.SigmoidCrossEntropy.HParams(
+    p = pax_fiddle.Config(
+        embedding_softmax.SigmoidCrossEntropy,
         name='jax_softmax',
         num_classes=num_classes,
         input_dims=40,
-        feed_forward_tpl=None)
+        feed_forward_tpl=None,
+    )
     sigmoid_xent_layer = instantiate(p)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
@@ -578,11 +609,13 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
 
   @parameterized.parameters((1, 10), (1, 1e5), (10, 20), (10, 1e5))
   def test_position_embedding_layer(self, min_timescale, max_timescale):
-    p = embedding_softmax.PositionalEmbedding.HParams(
+    p = pax_fiddle.Config(
+        embedding_softmax.PositionalEmbedding,
         name='jax_pos',
         embedding_dims=50,
         min_timescale=min_timescale,
-        max_timescale=max_timescale)
+        max_timescale=max_timescale,
+    )
     pos_layer = instantiate(p)
     seq_length = np.random.randint(100, 1000)
     prng_key = jax.random.PRNGKey(seed=123)
@@ -607,11 +640,13 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
   @parameterized.parameters((1, 10), (1, 1e5), (10, 20), (10, 1e5))
   def test_position_embedding_layer_with_position(self, min_timescale,
                                                   max_timescale):
-    p = embedding_softmax.PositionalEmbedding.HParams(
+    p = pax_fiddle.Config(
+        embedding_softmax.PositionalEmbedding,
         name='jax_pos',
         embedding_dims=50,
         min_timescale=min_timescale,
-        max_timescale=max_timescale)
+        max_timescale=max_timescale,
+    )
     pos_layer = instantiate(p)
     position = np.array([[0, 1, 2, 3, 4, 0, 1, 2, 3, 4],
                          [0, 1, 2, 0, 1, 2, 0, 1, 2, 0],
@@ -638,11 +673,13 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
   def test_rotary_position_embedding_layer_prefix(self, min_timescale,
                                                   max_timescale, window_size):
     embedding_dims = 32
-    p = embedding_softmax.RotaryPositionalEmbedding.HParams(
+    p = pax_fiddle.Config(
+        embedding_softmax.RotaryPositionalEmbedding,
         name='jax_pos',
         embedding_dims=embedding_dims,
         min_timescale=min_timescale,
-        max_timescale=max_timescale)
+        max_timescale=max_timescale,
+    )
     pos_layer = instantiate(p)
     inputs = np.random.normal(1.5, 2.5, (2, 8, 4, embedding_dims))
     prng_key = jax.random.PRNGKey(seed=123)
@@ -672,11 +709,13 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
   def test_rotary_position_embedding_layer_no_prefix(self, min_timescale,
                                                      max_timescale):
     embedding_dims = 32
-    p = embedding_softmax.RotaryPositionalEmbedding.HParams(
+    p = pax_fiddle.Config(
+        embedding_softmax.RotaryPositionalEmbedding,
         name='jax_pos',
         embedding_dims=embedding_dims,
         min_timescale=min_timescale,
-        max_timescale=max_timescale)
+        max_timescale=max_timescale,
+    )
     pos_layer = instantiate(p)
     inputs = np.random.normal(1.5, 2.5, (2, 8, 4, embedding_dims))
     prng_key = jax.random.PRNGKey(seed=123)
@@ -704,11 +743,13 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     embedding_dims = 2
     min_timescale = 1
     max_timescale = 1e4
-    p = embedding_softmax.RotaryPositionalEmbedding.HParams(
+    p = pax_fiddle.Config(
+        embedding_softmax.RotaryPositionalEmbedding,
         name='jax_pos',
         embedding_dims=embedding_dims,
         min_timescale=min_timescale,
-        max_timescale=max_timescale)
+        max_timescale=max_timescale,
+    )
     pos_layer = instantiate(p)
     inputs = np.random.normal(1.5, 2.5, (1, 4, 1, embedding_dims))
     if position is None:
@@ -730,11 +771,13 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
 
   @parameterized.parameters('index', 'matmul')
   def test_trainable_positional_embedding_layer(self, lookup_style):
-    p = embedding_softmax.TrainablePositionalEmbedding.HParams(
+    p = pax_fiddle.Config(
+        embedding_softmax.TrainablePositionalEmbedding,
         name='jax_pos_emb',
         max_seq_length=10,
         embedding_dims=40,
-        lookup_style=lookup_style)
+        lookup_style=lookup_style,
+    )
     emb_layer = instantiate(p)
     npy_input = np.random.randint(0, p.max_seq_length,
                                   [10, p.max_seq_length]).astype('int32')

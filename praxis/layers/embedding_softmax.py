@@ -196,7 +196,7 @@ class FullSoftmax(base_layer.FiddleBaseLayer):
     ff_p = self.feed_forward_tpl.clone().set(
         input_dims=self.input_dims,
         output_dims=self.num_classes,
-        activation_tpl=activations.Identity.HParams(),
+        activation_tpl=pax_fiddle.Config(activations.Identity),
         bias_init=self.bias_init,
         weight_split_dims_mapping=wp.clone(),
         activation_split_dims_mapping=ap.clone(),
@@ -390,7 +390,7 @@ class SigmoidCrossEntropy(base_layer.FiddleBaseLayer):
       ff_p = self.feed_forward_tpl.clone().set(
           input_dims=self.input_dims,
           output_dims=self.num_classes,
-          activation_tpl=activations.Identity.HParams(),
+          activation_tpl=pax_fiddle.Config(activations.Identity),
           bias_init=self.bias_init,
           weight_split_dims_mapping=wp.clone(),
           activation_split_dims_mapping=ap.clone(),
@@ -560,7 +560,8 @@ class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
     ap = self.activation_split_dims_mapping
-    emb_p = linears.Linear.HParams(
+    emb_p = pax_fiddle.Config(
+        linears.Linear,
         input_dims=self.num_classes,
         output_dims=self.input_dims,
         # Same as in gshard_builder.DenseBuilder.Embedding

@@ -80,6 +80,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
     ],
 )
@@ -274,6 +275,7 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
         # Implicit sympy dependency.
@@ -405,6 +407,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
     ],
@@ -450,6 +453,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
     ],
 )
@@ -493,6 +497,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
     ],
 )
 
@@ -542,6 +547,7 @@ py_strict_test(
         # Implicit lingvo.core.layers dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
@@ -563,6 +569,7 @@ py_strict_test(
         # Implicit lingvo.core.conformer_layer dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
@@ -655,6 +662,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
     ],
@@ -676,6 +684,7 @@ py_strict_test(
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:decoder_utils",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
@@ -694,6 +703,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
     ],
 )
@@ -710,6 +720,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
     ],
@@ -748,6 +759,7 @@ py_strict_test(
         # Implicit lingvo.core.layers dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
@@ -767,6 +779,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
     ],
@@ -788,6 +801,7 @@ py_strict_test(
         # Implicit numpy dependency.
         "//praxis:base_hyperparams",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
@@ -828,6 +842,7 @@ py_strict_test(
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:decoder_utils",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis:test_utils",
@@ -848,6 +863,7 @@ py_strict_test(
         # Implicit lingvo.core.attention_util dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
@@ -869,6 +885,7 @@ py_strict_test(
         # Implicit lingvo.core.layers dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
@@ -888,6 +905,7 @@ py_strict_test(
         # Implicit lingvo.core.layers dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
     ],
@@ -905,6 +923,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
     ],
 )
@@ -936,6 +955,7 @@ py_strict_test(
         # Implicit lingvo.core.rnn_cell dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
     ],
@@ -952,6 +972,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
     ],
 )
@@ -976,6 +997,7 @@ py_strict_test(
         # Implicit numpy dependency.
         "//praxis:base_hyperparams",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
@@ -1004,6 +1026,7 @@ py_strict_test(
         # Implicit numpy dependency.
         "//praxis:base_hyperparams",
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
@@ -1036,6 +1059,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:pytypes",
         "//praxis:test_utils",
     ],
@@ -1146,6 +1170,7 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
@@ -1170,6 +1195,7 @@ py_strict_test(
         # Implicit core.conv_layers_with_time_padding dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.

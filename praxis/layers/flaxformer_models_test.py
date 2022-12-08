@@ -67,7 +67,8 @@ def fiddle_configured_scanned_model():
 
 
 def factory_configured_model():
-  encdec_p = flaxformer_models.FactoryBasedEncoderDecoder.HParams(
+  encdec_p = pax_fiddle.Config(
+      flaxformer_models.FactoryBasedEncoderDecoder,
       name='encoder_decoder',
       num_encoder_layers=2,
       num_decoder_layers=1,
@@ -79,7 +80,8 @@ def factory_configured_model():
       init_scale=0.1,
       dropout_rate=0.1,
       mlp_dim=64,
-      activation_partitioning_dims=2)
+      activation_partitioning_dims=2,
+  )
   mdl_p = flaxformer_models.EncoderDecoderModel.config(
       encoder_decoder_tpl=encdec_p, name='mdl')
   return instantiate(mdl_p)
@@ -114,8 +116,11 @@ class FlaxFormerModelsTest(test_utils.TestCase):
     np.random.seed(123456)
 
   def test_flaxformer(self):
-    decoder_p = flaxformer_models.FlaxFormerDecoder.HParams(
-        name='flaxformer_decoder', num_layers=2)
+    decoder_p = pax_fiddle.Config(
+        flaxformer_models.FlaxFormerDecoder,
+        name='flaxformer_decoder',
+        num_layers=2,
+    )
     decoder = instantiate(decoder_p)
 
     seq_len = 128
@@ -139,12 +144,16 @@ class FlaxFormerModelsTest(test_utils.TestCase):
       del out  # unused
 
   def test_flaxformer_model(self):
-    decoder_p = flaxformer_models.FlaxFormerDecoder.HParams(num_layers=2)
-    decoder_mdl_p = flaxformer_models.LanguageModel.HParams(
+    decoder_p = pax_fiddle.Config(
+        flaxformer_models.FlaxFormerDecoder, num_layers=2
+    )
+    decoder_mdl_p = pax_fiddle.Config(
+        flaxformer_models.LanguageModel,
         flax_decoder_tpl=decoder_p,
         z_loss=0.0001,
         label_smoothing=0.1,
-        name='mdl')
+        name='mdl',
+    )
     decoder_mdl = instantiate(decoder_mdl_p)
 
     seq_len = 8
@@ -391,15 +400,19 @@ class FlaxFormerModelsTest(test_utils.TestCase):
     self.assertEqual(ret[1][1]['decoded_substr'], 'abcab')
 
   def test_sharded_flaxformer_model(self):
-    decoder_p = flaxformer_models.FlaxFormerDecoder.HParams(num_layers=2)
-    decoder_mdl_p = flaxformer_models.LanguageModel.HParams(
+    decoder_p = pax_fiddle.Config(
+        flaxformer_models.FlaxFormerDecoder, num_layers=2
+    )
+    decoder_mdl_p = pax_fiddle.Config(
+        flaxformer_models.LanguageModel,
         flax_decoder_tpl=decoder_p,
         z_loss=0.0001,
         label_smoothing=0.1,
         name='mdl',
         mesh_axis_names=['replica', 'data', 'model'],
         ici_mesh_shape=[1, 2, 4],
-        logical_axes_rules=t5x_partitioning.standard_logical_axis_rules())
+        logical_axes_rules=t5x_partitioning.standard_logical_axis_rules(),
+    )
     decoder_mdl = instantiate(decoder_mdl_p)
 
     seq_len = 8

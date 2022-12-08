@@ -106,7 +106,7 @@ class ResNetBlock(base_layer.FiddleBaseLayer):
             name='conv_out',
             filter_shape=(1, 1, self.output_dim // 4, self.output_dim),
             filter_stride=(1, 1),
-            activation_tpl=activations.Identity.HParams(),
+            activation_tpl=pax_fiddle.Config(activations.Identity),
             batch_norm_tpl=last_bn_tpl,
         )
     )
@@ -118,14 +118,15 @@ class ResNetBlock(base_layer.FiddleBaseLayer):
           name='shortcut',
           filter_shape=(1, 1, self.input_dim, self.output_dim),
           filter_stride=(self.stride, self.stride),
-          activation_tpl=activations.Identity.HParams(),
+          activation_tpl=pax_fiddle.Config(activations.Identity),
       )
       self.create_child('shortcut', shortcut)
 
     # Initialize droppath layer
     if self.residual_droppath_prob > 0:
-      droppath_p = stochastics.StochasticResidual.HParams(
-          survival_prob=1.0 - self.residual_droppath_prob
+      droppath_p = pax_fiddle.Config(
+          stochastics.StochasticResidual,
+          survival_prob=1.0 - self.residual_droppath_prob,
       )
       self.create_child('residual_droppath', droppath_p)
 
@@ -200,7 +201,7 @@ class ResNetBasicBlock(ResNetBlock):
                 self.output_dim,
             ),
             filter_stride=(1, 1),
-            activation_tpl=activations.Identity.HParams(),
+            activation_tpl=pax_fiddle.Config(activations.Identity),
         )
     )
     self.create_children('body', body)
@@ -211,14 +212,15 @@ class ResNetBasicBlock(ResNetBlock):
           name='shortcut',
           filter_shape=(1, 1, self.input_dim, self.output_dim),
           filter_stride=(self.stride, self.stride),
-          activation_tpl=activations.Identity.HParams(),
+          activation_tpl=pax_fiddle.Config(activations.Identity),
       )
       self.create_child('shortcut', shortcut)
 
     # Initialize droppath layer
     if self.residual_droppath_prob > 0:
-      droppath_p = stochastics.StochasticResidual.HParams(
-          survival_prob=1.0 - self.residual_droppath_prob
+      droppath_p = pax_fiddle.Config(
+          stochastics.StochasticResidual,
+          survival_prob=1.0 - self.residual_droppath_prob,
       )
       self.create_child('residual_droppath', droppath_p)
 
@@ -329,16 +331,18 @@ class ResNet(base_layer.FiddleBaseLayer):
     """Returns commonly used ResNet18 hyperparams."""
     return cls.HParams(
         channels=(64, 128, 256, 512),
-        block_params=ResNetBasicBlock.HParams(),
-        blocks=[2, 2, 2, 2])
+        block_params=pax_fiddle.Config(ResNetBasicBlock),
+        blocks=[2, 2, 2, 2],
+    )
 
   @classmethod
   def HParamsResNet34(cls) -> LayerTpl:
     """Returns commonly used ResNet18 hyperparams."""
     return cls.HParams(
         channels=(64, 128, 256, 512),
-        block_params=ResNetBasicBlock.HParams(),
-        blocks=[3, 4, 6, 3])
+        block_params=pax_fiddle.Config(ResNetBasicBlock),
+        blocks=[3, 4, 6, 3],
+    )
 
   @classmethod
   def HParamsResNet50(cls) -> LayerTpl:
@@ -387,11 +391,13 @@ class ResNet(base_layer.FiddleBaseLayer):
     self.create_child('entryflow_conv', entryflow_conv_params)
 
     # Create the entryflow max pooling layer.
-    maxpool_params = poolings.Pooling.HParams(
+    maxpool_params = pax_fiddle.Config(
+        poolings.Pooling,
         name='entryflow_maxpool',
         window_shape=(3, 3),
         window_stride=(2, 2),
-        pooling_type='MAX')
+        pooling_type='MAX',
+    )
     self.create_child('entryflow_maxpool', maxpool_params)
 
     # Create the chain of ResNet blocks.

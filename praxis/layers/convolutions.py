@@ -792,7 +792,7 @@ class LightConv1D(base_layer.FiddleBaseLayer):
     linear_start_act_p = self.linear_start_tpl.clone().set(
         input_dims=self.input_dims,
         output_dims=self.input_dims,
-        activation_tpl=activations.Identity.HParams(),
+        activation_tpl=pax_fiddle.Config(activations.Identity),
         params_init=WeightInit.Xavier(math.sqrt(3 / 2)),
     )
     linear_start_act_p.weight_split_dims_mapping.wt = wp.df
@@ -802,7 +802,7 @@ class LightConv1D(base_layer.FiddleBaseLayer):
     linear_start_gated_p = self.linear_start_tpl.clone().set(
         input_dims=self.input_dims,
         output_dims=self.input_dims,
-        activation_tpl=activations.Identity.HParams(),
+        activation_tpl=pax_fiddle.Config(activations.Identity),
         params_init=WeightInit.Xavier(math.sqrt(3 / 2)),
     )
     linear_start_gated_p.weight_split_dims_mapping.wt = wp.df
@@ -813,7 +813,7 @@ class LightConv1D(base_layer.FiddleBaseLayer):
     linear_end_p = self.linear_end_tpl.clone().set(
         input_dims=self.input_dims,
         output_dims=self.input_dims,
-        activation_tpl=activations.Identity.HParams(),
+        activation_tpl=pax_fiddle.Config(activations.Identity),
         params_init=WeightInit.Xavier(math.sqrt(3 / 2)),
     )
     if wp.df:

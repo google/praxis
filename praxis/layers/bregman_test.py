@@ -16,6 +16,7 @@
 """Tests for Praxis Bregman PCA layer."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
@@ -54,7 +55,8 @@ class BregmanTest(test_utils.TestCase):
                          components_lr, constant_lr_schedule):
     """Tests layer construction and the expected outputs."""
     activation_type = getattr(bregman.ActivationType, activation)
-    p = bregman.BregmanPCA.HParams(
+    p = pax_fiddle.Config(
+        bregman.BregmanPCA,
         name='bregman_pca',
         num_components=3,
         input_dims=[8, 10],
@@ -68,7 +70,8 @@ class BregmanTest(test_utils.TestCase):
         components_beta=0.9,
         start_step=0,
         end_step=1,
-        constant_lr_schedule=constant_lr_schedule)
+        constant_lr_schedule=constant_lr_schedule,
+    )
     layer = instantiate(p)
     if activation == 'SOFTMAX':
       npy_input = np.random.random([16] + p.input_dims).astype('float32')
@@ -107,13 +110,15 @@ class BregmanTest(test_utils.TestCase):
 
   def test_pca_convergence(self):
     """Tests whether the gradients are zero at the solution."""
-    p = bregman.BregmanPCA.HParams(
+    p = pax_fiddle.Config(
+        bregman.BregmanPCA,
         name='bregman_pca',
         num_components=3,
         input_dims=[3],
         activation_type=bregman.ActivationType.IDENTITY,
         start_step=0,
-        end_step=1)
+        end_step=1,
+    )
     layer = instantiate(p)
     npy_input = np.random.normal(1.0, 0.5,
                                  [16] + p.input_dims).astype('float32')

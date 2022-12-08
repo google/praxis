@@ -16,6 +16,7 @@
 """Tests for adapters."""
 
 from absl.testing import absltest
+from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
@@ -48,11 +49,13 @@ class AdaptersTest(test_utils.TestCase):
     seq_len = 5
     batch_size = 2
 
-    layer = adapters.MultitaskResidualAdapter.HParams(
+    layer = pax_fiddle.Config(
+        adapters.MultitaskResidualAdapter,
         name='adapter',
         input_dims=input_dims,
         bottleneck_dims=bottleneck_dim,
-        num_tasks=num_tasks)
+        num_tasks=num_tasks,
+    )
     layer = instantiate(layer)
 
     npy_inputs = np.random.normal(
@@ -98,12 +101,14 @@ class AdaptersTest(test_utils.TestCase):
     seq_len = 5
     batch_size = 2
 
-    layer = adapters.MultitaskResidualAdapter.HParams(
+    layer = pax_fiddle.Config(
+        adapters.MultitaskResidualAdapter,
         name='adapter',
         input_dims=input_dims,
         bottleneck_dims=bottleneck_dim,
         num_tasks=num_tasks,
-        norm_tpl=normalizations.BatchNorm.HParams())
+        norm_tpl=pax_fiddle.Config(normalizations.BatchNorm),
+    )
     layer = instantiate(layer)
 
     npy_inputs = np.random.normal(
@@ -129,12 +134,14 @@ class AdaptersTest(test_utils.TestCase):
     seq_len = 5
     batch_size = 2
 
-    layer = adapters.MultitaskResidualAdapter.HParams(
+    layer = pax_fiddle.Config(
+        adapters.MultitaskResidualAdapter,
         name='adapter',
         input_dims=input_dims,
         bottleneck_dims=bottleneck_dim,
         num_tasks=num_tasks,
-        norm_tpl=normalizations.BatchNorm.HParams())
+        norm_tpl=pax_fiddle.Config(normalizations.BatchNorm),
+    )
     layer = instantiate(layer)
 
     npy_inputs = np.random.normal(
@@ -152,20 +159,24 @@ class AdaptersTest(test_utils.TestCase):
 
   @parameterized.parameters('sequential', 'parallel')
   def test_adapted_transformer_feedforward(self, mode):
-    p = adapters.AdaptedTransformerFeedForward.HParams(
+    p = pax_fiddle.Config(
+        adapters.AdaptedTransformerFeedForward,
         name='ffwd',
         input_dims=8,
         hidden_dims=32,
         mode=mode,
         residual_weight=0.5,
-        adapter_tpl=adapters.MultitaskResidualAdapter.HParams(
+        adapter_tpl=pax_fiddle.Config(
+            adapters.MultitaskResidualAdapter,
             input_dims=8,
             bottleneck_dims=4,
             num_tasks=1,
             norm_tpl=None,
             params_init=WeightInit.Constant(0.0),
-        ))
-    p2 = transformers.TransformerFeedForward.HParams(
+        ),
+    )
+    p2 = pax_fiddle.Config(
+        transformers.TransformerFeedForward,
         name='ffwd',
         input_dims=8,
         hidden_dims=32,

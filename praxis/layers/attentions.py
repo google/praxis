@@ -1059,7 +1059,9 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
       self.create_child('ngrammer', self.ngrammer_tpl)
 
     if self.internal_enable_query_scale and self.internal_enable_per_dim_scale:
-      self.create_child('per_dim_scale', PerDimScale.HParams(dim=dim_per_head))
+      self.create_child(
+          'per_dim_scale', pax_fiddle.Config(PerDimScale, dim=dim_per_head)
+      )
     self.create_child(
         'atten_dropout',
         self.dropout_tpl.clone().set(keep_prob=1.0 - self.atten_dropout_prob),
@@ -2334,8 +2336,10 @@ def create_relative_positional_embedding(
   if params.rel_pos_emb_dim <= 0:
     raise ValueError('Invalid rel_pos_emb_dim: %s' % params.rel_pos_emb_dim)
 
-  emb_params = embedding_softmax.PositionalEmbedding.HParams(
-      embedding_dims=params.rel_pos_emb_dim)
+  emb_params = pax_fiddle.Config(
+      embedding_softmax.PositionalEmbedding,
+      embedding_dims=params.rel_pos_emb_dim,
+  )
   layer.create_child('pos_emb', emb_params)
 
   # Projection layer for relative position encoding

@@ -330,7 +330,7 @@ class TransformerFeedForward(base_layer.FiddleBaseLayer):
 
     self._is_ffn1_gated = self.use_gated_activation
     if self._is_ffn1_gated:
-      activation = activations_lib.Identity.HParams()
+      activation = pax_fiddle.Config(activations_lib.Identity)
       gate_activation = self.activation_tpl.clone()
     else:
       activation = self.activation_tpl.clone()
@@ -375,7 +375,7 @@ class TransformerFeedForward(base_layer.FiddleBaseLayer):
     ffn2_p.name = 'ffn_layer2'
     ffn2_p.input_dims = self.hidden_dims
     ffn2_p.has_bias = self.has_bias
-    ffn2_p.activation_tpl = activations_lib.Identity.HParams()
+    ffn2_p.activation_tpl = pax_fiddle.Config(activations_lib.Identity)
     ffn2_p.output_dims = output_dims
     ffn2_p.weight_split_dims_mapping.wt = wp.ffn1
     ffn2_p.activation_split_dims_mapping.out = ap.ffn1
@@ -391,7 +391,8 @@ class TransformerFeedForward(base_layer.FiddleBaseLayer):
 
     if self.residual_droppath_prob > 0:
       assert self.add_skip_connection
-      droppath_p = stochastics.StochasticResidual.HParams(
+      droppath_p = pax_fiddle.Config(
+          stochastics.StochasticResidual,
           name='residual_droppath',
           survival_prob=1.0 - self.residual_droppath_prob,
       )
@@ -641,7 +642,8 @@ class TransformerFeedForwardMoe(base_layer.FiddleBaseLayer):
 
     if self.residual_droppath_prob > 0:
       assert self.add_skip_connection
-      droppath_p = stochastics.StochasticResidual.HParams(
+      droppath_p = pax_fiddle.Config(
+          stochastics.StochasticResidual,
           name='residual_droppath',
           survival_prob=1.0 - self.residual_droppath_prob,
       )
@@ -1157,7 +1159,8 @@ class Transformer(base_layer.FiddleBaseLayer):
 
     # Initialize residual droppath
     if self.residual_droppath_prob > 0:
-      droppath_p = stochastics.StochasticResidual.HParams(
+      droppath_p = pax_fiddle.Config(
+          stochastics.StochasticResidual,
           name='residual_droppath',
           survival_prob=1.0 - self.residual_droppath_prob,
       )
@@ -1548,7 +1551,9 @@ class StackedTransformer(base_layer.FiddleBaseLayer):
     if self.input_dropout_prob > 0.0:
       self.create_child(
           'input_dropout',
-          stochastics.Dropout.HParams(keep_prob=1.0 - self.input_dropout_prob),
+          pax_fiddle.Config(
+              stochastics.Dropout, keep_prob=1.0 - self.input_dropout_prob
+          ),
       )
 
   def init_states(self, *args: Any, **kwargs: Any) -> None:
@@ -1762,7 +1767,8 @@ class StackedTransformerRepeated(base_layer.FiddleBaseLayer):
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
 
-    repeat_l_params = repeats.Repeat.HParams(
+    repeat_l_params = pax_fiddle.Config(
+        repeats.Repeat,
         sub_tpl=self.block,
         x_times=self.x_times,
         checkpoint_policy=self.checkpoint_policy,
@@ -1937,7 +1943,8 @@ class PipelinedTransformer(base_layer.FiddleBaseLayer):
 
     stage_params = self.pipeline_stage.clone()
     if self.circular_repeat == 1:
-      pipeline_params = pipeline.LayerwiseShardablePipelined.HParams(
+      pipeline_params = pax_fiddle.Config(
+          pipeline.LayerwiseShardablePipelined,
           name=self.name,
           num_stages=self.num_pipeline_stages,
           single_stage_body=stage_params,
@@ -1949,7 +1956,8 @@ class PipelinedTransformer(base_layer.FiddleBaseLayer):
           checkpoint_policy=self.checkpoint_policy,
       )
     else:
-      pipeline_params = pipeline.CircularLayerwiseShardablePipelined.HParams(
+      pipeline_params = pax_fiddle.Config(
+          pipeline.CircularLayerwiseShardablePipelined,
           name=self.name,
           num_stages=self.num_pipeline_stages,
           circular_repeat=self.circular_repeat,
