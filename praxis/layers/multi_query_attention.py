@@ -35,8 +35,6 @@ LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 JTensor = pytypes.JTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
-BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
-BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
 
 
 class OneHeadedAttentionProjection(base_layer.FiddleBaseLayer):

@@ -28,8 +28,6 @@ from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import linears
 from praxis.layers import quantizer_objectives as objectives
-BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
-BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 
 JTensor = pytypes.JTensor
 NestedMap = py_utils.NestedMap

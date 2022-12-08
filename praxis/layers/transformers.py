@@ -49,8 +49,6 @@ JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
-BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
-BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
 AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 

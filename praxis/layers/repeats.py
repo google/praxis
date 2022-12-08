@@ -39,7 +39,6 @@ NestedJTensor = pytypes.NestedJTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
-BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 
 PARAMS = base_layer.PARAMS
 AUX_LOSS = base_layer.AUX_LOSS
@@ -274,7 +273,7 @@ class Repeat(base_layer.FiddleBaseLayer):
     return ret
 
   @property
-  def sublayer(self) -> base_layer.BaseLayer:
+  def sublayer(self) -> base_layer.FiddleBaseLayer:
     return getattr(self, self.sublayer_name)
 
   def init_states(self, *args: Any, **kwargs: Any) -> Any:
@@ -324,8 +323,9 @@ class Repeat(base_layer.FiddleBaseLayer):
     # Calls scan_fn with a None carry_in and ignores the carry_out.
     mapped_scan_fn(self.sublayer, None)
 
-  def _run_unrolled_for_decoding(self, fn: Callable[[base_layer.BaseLayer, Any],
-                                                    Any], inputs: Any) -> Any:
+  def _run_unrolled_for_decoding(
+      self, fn: Callable[[base_layer.FiddleBaseLayer, Any], Any], inputs: Any
+  ) -> Any:
     p = self.hparams
 
     def _run_one_layer(i, inp):

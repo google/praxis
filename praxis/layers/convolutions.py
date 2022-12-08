@@ -29,9 +29,6 @@ from praxis.layers import linears
 from praxis.layers import normalizations
 from praxis.layers import stochastics
 
-BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
-BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
-
 NestedMap = py_utils.NestedMap
 SplitDimsMapping = pytypes.SplitDimsMapping
 sub_config_field = base_layer.sub_config_field

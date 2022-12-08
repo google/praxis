@@ -36,7 +36,6 @@ NestedJTensor = pytypes.NestedJTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
-BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
 
 PARAMS = base_layer.PARAMS
 AUX_LOSS = base_layer.AUX_LOSS

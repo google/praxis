@@ -35,8 +35,6 @@ JTensor = pytypes.JTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
-BaseWtShardingHParams = base_layer.BaseLayer.WeightShardingHParams
-BaseActShardingHParams = base_layer.BaseLayer.ActivationShardingHParams
 
 sub_config_field = base_layer.sub_config_field
 
