@@ -36,6 +36,38 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "quantize",
+    srcs = ["quantize.py"],
+    srcs_version = "PY3",
+    deps = [
+        # Implicit fiddle dependency.
+        "//praxis:base_hyperparams",
+        "//praxis:base_layer",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
+        "//praxis/layers",
+        "//praxis/layers/quantization:layers",
+        "//praxis/layers/quantization:quantization_hparams",
+    ],
+)
+
+py_strict_test(
+    name = "quantize_test",
+    srcs = ["quantize_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":layers",
+        ":quantization_hparams",
+        ":quantize",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        "//praxis:test_utils",
+        "//praxis/layers",
+    ],
+)
+
+pytype_strict_library(
     name = "attentions",
     srcs = ["attentions.py"],
     srcs_version = "PY3",
