@@ -83,7 +83,7 @@ def sort_samples_by_scores(result: NestedMap) -> NestedMap:
       result.logprobs)
   scores = jnp.sum(logprobs, -1)
   num_samples = scores.shape[-1]
-  # Uses topk to get indices.
+  # Uses top_k to get indices.
   _, indices = jax.lax.top_k(scores, num_samples)
   return jax.tree_map(
       functools.partial(reorder_with_indices, indices=indices), result)
@@ -109,9 +109,13 @@ def split_batch_dim(x: jnp.ndarray, batch_dim: int,
   return jnp.reshape(x, x_shape)
 
 
-def sample_from_topk_with_gumbel_noise(logits: JTensor, gumbel_noise: JTensor,
-                                       temperature: Union[JTensor, float],
-                                       topk: int) -> JTensor:
+def sample_from_top_k_with_gumbel_noise(
+    logits: JTensor,
+    gumbel_noise: JTensor,
+    temperature: Union[JTensor, float],
+    top_k: int,
+    per_example_top_k: Optional[JTensor] = None,
+) -> JTensor:
   """Sample decode algorithm from TopK with gumbel noise.
 
   Args:
@@ -119,51 +123,78 @@ def sample_from_topk_with_gumbel_noise(logits: JTensor, gumbel_noise: JTensor,
       num_samples, vocab_size].
     gumbel_noise: Gumbel noise. This is a JTensor of [batch_size * num_samples,
       vocab_size].
-    temperature: Temperature of sampling decoding. It could be a float or
-      a JTensor of shape [batch_size].
-    topk: If nonzero, use top-k sampling, only selecting among the most likely k
-      tokens at each step.
+    temperature: Temperature of sampling decoding. It could be a float or a
+      JTensor of shape [batch_size].
+    top_k: If nonzero, use top-k sampling, only selecting among the most likely
+      k tokens at each step. top_k is set to the maximum k value for sampling
+      decode.
+    per_example_top_k: Optional per example top_k of shape [batch_size *
+      num_samples]. The value of per_example_top_k should be smaller or equal to
+      `top_k`.
 
   Returns:
     A tensor of shape [batch_size * num_samples].
   """
-  # TopK of shape [batch_size * num_samples, topk]
-  topk_value, topk_indices = jax.lax.top_k(logits, topk)
+  # TopK of shape [batch_size * num_samples, top_k]
+  top_k_value, top_k_indices = jax.lax.top_k(logits, top_k)
+
+  if per_example_top_k is not None:
+    per_example_top_k = jnp.minimum(per_example_top_k.astype(jnp.int32), top_k)
+    iota = jnp.tile(
+        jax.lax.iota(dtype=jnp.int32, size=(top_k)), [top_k_value.shape[0], 1]
+    )
+    top_k_mask = iota < per_example_top_k[:, jnp.newaxis]
+    top_k_value = jnp.where(
+        top_k_mask,
+        top_k_value,
+        py_utils.get_large_negative_number(top_k_value.dtype),
+    )
 
   # TODO(wangtao): Add more sampling logics.
   # Add gumbel noise.
-  new_logits = topk_value + gumbel_noise * temperature
+  new_logits = top_k_value + gumbel_noise * temperature
   # Get argmax with gumbel noise.
   top1_id = jnp.argmax(new_logits, axis=-1)
   # Get real argmax id.
   new_ids = jnp.sum(
-      jax.nn.one_hot(top1_id, topk, dtype=top1_id.dtype) * topk_indices, -1)
+      jax.nn.one_hot(top1_id, top_k, dtype=top1_id.dtype) * top_k_indices, -1
+  )
 
   return new_ids
 
 
-def sample_from_topk(logits: JTensor, prng_key: pytypes.PRNGKey,
-                     temperature: Union[JTensor, float], topk: int) -> JTensor:
+def sample_from_top_k(
+    logits: JTensor,
+    prng_key: pytypes.PRNGKey,
+    temperature: Union[JTensor, float],
+    top_k: int,
+    per_example_top_k: Optional[JTensor] = None,
+) -> JTensor:
   """Sample decode algorithm from TopK.
 
   Args:
     logits: Logits of current step. This is a JTensor of [batch_size *
       num_samples, vocab_size].
     prng_key: The prng key.
-    temperature: Temperature of sampling decoding. It could be a float or
-      a JTensor of shape [batch_size].
-    topk: If nonzero, use top-k sampling, only selecting among the most likely k
-      tokens at each step.
+    temperature: Temperature of sampling decoding. It could be a float or a
+      JTensor of shape [batch_size].
+    top_k: If nonzero, use top-k sampling, only selecting among the most likely
+      k tokens at each step. top_k is set to the maximum k value for sampling
+      decode.
+    per_example_top_k: Optional per example top_k of shape [batch_size *
+      num_samples]. The value of per_example_top_k should be smaller or equal to
+      `top_k` and larger than 0.
 
   Returns:
     A tensor of shape [batch_size * num_samples].
   """
   gumbel_noise_shape = list(logits.shape)
-  gumbel_noise_shape[-1] = topk
+  gumbel_noise_shape[-1] = top_k
   gumbel_noise = jax.random.gumbel(
       prng_key, shape=gumbel_noise_shape).astype(logits.dtype)
-  return sample_from_topk_with_gumbel_noise(logits, gumbel_noise, temperature,
-                                            topk)
+  return sample_from_top_k_with_gumbel_noise(
+      logits, gumbel_noise, temperature, top_k, per_example_top_k
+  )
 
 
 def right_align_segment_position(lengths: JTensor, max_length: int) -> JTensor:
@@ -311,6 +342,7 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
       temperature: Union[float, JTensor],
       decode_loop_state: NestedMap,
       per_example_top_p: Optional[JTensor] = None,
+      per_example_top_k: Optional[JTensor] = None,
   ) -> JTensor:
     """The default sampling logic implementing top-K and top-P sampling."""
     del decode_loop_state
@@ -327,8 +359,13 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
     if p.epsilon_p > 0.:
       logits = epsilon_mask_logits(logits, p.epsilon_p)
     if p.top_k > 1:
-      new_ids = sample_from_topk(
-          logits, model.next_prng_key(), temperature=temperature, topk=p.top_k)
+      new_ids = sample_from_top_k(
+          logits,
+          model.next_prng_key(),
+          temperature=temperature,
+          top_k=p.top_k,
+          per_example_top_k=per_example_top_k,
+      )
     elif p.top_k == 0:
       if isinstance(temperature, JTensor) or temperature > 0.0:
         gumbel_noise = jax.random.gumbel(
@@ -355,6 +392,7 @@ def sample_decode(
     fprop_for_prefix: bool = False,
     temperature: Union[float, JTensor] = 1.0,
     per_example_top_p: Optional[JTensor] = None,
+    per_example_top_k: Optional[JTensor] = None,
     max_prefix_len: Optional[int] = None,
     max_decode_steps: Optional[int] = None,
     per_example_max_decode_steps: Optional[JTensor] = None,
@@ -401,6 +439,9 @@ def sample_decode(
       JTensor of shape [B].
     per_example_top_p: Per example top_p of sampling decoding. Optional JTensor
       of shape [B].
+    per_example_top_k: Optional per example top_k of shape [batch_size]. The
+      value of per_example_top_k should be smaller or equal to `top_k` and
+      larger than 0.
     max_prefix_len: Python int or None, the max prefix length for decoding.
     max_decode_steps: Python int or None, the max decode step to run after the
       prefix (if any). Since the prefixes might be of unequal lengths, this
@@ -470,6 +511,11 @@ def sample_decode(
     if per_example_top_p is not None:
       per_example_top_p = _broadcast_input(
           per_example_top_p, 'per_example_top_p'
+      )
+
+    if per_example_top_k is not None:
+      per_example_top_k = _broadcast_input(
+          per_example_top_k, 'per_example_top_k'
       )
 
     if lazy_broadcast_prefix_fn is not None:
@@ -566,6 +612,7 @@ def sample_decode(
         temperature,
         val,
         per_example_top_p=per_example_top_p,
+        per_example_top_k=per_example_top_k,
     )
     assert new_ids.shape == (logits.shape[0],)
     assert new_ids.dtype == jnp.int32

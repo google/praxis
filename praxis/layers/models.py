@@ -485,6 +485,7 @@ class LanguageModel(base_model.BaseModel):
                                              'per_example_max_decode_steps',
                                              None)
       per_example_top_p = getattr(input_batch, 'per_example_top_p', None)
+      per_example_top_k = getattr(input_batch, 'per_example_top_k', None)
 
       result = sample_decode.sample_decode(
           self,
@@ -501,6 +502,7 @@ class LanguageModel(base_model.BaseModel):
           fprop_for_prefix=self.decoder_tpl.fprop_for_prefix,
           temperature=temperature,
           per_example_top_p=per_example_top_p,
+          per_example_top_k=per_example_top_k,
           max_prefix_len=max_prefix_len,
           max_decode_steps=self.decoder_tpl.max_decode_steps,
           per_example_max_decode_steps=per_example_max_decode_steps,
