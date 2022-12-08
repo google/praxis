@@ -1028,7 +1028,7 @@ def instantiate_layer(layer_p: Union[BaseLayer.HParams, pax_fiddle.Config],
       wrapped_p = layer_p.clone()
       wrapped_p.shared_weight_layer_id = None
       wrapper_p = _WrapperLayer.HParams(
-          name=layer_p.shared_weight_layer_id, cld=wrapped_p)
+          name=layer_p.shared_weight_layer_id, cld_tpl=wrapped_p)
       wrapper = instantiate(wrapper_p, parent=scope)
       layer = wrapper.cld
       jax_context.set_shared_layer(scope, layer_p.shared_weight_layer_id,
@@ -2351,22 +2351,16 @@ def compatible_hparams(
     return p1.to_text() == p2.to_text()
 
 
-class _WrapperLayer(BaseLayer):
+class _WrapperLayer(FiddleBaseLayer):
   """A simple wrapper layer."""
 
-  _USE_DEPRECATED_HPARAMS_BASE_LAYER = True
-
-  class HParams(BaseLayer.HParams):
-    """Hyperparameters for this layer."""
-    cld: Optional[BaseLayer.HParams] = None
+  cld_tpl: Optional[pax_fiddle.Config[FiddleBaseLayer]] = template_field(None)
 
   def setup(self) -> None:
-    p = self.hparams
-    name = p.name
     # create child under the name space of 'name'.
     # This implicitly set p.cld.name to name as well.
-    self.create_child(name, p.cld)
-    self.cld = getattr(self, name)
+    self.create_child(self.name, self.cld_tpl)
+    self.cld = getattr(self, self.name)
 
 
 def get_template_fields(
