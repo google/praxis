@@ -258,17 +258,18 @@ class Conformer(base_layer.FiddleBaseLayer):
     atten_num_heads: Number of attention heads.
     layer_order: Only mhsa, conv, mhsa_before_conv or conv_before_mhsa are
       supported
-    dropout_prob: Dropout prob of inner components.
+    dropout_prob: Dropout prob of inner components. If all dropout probabilties
+      are None then a dropout of 0.0 will be used.
     conv_residual_dropout: Conv block residual dropout. Will be overwritten by
-      p.dropout if it is not None.
+      p.dropout_prob if it is not None.
     atten_residual_dropout: Attention block residual dropout. Will be
-      overwritten by p.dropout if it is not None.
+      overwritten by p.dropout_prob if it is not None.
     ffn_residual_dropout: Feed forward block residual dropout. Will be
-      overwritten by p.dropout if it is not None.
+      overwritten by p.dropout_prob if it is not None.
     atten_dropout: Dropout in Attention layer. Will be overwritten by
-      p.dropout if it is not None.
+      p.dropout_prob if it is not None.
     ffn_relu_dropout: Post activation dropout in Feed-forward layer. Will be
-      overwritten by p.dropout if it is not None.
+      overwritten by p.dropout_prob if it is not None.
     fflayer_start_tpl: Parameterization for the Feed forward layer at the
       beginning. If set to None, this layer is excluded.
     trans_atten_tpl: Parameterization of self-attention layer.
@@ -310,8 +311,13 @@ class Conformer(base_layer.FiddleBaseLayer):
   fflayer_weight_sharing: bool = False
   final_ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
 
-  def _dropout_prob(self, prob):
-    return self.dropout_prob if self.dropout_prob is not None else prob
+  def _dropout_prob(self, prob: Optional[float]) -> float:
+    if self.dropout_prob is not None:
+      return self.dropout_prob
+    elif prob is not None:
+      return prob
+    else:
+      return 0.0
 
   def _create_trans_atten(self):
     if 'mhsa' in self.layer_order:
