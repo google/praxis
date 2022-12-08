@@ -293,9 +293,21 @@ def extract_prefixed_keys_from_nested_map(
   return prefix
 
 
+def is_mock_tpu_backend() -> bool:
+  """Checks if a mock TPU backend is detected.
+
+  Returns:
+    True if Mock TPU backend detected.
+  """
+  # Internal mock TPU checking implementation
+  return False
+
+
 def sync_global_devices(name: str) -> None:
   """Sync across all hosts/devices."""
-  # Internal mock TPU handling
+  if is_mock_tpu_backend():
+    return
+
   global_device_count = jax.device_count()
   logging.info('Starting sync_global_devices %s across %s devices globally',
                name, global_device_count)
