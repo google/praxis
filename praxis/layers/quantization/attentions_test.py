@@ -280,7 +280,7 @@ class QuantizeAttentionTest(test_utils.TestCase):
         qattentions.AttentionProjection,
         name='_attn_proj_q',
         mesh_axis_names=['replica', 'mdl', 'data'],
-        weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
+        weight_split_dims_mapping=base_layer.FiddleBaseLayer.WeightShardingHParams(
             wt=['mdl', 'data']
         ),
         quantization=QuantizationHParams(
@@ -333,7 +333,7 @@ class QuantizeAttentionTest(test_utils.TestCase):
         dim_per_head=2,
         ici_mesh_shape=[0, 1, 2],
         mesh_axis_names=['replica', 'mdl', 'data'],
-        weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
+        weight_split_dims_mapping=base_layer.FiddleBaseLayer.WeightShardingHParams(
             wt=['replica', 'mdl', 'data']
         ),
         quantization=QuantizationHParams(

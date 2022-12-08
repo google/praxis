@@ -201,7 +201,7 @@ class QuantizeLinearTest(test_utils.TestCase):
         qlinears.Linear,
         name='_linear_q',
         mesh_axis_names=['replica', 'mdl', 'data'],
-        weight_split_dims_mapping=base_layer.BaseLayer.WeightShardingHParams(
+        weight_split_dims_mapping=base_layer.FiddleBaseLayer.WeightShardingHParams(
             wt=['mdl', 'data']
         ),
         quantization=QuantizationHParams(
