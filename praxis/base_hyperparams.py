@@ -633,7 +633,7 @@ class OverrideSubConfigFieldProtocol:
 
   This allows us to override `sub_config_field(SomeLayer.HParams)` to return
   `pax_fiddle.template_field(SomeLayer)` when we migrate `SomeLayer` from a
-  (hparams-configured) `BaseLayer` to a (fiddle-configured) `FiddleBaseLayer`.
+  (hparams-configured) `BaseLayer` to a (fiddle-configured) `BaseLayer`.
   In particular, when we migrate `SomeLayer`, `SomeLayer.HParams` will become
   a stub object that implements this protocol.
 

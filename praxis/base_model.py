@@ -33,13 +33,13 @@ JTensor = pytypes.JTensor
 Metrics = pytypes.Metrics
 WeightedScalars = pytypes.WeightedScalars
 Predictions = Union[JTensor, NestedMap, Dict[str, Any], Dict[int, Any]]
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 DecodeOut = Tuple[WeightedScalars, NestedMap, Metrics]
 ProcessDecodeOut = Tuple[WeightedScalars, Sequence[Tuple[str, Any]], Metrics]
 
 
-class BaseModel(base_layer.FiddleBaseLayer):
+class BaseModel(base_layer.BaseLayer):
   """An API that every model should be derived from."""
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:

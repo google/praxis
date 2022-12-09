@@ -98,7 +98,7 @@ class BeamSearchHelperTest(test_utils.TestCase):
                            np.array([[3, 2]], dtype=np.float32))
 
 
-class MockLM(base_layer.FiddleBaseLayer):
+class MockLM(base_layer.BaseLayer):
   """Mock l m.
 
   Attributes:

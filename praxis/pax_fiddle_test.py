@@ -443,7 +443,7 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
         target.copy_fields_from(source)
 
   def test_mesh_shape(self):
-    cfg = pax_fiddle.Config(base_layer.FiddleBaseLayer)
+    cfg = pax_fiddle.Config(base_layer.BaseLayer)
     self.assertIsNone(cfg.mesh_shape)
     cfg.mesh_axis_names = ["a", "b"]
     cfg.ici_mesh_shape = [1, 2]
@@ -492,7 +492,7 @@ class LayerC(nn.Module):
     return 0
 
 
-class LayerD(base_layer.FiddleBaseLayer):
+class LayerD(base_layer.BaseLayer):
 
   def setup(self):
     self.create_variable(
@@ -543,7 +543,7 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
       m.init(jax.random.PRNGKey(1), inputs)
 
 
-class LayerE(base_layer.FiddleBaseLayer):
+class LayerE(base_layer.BaseLayer):
 
   tpl: pax_fiddle.Config[LayerD] = base_layer.template_field(LayerD)
 
@@ -562,7 +562,7 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
         {
             "": config,
             ".activation_split_dims_mapping": pax_fiddle.Config(
-                base_layer.FiddleBaseLayer.ActivationSharding, out=None
+                base_layer.BaseLayer.ActivationSharding, out=None
             ),
             ".params_init": pax_fiddle.Config(
                 base_layer.WeightInit, method="xavier", scale=1.000001
@@ -574,7 +574,7 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
             ".tpl.params_init": config.tpl.params_init,
             ".tpl.weight_split_dims_mapping": config.tpl.weight_split_dims_mapping,
             ".weight_split_dims_mapping": pax_fiddle.Config(
-                base_layer.FiddleBaseLayer.WeightSharding, wt=None
+                base_layer.BaseLayer.WeightSharding, wt=None
             ),
         },
     )

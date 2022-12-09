@@ -32,7 +32,7 @@ def _pass_through(x: JTensor, fn) -> JTensor:
   return x - jax.lax.stop_gradient(x) + jax.lax.stop_gradient(fn(x))
 
 
-class TensorQuantizer(base_layer.FiddleBaseLayer):
+class TensorQuantizer(base_layer.BaseLayer):
   """Maintains state associated with the quantization of an input tensor.
 
   Attributes:

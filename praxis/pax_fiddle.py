@@ -50,7 +50,7 @@ class CloneAndSetMixin:
   def set(self, **kwargs):
     # Note: we don't use `fdl.assign` here because this mixin will be used
     # with classes that are not `fdl.Buildable` (e.g.,
-    # `FiddleBaseLayer.ActivationSharding`).
+    # `BaseLayer.ActivationSharding`).
     for name, value in kwargs.items():
       setattr(self, name, value)
     return self

@@ -33,7 +33,7 @@ from praxis import pax_fiddle
 from praxis import test_utils
 
 
-class Identity(base_layer.FiddleBaseLayer):
+class Identity(base_layer.BaseLayer):
   """Layer for testing summary writing."""
 
   def setup(self):
@@ -45,7 +45,7 @@ class Identity(base_layer.FiddleBaseLayer):
     return x
 
 
-class AddBias(base_layer.FiddleBaseLayer):
+class AddBias(base_layer.BaseLayer):
   """A layer that adds bias to an input tensor."""
 
   @nn.compact
@@ -57,7 +57,7 @@ class AddBias(base_layer.FiddleBaseLayer):
     return x + b
 
 
-class MultipleBiasLayer(base_layer.FiddleBaseLayer):
+class MultipleBiasLayer(base_layer.BaseLayer):
   """A dummy layer that adds multiple biases to an input tensor.
 
   Attributes:
@@ -79,11 +79,11 @@ class MultipleBiasLayer(base_layer.FiddleBaseLayer):
     return x
 
 
-class TrivialFiddleLayer(base_layer.FiddleBaseLayer):
+class TrivialFiddleLayer(base_layer.BaseLayer):
   pass
 
 
-class SimpleFiddleBaseLayer(base_layer.FiddleBaseLayer):
+class SimpleFiddleBaseLayer(base_layer.BaseLayer):
   x: int = 0
 
 
@@ -208,27 +208,29 @@ class BaseLayerTest(test_utils.TestCase):
 
   def test_copy_base_hparams(self):
 
-    class ChildLayer(base_layer.FiddleBaseLayer):
+    class ChildLayer(base_layer.BaseLayer):
       params_init: base_layer.WeightInit = base_layer.instance_field(
           lambda: base_layer.WeightInit.Uniform(0.5)  # override default
       )
 
-    class ParentLayer(base_layer.FiddleBaseLayer):
+    class ParentLayer(base_layer.BaseLayer):
       child: Any = None
       child_tpl: pax_fiddle.Config = base_layer.template_field(ChildLayer)
       params_init: base_layer.WeightInit = base_layer.instance_field(
           base_layer.WeightInit.Gaussian)
 
     source = pax_fiddle.Config(
-        base_layer.FiddleBaseLayer,
+        base_layer.BaseLayer,
         dtype=jnp.float64,
         ici_mesh_shape=[2, 3, 4],
         dcn_mesh_shape=[5, 6, 7],
-        params_init=base_layer.default_param_init())
+        params_init=base_layer.default_param_init(),
+    )
 
     with self.subTest('fiddle_to_fiddle'):
       target = pax_fiddle.Config(
-          base_layer.FiddleBaseLayer, dtype=jnp.float16, ici_mesh_shape=None)
+          base_layer.BaseLayer, dtype=jnp.float16, ici_mesh_shape=None
+      )
       base_layer.BaseLayerApi.copy_base_hparams(source, target)
       self.assertEqual(target.dtype, jnp.float16)
       self.assertEqual(target.ici_mesh_shape, [2, 3, 4])
@@ -255,10 +257,10 @@ class BaseLayerTest(test_utils.TestCase):
 
   def test_post_init_hparams(self):
 
-    class FiddleChild(base_layer.FiddleBaseLayer):
+    class FiddleChild(base_layer.BaseLayer):
       x: int = 0
 
-    class FiddleParent(base_layer.FiddleBaseLayer):
+    class FiddleParent(base_layer.BaseLayer):
 
       child_tpl: Any = base_layer.sub_config_field(FiddleChild.HParams)
       child_tpl_list: Any = base_layer.sub_config_field(None)
@@ -336,7 +338,7 @@ class BaseLayerTest(test_utils.TestCase):
       self.assertIn('x', prms['params'])
 
 
-class FiddleBaseLayerTest(test_utils.TestCase):
+class BaseLayerTest(test_utils.TestCase):
 
   @parameterized.parameters([
       dict(expected=None),
@@ -348,12 +350,12 @@ class FiddleBaseLayerTest(test_utils.TestCase):
           expected=[1 * 3, 2 * 4]),
   ])
   def test_mesh_shape_property(self, expected, **kwargs):
-    layer = base_layer.FiddleBaseLayer(**kwargs)
+    layer = base_layer.BaseLayer(**kwargs)
     self.assertEqual(layer.mesh_shape, expected)
 
   def test_hparams_instance_stub(self):
 
-    class Layer(base_layer.FiddleBaseLayer):
+    class Layer(base_layer.BaseLayer):
       x: int = 0
 
     layer = Layer(
@@ -412,10 +414,10 @@ class FiddleBaseLayerTest(test_utils.TestCase):
 
   def test_hparams_class_stub(self):
 
-    class Layer(base_layer.FiddleBaseLayer):
+    class Layer(base_layer.BaseLayer):
       x: int = 0
 
-    class AnotherLayer(base_layer.FiddleBaseLayer):
+    class AnotherLayer(base_layer.BaseLayer):
       y: int = 0
 
     layer = Layer(x=3, fprop_dtype=jnp.float16)
@@ -468,12 +470,12 @@ class FiddleBaseLayerTest(test_utils.TestCase):
 
   def test_override_weight_sharding_hparams(self):
 
-    class Layer(base_layer.FiddleBaseLayer):
+    class Layer(base_layer.BaseLayer):
 
-      class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+      class WeightSharding(base_layer.BaseLayer.WeightSharding):
         x: int = 5
 
-      class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
+      class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
         y: str = 'y'
 
     with self.subTest('construct_layer_directly'):
@@ -505,7 +507,7 @@ class FiddleBaseLayerTest(test_utils.TestCase):
 
   def test_hparam_is_instance_of_fdl_buildable(self):
 
-    class Child(base_layer.FiddleBaseLayer):
+    class Child(base_layer.BaseLayer):
       size: int = 5
 
     with self.assertRaisesRegex(
@@ -519,37 +521,36 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       # (since `a.child_tpl is b.child_tpl`).  We therefore raise an exception,
       # indicating that the user should use a `default_factory` rather than a
       # default value.
-      class Parent(base_layer.FiddleBaseLayer):
+      class Parent(base_layer.BaseLayer):
         child_tpl: pax_fiddle.Config = pax_fiddle.Config(Child, size=2)
 
       del Parent  # unused.
 
   def test_fprop_dtype(self):
     with self.subTest('default'):
-      layer = base_layer.FiddleBaseLayer()
+      layer = base_layer.BaseLayer()
       self.assertEqual(layer.fprop_dtype, jnp.float32)
 
     with self.subTest('override_dtype'):
-      layer = base_layer.FiddleBaseLayer(dtype=jnp.float16)
+      layer = base_layer.BaseLayer(dtype=jnp.float16)
       self.assertEqual(layer.dtype, jnp.float16)
       self.assertEqual(layer.fprop_dtype, jnp.float16)
 
     with self.subTest('override_fprop_dtype'):
-      layer = base_layer.FiddleBaseLayer(fprop_dtype=jnp.float64)
+      layer = base_layer.BaseLayer(fprop_dtype=jnp.float64)
       self.assertEqual(layer.fprop_dtype, jnp.float64)
 
     with self.subTest('override_both'):
-      layer = base_layer.FiddleBaseLayer(
-          dtype=jnp.float16, fprop_dtype=jnp.float64)
+      layer = base_layer.BaseLayer(dtype=jnp.float16, fprop_dtype=jnp.float64)
       self.assertEqual(layer.fprop_dtype, jnp.float64)
 
     with self.subTest('frozen_during_post_init'):
-      # If a FiddleBaseLayer is created by an `@nn.compact` method, then
+      # If a BaseLayer is created by an `@nn.compact` method, then
       # it will be already-frozen during __post_init__.  This test checks
       # that we can still set fprop_dtype, even though the instance is
       # frozen.
 
-      class SomeFiddleLayer(base_layer.FiddleBaseLayer):
+      class SomeFiddleLayer(base_layer.BaseLayer):
 
         def __call__(self, x):
           return x
@@ -568,7 +569,7 @@ class FiddleBaseLayerTest(test_utils.TestCase):
         "For <class '.*Layer'>: PAX layers should no longer use nested HParams "
         'classes. Instead, add fields directly to the layer class.')
     with self.assertRaisesRegex(ValueError, expected_err):
-      class Layer(base_layer.FiddleBaseLayer):  # pylint: disable=unused-variable
+      class Layer(base_layer.BaseLayer):  # pylint: disable=unused-variable
 
         class HParams:
           x: int = 0
@@ -581,7 +582,7 @@ class FiddleBaseLayerTest(test_utils.TestCase):
           ValueError,
           'has a template type, but does not have the DO_NOT_BUILD tag set.'):
 
-        class Layer1(base_layer.FiddleBaseLayer):
+        class Layer1(base_layer.BaseLayer):
           child_tpl: TrivialFiddleLayer.HParams = dataclasses.field(
               default_factory=TrivialFiddleLayer.HParams)
 
@@ -590,7 +591,7 @@ class FiddleBaseLayerTest(test_utils.TestCase):
           ValueError,
           'has a template type, but does not have the DO_NOT_BUILD tag set.'):
 
-        class Layer2(base_layer.FiddleBaseLayer):
+        class Layer2(base_layer.BaseLayer):
           child_tpl: pax_fiddle.Config = dataclasses.field(
               default_factory=lambda: pax_fiddle.Config(SimpleFiddleBaseLayer))
 
@@ -601,7 +602,7 @@ class FiddleBaseLayerTest(test_utils.TestCase):
           ValueError,
           'has a template type, but does not have the DO_NOT_BUILD tag set.'):
 
-        class Layer3(base_layer.FiddleBaseLayer):
+        class Layer3(base_layer.BaseLayer):
           child_tpl: Optional[TrivialFiddleLayer.HParams] = None
 
     with self.subTest('Optional_FiddleConfig'):
@@ -611,7 +612,7 @@ class FiddleBaseLayerTest(test_utils.TestCase):
           ValueError,
           'has a template type, but does not have the DO_NOT_BUILD tag set.'):
 
-        class Layer4(base_layer.FiddleBaseLayer):
+        class Layer4(base_layer.BaseLayer):
           child_tpl: Optional[pax_fiddle.Config] = None
 
     with self.subTest('Optional_Parameterized_FiddleConfig'):
@@ -621,7 +622,7 @@ class FiddleBaseLayerTest(test_utils.TestCase):
           ValueError,
           'has a template type, but does not have the DO_NOT_BUILD tag set.'):
 
-        class Layer5(base_layer.FiddleBaseLayer):
+        class Layer5(base_layer.BaseLayer):
           child_tpl: Optional[pax_fiddle.Config[TrivialFiddleLayer]] = None
 
     with self.subTest('tuple_int_int'):
@@ -629,12 +630,12 @@ class FiddleBaseLayerTest(test_utils.TestCase):
       if (sys.version_info.major, sys.version_info.minor) < (3, 9):
         self.skipTest('tuple[int, int] not supported in this Python version')
 
-      class Layer6(base_layer.FiddleBaseLayer):
+      class Layer6(base_layer.BaseLayer):
         child: tuple[int, int] = (1, 2)
 
   def testMissingDoNotFieldTagError(self):
 
-    class Parent(base_layer.FiddleBaseLayer):
+    class Parent(base_layer.BaseLayer):
 
       child_tpl: Any = None
 
@@ -655,11 +656,11 @@ class FiddleBaseLayerTest(test_utils.TestCase):
 
   def testOverrideParamsInit(self):
 
-    class Child(base_layer.FiddleBaseLayer):
+    class Child(base_layer.BaseLayer):
       params_init: base_layer.WeightInit = (
           base_layer.WeightInit.UniformUnitScaling(scale=0.5))
 
-    class Parent(base_layer.FiddleBaseLayer):
+    class Parent(base_layer.BaseLayer):
 
       child_tpl: Any = base_layer.sub_config_field(Child.HParams)
 
@@ -693,9 +694,10 @@ class FiddleBaseLayerTest(test_utils.TestCase):
 
   def testTypeCheckingForDtype(self):
     layer_p = SimpleFiddleBaseLayer.HParams()
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
       SimpleFiddleBaseLayer(layer_p)
+
 
 if __name__ == '__main__':
   absltest.main()

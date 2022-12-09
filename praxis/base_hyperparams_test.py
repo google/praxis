@@ -98,7 +98,7 @@ def sample_fn(x, y=5):
   return (x, y)
 
 
-class FiddleToTextTestClass(base_layer.FiddleBaseLayer):
+class FiddleToTextTestClass(base_layer.BaseLayer):
 
   a: int = 4
   b: str = 'b'

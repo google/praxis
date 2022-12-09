@@ -28,7 +28,7 @@ from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 
 instantiate = base_layer.instantiate
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 
@@ -80,7 +80,7 @@ class RepeatsLinearQuantizeTest(test_utils.TestCase):
         atol=0.02)
 
 
-class FeedForwardQuant(base_layer.FiddleBaseLayer):
+class FeedForwardQuant(base_layer.BaseLayer):
   """Feedforward layer with quantize_weight() method."""
   input_dim: int = 0
   output_dim: int = 0
@@ -105,7 +105,7 @@ class FeedForwardQuant(base_layer.FiddleBaseLayer):
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
 
 
-class FeedForward(base_layer.FiddleBaseLayer):
+class FeedForward(base_layer.BaseLayer):
   """Feedforward layer with default method."""
   input_dim: int = 0
   output_dim: int = 0
@@ -128,7 +128,7 @@ class FeedForward(base_layer.FiddleBaseLayer):
     return jnp.add(res, self.theta.b)
 
 
-class ParentLayer(base_layer.FiddleBaseLayer):
+class ParentLayer(base_layer.BaseLayer):
   ff1_tpl: LayerTpl = base_layer.template_field(FeedForwardQuant)
   ff2_tpl: LayerTpl = base_layer.template_field(FeedForward)
 

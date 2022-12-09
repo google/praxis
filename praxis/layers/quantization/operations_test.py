@@ -96,7 +96,7 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
     self.assertAllClose(act, act_nudged, rtol=0.02, atol=0.02)
 
 
-class DotGeneral(base_layer.FiddleBaseLayer):
+class DotGeneral(base_layer.BaseLayer):
   lhs_prec: int = 8
   rhs_prec: int = 8
 
