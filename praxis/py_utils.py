@@ -35,8 +35,8 @@ from jax.experimental import pjit
 from jax.interpreters import pxla
 import jax.numpy as jnp
 import numpy as np
-from praxis import lingvo_lib
 import optax
+from praxis import lingvo_lib
 
 flags.DEFINE_bool(
     'pmap_use_tensorstore', False,

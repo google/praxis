@@ -50,8 +50,9 @@ explicitly set `value_str`-like argument to get nice error message, e.g.:
 """
 
 import inspect
-import jax
 from typing import Any, List, Optional, Sequence, Type
+
+import jax
 
 
 def _retrieve_argnames(assert_name: str) -> Optional[List[str]]:
@@ -411,7 +412,8 @@ def ge(value1: Any,
         value_str1 = _get_value_str(value1, arguments, index=0)
       if value_str2 is None:
         value_str2 = _get_value_str(value2, arguments, index=1)
-    error_msg = f'`{value_str1}` must be greater than or equal to `{value_str2}`.'
+    error_msg = (
+        f'`{value_str1}` must be greater than or equal to `{value_str2}`.')
   raise exception_type(error_msg)
 
 

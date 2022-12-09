@@ -406,12 +406,13 @@ class LinearRampupSqrtDecay(BaseSchedule):
 
 
 class LinearRampupExponentialDecay(BaseSchedule):
-  """Learning rate that first linearly ramps up to max and exponentially decays."""
+  """Learning rate that first linearly ramps up to max and exponentially decays.
+  """
 
   class HParams(BaseSchedule.HParams):
     """Hyperparams for schedule.
 
-        Attributes:
+    Attributes:
       warmup_steps: Increases the learning rate linearly  before warmup_steps *
         num_splits steps.
       decay_start: Starts the learning rate decay at decay_start-th step.
@@ -459,10 +460,10 @@ class LinearRampupExponentialDecay(BaseSchedule):
                 start=(0, p.max),
                 limit=(p.decay_end - p.decay_start, p.max * p.min_ratio))))
 
-  def value(self, value: JTensor) -> JTensor:
+  def value(self, count: JTensor) -> JTensor:
     return jnp.array(
         optax.join_schedules([s.value for s in self._schedules],
-                             self._boundaries)(value), jnp.float32)
+                             self._boundaries)(count), jnp.float32)
 
 
 class LinearRampupPiecewiseConstant(BaseSchedule):
@@ -500,11 +501,11 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
     self.p1 = instantiate(
         PiecewiseConstant.HParams(boundaries=boundaries_pc, values=p.values))
 
-  def value(self, value: JTensor) -> JTensor:
+  def value(self, count: JTensor) -> JTensor:
     p = self.hparams
     return jnp.array(
         optax.join_schedules([self.p0.value, self.p1.value],
-                             p.boundaries[:1])(value), jnp.float32)
+                             p.boundaries[:1])(count), jnp.float32)
 
 
 class PiecewiseSchedule(BaseSchedule):

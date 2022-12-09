@@ -174,11 +174,13 @@ def var_requires_sum_sync(var_hparams: ParamsT) -> bool:
 
 def var_disallow_bfloat16_conversion(var_hparams: ParamsT) -> bool:
   """Returns True if var_hparams excludes from bfloat16 conversion."""
-  return WeightHParamsCollection.DISALLOW_BFLOAT16_CONVERSION in var_hparams.collections
+  return (WeightHParamsCollection.DISALLOW_BFLOAT16_CONVERSION
+          in var_hparams.collections)
 
 
 def var_skip_lp_regularization(var_params: ParamsT) -> bool:
-  return WeightHParamsCollection.SKIP_LP_REGULARIZATION in var_params.collections
+  return (WeightHParamsCollection.SKIP_LP_REGULARIZATION
+          in var_params.collections)
 
 
 def to_partition_spec(split_dims_mapping: SplitDimsMapping,
