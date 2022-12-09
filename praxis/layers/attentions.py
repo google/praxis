@@ -937,7 +937,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
   # b - batch_size
   # l - seq_len
 
-  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
+  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -949,8 +949,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
     proj: SplitDimsMapping = None
     dconv: SplitDimsMapping = None
 
-  class ActivationShardingHParams(
-      base_layer.FiddleBaseLayer.ActivationShardingHParams):
+  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:

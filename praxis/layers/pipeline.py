@@ -122,7 +122,7 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
   pipeline_broadcast_inputs: bool = False
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
 
-  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
+  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:

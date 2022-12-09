@@ -598,14 +598,19 @@ class NestedStructToTextTestCase(absltest.TestCase):
     config = pax_fiddle.Config(FiddleToTextTestClass, 7)
     # pylint: disable=implicit-str-concat
     self.assertEqual(
-        nested_struct_to_text([config, 1]).splitlines(), [
-            " : [\"<PaxConfig[FiddleToTextTestClass(\\n  dtype=7,\\n  params_init="
-            "<PaxConfig[WeightInit(method='xavier', scale=1.000001)]>,\\n  "
-            'weight_split_dims_mapping[#praxis.pax_fiddle.DoNotBuild]=<'
-            'PaxConfig[BaseLayer.WeightShardingHParams()]>,\\n  '
-            'activation_split_dims_mapping[#praxis.pax_fiddle.DoNotBuild]=<'
-            "PaxConfig[BaseLayer.ActivationShardingHParams()]>)]>\", 1]",
-        ])
+        nested_struct_to_text([config, 1]).splitlines(),
+        [
+            (
+                ' : ["<PaxConfig[FiddleToTextTestClass(\\n  dtype=7,\\n '
+                ' params_init='
+                "<PaxConfig[WeightInit(method='xavier', scale=1.000001)]>,\\n  "
+                'weight_split_dims_mapping[#praxis.pax_fiddle.DoNotBuild]=<'
+                'PaxConfig[BaseLayer.WeightSharding()]>,\\n  '
+                'activation_split_dims_mapping[#praxis.pax_fiddle.DoNotBuild]=<'
+                'PaxConfig[BaseLayer.ActivationSharding()]>)]>", 1]'
+            ),
+        ],
+    )
     # pylint: enable=implicit-str-concat
 
   def test_callable(self):

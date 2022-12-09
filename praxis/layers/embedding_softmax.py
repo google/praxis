@@ -109,8 +109,7 @@ class Embedding(base_layer.FiddleBaseLayer):
   scale_sqrt_depth: bool = False
   set_nan_for_oob_id: bool = False
 
-  class ActivationShardingHParams(
-      base_layer.FiddleBaseLayer.ActivationShardingHParams):
+  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -331,8 +330,7 @@ class SharedEmbeddingSoftmax(FullSoftmax):
   lookup_style: str = 'index'
   scale_sqrt_depth: bool = False
 
-  class ActivationShardingHParams(
-      base_layer.FiddleBaseLayer.ActivationShardingHParams):
+  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -547,8 +545,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
   z_loss_weight: float = 0.
   label_smoothing_prob: float = 0.0
 
-  class ActivationShardingHParams(
-      base_layer.FiddleBaseLayer.ActivationShardingHParams):
+  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:

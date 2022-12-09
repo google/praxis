@@ -596,7 +596,7 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
   # w - width
   # i - in_channels
   # m - channel_multiplier
-  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
+  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -740,7 +740,7 @@ class LightConv1D(base_layer.FiddleBaseLayer):
   # m - channel_multiplier
   # b - batch_size
   # l - seq_len
-  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
+  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -750,8 +750,7 @@ class LightConv1D(base_layer.FiddleBaseLayer):
     df: SplitDimsMapping = None
     him: SplitDimsMapping = None
 
-  class ActivationShardingHParams(
-      base_layer.FiddleBaseLayer.ActivationShardingHParams):
+  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:

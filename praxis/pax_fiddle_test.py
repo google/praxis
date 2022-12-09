@@ -558,33 +558,26 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
         for value, path in pax_fiddle.iterate(config)
     }
     self.assertDictEqual(
-        all_sub_values, {
-            "":
-                config,
-            ".activation_split_dims_mapping":
-                pax_fiddle.Config(
-                    base_layer.FiddleBaseLayer.ActivationShardingHParams,
-                    out=None),
-            ".params_init":
-                pax_fiddle.Config(
-                    base_layer.WeightInit, method="xavier", scale=1.000001),
-            ".params_init.method":
-                "xavier",
-            ".params_init.scale":
-                1.000001,
-            ".tpl":
-                config.tpl,
-            ".tpl.activation_split_dims_mapping":
-                config.tpl.activation_split_dims_mapping,
-            ".tpl.params_init":
-                config.tpl.params_init,
-            ".tpl.weight_split_dims_mapping":
-                config.tpl.weight_split_dims_mapping,
-            ".weight_split_dims_mapping":
-                pax_fiddle.Config(
-                    base_layer.FiddleBaseLayer.WeightShardingHParams,
-                    wt=None)
-        })
+        all_sub_values,
+        {
+            "": config,
+            ".activation_split_dims_mapping": pax_fiddle.Config(
+                base_layer.FiddleBaseLayer.ActivationSharding, out=None
+            ),
+            ".params_init": pax_fiddle.Config(
+                base_layer.WeightInit, method="xavier", scale=1.000001
+            ),
+            ".params_init.method": "xavier",
+            ".params_init.scale": 1.000001,
+            ".tpl": config.tpl,
+            ".tpl.activation_split_dims_mapping": config.tpl.activation_split_dims_mapping,
+            ".tpl.params_init": config.tpl.params_init,
+            ".tpl.weight_split_dims_mapping": config.tpl.weight_split_dims_mapping,
+            ".weight_split_dims_mapping": pax_fiddle.Config(
+                base_layer.FiddleBaseLayer.WeightSharding, wt=None
+            ),
+        },
+    )
 
   def test_non_memoized_iterate(self):
     config = LayerE.HParams()

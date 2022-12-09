@@ -85,7 +85,7 @@ class Repeat(base_layer.FiddleBaseLayer):
   unroll_in_decode: bool = False
   sublayer_name: str = 'sub'
 
-  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
+  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:

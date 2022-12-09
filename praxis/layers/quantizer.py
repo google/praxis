@@ -137,7 +137,7 @@ class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
   normalize_codebook: bool = False
   normalize_latent_per_group: bool = True
 
-  class WeightShardingHParams(base_layer.FiddleBaseLayer.WeightShardingHParams):
+  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -146,8 +146,7 @@ class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
     """
     vgh: SplitDimsMapping = None
 
-  class ActivationShardingHParams(
-      base_layer.FiddleBaseLayer.ActivationShardingHParams):
+  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:

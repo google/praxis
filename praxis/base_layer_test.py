@@ -470,26 +470,28 @@ class FiddleBaseLayerTest(test_utils.TestCase):
 
     class Layer(base_layer.FiddleBaseLayer):
 
-      class WeightShardingHParams(
-          base_layer.FiddleBaseLayer.WeightShardingHParams):
+      class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
         x: int = 5
 
-      class ActivationShardingHParams(
-          base_layer.FiddleBaseLayer.ActivationShardingHParams):
+      class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
         y: str = 'y'
 
     with self.subTest('construct_layer_directly'):
       layer = Layer()
       self.assertIsInstance(layer.weight_split_dims_mapping,
                             pax_fiddle.Config)
-      self.assertEqual(fdl.get_callable(layer.weight_split_dims_mapping),
-                       Layer.WeightShardingHParams)
+      self.assertEqual(
+          fdl.get_callable(layer.weight_split_dims_mapping),
+          Layer.WeightSharding,
+      )
       self.assertIsNone(layer.weight_split_dims_mapping.wt)
       self.assertEqual(layer.weight_split_dims_mapping.x, 5)
       self.assertIsInstance(layer.activation_split_dims_mapping,
                             pax_fiddle.Config)
-      self.assertEqual(fdl.get_callable(layer.activation_split_dims_mapping),
-                       Layer.ActivationShardingHParams)
+      self.assertEqual(
+          fdl.get_callable(layer.activation_split_dims_mapping),
+          Layer.ActivationSharding,
+      )
       self.assertIsNone(layer.activation_split_dims_mapping.out)
       self.assertEqual(layer.activation_split_dims_mapping.y, 'y')
 

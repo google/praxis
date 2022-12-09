@@ -1261,19 +1261,17 @@ class BaseLayer(nn.Module):
     weight_split_dims_mapping: Relevant only if the mesh shape params above are
       not None. It specifies how weight of this layer or those of the sublayers
       should be sharded over the overall device mesh. This field will be
-      dynamically bound to WeightShardingHParams dataclass above.
+      dynamically bound to WeightSharding dataclass above.
     activation_split_dims_mapping: Relevant only if the mesh shape params above
       are not None. It specifies how activation of this layer or those of the
       sublayers should be sharded over the overall device mesh. This field will
-      be dynamically bound to the ActivationShardingHParams dataclass above.
+      be dynamically bound to the ActivationSharding dataclass above.
     shared_weight_layer_id: a unique id indicating weight sharing. Layers with
       the same 'shared_weight_layer_id' share the same underlying model weights.
   """
 
-  # TODO(b/249483164): Remove the `HParams` suffix from this type name once the
-  # initial HParams->Fiddle migration is complete.
   @dataclasses.dataclass(frozen=True)
-  class WeightShardingHParams(pax_fiddle.CloneAndSetMixin):
+  class WeightSharding(pax_fiddle.CloneAndSetMixin):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     This usually refers to the primary model weight. Sub-layers can define
@@ -1285,10 +1283,8 @@ class BaseLayer(nn.Module):
 
     wt: SplitDimsMapping = None
 
-  # TODO(b/249483164): Remove the `HParams` suffix from this type name once the
-  # initial HParams->Fiddle migration is complete.
   @dataclasses.dataclass(frozen=True)
-  class ActivationShardingHParams(pax_fiddle.CloneAndSetMixin):
+  class ActivationSharding(pax_fiddle.CloneAndSetMixin):
     """Represents how intermediate values should be partitioned across a mesh.
 
     This usually refers to the primary layer output. Sub-layers can define
@@ -1310,12 +1306,12 @@ class BaseLayer(nn.Module):
   shared_weight_layer_id: Optional[str] = None
   # TODO(b/249483164): Change these to use instance_field rather than
   # template_field after the Fiddle migration.
-  weight_split_dims_mapping: pax_fiddle.Config[
-      WeightShardingHParams
-  ] = template_field(WeightShardingHParams)
+  weight_split_dims_mapping: pax_fiddle.Config[WeightSharding] = template_field(
+      WeightSharding
+  )
   activation_split_dims_mapping: pax_fiddle.Config[
-      ActivationShardingHParams
-  ] = template_field(ActivationShardingHParams)
+      ActivationSharding
+  ] = template_field(ActivationSharding)
 
   @property
   def mesh_shape(self):
@@ -1504,47 +1500,41 @@ class BaseLayer(nn.Module):
   def _override_split_dim_mapping_fields(cls):
     """Overrides the `*_split_dims_mapping` fields, if necessary.
 
-    If WeightShardingHParams or ActivationShardingHParams were overridden by
+    If WeightSharding or ActivationSharding were overridden by
     `cls`, then automatically transform them to a dataclass, and update the
     corresponding dataclass fields to use the new type for their
     default_factory.
     """
     if '__annotations__' not in cls.__dict__:
       cls.__annotations__ = {}
-    if 'WeightShardingHParams' in cls.__dict__:
-      if not issubclass(
-          cls.WeightShardingHParams, BaseLayer.WeightShardingHParams
-      ):
+    if 'WeightSharding' in cls.__dict__:
+      if not issubclass(cls.WeightSharding, BaseLayer.WeightSharding):
         raise ValueError(
-            f'Expected {cls}.WeightShardingHParams to be a subclass of '
-            'BaseLayer.WeightShardingHParams'
+            f'Expected {cls}.WeightSharding to be a subclass of '
+            'BaseLayer.WeightSharding'
         )
       if not typing.TYPE_CHECKING:
-        dataclasses.dataclass(frozen=True)(cls.WeightShardingHParams)
+        dataclasses.dataclass(frozen=True)(cls.WeightSharding)
       # TODO(b/249483164): Change this to use instance_field rather than
       # template_field after the Fiddle migration.
       cls.__annotations__['weight_split_dims_mapping'] = pax_fiddle.Config[
-          cls.WeightShardingHParams
+          cls.WeightSharding
       ]
-      cls.weight_split_dims_mapping = template_field(cls.WeightShardingHParams)
-    if 'ActivationShardingHParams' in cls.__dict__:
-      if not issubclass(
-          cls.ActivationShardingHParams, BaseLayer.ActivationShardingHParams
-      ):
+      cls.weight_split_dims_mapping = template_field(cls.WeightSharding)
+    if 'ActivationSharding' in cls.__dict__:
+      if not issubclass(cls.ActivationSharding, BaseLayer.ActivationSharding):
         raise ValueError(
-            f'Expected {cls}.ActivationShardingHParams to be a subclass of '
-            'BaseLayer.ActivationShardingHParams'
+            f'Expected {cls}.ActivationSharding to be a subclass of '
+            'BaseLayer.ActivationSharding'
         )
       if not typing.TYPE_CHECKING:
-        dataclasses.dataclass(frozen=True)(cls.ActivationShardingHParams)
+        dataclasses.dataclass(frozen=True)(cls.ActivationSharding)
       # TODO(b/249483164): Change this to use instance_field rather than
       # template_field after the Fiddle migration.
       cls.__annotations__['activation_split_dims_mapping'] = pax_fiddle.Config[
-          cls.ActivationShardingHParams
+          cls.ActivationSharding
       ]
-      cls.activation_split_dims_mapping = template_field(
-          cls.ActivationShardingHParams
-      )
+      cls.activation_split_dims_mapping = template_field(cls.ActivationSharding)
 
   def __post_init__(self):
     if isinstance(self.dtype, (BaseHyperParams, fdl.Config)):
