@@ -285,6 +285,7 @@ pytype_strict_library(
         ":pytypes",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
+        # Implicit jax.experimental dependency.
     ],
 )
 

@@ -15,7 +15,7 @@
 
 """Definition of specific models."""
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from absl import logging
 import clu.metrics as clu_metrics
@@ -346,9 +346,12 @@ class LanguageModel(base_model.BaseModel):
         extra_input_kwargs={},
     )
 
-  def decode(self,
-             input_batch: NestedMap,
-             return_result_for_suffix_score=False) -> DecodeOut:
+  def decode(
+      self,
+      input_batch: NestedMap,
+      host_callback: Optional[sample_decode.HostCallbackFn] = None,
+      return_result_for_suffix_score=False,
+  ) -> DecodeOut:
     """Greedy decodes the input_batch.
 
     Args:
@@ -358,9 +361,10 @@ class LanguageModel(base_model.BaseModel):
         suffix_ids with shape [num_suffix, suffix_length]. Optional
         `.temperature` of shape [batch_size] has the temperature for each
         example. If `.temperature` is not set in the input_batch,
-        p.decoder_tpl.temperature will be used in sampling decode.
-        Optional `.per_example_max_decode_steps` of shape [batch_size] has the 
-        maximum decoding steps for each example.
+        p.decoder_tpl.temperature will be used in sampling decode. Optional
+        `.per_example_max_decode_steps` of shape [batch_size] has the maximum
+        decoding steps for each example.
+      host_callback: Optional host call back function.
       return_result_for_suffix_score: Whether return results for suffix score.
 
     Returns:
@@ -510,6 +514,7 @@ class LanguageModel(base_model.BaseModel):
           prefix_lengths=decode_data.prefix_lengths,
           eos_id=self.decoder_tpl.eos_id,
           return_result_for_suffix_score=return_result_for_suffix_score,
+          host_callback=host_callback,
       )
     elif template_has_type(self.decoder_tpl, GreedyDecoderHParams):
       # Init cache states.

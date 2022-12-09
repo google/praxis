@@ -21,11 +21,12 @@ Greedy decode is a special case for sample decode.
 
 import abc
 import functools
-from typing import List, Sequence, Optional, Union
+from typing import Any, Callable, List, Optional, Sequence, Union
 
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
+from jax.experimental import host_callback as hcb
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import decoder_utils
@@ -34,6 +35,7 @@ from praxis import pytypes
 
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
+HostCallbackFn = Callable[[Union[NestedMap, JTensor], Any], None]
 
 RANDOM = base_layer.RANDOM
 PARAMS = base_layer.PARAMS
@@ -398,6 +400,7 @@ def sample_decode(
     per_example_max_decode_steps: Optional[JTensor] = None,
     prefix_lengths: Optional[JTensor] = None,
     eos_id: Optional[int] = None,
+    host_callback: Optional[HostCallbackFn] = None,
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
     early_exit=True,
@@ -459,6 +462,8 @@ def sample_decode(
       batch. This can either be None or a JTensor of shape [batch] signifying
       the prefix length for each sequence in the batch.
     eos_id: Optional EOS id which to terminate the decoding early.
+    host_callback: Optional host call back function for id_tap, no return
+      tensors from the host.
     return_result_for_suffix_score: Whether or not to return result for suffix
       score.
     sort_samples: Whether to sort the samples by logprobs.
@@ -657,6 +662,15 @@ def sample_decode(
     val.decode_lengths = jnp.where(done_at_this_step, decode_lengths,
                                    val.decode_lengths)
     val.output_ids = val.output_ids.at[:, step + 1].set(new_ids)
+
+    # TODO(b/261464229): add support to outfeed every n steps.
+    if host_callback is not None:
+      outfeed_tensors = NestedMap()
+      outfeed_tensors.new_ids = new_ids
+      outfeed_tensors.loc = decode_lengths - prefix_lengths - 1
+      outfeed_tensors.done = val.done
+      hcb.id_tap(host_callback, outfeed_tensors)
+
     logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size), new_ids].get()
     logprobs_at_new_ids = jnp.where(prev_done,
                                     jnp.ones_like(logprobs_at_new_ids),
@@ -783,6 +797,10 @@ def sample_decode(
     result = jax.tree_map(lambda x: split_batch_dim(x, 0, num_samples), result)
   if num_samples > 1 and sort_samples:
     return sort_samples_by_scores(result)
+
+  # Wait for all host call back to finish
+  if host_callback is not None:
+    hcb.barrier_wait()
   return result
 
 
