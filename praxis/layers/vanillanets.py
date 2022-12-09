@@ -32,6 +32,7 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 
 
 def tailored_lrelu(negative_slope, x):
@@ -166,7 +167,7 @@ class VanillaNet(base_layer.FiddleBaseLayer):
   conv_params: LayerTpl = pax_fiddle.fdl_field(
       default_factory=_vanilla_net_conv_params_default,
       tags=pax_fiddle.DoNotBuild)
-  block_params: LayerTpl = sub_config_field(VanillaBlock.HParams)
+  block_params: LayerTpl = template_field(VanillaBlock)
   strides: Sequence[int] = (1, 2, 2, 2)
   channels: Sequence[int] = (256, 512, 1024, 2048)
   blocks: Sequence[int] = (3, 4, 6, 3)

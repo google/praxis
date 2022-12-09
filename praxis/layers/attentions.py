@@ -38,6 +38,7 @@ NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
@@ -903,15 +904,14 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
   hidden_dim: int = 0
   num_heads: int = 1
   dim_per_head: Optional[int] = None
-  dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   atten_dropout_prob: float = 0.0
-  proj_tpl: LayerTpl = sub_config_field(AttentionProjection.HParams)
+  proj_tpl: LayerTpl = template_field(AttentionProjection)
   dconv_qkv: bool = False
   dconv_kernel_size: int = 3
   internal_gshard_gaussian_init: bool = False
   combine_qkv: bool = False
-  combined_qkv_proj_tpl: LayerTpl = sub_config_field(
-      CombinedQKVProjectionLayer.HParams)
+  combined_qkv_proj_tpl: LayerTpl = template_field(CombinedQKVProjectionLayer)
   use_bias: bool = True
   output_proj_use_nhd_shape: bool = False
   internal_enable_query_scale: bool = True

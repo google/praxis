@@ -47,6 +47,7 @@ NestedMap = py_utils.NestedMap
 Predictions = base_model.Predictions
 WeightedScalars = pytypes.WeightedScalars
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 LogicalAxisRules = pytypes.LogicalAxisRules
 DecodeOut = base_model.DecodeOut
 ProcessDecodeOut = base_model.ProcessDecodeOut
@@ -470,7 +471,7 @@ class LanguageModel(base_model.BaseModel):
     decoding_fn: Decoding function used in autoregressive decoding.
     decoder_tpl: Parameterization of the autoregressive decoder.
   """
-  flax_decoder_tpl: LayerTpl = sub_config_field(FlaxFormerDecoder.HParams)
+  flax_decoder_tpl: LayerTpl = template_field(FlaxFormerDecoder)
   loss_normalizing_factor: str = 'NUM_REAL_TARGET_TOKENS'
   label_smoothing: float = 0.0
   z_loss: float = 0.0001
@@ -736,7 +737,7 @@ class EncoderDecoderModel(base_model.BaseModel):
     decoding_fn: Decoding function to be used during the prediction. The default
       is t5x_decoding.beam_search.
   """
-  encoder_decoder_tpl: LayerTpl = sub_config_field(EncoderDecoder.HParams)
+  encoder_decoder_tpl: LayerTpl = template_field(EncoderDecoder)
   loss_normalizing_factor: str = 'NUM_REAL_TARGET_TOKENS'
   label_smoothing: float = 0.0
   z_loss: float = 0.0001

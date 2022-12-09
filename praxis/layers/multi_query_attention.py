@@ -31,6 +31,7 @@ from praxis.layers import stochastics
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 JTensor = pytypes.JTensor
 
@@ -166,11 +167,10 @@ class MultiQueryDotProductAttention(base_layer.FiddleBaseLayer):
   hidden_dim: int = 0
   num_heads: int = 1
   dim_per_head: Optional[int] = None
-  dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   atten_dropout_prob: float = 0.0
-  proj_tpl: LayerTpl = sub_config_field(attentions.AttentionProjection.HParams)
-  headless_proj_tpl: LayerTpl = sub_config_field(
-      OneHeadedAttentionProjection.HParams)
+  proj_tpl: LayerTpl = template_field(attentions.AttentionProjection)
+  headless_proj_tpl: LayerTpl = template_field(OneHeadedAttentionProjection)
   internal_gshard_gaussian_init: bool = False
   use_bias: bool = True
   output_proj_use_nhd_shape: bool = False

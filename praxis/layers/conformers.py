@@ -33,6 +33,7 @@ from praxis.layers import transformers
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 BaseHyperParams = base_hyperparams.BaseHyperParams
 
@@ -160,12 +161,11 @@ class SelfAttentionWithNormAndResidual(base_layer.FiddleBaseLayer):
   """
   residual_weight: float = 1.0
   input_weight: float = 1.0
-  self_atten_tpl: LayerTpl = sub_config_field(
-      DotProductAttentionWithContext.HParams)
-  norm_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  self_atten_tpl: LayerTpl = template_field(DotProductAttentionWithContext)
+  norm_tpl: LayerTpl = template_field(normalizations.LayerNorm)
   pre_layer_norm: bool = True
   residual_dropout_prob: float = 0.0
-  residual_dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  residual_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
 
   def _create_self_atten(self):
     """Expects to be overridden in subclasses."""
@@ -289,7 +289,8 @@ class Conformer(base_layer.FiddleBaseLayer):
   model_dims: int = 512
   kernel_size: int = 32
   ff_activation_tpl: pax_fiddle.Config[
-      activations.BaseActivation] = sub_config_field(activations.Swish.HParams)
+      activations.BaseActivation
+  ] = template_field(activations.Swish)
   ff_residual_weight: float = 0.5
   ffn_dim_multiplier: int = 4
   atten_num_heads: int = 8
@@ -302,14 +303,13 @@ class Conformer(base_layer.FiddleBaseLayer):
   ffn_relu_dropout: Optional[float] = None
   fflayer_start_tpl: Optional[LayerTpl] = sub_config_field(
       transformers.TransformerFeedForward.HParams)
-  trans_atten_tpl: LayerTpl = sub_config_field(
-      SelfAttentionWithNormAndResidual.HParams)
+  trans_atten_tpl: LayerTpl = template_field(SelfAttentionWithNormAndResidual)
   lconv_tpl: Optional[LayerTpl] = sub_config_field(
       convolutions.LightConv1D.HParams)
   fflayer_end_tpl: Optional[LayerTpl] = sub_config_field(
       transformers.TransformerFeedForward.HParams)
   fflayer_weight_sharing: bool = False
-  final_ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
 
   def _dropout_prob(self, prob: Optional[float]) -> float:
     if self.dropout_prob is not None:

@@ -34,6 +34,7 @@ JTensor = pytypes.JTensor
 
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 
 
 class ResNetBlock(base_layer.FiddleBaseLayer):
@@ -52,11 +53,12 @@ class ResNetBlock(base_layer.FiddleBaseLayer):
   """
   input_dim: int = 0
   output_dim: int = 0
-  conv_params: LayerTpl = sub_config_field(convolutions.ConvBNAct.HParams)
+  conv_params: LayerTpl = template_field(convolutions.ConvBNAct)
   kernel_size: int = 3
   stride: int = 1
   activation_tpl: pax_fiddle.Config[
-      activations.BaseActivation] = sub_config_field(activations.ReLU.HParams)
+      activations.BaseActivation
+  ] = template_field(activations.ReLU)
   residual_droppath_prob: float = 0.0
   zero_init_residual: bool = False
 
@@ -309,7 +311,7 @@ class ResNet(base_layer.FiddleBaseLayer):
   conv_params: LayerTpl = pax_fiddle.fdl_field(
       default_factory=_res_net_conv_params_default, tags=pax_fiddle.DoNotBuild)
   # pylint: enable=g-long-lambda
-  block_params: LayerTpl = sub_config_field(ResNetBlock.HParams)
+  block_params: LayerTpl = template_field(ResNetBlock)
   strides: Sequence[int] = (1, 2, 2, 2)
   channels: Sequence[int] = (256, 512, 1024, 2048)
   blocks: Sequence[int] = (3, 4, 6, 3)

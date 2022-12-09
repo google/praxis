@@ -29,6 +29,7 @@ NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 JTensor = pytypes.JTensor
 
@@ -146,9 +147,10 @@ class FeedForward(base_layer.FiddleBaseLayer):
   input_dims: int = 0
   output_dims: int = 0
   has_bias: bool = True
-  linear_tpl: LayerTpl = sub_config_field(Linear.HParams)
+  linear_tpl: LayerTpl = template_field(Linear)
   activation_tpl: pax_fiddle.Config[
-      activations.BaseActivation] = sub_config_field(activations.ReLU.HParams)
+      activations.BaseActivation
+  ] = template_field(activations.ReLU)
   bias_init: Optional[float] = 0.0
 
   def setup(self) -> None:
@@ -196,7 +198,7 @@ class MLPBlock(base_layer.FiddleBaseLayer):
   """
   num_layers: int = 3
   hidden_dims: int = 128
-  ff_tpl: LayerTpl = sub_config_field(FeedForward.HParams)
+  ff_tpl: LayerTpl = template_field(FeedForward)
 
   def setup(self) -> None:
 

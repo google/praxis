@@ -37,6 +37,7 @@ SplitDimsMapping = pytypes.SplitDimsMapping
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 
 
 def _compute_z_loss(logits):
@@ -186,7 +187,7 @@ class FullSoftmax(base_layer.FiddleBaseLayer):
   z_loss_weight: float = 0.
   bias_init: Optional[float] = 0.0
 
-  feed_forward_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
+  feed_forward_tpl: LayerTpl = template_field(linears.FeedForward)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -379,7 +380,7 @@ class SigmoidCrossEntropy(base_layer.FiddleBaseLayer):
   num_classes: int = 0
   soft_cap_logits: Optional[float] = 0.0
   bias_init: Optional[float] = 0.0
-  feed_forward_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
+  feed_forward_tpl: LayerTpl = template_field(linears.FeedForward)
 
   def setup(self) -> None:
     if self.feed_forward_tpl:

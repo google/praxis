@@ -129,8 +129,8 @@ class FeedForward(base_layer.FiddleBaseLayer):
 
 
 class ParentLayer(base_layer.FiddleBaseLayer):
-  ff1_tpl: LayerTpl = base_layer.sub_config_field(FeedForwardQuant.HParams)
-  ff2_tpl: LayerTpl = base_layer.sub_config_field(FeedForward.HParams)
+  ff1_tpl: LayerTpl = base_layer.template_field(FeedForwardQuant)
+  ff2_tpl: LayerTpl = base_layer.template_field(FeedForward)
 
   def setup(self):
     self.create_child(

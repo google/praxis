@@ -43,6 +43,7 @@ NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
 JTensor = pytypes.JTensor
@@ -265,15 +266,15 @@ class TransformerFeedForward(base_layer.FiddleBaseLayer):
   has_bias: bool = True
   apply_padding_first: bool = False
   activation_tpl: pax_fiddle.Config[
-      activations_lib.BaseActivation] = sub_config_field(
-          activations_lib.ReLU.HParams)
+      activations_lib.BaseActivation
+  ] = template_field(activations_lib.ReLU)
   use_gated_activation: bool = False
-  fflayer_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
-  ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  fflayer_tpl: LayerTpl = template_field(linears.FeedForward)
+  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
   residual_dropout_prob: float = 0.0
-  relu_dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  relu_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   relu_dropout_prob: float = 0.0
-  residual_dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  residual_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   add_skip_connection: bool = True
   residual_weight: float = 1.0
   residual_droppath_prob: float = 0.0
@@ -534,13 +535,13 @@ class TransformerFeedForwardMoe(base_layer.FiddleBaseLayer):
   input_dims: int = 0
   hidden_dims: int = 0
   apply_padding_first: bool = False
-  ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
   activation_tpl: pax_fiddle.Config[
-      activations_lib.BaseActivation] = sub_config_field(
-          activations_lib.ReLU.HParams)
-  relu_dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+      activations_lib.BaseActivation
+  ] = template_field(activations_lib.ReLU)
+  relu_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   relu_dropout_prob: float = 0.0
-  residual_dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  residual_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   residual_dropout_prob: float = 0.0
   add_skip_connection: bool = True
   residual_weight: float = 1.0
@@ -1070,7 +1071,7 @@ class Transformer(base_layer.FiddleBaseLayer):
   hidden_dims: int = 0
   num_heads: Optional[int] = None
   dim_per_head: Optional[int] = None
-  dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   atten_dropout_prob: float = 0.0
   residual_dropout_prob: float = 0.0
   relu_dropout_prob: float = 0.0
@@ -1079,12 +1080,11 @@ class Transformer(base_layer.FiddleBaseLayer):
   use_cross_attention: bool = False
   allow_skip_cross_attention: bool = False
   cross_atten_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
-  ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
   norm_policy: str = 'pre'
-  tr_atten_tpl: LayerTpl = sub_config_field(
-      attentions.DotProductAttention.HParams)
+  tr_atten_tpl: LayerTpl = template_field(attentions.DotProductAttention)
   packed_input: bool = False
-  tr_fflayer_tpl: LayerTpl = sub_config_field(TransformerFeedForward.HParams)
+  tr_fflayer_tpl: LayerTpl = template_field(TransformerFeedForward)
   ngrammer_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
 
   def setup(self) -> None:
@@ -1480,7 +1480,7 @@ class StackedTransformer(base_layer.FiddleBaseLayer):
                                           Transformer.HParams)
   packed_input: bool = False
   fold_padding_with_segment_mask: bool = False
-  moe_layer_tpl: LayerTpl = sub_config_field(TransformerFeedForwardMoe.HParams)
+  moe_layer_tpl: LayerTpl = template_field(TransformerFeedForwardMoe)
   num_experts: int = 0
   num_groups: int = 1
   min_group_size: Optional[int] = None
@@ -1747,7 +1747,7 @@ class StackedTransformerRepeated(base_layer.FiddleBaseLayer):
       only or dot with no batch dimensions.
     unroll_in_decode: Whether to unroll the layers during extend_step.
   """
-  block: LayerTpl = sub_config_field(StackedTransformer.HParams)
+  block: LayerTpl = template_field(StackedTransformer)
   x_times: int = 0
   checkpoint_policy: repeats.AutodiffCheckpointType = repeats.AutodiffCheckpointType.SAVE_NOTHING
   unroll_in_decode: bool = True
@@ -1910,7 +1910,7 @@ class PipelinedTransformer(base_layer.FiddleBaseLayer):
       stages instead of being computed by the previous stage) will be passed
       stage-by-stage instead of being replicated.
   """
-  pipeline_stage: LayerTpl = sub_config_field(StackedTransformer.HParams)
+  pipeline_stage: LayerTpl = template_field(StackedTransformer)
   circular_repeat: int = 1
   num_pipeline_stages: Optional[int] = None
   num_pipeline_microbatches: Optional[int] = None

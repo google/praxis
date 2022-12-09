@@ -40,6 +40,7 @@ AuxLossStruct = base_layer.AuxLossStruct
 
 AUX_LOSS = base_layer.AUX_LOSS
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 
 
 def _set_embedding_softmax_sharding_params_for_transformers(
@@ -200,13 +201,16 @@ class TransformerLm(base_layer.FiddleBaseLayer):
     final_ln_tpl: Parameterization of the layer normalization layer.
     skip_compute_loss: Set to skip compute_loss and output activations.
   """
-  position_emb_tpl: LayerTpl = sub_config_field(
-      embedding_softmax.PositionalEmbedding.HParams)
+  position_emb_tpl: LayerTpl = template_field(
+      embedding_softmax.PositionalEmbedding
+  )
   model_dims: int = 0
-  stacked_transformer_tpl: LayerTpl = sub_config_field(
-      transformers.StackedTransformer.HParams)
-  softmax_tpl: LayerTpl = sub_config_field(
-      embedding_softmax.SharedEmbeddingSoftmax.HParams)
+  stacked_transformer_tpl: LayerTpl = template_field(
+      transformers.StackedTransformer
+  )
+  softmax_tpl: LayerTpl = template_field(
+      embedding_softmax.SharedEmbeddingSoftmax
+  )
   vocab_size: int = 0
   packed_input: bool = False
   model_type: LanguageModelType = LanguageModelType.CAUSAL
@@ -214,7 +218,7 @@ class TransformerLm(base_layer.FiddleBaseLayer):
   post_attention_ngrammer_tpls: Optional[Sequence[LayerTpl]] = (
       base_layer.sub_config_field(None))
   separate_embedding_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
-  final_ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
   skip_compute_loss: bool = False
 
   @classmethod
@@ -894,8 +898,9 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
     encoder_ln_tpl: Parameterization of the encoder layer normalization layer.
     decoder_ln_tpl: Parameterization of the decoder layer normalization layer.
   """
-  position_emb_tpl: LayerTpl = sub_config_field(
-      embedding_softmax.PositionalEmbedding.HParams)
+  position_emb_tpl: LayerTpl = template_field(
+      embedding_softmax.PositionalEmbedding
+  )
   encoder_position_emb_tpl: Optional[LayerTpl] = base_layer.sub_config_field(
       None)
   encoder_stacked_transformer_tpl: Optional[
@@ -913,11 +918,12 @@ class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
       base_layer.sub_config_field(None))
   decoder_embedding_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
   model_dims: int = 0
-  softmax_tpl: LayerTpl = sub_config_field(
-      embedding_softmax.SharedEmbeddingSoftmax.HParams)
+  softmax_tpl: LayerTpl = template_field(
+      embedding_softmax.SharedEmbeddingSoftmax
+  )
   packed_input: bool = False
-  encoder_ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
-  decoder_ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  encoder_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  decoder_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
 
   @classmethod
   def set_sharding_params_v1(cls,

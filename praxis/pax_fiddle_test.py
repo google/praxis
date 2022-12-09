@@ -545,7 +545,7 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
 
 class LayerE(base_layer.FiddleBaseLayer):
 
-  tpl: pax_fiddle.Config[LayerD] = base_layer.sub_config_field(LayerD.HParams)
+  tpl: pax_fiddle.Config[LayerD] = base_layer.template_field(LayerD)
 
 
 class DaglishTest(testing.TestCase, parameterized.TestCase):

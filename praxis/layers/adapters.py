@@ -33,6 +33,7 @@ JTensor = pytypes.JTensor
 weight_init = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 
 
@@ -61,7 +62,8 @@ class MultitaskResidualAdapter(base_layer.FiddleBaseLayer):
   norm_tpl: Optional[LayerTpl] = sub_config_field(
       normalizations.LayerNorm.HParams)
   activation_tpl: pax_fiddle.Config[
-      activations.BaseActivation] = sub_config_field(activations.ReLU.HParams)
+      activations.BaseActivation
+  ] = template_field(activations.ReLU)
 
   def setup(self) -> None:
     if self.norm_tpl:

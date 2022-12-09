@@ -31,12 +31,13 @@ from praxis.layers import linears
 instantiate = base_layer.instantiate
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 
 
 class FooShared(base_layer.FiddleBaseLayer):
   linear1: linears.Linear = base_layer.instance_field(linears.Linear)
   linear2: linears.Linear = base_layer.instance_field(linears.Linear)
-  linear_private_tpl: LayerTpl = sub_config_field(linears.Linear.HParams)
+  linear_private_tpl: LayerTpl = template_field(linears.Linear)
 
   def setup(self):
     # Note submodule name must be unique.

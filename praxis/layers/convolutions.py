@@ -32,6 +32,7 @@ from praxis.layers import stochastics
 NestedMap = py_utils.NestedMap
 SplitDimsMapping = pytypes.SplitDimsMapping
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
@@ -444,7 +445,8 @@ class ConvBNAct(Conv2D):
   batch_norm_tpl: Optional[LayerTpl] = sub_config_field(
       normalizations.BatchNorm.HParams)
   activation_tpl: pax_fiddle.Config[
-      activations.BaseActivation] = sub_config_field(activations.ReLU.HParams)
+      activations.BaseActivation
+  ] = template_field(activations.ReLU)
 
   def setup(self) -> None:
     super().setup()
@@ -716,16 +718,16 @@ class LightConv1D(base_layer.FiddleBaseLayer):
   input_dims: Optional[int] = None
   kernel_size: Optional[int] = None
   conv_activation_tpl: pax_fiddle.Config[
-      activations.BaseActivation] = sub_config_field(activations.Swish.HParams)
+      activations.BaseActivation
+  ] = template_field(activations.Swish)
   dropout_prob: float = 0.0
-  ln_tpl: LayerTpl = sub_config_field(normalizations.LayerNorm.HParams)
+  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
 
-  linear_start_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
-  depthwise_conv_tpl: LayerTpl = sub_config_field(DepthwiseConv1D.HParams)
-  conv_norm_layer_tpl: LayerTpl = sub_config_field(
-      normalizations.BatchNorm.HParams)
-  linear_end_tpl: LayerTpl = sub_config_field(linears.FeedForward.HParams)
-  dropout_tpl: LayerTpl = sub_config_field(stochastics.Dropout.HParams)
+  linear_start_tpl: LayerTpl = template_field(linears.FeedForward)
+  depthwise_conv_tpl: LayerTpl = template_field(DepthwiseConv1D)
+  conv_norm_layer_tpl: LayerTpl = template_field(normalizations.BatchNorm)
+  linear_end_tpl: LayerTpl = template_field(linears.FeedForward)
+  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   is_causal: bool = False
   use_2d_conv_norm: bool = False
 

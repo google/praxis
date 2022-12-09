@@ -316,7 +316,7 @@ class VitExitLayers(base_layer.FiddleBaseLayer):
   pre_ln: bool = True
   output_fc_tanh: bool = True
   output_fc_has_bias: bool = True
-  pooling_tpl: LayerTpl = sub_config_field(poolings.GlobalPooling.HParams)
+  pooling_tpl: LayerTpl = base_layer.template_field(poolings.GlobalPooling)
 
   def setup(self) -> None:
 
@@ -390,10 +390,11 @@ class VisionTransformer(base_layer.FiddleBaseLayer):
     exit_layers_tpl: An integer specifying number of attention heads in
       transformers.
   """
-  entry_layers_tpl: LayerTpl = sub_config_field(VitEntryLayers.HParams)
-  transformer_layers_tpl: LayerTpl = sub_config_field(
-      transformers.StackedTransformer.HParams)
-  exit_layers_tpl: LayerTpl = sub_config_field(VitExitLayers.HParams)
+  entry_layers_tpl: LayerTpl = base_layer.template_field(VitEntryLayers)
+  transformer_layers_tpl: LayerTpl = base_layer.template_field(
+      transformers.StackedTransformer
+  )
+  exit_layers_tpl: LayerTpl = base_layer.template_field(VitExitLayers)
 
   def setup(self) -> None:
 

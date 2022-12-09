@@ -31,6 +31,7 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
 sub_config_field = base_layer.sub_config_field
+template_field = base_layer.template_field
 
 
 class ProjectionLayer(base_layer.FiddleBaseLayer):
@@ -171,7 +172,7 @@ class TestLinearRegressionModel(base_model.BaseModel):
   """
   input_dims: int = 0
   output_dims: int = 0
-  linear_p: LayerTpl = sub_config_field(linears.Linear.HParams)
+  linear_p: LayerTpl = template_field(linears.Linear)
 
   def setup(self) -> None:
     params = self.linear_p.clone()
@@ -225,8 +226,7 @@ class TestSpmdModel(base_model.BaseModel):
   Attributes:
     xformer_ffw: Parameterization of the feedforward layer.
   """
-  xformer_ffw: LayerTpl = sub_config_field(
-      transformers.TransformerFeedForward.HParams)
+  xformer_ffw: LayerTpl = template_field(transformers.TransformerFeedForward)
 
   def setup(self):
     self.create_child('ffwd', self.xformer_ffw)
