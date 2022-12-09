@@ -456,9 +456,9 @@ class FiddleBaseLayerTest(test_utils.TestCase):
   def test_converted_base_class_but_not_sub_class(self):
 
     expected_error = (
-        "<class '.*SimpleFiddleBaseLayer'> was converted to a "
-        '`FiddleBaseLayer`, but this subclass was not converted.  To fix, '
-        'convert this subclass to a `FiddleBaseLayer`.')
+         "For <class '.*SimpleFiddleBaseLayer'>: PAX layers should no longer "
+         'use nested HParams classes. Instead, add fields directly to the '
+         'layer class.')
     with self.assertRaisesRegex(ValueError, expected_error):
 
       class Child(SimpleFiddleBaseLayer):  # pylint: disable=unused-variable
@@ -562,9 +562,10 @@ class FiddleBaseLayerTest(test_utils.TestCase):
         SomeFlaxModel().init(jax.random.PRNGKey(1), jnp.ones((4, 4, 3)))
 
   def test_fiddle_base_layer_may_not_have_hparams(self):
-    with self.assertRaisesRegex(ValueError,
-                                'should not have a nested HParams class.'):
-
+    expected_err = (
+        "For <class '.*Layer'>: PAX layers should no longer use nested HParams "
+        'classes. Instead, add fields directly to the layer class.')
+    with self.assertRaisesRegex(ValueError, expected_err):
       class Layer(base_layer.FiddleBaseLayer):  # pylint: disable=unused-variable
 
         class HParams:

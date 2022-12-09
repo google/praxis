@@ -602,9 +602,9 @@ class NestedStructToTextTestCase(absltest.TestCase):
             " : [\"<PaxConfig[FiddleToTextTestClass(\\n  dtype=7,\\n  params_init="
             "<PaxConfig[WeightInit(method='xavier', scale=1.000001)]>,\\n  "
             'weight_split_dims_mapping[#praxis.pax_fiddle.DoNotBuild]=<'
-            'PaxConfig[FiddleBaseLayer.WeightShardingHParams()]>,\\n  '
+            'PaxConfig[BaseLayer.WeightShardingHParams()]>,\\n  '
             'activation_split_dims_mapping[#praxis.pax_fiddle.DoNotBuild]=<'
-            "PaxConfig[FiddleBaseLayer.ActivationShardingHParams()]>)]>\", 1]",
+            "PaxConfig[BaseLayer.ActivationShardingHParams()]>)]>\", 1]",
         ])
     # pylint: enable=implicit-str-concat
 
