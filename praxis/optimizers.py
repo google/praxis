@@ -1218,7 +1218,6 @@ class DistributedShampoo(BaseOptimizer):
     relative_matrix_epsilon: bool = True
     cholesky: bool = False
     qr_based_root: bool = False
-    sharded_statistics_only: bool = False
     merge_small_dims_block_size: int = 4096
     lobpcg_topk_precondition: int = 0
     lobpcg_max_iter: int = 0
@@ -1334,7 +1333,6 @@ class DistributedShampoo(BaseOptimizer):
         lobpcg_max_iter=p.lobpcg_max_iter,
         cholesky=p.cholesky,
         qr_based_root=p.qr_based_root,
-        sharded_statistics_only=p.sharded_statistics_only,
         merge_small_dims_block_size=p.merge_small_dims_block_size,
         skip_preconditioning_rank_lt=p.skip_preconditioning_rank_lt,
         decoupled_weight_decay=p.decoupled_weight_decay_from_momentum,
@@ -1378,7 +1376,6 @@ class ShardedDistributedShampoo(DistributedShampoo):
         nesterov=False,
         exponent_override=0,
         mesh_axis_names=('replica', 'data', 'mdl'),
-        sharded_statistics_only=False,
         tensor_split_dims_mapping=[-1, 1, 2],
         tensor_split_dims_mapping_for_inverse_pth_root=[1, -1, 2],
         start_preconditioning_step=51,
