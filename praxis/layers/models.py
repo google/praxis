@@ -349,7 +349,7 @@ class LanguageModel(base_model.BaseModel):
   def decode(
       self,
       input_batch: NestedMap,
-      host_callback: Optional[sample_decode.HostCallbackFn] = None,
+      host_callback: Optional[decoder_utils.DecodingHostCallback] = None,
       return_result_for_suffix_score=False,
   ) -> DecodeOut:
     """Greedy decodes the input_batch.

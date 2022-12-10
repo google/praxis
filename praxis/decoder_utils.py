@@ -15,7 +15,8 @@
 
 """Util functions for decoder."""
 
-from typing import Callable, List, Tuple
+import dataclasses
+from typing import Any, Callable, List, Tuple, Union
 
 import jax
 from jax import numpy as jnp
@@ -24,12 +25,21 @@ from praxis import pytypes
 
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 JTensor = pytypes.JTensor
+NestedJTensor = pytypes.NestedJTensor
 ExtendStepFn = Callable[[base_layer.BaseLayerApi, JTensor, JTensor], JTensor]
 FPropFn = Callable[[base_layer.BaseLayerApi, JTensor, JTensor], None]
 TransformStateFn = Callable[
     [base_layer.BaseLayerApi, base_layer.DecodeStateTransformFn], None]
 # lazy_broadcast_prefix_fn(model, num_suffix_samples, suffix_length)
 LazyBroadcastPrefixFn = Callable[[base_layer.BaseLayerApi, int, int], None]
+
+
+@dataclasses.dataclass(frozen=True)
+class DecodingHostCallback:
+  """Host call wrapper in decoding."""
+
+  callback_fn: Callable[[Union[NestedJTensor, JTensor], Any], None]
+  interval_steps: int = 1
 
 
 def length_norm(t, length_norm_alpha) -> jnp.ndarray:

@@ -21,7 +21,8 @@ Greedy decode is a special case for sample decode.
 
 import abc
 import functools
-from typing import Any, Callable, List, Optional, Sequence, Union
+import math
+from typing import List, Optional, Sequence, Union
 
 from flax import linen as nn
 import jax
@@ -35,7 +36,7 @@ from praxis import pytypes
 
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
-HostCallbackFn = Callable[[Union[NestedMap, JTensor], Any], None]
+DecodingHostCallback = decoder_utils.DecodingHostCallback
 
 RANDOM = base_layer.RANDOM
 PARAMS = base_layer.PARAMS
@@ -400,7 +401,7 @@ def sample_decode(
     per_example_max_decode_steps: Optional[JTensor] = None,
     prefix_lengths: Optional[JTensor] = None,
     eos_id: Optional[int] = None,
-    host_callback: Optional[HostCallbackFn] = None,
+    host_callback: Optional[DecodingHostCallback] = None,
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
     early_exit=True,
@@ -663,13 +664,43 @@ def sample_decode(
                                    val.decode_lengths)
     val.output_ids = val.output_ids.at[:, step + 1].set(new_ids)
 
-    # TODO(b/261464229): add support to outfeed every n steps.
     if host_callback is not None:
-      outfeed_tensors = NestedMap()
-      outfeed_tensors.new_ids = new_ids
-      outfeed_tensors.loc = decode_lengths - prefix_lengths - 1
-      outfeed_tensors.done = val.done
-      hcb.id_tap(host_callback, outfeed_tensors)
+
+      def _false_fn():
+        """Dummy function."""
+        pass
+
+      def _true_fn():
+        """Outfeed logic."""
+        outfeed_tensors = NestedMap()
+        mod_size = val.output_ids.shape[-1] % host_callback.interval_steps
+        if mod_size > 0:
+          output_ids = jnp.pad(
+              val.output_ids,
+              [[0, 0], [0, host_callback.interval_steps - mod_size]],
+          )
+        else:
+          output_ids = val.output_ids
+        interval_start_id = (
+            val.step // host_callback.interval_steps
+        ) * host_callback.interval_steps
+        outfeed_tensors.output_ids = jax.lax.dynamic_slice(
+            output_ids,
+            [0, interval_start_id],
+            [batch_size, host_callback.interval_steps],
+        )
+
+        outfeed_tensors.decode_lengths = val.decode_lengths
+        hcb.id_tap(host_callback.callback_fn, outfeed_tensors)
+
+      should_outfeed = jnp.logical_or(
+          jnp.logical_and(
+              val.step > 0,
+              (val.step % host_callback.interval_steps == 0),
+          ),
+          jnp.all(val.done),
+      )
+      jax.lax.cond(should_outfeed, _true_fn, _false_fn)
 
     logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size), new_ids].get()
     logprobs_at_new_ids = jnp.where(prev_done,
@@ -798,9 +829,6 @@ def sample_decode(
   if num_samples > 1 and sort_samples:
     return sort_samples_by_scores(result)
 
-  # Wait for all host call back to finish
-  if host_callback is not None:
-    hcb.barrier_wait()
   return result
 
 
