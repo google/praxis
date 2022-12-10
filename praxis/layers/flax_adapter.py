@@ -29,7 +29,7 @@ JTensor = pytypes.JTensor
 LogicalAxisRules = pytypes.LogicalAxisRules
 
 
-class FlaxModuleAdapterBase(base_layer.FiddleBaseLayer, metaclass=abc.ABCMeta):
+class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
   """Base class for converting an arbitrary nn.Module into a proper Pax Layer.
 
   Subclasses must implement a `_build_wrapped_module()` method that instantiates

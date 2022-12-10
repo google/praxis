@@ -32,12 +32,12 @@ NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
 JTensor = pytypes.JTensor
 
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 
 
-class ResNetBlock(base_layer.FiddleBaseLayer):
+class ResNetBlock(base_layer.BaseLayer):
   """ResNet Block as in https://arxiv.org/abs/1512.03385.
 
   Attributes:
@@ -273,7 +273,7 @@ def _res_net_output_spatial_pooling_params_default():
   return pax_fiddle.Config(poolings.GlobalPooling, pooling_dims=(1, 2))
 
 
-class ResNet(base_layer.FiddleBaseLayer):
+class ResNet(base_layer.BaseLayer):
   """Resnet model with default params matching Resnet-50.
 
   Additionally, params are also provided for Resnet-101 and Resnet-152.

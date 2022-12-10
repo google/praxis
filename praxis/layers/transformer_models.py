@@ -35,7 +35,7 @@ from praxis.layers import transformers
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 AuxLossStruct = base_layer.AuxLossStruct
 
 AUX_LOSS = base_layer.AUX_LOSS
@@ -167,7 +167,7 @@ class LanguageModelType(str, enum.Enum):
   BIDIRECTIONAL = 'bidirectional'
 
 
-class TransformerLm(base_layer.FiddleBaseLayer):
+class TransformerLm(base_layer.BaseLayer):
   """Packed Transformer LM with position embedding and shared softmax layer.
 
   This folds the padding with the segment mask when the inputs are not packed.
@@ -846,7 +846,7 @@ class TransformerLm(base_layer.FiddleBaseLayer):
         max_prefix_size, right_align_fn)
 
 
-class TransformerEncoderDecoder(base_layer.FiddleBaseLayer):
+class TransformerEncoderDecoder(base_layer.BaseLayer):
   """Transformer encoder/decoder class.
 
   This uses the param `encoder_stacked_transformer_tpl` to set the configuration

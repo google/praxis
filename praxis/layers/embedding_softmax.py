@@ -34,7 +34,7 @@ WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
@@ -50,7 +50,7 @@ def _compute_z_loss(logits):
   return jnp.square(log_z)
 
 
-class TokenCounter(base_layer.FiddleBaseLayer):
+class TokenCounter(base_layer.BaseLayer):
   """Keep track of total tokens seen during training."""
 
   def setup(self) -> None:
@@ -89,7 +89,7 @@ class TokenCounter(base_layer.FiddleBaseLayer):
       self.update_var('approx_total_tokens_mm', new_approx_total_tokens_mm)
 
 
-class Embedding(base_layer.FiddleBaseLayer):
+class Embedding(base_layer.BaseLayer):
   """A simple embedding layer that performs embedding lookups from ids.
 
   Attributes:
@@ -109,7 +109,7 @@ class Embedding(base_layer.FiddleBaseLayer):
   scale_sqrt_depth: bool = False
   set_nan_for_oob_id: bool = False
 
-  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -158,7 +158,7 @@ class Embedding(base_layer.FiddleBaseLayer):
     return embs
 
 
-class FullSoftmax(base_layer.FiddleBaseLayer):
+class FullSoftmax(base_layer.BaseLayer):
   """A simple softmax layer with cross-entropy outputs.
 
   Attributes:
@@ -330,7 +330,7 @@ class SharedEmbeddingSoftmax(FullSoftmax):
   lookup_style: str = 'index'
   scale_sqrt_depth: bool = False
 
-  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -361,7 +361,7 @@ class SharedEmbeddingSoftmax(FullSoftmax):
     return embs
 
 
-class SigmoidCrossEntropy(base_layer.FiddleBaseLayer):
+class SigmoidCrossEntropy(base_layer.BaseLayer):
   """A sigmoid cross-entropy loss layer with logits projection.
 
   Attributes:
@@ -515,7 +515,7 @@ class SigmoidCrossEntropy(base_layer.FiddleBaseLayer):
     return output_nmap
 
 
-class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
+class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
   """Softmax layer with embedding lookup and Gaussian init used in gshard.
 
   Features:
@@ -545,7 +545,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
   z_loss_weight: float = 0.
   label_smoothing_prob: float = 0.0
 
-  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -719,7 +719,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.FiddleBaseLayer):
     return output_nmap
 
 
-class PositionalEmbedding(base_layer.FiddleBaseLayer):
+class PositionalEmbedding(base_layer.BaseLayer):
   """Generates position embedding for a given 1-d sequence.
 
   Attributes:
@@ -775,7 +775,7 @@ class PositionalEmbedding(base_layer.FiddleBaseLayer):
     return signal
 
 
-class PositionalEmbedding2D(base_layer.FiddleBaseLayer):
+class PositionalEmbedding2D(base_layer.BaseLayer):
   """Generates 2-d position embedding for sequence of flattened patches.
 
   See description in the ViT paper section D4. The only difference is that we

@@ -90,7 +90,7 @@ def get_bigram_ids(ids: JTensor,
   return ngram_ids
 
 
-class VectorQuantization(base_layer.FiddleBaseLayer):
+class VectorQuantization(base_layer.BaseLayer):
   """Implements vector quantization (VQ)/online k-means clustering.
 
   This layer computes a discrete latent representation of a sequence, in a
@@ -230,7 +230,7 @@ class VectorQuantization(base_layer.FiddleBaseLayer):
     return dists, nearest_centroid
 
 
-class BregmanCompression(base_layer.FiddleBaseLayer):
+class BregmanCompression(base_layer.BaseLayer):
   """Implements Bregman compression via Bregman PCA.
 
   This layer computes a continuous latent representation of a sequence, in a
@@ -347,7 +347,7 @@ class BregmanCompression(base_layer.FiddleBaseLayer):
     return coefficients
 
 
-class Ngrammer(base_layer.FiddleBaseLayer):
+class Ngrammer(base_layer.BaseLayer):
   """Implements a generic N-grammer layer which looks up latent bi-gram id.
 
   We use the following capital letters to denote shape parameters:
@@ -539,7 +539,7 @@ class Ngrammer(base_layer.FiddleBaseLayer):
     return input_embs
 
 
-class VQNgrammer(base_layer.FiddleBaseLayer):
+class VQNgrammer(base_layer.BaseLayer):
   """Implements a VQ based ngrammer layer which looks up latent ngram id.
 
   We use the following capital letters to denote shape parameters:
@@ -801,7 +801,7 @@ class VQNgrammer(base_layer.FiddleBaseLayer):
     return jnp.squeeze(output_embs, axis=1)
 
 
-class BregmanNgrammer(base_layer.FiddleBaseLayer):
+class BregmanNgrammer(base_layer.BaseLayer):
   """Implements a Bregman PCA based ngrammer layer to form bi-grams.
 
   We use the following capital letters to denote shape parameters:

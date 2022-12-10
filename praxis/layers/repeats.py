@@ -38,7 +38,7 @@ JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 PARAMS = base_layer.PARAMS
 AUX_LOSS = base_layer.AUX_LOSS
@@ -62,7 +62,7 @@ def _sum_aux_loss(tree):
   return jax.tree_map(jnp.sum, tree)
 
 
-class Repeat(base_layer.FiddleBaseLayer):
+class Repeat(base_layer.BaseLayer):
   """A generic repeat layer.
 
   Attributes:
@@ -85,7 +85,7 @@ class Repeat(base_layer.FiddleBaseLayer):
   unroll_in_decode: bool = False
   sublayer_name: str = 'sub'
 
-  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+  class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -273,7 +273,7 @@ class Repeat(base_layer.FiddleBaseLayer):
     return ret
 
   @property
-  def sublayer(self) -> base_layer.FiddleBaseLayer:
+  def sublayer(self) -> base_layer.BaseLayer:
     return getattr(self, self.sublayer_name)
 
   def init_states(self, *args: Any, **kwargs: Any) -> Any:
@@ -324,7 +324,7 @@ class Repeat(base_layer.FiddleBaseLayer):
     mapped_scan_fn(self.sublayer, None)
 
   def _run_unrolled_for_decoding(
-      self, fn: Callable[[base_layer.FiddleBaseLayer, Any], Any], inputs: Any
+      self, fn: Callable[[base_layer.BaseLayer, Any], Any], inputs: Any
   ) -> Any:
     p = self.hparams
 

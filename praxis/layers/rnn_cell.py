@@ -73,7 +73,7 @@ def _zoneout_helper(prev_v: JTensor, cur_v: JTensor, padding_v: JTensor,
     return jnp.where(zo_p, prev_v, cur_v)
 
 
-class BaseRnnCell(base_layer.FiddleBaseLayer):
+class BaseRnnCell(base_layer.BaseLayer):
   """Base class for all RnnCell.
 
   An RNN cell encapsulates the logic for performing one single step in an RNN

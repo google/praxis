@@ -29,7 +29,7 @@ from praxis.layers import rnn_cell
 NestedMap = py_utils.NestedMap
 
 JTensor = pytypes.JTensor
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 PARAMS = base_layer.PARAMS
 AUX_LOSS = base_layer.AUX_LOSS
@@ -45,7 +45,7 @@ def _sum_aux_loss(tree):
   return jax.tree_map(jnp.sum, tree)
 
 
-class FRnn(base_layer.FiddleBaseLayer):
+class FRnn(base_layer.BaseLayer):
   """A generic Rnn layer that works with any RnnCell.
 
   Attributes:
@@ -158,7 +158,7 @@ class FRnn(base_layer.FiddleBaseLayer):
     return act, final_state
 
 
-class StackFrnn(base_layer.FiddleBaseLayer):
+class StackFrnn(base_layer.BaseLayer):
   """A stacked FRNN which includes multiple layers.
 
   Attributes:

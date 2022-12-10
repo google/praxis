@@ -35,7 +35,7 @@ JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 PARAMS = base_layer.PARAMS
 AUX_LOSS = base_layer.AUX_LOSS
@@ -46,7 +46,7 @@ AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 
 # Ported from LayerwiseShardablePipelinedLayer in gshard_layers.py.
-class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
+class LayerwiseShardablePipelined(base_layer.BaseLayer):
   """A layer that implements pipelining across stages.
 
   It creates a loop over microbatches around a loop-body layer. The wrapped body
@@ -122,7 +122,7 @@ class LayerwiseShardablePipelined(base_layer.FiddleBaseLayer):
   pipeline_broadcast_inputs: bool = False
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
 
-  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+  class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:

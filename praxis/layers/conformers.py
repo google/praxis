@@ -34,7 +34,7 @@ NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
 sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 BaseHyperParams = base_hyperparams.BaseHyperParams
 
 
@@ -136,7 +136,7 @@ class DotProductAttentionWithContextXL(attentions.DotProductAttentionXL):
     return super()._dot_atten(query, key, value, atten_mask, relative_bias)
 
 
-class SelfAttentionWithNormAndResidual(base_layer.FiddleBaseLayer):
+class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
   """Self attention sub-layer used in the Conformer layer.
 
   Input is first normalized using norm_tpl. Output is processed using
@@ -233,7 +233,7 @@ class SelfAttentionWithNormAndResidual(base_layer.FiddleBaseLayer):
     return result
 
 
-class Conformer(base_layer.FiddleBaseLayer):
+class Conformer(base_layer.BaseLayer):
   """Conformer layer as in https://arxiv.org/abs/2005.08100.
 
   Canonical version (with default params.)

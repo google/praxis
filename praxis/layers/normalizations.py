@@ -88,7 +88,7 @@ def compute_moments(
   return mean, variance
 
 
-class BaseNormalization(base_layer.FiddleBaseLayer):
+class BaseNormalization(base_layer.BaseLayer):
   """Base class for normalization layers.
 
   Attributes:

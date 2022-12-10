@@ -28,7 +28,7 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
 
-class Dropout(base_layer.FiddleBaseLayer):
+class Dropout(base_layer.BaseLayer):
   """Apply dropout during training.
 
   Attributes:
@@ -90,7 +90,7 @@ class Dropout(base_layer.FiddleBaseLayer):
     return ret
 
 
-class StochasticResidual(base_layer.FiddleBaseLayer):
+class StochasticResidual(base_layer.BaseLayer):
   """Stochastic residual layer that randomly drops the residual branch.
 
   Attributes:

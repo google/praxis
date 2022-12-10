@@ -61,7 +61,7 @@ class CNN(flax_nn.Module):
     return x
 
 
-class MixLayer(base_layer.FiddleBaseLayer):
+class MixLayer(base_layer.BaseLayer):
   """A layer that mixes Pax native layer with nn.Module wrapper layer.
 
   Attributes:

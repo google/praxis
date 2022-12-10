@@ -23,7 +23,7 @@ from praxis import pytypes
 JTensor = pytypes.JTensor
 
 
-class BaseActivation(base_layer.FiddleBaseLayer):
+class BaseActivation(base_layer.BaseLayer):
   """Base class for activation functions."""
 
   def __call__(self, inputs: JTensor) -> JTensor:

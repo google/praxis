@@ -33,7 +33,7 @@ NestedMap = py_utils.NestedMap
 SplitDimsMapping = pytypes.SplitDimsMapping
 sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 
@@ -57,7 +57,7 @@ def _causal_padding(size: int, filter_shape: int, filter_stride: int) -> int:
     return max(filter_shape - (size % filter_stride), 0)
 
 
-class Conv2D(base_layer.FiddleBaseLayer):
+class Conv2D(base_layer.BaseLayer):
   """Conv2D with support of SAME/VALID paddings.
 
   Attributes:
@@ -241,7 +241,7 @@ class Conv2D(base_layer.FiddleBaseLayer):
     return outputs
 
 
-class Conv3D(base_layer.FiddleBaseLayer):
+class Conv3D(base_layer.BaseLayer):
   """Conv3D with support of SAME/VALID paddings.
 
   Attributes:
@@ -552,7 +552,7 @@ class ConvBNActWithPadding(ConvBNAct):
     return outputs, out_padding
 
 
-class BaseDepthwiseConv1D(base_layer.FiddleBaseLayer):
+class BaseDepthwiseConv1D(base_layer.BaseLayer):
   """Base class for Depthwise 1D convolution.
 
   Attributes:
@@ -596,7 +596,7 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
   # w - width
   # i - in_channels
   # m - channel_multiplier
-  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+  class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -688,7 +688,7 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
     return out
 
 
-class LightConv1D(base_layer.FiddleBaseLayer):
+class LightConv1D(base_layer.BaseLayer):
   """Lightweight conv layer.
 
   architecture::
@@ -740,7 +740,7 @@ class LightConv1D(base_layer.FiddleBaseLayer):
   # m - channel_multiplier
   # b - batch_size
   # l - seq_len
-  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+  class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -750,7 +750,7 @@ class LightConv1D(base_layer.FiddleBaseLayer):
     df: SplitDimsMapping = None
     him: SplitDimsMapping = None
 
-  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:

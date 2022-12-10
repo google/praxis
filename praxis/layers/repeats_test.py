@@ -40,7 +40,7 @@ AUX_LOSS = base_layer.AUX_LOSS
 DECODE_CACHE = base_layer.DECODE_CACHE
 
 
-class FeedForward(base_layer.FiddleBaseLayer):
+class FeedForward(base_layer.BaseLayer):
   """Feedforward layer.
 
   Attributes:
@@ -76,7 +76,7 @@ class FeedForward(base_layer.FiddleBaseLayer):
     return out
 
 
-class RepeatCalledTwice(base_layer.FiddleBaseLayer):
+class RepeatCalledTwice(base_layer.BaseLayer):
 
   def setup(self):
     sub_p = pax_fiddle.Config(FeedForward, input_dim=2, output_dim=2)
@@ -92,7 +92,7 @@ class RepeatCalledTwice(base_layer.FiddleBaseLayer):
     return x
 
 
-class Decoder(base_layer.FiddleBaseLayer):
+class Decoder(base_layer.BaseLayer):
   """Decoder layer.
 
   Attributes:

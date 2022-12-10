@@ -44,7 +44,7 @@ WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
@@ -224,7 +224,7 @@ def _get_sentence_embeddings(inputs: JTensor, segment_ids: JTensor) -> JTensor:
   return sentence_embeddings
 
 
-class TransformerFeedForward(base_layer.FiddleBaseLayer):
+class TransformerFeedForward(base_layer.BaseLayer):
   """Transformer feedforward layer with residual connection and dropout.
 
   Attributes:
@@ -281,7 +281,7 @@ class TransformerFeedForward(base_layer.FiddleBaseLayer):
   norm_policy: str = 'pre'
   internal_gshard_variance_scaling_fan_in_init: bool = False
 
-  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+  class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -291,7 +291,7 @@ class TransformerFeedForward(base_layer.FiddleBaseLayer):
     ffn0: SplitDimsMapping = None
     ffn1: SplitDimsMapping = None
 
-  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -458,7 +458,7 @@ class TransformerFeedForward(base_layer.FiddleBaseLayer):
     return projected_inputs
 
 
-class TransformerFeedForwardMoe(base_layer.FiddleBaseLayer):
+class TransformerFeedForwardMoe(base_layer.BaseLayer):
   """A sharded MoE Layer.
 
   This is a drop-in replacement of the transformer feedforward layer. It is a
@@ -567,7 +567,7 @@ class TransformerFeedForwardMoe(base_layer.FiddleBaseLayer):
   # H - hidden dim
   # S - sequence dim
 
-  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+  class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -582,7 +582,7 @@ class TransformerFeedForwardMoe(base_layer.FiddleBaseLayer):
     emh: SplitDimsMapping = None
     ehm: SplitDimsMapping = None
 
-  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -1024,7 +1024,7 @@ class TransformerFeedForwardMoe(base_layer.FiddleBaseLayer):
     return out
 
 
-class Transformer(base_layer.FiddleBaseLayer):
+class Transformer(base_layer.BaseLayer):
   """Transformer layer with multi-headed attention.
 
   Attributes:
@@ -1413,7 +1413,7 @@ class Transformer(base_layer.FiddleBaseLayer):
         max_prefix_size, right_align_fn)
 
 
-class StackedTransformer(base_layer.FiddleBaseLayer):
+class StackedTransformer(base_layer.BaseLayer):
   """A stack of Transformer layers.
 
   Attributes:
@@ -1733,7 +1733,7 @@ class StackedTransformer(base_layer.FiddleBaseLayer):
                                                  right_align_fn)
 
 
-class StackedTransformerRepeated(base_layer.FiddleBaseLayer):
+class StackedTransformerRepeated(base_layer.BaseLayer):
   """A StackedTransformer implemented using the generic Repeat.
 
   Attributes:
@@ -1752,7 +1752,7 @@ class StackedTransformerRepeated(base_layer.FiddleBaseLayer):
   repeat_layer_name: str = 'repeat'
   sublayer_name: str = 'sub'
 
-  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+  class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -1892,7 +1892,7 @@ class StackedTransformerRepeated(base_layer.FiddleBaseLayer):
         max_prefix_size, right_align_fn)
 
 
-class PipelinedTransformer(base_layer.FiddleBaseLayer):
+class PipelinedTransformer(base_layer.BaseLayer):
   """A pipelined Transformer.
 
   Attributes:
@@ -1917,7 +1917,7 @@ class PipelinedTransformer(base_layer.FiddleBaseLayer):
   pipeline_broadcast_inputs: bool = False
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
 
-  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+  class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -1925,7 +1925,7 @@ class PipelinedTransformer(base_layer.FiddleBaseLayer):
     """
     stages: SplitDimsMapping = (None,)
 
-  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:

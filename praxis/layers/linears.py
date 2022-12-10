@@ -30,7 +30,7 @@ WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 JTensor = pytypes.JTensor
 
 
@@ -58,7 +58,7 @@ def project_last_dim(inputs: JTensor, weight: JTensor) -> JTensor:
   return jnp.einsum('...y,yz->...z', inputs, weight)
 
 
-class Linear(base_layer.FiddleBaseLayer):
+class Linear(base_layer.BaseLayer):
   """Linear layer without bias.
 
   Attributes:
@@ -99,7 +99,7 @@ class Linear(base_layer.FiddleBaseLayer):
     return out
 
 
-class Bias(base_layer.FiddleBaseLayer):
+class Bias(base_layer.BaseLayer):
   """Bias layer.
 
   Attributes:
@@ -133,7 +133,7 @@ class Bias(base_layer.FiddleBaseLayer):
     return inputs + self.theta.b
 
 
-class FeedForward(base_layer.FiddleBaseLayer):
+class FeedForward(base_layer.BaseLayer):
   """Feedforward layer with activation.
 
   Attributes:
@@ -188,7 +188,7 @@ class FeedForward(base_layer.FiddleBaseLayer):
     return output
 
 
-class MLPBlock(base_layer.FiddleBaseLayer):
+class MLPBlock(base_layer.BaseLayer):
   """Feedforward layer with activation.
 
   Attributes:
@@ -238,7 +238,7 @@ class MLPBlock(base_layer.FiddleBaseLayer):
     return output
 
 
-class StackingOverTime(base_layer.FiddleBaseLayer):
+class StackingOverTime(base_layer.BaseLayer):
   """Stacking applied along the time axis.
 
   At each time step of an input sequence, elements are stacked over the

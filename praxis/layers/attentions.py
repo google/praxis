@@ -39,7 +39,7 @@ WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 NestedInt = pytypes.NestedInt
@@ -351,7 +351,7 @@ def _make_local_mask(seq_len: int, block_size: int, left_context: int,
   return valid_atten
 
 
-class PerDimScale(base_layer.FiddleBaseLayer):
+class PerDimScale(base_layer.BaseLayer):
   """A layer to scale individual dims of the input.
 
   Attributes:
@@ -383,7 +383,7 @@ class PerDimScale(base_layer.FiddleBaseLayer):
     return inputs * scale
 
 
-class RelativeBias(base_layer.FiddleBaseLayer):
+class RelativeBias(base_layer.BaseLayer):
   """A layer for Relative Attention Bias.
 
   Paper: https://aclanthology.org/N18-2074.pdf.
@@ -552,7 +552,7 @@ class RelativeBias(base_layer.FiddleBaseLayer):
     return relative_bias
 
 
-class AttentionProjection(base_layer.FiddleBaseLayer):
+class AttentionProjection(base_layer.BaseLayer):
   """Layer that computes multi heads projection.
 
   This layer is expected to be used within DotProductAttention below.
@@ -691,7 +691,7 @@ class AttentionProjection(base_layer.FiddleBaseLayer):
     return ret
 
 
-class CombinedQKVProjectionLayer(base_layer.FiddleBaseLayer):
+class CombinedQKVProjectionLayer(base_layer.BaseLayer):
   """Layer that computes QKV projection with a combined weight.
 
   It may lead to faster collectives and step-time on TPU.
@@ -821,7 +821,7 @@ class CombinedQKVProjectionLayer(base_layer.FiddleBaseLayer):
     return query_proj, key_proj, value_proj
 
 
-class DotProductAttention(base_layer.FiddleBaseLayer):
+class DotProductAttention(base_layer.BaseLayer):
   """Dot-product attention with multiple attention heads.
 
   This implementation heavily uses einsum to be efficient on TPUs.  We use the
@@ -937,7 +937,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
   # b - batch_size
   # l - seq_len
 
-  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+  class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -949,7 +949,7 @@ class DotProductAttention(base_layer.FiddleBaseLayer):
     proj: SplitDimsMapping = None
     dconv: SplitDimsMapping = None
 
-  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -2844,7 +2844,7 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     return term_ac + term_bd
 
 
-class CausalDepthwiseConv1D(base_layer.FiddleBaseLayer):
+class CausalDepthwiseConv1D(base_layer.BaseLayer):
   """Causal depth-wise convolution applied to a 1-d sequence as in Primer.
 
   See https://arxiv.org/abs/2109.08668 for more details.

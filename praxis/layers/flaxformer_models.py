@@ -55,10 +55,10 @@ PyTreeDef = type(jax.tree_util.tree_structure(None))
 SampleDecoderHParams = decoder_hparams.SampleDecoderHParams
 DecoderHParams = decoder_hparams.DecoderHParams
 GreedyDecoderHParams = decoder_hparams.GreedyDecoderHParams
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 
-class FlaxFormerDecoder(base_layer.FiddleBaseLayer):
+class FlaxFormerDecoder(base_layer.BaseLayer):
   """A wrapper of a Flaxformer decoder.
 
   This model architecture is derived from the following gin config:
@@ -253,7 +253,7 @@ class FlaxFormerDecoder(base_layer.FiddleBaseLayer):
     return self.dec(*args, **kwargs)
 
 
-class EncoderDecoder(base_layer.FiddleBaseLayer):
+class EncoderDecoder(base_layer.BaseLayer):
   """A wrapper of a T5 Encoder Decoder.
 
   Attributes:
@@ -915,14 +915,13 @@ class EncoderDecoderModel(base_model.BaseModel):
     # Beam search returns [n_batch, n_beam, n_length] with beam dimension sorted
     # in increasing order of log-probability.
     # Return the highest scoring beam sequence.
-    # pyformat: disable
+# pyformat: disable
     decode_out = (
         NestedMap(num_decoded=(num_decodes, jnp.array(1, jnp.float32))),
         NestedMap(output_ids=decodes[:, -1, :],
                   logprobs=scores[:, -1],
                   input_batch=input_batch),
-        NestedMap())
-    # pyformat: enable
+        NestedMap())    # pyformat: enable
     return decode_out
 
   def process_decode_out(self, input_obj: base_input.BaseInput,

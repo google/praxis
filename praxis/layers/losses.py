@@ -26,7 +26,7 @@ WeightInit = base_layer.WeightInit
 JTensor = pytypes.JTensor
 
 
-class BiTemperedLoss(base_layer.FiddleBaseLayer):
+class BiTemperedLoss(base_layer.BaseLayer):
   """Bi-tempered logitstic loss.
 
   Bi-Tempered logistic loss is a generalized softmax cross-entropy loss function

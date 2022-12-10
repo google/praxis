@@ -30,7 +30,7 @@ from praxis.layers import poolings
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 
@@ -49,7 +49,7 @@ def _vanilla_block_conv_params_default():
       params_init=base_layer.WeightInit.ScaledDeltaOrthogonal(1.0))
 
 
-class VanillaBlock(base_layer.FiddleBaseLayer):
+class VanillaBlock(base_layer.BaseLayer):
   """Vanilla Block.
 
   Attributes:
@@ -130,7 +130,7 @@ def _vanilla_net_conv_params_default():
       params_init=base_layer.WeightInit.ScaledDeltaOrthogonal(1.0))
 
 
-class VanillaNet(base_layer.FiddleBaseLayer):
+class VanillaNet(base_layer.BaseLayer):
   """VanillaNet model without skip-connection or batch-norm mirroring ResNets.
 
   https://openreview.net/forum?id=U0k7XNTiFEq

@@ -28,7 +28,7 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
 
-class MaskedLmDataAugmenter(base_layer.FiddleBaseLayer):
+class MaskedLmDataAugmenter(base_layer.BaseLayer):
   """Performs data augmentation according to the BERT paper.
 
   https://arxiv.org/pdf/1810.04805.pdf
@@ -115,7 +115,7 @@ class MaskedLmDataAugmenter(base_layer.FiddleBaseLayer):
 
 
 # TODO(meadowlark): Add temporal warping layer.
-class TemporalShifting(base_layer.FiddleBaseLayer):
+class TemporalShifting(base_layer.BaseLayer):
   """Shifts audio signals by a random amount during training.
 
   Attributes:

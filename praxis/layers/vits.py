@@ -53,7 +53,7 @@ from praxis.layers import transformers
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 WeightHParams = base_layer.WeightHParams
 WeightInit = base_layer.WeightInit
 sub_config_field = base_hyperparams.sub_config_field
@@ -158,7 +158,7 @@ def interpolate_embedding_2d(emb, source_emb_shape, target_emb_shape):
   return target_emb
 
 
-class VitEntryLayers(base_layer.FiddleBaseLayer):
+class VitEntryLayers(base_layer.BaseLayer):
   """Entry block of ViT.
 
   It performs the following operations:
@@ -292,7 +292,7 @@ class VitEntryLayers(base_layer.FiddleBaseLayer):
     return features
 
 
-class VitExitLayers(base_layer.FiddleBaseLayer):
+class VitExitLayers(base_layer.BaseLayer):
   """Exit block of ViT.
 
   It consists of layer norm, pooling, projection and dropout.
@@ -377,7 +377,7 @@ class VitExitLayers(base_layer.FiddleBaseLayer):
     return inputs
 
 
-class VisionTransformer(base_layer.FiddleBaseLayer):
+class VisionTransformer(base_layer.BaseLayer):
   """Vision transformer model.
 
   This class follows a minimalistic design pattern. Users need to configure

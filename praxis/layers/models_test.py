@@ -41,7 +41,7 @@ RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
 
 
-class MockLM(base_layer.FiddleBaseLayer):
+class MockLM(base_layer.BaseLayer):
   """Mock l m.
 
   Attributes:

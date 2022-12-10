@@ -29,12 +29,12 @@ from praxis import test_utils
 from praxis.layers import linears
 
 instantiate = base_layer.instantiate
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 
 
-class FooShared(base_layer.FiddleBaseLayer):
+class FooShared(base_layer.BaseLayer):
   linear1: linears.Linear = base_layer.instance_field(linears.Linear)
   linear2: linears.Linear = base_layer.instance_field(linears.Linear)
   linear_private_tpl: LayerTpl = template_field(linears.Linear)
@@ -137,7 +137,7 @@ class SharedLayersTest(test_utils.TestCase):
                  base_hyperparams.nested_struct_to_text(hyper_params))
 
 
-class SimpleShared01(base_layer.FiddleBaseLayer):
+class SimpleShared01(base_layer.BaseLayer):
   """A layer to test weight sharing."""
   sub1_tpl: LayerTpl = sub_config_field(None)
   sub2_tpl: LayerTpl = sub_config_field(None)

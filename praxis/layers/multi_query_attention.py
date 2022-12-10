@@ -32,13 +32,13 @@ WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 JTensor = pytypes.JTensor
 
 SplitDimsMapping = pytypes.SplitDimsMapping
 
 
-class OneHeadedAttentionProjection(base_layer.FiddleBaseLayer):
+class OneHeadedAttentionProjection(base_layer.BaseLayer):
   """Layer that computes projection with one head.
 
   This layer is expected to be used within MultiQueryAttention below.
@@ -101,7 +101,7 @@ class OneHeadedAttentionProjection(base_layer.FiddleBaseLayer):
     return ret
 
 
-class MultiQueryDotProductAttention(base_layer.FiddleBaseLayer):
+class MultiQueryDotProductAttention(base_layer.BaseLayer):
   """Dot-product attention sharing keys and values across heads.
 
   This implementation heavily uses einsum to be efficient on TPUs.  We use the
@@ -190,7 +190,7 @@ class MultiQueryDotProductAttention(base_layer.FiddleBaseLayer):
   # b - batch_size
   # l - seq_len
 
-  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+  class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -203,7 +203,7 @@ class MultiQueryDotProductAttention(base_layer.FiddleBaseLayer):
     dconv: SplitDimsMapping = None
     proj_headless: SplitDimsMapping = None
 
-  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:

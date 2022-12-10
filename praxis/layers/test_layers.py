@@ -29,12 +29,12 @@ from praxis.layers import transformers
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
-LayerTpl = pax_fiddle.Config[base_layer.FiddleBaseLayer]
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 
 
-class ProjectionLayer(base_layer.FiddleBaseLayer):
+class ProjectionLayer(base_layer.BaseLayer):
   """A simple projection layer.
 
   Attributes:
@@ -56,14 +56,14 @@ class ProjectionLayer(base_layer.FiddleBaseLayer):
     return self.bias(self.linear(inputs))
 
 
-class AddOneLayer(base_layer.FiddleBaseLayer):
+class AddOneLayer(base_layer.BaseLayer):
   """A layers without any variables."""
 
   def __call__(self, inputs: JTensor) -> JTensor:
     return inputs + 1.0
 
 
-class TestLayer(base_layer.FiddleBaseLayer):
+class TestLayer(base_layer.BaseLayer):
   """A test layer which is a composite of multiple layers."""
 
   def setup(self) -> None:
@@ -92,7 +92,7 @@ class TestLayer(base_layer.FiddleBaseLayer):
     return x6
 
 
-class VarUnusedLayer(base_layer.FiddleBaseLayer):
+class VarUnusedLayer(base_layer.BaseLayer):
   """A test where some of the vars are not used in fprop.
 
   Attributes:

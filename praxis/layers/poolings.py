@@ -27,7 +27,7 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
 
-class Pooling(base_layer.FiddleBaseLayer):
+class Pooling(base_layer.BaseLayer):
   """Pooling layer, which by default performs max pooling.
 
   Attributes:
@@ -168,7 +168,7 @@ class Pooling(base_layer.FiddleBaseLayer):
     return out, paddings
 
 
-class GlobalPooling(base_layer.FiddleBaseLayer):
+class GlobalPooling(base_layer.BaseLayer):
   """Performs a simple global pooling over the input with optional paddings.
 
   Raises:

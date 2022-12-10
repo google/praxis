@@ -28,7 +28,7 @@ JTensor = pytypes.JTensor
 
 
 # TODO(nanxinchen): add time wrap and frequency wrap
-class SpectrumAugmenter(base_layer.FiddleBaseLayer):
+class SpectrumAugmenter(base_layer.BaseLayer):
   """Performs data augmentation as according to the SpecAug paper.
 
   https://arxiv.org/pdf/1904.08779.pdf

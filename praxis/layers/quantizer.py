@@ -89,7 +89,7 @@ def quantize_vector(latent: JTensor, codebook: JTensor):
   return quantized, codes, one_hot
 
 
-class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
+class RandomVectorQuantizer(base_layer.BaseLayer):
   """Random quantization for BEST-RQ: https://arxiv.org/pdf/2202.01855.pdf.
 
   Symbols in comments:
@@ -137,7 +137,7 @@ class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
   normalize_codebook: bool = False
   normalize_latent_per_group: bool = True
 
-  class WeightSharding(base_layer.FiddleBaseLayer.WeightSharding):
+  class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
 
     Attributes:
@@ -146,7 +146,7 @@ class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
     """
     vgh: SplitDimsMapping = None
 
-  class ActivationSharding(base_layer.FiddleBaseLayer.ActivationSharding):
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
 
     Attributes:
@@ -339,7 +339,7 @@ class RandomVectorQuantizer(base_layer.FiddleBaseLayer):
     return jax.lax.stop_gradient(jnp.reshape(latent, [b, t, -1]))
 
 
-class VectorQuantizer(base_layer.FiddleBaseLayer):
+class VectorQuantizer(base_layer.BaseLayer):
   """The VQ-VAE sequence vector quantizer.
 
   https://arxiv.org/abs/1711.00937

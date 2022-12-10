@@ -116,7 +116,7 @@ class ActivationType(str, enum.Enum):
   SOFTMAX = 'SOFTMAX'
 
 
-class BregmanPCA(base_layer.FiddleBaseLayer):
+class BregmanPCA(base_layer.BaseLayer):
   """Implements an online Bregman PCA layer.
 
   Bregman PCA is a generalized form of standard PCA that replaces the squared
