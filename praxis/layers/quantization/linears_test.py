@@ -232,7 +232,7 @@ class QuantizeLinearTest(test_utils.TestCase):
         types,
         {base_layer.PARAMS: {
             'w': jnp.int8,
-            'w_quantized_scale': jnp.bfloat16
+            'w_quantized_scale': p.dtype
         }})
 
     # Check ParititionSpecs.
@@ -280,7 +280,7 @@ class QuantizeLinearTest(test_utils.TestCase):
             [-2, 3, 2],
             [-1, 2, -3]
         ], dtype=np.int8)
-    expected_scale = jnp.array([0.5, 1, 2], dtype=jnp.bfloat16)
+    expected_scale = jnp.array([0.5, 1, 2], dtype=p.dtype)
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)

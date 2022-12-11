@@ -16,11 +16,11 @@
 """Tests for TensorQuantizer in Quantization-aware Training."""
 
 from typing import Tuple
-from praxis import pax_fiddle
 
 from absl.testing import absltest
 import jax
 from jax import numpy as jnp
+from praxis import pax_fiddle
 from praxis import pytypes
 from praxis import test_utils
 from praxis.layers.quantization import aqt
@@ -33,8 +33,10 @@ class AqtTest(test_utils.TestCase):
   def get_quantized_and_scale(self, p_quant, sample) -> Tuple[JTensor, JTensor]:
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
-    scale = quant.apply(state, sample, [0, 1], method=quant.get_quant_scale)
-    qx = quant.apply(state, sample * scale, method=quant.to_quant)
+    scale = quant.apply(
+        state, sample, [0, 1], jnp.float32, method=quant.get_quant_scale
+    )
+    qx = quant.apply(state, sample * scale, jnp.float32, method=quant.to_quant)
     qx = qx / scale
 
     return qx, scale

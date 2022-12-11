@@ -163,18 +163,25 @@ def reduce_einsum_weight_precision(
   return t, scale
 
 
-def fakequant_einsum(eqn: str, t: JTensor) -> JTensor:
+def fakequant_einsum(eqn: str,
+                     t: JTensor,
+                     calculation_type: jnp.dtype = jnp.bfloat16) -> JTensor:
   """Nudges weight of einsum with FakeQuant.
 
   Args:
     eqn: the equantion for the einsum. Determines the channel dimension.
     t: the weight tensor for the einsum.
+    calculation_type: the type for calculation.
 
   Returns:
     The nudged weight tensor.
   """
   q, scale = reduce_einsum_weight_precision(
-      eqn, t, squeeze=False, need_gradient=True)
+      eqn,
+      t,
+      calculation_type=calculation_type,
+      squeeze=False,
+      need_gradient=True)
   return jnp.multiply(q, scale).astype(t.dtype)
 
 
@@ -219,13 +226,16 @@ def _dot_general_aqt(lhs, rhs, dimension_numbers, should_int8_quantize):
 
   def dot_general_int(ops):
     lhs_, rhs_ = ops
+    # The dtype of output is determined by the dtype of activation if the
+    # activation and weight have different dtypes.
+    input_dtype = lhs_.dtype
     lhs_int = lhs_.astype(jnp.int8)
     rhs_int = rhs_.astype(jnp.int8)
     return lax.dot_general(
         lhs_int,
         rhs_int,
         dimension_numbers=dimension_numbers,
-        preferred_element_type=jnp.int32).astype(jnp.float32)
+        preferred_element_type=jnp.int32).astype(input_dtype)
 
   if should_int8_quantize:
     return dot_general_int((lhs, rhs))
@@ -298,24 +308,26 @@ def dot_general(
     # TODO(jihwanlee): Stats should be updated during training.
     pass
 
+  input_dtype = lhs.dtype
   lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
 
-  lhs_scale = lhs_quantizer.get_quant_scale(lhs, lhs_contract_dims)
+  lhs_scale = lhs_quantizer.get_quant_scale(lhs, lhs_contract_dims, input_dtype)
   lhs = lhs_scale * lhs
-  lhs = lhs_quantizer.to_quant(lhs)
+  lhs = lhs_quantizer.to_quant(lhs, input_dtype)
 
   if rhs_quantized is None:
-    rhs_scale = rhs_quantizer.get_quant_scale(rhs, rhs_contract_dims)
+    rhs_scale = rhs_quantizer.get_quant_scale(rhs, rhs_contract_dims,
+                                              input_dtype)
     rhs = rhs_scale * rhs
-    rhs = rhs_quantizer.to_quant(rhs)
+    rhs = rhs_quantizer.to_quant(rhs, input_dtype)
   elif rhs is None:
     assert is_eval, 'Expected inference when rhs_quantized is passed.'
     # If rhs_quantized is passed, then it means the rhs is already quantized and
     # its scale is provided. Thus, no need to get scale and quantize rhs again.
     rhs, rhs_scale = rhs_quantized
     # Make sure lhs and rhs have the same dtype.
-    rhs = rhs.astype(lhs.dtype)
-    rhs_scale = rhs_scale.astype(lhs_scale.dtype)
+    rhs = rhs.astype(input_dtype)
+    rhs_scale = rhs_scale.astype(input_dtype)
     # Restore the contracting dimension.
     rhs_scale = jnp.expand_dims(rhs_scale, axis=rhs_contract_dims)
   else:

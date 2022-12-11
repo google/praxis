@@ -50,9 +50,9 @@ class TensorQuantizer(base_layer.BaseLayer):
     pass
 
   def _get_clip_bound(self) -> float:
-    bucket_count = 2**self.precision
-    bucket_count -= 1
-    return bucket_count / 2
+    bucket_count = 2.0**self.precision
+    bucket_count -= 1.0
+    return bucket_count / 2.0
 
   def _safe_clip_bound(self) -> float:
     cb_unsafe = self._get_clip_bound()
@@ -60,9 +60,12 @@ class TensorQuantizer(base_layer.BaseLayer):
     assert cb < cb_unsafe, 'Internal error, epsilon too small.'
     return cb
 
-  def get_quant_scale(self, sample, contract_dims) -> JTensor:
+  def get_quant_scale(self,
+                      sample,
+                      contract_dims,
+                      dtype=jnp.bfloat16) -> JTensor:
     if self.precision is None:
-      return jnp.ones(shape=(1,) * sample.ndim)
+      return jnp.ones(shape=(1,) * sample.ndim, dtype=dtype)
 
     x_bound = jnp.max(
         jnp.abs(sample),
@@ -70,19 +73,19 @@ class TensorQuantizer(base_layer.BaseLayer):
         keepdims=True)
     clip_bound = self._get_clip_bound()
     scale = clip_bound / x_bound
-    return scale
+    return scale.astype(dtype)
 
   def update(self, sample: JTensor):
     # This function is no-op for now. Once static quantization is supported,
     # statistics update will be performed through this function.
     pass
 
-  def to_quant(self, x: JTensor):
+  def to_quant(self, x: JTensor, dtype=jnp.bfloat16):
     if self.precision is None:
-      return x
+      return x.astype(dtype)
 
     clip_bound = self._safe_clip_bound()
     x = jnp.clip(x, -clip_bound, clip_bound)
     x = _pass_through(x + 0.5, jnp.floor)
 
-    return x
+    return x.astype(dtype)

@@ -154,7 +154,7 @@ class Linear(linears.Linear):
             is_eval=self.do_eval)
       elif self.quantization.quantization_type == QuantizationType.FQ:
         inputs = operations.fakequant_activation(inputs)
-        w = operations.fakequant_einsum(eqn, w)
+        w = operations.fakequant_einsum(eqn, w, calculation_type=self.dtype)
         out = linears.project_last_dim(inputs, w)
       else:
         out = linears.project_last_dim(inputs, w)
@@ -226,26 +226,24 @@ class Linear(linears.Linear):
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     eqn = 'xy,yz->xz'
     if self.quantization.quantization_type == QuantizationType.PTQ:
-      if (
-          self.quantization.act_params is not None
-          and self.quantization.act_params.stats_config is not None
-      ):
+      if (self.quantization.act_params is not None and
+          self.quantization.act_params.stats_config is not None):
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
       else:
         # quantize only weight for activation == NONE and DYNAMIC
-        q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
+        q_w, q_s = operations.reduce_einsum_weight_precision(
+            eqn, theta.w, calculation_type=self.dtype)
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
     elif self.quantization.quantization_type == QuantizationType.FQ:
-      if (
-          self.quantization.act_params is not None
-          and self.quantization.act_params.stats_config is not None
-      ):
+      if (self.quantization.act_params is not None and
+          self.quantization.act_params.stats_config is not None):
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
       else:
         # quantize only weight for activation == NONE and DYNAMIC
-        q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
+        q_w, q_s = operations.reduce_einsum_weight_precision(
+            eqn, theta.w, calculation_type=self.dtype)
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
     elif self.quantization.quantization_type == QuantizationType.AQT:
       if (
@@ -257,8 +255,8 @@ class Linear(linears.Linear):
       else:
         # quantize only weight for activation == NONE and DYNAMIC
         q_s = self.weight_quantizer.get_quant_scale(
-            theta.w, contract_dims=[0])
-        q_s = jnp.squeeze(q_s).astype(jnp.bfloat16)
+            theta.w, contract_dims=[0], dtype=self.dtype)
+        q_s = jnp.squeeze(q_s)
         q_w = q_s * theta.w
-        q_w = self.weight_quantizer.to_quant(q_w).astype(jnp.int8)
+        q_w = self.weight_quantizer.to_quant(q_w, dtype=jnp.int8)
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

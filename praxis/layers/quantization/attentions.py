@@ -267,16 +267,17 @@ class AttentionProjection(attentions.AttentionProjection):
 
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type == QuantizationType.PTQ:
-      q_w, q_s = operations.reduce_einsum_weight_precision(eqn, self.theta.w)
+      q_w, q_s = operations.reduce_einsum_weight_precision(
+          eqn, self.theta.w, calculation_type=self.dtype)
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.convert_einsum_eqn_to_dimension_numbers(
           eqn)
       weight_contract_dims = dimension_numbers[0][1]
       q_s = self.weight_quantizer.get_quant_scale(
-          self.theta.w, contract_dims=weight_contract_dims)
+          self.theta.w, contract_dims=weight_contract_dims, dtype=self.dtype)
       q_w = q_s * self.theta.w
-      q_w = self.weight_quantizer.to_quant(q_w).astype(jnp.int8)
-      q_s = jnp.squeeze(q_s).astype(self.dtype)
+      q_w = self.weight_quantizer.to_quant(q_w, dtype=jnp.int8)
+      q_s = jnp.squeeze(q_s)
     else:
       raise ValueError(
           f'Usupported quantization_type {self.quantization.quantization_type}'
@@ -503,16 +504,17 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     eqn = 'AD,KDNH->KANH'
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type == QuantizationType.PTQ:
-      q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
+      q_w, q_s = operations.reduce_einsum_weight_precision(
+          eqn, theta.w, calculation_type=self.dtype)
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.convert_einsum_eqn_to_dimension_numbers(
           eqn)
       weight_contract_dims = dimension_numbers[0][1]
       q_s = self.weight_quantizer.get_quant_scale(
-          self.theta.w, contract_dims=weight_contract_dims)
+          self.theta.w, contract_dims=weight_contract_dims, dtype=self.dtype)
       q_w = q_s * self.theta.w
-      q_w = self.weight_quantizer.to_quant(q_w).astype(jnp.int8)
-      q_s = jnp.squeeze(q_s).astype(self.dtype)
+      q_w = self.weight_quantizer.to_quant(q_w, dtype=jnp.int8)
+      q_s = jnp.squeeze(q_s)
     else:
       raise ValueError(
           f'Usupported quantization_type {self.quantization.quantization_type}'
