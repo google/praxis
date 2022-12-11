@@ -553,8 +553,9 @@ def scaled_delta_orthogonal(key: JTensor,
 
 
 # Caller ensures that `prng_key` is different for different init_var calls.
-def init_var(var_full_name: str, var_p: WeightHParams,
-             prng_key: PRNGKey) -> JTensor:
+def init_var(
+    var_p: WeightHParams, prng_key: PRNGKey, var_full_name: str
+) -> JTensor:
   """Creates an initial value of a var."""
   method = var_p.init.method
   scale = var_p.init.scale
@@ -1901,11 +1902,15 @@ class BaseLayer(nn.Module):
     if var_hparams.dtype is None:
       var_hparams.dtype = p.dtype
 
+    full_name = self.scope.path_text + '/' + name
     if p.mesh_shape is not None:
       if (len([dim for dim in var_hparams.shape if dim > 1]) > 1 and
           var_hparams.tensor_split_dims_mapping is None):
-        logging.warning('tensor_split_dims_mapping missing for %s: shape=%s',
-                        self.scope.path_text + '/' + name, var_hparams.shape)
+        logging.warning(
+            'tensor_split_dims_mapping missing for %s: shape=%s',
+            full_name,
+            var_hparams.shape,
+        )
       if var_hparams.tensor_split_dims_mapping is not None:
         assert len(var_hparams.tensor_split_dims_mapping) == len(
             var_hparams.shape)
@@ -1932,7 +1937,7 @@ class BaseLayer(nn.Module):
     if trainable:
       # This is a param in Flax terminology.
       def _initializer_fn(prng_key: PRNGKey):
-        value = init_var(name, var_hparams, prng_key)
+        value = init_var(var_hparams, prng_key, full_name)
         return BoxedParam(value=value, meta=var_hparams)
 
       self.param(name, _initializer_fn)
@@ -1945,7 +1950,7 @@ class BaseLayer(nn.Module):
         # Use params rng stream to avoid having caller to provide one for
         # non-trainable variables.
         prng_key = self.make_rng(PARAMS)
-        value = init_var(name, var_hparams, prng_key)
+        value = init_var(var_hparams, prng_key, full_name)
         return BoxedParam(value=value, meta=var_hparams)
 
       # Non-trainable variables go into Flax nontrainable var collection.
