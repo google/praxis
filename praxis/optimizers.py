@@ -1189,6 +1189,7 @@ class DistributedShampoo(BaseOptimizer):
       decoupled_weight_decay_from_momentum: Decouple weight decay from momentum.
       decoupled_learning_rate_from_momentum: Decouple learning rate from
         momentum.
+      eigh: If True, uses eigendecomposition to compute inverse-pth roots.
     """
     block_size: int = 1024
     beta1: float = 0.9
@@ -1225,6 +1226,7 @@ class DistributedShampoo(BaseOptimizer):
     summarize_training_metrics: bool = True
     decoupled_weight_decay_from_momentum: bool = True
     decoupled_learning_rate_from_momentum: bool = False
+    eigh: bool = False
 
   @classmethod
   def HParamsImageClassification(cls) -> DistributedShampoo.HParams:  # pylint: disable=invalid-name
@@ -1338,6 +1340,7 @@ class DistributedShampoo(BaseOptimizer):
         decoupled_weight_decay=p.decoupled_weight_decay_from_momentum,
         decoupled_learning_rate=p.decoupled_learning_rate_from_momentum,
         generate_training_metrics=p.summarize_training_metrics,
+        eigh=p.eigh,
     )
 
 
