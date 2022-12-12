@@ -348,6 +348,20 @@ class PyUtilsTest(test_utils.TestCase):
     restored_p1 = flax.serialization.from_state_dict(p2, state_dict)
     self.assertEqual(restored_p1, p1)
 
+  @parameterized.named_parameters(
+      ('_pad0', 0),
+      ('_pad1', 1),
+  )
+  def test_pad_or_trim_to(self, pad_val):
+    key = jax.random.PRNGKey(seed=123456)
+    x = jax.random.normal(key, shape=(3, 3))
+    shape = [4, 6]
+    padded_x = py_utils.pad_or_trim_to(x, shape, pad_val=pad_val)
+    self.assertEqual(padded_x.shape, (4, 6))
+    self.assertAllClose(x, padded_x[:3, :3])
+    sum_diff = jnp.sum(padded_x) - jnp.sum(x)
+    self.assertAllClose(sum_diff, pad_val * 15.0)
+
 
 if __name__ == '__main__':
   absltest.main()

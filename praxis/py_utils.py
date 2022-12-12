@@ -940,6 +940,31 @@ def get_enumeration_id(example: Dict[str, Any],
   else:
     get_fn = lambda ex, key: int(ex[key])
 
-  return (f'{INDEX_WITHIN_SHARD_KEY}={get_fn(example, INDEX_WITHIN_SHARD_KEY)}/'
-          f'{SHARD_INDEX_KEY}={get_fn(example, SHARD_INDEX_KEY)}/'
-          f'{NUM_SHARDS_KEY}={get_fn(example, NUM_SHARDS_KEY)}')
+  return (
+      f'{INDEX_WITHIN_SHARD_KEY}={get_fn(example, INDEX_WITHIN_SHARD_KEY)}/'
+      f'{SHARD_INDEX_KEY}={get_fn(example, SHARD_INDEX_KEY)}/'
+      f'{NUM_SHARDS_KEY}={get_fn(example, NUM_SHARDS_KEY)}'
+  )
+
+
+def pad_or_trim_to(x, shape, pad_val=0):
+  """Pad and slice x to the given shape.
+
+  Args:
+    x: A tensor.
+    shape: The shape of the returned tensor.
+    pad_val: An int or float used to pad x.
+
+  Returns:
+    'x' is padded with pad_val and sliced so that the result has the given
+    shape.
+  """
+  expected_rank = len(shape)
+  assert len(x.shape) == expected_rank, (x.shape, expected_rank)
+  padings = [
+      (0, pad_shape - min(orig_shape, pad_shape))
+      for orig_shape, pad_shape in zip(x.shape, shape)
+  ]
+  x = jnp.pad(x, padings, constant_values=pad_val)
+  x = jax.lax.slice(x, [0] * expected_rank, shape)
+  return jnp.reshape(x, shape)
