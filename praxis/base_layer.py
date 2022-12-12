@@ -1336,8 +1336,9 @@ class BaseLayer(nn.Module):
 
   @staticmethod
   def copy_base_hparams(
-      source: Union[pax_fiddle.Config, _FiddleHParamsInstanceStub], 
-      target: pax_fiddle.Config):
+      source: Union[pax_fiddle.Config, BaseLayer, _FiddleHParamsInstanceStub],
+      target: pax_fiddle.Config,
+  ):
     """Copies BaseLayer configuration parameters from `source` to `target`.
 
     This is used by `self.create_child` to allow child layers to "inherit" these
@@ -1349,15 +1350,19 @@ class BaseLayer(nn.Module):
       source: The configuration object to copy parameters from.
       target: The configuration object to copy parameters to.  Mutated in-place.
     """
-    assert isinstance(source, (pax_fiddle.Config,
-                               _FiddleHParamsInstanceStub)), source
-    assert isinstance(target, (pax_fiddle.Config)), target
-    assert issubclass(source.cls, BaseLayer)
+    assert isinstance(
+        source, (pax_fiddle.Config, BaseLayer, _FiddleHParamsInstanceStub)
+    ), source
+    assert isinstance(target, pax_fiddle.Config), target
+    if isinstance(source, pax_fiddle.Config):
+      assert issubclass(fdl.get_callable(source), BaseLayer)
     assert issubclass(target.cls, BaseLayer)
     BaseLayer._copy_base_params_to_fdl_config(source, target)
 
   @staticmethod
-  def _copy_base_hparams(source: pax_fiddle.Config, target: pax_fiddle.Config):
+  def _copy_base_hparams(
+      source: Union[pax_fiddle.Config, BaseLayer], target: pax_fiddle.Config
+  ):
     if target.dtype == jnp.float32:
       target.dtype = source.dtype
     if target.fprop_dtype is None:
@@ -1379,8 +1384,9 @@ class BaseLayer(nn.Module):
       target.params_init = copy.deepcopy(source.params_init)
 
   @staticmethod
-  def _copy_base_params_to_fdl_config(source: pax_fiddle.Config,
-                                      target: pax_fiddle.Config):
+  def _copy_base_params_to_fdl_config(
+      source: Union[pax_fiddle.Config, BaseLayer], target: pax_fiddle.Config
+  ):
     # TODO(edloper): Once we start using `base_layer.instance_field`, we will
     # also need to copy base hparams to child objects in `pax_fiddle.build`
     # (because create_child won't get called for those sub-fields).
@@ -1391,14 +1397,14 @@ class BaseLayer(nn.Module):
 
     def visit(value, state: daglish.State) -> None:
       # Copy params if `value` is a BaseLayer config.
-      value_is_base_layer = (
+      value_is_base_layer = isinstance(value, BaseLayer) or (
           isinstance(value, pax_fiddle.Config)
           and isinstance(fdl.get_callable(value), type)
           and issubclass(fdl.get_callable(value), BaseLayer)
       )
       if value_is_base_layer:
         BaseLayer._copy_base_hparams(source_stack[-1], value)
-        source_stack.append(source)
+        source_stack.append(value)
 
       # Recurse to child objects (skipping fields tagged "DoNotBuild").
       # We skip DoNotBuild objects, because those are child-templates, and
@@ -1446,13 +1452,19 @@ class BaseLayer(nn.Module):
             return True
       return False
 
-    hparams = self.hparams.clone()
-    for p_name in self._hparam_fields:
-      p_value = getattr(hparams, p_name)
-      if is_sublayer_template(p_value):
+    hparam_kwargs = {}
+    for field in self._hparam_fields:
+      value = getattr(self, field)
+      if is_sublayer_template(value):
         # No need to include sub-layer template params, since the instantiated
         # sub-layer will show up in its own collection anyways.
-        setattr(hparams, p_name, None)
+        value = None
+      elif isinstance(value, BaseLayer):
+        pass  # Don't include child layers (instance_field).
+      else:
+        hparam_kwargs[field] = value
+    hparams = pax_fiddle.Config(type(self), **hparam_kwargs)
+
     self.put_variable(HYPER_PARAMS, '_hparams', WrappedHParams(hparams))
     # walk through all the attributes on self and recursively apply
     # post_init_hparams on submodules:
@@ -1471,7 +1483,8 @@ class BaseLayer(nn.Module):
   @functools.cached_property
   def _hparam_fields(self) -> Set[str]:
     """Returns a list of hyperparameter field names for `self`."""
-    return set(field.name for field in dataclasses.fields(self) if field.init)
+    return set(field.name for field in dataclasses.fields(self)
+               if field.init and field.name != 'parent')
 
   @classmethod
   def __init_subclass__(cls, **kwargs: Any):
@@ -1647,7 +1660,7 @@ class BaseLayer(nn.Module):
     with py_utils.logging_verbosity_level('FATAL'):
       context_p = JaxContext.HParams(do_eval=do_eval)
       with JaxContext.new_context(hparams=context_p):
-        if self.hparams.fprop_dtype == jnp.bfloat16:
+        if self.fprop_dtype == jnp.bfloat16:
           converted_args = jax.tree_map(_maybe_to_bfloat16_dtype, args)
           converted_kwargs = jax.tree_map(_maybe_to_bfloat16_dtype, kwargs)
         else:
@@ -1885,9 +1898,7 @@ class BaseLayer(nn.Module):
     Returns:
       The newly created variable.
     """
-    p = self.hparams
-
-    if hasattr(p, name):
+    if hasattr(self, name):
       raise AttributeError(
           f'{self.__class__}.HParams already has attribute {name}. '
           'Please rename to avoid future name collision after Fiddle migration.'
@@ -1896,14 +1907,14 @@ class BaseLayer(nn.Module):
     var_hparams = var_hparams.clone()
 
     # If users did not specify init and dtype for var_hparams, fill in from
-    # self.hparams.
+    # self.
     if var_hparams.init is None:
-      var_hparams.init = p.params_init.clone()
+      var_hparams.init = self.params_init.clone()
     if var_hparams.dtype is None:
-      var_hparams.dtype = p.dtype
+      var_hparams.dtype = self.dtype
 
     full_name = self.scope.path_text + '/' + name
-    if p.mesh_shape is not None:
+    if self.mesh_shape is not None:
       if (len([dim for dim in var_hparams.shape if dim > 1]) > 1 and
           var_hparams.tensor_split_dims_mapping is None):
         logging.warning(
@@ -1918,7 +1929,7 @@ class BaseLayer(nn.Module):
     if var_hparams.collections is None:
       var_hparams.collections = []
 
-    if (p.skip_lp_regularization and
+    if (self.skip_lp_regularization and
         WeightHParamsCollection.SKIP_LP_REGULARIZATION
         not in var_hparams.collections):
       var_hparams.collections = var_hparams.collections + [
@@ -2029,7 +2040,7 @@ class BaseLayer(nn.Module):
       )
 
     p = params.clone()
-    self.copy_base_hparams(self.hparams, p)  # mutates p in place.
+    self.copy_base_hparams(self, p)  # mutates p in place.
     p.name = name
     child = instantiate_layer(p, self.scope.root)
     self._private_children[name] = child
@@ -2118,7 +2129,7 @@ class BaseLayer(nn.Module):
           res[target] = {}
         if return_pspec:
           var_val = _weight_hparam_to_pspec(self._weight_hparams[var_name],
-                                            self.hparams.mesh_axis_names)
+                                            self.mesh_axis_names)
         res[target][var_name] = var_val
     return res
 
