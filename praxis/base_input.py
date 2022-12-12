@@ -646,6 +646,24 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
       num_samples += num_samples_remainder
     self._num_samples = num_samples
     self.num_batches = num_batches
+    if hparams.num_batches is not None:
+      if hparams.num_batches <= 0:
+        logging.warning(
+            '`num_batches` is non-positive (i.e. %d) so ignored',
+            hparams.num_batches,
+        )
+      elif hparams.num_batches > num_batches:
+        logging.warning(
+            '`num_batches` is greater than dataset capacity (%d>%d) so ignored',
+            hparams.num_batches,
+            num_batches,
+        )
+      else:
+        self.num_batches = hparams.num_batches
+        logging.warning(
+            '`num_batches` overridden to %d as requested by hparams',
+            hparams.num_batches,
+        )
     self.reset()
 
   def _update_file_random_seed(self) -> None:
@@ -689,14 +707,14 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
     # belong to other hosts.
     if remaining_samples > 0:
       for _ in range(self.hparams.num_infeed_hosts - 1):
-        super().get_next()
+        self._get_next_fn()
     return ret
 
   def reset(self):
     super().reset()
     # Skips k batches which belong to other hosts.
     for _ in range(self.hparams.infeed_host_index):
-      super().get_next()
+      self._get_next_fn()
     self._num_examples_emitted = 0
     self._num_batches_emitted = 0
 
