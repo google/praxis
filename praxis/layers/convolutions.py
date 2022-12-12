@@ -530,7 +530,7 @@ class ConvBNActWithPadding(ConvBNAct):
         pad_len = (input_length + stride - 1) // stride * stride - input_length
         out_padding = jax.lax.conv_general_dilated(
             lhs=paddings[:, :, None],
-            rhs=jnp.ones([1, 1, 1]),
+            rhs=self._cast_to_fprop_dtype(jnp.ones([1, 1, 1])),
             window_strides=self.filter_stride[:1],
             padding=[(0, pad_len)],
             rhs_dilation=self.dilations[:1],
