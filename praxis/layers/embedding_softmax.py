@@ -180,7 +180,7 @@ class FullSoftmax(base_layer.BaseLayer):
   input_dims: int = 0
   num_classes: int = 0
   soft_cap_logits: Optional[float] = 0.0
-  bi_tempered_loss_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  bi_tempered_loss_tpl: Optional[LayerTpl] = base_layer.template_field(None)
   label_smoothing_prob: float = 0.0
   label_smoothing_apply_for_eval: bool = True
   z_loss_weight: float = 0.

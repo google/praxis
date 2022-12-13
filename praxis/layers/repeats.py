@@ -78,7 +78,7 @@ class Repeat(base_layer.BaseLayer):
     sublayer_name: Name of the sublayer. This affects the checkpoint variable
       paths.
   """
-  sub_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  sub_tpl: Optional[LayerTpl] = base_layer.template_field(None)
   x_times: int = 0
   unpack_summaries: bool = False
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_NOTHING

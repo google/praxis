@@ -148,7 +148,7 @@ class LegosModel(BaseModel):
   Attributes:
     components: List of model components aggregated into a single legos model.
   """
-  components: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  components: Optional[LayerTpl] = base_layer.template_field(None)
 
   def setup(self) -> None:
     """Build the mixer from the collection of components."""

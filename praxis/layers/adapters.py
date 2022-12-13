@@ -192,7 +192,7 @@ class AdaptedTransformerFeedForward(transformers.TransformerFeedForward):
     adapter_tpl: Parameterization of adapter layer added after each block.
     mode: sequential or parallel.
   """
-  adapter_tpl: LayerTpl = base_layer.sub_config_field(None)
+  adapter_tpl: LayerTpl = base_layer.template_field(None)
   mode: str = 'sequential'
 
   def setup(self):

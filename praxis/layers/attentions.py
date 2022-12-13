@@ -923,9 +923,9 @@ class DotProductAttention(base_layer.BaseLayer):
   rotary_position_emb_tpl: Optional[LayerTpl] = sub_config_field(
       embedding_softmax.RotaryPositionalEmbedding.HParams)
   cast_rotary_position_emb: bool = True
-  relative_bias_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  relative_bias_tpl: Optional[LayerTpl] = base_layer.template_field(None)
   attention_extra_logit: Optional[float] = None
-  ngrammer_tpl: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  ngrammer_tpl: Optional[LayerTpl] = base_layer.template_field(None)
   decode_cache: bool = True
   attention_mask_summary: bool = False
 

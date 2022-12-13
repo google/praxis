@@ -113,7 +113,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     checkpoint_policy: How to checkpoint residuals for BProp.
   """
   num_stages: int = 1
-  single_stage_body: Optional[LayerTpl] = base_layer.sub_config_field(None)
+  single_stage_body: Optional[LayerTpl] = base_layer.template_field(None)
   num_microbatches: Optional[int] = None
   microbatch_size: Optional[int] = None
   unpack_summaries: bool = True
