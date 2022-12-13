@@ -1507,8 +1507,8 @@ class BaseLayer(nn.Module):
       ):
         raise ValueError(
             f'{cls.__qualname__}.{field.name} has a template type, but '
-            'does not have the DO_NOT_BUILD tag set.'
-        )
+            'does not have the pax_fiddle.DoNotBuild tag set.  Please use '
+            'base_layer.template_field to declare this field.')
 
   @classmethod
   def _override_split_dim_mapping_fields(cls):
@@ -2153,8 +2153,7 @@ def _is_template_type(typ):
     return True
   if origin == pax_fiddle.Config:
     return True
-  if (origin == Union and
-      any(_is_template_type(arg) for arg in typing.get_args(typ))):
+  if any(_is_template_type(arg) for arg in typing.get_args(typ)):
     return True
   return False
 
