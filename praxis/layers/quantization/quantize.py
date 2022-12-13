@@ -49,10 +49,14 @@ def quantize_transformer_layer_weights(
 ) -> None:
   """Rewrites Transformer HParam for weight only quantization."""
 
-  tr_atten_tpl = cast(layers.attentions.DotProductAttention.HParams,
-                      tr_tpl.tr_atten_tpl)
-  tr_fflayer_tpl = cast(layers.transformers.TransformerFeedForward.HParams,
-                        tr_tpl.tr_fflayer_tpl)
+  tr_atten_tpl = cast(
+      pax_fiddle.Config[layers.attentions.DotProductAttention],
+      tr_tpl.tr_atten_tpl,
+  )
+  tr_fflayer_tpl = cast(
+      pax_fiddle.Config[layers.transformers.TransformerFeedForward],
+      tr_tpl.tr_fflayer_tpl,
+  )
   quantize_dot_product_attention_layer_weights(tr_atten_tpl, quantization_type,
                                                mode)
   quantize_transformer_feed_forward_layer_weights(tr_fflayer_tpl,

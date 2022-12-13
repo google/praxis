@@ -40,6 +40,8 @@ pytype_strict_library(
     srcs = ["quantize.py"],
     srcs_version = "PY3",
     deps = [
+        ":layers",
+        ":quantization_hparams",
         # Implicit fiddle dependency.
         "//praxis:base_hyperparams",
         "//praxis:base_layer",
@@ -47,8 +49,6 @@ pytype_strict_library(
         "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis/layers",
-        "//praxis/layers/quantization:layers",
-        "//praxis/layers/quantization:quantization_hparams",
     ],
 )
 
