@@ -659,7 +659,7 @@ class BaseLayerTest(test_utils.TestCase):
     layer = pax_fiddle.build(cfg)
     with self.assertRaisesRegex(
         ValueError,
-        'Expected .* to be HParams or Fiddle Configs.* This may be caused by '
+        'Expected .* to be Fiddle Configs.* This may be caused by '
         'a missing DoNotBuild tag on a field that contains a Fiddle Config.'):
       layer.init(jax.random.PRNGKey(0), 0)
 

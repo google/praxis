@@ -1900,9 +1900,8 @@ class BaseLayer(nn.Module):
     """
     if hasattr(self, name):
       raise AttributeError(
-          f'{self.__class__}.HParams already has attribute {name}. '
-          'Please rename to avoid future name collision after Fiddle migration.'
-      )
+          f'{self.__class__} can not create a new variable named {name!r} '
+          'because it already has a field with that name.')
 
     var_hparams = var_hparams.clone()
 
@@ -2028,8 +2027,8 @@ class BaseLayer(nn.Module):
   ) -> BaseLayer:
     """Creates and returns a child (w/o adding it as an attribute of `self`)."""
     if not isinstance(params, (pax_fiddle.Config, _FiddleHParamsInstanceStub)):
-      msg = ('Expected templates for `create_child` to be HParams or Fiddle '
-             f'Configs; got {type(params)}.')
+      msg = ('Expected templates for `create_child` to be Fiddle Configs; got '
+             f'{type(params)}.')
       if isinstance(params, BaseLayer):
         msg += (' This may be caused by a missing DoNotBuild tag on a field '
                 'that contains a Fiddle Config.')
@@ -2051,10 +2050,8 @@ class BaseLayer(nn.Module):
     """Registers child creation with LayerRegistry."""
     if name in self._hparam_fields:
       raise AttributeError(
-          f'{self.__class__}.HParams has a field named {name!r}. We are '
-          'disallowing creating children of the same name, since those will '
-          'result in a name collision after Fiddle migration (which moves '
-          'HParams fields to root-level Flax module fields).')
+          f'{self.__class__} can not create a new child named {name!r} because '
+          f'it already has a field with that name.')
 
   @nn.nowrap
   def _cast_to_fprop_dtype(self, value: Any) -> Any:
