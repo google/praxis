@@ -20,6 +20,7 @@ from __future__ import annotations
 import enum
 from typing import Any, Optional, Sequence
 
+import fiddle as fdl
 import jax
 from jax import numpy as jnp
 from praxis import asserts
@@ -69,23 +70,35 @@ def _set_embedding_softmax_sharding_params_for_transformers(
   embedding_softmax_p.dcn_mesh_shape = dcn_mesh_shape
   embedding_softmax_p.mesh_axis_names = mesh_axis_names
 
-  if embedding_softmax_p.cls == embedding_softmax.GShardSharedEmbeddingSoftmax:
+  if (
+      fdl.get_callable(embedding_softmax_p)
+      == embedding_softmax.GShardSharedEmbeddingSoftmax
+  ):
     # Softmax weight is of shape [vocab_size, input_dim].
     embedding_softmax_p.weight_split_dims_mapping.wt = w_vd
-  elif (embedding_softmax_p.cls == embedding_softmax.SharedEmbeddingSoftmax or
-        embedding_softmax_p.cls == embedding_softmax.FullSoftmax or
-        embedding_softmax_p.cls == embedding_softmax.Embedding):
+  elif (
+      fdl.get_callable(embedding_softmax_p)
+      == embedding_softmax.SharedEmbeddingSoftmax
+      or fdl.get_callable(embedding_softmax_p) == embedding_softmax.FullSoftmax
+      or fdl.get_callable(embedding_softmax_p) == embedding_softmax.Embedding
+  ):
     # Softmax weight is of shape [input_dim, vocab_size].
     embedding_softmax_p.weight_split_dims_mapping.wt = [w_vd[1], w_vd[0]]
-    if embedding_softmax_p.cls != embedding_softmax.FullSoftmax:
+    if fdl.get_callable(embedding_softmax_p) != embedding_softmax.FullSoftmax:
       embedding_softmax_p.lookup_style = 'matmul'
   else:
     raise NotImplementedError(
-        f'embedding_softmax class {embedding_softmax_p.cls} not supported')
+        f'embedding_softmax class {fdl.get_callable(embedding_softmax_p)} not'
+        ' supported'
+    )
 
-  if (embedding_softmax_p.cls == embedding_softmax.GShardSharedEmbeddingSoftmax
-      or embedding_softmax_p.cls == embedding_softmax.SharedEmbeddingSoftmax
-      or embedding_softmax_p.cls == embedding_softmax.Embedding):
+  if (
+      fdl.get_callable(embedding_softmax_p)
+      == embedding_softmax.GShardSharedEmbeddingSoftmax
+      or fdl.get_callable(embedding_softmax_p)
+      == embedding_softmax.SharedEmbeddingSoftmax
+      or fdl.get_callable(embedding_softmax_p) == embedding_softmax.Embedding
+  ):
     embedding_softmax_p.activation_split_dims_mapping.out = a_blv
     (embedding_softmax_p.activation_split_dims_mapping
      .emb_out_split_dims_mapping) = a_bld
@@ -97,9 +110,11 @@ def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
                                       a_egcm):
   """Set sharding params for the stacked transformer layer."""
   stacked_p = stacked_transformer_p
-  if stacked_p.cls == transformers.PipelinedTransformer:
+  if fdl.get_callable(stacked_p) == transformers.PipelinedTransformer:
     stacked_p = stacked_p.pipeline_stage
-  if issubclass(stacked_p.cls, transformers.StackedTransformerRepeated):
+  if issubclass(
+      fdl.get_callable(stacked_p), transformers.StackedTransformerRepeated
+  ):
     stacked_p = stacked_p.block
   transformer_p = stacked_p.transformer_layer_params_tpl
   if isinstance(transformer_p, (list, tuple)):
@@ -117,7 +132,10 @@ def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
       atten_ap = atten_p.activation_split_dims_mapping
       atten_ap.blnh = a_blnh
       atten_ap.bld = a_bld
-      if atten_p.cls == multi_query_attention.MultiQueryDotProductAttention:
+      if (
+          fdl.get_callable(atten_p)
+          == multi_query_attention.MultiQueryDotProductAttention
+      ):
         atten_wp.proj_headless = [w_dnh[0], w_dnh[2]]
         atten_ap.blh = [a_blnh[0], a_blnh[1], a_blnh[3]]
 
@@ -1076,24 +1094,34 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
     def set_model_dims_and_packing(stacked_transformer_tpl, model_dims,
                                    packed_input):
-      if stacked_transformer_tpl.cls == transformers.StackedTransformer:
+      if (
+          fdl.get_callable(stacked_transformer_tpl)
+          == transformers.StackedTransformer
+      ):
         assert (stacked_transformer_tpl.model_dims == 0 or
                 stacked_transformer_tpl.model_dims == model_dims)
         stacked_transformer_tpl.model_dims = model_dims
         stacked_transformer_tpl.packed_input = packed_input
-      elif issubclass(stacked_transformer_tpl.cls,
-                      transformers.StackedTransformerRepeated):
+      elif issubclass(
+          fdl.get_callable(stacked_transformer_tpl),
+          transformers.StackedTransformerRepeated,
+      ):
         assert (stacked_transformer_tpl.block.model_dims == 0 or
                 stacked_transformer_tpl.block.model_dims == model_dims)
         stacked_transformer_tpl.block.model_dims = model_dims
         stacked_transformer_tpl.block.packed_input = packed_input
-      elif stacked_transformer_tpl.cls == transformers.PipelinedTransformer:
+      elif (
+          fdl.get_callable(stacked_transformer_tpl)
+          == transformers.PipelinedTransformer
+      ):
         assert (stacked_transformer_tpl.pipeline_stage.model_dims == 0 or
                 stacked_transformer_tpl.pipeline_stage.model_dims == model_dims)
         stacked_transformer_tpl.pipeline_stage.model_dims = model_dims
         stacked_transformer_tpl.pipeline_stage.packed_input = packed_input
       else:
-        raise ValueError(f'{stacked_transformer_tpl.cls} not supported.')
+        raise ValueError(
+            f'{fdl.get_callable(stacked_transformer_tpl)} not supported.'
+        )
 
     # Create position embeddings.
     if self.position_emb_tpl is not None:

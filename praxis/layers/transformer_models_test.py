@@ -16,17 +16,18 @@
 """Tests for Praxis transformer layers."""
 
 import itertools
-from praxis import pax_fiddle
 
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
+import fiddle as fdl
 import jax
 from jax import numpy as jnp
 from lingvo.core import gshard_builder
 import numpy as np
 from praxis import base_hyperparams
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import attentions
@@ -1189,7 +1190,10 @@ class TransformerModelsTest(test_utils.TestCase):
       ngrammer_p.weight_split_dims_mapping.wt = [mdl_axis, data_axis]
 
     softmax_p = lm_p.softmax_tpl
-    if softmax_p.cls == embedding_softmax.GShardSharedEmbeddingSoftmax:
+    if (
+        fdl.get_callable(softmax_p)
+        == embedding_softmax.GShardSharedEmbeddingSoftmax
+    ):
       # Softmax weight is of shape [vocab_size, input_dim].
       softmax_p.weight_split_dims_mapping.wt = [mdl_axis, data_axis]
     else:
@@ -1208,12 +1212,20 @@ class TransformerModelsTest(test_utils.TestCase):
     else:
       stacked_transformer_tpl = lm_p.stacked_transformer_tpl
 
-    if stacked_transformer_tpl.cls == transformers.StackedTransformer:
+    if (
+        fdl.get_callable(stacked_transformer_tpl)
+        == transformers.StackedTransformer
+    ):
       xformer_p = stacked_transformer_tpl.transformer_layer_params_tpl
-    elif stacked_transformer_tpl.cls == transformers.StackedTransformerRepeated:
+    elif (
+        fdl.get_callable(stacked_transformer_tpl)
+        == transformers.StackedTransformerRepeated
+    ):
       xformer_p = stacked_transformer_tpl.block.transformer_layer_params_tpl
     else:
-      assert False, f'{stacked_transformer_tpl.cls} not supported.'
+      assert (
+          False
+      ), f'{fdl.get_callable(stacked_transformer_tpl)} not supported.'
 
     xformer_p.tr_atten_tpl.activation_split_dims_mapping.blnh = [
         batch_split, None, mdl_axis, None
@@ -1248,12 +1260,20 @@ class TransformerModelsTest(test_utils.TestCase):
     #     gecm_split=[0, -1, -1, 1],
     #     gsec_split=[0, -1, -1, -1],
     # for mesh with 2 dimensions.
-    if stacked_transformer_tpl.cls == transformers.StackedTransformer:
+    if (
+        fdl.get_callable(stacked_transformer_tpl)
+        == transformers.StackedTransformer
+    ):
       moe_p = stacked_transformer_tpl.moe_layer_tpl
-    elif stacked_transformer_tpl.cls == transformers.StackedTransformerRepeated:
+    elif (
+        fdl.get_callable(stacked_transformer_tpl)
+        == transformers.StackedTransformerRepeated
+    ):
       moe_p = stacked_transformer_tpl.block.moe_layer_tpl
     else:
-      assert False, f'{stacked_transformer_tpl.cls} not supported.'
+      assert (
+          False
+      ), f'{fdl.get_callable(stacked_transformer_tpl)} not supported.'
     # Weights
     moe_wp = moe_p.weight_split_dims_mapping
     # TODO(lepikhin): RET_CHECK with [data_axis, None] http://b/209481545

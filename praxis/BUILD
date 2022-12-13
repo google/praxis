@@ -411,6 +411,7 @@ py_strict_test(
         ":test_utils",
         # Implicit absl.flags dependency.
         # Implicit absl.testing.absltest dependency.
+        # Implicit fiddle dependency.
         # Implicit lingvo.core.base_input_generator dependency.
         # Implicit lingvo.core.generic_input dependency.
         # Implicit lingvo.core.py_utils dependency.

@@ -15,6 +15,7 @@
 
 """Helper function to config GLaM models."""
 
+import fiddle as fdl
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis.layers import activations
@@ -127,7 +128,7 @@ def GlamStackedTransformerHParams(
     )
     p.transformer_layer_params_tpl.ln_tpl.direct_scale = True
   tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl  # pytype: disable=attribute-error  # enable-nested-classes
-  assert tr_atten_tpl.cls == attentions.DotProductAttention
+  assert fdl.get_callable(tr_atten_tpl) == attentions.DotProductAttention
   tr_atten_tpl.attention_extra_logit = attention_extra_logit
   tr_atten_tpl.use_bias = False
   tr_atten_tpl.atten_logit_cap = atten_logit_cap
@@ -149,7 +150,7 @@ def GlamStackedTransformerHParams(
     tr_atten_tpl.combined_qkv_proj_tpl.attention_combine_dims = True
   # Non-MoE ffn setup
   ff_tpl = p.transformer_layer_params_tpl.tr_fflayer_tpl  # pytype: disable=attribute-error  # enable-nested-classes
-  assert ff_tpl.cls == transformers.TransformerFeedForward
+  assert fdl.get_callable(ff_tpl) == transformers.TransformerFeedForward
   ff_tpl.input_dims = model_dim
   ff_tpl.hidden_dims = ff_dim
   ff_tpl.has_bias = False
@@ -162,7 +163,7 @@ def GlamStackedTransformerHParams(
   ff_tpl.internal_gshard_variance_scaling_fan_in_init = True
   # MoE ffn setup
   moe_p = p.moe_layer_tpl
-  assert moe_p.cls == transformers.TransformerFeedForwardMoe
+  assert fdl.get_callable(moe_p) == transformers.TransformerFeedForwardMoe
   moe_p.input_dims = model_dim
   moe_p.hidden_dims = moe_hidden_dim or ff_dim
   moe_p.ln_tpl = pax_fiddle.Config(normalizations.RmsNorm)

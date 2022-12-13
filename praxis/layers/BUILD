@@ -93,6 +93,7 @@ pytype_strict_library(
         ":activations",
         ":normalizations",
         ":transformers",
+        # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
@@ -203,6 +204,7 @@ pytype_strict_library(
         ":normalizations",
         ":transformer_models",
         ":transformers",
+        # Implicit fiddle dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
     ],
@@ -640,6 +642,7 @@ pytype_strict_library(
         ":multi_query_attention",
         ":normalizations",
         ":transformers",
+        # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
@@ -1022,6 +1025,7 @@ py_strict_test(
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit fiddle dependency.
         # Implicit jax dependency.
         # Implicit lingvo.core.gshard_builder dependency.
         # Implicit numpy dependency.

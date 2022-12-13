@@ -16,6 +16,7 @@
 """Adapter layers."""
 
 from typing import Optional
+import fiddle as fdl
 
 import jax
 import jax.numpy as jnp
@@ -68,13 +69,16 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
   def setup(self) -> None:
     if self.norm_tpl:
       norm_tpl = self.norm_tpl.clone()
-      if norm_tpl.cls in {
-          normalizations.BatchNorm, normalizations.GroupNorm,
-          normalizations.LayerNorm
+      if fdl.get_callable(norm_tpl) in {
+          normalizations.BatchNorm,
+          normalizations.GroupNorm,
+          normalizations.LayerNorm,
       }:
         norm_tpl.dim = self.input_dims
       else:
-        raise NotImplementedError('%s is not supported' % norm_tpl.cls)
+        raise NotImplementedError(
+            '%s is not supported' % fdl.get_callable(norm_tpl)
+        )
       self.create_child('norm', norm_tpl)
 
     # down_b_pc could be zero-initialized but no performance gain is observed
