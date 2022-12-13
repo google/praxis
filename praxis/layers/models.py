@@ -179,13 +179,6 @@ class LanguageModel(base_model.BaseModel):
     lm_p.model_type = self.model_type
     self.create_child('lm', lm_p)
 
-    if template_has_type(self.decoder_tpl, SampleDecoderHParams):
-      next_token_sampler_p = self.decoder_tpl.next_token_sampler_tpl.clone()
-      # TODO(b/260646361): Avoid this param propagation.
-      next_token_sampler_p.top_k = self.decoder_tpl.k
-      next_token_sampler_p.top_p = self.decoder_tpl.p
-      self.next_token_sampler = base_layer.instantiate(next_token_sampler_p)
-
   def _prepare_predict_data(self, input_batch: NestedMap) -> NestedMap:
     paddings = input_batch.paddings
     weights = input_batch.weights
@@ -253,7 +246,9 @@ class LanguageModel(base_model.BaseModel):
         self.apply_eval_sample_weights,
     )
 
-  def _prepare_decode_data(self, input_batch: NestedMap) -> NestedMap:
+  def _prepare_decode_data(
+      self, input_batch: NestedMap, decoder_params: DecoderHParams
+  ) -> NestedMap:
     batch_size = input_batch.ids.shape[0]
 
     # TODO(b/229679837): unify prefix_lengths logic to depend on
@@ -272,7 +267,7 @@ class LanguageModel(base_model.BaseModel):
       # Note that computing the sum with bf16 is not precise enough, so convert
       # paddings to integers first.
       maxval = jnp.sum(1 - input_batch.paddings.astype(jnp.int32), axis=1)
-      minval = jnp.minimum(maxval, self.decoder_tpl.min_prefix_len)
+      minval = jnp.minimum(maxval, decoder_params.min_prefix_len)
       prefix_lengths = jax.random.randint(self.next_prng_key(), [batch_size],
                                           minval, maxval + 1,
                                           input_batch.ids.dtype)
@@ -290,9 +285,9 @@ class LanguageModel(base_model.BaseModel):
       causal_attention_mask = None
 
     max_prefix_len = input_batch.ids.shape[1]
-    if self.decoder_tpl.fprop_for_prefix:
-      asserts.not_none(self.decoder_tpl.max_decode_steps)
-      seqlen = max_prefix_len + self.decoder_tpl.max_decode_steps
+    if decoder_params.fprop_for_prefix:
+      asserts.not_none(decoder_params.max_decode_steps)
+      seqlen = max_prefix_len + decoder_params.max_decode_steps
       start_time_step = max_prefix_len - 1
       # Change prefix to be right-aligned.
       fprop_input_ids, fprop_input_paddings = (
@@ -306,14 +301,14 @@ class LanguageModel(base_model.BaseModel):
           jnp.arange(max_prefix_len) <
           (max_prefix_len - prefix_lengths)[:, jnp.newaxis],
           jnp.zeros_like(fprop_segment_pos), jnp.ones_like(fprop_segment_pos))
-      state_padding_size = self.decoder_tpl.max_decode_steps
+      state_padding_size = decoder_params.max_decode_steps
       # Init input ids and paddings for extend_step.
       input_ids = jnp.pad(
-          fprop_input_ids, [[0, 0], [0, self.decoder_tpl.max_decode_steps]]
+          fprop_input_ids, [[0, 0], [0, decoder_params.max_decode_steps]]
       )
       input_paddings = jnp.pad(
           fprop_input_paddings,
-          [[0, 0], [0, self.decoder_tpl.max_decode_steps]],
+          [[0, 0], [0, decoder_params.max_decode_steps]],
           constant_values=1.0,
       )
       if causal_attention_mask is not None:
@@ -321,7 +316,7 @@ class LanguageModel(base_model.BaseModel):
         causal_attention_mask = decoder_utils.right_align_tensors(
             causal_attention_mask, prefix_lengths)
     else:
-      seqlen = self.decoder_tpl.seqlen
+      seqlen = decoder_params.seqlen
       start_time_step = 0
       input_ids = input_batch.ids
       input_paddings = input_batch.paddings
@@ -352,7 +347,7 @@ class LanguageModel(base_model.BaseModel):
       host_callback: Optional[decoder_utils.DecodingHostCallback] = None,
       return_result_for_suffix_score=False,
   ) -> DecodeOut:
-    """Greedy decodes the input_batch.
+    """Decodes the input_batch with specified decoder params.
 
     Args:
       input_batch: The input batch, with fields `.ids` and `.paddings`. It may
@@ -386,13 +381,28 @@ class LanguageModel(base_model.BaseModel):
           'p.decoder_tpl must be DecoderHParams type, but it is a '
           f'type of {type(self.decoder_tpl)}'
       )
-    if self.decoder_tpl.seqlen <= 0:
+    return self.decode_with_params(
+        self.decoder_tpl,
+        input_batch,
+        host_callback=host_callback,
+        return_result_for_suffix_score=return_result_for_suffix_score,
+    )
+
+  def decode_with_params(
+      self,
+      decoder_params: DecoderHParams,
+      input_batch: NestedMap,
+      host_callback: Optional[decoder_utils.DecodingHostCallback] = None,
+      return_result_for_suffix_score=False,
+  ) -> DecodeOut:
+    """Same as decode but with specified DecoderHParams."""
+    if decoder_params.seqlen <= 0:
       raise ValueError(
           'Must set p.decoder_tpl.seqlen > 0, current value = '
-          f'{self.decoder_tpl.seqlen}'
+          f'{decoder_params.seqlen}'
       )
     max_prefix_len = input_batch.ids.shape[1]
-    decode_data = self._prepare_decode_data(input_batch)
+    decode_data = self._prepare_decode_data(input_batch, decoder_params)
 
     def extend_step_fn(mdl, ids, segment_pos):
       xent = mdl.lm.extend_step(ids, segment_pos=segment_pos)
@@ -405,7 +415,8 @@ class LanguageModel(base_model.BaseModel):
       mdl.lm.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
 
     # Flat beam search doesn't work yet.
-    if template_has_type(self.decoder_tpl, FlatBeamSearchHParams):
+    if template_has_type(decoder_params, FlatBeamSearchHParams):
+      assert isinstance(decoder_params, FlatBeamSearchHParams)
       # Init cache states.
       self.lm(
           decode_data.fprop_input_ids,
@@ -425,14 +436,15 @@ class LanguageModel(base_model.BaseModel):
           decode_data.input_ids,
           decode_data.input_paddings,
           decode_data.seqlen,
-          beam_size=self.decoder_tpl.beam_size,
+          beam_size=decoder_params.beam_size,
           fprop_dtype=self.fprop_dtype,
-          max_decode_steps=self.decoder_tpl.max_decode_steps,
-          eos_id=self.decoder_tpl.eos_id,
-          length_norm_alpha=self.decoder_tpl.length_norm_alpha,
+          max_decode_steps=decoder_params.max_decode_steps,
+          eos_id=decoder_params.eos_id,
+          length_norm_alpha=decoder_params.length_norm_alpha,
       )
-    elif template_has_type(self.decoder_tpl, BeamSearchHParams):
-      assert self.decoder_tpl.fprop_for_prefix
+    elif template_has_type(decoder_params, BeamSearchHParams):
+      assert isinstance(decoder_params, BeamSearchHParams)
+      assert decoder_params.fprop_for_prefix
 
       def fprop_fn(mdl, ids, paddings):
         mdl.lm(
@@ -443,7 +455,7 @@ class LanguageModel(base_model.BaseModel):
             start_time_step=decode_data.start_time_step,
             causal_attention_mask=decode_data.causal_attention_mask,
         )
-
+      assert isinstance(decoder_params, BeamSearchHParams)
       result = beam_search.beam_search(
           self,
           extend_step_fn,
@@ -451,9 +463,10 @@ class LanguageModel(base_model.BaseModel):
           transform_decode_state_fn,
           decode_data.fprop_input_ids,
           decode_data.fprop_input_paddings,
-          self.decoder_tpl,
+          decoder_params,
       )
-    elif template_has_type(self.decoder_tpl, SampleDecoderHParams):
+    elif template_has_type(decoder_params, SampleDecoderHParams):
+      assert isinstance(decoder_params, SampleDecoderHParams)
       # Init cache states, batch size needs to multiply by num_samples.
       self.lm(
           decode_data.fprop_input_ids,
@@ -465,16 +478,16 @@ class LanguageModel(base_model.BaseModel):
           **decode_data.extra_input_kwargs
       )
 
-      if not self.decoder_tpl.lazy_prefix_broadcast:
+      if not decoder_params.lazy_prefix_broadcast:
         # Pad to full-sequence length.
         self.lm.transform_decode_state(
             decoder_utils.pad_state_fn(decode_data.state_padding_size))
 
-      if self.decoder_tpl.k > 0 and self.decoder_tpl.p:
+      if decoder_params.k > 0 and decoder_params.p:
         raise ValueError(
             'In decoder_tpl hparams, k and p should not be set at the'
             ' same time. Currently k is: %s and p is: %s'
-            % (self.decoder_tpl.k, self.decoder_tpl.p)
+            % (decoder_params.k, decoder_params.p)
         )
 
       # Fetch dynamic temperature from input_batch if the input_batch has this
@@ -482,41 +495,48 @@ class LanguageModel(base_model.BaseModel):
       if hasattr(input_batch, 'temperature'):
         temperature = input_batch.temperature
       else:
-        temperature = self.decoder_tpl.temperature
+        temperature = decoder_params.temperature
 
       # Fetch dynamic per params from input_batch if the
       # input_batch has this information.
-      per_example_max_decode_steps = getattr(input_batch,
-                                             'per_example_max_decode_steps',
-                                             None)
+      per_example_max_decode_steps = getattr(
+          input_batch, 'per_example_max_decode_steps', None
+      )
       per_example_top_p = getattr(input_batch, 'per_example_top_p', None)
       per_example_top_k = getattr(input_batch, 'per_example_top_k', None)
+
+      next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
+      # TODO(b/260646361): Avoid this param propagation.
+      next_token_sampler_p.top_k = decoder_params.k
+      next_token_sampler_p.top_p = decoder_params.p
+      next_token_sampler = base_layer.instantiate(next_token_sampler_p)
 
       result = sample_decode.sample_decode(
           self,
           extend_step_fn,
           transform_decode_state_fn,
           lazy_broadcast_prefix_fn
-          if self.decoder_tpl.lazy_prefix_broadcast
+          if decoder_params.lazy_prefix_broadcast
           else None,
-          self.next_token_sampler,
+          next_token_sampler,
           decode_data.input_ids,
           decode_data.input_paddings,
           decode_data.seqlen,
-          num_samples=self.decoder_tpl.num_samples,
-          fprop_for_prefix=self.decoder_tpl.fprop_for_prefix,
+          num_samples=decoder_params.num_samples,
+          fprop_for_prefix=decoder_params.fprop_for_prefix,
           temperature=temperature,
           per_example_top_p=per_example_top_p,
           per_example_top_k=per_example_top_k,
           max_prefix_len=max_prefix_len,
-          max_decode_steps=self.decoder_tpl.max_decode_steps,
+          max_decode_steps=decoder_params.max_decode_steps,
           per_example_max_decode_steps=per_example_max_decode_steps,
           prefix_lengths=decode_data.prefix_lengths,
-          eos_id=self.decoder_tpl.eos_id,
+          eos_id=decoder_params.eos_id,
           return_result_for_suffix_score=return_result_for_suffix_score,
           host_callback=host_callback,
       )
-    elif template_has_type(self.decoder_tpl, GreedyDecoderHParams):
+    elif template_has_type(decoder_params, GreedyDecoderHParams):
+      assert isinstance(decoder_params, GreedyDecoderHParams)
       # Init cache states.
       self.lm(
           decode_data.fprop_input_ids,
@@ -536,16 +556,16 @@ class LanguageModel(base_model.BaseModel):
           decode_data.input_ids,
           decode_data.input_paddings,
           decode_data.seqlen,
-          fprop_for_prefix=self.decoder_tpl.fprop_for_prefix,
+          fprop_for_prefix=decoder_params.fprop_for_prefix,
           max_prefix_len=max_prefix_len,
-          max_decode_steps=self.decoder_tpl.max_decode_steps,
+          max_decode_steps=decoder_params.max_decode_steps,
           prefix_lengths=decode_data.prefix_lengths,
-          eos_id=self.decoder_tpl.eos_id,
+          eos_id=decoder_params.eos_id,
       )
     else:
       # Needs to define a decoding algorithm.
       raise NotImplementedError(
-          f'Decoding algorithm {type(self.decoder_tpl)} is not implemented.'
+          f'Decoding algorithm {type(decoder_params)} is not implemented.'
       )
 
     result.update(input_batch)
@@ -718,10 +738,16 @@ class SequenceModel(base_model.BaseModel):
           'p.decoder must be DecoderHParams type, but it is a '
           f'type of {type(self.decoder_tpl)}'
       )
-    if self.decoder_tpl.seqlen <= 0:
+    return self.decode_with_params(input_batch, self.decoder_tpl)
+
+  def decode_with_params(
+      self, input_batch: NestedMap, decoder_params: DecoderHParams
+  ) -> DecodeOut:
+    """Same as decode but with specified DecoderHParams."""
+    if decoder_params.seqlen <= 0:
       raise ValueError(
           'Must set p.decoder_tpl.seqlen > 0, current value = '
-          f'{self.decoder_tpl.seqlen}'
+          f'{decoder_params.seqlen}'
       )
     batch_size = input_batch.tgt.ids.shape[0]
 
@@ -734,10 +760,11 @@ class SequenceModel(base_model.BaseModel):
       mdl.model.transform_decode_state(transform_fn)
 
     # Flat beam search doesn't work yet.
-    if template_has_type(self.decoder_tpl, FlatBeamSearchHParams):
+    if template_has_type(decoder_params, FlatBeamSearchHParams):
       raise NotImplementedError('flat beam search not supported')
-    elif template_has_type(self.decoder_tpl, BeamSearchHParams):
-      assert not self.decoder_tpl.fprop_for_prefix
+    elif template_has_type(decoder_params, BeamSearchHParams):
+      assert isinstance(decoder_params, BeamSearchHParams)
+      assert not decoder_params.fprop_for_prefix
       start_time_step = 0
 
       # Prefix decoding is not fully supported.
@@ -760,11 +787,11 @@ class SequenceModel(base_model.BaseModel):
           transform_decode_state_fn,
           fprop_input_ids,
           fprop_input_paddings,
-          self.decoder_tpl,
+          decoder_params,
       )
-    elif template_has_type(self.decoder_tpl, SampleDecoderHParams):
+    elif template_has_type(decoder_params, SampleDecoderHParams):
       raise NotImplementedError('sample decode not supported')
-    elif template_has_type(self.decoder_tpl, GreedyDecoderHParams):
+    elif template_has_type(decoder_params, GreedyDecoderHParams):
       self.model(
           inputs=input_batch.src.ids,
           input_paddings=input_batch.src.paddings,
@@ -775,13 +802,13 @@ class SequenceModel(base_model.BaseModel):
           extend_step_fn,
           input_batch.tgt.ids,
           input_batch.tgt.paddings,
-          self.decoder_tpl.seqlen,
-          eos_id=self.decoder_tpl.eos_id,
+          decoder_params.seqlen,
+          eos_id=decoder_params.eos_id,
       )
     else:
       # Needs to define a decoding algorithm.
       raise NotImplementedError(
-          f'Decoding algorithm {type(self.decoder_tpl)} is not implemented.'
+          f'Decoding algorithm {type(decoder_params)} is not implemented.'
       )
 
     result.update(input_batch)
