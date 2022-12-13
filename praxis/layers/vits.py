@@ -191,8 +191,9 @@ class VitEntryLayers(base_layer.BaseLayer):
   pos_emb_dropout_prob: float = 0.0
   prepend_cls_tokens: int = 0
   append_cls_tokens: int = 0
-  pos_emb_tpl: Optional[LayerTpl] = sub_config_field(
-      embedding_softmax.TrainablePositionalEmbedding.HParams)
+  pos_emb_tpl: Optional[LayerTpl] = base_layer.template_field(
+      embedding_softmax.TrainablePositionalEmbedding
+  )
   input_fc_has_bias: bool = True
 
   def setup(self) -> None:

@@ -60,8 +60,7 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
   input_dims: int = 0
   bottleneck_dims: int = 0
   num_tasks: int = 1
-  norm_tpl: Optional[LayerTpl] = sub_config_field(
-      normalizations.LayerNorm.HParams)
+  norm_tpl: Optional[LayerTpl] = template_field(normalizations.LayerNorm)
   activation_tpl: pax_fiddle.Config[
       activations.BaseActivation
   ] = template_field(activations.ReLU)
@@ -196,7 +195,7 @@ class AdaptedTransformerFeedForward(transformers.TransformerFeedForward):
     adapter_tpl: Parameterization of adapter layer added after each block.
     mode: sequential or parallel.
   """
-  adapter_tpl: LayerTpl = base_layer.template_field(None)
+  adapter_tpl: LayerTpl = template_field(None)
   mode: str = 'sequential'
 
   def setup(self):

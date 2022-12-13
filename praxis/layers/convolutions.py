@@ -442,8 +442,7 @@ class ConvBNAct(Conv2D):
     batch_norm_tpl: The batchnorm layer template.
     activation_tpl: Activation function to use.
   """
-  batch_norm_tpl: Optional[LayerTpl] = sub_config_field(
-      normalizations.BatchNorm.HParams)
+  batch_norm_tpl: Optional[LayerTpl] = template_field(normalizations.BatchNorm)
   activation_tpl: pax_fiddle.Config[
       activations.BaseActivation
   ] = template_field(activations.ReLU)

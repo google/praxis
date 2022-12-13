@@ -920,12 +920,13 @@ class DotProductAttention(base_layer.BaseLayer):
   # TODO(pax-dev): merge use_rotary_position_emb and rotary_position_emb_tpl
   # by initializing rotary_position_emb_tpl = None.
   use_rotary_position_emb: bool = False
-  rotary_position_emb_tpl: Optional[LayerTpl] = sub_config_field(
-      embedding_softmax.RotaryPositionalEmbedding.HParams)
+  rotary_position_emb_tpl: Optional[LayerTpl] = template_field(
+      embedding_softmax.RotaryPositionalEmbedding
+  )
   cast_rotary_position_emb: bool = True
-  relative_bias_tpl: Optional[LayerTpl] = base_layer.template_field(None)
+  relative_bias_tpl: Optional[LayerTpl] = template_field(None)
   attention_extra_logit: Optional[float] = None
-  ngrammer_tpl: Optional[LayerTpl] = base_layer.template_field(None)
+  ngrammer_tpl: Optional[LayerTpl] = template_field(None)
   decode_cache: bool = True
   attention_mask_summary: bool = False
 

@@ -174,8 +174,9 @@ class VanillaNet(base_layer.BaseLayer):
   kernels: Sequence[int] = (3, 3, 3, 3)
   entryflow_conv_kernel: Sequence[int] = (7, 7)
   entryflow_conv_stride: Sequence[int] = (2, 2)
-  output_spatial_pooling_params: Optional[LayerTpl] = sub_config_field(
-      poolings.GlobalPooling.HParams)
+  output_spatial_pooling_params: Optional[LayerTpl] = template_field(
+      poolings.GlobalPooling
+  )
   negative_slope: float = 0.4
 
   @classmethod

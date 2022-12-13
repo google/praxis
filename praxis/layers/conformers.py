@@ -301,13 +301,14 @@ class Conformer(base_layer.BaseLayer):
   ffn_residual_dropout: Optional[float] = None
   atten_dropout: Optional[float] = None
   ffn_relu_dropout: Optional[float] = None
-  fflayer_start_tpl: Optional[LayerTpl] = sub_config_field(
-      transformers.TransformerFeedForward.HParams)
+  fflayer_start_tpl: Optional[LayerTpl] = template_field(
+      transformers.TransformerFeedForward
+  )
   trans_atten_tpl: LayerTpl = template_field(SelfAttentionWithNormAndResidual)
-  lconv_tpl: Optional[LayerTpl] = sub_config_field(
-      convolutions.LightConv1D.HParams)
-  fflayer_end_tpl: Optional[LayerTpl] = sub_config_field(
-      transformers.TransformerFeedForward.HParams)
+  lconv_tpl: Optional[LayerTpl] = template_field(convolutions.LightConv1D)
+  fflayer_end_tpl: Optional[LayerTpl] = template_field(
+      transformers.TransformerFeedForward
+  )
   fflayer_weight_sharing: bool = False
   final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
 

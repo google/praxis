@@ -232,10 +232,11 @@ class TransformerLm(base_layer.BaseLayer):
   vocab_size: int = 0
   packed_input: bool = False
   model_type: LanguageModelType = LanguageModelType.CAUSAL
-  ngrammer_tpl: Optional[LayerTpl] = base_layer.template_field(None)
-  post_attention_ngrammer_tpls: Optional[Sequence[LayerTpl]] = (
-      base_layer.sub_config_field(None))
-  separate_embedding_tpl: Optional[LayerTpl] = base_layer.template_field(None)
+  ngrammer_tpl: Optional[LayerTpl] = template_field(None)
+  post_attention_ngrammer_tpls: Optional[Sequence[LayerTpl]] = template_field(
+      None
+  )
+  separate_embedding_tpl: Optional[LayerTpl] = template_field(None)
   final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
   skip_compute_loss: bool = False
 
@@ -919,22 +920,20 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
   position_emb_tpl: LayerTpl = template_field(
       embedding_softmax.PositionalEmbedding
   )
-  encoder_position_emb_tpl: Optional[LayerTpl] = base_layer.template_field(None)
-  encoder_stacked_transformer_tpl: Optional[
-      LayerTpl
-  ] = base_layer.template_field(None)
-  encoder_ngrammer_tpl: Optional[LayerTpl] = base_layer.template_field(None)
+  encoder_position_emb_tpl: Optional[LayerTpl] = template_field(None)
+  encoder_stacked_transformer_tpl: Optional[LayerTpl] = template_field(None)
+  encoder_ngrammer_tpl: Optional[LayerTpl] = template_field(None)
   encoder_post_attention_ngrammer_tpls: Optional[Sequence[LayerTpl]] = (
-      base_layer.sub_config_field(None))
-  encoder_embedding_tpl: Optional[LayerTpl] = base_layer.template_field(None)
-  decoder_position_emb_tpl: Optional[LayerTpl] = base_layer.template_field(None)
-  decoder_stacked_transformer_tpl: Optional[
-      LayerTpl
-  ] = base_layer.template_field(None)
-  decoder_ngrammer_tpl: Optional[LayerTpl] = base_layer.template_field(None)
+      template_field(None)
+  )
+  encoder_embedding_tpl: Optional[LayerTpl] = template_field(None)
+  decoder_position_emb_tpl: Optional[LayerTpl] = template_field(None)
+  decoder_stacked_transformer_tpl: Optional[LayerTpl] = template_field(None)
+  decoder_ngrammer_tpl: Optional[LayerTpl] = template_field(None)
   decoder_post_attention_ngrammer_tpls: Optional[Sequence[LayerTpl]] = (
-      base_layer.sub_config_field(None))
-  decoder_embedding_tpl: Optional[LayerTpl] = base_layer.template_field(None)
+      template_field(None)
+  )
+  decoder_embedding_tpl: Optional[LayerTpl] = template_field(None)
   model_dims: int = 0
   softmax_tpl: LayerTpl = template_field(
       embedding_softmax.SharedEmbeddingSoftmax

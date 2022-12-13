@@ -1077,13 +1077,13 @@ class Transformer(base_layer.BaseLayer):
   mask_self_attention: bool = False
   use_cross_attention: bool = False
   allow_skip_cross_attention: bool = False
-  cross_atten_tpl: Optional[LayerTpl] = base_layer.template_field(None)
+  cross_atten_tpl: Optional[LayerTpl] = template_field(None)
   ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
   norm_policy: str = 'pre'
   tr_atten_tpl: LayerTpl = template_field(attentions.DotProductAttention)
   packed_input: bool = False
   tr_fflayer_tpl: LayerTpl = template_field(TransformerFeedForward)
-  ngrammer_tpl: Optional[LayerTpl] = base_layer.template_field(None)
+  ngrammer_tpl: Optional[LayerTpl] = template_field(None)
 
   def setup(self) -> None:
 
@@ -1473,9 +1473,9 @@ class StackedTransformer(base_layer.BaseLayer):
   input_dropout_prob: float = 0.0
   gating_func: str = 'top2'
   unadjusted_expert_capacity_factor: float = 2.0
-  transformer_layer_params_tpl: Union[LayerTpl,
-                                      Sequence[LayerTpl]] = sub_config_field(
-                                          Transformer.HParams)
+  transformer_layer_params_tpl: Union[LayerTpl, Sequence[LayerTpl]] = (
+      template_field(Transformer)
+  )
   packed_input: bool = False
   fold_padding_with_segment_mask: bool = False
   moe_layer_tpl: LayerTpl = template_field(TransformerFeedForwardMoe)
@@ -1483,7 +1483,7 @@ class StackedTransformer(base_layer.BaseLayer):
   num_groups: int = 1
   min_group_size: Optional[int] = None
   moe_layers: Optional[Sequence[int]] = ()
-  ngrammer_tpls: Optional[Sequence[LayerTpl]] = sub_config_field(None)
+  ngrammer_tpls: Optional[Sequence[LayerTpl]] = template_field(None)
 
   def setup(self) -> None:
     p = self.hparams

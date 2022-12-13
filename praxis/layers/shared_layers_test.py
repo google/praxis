@@ -139,8 +139,8 @@ class SharedLayersTest(test_utils.TestCase):
 
 class SimpleShared01(base_layer.BaseLayer):
   """A layer to test weight sharing."""
-  sub1_tpl: LayerTpl = base_layer.template_field(None)
-  sub2_tpl: LayerTpl = base_layer.template_field(None)
+  sub1_tpl: LayerTpl = template_field(None)
+  sub2_tpl: LayerTpl = template_field(None)
 
   def setup(self) -> None:
     self.create_child('sub1', self.sub1_tpl)
