@@ -180,9 +180,10 @@ class AttentionProjection(attentions.AttentionProjection):
 
     if self.quantization.mode == QuantizationMode.INFERENCE:
       w, s = self.get_quantized_weight('w')
-      if self.quantization.quantization_type == QuantizationType.PTQ:
-        ret = operations.einsum(eqn, inputs, w, s)
-      elif self.quantization.quantization_type == QuantizationType.AQT:
+      # TODO(b/262309036): refactor logics under INFERNCE so there is no
+      # difference in quantization_type and there is no need for
+      # lhs_quantizer/rhs_quantizer.
+      if self.quantization.quantization_type == QuantizationType.AQT:
         dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
             eqn)
         ret = operations.dot_general(
@@ -194,6 +195,22 @@ class AttentionProjection(attentions.AttentionProjection):
             is_eval=True,
             perm=perm,
             rhs_quantized=(w, s))
+      else:
+        if (
+            self.quantization.act_params is not None
+            and self.quantization.act_params.stats_config is not None
+        ):
+          raise NotImplementedError(
+              'Static activation quantization is not supported yet.'
+          )
+        elif (
+            self.quantization.act_params is not None
+            and self.quantization.act_params.stats_config is None
+        ):
+          inputs, act_scale = operations.reduce_precision_activation(inputs)
+          ret = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
+        elif self.quantization.act_params is None:
+          ret = operations.einsum(eqn, inputs, w, s)
     elif (
         self.quantization.mode == QuantizationMode.TRAINING
         or self.quantization.mode == QuantizationMode.MATERIALIZE
@@ -209,13 +226,12 @@ class AttentionProjection(attentions.AttentionProjection):
             dimension_numbers=dimension_numbers,
             is_eval=self.do_eval,
             perm=perm)
+      elif self.quantization.quantization_type == QuantizationType.FQ:
+        w = operations.fakequant_einsum(eqn, w)
+        ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:
         ret = jnp.einsum(eqn, inputs, w)
-      else:
-        raise ValueError(
-            'Unsupported quantization_type'
-            f' {self.quantization.quantization_type}'
-        )
+
     else:
       raise ValueError(
           f'Unsupported quantization_mode {self.quantization.mode}'
@@ -420,6 +436,9 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     # different quantization types.
     if self.quantization.mode == QuantizationMode.INFERENCE:
       w, s = self.get_quantized_weight('w')
+      # TODO(b/262309036): refactor logics under INFERNCE so there is no
+      # difference in quantization_type and there is no need for
+      # lhs_quantizer/rhs_quantizer.
       if self.quantization.quantization_type == QuantizationType.AQT:
         dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
             eqn)
@@ -432,13 +451,22 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             is_eval=True,
             perm=perm,
             rhs_quantized=(w, s))
-      elif self.quantization.quantization_type == QuantizationType.PTQ:
-        ret = operations.einsum(eqn, inputs, w, s)
       else:
-        raise ValueError(
-            'Usupported quantization_type'
-            f' {self.quantization.quantization_type}'
-        )
+        if (
+            self.quantization.act_params is not None
+            and self.quantization.act_params.stats_config is not None
+        ):
+          raise NotImplementedError(
+              'Static activation quantization is not supported yet.'
+          )
+        elif (
+            self.quantization.act_params is not None
+            and self.quantization.act_params.stats_config is None
+        ):
+          inputs, act_scale = operations.reduce_precision_activation(inputs)
+          ret = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
+        elif self.quantization.act_params is None:
+          ret = operations.einsum(eqn, inputs, w, s)
     else:
       if self.quantization.quantization_type == QuantizationType.AQT:
         dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
@@ -451,13 +479,12 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             dimension_numbers=dimension_numbers,
             is_eval=self.do_eval,
             perm=perm)
+      elif self.quantization.quantization_type == QuantizationType.FQ:
+        w = operations.fakequant_einsum(eqn, w)
+        ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:
         ret = jnp.einsum(eqn, inputs, w)
-      else:
-        raise ValueError(
-            'Usupported quantization_type'
-            f' {self.quantization.quantization_type}'
-        )
+
     ret = checkpoint_name(ret, 'combined_qkv_proj')
     if self.use_bias:
       # Add newaxis to bias weight for each batch dim since ret is K...NH

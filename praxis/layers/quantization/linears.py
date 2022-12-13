@@ -116,6 +116,9 @@ class Linear(linears.Linear):
       # No matter which quantization type is used, the weight and scale
       # dimensions are the same for all types.
       w, s = self.get_quantized_weight('w')
+      # TODO(b/262309036): refactor logics under INFERNCE so there is no
+      # difference in quantization_type and there is no need for
+      # lhs_quantizer/rhs_quantizer.
       if self.quantization.quantization_type == QuantizationType.AQT:
         dimension_numbers = (((len(inputs.shape) - 1,), (0,)), ((), ()))
         out = operations.dot_general(
@@ -153,7 +156,6 @@ class Linear(linears.Linear):
             dimension_numbers=dimension_numbers,
             is_eval=self.do_eval)
       elif self.quantization.quantization_type == QuantizationType.FQ:
-        inputs = operations.fakequant_activation(inputs)
         w = operations.fakequant_einsum(eqn, w, calculation_type=self.dtype)
         out = linears.project_last_dim(inputs, w)
       else:

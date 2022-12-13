@@ -53,7 +53,16 @@ class QuantizationMode(str, enum.Enum):
 
 @dataclasses.dataclass
 class ActQuantizationParams:
-  """Parameters for activation quantization."""
+  """Parameters for activation quantization.
+
+  precision: the precision (number of bits) for activation quantization.
+  unsigned_int_bounds: whether or not to use unsigned_int_bounds.
+  clipping_coeff: the coefficient to shrink the hard range for activation
+    quantization.
+  stats_config: static values used for quantize activation.
+    stats_config == None: dynamic activation quantization
+    otherwise: static activation quantization
+  """
   precision: int = 8
   unsigned_int_bounds: bool = False
   clipping_coeff: float = 0.0
@@ -63,7 +72,13 @@ class ActQuantizationParams:
 
 @dataclasses.dataclass
 class WeightQuantizationParams:
-  """Parameters for weight quantization."""
+  """Parameters for weight quantization.
+
+  precision: the precision (number of bits) for activation quantization.
+  unsigned_int_bounds: whether or not to use unsigned_int_bounds.
+  clipping_coeff: the coefficient to shrink the hard range for activation
+    quantization.
+  """
   precision: int = 8
   unsigned_int_bounds: bool = False
   clipping_coeff: float = 0.0
