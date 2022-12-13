@@ -433,9 +433,14 @@ class VisionTransformer(base_layer.BaseLayer):
 
 
 def build_vision_transformer_hparams_for_test(
-    pos_emb_shapes: Tuple[int, int], patch_size: int, image_channels: int,
-    model_dims: int, mlp_dims: int, num_xformer_layers: int,
-    num_heads: int) -> VisionTransformer.HParams:
+    pos_emb_shapes: Tuple[int, int],
+    patch_size: int,
+    image_channels: int,
+    model_dims: int,
+    mlp_dims: int,
+    num_xformer_layers: int,
+    num_heads: int,
+) -> pax_fiddle.Config[VisionTransformer]:
   """Builds a minimal vision transformer layer for unit tests.
 
   For simplicity, only minimum number of parameters can be specified. User needs

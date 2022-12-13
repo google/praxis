@@ -36,15 +36,17 @@ from typing import cast
 import fiddle as fdl
 from praxis import base_layer
 from praxis import layers
+from praxis import pax_fiddle
 from praxis.layers import quantization
 from praxis.layers.quantization import quantization_hparams
 
 
 # TODO(jianlijianli): mark quantize_* as private.
 def quantize_transformer_layer_weights(
-    tr_tpl: layers.transformers.Transformer.HParams,
+    tr_tpl: pax_fiddle.Config[layers.transformers.Transformer],
     quantization_type: quantization_hparams.QuantizationType,
-    mode: quantization_hparams.QuantizationMode) -> None:
+    mode: quantization_hparams.QuantizationMode,
+) -> None:
   """Rewrites Transformer HParam for weight only quantization."""
 
   tr_atten_tpl = cast(layers.attentions.DotProductAttention.HParams,
@@ -58,9 +60,10 @@ def quantize_transformer_layer_weights(
 
 
 def quantize_dot_product_attention_layer_weights(
-    attn_tpl: layers.attentions.DotProductAttention.HParams,
+    attn_tpl: pax_fiddle.Config[layers.attentions.DotProductAttention],
     quantization_type: quantization_hparams.QuantizationType,
-    mode: quantization_hparams.QuantizationMode) -> None:
+    mode: quantization_hparams.QuantizationMode,
+) -> None:
   """Rewrites DotProductAttention HParam for weight only quantization."""
 
   attn_tpl.proj_tpl = quantization.AttentionProjection.HParams(
@@ -74,9 +77,12 @@ def quantize_dot_product_attention_layer_weights(
 
 
 def quantize_transformer_feed_forward_layer_weights(
-    tr_fflayer_tpl: layers.transformers.TransformerFeedForward.HParams,
+    tr_fflayer_tpl: pax_fiddle.Config[
+        layers.transformers.TransformerFeedForward
+    ],
     quantization_type: quantization_hparams.QuantizationType,
-    mode: quantization_hparams.QuantizationMode) -> None:
+    mode: quantization_hparams.QuantizationMode,
+) -> None:
   """Rewrites TransformerFeedForward HParam for weight only quantization."""
 
   tr_fflayer_tpl.fflayer_tpl.linear_tpl = quantization.Linear.HParams(

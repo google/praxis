@@ -19,6 +19,7 @@ import jax
 from jax import numpy as jnp
 from praxis import asserts
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 
@@ -474,7 +475,7 @@ class CifgLstmCellSimple(LstmCellSimple):
     Returns:
       state1: The next recurrent state.
     """
-    p: CifgLstmCellSimple.HParams
+    p: pax_fiddle.Config[CifgLstmCellSimple]
 
     inputs = jax.tree_map(lambda x: x, inputs)
     if not isinstance(inputs.act, (list, tuple)):

@@ -157,5 +157,5 @@ class LegosModel(BaseModel):
       if hasattr(self.components, f.name):
         self.create_child(f.name, getattr(self.components, f.name))
 
-  def get_model_params(self, name: str) -> BaseModel.HParams:
+  def get_model_params(self, name: str) -> pax_fiddle.Config[BaseModel]:
     raise NotImplementedError('Abstract method')

@@ -179,22 +179,22 @@ class VanillaNet(base_layer.BaseLayer):
   negative_slope: float = 0.4
 
   @classmethod
-  def HParamsVanillaNet5(cls) -> VanillaNet.HParams:
+  def HParamsVanillaNet5(cls) -> pax_fiddle.Config[VanillaNet]:
     """Returns VanillaNet5 hyperparams for testing purposes."""
     return cls.HParams(strides=[1], channels=[16], blocks=[1], kernels=[1])
 
   @classmethod
-  def HParamsVanillaNet50(cls) -> VanillaNet.HParams:
+  def HParamsVanillaNet50(cls) -> pax_fiddle.Config[VanillaNet]:
     """Returns commonly used VanillaNet50 hyperparams."""
     return cls.HParams()
 
   @classmethod
-  def HParamsVanillaNet101(cls) -> VanillaNet.HParams:
+  def HParamsVanillaNet101(cls) -> pax_fiddle.Config[VanillaNet]:
     """Returns commonly used VanillaNet101 hyperparams."""
     return cls.HParams(blocks=[3, 4, 23, 3])
 
   @classmethod
-  def HParamsVanillaNet152(cls) -> VanillaNet.HParams:
+  def HParamsVanillaNet152(cls) -> pax_fiddle.Config[VanillaNet]:
     """Returns commonly used VanillaNet152 hyperparams."""
     return cls.HParams(blocks=[3, 8, 36, 3])
 

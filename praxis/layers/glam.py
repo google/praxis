@@ -52,7 +52,8 @@ def GlamStackedTransformerHParams(
     capacity_factor=0.0,
     e_dim=None,
     combine_qkv=False,
-    bidirectional=False) -> transformers.StackedTransformer.HParams:
+    bidirectional=False,
+) -> pax_fiddle.Config[transformers.StackedTransformer]:
   """Common setup for GLaM Transformer layers.
 
   This function setups a transformer block for both MoE and dense GLaM models.
@@ -208,8 +209,8 @@ def GlamUniTransformerLmHParams(
     bidirectional=False,
     num_pipeline_stages=1,
     num_pipeline_microbatches=1,
-    model_type=LanguageModelType.CAUSAL
-) -> transformer_models.TransformerLm.HParams:
+    model_type=LanguageModelType.CAUSAL,
+) -> pax_fiddle.Config[transformer_models.TransformerLm]:
   """Common setup for GLaM Decoder-only Transformer Model.
 
   This function sets up configs for both MoE and dense GLaM models.
