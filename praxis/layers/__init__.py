@@ -68,6 +68,7 @@ from praxis.layers.frnn import StackFrnn
 from praxis.layers.linears import Bias
 from praxis.layers.linears import FeedForward
 from praxis.layers.linears import Linear
+from praxis.layers.linears import MLPBlock
 from praxis.layers.linears import project_last_dim
 from praxis.layers.linears import StackingOverTime
 from praxis.layers.losses import BiTemperedLoss
