@@ -18,6 +18,7 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 from praxis import layers
+from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import quantization as qlayer
 from praxis.layers.quantization import quantization_hparams
@@ -31,8 +32,13 @@ class QuantizationTest(test_utils.TestCase):
       ('separate_qkv', False, layers.attentions.CombinedQKVProjectionLayer),
   )
   def test_update_transformer(self, use_combine_qkv, qkv_cls):
-    p = layers.transformers.Transformer.HParams(
-        name='jax_transformer_layer', input_dims=12, hidden_dims=4, num_heads=8)
+    p = pax_fiddle.Config(
+        layers.transformers.Transformer,
+        name='jax_transformer_layer',
+        input_dims=12,
+        hidden_dims=4,
+        num_heads=8,
+    )
     p.tr_atten_tpl.combine_qkv = use_combine_qkv
     quantize.quantize_transformer_layer_weights(
         p,

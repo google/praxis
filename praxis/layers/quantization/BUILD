@@ -63,6 +63,7 @@ py_strict_test(
         ":quantize",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers",
     ],

@@ -46,8 +46,11 @@ def fiddle_configured_model():
   # The current Praxis bridge uses partials instead of top-level-attribute
   # submodules, but we could change this in the future.
   as_partial = fdl.cast(fdl.Partial, flaxformer_model)
-  encdec_p = flaxformer_models.EncoderDecoder.HParams.config(
-      encoder_decoder_factory=as_partial, name='encoder_decoder')
+  encdec_p = pax_fiddle.Config(
+      flaxformer_models.EncoderDecoder,
+      encoder_decoder_factory=as_partial,
+      name='encoder_decoder',
+  )
   mdl_p = flaxformer_models.EncoderDecoderModel.config(
       encoder_decoder_tpl=encdec_p, name='mdl')
   return instantiate(mdl_p)
@@ -59,8 +62,11 @@ def fiddle_configured_scanned_model():
       per_layer_relpos_bias=True,
   )
   as_partial = fdl.cast(fdl.Partial, flaxformer_model)
-  encdec_p = flaxformer_models.EncoderDecoder.HParams.config(
-      encoder_decoder_factory=as_partial, name='encoder_decoder')
+  encdec_p = pax_fiddle.Config(
+      flaxformer_models.EncoderDecoder,
+      encoder_decoder_factory=as_partial,
+      name='encoder_decoder',
+  )
   mdl_p = flaxformer_models.EncoderDecoderModel.config(
       encoder_decoder_tpl=encdec_p, name='mdl')
   return instantiate(mdl_p)
@@ -447,8 +453,11 @@ class FlaxFormerModelsTest(test_utils.TestCase):
   def test_sharded_encoder_decoder_model(self):
     flaxformer_model = t5_1_1.small_fixture()
     as_partial = fdl.cast(fdl.Partial, flaxformer_model)
-    encdec_p = flaxformer_models.EncoderDecoder.HParams.config(
-        encoder_decoder_factory=as_partial, name='encoder_decoder')
+    encdec_p = pax_fiddle.Config(
+        flaxformer_models.EncoderDecoder,
+        encoder_decoder_factory=as_partial,
+        name='encoder_decoder',
+    )
     mdl_p = flaxformer_models.EncoderDecoderModel.config(
         encoder_decoder_tpl=encdec_p,
         name='mdl',

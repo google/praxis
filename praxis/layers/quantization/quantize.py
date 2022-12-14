@@ -75,9 +75,12 @@ def quantize_dot_product_attention_layer_weights(
           quantization_type=quantization_type, mode=mode))
 
   if attn_tpl.combine_qkv:
-    attn_tpl.combined_qkv_proj_tpl = quantization.attentions.CombinedQKVProjectionLayer.HParams(
+    attn_tpl.combined_qkv_proj_tpl = pax_fiddle.Config(
+        quantization.attentions.CombinedQKVProjectionLayer,
         quantization=quantization_hparams.QuantizationHParams(
-            quantization_type=quantization_type, mode=mode))
+            quantization_type=quantization_type, mode=mode
+        ),
+    )
 
 
 def quantize_transformer_feed_forward_layer_weights(
