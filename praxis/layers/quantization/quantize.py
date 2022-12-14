@@ -32,13 +32,15 @@ quantizing all transformer blocks.
 """
 
 import functools
-from typing import cast
+from typing import cast, Type
 import fiddle as fdl
 from praxis import base_layer
 from praxis import layers
 from praxis import pax_fiddle
 from praxis.layers import quantization
 from praxis.layers.quantization import quantization_hparams
+
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 
 # TODO(jianlijianli): mark quantize_* as private.
@@ -123,11 +125,11 @@ def for_transformer():
       def task(self):
         config = super(Wrapper, self)
         task_p = config.task()
-        mode = quantization_hparams.QuantizationMode.TRAINING.value
-        quantization_type = quantization_hparams.QuantizationType.FQ.value
+        mode = quantization_hparams.QuantizationMode.TRAINING
+        quantization_type = quantization_hparams.QuantizationType.FQ
         set_quantization(
             task_p.model,
-            layers.transformers.Transformer.HParams,
+            layers.transformers.Transformer,
             quantization_type=quantization_type,
             mode=mode,
         )
@@ -138,22 +140,25 @@ def for_transformer():
   return decorator
 
 
-def set_quantization(config, target, quantization_type, mode):
+def set_quantization(config: LayerTpl, target: Type[base_layer.BaseLayer],
+                     quantization_type: quantization_hparams.QuantizationType,
+                     mode: quantization_hparams.QuantizationMode):
   target_tpls = find_target_tpl(config, target)
   for target_tpl in target_tpls:
     quantize_transformer_layer_weights(target_tpl, quantization_type, mode)
 
 
 # Traverse entire config HParam and find the tpl of the target type.
-def find_target_tpl(config, target):
+def find_target_tpl(config: LayerTpl, target: Type[base_layer.BaseLayer]):
   """Find and return target tpl from the config."""
   to_process = [config]
   target_tpl = []
   while to_process:
     param = to_process.pop(0)
-    if isinstance(param, target):
-      target_tpl.append(param)
-      continue
     if isinstance(param, fdl.Config):
-      to_process.extend(fdl.ordered_arguments(param).values())
+      if issubclass(fdl.get_callable(param), target):
+        target_tpl.append(param)
+        continue
+      else:
+        to_process.extend(fdl.ordered_arguments(param).values())
   return target_tpl
