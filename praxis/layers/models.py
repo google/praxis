@@ -595,6 +595,16 @@ class LanguageModel(base_model.BaseModel):
       - out_clu_metrics, a NestedMap containing str keys and clu_metrics.Metric
         objects. This is currently unused.
     """
+    # Optionally get all samples output in text format.
+    batch_size, num_samples, max_len = decode_out.output_ids.shape
+    if num_samples > 1:
+      sampled_ids = np.reshape(decode_out.output_ids, [-1, max_len])
+      sampled_lengths = np.reshape(decode_out.decode_lengths, [-1])
+      sampled_strs = input_obj.ids_to_strings(sampled_ids, sampled_lengths)
+      sampled_strs = np.reshape(sampled_strs, [batch_size, num_samples])
+    else:
+      sampled_strs = None
+
     # Get the first output within a batch.
     decode_out.output_ids = decode_out.output_ids[:, 0, :]
     decode_out.decode_lengths = decode_out.decode_lengths[:, 0]
@@ -624,7 +634,7 @@ class LanguageModel(base_model.BaseModel):
           decoded_ids[None, :],
           np.array([decode_length - prefix_length], dtype=np.int32))[0]
 
-      ret.append((prefix_strs[idx], {
+      ret_dict = {
           'prefix': prefix_strs[idx],
           'decoded': decoded_str,
           'original': original_strs[idx],
@@ -634,7 +644,10 @@ class LanguageModel(base_model.BaseModel):
           'logprobs': decode_out.logprobs[idx],
           'prefix_length': prefix_length,
           'decode_length': decode_length,
-      }))
+      }
+      if sampled_strs is not None:
+        ret_dict['sampled'] = list(sampled_strs[idx])
+      ret.append((prefix_strs[idx], ret_dict))
 
     decoded_lengths = np.average(decode_out.decode_lengths).astype(np.float32)
     metrics = NestedMap(
@@ -837,6 +850,17 @@ class SequenceModel(base_model.BaseModel):
       - out_clu_metrics, a NestedMap containing str keys and clu_metrics.Metric
         objects. This is currently unused.
     """
+    # Optionally get all samples output in text format.
+    batch_size, num_samples, max_len = decode_out.output_ids.shape
+    if num_samples > 1:
+      sampled_ids = np.reshape(decode_out.output_ids, [-1, max_len])
+      sampled_lengths = np.reshape(decode_out.decode_lengths, [-1])
+      sampled_strs = input_obj.ids_to_strings(
+          sampled_ids, sampled_lengths, key='tgt')
+      sampled_strs = np.reshape(sampled_strs, [batch_size, num_samples])
+    else:
+      sampled_strs = None
+
     # Get the first output within a batch.
     decode_out.output_ids = decode_out.output_ids[:, 0, :]
     decode_out.decode_lengths = decode_out.decode_lengths[:, 0]
@@ -861,7 +885,8 @@ class SequenceModel(base_model.BaseModel):
       logging.info('SRC: %s\n', source_strs[idx])
       logging.info('TGT: %s\n', target_strs[idx])
       logging.info('OUT: %s\n', decoded_str)
-      ret.append((source_strs[idx], {
+
+      ret_dict = {
           'source': source_strs[idx],
           'decoded': decoded_str,
           'target': target_strs[idx],
@@ -871,7 +896,10 @@ class SequenceModel(base_model.BaseModel):
           # TODO(b/244434890): remove workaround with more robust integration
           'prefix': source_strs[idx],  # for seqio metrics
           'decoded_substr': decoded_str,  # for seqio metrics
-      }))
+      }
+      if sampled_strs is not None:
+        ret_dict['sampled'] = list(sampled_strs[idx])
+      ret.append((source_strs[idx], ret_dict))
     decode_lengths = np.average(decode_out.decode_lengths).astype(np.float32)
     metrics = NestedMap(
         decode_length=(decode_lengths, np.array(1.0, np.float32)))
