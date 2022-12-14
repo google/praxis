@@ -578,7 +578,9 @@ class LanguageModel(base_model.BaseModel):
     # loss already contains z_loss
     return metrics, NestedMap()
 
-  def decode(self, input_batch: NestedMap) -> DecodeOut:
+  def decode(
+      self, input_batch: NestedMap
+  ) -> DecodeOut:
     """Mimic `predict_batch_with_aux` function in t5x models.
 
     Predict with sample decode on a batch. Unlike
@@ -598,11 +600,17 @@ class LanguageModel(base_model.BaseModel):
       - metrics, a NestedMap containing str keys and clu_metrics.Metric
         objects. This is currently optional.
     """
-    assert isinstance(self.decoder_tpl, SampleDecoderHParams)
-    num_decodes = self.decoder_tpl.num_samples
+    return self.decode_with_params(self.decoder_tpl, input_batch)
+
+  def decode_with_params(
+      self, decoder_params: DecoderHParams, input_batch: NestedMap
+  ) -> DecodeOut:
+    """Same as decode but with specified DecoderHParams."""
+    assert isinstance(decoder_params, SampleDecoderHParams)
+    num_decodes = decoder_params.num_samples
     params = self.decoder.variables['params']
-    decoder_params = {'eos_id': self.decoder_tpl.eos_id}
-    max_decode_length = self.decoder_tpl.max_decode_steps
+    decoder_kwargs = {'eos_id': decoder_params.eos_id}
+    max_decode_length = decoder_params.max_decode_steps
 
     # Prepare zeroed-out autoregressive cache.
     # [batch, input_len]
@@ -673,12 +681,12 @@ class LanguageModel(base_model.BaseModel):
         tokens_to_logits=tokens_ids_to_logits,
         num_decodes=1,
         cache_offset=1 if scanned else 0,
-        topk=self.decoder_tpl.k,
-        **decoder_params,
+        topk=decoder_params.k,
+        **decoder_kwargs,
     )
 
     eos_position = jnp.argmax(
-        jnp.equal(decodes, decoder_params['eos_id']), axis=-1)
+        jnp.equal(decodes, decoder_kwargs['eos_id']), axis=-1)
     decode_lengths = jnp.where(eos_position == 0,
                                jnp.ones_like(eos_position) * decodes.shape[-1],
                                eos_position + 1)
