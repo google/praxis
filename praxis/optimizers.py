@@ -780,8 +780,9 @@ def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
           init=None,
           dtype=x.dtype,
           collections=None,
-          mesh_shape=mesh_shape,
-          tensor_split_dims_mapping=[-1] * len(x.shape))
+          mesh_shape=x.mesh_shape,
+          tensor_split_dims_mapping=x.tensor_split_dims_mapping,
+      )
 
     return NestedMap(
         count=WeightHParams(
