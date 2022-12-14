@@ -76,6 +76,45 @@ class AqtTest(test_utils.TestCase):
     self.assertEqual(scale, jnp.full((1, 1), 1.0, dtype=jnp.float32))
     self.assertArraysEqual(qx, x)
 
+  def test_quant_noise_for_different_scaling_granularities(self):
+    """Ensures per_example scaling produces smaller noises than per_tensor."""
+    x = jax.random.normal(
+        jax.random.PRNGKey(0), shape=(128, 512), dtype=jnp.float32
+    )
+    y = jax.random.normal(
+        jax.random.PRNGKey(0), shape=(512, 256), dtype=jnp.float32
+    )
+    p_quant = pax_fiddle.Config(aqt.TensorQuantizer, name='tq', precision=8)
+    quant = p_quant.Instantiate()
+    state = quant.init(jax.random.PRNGKey(0))
+
+    per_example_scale = quant.apply(
+        state, x, 1, jnp.float32, method=quant.get_quant_scale
+    )
+    per_tensor_scale = quant.apply(
+        state, x, None, jnp.float32, method=quant.get_quant_scale
+    )
+
+    per_example_qx = quant.apply(
+        state, x * per_example_scale, jnp.float32, method=quant.to_quant
+    )
+    per_tensor_qx = quant.apply(
+        state, x * per_tensor_scale, jnp.float32, method=quant.to_quant
+    )
+
+    float_result = jax.lax.dot(x, y)
+
+    per_example_result = jax.lax.dot(per_example_qx, y)
+    per_example_result = per_example_result / per_example_scale
+
+    per_tensor_result = jax.lax.dot(per_tensor_qx, y)
+    per_tensor_result = per_tensor_result / per_tensor_scale
+
+    per_example_error = jnp.sum((float_result - per_example_result)**2)
+    per_tensor_error = jnp.sum((float_result - per_tensor_result)**2)
+
+    self.assertLessEqual(per_example_error, per_tensor_error)
+
 
 if __name__ == '__main__':
   absltest.main()
