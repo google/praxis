@@ -480,6 +480,7 @@ def sample_decode(
     The outputs has shape [batch, num_samples, ...].
   """
   original_batch_size = target_prefix_ids.shape[0]
+  original_prefix_lengths = prefix_lengths
   if num_samples > 1:
     # Broadcast inputs from [batch, ...] to [batch * num_samples, ...].
     # [a, b, c] and num_samples = 3 will have
@@ -672,6 +673,10 @@ def sample_decode(
 
       def _true_fn():
         """Outfeed logic."""
+        # prefix_lengths: [b]
+        # decode_lengths: [b * num_samples]
+        # output_ids: [b * num_samples, interval_steps]
+        # scores: [b * num_samples]
         outfeed_tensors = NestedMap()
         mod_size = val.output_ids.shape[-1] % host_callback.interval_steps
         if mod_size > 0:
@@ -689,8 +694,18 @@ def sample_decode(
             [0, interval_start_id],
             [batch_size, host_callback.interval_steps],
         )
+        outfeed_tensors.decode_lengths = (
+            jnp.ones_like(val.decode_lengths) * host_callback.interval_steps
+        )
+        outfeed_tensors.scores = jnp.zeros_like(
+            val.decode_lengths, dtype=jnp.float32
+        )
+        outfeed_tensors = jax.tree_map(
+            lambda x: split_batch_dim(x, 0, num_samples), outfeed_tensors
+        )
+        outfeed_tensors.prefix_lengths = jnp.zeros_like(original_prefix_lengths)
+        outfeed_tensors.done = False
 
-        outfeed_tensors.decode_lengths = val.decode_lengths
         hcb.id_tap(host_callback.callback_fn, outfeed_tensors)
 
       should_outfeed = jnp.logical_or(
@@ -781,6 +796,9 @@ def sample_decode(
     if model.is_mutable_collection(base_layer.SUMMARIES):
       # recursively merge two dictionaries.
       reinsert_collection(model, base_layer.SUMMARIES, model_summaries_copy)
+
+  if host_callback is not None:
+    hcb.id_tap(host_callback.callback_fn, NestedMap(done=True))
 
   del result.segment_pos
 

@@ -833,6 +833,13 @@ class EncoderDecoderModel(base_model.BaseModel):
     # loss already contains z_loss
     return metrics, NestedMap()
 
+  def decode_with_params(
+      self, decoder_params: DecoderHParams, input_batch: NestedMap
+  ) -> DecodeOut:
+    """Same as decode. decoder_params is ignored."""
+    del decoder_params
+    return self.decode(input_batch)
+
   def decode(self, input_batch: NestedMap) -> DecodeOut:
     """Mimic `predict_batch_with_aux` function in t5x models.
 
