@@ -16,10 +16,10 @@
 """Quantized Linear Layers."""
 
 from typing import Any
-from praxis import pax_fiddle
 
 from jax import numpy as jnp
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import pytypes
 from praxis.layers import linears
 from praxis.layers.quantization import aqt
@@ -64,6 +64,10 @@ class Linear(linears.Linear):
         ),
     )
 
+  def _do_static_activation_quantization(self) -> bool:
+    act_params = self.quantization.act_params
+    return act_params is not None and act_params.stats_config is not None
+
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
     pc = WeightHParams(
@@ -72,10 +76,7 @@ class Linear(linears.Linear):
         tensor_split_dims_mapping=wp.wt,
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
-      if (
-          self.quantization.act_params is not None
-          and self.quantization.act_params.stats_config is not None
-      ):
+      if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
         # Additionally add activation scale.
@@ -83,11 +84,8 @@ class Linear(linears.Linear):
     elif self.quantization.mode == QuantizationMode.TRAINING:
       # TODO(jihwanlee): Now, having many different branches and non-unified
       # quantization logic between PTQ, FQ, and AQT, the overall code is quite
-      # complex. DO simplfy.
-      if (
-          self.quantization.act_params is not None
-          and self.quantization.act_params.stats_config is not None
-      ):
+      # complex. DO simplify.
+      if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
         # Additionally add mutable tensor to record activation range.
@@ -109,7 +107,7 @@ class Linear(linears.Linear):
     """
     ap = self.activation_split_dims_mapping
     eqn = '...y,yz->...z'
-    # TOOD(jihwanlee): Implement the inference logic that can be shared between
+    # TODO(jihwanlee): Implement the inference logic that can be shared between
     # different quantization types.
     if self.quantization.mode == QuantizationMode.INFERENCE:
       # PTQ, QAT has the same inference graph, only difference is on activation.
@@ -130,20 +128,13 @@ class Linear(linears.Linear):
             is_eval=True,
             rhs_quantized=(w, s))
       else:
-        if (
-            self.quantization.act_params is not None
-            and self.quantization.act_params.stats_config is not None
-        ):
+        if self._do_static_activation_quantization():
           raise NotImplementedError(
               'Static activation quantization is not supported yet.')
-        elif (
-            self.quantization.act_params is not None
-            and self.quantization.act_params.stats_config is None
-        ):
+        elif self.quantization.act_params is not None:
           inputs, act_scale = operations.reduce_precision_activation(inputs)
-          out = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
-        elif self.quantization.act_params is None:
-          out = operations.einsum(eqn, inputs, w, s)
+          s = jnp.multiply(act_scale, s)
+        out = operations.einsum(eqn, inputs, w, s)
     else:
       w = self.theta.w
       if self.quantization.quantization_type == QuantizationType.AQT:
@@ -187,36 +178,13 @@ class Linear(linears.Linear):
         scale_weight_hparam, self.mesh_axis_names
     )
     partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
-    if self.quantization.quantization_type == QuantizationType.PTQ:
-      if (
-          self.quantization.act_params is not None
-          and self.quantization.act_params.stats_config is not None
-      ):
-        raise NotImplementedError(
-            'Static activation quantization is not supported yet.')
-      else:
-        # quantize only weight for activation == NONE and DYNAMIC
-        return {base_layer.PARAMS: partitionspec}
-    elif self.quantization.quantization_type == QuantizationType.FQ:
-      if (
-          self.quantization.act_params is not None
-          and self.quantization.act_params.stats_config is not None
-      ):
-        raise NotImplementedError(
-            'Static activation quantization is not supported yet.')
-      else:
-        # quantize only weight for activation == NONE and DYNAMIC
-        return {base_layer.PARAMS: partitionspec}
-    elif self.quantization.quantization_type == QuantizationType.AQT:
-      if (
-          self.quantization.act_params is not None
-          and self.quantization.act_params.stats_config is not None
-      ):
-        raise NotImplementedError(
-            'Static activation quantization is not supported yet.')
-      else:
-        # quantize only weight for activation == NONE and DYNAMIC
-        return {base_layer.PARAMS: partitionspec}
+
+    # Activation variable partitioning is only needed for static quantization.
+    if self._do_static_activation_quantization():
+      raise NotImplementedError(
+          'Static activation quantization is not supported yet.')
+
+    return {base_layer.PARAMS: partitionspec}
 
   def quantize_weight(self) -> NestedJTensor:
     """Get quantized weight.
@@ -228,34 +196,26 @@ class Linear(linears.Linear):
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     eqn = 'xy,yz->xz'
     if self.quantization.quantization_type == QuantizationType.PTQ:
-      if (self.quantization.act_params is not None and
-          self.quantization.act_params.stats_config is not None):
+      if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
       else:
-        # quantize only weight for activation == NONE and DYNAMIC
         q_w, q_s = operations.reduce_einsum_weight_precision(
             eqn, theta.w, calculation_type=self.dtype)
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
     elif self.quantization.quantization_type == QuantizationType.FQ:
-      if (self.quantization.act_params is not None and
-          self.quantization.act_params.stats_config is not None):
+      if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
       else:
-        # quantize only weight for activation == NONE and DYNAMIC
         q_w, q_s = operations.reduce_einsum_weight_precision(
             eqn, theta.w, calculation_type=self.dtype)
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
     elif self.quantization.quantization_type == QuantizationType.AQT:
-      if (
-          self.quantization.act_params is not None
-          and self.quantization.act_params.stats_config is not None
-      ):
+      if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
       else:
-        # quantize only weight for activation == NONE and DYNAMIC
         q_s = self.weight_quantizer.get_quant_scale(
             theta.w, contract_dims=[0], dtype=self.dtype)
         q_s = jnp.squeeze(q_s)

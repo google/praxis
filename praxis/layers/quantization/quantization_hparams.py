@@ -30,7 +30,6 @@ class QuantizationType(str, enum.Enum):
   AQT indicates Accurate Quantized Training, which is one flavor of QAT.
   FQ  indicates Fake Quantization, which is one flavor of QAT.
   """
-
   PTQ = 'ptq'
   AQT = 'aqt'
   FQ = 'fq'
@@ -93,7 +92,6 @@ class QuantizationHParams(base_hyperparams.BaseHyperParams):
     act_params: Config for activation quantization.
     weight_params: Config for weight quantization.
   """
-
   quantization_type: QuantizationType = QuantizationType.PTQ
   mode: QuantizationMode = QuantizationMode.INFERENCE
   act_params: Optional[ActQuantizationParams] = None
