@@ -855,6 +855,17 @@ class LanguageModelTest(test_utils.TestCase):
     self.assertArraysEqual(results.decode_lengths,
                            np.array([[5], [4], [3]], dtype=np.int32))
 
+  def test_cf_guidance_unimplemented_exception(self):
+    p = models.SampleDecoderHParams(seqlen=5, cf_guidance_scale=2.0)
+    input_batch = NestedMap(
+        ids=jnp.array([[11, 13]], dtype=jnp.int32),
+        paddings=jnp.ones(shape=(1, 2), dtype=jnp.float32),
+    )
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                'LanguageModel does not support guidance.'):
+      self._run_decode(p, [], input_batch)
+
 
 class ClassifierModelTest(test_utils.TestCase):
 

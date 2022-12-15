@@ -87,6 +87,7 @@ class SampleDecoderHParams(DecoderHParams):
       at the same time.
     next_token_sampler_tpl: HParams for the layer used to sample next token ids
       given the logits output.
+    cf_guidance_scale: If not None, apply classifier-free guidance.
   """
   num_samples: int = 1
   # TODO(wangtao): supports per-example temperature.
@@ -95,3 +96,4 @@ class SampleDecoderHParams(DecoderHParams):
   p: Optional[Union[float, JTensor]] = None
   next_token_sampler_tpl: sample_decode.BaseNextTokenSampler.HParams = (
       sub_config_field(sample_decode.DefaultNextTokenSampler.HParams))
+  cf_guidance_scale: Optional[Union[List[float], float]] = None

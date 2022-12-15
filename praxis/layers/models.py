@@ -246,6 +246,9 @@ class LanguageModel(base_model.BaseModel):
         self.apply_eval_sample_weights,
     )
 
+  def _prepare_guidance_decode_data(self, decode_data: NestedMap) -> NestedMap:
+    raise NotImplementedError('LanguageModel does not support guidance.')
+
   def _prepare_decode_data(
       self, input_batch: NestedMap, decoder_params: DecoderHParams
   ) -> NestedMap:
@@ -326,7 +329,7 @@ class LanguageModel(base_model.BaseModel):
       fprop_segment_ids = None
       state_padding_size = seqlen - 1
 
-    return NestedMap(
+    decode_data = NestedMap(
         seqlen=seqlen,
         start_time_step=start_time_step,
         input_ids=input_ids,
@@ -340,6 +343,12 @@ class LanguageModel(base_model.BaseModel):
         prefix_lengths=prefix_lengths,
         extra_input_kwargs={},
     )
+
+    if (template_has_type(decoder_params, SampleDecoderHParams) and
+        decoder_params.cf_guidance_scale is not None):
+      decode_data = self._prepare_guidance_decode_data(decode_data)
+
+    return decode_data
 
   def decode(
       self,
@@ -534,6 +543,7 @@ class LanguageModel(base_model.BaseModel):
           eos_id=decoder_params.eos_id,
           return_result_for_suffix_score=return_result_for_suffix_score,
           host_callback=host_callback,
+          cf_guidance_scale=decoder_params.cf_guidance_scale,
       )
     elif template_has_type(decoder_params, GreedyDecoderHParams):
       assert isinstance(decoder_params, GreedyDecoderHParams)
