@@ -817,6 +817,7 @@ py_strict_test(
     srcs = ["shared_layers_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = ["fast_and_reliable_fiddle_integration_test"],
     deps = [
         ":linears",
         # Implicit absl.logging dependency.

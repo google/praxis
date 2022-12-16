@@ -423,6 +423,7 @@ py_strict_test(
 pytype_strict_contrib_test(
     name = "base_layer_test",
     srcs = ["base_layer_test.py"],
+    tags = ["fast_and_reliable_fiddle_integration_test"],
     deps = [
         ":base_layer",
         ":pax_fiddle",
@@ -579,6 +580,7 @@ py_strict_test(
 py_strict_test(
     name = "pax_fiddle_test",
     srcs = ["pax_fiddle_test.py"],
+    tags = ["fast_and_reliable_fiddle_integration_test"],
     deps = [
         ":base_hyperparams",
         ":base_layer",
