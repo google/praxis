@@ -16,7 +16,6 @@
 """Tests for Praxis convolutional layers."""
 
 from absl import logging
-from praxis import pax_fiddle
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -26,6 +25,7 @@ from lingvo.core import conformer_layer
 from lingvo.core import conv_layers_with_time_padding as clwp
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import activations
@@ -102,12 +102,14 @@ class ConvolutionsTest(test_utils.TestCase):
   )
   def test_conv3d_layer_same_padding(self, filter_shape, filter_stride,
                                      input_shape):
-    p = convolutions.Conv3D.HParams(
+    p = pax_fiddle.Config(
+        convolutions.Conv3D,
         name='jax_conv3d',
         filter_shape=filter_shape,
         filter_stride=filter_stride,
         dilations=(1, 1, 1),
-        padding='SAME')
+        padding='SAME',
+    )
     conv_layer = instantiate(p)
     npy_inputs = np.random.normal(1.0, 0.5, input_shape).astype('float32')
     inputs = jnp.asarray(npy_inputs)
