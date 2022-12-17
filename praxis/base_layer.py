@@ -1028,8 +1028,9 @@ def instantiate_layer(layer_p: pax_fiddle.Config, scope: Any) -> BaseLayer:
       # created.
       wrapped_p = layer_p.clone()
       wrapped_p.shared_weight_layer_id = None
-      wrapper_p = _WrapperLayer.HParams(
-          name=layer_p.shared_weight_layer_id, cld_tpl=wrapped_p)
+      wrapper_p = pax_fiddle.Config(
+          _WrapperLayer, name=layer_p.shared_weight_layer_id, cld_tpl=wrapped_p
+      )
       wrapper = instantiate(wrapper_p, parent=scope)
       layer = wrapper.cld
       jax_context.set_shared_layer(scope, layer_p.shared_weight_layer_id,
@@ -1327,12 +1328,9 @@ class BaseLayer(nn.Module):
   # Fetches variables from flax 'params' class via theta "dot" syntax.
   theta = ThetaDescriptor()
 
-  # Compatiblity stubs:
-  # * `self.hparams` returns a Fiddle Config that can be used to build self.
-  # * `self.HParams` returns a stub class that can be called to generate a
-  #   `fdl.Config`; or can be used with `base_hyperparams.sub_config_field`.
+  # Compatibility stub:
+  # `self.hparams` returns a Fiddle Config that can be used to build self.
   hparams = functools.cached_property(_FiddleHParamsInstanceStub)
-  HParams = _FiddleHParamsClassStubDescriptor()  # pylint: disable=invalid-name
 
   @staticmethod
   def copy_base_hparams(

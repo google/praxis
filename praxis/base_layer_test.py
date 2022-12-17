@@ -69,7 +69,7 @@ class MultipleBiasLayer(base_layer.BaseLayer):
   @nn.compact
   def __call__(self, x: base_layer.JTensor) -> base_layer.JTensor:
     p = self.hparams
-    b_p = AddBias.HParams()
+    b_p = pax_fiddle.Config(AddBias)
     for i in range(p.num_child):
       x = self.create_child(f'child_{i}', b_p)(x)
     layers = self.create_children('children', [b_p] * p.num_children)
@@ -106,7 +106,7 @@ class BaseLayerTest(test_utils.TestCase):
           {'my_custom_summary_scalar', 'my_custom_summary1_scalar'})
 
   def test_layer_summary_verbosity_log(self):
-    layer_p = Identity.HParams(name='test_identity')
+    layer_p = pax_fiddle.Config(Identity, name='test_identity')
     layer = base_layer.instantiate(layer_p)
 
     x = jnp.array([1., 2.], dtype=jnp.float32)
@@ -123,7 +123,7 @@ class BaseLayerTest(test_utils.TestCase):
     context_p = base_layer.JaxContext.HParams(
         do_eval=True, summary_verbosity=2)
     with base_layer.JaxContext.new_context(hparams=context_p):
-      layer_p = Identity.HParams(name='test_identity')
+      layer_p = pax_fiddle.Config(Identity, name='test_identity')
       layer = base_layer.instantiate(layer_p)
 
       x = jnp.array([1., 2.], dtype=jnp.float32)
@@ -175,7 +175,7 @@ class BaseLayerTest(test_utils.TestCase):
             base_layer.SummaryType.TEXT))
 
   def test_quantize(self):
-    layer_p = Identity.HParams(name='test_identity')
+    layer_p = pax_fiddle.Config(Identity, name='test_identity')
     layer = base_layer.instantiate(layer_p)
 
     x = jnp.array([1., 2.], dtype=jnp.float32)
@@ -190,7 +190,9 @@ class BaseLayerTest(test_utils.TestCase):
   def test_layer_building_nn_compact(self, num_child: int, num_children: int):
     x = jnp.array([[0., 1.], [2., 3.]], dtype=jnp.float32)
 
-    p = MultipleBiasLayer.HParams()
+    p = pax_fiddle.Config(
+        MultipleBiasLayer,
+    )
     p.name = 'multi_bias'
     p.num_child = num_child
     p.num_children = num_children
@@ -261,9 +263,9 @@ class BaseLayerTest(test_utils.TestCase):
 
     class FiddleParent(base_layer.BaseLayer):
 
-      child_tpl: Any = base_layer.sub_config_field(FiddleChild.HParams)
-      child_tpl_list: Any = base_layer.sub_config_field(None)
-      child_tpl_dict: Any = base_layer.sub_config_field(None)
+      child_tpl: Any = base_layer.template_field(FiddleChild)
+      child_tpl_list: Any = base_layer.template_field(None)
+      child_tpl_dict: Any = base_layer.template_field(None)
 
       def setup(self):
         child_tpl = self.child_tpl.clone()
@@ -273,10 +275,13 @@ class BaseLayerTest(test_utils.TestCase):
       def __call__(self):
         return 0
 
-    p = FiddleParent.HParams(name='test')
-    p.child_tpl = FiddleChild.HParams(x=5)
-    p.child_tpl_list = [FiddleChild.HParams(x=7), FiddleChild.HParams(x=12)]
-    p.child_tpl_dict = {'x': FiddleChild.HParams(x=12)}
+    p = pax_fiddle.Config(FiddleParent, name='test')
+    p.child_tpl = pax_fiddle.Config(FiddleChild, x=5)
+    p.child_tpl_list = [
+        pax_fiddle.Config(FiddleChild, x=7),
+        pax_fiddle.Config(FiddleChild, x=12),
+    ]
+    p.child_tpl_dict = {'x': pax_fiddle.Config(FiddleChild, x=12)}
     layer = p.Instantiate()
 
     model = layer.bind(
@@ -327,12 +332,15 @@ class BaseLayerTest(test_utils.TestCase):
     key = jax.random.PRNGKey(0)
     for parent_cls, assigned_name in [(Parent, 'layer'),
                                       (CompactParent, 'AddBias_0')]:
-      mod = parent_cls(get_layer=lambda: AddBias.HParams().Instantiate())
+      mod = parent_cls(
+          get_layer=lambda: pax_fiddle.Config(AddBias).Instantiate()
+      )
       prms = mod.init({'params': key}, jnp.ones((3, 3)))
       self.assertIn(assigned_name, prms['params'])
 
       mod = parent_cls(
-          get_layer=lambda: AddBias.HParams(name='x').Instantiate())
+          get_layer=lambda: pax_fiddle.Config(AddBias, name='x').Instantiate()
+      )
       prms = mod.init({'params': key}, jnp.ones((3, 3)))
       self.assertIn('x', prms['params'])
 
@@ -410,62 +418,6 @@ class BaseLayerTest(test_utils.TestCase):
 
     with self.subTest('can_deepcopy'):
       copy.deepcopy(hparams_stub)
-
-  def test_hparams_class_stub(self):
-
-    class Layer(base_layer.BaseLayer):
-      x: int = 0
-
-    class AnotherLayer(base_layer.BaseLayer):
-      y: int = 0
-
-    layer = Layer(x=3, fprop_dtype=jnp.float16)
-
-    hparams_cls_stub = layer.HParams
-    self.assertIsInstance(hparams_cls_stub, base_layer._FiddleHParamsClassStub)
-
-    with self.subTest('call'):
-      cfg = hparams_cls_stub(x=3, fprop_dtype=jnp.float16)
-      self.assertIsInstance(cfg, pax_fiddle.Config)
-      self.assertEqual(cfg.cls, Layer)
-      self.assertEqual(fdl.get_callable(cfg), Layer)
-      self.assertEqual(cfg.x, 3)
-      self.assertEqual(cfg.fprop_dtype, jnp.float16)
-      self.assertEqual(cfg.dtype, jnp.float32)
-
-    with self.subTest('sub_config_field'):
-      field_descr = base_layer.sub_config_field(hparams_cls_stub)
-      self.assertIsInstance(field_descr, dataclasses.Field)
-
-    with self.subTest('instancecheck'):
-      cfg = hparams_cls_stub(x=3, fprop_dtype=jnp.float16)
-      self.assertIsInstance(cfg, Layer.HParams)
-      self.assertIsInstance(pax_fiddle.Config(Layer), Layer.HParams)
-      self.assertNotIsInstance(pax_fiddle.Config(AnotherLayer), Layer.HParams)
-      self.assertNotIsInstance(pax_fiddle, AnotherLayer.HParams)
-      self.assertNotIsInstance(123, Layer.HParams)
-
-    with self.subTest('config'):
-      cfg = layer.HParams.config(x=3, fprop_dtype=jnp.float16)
-      self.assertIsInstance(cfg, pax_fiddle.Config)
-      self.assertEqual(cfg.cls, Layer)
-      self.assertEqual(fdl.get_callable(cfg), Layer)
-      self.assertEqual(cfg.x, 3)
-      self.assertEqual(cfg.fprop_dtype, jnp.float16)
-      self.assertEqual(cfg.dtype, jnp.float32)
-
-  def test_converted_base_class_but_not_sub_class(self):
-
-    expected_error = (
-         "For <class '.*SimpleFiddleBaseLayer'>: PAX layers should no longer "
-         'use nested HParams classes. Instead, add fields directly to the '
-         'layer class.')
-    with self.assertRaisesRegex(ValueError, expected_error):
-
-      class Child(SimpleFiddleBaseLayer):  # pylint: disable=unused-variable
-
-        class HParams(SimpleFiddleBaseLayer.HParams):
-          y: int = 0
 
   def test_override_weight_sharding_hparams(self):
 
@@ -576,15 +528,6 @@ class BaseLayerTest(test_utils.TestCase):
   def test_check_template_has_do_not_build_tag(self):
 
     # pylint: disable=unused-variable
-    with self.subTest('FiddleHParamsClassStub'):
-      with self.assertRaisesRegex(
-          ValueError,
-          'has a template type, but does not have the pax_fiddle.DoNotBuild.*'):
-
-        class Layer1(base_layer.BaseLayer):
-          child_tpl: TrivialFiddleLayer.HParams = dataclasses.field(
-              default_factory=TrivialFiddleLayer.HParams)
-
     with self.subTest('FiddleConfig'):
       with self.assertRaisesRegex(
           ValueError,
@@ -593,16 +536,6 @@ class BaseLayerTest(test_utils.TestCase):
         class Layer2(base_layer.BaseLayer):
           child_tpl: pax_fiddle.Config = dataclasses.field(
               default_factory=lambda: pax_fiddle.Config(SimpleFiddleBaseLayer))
-
-    with self.subTest('Optional_FiddleHParamsClassStub'):
-      if not hasattr(typing, 'get_origin'):
-        self.skipTest('This version of Python has not typing.get_origin')
-      with self.assertRaisesRegex(
-          ValueError,
-          'has a template type, but does not have the pax_fiddle.DoNotBuild.*'):
-
-        class Layer3(base_layer.BaseLayer):
-          child_tpl: Optional[TrivialFiddleLayer.HParams] = None
 
     with self.subTest('Optional_FiddleConfig'):
       if not hasattr(typing, 'get_origin'):
@@ -671,7 +604,7 @@ class BaseLayerTest(test_utils.TestCase):
 
     class Parent(base_layer.BaseLayer):
 
-      child_tpl: Any = base_layer.sub_config_field(Child.HParams)
+      child_tpl: Any = base_layer.template_field(Child)
 
       def setup(self):
         self.create_child('child', self.child_tpl)
@@ -702,7 +635,9 @@ class BaseLayerTest(test_utils.TestCase):
                      hyper_params['child']['_hparams'].params_init.method)
 
   def testTypeCheckingForDtype(self):
-    layer_p = SimpleFiddleBaseLayer.HParams()
+    layer_p = pax_fiddle.Config(
+        SimpleFiddleBaseLayer,
+    )
     with self.assertRaisesRegex(
         TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
       SimpleFiddleBaseLayer(layer_p)
