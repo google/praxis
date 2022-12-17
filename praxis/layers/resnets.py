@@ -326,12 +326,15 @@ class ResNet(base_layer.BaseLayer):
   @classmethod
   def HParamsResNet5(cls) -> LayerTpl:
     """Returns ResNet5 hyperparams for testing purposes."""
-    return cls.HParams(strides=[1], channels=[16], blocks=[1], kernels=[1])
+    return pax_fiddle.Config(
+        cls, strides=[1], channels=[16], blocks=[1], kernels=[1]
+    )
 
   @classmethod
   def HParamsResNet18(cls) -> LayerTpl:
     """Returns commonly used ResNet18 hyperparams."""
-    return cls.HParams(
+    return pax_fiddle.Config(
+        cls,
         channels=(64, 128, 256, 512),
         block_params=pax_fiddle.Config(ResNetBasicBlock),
         blocks=[2, 2, 2, 2],
@@ -340,7 +343,8 @@ class ResNet(base_layer.BaseLayer):
   @classmethod
   def HParamsResNet34(cls) -> LayerTpl:
     """Returns commonly used ResNet18 hyperparams."""
-    return cls.HParams(
+    return pax_fiddle.Config(
+        cls,
         channels=(64, 128, 256, 512),
         block_params=pax_fiddle.Config(ResNetBasicBlock),
         blocks=[3, 4, 6, 3],
@@ -349,17 +353,19 @@ class ResNet(base_layer.BaseLayer):
   @classmethod
   def HParamsResNet50(cls) -> LayerTpl:
     """Returns commonly used ResNet50 hyperparams."""
-    return cls.HParams()
+    return pax_fiddle.Config(
+        cls,
+    )
 
   @classmethod
   def HParamsResNet101(cls) -> LayerTpl:
     """Returns commonly used ResNet101 hyperparams."""
-    return cls.HParams(blocks=[3, 4, 23, 3])
+    return pax_fiddle.Config(cls, blocks=[3, 4, 23, 3])
 
   @classmethod
   def HParamsResNet152(cls) -> LayerTpl:
     """Returns commonly used ResNet152 hyperparams."""
-    return cls.HParams(blocks=[3, 8, 36, 3])
+    return pax_fiddle.Config(cls, blocks=[3, 8, 36, 3])
 
   def setup(self) -> None:
     num_stages = len(self.strides)

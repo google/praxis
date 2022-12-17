@@ -590,6 +590,7 @@ pytype_strict_library(
         ":normalizations",
         ":stochastics",
         ":transformers",
+        # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:asserts",
         "//praxis:base_hyperparams",

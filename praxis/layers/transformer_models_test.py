@@ -1318,19 +1318,21 @@ class TransformerModelsTest(test_utils.TestCase):
         embedding_options, ngrammer_options, tfm_options, softmax_options):
 
       if emb_cls is not None:
-        position_emb_tpl = emb_cls.HParams()
+        position_emb_tpl = pax_fiddle.Config(emb_cls)
         if emb_cls == embedding_softmax.TrainablePositionalEmbedding:
           position_emb_tpl.max_seq_length = seq_len
       else:
         position_emb_tpl = None
 
       if ngram_cls is not None:
-        ngrammer_tpl = ngram_cls.HParams()
+        ngrammer_tpl = pax_fiddle.Config(ngram_cls)
       else:
         ngrammer_tpl = None
 
-      stacked_transformer_tpl = tfm_cls.HParams()
-      softmax_tpl = softmax_cls.HParams()
+      stacked_transformer_tpl = pax_fiddle.Config(tfm_cls)
+      softmax_tpl = pax_fiddle.Config(
+          softmax_cls,
+      )
 
       lm_p = pax_fiddle.Config(
           transformer_models.TransformerLm,

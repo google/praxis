@@ -551,7 +551,7 @@ class LayerE(base_layer.BaseLayer):
 class DaglishTest(testing.TestCase, parameterized.TestCase):
 
   def test_hparams_with_fiddle_subconfig(self):
-    config = LayerE.HParams()
+    config = pax_fiddle.Config(LayerE)
 
     all_sub_values = {
         daglish.path_str(path): value
@@ -580,7 +580,7 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
     )
 
   def test_non_memoized_iterate(self):
-    config = LayerE.HParams()
+    config = pax_fiddle.Config(LayerE)
     fdl.materialize_defaults(config)
     paths = [
         daglish.path_str(path)
@@ -604,7 +604,7 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
   @parameterized.parameters(pax_fiddle.BasicTraversal,
                             pax_fiddle.MemoizedTraversal)
   def test_replacement(self, traversal_cls):
-    config = LayerE.HParams()
+    config = pax_fiddle.Config(LayerE)
     fdl.materialize_defaults(config)
 
     def traverse(value, state: daglish.State):

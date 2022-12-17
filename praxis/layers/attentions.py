@@ -1043,7 +1043,8 @@ class DotProductAttention(base_layer.BaseLayer):
       self.create_child('relative_bias', relative_bias_p)
 
     if self.dconv_qkv:
-      causal_dconv_p = CausalDepthwiseConv1D.HParams(
+      causal_dconv_p = pax_fiddle.Config(
+          CausalDepthwiseConv1D,
           kernel_size=self.dconv_kernel_size,
           hidden_dims=[self.num_heads, dim_per_head],
       )

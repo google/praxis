@@ -101,7 +101,7 @@ def GlamStackedTransformerHParams(
   Returns:
     A Params object to set up a StackedTransformer.
   """
-  ffn_activation_tpl = getattr(ffn_activation_cls, 'HParams')()
+  ffn_activation_tpl = pax_fiddle.Config(ffn_activation_cls)
 
   p = pax_fiddle.Config(transformers.StackedTransformer)
   p.name = name

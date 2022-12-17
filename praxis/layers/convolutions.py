@@ -104,7 +104,7 @@ class Conv2D(base_layer.BaseLayer):
     if 'filter_shape' in hparams:
       raise ValueError('filter_shape cannot be specified in HParamsDepthwise')
     filter_shape = tuple(kernel_shape) + (1, in_channels * channel_multipliers)
-    return cls.HParams(filter_shape=filter_shape, **hparams)
+    return pax_fiddle.Config(cls, filter_shape=filter_shape, **hparams)
 
   def setup(self) -> None:
     if not self.name:
@@ -287,7 +287,7 @@ class Conv3D(base_layer.BaseLayer):
     if 'filter_shape' in hparams:
       raise ValueError('filter_shape cannot be specified in HParamsDepthwise')
     filter_shape = tuple(kernel_shape) + (1, in_channels * channel_multipliers)
-    return cls.HParams(filter_shape=filter_shape, **hparams)
+    return pax_fiddle.Config(cls, filter_shape=filter_shape, **hparams)
 
   def setup(self) -> None:
     if not self.name:

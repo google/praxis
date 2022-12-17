@@ -42,7 +42,7 @@ class FRNNTest(test_utils.TestCase):
                        jax_cell_class,
                        output_nonlinearity,
                        direct_config=False):
-    params = jax_cell_class.HParams(name='rnn')
+    params = pax_fiddle.Config(jax_cell_class, name='rnn')
     params.params_init = WeightInit.Uniform(1.24)
     params.num_input_nodes = 7
     params.num_output_nodes = 9

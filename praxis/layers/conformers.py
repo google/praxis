@@ -17,6 +17,7 @@
 
 from typing import Optional, Tuple
 
+import fiddle as fdl
 import jax.numpy as jnp
 from praxis import asserts
 from praxis import base_hyperparams
@@ -198,11 +199,11 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     # based on DotProductAttention with emulated self attention.
     # If full attention mask is computed for LocalSelfAttention then
     # it can introduce additional jit computation as in b/259460599.
-    if isinstance(
-        self.self_atten_tpl,
+    if issubclass(
+        fdl.get_callable(self.self_atten_tpl),
         (
-            DotProductAttentionWithContext.HParams,
-            DotProductAttentionWithContextXL.HParams,
+            DotProductAttentionWithContext,
+            DotProductAttentionWithContextXL,
         ),
     ):
       if (

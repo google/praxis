@@ -72,9 +72,12 @@ def quantize_dot_product_attention_layer_weights(
 ) -> None:
   """Rewrites DotProductAttention HParam for weight only quantization."""
 
-  attn_tpl.proj_tpl = quantization.AttentionProjection.HParams(
+  attn_tpl.proj_tpl = pax_fiddle.Config(
+      quantization.AttentionProjection,
       quantization=quantization_hparams.QuantizationHParams(
-          quantization_type=quantization_type, mode=mode))
+          quantization_type=quantization_type, mode=mode
+      ),
+  )
 
   if attn_tpl.combine_qkv:
     attn_tpl.combined_qkv_proj_tpl = pax_fiddle.Config(
@@ -94,9 +97,12 @@ def quantize_transformer_feed_forward_layer_weights(
 ) -> None:
   """Rewrites TransformerFeedForward HParam for weight only quantization."""
 
-  tr_fflayer_tpl.fflayer_tpl.linear_tpl = quantization.Linear.HParams(
+  tr_fflayer_tpl.fflayer_tpl.linear_tpl = pax_fiddle.Config(
+      quantization.Linear,
       quantization=quantization_hparams.QuantizationHParams(
-          quantization_type=quantization_type, mode=mode))
+          quantization_type=quantization_type, mode=mode
+      ),
+  )
 
 
 # TODO(jianlijianli): Add decorator for other model architectures.

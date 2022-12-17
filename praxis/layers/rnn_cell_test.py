@@ -70,7 +70,8 @@ class RnnCellTest(test_utils.TestCase):
     m_expected = res.m.numpy()
     c_expected = res.c.numpy()
 
-    p = jax_cell_class.HParams(
+    p = pax_fiddle.Config(
+        jax_cell_class,
         num_input_nodes=2,
         num_output_nodes=2,
         name='lstm',
