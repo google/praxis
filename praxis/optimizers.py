@@ -1191,6 +1191,11 @@ class DistributedShampoo(BaseOptimizer):
       decoupled_learning_rate_from_momentum: Decouple learning rate from
         momentum.
       eigh: If True, uses eigendecomposition to compute inverse-pth roots.
+      compression_rank: If nonzero, whether to use low-rank preconditioners.
+      frequent_directions: Use frequent directions sketching for preconditioner.
+      average_grad: Whether to average gradients before usage in FD statistics.
+      reuse_preconditioner: Wire in previous preconditioner for root updates.
+        must be set to true for frequent directions.
     """
     block_size: int = 1024
     beta1: float = 0.9
@@ -1228,6 +1233,10 @@ class DistributedShampoo(BaseOptimizer):
     decoupled_weight_decay_from_momentum: bool = True
     decoupled_learning_rate_from_momentum: bool = False
     eigh: bool = False
+    compression_rank: int = 0
+    frequent_directions: bool = False
+    average_grad: bool = False
+    reuse_preconditioner: bool = False
 
   @classmethod
   def HParamsImageClassification(cls) -> DistributedShampoo.HParams:  # pylint: disable=invalid-name
@@ -1342,6 +1351,10 @@ class DistributedShampoo(BaseOptimizer):
         decoupled_learning_rate=p.decoupled_learning_rate_from_momentum,
         generate_training_metrics=p.summarize_training_metrics,
         eigh=p.eigh,
+        compression_rank=p.compression_rank,
+        frequent_directions=p.frequent_directions,
+        average_grad=p.average_grad,
+        reuse_preconditioner=p.reuse_preconditioner,
     )
 
 
