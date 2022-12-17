@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import abc
 import copy
+import math
 import re
 from typing import Dict, Optional, Sequence
 
@@ -727,7 +728,15 @@ class MultiInput(BaseInput):
   iteratively called for each child in eager mode to generate one batch of
   data for each step. Each batch will contain a batch from all children
   input generators nested into a NestedMap.
+
+  Since Pax trainers with model sharding assume a global batch size for all
+  input tensors, we reshape all tensors across different inputs to
+  [global_batch_size, inner_input_batch_size, ...]. global_batch_size is
+  automatically determined from children input generator batch sizes.
+
+  The model code is responsible for collapsing the two batch_size dimensions.
   """
+
   _VALIDATE_BATCH_SIZE_NOT_NONE = False  # Validated separately for children.
   _VALIDATE_BATCH_SIZE_NONE = True  # Can't set batch size for wrapper.
 
@@ -738,9 +747,10 @@ class MultiInput(BaseInput):
       input_to_params: Dict from input names to input generator parameter
         definitions for each input. Input generators need to implement
         BaseInput.
-      default_input: Default input to use for ids_to_strings or other
-        input generator methods.
+      default_input: Default input to use for ids_to_strings or other input
+        generator methods.
     """
+
     input_to_params: Dict[str, BaseInput.HParams] = None
     default_input: str = None
 
@@ -748,11 +758,18 @@ class MultiInput(BaseInput):
   def get_batch_size(cls, hparams: MultiInput.HParams) -> int:
     assert hparams.input_to_params
     logging.warning(
-        'get_batch_size for MultiInput only returns batch size for the first '
-        'input. This might be different from batch sizes for other inputs.'
+        'get_batch_size for MultiInput only returns the outer batch size '
+        'determined from the children input generators. This will be different '
+        'from the actual batch sizes for children inputs.'
     )
-    first = list(hparams.input_to_params.values())[0]
-    return first.cls.get_batch_size(first)
+    children_batch_sizes = []
+    for child_ig_hparams in hparams.input_to_params.values():
+      children_batch_sizes.append(
+          child_ig_hparams.cls.get_batch_size(child_ig_hparams)
+      )
+    if len(children_batch_sizes) == 1:
+      return children_batch_sizes[0]
+    return math.gcd(*children_batch_sizes)
 
   def __init__(self, hparams: MultiInput.HParams) -> None:
     if self._VALIDATE_BATCH_SIZE_NONE and hparams.batch_size is not None:
@@ -789,7 +806,10 @@ class MultiInput(BaseInput):
     input_batches = {}
     for input_name, input_gen in self._inputs.items():
       input_batches[input_name] = input_gen.get_next()
-    return NestedMap(input_batches)
+    combined_batch = NestedMap(input_batches)
+    outer_batch_size = self.hparams.cls.get_batch_size(self.hparams)
+    return combined_batch.Transform(
+        lambda x: py_utils.reshape_with_outer_batch_size(x, outer_batch_size))
 
   def get_child(self, input_name: str) -> NestedJTensor:
     return self._inputs[input_name]

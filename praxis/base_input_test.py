@@ -629,9 +629,9 @@ class InputTest(test_utils.TestCase):
     for i in range(num_batches):
       batch = inp.get_next()
       self.assertArraysEqual(
-          np.array([2 * i, 2 * i + 1], dtype=np.int32), batch.input_1.num)
+          np.array([[2 * i, 2 * i + 1]], dtype=np.int32), batch.input_1.num)
       self.assertArraysEqual(
-          np.array([num_data_2 - i], dtype=np.int32), batch.input_2.num)
+          np.array([[num_data_2 - i]], dtype=np.int32), batch.input_2.num)
 
   def test_multi_input_eval(self):
     tmp_1 = os.path.join(FLAGS.test_tmpdir, 'tmptest_1')
@@ -662,7 +662,7 @@ class InputTest(test_utils.TestCase):
     for i in range(num_batches):
       batch = inp.get_next()
       self.assertArraysEqual(
-          np.array([2 * i, 2 * i + 1], dtype=np.int32), batch.input_1.num)
+          np.array([[2 * i], [2 * i + 1]], dtype=np.int32), batch.input_1.num)
     with self.assertRaisesRegex(tf.errors.OutOfRangeError,
                                 'SequentialRecordYielder reached 1 repeat'):
       inp.get_next()
@@ -670,11 +670,11 @@ class InputTest(test_utils.TestCase):
     for i in range(num_batches):
       batch = inp.get_next()
       self.assertArraysEqual(
-          np.array([2 * i, 2 * i + 1], dtype=np.int32), batch.input_1.num)
+          np.array([[2 * i], [2 * i + 1]], dtype=np.int32), batch.input_1.num)
 
   def test_multi_input_get_batch_size(self):
-    batch_size_1 = 2
-    batch_size_2 = 1
+    batch_size_1 = 4
+    batch_size_2 = 6
 
     p = base_input.LingvoInputAdaptor.HParams()
     p.input = LingvoInput.Params()
@@ -698,7 +698,8 @@ class InputTest(test_utils.TestCase):
     }
     multi_p = base_input.MultiInput.HParams(input_to_params=inputs)
     multi_bs = base_input.MultiInput.get_batch_size(multi_p)
-    self.assertEqual(multi_bs, batch_size_1)
+    # Batch size should be greatest common factor of children batch sizes.
+    self.assertEqual(multi_bs, 2)
 
 if __name__ == '__main__':
   absltest.main()

@@ -151,6 +151,20 @@ def unshard(array: jnp.ndarray) -> np.ndarray:
   return np.reshape(array, (-1,) + array.shape[2:])
 
 
+def reshape_with_outer_batch_size(array: jnp.ndarray,
+                                  outer_bs: int) -> np.ndarray:
+  """Reshapes an input tensor according to an outer batch size."""
+  batch_size = array.shape[0]
+  if batch_size // outer_bs < 1 or batch_size % outer_bs != 0:
+    raise ValueError('outer_bs should be a factor of batch_size.')
+  return np.reshape(array, (outer_bs, batch_size // outer_bs) + array.shape[1:])
+
+
+def combine_inner_and_outer_batches(array: jnp.ndarray) -> np.ndarray:
+  """Combines the first two dimensions of the array."""
+  return np.reshape(array, (-1,) + array.shape[2:])
+
+
 def _unreplicate(x):
   """Helper to unreplicated the data based on its type."""
   if jax.config.jax_array and isinstance(x, jax.Array):
