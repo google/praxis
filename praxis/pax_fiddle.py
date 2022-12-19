@@ -248,13 +248,17 @@ def instance_field(
   ...   child: Child = instance_field(Child)
 
   Args:
-    default_factory: The dataclass type used by the field.
+    default_factory: The dataclass type used by the field.  If `None`, then the
+      field defaults to `None`.
     tags: One or more tags to attach to the `fdl.Buildable`'s argument
       corresponding to the field, when building a `fdl.Buildable`.
 
   Returns:
     A `dataclasses.Field` specification for the field.
   """
+  if default_factory is None:
+    return fdl_field(default=None, tags=tags)
+
   # `factory` will return a PaxConfig object in the Fiddle.as_buildable path,
   # but will be `default_factory()` in the Python path.
   factory = auto_config(default_factory)
