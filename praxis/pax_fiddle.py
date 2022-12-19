@@ -33,6 +33,30 @@ from fiddle.experimental.dataclasses import field as fdl_field
 import fiddle.extensions.jax
 from flax.linen import module as flax_module
 
+# Import standard Fiddle APIs that we don't modify into this namespace.
+# (So users can use e.g. `pax_fiddle.set_tags` instead of `fdl.set_tags`.)
+add_tag = fdl.add_tag
+ArgFactory = fdl.ArgFactory
+assign = fdl.assign
+Buildable = fdl.Buildable
+cast = fdl.cast
+clear_tags = fdl.clear_tags
+copy_with = fdl.copy_with
+deepcopy_with = fdl.deepcopy_with
+get_callable = fdl.get_callable
+get_tags = fdl.get_tags
+NO_VALUE = fdl.NO_VALUE
+ordered_arguments = fdl.ordered_arguments
+Partial = fdl.Partial
+remove_tag = fdl.remove_tag
+set_tags = fdl.set_tags
+update_callable = fdl.update_callable
+materialize_defaults = fdl.materialize_defaults
+set_tagged = fdl.set_tagged
+Tag = fdl.Tag
+TaggedValue = fdl.TaggedValue
+
+
 fdl_field = fdl_dataclasses.field
 TagOrTags = Union[type(fdl.Tag), Collection[type(fdl.Tag)]]
 T = TypeVar('T')
