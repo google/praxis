@@ -833,6 +833,15 @@ class EncoderDecoderModel(base_model.BaseModel):
     # loss already contains z_loss
     return metrics, NestedMap()
 
+  def encode(self, input_batch: NestedMap) -> DecodeOut:
+    """API for encode function."""
+    return self.encoder_decoder.encode(
+        encoder_input_tokens=input_batch.encoder_input_tokens,
+        encoder_segment_ids=getattr(input_batch, 'encoder_segment_ids', None),
+        encoder_positions=getattr(input_batch, 'encoder_positions', None),
+        enable_dropout=getattr(input_batch, 'enable_dropout', False),
+    )
+
   def decode_with_params(
       self, decoder_params: DecoderHParams, input_batch: NestedMap
   ) -> DecodeOut:
@@ -930,13 +939,13 @@ class EncoderDecoderModel(base_model.BaseModel):
     # Beam search returns [n_batch, n_beam, n_length] with beam dimension sorted
     # in increasing order of log-probability.
     # Return the highest scoring beam sequence.
-# pyformat: disable
+    # pyformat: disable
     decode_out = (
         NestedMap(num_decoded=(num_decodes, jnp.array(1, jnp.float32))),
         NestedMap(output_ids=decodes[:, -1, :],
                   logprobs=scores[:, -1],
                   input_batch=input_batch),
-        NestedMap())    # pyformat: enable
+        NestedMap())  # pyformat: enable
     return decode_out
 
   def process_decode_out(self, input_obj: base_input.BaseInput,
