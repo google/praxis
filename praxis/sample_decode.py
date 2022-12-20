@@ -27,7 +27,6 @@ from typing import List, Optional, Sequence, Union
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
-from jax.experimental import host_callback as hcb
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import decoder_utils
@@ -36,7 +35,7 @@ from praxis import pytypes
 
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
-DecodingHostCallback = decoder_utils.DecodingHostCallback
+StreamingResultCallback = decoder_utils.StreamingResultCallback
 
 RANDOM = base_layer.RANDOM
 PARAMS = base_layer.PARAMS
@@ -401,7 +400,7 @@ def sample_decode(
     per_example_max_decode_steps: Optional[JTensor] = None,
     prefix_lengths: Optional[JTensor] = None,
     eos_id: Optional[int] = None,
-    host_callback: Optional[DecodingHostCallback] = None,
+    result_callback: Optional[StreamingResultCallback] = None,
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
     early_exit=True,
@@ -463,8 +462,8 @@ def sample_decode(
       batch. This can either be None or a JTensor of shape [batch] signifying
       the prefix length for each sequence in the batch.
     eos_id: Optional EOS id which to terminate the decoding early.
-    host_callback: Optional host call back function for id_tap, no return
-      tensors from the host.
+    result_callback: Optional callback function to be called for decoding
+      results with a configurable interval.
     return_result_for_suffix_score: Whether or not to return result for suffix
       score.
     sort_samples: Whether to sort the samples by logprobs.
@@ -665,7 +664,7 @@ def sample_decode(
                                    val.decode_lengths)
     val.output_ids = val.output_ids.at[:, step + 1].set(new_ids)
 
-    if host_callback is not None:
+    if result_callback is not None:
 
       def _false_fn():
         """Dummy function."""
@@ -678,24 +677,24 @@ def sample_decode(
         # output_ids: [b * num_samples, interval_steps]
         # scores: [b * num_samples]
         outfeed_tensors = NestedMap()
-        mod_size = val.output_ids.shape[-1] % host_callback.interval_steps
+        mod_size = val.output_ids.shape[-1] % result_callback.interval_steps
         if mod_size > 0:
           output_ids = jnp.pad(
               val.output_ids,
-              [[0, 0], [0, host_callback.interval_steps - mod_size]],
+              [[0, 0], [0, result_callback.interval_steps - mod_size]],
           )
         else:
           output_ids = val.output_ids
         interval_start_id = (
-            val.step // host_callback.interval_steps
-        ) * host_callback.interval_steps
+            val.step // result_callback.interval_steps
+        ) * result_callback.interval_steps
         outfeed_tensors.output_ids = jax.lax.dynamic_slice(
             output_ids,
             [0, interval_start_id],
-            [batch_size, host_callback.interval_steps],
+            [batch_size, result_callback.interval_steps],
         )
         outfeed_tensors.decode_lengths = (
-            jnp.ones_like(val.decode_lengths) * host_callback.interval_steps
+            jnp.ones_like(val.decode_lengths) * result_callback.interval_steps
         )
         outfeed_tensors.scores = jnp.zeros_like(
             val.decode_lengths, dtype=jnp.float32
@@ -706,12 +705,12 @@ def sample_decode(
         outfeed_tensors.prefix_lengths = jnp.zeros_like(original_prefix_lengths)
         outfeed_tensors.done = False
 
-        hcb.id_tap(host_callback.callback_fn, outfeed_tensors)
+        result_callback.callback_fn(outfeed_tensors)
 
       should_outfeed = jnp.logical_or(
           jnp.logical_and(
               val.step > 0,
-              (val.step % host_callback.interval_steps == 0),
+              (val.step % result_callback.interval_steps == 0),
           ),
           jnp.all(val.done),
       )
@@ -797,8 +796,8 @@ def sample_decode(
       # recursively merge two dictionaries.
       reinsert_collection(model, base_layer.SUMMARIES, model_summaries_copy)
 
-  if host_callback is not None:
-    hcb.id_tap(host_callback.callback_fn, NestedMap(done=True))
+  if result_callback is not None:
+    result_callback.callback_fn(NestedMap(done=True))
 
   del result.segment_pos
 

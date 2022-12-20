@@ -353,7 +353,7 @@ class LanguageModel(base_model.BaseModel):
   def decode(
       self,
       input_batch: NestedMap,
-      host_callback: Optional[decoder_utils.DecodingHostCallback] = None,
+      result_callback: Optional[decoder_utils.StreamingResultCallback] = None,
       return_result_for_suffix_score=False,
   ) -> DecodeOut:
     """Decodes the input_batch with specified decoder params.
@@ -368,7 +368,8 @@ class LanguageModel(base_model.BaseModel):
         p.decoder_tpl.temperature will be used in sampling decode. Optional
         `.per_example_max_decode_steps` of shape [batch_size] has the maximum
         decoding steps for each example.
-      host_callback: Optional host call back function.
+      result_callback: Optional callback function to be called for intermediate
+        decoding results.
       return_result_for_suffix_score: Whether return results for suffix score.
 
     Returns:
@@ -393,7 +394,7 @@ class LanguageModel(base_model.BaseModel):
     return self.decode_with_params(
         self.decoder_tpl,
         input_batch,
-        host_callback=host_callback,
+        result_callback=result_callback,
         return_result_for_suffix_score=return_result_for_suffix_score,
     )
 
@@ -401,7 +402,7 @@ class LanguageModel(base_model.BaseModel):
       self,
       decoder_params: DecoderHParams,
       input_batch: NestedMap,
-      host_callback: Optional[decoder_utils.DecodingHostCallback] = None,
+      result_callback: Optional[decoder_utils.StreamingResultCallback] = None,
       return_result_for_suffix_score=False,
   ) -> DecodeOut:
     """Same as decode but with specified DecoderHParams."""
@@ -542,7 +543,7 @@ class LanguageModel(base_model.BaseModel):
           prefix_lengths=decode_data.prefix_lengths,
           eos_id=decoder_params.eos_id,
           return_result_for_suffix_score=return_result_for_suffix_score,
-          host_callback=host_callback,
+          result_callback=result_callback,
           cf_guidance_scale=decoder_params.cf_guidance_scale,
       )
     elif template_has_type(decoder_params, GreedyDecoderHParams):

@@ -35,10 +35,10 @@ LazyBroadcastPrefixFn = Callable[[base_layer.BaseLayerApi, int, int], None]
 
 
 @dataclasses.dataclass(frozen=True)
-class DecodingHostCallback:
-  """Host call wrapper in decoding."""
+class StreamingResultCallback:
+  """Callback to be invoked for every N steps of decoding with its results."""
 
-  callback_fn: Callable[[Union[NestedJTensor, JTensor], Any], None]
+  callback_fn: Callable[[Union[NestedJTensor, JTensor]], None]
   interval_steps: int = 1
 
 
