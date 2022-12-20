@@ -54,6 +54,19 @@ class TestCase(parameterized.TestCase):
     y = y.astype(np.float32) if y.dtype == jnp.bfloat16 else y
     np.testing.assert_allclose(x, y, rtol=rtol, atol=atol, **kwargs)
 
+  def assertNotAllClose(
+      self, x, y, check_dtypes=True, rtol=1E-5, atol=1E-5, **kwargs):
+    """Asserts that two arrays do not have near values."""
+    try:
+      self.assertAllClose(x, y, rtol=rtol, atol=atol,
+                          check_dtypes=check_dtypes,
+                          **kwargs)
+    except AssertionError:
+      return
+    raise AssertionError(
+        'The two values are close at all elements. %s %s' % (x, y)
+    )
+
   def assertArraysEqual(self, x, y, check_dtypes=True, **kwargs):
     """Wrapper for np.testing.assert_array_equal()."""
     x = np.asarray(x)
