@@ -321,7 +321,9 @@ def dot_general(
     rhs = rhs_scale * rhs
     rhs = rhs_quantizer.to_quant(rhs, input_dtype)
   elif rhs is None:
-    assert is_eval, 'Expected inference when rhs_quantized is passed.'
+    assert (
+        is_eval
+    ), f'Expected is_eval={is_eval} == True when rhs_quantized is passed.'
     # If rhs_quantized is passed, then it means the rhs is already quantized and
     # its scale is provided. Thus, no need to get scale and quantize rhs again.
     rhs, rhs_scale = rhs_quantized

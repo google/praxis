@@ -16,7 +16,6 @@
 """Tests for quantized linears."""
 
 import itertools
-from praxis import pax_fiddle
 from typing import Any, Dict, Sequence
 
 from absl.testing import absltest
@@ -26,6 +25,7 @@ from jax import numpy as jnp
 from jax.experimental import pjit
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import linears
 from praxis.layers.quantization import linears as qlinears
@@ -183,6 +183,49 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
       outputs_q = linear_q.apply(initial_vars_q, inputs)
     self.assertAllClose(outputs_f.astype(outputs_q.dtype), outputs_q)
 
+  @parameterized.named_parameters(
+      dict(testcase_name='ptq', quantization_type=QuantizationType.PTQ),
+      dict(testcase_name='fq', quantization_type=QuantizationType.FQ),
+      dict(testcase_name='aqt', quantization_type=QuantizationType.AQT),
+  )
+  def test_linear_quantized_in_inference_mode(self, quantization_type):
+    p_f = pax_fiddle.Config(linears.Linear, name='_linear_f')
+    p_q = pax_fiddle.Config(
+        qlinears.Linear,
+        name='_linear_q',
+        quantization=QuantizationHParams(quantization_type=quantization_type,
+                                         mode=QuantizationMode.INFERENCE),
+    )
+    for p in [p_f, p_q]:
+      p.input_dims = 4
+      p.output_dims = 2
+
+    inputs = jax.random.normal(jax.random.PRNGKey(0), (3, 4)).astype(
+        jnp.float32
+    )
+    quantized_weight = jax.random.randint(
+        jax.random.PRNGKey(0), (4, 2), minval=-128, maxval=127, dtype=jnp.int8
+    )
+    w_scale = jnp.array([0.5, 2.0], dtype=jnp.float32)
+    weight_rescaled = quantized_weight * w_scale
+
+    # TODO(b/262780000): Remove this if statement when the bug is resolved.
+    if quantization_type == QuantizationType.AQT:
+      w_scale = 1 / w_scale
+
+    linear_f = instantiate(p_f)
+    linear_q = instantiate(p_q)
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars_f = linear_f.init(prng_key, inputs)
+    initial_vars_q = linear_q.init(prng_key, inputs)
+    initial_vars_f['params']['w'] = weight_rescaled
+    initial_vars_q['params']['w'] = quantized_weight
+    initial_vars_q['params']['w_quantized_scale'] = w_scale
+    outputs_f = linear_f.apply(initial_vars_f, inputs)
+    outputs_q = linear_q.apply(initial_vars_q, inputs)
+    self.assertAllClose(outputs_f, outputs_q)
+
 
 class QuantizeLinearTest(test_utils.TestCase):
   """Quantize Linear."""
@@ -292,6 +335,7 @@ class QuantizeLinearTest(test_utils.TestCase):
 
     self.assertArraysEqual(res['params']['w'], q_weight)
     self.assertArraysEqual(res['params']['w_quantized_scale'], expected_scale)
+
 
 if __name__ == '__main__':
   absltest.main()

@@ -16,12 +16,12 @@
 """Quantized Attention Layers."""
 
 import string
-from praxis import pax_fiddle
-from typing import Tuple, Any, Sequence
+from typing import Any, Sequence, Tuple
 
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import pytypes
 from praxis.layers import attentions
 from praxis.layers.quantization import aqt

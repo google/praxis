@@ -16,7 +16,6 @@
 """Tests for quantized attentions."""
 
 import itertools
-from praxis import pax_fiddle
 from typing import Any, Dict, Sequence
 
 from absl.testing import absltest
@@ -26,6 +25,7 @@ from jax import numpy as jnp
 from jax.experimental import pjit
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import attentions
