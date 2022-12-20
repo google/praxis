@@ -57,6 +57,7 @@ LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 WeightHParams = base_layer.WeightHParams
 WeightInit = base_layer.WeightInit
 sub_config_field = base_hyperparams.sub_config_field
+template_field = base_layer.template_field
 
 
 def image_to_patch(img: JTensor, patch_size: int) -> JTensor:
@@ -191,7 +192,7 @@ class VitEntryLayers(base_layer.BaseLayer):
   pos_emb_dropout_prob: float = 0.0
   prepend_cls_tokens: int = 0
   append_cls_tokens: int = 0
-  pos_emb_tpl: Optional[LayerTpl] = base_layer.template_field(
+  pos_emb_tpl: Optional[LayerTpl] = template_field(
       embedding_softmax.TrainablePositionalEmbedding
   )
   input_fc_has_bias: bool = True
@@ -317,14 +318,13 @@ class VitExitLayers(base_layer.BaseLayer):
   pre_ln: bool = True
   output_fc_tanh: bool = True
   output_fc_has_bias: bool = True
-  pooling_tpl: LayerTpl = base_layer.template_field(poolings.GlobalPooling)
+  pooling_tpl: LayerTpl = template_field(poolings.GlobalPooling)
+  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
 
   def setup(self) -> None:
 
     if self.pre_ln:
-      p_ln = pax_fiddle.Config(
-          normalizations.LayerNorm, name='ln', dim=self.hidden_dim
-      )
+      p_ln = self.ln_tpl.clone().set(name='ln', dim=self.hidden_dim)
       self.create_child('ln', p_ln)
 
     if self.pooled:
@@ -391,11 +391,11 @@ class VisionTransformer(base_layer.BaseLayer):
     exit_layers_tpl: An integer specifying number of attention heads in
       transformers.
   """
-  entry_layers_tpl: LayerTpl = base_layer.template_field(VitEntryLayers)
-  transformer_layers_tpl: LayerTpl = base_layer.template_field(
+  entry_layers_tpl: LayerTpl = template_field(VitEntryLayers)
+  transformer_layers_tpl: LayerTpl = template_field(
       transformers.StackedTransformer
   )
-  exit_layers_tpl: LayerTpl = base_layer.template_field(VitExitLayers)
+  exit_layers_tpl: LayerTpl = template_field(VitExitLayers)
 
   def setup(self) -> None:
 

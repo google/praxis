@@ -302,8 +302,8 @@ class LayerNorm(BaseNormalization):
 
   Attributes:
     epsilon: Tiny value to guard rsqrt.
-    scale: Whether to use a learned scaling.
-    bias: Whether to use bias.
+    use_scale: Whether to use a learned scaling.
+    use_bias: Whether to use bias.
   """
   epsilon: float = 1e-6
   use_scale: bool = True
@@ -459,6 +459,8 @@ class GroupNorm(BaseNormalization):
     input_rank: Rank of input. Only 3(BTD) and 4(NHWC) are supported.
     epsilon: Epsilon added when computing the rsqrt.
     set_padded_output_to_zero: bool. whether to pad padding part to zero.
+    use_scale: Whether to use a learned scaling.
+    use_bias: Whether to use bias.
   """
   num_groups: int = 32
   min_group_size: int = 1
@@ -466,6 +468,8 @@ class GroupNorm(BaseNormalization):
   input_rank: Optional[int] = None
   epsilon: float = 0.001
   set_padded_output_to_zero: bool = True
+  use_scale: bool = True
+  use_bias: bool = True
 
   def setup(self) -> None:
     """Initializes GroupNorm layer and checks parameters."""
@@ -492,8 +496,10 @@ class GroupNorm(BaseNormalization):
         init=WeightInit.Constant(0.0),
         collections=[base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION])
 
-    self.create_variable('beta', pc)
-    self.create_variable('gamma', pc)
+    if self.use_bias:
+      self.create_variable('beta', pc)
+    if self.use_scale:
+      self.create_variable('gamma', pc)
 
   @property
   def _group_size(self) -> int:
@@ -521,8 +527,12 @@ class GroupNorm(BaseNormalization):
     grouped_inputs = jnp.reshape(grouped_inputs,
                                  list(grouped_inputs.shape[:-2]) + [-1])
 
-    # Note, The real gamma to use is 1 + gamma.
-    outputs = grouped_inputs * (1 + self.theta.gamma) + self.theta.beta
+    outputs = grouped_inputs
+    if self.use_scale:
+      # Note, The real gamma to use is 1 + gamma.
+      outputs *= (1 + self.theta.gamma)
+    if self.use_bias:
+      outputs += self.theta.beta
     return outputs
 
   def __call__(self,
