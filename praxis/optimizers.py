@@ -756,9 +756,9 @@ def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
 
     def update_func(old_v, new_v):
       if old_v.dtype == jnp.bool_ or jnp.issubdtype(old_v, jnp.integer):
-        # If it is integer, we directly return the old variable
+        # If it is integer, we directly return the new variable
         # This is mainly supported for non_trainable
-        return old_v
+        return new_v
       else:
         return old_v - (1.0 - ema_decay) * (old_v - new_v)
 
