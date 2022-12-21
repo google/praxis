@@ -151,7 +151,7 @@ def set_quantization(config: LayerTpl, target: Type[base_layer.BaseLayer],
                      mode: quantization_hparams.QuantizationMode):
   target_tpls = find_target_tpl(config, target)
   for target_tpl in target_tpls:
-    quantize_transformer_layer_weights(target_tpl, quantization_type, mode)
+    quantize_transformer_layer_weights(target_tpl, quantization_type, mode)  # pytype: disable=wrong-arg-types  # py310-upgrade
 
 
 # Traverse entire config HParam and find the tpl of the target type.
