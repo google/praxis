@@ -1726,7 +1726,7 @@ class BaseLayer(nn.Module):
       summary_type: enum value indicating what type of summary is being added.
       verbosity: verbosity level of the summary being written. If this verbosity
         value is higher (less verbose) than that of the JaxContext the summary
-        will not be added. If the summary is being without any JaxConext, it'll
+        will not be added. If the summary is being without any JaxContext, it'll
         be added by default. Refer to JaxContext.HParams.summary_verbosity
         docstring for more detail.
     """
@@ -2066,7 +2066,7 @@ class BaseLayer(nn.Module):
     return jax.tree_util.tree_map(_cast, value)
 
   def quantize_weight(self) -> NestedJTensor:
-    """Quantize the current layer and it's children layer(s).
+    """Quantize the current layer and its children layer(s).
 
     Returns:
       a nested map from names to quantized weights.
@@ -2074,7 +2074,7 @@ class BaseLayer(nn.Module):
     return self._quantize_fn(return_pspec=False)
 
   def quantized_partitioned_specs(self) -> Any:
-    """Get quantization spec for the current layer and it's children layer(s).
+    """Get quantization spec for the current layer and its children layer(s).
 
     Returns:
       a nested map from names to partition spec.
@@ -2082,7 +2082,7 @@ class BaseLayer(nn.Module):
     return self._quantize_fn(return_pspec=True)
 
   def _quantize_fn(self, return_pspec: bool) -> Union[NestedJTensor, Any]:
-    """quantize_weight() quantize the current layer and it's children layer(s).
+    """quantize_weight() quantize the current layer and its children layer(s).
 
     Quantization applies to only PARAMS and NON_TRAINABLE collection.
 
