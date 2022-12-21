@@ -414,7 +414,7 @@ class RelativeBias(base_layer.BaseLayer):
     use_xavier_init: If true, use xavier init for the buckets.
   """
   num_heads: int = 1
-  use_length_as_position: bool = False
+  use_length_as_position: bool = True
   relative_attention_num_buckets: int = 32
   relative_attention_max_distance: int = 128
   bidirectional: bool = False
@@ -496,7 +496,7 @@ class RelativeBias(base_layer.BaseLayer):
 
     # Relative position is defined in such a way that when query is in the
     # future relative to the key, the value of relative position is negative.
-    if self.use_length_as_position:
+    if self.use_length_as_position and not self.do_eval:
       klen = key_segment_pos.shape[1]
       qlen = query_segment_pos.shape[1]
       key_pos = np.arange(klen, dtype=jnp.int32)[None, None, :]
@@ -509,7 +509,8 @@ class RelativeBias(base_layer.BaseLayer):
     relative_bucket = self._relative_position_bucket(relative_position)
 
     relative_bucket_one_hot = jax.nn.one_hot(
-        relative_bucket, self.relative_attention_num_buckets, dtype=self.dtype
+        relative_bucket, self.relative_attention_num_buckets,
+        dtype=self.fprop_dtype
     )
     # relative_bucket_one_hot:
     # BTSX - [batch, length, memory_length, num_buckets]
