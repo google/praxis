@@ -819,8 +819,10 @@ class SequenceModel(base_model.BaseModel):
       self.model(
           inputs=input_batch.src.ids,
           input_paddings=input_batch.src.paddings,
-          targets=input_batch.tgt.ids,
-          target_paddings=input_batch.tgt.paddings)
+          targets=input_batch.tgt.ids[:, :1],
+          target_paddings=input_batch.tgt.paddings[:, :1])
+      self.model.transform_decode_state(
+          decoder_utils.pad_state_fn(self.decoder_tpl.seqlen))
       result = sample_decode.greedy_decode(
           self,
           extend_step_fn,
