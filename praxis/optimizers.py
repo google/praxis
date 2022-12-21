@@ -315,7 +315,7 @@ class _HeroLionOptState:
 class _ShardedHeroLionHelper(_ShardedAdamHelper):
   """A helper class facilitates the creation of sharded_hero_lion_optimizer."""
 
-  def opt_state_sharding_spec(self,
+  def opt_state_sharding_spec(self,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                               var_hparams: WeightHParams) -> _HeroLionOptState:
     """Returns optimizer sharding spec for one particular variable."""
     m_var_hparams = var_hparams.clone()
@@ -323,13 +323,13 @@ class _ShardedHeroLionHelper(_ShardedAdamHelper):
     # m simply share the same sharding.
     return _HeroLionOptState(m=m_var_hparams)
 
-  def init_opt_state(self,
+  def init_opt_state(self,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                      var_hparams: WeightHParams,
                      m_dtype: jnp.dtype = jnp.float32) -> _HeroLionOptState:
     """Returns optimizer state for one particular variable."""
     return _HeroLionOptState(m=jnp.zeros_like(var_hparams, dtype=m_dtype))
 
-  def update_moments(self, step: JTensor, update: JTensor,
+  def update_moments(self, step: JTensor, update: JTensor,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                      moments: _HeroLionOptState,
                      beta2: float) -> _HeroLionOptState:
     """Updates momentum value."""
@@ -1468,7 +1468,7 @@ class ShardedDistributedShampoo(DistributedShampoo):
     return jax.tree_map(_weight_param_from_pspec_shape_dtype,
                         partition_spec_opt_state, shapes_and_dtypes)
 
-  def _get_raw_grad_transformation(
+  def _get_raw_grad_transformation(  # pytype: disable=signature-mismatch  # overriding-return-type-checks
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
     result = self._shampoo_transformation(lr)
     # TODO(rohananil): Refactor after PartitionSpec layering is finalized in

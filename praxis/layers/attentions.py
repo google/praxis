@@ -2533,7 +2533,7 @@ class DotProductAttentionXL(DotProductAttention):
     encoded = self._shard_bnh(encoded)
     return encoded, probs
 
-  def init_states(self, target_batch_size: int,
+  def init_states(self, target_batch_size: int,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                   target_max_length: int) -> NestedMap:
 
     raise NotImplementedError('init_states is not implemented for %s' %
@@ -2780,7 +2780,7 @@ class LocalSelfAttention(DotProductAttention):
     raise NotImplementedError('One step is not implemented for %s' %
                               self.__name__)
 
-  def init_states(self, target_batch_size: int,
+  def init_states(self, target_batch_size: int,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                   target_max_length: int) -> NestedMap:
 
     raise NotImplementedError('init_states is not implemented for %s' %
