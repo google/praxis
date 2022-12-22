@@ -68,11 +68,10 @@ class MultipleBiasLayer(base_layer.BaseLayer):
 
   @nn.compact
   def __call__(self, x: base_layer.JTensor) -> base_layer.JTensor:
-    p = self.hparams
     b_p = pax_fiddle.Config(AddBias)
-    for i in range(p.num_child):
+    for i in range(self.num_child):
       x = self.create_child(f'child_{i}', b_p)(x)
-    layers = self.create_children('children', [b_p] * p.num_children)
+    layers = self.create_children('children', [b_p] * self.num_children)
     for layer in layers:
       x = layer(x)
     return x

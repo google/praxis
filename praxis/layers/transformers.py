@@ -1486,7 +1486,6 @@ class StackedTransformer(base_layer.BaseLayer):
   ngrammer_tpls: Optional[Sequence[LayerTpl]] = template_field(None)
 
   def setup(self) -> None:
-    p = self.hparams
 
     assert self.num_layers > 0
     assert self.model_dims > 0
@@ -1497,43 +1496,46 @@ class StackedTransformer(base_layer.BaseLayer):
 
     def _layer_params(i):
       """Construct i-th layer params."""
-      if isinstance(p.transformer_layer_params_tpl, (list, tuple)):
-        factor = p.num_layers // len(p.transformer_layer_params_tpl)
+      if isinstance(self.transformer_layer_params_tpl, Sequence):
+        factor = self.num_layers // len(self.transformer_layer_params_tpl)
         ii = i // factor
-        p_i = p.transformer_layer_params_tpl[ii].clone()
+        p_i = self.transformer_layer_params_tpl[ii].clone()
       else:
-        p_i = p.transformer_layer_params_tpl.clone()
+        p_i = self.transformer_layer_params_tpl.clone()
       p_i.name = f'layer_{i}'
-      p_i.use_cross_attention = p.use_cross_attention
-      p_i.mask_self_attention = p.mask_self_attention
-      p_i.num_heads = p.num_heads
-      p_i.dim_per_head = p.dim_per_head
-      p_i.input_dims = p.model_dims
-      p_i.packed_input = p.packed_input
-      p_i.atten_dropout_prob = p.atten_dropout_prob or p.dropout_prob
-      p_i.residual_dropout_prob = p.residual_dropout_prob or p.dropout_prob
-      p_i.relu_dropout_prob = p.relu_dropout_prob or p.dropout_prob
-      p_i.hidden_dims = p.hidden_dims
+      p_i.use_cross_attention = self.use_cross_attention
+      p_i.mask_self_attention = self.mask_self_attention
+      p_i.num_heads = self.num_heads
+      p_i.dim_per_head = self.dim_per_head
+      p_i.input_dims = self.model_dims
+      p_i.packed_input = self.packed_input
+      p_i.atten_dropout_prob = self.atten_dropout_prob or self.dropout_prob
+      p_i.residual_dropout_prob = (
+          self.residual_dropout_prob or self.dropout_prob
+      )
+      p_i.relu_dropout_prob = self.relu_dropout_prob or self.dropout_prob
+      p_i.hidden_dims = self.hidden_dims
 
-      if p.residual_droppath_prob > 0.0:
+      if self.residual_droppath_prob > 0.0:
         p_i.residual_droppath_prob = (
-            p.residual_droppath_prob * i / max(1, p.num_layers))
+            self.residual_droppath_prob * i / max(1, self.num_layers)
+        )
 
-      if p.moe_layers and i in p.moe_layers:
-        assert p.num_experts > 0
-        moe_p = p.moe_layer_tpl.clone()
-        moe_p.num_experts = p.num_experts
-        moe_p.num_groups = p.num_groups
-        moe_p.min_group_size = p.min_group_size
-        moe_p.gating_func = p.gating_func
+      if self.moe_layers and i in self.moe_layers:
+        assert self.num_experts > 0
+        moe_p = self.moe_layer_tpl.clone()
+        moe_p.num_experts = self.num_experts
+        moe_p.num_groups = self.num_groups
+        moe_p.min_group_size = self.min_group_size
+        moe_p.gating_func = self.gating_func
         if moe_p.hidden_dims:
           # MoE hidden_dims could be different from FFN hidden_dims
           p_i.hidden_dims = moe_p.hidden_dims
         p_i.tr_fflayer_tpl = moe_p
 
-      if p.ngrammer_tpls is not None:
-        if p.ngrammer_tpls[i] is not None:
-          p_i.ngrammer_tpl = p.ngrammer_tpls[i]
+      if self.ngrammer_tpls is not None:
+        if self.ngrammer_tpls[i] is not None:
+          p_i.ngrammer_tpl = self.ngrammer_tpls[i]
       return p_i
 
     if isinstance(self.transformer_layer_params_tpl, (list, tuple)):
@@ -1995,7 +1997,6 @@ class PipelinedTransformer(base_layer.BaseLayer):
     Returns:
       Output vector with shape [B, T, D].
     """
-    p = self.hparams
     if self.pipeline_stage.cls == StackedTransformer:
       xformer_layer_p = self.pipeline_stage.transformer_layer_params_tpl
     else:
@@ -2015,9 +2016,11 @@ class PipelinedTransformer(base_layer.BaseLayer):
         # For cross inputs, we only specify the batch dim sharding.
         def _shard_batch_dim_only(x):
           return base_layer.maybe_shard(
-              x, [bld_mapping[0]] + [-1] * (x.ndim - 1),
-              p.mesh_axis_names,
-              unconstrained_dims=range(1, x.ndim))
+              x,
+              [bld_mapping[0]] + [-1] * (x.ndim - 1),
+              self.mesh_axis_names,
+              unconstrained_dims=range(1, x.ndim),
+          )
 
         if segment_mask is not None:
           segment_mask = _shard_batch_dim_only(segment_mask)

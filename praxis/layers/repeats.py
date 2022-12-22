@@ -114,7 +114,6 @@ class Repeat(base_layer.BaseLayer):
     Returns:
       Output from the last sub layer.
     """
-    p = self.hparams
 
     def body_fn(sub, layer_in):
       layer_out = sub(layer_in, *args, **kwargs)
@@ -192,8 +191,7 @@ class Repeat(base_layer.BaseLayer):
         new_tree = {}
         for collection, subtree in tree.items():
           new_tree[collection] = {}
-          for i in range(p.x_times):
-
+          for i in range(self.x_times):
             def _slice(x, i=i):
               return x[i]
 
@@ -326,7 +324,6 @@ class Repeat(base_layer.BaseLayer):
   def _run_unrolled_for_decoding(
       self, fn: Callable[[base_layer.BaseLayer, Any], Any], inputs: Any
   ) -> Any:
-    p = self.hparams
 
     def _run_one_layer(i, inp):
 
@@ -380,8 +377,10 @@ class Repeat(base_layer.BaseLayer):
           mutable=False,
           trans_in_fn=functools.partial(
               flax_utils.maybe_repack_summary,
-              unpack_summaries=p.unpack_summaries,
-              x_times=p.x_times))
+              unpack_summaries=self.unpack_summaries,
+              x_times=self.x_times,
+          ),
+      )
       # TODO(yuanzx): we do not support summaries/aux_losses yet.
       mapped_fn = nn.map_variables(
           mapped_fn, [PARAMS, NON_TRAINABLE, SUMMARIES, AUX_LOSS],

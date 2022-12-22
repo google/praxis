@@ -152,10 +152,9 @@ class TemporalShifting(base_layer.BaseLayer):
     output features could be shifted as far as [0 0 1 2] or [3 4 0 0] in each
     direction. Each example in the batch is shifted independently.
     """
-    p = self.hparams
 
     def shift_example(features, paddings, shift_size):
-      axis = p.axis - 1  # Subtract 1 to account for the vmaped batch dim.
+      axis = self.axis - 1  # Subtract 1 to account for the vmaped batch dim.
       features = self._shift_tensor(features, axis, shift_range, shift_size)
       if paddings is not None:
         paddings = self._shift_tensor(

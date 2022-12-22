@@ -117,7 +117,7 @@ def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
   ):
     stacked_p = stacked_p.block
   transformer_p = stacked_p.transformer_layer_params_tpl
-  if isinstance(transformer_p, (list, tuple)):
+  if isinstance(transformer_p, Sequence):
     transformer_p_lst = transformer_p
   else:
     transformer_p_lst = [transformer_p]
@@ -1084,11 +1084,12 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
   def setup(self) -> None:
     """Constructor."""
-    p = self.hparams
 
     def set_position_emb_model_dims(position_emb_tpl, model_dims):
-      assert (position_emb_tpl.embedding_dims == 0 or
-              position_emb_tpl.embedding_dims == p.model_dims)
+      assert (
+          position_emb_tpl.embedding_dims == 0
+          or position_emb_tpl.embedding_dims == self.model_dims
+      )
       position_emb_tpl.embedding_dims = model_dims
 
     def set_model_dims_and_packing(stacked_transformer_tpl, model_dims,

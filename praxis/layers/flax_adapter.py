@@ -55,12 +55,11 @@ class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
     pass
 
   def _call_with_boxed_params_init(self, unbound_method, *args, **kwargs):
-    p = self.hparams
 
     def call_fn(module, *args, **kwargs):
       # axis_rules context manager is used to map activation sharding logical
       # axes to mesh axes names that pjit expects.
-      with flax_partitioning.axis_rules(p.logical_axes_rules):
+      with flax_partitioning.axis_rules(self.logical_axes_rules):
         return unbound_method(module, *args, **kwargs)
 
     if not self.is_initializing():

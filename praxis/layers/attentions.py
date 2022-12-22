@@ -964,7 +964,6 @@ class DotProductAttention(base_layer.BaseLayer):
     bld: SplitDimsMapping = None
 
   def setup(self) -> None:
-    p = self.hparams
     wp = self.weight_split_dims_mapping
     assert self.input_dim, 'input_dim is {}'.format(self.input_dim)
     assert self.hidden_dim, 'hidden_dim is {}'.format(self.hidden_dim)
@@ -981,22 +980,24 @@ class DotProductAttention(base_layer.BaseLayer):
       assert self.activation_split_dims_mapping is not None
 
     def project_input(input_dim, gaussian_std=None):
-      proj_p = p.proj_tpl.clone().set(
+      proj_p = self.proj_tpl.clone().set(
           input_dim=input_dim,
-          num_heads=p.num_heads,
+          num_heads=self.num_heads,
           dim_per_head=dim_per_head,
-          use_bias=p.use_bias)
+          use_bias=self.use_bias,
+      )
       if gaussian_std:
         proj_p.params_init = WeightInit.Gaussian(gaussian_std)
       proj_p.weight_split_dims_mapping.wt = wp.proj
       return proj_p
 
     def combined_qkv_project_input(input_dim):
-      proj_p = p.combined_qkv_proj_tpl.clone().set(
+      proj_p = self.combined_qkv_proj_tpl.clone().set(
           input_dim=input_dim,
-          num_heads=p.num_heads,
+          num_heads=self.num_heads,
           dim_per_head=dim_per_head,
-          use_bias=p.use_bias)
+          use_bias=self.use_bias,
+      )
       proj_p.weight_split_dims_mapping.wt = wp.proj
       return proj_p
 
@@ -2139,7 +2140,6 @@ class DotProductAttentionWithLPB(DotProductAttention):
       encoded: JTensor of shape [B, D] which returns the attention output at
         `time_step`.
     """
-    p = self.hparams
     # When query has shape of [B, D], will apply extend_step to a single
     # token per batch, normal autoregressive decoding logic is applied.
     #
@@ -2183,7 +2183,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
       return vfns[-1]
 
     def _proj_qkv(layer, q):
-      if p.combine_qkv:
+      if self.combine_qkv:
         # Project inputs to key, value and query using a combined weight for
         # faster performance on TPU.
         new_query_proj, new_key_proj, new_value_proj = layer.combined_qkv(q)

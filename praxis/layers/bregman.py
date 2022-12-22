@@ -267,7 +267,6 @@ class BregmanPCA(base_layer.BaseLayer):
       fprop_dtype.
       coefficients: PCA coefficients of inputs.
     """
-    p = self.hparams
     mean = self.get_var('mean')
     components = self.get_var('components')
     components_momentum = self.get_var('components_momentum')
@@ -275,19 +274,20 @@ class BregmanPCA(base_layer.BaseLayer):
 
     def _iter_condition(carry):
       count, _, _, _, _ = carry
-      return count < p.coefficients_steps
+      return count < self.coefficients_steps
 
     def _iter_body(carry):
       count, coeffs, coeffs_mom, components, mean = carry
-      base_lr = 1. - count / p.coefficients_steps
+      base_lr = 1.0 - count / self.coefficients_steps
       coeffs_grad = self.coefficients_grad_fn(coeffs, components, mean, inputs)
       coeffs_grad_norm = jnp.maximum(jnp.linalg.norm(coeffs_grad), 1e-6)
       coeffs_grad = coeffs_grad / coeffs_grad_norm * jnp.sqrt(
           jnp.size(coeffs_grad))
       coeffs_mom = (
-          p.coefficients_beta * coeffs_mom +
-          (1. - p.coefficients_beta) * coeffs_grad)
-      coeffs -= base_lr * p.coefficients_lr * coeffs_mom
+          self.coefficients_beta * coeffs_mom
+          + (1.0 - self.coefficients_beta) * coeffs_grad
+      )
+      coeffs -= base_lr * self.coefficients_lr * coeffs_mom
       return count + 1, coeffs, coeffs_mom, components, mean
 
     if not self.do_eval:

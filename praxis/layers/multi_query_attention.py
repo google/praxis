@@ -219,7 +219,6 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     bld: SplitDimsMapping = None
 
   def setup(self) -> None:
-    p = self.hparams
     wp = self.weight_split_dims_mapping
     assert self.input_dim, 'input_dim is {}'.format(self.input_dim)
     assert self.hidden_dim, 'hidden_dim is {}'.format(self.hidden_dim)
@@ -250,17 +249,19 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       query_input_dim = self.input_dim
 
     def project_input(input_dim):
-      proj_p = p.proj_tpl.clone().set(
+      proj_p = self.proj_tpl.clone().set(
           input_dim=input_dim,
-          num_heads=p.num_heads,
+          num_heads=self.num_heads,
           dim_per_head=dim_per_head,
-          use_bias=p.use_bias)
+          use_bias=self.use_bias,
+      )
       proj_p.weight_split_dims_mapping.wt = wp.proj
       return proj_p
 
     def project_input_no_heads(input_dim):
-      proj_p = p.headless_proj_tpl.clone().set(
-          input_dim=input_dim, output_dim=dim_per_head, use_bias=p.use_bias)
+      proj_p = self.headless_proj_tpl.clone().set(
+          input_dim=input_dim, output_dim=dim_per_head, use_bias=self.use_bias
+      )
       proj_p.weight_split_dims_mapping.wt = wp.proj_headless
       return proj_p
 
