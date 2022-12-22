@@ -518,13 +518,15 @@ class NestedStructToTextTestCase(absltest.TestCase):
     sub_config = pax_fiddle.Config(FiddleToTextTestClass, 7)
     x = NestedStructToTextTestClass.HParams(tpl=sub_config)
     self.assertEqual(
-        nested_struct_to_text(x).splitlines(), [
+        nested_struct_to_text(x).splitlines(),
+        [
             'a : NoneType',
             f'cls : type/{__name__}/NestedStructToTextTestClass',
             'tpl.a : 4',
             'tpl.activation_split_dims_mapping.out : NoneType',
             "tpl.b : 'b'",
             f"tpl.cls : <class '{__name__}.FiddleToTextTestClass'>",
+            'tpl.contiguous_submeshes : False',
             'tpl.dcn_mesh_shape : NoneType',
             'tpl.dtype : 7',
             'tpl.fprop_dtype : NoneType',
@@ -538,17 +540,20 @@ class NestedStructToTextTestCase(absltest.TestCase):
             'tpl.skip_lp_regularization : NoneType',
             'tpl.tpl : NoneType',
             'tpl.weight_split_dims_mapping.wt : NoneType',
-        ])
+        ],
+    )
 
   def test_sub_hparams_config(self):
     sub_config = SimpleTestClass.HParams(7)
     x = pax_fiddle.Config(FiddleToTextTestClass, 7, tpl=sub_config)
     self.assertEqual(
-        nested_struct_to_text(x).splitlines(), [
+        nested_struct_to_text(x).splitlines(),
+        [
             '.a : 4',
             '.activation_split_dims_mapping.out : NoneType',
             ".b : 'b'",
             f".cls : <class '{__name__}.FiddleToTextTestClass'>",
+            '.contiguous_submeshes : False',
             '.dcn_mesh_shape : NoneType',
             '.dtype : 7',
             '.fprop_dtype : NoneType',
@@ -564,7 +569,8 @@ class NestedStructToTextTestCase(absltest.TestCase):
             ".tpl.b : 'b'",
             f'.tpl.cls : type/{__name__}/SimpleTestClass',
             '.weight_split_dims_mapping.wt : NoneType',
-        ])
+        ],
+    )
 
   def test_config_in_dict(self):
     sub_config = SimpleTestClass.HParams(7)

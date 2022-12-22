@@ -710,8 +710,11 @@ def l2_normalize(x: JTensor, axis: int = -1, epsilon: float = 1e-12) -> JTensor:
   return x / norm
 
 
-def create_device_mesh(ici_mesh_shape: Sequence[int],
-                       dcn_mesh_shape: Optional[Sequence[int]] = None):
+def create_device_mesh(
+    ici_mesh_shape: Sequence[int],
+    dcn_mesh_shape: Optional[Sequence[int]] = None,
+    contiguous_submeshes: bool = False,
+):
   """Creates a single- or multi-slice device mesh from mesh shapes.
 
   Args:
@@ -719,6 +722,9 @@ def create_device_mesh(ici_mesh_shape: Sequence[int],
       multi-slice setting.
     dcn_mesh_shape: The mesh shape to use for between-slice parallelism. If
       None, creates a single-slice mesh.
+    contiguous_submeshes: If True, the mesh_utils.create_device_mesh() call will
+      attempt to create a mesh where each process's local devices form a
+      contiguous submesh. This is unused when `dcn_mesh_shape` is not None.
 
   Returns:
     An ndarray of JAX devices.
@@ -737,7 +743,9 @@ def create_device_mesh(ici_mesh_shape: Sequence[int],
         raise ValueError('Setting a nontrivial dcn_mesh_shape requires '
                          'multiple slices') from e
   else:
-    device_mesh = mesh_utils.create_device_mesh(ici_mesh_shape)
+    device_mesh = mesh_utils.create_device_mesh(
+        ici_mesh_shape, contiguous_submeshes=contiguous_submeshes
+    )
   logging.info('device_mesh: %s', device_mesh)
   return device_mesh
 

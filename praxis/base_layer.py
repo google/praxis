@@ -1256,6 +1256,10 @@ class BaseLayer(nn.Module):
       'replica', 'data', 'mdl'] indicates 2-way pipeline parallelism and 2-way
       replica parallelism over 4 slices. None, the default, is equivalent to a
       sequence of ones and means that the model is placed on a single slice.
+    contiguous_submeshes: If True, this will be passed to the
+      mesh_utils.create_device_mesh() call and it will attempt to create a mesh
+      where each process's local devices form a contiguous submesh. This is
+      unused when `dcn_mesh_shape` is not None.
     mesh_axis_names: Names for each mesh axis in ici_mesh_shape and/or
       dcn_mesh_shape. Common mesh axes include 'replica' for replica
       parallelism, 'data' for data parallelism, 'mdl' for model parallelism, and
@@ -1304,6 +1308,7 @@ class BaseLayer(nn.Module):
   skip_lp_regularization: Optional[bool] = None
   ici_mesh_shape: Optional[Sequence[int]] = None
   dcn_mesh_shape: Optional[Sequence[int]] = None
+  contiguous_submeshes: bool = False
   mesh_axis_names: Optional[Sequence[str]] = None
   shared_weight_layer_id: Optional[str] = None
   # TODO(b/249483164): Change these to use instance_field rather than
