@@ -575,13 +575,14 @@ def sample_decode(
                                               [0] * output_ids.ndim)
     assert max_prefix_len is not None
     # Update loop init states with prefix.
-    val.step = max_prefix_len - 1
+    start_step = max_prefix_len - 1
     val.segment_pos = prefix_lengths - 1
   else:
     output_ids = output_ids.at[:, 0].set(target_prefix_ids[:, 0])
-    val.step = 0
+    start_step = 0
     val.segment_pos = jnp.zeros([batch_size], dtype=jnp.int32)
 
+  val.step = start_step
   val.output_ids = output_ids
   # Shape [batch_size], whether each row has terminated and should stop.
   val.done = jnp.zeros(shape=batch_size, dtype=jnp.bool_)
@@ -686,7 +687,7 @@ def sample_decode(
         else:
           output_ids = val.output_ids
         interval_start_id = (
-            val.step // result_callback.interval_steps
+            (step + 1) // result_callback.interval_steps
         ) * result_callback.interval_steps
         outfeed_tensors.output_ids = jax.lax.dynamic_slice(
             output_ids,
@@ -707,10 +708,7 @@ def sample_decode(
         result_callback.callback_fn(outfeed_tensors)
 
       should_outfeed = jnp.logical_or(
-          jnp.logical_and(
-              val.step > 0,
-              (val.step % result_callback.interval_steps == 0),
-          ),
+          (step - start_step + 1) % result_callback.interval_steps == 0,
           jnp.all(val.done),
       )
       jax.lax.cond(should_outfeed, _true_fn, _false_fn)
