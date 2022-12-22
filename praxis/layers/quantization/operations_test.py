@@ -16,7 +16,6 @@
 """Tests for quantized operations."""
 
 from typing import Any, Dict, Sequence
-from praxis import pax_fiddle
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -24,6 +23,7 @@ import jax
 from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers.quantization import aqt
 from praxis.layers.quantization import operations
@@ -141,6 +141,10 @@ def _generate_dimension_numbers() -> Sequence[Dict[str, Any]]:
 
 class AqtDotGeneralTest(test_utils.TestCase):
 
+  def setUp(self):
+    super().setUp()
+    np.random.seed(0)
+
   def get_dot_general_module(self, lhs, rhs, lhs_prec, rhs_prec):
     p_dot_general = pax_fiddle.Config(
         DotGeneral, name='dot_general', lhs_prec=lhs_prec, rhs_prec=rhs_prec
@@ -197,6 +201,22 @@ class AqtDotGeneralTest(test_utils.TestCase):
     actual_ret = dot_general(lhs, rhs, dimension_numbers)
     expected_ret = jax.lax.dot_general(lhs, rhs, dimension_numbers)
     self.assertArraysEqual(actual_ret, expected_ret)
+
+  def test_scaling_stability(self):
+    lhs = np.random.uniform(-1.0, 1.0, size=(2, 3)).astype(np.float32)
+    # Small values cause NaN gradients if the gradients for scaling and
+    # rescaling are unnecessarily propagated.
+    rhs = np.random.normal(0, 1e-23, size=(3, 4)).astype(np.float32)
+
+    dot_general, _ = self.get_dot_general_module(lhs, rhs, None, 4)
+    matmul_dimension_numbers = [[[1], [0]], [[], []]]
+
+    @jax.grad
+    def grad_qmatmul(rhs, lhs):
+      return jnp.sum(dot_general(lhs, rhs, matmul_dimension_numbers))
+
+    gradients = grad_qmatmul(rhs, lhs)
+    self.assertFalse(np.isnan(gradients).any())
 
 
 if __name__ == '__main__':

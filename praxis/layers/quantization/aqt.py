@@ -15,7 +15,7 @@
 
 """Quantization Aware Training ops."""
 
-from typing import Optional
+from typing import Optional, Sequence, Union
 
 import jax
 import jax.numpy as jnp
@@ -60,22 +60,22 @@ class TensorQuantizer(base_layer.BaseLayer):
     assert cb < cb_unsafe, 'Internal error, epsilon too small.'
     return cb
 
-  def get_quant_scale(self,
-                      sample,
-                      contract_dims,
-                      dtype=jnp.bfloat16) -> JTensor:
+  def get_quant_scale(
+      self,
+      x: JTensor,
+      contract_dims: Union[int, Sequence[int]],
+      dtype: jnp.dtype = jnp.bfloat16,
+  ) -> JTensor:
     if self.precision is None:
-      return jnp.ones(shape=(1,) * sample.ndim, dtype=dtype)
+      return jnp.ones(shape=(1,) * x.ndim, dtype=dtype)
 
-    x_bound = jnp.max(
-        jnp.abs(sample),
-        axis=contract_dims,
-        keepdims=True)
+    x_bound = jnp.max(jnp.abs(x), axis=contract_dims, keepdims=True)
     clip_bound = self._get_clip_bound()
     scale = clip_bound / x_bound
+    scale = jax.lax.stop_gradient(scale)
     return scale.astype(dtype)
 
-  def update(self, sample: JTensor):
+  def update(self, x: JTensor):
     # This function is no-op for now. Once static quantization is supported,
     # statistics update will be performed through this function.
     pass
