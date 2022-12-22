@@ -703,7 +703,6 @@ def sample_decode(
             lambda x: split_batch_dim(x, 0, num_samples), outfeed_tensors
         )
         outfeed_tensors.prefix_lengths = jnp.zeros_like(original_prefix_lengths)
-        outfeed_tensors.done = False
 
         result_callback.callback_fn(outfeed_tensors)
 
@@ -795,9 +794,6 @@ def sample_decode(
     if model.is_mutable_collection(base_layer.SUMMARIES):
       # recursively merge two dictionaries.
       reinsert_collection(model, base_layer.SUMMARIES, model_summaries_copy)
-
-  if result_callback is not None:
-    result_callback.callback_fn(NestedMap(done=True))
 
   del result.segment_pos
 
