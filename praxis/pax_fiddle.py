@@ -197,6 +197,8 @@ def has_do_not_build_tag(field: dataclasses.Field):  # pylint: disable=g-bare-ge
 
 def _auto_config_exemption_policy(fn_or_cls):
   return (fn_or_cls is PaxConfig or
+          (getattr(fn_or_cls, '__func__', None) is
+           fdl_auto_config.AutoConfig.as_buildable) or
           fdl_auto_config.auto_config_policy.latest(fn_or_cls))
 
 
