@@ -1478,7 +1478,7 @@ class StackedTransformer(base_layer.BaseLayer):
   )
   packed_input: bool = False
   fold_padding_with_segment_mask: bool = False
-  moe_layer_tpl: LayerTpl = template_field(TransformerFeedForwardMoe)
+  moe_layer_tpl: Optional[LayerTpl] = template_field(TransformerFeedForwardMoe)
   num_experts: int = 0
   num_groups: int = 1
   min_group_size: Optional[int] = None
