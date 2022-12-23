@@ -712,16 +712,22 @@ class LanguageModelTest(test_utils.TestCase):
                     [[12, 3, 4, 2, 0], [12, 3, 4, 2, 0]],
                     [[20, 3, 2, 0, 0], [20, 3, 2, 0, 0]]],
                    dtype=np.int32))
+      self.assertArraysEqual(
+          results.decode_lengths,
+          np.array([[5, 5], [4, 4], [3, 3]], dtype=np.int32),
+      )
     else:
       # Gumbel noise will make some difference between samples.
       self.assertArraysEqual(
           results.output_ids,
-          np.array([[[11, 13, 3, 3, 4], [11, 13, 3, 3, 4]],
-                    [[12, 3, 4, 2, 0], [12, 3, 0, 2, 0]],
+          np.array([[[11, 13, 3, 3, 4], [11, 13, 0, 3, 4]],
+                    [[12, 3, 4, 2, 0], [12, 3, 4, 0, 0]],
                     [[20, 3, 2, 0, 0], [20, 3, 2, 0, 0]]],
                    dtype=np.int32))
-    self.assertArraysEqual(results.decode_lengths,
-                           np.array([[5, 5], [4, 4], [3, 3]], dtype=np.int32))
+      self.assertArraysEqual(
+          results.decode_lengths,
+          np.array([[5, 5], [4, 5], [3, 3]], dtype=np.int32),
+      )
 
   @parameterized.parameters(
       (1, False),
@@ -794,16 +800,22 @@ class LanguageModelTest(test_utils.TestCase):
                     [[12, 3, 4, 2, 0, 0, 0], [12, 3, 4, 2, 0, 0, 0]],
                     [[20, 3, 2, 0, 0, 0, 0], [20, 3, 2, 0, 0, 0, 0]]],
                    dtype=np.int32))
+      self.assertArraysEqual(
+          results.decode_lengths,
+          np.array([[6, 6], [4, 4], [3, 3]], dtype=np.int32),
+      )
     else:
       # Gumbel noise will make some difference between samples.
       self.assertArraysEqual(
           results.output_ids,
-          np.array([[[11, 13, 4, 3, 3, 4, 0], [11, 13, 0, 3, 3, 4, 0]],
-                    [[12, 3, 4, 2, 0, 0, 0], [12, 3, 4, 2, 0, 0, 0]],
+          np.array([[[11, 13, 4, 3, 3, 4, 0], [11, 13, 4, 0, 3, 4, 0]],
+                    [[12, 3, 4, 2, 0, 0, 0], [12, 3, 4, 0, 0, 0, 0]],
                     [[20, 3, 2, 0, 0, 0, 0], [20, 3, 2, 0, 0, 0, 0]]],
                    dtype=np.int32))
-    self.assertArraysEqual(results.decode_lengths,
-                           np.array([[6, 6], [4, 4], [3, 3]], dtype=np.int32))
+      self.assertArraysEqual(
+          results.decode_lengths,
+          np.array([[6, 6], [4, 5], [3, 3]], dtype=np.int32),
+      )
 
   def test_sample_decoding_prefix_and_eos_sample_equal_one(self):
     p = models.SampleDecoderHParams(
@@ -850,7 +862,7 @@ class LanguageModelTest(test_utils.TestCase):
     # and continues until EOS is found.
     self.assertArraysEqual(
         results.output_ids,
-        np.array([[[11, 13, 3, 3, 4]], [[12, 3, 4, 2, 0]], [[20, 3, 2, 0, 0]]],
+        np.array([[[11, 13, 0, 3, 0]], [[12, 3, 4, 2, 0]], [[20, 3, 2, 0, 0]]],
                  dtype=np.int32))
     self.assertArraysEqual(results.decode_lengths,
                            np.array([[5], [4], [3]], dtype=np.int32))

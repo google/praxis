@@ -1641,6 +1641,7 @@ class DotProductAttention(base_layer.BaseLayer):
       if not isinstance(state, JTensor):
         continue
       new_state = transform_fn(state, batch_dim, time_dim)
+      new_state = self._shard_blnh(new_state)
       self.update_decode_state(name, new_state)
 
   def lazy_broadcast_prefix(self, num_suffix_samples: int,
@@ -1739,6 +1740,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
       if not isinstance(state, JTensor):
         continue
       new_state = transform_fn(state, batch_dim, time_dim)
+      new_state = self._shard_blnh(new_state)
       self.update_decode_state(name, new_state)
 
   def lazy_broadcast_prefix(self, num_suffix_samples: int,

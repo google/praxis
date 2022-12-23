@@ -69,6 +69,7 @@ NestedJTensor = pytypes.NestedJTensor
 NestedBool = pytypes.NestedBool
 NestedHParams = pytypes.NestedHParams
 NestedJTensorOrPartitionSpec = pytypes.NestedJTensorOrPartitionSpec
+NestedPartitionSpec = pytypes.NestedPartitionSpec
 
 SplitDimsMapping = pytypes.SplitDimsMapping
 
@@ -283,6 +284,9 @@ def maybe_shard(x: JTensor,
   No sharding annotation is added if either split_dims_mapping is None or
   mesh_axis_names is None.
 
+  If mesh_axes_transpose exists in the current context, device axes will be
+  remapped according to the transpose rules.
+
   Args:
     x: the input tensor to be sharded.
     split_dims_mapping: A (nested) tuple of mesh axis to split x over. Below are
@@ -308,10 +312,26 @@ def maybe_shard(x: JTensor,
     return x
 
   assert len(x.shape) == len(split_dims_mapping), (
-      f'Invalid split_dims_mapping. Expected len(split_dims_mapping) '
+      'Invalid split_dims_mapping. Expected len(split_dims_mapping) '
       f'is {len(x.shape)}, while it is {len(split_dims_mapping)}. '
-      f'x.shape = {x.shape} and split_dims_mapping = {split_dims_mapping}')
+      f'x.shape = {x.shape} and split_dims_mapping = {split_dims_mapping}'
+  )
   partition_spec = to_partition_spec(split_dims_mapping, mesh_axis_names)
+
+  if JaxContext.has_context():
+    mapping = cur_jax_context().hparams.mesh_axes_transpose
+    if mapping:
+
+      def _transpose_one_dim(axes):
+        if axes is None:
+          return axes
+        if isinstance(axes, str):
+          return mapping.get(axes, axes)
+        return tuple([_transpose_one_dim(x) for x in axes])
+
+      partition_spec = pjit.PartitionSpec(
+          *[_transpose_one_dim(x) for x in partition_spec]
+      )
 
   if unconstrained_dims is not None:
     partition_spec_list = list(partition_spec)
@@ -801,15 +821,20 @@ class JaxContext:
     Attributes:
       do_eval: Whether to do eval.
       summary_verbosity: int, defines the verbosity level for summaries context.
-        The following are some notes on summary verbosity levels:
-        * The larger the verbosity value, the more verbose.
-        * The convention is to use non-negative integers.
-        * The default verbosity level at the context level is 3, meaning that
-          we'll log any summary written with verbosity <= 3 by default.
-        * Summaries are written if context_verbosity >= callsite_verbosity.
+        The following are some notes on summary verbosity levels: * The larger
+        the verbosity value, the more verbose. * The convention is to use
+        non-negative integers. * The default verbosity level at the context
+        level is 3, meaning that we'll log any summary written with verbosity <=
+        3 by default. * Summaries are written if context_verbosity >=
+        callsite_verbosity.
+      mesh_axes_transpose: Optional axes transpose rules for the device mesh. It
+        is a dict of {new_axis_name: old_axis_name}. Within this context,
+        new_axis_name in all shardings will be translated to old_axis_name in
+        the original device mesh.
     """
     do_eval: Optional[bool] = None
     summary_verbosity: int = 3
+    mesh_axes_transpose: Optional[Dict[str, str]] = None
 
   def __init__(self, hparams: JaxContext.HParams) -> None:
     self._hparams = hparams.clone()

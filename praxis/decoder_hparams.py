@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """HParams for the decoder."""
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from praxis import base_hyperparams
 from praxis import base_layer
@@ -36,13 +36,14 @@ class DecoderHParams(BaseHyperParams):
     eos_id: The id of EOS token indicating the termination of greedy search.
     max_decode_steps: If not None, the max decode steps for each example. If
       None, this is set to `seqlen`, which contains prefix.
-    fprop_for_prefix: Whether or not uses fprop instead of extend_step for
-      the prefix.
+    fprop_for_prefix: Whether or not uses fprop instead of extend_step for the
+      prefix.
     lazy_prefix_broadcast: Whether to enable the lazy-prefix-broadcast
       optimization for multi-sample decoding with shared prefixes. Requires
       fprop_for_prefix. This requires an implementation of the
       lazy_broadcast_prefix() method in the attention layer, which is
       DotProductAttentionWithLPB.
+    decode_loop_mesh_axes_transpose: Optional mesh transpose for decoding loop.
   """
   # TODO(b/229679837): remove seqlen and uses max_decode_steps.
   seqlen: int = 0
@@ -51,6 +52,7 @@ class DecoderHParams(BaseHyperParams):
   max_decode_steps: Optional[int] = None
   fprop_for_prefix: bool = False
   lazy_prefix_broadcast: bool = False
+  decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None
 
 
 class GreedyDecoderHParams(DecoderHParams):

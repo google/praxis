@@ -132,6 +132,7 @@ pytype_strict_library(
     deps = [
         ":base_layer",
         ":pytypes",
+        # Implicit flax.core dependency.
         # Implicit jax dependency.
     ],
 )

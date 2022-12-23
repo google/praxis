@@ -15,7 +15,7 @@
 
 """Vanilla Beam search algorithm."""
 
-from typing import Tuple
+from typing import Dict, Optional, Tuple
 
 from flax import linen as nn
 import jax
@@ -97,12 +97,17 @@ def broadcast_beam_dim(x: JTensor, beam_dim: int, beam_size: int) -> JTensor:
 
 
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
-def beam_search(model: base_layer.BaseLayerApi,
-                extend_step_fn: decoder_utils.ExtendStepFn,
-                fprop_fn: decoder_utils.FPropFn,
-                transform_state_fn: decoder_utils.TransformStateFn,
-                target_prefix_ids: JTensor, target_prefix_paddings: JTensor,
-                beam_search_hparams: BeamSearchHParams) -> NestedMap:
+def beam_search(
+    model: base_layer.BaseLayerApi,
+    extend_step_fn: decoder_utils.ExtendStepFn,
+    fprop_fn: decoder_utils.FPropFn,
+    transform_state_fn: decoder_utils.TransformStateFn,
+    target_prefix_ids: JTensor,
+    target_prefix_paddings: JTensor,
+    beam_search_hparams: BeamSearchHParams,
+    decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
+    model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
+) -> NestedMap:
   """Vanilla beam search decode the input batch.
 
   Args:
@@ -119,6 +124,8 @@ def beam_search(model: base_layer.BaseLayerApi,
     target_prefix_paddings: The token paddings that correspond to the target
       sequence, with shape [batch_size, prefix_sequence_length].
     beam_search_hparams: Beam search hyper parameters.
+    decode_loop_mesh_axes_transpose: Optional mesh transpose for decoding loop.
+    model_var_pspecs: needed if decode_loop_mesh_axes_transpose is provided.
 
   Returns:
     A NestedMap with `.decode_lengths` (vector of ints indicating the lengths
@@ -129,6 +136,38 @@ def beam_search(model: base_layer.BaseLayerApi,
     `prefix_lengths` (vector of ints for prefix length),
     `prefix_ids` (matrix of ints for prefix ids).
   """
+
+  # Init decode state using fprop_fn, state seq size is max_prefix_len.
+  fprop_fn(model, target_prefix_ids, target_prefix_paddings)
+  model = decoder_utils.maybe_reshard_mdl_for_decode(
+      model,
+      decode_loop_mesh_axes_transpose,
+      model_var_pspecs,
+      transform_state_fn,
+  )
+  with decoder_utils.maybe_decode_mesh_transpose(
+      model, decode_loop_mesh_axes_transpose
+  ):
+    return beam_search_after_prefix_fprop(
+        model,
+        extend_step_fn,
+        transform_state_fn,
+        target_prefix_ids,
+        target_prefix_paddings,
+        beam_search_hparams,
+    )
+
+
+# TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
+def beam_search_after_prefix_fprop(
+    model: base_layer.BaseLayerApi,
+    extend_step_fn: decoder_utils.ExtendStepFn,
+    transform_state_fn: decoder_utils.TransformStateFn,
+    target_prefix_ids: JTensor,
+    target_prefix_paddings: JTensor,
+    beam_search_hparams: BeamSearchHParams,
+) -> NestedMap:
+  """Same as beam_search but this is after prefix fprop."""
   # TODO(b/229679837): Move right align prefix ids and paddings logic inside
   # the beam_search function.
 
@@ -142,10 +181,6 @@ def beam_search(model: base_layer.BaseLayerApi,
       beam_search_hparams.eos_id
   ]
   seq_len = beam_search_hparams.max_decode_steps + max_prefix_len
-
-  # Init decode state using fprop_fn, state seq size is max_prefix_len.
-  fprop_fn(model, target_prefix_ids, target_prefix_paddings)
-
   # Pad max_decode_steps to the state.
   transform_state_fn(
       model, decoder_utils.pad_state_fn(beam_search_hparams.max_decode_steps))
