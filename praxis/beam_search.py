@@ -173,6 +173,13 @@ def beam_search_after_prefix_fprop(
 
   # max_decode_steps doesn't count the prefix part.
   assert beam_search_hparams.max_decode_steps is not None
+  max_decode_steps = beam_search_hparams.max_decode_steps
+  max_decode_steps = (
+      [max_decode_steps]
+      if isinstance(max_decode_steps, int)
+      else max_decode_steps
+  )
+  max_decode_steps = sorted(max_decode_steps)
   beam_dim = 1
   beam_size = beam_search_hparams.beam_size
   batch_size = target_prefix_ids.shape[0]
@@ -180,10 +187,9 @@ def beam_search_after_prefix_fprop(
   terminal_ids = beam_search_hparams.parse_tokens or [
       beam_search_hparams.eos_id
   ]
-  seq_len = beam_search_hparams.max_decode_steps + max_prefix_len
+  seq_len = max(max_decode_steps) + max_prefix_len
   # Pad max_decode_steps to the state.
-  transform_state_fn(
-      model, decoder_utils.pad_state_fn(beam_search_hparams.max_decode_steps))
+  transform_state_fn(model, decoder_utils.pad_state_fn(min(max_decode_steps)))
 
   # Broadcast cache states before the while loop.
   def _broadcast_state_fn(x, batch_dim, time_dim):
@@ -225,10 +231,15 @@ def beam_search_after_prefix_fprop(
   val.segment_pos = jnp.reshape(prefix_lengths - 1, (batch_size * beam_size,))
   val.end_decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
 
-  def cond_func(model, val):
-    """Whether the while loop should continue."""
-    del model
-    return val.step < seq_len - 1
+  def get_cond_func(stop_decode_steps):
+    """Get condition function for given stop decode steps."""
+
+    def cond_func(model, val):
+      """Whether the while loop should continue."""
+      del model
+      return val.step < min(seq_len - 1, max_prefix_len + stop_decode_steps - 1)
+
+    return cond_func
 
   def loop_body(model, val):
     """From ids at `step`, update output ids at `step + 1`."""
@@ -298,12 +309,17 @@ def beam_search_after_prefix_fprop(
     return val
 
   # Beam search loop. Cache state is broacasted before the while loop.
-  result = nn.while_loop(
-      cond_func,
-      loop_body,
-      model,
-      val,
-      carry_variables=[base_layer.DECODE_CACHE])
+  for i in range(len(max_decode_steps)):
+    if i > 0:
+      pad_size = max_decode_steps[i] - max_decode_steps[i - 1]
+      transform_state_fn(model, decoder_utils.pad_state_fn(pad_size))
+    result = nn.while_loop(
+        get_cond_func(max_decode_steps[i]),
+        loop_body,
+        model,
+        val,
+        carry_variables=[base_layer.DECODE_CACHE],
+    )
 
   prefix_ids = decoder_utils.left_align_tensor(target_prefix_ids[:, 0, :],
                                                prefix_lengths[:, 0],

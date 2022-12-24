@@ -21,7 +21,6 @@ Greedy decode is a special case for sample decode.
 
 import abc
 import functools
-import math
 from typing import List, Optional, Sequence, Union
 
 from flax import linen as nn
@@ -396,7 +395,7 @@ def sample_decode(
     per_example_top_p: Optional[JTensor] = None,
     per_example_top_k: Optional[JTensor] = None,
     max_prefix_len: Optional[int] = None,
-    max_decode_steps: Optional[int] = None,
+    max_decode_steps: Optional[Union[int, Sequence[int]]] = None,
     per_example_max_decode_steps: Optional[JTensor] = None,
     prefix_lengths: Optional[JTensor] = None,
     eos_id: Optional[int] = None,
@@ -449,7 +448,8 @@ def sample_decode(
     max_decode_steps: Python int or None, the max decode step to run after the
       prefix (if any). Since the prefixes might be of unequal lengths, this
       value is not equivalent with `seq_len` above. When None, decode steps is
-      only limited by `seq_len` above.
+      only limited by `seq_len` above. If it is a list, decoding state will be
+      padded at each given steps.
     per_example_max_decode_steps: Optional JTensor of shape [B], the maximum
       decode steps defined for each batch. If per_example_max_decode_steps is
       defined, the decoding for each example will be stopped either
@@ -480,6 +480,10 @@ def sample_decode(
   """
   original_batch_size = target_prefix_ids.shape[0]
   original_prefix_lengths = prefix_lengths
+  if isinstance(max_decode_steps, int):
+    max_decode_steps = [max_decode_steps]
+  max_decode_steps = sorted(max_decode_steps) if max_decode_steps else [seq_len]
+
   if num_samples > 1:
     # Broadcast inputs from [batch, ...] to [batch * num_samples, ...].
     # [a, b, c] and num_samples = 3 will have
@@ -532,7 +536,8 @@ def sample_decode(
       # ID, but not an output ID (label), and we need to start decoding from it.
       transform_state_fn(model, decoder_utils.slice_state_fn(0, -1))
       # max_decode_steps + 1 to include last token from prefix.
-      lazy_broadcast_prefix_fn(model, num_samples, max_decode_steps + 1)
+      first_decode_steps = min(max_decode_steps)
+      lazy_broadcast_prefix_fn(model, num_samples, first_decode_steps + 1)
     else:
       # Broadcast prefix state for num_samples.
       transform_state_fn(model,
@@ -554,12 +559,15 @@ def sample_decode(
   if seq_len <= 0:
     raise ValueError('The sequence length for decoding must be > 0, '
                      f'current value = {seq_len}.')
-  max_decode_steps = max_decode_steps or seq_len
+  last_decode_steps = max(max_decode_steps) if max_decode_steps else seq_len
   per_example_max_decode_steps = (
-      max_decode_steps
-      if per_example_max_decode_steps is None else per_example_max_decode_steps)
-  per_example_max_decode_steps = jnp.minimum(per_example_max_decode_steps,
-                                             max_decode_steps)
+      last_decode_steps
+      if per_example_max_decode_steps is None
+      else per_example_max_decode_steps
+  )
+  per_example_max_decode_steps = jnp.minimum(
+      per_example_max_decode_steps, last_decode_steps
+  )
   batch_size = target_prefix_ids.shape[0]
 
   # If prefix length is not specified, set it to 0.
@@ -591,15 +599,21 @@ def sample_decode(
   # We use a positive value of 1.0 to indicate blank or padded positions.
   val.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
 
-  def cond_func(model, val):
-    """Whether the while loop should continue."""
-    del model
-    # We continue the decoding search iff both:
-    #   (1) We have yet to exceed the max steps set by p.decoder.seqlen, AND;
-    #   (2) At least one row in the batch has not terminated.
-    length_ok = val.step < seq_len - 1
-    all_rows_done = jnp.all(val.done)
-    return jnp.logical_and(length_ok, jnp.logical_not(all_rows_done))
+  def get_cond_func(stop_at_decode_steps):
+    """Gets conditional function for different decode steps."""
+
+    def cond_func(model, val):
+      """Whether the while loop should continue."""
+      del model
+      # We continue the decoding search iff both:
+      #   (1) We have yet to exceed the max steps set by p.decoder.seqlen, AND;
+      #   (2) At least one row in the batch has not terminated.
+      max_steps = start_step + stop_at_decode_steps
+      length_ok = val.step < min(seq_len - 1, max_steps)
+      all_rows_done = jnp.all(val.done)
+      return jnp.logical_and(length_ok, jnp.logical_not(all_rows_done))
+
+    return cond_func
 
   def loop_body(model, val):
     """From ids at `step`, update output ids at `step + 1`."""
@@ -722,14 +736,20 @@ def sample_decode(
     return val
 
   if early_exit:
-    result = nn.while_loop(
-        cond_func,
-        loop_body,
-        model,
-        val,
-        split_rngs={RANDOM: True},
-        carry_variables=[DECODE_CACHE],
-    )
+    result = val
+    for i in range(len(max_decode_steps)):
+      if i > 0:
+        pad_size = max_decode_steps[i] - max_decode_steps[i - 1]
+        transform_state_fn(model, decoder_utils.pad_state_fn(pad_size))
+      result = nn.while_loop(
+          get_cond_func(max_decode_steps[i]),
+          loop_body,
+          model,
+          result,
+          split_rngs={RANDOM: True},
+          carry_variables=[DECODE_CACHE],
+      )
+
   else:
     # We call nn.scan to allow propagation of summaries through decoding loop.
     # Summary and AuxLoss are concatenated on the first dim.
@@ -852,7 +872,7 @@ def greedy_decode(
     seq_len: int,
     fprop_for_prefix: bool = False,
     max_prefix_len: Optional[int] = None,
-    max_decode_steps: Optional[int] = None,
+    max_decode_steps: Optional[Union[int, Sequence[int]]] = None,
     prefix_lengths: Optional[JTensor] = None,
     eos_id: Optional[int] = None,
 ) -> NestedMap:
@@ -875,7 +895,8 @@ def greedy_decode(
     max_decode_steps: Python int or None, the max decode step to run after the
       prefix (if any). Since the prefixes might be of unequal lengths, this
       value is not equivalent with `seq_len` above. When None, decode steps is
-      only limited by `seq_len` above.
+      only limited by `seq_len` above. If it is a list, decoding state will be
+      padded at each given steps.
     prefix_lengths: Optional argument supplying prefix sizes to initialize the
       model to decode from a certain target prefix for each position in the
       batch. This can either be None or a JTensor of shape [batch] signifying

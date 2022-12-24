@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """HParams for the decoder."""
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Sequence, Union
 
 from praxis import base_hyperparams
 from praxis import base_layer
@@ -35,7 +35,8 @@ class DecoderHParams(BaseHyperParams):
       prefix.
     eos_id: The id of EOS token indicating the termination of greedy search.
     max_decode_steps: If not None, the max decode steps for each example. If
-      None, this is set to `seqlen`, which contains prefix.
+      None, this is set to `seqlen`, which contains prefix. If it is a list,
+      decoding state will be padded at each given steps.
     fprop_for_prefix: Whether or not uses fprop instead of extend_step for the
       prefix.
     lazy_prefix_broadcast: Whether to enable the lazy-prefix-broadcast
@@ -49,7 +50,7 @@ class DecoderHParams(BaseHyperParams):
   seqlen: int = 0
   min_prefix_len: int = 5
   eos_id: int = 2
-  max_decode_steps: Optional[int] = None
+  max_decode_steps: Optional[Union[int, Sequence[int]]] = None
   fprop_for_prefix: bool = False
   lazy_prefix_broadcast: bool = False
   decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None

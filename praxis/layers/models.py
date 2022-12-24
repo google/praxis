@@ -15,7 +15,7 @@
 
 """Definition of specific models."""
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 from absl import logging
 import clu.metrics as clu_metrics
@@ -290,7 +290,18 @@ class LanguageModel(base_model.BaseModel):
     max_prefix_len = input_batch.ids.shape[1]
     if decoder_params.fprop_for_prefix:
       asserts.not_none(decoder_params.max_decode_steps)
-      seqlen = max_prefix_len + decoder_params.max_decode_steps
+      max_decode_steps = decoder_params.max_decode_steps
+      last_max_decode_steps = (
+          max(max_decode_steps)
+          if isinstance(max_decode_steps, Sequence)
+          else max_decode_steps
+      )
+      first_max_decode_steps = (
+          min(max_decode_steps)
+          if isinstance(max_decode_steps, Sequence)
+          else max_decode_steps
+      )
+      seqlen = max_prefix_len + last_max_decode_steps
       start_time_step = max_prefix_len - 1
       # Change prefix to be right-aligned.
       fprop_input_ids, fprop_input_paddings = (
@@ -304,14 +315,15 @@ class LanguageModel(base_model.BaseModel):
           jnp.arange(max_prefix_len) <
           (max_prefix_len - prefix_lengths)[:, jnp.newaxis],
           jnp.zeros_like(fprop_segment_pos), jnp.ones_like(fprop_segment_pos))
-      state_padding_size = decoder_params.max_decode_steps
+      state_padding_size = first_max_decode_steps
       # Init input ids and paddings for extend_step.
       input_ids = jnp.pad(
-          fprop_input_ids, [[0, 0], [0, decoder_params.max_decode_steps]]
+          fprop_input_ids,
+          [[0, 0], [0, first_max_decode_steps]],
       )
       input_paddings = jnp.pad(
           fprop_input_paddings,
-          [[0, 0], [0, decoder_params.max_decode_steps]],
+          [[0, 0], [0, first_max_decode_steps]],
           constant_values=1.0,
       )
       if causal_attention_mask is not None:
