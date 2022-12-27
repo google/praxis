@@ -692,7 +692,9 @@ def sample_decode(
         # output_ids: [b * num_samples, interval_steps]
         # scores: [b * num_samples]
         outfeed_tensors = NestedMap()
-        mod_size = val.output_ids.shape[-1] % result_callback.interval_steps
+        mod_size = (
+            val.output_ids.shape[-1] - 1 - start_step
+        ) % result_callback.interval_steps
         if mod_size > 0:
           output_ids = jnp.pad(
               val.output_ids,
@@ -701,8 +703,11 @@ def sample_decode(
         else:
           output_ids = val.output_ids
         interval_start_id = (
-            (step + 1) // result_callback.interval_steps
-        ) * result_callback.interval_steps
+            ((step - start_step) // result_callback.interval_steps)
+            * result_callback.interval_steps
+            + start_step
+            + 1
+        )
         outfeed_tensors.output_ids = jax.lax.dynamic_slice(
             output_ids,
             [0, interval_start_id],
