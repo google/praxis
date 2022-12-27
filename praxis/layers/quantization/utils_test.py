@@ -19,6 +19,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
+import numpy as np
 from praxis import test_utils
 from praxis.layers.quantization import utils
 
@@ -30,21 +31,39 @@ class UtilsTest(test_utils.TestCase):
       dict(eqn='ANH,DNH->AD', lhs_shape=(2, 3, 4), rhs_shape=(2, 3, 4)),
       dict(eqn='AD,DNH->ANH', lhs_shape=(2, 3), rhs_shape=(3, 4, 2)),
       dict(eqn='AD,KDNH->KANH', lhs_shape=(2, 3), rhs_shape=(2, 3, 4, 2)),
+      dict(
+          eqn='BTNH,BSNH->BTNS',
+          lhs_shape=(1, 2, 3, 4),
+          rhs_shape=(1, 5, 3, 4),
+      ),
+      dict(
+          eqn='BTNH,HNBS->STNB',
+          lhs_shape=(1, 2, 3, 4),
+          rhs_shape=(4, 3, 1, 5),
+      ),
   )
   def test_einsum_equation_conversion(self, eqn, lhs_shape, rhs_shape):
-    """Given an einsum equations, ensures lax.dot_general with its converted dimension numbers produces almost the same output as jnp.einsum."""
-    key = jax.random.PRNGKey(seed=123)
-    lhs = jax.random.uniform(key, shape=lhs_shape)
-    rhs = jax.random.uniform(key, shape=rhs_shape)
+    """Validate that lax.dot_general produces the same output as jnp.einsum."""
+    lhs = jnp.arange(np.prod(lhs_shape)).reshape(lhs_shape)
+    rhs = jnp.arange(np.prod(rhs_shape)).reshape(rhs_shape)
 
     einsum_result = jnp.einsum(eqn, lhs, rhs)
-    dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
-        eqn)
+    dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(eqn)
     dot_general_result = jax.lax.dot_general(
         lhs, rhs, dimension_numbers=dimension_numbers)
     if perm is not None:
       dot_general_result = jax.lax.transpose(dot_general_result, perm)
     self.assertAllClose(einsum_result, dot_general_result)
+
+  @parameterized.parameters(
+      dict(eqn='...AB,BC->...AC', error=NotImplementedError, regex=r'\.\.\.'),
+      dict(eqn='AB->BA', error=ValueError, regex=r'arguments'),
+      dict(eqn='ABB,BC->AC', error=ValueError, regex=r'Repeated'),
+      dict(eqn='ABC,AB->AB', error=ValueError, regex=r'Contraction.*C'),
+  )
+  def test_unsupported_einsum_equations(self, eqn, error, regex):
+    with self.assertRaisesRegex(error, regex):
+      utils.einsum_eqn_to_dimension_numbers(eqn)
 
 
 if __name__ == '__main__':

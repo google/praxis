@@ -24,6 +24,7 @@ from jax import numpy as jnp
 from praxis import pytypes
 from praxis.layers.quantization import aqt
 from praxis.layers.quantization import optimization
+from praxis.layers.quantization import utils
 
 JTensor = pytypes.JTensor
 
@@ -275,7 +276,6 @@ def dot_general(
     rhs_quantizer: aqt.TensorQuantizer,
     dimension_numbers: lax.DotDimensionNumbers,
     is_eval: bool,
-    perm: Optional[Sequence[int]] = None,
     rhs_quantized: Optional[Tuple[JTensor, JTensor]] = None,
 ) -> JTensor:
   """Quantized jax.lax.dot_general.
@@ -289,11 +289,6 @@ def dot_general(
       rhs_contracting_dims), (lhs_batch_dims, rhs_batch_dims))`
     is_eval: If False, update the statistics in the tensor quantizers based on
       lhs and rhs.
-    perm: Permutation of the desired axes of the output. For some einsum
-      equations, it is not possible to obtain their corresponding
-      dimension_numbers that yield the same results using dot_general. If it is
-      possible with a proper transposition, then one should pass a list of
-      dimenions to permute. This should be None if transposition is not needed.
     rhs_quantized: A pair of quantized rhs and its scale. It should exist only
       in the inference mode and both rhs and rhs_quantized cannot be passed
       together.
@@ -348,9 +343,48 @@ def dot_general(
   inv_scale = lax.dot_general(
       1 / lhs_scale, 1 / rhs_scale, dimension_numbers=dimension_numbers)
 
-  if perm is not None:
-    assert len(perm) == len(out.shape)
-    out = lax.transpose(out, perm)
-    inv_scale = lax.transpose(inv_scale, perm)
-
   return out * inv_scale
+
+
+# TODO(b/262309036): Make dot_general the default quantized einsum
+# implementation.
+def aqt_einsum(
+    eqn: str,
+    lhs: JTensor,
+    rhs: Optional[JTensor],
+    *,
+    lhs_quantizer: aqt.TensorQuantizer,
+    rhs_quantizer: aqt.TensorQuantizer,
+    is_eval: bool,
+    rhs_quantized: Optional[Tuple[JTensor, JTensor]] = None,
+) -> JTensor:
+  """Quantized einsum using jax.lax.dot_general.
+
+  Args:
+    eqn: The valid binary einsum equation to use.
+    lhs: Left-hand side of the einsum.
+    rhs: Right-hand side of the einsum.
+    lhs_quantizer: The tensor quantizer for lhs.
+    rhs_quantizer: The tensor quantizer for rhs.
+    is_eval: If False, update the statistics in the tensor quantizers based on
+      lhs and rhs.
+    rhs_quantized: A pair of quantized rhs and its scale. It should exist only
+      in the inference mode and both rhs and rhs_quantized cannot be passed
+      together.
+
+  Returns:
+    An array containing the result with the same dtype as 'lhs' and 'rhs'.
+  """
+  dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(eqn)
+  out = dot_general(
+      lhs=lhs,
+      rhs=rhs,
+      lhs_quantizer=lhs_quantizer,
+      rhs_quantizer=rhs_quantizer,
+      dimension_numbers=dimension_numbers,
+      is_eval=is_eval,
+      rhs_quantized=rhs_quantized,
+  )
+  if perm is not None:
+    out = lax.transpose(out, perm)
+  return out

@@ -184,17 +184,15 @@ class AttentionProjection(attentions.AttentionProjection):
       # difference in quantization_type and there is no need for
       # lhs_quantizer/rhs_quantizer.
       if self.quantization.quantization_type == QuantizationType.AQT:
-        dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
-            eqn)
-        ret = operations.dot_general(
+        ret = operations.aqt_einsum(
+            eqn=eqn,
             lhs=inputs,
             rhs=None,
             lhs_quantizer=self.act_quantizer,
             rhs_quantizer=self.weight_quantizer,
-            dimension_numbers=dimension_numbers,
             is_eval=True,
-            perm=perm,
-            rhs_quantized=(w, s))
+            rhs_quantized=(w, s),
+        )
       else:
         if (
             self.quantization.act_params is not None
@@ -216,16 +214,14 @@ class AttentionProjection(attentions.AttentionProjection):
         or self.quantization.mode == QuantizationMode.MATERIALIZE
     ):
       if self.quantization.quantization_type == QuantizationType.AQT:
-        dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
-            eqn)
-        ret = operations.dot_general(
+        ret = operations.aqt_einsum(
+            eqn=eqn,
             lhs=inputs,
             rhs=w,
             lhs_quantizer=self.act_quantizer,
             rhs_quantizer=self.weight_quantizer,
-            dimension_numbers=dimension_numbers,
             is_eval=self.do_eval,
-            perm=perm)
+        )
       elif self.quantization.quantization_type == QuantizationType.FQ:
         w = operations.fakequant_einsum(eqn, w)
         ret = jnp.einsum(eqn, inputs, w)
@@ -286,8 +282,7 @@ class AttentionProjection(attentions.AttentionProjection):
       q_w, q_s = operations.reduce_einsum_weight_precision(
           eqn, self.theta.w, calculation_type=self.dtype)
     elif self.quantization.quantization_type == QuantizationType.AQT:
-      dimension_numbers, _ = utils.convert_einsum_eqn_to_dimension_numbers(
-          eqn)
+      dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
       q_s = self.weight_quantizer.get_quant_scale(
           self.theta.w, contract_dims=weight_contract_dims, dtype=self.dtype)
@@ -440,17 +435,15 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       # difference in quantization_type and there is no need for
       # lhs_quantizer/rhs_quantizer.
       if self.quantization.quantization_type == QuantizationType.AQT:
-        dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
-            eqn)
-        ret = operations.dot_general(
+        ret = operations.aqt_einsum(
+            eqn=eqn,
             lhs=inputs,
             rhs=None,
             lhs_quantizer=self.act_quantizer,
             rhs_quantizer=self.weight_quantizer,
-            dimension_numbers=dimension_numbers,
             is_eval=True,
-            perm=perm,
-            rhs_quantized=(w, s))
+            rhs_quantized=(w, s),
+        )
       else:
         if (
             self.quantization.act_params is not None
@@ -469,16 +462,14 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
           ret = operations.einsum(eqn, inputs, w, s)
     else:
       if self.quantization.quantization_type == QuantizationType.AQT:
-        dimension_numbers, perm = utils.convert_einsum_eqn_to_dimension_numbers(
-            eqn)
-        ret = operations.dot_general(
+        ret = operations.aqt_einsum(
+            eqn=eqn,
             lhs=inputs,
             rhs=w,
             lhs_quantizer=self.act_quantizer,
             rhs_quantizer=self.weight_quantizer,
-            dimension_numbers=dimension_numbers,
             is_eval=self.do_eval,
-            perm=perm)
+        )
       elif self.quantization.quantization_type == QuantizationType.FQ:
         w = operations.fakequant_einsum(eqn, w)
         ret = jnp.einsum(eqn, inputs, w)
@@ -534,8 +525,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       q_w, q_s = operations.reduce_einsum_weight_precision(
           eqn, theta.w, calculation_type=self.dtype)
     elif self.quantization.quantization_type == QuantizationType.AQT:
-      dimension_numbers, _ = utils.convert_einsum_eqn_to_dimension_numbers(
-          eqn)
+      dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
       q_s = self.weight_quantizer.get_quant_scale(
           self.theta.w, contract_dims=weight_contract_dims, dtype=self.dtype)

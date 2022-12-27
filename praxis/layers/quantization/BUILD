@@ -148,6 +148,7 @@ pytype_strict_library(
     deps = [
         ":aqt",
         ":optimization",
+        ":utils",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -274,6 +275,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
+        # Implicit numpy dependency.
         "//praxis:test_utils",
     ],
 )
