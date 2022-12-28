@@ -183,6 +183,8 @@ class AttentionProjection(attentions.AttentionProjection):
       # TODO(b/262309036): refactor logics under INFERNCE so there is no
       # difference in quantization_type and there is no need for
       # lhs_quantizer/rhs_quantizer.
+      # Note: lower-bit types are not reflected during inference for now due to
+      # b/259306620.
       if self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(
             eqn=eqn,
@@ -223,7 +225,8 @@ class AttentionProjection(attentions.AttentionProjection):
             is_eval=self.do_eval,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
-        w = operations.fakequant_einsum(eqn, w)
+        bits = self.quantization.weight_params.precision
+        w = operations.fakequant_einsum(eqn, w, bits)
         ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:
         ret = jnp.einsum(eqn, inputs, w)
@@ -279,8 +282,15 @@ class AttentionProjection(attentions.AttentionProjection):
 
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type == QuantizationType.PTQ:
+      bits = self.quantization.weight_params.precision
       q_w, q_s = operations.reduce_einsum_weight_precision(
-          eqn, self.theta.w, calculation_type=self.dtype)
+          eqn,
+          self.theta.w,
+          calculation_type=self.dtype,
+          need_gradient=False,
+          bits=bits,
+          optimization_on_bound=False,
+      )
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
@@ -434,6 +444,8 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       # TODO(b/262309036): refactor logics under INFERNCE so there is no
       # difference in quantization_type and there is no need for
       # lhs_quantizer/rhs_quantizer.
+      # Note: lower-bit types are not reflected during inference for now due to
+      # b/259306620.
       if self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(
             eqn=eqn,
@@ -471,7 +483,8 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             is_eval=self.do_eval,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
-        w = operations.fakequant_einsum(eqn, w)
+        bits = self.quantization.weight_params.precision
+        w = operations.fakequant_einsum(eqn, w, bits)
         ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:
         ret = jnp.einsum(eqn, inputs, w)
@@ -522,8 +535,15 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     eqn = 'AD,KDNH->KANH'
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type == QuantizationType.PTQ:
+      bits = self.quantization.weight_params.precision
       q_w, q_s = operations.reduce_einsum_weight_precision(
-          eqn, theta.w, calculation_type=self.dtype)
+          eqn,
+          theta.w,
+          calculation_type=self.dtype,
+          need_gradient=False,
+          bits=bits,
+          optimization_on_bound=False,
+      )
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]

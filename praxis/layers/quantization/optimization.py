@@ -23,7 +23,9 @@ from praxis import pytypes
 JTensor = pytypes.JTensor
 
 
-def get_best_bound(t: JTensor, bound: JTensor) -> JTensor:
+def get_best_bound(
+    t: JTensor, bound: JTensor, min_value: float, max_value: float
+) -> JTensor:
   """Scan around [0.95, 1] * hard max value to get bound value.
 
   This does a scan to get bound value(s) that minimize mean absolute error (MAE)
@@ -31,20 +33,21 @@ def get_best_bound(t: JTensor, bound: JTensor) -> JTensor:
   maximizing entropy.
 
   TODO(jianlijianli): optimize this at per-channel level.
-  TODO(jianlijianli): support lower bits.
 
   Args:
     t: the input float tensor
     bound: the hard max value for tensor 't'. It has the same length as shape.
+    min_value: minimal value for the quantization bound.
+    max_value: maximal value for the quantization bound.
 
   Returns:
     the best bound values for 't', that minimize average error (MAE).
   """
 
   def quantize(scaling_factor):
-    scale = bound * scaling_factor / 127.0
+    scale = bound * scaling_factor / max_value
     candidate = jnp.divide(t, scale)
-    candidate = jnp.clip(jnp.round(candidate), -128.0, 127.0)
+    candidate = jnp.clip(jnp.round(candidate), min_value, max_value)
     candidate = jnp.multiply(candidate, scale)
     mean_error = jnp.mean(jnp.abs(jnp.subtract(candidate, t)))
     return mean_error, jnp.array(scaling_factor)

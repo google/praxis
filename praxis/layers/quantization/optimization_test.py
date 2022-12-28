@@ -28,10 +28,17 @@ class OptimizationTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(123456)
 
-  def test_optimization(self):
+  def test_optimization_int8(self):
     t = jnp.array([[1.0, 2.0, 3.0], [4.0, 1.0, 2.0]])
     bound = jnp.array([[3.0], [4.0]])
-    ret = optimization.get_best_bound(t, bound)
+    ret = optimization.get_best_bound(t, bound, -128.0, 127.0)
+    expected = jnp.array([[3.0], [4.0]])
+    self.assertArraysEqual(ret, expected)
+
+  def test_optimization_int4(self):
+    t = jnp.array([[1.0, 2.0, 3.0], [4.0, 1.0, 2.0]])
+    bound = jnp.array([[3.0], [4.0]])
+    ret = optimization.get_best_bound(t, bound, -8.0, 7.0)
     expected = jnp.array([[3.0], [4.0]])
     self.assertArraysEqual(ret, expected)
 

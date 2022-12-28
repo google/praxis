@@ -55,6 +55,18 @@ def _get_expand_dims(eqn: str) -> List[int]:
   return filling_dims
 
 
+def _get_min_max(bits):
+  """Gets the min/max range for a given number of bits.
+
+  Args:
+    bits: target number of bits for quantization.
+
+  Returns:
+    min/max values for the provide number of bits.
+  """
+  return -1 * 2 ** (bits - 1), 2 ** (bits - 1) - 1
+
+
 def einsum(eqn: str, x: JTensor, w: JTensor, scale: JTensor) -> JTensor:
   """Performs quantized einsum.
 
@@ -91,34 +103,36 @@ def reduce_precision(
     t: JTensor,
     bound: JTensor,
     need_gradient: bool = False,
+    bits: int = 8,
     optimization_on_bound: bool = False,
 ) -> Tuple[JTensor, JTensor]:
   """Reduce the precision of a tensor.
 
   Generic for all tensors.
 
-  TODO(jianlijianli): support lower bits.
-
   Args:
     t: input tensor
     bound: the bound value for the tensor.
     need_gradient: if gradient is needed out of this function.
+    bits: target number of bits.
     optimization_on_bound: if MAE bound optimizer is used.
 
   Returns:
     the quantized tensor.
     the quantization scale.
   """
+  min_value, max_value = _get_min_max(bits)
   if optimization_on_bound:
-    bound = optimization.get_best_bound(t, bound)
-  scale = bound / 127.0
+    bound = optimization.get_best_bound(t, bound, min_value, max_value)
+  scale = bound / max_value
   t = jnp.divide(t, scale)
   if need_gradient:
     t = _round_with_gradient(t)
-    t = jnp.clip(t, -128.0, 127.0)
+    t = jnp.clip(t, min_value, max_value)
   else:
     t = jnp.round(t)
-    t = jnp.clip(t, -128.0, 127.0).astype(jnp.int8)
+    # Use int8 as container.
+    t = jnp.clip(t, min_value, max_value).astype(jnp.int8)
   return t, scale
 
 
@@ -128,6 +142,7 @@ def reduce_einsum_weight_precision(
     calculation_type: jnp.dtype = jnp.bfloat16,
     squeeze: bool = True,
     need_gradient: bool = False,
+    bits: int = 8,
     optimization_on_bound: bool = False,
 ) -> Tuple[JTensor, JTensor]:
   """Reduce the precision of the weight of einsum.
@@ -140,6 +155,7 @@ def reduce_einsum_weight_precision(
     calculation_type: the type for calculation.
     squeeze: if the output scale is squeezed.
     need_gradient: if gradient is needed out of this function.
+    bits: target number of bits.
     optimization_on_bound: if MAE bound optimizer is used.
 
   Returns:
@@ -156,22 +172,29 @@ def reduce_einsum_weight_precision(
     t = t.astype(calculation_type)
   bound = jnp.maximum(
       jnp.abs(jnp.max(t, axis=contract_dims, keepdims=True)),
-      jnp.abs(jnp.min(t, axis=contract_dims, keepdims=True)))
+      jnp.abs(jnp.min(t, axis=contract_dims, keepdims=True)),
+  )
 
-  t, scale = reduce_precision(t, bound, need_gradient, optimization_on_bound)
+  t, scale = reduce_precision(
+      t, bound, need_gradient, bits, optimization_on_bound
+  )
   if squeeze:
     scale = jnp.squeeze(scale)
   return t, scale
 
 
-def fakequant_einsum(eqn: str,
-                     t: JTensor,
-                     calculation_type: jnp.dtype = jnp.bfloat16) -> JTensor:
+def fakequant_einsum(
+    eqn: str,
+    t: JTensor,
+    bits: int = 8,
+    calculation_type: jnp.dtype = jnp.bfloat16,
+) -> JTensor:
   """Nudges weight of einsum with FakeQuant.
 
   Args:
     eqn: the equantion for the einsum. Determines the channel dimension.
     t: the weight tensor for the einsum.
+    bits: target number of bits.
     calculation_type: the type for calculation.
 
   Returns:
@@ -182,18 +205,24 @@ def fakequant_einsum(eqn: str,
       t,
       calculation_type=calculation_type,
       squeeze=False,
-      need_gradient=True)
+      need_gradient=True,
+      bits=bits,
+      optimization_on_bound=False,
+  )
   return jnp.multiply(q, scale).astype(t.dtype)
 
 
 def reduce_precision_activation(
-    t: JTensor, need_gradient: bool = False
+    t: JTensor,
+    need_gradient: bool = False,
+    bits: int = 8,
 ) -> Tuple[JTensor, JTensor]:
   """Reduce the precision of activation.
 
   Args:
     t: input tensor.
     need_gradient: if gradient is needed out of this function.
+    bits: target number of bits.
 
   Returns:
     A tuple of JTensors. The first one is the quantized activation and the
@@ -202,19 +231,20 @@ def reduce_precision_activation(
   # TODO(jianlijianli): enable zero point as well.
   bound = jnp.maximum(
       jnp.abs(jnp.max(t, keepdims=True)), jnp.abs(jnp.min(t, keepdims=True)))
-  return reduce_precision(t, bound, need_gradient, False)
+  return reduce_precision(t, bound, need_gradient, bits, False)
 
 
-def fakequant_activation(t: JTensor) -> JTensor:
+def fakequant_activation(t: JTensor, bits: int = 8) -> JTensor:
   """FakeQuant activation.
 
   Args:
     t: activation tensor
+    bits: target number of bits.
 
   Returns:
     nudged activation.
   """
-  qt, scale = reduce_precision_activation(t, need_gradient=True)
+  qt, scale = reduce_precision_activation(t, need_gradient=True, bits=bits)
   return jnp.multiply(qt, scale).astype(t.dtype)
 
 

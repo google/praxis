@@ -113,6 +113,8 @@ class Linear(linears.Linear):
       # PTQ, QAT has the same inference graph, only difference is on activation.
       # No matter which quantization type is used, the weight and scale
       # dimensions are the same for all types.
+      # Note: lower-bit types are not reflected during inference for now due to
+      # b/259306620.
       w, s = self.get_quantized_weight('w')
       # TODO(b/262309036): refactor logics under INFERNCE so there is no
       # difference in quantization_type and there is no need for
@@ -147,7 +149,10 @@ class Linear(linears.Linear):
             dimension_numbers=dimension_numbers,
             is_eval=self.do_eval)
       elif self.quantization.quantization_type == QuantizationType.FQ:
-        w = operations.fakequant_einsum(eqn, w, calculation_type=self.dtype)
+        bits = self.quantization.weight_params.precision
+        w = operations.fakequant_einsum(
+            eqn, w, bits=bits, calculation_type=self.dtype
+        )
         out = linears.project_last_dim(inputs, w)
       else:
         out = linears.project_last_dim(inputs, w)
@@ -195,13 +200,15 @@ class Linear(linears.Linear):
     theta = self.theta
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     eqn = 'xy,yz->xz'
+    bits = self.quantization.weight_params.precision
     if self.quantization.quantization_type == QuantizationType.PTQ:
       if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
       else:
         q_w, q_s = operations.reduce_einsum_weight_precision(
-            eqn, theta.w, calculation_type=self.dtype)
+            eqn, theta.w, calculation_type=self.dtype, bits=bits
+        )
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
     elif self.quantization.quantization_type == QuantizationType.FQ:
       if self._do_static_activation_quantization():
@@ -209,7 +216,8 @@ class Linear(linears.Linear):
             'Static activation quantization is not supported yet.')
       else:
         q_w, q_s = operations.reduce_einsum_weight_precision(
-            eqn, theta.w, calculation_type=self.dtype)
+            eqn, theta.w, calculation_type=self.dtype, bits=bits
+        )
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
     elif self.quantization.quantization_type == QuantizationType.AQT:
       if self._do_static_activation_quantization():
