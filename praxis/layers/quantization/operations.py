@@ -16,7 +16,7 @@
 """Operations for quantization."""
 
 import functools
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Tuple
 
 import jax
 from jax import lax
@@ -331,8 +331,11 @@ def dot_general(
     raise ValueError('Cannot reach here.')
 
   should_int8_quantize = (
-      lhs_quantizer.hparams.precision is not None and
-      rhs_quantizer.hparams.precision is not None)
+      lhs_quantizer.hparams.precision is not None
+      and lhs_quantizer.hparams.precision <= 8
+      and rhs_quantizer.hparams.precision is not None
+      and rhs_quantizer.hparams.precision <= 8
+  )
 
   out = _dot_general_aqt(
       lhs,

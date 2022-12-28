@@ -218,6 +218,17 @@ class AqtDotGeneralTest(test_utils.TestCase):
     gradients = grad_qmatmul(rhs, lhs)
     self.assertFalse(np.isnan(gradients).any())
 
+  def test_dot_general_high_bitwidth(self):
+    lhs = np.random.normal(size=(2, 3)).astype(np.float32)
+    rhs = np.random.normal(size=(3, 4)).astype(np.float32)
+
+    precision = 23
+    matmul_dimension_numbers = [[[1], [0]], [[], []]]
+    dot_general, _ = self.get_dot_general_module(lhs, rhs, precision, precision)
+    actual_ret = dot_general(lhs, rhs, matmul_dimension_numbers)
+    expected_ret = jax.lax.dot_general(lhs, rhs, matmul_dimension_numbers)
+    self.assertAllClose(actual_ret, expected_ret)
+
 
 if __name__ == '__main__':
   absltest.main()
