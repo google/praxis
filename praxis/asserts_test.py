@@ -20,6 +20,9 @@ from absl.testing import parameterized
 from praxis import asserts
 from praxis import py_utils
 
+from jax.experimental import jax2tf
+import numpy as np
+
 
 class AssertsTest(parameterized.TestCase):
 
@@ -188,6 +191,32 @@ class AssertsTest(parameterized.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 f'`value={value}` must be within `.*`.$'):
       asserts.in_set(value, elements)
+
+  def test_in_set_jax2tf_context(self):
+    jax2tf.convert(
+        lambda x: asserts.in_set(x.shape[0], [1, x.shape[0]]),
+        polymorphic_shapes='b',
+    )(np.zeros((1,)))
+
+    jax2tf.convert(
+        lambda x: asserts.in_set(x.shape[0], [x.shape[0], 1]),
+        polymorphic_shapes='b',
+    )(np.zeros((1,)))
+
+    jax2tf.convert(
+        lambda x: asserts.in_set(1, [x.shape[0], 1]), polymorphic_shapes='b'
+    )(np.zeros((1,)))
+
+  def test_in_set_jax2tf_context_raises(self):
+    with self.assertRaisesRegex(ValueError, '`.*` must be within `.*`.$'):
+      jax2tf.convert(
+          lambda x: asserts.in_set(x.shape[0], [1, 4]), polymorphic_shapes='b'
+      )(np.zeros((1,)))
+
+    with self.assertRaisesRegex(ValueError, '`.*` must be within `.*`.$'):
+      jax2tf.convert(
+          lambda x: asserts.in_set(1, [x.shape[0], 4]), polymorphic_shapes='b'
+      )(np.zeros((1,)))
 
   @parameterized.parameters((1, 0, 2, False, False),
                             (1.2, 1.2, 5.6, False, True),

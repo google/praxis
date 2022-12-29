@@ -376,6 +376,8 @@ py_strict_test(
         ":py_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit jax.experimental.jax2tf dependency.
+        # Implicit numpy dependency.
     ],
 )
 

@@ -1221,8 +1221,8 @@ class DotProductAttention(base_layer.BaseLayer):
     # If there is no padding mask, and only causal mask then the shape can be
     # [1, 1, T, S]
     base_layer.assert_has_shape(atten_mask, [-1, 1, -1, s])
-    assert atten_mask.shape[2] in [1, t]
-    assert atten_mask.shape[0] in [b, 1]
+    asserts.in_set(atten_mask.shape[2], [t, 1])
+    asserts.in_set(atten_mask.shape[0], [b, 1])
 
     query = self._scale_query(query)
     logits = self._atten_logits(query, key)
@@ -1305,12 +1305,12 @@ class DotProductAttention(base_layer.BaseLayer):
     base_layer.assert_has_shape(value, [b, s, n, h])
     base_layer.assert_has_shape(query, [b, n, h])
     base_layer.assert_has_shape(atten_mask, [-1, 1, s])
-    assert atten_mask.shape[0] in [b, 1]
+    asserts.in_set(atten_mask.shape[0], [b, 1])
     query = self._scale_query(query)
     logits = jnp.einsum('BNH,BSNH->BNS', query, key)
     if relative_bias is not None:
       base_layer.assert_has_shape(relative_bias, [-1, n, 1, s])
-      assert relative_bias.shape[0] in [b, 1]
+      asserts.in_set(relative_bias.shape[0], [b, 1])
       relative_bias = jnp.squeeze(relative_bias, axis=2)
       logits += relative_bias
     logits = self._cap_logits(logits)
@@ -2042,7 +2042,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
       else:
         base_layer.assert_has_shape(q, [b, -1, n, h])
         base_layer.assert_has_shape(am, [-1, 1, -1, s])
-      assert am.shape[0] in [b, 1]
+      asserts.in_set(am.shape[0], [b, 1])
 
       q = self._scale_query(q)
       if extend_one_step:
@@ -2051,7 +2051,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
         logits = jnp.einsum('BTNH,BSNH->BNTS', q, k)
       if rb is not None:
         base_layer.assert_has_shape(rb, [-1, n, -1, s])
-        assert rb.shape[0] in [b, 1]
+        asserts.in_set(rb.shape[0], [b, 1])
         if rb.shape[2] == 1:
           rb = jnp.squeeze(rb, axis=2)
         logits += rb
@@ -2511,12 +2511,12 @@ class DotProductAttentionXL(DotProductAttention):
     base_layer.assert_has_shape(value, [b, s, n, h])
     base_layer.assert_has_shape(query, [b, n, h])
     base_layer.assert_has_shape(atten_mask, [-1, 1, s])
-    assert atten_mask.shape[0] in [b, 1]
+    asserts.in_set(atten_mask.shape[0], [b, 1])
     query = self._scale_query(query)
     logits = self._atten_logits_one_step(query, key, time_step)
     if relative_bias is not None:
       base_layer.assert_has_shape(relative_bias, [-1, n, 1, s])
-      assert relative_bias.shape[0] in [b, 1]
+      asserts.in_set(relative_bias.shape[0], [b, 1])
       relative_bias = jnp.squeeze(relative_bias, axis=2)
       logits += relative_bias
     logits = self._cap_logits(logits)
@@ -2667,8 +2667,8 @@ class LocalSelfAttention(DotProductAttention):
     # If there is no padding mask, and only causal mask then the shape can be
     # [1, 1, T, S]
     base_layer.assert_has_shape(atten_mask, [-1, 1, -1, s])
-    assert atten_mask.shape[2] in [1, t]
-    assert atten_mask.shape[0] in [b, 1]
+    asserts.in_set(atten_mask.shape[2], [t, 1])
+    asserts.in_set(atten_mask.shape[0], [b, 1])
     query = self._scale_query(query)
 
     # -> [B, U, C, N, H]

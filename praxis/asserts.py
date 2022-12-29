@@ -53,6 +53,7 @@ import inspect
 from typing import Any, List, Optional, Sequence, Type
 
 import jax
+from jax.core import InconclusiveDimensionOperation
 
 
 def _retrieve_argnames(assert_name: str) -> Optional[List[str]]:
@@ -471,8 +472,19 @@ def in_set(value: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
-  if value in elements:
-    return
+  try:
+    if value in elements:
+      return
+  except InconclusiveDimensionOperation:
+    # In jax2tf context, comparisons like `b == 1` will raise an
+    # InconclusiveDimensionOperation which we should regard as False.
+    for e in elements:
+      try:
+        if value == e:
+          return
+      except InconclusiveDimensionOperation:
+        pass
+
   if msg:
     error_msg = msg
   else:
