@@ -106,6 +106,8 @@ class Learner(base_hyperparams.BaseParameterizable):
       bprop_variable_exclusion: Regular expression or a list of regular
         expressions. If a variable name matches one of the regular expressions,
         the variable should be fixed during model training.
+      repeat_prefix_sep: Repeat prefix separator character, for use in filename
+      separator during checkpointing.
     """
     # TODO(pax): loss_name is not used anywhere anymore other than to
     # create a LossAggregator on the task. Consider moving loss_name to the
@@ -123,6 +125,7 @@ class Learner(base_hyperparams.BaseParameterizable):
     enable_skip_step_on_gradient_anomalies: bool = True
     bprop_variable_exclusion: Union[str, Sequence[str]] = dataclasses.field(
         default_factory=list)
+    repeat_prefix_sep: str = '#'
 
   def __init__(self, hparams: Learner.HParams) -> None:
     """Constructor for the learner."""
@@ -163,7 +166,10 @@ class Learner(base_hyperparams.BaseParameterizable):
     if not self._hparams.vectorize_on_repeat_prefix:
       return self._get_grad_tx(var_weight_hparams)
     return opt_vec.get_transformations_with_vectorized_repeat_prefix(
-        self._get_grad_tx(var_weight_hparams), var_weight_hparams)
+        self._get_grad_tx(var_weight_hparams),
+        var_weight_hparams,
+        self._hparams.repeat_prefix_sep
+    )
 
   def scale_gradients(self, raw_grads: NestedMap) -> Tuple[NestedMap, JTensor]:
     """Scales the gradient.
