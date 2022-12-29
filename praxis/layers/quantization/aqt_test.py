@@ -115,6 +115,15 @@ class AqtTest(test_utils.TestCase):
 
     self.assertLessEqual(per_example_error, per_tensor_error)
 
+  def test_get_quant_scale_zeros(self):
+    p_quant = pax_fiddle.Config(aqt.TensorQuantizer, name='tq', precision=8)
+    quant = p_quant.Instantiate()
+    state = quant.init(jax.random.PRNGKey(0))
+    scale = quant.apply(
+        state, jnp.zeros((1, 4)), 1, jnp.float32, method=quant.get_quant_scale)
+    self.assertFalse(jnp.isinf(scale).any())
+    self.assertEqual(scale, jnp.ones_like(scale))
+
 
 if __name__ == '__main__':
   absltest.main()

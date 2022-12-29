@@ -72,6 +72,7 @@ class TensorQuantizer(base_layer.BaseLayer):
     x_bound = jnp.max(jnp.abs(x), axis=contract_dims, keepdims=True)
     clip_bound = self._get_clip_bound()
     scale = clip_bound / x_bound
+    scale = jnp.nan_to_num(scale, nan=1.0, posinf=1.0)
     scale = jax.lax.stop_gradient(scale)
     return scale.astype(dtype)
 
