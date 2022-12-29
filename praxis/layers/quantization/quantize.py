@@ -146,9 +146,12 @@ def for_transformer():
   return decorator
 
 
-def set_quantization(config: LayerTpl, target: Type[base_layer.BaseLayer],
-                     quantization_type: quantization_hparams.QuantizationType,
-                     mode: quantization_hparams.QuantizationMode):
+def set_quantization(
+    config: LayerTpl,
+    target: Type[base_layer.BaseLayer] = layers.transformers.Transformer,
+    quantization_type: quantization_hparams.QuantizationType = quantization_hparams.QuantizationType.PTQ,
+    mode: quantization_hparams.QuantizationMode = quantization_hparams.QuantizationMode.INFERENCE,
+):
   target_tpls = find_target_tpl(config, target)
   for target_tpl in target_tpls:
     quantize_transformer_layer_weights(target_tpl, quantization_type, mode)  # pytype: disable=wrong-arg-types  # py310-upgrade
