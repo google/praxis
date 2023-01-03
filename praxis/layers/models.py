@@ -545,13 +545,6 @@ class LanguageModel(base_model.BaseModel):
               decoder_utils.pad_state_fn(decode_data.state_padding_size)
           )
 
-        if decoder_params.k > 0 and decoder_params.p:
-          raise ValueError(
-              'In decoder_tpl hparams, k and p should not be set at the'
-              ' same time. Currently k is: %s and p is: %s'
-              % (decoder_params.k, decoder_params.p)
-          )
-
         # Fetch dynamic temperature from input_batch if the input_batch has this
         # information.
         if hasattr(input_batch, 'temperature'):

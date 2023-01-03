@@ -177,6 +177,84 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     # gumbel noise is relatively smaller compared to the logits value.
     self.assertArraysEqual(new_ids, np.array([2, 0, 1, 0], dtype=np.int32))
 
+  def test_sample_from_top_k_and_top_p_scalar(self):
+    logits = jnp.array(
+        [
+            [0.1, 0.7, 0.2, 0, 0],
+            [0.3, 0.1, 0, 0.2, 0.5],
+            [0.2, 0.6, 0.1, 0, 0.1],
+            [0.5, 0, 0.5, 0, 0],
+        ],
+        dtype=jnp.float32,
+    )
+    new_ids = sample_decode.sample_from_top_k_and_top_p(
+        logits,
+        jax.random.PRNGKey(seed=123),
+        temperature=1.0,
+        top_k=2,
+        top_p=0.5,
+    )
+    # gumbel noise is relatively smaller compared to the logits value.
+    self.assertArraysEqual(new_ids, np.array([1, 4, 1, 0], dtype=np.int32))
+
+  def test_sample_from_top_k_and_top_p_scalar_false_fn(self):
+    logits = jnp.array(
+        [
+            [0.1, 0.7, 0.2, 0, 0],
+            [0.3, 0.1, 0, 0.2, 0.5],
+            [0.2, 0.6, 0.1, 0, 0.1],
+            [0.5, 0, 0.5, 0, 0],
+        ],
+        dtype=jnp.float32,
+    )
+    new_ids = sample_decode.sample_from_top_k_and_top_p(
+        logits,
+        jax.random.PRNGKey(seed=123),
+        temperature=1.0,
+        top_k=2,
+        top_p=1.0,
+    )
+    # gumbel noise is relatively smaller compared to the logits value.
+    self.assertArraysEqual(new_ids, np.array([1, 4, 1, 0], dtype=np.int32))
+
+  def test_sample_from_top_k_and_top_p_tensor(self):
+    logits = jnp.array(
+        [
+            [0.1, 0.7, 0.2, 0, 0],
+            [0.2, 0.2, 0.2, 0.2, 0.2],
+        ],
+        dtype=jnp.float32,
+    )
+    new_ids = sample_decode.sample_from_top_k_and_top_p(
+        logits,
+        jax.random.PRNGKey(seed=123),
+        temperature=1.0,
+        top_k=4,
+        top_p=jnp.array([[0.75], [0.3]], dtype=jnp.float32),
+    )
+    # gumbel noise is relatively smaller compared to the logits value.
+    self.assertArraysEqual(new_ids, np.array([1, 0], dtype=np.int32))
+
+  def test_sample_from_top_k_and_top_p_tensor_false_fn(self):
+    logits = jnp.array(
+        [
+            [0.1, 0.7, 0.2, 0, 0],
+            [0.3, 0.1, 0, 0.2, 0.5],
+            [0.2, 0.6, 0.1, 0, 0.1],
+            [0.5, 0, 0.5, 0, 0],
+        ],
+        dtype=jnp.float32,
+    )
+    new_ids = sample_decode.sample_from_top_k_and_top_p(
+        logits,
+        jax.random.PRNGKey(seed=123),
+        temperature=1.0,
+        top_k=2,
+        top_p=jnp.array([[1.0], [1.0], [1.0], [1.0]], dtype=jnp.float32),
+    )
+    # gumbel noise is relatively smaller compared to the logits value.
+    self.assertArraysEqual(new_ids, np.array([1, 4, 1, 0], dtype=np.int32))
+
   def test_sample_from_top_k_dyn_temp(self):
     logits = jnp.array(
         [
@@ -218,6 +296,14 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     self.assertGreaterEqual(count[3], 10)
     # Token #4 should be chosen more than 25%.
     self.assertGreaterEqual(count[4], 25)
+
+  def test_get_argmax_ids(self):
+    top_k_argmax_ids = jnp.array([2, 1], dtype=jnp.int32)
+    top_k_indices = jnp.array(
+        [[12, 200, 300, 9], [500, 608, 9000, 7]], dtype=jnp.int32
+    )
+    argmax_ids = sample_decode._get_argmax_ids(top_k_argmax_ids, top_k_indices)
+    self.assertArraysEqual(argmax_ids, jnp.array([300, 608], dtype=jnp.int32))
 
   def test_reorder_with_indices(self):
     indices = jnp.array([[0, 2, 1], [2, 0, 1]], dtype=jnp.int32)
