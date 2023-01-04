@@ -32,7 +32,7 @@ quantizing all transformer blocks.
 """
 
 import functools
-from typing import cast, Type
+from typing import cast, Optional, Type
 import fiddle as fdl
 from praxis import base_layer
 from praxis import layers
@@ -48,9 +48,11 @@ def quantize_transformer_layer_weights(
     tr_tpl: pax_fiddle.Config[layers.transformers.Transformer],
     quantization_type: quantization_hparams.QuantizationType,
     mode: quantization_hparams.QuantizationMode,
+    weight_quantization_params: Optional[
+        quantization_hparams.WeightQuantizationParams
+    ],
 ) -> None:
   """Rewrites Transformer HParam for weight only quantization."""
-
   tr_atten_tpl = cast(
       pax_fiddle.Config[layers.attentions.DotProductAttention],
       tr_tpl.tr_atten_tpl,
@@ -59,23 +61,30 @@ def quantize_transformer_layer_weights(
       pax_fiddle.Config[layers.transformers.TransformerFeedForward],
       tr_tpl.tr_fflayer_tpl,
   )
-  quantize_dot_product_attention_layer_weights(tr_atten_tpl, quantization_type,
-                                               mode)
-  quantize_transformer_feed_forward_layer_weights(tr_fflayer_tpl,
-                                                  quantization_type, mode)
+  quantize_dot_product_attention_layer_weights(
+      tr_atten_tpl, quantization_type, mode, weight_quantization_params
+  )
+  quantize_transformer_feed_forward_layer_weights(
+      tr_fflayer_tpl, quantization_type, mode, weight_quantization_params
+  )
 
 
 def quantize_dot_product_attention_layer_weights(
     attn_tpl: pax_fiddle.Config[layers.attentions.DotProductAttention],
     quantization_type: quantization_hparams.QuantizationType,
     mode: quantization_hparams.QuantizationMode,
+    weight_quantization_params: Optional[
+        quantization_hparams.WeightQuantizationParams
+    ],
 ) -> None:
   """Rewrites DotProductAttention HParam for weight only quantization."""
 
   attn_tpl.proj_tpl = pax_fiddle.Config(
       quantization.AttentionProjection,
       quantization=quantization_hparams.QuantizationHParams(
-          quantization_type=quantization_type, mode=mode
+          quantization_type=quantization_type,
+          mode=mode,
+          weight_params=weight_quantization_params,
       ),
   )
 
@@ -83,7 +92,9 @@ def quantize_dot_product_attention_layer_weights(
     attn_tpl.combined_qkv_proj_tpl = pax_fiddle.Config(
         quantization.attentions.CombinedQKVProjectionLayer,
         quantization=quantization_hparams.QuantizationHParams(
-            quantization_type=quantization_type, mode=mode
+            quantization_type=quantization_type,
+            mode=mode,
+            weight_params=weight_quantization_params,
         ),
     )
 
@@ -94,20 +105,25 @@ def quantize_transformer_feed_forward_layer_weights(
     ],
     quantization_type: quantization_hparams.QuantizationType,
     mode: quantization_hparams.QuantizationMode,
+    weight_quantization_params: Optional[
+        quantization_hparams.WeightQuantizationParams
+    ],
 ) -> None:
   """Rewrites TransformerFeedForward HParam for weight only quantization."""
 
   tr_fflayer_tpl.fflayer_tpl.linear_tpl = pax_fiddle.Config(
       quantization.Linear,
       quantization=quantization_hparams.QuantizationHParams(
-          quantization_type=quantization_type, mode=mode
+          quantization_type=quantization_type,
+          mode=mode,
+          weight_params=weight_quantization_params,
       ),
   )
 
 
 # TODO(jianlijianli): Add decorator for other model architectures.
 # Ready-to-use quantization decorators for quantizing transformer.
-def for_transformer():
+def for_transformer(num_bits: int = 8):
   """Find and quantize transformer.
 
   If there are transformers that shouldn't be quantized, use lowers level APIs
@@ -116,6 +132,10 @@ def for_transformer():
   If there are no transformers in the model, it's a no-op.
 
   TODO(jianlijianli): pass in additional parameters.
+
+  Args:
+    num_bits: number of bits for quantized weight. Currently supports 8 and 4
+      but any integer [1, 8] works.
 
   Returns:
     a modifier that quantizes transformers when applied to a config.
@@ -133,11 +153,18 @@ def for_transformer():
         task_p = config.task()
         mode = quantization_hparams.QuantizationMode.TRAINING
         quantization_type = quantization_hparams.QuantizationType.FQ
+        assert num_bits == 8 or num_bits == 4
+        weight_quantization_params = (
+            quantization_hparams.WeightQuantizationParams(
+                precision=num_bits,
+            )
+        )
         set_quantization(
             task_p.model,
             layers.transformers.Transformer,
             quantization_type=quantization_type,
             mode=mode,
+            weight_quantization_params=weight_quantization_params,
         )
         return task_p
 
@@ -151,10 +178,24 @@ def set_quantization(
     target: Type[base_layer.BaseLayer] = layers.transformers.Transformer,
     quantization_type: quantization_hparams.QuantizationType = quantization_hparams.QuantizationType.PTQ,
     mode: quantization_hparams.QuantizationMode = quantization_hparams.QuantizationMode.INFERENCE,
+    weight_quantization_params: Optional[
+        quantization_hparams.WeightQuantizationParams
+    ] = None,
 ):
+  """Sets quantization parameters for 'target' in 'config'.
+
+  Args:
+    config: The config to apply quantization on.
+    target: The target component to be replaced.
+    quantization_type: The quantization types (PTQ, FQ, AQT etc)
+    mode: The quantization modes (INFERENCE, TRAINING, MATERIALIZE etc)
+    weight_params: The weight quantization parameters.
+  """
   target_tpls = find_target_tpl(config, target)
   for target_tpl in target_tpls:
-    quantize_transformer_layer_weights(target_tpl, quantization_type, mode)  # pytype: disable=wrong-arg-types  # py310-upgrade
+    quantize_transformer_layer_weights(
+        target_tpl, quantization_type, mode, weight_quantization_params
+    )  # pytype: disable=wrong-arg-types  # py310-upgrade
 
 
 # Traverse entire config HParam and find the tpl of the target type.
