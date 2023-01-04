@@ -95,73 +95,6 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         sample_decode.split_batch_dim(x, batch_dim=0, num_samples=2),
         np.array([[[1, 2], [1, 2]], [[3, 4], [3, 4]]], dtype=np.int32))
 
-  def test_sample_from_top_k_with_gumbel_noise(self):
-    logits = jnp.array(
-        [[0, 0, 1, 1, 0], [1, 0, 0, 0, 1], [0, 1, 1, 0, 0], [1, 1, 0, 0, 0]],
-        dtype=jnp.float32)
-    noise = jnp.array([[0.5, 0], [-0.5, 0], [-0.5, -1], [1, 0.5]],
-                      dtype=jnp.float32)
-    # logits + noise =
-    # [[0, 0, 1.5, 1, 0], # argmax: 2
-    #  [0.5, 0, 0, 0, 1]  # argmax: 4
-    #  [0, 0.5, 0, 0, 0], # argmax: 1
-    #  [2, 1.5, 0, 0, 0]] # argmax: 0
-    new_ids = sample_decode.sample_from_top_k_with_gumbel_noise(
-        logits, noise, temperature=1.0, top_k=2
-    )
-    self.assertArraysEqual(new_ids, np.array([2, 4, 1, 0], dtype=np.int32))
-
-  def test_sample_from_top_k_with_gumbel_noise_per_example_top_k(self):
-    logits = jnp.array(
-        [[1, 0, 1, 1, 1], [1, 1, 0, 0, 1], [1, 0, 1, 0, 1], [1, 1, 0, 1, 0]],
-        dtype=jnp.float32,
-    )
-    per_example_top_k = jnp.array([5, 2, 4, 1], dtype=jnp.int32)
-    # apply per_example_top_k for logits
-    # [[1, 0, 1, 1, 1],
-    #  [1, 1, -inf, -inf, -inf],
-    #  [1, 0, 1, 0, 1],
-    #  [1, -inf, -inf, -inf, -inf]]
-    noise = jnp.array(
-        [
-            [0.2, 0.1, 0.4, 0.3],
-            [-0.5, 0.2, 0.3, 0.7],
-            [-0.5, -1, 0, 0],
-            [-1, 0.5, 0.7, 1],
-        ],
-        dtype=jnp.float32,
-    )
-    # logits + noise =
-    # [[1.2, 0.0, 1.1, 1.4, 1.3], # argmax: 3
-    #  [0.5, 1.2, -inf, -inf, -inf]  # argmax: 1
-    #  [0.5, 0, 0, 0, 1], # argmax: 4
-    #  [0, -inf, -inf, -inf, -inf]] # argmax: 0
-    new_ids = sample_decode.sample_from_top_k_with_gumbel_noise(
-        logits,
-        noise,
-        temperature=1.0,
-        top_k=4,
-        per_example_top_k=per_example_top_k,
-    )
-    self.assertArraysEqual(new_ids, np.array([3, 1, 4, 0], dtype=np.int32))
-
-  def test_sample_from_top_k_with_gumbel_noise_dyn_temp(self):
-    logits = jnp.array([[[0, 0, 1, 1, 0], [1, 0, 0, 0, 1]],
-                        [[0, 1, 1, 0, 0], [1, 1, 0, 0, 0]]],
-                       dtype=jnp.float32)
-    noise = jnp.array([[[0.5, 0], [-0.5, 0]], [[-0.5, -1], [1, 0.5]]],
-                      dtype=jnp.float32)
-    temperature = jnp.array([[0.1], [0.2]], dtype=jnp.float32)
-    new_ids = sample_decode.sample_from_top_k_with_gumbel_noise(
-        logits, noise, temperature=temperature, top_k=2
-    )
-    # logits + noise =
-    # [[[0, 0, 1.5, 1, 0], # argmax: 2
-    #  [0.5, 0, 0, 0, 1]]  # argmax: 4
-    #  [[0, 0.5, 0, 0, 0], # argmax: 1
-    #  [2, 1.5, 0, 0, 0]]] # argmax: 0
-    self.assertArraysEqual(new_ids, np.array([[2, 4], [1, 0]], dtype=np.int32))
-
   def test_sample_from_top_k(self):
     logits = jnp.array(
         [
@@ -171,7 +104,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
             [1, 0, 0, 0, 0],  # argmax: 0
         ],
         dtype=jnp.float32)
-    new_ids = sample_decode.sample_from_top_k(
+    new_ids = sample_decode.sample_from_top_k_and_top_p(
         logits, jax.random.PRNGKey(seed=123), temperature=1.0, top_k=2
     )
     # gumbel noise is relatively smaller compared to the logits value.
@@ -270,7 +203,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         dtype=jnp.float32)
 
     temperature = jnp.array([[0.1], [0.2]], dtype=jnp.float32)
-    new_ids = sample_decode.sample_from_top_k(
+    new_ids = sample_decode.sample_from_top_k_and_top_p(
         logits, jax.random.PRNGKey(seed=123), temperature=temperature, top_k=2
     )
     # gumbel noise is relatively smaller compared to the logits value.
@@ -283,7 +216,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     count = [0] * 5
 
     for i in range(100):
-      new_ids = sample_decode.sample_from_top_k(
+      new_ids = sample_decode.sample_from_top_k_and_top_p(
           logits, jax.random.PRNGKey(seed=i), temperature=1.0, top_k=4
       )
       count[new_ids[0]] += 1
