@@ -505,6 +505,7 @@ class LanguageModel(base_model.BaseModel):
             segment_pos=decode_data.fprop_segment_pos,
             start_time_step=decode_data.start_time_step,
             causal_attention_mask=decode_data.causal_attention_mask,
+            **decode_data.extra_input_kwargs
         )
       assert isinstance(decoder_params, BeamSearchHParams)
       result = beam_search.beam_search(
