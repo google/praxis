@@ -81,7 +81,7 @@ class TrivialFiddleLayer(base_layer.BaseLayer):
   pass
 
 
-class SimpleFiddleBaseLayer(base_layer.BaseLayer):
+class SimpleBaseLayer(base_layer.BaseLayer):
   x: int = 0
 
 
@@ -300,12 +300,12 @@ class BaseLayerTest(test_utils.TestCase):
     self.assertIsNone(hyper_params['_hparams'].child_tpl_dict)
 
   @parameterized.parameters([
-      (pax_fiddle.Config(SimpleFiddleBaseLayer),
-       pax_fiddle.Config(SimpleFiddleBaseLayer), True),
-      (pax_fiddle.Config(SimpleFiddleBaseLayer),
-       pax_fiddle.Config(SimpleFiddleBaseLayer, name='foo'), True),
-      (pax_fiddle.Config(SimpleFiddleBaseLayer),
-       pax_fiddle.Config(SimpleFiddleBaseLayer, dtype=jnp.float16), False),
+      (pax_fiddle.Config(SimpleBaseLayer),
+       pax_fiddle.Config(SimpleBaseLayer), True),
+      (pax_fiddle.Config(SimpleBaseLayer),
+       pax_fiddle.Config(SimpleBaseLayer, name='foo'), True),
+      (pax_fiddle.Config(SimpleBaseLayer),
+       pax_fiddle.Config(SimpleBaseLayer, dtype=jnp.float16), False),
   ])
   def test_compatible_hparams(self, lhs, rhs, expected):
     self.assertEqual(base_layer.compatible_hparams(lhs, rhs), expected)
@@ -540,7 +540,7 @@ class BaseLayerTest(test_utils.TestCase):
 
         class Layer2(base_layer.BaseLayer):
           child_tpl: pax_fiddle.Config = dataclasses.field(
-              default_factory=lambda: pax_fiddle.Config(SimpleFiddleBaseLayer))
+              default_factory=lambda: pax_fiddle.Config(SimpleBaseLayer))
 
     with self.subTest('Optional_FiddleConfig'):
       if not hasattr(typing, 'get_origin'):
@@ -641,11 +641,11 @@ class BaseLayerTest(test_utils.TestCase):
 
   def testTypeCheckingForDtype(self):
     layer_p = pax_fiddle.Config(
-        SimpleFiddleBaseLayer,
+        SimpleBaseLayer,
     )
     with self.assertRaisesRegex(
         TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
-      SimpleFiddleBaseLayer(layer_p)
+      SimpleBaseLayer(layer_p)
 
 
 if __name__ == '__main__':

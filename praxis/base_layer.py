@@ -2257,4 +2257,3 @@ def get_template_fields(
 # Backwards-compatibility aliases.
 # TODO(b/249483164): Remove these once the HParams->Fiddle migration is done.
 BaseLayerApi = BaseLayer
-FiddleBaseLayer = BaseLayer
