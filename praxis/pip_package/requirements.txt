@@ -32,7 +32,7 @@ asttokens==2.2.1
     # via stack-data
 astunparse==1.6.3
     # via tensorflow
-attrs==22.1.0
+attrs==22.2.0
     # via
     #   jsonschema
     #   lingvo
@@ -44,9 +44,7 @@ beautifulsoup4==4.11.1
 bleach==5.0.1
     # via nbconvert
 cached-property==1.5.2
-    # via
-    #   clu
-    #   orbax
+    # via orbax
 cachetools==5.2.0
     # via google-auth
 certifi==2022.12.7
@@ -57,7 +55,9 @@ charset-normalizer==2.1.1
     # via requests
 chex==0.1.5
     # via optax
-clu==0.0.7
+click==8.1.3
+    # via tensorflow-datasets
+clu==0.0.8
     # via -r praxis-requirements.in
 comm==0.1.2
     # via ipykernel
@@ -77,18 +77,20 @@ defusedxml==0.7.1
     # via nbconvert
 dill==0.3.6
     # via tensorflow-datasets
-dm-tree==0.1.7
-    # via chex
+dm-tree==0.1.8
+    # via
+    #   chex
+    #   tensorflow-datasets
 einops==0.6.0
     # via -r praxis-requirements.in
 entrypoints==0.4
     # via jupyter-client
-etils[epath]==0.9.0
+etils[enp,epath]==0.9.0
     # via
     #   clu
     #   orbax
     #   tensorflow-datasets
-exceptiongroup==1.0.4
+exceptiongroup==1.1.0
     # via pytest
 executing==1.2.0
     # via stack-data
@@ -134,11 +136,11 @@ idna==3.4
     #   anyio
     #   jsonschema
     #   requests
-importlib-metadata==5.1.0
+importlib-metadata==6.0.0
     # via
     #   markdown
     #   nbconvert
-importlib-resources==5.10.1
+importlib-resources==5.10.2
     # via
     #   etils
     #   jsonschema
@@ -146,7 +148,7 @@ importlib-resources==5.10.1
     #   tensorflow-datasets
 iniconfig==1.1.1
     # via pytest
-ipykernel==6.19.2
+ipykernel==6.19.4
     # via
     #   ipywidgets
     #   jupyter
@@ -155,7 +157,7 @@ ipykernel==6.19.2
     #   nbclassic
     #   notebook
     #   qtconsole
-ipython==8.7.0
+ipython==8.8.0
     # via
     #   ipykernel
     #   ipywidgets
@@ -165,11 +167,11 @@ ipython-genutils==0.2.0
     #   nbclassic
     #   notebook
     #   qtconsole
-ipywidgets==8.0.3
+ipywidgets==8.0.4
     # via jupyter
 isoduration==20.11.0
     # via jsonschema
-jax==0.3.25
+jax==0.4.1
     # via
     #   -r praxis-requirements.in
     #   chex
@@ -179,7 +181,7 @@ jax==0.3.25
     #   orbax
 jax-bitempered-loss==0.0.2
     # via -r praxis-requirements.in
-jaxlib==0.3.25
+jaxlib==0.4.1
     # via
     #   chex
     #   clu
@@ -214,7 +216,7 @@ jupyter-client==7.4.8
     #   qtconsole
 jupyter-console==6.4.4
     # via jupyter
-jupyter-core==5.1.0
+jupyter-core==5.1.2
     # via
     #   jupyter-client
     #   jupyter-server
@@ -228,15 +230,15 @@ jupyter-events==0.5.0
     # via jupyter-server
 jupyter-http-over-ws==0.0.8
     # via lingvo
-jupyter-server==2.0.1
+jupyter-server==2.0.6
     # via
     #   nbclassic
     #   notebook-shim
-jupyter-server-terminals==0.4.2
+jupyter-server-terminals==0.4.3
     # via jupyter-server
 jupyterlab-pygments==0.2.2
     # via nbconvert
-jupyterlab-widgets==3.0.4
+jupyterlab-widgets==3.0.5
     # via ipywidgets
 keras==2.9.0
     # via tensorflow
@@ -281,13 +283,13 @@ nbclassic==0.4.8
     # via notebook
 nbclient==0.7.2
     # via nbconvert
-nbconvert==7.2.6
+nbconvert==7.2.7
     # via
     #   jupyter
     #   jupyter-server
     #   nbclassic
     #   notebook
-nbformat==5.7.0
+nbformat==5.7.1
     # via
     #   jupyter-server
     #   nbclassic
@@ -306,12 +308,13 @@ notebook==6.5.2
     #   jupyter-http-over-ws
 notebook-shim==0.2.2
     # via nbclassic
-numpy==1.23.5
+numpy==1.24.1
     # via
     #   -r praxis-requirements.in
     #   chex
     #   clu
     #   contourpy
+    #   etils
     #   flax
     #   h5py
     #   jax
@@ -340,7 +343,7 @@ optax==0.1.4
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax==0.0.23
+orbax==0.1.0
     # via flax
 packaging==22.0
     # via
@@ -360,13 +363,13 @@ pexpect==4.8.0
     # via ipython
 pickleshare==0.7.5
     # via ipython
-pillow==9.3.0
+pillow==9.4.0
     # via
     #   lingvo
     #   matplotlib
 pkgutil-resolve-name==1.3.10
     # via jsonschema
-platformdirs==2.6.0
+platformdirs==2.6.2
     # via jupyter-core
 pluggy==1.0.0
     # via pytest
@@ -392,7 +395,9 @@ protobuf==3.19.5
     #   tensorflow-hub
     #   tensorflow-metadata
 psutil==5.9.4
-    # via ipykernel
+    # via
+    #   ipykernel
+    #   tensorflow-datasets
 ptyprocess==0.7.0
     # via
     #   pexpect
@@ -407,7 +412,7 @@ pyasn1-modules==0.2.8
     # via google-auth
 pycparser==2.21
     # via cffi
-pygments==2.13.0
+pygments==2.14.0
     # via
     #   ipython
     #   jupyter-console
@@ -416,7 +421,7 @@ pygments==2.13.0
     #   rich
 pyparsing==3.0.9
     # via matplotlib
-pyrsistent==0.19.2
+pyrsistent==0.19.3
     # via jsonschema
 pytest==7.2.0
     # via orbax
@@ -456,13 +461,13 @@ rfc3339-validator==0.1.4
     # via jsonschema
 rfc3986-validator==0.1.1
     # via jsonschema
-rich==12.6.0
+rich==13.0.0
     # via flax
 rsa==4.9
     # via google-auth
 scikit-learn==1.2.0
     # via lingvo
-scipy==1.9.3
+scipy==1.10.0
     # via
     #   jax
     #   jaxlib
@@ -508,20 +513,17 @@ tensorboard-plugin-wit==1.8.1
 tensorflow==2.9.3
     # via
     #   -r praxis-requirements.in
-    #   clu
     #   lingvo
     #   tensorflow-text
-tensorflow-datasets==4.7.0
-    # via
-    #   clu
-    #   lingvo
+tensorflow-datasets==4.8.1
+    # via lingvo
 tensorflow-estimator==2.9.0
     # via tensorflow
 tensorflow-hub==0.12.0
     # via
     #   lingvo
     #   tensorflow-text
-tensorflow-io-gcs-filesystem==0.28.0
+tensorflow-io-gcs-filesystem==0.29.0
     # via tensorflow
 tensorflow-metadata==1.12.0
     # via tensorflow-datasets
@@ -533,7 +535,7 @@ tensorstore==0.1.28
     # via
     #   flax
     #   orbax
-termcolor==2.1.1
+termcolor==2.2.0
     # via
     #   tensorflow
     #   tensorflow-datasets
@@ -564,7 +566,7 @@ tornado==6.2
     #   terminado
 tqdm==4.64.1
     # via tensorflow-datasets
-traitlets==5.7.1
+traitlets==5.8.0
     # via
     #   comm
     #   ipykernel
@@ -583,10 +585,10 @@ traitlets==5.7.1
     #   qtconsole
 typing-extensions==4.4.0
     # via
+    #   clu
     #   etils
     #   fiddle
     #   flax
-    #   jax
     #   libcst
     #   optax
     #   rich
@@ -614,10 +616,12 @@ wheel==0.38.4
     # via
     #   astunparse
     #   tensorboard
-widgetsnbextension==4.0.4
+widgetsnbextension==4.0.5
     # via ipywidgets
 wrapt==1.14.1
-    # via tensorflow
+    # via
+    #   clu
+    #   tensorflow
 zipp==3.11.0
     # via
     #   etils
