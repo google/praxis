@@ -271,7 +271,7 @@ def sample_from_top_k_and_top_p(
     top_k: If nonzero, use top-k sampling, only selecting among the most likely
       k tokens at each step. top_k is set to the maximum k value for sampling
       decode.
-    top_p: Optional cutoff probablity. A scalar or a JTensor. Use the smallest
+    top_p: Optional cutoff probability. A scalar or a JTensor. Use the smallest
       number of logits whose cumulative sum of probs adds up to (at least)
       top_p. If it is a JTensor, it has shape [batch_size * num_samples, 1]
     per_example_top_k: Optional per example top_k of shape [batch_size *
@@ -720,11 +720,38 @@ def sample_decode(
                                    val.decode_lengths)
     val.output_ids = val.output_ids.at[:, step + 1].set(new_ids)
 
+    logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size), new_ids].get()
+    logprobs_at_new_ids = jnp.where(
+        prev_done, jnp.ones_like(logprobs_at_new_ids), logprobs_at_new_ids
+    )
+    val.logprobs = val.logprobs.at[:, step + 1].set(logprobs_at_new_ids)
+
     if result_callback is not None:
 
       def _false_fn():
         """Dummy function."""
         pass
+
+      def _get_slice(sequence):
+        mod_size = (
+            val.output_ids.shape[-1] - 1 - start_step
+        ) % result_callback.interval_steps
+        if mod_size > 0:
+          sequence = jnp.pad(
+              sequence,
+              [[0, 0], [0, result_callback.interval_steps - mod_size]],
+          )
+        interval_start_id = (
+            ((step - start_step) // result_callback.interval_steps)
+            * result_callback.interval_steps
+            + start_step
+            + 1
+        )
+        return jax.lax.dynamic_slice(
+            sequence,
+            [0, interval_start_id],
+            [batch_size, result_callback.interval_steps],
+        )
 
       def _true_fn():
         """Outfeed logic."""
@@ -733,32 +760,13 @@ def sample_decode(
         # output_ids: [b * num_samples, interval_steps]
         # scores: [b * num_samples]
         outfeed_tensors = NestedMap()
-        mod_size = (
-            val.output_ids.shape[-1] - 1 - start_step
-        ) % result_callback.interval_steps
-        if mod_size > 0:
-          output_ids = jnp.pad(
-              val.output_ids,
-              [[0, 0], [0, result_callback.interval_steps - mod_size]],
-          )
-        else:
-          output_ids = val.output_ids
-        interval_start_id = (
-            ((step - start_step) // result_callback.interval_steps)
-            * result_callback.interval_steps
-            + start_step
-            + 1
-        )
-        outfeed_tensors.output_ids = jax.lax.dynamic_slice(
-            output_ids,
-            [0, interval_start_id],
-            [batch_size, result_callback.interval_steps],
-        )
+        outfeed_tensors.output_ids = _get_slice(val.output_ids)
         outfeed_tensors.decode_lengths = (
             jnp.ones_like(val.decode_lengths) * result_callback.interval_steps
         )
-        outfeed_tensors.scores = jnp.zeros_like(
-            val.decode_lengths, dtype=jnp.float32
+        outfeed_tensors.scores = jnp.sum(
+            # Padded logprobs can have values of 1.0, so we cap it to 0.0.
+            jnp.minimum(_get_slice(val.logprobs), 0.0), axis=-1
         )
         outfeed_tensors = jax.tree_map(
             lambda x: split_batch_dim(x, 0, num_samples), outfeed_tensors
@@ -772,12 +780,6 @@ def sample_decode(
           jnp.all(val.done),
       )
       jax.lax.cond(should_outfeed, _true_fn, _false_fn)
-
-    logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size), new_ids].get()
-    logprobs_at_new_ids = jnp.where(prev_done,
-                                    jnp.ones_like(logprobs_at_new_ids),
-                                    logprobs_at_new_ids)
-    val.logprobs = val.logprobs.at[:, step + 1].set(logprobs_at_new_ids)
     val.step += 1
     return val
 
