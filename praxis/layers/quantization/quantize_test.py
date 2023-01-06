@@ -80,6 +80,34 @@ class QuantizationTest(test_utils.TestCase):
         p.tr_atten_tpl.proj_tpl.quantization.weight_params.precision, num_bits
     )
 
+  def test_update_transformer_mq(self):
+    p = pax_fiddle.Config(
+        layers.transformers.Transformer,
+        name='jax_transformer_layer',
+        input_dims=12,
+        hidden_dims=4,
+        num_heads=8,
+        tr_atten_tpl=pax_fiddle.Config(
+            layers.multi_query_attention.MultiQueryDotProductAttention
+        ),
+    )
+    quantize.quantize_transformer_layer_weights(
+        p,
+        quantization_hparams.QuantizationType.PTQ,
+        quantization_hparams.QuantizationMode.MATERIALIZE,
+        quantization_hparams.WeightQuantizationParams(precision=8),
+    )
+    self.assertEqual(
+        p.tr_fflayer_tpl.fflayer_tpl.linear_tpl.cls, qlayer.linears.Linear
+    )
+    self.assertEqual(
+        p.tr_atten_tpl.proj_tpl.cls, qlayer.attentions.AttentionProjection
+    )
+    self.assertEqual(
+        p.tr_atten_tpl.headless_proj_tpl.cls,
+        qlayer.multi_query_attention.OneHeadedAttentionProjection,
+    )
+
 
 if __name__ == '__main__':
   absltest.main()

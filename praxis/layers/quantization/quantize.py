@@ -53,16 +53,32 @@ def quantize_transformer_layer_weights(
     ],
 ) -> None:
   """Rewrites Transformer HParam for weight only quantization."""
-  tr_atten_tpl = cast(
-      pax_fiddle.Config[layers.attentions.DotProductAttention],
-      tr_tpl.tr_atten_tpl,
-  )
+  if tr_tpl.tr_atten_tpl.cls == layers.attentions.DotProductAttention:
+    tr_atten_tpl = cast(
+        pax_fiddle.Config[layers.attentions.DotProductAttention],
+        tr_tpl.tr_atten_tpl,
+    )
+    quantize_dot_product_attention_layer_weights(
+        tr_atten_tpl, quantization_type, mode, weight_quantization_params
+    )
+
+  if (
+      tr_tpl.tr_atten_tpl.cls
+      == layers.multi_query_attention.MultiQueryDotProductAttention
+  ):
+    tr_atten_tpl = cast(
+        pax_fiddle.Config[
+            layers.multi_query_attention.MultiQueryDotProductAttention
+        ],
+        tr_tpl.tr_atten_tpl,
+    )
+    quantize_mq_dot_product_attention_layer_weights(
+        tr_atten_tpl, quantization_type, mode, weight_quantization_params
+    )
+
   tr_fflayer_tpl = cast(
       pax_fiddle.Config[layers.transformers.TransformerFeedForward],
       tr_tpl.tr_fflayer_tpl,
-  )
-  quantize_dot_product_attention_layer_weights(
-      tr_atten_tpl, quantization_type, mode, weight_quantization_params
   )
   quantize_transformer_feed_forward_layer_weights(
       tr_fflayer_tpl, quantization_type, mode, weight_quantization_params
@@ -97,6 +113,37 @@ def quantize_dot_product_attention_layer_weights(
             weight_params=weight_quantization_params,
         ),
     )
+
+
+def quantize_mq_dot_product_attention_layer_weights(
+    attn_tpl: pax_fiddle.Config[
+        layers.multi_query_attention.MultiQueryDotProductAttention
+    ],
+    quantization_type: quantization_hparams.QuantizationType,
+    mode: quantization_hparams.QuantizationMode,
+    weight_quantization_params: Optional[
+        quantization_hparams.WeightQuantizationParams
+    ],
+) -> None:
+  """Rewrites MultiQueryDotProductAttention HParam."""
+
+  attn_tpl.proj_tpl = pax_fiddle.Config(
+      quantization.attentions.AttentionProjection,
+      quantization=quantization_hparams.QuantizationHParams(
+          quantization_type=quantization_type,
+          mode=mode,
+          weight_params=weight_quantization_params,
+      ),
+  )
+
+  attn_tpl.headless_proj_tpl = pax_fiddle.Config(
+      quantization.multi_query_attention.OneHeadedAttentionProjection,
+      quantization=quantization_hparams.QuantizationHParams(
+          quantization_type=quantization_type,
+          mode=mode,
+          weight_params=weight_quantization_params,
+      ),
+  )
 
 
 def quantize_transformer_feed_forward_layer_weights(

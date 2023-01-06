@@ -31,6 +31,7 @@ pytype_strict_library(
     deps = [
         ":attentions",
         ":linears",
+        ":multi_query_attention",
         ":operations",
     ],
 )
@@ -138,6 +139,40 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers:linears",
+    ],
+)
+
+pytype_strict_library(
+    name = "multi_query_attention",
+    srcs = ["multi_query_attention.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":operations",
+        ":quantization_hparams",
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:pytypes",
+        "//praxis/layers:multi_query_attention",
+    ],
+)
+
+py_strict_test(
+    name = "multi_query_attention_test",
+    srcs = ["multi_query_attention_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":multi_query_attention",
+        ":quantization_hparams",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:test_utils",
+        "//praxis/layers:multi_query_attention",
     ],
 )
 
