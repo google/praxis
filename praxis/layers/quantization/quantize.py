@@ -53,7 +53,7 @@ def quantize_transformer_layer_weights(
     ],
 ) -> None:
   """Rewrites Transformer HParam for weight only quantization."""
-  if tr_tpl.tr_atten_tpl.cls == layers.attentions.DotProductAttention:
+  if issubclass(tr_tpl.tr_atten_tpl.cls, layers.attentions.DotProductAttention):
     tr_atten_tpl = cast(
         pax_fiddle.Config[layers.attentions.DotProductAttention],
         tr_tpl.tr_atten_tpl,
@@ -62,10 +62,8 @@ def quantize_transformer_layer_weights(
         tr_atten_tpl, quantization_type, mode, weight_quantization_params
     )
 
-  if (
-      tr_tpl.tr_atten_tpl.cls
-      == layers.multi_query_attention.MultiQueryDotProductAttention
-  ):
+  if issubclass(tr_tpl.tr_atten_tpl.cls,
+                layers.multi_query_attention.MultiQueryDotProductAttention):
     tr_atten_tpl = cast(
         pax_fiddle.Config[
             layers.multi_query_attention.MultiQueryDotProductAttention
