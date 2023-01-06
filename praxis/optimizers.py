@@ -800,6 +800,124 @@ def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
       init_partition_spec=init_partition_spec_fn)
 
 
+def apply_ewc_regularization(
+    learning_rate_fn: optax.Schedule,
+    ewc_regularizer_weight: float = 0.0,
+    ewc_weight_per_var: Optional[bool] = False
+    ) -> ShardedGradientTransformation:
+  """Applies EWC regularization on weights.
+
+  paper: https://arxiv.org/abs/1612.00796
+  EWC regularizer add a ewc_weight * 1 / 2 *(params - pretrain_params)**2 to
+  the final objective loss.
+
+  Args:
+    learning_rate_fn: Learning rate function.
+    ewc_regularizer_weight: A float number as the EWC regularization weight.
+      if ewc_regularizer_weight <= 0, EWC is disabled.
+    ewc_weight_per_var: EWC weight for each variable.
+
+  Returns:
+    A GradientTransformation applying EWC regularizers.
+  """
+  def init_fn(params):
+    if ewc_regularizer_weight > 0.0:
+      if ewc_weight_per_var:
+        var_weights = jax.tree_map(
+            lambda p, v: jnp.array(ewc_regularizer_weight * 1./ 2 * v, p.dtype),
+            params, ewc_weight_per_var)
+      else:
+        var_weights = jax.tree_map(
+            lambda v: jnp.array(ewc_regularizer_weight * 1./ 2, v.dtype),
+            params)
+      return NestedMap(count=jnp.array(0, dtype=jnp.int32),
+                       pretrain_vars=jax.tree_map(jnp.copy, params),
+                       var_weights=var_weights)
+    else:
+      return NestedMap(count=jnp.array(0, dtype=jnp.int32))
+
+  def update_fn(updates, state, params):
+    count = state.count
+    lr = learning_rate_fn(count)
+    if ewc_regularizer_weight > 0.0:
+      if params is None:
+        raise ValueError('Params required for the EWC')
+      def fn(g, p, w, v):
+        v = jnp.where(jnp.equal(state.count, 0), p, v)
+        return g - lr * w * (p - v) if not py_utils.is_optax_masked_node(
+            g) else optax.MaskedNode()
+
+      def pretrain_fn(p, v):
+        return jnp.where(jnp.equal(state.count, 0), p, v)
+
+      updates = jax.tree_map(
+          fn,
+          updates,
+          params,
+          state.var_weights,
+          state.pretrain_vars)
+
+      update_states = NestedMap(
+          count=state.count + 1,
+          pretrain_vars=jax.tree_map(pretrain_fn, params, state.pretrain_vars),
+          var_weights=state.var_weights)
+    else:
+      update_states = NestedMap(
+          count=state.count + 1)
+    return updates, update_states
+
+  def init_partition_spec_fn(params):
+    var_spec_flattened, _ = jax.tree_util.tree_flatten(params)
+    assert var_spec_flattened
+    first_var = var_spec_flattened[0]
+    assert isinstance(first_var, WeightHParams)
+    mesh_shape = first_var.mesh_shape
+
+    def _infer_ewc_pspec(x):
+      return WeightHParams(
+          shape=x.shape,
+          init=None,
+          dtype=x.dtype,
+          collections=None,
+          mesh_shape=mesh_shape,
+          tensor_split_dims_mapping=x.tensor_split_dims_mapping)
+
+    def _infer_ewc_weights_pspec(x):
+      return WeightHParams(
+          shape=[],
+          init=None,
+          dtype=x.dtype,
+          collections=None,
+          mesh_shape=mesh_shape,
+          tensor_split_dims_mapping=[])
+
+    if ewc_regularizer_weight > 0.0:
+      return NestedMap(
+          count=WeightHParams(
+              shape=[],
+              init=None,
+              dtype=jnp.int32,
+              collections=None,
+              mesh_shape=mesh_shape,
+              tensor_split_dims_mapping=[]),
+          pretrain_vars=jax.tree_map(_infer_ewc_pspec, params),
+          var_weights=jax.tree_map(_infer_ewc_weights_pspec, params))
+    else:
+      return NestedMap(
+          count=WeightHParams(
+              shape=[],
+              init=None,
+              dtype=jnp.int32,
+              collections=None,
+              mesh_shape=mesh_shape,
+              tensor_split_dims_mapping=[]))
+
+  return ShardedGradientTransformation(
+      init=init_fn,
+      update=update_fn,
+      init_partition_spec=init_partition_spec_fn)
+
+
 class BaseOptimizer(base_hyperparams.BaseParameterizable):
   """Base class for all optimizers."""
 
@@ -830,6 +948,11 @@ class BaseOptimizer(base_hyperparams.BaseParameterizable):
         schedule is *multiplied* by your base learning rate.
       ema_decay: If > 0, enable ExponentialMovingAverage during training with
         the give decay. Must be < 1. Disabled if <= 0.
+      ewc_regularizer_weight: If > 0, EWC regularization is applied to
+        the model weights.
+      ewc_weight_per_var: If not None, set weight for each model weight, e.g.,
+        refer to https://arxiv.org/abs/1612.00796 by using a Fisher information
+        matrix.
     """
     l2_regularizer_weight: Optional[float] = None
     l1_regularizer_weight: Optional[float] = None
@@ -840,6 +963,8 @@ class BaseOptimizer(base_hyperparams.BaseParameterizable):
     learning_rate: float = 0.0
     lr_schedule: Optional[schedules.BaseSchedule.HParams] = None
     ema_decay: float = 0.0
+    ewc_regularizer_weight: float = 0.0
+    ewc_weight_per_var: Optional[NestedMap] = None
 
   def __init__(self, hparams: BaseOptimizer.HParams) -> None:
     super().__init__(hparams)
@@ -906,6 +1031,12 @@ class BaseOptimizer(base_hyperparams.BaseParameterizable):
             var_wd_mask=var_lp_mask,
             regularizer_weight=p.decoupled_weight_decay),
     ]
+    if p.ewc_regularizer_weight > 0.0:
+      optax_list.append(
+          apply_ewc_regularization(
+              self.get_learning_rate,
+              ewc_regularizer_weight=p.ewc_regularizer_weight,
+              ewc_weight_per_var=p.ewc_weight_per_var))
     if p.ema_decay > 0.0 and include_ema:
       # EMA adds new optimizer states that is not compatible
       asserts.lt(p.ema_decay, 1.)

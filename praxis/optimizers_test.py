@@ -49,6 +49,28 @@ class OptimizersTest(test_utils.TestCase):
     self.assertEqual(
         mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32))
 
+  def test_ewc_regularization(self):
+    opt_tpl = optimizers.ShardedSgd.HParams(
+        lr_schedule=schedules.Constant.HParams(value=1.0),
+        learning_rate=1.0,
+        ewc_regularizer_weight=1.0,
+        ewc_weight_per_var={'var': 1.0})
+    acc_opt = optimizers.instantiate(opt_tpl)
+    tx = acc_opt.get_grad_transformation()
+    mdl_vars = {'var': jnp.array(0, dtype=jnp.float32)}
+    opt_state = tx.init(mdl_vars)
+    num_steps = 3
+    for t in range(num_steps):
+      # t=0: v=0, g=1, p=0 -> v = v - g - 0.5  * (v - p) = -1
+      # t=1: v=-1, g=2, p=0 -> v = v - g - 0.5  * (v - p) = -2.5
+      # t=2: v=-3.5, g=3, p=0 -> v = v - g - 0.5 * (v - p) = -4.25
+      fake_update = float(t + 1)
+      updates, opt_state = tx.update(
+          {'var': jnp.array(fake_update)}, opt_state, mdl_vars)
+      mdl_vars = optax.apply_updates(mdl_vars, updates)
+    expected_var_value = -4.25
+    self.assertEqual(
+        mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32))
 
 if __name__ == '__main__':
   absltest.main()
