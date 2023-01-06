@@ -51,6 +51,7 @@ pytype_strict_library(
         ":resnets",
         ":rnn_cell",
         ":spectrum_augmenter",
+        ":ssm",
         ":stochastics",
         ":transformer_models",
         ":transformers",
@@ -308,6 +309,19 @@ pytype_strict_library(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         # Implicit optax dependency.
+        "//praxis:pytypes",
+    ],
+)
+
+pytype_strict_library(
+    name = "ssm",
+    srcs = ["ssm.py"],
+    srcs_version = "PY3",
+    deps = [
+        # Implicit flax.core dependency.
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:py_utils",
         "//praxis:pytypes",
     ],
 )
@@ -962,6 +976,28 @@ py_strict_test(
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
+        "//praxis:test_utils",
+        # Implicit tensorflow_no_contrib dependency.
+    ],
+)
+
+py_strict_test(
+    name = "ssm_test",
+    srcs = ["ssm_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":ssm",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit lingvo.core.layers dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_hyperparams",
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
     ],
