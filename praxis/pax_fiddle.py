@@ -21,7 +21,7 @@ import contextlib
 import copy
 import dataclasses
 import functools
-from typing import overload, Any, Callable, Collection, Generic, Optional, TypeVar, Union
+from typing import overload, Any, Callable, Collection, Container, Generic, Optional, TypeVar, Union
 
 import fiddle as fdl
 from fiddle import building
@@ -59,7 +59,7 @@ TaggedValue = fdl.TaggedValue
 
 fdl_field = fdl_dataclasses.field
 TagOrTags = Union[type(fdl.Tag), Collection[type(fdl.Tag)]]
-T = TypeVar('T')
+_T = TypeVar('_T')
 
 fiddle.extensions.jax.enable()
 history.add_exclude_location('praxis/pax_fiddle.py')
@@ -80,7 +80,7 @@ class CloneAndSetMixin:
     return self
 
 
-class PaxConfig(Generic[T], fdl.Config[T], CloneAndSetMixin):
+class PaxConfig(Generic[_T], fdl.Config[_T], CloneAndSetMixin):
   """Subclasses `fdl.Config` to make it more compatible with HParams."""
 
   @property
@@ -107,7 +107,11 @@ class PaxConfig(Generic[T], fdl.Config[T], CloneAndSetMixin):
       assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)
       return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
 
-  def copy_fields_from(self, source: PaxConfig, missing_fields_in_self=()):
+  def copy_fields_from(
+      self,
+      source: PaxConfig,
+      missing_fields_in_self: Container[str] = (),
+  ) -> None:
     """Copies fields from `source`.
 
     Corresponds with `BaseHyperparams.copy_fields_from`.
@@ -191,18 +195,21 @@ class DoNotBuild(fdl.Tag):
   """
 
 
-def has_do_not_build_tag(field: dataclasses.Field):  # pylint: disable=g-bare-generic
+def has_do_not_build_tag(field: dataclasses.Field[Any]) -> bool:
   return fdl_dataclasses.field_has_tag(field, DoNotBuild)
 
 
-def _auto_config_exemption_policy(fn_or_cls):
+def _auto_config_exemption_policy(fn_or_cls) -> bool:
   return (fn_or_cls is PaxConfig or
           (getattr(fn_or_cls, '__func__', None) is
            fdl_auto_config.AutoConfig.as_buildable) or
           fdl_auto_config.auto_config_policy.latest(fn_or_cls))
 
 
-def auto_config(fn=None, **auto_config_kwargs) -> Any:
+def auto_config(
+    fn: Optional[Callable[..., Any]] = None,
+    **auto_config_kwargs: Any,
+) -> Any:
   """Version of Fiddle's auto_config that generates PaxConfig objects."""
   auto_config_kwargs['experimental_exemption_policy'] = (
       _auto_config_exemption_policy)
@@ -235,9 +242,9 @@ def auto_config(fn=None, **auto_config_kwargs) -> Any:
 
 
 def instance_field(
-    default_factory: Callable[..., Any],
-    tags: Optional[TagOrTags] = tuple(),
-) -> Union[dataclasses.Field, Any]:  # pylint: disable=g-bare-generic
+    default_factory: Optional[Callable[..., Any]],
+    tags: TagOrTags = (),
+) -> Union[dataclasses.Field[Any], Any]:
   """Dataclass field specification for a Fiddle-configurable dataclass field.
 
   This can be used to specify that a dataclass should have a default value of
@@ -269,8 +276,8 @@ def instance_field(
 
 def template_field(
     template: Optional[Callable[..., Any]],
-    tags: Optional[TagOrTags] = tuple(),
-) -> Union[dataclasses.Field, Any]:  # pylint: disable=g-bare-generic
+    tags: TagOrTags = (),
+) -> Union[dataclasses.Field[Any], Any]:
   """Dataclass field specification for a Fiddle-configurable template field.
 
   This can be used to specify that a dataclass should have a default value of
@@ -304,11 +311,10 @@ def template_field(
 
 
 # Typing overloads for pax_build
-T = TypeVar('T')
 
 
 @overload
-def build(buildable: fdl.Partial[T]) -> Callable[..., T]:
+def build(buildable: fdl.Partial[_T]) -> Callable[..., _T]:
   ...
 
 
@@ -318,7 +324,7 @@ def build(buildable: fdl.Partial) -> Callable[..., Any]:
 
 
 @overload
-def build(buildable: fdl.Config[T]) -> T:
+def build(buildable: fdl.Config[_T]) -> _T:
   ...
 
 
