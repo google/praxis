@@ -84,6 +84,13 @@ def einsum(eqn: str, x: JTensor, w: JTensor, scale: JTensor) -> JTensor:
     A JTensor
 
   """
+  if x.dtype == jnp.int8 and w.dtype == jnp.int8:
+    # upcast to int32 so einsum uses int32 as accumulator.
+    # TODO(jianlijianli): allow preferred type to pass in as parameter.
+    # TODO(jianlijianli): expand to cover for potentially int4.
+    # TODO(jianlijianli): check if int32 is necessary since it will cast to
+    # bf16/f32 for next op (accuracy-wise).
+    x = x.astype(jnp.int32)
   ret = jnp.einsum(eqn, x, w)
 
   # Potentially expand dimentions of scale to match einsum output.
@@ -337,13 +344,13 @@ def dot_general(
   lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
 
   lhs_scale = lhs_quantizer.get_quant_scale(lhs, lhs_contract_dims, input_dtype)
-  lhs = lhs_scale * lhs
+  lhs = lhs / lhs_scale
   lhs = lhs_quantizer.to_quant(lhs, input_dtype)
 
   if rhs_quantized is None:
     rhs_scale = rhs_quantizer.get_quant_scale(rhs, rhs_contract_dims,
                                               input_dtype)
-    rhs = rhs_scale * rhs
+    rhs = rhs / rhs_scale
     rhs = rhs_quantizer.to_quant(rhs, input_dtype)
   elif rhs is None:
     assert (
@@ -374,7 +381,8 @@ def dot_general(
       should_int8_quantize=should_int8_quantize)
 
   inv_scale = lax.dot_general(
-      1 / lhs_scale, 1 / rhs_scale, dimension_numbers=dimension_numbers)
+      lhs_scale, rhs_scale, dimension_numbers=dimension_numbers
+  )
 
   return out * inv_scale
 

@@ -107,8 +107,6 @@ class Linear(linears.Linear):
     """
     ap = self.activation_split_dims_mapping
     eqn = '...y,yz->...z'
-    # TODO(jihwanlee): Implement the inference logic that can be shared between
-    # different quantization types.
     if self.quantization.mode == QuantizationMode.INFERENCE:
       # PTQ, QAT has the same inference graph, only difference is on activation.
       # No matter which quantization type is used, the weight and scale
@@ -116,27 +114,14 @@ class Linear(linears.Linear):
       # Note: lower-bit types are not reflected during inference for now due to
       # b/259306620.
       w, s = self.get_quantized_weight('w')
-      # TODO(b/262309036): refactor logics under INFERNCE so there is no
-      # difference in quantization_type and there is no need for
-      # lhs_quantizer/rhs_quantizer.
-      if self.quantization.quantization_type == QuantizationType.AQT:
-        dimension_numbers = (((len(inputs.shape) - 1,), (0,)), ((), ()))
-        out = operations.dot_general(
-            lhs=inputs,
-            rhs=None,
-            lhs_quantizer=self.act_quantizer,
-            rhs_quantizer=self.weight_quantizer,
-            dimension_numbers=dimension_numbers,
-            is_eval=True,
-            rhs_quantized=(w, s))
-      else:
-        if self._do_static_activation_quantization():
-          raise NotImplementedError(
-              'Static activation quantization is not supported yet.')
-        elif self.quantization.act_params is not None:
-          inputs, act_scale = operations.reduce_precision_activation(inputs)
-          s = jnp.multiply(act_scale, s)
-        out = operations.einsum(eqn, inputs, w, s)
+      if self._do_static_activation_quantization():
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.'
+        )
+      elif self.quantization.act_params is not None:
+        inputs, act_scale = operations.reduce_precision_activation(inputs)
+        s = jnp.multiply(act_scale, s)
+      out = operations.einsum(eqn, inputs, w, s)
     else:
       w = self.theta.w
       if self.quantization.quantization_type == QuantizationType.AQT:
@@ -227,6 +212,6 @@ class Linear(linears.Linear):
         q_s = self.weight_quantizer.get_quant_scale(
             theta.w, contract_dims=[0], dtype=self.dtype)
         q_s = jnp.squeeze(q_s)
-        q_w = q_s * theta.w
+        q_w = theta.w / q_s
         q_w = self.weight_quantizer.to_quant(q_w, dtype=jnp.int8)
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

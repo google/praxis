@@ -183,18 +183,12 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
       outputs_q = linear_q.apply(initial_vars_q, inputs)
     self.assertAllClose(outputs_f.astype(outputs_q.dtype), outputs_q)
 
-  @parameterized.named_parameters(
-      dict(testcase_name='ptq', quantization_type=QuantizationType.PTQ),
-      dict(testcase_name='fq', quantization_type=QuantizationType.FQ),
-      dict(testcase_name='aqt', quantization_type=QuantizationType.AQT),
-  )
-  def test_linear_quantized_in_inference_mode(self, quantization_type):
+  def test_linear_quantized_in_inference_mode(self):
     p_f = pax_fiddle.Config(linears.Linear, name='_linear_f')
     p_q = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
-        quantization=QuantizationHParams(quantization_type=quantization_type,
-                                         mode=QuantizationMode.INFERENCE),
+        quantization=QuantizationHParams(mode=QuantizationMode.INFERENCE),
     )
     for p in [p_f, p_q]:
       p.input_dims = 4
@@ -208,10 +202,6 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
     )
     w_scale = jnp.array([0.5, 2.0], dtype=jnp.float32)
     weight_rescaled = quantized_weight * w_scale
-
-    # TODO(b/262780000): Remove this if statement when the bug is resolved.
-    if quantization_type == QuantizationType.AQT:
-      w_scale = 1 / w_scale
 
     linear_f = instantiate(p_f)
     linear_q = instantiate(p_q)
@@ -323,7 +313,7 @@ class QuantizeLinearTest(test_utils.TestCase):
             [-2, 3, 2],
             [-1, 2, -3]
         ], dtype=np.int8)
-    expected_scale = jnp.array([0.5, 1, 2], dtype=p.dtype)
+    expected_scale = jnp.array([2, 1, 0.5], dtype=p.dtype)
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)

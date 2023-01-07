@@ -36,8 +36,8 @@ class AqtTest(test_utils.TestCase):
     scale = quant.apply(
         state, sample, [0, 1], jnp.float32, method=quant.get_quant_scale
     )
-    qx = quant.apply(state, sample * scale, jnp.float32, method=quant.to_quant)
-    qx = qx / scale
+    qx = quant.apply(state, sample / scale, jnp.float32, method=quant.to_quant)
+    qx = qx * scale
 
     return qx, scale
 
@@ -64,7 +64,7 @@ class AqtTest(test_utils.TestCase):
 
     qx, scale = self.get_quantized_and_scale(p_quant, x)
 
-    self.assertEqual(scale, jnp.full((1, 1), 0.5, dtype=jnp.float32))
+    self.assertEqual(scale, jnp.full((1, 1), 2.0, dtype=jnp.float32))
     self.assertArraysEqual(qx, expected_output)
 
   def test_none_prec_not_quantize(self):
@@ -122,7 +122,7 @@ class AqtTest(test_utils.TestCase):
     scale = quant.apply(
         state, jnp.zeros((1, 4)), 1, jnp.float32, method=quant.get_quant_scale)
     self.assertFalse(jnp.isinf(scale).any())
-    self.assertEqual(scale, jnp.ones_like(scale))
+    self.assertEqual(scale, jnp.zeros_like(scale))
 
 
 if __name__ == '__main__':

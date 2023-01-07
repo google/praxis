@@ -179,38 +179,27 @@ class AttentionProjection(attentions.AttentionProjection):
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
 
     if self.quantization.mode == QuantizationMode.INFERENCE:
-      w, s = self.get_quantized_weight('w')
-      # TODO(b/262309036): refactor logics under INFERNCE so there is no
-      # difference in quantization_type and there is no need for
-      # lhs_quantizer/rhs_quantizer.
+      # PTQ, QAT has the same inference graph, only difference is on activation.
+      # No matter which quantization type is used, the weight and scale
+      # dimensions are the same for all types.
       # Note: lower-bit types are not reflected during inference for now due to
       # b/259306620.
-      if self.quantization.quantization_type == QuantizationType.AQT:
-        ret = operations.aqt_einsum(
-            eqn=eqn,
-            lhs=inputs,
-            rhs=None,
-            lhs_quantizer=self.act_quantizer,
-            rhs_quantizer=self.weight_quantizer,
-            is_eval=True,
-            rhs_quantized=(w, s),
+      w, s = self.get_quantized_weight('w')
+      if (
+          self.quantization.act_params is not None
+          and self.quantization.act_params.stats_config is not None
+      ):
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.'
         )
-      else:
-        if (
-            self.quantization.act_params is not None
-            and self.quantization.act_params.stats_config is not None
-        ):
-          raise NotImplementedError(
-              'Static activation quantization is not supported yet.'
-          )
-        elif (
-            self.quantization.act_params is not None
-            and self.quantization.act_params.stats_config is None
-        ):
-          inputs, act_scale = operations.reduce_precision_activation(inputs)
-          ret = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
-        elif self.quantization.act_params is None:
-          ret = operations.einsum(eqn, inputs, w, s)
+      elif (
+          self.quantization.act_params is not None
+          and self.quantization.act_params.stats_config is None
+      ):
+        inputs, act_scale = operations.reduce_precision_activation(inputs)
+        ret = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
+      elif self.quantization.act_params is None:
+        ret = operations.einsum(eqn, inputs, w, s)
     elif (
         self.quantization.mode == QuantizationMode.TRAINING
         or self.quantization.mode == QuantizationMode.MATERIALIZE
@@ -296,7 +285,7 @@ class AttentionProjection(attentions.AttentionProjection):
       weight_contract_dims = dimension_numbers[0][1]
       q_s = self.weight_quantizer.get_quant_scale(
           self.theta.w, contract_dims=weight_contract_dims, dtype=self.dtype)
-      q_w = q_s * self.theta.w
+      q_w = self.theta.w / q_s
       q_w = self.weight_quantizer.to_quant(q_w, dtype=jnp.int8)
       q_s = jnp.squeeze(q_s)
     else:
@@ -437,41 +426,28 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
 
     # K indexes qkv.
     eqn = f'{batch_eqn}D,KDNH->K{batch_eqn}NH'
-    # TOOD(jihwanlee): Implement the inference logic that can be shared between
-    # different quantization types.
     if self.quantization.mode == QuantizationMode.INFERENCE:
-      w, s = self.get_quantized_weight('w')
-      # TODO(b/262309036): refactor logics under INFERNCE so there is no
-      # difference in quantization_type and there is no need for
-      # lhs_quantizer/rhs_quantizer.
+      # PTQ, QAT has the same inference graph, only difference is on activation.
+      # No matter which quantization type is used, the weight and scale
+      # dimensions are the same for all types.
       # Note: lower-bit types are not reflected during inference for now due to
       # b/259306620.
-      if self.quantization.quantization_type == QuantizationType.AQT:
-        ret = operations.aqt_einsum(
-            eqn=eqn,
-            lhs=inputs,
-            rhs=None,
-            lhs_quantizer=self.act_quantizer,
-            rhs_quantizer=self.weight_quantizer,
-            is_eval=True,
-            rhs_quantized=(w, s),
+      w, s = self.get_quantized_weight('w')
+      if (
+          self.quantization.act_params is not None
+          and self.quantization.act_params.stats_config is not None
+      ):
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.'
         )
-      else:
-        if (
-            self.quantization.act_params is not None
-            and self.quantization.act_params.stats_config is not None
-        ):
-          raise NotImplementedError(
-              'Static activation quantization is not supported yet.'
-          )
-        elif (
-            self.quantization.act_params is not None
-            and self.quantization.act_params.stats_config is None
-        ):
-          inputs, act_scale = operations.reduce_precision_activation(inputs)
-          ret = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
-        elif self.quantization.act_params is None:
-          ret = operations.einsum(eqn, inputs, w, s)
+      elif (
+          self.quantization.act_params is not None
+          and self.quantization.act_params.stats_config is None
+      ):
+        inputs, act_scale = operations.reduce_precision_activation(inputs)
+        ret = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
+      elif self.quantization.act_params is None:
+        ret = operations.einsum(eqn, inputs, w, s)
     else:
       if self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(
@@ -549,7 +525,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       weight_contract_dims = dimension_numbers[0][1]
       q_s = self.weight_quantizer.get_quant_scale(
           self.theta.w, contract_dims=weight_contract_dims, dtype=self.dtype)
-      q_w = q_s * self.theta.w
+      q_w = self.theta.w / q_s
       q_w = self.weight_quantizer.to_quant(q_w, dtype=jnp.int8)
       q_s = jnp.squeeze(q_s)
     else:
