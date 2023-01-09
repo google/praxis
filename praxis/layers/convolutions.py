@@ -141,11 +141,17 @@ class Conv2D(base_layer.BaseLayer):
             shape=self.filter_shape,
             mesh_shape=self.mesh_shape,
             tensor_split_dims_mapping=wp.wt,
+            dtype=self.dtype,
         ),
     )
     if self.bias:
       self.create_variable(
-          'b', WeightHParams(shape=[self.filter_shape[-1]], init=self.bias_init)
+          'b',
+          WeightHParams(
+              shape=[self.filter_shape[-1]],
+              init=self.bias_init,
+              dtype=self.dtype,
+          ),
       )
 
   def _compute_padding(self, inputs_shape, pad_height_zero=False):
@@ -228,7 +234,7 @@ class Conv2D(base_layer.BaseLayer):
     # with tf.conv2d, see e.g., see
     # https://github.com/google/jax/blob/main/jax/_src/lax/lax.py#L622
     outputs = jax.lax.conv_general_dilated(
-        lhs=inputs,
+        lhs=inputs.astype(self.fprop_dtype),
         rhs=self.theta.w,
         window_strides=self.filter_stride,
         padding=padding,
