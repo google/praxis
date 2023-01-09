@@ -115,14 +115,23 @@ class AqtTest(test_utils.TestCase):
 
     self.assertLessEqual(per_example_error, per_tensor_error)
 
-  def test_get_quant_scale_zeros(self):
+  def test_zeros_quant_rescaling(self):
     p_quant = pax_fiddle.Config(aqt.TensorQuantizer, name='tq', precision=8)
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
+    x = jnp.zeros((1, 4))
     scale = quant.apply(
-        state, jnp.zeros((1, 4)), 1, jnp.float32, method=quant.get_quant_scale)
-    self.assertFalse(jnp.isinf(scale).any())
-    self.assertEqual(scale, jnp.zeros_like(scale))
+        state,
+        x,
+        contract_dims=1,
+        dtype=jnp.float32,
+        method=quant.get_quant_scale,
+    )
+    self.assertArraysEqual(scale, jnp.ones_like(scale))
+    x_scaled = x * scale
+    self.assertArraysEqual(x_scaled, jnp.zeros_like(x_scaled))
+    x_rescaled = x_scaled / scale
+    self.assertArraysEqual(x_rescaled, jnp.zeros_like(x_rescaled))
 
 
 if __name__ == '__main__':
