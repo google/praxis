@@ -238,7 +238,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
       For example, it is better to apply padding before batch norm.
     activation_tpl: Activation function to use.
     use_gated_activation: Boolean indicating whether to use a gated activation
-      function for the second feedforward layer or not.
+      function for the first feedforward layer or not.
     fflayer_tpl: Parameterization of the feedforward layer.
     ln_tpl: Parameterization of the layer normalization layer. Other options
       include RmsNorm as well.
