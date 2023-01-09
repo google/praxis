@@ -761,11 +761,11 @@ class TransformerLm(base_layer.BaseLayer):
     tokens per batch. This is for suffix scoring after autoregressive decoding.
 
     Args:
-      inputs:       [B] or [B, L], target sequence at time_step.
-        The latter is useful for Primer, Ngrammer, and suffix-scoring post
-        autoregressive decoding.
+      inputs:       [B] or [B, L], target sequence at time_step. The latter is
+        useful for Primer, Ngrammer, and suffix-scoring post autoregressive
+        decoding.
       segment_pos:  [B] or [B, L], optional segment pos of each input token.
-      atten_mask:   [B, 1, L, S] or [B, 1, S], optional attention mask.
+      atten_mask:   [B, 1, S] or [B, 1, L, S], optional attention mask.
 
     Returns:
       xent_output: a `.NestedMap` object containing the log probabilities and

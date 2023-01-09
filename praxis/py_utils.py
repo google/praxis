@@ -83,8 +83,7 @@ jax.tree_util.register_pytree_node(NestedMap,
                                    lambda keys, xs: NestedMap(zip(keys, xs)))
 
 
-# TODO(shafey): Rename to lowercase_underscore globally.
-def MergeDictsWithValueCheck(dict1, dict2):
+def merge_dict(dict1, dict2):
   """Merges two dictionaries and asserts keys in both have identical values."""
   for key in set(dict1) & set(dict2):
     # The values must be the same object
@@ -604,7 +603,7 @@ def maybe_slice_uneven_sharding(x: JTensor, partition_spec: pjit.PartitionSpec,
     return x
   x = jax.lax.slice(x, [0] * x.ndim, shape)
   # Annotate after slice to make sure they have the same sharding. (Slice does
-  # not have the highest sharding propgation priority.)
+  # not have the highest sharding propagation priority.)
   return with_sharding_constraint(x, partition_spec)
 
 

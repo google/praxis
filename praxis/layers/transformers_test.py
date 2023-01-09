@@ -254,8 +254,7 @@ class TransformersTest(test_utils.TestCase):
           cross_attention_mask=cross_attention_mask,
           method=transformer_layer.__call__)
       decoder_outputs = jnp.zeros(shape=[seq_len, batch_size, p.input_dims])
-      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
         attention_mask_t = attention_mask[:, :, t, :]
         cross_attention_mask_t = cross_attention_mask
@@ -271,8 +270,7 @@ class TransformersTest(test_utils.TestCase):
             cross_attention_mask=cross_attention_mask_t,
             method=transformer_layer.extend_step,
             mutable=[DECODE_CACHE])
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            decoder_state, initial_vars)
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         decoder_outputs = decoder_outputs.at[t].set(encoded)
 
     decoder_out_transposed = jnp.transpose(decoder_outputs, [1, 0, 2])
@@ -1157,8 +1155,7 @@ class TransformersTest(test_utils.TestCase):
           mutable=[DECODE_CACHE])
 
       decoder_outputs = jnp.zeros(shape=[seq_len, batch_size, model_dims])
-      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
         cross_segment_mask_t = cross_segment_mask
         segment_pos_t = None
@@ -1175,8 +1172,7 @@ class TransformersTest(test_utils.TestCase):
             cross_segment_mask=cross_segment_mask_t,
             method=repeat_transformer_layer.extend_step,
             mutable=[DECODE_CACHE])
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            decoder_state, initial_vars)
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         decoder_outputs = decoder_outputs.at[t].set(encoded)
 
     decoder_out_transposed = jnp.transpose(decoder_outputs, [1, 0, 2])
@@ -1263,8 +1259,7 @@ class TransformersTest(test_utils.TestCase):
           segment_mask=segment_mask,
           mutable=[DECODE_CACHE])
 
-      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       encoded, _ = repeat_transformer_layer.apply(
           updated_vars,
           inputs=inputs,

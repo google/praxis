@@ -109,8 +109,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
           query_vec,
           attentions.causal_mask(query_vec),
           mutable=[base_layer.DECODE_CACHE])
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
       encoded = layer.apply(
           updated_vars,
           method=layer.extend_step,
@@ -150,8 +149,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
           attentions.causal_mask(zero_vec),
           method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
       output = jnp.zeros_like(encoded)
       for t in range(inputs.shape[1]):
         e, a = layer.apply(
@@ -162,7 +160,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
             time_step=t,
             segment_pos=None,
             mutable=[base_layer.DECODE_CACHE])
-        updated_vars = py_utils.MergeDictsWithValueCheck(a, initial_vars)
+        updated_vars = py_utils.merge_dict(a, initial_vars)
         output = output.at[:, t, :].set(e)
     self.assertAllClose(encoded, output)
 

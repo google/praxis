@@ -406,8 +406,7 @@ class AttentionsTest(test_utils.TestCase):
       decoder_output = jnp.zeros(
           shape=[target_max_length, target_batch_size, mdl_dim])
 
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
       for t in range(starting_index, target_max_length):
         encoded, attention_states = layer.apply(
             updated_vars,
@@ -417,8 +416,7 @@ class AttentionsTest(test_utils.TestCase):
             segment_pos=None,
             method=layer.extend_step,
             mutable=[base_layer.DECODE_CACHE])
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            attention_states, initial_vars)
+        updated_vars = py_utils.merge_dict(attention_states, initial_vars)
         decoder_output = decoder_output.at[t].set(encoded)
 
     decoder_output = decoder_output[starting_index:]
@@ -630,8 +628,7 @@ class AttentionsTest(test_utils.TestCase):
       decoder_output = jnp.zeros(
           shape=[target_max_length, target_batch_size, mdl_dim])
 
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
       for t in range(starting_index, target_max_length):
         encoded, attention_states = layer.apply(
             updated_vars,
@@ -641,8 +638,7 @@ class AttentionsTest(test_utils.TestCase):
             segment_pos=None,
             method=layer.extend_step,
             mutable=[base_layer.DECODE_CACHE])
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            attention_states, initial_vars)
+        updated_vars = py_utils.merge_dict(attention_states, initial_vars)
         decoder_output = decoder_output.at[t].set(encoded)
 
     decoder_output = decoder_output[starting_index:]
@@ -1011,8 +1007,7 @@ class AttentionsTest(test_utils.TestCase):
           segment_pos,
           method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
-      initial_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      initial_vars = py_utils.merge_dict(attention_states, initial_vars)
       atten_output, _ = layer.apply(
           initial_vars,
           inputs[:, time_step, :],
@@ -1220,8 +1215,7 @@ class AttentionsTest(test_utils.TestCase):
           method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
 
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
       # Call extend step start from prefix_len.
       for t in range(prefix_len, target_max_length):
         encoded, attention_states = layer.apply(
@@ -1232,8 +1226,7 @@ class AttentionsTest(test_utils.TestCase):
             segment_pos=None,
             method=layer.extend_step,
             mutable=[base_layer.DECODE_CACHE])
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            attention_states, initial_vars)
+        updated_vars = py_utils.merge_dict(attention_states, initial_vars)
         logging.info('encoded: %s', encoded)
         logging.info('fprop_out[:, t, :]: %s', fprop_out[:, t, :])
         self.assertAllClose(fprop_out[:, t, :], encoded)
@@ -1295,8 +1288,7 @@ class AttentionsTest(test_utils.TestCase):
           prefix_atten_mask,
           method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
 
       # First lazy broadcast.
       _, attention_states = layer.apply(
@@ -1305,8 +1297,7 @@ class AttentionsTest(test_utils.TestCase):
           suffix_length=suffix_1_len,
           method=layer.lazy_broadcast_prefix,
           mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
 
       def _broadcast_sample(x, num_samples):
         return jnp.repeat(x, num_samples, axis=0)
@@ -1322,8 +1313,7 @@ class AttentionsTest(test_utils.TestCase):
             method=layer.extend_step,
             mutable=[base_layer.DECODE_CACHE])
         del updated_vars[base_layer.DECODE_CACHE]
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            attention_states, updated_vars)
+        updated_vars = py_utils.merge_dict(attention_states, updated_vars)
         encoded = jnp.reshape(encoded, (-1, 2) + encoded.shape[1:])
         # First sample.
         self.assertAllClose(fprop_out[:, t, :], encoded[:, 0])
@@ -1337,8 +1327,7 @@ class AttentionsTest(test_utils.TestCase):
           suffix_length=suffix_2_len,
           method=layer.lazy_broadcast_prefix,
           mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
 
       # Call extend step start from prefix_len + suffix_1_len.
       for t in range(prefix_len + suffix_1_len, prefix_len + suffix_2_len):
@@ -1351,8 +1340,7 @@ class AttentionsTest(test_utils.TestCase):
             method=layer.extend_step,
             mutable=[base_layer.DECODE_CACHE])
         del updated_vars[base_layer.DECODE_CACHE]
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            attention_states, updated_vars)
+        updated_vars = py_utils.merge_dict(attention_states, updated_vars)
         encoded = jnp.reshape(encoded, (-1, 6) + encoded.shape[1:])
         for sample_id in range(6):
           self.assertAllClose(fprop_out[:, t, :], encoded[:, sample_id])
@@ -1409,8 +1397,7 @@ class AttentionsTest(test_utils.TestCase):
           prefix_atten_mask,
           method=layer.__call__,
           mutable=[base_layer.DECODE_CACHE])
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
 
       # First lazy broadcast.
       _, attention_states = layer.apply(
@@ -1419,8 +1406,7 @@ class AttentionsTest(test_utils.TestCase):
           suffix_length=source_max_length - prefix_len,
           method=layer.lazy_broadcast_prefix,
           mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
 
       def _broadcast_sample(x, num_samples):
         return jnp.repeat(x, num_samples, axis=0)
@@ -1481,8 +1467,7 @@ class AttentionsTest(test_utils.TestCase):
           mutable=[base_layer.DECODE_CACHE])
       logging.info('attention_states: %s', attention_states)
 
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
 
       def _set_state(value):
         """Sets decode state as the value."""
@@ -1499,8 +1484,7 @@ class AttentionsTest(test_utils.TestCase):
           method=layer.transform_decode_state,
           mutable=[base_layer.DECODE_CACHE])
 
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
 
       # Second lazy broadcast.
       _, attention_states = layer.apply(
@@ -1509,8 +1493,7 @@ class AttentionsTest(test_utils.TestCase):
           suffix_length=suffix_len,
           method=layer.lazy_broadcast_prefix,
           mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
 
       _, attention_states = layer.apply(
           updated_vars,
@@ -1519,8 +1502,7 @@ class AttentionsTest(test_utils.TestCase):
           mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
 
       logging.info('attention_states: %s', attention_states)
-      updated_vars = py_utils.MergeDictsWithValueCheck(attention_states,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
 
       max_prefix_len = 4
       decode_lengths = np.array([2, 3, 4, 5])

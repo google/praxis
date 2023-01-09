@@ -201,8 +201,7 @@ class TransformerModelsTest(test_utils.TestCase):
 
       logits = fprop_outputs.logits
 
-      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
         if t > 0:
           inputs_prefix = inputs[:, t - 1:t + 1]
@@ -213,8 +212,7 @@ class TransformerModelsTest(test_utils.TestCase):
             inputs_prefix,
             method=transformer_lm.extend_step,
             mutable=[DECODE_CACHE])
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            decoder_state, initial_vars)
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits)
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
@@ -274,16 +272,14 @@ class TransformerModelsTest(test_utils.TestCase):
           method=transformer_lm.__call__,
           mutable=[DECODE_CACHE])
       logits = fprop_outputs.logits
-      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
         xent_output, decoder_state = transformer_lm.apply(
             updated_vars,
             inputs[:, t],
             method=transformer_lm.extend_step,
             mutable=[DECODE_CACHE])
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            decoder_state, initial_vars)
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits)
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
@@ -359,8 +355,7 @@ class TransformerModelsTest(test_utils.TestCase):
           method=transformer_lm.__call__,
           mutable=[DECODE_CACHE])
       logits = fprop_outputs.logits
-      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       xent_output, _ = transformer_lm.apply(
           updated_vars,
           inputs,
@@ -377,8 +372,7 @@ class TransformerModelsTest(test_utils.TestCase):
             segment_pos=segment_pos[:, step_i],
             atten_mask=segment_mask[..., step_i, :],
             mutable=[DECODE_CACHE])
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            decoder_state, initial_vars)
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, step_i, :], xent_output.logits)
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=5)))
@@ -477,8 +471,7 @@ class TransformerModelsTest(test_utils.TestCase):
           mutable=[DECODE_CACHE])
       logits = fprop_outputs.logits
 
-      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
         if t > 0:
           inputs_prefix = inputs[:, t - 1:t + 1]
@@ -489,8 +482,7 @@ class TransformerModelsTest(test_utils.TestCase):
             inputs_prefix,
             method=transformer_lm.extend_step,
             mutable=[DECODE_CACHE])
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            decoder_state, initial_vars)
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits)
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=9)))
@@ -696,8 +688,7 @@ class TransformerModelsTest(test_utils.TestCase):
           method=transformer_enc_dec.__call__,
           mutable=[DECODE_CACHE])
       logits = fprop_outputs.logits
-      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
         targets_prefix = targets[:, t]
         if use_decoder_ngrams or use_decoder_vq_ngrams:
@@ -708,8 +699,7 @@ class TransformerModelsTest(test_utils.TestCase):
             targets_prefix,
             method=transformer_enc_dec.extend_step,
             mutable=[DECODE_CACHE])
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            decoder_state, initial_vars)
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits, atol=2e-6)
 
   @parameterized.parameters(
@@ -1058,8 +1048,7 @@ class TransformerModelsTest(test_utils.TestCase):
           method=transformer_lm.__call__,
           mutable=[DECODE_CACHE])
       logits = fprop_outputs.logits
-      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(length):
         xent_output, decoder_state = transformer_lm.apply(
             updated_vars,
@@ -1067,8 +1056,7 @@ class TransformerModelsTest(test_utils.TestCase):
             rngs={RANDOM: random_key},
             mutable=[DECODE_CACHE],
             method=transformer_lm.extend_step)
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            decoder_state, initial_vars)
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(
             logits[:, t, :], xent_output.logits, rtol=1e-5, atol=1e-5)
 
@@ -1138,8 +1126,7 @@ class TransformerModelsTest(test_utils.TestCase):
           mutable=[DECODE_CACHE])
 
       # Run fprop on prefix only and update the decode states.
-      updated_vars = py_utils.MergeDictsWithValueCheck(decoder_state,
-                                                       initial_vars)
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
 
       # Run extend start from prefix_len and compares the result at each step.
       for t in range(prefix_len, length):
@@ -1149,8 +1136,7 @@ class TransformerModelsTest(test_utils.TestCase):
             rngs={RANDOM: random_key},
             mutable=[DECODE_CACHE],
             method=transformer_lm.extend_step)
-        updated_vars = py_utils.MergeDictsWithValueCheck(
-            decoder_state, initial_vars)
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(
             logits[:, t, :], xent_output.logits, rtol=1e-5, atol=1e-5)
 

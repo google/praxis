@@ -79,8 +79,7 @@ class SSMTest(test_utils.TestCase):
 
     # Test extend_step.
     out_step = []
-    updated_vars = py_utils.MergeDictsWithValueCheck(
-        ssm_state, initial_vars)
+    updated_vars = py_utils.merge_dict(ssm_state, initial_vars)
     logging.info('init_vars w state = %s', updated_vars)
     for i in range(p.l_max):
       out, ssm_state = s4d.apply(
