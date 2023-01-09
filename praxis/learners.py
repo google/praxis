@@ -171,11 +171,23 @@ class Learner(base_hyperparams.BaseParameterizable):
         self._hparams.repeat_prefix_sep
     )
 
-  def scale_gradients(self, raw_grads: NestedMap) -> Tuple[NestedMap, JTensor]:
+  def scale_gradients(
+      self,
+      raw_grads: NestedMap,
+      optimizer_name: Optional[str] = None,
+      clip_gradient_norm_to_value: Optional[float] = None,
+      clip_gradient_single_norm_to_value: Optional[float] = None,
+  ) -> Tuple[NestedMap, JTensor]:
     """Scales the gradient.
 
     Args:
       raw_grads: A nested structure of gradient values.
+      optimizer_name: Optional. If None no prefix is used. otherwise it starts
+        with the name of optimizers. Doesn't include '/'.
+      clip_gradient_norm_to_value: Optional. If None,
+        p.optimizer.clip_gradient_norm_to_value will be used.
+      clip_gradient_single_norm_to_value: Optional. If None,
+        p.optimizer.clip_gradient_single_norm_to_value will be used.
 
     Returns:
      A nested structure with the rescaled gradient values.
@@ -184,6 +196,16 @@ class Learner(base_hyperparams.BaseParameterizable):
        and should not be skipped.
     """
     p = self._hparams
+    if optimizer_name is None:
+      optimizer_name = ''
+    else:
+      optimizer_name = optimizer_name + '/'
+    if clip_gradient_norm_to_value is None:
+      clip_gradient_norm_to_value = p.optimizer.clip_gradient_norm_to_value
+    if clip_gradient_single_norm_to_value is None:
+      clip_gradient_single_norm_to_value = (
+          p.optimizer.clip_gradient_single_norm_to_value
+      )
     # Compute gradient norm.
 
     if p.grad_norm_individual_vars:
@@ -191,18 +213,27 @@ class Learner(base_hyperparams.BaseParameterizable):
       var_keys = py_utils.extract_prefixed_keys_from_nested_map(grad_norms)
 
       def add_grad_norm_summary(key, value):
-        base_layer.add_global_summary(f'per_var_grad_norm/{key}', value,
-                                      SummaryType.AGGREGATE_SCALAR)
+        base_layer.add_global_summary(
+            f'per_var_grad_norm/{optimizer_name}{key}',
+            value,
+            SummaryType.AGGREGATE_SCALAR,
+        )
 
       jax.tree_map(add_grad_norm_summary, var_keys, grad_norms)
 
-    if (p.grad_norm_summary or p.check_valid_step or
-        p.optimizer.clip_gradient_norm_to_value or
-        p.optimizer.clip_gradient_single_norm_to_value):
+    if (
+        p.grad_norm_summary
+        or p.check_valid_step
+        or clip_gradient_norm_to_value
+        or clip_gradient_single_norm_to_value
+    ):
       raw_grad_norm = _compute_grad_norm(raw_grads)
       if p.grad_norm_summary:
-        base_layer.add_global_summary('learning/raw_grad_norm', raw_grad_norm,
-                                      SummaryType.AGGREGATE_SCALAR)
+        base_layer.add_global_summary(
+            'learning/' + optimizer_name + 'raw_grad_norm',
+            raw_grad_norm,
+            SummaryType.AGGREGATE_SCALAR,
+        )
     else:
       raw_grad_norm = None
 
@@ -216,23 +247,23 @@ class Learner(base_hyperparams.BaseParameterizable):
         return jnp.all(jnp.isfinite(grad_norm))
 
     def clip_grads(grads, grad_norm):
-      if p.optimizer.clip_gradient_norm_to_value:
-        assert p.optimizer.clip_gradient_single_norm_to_value == 0.
+      if clip_gradient_norm_to_value:
+        assert clip_gradient_single_norm_to_value == 0.0
         grad_scale = jnp.minimum(
             jnp.array(1, grad_norm.dtype),
-            jnp.array(p.optimizer.clip_gradient_norm_to_value, grad_norm.dtype)
-            / grad_norm)
+            jnp.array(clip_gradient_norm_to_value, grad_norm.dtype) / grad_norm,
+        )
         grads = jax.tree_map(lambda g: g * grad_scale, grads)
-      elif p.optimizer.clip_gradient_single_norm_to_value:
-        assert p.optimizer.clip_gradient_norm_to_value == 0.
+      elif clip_gradient_single_norm_to_value:
+        assert clip_gradient_norm_to_value == 0.0
         grad_single_norm = jax.tree_map(lambda x: jnp.sqrt(jnp.sum(x * x)),
                                         grads)
 
         def scale_gradient(grad, norm):
           return grad * jnp.minimum(
               jnp.array(1, norm.dtype),
-              jnp.array(p.optimizer.clip_gradient_single_norm_to_value,
-                        norm.dtype) / norm)
+              jnp.array(clip_gradient_single_norm_to_value, norm.dtype) / norm,
+          )
 
         grads = jax.tree_map(scale_gradient, grads, grad_single_norm)
         grad_scale = jnp.array(1.0)
@@ -245,20 +276,27 @@ class Learner(base_hyperparams.BaseParameterizable):
       # Mark the step as invalid if any gradient anomaly is detected (e.g. Nan
       # or Inf, or excessively big gradient norm).
       valid_step = keep_step(raw_grad_norm)
-      base_layer.add_global_summary('learning/is_valid_step',
-                                    valid_step.astype(jnp.float32),
-                                    SummaryType.AGGREGATE_SCALAR)
+      base_layer.add_global_summary(
+          'learning/' + optimizer_name + 'is_valid_step',
+          valid_step.astype(jnp.float32),
+          SummaryType.AGGREGATE_SCALAR,
+      )
     else:
       valid_step = True
     grads, grad_scale = clip_grads(raw_grads, raw_grad_norm)
-    base_layer.add_global_summary('learning/grad_scale', grad_scale,
-                                  SummaryType.AGGREGATE_SCALAR)
+    base_layer.add_global_summary(
+        'learning/' + optimizer_name + 'grad_scale',
+        grad_scale,
+        SummaryType.AGGREGATE_SCALAR,
+    )
 
     if p.grad_norm_summary:
       clipped_grad_norm = _compute_grad_norm(grads)
-      base_layer.add_global_summary('learning/clipped_grad_norm',
-                                    clipped_grad_norm,
-                                    SummaryType.AGGREGATE_SCALAR)
+      base_layer.add_global_summary(
+          'learning/' + optimizer_name + 'clipped_grad_norm',
+          clipped_grad_norm,
+          SummaryType.AGGREGATE_SCALAR,
+      )
     return grads, valid_step
 
   def update_states(
@@ -383,12 +421,16 @@ class MultiOptimizerLearner(Learner):
       auxiliary_regex: A regular expression which if matches the variable name,
         will activate the corresponding auxiliary optimizer. The length of this
         list must be the same as auxiliary optimiers.
-      auxiliary_names: Name of all auxiliary optimizers. This is mainly used
+      auxiliary_names: Names of all auxiliary optimizers. This is mainly used
         for tensorboard.
+      apply_separate_scaling: Whether to apply gradient scaling separately for
+        each auxiliary optimizer. By default, all gradients are scaled together
+        so all configurations under auxiliary optimizers are ignored.
     """
     auxiliary_optimizers: Sequence[optimizers.BaseOptimizer.HParams] = ()
     auxiliary_regex: Sequence[str] = ()
     auxiliary_names: Sequence[str] = ()
+    apply_separate_scaling: bool = False
 
   def __init__(self, hparams: MultiOptimizerLearner.HParams) -> None:
     """Constructor for the MultiOptimizer learner."""
@@ -421,21 +463,10 @@ class MultiOptimizerLearner(Learner):
       base_layer.add_global_summary(f'learning/lr_{name}', learning_rate,
                                     SummaryType.AGGREGATE_SCALAR)
 
-  def get_grad_tx(
+  def get_masks(
       self, var_weight_hparams: NestedWeightHParams
-  ) -> optimizers.GeneralGradientTransformation:
-    """The gradient transformation the MultiOptimizer lerner.
-
-    Args:
-      var_weight_hparams: The model vars' params which will be used to filter
-        using the regex to determine which optimizer will be applied to which
-        variable.
-
-    Returns:
-      Optax sharded gradient transformation.
-    """
+  ) -> Tuple[Sequence[NestedMap], NestedMap]:
     p = self._hparams
-    optimizer_chain = []
     optimizer_mask = []
 
     # Aggregate all the auxiliary optimizer masks.
@@ -445,9 +476,6 @@ class MultiOptimizerLearner(Learner):
           var_weight_hparams)
       mask = jax.tree_map(
           lambda x, regexp=regexp: regexp.match(x) is not None, prefix)
-      optimizer_chain.append(
-          optimizers.sharded_masked(
-              grad_tx_fn(var_weight_hparams, include_ema=False), mask))
       optimizer_mask.append(mask)
 
     # Create the default optimizer mask.
@@ -465,6 +493,33 @@ class MultiOptimizerLearner(Learner):
 
     default_mask = jax.tree_map(check_var_in_auxiliary_regex, *optimizer_mask)
     default_mask = jax.tree_map(lambda mask: not mask, default_mask)
+
+    return optimizer_mask, default_mask
+
+  def get_grad_tx(
+      self, var_weight_hparams: NestedWeightHParams
+  ) -> optimizers.GeneralGradientTransformation:
+    """The gradient transformation the MultiOptimizer lerner.
+
+    Args:
+      var_weight_hparams: The model vars' params which will be used to filter
+        using the regex to determine which optimizer will be applied to which
+        variable.
+
+    Returns:
+      Optax sharded gradient transformation.
+    """
+    p = self._hparams
+    optimizer_chain = []
+    optimizer_mask, default_mask = self.get_masks(var_weight_hparams)
+
+    for mask, grad_tx_fn in zip(optimizer_mask, self._auxiliary_grad_tx_fn):
+      optimizer_chain.append(
+          optimizers.sharded_masked(
+              grad_tx_fn(var_weight_hparams, include_ema=False), mask
+          )
+      )
+
     optimizer_chain.insert(
         0,
         optimizers.sharded_masked(
@@ -484,6 +539,33 @@ class MultiOptimizerLearner(Learner):
           grad_tx, var_weight_hparams)
     return grad_tx
 
+  def scale_gradients_by_optimizer(
+      self, raw_grads: NestedMap, var_weight_hparams: NestedWeightHParams
+  ) -> Tuple[NestedMap, JTensor]:
+    optimizer_mask, default_mask = self.get_masks(var_weight_hparams)
+
+    all_grads, all_valid_step = self.scale_gradients(
+        jax.tree_map(lambda x, y: x * y, raw_grads, default_mask),
+        optimizer_name='main',
+    )
+
+    for name, mask, optimizer in zip(
+        self._hparams.auxiliary_names,
+        optimizer_mask,
+        self._hparams.auxiliary_optimizers,
+    ):
+      assert optimizer.clip_gradient_norm_to_value is not None
+      assert optimizer.clip_gradient_single_norm_to_value is not None
+      grads, valid_step = self.scale_gradients(
+          jax.tree_map(lambda x, y: x * y, raw_grads, mask),
+          optimizer_name=name,
+          clip_gradient_norm_to_value=optimizer.clip_gradient_norm_to_value,
+          clip_gradient_single_norm_to_value=optimizer.clip_gradient_single_norm_to_value,
+      )
+      all_grads = jax.tree_map(lambda x, y: x + y, all_grads, grads)
+      all_valid_step = jnp.logical_and(all_valid_step, valid_step)
+    return all_grads, all_valid_step
+
   def update_states(
       self, grads: NestedMap, states: optax.OptState, old_vars: NestedJTensor,
       var_weight_hparams: NestedWeightHParams
@@ -499,7 +581,12 @@ class MultiOptimizerLearner(Learner):
     Returns:
       transformed_grad, new_states pair.
     """
-    grads, valid_step = self.scale_gradients(grads)
+    if self._hparams.apply_separate_scaling:
+      grads, valid_step = self.scale_gradients_by_optimizer(
+          grads, var_weight_hparams
+      )
+    else:
+      grads, valid_step = self.scale_gradients(grads)
     grad_tx = self.get_grad_tx(var_weight_hparams)
     transformed_grad, new_states = grad_tx.update(grads, states, old_vars)
     if self._hparams.enable_skip_step_on_gradient_anomalies:
