@@ -86,7 +86,42 @@ class StandardGradient(BaseStochasticGradient):
 
 
 class DpSgdStochasticGradient(BaseStochasticGradient):
-  """DP-SGD stochastic gradient function."""
+  """DP-SGD stochastic gradient function.
+
+  **NOTE** on setting `noise_multiplier` when training with multiple devices:
+  when `pmap` is used, the `grad_fn` method is run *inside* `pmap`. As a result,
+  the Gaussian noise std is scaled with `1 / local_batch_size`. The correct
+  scaling should be done with the *global* batch size instead. Currently the
+  library does **not** make the adjustment automatically, and the users should
+  make the adjustment according to the training setup.
+
+  For data parallelism training with multiple devices, the user should divide
+  the `noise_multiplier` by `sqrt(num_devices)`.
+
+  Rationale: assume the total batch size is `K*B`. Let
+  `s = noise_multiplier * l2_norm_clip`. Then when training on a single device
+  (without pmap), the amount of noise added to the gradient of each parameter
+  is:
+
+    `s / (K*B) * G`
+
+  where `G` represents a standard Gaussian random variable. In comparison, when
+  training with K devices using `pmap` with per-device batch size B, the amount
+  of noise added to the gradient of each parameter by each device is
+  `s / B * G`. After taking `pmean` across K devices, the total noise is:
+
+    `1/K (s/B * G_1 + ... + s/B * G_K) = s / (K*B) (G_1 + ... + G_K)`
+
+  where `G_1, ..., G_K` are K independent standard Gaussian random variables.
+
+  Note the summation of `K` independent standard Gaussian random variables is
+  Gaussian with zero mean and standard deviation `sqrt(K)`. So in order for the
+  multi-device case to add the correct amount of noise, we can pass in a
+  `noise_multiplier` parameter that is pre-divided by the square root of the
+  number of devices when training with multiple devices. And the privacy
+  accounting should be carried out with the original (unscaled) noise
+  multiplier.
+  """
 
   class HParams(BaseStochasticGradient.HParams):
     """Returns the PrivateGradient params."""
