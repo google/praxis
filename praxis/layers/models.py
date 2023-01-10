@@ -677,8 +677,10 @@ class LanguageModel(base_model.BaseModel):
     decode_out.decode_lengths = decode_out.decode_lengths[:, 0]
     decode_out.original_lengths = decode_out.original_lengths[:, 0]
     decode_out.prefix_ids = decode_out.prefix_ids[:, 0, :]
-    decode_out.prefix_lengths = decode_out.prefix_lengths[:, 0]
     decode_out.logprobs = decode_out.logprobs[:, 0, :]
+    if decode_out.prefix_lengths.ndim == 2:
+      decode_out.prefix_lengths = decode_out.prefix_lengths[:, 0]
+
     decoded_strs = input_obj.ids_to_strings(decode_out.output_ids,
                                             decode_out.decode_lengths)
     original_strs = input_obj.ids_to_strings(decode_out.ids,
