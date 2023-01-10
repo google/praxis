@@ -17,6 +17,8 @@
 
 from praxis.layers.quantization.attentions import AttentionProjection
 from praxis.layers.quantization.attentions import CombinedQKVProjectionLayer
+from praxis.layers.quantization.attentions import DotProductAttention
+from praxis.layers.quantization.conformers import DotProductAttentionWithContext
 from praxis.layers.quantization.linears import Linear
 from praxis.layers.quantization.multi_query_attention import OneHeadedAttentionProjection
 from praxis.layers.quantization.operations import einsum

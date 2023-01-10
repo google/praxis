@@ -16,8 +16,9 @@
 """Quantized Attention Layers."""
 
 import string
-from typing import Any, Sequence, Tuple
+from typing import Any, Optional, Sequence, Tuple
 
+import jax
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
 from praxis import base_layer
@@ -50,7 +51,7 @@ class AttentionProjection(attentions.AttentionProjection):
   """
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
-  def create_tensor_quantizer(self):
+  def create_tensor_quantizers(self):
     self.create_child(
         'act_quantizer',
         pax_fiddle.Config(
@@ -130,7 +131,7 @@ class AttentionProjection(attentions.AttentionProjection):
       self.create_variable('b', pc_bias)
 
     if self.quantization.quantization_type == QuantizationType.AQT:
-      self.create_tensor_quantizer()
+      self.create_tensor_quantizers()
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Computes the multi headed projection for inputs.
@@ -260,7 +261,7 @@ class AttentionProjection(attentions.AttentionProjection):
       a map from names to quantized weights.
     """
     eqn = ''
-    # This matches the equantion logic in __call__ for weights.
+    # This matches the equation logic in __call__ for weights.
     if self.is_output_projection:
       if self.use_nhd_shape:
         eqn = 'ANH,NHD->AD'
@@ -290,7 +291,7 @@ class AttentionProjection(attentions.AttentionProjection):
       q_s = jnp.squeeze(q_s)
     else:
       raise ValueError(
-          f'Usupported quantization_type {self.quantization.quantization_type}'
+          f'Unsupported quantization_type {self.quantization.quantization_type}'
       )
 
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
@@ -308,7 +309,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
   """
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
-  def create_tensor_quantizer(self):
+  def create_tensor_quantizers(self):
     self.create_child(
         'act_quantizer',
         pax_fiddle.Config(
@@ -384,7 +385,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       self.create_variable('b', pc_bias)
 
     if self.quantization.quantization_type == QuantizationType.AQT:
-      self.create_tensor_quantizer()
+      self.create_tensor_quantizers()
 
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
   # attentions.
@@ -530,8 +531,274 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       q_s = jnp.squeeze(q_s)
     else:
       raise ValueError(
-          f'Usupported quantization_type {self.quantization.quantization_type}'
+          f'Unsupported quantization_type {self.quantization.quantization_type}'
       )
 
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
+
+
+class DotProductAttention(attentions.DotProductAttention):
+  """Dot-product attention with multiple attention heads.
+
+  This implementation heavily uses einsum to be efficient on TPUs.  We use the
+  following capital letters to denote certain JTensor parameters.
+
+    B = batch size
+    S = length of the key/value (source)
+    T = length of the query (target)
+    D = model dimension
+    N = number of attention heads
+    H = dimensions of each attention head.
+
+  The algorithm is sketched as follows. Each intermediate JTensor or weight
+  JTensor is annotated with its shape. E.g., Wq, the weight JTensor for query's
+  projection, its shape is [D, N, H].
+
+  Trainable weights:
+    Wq, Wk, Wv: [D{q,k,v}, N, H]
+    Wout: [Dq, N, H]
+
+  Note it also allows k, v and q to have different input dimension by setting
+  input_dim as a dict: {'key': key_dim, 'value': value_dim, 'query': query_dim}.
+
+  Input q:[B, T, Dq]; k:[B, S, Dk]; v:[B, S, Dv]
+  q_proj: [B, T, N, H] = einsum('BTD,DNH->BTNH', x, Wq)
+  k_proj: [B, S, N, H] = einsum('BSD,DNH->BSNH', x, Wk)
+  v_proj: [B, S, N, H] = einsum('BSD,DNH->BSNH', x, Wv)
+  logits: [B, N, T, S] = einsum('BTNH,BSNH->BNTS', q_proj, k_proj) / sqrt(H)
+  probs:  [B, N, T, S] = softmax(logits, axis=-1)
+  context:[B, T, N, H] = einsum('BNTS,BSNH->BTNH', probs, v_proj)
+  output: [B, T, Dq]   = einsum('BTNH,DNH>BTD', context, Wout)
+
+  Attributes:
+    quantization: Information related to the quantization applied to this layer,
+      such as dtype for the quantized weight.
+  """
+
+  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+
+  def create_tensor_quantizers(self):
+    self.create_child(
+        'act_quantizer',
+        pax_fiddle.Config(
+            aqt.TensorQuantizer,
+            name='act_quantizer',
+            precision=self.quantization.act_params.precision
+            if self.quantization.act_params
+            else None,
+        ),
+    )
+
+  def _do_static_activation_quantization(self) -> bool:
+    act_params = self.quantization.act_params
+    return act_params is not None and act_params.stats_config is not None
+
+  def setup(self) -> None:
+    super().setup()
+    if self.quantization.quantization_type == QuantizationType.AQT:
+      self.create_tensor_quantizers()
+    else:
+      raise NotImplementedError(
+          'Only AQT-style quantization is implemented for DotProductAttention'
+      )
+    if self._do_static_activation_quantization():
+      raise NotImplementedError(
+          'Static activation quantization is not supported yet.'
+      )
+
+  def quantized_partitioned_specs(self) -> Any:
+    """Get quantized PartitionSpec.
+
+    Returns:
+      A map from names to partition spec.
+    """
+    partitionspec = {}
+    # Activation variable partitioning is only needed for static quantization.
+    if self._do_static_activation_quantization():
+      raise NotImplementedError(
+          'Static activation quantization is not supported yet.'
+      )
+    return {base_layer.PARAMS: partitionspec}
+
+  def _atten_logits(self, query: JTensor, key: JTensor) -> JTensor:
+    """Compute logits from query and key."""
+    logits = operations.aqt_einsum(
+        eqn='BTNH,BSNH->BNTS',
+        lhs=query,
+        rhs=key,
+        lhs_quantizer=self.act_quantizer,
+        rhs_quantizer=self.act_quantizer,
+        is_eval=self.do_eval,
+    )
+    return logits
+
+  def _dot_atten(
+      self,
+      query: JTensor,
+      key: JTensor,
+      value: JTensor,
+      atten_mask: JTensor,
+      relative_bias: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
+    """Main attention function.
+
+    Args:
+      query: JTensor of shape [B, T, N, H].
+      key: JTensor of shape [B, S, N, H].
+      value: JTensor of shape [B, S, N, H].
+      atten_mask: JTensor of shape [1|B, 1, 1|T, S] which is a mask that is
+        applied to prevent attention between unwanted pairs. This has already
+        been converted into large negative logits. Note that the first and third
+        dimension allow size 1 if the mask is shared by every item in the batch
+        or every token in the target sequence.
+      relative_bias: Relative bias of shape [B, N, T, S].
+
+    Returns:
+      encoded: JTensor of shape [B, T, N, H].
+      atten_probs: JTensor of shape [B, N, T, S].
+    """
+    query = self._shard_blnh(query)
+    key = self._shard_blnh(key)
+    value = self._shard_blnh(value)
+
+    b, s, n, h = key.shape
+    base_layer.assert_has_shape(value, [b, s, n, h])
+    base_layer.assert_has_shape(query, [b, -1, n, h])
+    t = query.shape[1]
+    # If only padding bias is supplied, then atten_mask can be [B, 1, 1, S]
+    # since each target token is prohibited from attending to the same set of
+    # source tokens. In this case tiling is inefficient and unnecessary.
+    # If there is no padding mask, and only causal mask then the shape can be
+    # [1, 1, T, S]
+    base_layer.assert_has_shape(atten_mask, [-1, 1, -1, s])
+    assert atten_mask.shape[2] in [1, t]
+    assert atten_mask.shape[0] in [b, 1]
+
+    query = self._scale_query(query)
+    logits = self._atten_logits(query, key)
+    if relative_bias is not None:
+      # The relative_bias has shape [1, n, t, s] or [b, n, t, s].
+      base_layer.assert_has_shape(relative_bias, [-1, n, t, s])
+      logits += relative_bias
+    logits = checkpoint_name(logits, 'logits')
+    self.add_summary(
+        'max_logit_precap',
+        jnp.max(logits + atten_mask.astype(jnp.float32)),
+        verbosity=4,
+    )
+    logits = self._cap_logits(logits)
+    # Attention softmax is always carried out in fp32.
+    logits = logits.astype(jnp.float32)
+    # Apply attention masking
+    padded_logits = logits + atten_mask.astype(jnp.float32)
+    if self.attention_mask_summary:
+      self.add_summary('attention_mask', atten_mask)
+    if self.attention_extra_logit is None:
+      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
+    else:
+      probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
+          key.dtype
+      )
+    # Apply attention dropout.
+    probs = self.atten_dropout(probs)
+    # Compute the attention context.
+    encoded = operations.aqt_einsum(
+        eqn='BNTS,BSNH->BTNH',
+        lhs=probs,
+        rhs=value,
+        lhs_quantizer=self.act_quantizer,
+        rhs_quantizer=self.act_quantizer,
+        is_eval=self.do_eval,
+    )
+    encoded = checkpoint_name(encoded, 'context')
+    encoded = self._shard_blnh(encoded)
+    return encoded, probs
+
+  def _dot_atten_one_step(
+      self,
+      query: JTensor,
+      key_state_name: str,
+      value_state_name: str,
+      atten_mask: JTensor,
+      relative_bias: Optional[JTensor] = None,
+      time_step: Optional[JTensor] = None,
+  ) -> JTensor:
+    """Dot attention function for queries with 1 time step.
+
+    Args:
+      query: JTensor of shape [B, N, H].
+      key_state_name: Name of the decoding key state variable.
+      value_state_name: Name of the decoding value state variable.
+      atten_mask: JTensor of shape [1|B, 1, S] which is a mask that is applied
+        to prevent attention between unwanted pairs. This has already been
+        converted into large negative logits. The first dimension is allowed to
+        be of size 1, if the mask is shared by all items in the batch (e.g.,
+        only a causal mask).
+      relative_bias: Relative bias of shape [1|B, N, 1, S].
+      time_step: A scalar. The time step tensor.
+
+    Returns:
+      encoded: JTensor of shape [B, N, H].
+      probs: JTensor of shape [B, N, S].
+    """
+    del time_step
+    key = self._shard_blnh(self.get_decode_state(key_state_name))
+    value = self._shard_blnh(self.get_decode_state(value_state_name))
+    k_b = key.shape[0]
+    q_b = query.shape[0]
+    if q_b != k_b:
+      if q_b % k_b != 0:
+        raise ValueError(
+            f'q batch size {q_b} is not divisible by state batch size {k_b}'
+        )
+      key = jnp.repeat(key, q_b // k_b, axis=0)
+      value = jnp.repeat(value, q_b // k_b, axis=0)
+    if atten_mask.shape[0] != q_b and atten_mask.shape[0] != 1:
+      assert atten_mask.shape[0] == k_b, (atten_mask.shape, k_b)
+      atten_mask = jnp.repeat(atten_mask, q_b // k_b, axis=0)
+    # query is 3d.
+    query = self._shard_bnh(query)
+
+    b, s, n, h = key.shape
+    base_layer.assert_has_shape(value, [b, s, n, h])
+    base_layer.assert_has_shape(query, [b, n, h])
+    base_layer.assert_has_shape(atten_mask, [-1, 1, s])
+    assert atten_mask.shape[0] in [b, 1]
+    query = self._scale_query(query)
+    logits = operations.aqt_einsum(
+        eqn='BNH,BSNH->BNS',
+        lhs=query,
+        rhs=key,
+        lhs_quantizer=self.act_quantizer,
+        rhs_quantizer=self.act_quantizer,
+        is_eval=self.do_eval,
+    )
+    if relative_bias is not None:
+      base_layer.assert_has_shape(relative_bias, [-1, n, 1, s])
+      assert relative_bias.shape[0] in [b, 1]
+      relative_bias = jnp.squeeze(relative_bias, axis=2)
+      logits += relative_bias
+    logits = self._cap_logits(logits)
+    # Attention softmax is always carried out in fp32.
+    logits = logits.astype(jnp.float32)
+    # Apply attention masking
+    padded_logits = logits + atten_mask.astype(jnp.float32)
+    # Of shape [b, n, s]
+    if self.attention_extra_logit is None:
+      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
+    else:
+      probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
+          key.dtype
+      )
+    # Compute the attention context.
+    encoded = operations.aqt_einsum(
+        eqn='BNS,BSNH->BNH',
+        lhs=probs,
+        rhs=value,
+        lhs_quantizer=self.act_quantizer,
+        rhs_quantizer=self.act_quantizer,
+        is_eval=self.do_eval,
+    )
+    encoded = self._shard_bnh(encoded)
+    return encoded, probs

@@ -30,6 +30,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":attentions",
+        ":conformers",
         ":linears",
         ":multi_query_attention",
         ":operations",
@@ -95,6 +96,7 @@ py_strict_test(
     deps = [
         ":attentions",
         ":quantization_hparams",
+        # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
@@ -104,6 +106,41 @@ py_strict_test(
         "//praxis:py_utils",
         "//praxis:test_utils",
         "//praxis/layers:attentions",
+    ],
+)
+
+pytype_strict_library(
+    name = "conformers",
+    srcs = ["conformers.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        # Implicit jax dependency.
+        "//praxis:pytypes",
+        "//praxis/layers:attentions",
+        "//praxis/layers:conformers",
+    ],
+)
+
+py_strict_test(
+    name = "conformers_test",
+    srcs = ["conformers_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":conformers",
+        ":quantization_hparams",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        "//praxis/layers:attentions",
+        "//praxis/layers:conformers",
     ],
 )
 
