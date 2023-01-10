@@ -674,6 +674,9 @@ def sample_decode(
   # We use a positive value of 1.0 to indicate blank or padded positions.
   val.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
 
+  if result_callback is not None and result_callback.init_fn is not None:
+    result_callback.init_fn((original_batch_size, num_samples))
+
   def get_cond_func(stop_at_decode_steps):
     """Gets conditional function for different decode steps."""
 
@@ -896,6 +899,9 @@ def sample_decode(
       reinsert_collection(model, base_layer.SUMMARIES, model_summaries_copy)
 
   del result.segment_pos
+
+  if result_callback is not None and result_callback.done_fn is not None:
+    result_callback.done_fn()
 
   if return_result_for_suffix_score:
     return result

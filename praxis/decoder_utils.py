@@ -16,7 +16,7 @@
 """Util functions for decoder."""
 
 import dataclasses
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from flax import core as flax_core
 import jax
@@ -40,8 +40,19 @@ LazyBroadcastPrefixFn = Callable[[base_layer.BaseLayerApi, int, int], None]
 class StreamingResultCallback:
   """Callback to be invoked for every N steps of decoding with its results."""
 
-  callback_fn: Callable[[Union[NestedJTensor, JTensor]], None]
+  # Callable to be called once every `interval_steps` decoding steps. Accepts
+  # decoding results as the argument.
+  callback_fn: Callable[[NestedJTensor], None]
+
+  # Number of steps between decoding callback invocations.
   interval_steps: int = 1
+
+  # Optional callable to be called at the beginning of decoding. Accepts batch
+  # size (`batch` or `[batch, num_samples]`) as the argument.
+  init_fn: Optional[Callable[[Union[int, Sequence[int]]], None]] = None
+
+  # Optional callable to be called at the end of decoding.
+  done_fn: Optional[Callable[[], None]] = None
 
 
 def length_norm(t, length_norm_alpha) -> jnp.ndarray:
