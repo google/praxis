@@ -132,7 +132,7 @@ def _get_argmax_ids(
   )
 
 
-def _get_top_k(
+def get_top_k(
     logits: JTensor, top_k: int, per_example_top_k: JTensor
 ) -> Sequence[JTensor]:
   """Gets top k logits and inices from given top K.
@@ -250,6 +250,59 @@ def top_p_mask_logits(
   return logits
 
 
+def sample_from_top_p_given_top_k(
+    top_k_logits: JTensor,
+    top_k_indices: JTensor,
+    prng_key: pytypes.PRNGKey,
+    temperature: Union[JTensor, float],
+    top_p: Optional[Union[float, JTensor]] = None,
+    topk_is_sorted: bool = True,
+) -> JTensor:
+  """Sample decode algorithm from TopP given output from TopK.
+
+  Args:
+    top_k_logits: Top k logits.
+    top_k_indices: Indices corresponding to top-k logits.
+    prng_key: The prng key.
+    temperature: Temperature of sampling decoding. It could be a float or a
+      JTensor of shape [batch_size * num_samples].
+    top_p: See params of `sample_from_top_k_and_top_p`.
+
+  Returns:
+    A tensor of shape [batch_size * num_samples].
+  """
+  if top_p is None:
+    top_p_logits = top_k_logits
+  elif isinstance(top_p, JTensor):
+    # Apply top_p to the mask.
+    needs_top_p_mask = jnp.any(top_p < 1.0)
+
+    def _true_fn():
+      return top_p_mask_logits(
+          top_k_logits, top_p, logits_is_sorted=topk_is_sorted
+      )
+
+    def _false_fn():
+      return top_k_logits
+
+    top_p_logits = jax.lax.cond(needs_top_p_mask, _true_fn, _false_fn)
+  else:
+    top_p_logits = top_p_mask_logits(
+        top_k_logits, top_p, logits_is_sorted=topk_is_sorted
+    )
+
+  # Add gumbel noise.
+  gumbel_noise_shape = list(top_p_logits.shape)
+  gumbel_noise = jax.random.gumbel(prng_key, shape=gumbel_noise_shape).astype(
+      top_k_logits.dtype
+  )
+
+  # Apply gumbel noise.
+  logits_with_noise = top_p_logits + gumbel_noise * temperature
+  argmax_ids_in_topk = jnp.argmax(logits_with_noise, axis=-1)
+  return _get_argmax_ids(argmax_ids_in_topk, top_k_indices)
+
+
 def sample_from_top_k_and_top_p(
     logits: JTensor,
     prng_key: pytypes.PRNGKey,
@@ -283,34 +336,15 @@ def sample_from_top_k_and_top_p(
   """
 
   # TopK of shape [batch_size * num_samples, top_k]
-  top_k_logits, top_k_indices = _get_top_k(logits, top_k, per_example_top_k)
-
-  if top_p is None:
-    top_p_logits = top_k_logits
-  elif isinstance(top_p, JTensor):
-    # Apply top_p to the mask.
-    needs_top_p_mask = jnp.any(top_p < 1.0)
-
-    def _true_fn():
-      return top_p_mask_logits(top_k_logits, top_p, logits_is_sorted=True)
-
-    def _false_fn():
-      return top_k_logits
-
-    top_p_logits = jax.lax.cond(needs_top_p_mask, _true_fn, _false_fn)
-  else:
-    top_p_logits = top_p_mask_logits(top_k_logits, top_p, logits_is_sorted=True)
-
-  # Add gumbel noise.
-  gumbel_noise_shape = list(top_p_logits.shape)
-  gumbel_noise = jax.random.gumbel(prng_key, shape=gumbel_noise_shape).astype(
-      logits.dtype
+  top_k_logits, top_k_indices = get_top_k(logits, top_k, per_example_top_k)
+  return sample_from_top_p_given_top_k(
+      top_k_logits,
+      top_k_indices,
+      prng_key,
+      temperature,
+      top_p,
+      topk_is_sorted=True,
   )
-
-  # Apply gumbel noise.
-  logits_with_noise = top_p_logits + gumbel_noise * temperature
-  argmax_ids_in_topk = jnp.argmax(logits_with_noise, axis=-1)
-  return _get_argmax_ids(argmax_ids_in_topk, top_k_indices)
 
 
 def epsilon_mask_logits(logits: JTensor, epsilon: float) -> JTensor:
