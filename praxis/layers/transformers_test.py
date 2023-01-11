@@ -16,7 +16,6 @@
 """Tests for Praxis transformer layers."""
 
 import copy
-from praxis import pax_fiddle
 import itertools
 
 from absl import logging
@@ -29,6 +28,7 @@ from lingvo.core import layers_with_attention
 import numpy as np
 from praxis import base_hyperparams
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import activations
@@ -978,7 +978,7 @@ class TransformersTest(test_utils.TestCase):
           cross_segment_mask=cross_segment_mask)
     self.assertAllClose(outputs, outputs_repeated, atol=1e-5)
 
-  def test_repeated_stacked_xformer_layer(self):
+  def test_repeated_stacked_xformer_layer_base(self):
     model_dims = 16
     num_layers = 4
     p1 = pax_fiddle.Config(

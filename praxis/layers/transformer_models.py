@@ -351,8 +351,8 @@ class TransformerLm(base_layer.BaseLayer):
       lm_p: A params of this class.
       ici_mesh_shape: Shape of logical mesh for a slice.
       dcn_mesh_shape: Shape of logical mesh between slices.
-      mesh_axis_names: A list of length len(mesh_shape). Each element of the list
-        is the name of the corresponding device axis.
+      mesh_axis_names: A list of length len(mesh_shape). Each element of the
+        list is the name of the corresponding device axis.
       w_df: sharding for weight of ffn0, shape (d, f). ff1 weights will be
         inferred from it.
       w_dnh: Sharding of qkv projection weights, shape (d, num_heads,

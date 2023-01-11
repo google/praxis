@@ -16,13 +16,13 @@
 """Tests for Praxis attention layers."""
 
 from absl import logging
-from praxis import pax_fiddle
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import attentions
