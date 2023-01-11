@@ -112,6 +112,11 @@ class NestedStructToTextTestClass(base_hyperparams.BaseParameterizable):
     a: Optional[frozen_dict.FrozenDict] = None
 
 
+class FiddlifiedTestClass(base_hyperparams.FiddleBaseParameterizable):
+  some_param: int = 1
+  some_other_param: str = 'hello'
+
+
 class HyperParamsTest(absltest.TestCase):
 
   def test_params_dataclass(self):
@@ -446,6 +451,38 @@ class HyperParamsTest(absltest.TestCase):
         field for field in dataclasses.fields(Foo.HParams)
         if field.name == 'a_tpl')
     self.assertTrue(field.metadata.get('custom'))
+
+
+class FiddleBaseParameterizableTest(absltest.TestCase):
+
+  def test_can_construct_class(self):
+    instance = FiddlifiedTestClass(some_param=-1, some_other_param='goodbye')
+    self.assertEqual(instance.some_param, -1)
+    self.assertEqual(instance.some_other_param, 'goodbye')
+
+  def test_can_construct_class_via_hparams_and_instantiate(self):
+    hparams = FiddlifiedTestClass.HParams()
+    self.assertIsInstance(hparams, pax_fiddle.Config)
+    hparams.some_param = -1
+    hparams.some_other_param = 'goodbye'
+
+    instance = pax_fiddle.instantiate(hparams)
+    self.assertEqual(instance.some_param, -1)
+    self.assertEqual(instance.some_other_param, 'goodbye')
+
+  def test_can_access_fields_via_hparams_instance_attribute(self):
+    instance = FiddlifiedTestClass(some_param=-1, some_other_param='goodbye')
+    self.assertEqual(instance.hparams.some_param, -1)
+    self.assertEqual(instance.hparams.some_other_param, 'goodbye')
+
+  def test_can_only_construct_with_kwargs(self):
+    expected_msg = (
+        r'Only keyword arguments are supported when constructing '
+        r"<class '.*FiddlifiedTestClass'>. Received \(-1, 'goodbye'\) as "
+        r'positional arguments\.'
+    )
+    with self.assertRaisesRegex(TypeError, expected_msg):
+      FiddlifiedTestClass(-1, 'goodbye')
 
 
 class NestedStructToTextTestCase(absltest.TestCase):

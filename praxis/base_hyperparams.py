@@ -21,11 +21,12 @@ import abc
 import copy
 import dataclasses
 import enum
+import functools
 import inspect
 import re
 import types
 import typing
-from typing import Any, Callable, Optional, Sequence, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 from absl import logging
 import fiddle as fdl
@@ -775,6 +776,187 @@ class BaseParameterizable:
     _bind_cls_to_nested_params_class(cls)
     _add_precise_signature_to_make(cls, init_params_arg_name,
                                    nonconfigurable_init_arg_names)
+
+
+@dataclasses.dataclass(frozen=True)
+class _FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
+  """Stub for `HParams` attribute in `BaseParameterizable`.
+
+  Can be used with base_hyperparams.sub_config_field.  E.g.:
+
+    >>> class MyObject(base_hyperparams.BaseParameterizable):
+    ...   bias_tpl: LayerTpl = sub_config_field(Bias.HParams)
+
+  Can be called to generate a `fdl.Config` for `fiddle_base_layer_cls`.  E.g.:
+
+    >>> bias_tpl = Bias.HParams(
+    ...     name='bias', dims=p.output_dims, bias_init=p.bias_init)
+
+  Can be used as type argument to `isinstance` -- returns true if the instance
+  is a `pax_fiddle.Config` whose `__fn_or_cls__` is `fiddle_base_layer_cls`:
+
+    >>> isinstance(pax_fiddle.Config(MyLayer), MyLayer.HParams)
+    True
+
+  TODO(b/249483164): Remove this stub once the HParams->Fiddle migration is
+  complete.
+  """
+
+  fiddle_base_parameterizable_cls: Type[FiddleBaseParameterizable]
+
+  def __new__(cls, fiddle_base_parameterizable_cls, *args):
+    if args:
+      # The code in this block ensures that if the user does:
+      #   class Parent(BaseParameterizable):
+      #     x: int = 0
+      #   class Child(Parent):
+      #     class HParams(Parent.HParams):  # [*]
+      #       y: int = 0
+      # then an exception will be raised on the line marked with [*].
+      bases, cls_dict = args  # pylint: disable=unused-variable
+      assert len(bases) == 1, 'Expected HParams to have a single base'
+      base_cls = bases[0].fiddle_base_parameterizable_cls
+      raise ValueError(
+          f'For {base_cls}: PAX objects should no longer use nested HParams '
+          'classes. Instead, add fields directly to the class.'
+      )
+    name = 'HParams'
+    qualname = f'{fiddle_base_parameterizable_cls.__qualname__}.{name}'
+    namespace = {
+        '__qualname__': qualname,
+        'fiddle_base_parameterizable_cls': fiddle_base_parameterizable_cls,
+    }
+    bases = ()
+    # pylint: disable=unused-variable
+    return super().__new__(cls, name, bases, namespace)  # pytype: disable=wrong-arg-count
+
+  def __init__(cls, fiddle_base_parameterizable_cls):
+    pass
+
+  def __instancecheck__(cls, instance):
+    return (
+        isinstance(instance, pax_fiddle.Config)
+        and isinstance(fdl.get_callable(instance), type)
+        and issubclass(
+            fdl.get_callable(instance), cls.fiddle_base_parameterizable_cls
+        )
+    )
+
+  def __to_sub_config_field__(cls):
+    return pax_fiddle.template_field(cls.fiddle_base_parameterizable_cls)
+
+  def __call__(cls, *args, **kwargs):
+    return pax_fiddle.Config(
+        cls.fiddle_base_parameterizable_cls, *args, **kwargs
+    )
+
+  def config(cls, **kwargs):
+    return cls(**kwargs)
+
+
+class _FiddleHParamsClassStubDescriptor:
+  """Descriptor used to implement BaseParameterizable.HParams stub."""
+
+  def __get__(self, obj, objtype):
+    return _FiddleHParamsClassStub(objtype)
+
+
+class _FiddleHParamsInstanceStub:
+  """Stub for `hparams` attribute in `BaseParameterizable`.
+
+  Can be used to read attributes (e.g. `my_object.hparams.dtype`).
+
+  Can be cloned to generate a `fdl.Config` object (`my_object.hparams.clone()`).
+
+  TODO(b/249483164): Remove this stub once the HParams->Fiddle migration is
+  complete.
+  """
+
+  def __init__(self, instance: FiddleBaseParameterizable):
+    self._instance = instance
+
+  def __getattr__(self, name):
+    if '_instance' not in self.__dict__:
+      # `copy.copy` bypasses the constructor, so it's possible to have a
+      # _FiddleHParamsInstanceStub that doesn't have an _instance yet.
+      raise AttributeError(f'{self} has no attribute {name!r}')
+    if name not in self._instance._fields or name == 'parent':
+      raise AttributeError(
+          f'{type(self._instance)}.HParams has no attribute {name!r}'
+      )
+    value = getattr(self._instance, name)
+    if isinstance(value, BaseParameterizable):
+      value = value.hparams
+    return value
+
+  def clone(self):
+    """Returns a fdl.Config for the wrapped class.
+
+    Does not include child parameterizables.
+    """
+    kwargs = {}
+    for field in dataclasses.fields(self._instance):
+      if field.name == 'parent' or not field.init:
+        continue
+      value = getattr(self._instance, field.name)
+      if isinstance(value, BaseParameterizable):
+        continue  # For now all children are built by setup().
+      kwargs[field.name] = value
+    return pax_fiddle.Config(type(self._instance), **kwargs)
+
+  @property
+  def cls(self):
+    return type(self._instance)
+
+  def to_text(self, include_types: bool = False, separator: str = ':'):
+    return nested_struct_to_text(self.clone(), include_types, separator)
+
+
+def _require_kwargs(cls):
+  """Returns a new init method for `cls` that enforces kw_only behavior."""
+  init_fn = cls.__init__
+
+  @functools.wraps(init_fn)
+  def wrapper(self, *args, **kwargs):
+    if args:
+      raise TypeError(
+          f'Only keyword arguments are supported when constructing {cls}. '
+          f'Received {args} as positional arguments.'
+      )
+    return init_fn(self, **kwargs)
+
+  return wrapper
+
+
+class FiddleBaseParameterizable:
+  """A base class for classes migrated from `BaseParameterizable`.
+
+  This class provides backwards-compatibility stubs (for nested `HParams`
+  classes and `hparams` instance attributes) for classes migrated from
+  subclassing `BaseParameterizable`.
+
+  This class is temporary; as references to the stub fields are removed, classes
+  can migrate to being simple dataclasses without any base class besides object.
+  """
+  # Compatiblity stubs:
+  # * `self.hparams` returns a Fiddle Config that can be used to build self.
+  # * `self.HParams` returns a stub class that can be called to generate a
+  #   `fdl.Config`; or can be used with `base_hyperparams.sub_config_field`.
+  hparams = functools.cached_property(_FiddleHParamsInstanceStub)
+  _hparams = functools.cached_property(_FiddleHParamsInstanceStub)
+  HParams = _FiddleHParamsClassStubDescriptor()  # pylint: disable=invalid-name
+
+  name: str = ''
+
+  @functools.cached_property
+  def _fields(self) -> Set[str]:
+    """Returns a list of hyperparameter field names for `self`."""
+    return set(field.name for field in dataclasses.fields(self) if field.init)
+
+  def __init_subclass__(cls, **kwargs):
+    super().__init_subclass__(**kwargs)
+    dataclasses.dataclass(cls)
+    cls.__init__ = _require_kwargs(cls)
 
 
 def _bind_cls_to_nested_params_class(cls: Type[Any]):
