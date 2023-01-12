@@ -197,6 +197,13 @@ class Conv2D(base_layer.BaseLayer):
                    (pad_width_beg, pad_width_end)]
     return padding
 
+  def _shard_bhwc(self, x: JTensor) -> JTensor:
+    """Adds sharding annotations to tensors of shape [b, h, w, c]."""
+    if len(x.shape) != 4:
+      return x
+    ap = self.activation_split_dims_mapping
+    return base_layer.maybe_shard(x, ap.out, self.mesh_axis_names)
+
   def __call__(self, inputs: JTensor) -> JTensor:
     """FProp that supports strided, dilated convolution, depthwise convolution.
 
@@ -229,12 +236,13 @@ class Conv2D(base_layer.BaseLayer):
           f'filter shape: {self.filter_shape}).'
       )
     padding = self._compute_padding(inputs.shape)
+    inputs = self._shard_bhwc(inputs.astype(self.fprop_dtype))
 
     # The `dimension_numbers=('NHWC', 'HWIO', 'NHWC')` is to be consistent
     # with tf.conv2d, see e.g., see
     # https://github.com/google/jax/blob/main/jax/_src/lax/lax.py#L622
     outputs = jax.lax.conv_general_dilated(
-        lhs=inputs.astype(self.fprop_dtype),
+        lhs=inputs,
         rhs=self.theta.w,
         window_strides=self.filter_stride,
         padding=padding,
@@ -242,6 +250,7 @@ class Conv2D(base_layer.BaseLayer):
         dimension_numbers=('NHWC', 'HWIO', 'NHWC'),
         feature_group_count=feature_group_count,
     )
+    outputs = self._shard_bhwc(outputs)
     if self.bias:
       outputs += jnp.reshape(self.theta.b, (1,) * (outputs.ndim - 1) + (-1,))
     return outputs
