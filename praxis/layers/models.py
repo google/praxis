@@ -1114,10 +1114,14 @@ class BertModel(base_model.BaseModel):
     label_smoothing_prob: If > 0.0, smooth out one-hot prob by spreading this
       amount of prob mass to all other tokens.
     mask_token_id: Mask token id.
+    force_mask_generation: if True, always use runtime generated
+      random mask for training, even if pre-generated masks exist in the
+      training examples.
   """
   lm_tpl: LayerTpl = template_field(transformer_models.TransformerLm)
   label_smoothing_prob: float = 0.0
   mask_token_id: int = 0
+  force_mask_generation: bool = False
 
   def setup(self) -> None:
     super().setup()
@@ -1139,7 +1143,7 @@ class BertModel(base_model.BaseModel):
     paddings = input_batch.paddings
     # Note that internal BertTransformer uses input_batch.ids instead.
     labels = input_batch.labels
-    if 'masked_ids' in input_batch:
+    if not self.force_mask_generation and 'masked_ids' in input_batch:
       # Input data already has masking done.
       augmented_labels = input_batch.masked_ids
       augmented_pos = input_batch.masked_pos
