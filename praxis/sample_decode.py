@@ -665,6 +665,7 @@ def sample_decode(
     start_step = 0
     val.segment_pos = jnp.zeros([batch_size], dtype=jnp.int32)
 
+  val.start_step = start_step
   val.step = start_step
   val.output_ids = output_ids
   # Shape [batch_size], whether each row has terminated and should stop.
@@ -936,7 +937,7 @@ def sample_decode(
                                                       prefix_lengths,
                                                       max_prefix_len)
 
-  del result.step, result.done, result.has_eos
+  del result.start_step, result.step, result.done, result.has_eos
 
   if cf_guidance_scale is not None:
     # Split cond / uncond branches and only return conditioned branch.
