@@ -211,6 +211,79 @@ class DelayedCosine(BaseSchedule):
         1 + jnp.cos(jnp.array(self.linear.value(count), dtype=jnp.float32)))
 
 
+class LinearRampupPolynomialDecay(BaseSchedule):
+  """Learning rate that linearly ramps up to max and then polynomial decays."""
+
+  class HParams(BaseSchedule.HParams):
+    """Hyperparams for schedule.
+
+    Attributes:
+      warmup_steps: Increases the learning rate linearly before warmup steps.
+      decay_start: Starts the learning rate decay at decay_start-th step.
+      decay_end: Ends the learning rate decay at decay_end-th step.
+      power: Polynomial power.
+      min_ratio: After decay_end, the multiplier stays at min.
+      max: The schedule is never larger than this value.
+    """
+
+    warmup_steps: int = 0
+    decay_start: int = 0
+    decay_end: int = 0
+    power: int = 1
+    min_ratio: float = 0.01
+    max: float = 0.0
+
+  def __init__(self, hparams: LinearRampupPolynomialDecay.HParams) -> None:
+    super().__init__(hparams)
+
+    p = self.hparams
+
+    assert (
+        p.decay_start >= p.warmup_steps
+    ), 'decay_start must greater than warmup_steps.'
+    assert (
+        p.decay_end >= p.decay_start
+    ), 'decay_end must be greater than decay_start'
+    assert p.max > 0, 'Must set max.'
+
+    self._schedules = []
+    self._boundaries = []
+    if p.warmup_steps > 0:
+      self._schedules.append(
+          instantiate(
+              Linear.HParams(start=(0, 0.0), limit=(p.warmup_steps, p.max))
+          )
+      )
+      self._boundaries.append(p.warmup_steps)
+    if p.decay_start > p.warmup_steps:
+      self._schedules.append(
+          instantiate(
+              Linear.HParams(
+                  start=(0, p.max),
+                  limit=(p.decay_start - p.warmup_steps, p.max),
+              )
+          )
+      )
+      self._boundaries.append(p.decay_start)
+    self._schedules.append(
+        instantiate(
+            Polynomial.HParams(
+                start=(0, p.max),
+                limit=(p.decay_end - p.decay_start, p.max * p.min_ratio),
+                power=p.power,
+            )
+        )
+    )
+
+  def value(self, count: JTensor) -> JTensor:
+    return jnp.array(
+        optax.join_schedules(
+            [s.value for s in self._schedules], self._boundaries
+        )(count),
+        jnp.float32,
+    )
+
+
 class LinearRampupCosineDecay(BaseSchedule):
   """Learning rate that first linearly ramps up to max and then cos decays."""
 
