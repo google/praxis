@@ -45,6 +45,34 @@ DECODE_CACHE = base_layer.DECODE_CACHE
 PREFIX_DECODE_CACHE = base_layer.PREFIX_DECODE_CACHE
 
 
+def _batch_rngs_random_gumbel(rngs: JTensor, shape: Sequence[int]) -> JTensor:
+  """Samples gumbel random values with one or batch of PRNGKeys.
+
+  Args:
+    rngs: JTensor of int32, a single PRNGKey with shape of (2,) or a batch of
+      PRNGKeys with shape of (batch_size, 2), where batch_size is the first
+      dimension of `shape`.
+    shape: Sequence of ints, the shape of output tensor.
+
+  Returns:
+    A tensor of sampled gumbel random values.
+  """
+  if rngs.ndim == 1:
+    return jax.random.gumbel(rngs, shape)
+
+  batch_size, *remaining_shape = shape
+
+  def _impl(rng):
+    return jax.random.gumbel(rng, remaining_shape)
+
+  if rngs.ndim != 2 or rngs.shape[0] != batch_size:
+    raise ValueError('When sample for a batch of PRNGKeys, rngs must be 2d '
+                     f'with batch_size as its first dim, get {rngs.shape} '
+                     f'instead when batch_size is {batch_size}.')
+
+  return jax.vmap(_impl)(rngs)
+
+
 def reorder_with_indices(x: JTensor, indices: JTensor):
   """Reorders with the given indices.
 
@@ -293,9 +321,9 @@ def sample_from_top_p_given_top_k(
 
   # Add gumbel noise.
   gumbel_noise_shape = list(top_p_logits.shape)
-  gumbel_noise = jax.random.gumbel(prng_key, shape=gumbel_noise_shape).astype(
-      top_k_logits.dtype
-  )
+  gumbel_noise = _batch_rngs_random_gumbel(
+      prng_key, gumbel_noise_shape
+  ).astype(top_k_logits.dtype)
 
   # Apply gumbel noise.
   logits_with_noise = top_p_logits + gumbel_noise * temperature
@@ -415,11 +443,20 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
       decode_loop_state: NestedMap,
       per_example_top_p: Optional[JTensor] = None,
       per_example_top_k: Optional[JTensor] = None,
+      gumbel_prng_key: Optional[JTensor] = None,
   ) -> JTensor:
     """The default sampling logic implementing top-K and top-P sampling."""
     del decode_loop_state
     p = self.hparams
     assert p.top_k >= 0
+
+    def _get_prng_key():
+      if gumbel_prng_key is None:
+        # Default method, use `next_prng_key` to generate noise.
+        return model.next_prng_key()
+      else:
+        assert gumbel_prng_key.shape[0] == logits.shape[0]
+        return gumbel_prng_key
 
     top_p = (
         per_example_top_p
@@ -433,7 +470,7 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
     if p.top_k > 1:
       new_ids = sample_from_top_k_and_top_p(
           logits,
-          model.next_prng_key(),
+          _get_prng_key(),
           temperature=temperature,
           top_k=p.top_k,
           top_p=top_p,
@@ -444,8 +481,9 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
       if top_p is not None:
         logits = top_p_mask_logits(logits, top_p)
       if isinstance(temperature, JTensor) or temperature > 0.0:
-        gumbel_noise = jax.random.gumbel(
-            model.next_prng_key(), shape=logits.shape).astype(logits.dtype)
+        gumbel_noise = _batch_rngs_random_gumbel(
+            _get_prng_key(), logits.shape
+        ).astype(logits.dtype)
         logits += gumbel_noise * temperature
       new_ids = jnp.argmax(logits, axis=1)
     else:  #  k == 1
@@ -467,6 +505,7 @@ def sample_decode(
     cf_guidance_scale: Optional[Union[List[float], float]] = None,
     fprop_for_prefix: bool = False,
     temperature: Union[float, JTensor] = 1.0,
+    gumbel_prng_key: Optional[JTensor] = None,
     per_example_top_p: Optional[JTensor] = None,
     per_example_top_k: Optional[JTensor] = None,
     max_prefix_len: Optional[int] = None,
@@ -514,6 +553,9 @@ def sample_decode(
     fprop_for_prefix: Use one fprop for prefix.
     temperature: Temperature of sampling decoding. It could be a float or a
       JTensor of shape [B].
+    gumbel_prng_key: PRNG key for generating gumbel random noise. If None,
+      model.next_prng_key() is used; if not None, must be of shape [B, 2], where
+      B is the batch size before being duplicated wrt num_samples or cfg.
     per_example_top_p: Per example top_p of sampling decoding. Optional JTensor
       of shape [B].
     per_example_top_k: Optional per example top_k of shape [batch_size]. The
@@ -706,6 +748,21 @@ def sample_decode(
       uncond_logits = logits_split[:, num_samples:]
       logits = uncond_logits + cf_guidance_scale * (cond_logits - uncond_logits)
       logits = jnp.reshape(logits, (-1,) + logits.shape[2:])
+    if gumbel_prng_key is not None:
+      # Splits prng_key for num_samples.
+      split_gumbel_prng_key = jax.vmap(
+          lambda x: jax.random.split(x, num_samples)
+      )(gumbel_prng_key)
+      split_gumbel_prng_key = jnp.reshape(
+          split_gumbel_prng_key, (-1, *gumbel_prng_key.shape[1:])
+      )
+      # Folds split prng_key for step.
+      split_gumbel_prng_key = jax.vmap(
+          lambda x: jax.random.fold_in(x, step)
+      )(split_gumbel_prng_key)
+      assert split_gumbel_prng_key.shape[0] == logits.shape[0]
+    else:
+      split_gumbel_prng_key = None
     new_ids = next_token_sampler(
         model,
         logits,
@@ -713,6 +770,7 @@ def sample_decode(
         val,
         per_example_top_p=per_example_top_p,
         per_example_top_k=per_example_top_k,
+        gumbel_prng_key=split_gumbel_prng_key,
     )
     assert new_ids.shape == (logits.shape[0],)
     assert new_ids.dtype == jnp.int32

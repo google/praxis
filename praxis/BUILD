@@ -556,6 +556,7 @@ py_strict_test(
         ":sample_decode",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.

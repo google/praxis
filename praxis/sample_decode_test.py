@@ -16,13 +16,14 @@
 """Unit tests for sample_decode."""
 
 from absl.testing import absltest
-from praxis import pax_fiddle
+from absl.testing import parameterized
 import flax.linen as nn
 import jax
 from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
 from praxis import base_model
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import sample_decode
 from praxis import test_utils
@@ -46,12 +47,21 @@ class TestNextTokenSampler(sample_decode.BaseNextTokenSampler):
       decode_loop_state,
       per_example_top_p,
       per_example_top_k,
+      gumbel_prng_key,
   ):
-    del mdl, logits, temperature, decode_loop_state, per_example_top_p
+    del (
+        mdl,
+        logits,
+        temperature,
+        decode_loop_state,
+        per_example_top_p,
+        gumbel_prng_key,
+    )
     return jnp.array([1234, 2345])
 
 
 class TestModel(base_model.BaseModel):
+  use_dummy_next_token_sampler: bool = True
   vocab_size: int = 0
   num_samples: int = 0
   seq_len: int = 0
@@ -67,8 +77,14 @@ class TestModel(base_model.BaseModel):
         ]
     )
     self.create_variable('logits', logits_wp)
-    self.next_token_sampler = base_layer.instantiate(
-        TestNextTokenSampler.HParams())
+    if self.use_dummy_next_token_sampler:
+      self.next_token_sampler = base_layer.instantiate(
+          TestNextTokenSampler.HParams()
+      )
+    else:
+      self.next_token_sampler = base_layer.instantiate(
+          sample_decode.DefaultNextTokenSampler.HParams(top_k=0, top_p=1.0)
+      )
 
   def __call__(self, *args, **kwargs):
     # A dummy __call__ function
@@ -338,7 +354,26 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     self.assertAllClose(logits[:, :-1], masked[:, :-1])
     self.assertLess(masked[0, -1], 1e-10)
 
-  def test_sample_decode(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='use_dummy_next_token_sampler',
+          use_dummy_next_token_sampler=True,
+          use_gumbel_prng_key=False,  # doesn't matter
+      ),
+      dict(
+          testcase_name='without_gumbel_prng_key',
+          use_dummy_next_token_sampler=False,
+          use_gumbel_prng_key=False,
+      ),
+      dict(
+          testcase_name='with_gumbel_prng_key',
+          use_dummy_next_token_sampler=False,
+          use_gumbel_prng_key=True,
+      ),
+  )
+  def test_sample_decode(
+      self, use_dummy_next_token_sampler, use_gumbel_prng_key
+  ):
     batch_size = 1
     num_samples = 2
     seq_len = 3
@@ -350,6 +385,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         num_samples=num_samples,
         seq_len=seq_len,
         vocab_size=vocab_size,
+        use_dummy_next_token_sampler=use_dummy_next_token_sampler,
     )
 
     def extend_step_fn(mdl, ids, segment_pos):
@@ -369,6 +405,11 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     input_paddings = jnp.zeros([batch_size, seq_len], dtype=jnp.float32)
 
     def decode_fn(model, input_ids, input_paddings):
+      gumbel_prng_key = None
+      if use_gumbel_prng_key:
+        gumbel_prng_key = jax.vmap(jax.random.PRNGKey)(
+            jnp.arange(1002, 1002 + batch_size)
+        )
       return sample_decode.sample_decode(
           model,
           extend_step_fn,
@@ -380,11 +421,13 @@ class SampleDecodeHelperTest(test_utils.TestCase):
           prefix_lengths=jnp.zeros([batch_size], dtype=jnp.int32),
           seq_len=seq_len,
           num_samples=num_samples,
+          gumbel_prng_key=gumbel_prng_key,
           max_prefix_len=0,
           max_decode_steps=seq_len,
           fprop_for_prefix=True,
           # Call the scan loop.
-          early_exit=False)
+          early_exit=False,
+      )
 
     mutables = [SUMMARIES, DECODE_CACHE]
     rngs = {'random': jax.random.PRNGKey(9382)}
@@ -400,8 +443,15 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     print('logits_summary', logits_summary)
     print('time_step_summary', time_step_summary)
     self.assertAllClose(logits_var, logits_summary)
-    self.assertAllClose(new_ids_summary,
-                        jnp.tile(jnp.array([1234, 2345]), [3, 1]))
+    # from IPython import embed; embed()
+    if use_dummy_next_token_sampler:
+      self.assertAllClose(
+          new_ids_summary, jnp.tile(jnp.array([1234, 2345]), [3, 1])
+      )
+    elif use_gumbel_prng_key:
+      self.assertAllClose(new_ids_summary, jnp.array([[1, 2], [3, 0], [0, 0]]))
+    else:
+      self.assertAllClose(new_ids_summary, jnp.array([[3, 0], [2, 1], [0, 1]]))
 
 
 if __name__ == '__main__':
