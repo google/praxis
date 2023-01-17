@@ -685,8 +685,21 @@ class LanguageModel(base_model.BaseModel):
         **decoder_kwargs,
     )
 
+    eos_ids = decoder_kwargs['eos_id']
+    if isinstance(eos_ids, int):
+      eos_ids = [eos_ids]
     eos_position = jnp.argmax(
-        jnp.equal(decodes, decoder_kwargs['eos_id']), axis=-1)
+        jnp.any(
+            jnp.equal(
+                decodes[:, :, :, jnp.newaxis],
+                jnp.array(eos_ids, jnp.int32)[
+                    jnp.newaxis, jnp.newaxis, jnp.newaxis, :
+                ],
+            ),
+            axis=-1,
+        ),
+        axis=-1,
+    )
     decode_lengths = jnp.where(eos_position == 0,
                                jnp.ones_like(eos_position) * decodes.shape[-1],
                                eos_position + 1)
@@ -939,7 +952,7 @@ class EncoderDecoderModel(base_model.BaseModel):
     # Beam search returns [n_batch, n_beam, n_length] with beam dimension sorted
     # in increasing order of log-probability.
     # Return the highest scoring beam sequence.
-    # pyformat: disable
+# pyformat: disable
     decode_out = (
         NestedMap(num_decoded=(num_decodes, jnp.array(1, jnp.float32))),
         NestedMap(output_ids=decodes[:, -1, :],

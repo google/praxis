@@ -167,12 +167,12 @@ class BeamSearchTest(test_utils.TestCase):
     seq_len = 5
     p = models.BeamSearchHParams(
         beam_size=4,
-        eos_id=4,
-        parse_tokens=parse_tokens,
+        eos_id=parse_tokens if parse_tokens else 4,
         fprop_for_prefix=True,
         max_decode_steps=3,
         seqlen=seq_len,
-        length_norm_alpha=length_norm_alpha)
+        length_norm_alpha=length_norm_alpha,
+    )
     logits = [[1, 0, 0, 2, 0], [5, 1, 0, 0, 0], [5, 0, 0, 1, 0],
               [0, 1, 0, 2, 10], [0, 0, 0, 0, 0]]
     logprobs = jax.nn.log_softmax(jnp.array(logits, dtype=jnp.float32))

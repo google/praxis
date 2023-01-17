@@ -15,7 +15,7 @@
 
 """Vanilla Beam search algorithm."""
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 from flax import linen as nn
 import jax
@@ -184,9 +184,11 @@ def beam_search_after_prefix_fprop(
   beam_size = beam_search_hparams.beam_size
   batch_size = target_prefix_ids.shape[0]
   max_prefix_len = target_prefix_ids.shape[1]
-  terminal_ids = beam_search_hparams.parse_tokens or [
+  terminal_ids = (
       beam_search_hparams.eos_id
-  ]
+      if isinstance(beam_search_hparams.eos_id, Sequence)
+      else [beam_search_hparams.eos_id]
+  )
   seq_len = max(max_decode_steps) + max_prefix_len
   # Pad max_decode_steps to the state.
   transform_state_fn(model, decoder_utils.pad_state_fn(min(max_decode_steps)))

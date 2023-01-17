@@ -512,7 +512,7 @@ def sample_decode(
     max_decode_steps: Optional[Union[int, Sequence[int]]] = None,
     per_example_max_decode_steps: Optional[JTensor] = None,
     prefix_lengths: Optional[JTensor] = None,
-    eos_id: Optional[int] = None,
+    eos_id: Optional[Union[int, Sequence[int]]] = None,
     result_callback: Optional[StreamingResultCallback] = None,
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
@@ -578,7 +578,8 @@ def sample_decode(
       model to decode from a certain target prefix for each position in the
       batch. This can either be None or a JTensor of shape [batch] signifying
       the prefix length for each sequence in the batch.
-    eos_id: Optional EOS id which to terminate the decoding early.
+    eos_id: Optional EOS id which to terminate the decoding early. Could be a
+      sequence or an integer.
     result_callback: Optional callback function to be called for decoding
       results with a configurable interval.
     return_result_for_suffix_score: Whether or not to return result for suffix
@@ -600,6 +601,8 @@ def sample_decode(
   if isinstance(max_decode_steps, int):
     max_decode_steps = [max_decode_steps]
   max_decode_steps = sorted(max_decode_steps) if max_decode_steps else [seq_len]
+  if isinstance(eos_id, int):
+    eos_id = [eos_id]
 
   if num_samples > 1:
     # Broadcast inputs from [batch, ...] to [batch * num_samples, ...].
@@ -796,8 +799,18 @@ def sample_decode(
     prev_done = val.done
     new_ids = jnp.where(prev_done, jnp.zeros_like(new_ids), new_ids)
     if eos_id is not None:
-      val.done = jnp.logical_or(prev_done, jnp.equal(new_ids, eos_id))
-      val.has_eos = jnp.logical_or(val.has_eos, jnp.equal(new_ids, eos_id))
+      has_eos = jnp.any(
+          jnp.equal(
+              new_ids[:, jnp.newaxis],
+              jnp.array(eos_id, dtype=jnp.int32)[jnp.newaxis, :],
+          ),
+          axis=-1,
+      )
+      val.done = jnp.logical_or(
+          prev_done,
+          has_eos,
+      )
+      val.has_eos = jnp.logical_or(val.has_eos, has_eos)
     if fprop_for_prefix:
       prefix_offset = max_prefix_len
       decode_lengths = prefix_lengths + (step - max_prefix_len + 2)
