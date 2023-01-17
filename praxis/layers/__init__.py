@@ -101,6 +101,7 @@ from praxis.layers.resnets import ResNetBlock
 from praxis.layers.rnn_cell import CifgLstmCellSimple
 from praxis.layers.rnn_cell import LayerNormalizedLstmCellSimple
 from praxis.layers.rnn_cell import LstmCellSimple
+from praxis.layers.sequential import Sequential
 from praxis.layers.spectrum_augmenter import SpectrumAugmenter
 from praxis.layers.ssm import SSM
 from praxis.layers.stochastics import Dropout

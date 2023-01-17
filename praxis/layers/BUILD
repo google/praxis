@@ -50,6 +50,7 @@ pytype_strict_library(
         ":repeats",
         ":resnets",
         ":rnn_cell",
+        ":sequential",
         ":spectrum_augmenter",
         ":ssm",
         ":stochastics",
@@ -527,6 +528,15 @@ pytype_strict_library(
         "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:pytypes",
+    ],
+)
+
+pytype_strict_library(
+    name = "sequential",
+    srcs = ["sequential.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//praxis:base_layer",
     ],
 )
 
@@ -1015,6 +1025,24 @@ py_strict_test(
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
+        "//praxis:test_utils",
+    ],
+)
+
+py_strict_test(
+    name = "sequential_test",
+    srcs = ["sequential_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":sequential",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
         "//praxis:test_utils",
     ],
 )
