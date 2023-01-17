@@ -1078,6 +1078,50 @@ class Sgd(BaseOptimizer):
     return optax.sgd(learning_rate=lr, momentum=p.momentum, nesterov=p.nesterov)
 
 
+class Lamb(BaseOptimizer):
+  """Canonical Lamb optimizer."""
+
+  class HParams(BaseOptimizer.HParams):
+    """Defines hyper-params for Lamb.
+
+    Please check optax lamb doc for more details.
+
+    Attributes:
+      momentum: Decay rate used by the momentum term. If set to None, momentum
+        is not used.
+      b1: Exponential decay rate to track the first moment of past gradients.
+        nesterov: Whether Nesterov momentum is used or not.
+      b2: Exponential decay rate to track the second moment of past gradients.
+      eps: A small constant applied to denominator outside of the square root
+        (as in the Adam paper) to avoid dividing by zero when rescaling.
+      eps_root: A small constant applied to denominator inside the square root
+        (as in RMSProp), to avoid dividing by zero when rescaling.
+      weight_decay: Strength of the weight decay regularization.
+      mask: A boolean tree mask that determines which leaves to transform.
+    """
+
+    b1: float = 0.9
+    b2: float = 0.999
+    eps: float = 1e-6
+    eps_root: float = 0.0
+    weight_decay: float = 0.0
+    mask: Optional[Any] = None
+
+  def _get_raw_grad_transformation(
+      self, lr: optax.Schedule
+  ) -> optax.GradientTransformation:
+    p = self._hparams
+    return optax.lamb(
+        learning_rate=lr,
+        b1=p.b1,
+        b2=p.b2,
+        eps=p.eps,
+        eps_root=p.eps_root,
+        weight_decay=p.weight_decay,
+        mask=p.mask,
+    )
+
+
 class ShardedSgd(BaseOptimizer):
   """Sharded SGD optimizer."""
 
