@@ -380,11 +380,11 @@ def dot_general(
       dimension_numbers=dimension_numbers,
       should_int8_quantize=should_int8_quantize)
 
-  inv_scale = lax.dot_general(
+  out_scale = lax.dot_general(
       lhs_scale, rhs_scale, dimension_numbers=dimension_numbers
   )
 
-  return out * inv_scale
+  return out * out_scale
 
 
 # TODO(b/262309036): Make dot_general the default quantized einsum
