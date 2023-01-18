@@ -743,7 +743,6 @@ def sample_decode(
     """From ids at `step`, update output ids at `step + 1`."""
     step = val.step
     logits = extend_step_fn(model, val.output_ids[:, step], val.segment_pos)
-    logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
     if cf_guidance_scale is not None:
       # Split cond / uncond logits.
       logits_split = split_batch_dim(logits, 0, 2 * num_samples)
@@ -751,6 +750,7 @@ def sample_decode(
       uncond_logits = logits_split[:, num_samples:]
       logits = uncond_logits + cf_guidance_scale * (cond_logits - uncond_logits)
       logits = jnp.reshape(logits, (-1,) + logits.shape[2:])
+    logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
     if gumbel_prng_key is not None:
       # Splits prng_key for num_samples.
       split_gumbel_prng_key = jax.vmap(
