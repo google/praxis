@@ -198,7 +198,9 @@ class AttentionProjection(attentions.AttentionProjection):
           and self.quantization.act_params.stats_config is None
       ):
         inputs, act_scale = operations.reduce_precision_activation(inputs)
-        ret = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
+        ret = operations.einsum(
+            eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
+        )
       elif self.quantization.act_params is None:
         ret = operations.einsum(eqn, inputs, w, s)
     elif (
@@ -446,7 +448,9 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
           and self.quantization.act_params.stats_config is None
       ):
         inputs, act_scale = operations.reduce_precision_activation(inputs)
-        ret = operations.einsum(eqn, inputs, w, jnp.multiply(act_scale, s))
+        ret = operations.einsum(
+            eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
+        )
       elif self.quantization.act_params is None:
         ret = operations.einsum(eqn, inputs, w, s)
     else:

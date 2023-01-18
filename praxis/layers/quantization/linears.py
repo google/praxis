@@ -120,7 +120,7 @@ class Linear(linears.Linear):
         )
       elif self.quantization.act_params is not None:
         inputs, act_scale = operations.reduce_precision_activation(inputs)
-        s = jnp.multiply(act_scale, s)
+        s = jnp.multiply(jnp.squeeze(act_scale), s)
       out = operations.einsum(eqn, inputs, w, s)
     else:
       w = self.theta.w
