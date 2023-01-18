@@ -24,7 +24,6 @@ import jax
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
 from praxis import base_layer
-from praxis import flax_utils
 from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
@@ -318,47 +317,16 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         body_fn,
         in_axes=0,
         out_axes=0,
-        variable_axes={
-            PARAMS: 0,
-            AUX_LOSS: 0,
-            SUMMARIES: 0,
-            NON_TRAINABLE: 0
+        variable_axes={PARAMS: 0, AUX_LOSS: 0, SUMMARIES: 0, NON_TRAINABLE: 0},
+        split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
+        metadata_params={
+            'is_initializing': self.is_initializing(),
+            'sub_weight_split_dims_mapping': (
+                self.weight_split_dims_mapping.stages
+            ),
+            'x_times': self.num_stages,
         },
-        split_rngs={
-            PARAMS: self.is_initializing(),
-            RANDOM: True
-        })
-
-    if self.is_initializing():
-      wp = self.weight_split_dims_mapping
-      assert wp.stages is not None
-      assert isinstance(wp.stages, (list, tuple))
-      assert len(wp.stages) == 1
-      wp_sub = tuple(wp.stages)
-
-      # nn.map_variables needs to update variable metadata: repeat_prefix and
-      # repeat_prefix_split_dims_mapping for trainable and non-trainable vars as
-      # we make N copies of a layer. Each layer variable metadata encapsulated
-      # in the WeightHParams object in the original single layer needs to be
-      # updated to reflect the newly vmapped axis.
-      # `repeat_prefix` and `repeat_prefix_split_dims_mapping` are consumed by
-      # the optimizer to correctly handle scan-over-layer slot variables.
-      for collection in (PARAMS, NON_TRAINABLE):
-        vmapped_fn = nn.map_variables(
-            vmapped_fn,
-            collection,
-            mutable=self.is_mutable_collection(collection),
-            trans_in_fn=functools.partial(
-                flax_utils.remove_axis_to_metadata,
-                sub_weight_split_dims_mapping=wp_sub,
-                x_times=self.num_stages,
-            ),
-            trans_out_fn=functools.partial(
-                flax_utils.add_axis_to_metadata,
-                sub_weight_split_dims_mapping=wp_sub,
-                x_times=self.num_stages,
-            ),
-        )
+    )
     return vmapped_fn
 
   def num_total_iterations(self, num_microbatches: int) -> int:
@@ -852,23 +820,15 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
     if self.share_weights:
       return vmapped_fn
 
-    if self.is_initializing():
-      for collection in (PARAMS, NON_TRAINABLE):
-        vmapped_fn = nn.map_variables(
-            vmapped_fn,
-            collection,
-            mutable=self.is_mutable_collection(collection),
-            trans_in_fn=functools.partial(
-                flax_utils.remove_axis_to_metadata,
-                sub_weight_split_dims_mapping=(None,),
-                x_times=self.circular_repeat,
-            ),
-            trans_out_fn=functools.partial(
-                flax_utils.add_axis_to_metadata,
-                sub_weight_split_dims_mapping=(None,),
-                x_times=self.circular_repeat,
-            ),
-        )
+    vmapped_fn = nn.add_metadata_axis(
+        vmapped_fn,
+        variable_axes={PARAMS: 0, AUX_LOSS: 0, SUMMARIES: 0, NON_TRAINABLE: 0},
+        metadata_params={
+            'is_initializing': self.is_initializing(),
+            'sub_weight_split_dims_mapping': (None,),
+            'x_times': self.circular_repeat,
+        },
+    )
 
     backup_vars = self.body.variables
     microbatch_ids = jnp.maximum(

@@ -73,6 +73,9 @@ NestedPartitionSpec = pytypes.NestedPartitionSpec
 
 SplitDimsMapping = pytypes.SplitDimsMapping
 
+AxisMetadata = flax_core.meta.AxisMetadata
+TAxisMetadata = flax_core.meta.TAxisMetadata
+
 # Layer stack to establish parent child relationships.
 _LAYER_STACK = py_utils.ThreadLocalStack()
 
@@ -671,20 +674,99 @@ def init_var(
     assert False, 'init_type %s not supported.' % method
 
 
-# BoxedParam allows us to treat the actual variable jnp.array and its associated
-# metadata, i.e. WeightParam as a single Flax variable collection.
 @struct.dataclass
-class BoxedParam:
+class BoxedParam(struct.PyTreeNode, AxisMetadata):
+  """Boxed param with WeightHParam metadata.
+
+  BoxedParam allows us to treat the actual variable jnp.array and its
+  associated metadata, i.e. WeightHParam as a single Flax variable collection.
+  """
+
   # `value` is the jnp.array of the variable.
   value: Any
   # `meta` is the WeightParam declared for the variable.
   # We do not want to transform the variable weight param so we mark the field
   # pytree_node=False to prevent JAX transforms from touching it.
-  meta: Any = struct.field(pytree_node=False)
+  meta: WeightHParams = struct.field(pytree_node=False)
 
   def __post_init__(self):
     assert not isinstance(self.value,
                           BoxedParam), 'Cannot double-box a parameter!'
+
+  def unbox(self, apply_constraint=True) -> Any:
+    # Do not locally apply pjit.with_sharding_constraint.
+    del apply_constraint
+    return self.value
+
+  def replace_boxed(self, val: Any) -> TAxisMetadata:
+    return self.replace(value=val)
+
+  def add_axis(
+      self, index: int, metadata_params: Dict[Any, Any]
+  ) -> TAxisMetadata:
+    if index != 0:
+      raise ValueError('Only index==0 is implemented; given index=', index)
+    if not metadata_params['is_initializing']:
+      return self
+
+    x_times = metadata_params['x_times']
+    wp_sub = metadata_params['sub_weight_split_dims_mapping']
+    if wp_sub is not None:
+      assert isinstance(wp_sub, (list, tuple))
+      assert len(wp_sub) == 1
+      wp_sub = tuple(wp_sub)
+    else:
+      wp_sub = (-1,)
+
+    if self.meta.repeat_prefix:
+      assert isinstance(self.meta.repeat_prefix, list)
+      repeat_prefix = [x_times] + self.meta.repeat_prefix
+    else:
+      repeat_prefix = [x_times]
+
+    if self.meta.repeat_prefix_split_dims_mapping:
+      assert isinstance(self.meta.repeat_prefix_split_dims_mapping, tuple)
+      repeat_prefix_split_dims_mapping = wp_sub + tuple(
+          self.meta.repeat_prefix_split_dims_mapping
+      )
+    else:
+      repeat_prefix_split_dims_mapping = wp_sub
+
+    new_meta = copy.deepcopy(self.meta)
+    new_meta.repeat_prefix = repeat_prefix
+    new_meta.repeat_prefix_split_dims_mapping = repeat_prefix_split_dims_mapping
+    return self.replace(meta=new_meta)
+
+  def remove_axis(
+      self, index: int, metadata_params: Dict[Any, Any]
+  ) -> TAxisMetadata:
+    if index != 0:
+      raise ValueError('Only index==0 is implemented; given index=', index)
+    if not metadata_params['is_initializing']:
+      return self
+
+    x_times = metadata_params['x_times']
+    wp_sub = metadata_params['sub_weight_split_dims_mapping']
+    if wp_sub is not None:
+      assert isinstance(wp_sub, (list, tuple))
+      assert len(wp_sub) == 1
+      wp_sub = tuple(wp_sub)
+    else:
+      wp_sub = (-1,)
+
+    new_meta = copy.deepcopy(self.meta)
+    if new_meta.repeat_prefix:
+      assert isinstance(new_meta.repeat_prefix, list)
+      removed_axis = new_meta.repeat_prefix.pop(0)
+      assert removed_axis == x_times
+
+    if new_meta.repeat_prefix_split_dims_mapping:
+      assert isinstance(new_meta.repeat_prefix_split_dims_mapping, tuple)
+      updated_dims_mapping = list(new_meta.repeat_prefix_split_dims_mapping)
+      removed = updated_dims_mapping.pop(0)
+      assert (removed,) == tuple(wp_sub)
+      new_meta.repeat_prefix_split_dims_mapping = updated_dims_mapping
+    return self.replace(meta=new_meta)
 
 
 @struct.dataclass

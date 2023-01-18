@@ -58,6 +58,7 @@ SCAN_VARIABLE_AXES = {
     PREFIX_DECODE_CACHE: 0
 }
 
+
 def _sum_aux_loss(tree):
   return jax.tree_map(jnp.sum, tree)
 
@@ -132,33 +133,12 @@ class Repeat(base_layer.BaseLayer):
         variable_axes=SCAN_VARIABLE_AXES,
         split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
         length=self.x_times,
+        metadata_params={
+            'is_initializing': self.is_initializing(),
+            'sub_weight_split_dims_mapping': self.weight_split_dims_mapping.sub,
+            'x_times': self.x_times,
+        },
     )
-
-    if self.is_initializing():
-      wp = self.weight_split_dims_mapping
-      if wp.sub is not None:
-        assert isinstance(wp.sub, (list, tuple))
-        assert len(wp.sub) == 1
-        wp_sub = tuple(wp.sub)
-      else:
-        wp_sub = (-1,)
-
-      for collection in (PARAMS, NON_TRAINABLE):
-        scan_fn = nn.map_variables(
-            scan_fn,
-            collection,
-            mutable=self.is_mutable_collection(collection),
-            trans_in_fn=functools.partial(
-                flax_utils.remove_axis_to_metadata,
-                sub_weight_split_dims_mapping=wp_sub,
-                x_times=self.x_times,
-            ),
-            trans_out_fn=functools.partial(
-                flax_utils.add_axis_to_metadata,
-                sub_weight_split_dims_mapping=wp_sub,
-                x_times=self.x_times,
-            ),
-        )
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
