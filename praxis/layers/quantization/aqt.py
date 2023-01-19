@@ -20,10 +20,14 @@ from typing import Optional, Sequence, Union
 import jax
 import jax.numpy as jnp
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import pytypes
+from praxis.layers.quantization import quantization_hparams
 
 WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
+ActQuantizationParams = quantization_hparams.ActQuantizationParams
+WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
 
 
 def _pass_through(x: JTensor, fn) -> JTensor:
@@ -32,13 +36,29 @@ def _pass_through(x: JTensor, fn) -> JTensor:
   return x - jax.lax.stop_gradient(x) + jax.lax.stop_gradient(fn(x))
 
 
+def create_tensor_quantizer(
+    name: str,
+    quant_params: Optional[
+        Union[ActQuantizationParams, WeightQuantizationParams]
+    ],
+):
+  tq_params = pax_fiddle.Config(TensorQuantizer, name=name)
+  if quant_params is not None:
+    tq_params.precision = quant_params.precision
+    tq_params.stop_scale_gradient = quant_params.stop_scale_gradient
+  return tq_params
+
+
 class TensorQuantizer(base_layer.BaseLayer):
   """Maintains state associated with the quantization of an input tensor.
 
   Attributes:
     precision: Number of bits to quantize to (e.g 4 for int4). Must be positive.
+    stop_scale_gradient: stop the gradient of the quantization scale for
+      numerical stability. Note: this is numerically incorrect.
   """
   precision: Optional[int] = None
+  stop_scale_gradient: bool = False
 
   def setup(self):
     assert (
@@ -72,8 +92,12 @@ class TensorQuantizer(base_layer.BaseLayer):
     x_bound = jnp.max(jnp.abs(x), axis=contract_dims, keepdims=True)
     clip_bound = self._get_clip_bound()
     scale = x_bound / clip_bound
-    scale = jnp.where(scale == 0, jnp.ones_like(scale), scale)
-    scale = jax.lax.stop_gradient(scale)
+    if self.stop_scale_gradient:
+      scale = jax.lax.stop_gradient(scale)
+      scale = jnp.where(scale == 0, jnp.ones_like(scale), scale)
+    else:
+      # Add a small to avoid NaN gradients for near-zero inputs during training.
+      scale = scale + jnp.finfo(dtype).eps
     return scale.astype(dtype)
 
   def update(self, x: JTensor):

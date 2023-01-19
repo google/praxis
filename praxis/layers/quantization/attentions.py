@@ -22,7 +22,6 @@ import jax
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
 from praxis import base_layer
-from praxis import pax_fiddle
 from praxis import pytypes
 from praxis.layers import attentions
 from praxis.layers.quantization import aqt
@@ -54,20 +53,14 @@ class AttentionProjection(attentions.AttentionProjection):
   def create_tensor_quantizers(self):
     self.create_child(
         'act_quantizer',
-        pax_fiddle.Config(
-            aqt.TensorQuantizer,
-            name='act_quantizer',
-            precision=self.quantization.act_params.precision
-            if self.quantization.act_params
-            else None,
+        aqt.create_tensor_quantizer(
+            'aqt_quantizer', self.quantization.act_params
         ),
     )
     self.create_child(
         'weight_quantizer',
-        pax_fiddle.Config(
-            aqt.TensorQuantizer,
-            name='weight_quantizer',
-            precision=self.quantization.weight_params.precision,
+        aqt.create_tensor_quantizer(
+            'weight_quantizer', self.quantization.weight_params
         ),
     )
 
@@ -316,20 +309,14 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
   def create_tensor_quantizers(self):
     self.create_child(
         'act_quantizer',
-        pax_fiddle.Config(
-            aqt.TensorQuantizer,
-            name='act_quantizer',
-            precision=self.quantization.act_params.precision
-            if self.quantization.act_params
-            else None,
+        aqt.create_tensor_quantizer(
+            'aqt_quantizer', self.quantization.act_params
         ),
     )
     self.create_child(
         'weight_quantizer',
-        pax_fiddle.Config(
-            aqt.TensorQuantizer,
-            name='weight_quantizer',
-            precision=self.quantization.weight_params.precision,
+        aqt.create_tensor_quantizer(
+            'weight_quantizer', self.quantization.weight_params
         ),
     )
 
@@ -589,12 +576,8 @@ class DotProductAttention(attentions.DotProductAttention):
   def create_tensor_quantizers(self):
     self.create_child(
         'act_quantizer',
-        pax_fiddle.Config(
-            aqt.TensorQuantizer,
-            name='act_quantizer',
-            precision=self.quantization.act_params.precision
-            if self.quantization.act_params
-            else None,
+        aqt.create_tensor_quantizer(
+            'aqt_quantizer', self.quantization.act_params
         ),
     )
 

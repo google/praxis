@@ -61,12 +61,15 @@ class ActQuantizationParams:
   stats_config: static values used for quantize activation.
     stats_config == None: dynamic activation quantization
     otherwise: static activation quantization
+  stop_scale_gradient: stop the gradient of the quantization scale for numerical
+    stability. Note: this is numerically incorrect.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
   clipping_coeff: float = 1.0
   # TODO(jihwanlee): Define stats config for static quantization
   stats_config = None
+  stop_scale_gradient: bool = False
 
 
 @dataclasses.dataclass
@@ -77,10 +80,13 @@ class WeightQuantizationParams:
   unsigned_int_bounds: whether or not to use unsigned_int_bounds.
   clipping_coeff: the coefficient to shrink the hard range for activation
     quantization. 1.0 means using hard min/max.
+  stop_scale_gradient: stop the gradient of the quantization scale for numerical
+    stability. Note: this is numerically incorrect.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
   clipping_coeff: float = 1.0
+  stop_scale_gradient: bool = False
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):

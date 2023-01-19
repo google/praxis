@@ -18,6 +18,7 @@
 from typing import Tuple
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
 from praxis import pax_fiddle
@@ -64,7 +65,7 @@ class AqtTest(test_utils.TestCase):
 
     qx, scale = self.get_quantized_and_scale(p_quant, x)
 
-    self.assertEqual(scale, jnp.full((1, 1), 2.0, dtype=jnp.float32))
+    self.assertAllClose(scale, jnp.full((1, 1), 2.0, dtype=jnp.float32))
     self.assertArraysEqual(qx, expected_output)
 
   def test_none_prec_not_quantize(self):
@@ -115,8 +116,17 @@ class AqtTest(test_utils.TestCase):
 
     self.assertLessEqual(per_example_error, per_tensor_error)
 
-  def test_zeros_quant_rescaling(self):
-    p_quant = pax_fiddle.Config(aqt.TensorQuantizer, name='tq', precision=8)
+  @parameterized.named_parameters(
+      dict(testcase_name='scale_gradient', stop_scale_gradient=False),
+      dict(testcase_name='stop_scale_gradient', stop_scale_gradient=True),
+  )
+  def test_zeros_quant_rescaling(self, stop_scale_gradient):
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='tq',
+        precision=8,
+        stop_scale_gradient=stop_scale_gradient,
+    )
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
     x = jnp.zeros((1, 4))
@@ -127,7 +137,6 @@ class AqtTest(test_utils.TestCase):
         dtype=jnp.float32,
         method=quant.get_quant_scale,
     )
-    self.assertArraysEqual(scale, jnp.ones_like(scale))
     x_scaled = x * scale
     self.assertArraysEqual(x_scaled, jnp.zeros_like(x_scaled))
     x_rescaled = x_scaled / scale

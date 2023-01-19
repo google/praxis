@@ -19,7 +19,6 @@ from typing import Any
 
 from jax import numpy as jnp
 from praxis import base_layer
-from praxis import pax_fiddle
 from praxis import pytypes
 from praxis.layers import linears
 from praxis.layers.quantization import aqt
@@ -47,20 +46,14 @@ class Linear(linears.Linear):
   def create_tensor_quantizers(self):
     self.create_child(
         'act_quantizer',
-        pax_fiddle.Config(
-            aqt.TensorQuantizer,
-            name='act_quantizer',
-            precision=self.quantization.act_params.precision
-            if self.quantization.act_params
-            else None,
+        aqt.create_tensor_quantizer(
+            'aqt_quantizer', self.quantization.act_params
         ),
     )
     self.create_child(
         'weight_quantizer',
-        pax_fiddle.Config(
-            aqt.TensorQuantizer,
-            name='weight_quantizer',
-            precision=self.quantization.weight_params.precision,
+        aqt.create_tensor_quantizer(
+            'weight_quantizer', self.quantization.weight_params
         ),
     )
 

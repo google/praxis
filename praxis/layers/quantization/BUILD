@@ -82,7 +82,6 @@ pytype_strict_library(
         ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
-        "//praxis:pax_fiddle",
         "//praxis:pytypes",
         "//praxis/layers:attentions",
     ],
@@ -154,7 +153,6 @@ pytype_strict_library(
         ":quantization_hparams",
         # Implicit jax dependency.
         "//praxis:base_layer",
-        "//praxis:pax_fiddle",
         "//praxis:pytypes",
         "//praxis/layers:linears",
     ],
@@ -298,8 +296,10 @@ pytype_strict_library(
     srcs = ["aqt.py"],
     srcs_version = "PY3",
     deps = [
+        ":quantization_hparams",
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:pytypes",
     ],
 )
@@ -312,6 +312,7 @@ py_strict_test(
     deps = [
         ":aqt",
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         "//praxis:pax_fiddle",
         "//praxis:pytypes",

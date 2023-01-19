@@ -271,16 +271,17 @@ class QuantizeLinearTest(test_utils.TestCase):
     # Check ParititionSpecs.
     pspec, _ = layer.apply(
         initial_vars, mutable=[], method=layer.quantized_partitioned_specs)
-    exepected_pspec = {
+    expected_pspec = {
         'params': {
-            'w':
-                base_layer.BoxedPartitionSpec(
-                    meta=pjit.PartitionSpec('mdl', 'data')),
-            'w_quantized_scale':
-                base_layer.BoxedPartitionSpec(meta=pjit.PartitionSpec('data'))
+            'w': base_layer.BoxedPartitionSpec(
+                meta=pjit.PartitionSpec('mdl', 'data')
+            ),
+            'w_quantized_scale': base_layer.BoxedPartitionSpec(
+                meta=pjit.PartitionSpec('data')
+            ),
         }
     }
-    self.assertEqual(pspec, exepected_pspec)
+    self.assertEqual(pspec, expected_pspec)
 
   def test_aqt_quantize_weight(self):
     p = pax_fiddle.Config(
@@ -291,7 +292,8 @@ class QuantizeLinearTest(test_utils.TestCase):
             mode=QuantizationMode.MATERIALIZE,
             act_params=None,
             weight_params=quantization_hparams.WeightQuantizationParams(
-                precision=3
+                precision=3,
+                stop_scale_gradient=True,
             ),
         ),
     )
