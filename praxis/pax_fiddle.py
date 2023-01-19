@@ -337,7 +337,7 @@ def build(buildable):
   """Specialized version of `fdl.build` that respects the `DoNotBuild` tag.
 
   When building `buildable`, if any arguments are tagged with `DoNotBuild`,
-  then return them as-is, rather than building them.  This makes it posible
+  then return them as-is, rather than building them.  This makes it possible
   to keep templates unbuilt, so they can be used for deferred subtree building.
 
   Args:
@@ -357,7 +357,7 @@ def build(buildable):
         else:
           # Clear the flax module stack, to avoid having `nn.Module`s be auto-
           # parented to the current module.  This is important for directly
-          # instantiated *nested* descendents.
+          # instantiated *nested* descendants.
           with empty_flax_module_stack():
             arguments[key] = state.call(sub_value, daglish.Attr(key))
       return building.call_buildable(
