@@ -626,16 +626,10 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
     # Loop over num_microbatches + (num_stages - 1), where input to each iter
     # has the same shape as the loop state.
-    # TODO(zhangqiaorjc): Allow checkpoint policy customization.
     rematted_scan_fn = nn.remat(
         _scan_fn,
         prevent_cse=False,  # prevent_cse not required for scan.
-        policy=jax.checkpoint_policies.save_from_both_policies(
-            checkpoint_policy.custom_policy(self.checkpoint_policy),
-            checkpoint_policy.custom_policy(
-                AutodiffCheckpointType.SAVE_ITERATION_INPUT
-            ),
-        ),
+        policy=checkpoint_policy.custom_policy(self.checkpoint_policy),
     )
 
     # This nn.scan morally iterates through microbatches and feed each
