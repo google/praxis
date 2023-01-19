@@ -112,6 +112,7 @@ def reduce_precision(
     need_gradient: bool = False,
     bits: int = 8,
     optimization_on_bound: bool = False,
+    percentile: float = 1.0,
 ) -> Tuple[JTensor, JTensor]:
   """Reduce the precision of a tensor.
 
@@ -123,13 +124,17 @@ def reduce_precision(
     need_gradient: if gradient is needed out of this function.
     bits: target number of bits.
     optimization_on_bound: if MAE bound optimizer is used.
+    percentile: percentile factor to apply on the min/max range. Setting this to
+      other than 1.0 disables optimization_on_bound.
 
   Returns:
     the quantized tensor.
     the quantization scale.
   """
   min_value, max_value = _get_min_max(bits)
-  if optimization_on_bound:
+  if percentile < 1.0:
+    bound = jnp.multiply(bound, percentile)
+  elif optimization_on_bound:
     bound = optimization.get_best_bound(t, bound, min_value, max_value)
   scale = bound / max_value
   t = jnp.divide(t, scale)
@@ -151,6 +156,7 @@ def reduce_einsum_weight_precision(
     need_gradient: bool = False,
     bits: int = 8,
     optimization_on_bound: bool = False,
+    percentile: float = 1.0,
 ) -> Tuple[JTensor, JTensor]:
   """Reduce the precision of the weight of einsum.
 
@@ -164,6 +170,7 @@ def reduce_einsum_weight_precision(
     need_gradient: if gradient is needed out of this function.
     bits: target number of bits.
     optimization_on_bound: if MAE bound optimizer is used.
+    percentile: percentile factor to apply on the min/max range.
 
   Returns:
     A tuple of JTensors. The first one is the quantized weight and the second
@@ -183,7 +190,12 @@ def reduce_einsum_weight_precision(
   )
 
   t, scale = reduce_precision(
-      t, bound, need_gradient, bits, optimization_on_bound
+      t,
+      bound,
+      need_gradient,
+      bits,
+      optimization_on_bound,
+      percentile=percentile,
   )
   if squeeze:
     scale = jnp.squeeze(scale)

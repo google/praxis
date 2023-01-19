@@ -57,14 +57,14 @@ class ActQuantizationParams:
   precision: the precision (number of bits) for activation quantization.
   unsigned_int_bounds: whether or not to use unsigned_int_bounds.
   clipping_coeff: the coefficient to shrink the hard range for activation
-    quantization.
+    quantization. 1.0 means using hard min/max.
   stats_config: static values used for quantize activation.
     stats_config == None: dynamic activation quantization
     otherwise: static activation quantization
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
-  clipping_coeff: float = 0.0
+  clipping_coeff: float = 1.0
   # TODO(jihwanlee): Define stats config for static quantization
   stats_config = None
 
@@ -76,11 +76,11 @@ class WeightQuantizationParams:
   precision: the precision (number of bits) for activation quantization.
   unsigned_int_bounds: whether or not to use unsigned_int_bounds.
   clipping_coeff: the coefficient to shrink the hard range for activation
-    quantization.
+    quantization. 1.0 means using hard min/max.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
-  clipping_coeff: float = 0.0
+  clipping_coeff: float = 1.0
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):

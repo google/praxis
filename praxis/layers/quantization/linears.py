@@ -186,13 +186,18 @@ class Linear(linears.Linear):
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
     eqn = 'xy,yz->xz'
     bits = self.quantization.weight_params.precision
+    percentile = self.quantization.weight_params.clipping_coeff
     if self.quantization.quantization_type == QuantizationType.PTQ:
       if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
       else:
         q_w, q_s = operations.reduce_einsum_weight_precision(
-            eqn, theta.w, calculation_type=self.dtype, bits=bits
+            eqn,
+            theta.w,
+            calculation_type=self.dtype,
+            bits=bits,
+            percentile=percentile,
         )
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
     elif self.quantization.quantization_type == QuantizationType.FQ:
@@ -201,7 +206,11 @@ class Linear(linears.Linear):
             'Static activation quantization is not supported yet.')
       else:
         q_w, q_s = operations.reduce_einsum_weight_precision(
-            eqn, theta.w, calculation_type=self.dtype, bits=bits
+            eqn,
+            theta.w,
+            calculation_type=self.dtype,
+            bits=bits,
+            percentile=percentile,
         )
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
     elif self.quantization.quantization_type == QuantizationType.AQT:

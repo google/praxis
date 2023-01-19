@@ -272,6 +272,7 @@ class AttentionProjection(attentions.AttentionProjection):
     else:
       eqn = 'AD,DNH->ANH'
 
+    percentile = self.quantization.weight_params.clipping_coeff
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type == QuantizationType.PTQ:
       bits = self.quantization.weight_params.precision
@@ -282,6 +283,7 @@ class AttentionProjection(attentions.AttentionProjection):
           need_gradient=False,
           bits=bits,
           optimization_on_bound=False,
+          percentile=percentile,
       )
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
@@ -514,6 +516,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     """
     theta = self.theta
     eqn = 'AD,KDNH->KANH'
+    percentile = self.quantization.weight_params.clipping_coeff
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type == QuantizationType.PTQ:
       bits = self.quantization.weight_params.precision
@@ -524,6 +527,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
           need_gradient=False,
           bits=bits,
           optimization_on_bound=False,
+          percentile=percentile,
       )
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)

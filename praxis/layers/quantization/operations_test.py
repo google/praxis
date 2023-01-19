@@ -90,6 +90,23 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
     weight_nudged = operations.fakequant_einsum(eqn, weight)
     self.assertAllClose(weight, weight_nudged, rtol=0.02, atol=0.02)
 
+  def test_percentile(self):
+    weight = np.random.normal(-2.0, 2.0, (4, 3)).astype(np.float32)
+    reduced_weight, scale = operations.reduce_einsum_weight_precision(
+        'ab,bc->ac', weight, percentile=0.9
+    )
+    # Large value discrepancy is expected since we use 0.9 percentile.
+    # This just makes sure the percentile logic is correct. In practice, 0.9 is
+    # small for any real use case.
+    tol = 0.5
+    self.assertEqual(scale.shape, (3,))
+    self.assertAllClose(
+        weight,
+        jnp.multiply(reduced_weight, scale).astype(jnp.float32),
+        rtol=tol,
+        atol=tol,
+    )
+
   def test_reduce_activation_precision(self):
     act = np.random.normal(-1.0, 1.0, [10, 100]).astype(np.float32)
     act_nudged = operations.fakequant_activation(act)
