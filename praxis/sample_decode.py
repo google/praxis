@@ -254,7 +254,9 @@ def top_p_mask_logits(
 
   Args:
     logits: logits of shape [B, T].
-    p: a scalar.
+    p: A scalar or a JTensor of shape [B]. In practice this means selecting the
+    highest probability tokens whose cumulative probability mass exceeds this
+    pre-chosen threshold p.
     logits_is_sorted: where or not the logits is sorted.
 
   Returns:
@@ -271,7 +273,7 @@ def top_p_mask_logits(
     logits_sorted = jnp.sort(logits, axis=-1)
   sorted_cum_probs = jnp.cumsum(
       jax.nn.softmax(logits_sorted.astype(jnp.float32), axis=-1), axis=-1)
-  cutoff_idx = jnp.sum((sorted_cum_probs <= 1.0 - p).astype(jnp.int32), axis=-1)
+  cutoff_idx = jnp.sum((sorted_cum_probs <= p).astype(jnp.int32), axis=-1)
   cutoff_logit = logits_sorted[jnp.arange(batch_size), cutoff_idx]
   logits = jnp.where(logits < jnp.expand_dims(cutoff_logit, -1),
                      py_utils.get_large_negative_number(logits.dtype), logits)

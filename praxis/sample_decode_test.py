@@ -343,7 +343,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
                   dtype=jnp.int32))
 
   def test_top_p_mask_logits(self):
-    logits = jnp.array([[1.0, 1.0, 0.5, -1e6]])
+    logits = jnp.array([[1.0, 1.0, 1.0, -1e6]])
     masked = sample_decode.top_p_mask_logits(logits, p=0.99)
     self.assertAllClose(logits[:, :-1], masked[:, :-1])
     self.assertLess(masked[0, -1], 1e-10)

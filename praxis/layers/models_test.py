@@ -809,13 +809,13 @@ class LanguageModelTest(test_utils.TestCase):
       # Gumbel noise will make some difference between samples.
       self.assertArraysEqual(
           results.output_ids,
-          np.array([[[11, 13, 4, 3, 3, 4, 0], [11, 13, 4, 3, 3, 4, 0]],
-                    [[12, 3, 4, 2, 0, 0, 0], [12, 3, 4, 2, 0, 0, 0]],
+          np.array([[[11, 13, 4, 3, 3, 4, 0], [11, 13, 4, 0, 3, 4, 0]],
+                    [[12, 3, 4, 2, 0, 0, 0], [12, 3, 4, 0, 0, 0, 0]],
                     [[20, 3, 2, 0, 0, 0, 0], [20, 3, 2, 0, 0, 0, 0]]],
                    dtype=np.int32))
       self.assertArraysEqual(
           results.decode_lengths,
-          np.array([[6, 6], [4, 4], [3, 3]], dtype=np.int32),
+          np.array([[6, 6], [4, 5], [3, 3]], dtype=np.int32),
       )
 
   def test_sample_decoding_prefix_and_eos_sample_equal_one(self):
