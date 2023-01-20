@@ -919,8 +919,10 @@ def timeit(min_elapsed: float = 1e-6) -> Iterator[RunningPeriod]:
     period.end = time.time()
 
 
+# We use Any types to allow nested data structures. They are defined in pytypes
+# which would cause a circular dependency.
 def filter_by_matching_keys(
-    batch: NestedMap,
+    batch: Any,
     prefixes: Sequence[str] = ()) -> Tuple[NestedMap, NestedMap]:
   """Filter a map into one that matches any prefix and one that doesn't."""
 
@@ -931,8 +933,13 @@ def filter_by_matching_keys(
 
     return False
 
-  matching = batch.FilterKeyVal(lambda k, _: _matching_fn(k))
-  non_matching = batch.FilterKeyVal(lambda k, _: not _matching_fn(k))
+  matching = NestedMap()
+  non_matching = NestedMap()
+  for k in batch.keys():
+    if _matching_fn(k):
+      matching[k] = batch[k]
+    else:
+      non_matching[k] = batch[k]
 
   return matching, non_matching
 
