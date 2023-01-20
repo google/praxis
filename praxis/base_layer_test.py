@@ -382,7 +382,6 @@ class BaseLayerTest(test_utils.TestCase):
     hparams_stub = layer.hparams
     with self.subTest('fields'):
       self.assertIsInstance(hparams_stub, base_layer._FiddleHParamsInstanceStub)
-      self.assertEqual(hparams_stub.cls, Layer)
       self.assertEqual(hparams_stub.x, 3)
       self.assertEqual(hparams_stub.fprop_dtype, jnp.float16)
       self.assertEqual(hparams_stub.dtype, jnp.float32)
@@ -390,6 +389,8 @@ class BaseLayerTest(test_utils.TestCase):
       self.assertEqual(hparams_stub.name, 'my_layer')
       with self.assertRaises(AttributeError):
         hparams_stub.parent  # pylint: disable=pointless-statement
+      with self.assertRaises(AttributeError):
+        self.assertEqual(hparams_stub.cls, Layer)
 
     with self.subTest('clone'):
       cloned = hparams_stub.clone()

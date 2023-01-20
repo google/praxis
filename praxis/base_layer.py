@@ -1322,7 +1322,10 @@ class _FiddleHParamsInstanceStub:
 
   @property
   def cls(self):
-    return type(self._base_layer)
+    layer_type = type(self._base_layer)
+    type_name = f'{layer_type.__module__}.{layer_type.__qualname__}'
+    raise AttributeError(f'{type_name}.hparams.cls is deprecated; Please use '
+                         f'`type({type_name})` instead.')
 
   def to_text(self, include_types: bool = False, separator: str = ':'):
     return base_hyperparams.nested_struct_to_text(
