@@ -172,6 +172,10 @@ class BaseLayerTest(test_utils.TestCase):
         base_layer.SummaryType.TEXT,
         base_layer.get_summary_base_type(
             base_layer.SummaryType.TEXT))
+    self.assertEqual(
+        base_layer.SummaryType.VIDEO,
+        base_layer.get_summary_base_type(
+            base_layer.SummaryType.VIDEO))
 
   def test_quantize(self):
     layer_p = pax_fiddle.Config(Identity, name='test_identity')

@@ -803,6 +803,9 @@ class SummaryType(enum.Enum):
   IMAGE = 2
   TEXT = 5
   AUDIO = 6
+  # VIDEO summaries can be added to tensorboard using VideoSummaryMetric under
+  # pax multimodal metrics but not add_summary.
+  VIDEO = 7
 
   # Like SCALAR, but this type indicates that this data is suitable for use
   # with sensitive data.
