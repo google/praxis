@@ -199,17 +199,12 @@ def for_transformer(num_bits: int = 8):
         mode = quantization_hparams.QuantizationMode.TRAINING
         quantization_type = quantization_hparams.QuantizationType.FQ
         assert num_bits == 8 or num_bits == 4
-        weight_quantization_params = (
-            quantization_hparams.WeightQuantizationParams(
-                precision=num_bits,
-            )
-        )
         set_quantization(
             task_p.model,
             layers.transformers.Transformer,
             quantization_type=quantization_type,
             mode=mode,
-            weight_quantization_params=weight_quantization_params,
+            num_bits=num_bits,
         )
         return task_p
 
@@ -223,9 +218,7 @@ def set_quantization(
     target: Type[base_layer.BaseLayer] = layers.transformers.Transformer,
     quantization_type: quantization_hparams.QuantizationType = quantization_hparams.QuantizationType.PTQ,
     mode: quantization_hparams.QuantizationMode = quantization_hparams.QuantizationMode.INFERENCE,
-    weight_quantization_params: Optional[
-        quantization_hparams.WeightQuantizationParams
-    ] = None,
+    num_bits: int = 8,
 ):
   """Sets quantization parameters for 'target' in 'config'.
 
@@ -234,8 +227,11 @@ def set_quantization(
     target: The target component to be replaced.
     quantization_type: The quantization types (PTQ, FQ, AQT etc)
     mode: The quantization modes (INFERENCE, TRAINING, MATERIALIZE etc)
-    weight_params: The weight quantization parameters.
+    num_bits: The number of bits used for quantization.
   """
+  weight_quantization_params = quantization_hparams.WeightQuantizationParams(
+      precision=num_bits
+  )
   target_tpls = find_target_tpl(config, target)
   for target_tpl in target_tpls:
     quantize_transformer_layer_weights(
