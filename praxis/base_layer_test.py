@@ -27,6 +27,7 @@ from flax import core as flax_core
 from flax import linen as nn
 import jax
 import jax.numpy as jnp
+from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import test_utils
@@ -390,16 +391,12 @@ class BaseLayerTest(test_utils.TestCase):
 
     hparams_stub = layer.hparams
     with self.subTest('fields'):
-      self.assertIsInstance(hparams_stub, base_layer._FiddleHParamsInstanceStub)
+      self.assertIsInstance(hparams_stub, pax_fiddle.Config)
       self.assertEqual(hparams_stub.x, 3)
       self.assertEqual(hparams_stub.fprop_dtype, jnp.float16)
       self.assertEqual(hparams_stub.dtype, jnp.float32)
       self.assertEqual(hparams_stub.mesh_shape, [3, 8])
       self.assertEqual(hparams_stub.name, 'my_layer')
-      with self.assertRaises(AttributeError):
-        hparams_stub.parent  # pylint: disable=pointless-statement
-      with self.assertRaises(AttributeError):
-        self.assertEqual(hparams_stub.cls, Layer)
 
     with self.subTest('clone'):
       cloned = hparams_stub.clone()
@@ -433,7 +430,8 @@ class BaseLayerTest(test_utils.TestCase):
           ])
           + '\n'
       )
-      self.assertEqual(hparams_stub.to_text(), expected_to_text)
+      actual_to_text = base_hyperparams.nested_struct_to_text(hparams_stub)
+      self.assertEqual(actual_to_text, expected_to_text)
 
     with self.subTest('can_deepcopy'):
       copy.deepcopy(hparams_stub)

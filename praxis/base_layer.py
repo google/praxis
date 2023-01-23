@@ -1273,66 +1273,6 @@ class _FiddleHParamsClassStubDescriptor:
     return _FiddleHParamsClassStub(objtype)
 
 
-class _FiddleHParamsInstanceStub:
-  """Backwards-compatibility stub for `hparams` attribute in `BaseLayer`.
-
-  Can be used to read attributes (e.g. `my_layer.hparams.dtype`).
-
-  Can be cloned to generate a `fdl.Config` object (`my_layer.hparams.clone()`).
-
-  TODO(b/249483164): Remove this stub once the HParams->Fiddle migration is
-  complete.
-  """
-
-  def __init__(self, base_layer: BaseLayer):
-    self._base_layer = base_layer
-
-  def __getattr__(self, name):
-    if '_base_layer' not in self.__dict__:
-      # `copy.copy` bypasses the constructor, so it's possible to have a
-      # _FiddleHParamsInstanceStub that doesn't have a _base_layer yet.
-      raise AttributeError(f'{self} has no attribute {name!r}')
-    if name not in self._base_layer._hparam_fields or name == 'parent':
-      raise AttributeError(
-          f'{type(self._base_layer)}.HParams has no attribute {name!r}'
-      )
-    value = getattr(self._base_layer, name)
-    if isinstance(value, BaseLayer):
-      value = value.hparams
-    return value
-
-  @property
-  def mesh_shape(self):
-    return self._base_layer.mesh_shape
-
-  def clone(self):
-    """Returns a fdl.Config for the wrapped BaseLayer.
-
-    Does not include child layers.
-    """
-    kwargs = {}
-    for field in dataclasses.fields(self._base_layer):
-      if field.name == 'parent' or not field.init:
-        continue
-      value = getattr(self._base_layer, field.name)
-      if isinstance(value, BaseLayer):
-        continue  # For now all children are built by setup().
-      kwargs[field.name] = value
-    return pax_fiddle.Config(type(self._base_layer), **kwargs)
-
-  @property
-  def cls(self):
-    layer_type = type(self._base_layer)
-    type_name = f'{layer_type.__module__}.{layer_type.__qualname__}'
-    raise AttributeError(f'{type_name}.hparams.cls is deprecated; Please use '
-                         f'`type({type_name})` instead.')
-
-  def to_text(self, include_types: bool = False, separator: str = ':'):
-    return base_hyperparams.nested_struct_to_text(
-        self.clone(), include_types, separator
-    )
-
-
 class BaseLayer(nn.Module):
   """Base class for layers that are configured using Fiddle.
 
@@ -1446,13 +1386,25 @@ class BaseLayer(nn.Module):
   # Fetches variables from flax 'params' class via theta "dot" syntax.
   theta = ThetaDescriptor()
 
+  def _to_fdl_config(self) -> pax_fiddle.Config[BaseLayer]:
+    """Returns a `fdl.Config` template for this BaseLayer."""
+    kwargs = {}
+    for field in dataclasses.fields(self):
+      if field.name == 'parent' or not field.init:
+        continue
+      value = getattr(self, field.name)
+      if isinstance(value, BaseLayer):
+        value = value.hparams
+      kwargs[field.name] = value
+    return pax_fiddle.Config(type(self), **kwargs)
+
   # Compatibility stub:
   # `self.hparams` returns a Fiddle Config that can be used to build self.
-  hparams = functools.cached_property(_FiddleHParamsInstanceStub)
+  hparams = functools.cached_property(_to_fdl_config)
 
   @staticmethod
   def copy_base_hparams(
-      source: Union[pax_fiddle.Config, BaseLayer, _FiddleHParamsInstanceStub],
+      source: Union[pax_fiddle.Config, BaseLayer],
       target: pax_fiddle.Config,
   ):
     """Copies BaseLayer configuration parameters from `source` to `target`.
@@ -1467,7 +1419,7 @@ class BaseLayer(nn.Module):
       target: The configuration object to copy parameters to.  Mutated in-place.
     """
     assert isinstance(
-        source, (pax_fiddle.Config, BaseLayer, _FiddleHParamsInstanceStub)
+        source, (pax_fiddle.Config, BaseLayer)
     ), source
     assert isinstance(target, pax_fiddle.Config), target
     if isinstance(source, pax_fiddle.Config):
@@ -2148,7 +2100,7 @@ class BaseLayer(nn.Module):
       self, name: str, params: pax_fiddle.Config[BaseLayer]
   ) -> BaseLayer:
     """Creates and returns a child (w/o adding it as an attribute of `self`)."""
-    if not isinstance(params, (pax_fiddle.Config, _FiddleHParamsInstanceStub)):
+    if not isinstance(params, pax_fiddle.Config):
       msg = ('Expected templates for `create_child` to be Fiddle Configs; got '
              f'{type(params)}.')
       if isinstance(params, BaseLayer):

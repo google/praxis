@@ -427,6 +427,7 @@ pytype_strict_contrib_test(
     srcs = ["base_layer_test.py"],
     tags = ["fast_and_reliable_fiddle_integration_test"],
     deps = [
+        ":base_hyperparams",
         ":base_layer",
         ":pax_fiddle",
         ":test_utils",
