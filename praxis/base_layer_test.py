@@ -177,6 +177,15 @@ class BaseLayerTest(test_utils.TestCase):
         base_layer.get_summary_base_type(
             base_layer.SummaryType.VIDEO))
 
+  def test_summary_callable(self):
+    a = jnp.array([1., 2.], dtype=jnp.float32)
+    with base_layer.JaxContext.new_context() as context:
+      summary_dict = context.summary_dict
+      summary_dict.add_summary('a', lambda: a,
+                               base_layer.SummaryType.SCALAR)
+
+      self.assertEqual(a, summary_dict.dict['a'])
+
   def test_quantize(self):
     layer_p = pax_fiddle.Config(Identity, name='test_identity')
     layer = base_layer.instantiate(layer_p)

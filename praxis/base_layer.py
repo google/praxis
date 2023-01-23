@@ -1832,15 +1832,18 @@ class BaseLayer(nn.Module):
 
   @nn.nowrap
   def add_summary(self,
-      name: str,
-      tensor: JTensor,
-      summary_type: SummaryType = SummaryType.SCALAR,
+                  name: str,
+                  tensor: Union[JTensor, Callable[[], JTensor]],
+                  summary_type: SummaryType = SummaryType.SCALAR,
                   verbosity: int = 2) -> None:
     """Add a tensor to the SUMMARIES collection.
 
     Args:
       name: name of the summary to be collected.
-      tensor: the tensor containing the value to be written.
+      tensor: the tensor containing the value to be written or a
+        callable to evaluate to determine the value to be written.  A callable
+        can be used in situations where early evaluation of the tensor might
+        break specialized evaluation, e.g. jax2tf.
       summary_type: enum value indicating what type of summary is being added.
       verbosity: verbosity level of the summary being written. If this verbosity
         value is higher (less verbose) than that of the JaxContext the summary
@@ -1852,6 +1855,9 @@ class BaseLayer(nn.Module):
     if (JaxContext.has_context() and
         verbosity > self.jax_context.summary_verbosity):
       return
+
+    if isinstance(tensor, Callable):
+      tensor = tensor()
 
     next_iter = 0
     summary_name = name
