@@ -47,13 +47,65 @@ explicitly set `value_str`-like argument to get nice error message, e.g.:
       left_strict=True,
       right_strict=False,
       value_str=f'p.dropout_rate={p.dropout_rate}')
+
+Assertions can be disabled by using an AssertsContext.  This is useful
+when evaluating under jax2tf where shape are unknown at evaluation time,
+causing assertion failures.  AssertsContext works as follows:
+
+  with AssertsContext(enabled=False):
+    asserts.eq(1,0) # Will not throw an assertion.
 """
 
+import dataclasses
 import inspect
 from typing import Any, List, Optional, Sequence, Type
 
 import jax
 from jax.core import InconclusiveDimensionOperation
+from praxis import py_utils
+
+_AssertsContextStack = py_utils.ThreadLocalStack()
+
+
+@dataclasses.dataclass
+class AssertsContext:
+  """Context to control assertions.
+
+  The AssertsContext provide a way to disable all assertions.  This is typically
+  intended to be used with jax2tf, where shapes may be unknown at evaluation
+  time due to polymorphism.
+
+  AssertsContexts can be nested if needed.
+
+  Attributes:
+    enabled: Boolean controlling whether assertions are enabled or not.
+  """
+
+  enabled: bool = True
+
+  def __enter__(self) -> 'AssertsContext':
+    _AssertsContextStack.stack.append(self)
+    return self
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    assert _AssertsContextStack.stack
+    assert _AssertsContextStack.stack[-1] is self
+    _AssertsContextStack.stack.pop()
+
+  @staticmethod
+  def assertions_enabled() -> bool:
+    """Returns whether assertions are enabled.
+
+    This will find the most recent assertion context and return whether
+    assertions are enabled for the most recently created context.  If there is
+    no current context, defaults to True.
+
+    Returns:
+      Whether assertions are enabled, defaulting to True if no context exists.
+    """
+    if not _AssertsContextStack.stack:
+      return True
+    return _AssertsContextStack.stack[-1].enabled
 
 
 def _retrieve_argnames(assert_name: str) -> Optional[List[str]]:
@@ -125,11 +177,13 @@ def _get_value_str(value: Any, arguments: Sequence[str], index: int = 0) -> str:
   return f'{value}'
 
 
-def none(value: Any,
-         *,
-         value_str: Optional[str] = None,
-         msg: Optional[str] = None,
-         exception_type: Type[Exception] = ValueError) -> None:
+def none(
+    value: Any,
+    *,
+    value_str: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `value` is None and raises an exception otherwise.
 
   Args:
@@ -139,6 +193,8 @@ def none(value: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
+  if not AssertsContext.assertions_enabled():
+    return
   if value is None:
     return
   if msg:
@@ -151,11 +207,13 @@ def none(value: Any,
   raise exception_type(error_msg)
 
 
-def not_none(value: Any,
-             *,
-             value_str: Optional[str] = None,
-             msg: Optional[str] = None,
-             exception_type: Type[Exception] = ValueError) -> None:
+def not_none(
+    value: Any,
+    *,
+    value_str: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `value` is not None and raises an exception otherwise.
 
   Args:
@@ -165,6 +223,8 @@ def not_none(value: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
+  if not AssertsContext.assertions_enabled():
+    return
   if value is not None:
     return
   if msg:
@@ -177,13 +237,15 @@ def not_none(value: Any,
   raise exception_type(error_msg)
 
 
-def eq(value1: Any,
-       value2: Any,
-       *,
-       value_str1: Optional[str] = None,
-       value_str2: Optional[str] = None,
-       msg: Optional[str] = None,
-       exception_type: Type[Exception] = ValueError) -> None:
+def eq(
+    value1: Any,
+    value2: Any,
+    *,
+    value_str1: Optional[str] = None,
+    value_str2: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `value1` and `value2` are equal.
 
   Raises an exception otherwise.
@@ -198,6 +260,8 @@ def eq(value1: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
+  if not AssertsContext.assertions_enabled():
+    return
   if value1 == value2:
     return
   if msg:
@@ -213,13 +277,15 @@ def eq(value1: Any,
   raise exception_type(error_msg)
 
 
-def ne(value1: Any,
-       value2: Any,
-       *,
-       value_str1: Optional[str] = None,
-       value_str2: Optional[str] = None,
-       msg: Optional[str] = None,
-       exception_type: Type[Exception] = ValueError) -> None:
+def ne(
+    value1: Any,
+    value2: Any,
+    *,
+    value_str1: Optional[str] = None,
+    value_str2: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `value1` and `value2` are not equal.
 
   Raises an exception otherwise.
@@ -234,6 +300,8 @@ def ne(value1: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
+  if not AssertsContext.assertions_enabled():
+    return
   if value1 != value2:
     return
   if msg:
@@ -249,12 +317,14 @@ def ne(value1: Any,
   raise exception_type(error_msg)
 
 
-def instance(value: Any,
-             instances: Any,
-             *,
-             value_str: Optional[str] = None,
-             msg: Optional[str] = None,
-             exception_type: Type[Exception] = ValueError) -> None:
+def instance(
+    value: Any,
+    instances: Any,
+    *,
+    value_str: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `value` is of `instance` type.
 
   Raises an exception otherwise.
@@ -267,6 +337,8 @@ def instance(value: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
+  if not AssertsContext.assertions_enabled():
+    return
   if isinstance(value, instances):
     return
   if msg:
@@ -279,12 +351,14 @@ def instance(value: Any,
   raise exception_type(error_msg)
 
 
-def subclass(value: Any,
-             subclasses: Any,
-             *,
-             value_str: Optional[str] = None,
-             msg: Optional[str] = None,
-             exception_type: Type[Exception] = ValueError) -> None:
+def subclass(
+    value: Any,
+    subclasses: Any,
+    *,
+    value_str: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `value` is a subclass of one of the provided `subclasses`.
 
   Raises an exception otherwise.
@@ -297,6 +371,8 @@ def subclass(value: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
+  if not AssertsContext.assertions_enabled():
+    return
   if issubclass(value, subclasses):
     return
   if msg:
@@ -309,13 +385,15 @@ def subclass(value: Any,
   raise exception_type(error_msg)
 
 
-def le(value1: Any,
-       value2: Any,
-       *,
-       value_str1: Optional[str] = None,
-       value_str2: Optional[str] = None,
-       msg: Optional[str] = None,
-       exception_type: Type[Exception] = ValueError) -> None:
+def le(
+    value1: Any,
+    value2: Any,
+    *,
+    value_str1: Optional[str] = None,
+    value_str2: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `value1 <= value2`.
 
   Raises an exception otherwise.
@@ -330,6 +408,8 @@ def le(value1: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
+  if not AssertsContext.assertions_enabled():
+    return
   if value1 <= value2:
     return
   if msg:
@@ -345,13 +425,15 @@ def le(value1: Any,
   raise exception_type(error_msg)
 
 
-def lt(value1: Any,
-       value2: Any,
-       *,
-       value_str1: Optional[str] = None,
-       value_str2: Optional[str] = None,
-       msg: Optional[str] = None,
-       exception_type: Type[Exception] = ValueError) -> None:
+def lt(
+    value1: Any,
+    value2: Any,
+    *,
+    value_str1: Optional[str] = None,
+    value_str2: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `value1 < value2`.
 
   Raises an exception otherwise.
@@ -366,6 +448,8 @@ def lt(value1: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
+  if not AssertsContext.assertions_enabled():
+    return
   if value1 < value2:
     return
   if msg:
@@ -381,13 +465,15 @@ def lt(value1: Any,
   raise exception_type(error_msg)
 
 
-def ge(value1: Any,
-       value2: Any,
-       *,
-       value_str1: Optional[str] = None,
-       value_str2: Optional[str] = None,
-       msg: Optional[str] = None,
-       exception_type: Type[Exception] = ValueError) -> None:
+def ge(
+    value1: Any,
+    value2: Any,
+    *,
+    value_str1: Optional[str] = None,
+    value_str2: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `value1 >= value2`.
 
   Raises an exception otherwise.
@@ -402,6 +488,8 @@ def ge(value1: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
+  if not AssertsContext.assertions_enabled():
+    return
   if value1 >= value2:
     return
   if msg:
@@ -414,17 +502,20 @@ def ge(value1: Any,
       if value_str2 is None:
         value_str2 = _get_value_str(value2, arguments, index=1)
     error_msg = (
-        f'`{value_str1}` must be greater than or equal to `{value_str2}`.')
+        f'`{value_str1}` must be greater than or equal to `{value_str2}`.'
+    )
   raise exception_type(error_msg)
 
 
-def gt(value1: Any,
-       value2: Any,
-       *,
-       value_str1: Optional[str] = None,
-       value_str2: Optional[str] = None,
-       msg: Optional[str] = None,
-       exception_type: Type[Exception] = ValueError) -> None:
+def gt(
+    value1: Any,
+    value2: Any,
+    *,
+    value_str1: Optional[str] = None,
+    value_str2: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `value1 > value2`.
 
   Raises an exception otherwise.
@@ -439,6 +530,8 @@ def gt(value1: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
+  if not AssertsContext.assertions_enabled():
+    return
   if value1 > value2:
     return
   if msg:
@@ -454,12 +547,14 @@ def gt(value1: Any,
   raise exception_type(error_msg)
 
 
-def in_set(value: Any,
-           elements: Sequence[Any],
-           *,
-           value_str: Optional[str] = None,
-           msg: Optional[str] = None,
-           exception_type: Type[Exception] = ValueError) -> None:
+def in_set(
+    value: Any,
+    elements: Sequence[Any],
+    *,
+    value_str: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `value` is within the valid `elements`.
 
   Raises an exception otherwise.
@@ -472,6 +567,8 @@ def in_set(value: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
+  if not AssertsContext.assertions_enabled():
+    return
   try:
     if value in elements:
       return
@@ -495,15 +592,17 @@ def in_set(value: Any,
   raise exception_type(error_msg)
 
 
-def between(value: Any,
-            min_value: Any,
-            max_value: Any,
-            *,
-            left_strict: bool = False,
-            right_strict: bool = False,
-            value_str: Optional[str] = None,
-            msg: Optional[str] = None,
-            exception_type: Type[Exception] = ValueError) -> None:
+def between(
+    value: Any,
+    min_value: Any,
+    max_value: Any,
+    *,
+    left_strict: bool = False,
+    right_strict: bool = False,
+    value_str: Optional[str] = None,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
   """Checks that `min_value </= value </= max_value`.
 
   Raises an exception otherwise.
@@ -519,11 +618,18 @@ def between(value: Any,
     msg: Optional exception message overriding the default one.
     exception_type: Type of exception to raise.
   """
-  if ((left_strict and right_strict and min_value < value < max_value) or
-      (not left_strict and right_strict and min_value <= value < max_value) or
-      (left_strict and not right_strict and min_value < value <= max_value) or
-      (not left_strict and not right_strict and
-       min_value <= value <= max_value)):
+  if not AssertsContext.assertions_enabled():
+    return
+  if (
+      (left_strict and right_strict and min_value < value < max_value)
+      or (not left_strict and right_strict and min_value <= value < max_value)
+      or (left_strict and not right_strict and min_value < value <= max_value)
+      or (
+          not left_strict
+          and not right_strict
+          and min_value <= value <= max_value
+      )
+  ):
     return
   if msg:
     error_msg = msg
@@ -533,15 +639,21 @@ def between(value: Any,
       value_str = _get_value_str(value, arguments)
     left_bracket = '(' if left_strict else '['
     right_bracket = ')' if right_strict else ']'
-    error_msg = (f'`{value_str}` must be in the range '
-                 f'`{left_bracket}{min_value}, {max_value}{right_bracket}`.')
+    error_msg = (
+        f'`{value_str}` must be in the range '
+        f'`{left_bracket}{min_value}, {max_value}{right_bracket}`.'
+    )
   raise exception_type(error_msg)
 
 
-def assert_same_structure(x: Any,
-                          y: Any,
-                          msg: Optional[str] = None,
-                          exception_type: Type[Exception] = ValueError) -> None:
+def assert_same_structure(
+    x: Any,
+    y: Any,
+    msg: Optional[str] = None,
+    exception_type: Type[Exception] = ValueError,
+) -> None:
+  if not AssertsContext.assertions_enabled():
+    return
   # Jax doesn't recognize NestedMap so it is treated as a customnode
   if hasattr(x, 'ToNestedDict'):
     x = x.ToNestedDict()
@@ -564,7 +676,9 @@ def assert_same_structure(x: Any,
   if msg:
     error_msg = msg
   else:
-    error_msg = ('Not the same structure\n'
-                 f'Entire first structure: `{x}`\n'
-                 f'Entire second structure: `{y}`\n')
+    error_msg = (
+        'Not the same structure\n'
+        f'Entire first structure: `{x}`\n'
+        f'Entire second structure: `{y}`\n'
+    )
   raise exception_type(error_msg)

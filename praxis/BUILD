@@ -30,6 +30,7 @@ pytype_strict_library(
     name = "asserts",
     srcs = ["asserts.py"],
     deps = [
+        ":py_utils",
         # Implicit jax dependency.
     ],
 )
