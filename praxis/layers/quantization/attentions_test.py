@@ -453,7 +453,8 @@ class QuantizeAttentionTest(test_utils.TestCase):
     self.assertEqual(res[base_layer.PARAMS]['w_quantized_scale'].shape, (16,))
 
     pspec, _ = layer.apply(
-        initial_vars, mutable=[], method=layer.quantized_partitioned_specs)
+        initial_vars, mutable=[], method=layer.quantized_partition_specs
+    )
     expected_pspec = {
         'params': {
             'w': base_layer.BoxedPartitionSpec(
@@ -503,7 +504,8 @@ class QuantizeAttentionTest(test_utils.TestCase):
                      (3, 6, 2))
 
     pspec, _ = layer.apply(
-        initial_vars, mutable=[], method=layer.quantized_partitioned_specs)
+        initial_vars, mutable=[], method=layer.quantized_partition_specs
+    )
     expected_pspec = {
         'params': {
             'w': base_layer.BoxedPartitionSpec(

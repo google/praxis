@@ -271,7 +271,8 @@ class RepeatsQuantizeTest(test_utils.TestCase):
     self.assertEqual(shapes, expected_shapes)
 
     pspecs, _ = ffn.apply(
-        init_vars, mutable=[], method=ffn.quantized_partitioned_specs)
+        init_vars, mutable=[], method=ffn.quantized_partition_specs
+    )
     expected_pspecs = {
         'non_trainable': {
             'sub': {

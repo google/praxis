@@ -270,7 +270,8 @@ class QuantizeLinearTest(test_utils.TestCase):
 
     # Check ParititionSpecs.
     pspec, _ = layer.apply(
-        initial_vars, mutable=[], method=layer.quantized_partitioned_specs)
+        initial_vars, mutable=[], method=layer.quantized_partition_specs
+    )
     expected_pspec = {
         'params': {
             'w': base_layer.BoxedPartitionSpec(

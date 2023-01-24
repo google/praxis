@@ -2149,7 +2149,7 @@ class BaseLayer(nn.Module):
     """
     return self._quantize_fn(return_pspec=False)
 
-  def quantized_partitioned_specs(self) -> Any:
+  def quantized_partition_specs(self) -> Any:
     """Get quantization spec for the current layer and its children layer(s).
 
     Returns:
@@ -2183,7 +2183,7 @@ class BaseLayer(nn.Module):
     for name, child in self._private_children.items():
       # example child_res {'params': {a:{}, b:{}}, 'non-trainable':{a:{}}}
       if return_pspec:
-        child_res = child.quantized_partitioned_specs()
+        child_res = child.quantized_partition_specs()
       else:
         child_res = child.quantize_weight()
       for child_target in child_res:

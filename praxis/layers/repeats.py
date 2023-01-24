@@ -195,7 +195,7 @@ class Repeat(base_layer.BaseLayer):
     """
     return self._quantize_fn(return_pspec=False)
 
-  def quantized_partitioned_specs(self) -> Any:
+  def quantized_partition_specs(self) -> Any:
     """Get quantization spec for the current layer and it's children layer(s).
 
     Returns:
@@ -217,7 +217,7 @@ class Repeat(base_layer.BaseLayer):
 
     def body_fn(sub, _):
       if return_pspec:
-        res = sub.quantized_partitioned_specs()
+        res = sub.quantized_partition_specs()
       else:
         res = sub.quantize_weight()
       return None, res

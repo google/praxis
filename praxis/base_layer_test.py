@@ -196,7 +196,8 @@ class BaseLayerTest(test_utils.TestCase):
     res, _ = layer.apply(init_vars, mutable=[], method=layer.quantize_weight)
     self.assertEqual(res, {})
     pspec, _ = layer.apply(
-        init_vars, mutable=[], method=layer.quantized_partitioned_specs)
+        init_vars, mutable=[], method=layer.quantized_partition_specs
+    )
     self.assertEqual(pspec, {})
 
   @parameterized.parameters((0, 2), (3, 0), (1, 4))

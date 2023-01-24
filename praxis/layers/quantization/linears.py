@@ -142,7 +142,7 @@ class Linear(linears.Linear):
     out = base_layer.maybe_shard(out, ap_out, self.mesh_axis_names)
     return out
 
-  def quantized_partitioned_specs(self) -> Any:
+  def quantized_partition_specs(self) -> Any:
     """Get quantized PartitionSpec.
 
     Returns:

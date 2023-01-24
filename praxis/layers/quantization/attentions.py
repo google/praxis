@@ -225,7 +225,7 @@ class AttentionProjection(attentions.AttentionProjection):
       ret += theta.b
     return ret
 
-  def quantized_partitioned_specs(self) -> Any:
+  def quantized_partition_specs(self) -> Any:
     """Get quantized PartitionSpec.
 
     Returns:
@@ -471,7 +471,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     value_proj = checkpoint_name(value_proj, 'value_proj')
     return query_proj, key_proj, value_proj
 
-  def quantized_partitioned_specs(self) -> Any:
+  def quantized_partition_specs(self) -> Any:
     """Get quantized PartitionSpec.
 
     Returns:
@@ -598,7 +598,7 @@ class DotProductAttention(attentions.DotProductAttention):
           'Static activation quantization is not supported yet.'
       )
 
-  def quantized_partitioned_specs(self) -> Any:
+  def quantized_partition_specs(self) -> Any:
     """Get quantized PartitionSpec.
 
     Returns:

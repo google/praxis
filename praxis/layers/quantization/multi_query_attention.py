@@ -100,7 +100,7 @@ class OneHeadedAttentionProjection(
       ret += theta.b
     return ret
 
-  def quantized_partitioned_specs(self) -> Any:
+  def quantized_partition_specs(self) -> Any:
     """Get quantized PartitionSpec.
 
     Returns:
