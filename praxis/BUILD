@@ -176,22 +176,6 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
-    name = "learners",
-    srcs = ["learners.py"],
-    deps = [
-        ":asserts",
-        ":base_hyperparams",
-        ":base_layer",
-        ":optimizer_prefix_vectorization",
-        ":optimizers",
-        ":py_utils",
-        ":sgf",
-        # Implicit jax dependency.
-        # Implicit optax dependency.
-    ],
-)
-
-pytype_strict_library(
     name = "lingvo_lib",
     srcs = ["lingvo_lib.py"],
     deps = [
@@ -472,28 +456,6 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
-    ],
-)
-
-py_strict_test(
-    name = "learners_test",
-    srcs = ["learners_test.py"],
-    deps = [
-        ":asserts",
-        ":base_hyperparams",
-        ":base_layer",
-        ":learners",
-        ":optimizer_prefix_vectorization",
-        ":optimizers",
-        ":py_utils",
-        ":schedules",
-        ":test_utils",
-        # Implicit absl.logging dependency.
-        # Implicit absl.testing.absltest dependency.
-        # Implicit absl.testing.parameterized dependency.
-        # Implicit jax dependency.
-        # Implicit numpy dependency.
-        # Implicit optax dependency.
     ],
 )
 
