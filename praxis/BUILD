@@ -296,7 +296,6 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
-        ":py_utils",
         ":pytypes",
         # Implicit jax dependency.
         # Implicit optax dependency.
@@ -331,18 +330,6 @@ pytype_strict_library(
         # Implicit jax dependency.
         # Implicit numpy dependency.
         # Implicit tensorflow_no_contrib dependency.
-    ],
-)
-
-pytype_strict_library(
-    name = "train_states",
-    srcs = ["train_states.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":base_layer",
-        # Implicit flax.core dependency.
-        # Implicit jax dependency.
-        # Implicit optax dependency.
     ],
 )
 
@@ -414,7 +401,6 @@ py_strict_test(
         ":test_utils",
         # Implicit absl.flags dependency.
         # Implicit absl.testing.absltest dependency.
-        # Implicit fiddle dependency.
         # Implicit lingvo.core.base_input_generator dependency.
         # Implicit lingvo.core.generic_input dependency.
         # Implicit lingvo.core.py_utils dependency.
@@ -481,7 +467,6 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":decoder_utils",
         ":flat_beam_search",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
@@ -536,7 +521,6 @@ py_strict_test(
         ":base_layer",
         ":py_utils",
         ":test_utils",
-        ":train_states",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit flax.core dependency.

@@ -18,7 +18,7 @@
 import collections
 import re
 import time
-from typing import Any
+from typing import Any, List
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -31,7 +31,14 @@ import numpy as np
 from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
-from praxis import train_states
+
+
+class TrainState(struct.PyTreeNode):
+  """Simple train state."""
+
+  step: base_layer.JTensorOrPartitionSpec
+  mdl_vars: base_layer.NestedJTensorOrPartitionSpec
+  opt_states: List[base_layer.NestedJTensorOrPartitionSpec]
 
 
 class PyUtilsTest(test_utils.TestCase):
@@ -50,8 +57,9 @@ class PyUtilsTest(test_utils.TestCase):
         {'w': base_layer.WeightHParams(shape=(4, 8))},
         mesh_shape=[1, 1],
         device_axis_names=['a', 'b'])
-    train_state_partition_specs = train_states.TrainState(
-        step=pjit.PartitionSpec(), mdl_vars=w_sepc, opt_states={})
+    train_state_partition_specs = TrainState(
+        step=pjit.PartitionSpec(), mdl_vars=w_sepc, opt_states=[]
+    )
     nested_names = py_utils.extract_prefixed_keys_from_nested_map(
         train_state_partition_specs)
     flattened_names, _ = jax.tree_util.tree_flatten(nested_names)
