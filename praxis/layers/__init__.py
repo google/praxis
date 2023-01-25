@@ -104,6 +104,8 @@ from praxis.layers.rnn_cell import LstmCellSimple
 from praxis.layers.sequential import Sequential
 from praxis.layers.spectrum_augmenter import SpectrumAugmenter
 from praxis.layers.ssm import SSM
+from praxis.layers.ssm_transformers import SSMTransformer
+from praxis.layers.ssm_transformers import SSMGated
 from praxis.layers.stochastics import Dropout
 from praxis.layers.stochastics import StochasticResidual
 from praxis.layers.transformer_models import LanguageModelType

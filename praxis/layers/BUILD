@@ -53,6 +53,7 @@ pytype_strict_library(
         ":sequential",
         ":spectrum_augmenter",
         ":ssm",
+        ":ssm_transformers",
         ":stochastics",
         ":transformer_models",
         ":transformers",
@@ -324,6 +325,52 @@ pytype_strict_library(
         "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:pytypes",
+    ],
+)
+
+pytype_strict_library(
+    name = "ssm_transformers",
+    srcs = ["ssm_transformers.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":activations",
+        ":checkpoint_policy",
+        ":linears",
+        ":ssm",
+        ":stats",
+        ":stochastics",
+        ":transformers",
+        # Implicit absl.logging dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
+    ],
+)
+
+py_strict_test(
+    name = "ssm_transformers_test",
+    size = "large",
+    srcs = ["ssm_transformers_test.py"],
+    python_version = "PY3",
+    shard_count = 20,
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        ":ssm_transformers",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_hyperparams",
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 
