@@ -239,6 +239,42 @@ def set_quantization(
     )  # pytype: disable=wrong-arg-types  # py310-upgrade
 
 
+def set_inference_mode(
+    config: LayerTpl,
+    target: Type[base_layer.BaseLayer] = layers.transformers.Transformer,
+):
+  """Sets quantization mode to be INFERENCE while keeping other quantization configs unchanged.
+
+  Args:
+    config: The config to apply quantization on.
+    target: The target component to be replaced.
+  """
+  target_tpls = find_target_tpl(config, target)
+  for target_tpl in target_tpls:
+    target_tpl.tr_atten_tpl.proj_tpl.quantization.mode = (
+        quantization_hparams.QuantizationMode.INFERENCE
+    )
+    if (
+        issubclass(
+            target_tpl.tr_atten_tpl.cls, layers.attentions.DotProductAttention
+        )
+        and target_tpl.tr_atten_tpl.combine_qkv
+    ):
+      target_tpl.tr_atten_tpl.combined_qkv_proj_tpl.quantization.mode = (
+          quantization_hparams.QuantizationMode.INFERENCE
+      )
+    if issubclass(
+        target_tpl.tr_atten_tpl.cls,
+        layers.multi_query_attention.MultiQueryDotProductAttention,
+    ):
+      target_tpl.tr_atten_tpl.headless_proj_tpl.quantization.mode = (
+          quantization_hparams.QuantizationMode.INFERENCE
+      )
+    target_tpl.tr_fflayer_tpl.fflayer_tpl.linear_tpl.quantization.mode = (
+        quantization_hparams.QuantizationMode.INFERENCE
+    )
+
+
 # Traverse entire config HParam and find the tpl of the target type.
 def find_target_tpl(config: LayerTpl, target: Type[base_layer.BaseLayer]):
   """Find and return target tpl from the config."""
