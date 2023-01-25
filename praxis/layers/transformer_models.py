@@ -746,6 +746,30 @@ class TransformerLm(base_layer.BaseLayer):
 
     return input_ids, input_emb, segment_pos
 
+  def _softmax_xent(self, activations, segment_pos):
+    """Applies softmax xent layer.
+
+    Args:
+      activations: [B, T, D].
+      segment_pos: None or [B, T].
+
+    Returns:
+      A NestedMap of:
+      - logits: [B, T, D]
+      - log_probs: [B, T, D]
+      - probs: [B, T, D]
+    """
+    del segment_pos
+    logits = self.softmax.get_logits(inputs=activations)
+    xent_output = NestedMap(logits=logits)
+    # For numerical stability, use fp32 for softmax and log_softmax.
+    logits_dtype = logits.dtype
+    casted_logits = logits.astype(jnp.float32)
+    xent_output.log_probs = jax.nn.log_softmax(casted_logits).astype(
+        logits_dtype)
+    xent_output.probs = jax.nn.softmax(casted_logits).astype(logits_dtype)
+    return xent_output
+
   def extend_step(
       self,
       inputs: JTensor,
@@ -834,7 +858,7 @@ class TransformerLm(base_layer.BaseLayer):
     self.update_decode_state('time_step', time_step + 1)
     if self.final_ln_tpl is not None:
       outputs = self.final_ln(outputs)
-    xent_output = self.compute_loss(outputs)
+    xent_output = self._softmax_xent(outputs, segment_pos)
     return xent_output
 
   def transform_decode_state(
