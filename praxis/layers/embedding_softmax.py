@@ -976,6 +976,15 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
   max_seq_length: int = 10_240
   lookup_style: str = 'matmul'
 
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
+    """Represents how intermediate values should be partitioned across a mesh.
+
+    Attributes:
+      emb_out_split_dims_mapping: Mesh split for embedding outputs.
+    """
+
+    emb_out_split_dims_mapping: SplitDimsMapping = None
+
   def setup(self) -> None:
     super().setup()
     wp = self.weight_split_dims_mapping
@@ -1004,6 +1013,7 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
       a JTensor of shape [batch, seq_length, embedding_dim] if position JTensor
       is specified, else of shape [1, seq_length, embedding_dim].
     """
+    ap = self.activation_split_dims_mapping
     if position is None:
       assert seq_length is not None
       position = jnp.arange(seq_length, dtype=jnp.float32)[jnp.newaxis, :]
@@ -1018,4 +1028,7 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
     else:
       raise ValueError('Unknown lookup style.')
 
+    embs = base_layer.maybe_shard(
+        embs, ap.emb_out_split_dims_mapping, self.mesh_axis_names
+    )
     return embs
