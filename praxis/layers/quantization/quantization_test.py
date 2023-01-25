@@ -47,7 +47,7 @@ class RepeatsLinearQuantizeTest(test_utils.TestCase):
         input_dims=2,
         output_dims=2,
         quantization=quantization_hparams.QuantizationHParams(
-            mode=quantization_hparams.QuantizationMode.MATERIALIZE
+            mode=quantization_hparams.QuantizationMode.TRAINING
         ),
     )
     p = pax_fiddle.Config(repeats.Repeat, name='ffn', sub_tpl=sub_p, x_times=3)

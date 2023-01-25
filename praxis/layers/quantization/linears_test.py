@@ -42,10 +42,7 @@ QuantizationType = quantization_hparams.QuantizationType
 def _generate_quantization_types_modes() -> Sequence[Dict[str, Any]]:
   keys = ['testcase_name', 'quantization_type', 'mode']
   types = [QuantizationType.PTQ, QuantizationType.FQ, QuantizationType.AQT]
-  modes = [
-      QuantizationMode.INFERENCE, QuantizationMode.MATERIALIZE,
-      QuantizationMode.TRAINING
-  ]
+  modes = [QuantizationMode.INFERENCE, QuantizationMode.TRAINING]
 
   cases = []
   for case in itertools.product(types, modes):
@@ -89,8 +86,8 @@ class QuantizedLinearTest(test_utils.TestCase):
 class QuantizedLinearsSyncTest(test_utils.TestCase):
   """Sync tests between quantized Linear and regular Linear.
 
-  Quantized Linear is expected to be identical to regular linear when
-  running with mode={MATERIALIZE, TRAINING}.
+  Quantized Linear is expected to be identical to regular linear when running
+  with mode=TRAINING.
   """
 
   def setUp(self):
@@ -107,16 +104,12 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
     outputs_q = linear_q.apply(initial_vars_q, inputs)
     self.assertAllClose(outputs_f, outputs_q)
 
-  @parameterized.named_parameters(
-      dict(testcase_name='training', mode=QuantizationMode.TRAINING),
-      dict(testcase_name='materialize', mode=QuantizationMode.MATERIALIZE),
-  )
-  def test_linear_ptq_quantized(self, mode):
+  def test_linear_ptq_quantized(self):
     p_f = pax_fiddle.Config(linears.Linear, name='_linear_f')
     p_q = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
-        quantization=QuantizationHParams(mode=mode),
+        quantization=QuantizationHParams(mode=QuantizationMode.TRAINING),
     )
     for p in [p_f, p_q]:
       p.input_dims = 16
@@ -125,18 +118,14 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
     inputs = np.random.normal(1.5, 2.0, [5, 16]).astype(np.float32)
     self.run_and_compare(p_f, p_q, inputs)
 
-  @parameterized.named_parameters(
-      dict(testcase_name='training', mode=QuantizationMode.TRAINING),
-      dict(testcase_name='materialize', mode=QuantizationMode.MATERIALIZE),
-  )
-  def test_linear_aqt_quantized(self, mode):
+  def test_linear_aqt_quantized(self):
     p_f = pax_fiddle.Config(linears.Linear, name='_linear_f')
     p_q = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
         quantization=QuantizationHParams(
             quantization_type=QuantizationType.AQT,
-            mode=mode,
+            mode=QuantizationMode.TRAINING,
             act_params=quantization_hparams.ActQuantizationParams(precision=3),
             weight_params=quantization_hparams.WeightQuantizationParams(
                 precision=2
@@ -239,7 +228,7 @@ class QuantizeLinearTest(test_utils.TestCase):
         ),
         quantization=QuantizationHParams(
             quantization_type=quantization_type,
-            mode=QuantizationMode.MATERIALIZE,
+            mode=QuantizationMode.TRAINING,
         ),
     )
     p.input_dims = 6
@@ -290,7 +279,7 @@ class QuantizeLinearTest(test_utils.TestCase):
         name='_linear_q',
         quantization=QuantizationHParams(
             quantization_type=QuantizationType.AQT,
-            mode=QuantizationMode.MATERIALIZE,
+            mode=QuantizationMode.TRAINING,
             act_params=None,
             weight_params=quantization_hparams.WeightQuantizationParams(
                 precision=3,

@@ -42,10 +42,7 @@ instantiate = base_layer.instantiate
 def _generate_quantization_types_modes() -> Sequence[Dict[str, Any]]:
   keys = ['testcase_name', 'quantization_type', 'mode']
   types = [QuantizationType.PTQ, QuantizationType.AQT]
-  modes = [
-      QuantizationMode.INFERENCE, QuantizationMode.MATERIALIZE,
-      QuantizationMode.TRAINING
-  ]
+  modes = [QuantizationMode.INFERENCE, QuantizationMode.TRAINING]
 
   cases = []
   for case in itertools.product(types, modes):
@@ -190,7 +187,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationHParams(mode=QuantizationMode.MATERIALIZE),
+        quantization=QuantizationHParams(mode=QuantizationMode.TRAINING),
     )
     for p in [p_f, p_q]:
       p.input_dim = 16
@@ -208,7 +205,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationHParams(mode=QuantizationMode.MATERIALIZE),
+        quantization=QuantizationHParams(mode=QuantizationMode.TRAINING),
     )
     for p in [p_f, p_q]:
       p.input_dim = 16
@@ -226,7 +223,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationHParams(mode=QuantizationMode.MATERIALIZE),
+        quantization=QuantizationHParams(mode=QuantizationMode.TRAINING),
     )
     for p in [p_f, p_q]:
       p.input_dim = 256
@@ -253,7 +250,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qattentions.CombinedQKVProjectionLayer,
         name='_attn_qkv_q',
-        quantization=QuantizationHParams(mode=QuantizationMode.MATERIALIZE),
+        quantization=QuantizationHParams(mode=QuantizationMode.TRAINING),
     )
     for p in [p_f, p_q]:
       p.input_dim = 64
@@ -430,7 +427,7 @@ class QuantizeAttentionTest(test_utils.TestCase):
         ),
         quantization=QuantizationHParams(
             quantization_type=quantization_type,
-            mode=QuantizationMode.MATERIALIZE,
+            mode=QuantizationMode.TRAINING,
         ),
     )
     p.input_dim = 16
@@ -485,7 +482,7 @@ class QuantizeAttentionTest(test_utils.TestCase):
         ),
         quantization=QuantizationHParams(
             quantization_type=quantization_type,
-            mode=QuantizationMode.MATERIALIZE,
+            mode=QuantizationMode.TRAINING,
         ),
     )
     layer = instantiate(p)

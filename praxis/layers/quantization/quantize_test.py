@@ -43,7 +43,7 @@ class QuantizationTest(test_utils.TestCase):
     quantize.quantize_transformer_layer_weights(
         p,
         quantization_hparams.QuantizationType.PTQ,
-        quantization_hparams.QuantizationMode.MATERIALIZE,
+        quantization_hparams.QuantizationMode.TRAINING,
         quantization_hparams.WeightQuantizationParams(precision=8),
     )
     self.assertEqual(
@@ -69,7 +69,7 @@ class QuantizationTest(test_utils.TestCase):
     quantize.quantize_transformer_layer_weights(
         p,
         quantization_hparams.QuantizationType.PTQ,
-        quantization_hparams.QuantizationMode.MATERIALIZE,
+        quantization_hparams.QuantizationMode.TRAINING,
         quantization_hparams.WeightQuantizationParams(precision=num_bits),
     )
     self.assertEqual(
@@ -94,7 +94,7 @@ class QuantizationTest(test_utils.TestCase):
     quantize.quantize_transformer_layer_weights(
         p,
         quantization_hparams.QuantizationType.PTQ,
-        quantization_hparams.QuantizationMode.MATERIALIZE,
+        quantization_hparams.QuantizationMode.TRAINING,
         quantization_hparams.WeightQuantizationParams(precision=8),
     )
     self.assertEqual(

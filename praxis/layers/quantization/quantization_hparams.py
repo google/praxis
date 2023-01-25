@@ -41,8 +41,9 @@ class QuantizationMode(str, enum.Enum):
 
   TRAINING indicates that the model is in the training mode.
   MATERIALIZE indicates that the model weights are being materialized as
-    quantized weights and scales. After materialization mode is set to
-    inference.
+    quantized weights and scales. After materialization the mode is set to
+    INFERENCE. This mode is referenced only by `ServableModelParams` for
+    serving.
   INFERENCE indicates that the model is in inference mode.
   """
   TRAINING = 'training'

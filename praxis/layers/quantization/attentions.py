@@ -196,10 +196,7 @@ class AttentionProjection(attentions.AttentionProjection):
         )
       elif self.quantization.act_params is None:
         ret = operations.einsum(eqn, inputs, w, s)
-    elif (
-        self.quantization.mode == QuantizationMode.TRAINING
-        or self.quantization.mode == QuantizationMode.MATERIALIZE
-    ):
+    else:
       if self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(
             eqn=eqn,
@@ -215,11 +212,6 @@ class AttentionProjection(attentions.AttentionProjection):
         ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:
         ret = jnp.einsum(eqn, inputs, w)
-
-    else:
-      raise ValueError(
-          f'Unsupported quantization_mode {self.quantization.mode}'
-      )
 
     if self.use_bias:
       ret += theta.b
