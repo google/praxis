@@ -785,6 +785,9 @@ class LanguageModelTest(test_utils.TestCase):
           [0.9, 0.9, 0.9], dtype=jnp.float32
       )
       input_batch['per_example_top_k'] = jnp.array([2, 2, 2], dtype=jnp.int32)
+      input_batch['eos_id'] = jnp.array(
+          [[0, 2], [0, 2], [0, 2]], dtype=jnp.int32
+      )
 
     results = self._run_decode(p, sample_logits, input_batch)
 

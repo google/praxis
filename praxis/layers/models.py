@@ -560,6 +560,7 @@ class LanguageModel(base_model.BaseModel):
         )
         per_example_top_p = getattr(input_batch, 'per_example_top_p', None)
         per_example_top_k = getattr(input_batch, 'per_example_top_k', None)
+        eos_id = getattr(input_batch, 'eos_id', decoder_params.eos_id)
 
         next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
         # TODO(b/260646361): Avoid this param propagation.
@@ -587,7 +588,7 @@ class LanguageModel(base_model.BaseModel):
             max_decode_steps=decoder_params.max_decode_steps,
             per_example_max_decode_steps=per_example_max_decode_steps,
             prefix_lengths=decode_data.prefix_lengths,
-            eos_id=decoder_params.eos_id,
+            eos_id=eos_id,
             return_result_for_suffix_score=return_result_for_suffix_score,
             result_callback=result_callback,
             cf_guidance_scale=decoder_params.cf_guidance_scale,

@@ -164,6 +164,33 @@ class DecoderUtilsTest(test_utils.TestCase):
               [[1, 2, 3, 7, 3, 0], [1, 3, 7, 3, 0, 0], [1, 2, 3, 4, 7, 3]]]],
             dtype=jnp.int32))
 
+  def test_end_with_sequences(self):
+    end_sequences = jnp.array(
+        [[1, 5, 2], [0, 0, 3], [0, 5, 2]], dtype=jnp.int32
+    )
+    output_ids = jnp.array(
+        [[0, 1, 3, 1, 5, 2], [1, 2, 3, 4, 5, 0], [7, 8, 9, 5, 2, 3]],
+        dtype=jnp.int32,
+    )
+
+    # True for the 1st element in the batch.
+    result = decoder_utils.end_with_sequences(
+        end_sequences, output_ids, decode_step=5
+    )
+    self.assertArraysEqual(result, jnp.array([1, 0, 0], dtype=jnp.bool_))
+
+    # True for the 2nd element in the batch.
+    result = decoder_utils.end_with_sequences(
+        end_sequences, output_ids, decode_step=jnp.array(2, dtype=jnp.int32)
+    )
+    self.assertArraysEqual(result, jnp.array([0, 1, 0], dtype=jnp.bool_))
+
+    # True for the 3rd element in the batch.
+    result = decoder_utils.end_with_sequences(
+        end_sequences, output_ids, decode_step=4
+    )
+    self.assertArraysEqual(result, jnp.array([0, 0, 1], dtype=jnp.bool_))
+
 
 if __name__ == '__main__':
   absltest.main()

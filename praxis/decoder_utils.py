@@ -463,3 +463,41 @@ def maybe_decode_mesh_transpose(
   if mesh_transpose is not None and not model.is_initializing():
     new_context_params.mesh_axes_transpose = mesh_transpose
   return base_layer.JaxContext.new_context(hparams=new_context_params)
+
+
+def end_with_sequences(
+    end_sequences: JTensor,
+    output_ids: JTensor,
+    decode_step: Union[int, JTensor],
+) -> JTensor:
+  """Check if the output_ids ended with given sequences.
+
+  The end_sequences tensor is a 2D tensor, if the original end_sequences is
+  [[2], [3, 4], [5, 5, 5]], it should be padded to
+  [[0, 0, 2], [0, 3, 4], [5, 5, 5]] before passed to this function.
+
+  The comparison is performed by matching the tokens of output_ids ended at
+  index 'decode_step' with the tokens in `end_sequences`.
+
+  Args:
+    end_sequences: Given end of sequences of shape [batch_size, eos_len].
+    output_ids: Generated output ids of shape [batch_size, seq_len].
+    decode_step: Current decode step as an int or a 0D tensor.
+
+  Returns:
+    A JTensor of shape [batch] which indicates if the output_ids ended with
+    end_sequences.
+  """
+  batch, eos_len = end_sequences.shape
+  padded_output_ids = jnp.pad(output_ids, [[0, 0], [eos_len, 0]])
+  # Slice start index = decode_step + eos_len - eos_len + 1.
+  sliced_output_ids = jax.lax.dynamic_slice(
+      padded_output_ids, [0, decode_step + 1], [batch, eos_len]
+  )
+
+  # end_sequences are padded from the left with 0s.
+  ignore_tokens = jnp.equal(end_sequences, 0)
+  tokens_equal = jnp.logical_or(
+      jnp.equal(sliced_output_ids, end_sequences), ignore_tokens
+  )
+  return jnp.all(tokens_equal, axis=-1)

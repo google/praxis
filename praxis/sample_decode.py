@@ -514,7 +514,7 @@ def sample_decode(
     max_decode_steps: Optional[Union[int, Sequence[int]]] = None,
     per_example_max_decode_steps: Optional[JTensor] = None,
     prefix_lengths: Optional[JTensor] = None,
-    eos_id: Optional[Union[int, Sequence[int]]] = None,
+    eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
     result_callback: Optional[StreamingResultCallback] = None,
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
@@ -581,7 +581,8 @@ def sample_decode(
       batch. This can either be None or a JTensor of shape [batch] signifying
       the prefix length for each sequence in the batch.
     eos_id: Optional EOS id which to terminate the decoding early. Could be a
-      sequence or an integer.
+      sequence, an integer or a JTensor. When it is a JTensor, it is 2D tensor
+      of shape [batch, eos_len] with padded 0s on the left.
     result_callback: Optional callback function to be called for decoding
       results with a configurable interval.
     return_result_for_suffix_score: Whether or not to return result for suffix
@@ -622,7 +623,7 @@ def sample_decode(
         x_expected_shape = (original_batch_size // 2,)
       else:
         x_expected_shape = (original_batch_size,)
-      if x.shape != x_expected_shape:  # pytype: disable=attribute-error
+      if x.shape[0] != x_expected_shape[0]:  # pytype: disable=attribute-error
         raise ValueError(f'Dynamic {name} should have shape: '
                          f'{x_expected_shape}, but it has shape: '
                          f'{x.shape}.'  # pytype: disable=attribute-error
@@ -649,6 +650,9 @@ def sample_decode(
       per_example_top_k = _broadcast_input(
           per_example_top_k, 'per_example_top_k'
       )
+
+    if eos_id is not None and isinstance(eos_id, JTensor):
+      eos_id = _broadcast_input(eos_id, 'eos_id').astype(jnp.int32)
 
     if lazy_broadcast_prefix_fn is not None:
       assert fprop_for_prefix
@@ -800,14 +804,20 @@ def sample_decode(
                           target_prefix_ids[:, step + 1], new_ids)
     prev_done = val.done
     new_ids = jnp.where(prev_done, jnp.zeros_like(new_ids), new_ids)
+    val.output_ids = val.output_ids.at[:, step + 1].set(new_ids)
     if eos_id is not None:
-      has_eos = jnp.any(
-          jnp.equal(
-              new_ids[:, jnp.newaxis],
-              jnp.array(eos_id, dtype=jnp.int32)[jnp.newaxis, :],
-          ),
-          axis=-1,
-      )
+      if isinstance(eos_id, JTensor):
+        has_eos = decoder_utils.end_with_sequences(
+            eos_id, val.output_ids, val.step + 1
+        )
+      else:
+        has_eos = jnp.any(
+            jnp.equal(
+                new_ids[:, jnp.newaxis],
+                jnp.array(eos_id, dtype=jnp.int32)[jnp.newaxis, :],
+            ),
+            axis=-1,
+        )
       val.done = jnp.logical_or(
           prev_done,
           has_eos,
@@ -829,7 +839,6 @@ def sample_decode(
     done_at_this_step = jnp.logical_and(jnp.logical_not(prev_done), val.done)
     val.decode_lengths = jnp.where(done_at_this_step, decode_lengths,
                                    val.decode_lengths)
-    val.output_ids = val.output_ids.at[:, step + 1].set(new_ids)
 
     logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size), new_ids].get()
     logprobs_at_new_ids = jnp.where(
