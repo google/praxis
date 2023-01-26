@@ -79,6 +79,8 @@ def _set_embedding_softmax_sharding_params_for_transformers(
   elif (
       fdl.get_callable(embedding_softmax_p)
       == embedding_softmax.SharedEmbeddingSoftmax
+      or 'RecordingSharedEmbeddingSoftmax'
+      in str(fdl.get_callable(embedding_softmax_p))
       or fdl.get_callable(embedding_softmax_p) == embedding_softmax.FullSoftmax
       or fdl.get_callable(embedding_softmax_p) == embedding_softmax.Embedding
   ):
