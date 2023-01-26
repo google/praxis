@@ -1101,6 +1101,24 @@ class Transformer(base_layer.BaseLayer):
   tr_fflayer_tpl: LayerTpl = template_field(TransformerFeedForward)
   ngrammer_tpl: Optional[LayerTpl] = template_field(None)
 
+  # This function can be overridden by subclasses.
+  def _setup_attention(self, atten_tpl: LayerTpl, name: str)-> None:
+    atten_tpl = atten_tpl.clone()
+    if name == 'self_attention':
+      atten_tpl.name = 'multihead_self_atten'
+    elif name == 'cross_attention':
+      atten_tpl.name = 'multihead_cross_atten'
+    else:
+      atten_tpl.name = name
+    atten_tpl.input_dim = self.input_dims
+    atten_tpl.hidden_dim = self.input_dims
+    atten_tpl.num_heads = self.num_heads
+    atten_tpl.dim_per_head = self.dim_per_head
+    atten_tpl.atten_dropout_prob = self.atten_dropout_prob
+    if self.ngrammer_tpl and name == 'self_attention':
+      atten_tpl.ngrammer_tpl = self.ngrammer_tpl
+    self.create_child(name, atten_tpl)
+
   def setup(self) -> None:
 
     # Initialize Layer Norm
@@ -1118,16 +1136,7 @@ class Transformer(base_layer.BaseLayer):
       raise ValueError('Unrecognized norm_policy: %s' % self.norm_policy)
 
     # Initialize multi-headed self-attention
-    params = self.tr_atten_tpl.clone()
-    params.name = 'multihead_self_atten'
-    params.input_dim = self.input_dims
-    params.hidden_dim = self.input_dims
-    params.num_heads = self.num_heads
-    params.dim_per_head = self.dim_per_head
-    params.atten_dropout_prob = self.atten_dropout_prob
-    if self.ngrammer_tpl:
-      params.ngrammer_tpl = self.ngrammer_tpl
-    self.create_child('self_attention', params)
+    self._setup_attention(self.tr_atten_tpl, 'self_attention')
 
     # Initialize residual dropout.
     params = self.dropout_tpl.clone()
@@ -1150,15 +1159,9 @@ class Transformer(base_layer.BaseLayer):
         raise ValueError(f'Unrecognized norm_policy: {self.norm_policy}')
 
       if self.cross_atten_tpl is not None:
-        params = self.cross_atten_tpl.clone()
+        params = self.cross_atten_tpl
       else:
-        params = self.tr_atten_tpl.clone()
-      params.name = 'multihead_cross_atten'
-      params.input_dim = self.input_dims
-      params.hidden_dim = self.input_dims
-      params.num_heads = self.num_heads
-      params.dim_per_head = self.dim_per_head
-      params.atten_dropout_prob = self.atten_dropout_prob
+        params = self.tr_atten_tpl
       # Note that cross attention should not use any position embeddings.
       if params.use_rotary_position_emb:
         raise ValueError('Rotary position embedding should not be enabled for '
@@ -1167,7 +1170,7 @@ class Transformer(base_layer.BaseLayer):
       if params.dconv_qkv:
         raise ValueError('Depth-wise convolution should not be enabled for '
                          'cross attention.')
-      self.create_child('cross_attention', params)
+      self._setup_attention(params, 'cross_attention')
 
     # Initialize residual droppath
     if self.residual_droppath_prob > 0:
@@ -1224,7 +1227,7 @@ class Transformer(base_layer.BaseLayer):
         shape [B, S, H].
       cross_attention_mask: Cross attention mask ready to add to the logits. It
         can be of shape [1|B, 1, 1|T, S] which is broadcast compatible with the
-        cross attention matrix of shape [B, N, T, T]. This is assumed to have
+        cross attention matrix of shape [B, N, T, S]. This is assumed to have
         combined paddings as well as segment maskings.
       segment_pos: A JTensor of shape [B, T]. The position of each token in a
         segment.
