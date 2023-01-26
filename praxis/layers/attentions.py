@@ -691,6 +691,14 @@ class AttentionProjection(base_layer.BaseLayer):
       ret += theta.b
     return ret
 
+  def extend_step(self,
+                  inputs: JTensor,
+                  *,
+                  time_step: JTensor) -> JTensor:
+    """Fprop FFN extend step layer."""
+    del time_step  # Not used.
+    return self.__call__(inputs)
+
 
 class CombinedQKVProjectionLayer(base_layer.BaseLayer):
   """Layer that computes QKV projection with a combined weight.
@@ -820,6 +828,14 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
     key_proj = checkpoint_name(key_proj, 'key_proj')
     value_proj = checkpoint_name(value_proj, 'value_proj')
     return query_proj, key_proj, value_proj
+
+  def extend_step(self,
+                  inputs: JTensor,
+                  *,
+                  time_step: JTensor) -> JTensor:
+    """Fprop FFN extend step layer."""
+    del time_step  # Not used.
+    return self.__call__(inputs)
 
 
 class DotProductAttention(base_layer.BaseLayer):
@@ -1526,13 +1542,13 @@ class DotProductAttention(base_layer.BaseLayer):
     if self.combine_qkv:
       # Project inputs to key, value and query using a combined weight for
       # faster performance on TPU.
-      new_query_proj, new_key_proj, new_value_proj = self.combined_qkv(
-          query_vec)
+      new_query_proj, new_key_proj, new_value_proj = (
+          self.combined_qkv.extend_step(query_vec, time_step=time_step))
     else:
       # Project inputs to key, value and query. Each has shape [B, N, H].
-      new_key_proj = self.key(query_vec)
-      new_value_proj = self.value(query_vec)
-      new_query_proj = self.query(query_vec)
+      new_key_proj = self.key.extend_step(query_vec, time_step=time_step)
+      new_value_proj = self.value.extend_step(query_vec, time_step=time_step)
+      new_query_proj = self.query.extend_step(query_vec, time_step=time_step)
 
     def _extend_decode_state_and_shard(name: str,
                                        extend_value: JTensor) -> JTensor:
@@ -1628,7 +1644,7 @@ class DotProductAttention(base_layer.BaseLayer):
 
     del atten_prob
     # Post projection.
-    encoded = self.post(encoded)
+    encoded = self.post.extend_step(encoded, time_step=time_step)
     encoded = self._shard_bd(encoded)
     return encoded
 

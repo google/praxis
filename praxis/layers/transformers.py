@@ -457,6 +457,14 @@ class TransformerFeedForward(base_layer.BaseLayer):
 
     return projected_inputs
 
+  def extend_step(self,
+                  inputs: JTensor,
+                  *,
+                  time_step: JTensor) -> JTensor:
+    """Fprop FFN extend step layer."""
+    del time_step  # Not used.
+    return self.__call__(inputs)
+
 
 class TransformerFeedForwardMoe(base_layer.BaseLayer):
   """A sharded MoE Layer.
@@ -1023,6 +1031,14 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
 
     return out
 
+  def extend_step(self,
+                  inputs: JTensor,
+                  *,
+                  time_step: JTensor) -> JTensor:
+    """Fprop FFN extend step layer."""
+    del time_step  # Not used.
+    return self.__call__(inputs)
+
 
 class Transformer(base_layer.BaseLayer):
   """Transformer layer with multi-headed attention.
@@ -1382,7 +1398,7 @@ class Transformer(base_layer.BaseLayer):
       atten_output += cross_atten_output
 
     # Apply FFN layer
-    output = self.ff_layer(atten_output)
+    output = self.ff_layer.extend_step(atten_output, time_step=time_step)
     return output
 
   def transform_decode_state(

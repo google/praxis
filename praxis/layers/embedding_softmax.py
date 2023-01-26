@@ -157,6 +157,10 @@ class Embedding(base_layer.BaseLayer):
     )
     return embs
 
+  def extend_step(self, ids: JTensor, *, time_step: JTensor) -> JTensor:
+    del time_step  # Not used.
+    return self.emb_lookup(ids)
+
 
 class FullSoftmax(base_layer.BaseLayer):
   """A simple softmax layer with cross-entropy outputs.
@@ -359,6 +363,10 @@ class SharedEmbeddingSoftmax(FullSoftmax):
         embs, ap.emb_out_split_dims_mapping, self.mesh_axis_names
     )
     return embs
+
+  def extend_step(self, ids: JTensor, *, time_step: JTensor) -> JTensor:
+    del time_step  # Not used.
+    return self.emb_lookup(ids)
 
 
 class SigmoidCrossEntropy(base_layer.BaseLayer):
@@ -717,6 +725,10 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
         total_weight=total_weight)
 
     return output_nmap
+
+  def extend_step(self, ids: JTensor, *, time_step: JTensor) -> JTensor:
+    del time_step  # Not used.
+    return self.emb_lookup(ids)
 
 
 class PositionalEmbedding(base_layer.BaseLayer):

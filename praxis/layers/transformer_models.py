@@ -682,12 +682,14 @@ class TransformerLm(base_layer.BaseLayer):
       input_emb: [B, T, D]
     """
     assert input_ids.ndim == 2, input_ids.shape
+    time_step = self.get_decode_state('time_step')
     if self.separate_embedding_tpl is not None:
       # [B, ?, D]
-      input_emb = self.embedding_lookup.emb_lookup(input_ids)
+      input_emb = self.embedding_lookup.extend_step(input_ids,
+                                                    time_step=time_step)
     else:
       # [B, ?, D]
-      input_emb = self.softmax.emb_lookup(input_ids)
+      input_emb = self.softmax.extend_step(input_ids, time_step=time_step)
     return input_emb
 
   def _add_pos_emb(self, input_emb, segment_pos):
