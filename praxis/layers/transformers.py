@@ -1504,6 +1504,10 @@ class StackedTransformer(base_layer.BaseLayer):
   moe_layers: Optional[Sequence[int]] = ()
   ngrammer_tpls: Optional[Sequence[LayerTpl]] = template_field(None)
 
+  def _clone_layer_params(self, layer_tpl: LayerTpl) -> LayerTpl:
+    """Useful to let sublasses switch the class (e.g. Streaming version)."""
+    return layer_tpl.clone()
+
   def setup(self) -> None:
 
     assert self.num_layers > 0
@@ -1518,9 +1522,9 @@ class StackedTransformer(base_layer.BaseLayer):
       if isinstance(self.transformer_layer_params_tpl, Sequence):
         factor = self.num_layers // len(self.transformer_layer_params_tpl)
         ii = i // factor
-        p_i = self.transformer_layer_params_tpl[ii].clone()
+        p_i = self._clone_layer_params(self.transformer_layer_params_tpl[ii])
       else:
-        p_i = self.transformer_layer_params_tpl.clone()
+        p_i = self._clone_layer_params(self.transformer_layer_params_tpl)
       p_i.name = f'layer_{i}'
       p_i.use_cross_attention = self.use_cross_attention
       p_i.mask_self_attention = self.mask_self_attention
@@ -1610,7 +1614,6 @@ class StackedTransformer(base_layer.BaseLayer):
     Returns:
       Output vector with shape [B, T, D].
     """
-    x_out = inputs
     if self.packed_input:
       assert segment_mask is not None
 
@@ -1631,6 +1634,7 @@ class StackedTransformer(base_layer.BaseLayer):
         fold_padding_with_segment_mask=self.fold_padding_with_segment_mask,
     )
 
+    x_out = inputs
     if self.input_dropout_prob > 0.0:
       x_out = self.input_dropout(x_out)
 
