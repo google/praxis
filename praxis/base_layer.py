@@ -1266,13 +1266,6 @@ class _FiddleHParamsClassStub(
     return cls(**kwargs)
 
 
-class _FiddleHParamsClassStubDescriptor:
-  """Descriptor used to implement BaseLayer.HParams stub."""
-
-  def __get__(self, obj, objtype):
-    return _FiddleHParamsClassStub(objtype)
-
-
 class BaseLayer(nn.Module):
   """Base class for layers that are configured using Fiddle.
 
