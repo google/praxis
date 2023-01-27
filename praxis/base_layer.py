@@ -974,7 +974,7 @@ class JaxContext:
     """Returns a new empty JaxContext.
 
     Args:
-      hparams: if not None, and instance of JaxContext.HParams(). If it is None,
+      hparams: if not None, an instance of JaxContext.HParams(). If it is None,
         the newly constructed JaxContext will assume the same params as the
         current context if it is not None, or the default one.
 
