@@ -51,13 +51,12 @@ class TestNextTokenSampler(sample_decode.BaseNextTokenSampler):
   ):
     del (
         mdl,
-        logits,
         temperature,
         decode_loop_state,
         per_example_top_p,
         gumbel_prng_key,
     )
-    return jnp.array([1234, 2345])
+    return NestedMap(new_ids=jnp.array([1234, 2345]), logits=logits)
 
 
 class TestModel(base_model.BaseModel):

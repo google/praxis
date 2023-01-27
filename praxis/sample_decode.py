@@ -21,7 +21,7 @@ Greedy decode is a special case for sample decode.
 
 import abc
 import functools
-from typing import List, Optional, Sequence, Union
+from typing import List, Optional, Sequence, Union, Tuple
 
 from flax import linen as nn
 import jax
@@ -402,7 +402,7 @@ class BaseNextTokenSampler(
   @abc.abstractmethod
   def __call__(self, model: base_layer.BaseLayerApi, logits: JTensor,
                temperature: Union[float, JTensor],
-               decode_loop_state: NestedMap) -> JTensor:
+               decode_loop_state: NestedMap) -> NestedMap:
     """Samples the next token ids given the logits output.
 
     Args:
@@ -414,8 +414,14 @@ class BaseNextTokenSampler(
       decode_loop_state: Decode loop state at current time step.
 
     Returns:
-      JTensor of shape [B] containing the selected next token for each sequence
-        in the batch.
+      A NestedMap containing 2 fields:
+        new_ids: JTensor of shape [B] containing the selected next token for
+          each sequencein the batch.
+        logits: JTensor of shape [B, V] containing the (possibly modified)
+          logits at the current step. This return value is used to ensure that
+          the recorded logprobs per sequence takes into account the
+          modifications made to the logits as part of the next token sampling
+          logic.
     """
 
 
@@ -446,11 +452,12 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
       per_example_top_p: Optional[JTensor] = None,
       per_example_top_k: Optional[JTensor] = None,
       gumbel_prng_key: Optional[JTensor] = None,
-  ) -> JTensor:
+  ) -> NestedMap:
     """The default sampling logic implementing top-K and top-P sampling."""
     del decode_loop_state
     p = self.hparams
     assert p.top_k >= 0
+    input_logits = logits
 
     def _get_prng_key():
       if gumbel_prng_key is None:
@@ -490,7 +497,7 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
       new_ids = jnp.argmax(logits, axis=1)
     else:  #  k == 1
       new_ids = jnp.argmax(logits, axis=1)
-    return new_ids
+    return NestedMap(new_ids=new_ids, logits=input_logits)
 
 
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
@@ -772,7 +779,7 @@ def sample_decode(
       assert split_gumbel_prng_key.shape[0] == logits.shape[0]
     else:
       split_gumbel_prng_key = None
-    new_ids = next_token_sampler(
+    sampler_output = next_token_sampler(
         model,
         logits,
         temperature,
@@ -781,6 +788,7 @@ def sample_decode(
         per_example_top_k=per_example_top_k,
         gumbel_prng_key=split_gumbel_prng_key,
     )
+    new_ids, logits = sampler_output.new_ids, sampler_output.logits
     assert new_ids.shape == (logits.shape[0],)
     assert new_ids.dtype == jnp.int32
 
