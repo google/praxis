@@ -287,21 +287,6 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
-    name = "sgf",
-    srcs = ["sgf.py"],
-    srcs_version = "PY3",
-    # Internal to be deprecated visibility
-    deps = [
-        ":base_hyperparams",
-        ":py_utils",
-        ":pytypes",
-        # Implicit flax.core dependency.
-        # Implicit jax dependency.
-        # Implicit optax dependency.
-    ],
-)
-
-pytype_strict_library(
     name = "test_utils",
     testonly = True,
     srcs = ["test_utils.py"],
