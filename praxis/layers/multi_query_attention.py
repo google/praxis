@@ -21,6 +21,7 @@ from flax import linen as nn
 import jax
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
+from praxis import asserts
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
@@ -429,8 +430,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # If there is no padding mask, and only causal mask then the shape can be
     # [1, 1, T, S]
     base_layer.assert_has_shape(atten_mask, [-1, 1, -1, s])
-    assert atten_mask.shape[2] in [1, t]
-    assert atten_mask.shape[0] in [1, b]
+    asserts.in_set(atten_mask.shape[2], [1, t])
+    asserts.in_set(atten_mask.shape[0], [1, b])
     query = self._scale_query(query)
     logits = self._atten_logits(query, key)
     if relative_bias is not None:
@@ -493,12 +494,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     base_layer.assert_has_shape(value, [b, s, h])
     base_layer.assert_has_shape(query, [b, -1, h])
     base_layer.assert_has_shape(atten_mask, [-1, -1, s])
-    assert atten_mask.shape[0] in [1, b]
+    asserts.in_set(atten_mask.shape[0], [1, b])
     query = self._scale_query(query)
     logits = jnp.einsum('BNH,BSH->BNS', query, key)
     if relative_bias is not None:
       base_layer.assert_has_shape(relative_bias, [-1, -1, 1, s])
-      assert relative_bias.shape[0] in [1, b]
+      asserts.in_set(relative_bias.shape[0], [1, b])
       relative_bias = jnp.squeeze(relative_bias, axis=2)
       logits += relative_bias
     logits = self._cap_logits(logits)
