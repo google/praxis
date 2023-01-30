@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for activations."""
+"""Tests for Praxis activations."""
 
 from absl.testing import absltest
 from praxis import pax_fiddle
