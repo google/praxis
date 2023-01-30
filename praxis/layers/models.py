@@ -745,8 +745,6 @@ class SequenceModel(base_model.BaseModel):
   label_smoothing_prob: float = 0.0
 
   def setup(self) -> None:
-    super().setup()
-
     # Construct the model.
     model_p = self.model_tpl.clone()
     self.create_child('model', model_p)
