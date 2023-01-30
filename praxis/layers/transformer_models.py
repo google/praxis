@@ -945,7 +945,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     encoder_ln_tpl: Parameterization of the encoder layer normalization layer.
     decoder_ln_tpl: Parameterization of the decoder layer normalization layer.
   """
-  position_emb_tpl: LayerTpl = template_field(
+  position_emb_tpl: Optional[LayerTpl] = template_field(
       embedding_softmax.PositionalEmbedding
   )
   encoder_position_emb_tpl: Optional[LayerTpl] = template_field(None)
@@ -1110,6 +1110,10 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
     return model_p
 
+  def _clone_layer_params(self, layer_tpl: LayerTpl) -> LayerTpl:
+    """Useful to let sublasses switch the class (e.g. Streaming version)."""
+    return layer_tpl.clone()
+
   def setup(self) -> None:
     """Constructor."""
 
@@ -1122,9 +1126,8 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
     def set_model_dims_and_packing(stacked_transformer_tpl, model_dims,
                                    packed_input):
-      if (
-          fdl.get_callable(stacked_transformer_tpl)
-          == transformers.StackedTransformer
+      if issubclass(
+          stacked_transformer_tpl.cls, transformers.StackedTransformer
       ):
         assert (stacked_transformer_tpl.model_dims == 0 or
                 stacked_transformer_tpl.model_dims == model_dims)
@@ -1167,7 +1170,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
               'shared position embeddings are specified.'
           ),
       )
-      position_emb_tpl = self.position_emb_tpl.clone()
+      position_emb_tpl = self._clone_layer_params(self.position_emb_tpl)
       set_position_emb_model_dims(position_emb_tpl, self.model_dims)
       self.create_child('position_emb', position_emb_tpl)
 
@@ -1180,7 +1183,9 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
               'encoder position embeddings are specified.'
           ),
       )
-      encoder_position_emb_tpl = self.encoder_position_emb_tpl.clone()
+      encoder_position_emb_tpl = self._clone_layer_params(
+          self.encoder_position_emb_tpl
+      )
       set_position_emb_model_dims(encoder_position_emb_tpl, self.model_dims)
       self.create_child('encoder_position_emb', encoder_position_emb_tpl)
 
@@ -1191,12 +1196,14 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
     # Use the user specified StackedTransformer for the encoder, assuming
     # everything is set up appropriately.
-    encoder_params = self.encoder_stacked_transformer_tpl.clone()
+    encoder_params = self._clone_layer_params(
+        self.encoder_stacked_transformer_tpl
+    )
     set_model_dims_and_packing(
         encoder_params, self.model_dims, self.packed_input
     )
     # Assert that encoder is not masked.
-    if encoder_params.cls == transformers.StackedTransformer:
+    if issubclass(encoder_params.cls, transformers.StackedTransformer):
       mask_self_attention = encoder_params.mask_self_attention
       encoder_num_layers = encoder_params.num_layers
       stacked_encoder_block_params = encoder_params
@@ -1263,7 +1270,9 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
               'decoder position embeddings are specified.'
           ),
       )
-      decoder_position_emb_tpl = self.decoder_position_emb_tpl.clone()
+      decoder_position_emb_tpl = self._clone_layer_params(
+          self.decoder_position_emb_tpl
+      )
       set_position_emb_model_dims(decoder_position_emb_tpl, self.model_dims)
       self.create_child('decoder_position_emb', decoder_position_emb_tpl)
 
@@ -1274,13 +1283,15 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
 
     # Use the user specified StackedTransformer for the decoder, assuming
     # everything is set up appropriately.
-    decoder_hparams = self.decoder_stacked_transformer_tpl.clone()
+    decoder_hparams = self._clone_layer_params(
+        self.decoder_stacked_transformer_tpl
+    )
     set_model_dims_and_packing(
         decoder_hparams, self.model_dims, self.packed_input
     )
     # Assert that decoder is masked.
     # Assert that encoder is not masked.
-    if decoder_hparams.cls == transformers.StackedTransformer:
+    if issubclass(decoder_hparams.cls, transformers.StackedTransformer):
       mask_self_attention = decoder_hparams.mask_self_attention
       num_decoder_layers = decoder_hparams.num_layers
       stacked_decoder_block_params = decoder_hparams
@@ -1431,50 +1442,51 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     """
     if labels is None:
       logits = self.softmax.get_logits(inputs=activations)
-      xent_output = NestedMap(logits=logits)
-      xent_output.log_probs = jax.nn.log_softmax(logits)
-      xent_output.probs = jax.nn.softmax(xent_output.logits)
-    else:
-      class_ids = None
-      class_probabilities = None
-      if 'class_ids' in labels:
-        class_ids = labels.class_ids[:, :, jnp.newaxis]
-      if 'class_probabilities' in labels:
-        class_probabilities = labels.class_probabilities
-      class_weights = labels.class_weights[:, :, jnp.newaxis]
-      xent_output = self.softmax(
-          activations,
-          class_weights,
-          class_ids=class_ids,
-          class_probabilities=class_probabilities)
-      per_token_xent = (
-          xent_output.per_example_xent *
-          labels.class_weights.astype(jnp.float32))
-      xent_output.per_token_xent = per_token_xent
-      xent_output.per_sequence_xent = jnp.sum(
-          per_token_xent, -1, dtype=jnp.float32)
+      return NestedMap(
+          logits=logits,
+          log_probs=jax.nn.log_softmax(logits),
+          probs=jax.nn.softmax(logits),
+      )
+    class_ids = None
+    class_probabilities = None
+    if 'class_ids' in labels:
+      class_ids = labels.class_ids[:, :, jnp.newaxis]
+    if 'class_probabilities' in labels:
+      class_probabilities = labels.class_probabilities
+    class_weights = labels.class_weights[:, :, jnp.newaxis]
+    xent_output = self.softmax(
+        activations,
+        class_weights,
+        class_ids=class_ids,
+        class_probabilities=class_probabilities)
+    per_token_xent = (
+        xent_output.per_example_xent *
+        labels.class_weights.astype(jnp.float32))
+    xent_output.per_token_xent = per_token_xent
+    xent_output.per_sequence_xent = jnp.sum(
+        per_token_xent, -1, dtype=jnp.float32)
 
-      # Sum aux_loss and add to avg_xent.
-      aux_loss = 0.0
-      aux_loss_weight = 0.0
-      if AUX_LOSS in self.variables:
-        aux_loss_values = jax.tree_util.tree_leaves(
-            self.variables[AUX_LOSS],
-            is_leaf=lambda x: isinstance(x, AuxLossStruct))
-        for v in aux_loss_values:
-          assert isinstance(v, AuxLossStruct)
-          aux_loss += jnp.sum(v.value)
-          aux_loss_weight += jnp.sum(v.weight)
-      if not isinstance(aux_loss, jnp.ndarray):
-        aux_loss = jnp.array(aux_loss, dtype=self.fprop_dtype)
-        aux_loss_weight = jnp.array(aux_loss_weight, dtype=self.fprop_dtype)
-      xent_output.aux_loss = aux_loss
-      xent_output.aux_loss_weight = aux_loss_weight
-      self.add_summary('total_aux_loss', aux_loss)
-      self.add_summary('total_aux_loss_weight', aux_loss_weight)
+    # Sum aux_loss and add to avg_xent.
+    aux_loss = 0.0
+    aux_loss_weight = 0.0
+    if AUX_LOSS in self.variables:
+      aux_loss_values = jax.tree_util.tree_leaves(
+          self.variables[AUX_LOSS],
+          is_leaf=lambda x: isinstance(x, AuxLossStruct))
+      for v in aux_loss_values:
+        assert isinstance(v, AuxLossStruct)
+        aux_loss += jnp.sum(v.value)
+        aux_loss_weight += jnp.sum(v.weight)
+    if not isinstance(aux_loss, jnp.ndarray):
+      aux_loss = jnp.array(aux_loss, dtype=self.fprop_dtype)
+      aux_loss_weight = jnp.array(aux_loss_weight, dtype=self.fprop_dtype)
+    xent_output.aux_loss = aux_loss
+    xent_output.aux_loss_weight = aux_loss_weight
+    self.add_summary('total_aux_loss', aux_loss)
+    self.add_summary('total_aux_loss_weight', aux_loss_weight)
 
-      # This is the loss to minimize.
-      xent_output.total_loss = xent_output.avg_xent + xent_output.aux_loss
+    # This is the loss to minimize.
+    xent_output.total_loss = xent_output.avg_xent + xent_output.aux_loss
     return xent_output
 
   def __call__(
