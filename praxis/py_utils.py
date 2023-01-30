@@ -570,7 +570,7 @@ def maybe_pad_uneven_sharding(xs: JTensor,
                               unpadded_shapes: Sequence[int],
                               mesh_shape: Sequence[int],
                               mesh_axis_names: Sequence[str]) -> JTensor:
-  """Pads x to make it evenly shardable, if needed."""
+  """Pads xs to make them evenly shardable, if needed."""
 
   def _maybe_pad(x, pspec, shape):
     if is_optax_masked_node(x):
@@ -592,19 +592,29 @@ def maybe_pad_uneven_sharding(xs: JTensor,
       is_leaf=is_optax_masked_node)
 
 
-def maybe_slice_uneven_sharding(x: JTensor, partition_spec: pjit.PartitionSpec,
-                                shape: Sequence[int]) -> JTensor:
-  """Slices x to remove padding due to uneven sharding, if needed."""
-  if is_optax_masked_node(x):
-    return x
-  if list(shape) == list(x.shape):
-    return x
-  if x.shape == (0,):
-    return x
-  x = jax.lax.slice(x, [0] * x.ndim, shape)
-  # Annotate after slice to make sure they have the same sharding. (Slice does
-  # not have the highest sharding propagation priority.)
-  return with_sharding_constraint(x, partition_spec)
+def maybe_slice_uneven_sharding(
+    xs: JTensor,
+    partition_spec: pjit.PartitionSpec,
+    padded_shapes: Sequence[int],
+    is_leaf: Any = None,
+) -> JTensor:
+  """Slices xs to remove padding due to uneven sharding, if needed."""
+
+  def _maybe_slice(x, pspec, shape):
+    if is_optax_masked_node(x):
+      return x
+    if list(shape) == list(x.shape):
+      return x
+    if x.shape == (0,):
+      return x
+    x = jax.lax.slice(x, [0] * x.ndim, shape)
+    # Annotate after slice to make sure they have the same sharding. (Slice does
+    # not have the highest sharding propagation priority.)
+    return with_sharding_constraint(x, pspec)
+
+  return jax.tree_map(
+      _maybe_slice, xs, partition_spec, padded_shapes, is_leaf=is_leaf
+  )
 
 
 @contextlib.contextmanager
