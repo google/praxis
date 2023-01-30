@@ -86,6 +86,7 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
   mlp_precomputed_intermediates: bool = False
   activation_partitioning_dims: int = 1
   logical_axes_rules: Optional[LogicalAxisRules] = None
+  decoder_scan_axis: int = 1
   scan_layers: bool = False
   shared_relative_bias: bool = True
   decode_layer_norm_use_scale: bool = True
@@ -108,6 +109,7 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
     mlp_activations = self.mlp_activations
     mlp_dim = self.mlp_dim
     activation_partitioning_dims = self.activation_partitioning_dims
+    decoder_scan_axis = self.decoder_scan_axis
     num_decoder_layers = self.num_layers
     scan_layers = self.scan_layers
     shared_relative_bias = self.shared_relative_bias
@@ -225,13 +227,17 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
           layer_norm_factory=final_layer_norm_factory,
           num_layers=num_decoder_layers,
           output_logits_factory=output_logits_factory
-          if use_output_logits else None,
+          if use_output_logits
+          else None,
           position_embedder_factory=None,
+          scan_axis=decoder_scan_axis,
           shared_relative_position_bias_factory=(
-              relative_position_emb_factory if shared_relative_bias else None),
+              relative_position_emb_factory if shared_relative_bias else None
+          ),
           token_embedder_factory=token_embedder_factory,
           shared_token_embedder=shared_token_embedder,
-          scan_layers=scan_layers)
+          scan_layers=scan_layers,
+      )
       return t5_architecture.Decoder(**init_kwargs)
 
     def decoder_only_factory():
@@ -952,7 +958,7 @@ class EncoderDecoderModel(base_model.BaseModel):
     # Beam search returns [n_batch, n_beam, n_length] with beam dimension sorted
     # in increasing order of log-probability.
     # Return the highest scoring beam sequence.
-# pyformat: disable
+    # pyformat: disable
     decode_out = (
         NestedMap(num_decoded=(num_decodes, jnp.array(1, jnp.float32))),
         NestedMap(output_ids=decodes[:, -1, :],
