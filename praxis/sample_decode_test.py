@@ -145,6 +145,26 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     # gumbel noise is relatively smaller compared to the logits value.
     self.assertArraysEqual(new_ids, np.array([1, 4, 1, 0], dtype=np.int32))
 
+  def test_sample_from_top_k_and_top_p_global_normalize(self):
+    logits = jnp.array(
+        [
+            [0.1, 0.7, 0.2, 0, 0],
+            [0.1, 0, 0, 0.4, 0.5],
+            [0.2, 0.6, 0.1, 0, 0.1],
+            [0.5, 0, 0.5, 0, 0],
+        ],
+        dtype=jnp.float32,
+    )
+    new_ids = sample_decode.sample_from_top_k_and_top_p(
+        logits,
+        jax.random.PRNGKey(seed=123),
+        temperature=1.0,
+        top_k=3,
+        top_p=0.9,
+        global_normalize=True,
+    )
+    self.assertArraysEqual(new_ids, np.array([0, 3, 1, 0], dtype=np.int32))
+
   def test_sample_from_top_k_and_top_p_scalar_false_fn(self):
     logits = jnp.array(
         [

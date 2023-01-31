@@ -245,7 +245,10 @@ def right_align_prefix_ids(prefix_ids: JTensor, prefix_lengths: JTensor,
 
 
 def top_p_mask_logits(
-    logits: JTensor, p: Union[float, JTensor], logits_is_sorted=False
+    logits: JTensor,
+    p: Union[float, JTensor],
+    logits_is_sorted: bool = False,
+    logits_sum: Optional[JTensor] = None,
 ) -> JTensor:
   """Adjust logits so that the smallest number of logits whose cumulative...
 
@@ -258,6 +261,7 @@ def top_p_mask_logits(
     highest probability tokens whose cumulative probability mass exceeds this
     pre-chosen threshold p.
     logits_is_sorted: where or not the logits is sorted.
+    logits_sum: If none, apply softmax over logits to get probabilities.
 
   Returns:
     The masked logits.
@@ -271,8 +275,11 @@ def top_p_mask_logits(
     logits_sorted = logits
   else:
     logits_sorted = jnp.sort(logits, axis=-1)
-  sorted_cum_probs = jnp.cumsum(
-      jax.nn.softmax(logits_sorted.astype(jnp.float32), axis=-1), axis=-1)
+  if logits_sum is not None:
+    probs = logits_sorted.astype(jnp.float32) / logits_sum
+  else:
+    probs = jax.nn.softmax(logits_sorted.astype(jnp.float32), axis=-1)
+  sorted_cum_probs = jnp.cumsum(probs, axis=-1)
   cutoff_idx = jnp.sum((sorted_cum_probs <= p).astype(jnp.int32), axis=-1)
   cutoff_logit = logits_sorted[jnp.arange(batch_size), cutoff_idx]
   logits = jnp.where(logits < jnp.expand_dims(cutoff_logit, -1),
@@ -287,6 +294,7 @@ def sample_from_top_p_given_top_k(
     temperature: Union[JTensor, float],
     top_p: Optional[Union[float, JTensor]] = None,
     topk_is_sorted: bool = True,
+    logits_sum: JTensor = None,
 ) -> JTensor:
   """Sample decode algorithm from TopP given output from TopK.
 
@@ -297,6 +305,8 @@ def sample_from_top_p_given_top_k(
     temperature: Temperature of sampling decoding. It could be a float or a
       JTensor of shape [batch_size * num_samples].
     top_p: See params of `sample_from_top_k_and_top_p`.
+    topk_is_sorted: Whether topk logits are sorted.
+    logits_sum: logits sum.
 
   Returns:
     A tensor of shape [batch_size * num_samples].
@@ -309,7 +319,10 @@ def sample_from_top_p_given_top_k(
 
     def _true_fn():
       return top_p_mask_logits(
-          top_k_logits, top_p, logits_is_sorted=topk_is_sorted
+          top_k_logits,
+          top_p,
+          logits_is_sorted=topk_is_sorted,
+          logits_sum=logits_sum
       )
 
     def _false_fn():
@@ -318,7 +331,10 @@ def sample_from_top_p_given_top_k(
     top_p_logits = jax.lax.cond(needs_top_p_mask, _true_fn, _false_fn)
   else:
     top_p_logits = top_p_mask_logits(
-        top_k_logits, top_p, logits_is_sorted=topk_is_sorted
+        top_k_logits,
+        top_p,
+        logits_is_sorted=topk_is_sorted,
+        logits_sum=logits_sum,
     )
 
   # Add gumbel noise.
@@ -340,6 +356,7 @@ def sample_from_top_k_and_top_p(
     top_k: int,
     top_p: Optional[Union[float, JTensor]] = None,
     per_example_top_k: Optional[JTensor] = None,
+    global_normalize: bool = False,
 ) -> JTensor:
   """Sample decode algorithm from TopK and TopP.
 
@@ -360,6 +377,8 @@ def sample_from_top_k_and_top_p(
     per_example_top_k: Optional per example top_k of shape [batch_size *
       num_samples]. The value of per_example_top_k should be smaller or equal to
       `top_k` and larger than 0.
+    global_normalize: Normalize the logits over top-k logits or globally in the
+      whole vocabulary.
 
   Returns:
     A tensor of shape [batch_size * num_samples].
@@ -367,6 +386,10 @@ def sample_from_top_k_and_top_p(
 
   # TopK of shape [batch_size * num_samples, top_k]
   top_k_logits, top_k_indices = get_top_k(logits, top_k, per_example_top_k)
+  if global_normalize:
+    logits_sum = jnp.sum(logits.astype(jnp.float32), axis=-1, keepdims=True)
+  else:
+    logits_sum = None
   return sample_from_top_p_given_top_k(
       top_k_logits,
       top_k_indices,
@@ -374,6 +397,7 @@ def sample_from_top_k_and_top_p(
       temperature,
       top_p,
       topk_is_sorted=True,
+      logits_sum=logits_sum,
   )
 
 
@@ -438,10 +462,14 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
         of probs adds up to (at least) p.
       epsilon_p: if positive, use epsilon sampling, only selecting among the
         tokens with probability at least epsilon at each step.
+      global_normalize: if top_k and top_p are enabled together, this flag
+        indicates whether we need to normalize the logits in top_k logits or
+        globally in the whole vocabulary.
     """
     top_k: int = 40
     top_p: Optional[Union[float, JTensor]] = None
     epsilon_p: float = 0.
+    global_normalize: bool = False
 
   def __call__(
       self,
@@ -484,6 +512,7 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
           top_k=p.top_k,
           top_p=top_p,
           per_example_top_k=per_example_top_k,
+          global_normalize=p.global_normalize,
       )
     elif p.top_k == 0:
 
