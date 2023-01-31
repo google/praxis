@@ -53,6 +53,25 @@ SplitDimsMapping = pytypes.SplitDimsMapping
 AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 
+def _rms(x):
+  # Note: under pmap .mean() will produce a local mean, not across all hosts.
+  return (x**2.).mean().astype(jnp.float32)**.5
+
+
+def _rel_cos(x, y):
+  """Computes cosine similarity between residual x and layer output y."""
+  xx = (x * x).sum(-1)
+  xy = (x * y).sum(-1)
+  yy = (y * y).sum(-1)
+  xx += (xx == 0).astype(x.dtype)
+  yy += (yy == 0).astype(y.dtype)
+  xx = xx.astype(jnp.float32)
+  yy = yy.astype(jnp.float32)
+  xy = xy.astype(jnp.float32)
+  cos_xy = xy * (xx**-0.5) * (yy**-0.5)
+  return cos_xy.mean()
+
+
 def compute_attention_masks_for_fprop(
     inputs: JTensor,
     paddings: Optional[JTensor] = None,
@@ -407,55 +426,69 @@ class TransformerFeedForward(base_layer.BaseLayer):
     if self.apply_padding_first and paddings is not None:
       inputs *= (1.0 - paddings)
 
+    self.add_summary('input_rms', _rms(inputs), verbosity=4)
+    residual = inputs
+
     if self.norm_policy == 'primer_hybrid':
-      inputs_normalized = self.pre_layer_norm(inputs)
+      inputs = self.pre_layer_norm(inputs)
     elif self.norm_policy == 'pre':
-      inputs_normalized = self.layer_norm(inputs)
-    else:
-      inputs_normalized = inputs
+      inputs = self.layer_norm(inputs)
+
+    if self.norm_policy in ('primer_hybrid', 'pre'):
+      self.add_summary('input_norm_rms', _rms(inputs), verbosity=4)
 
     # Apply first FFN layer
     if self._is_ffn1_gated:
       # theta.ffn_layer1_gate corresponds to gshard_builder's wi0
-      gate_value = self.ffn_layer1_gate(inputs_normalized)
+      gate_value = self.ffn_layer1_gate(inputs)
       # theta.ffn_layer1 corresponds to gshard_builder's wi1
-      projected_inputs = gate_value * self.ffn_layer1(inputs_normalized)
+      activations = gate_value * self.ffn_layer1(inputs)
     else:
-      projected_inputs = self.ffn_layer1(inputs_normalized)
-      projected_inputs = checkpoint_name(projected_inputs, 'ffn1')
+      activations = self.ffn_layer1(inputs)
+      activations = checkpoint_name(activations, 'ffn1')
 
     # Apply paddings if not None
     if not self.apply_padding_first and paddings is not None:
-      projected_inputs *= (1.0 - paddings)
+      activations *= (1.0 - paddings)
+
+    self.add_summary('activation_rms', _rms(activations), verbosity=4)
 
     # Apply RELU dropout
-    projected_inputs = self.relu_dropout(projected_inputs)
+    activations = self.relu_dropout(activations)
 
     # Apply second FFN layer
-    projected_inputs = self.ffn_layer2(projected_inputs)
-    projected_inputs = checkpoint_name(projected_inputs, 'ffn2')
+    outputs = self.ffn_layer2(activations)
+    outputs = checkpoint_name(outputs, 'ffn2')
 
     # Apply paddings if not None
     if not self.apply_padding_first and paddings is not None:
-      projected_inputs *= (1.0 - paddings)
+      outputs *= (1.0 - paddings)
+
+    self.add_summary('output_rms', _rms(outputs), verbosity=4)
 
     # Apply Primer normalization before dropout.
     if self.norm_policy == 'primer_hybrid':
-      projected_inputs = self.post_layer_norm(projected_inputs)
+      outputs = self.post_layer_norm(outputs)
     elif self.norm_policy == 'post':
-      projected_inputs = self.layer_norm(projected_inputs)
+      outputs = self.layer_norm(outputs)
+
+    if self.norm_policy in ('primer_hybrid', 'post'):
+      self.add_summary('output_norm_rms', _rms(outputs), verbosity=4)
 
     # Apply residual dropout
-    projected_inputs = self.residual_dropout(projected_inputs)
+    outputs = self.residual_dropout(outputs)
 
     # Apply skip connection
     if self.add_skip_connection:
       if self.residual_droppath_prob:
-        projected_inputs = self.residual_droppath(inputs, projected_inputs)
+        outputs = self.residual_droppath(residual, outputs)
       else:
-        projected_inputs = inputs + projected_inputs * self.residual_weight
+        outputs = residual + outputs * self.residual_weight
 
-    return projected_inputs
+    # Cosine similarity between inputs (residual) and outputs.
+    self.add_summary('output_rel_cos', _rel_cos(residual, outputs), verbosity=4)
+
+    return outputs
 
   def extend_step(self,
                   inputs: JTensor,
@@ -984,39 +1017,51 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     if self.apply_padding_first and paddings is not None:
       inputs *= (1.0 - jnp.expand_dims(paddings, axis=-1))
 
+    self.add_summary('input_rms', _rms(inputs), verbosity=4)
+    residual = inputs
+
     # TODO(zhangqiaorjc): Handle input of shape [batch, seq_len, g, model/g]?
     if self.norm_policy == 'primer_hybrid':
-      inputs_normalized = self.pre_layer_norm(inputs)
+      inputs = self.pre_layer_norm(inputs)
     elif self.norm_policy == 'pre':
-      inputs_normalized = self.layer_norm(inputs)
-    else:
-      inputs_normalized = inputs
+      inputs = self.layer_norm(inputs)
 
-    assert len(inputs_normalized.shape) in [2, 3]
+    if self.norm_policy in ('primer_hybrid', 'pre'):
+      self.add_summary('input_norm_rms', _rms(inputs), verbosity=4)
+
+    assert len(inputs.shape) in [2, 3]
 
     if self.gating_func == 'dense_top2':
-      combined_output, aux_loss = self._combine_top2_expert_outputs(
-          inputs_normalized, paddings, segment_ids)
+      outputs, aux_loss = self._combine_top2_expert_outputs(
+          inputs, paddings, segment_ids)
     else:
-      combined_output, aux_loss = self._dispatch_and_combine_expert_outputs(
-          inputs_normalized, paddings, segment_ids)
+      outputs, aux_loss = self._dispatch_and_combine_expert_outputs(
+          inputs, paddings, segment_ids)
 
     # Apply padding.
     if paddings is not None:
-      combined_output *= (1.0 -
-                          jnp.expand_dims(paddings, -1)).astype(fprop_dtype)
+      outputs *= (1.0 - jnp.expand_dims(paddings, -1)).astype(fprop_dtype)
+
+    self.add_summary('output_rms', _rms(outputs), verbosity=4)
+
     # Primer normalization before dropout.
     if self.norm_policy == 'primer_hybrid':
-      combined_output = self.post_layer_norm(combined_output)
+      outputs = self.post_layer_norm(outputs)
     elif self.norm_policy == 'post':
-      combined_output = self.layer_norm(combined_output)
+      outputs = self.layer_norm(outputs)
+
+    if self.norm_policy in ('primer_hybrid', 'post'):
+      self.add_summary('output_norm_rms', _rms(outputs), verbosity=4)
+
     # Residual dropout.
-    after_residual = self.residual_dropout(combined_output)
+    outputs = self.residual_dropout(outputs)
     if self.add_skip_connection:
       if self.residual_droppath_prob:
-        out = self.residual_droppath(inputs, after_residual)
+        outputs = self.residual_droppath(residual, outputs)
       else:
-        out = inputs + after_residual * self.residual_weight
+        outputs = residual + outputs * self.residual_weight
+
+    self.add_summary('output_rel_cos', _rel_cos(residual, outputs), verbosity=4)
 
     # Add loss to a global collection. We don't return the loss to the caller
     # to avoid the change of the api here.
@@ -1029,7 +1074,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     self.add_summary('aux_moe_load_balance_loss', aux_loss)
     self.add_aux_loss('aux_moe_load_balance_loss', aux_loss)
 
-    return out
+    return outputs
 
   def extend_step(self,
                   inputs: JTensor,
@@ -1244,6 +1289,8 @@ class Transformer(base_layer.BaseLayer):
     self.add_summary('xformer_input_std', inputs_stats.std_v, verbosity=3)
     self.add_summary('xformer_input_abs_max', inputs_stats.max_v, verbosity=3)
 
+    self.add_summary('attention_input_rms', _rms(inputs), verbosity=4)
+
     if self.norm_policy == 'primer_hybrid':
       inputs_normalized = self.pre_layer_norm(inputs)
     elif self.norm_policy == 'pre':
@@ -1260,10 +1307,16 @@ class Transformer(base_layer.BaseLayer):
         query_segment_pos=segment_pos,
         key_segment_pos=segment_pos)
     atten_probs = NestedMap(self_atten=self_atten_probs)
+
+    self.add_summary('attention_output_rms', _rms(atten_output), verbosity=4)
+
     if self.norm_policy == 'primer_hybrid':
       atten_output = self.post_layer_norm(atten_output)
     elif self.norm_policy == 'post':
       atten_output = self.layer_norm(atten_output)
+
+    self.add_summary('attention_output_norm_rms', _rms(atten_output),
+                     verbosity=4)
 
     # Residual dropout and connection
     atten_output = self.residual_dropout(atten_output)
@@ -1273,6 +1326,9 @@ class Transformer(base_layer.BaseLayer):
       atten_output = self.residual_droppath(inputs, atten_output)
     else:
       atten_output += inputs
+
+    self.add_summary('attention_output_rel_cos', _rel_cos(inputs, atten_output),
+                     verbosity=4)
 
     # Apply cross attention if applicable
     if self.use_cross_attention and (

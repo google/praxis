@@ -1251,6 +1251,10 @@ class DotProductAttention(base_layer.BaseLayer):
         'max_logit_precap',
         jnp.max(logits + atten_mask.astype(jnp.float32)),
         verbosity=4)
+    self.add_summary(
+        'rms_logits_precap',
+        ((logits ** 2.).mean().astype(jnp.float32) **.5),
+        verbosity=4)
     logits = self._cap_logits(logits)
     # Attention softmax is always carried out in fp32.
     logits = logits.astype(jnp.float32)
