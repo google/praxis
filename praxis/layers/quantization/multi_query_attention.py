@@ -45,6 +45,13 @@ class OneHeadedAttentionProjection(
 
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
+
+  def _do_static_activation_quantization(self) -> bool:
+    """If activation need to be quantized."""
+    act_params = self.quantization.act_params
+    return act_params is not None and act_params.stats_config is not None
+
+
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
     if self.mesh_shape is not None:
