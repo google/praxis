@@ -15,14 +15,17 @@
 
 """Quantization Aware Training ops."""
 
+from __future__ import annotations
 from typing import Optional, Sequence, Union
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
 from praxis.layers.quantization import quantization_hparams
+
 
 WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
@@ -41,11 +44,25 @@ def create_tensor_quantizer(
     quant_params: Optional[
         Union[ActQuantizationParams, WeightQuantizationParams]
     ],
-):
+) -> pax_fiddle.Config[TensorQuantizer]:
+  """Creates tensor quantizer.
+
+  Args:
+    name: Tensor quantizer name.
+    quant_params: Quantization parameters for weights or activation.
+
+  Returns:
+    Tensor quantizer.
+  """
   tq_params = pax_fiddle.Config(TensorQuantizer, name=name)
   if quant_params is not None:
     tq_params.precision = quant_params.precision
     tq_params.stop_scale_gradient = quant_params.stop_scale_gradient
+
+  if isinstance(quant_params, WeightQuantizationParams):
+    tq_params.min_clipping = quant_params.min_clipping
+    tq_params.num_optimize_clipping = quant_params.num_optimize_clipping
+
   return tq_params
 
 
@@ -56,14 +73,32 @@ class TensorQuantizer(base_layer.BaseLayer):
     precision: Number of bits to quantize to (e.g 4 for int4). Must be positive.
     stop_scale_gradient: stop the gradient of the quantization scale for
       numerical stability. Note: this is numerically incorrect.
+    min_clipping: Clipping value which will be used for clipping optimization
+      in range [min_clipping ... 1].
+    num_optimize_clipping: Number of optimization steps used for
+      scale estimation with search over clipping values in
+      range [min_clipping ... 1].
   """
   precision: Optional[int] = None
   stop_scale_gradient: bool = False
+  min_clipping: Optional[float] = None
+  num_optimize_clipping: Optional[int] = None
 
   def setup(self):
     assert (
         self.precision is None or self.precision <= 23
     ), 'Too many bits, float32 has less precision.'
+
+    if self.min_clipping is not None or self.num_optimize_clipping is not None:
+      assert (
+          self.min_clipping is not None
+          and self.num_optimize_clipping is not None
+      ), (
+          'Both min_clipping and num_optimize_clipping must be defined '
+          'or both must be None.'
+      )
+      assert self.min_clipping > 0.0 and self.min_clipping < 1.0
+      assert self.num_optimize_clipping > 0
 
   def __call__(self):
     # Since TensorQuantizer does nothing when initialized, __call__ is a no-op.
@@ -80,18 +115,22 @@ class TensorQuantizer(base_layer.BaseLayer):
     assert cb < cb_unsafe, 'Internal error, epsilon too small.'
     return cb
 
-  def get_quant_scale(
+  def _get_scale(
       self,
       x: JTensor,
       contract_dims: Union[int, Sequence[int]],
       dtype: jnp.dtype = jnp.bfloat16,
+      clipping: Optional[float] = None,
   ) -> JTensor:
     if self.precision is None:
       return jnp.ones(shape=(1,) * x.ndim, dtype=dtype)
 
-    x_bound = jnp.max(jnp.abs(x), axis=contract_dims, keepdims=True)
+    x_max = jnp.max(jnp.abs(x), axis=contract_dims, keepdims=True)
+    if clipping is not None:
+      x_max *= clipping
+
     clip_bound = self._get_clip_bound()
-    scale = x_bound / clip_bound
+    scale = x_max / clip_bound
     if self.stop_scale_gradient:
       scale = jax.lax.stop_gradient(scale)
       scale = jnp.where(scale == 0, jnp.ones_like(scale), scale)
@@ -99,6 +138,51 @@ class TensorQuantizer(base_layer.BaseLayer):
       # Add a small to avoid NaN gradients for near-zero inputs during training.
       scale = scale + jnp.finfo(dtype).eps
     return scale.astype(dtype)
+
+  def _get_optimal_scale(
+      self,
+      x: JTensor,
+      contract_dims: Union[int, Sequence[int]],
+      dtype: jnp.dtype = jnp.bfloat16,):
+
+    def quantization_error_and_scale(clipping):
+      scale = self._get_scale(x, contract_dims, dtype, clipping=clipping)
+      x_quantized = self.to_quant(jnp.divide(x, scale), jnp.int8)
+      x_quantized_dequantized = jnp.multiply(scale, x_quantized)
+      sum_error = jnp.sum(jnp.abs(jnp.subtract(x, x_quantized_dequantized)))
+      return sum_error, scale
+
+    clipping = np.linspace(
+        1.0, self.min_clipping, num=self.num_optimize_clipping
+    )
+    res = jax.vmap(quantization_error_and_scale)(clipping)
+    best_ind = jnp.argmin(res[0])
+    best_scale = res[1].at[best_ind].get().astype(dtype)
+    return best_scale
+
+  def get_quant_scale(
+      self,
+      x: JTensor,
+      contract_dims: Union[int, Sequence[int]],
+      dtype: jnp.dtype = jnp.bfloat16,
+  ) -> JTensor:
+    """Computes scale for quantization.
+
+    It can compute standard scale or scale optimized over different
+    clipping values in range [min_clipping ... 1.0].
+
+    Args:
+      x: Input tensor.
+      contract_dims: Axis along which to quantize acts (the non-feature axis).
+      dtype: Output type.
+
+    Returns:
+      Scale tensor.
+    """
+    if self.min_clipping is not None and self.num_optimize_clipping is not None:
+      return self._get_optimal_scale(x, contract_dims, dtype)
+    else:
+      return self._get_scale(x, contract_dims, dtype)
 
   def update(self, x: JTensor):
     # This function is no-op for now. Once static quantization is supported,

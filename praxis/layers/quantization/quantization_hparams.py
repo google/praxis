@@ -83,11 +83,18 @@ class WeightQuantizationParams:
     quantization. 1.0 means using hard min/max.
   stop_scale_gradient: stop the gradient of the quantization scale for numerical
     stability. Note: this is numerically incorrect.
+  min_clipping: Clipping value which will be used for clipping optimization
+    in range [min_clipping ... 1].
+  num_optimize_clipping: Number of optimization steps used for
+    scale estimation with search over clipping values in
+    range [min_clipping ... 1].
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
   clipping_coeff: float = 1.0
   stop_scale_gradient: bool = False
+  min_clipping: Optional[float] = None
+  num_optimize_clipping: Optional[int] = None
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):

@@ -142,6 +142,68 @@ class AqtTest(test_utils.TestCase):
     x_rescaled = x_scaled / scale
     self.assertArraysEqual(x_rescaled, jnp.zeros_like(x_rescaled))
 
+  def test_clipping_optimization(self):
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='tq',
+        precision=4,
+    )
+    p_quant_opt = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='tq',
+        precision=4,
+        min_clipping=0.4,
+        num_optimize_clipping=12,
+    )
+    quant = p_quant.Instantiate()
+    quant_opt = p_quant_opt.Instantiate()
+    state = quant.init(jax.random.PRNGKey(0))
+    batch_size = 3
+    feature_dim1 = 2
+    feature_dim2 = 256
+    input_shape = [batch_size, feature_dim1, feature_dim2]
+    x = jax.random.normal(jax.random.PRNGKey(12), input_shape)
+
+    # Compute dequantization error with the standard quantizer:
+    scale = quant.apply(
+        state,
+        x,
+        contract_dims=-1,
+        dtype=jnp.float32,
+        method=quant.get_quant_scale,
+    )
+    x_q = quant.apply(state, x / scale, jnp.int8, method=quant.to_quant)
+    x_q_deq = jnp.multiply(scale, x_q)
+    sum_error = jnp.sum(jnp.abs(jnp.subtract(x, x_q_deq)))
+
+    # Compute dequantization error with the clipping optimization:
+    scale_opt = quant_opt.apply(
+        state,
+        x,
+        contract_dims=-1,
+        dtype=jnp.float32,
+        method=quant.get_quant_scale,
+    )
+    x_q_opt = quant_opt.apply(
+        state, x / scale_opt, jnp.int8, method=quant_opt.to_quant
+    )
+    x_q_deq_opt = jnp.multiply(scale_opt, x_q_opt)
+    sum_error_opt = jnp.sum(jnp.abs(jnp.subtract(x, x_q_deq_opt)))
+
+    # Validate that x is quantized
+    self.assertEqual(7, jnp.max(x_q))
+    self.assertEqual(7, jnp.max(x_q_opt))
+    self.assertEqual(7, -jnp.min(x_q))
+    self.assertEqual(7, -jnp.min(x_q_opt))
+    sum_x_q = jnp.sum(jnp.abs(x_q))
+    sum_x_q_opt = jnp.sum(jnp.abs(x_q_opt))
+    self.assertNotEqual(sum_x_q, sum_x_q_opt)
+
+    # Validated that quantization with optimization has lower error.
+    # With feature_dim2 we observe that difference between sum_error_opt and
+    # sum_error belongs to range: 10...30, so selected 20 as middle point.
+    self.assertLess(sum_error_opt, sum_error-20)
+
 
 if __name__ == '__main__':
   absltest.main()
