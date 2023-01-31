@@ -1250,6 +1250,10 @@ class Transformer(base_layer.BaseLayer):
     """
     raise NotImplementedError(type(self))
 
+  def decoding_sequence_length(self) -> int:
+    """Get the decoding sequence length."""
+    return self.self_attention.decoding_state_sequence_length()
+
   def __call__(
       self,
       inputs: JTensor,
@@ -1741,7 +1745,8 @@ class StackedTransformer(base_layer.BaseLayer):
       assert cross_paddings is not None
 
     if atten_mask is None:
-      max_t = self.x_layers[0].self_attention.decoding_state_sequence_length()
+      max_t = self.x_layers[0].decoding_sequence_length()
+
       if segment_pos is None:
         segment_mask = None
       else:

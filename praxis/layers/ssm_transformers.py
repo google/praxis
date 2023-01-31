@@ -156,6 +156,10 @@ class SSMTransformer(transformers.Transformer):
     params.step_size = self.ssm_step_size
     self.create_child('ssm', params)
 
+  def decoding_sequence_length(self) -> int:
+    """Get the decoding sequence length."""
+    return self.ssm_l_max
+
   def __call__(
       self,
       inputs: JTensor,
