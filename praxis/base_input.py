@@ -198,7 +198,6 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     return jax.tree_util.tree_map(py_utils.reshard, arrays)
 
   def reshard_for_spmd(self, arrays: NestedJTensor,
-                       global_shapes: NestedShapeDtypeStruct,
                        global_mesh: maps.Mesh,
                        pspecs: NestedPartitionSpec) -> NestedJTensor:
     """Reshards inputs for pjit.
@@ -212,16 +211,15 @@ class BaseInput(base_hyperparams.BaseParameterizable):
 
     Args:
       arrays: Inputs returned by this input class.
-      global_shapes: Expected global shapes of `arrays` after resharding.
       global_mesh: Global mesh for pjit computation.
       pspecs: Expected partition specs for `arrays` after resharding.
 
     Returns:
       Resharded inputs.
     """
-    py_utils.assert_same_shape_and_dtype(
-        global_shapes,
-        jax.tree_util.tree_map(py_utils.get_global_input_shape_dtype, arrays))
+    global_shapes = jax.tree_util.tree_map(
+        py_utils.get_global_input_shape_dtype, arrays
+    )
     device_order = self.hparams.custom_device_order
     if device_order is None:
       return py_utils.create_gda(arrays, global_shapes, global_mesh, pspecs)
