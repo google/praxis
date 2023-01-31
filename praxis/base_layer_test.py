@@ -660,6 +660,28 @@ class BaseLayerTest(test_utils.TestCase):
         TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
       SimpleBaseLayer(layer_p)
 
+  def test_get_fan_in_fan_out(self):
+    self.assertEqual((None, None), base_layer.get_fan_in_fan_out(shape=[]))
+    self.assertEqual((1024, 1024), base_layer.get_fan_in_fan_out(shape=[1024]))
+    self.assertEqual((1024, 8192), base_layer.get_fan_in_fan_out([1024, 8192]))
+    self.assertEqual((64 * 1024, 64 * 8192),
+                     base_layer.get_fan_in_fan_out([64, 1024, 8192]))
+    # With explicit fan_in_axes/fan_out_axes the factor of 64 disappears.
+    self.assertEqual((1024, 8192),
+                     base_layer.get_fan_in_fan_out([64, 1024, 8192],
+                                                   fan_in_axes=[-2],
+                                                   fan_out_axes=[-1]))
+    self.assertEqual((3 * 1024 * 32, 3 * 1024 * 128),
+                     base_layer.get_fan_in_fan_out(shape=[3, 1024, 32, 128]))
+    # With explicit fan_in_axes/fan_out_axes the factor of 3 disappears,
+    # and fan out is computed as product of last 2 dims.
+    self.assertEqual((1024, 32 * 128),
+                     base_layer.get_fan_in_fan_out(
+                         shape=[3, 1024, 32, 128],
+                         fan_in_axes=[-3],
+                         fan_out_axes=[-2, -1],
+                     ))
+
 
 if __name__ == '__main__':
   absltest.main()

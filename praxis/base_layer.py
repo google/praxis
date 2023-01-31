@@ -498,6 +498,10 @@ class WeightHParams(BaseHyperParams):
       usage reasons we stack all the variables in creating those n-layers.
     repeat_prefix_split_dims_mapping: Tensor split dims mapping for the
       repeat_prefix dims.
+    fan_in_axes: Shape axes used to compute fan in for Xavier init and
+      gaussian_sqrt_(fanin|fanout) init variants.
+    fan_out_axes: Shape axes used to compute fan out for Xavier init and
+      gaussian_sqrt_(fanin|fanout) init variants.
   """
   shape: Sequence[int]
   init: Optional[WeightInit] = None
@@ -507,6 +511,8 @@ class WeightHParams(BaseHyperParams):
   tensor_split_dims_mapping: SplitDimsMapping = None
   repeat_prefix: Optional[Sequence[int]] = None
   repeat_prefix_split_dims_mapping: SplitDimsMapping = None
+  fan_in_axes: Optional[Sequence[int]] = None
+  fan_out_axes: Optional[Sequence[int]] = None
 
   # If any kwargs are None, they are given defaults from the parent BaseLayer
   # in self.create_variable.
@@ -526,7 +532,10 @@ NestedWeightHParams = Nested[WeightHParams]
 
 
 def get_fan_in_fan_out(
-    shape: Sequence[int]) -> Tuple[Optional[int], Optional[int]]:
+    shape: Sequence[int],
+    fan_in_axes: Optional[Sequence[int]] = None,
+    fan_out_axes: Optional[Sequence[int]] = None
+) -> Tuple[Optional[int], Optional[int]]:
   """Returns (fan_in, fan_out) of a weight variable of the given shape."""
   if not shape:
     return None, None
@@ -536,11 +545,26 @@ def get_fan_in_fan_out(
     # Following _compute_fans() from TF's init_ops.py.
     return shape[0], shape[0]
   else:
+    if fan_in_axes is None and fan_out_axes is None:
+      fan_in_axes = [-2]
+      fan_out_axes = [-1]
+      receptive_field_axis = list(range(len(shape)))[:-2]
+    else:
+      assert fan_in_axes is not None
+      assert fan_out_axes is not None
+      receptive_field_axis = []
+
     receptive_field_size = 1
-    for s in shape[:-2]:
-      receptive_field_size *= s
-    fan_in = shape[-2] * receptive_field_size
-    fan_out = shape[-1] * receptive_field_size
+    for i in receptive_field_axis:
+      receptive_field_size *= shape[i]
+    fan_in = 1
+    for i in fan_in_axes:
+      fan_in *= shape[i]
+    fan_in *= receptive_field_size
+    fan_out = 1
+    for i in fan_out_axes:
+      fan_out *= shape[i]
+    fan_out *= receptive_field_size
     return fan_in, fan_out
 
 
@@ -585,6 +609,8 @@ def init_var(
   assert isinstance(scale, (int, float))
   shape = var_p.shape
   init_dtype = var_p.dtype
+  fan_in_axes = var_p.fan_in_axes
+  fan_out_axes = var_p.fan_out_axes
   logging.info(
       'Creating var %s with shape=%s, dtype=%s, init method=%s and scale=%s',
       var_full_name, shape, init_dtype.dtype, var_p.init.method,
@@ -621,15 +647,15 @@ def init_var(
           'Make sure that it is intended.', var_full_name, shape, method, dim0)
     scale *= 1.0 / math.sqrt(dim0)
   if method in ['gaussian_sqrt_fanin', 'truncated_gaussian_sqrt_fanin']:
-    fan_in, _ = get_fan_in_fan_out(shape)
+    fan_in, _ = get_fan_in_fan_out(shape, fan_in_axes, fan_out_axes)
     if fan_in is not None:
       scale *= 1.0 / math.sqrt(fan_in)
   if method in ['gaussian_sqrt_fanout', 'truncated_gaussian_sqrt_fanout']:
-    _, fan_out = get_fan_in_fan_out(shape)
+    _, fan_out = get_fan_in_fan_out(shape, fan_in_axes, fan_out_axes)
     if fan_out is not None:
       scale *= 1.0 / math.sqrt(fan_out)
   if method in ['gaussian_sqrt_fanavg']:
-    fan_in, fan_out = get_fan_in_fan_out(shape)
+    fan_in, fan_out = get_fan_in_fan_out(shape, fan_in_axes, fan_out_axes)
     if fan_in is not None and fan_out is not None:
       scale *= math.sqrt(2.0 / (fan_in + fan_out))
 
@@ -657,7 +683,7 @@ def init_var(
   elif method in ['constant']:
     return scale + jnp.zeros(shape=shape, dtype=init_dtype)
   elif method in ['xavier']:
-    fan_in, fan_out = get_fan_in_fan_out(shape)
+    fan_in, fan_out = get_fan_in_fan_out(shape, fan_in_axes, fan_out_axes)
     limit = scale * math.sqrt(6. / (fan_in + fan_out))
     return limit * jrandom.uniform(
         prng_key, shape, init_dtype, minval=-1.0, maxval=1.0)
