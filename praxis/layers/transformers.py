@@ -560,6 +560,11 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     second_expert_policy: How to pick second expert: all, sampling or random.
     internal_gshard_variance_scaling_fan_in_init: Internal. Do not use. To
       study MoE layer init.
+    explicit_fan_in_fan_out_axes: Set to True except for backward compatibility.
+      Current Transformer implementation typically does weight stacking and
+      reshapes to improve efficiency, to preserve correct init scale one needs
+      to specify fan_in and fan_out dimensions explicitly. When such dimensions
+      are explicitly specified, receptive_field multiplier is set to 1.
     moe_load_balance_loss_weight: Weight for the load balancing loss of the
       MoE layer.
     gating_logit_cap:  Cap the absolute values of MoE gating logits by tanh.
@@ -596,6 +601,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
   expert_weight_shards: int = 1
   second_expert_policy: str = 'all'
   internal_gshard_variance_scaling_fan_in_init: bool = True
+  explicit_fan_in_fan_out_axes: bool = False  # TODO(b/267235257) switch to True
   moe_load_balance_loss_weight: float = 1.0
   gating_logit_cap: float = 0.0
   moe_gating_embedding_level: str = 'token'
@@ -728,6 +734,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
         init=wi_init,
         mesh_shape=self.mesh_shape,
         tensor_split_dims_mapping=wp.emh,
+        fan_in_axes=([-2] if self.explicit_fan_in_fan_out_axes else None),
+        fan_out_axes=([-1] if self.explicit_fan_in_fan_out_axes else None),
     )
     logging.debug('moe wi WeightHParams %s', wi_pc)
     for ii in range(self.expert_weight_shards):
@@ -752,6 +760,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
         init=wo_init,
         mesh_shape=self.mesh_shape,
         tensor_split_dims_mapping=wp.ehm,
+        fan_in_axes=([-2] if self.explicit_fan_in_fan_out_axes else None),
+        fan_out_axes=([-1] if self.explicit_fan_in_fan_out_axes else None),
     )
     logging.debug('moe wo WeightHParams %s', wo_pc)
     for ii in range(self.expert_weight_shards):
