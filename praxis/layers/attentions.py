@@ -714,12 +714,14 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
     use_bias: Whether to add bias in the projection layer.
     attention_combine_dims: If set, the heads and key/value dimensions are
       combined in the variables and the computation.
+    explicit_fan_in_fan_out_axes: Set true except for backward compatibility.
   """
   input_dim: int = 0
   num_heads: int = 0
   dim_per_head: int = 0
   use_bias: bool = True
   attention_combine_dims: bool = False
+  explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
 
   def setup(self) -> None:
     # Sharding has the same convention of AttentionProjection, which doesn't
@@ -753,8 +755,10 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
 
     if self.attention_combine_dims:
       hd_shape = [self.num_heads * self.dim_per_head]
+      fan_in_axes, fan_out_axes = [-2], [-1]
     else:
       hd_shape = [self.num_heads, self.dim_per_head]
+      fan_in_axes, fan_out_axes = [-3], [-1, -2]
 
     pc_shape = [3, self.input_dim] + hd_shape
     # Combined weight for q, k, v projections.
@@ -764,6 +768,10 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
         dtype=self.dtype,
         mesh_shape=self.mesh_shape,
         tensor_split_dims_mapping=weight_split_dims_mapping,
+        fan_in_axes=(fan_in_axes
+                     if self.explicit_fan_in_fan_out_axes else None),
+        fan_out_axes=(fan_out_axes
+                      if self.explicit_fan_in_fan_out_axes else None),
     )
     self.create_variable('w', pc)
     if self.use_bias:
