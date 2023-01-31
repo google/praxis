@@ -608,12 +608,12 @@ class PiecewiseSchedule(BaseSchedule):
     if len(p.schedules) != len(p.boundaries) + 1:
       raise ValueError('len(schedules) != len(boundaries) + 1: %s vs %s' %
                        (len(p.schedules), len(p.boundaries)))
-    self._schedules = [instantiate(s) for s in p.schedules]
+    self._schedules_inst = [instantiate(s) for s in p.schedules]
 
   def value(self, count: JTensor) -> JTensor:
     p = self.hparams
     return jnp.array(
-        optax.join_schedules([s.value for s in self._schedules],
+        optax.join_schedules([s.value for s in self._schedules_inst],
                              p.boundaries)(count), jnp.float32)
 
 
@@ -637,7 +637,7 @@ class CycleSchedule(BaseSchedule):
     if len(p.schedules) != len(p.steps):
       raise ValueError('len(schedules) != len(steps): %s vs %s' %
                        (len(p.schedules), len(p.steps)))
-    self._schedules = [instantiate(s) for s in p.schedules]
+    self._schedules_inst = [instantiate(s) for s in p.schedules]
     boundaries = [0]
     for step in p.steps:
       boundaries.append(boundaries[-1] + step)
@@ -646,8 +646,8 @@ class CycleSchedule(BaseSchedule):
 
   def value(self, count: JTensor) -> JTensor:
     relative_step = jnp.mod(count, self._period)
-    output = self._schedules[0].value(count)
-    for boundary, schedule in zip(self._boundaries, self._schedules[1:]):
+    output = self._schedules_inst[0].value(count)
+    for boundary, schedule in zip(self._boundaries, self._schedules_inst[1:]):
       output = jnp.where(relative_step < boundary, output,
                          schedule.value(count))
     return output
