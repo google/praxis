@@ -163,7 +163,7 @@ def _get_argmax_ids(
 def get_top_k(
     logits: JTensor, top_k: int, per_example_top_k: JTensor
 ) -> Sequence[JTensor]:
-  """Gets top k logits and inices from given top K.
+  """Gets top k logits and indices from given top K.
 
   Args:
     logits: Logits of current step. This is a JTensor of [batch_size *
