@@ -989,6 +989,7 @@ class ClassificationModel(base_model.BaseModel):
   network_tpl: LayerTpl = template_field(resnets.ResNet)
   softmax_tpl: LayerTpl = template_field(embedding_softmax.FullSoftmax)
   input_field: str = 'image'
+  label_field: str = 'label_probs'
 
   def setup(self) -> None:
     super().setup()
@@ -1006,6 +1007,7 @@ class ClassificationModel(base_model.BaseModel):
         class weights as values.
     """
     inputs = input_batch.Get(self.input_field)
+    label_probs = input_batch.Get(self.label_field)
     features = self.network(inputs)
     batch_size = inputs.shape[0]
     example_weights = jnp.ones([batch_size])
@@ -1019,7 +1021,7 @@ class ClassificationModel(base_model.BaseModel):
     softmax_output = self.softmax(
         inputs=features,
         class_weights=example_weights[:, jnp.newaxis],
-        class_probabilities=input_batch.label_probs)
+        class_probabilities=label_probs)
     return NestedMap(
         features=features,
         softmax_output=softmax_output,
@@ -1041,6 +1043,7 @@ class ClassificationModel(base_model.BaseModel):
         training example, where the first dimension of each tensor is the batch
         index. The base class just returns an empty dict.
     """
+    label_probs = input_batch.Get(self.label_field)
     avg_xent = predictions.softmax_output.avg_xent
     total_weight = predictions.softmax_output.total_weight
     metrics = NestedMap(
@@ -1050,7 +1053,7 @@ class ClassificationModel(base_model.BaseModel):
     acc1 = metric_utils.top_k_accuracy(
         1,
         predictions.softmax_output.logits,
-        label_probs=input_batch.label_probs,
+        label_probs=label_probs,
         weights=predictions.example_weights)
     metrics.update(
         accuracy=(acc1, predictions.softmax_output.total_weight),
@@ -1063,14 +1066,18 @@ class ClassificationModel(base_model.BaseModel):
       acc5 = metric_utils.top_k_accuracy(
           5,
           predictions.softmax_output.logits,
-          label_probs=input_batch.label_probs,
+          label_probs=label_probs,
           weights=predictions.example_weights)
       metrics.update(
           acc5=(acc5, predictions.softmax_output.total_weight),
           error5=(1.0 - acc5, predictions.softmax_output.total_weight),
       )
       self.add_summary('acc5', acc5)
-    return metrics, {}
+
+    per_example_out = NestedMap(
+        labels=label_probs, scores=predictions.softmax_output.logits
+        )
+    return metrics, per_example_out
 
   def predict(self, input_batch: NestedMap) -> Predictions:
     """Computes logits from `input_batch`.
@@ -1089,6 +1096,7 @@ class ClassificationModel(base_model.BaseModel):
 
   def decode(self, input_batch: NestedMap) -> DecodeOut:
     """Computes predictions and runs metrics."""
+    label_probs = input_batch.Get(self.label_field)
     predictions = self.compute_predictions(input_batch)
     losses, _ = self.compute_loss(predictions, input_batch)
 
@@ -1097,7 +1105,7 @@ class ClassificationModel(base_model.BaseModel):
 
     eval_metrics.accuracy = clu_metrics.Accuracy.from_model_output(
         logits=predictions.softmax_output.logits,
-        labels=jnp.argmax(input_batch.label_probs, axis=-1))
+        labels=jnp.argmax(label_probs, axis=-1))
     return losses, per_example_out, eval_metrics
 
   def process_decode_out(self, input_obj: base_input.BaseInput,
