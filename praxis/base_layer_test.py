@@ -622,7 +622,7 @@ class BaseLayerTest(test_utils.TestCase):
 
     class Parent(base_layer.BaseLayer):
 
-      child_tpl: Any = base_layer.template_field(Child)
+      child_tpl: pax_fiddle.Config = base_layer.template_field(Child)
 
       def setup(self):
         self.create_child('child', self.child_tpl)

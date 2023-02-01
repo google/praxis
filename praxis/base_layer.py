@@ -1385,11 +1385,11 @@ class BaseLayer(nn.Module):
   shared_weight_layer_id: Optional[str] = None
   # TODO(b/249483164): Change these to use instance_field rather than
   # template_field after the Fiddle migration.
-  weight_split_dims_mapping: pax_fiddle.Config[WeightSharding] = template_field(
+  weight_split_dims_mapping: pax_fiddle.Config[BaseLayer.WeightSharding] = template_field(
       WeightSharding
   )
   activation_split_dims_mapping: pax_fiddle.Config[
-      ActivationSharding
+      BaseLayer.ActivationSharding
   ] = template_field(ActivationSharding)
 
   @property

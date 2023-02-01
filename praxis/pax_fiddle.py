@@ -21,7 +21,8 @@ import contextlib
 import copy
 import dataclasses
 import functools
-from typing import overload, Any, Callable, Collection, Container, Generic, Optional, TypeVar, Union
+import typing
+from typing import Any, Callable, Collection, Container, Generic, Optional, TypeVar, Union, overload, Mapping, Sequence, List, Tuple, Dict
 
 import fiddle as fdl
 from fiddle import building
@@ -32,6 +33,8 @@ from fiddle.experimental import dataclasses as fdl_dataclasses
 from fiddle.experimental.dataclasses import field as fdl_field
 import fiddle.extensions.jax
 from flax.linen import module as flax_module
+import typing_extensions
+
 
 # Import standard Fiddle APIs that we don't modify into this namespace.
 # (So users can use e.g. `pax_fiddle.set_tags` instead of `fdl.set_tags`.)
@@ -347,14 +350,29 @@ def build(buildable):
   Returns:
     The built version of `buildable`.
   """
-
   def _build(value, state):
     if isinstance(value, fdl.Buildable):
       arguments = {}
+      annotations = _get_type_hints(value.__fn_or_cls__)
       for key, sub_value in value.__arguments__.items():
-        if DoNotBuild in value.__argument_tags__.get(key, ()):
+        context = f'{value.__fn_or_cls__}.{key}'
+        annotation = annotations.get(key, None)
+        if _contains_buildable_type(annotation, context):
+          if not _is_supported_buildable_type(annotation):
+            raise ValueError(
+                f'Unsupported type {annotation!r} in BaseLayer field {context}:'
+                ' types that contain pax_fiddle.Config may only use list,'
+                ' tuple, dict, Mapping, Sequence, and Union.'
+            )
           arguments[key] = sub_value
         else:
+          # Check that the DoNotBuild tag agrees with the type annotation.
+          if DoNotBuild in value.__argument_tags__.get(key, ()):
+            raise ValueError(
+                f'{context} has DoNotBuild tag but the type annotation '
+                f'{annotation!r} is not pax_fiddle.Config.'
+            )
+
           # Clear the flax module stack, to avoid having `nn.Module`s be auto-
           # parented to the current module.  This is important for directly
           # instantiated *nested* descendants.
@@ -365,7 +383,79 @@ def build(buildable):
     else:
       return state.map_children(value)
 
-  return _build(buildable, daglish.MemoizedTraversal.begin(_build, buildable))
+  return daglish.MemoizedTraversal.run(_build, buildable)
+
+
+# get_type_hints can be slow, so cache its results.
+_get_type_hints = functools.lru_cache(typing.get_type_hints)
+
+
+def _is_buildable_type(typ):
+  """Returns true if `typ` is a subclass of `Buildable` or `Buildable[...]`."""
+  origin = typing_extensions.get_origin(typ)
+  if origin is not None:
+    typ = origin
+  return isinstance(typ, type) and issubclass(typ, fdl.Buildable)
+
+
+def _contains_buildable_type(typ, context):
+  """Returns true if `typ` is a type annotation containing `fdl.Buildable`."""
+  if isinstance(typ, str):
+    raise TypeError(f'Unable to resolve type annotation {typ!r} for {context}.')
+  if _is_buildable_type(typ):
+    return True
+  origin = typing_extensions.get_origin(typ)
+  return origin is not typing_extensions.Literal and any(
+      _contains_buildable_type(arg, context)
+      for arg in typing_extensions.get_args(typ)
+  )
+
+
+# Origins for type annotations.  Note that these may depend on the Python
+# version -- e.g., the orgin for `typing.Sequence[int]` might be
+# `typing.Sequence` or `collections.abc.Sequence.`
+_SEQUENCE_ORIGINS = {
+    typing_extensions.get_origin(typ)
+    for typ in [list, tuple, Sequence, List, Tuple]
+}
+_MAPPING_ORIGINS = {
+    typing_extensions.get_origin(typ) for typ in (dict, Dict, Mapping)
+}
+
+
+def _is_supported_buildable_type(typ):
+  """Returns true if `typ` can be used for a field containing PaxConfig.
+
+  Fields that contain PaxConfig values (or `fdl.Buildable` values in general)
+  are treated specially by `build` -- in particular, their values do not get
+  built, but get left as-is.  To help ensure that this doesn't lead to
+  unexpected resuts, we only support a limited set of type annotations for
+  fields that contain PaxConfig values.  The most commonly used types are
+  `PaxConfig[...]`, `Optional[PaxConfig]`, `Sequence[PaxConfig]`, and
+  `Mapping[..., PaxConfig]`, but a few other complex types, such as
+  `Union[PaxConfig, Sequence[PaxConfig]]` are also supported.
+
+  Args:
+    typ: The type annotation that should be checked.
+  """
+  if _is_buildable_type(typ):
+    return True
+
+  origin = typing_extensions.get_origin(typ)
+  args = typing_extensions.get_args(typ)
+  if origin in _SEQUENCE_ORIGINS:
+    return all(
+        _is_supported_buildable_type(arg) or arg is Ellipsis for arg in args
+    )
+  elif origin in _MAPPING_ORIGINS:
+    return _is_supported_buildable_type(args[1])
+  elif origin is Union:
+    return all(_is_supported_buildable_type(arg) or arg is None for arg in args)
+  elif origin is Optional:
+    return all(_is_supported_buildable_type(arg) for arg in args)
+  else:
+    print("I don't like", typ, origin, typing_extensions.get_args(typ))
+    return False
 
 
 @contextlib.contextmanager

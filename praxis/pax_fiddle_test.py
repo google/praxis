@@ -17,7 +17,7 @@
 
 import copy
 import dataclasses
-from typing import List, Optional
+from typing import List, Optional, Sequence, Union
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -102,6 +102,12 @@ class BusStop:
 @dataclasses.dataclass
 class HourlyBusStop(BusStop):
   times: list = dataclasses.field(default_factory=lambda: list(range(24)))
+
+
+@dataclasses.dataclass
+class WheelFactory:
+  wheel_tpl: List[pax_fiddle.Config[Wheel]] = dataclasses.field(
+      default_factory=list)
 
 
 class SubFieldAndTemplateFieldTest(testing.TestCase):
@@ -541,6 +547,57 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
     inputs = jnp.array(22)
     with base_layer.JaxContext.new_context():
       m.init(jax.random.PRNGKey(1), inputs)
+
+  def test_do_not_build_if_type_is_pax_config(self):
+
+    def f1(x: pax_fiddle.Config):
+      return x
+
+    def f2(x: pax_fiddle.Config[Wheel]):
+      return x
+
+    def f3(x: Optional[pax_fiddle.Config[Wheel]]):
+      return x
+
+    def f4(x: Union[pax_fiddle.Config, Sequence[pax_fiddle.Config]]):
+      return x
+
+    for fn in [f1, f2, f3, f4]:
+      cfg = pax_fiddle.Config(fn, x=pax_fiddle.Config(Wheel))
+      result = pax_fiddle.build(cfg)
+      self.assertDagEqual(result, pax_fiddle.Config(Wheel))
+
+  def test_do_not_build_if_type_is_pax_config_container(self):
+
+    def f1(x: List[pax_fiddle.Config]):
+      return x
+
+    def f2(x: List[pax_fiddle.Config[Wheel]]):
+      return x
+
+    def f3(x: Optional[List[pax_fiddle.Config[Wheel]]]):
+      return x
+
+    def f4(x: Union[Sequence[pax_fiddle.Config[Wheel]], pax_fiddle.Config]):
+      return x
+
+    for fn in [f1, f2, f3, f4]:
+      cfg = pax_fiddle.Config(fn, x=[pax_fiddle.Config(Wheel)])
+      result = pax_fiddle.build(cfg)
+      self.assertDagEqual(result, [pax_fiddle.Config(Wheel)])
+
+    with self.subTest("Dataclass"):
+      wheel_tpl=[
+          pax_fiddle.Config(Wheel), pax_fiddle.Config(Wheel, radius=8)
+      ]
+      cfg = pax_fiddle.Config(WheelFactory, wheel_tpl=wheel_tpl)
+      factory = pax_fiddle.build(cfg)
+      self.assertDagEqual(factory.wheel_tpl, wheel_tpl)
+
+  def test_do_build_default_factory_list(self):
+    cfg = pax_fiddle.Config(WheelFactory)
+    factory = pax_fiddle.build(cfg)
+    self.assertEqual(factory.wheel_tpl, [])
 
 
 class LayerE(base_layer.BaseLayer):
