@@ -969,7 +969,7 @@ class BaseOptimizer(base_hyperparams.BaseParameterizable):
   def __init__(self, hparams: BaseOptimizer.HParams) -> None:
     super().__init__(hparams)
     p = self._hparams
-    self._lr_schedule = instantiate(self._hparams.lr_schedule)
+    self._lr_schedule_inst = instantiate(self._hparams.lr_schedule)
     # Should not mix L1, L2 regularizer and weight decay together.
     if p.l2_regularizer_weight and p.l1_regularizer_weight:
       raise ValueError('Should not mix L1 and L2 regularization.')
@@ -980,7 +980,7 @@ class BaseOptimizer(base_hyperparams.BaseParameterizable):
 
   def get_learning_rate(self, step_count: JTensor) -> JTensor:
     """Get the learning rate of this optimizer at a particular step."""
-    return self._lr_schedule.value(step_count) * self._hparams.learning_rate
+    return self._lr_schedule_inst.value(step_count) * self._hparams.learning_rate
 
   def get_grad_transformation(
       self,
