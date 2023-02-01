@@ -570,6 +570,7 @@ class AttentionProjection(base_layer.BaseLayer):
       the variables and the computation.
     use_nhd_shape: Whether to use NHD shape for the variable, useful for dot
       attention output layer.
+    explicit_fan_in_fan_out_axes: Set true except for backward compatibility.
   """
   input_dim: int = 0
   num_heads: int = 0
@@ -578,6 +579,7 @@ class AttentionProjection(base_layer.BaseLayer):
   use_bias: bool = True
   attention_combine_dims: bool = False
   use_nhd_shape: bool = False
+  explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -609,11 +611,28 @@ class AttentionProjection(base_layer.BaseLayer):
       assert len(wt) == 2
     else:
       wt = wp.wt
-    pc_shape = [self.input_dim] + hd_shape
+
     if self.is_output_projection and self.use_nhd_shape:
       pc_shape = hd_shape + [self.input_dim]
+      if self.attention_combine_dims:
+        fan_in_axes, fan_out_axes = [-1], [-2]
+      else:
+        fan_in_axes, fan_out_axes = [-1], [-2, -3]
+    else:
+      pc_shape = [self.input_dim] + hd_shape
+      if self.attention_combine_dims:
+        fan_in_axes, fan_out_axes = [-2], [-1]
+      else:
+        fan_in_axes, fan_out_axes = [-3], [-1, -2]
+
     pc = WeightHParams(
-        shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
+        shape=pc_shape,
+        mesh_shape=self.mesh_shape,
+        tensor_split_dims_mapping=wt,
+        fan_in_axes=(fan_in_axes
+                     if self.explicit_fan_in_fan_out_axes else None),
+        fan_out_axes=(fan_out_axes
+                      if self.explicit_fan_in_fan_out_axes else None),
     )
     self.create_variable('w', pc)
     if self.use_bias:
