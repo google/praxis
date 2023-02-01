@@ -21,7 +21,7 @@ Greedy decode is a special case for sample decode.
 
 import abc
 import functools
-from typing import List, Optional, Sequence, Union, Tuple
+from typing import List, Optional, Sequence, Tuple, Union
 
 from flax import linen as nn
 import jax
@@ -536,8 +536,8 @@ def sample_decode(
     transform_state_fn: Optional[decoder_utils.TransformStateFn],
     lazy_broadcast_prefix_fn: Optional[decoder_utils.LazyBroadcastPrefixFn],
     next_token_sampler: base_layer.BaseLayerApi,
-    target_prefix_ids: JTensor,
-    target_prefix_paddings: JTensor,
+    prefix_ids: JTensor,
+    prefix_paddings: JTensor,
     seq_len: int,
     num_samples: int,
     cf_guidance_scale: Optional[Union[List[float], float]] = None,
@@ -575,9 +575,10 @@ def sample_decode(
     next_token_sampler: Layer used to sample next token ids given the logits
       output. See DefaultNextTokenSampler for an example. This can be used to
       implement decoding techniques such repetition penalty.
-    target_prefix_ids: The token ids that correspond to the target sequence. A
-      JTensor of shape [batch, target_sequence_length].
-    target_prefix_paddings: The paddings corresponding to the target sequence,
+    prefix_ids: The token ids that correspond to the prefix sequence. A
+      JTensor of shape [batch, target_sequence_length]. This should have an
+      <SOS> token if one is used.
+    prefix_paddings: The paddings corresponding to the prefix sequence,
       with a 1 denoting padding token and 0 denoting non-padding tokens. A
       JTensor of shape [batch, target_sequence_length].
     seq_len: The output sequence length to decode to. seq_len contains prefix.
@@ -635,7 +636,7 @@ def sample_decode(
     where a positive value of 1.0 is used to indicate padded positions).
     The outputs has shape [batch, num_samples, ...].
   """
-  original_batch_size = target_prefix_ids.shape[0]
+  original_batch_size = prefix_ids.shape[0]
   original_prefix_lengths = prefix_lengths
   if isinstance(max_decode_steps, int):
     max_decode_steps = [max_decode_steps]
@@ -648,10 +649,8 @@ def sample_decode(
     # [a, b, c] and num_samples = 3 will have
     # [a, a, a, b, b, b, c, c, c]. If cf_guidance_scale is enabled, it will have
     # [cond_a, cond_a, cond_a, uncond_a, uncond_a, uncond_a, ...].
-    target_prefix_ids = jnp.repeat(
-        target_prefix_ids, axis=0, repeats=num_samples)
-    target_prefix_paddings = jnp.repeat(
-        target_prefix_paddings, axis=0, repeats=num_samples)
+    prefix_ids = jnp.repeat(prefix_ids, axis=0, repeats=num_samples)
+    prefix_paddings = jnp.repeat(prefix_paddings, axis=0, repeats=num_samples)
     prefix_lengths = jnp.repeat(prefix_lengths, axis=0, repeats=num_samples)
 
     def _broadcast_input(x: JTensor, name: str) -> JTensor:
@@ -730,7 +729,7 @@ def sample_decode(
   per_example_max_decode_steps = jnp.minimum(
       per_example_max_decode_steps, last_decode_steps
   )
-  batch_size = target_prefix_ids.shape[0]
+  batch_size = prefix_ids.shape[0]
 
   # If prefix length is not specified, set it to 0.
   if prefix_lengths is None:
@@ -741,14 +740,14 @@ def sample_decode(
   val = NestedMap()
   if fprop_for_prefix:
     # Update output_ids with prefix_ids.
-    output_ids = jax.lax.dynamic_update_slice(output_ids, target_prefix_ids,
+    output_ids = jax.lax.dynamic_update_slice(output_ids, prefix_ids,
                                               [0] * output_ids.ndim)
     assert max_prefix_len is not None
     # Update loop init states with prefix.
     start_step = max_prefix_len - 1
     val.segment_pos = prefix_lengths - 1
   else:
-    output_ids = output_ids.at[:, 0].set(target_prefix_ids[:, 0])
+    output_ids = output_ids.at[:, 0].set(prefix_ids[:, 0])
     start_step = 0
     val.segment_pos = jnp.zeros([batch_size], dtype=jnp.int32)
 
@@ -837,8 +836,8 @@ def sample_decode(
     # Selects prefix ids when step smaller than prefix_lengths when using
     # extend_step for prefix.
     if not fprop_for_prefix:
-      new_ids = jnp.where(step < prefix_lengths - 1,
-                          target_prefix_ids[:, step + 1], new_ids)
+      new_ids = jnp.where(step < prefix_lengths - 1, prefix_ids[:, step + 1],
+                          new_ids)
     prev_done = val.done
     new_ids = jnp.where(prev_done, jnp.zeros_like(new_ids), new_ids)
     val.output_ids = val.output_ids.at[:, step + 1].set(new_ids)
@@ -1028,13 +1027,12 @@ def sample_decode(
 
   result.prefix_lengths = prefix_lengths
   result.original_lengths = jnp.sum(
-      1.0 - target_prefix_paddings, axis=1).astype(jnp.int32)
+      1.0 - prefix_paddings, axis=1).astype(jnp.int32)
 
   if fprop_for_prefix:
-    prefix_ids = decoder_utils.left_align_tensor(target_prefix_ids,
-                                                 prefix_lengths, max_prefix_len)
-  else:
-    prefix_ids = target_prefix_ids
+    prefix_ids = decoder_utils.left_align_tensor(prefix_ids, prefix_lengths,
+                                                 max_prefix_len)
+
   # We manually pad out the ids not belonging to the prefix because some
   # tokenizers tested do not always obey the lengths arg.
   indices = jnp.tile(jnp.arange(prefix_ids.shape[1]), (prefix_ids.shape[0], 1))
@@ -1075,8 +1073,8 @@ def sample_decode(
 def greedy_decode(
     model: base_layer.BaseLayerApi,
     extend_step_fn: decoder_utils.ExtendStepFn,
-    target_ids: JTensor,
-    target_paddings: JTensor,
+    prefix_ids: JTensor,
+    prefix_paddings: JTensor,
     seq_len: int,
     fprop_for_prefix: bool = False,
     max_prefix_len: Optional[int] = None,
@@ -1094,8 +1092,9 @@ def greedy_decode(
       of (`NestedMap`, `JTensor`), where the first `NestedMap` corresponds to
       the `new_states` and the second `JTensor` corresponds to the logits of the
       next step.
-    target_ids: The token ids that correspond to the target sequence.
-    target_paddings: The paddings corresponding to the target sequence, with a 1
+    prefix_ids: The token ids that correspond to the prefix sequence. This
+      should contain an <SOS> token if one is used.
+    prefix_paddings: The paddings corresponding to the prefix sequence, with a 1
       denoting padding token and 0 denoting non-padding tokens.
     seq_len: The output sequence length to decode to. seq_len contains prefix.
     fprop_for_prefix: Use one fprop for prefix.
@@ -1127,8 +1126,8 @@ def greedy_decode(
       transform_state_fn=None,
       lazy_broadcast_prefix_fn=None,
       next_token_sampler=next_token_sampler,
-      target_prefix_ids=target_ids,
-      target_prefix_paddings=target_paddings,
+      prefix_ids=prefix_ids,
+      prefix_paddings=prefix_paddings,
       seq_len=seq_len,
       fprop_for_prefix=fprop_for_prefix,
       max_prefix_len=max_prefix_len,

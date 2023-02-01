@@ -102,8 +102,8 @@ def beam_search(
     extend_step_fn: decoder_utils.ExtendStepFn,
     fprop_fn: decoder_utils.FPropFn,
     transform_state_fn: decoder_utils.TransformStateFn,
-    target_prefix_ids: JTensor,
-    target_prefix_paddings: JTensor,
+    prefix_ids: JTensor,
+    prefix_paddings: JTensor,
     beam_search_hparams: BeamSearchHParams,
     decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
     model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
@@ -119,9 +119,9 @@ def beam_search(
     fprop_fn: A function that takes in the prefix information and initialize the
       decode cache states.
     transform_state_fn: A function that transforms the decode state.
-    target_prefix_ids: The token ids that correspond to the target sequence,
+    prefix_ids: The token ids that correspond to the prefix sequence,
       with shape [batch_size, prefix_sequence_length].
-    target_prefix_paddings: The token paddings that correspond to the target
+    prefix_paddings: The token paddings that correspond to the prefix
       sequence, with shape [batch_size, prefix_sequence_length].
     beam_search_hparams: Beam search hyper parameters.
     decode_loop_mesh_axes_transpose: Optional mesh transpose for decoding loop.
@@ -138,7 +138,7 @@ def beam_search(
   """
 
   # Init decode state using fprop_fn, state seq size is max_prefix_len.
-  fprop_fn(model, target_prefix_ids, target_prefix_paddings)
+  fprop_fn(model, prefix_ids, prefix_paddings)
   model = decoder_utils.maybe_reshard_mdl_for_decode(
       model,
       decode_loop_mesh_axes_transpose,
@@ -152,8 +152,8 @@ def beam_search(
         model,
         extend_step_fn,
         transform_state_fn,
-        target_prefix_ids,
-        target_prefix_paddings,
+        prefix_ids,
+        prefix_paddings,
         beam_search_hparams,
     )
 
@@ -163,8 +163,8 @@ def beam_search_after_prefix_fprop(
     model: base_layer.BaseLayerApi,
     extend_step_fn: decoder_utils.ExtendStepFn,
     transform_state_fn: decoder_utils.TransformStateFn,
-    target_prefix_ids: JTensor,
-    target_prefix_paddings: JTensor,
+    prefix_ids: JTensor,
+    prefix_paddings: JTensor,
     beam_search_hparams: BeamSearchHParams,
 ) -> NestedMap:
   """Same as beam_search but this is after prefix fprop."""
@@ -182,8 +182,8 @@ def beam_search_after_prefix_fprop(
   max_decode_steps = sorted(max_decode_steps)
   beam_dim = 1
   beam_size = beam_search_hparams.beam_size
-  batch_size = target_prefix_ids.shape[0]
-  max_prefix_len = target_prefix_ids.shape[1]
+  batch_size = prefix_ids.shape[0]
+  max_prefix_len = prefix_ids.shape[1]
   terminal_ids = (
       beam_search_hparams.eos_id
       if isinstance(beam_search_hparams.eos_id, Sequence)
@@ -215,17 +215,16 @@ def beam_search_after_prefix_fprop(
   val.end_logprobs = jnp.zeros(
       shape=(batch_size, beam_size, seq_len), dtype=jnp.float32)
 
-  # Gets prefix_lengths from target_prefix_paddings.
-  prefix_lengths = jnp.sum(1 - target_prefix_paddings.astype(jnp.int32), axis=1)
+  # Gets prefix_lengths from prefix_paddings.
+  prefix_lengths = jnp.sum(1 - prefix_paddings.astype(jnp.int32), axis=1)
   # [batch, beam]
   prefix_lengths = broadcast_beam_dim(
       prefix_lengths, beam_dim=beam_dim, beam_size=beam_size)
   # Update output_ids with prefix_ids.
   # [batch, beam, prefix_seq_len]
-  target_prefix_ids = broadcast_beam_dim(
-      target_prefix_ids, beam_dim=beam_dim, beam_size=beam_size)
-  val.output_ids = jax.lax.dynamic_update_slice(val.output_ids,
-                                                target_prefix_ids,
+  prefix_ids = broadcast_beam_dim(
+      prefix_ids, beam_dim=beam_dim, beam_size=beam_size)
+  val.output_ids = jax.lax.dynamic_update_slice(val.output_ids, prefix_ids,
                                                 [0] * val.output_ids.ndim)
   val.end_ids = val.output_ids
   # Update loop init states with prefix.
@@ -323,7 +322,7 @@ def beam_search_after_prefix_fprop(
         carry_variables=[base_layer.DECODE_CACHE],
     )
 
-  prefix_ids = decoder_utils.left_align_tensor(target_prefix_ids[:, 0, :],
+  prefix_ids = decoder_utils.left_align_tensor(prefix_ids[:, 0, :],
                                                prefix_lengths[:, 0],
                                                max_prefix_len)
   prefix_ids = jnp.expand_dims(prefix_ids, 1)

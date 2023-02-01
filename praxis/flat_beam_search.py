@@ -211,8 +211,8 @@ def post_process(result: NestedMap, eos_id: int,
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def flat_beam_search(model: base_layer.BaseLayerApi,
                      extend_step_fn: decoder_utils.ExtendStepFn,
-                     target_prefix_ids: JTensor,
-                     target_prefix_paddings: JTensor,
+                     prefix_ids: JTensor,
+                     prefix_paddings: JTensor,
                      seq_len: int,
                      beam_size: int,
                      fprop_dtype: Any,
@@ -229,9 +229,9 @@ def flat_beam_search(model: base_layer.BaseLayerApi,
       of (`NestedMap`, `JTensor`), where the first `NestedMap` corresponds to
       the `new_states` and the second `JTensor` corresponds to the logits of the
       next step.
-    target_prefix_ids: The token ids that correspond to the target sequence,
+    prefix_ids: The token ids that correspond to the prefix sequence,
       with shape [batch_size, prefix_sequence_length].
-    target_prefix_paddings: The paddings corresponding to the target sequence,
+    prefix_paddings: The paddings corresponding to the prefix sequence,
       with a 1 denoting padding token and 0 denoting non-padding tokens.
     seq_len: The output sequence length to decode to.
     beam_size: Beam size of beam search.
@@ -255,12 +255,12 @@ def flat_beam_search(model: base_layer.BaseLayerApi,
   # TODO(wangtao): Add decoding logic with prefix_lengths
   # TODO(wangtao): Add prefix loop
   # TODO(wangtao): Update state in prefix loop
-  del target_prefix_paddings
+  del prefix_paddings
   if seq_len <= 0:
     raise ValueError('The sequence length for decoding must be > 0, '
                      f'current value = {seq_len}.')
   max_decode_steps = max_decode_steps or seq_len
-  val = init_loop_var(target_prefix_ids, beam_size, seq_len, fprop_dtype)
+  val = init_loop_var(prefix_ids, beam_size, seq_len, fprop_dtype)
 
   def cond_func(model, val):
     """Whether the while loop should continue."""
