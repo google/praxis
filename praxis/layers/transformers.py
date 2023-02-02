@@ -576,6 +576,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
       (1) "token" -> The gating function uses tokens to route.
       (2) "sentence" -> The gating function uses the sentence embeddings,
           calculated by taking the average token representation, to route.
+    use_gated_activation: Boolean indicating whether to use a gated activation
+      function for the input projection layer or not.
   """
   input_dims: int = 0
   hidden_dims: int = 0
@@ -605,6 +607,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
   moe_load_balance_loss_weight: float = 1.0
   gating_logit_cap: float = 0.0
   moe_gating_embedding_level: str = 'token'
+  use_gated_activation: bool = False
 
   # SPMD partition related params.
   # M - model_dim, for both inputs and outputs
@@ -721,9 +724,10 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     # split the tensor manually into multiple tensors on the second dim.
     emh_shape = [
         self.num_experts,
-        self.input_dims // self.expert_weight_shards,
+        self.input_dims,  # expert_weight_shards == 1
         self.hidden_dims,
     ]
+    self._is_ffn1_gated = self.use_gated_activation
     wi_init = None
     if self.internal_gshard_variance_scaling_fan_in_init:
       stddev = (1.0 / self.input_dims) ** 0.5
@@ -738,8 +742,9 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
         fan_out_axes=([-1] if self.explicit_fan_in_fan_out_axes else None),
     )
     logging.debug('moe wi WeightHParams %s', wi_pc)
-    for ii in range(self.expert_weight_shards):
-      self.create_variable('wi_%d' % ii, wi_pc)
+    if self._is_ffn1_gated:
+      self.create_variable('wi_gate_0', wi_pc)
+    self.create_variable('wi_0', wi_pc)
 
     # EHM Tensor (output transformation after RELU)
     # ehm tensor typically shard on the first dim and the second dim. Here we
@@ -747,7 +752,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     ehm_shape = [
         self.num_experts,
         self.hidden_dims,
-        output_dims // self.expert_weight_shards,
+        output_dims,  # expert_weight_shards == 1
     ]
     wo_init = None
     if self.internal_gshard_variance_scaling_fan_in_init:
@@ -764,44 +769,46 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
         fan_out_axes=([-1] if self.explicit_fan_in_fan_out_axes else None),
     )
     logging.debug('moe wo WeightHParams %s', wo_pc)
-    for ii in range(self.expert_weight_shards):
-      self.create_variable('wo_%d' % ii, wo_pc)
+    self.create_variable('wo_0', wo_pc)
 
   def _split(self, t_in, sharding):
     return base_layer.maybe_shard(t_in, sharding, self.mesh_axis_names)
 
   def _get_weights(self):
     """Get the expert weights."""
-    theta_wis = []
-    theta_wos = []
-    for ii in range(self.expert_weight_shards):
-      theta_wis.append(getattr(self.theta, f'wi_{ii}'))
-      theta_wos.append(getattr(self.theta, f'wo_{ii}'))
+    return self.theta['wi_0'], self.theta['wo_0']
 
-    # Concatenate theta_wis and theta_wos
-    # since each sub-theta_wi has shape
-    # (p.num_experts, p.input_dims // p.expert_weight_shards, p.hidden_dims)
-    # and each sub-theta_wo has shape
-    # (p.num_experts, p.hidden_dims, output_dims // p.expert_weight_shards)
-    if len(theta_wis) == 1:
-      theta_wi = theta_wis[0]
-    else:
-      # new shape: (p.num_experts, p.input_dims, p.hidden_dims)
-      theta_wi = jnp.concatenate(theta_wis, 1)
+  def _count_dead_neurons(self, hidden, dispatch_tensor):
+    threshold = 0
+    activation_class_name = self.activation_tpl.cls.__name__
+    if isinstance(self.activation_tpl.cls, activations_lib.GELU):
+      logging.info(
+          'Setting dead neuron count threshold=-3.0 '
+          'for approximate GeLU activation'
+      )
+      threshold = -3.0
 
-    if len(theta_wos) == 1:
-      theta_wo = theta_wos[0]
-    else:
-      # new shape: (p.num_experts, p.hidden_dims, output_dims)
-      theta_wo = jnp.concatenate(theta_wos, 2)
-    return theta_wi, theta_wo
+    nonpadding_indicator = jnp.einsum('gsec->ec', dispatch_tensor)
+    nonpadding_indicator = nonpadding_indicator[:, jnp.newaxis, :, jnp.newaxis]
+    padding_indicator = 1 - nonpadding_indicator
+    hidden_minus_ten_padding_indicator = hidden - 10 * padding_indicator
+    # EG, taking max over G and C dim
+    max_hidden = jnp.max(
+        jnp.max(hidden_minus_ten_padding_indicator, axis=1), axis=1
+    )
+    dead_neuron_indicator = jnp.less(max_hidden, threshold).astype(jnp.int32)
+    dead_neuron_count = jnp.count_nonzero(dead_neuron_indicator)
+    self.add_summary('dead_%s_count' % activation_class_name, dead_neuron_count)
 
   def _combine_top2_expert_outputs(self, inputs, paddings, segment_ids):
     """Combine outputs from top 2 experts directly."""
     fprop_dtype = self.fprop_dtype
     ap = self.activation_split_dims_mapping
 
-    theta_wi, theta_wo = self._get_weights()
+    theta_wi, theta_wo = self.theta['wi_0'], self.theta['wo_0']
+    assert (
+        not self._is_ffn1_gated
+    ), 'dense_top2 routing does not support gated MoE activations'
     if self.moe_gating_embedding_level == 'sentence':
       if segment_ids is None and paddings is None:
         sentence_embeddings = jnp.tile(
@@ -851,7 +858,9 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     output_dims = self.input_dims
     assert self.gating_func != 'dense_top2'
 
-    theta_wi, theta_wo = self._get_weights()
+    theta_wi, theta_wo = self.theta['wi_0'], self.theta['wo_0']
+    if self._is_ffn1_gated:
+      theta_wi_gated = self.theta['wi_gate_0']
 
     token_shape = inputs.shape[:-1]
     num_tokens = np.prod(token_shape)
@@ -957,32 +966,20 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
       raise ValueError('Unsupported gating function: %s ' % self.gating_func)
     expert_inputs = self._split(expert_inputs, ap.egcm)
 
-    hidden = jnp.einsum('egcm,emh->egch', expert_inputs, theta_wi)
-    hidden = self._split(hidden, ap.egch)
+    if self._is_ffn1_gated:
+      hidden0 = jnp.einsum('egcm,emh->egch', expert_inputs, theta_wi)
+      hidden1 = jnp.einsum('egcm,emh->egch', expert_inputs, theta_wi_gated)
+      if self.gating_func in ['top2', 'expert_choice_v2']:
+        self._count_dead_neurons(hidden1, dispatch_tensor)
+      hidden1 = self.activation(hidden1)
+      hidden = hidden1 * hidden0
+    else:
+      hidden = jnp.einsum('egcm,emh->egch', expert_inputs, theta_wi)
+      hidden = self._split(hidden, ap.egch)
+      if self.gating_func in ['top2', 'expert_choice_v2']:
+        self._count_dead_neurons(hidden, dispatch_tensor)
+      hidden = self.activation(hidden)
 
-    if self.gating_func in ['top2', 'expert_choice_v2']:
-      threshold = 0
-      activation_class_name = self.activation_tpl.cls.__name__
-      if isinstance(self.activation_tpl.cls, activations_lib.GELU):
-        logging.info('Setting dead neuron count threshold=-3.0 '
-                     'for approximate GeLU activation')
-        threshold = -3.0
-
-      nonpadding_indicator = jnp.einsum('gsec->ec', dispatch_tensor)
-      nonpadding_indicator = nonpadding_indicator[:, jnp.newaxis, :,
-                                                  jnp.newaxis]
-      padding_indicator = 1 - nonpadding_indicator
-      hidden_minus_ten_padding_indicator = hidden - 10 * padding_indicator
-      # EG, taking max over G and C dim
-      max_hidden = jnp.max(
-          jnp.max(hidden_minus_ten_padding_indicator, axis=1), axis=1)
-      dead_neuron_indicator = jnp.less(max_hidden, threshold).astype(jnp.int32)
-      dead_neuron_count = jnp.count_nonzero(dead_neuron_indicator)
-      self.add_summary('dead_%s_count' % activation_class_name,
-                       dead_neuron_count)
-
-    # Activation function.
-    hidden = self.activation(hidden)
     # Dropout.
     hidden = self.relu_dropout(hidden)
     # Output.
