@@ -353,7 +353,10 @@ def build(buildable):
   def _build(value, state):
     if isinstance(value, fdl.Buildable):
       arguments = {}
-      annotations = _get_type_hints(value.__fn_or_cls__)
+      try:
+        annotations = _get_type_hints(value.__fn_or_cls__)
+      except TypeError:  # e.g., if fn_or_cls is a functor object.
+        annotations = {}
       for key, sub_value in value.__arguments__.items():
         context = f'{value.__fn_or_cls__}.{key}'
         annotation = annotations.get(key, None)
