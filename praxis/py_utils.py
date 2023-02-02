@@ -28,7 +28,6 @@ from absl import logging
 import flax
 import jax
 from jax.experimental import global_device_array as gda_lib
-from jax.experimental import maps
 from jax.experimental import mesh_utils
 from jax.experimental import multihost_utils
 from jax.experimental import pjit
@@ -282,7 +281,7 @@ def extract_prefixed_keys_from_nested_map(
         right_separator,
         is_leaf=is_leaf)
   # PartitionSpec is subclass of tuple.
-  elif isinstance(node, pjit.PartitionSpec):
+  elif isinstance(node, jax.sharding.PartitionSpec):
     return prefix
   elif isinstance(node, (list, tuple)):
     # Check if it is a NamedTuple.
@@ -374,7 +373,7 @@ def put_to_devices(host_array: np.ndarray,
 # which would cause a circular dependency.
 def create_gda(host_arrays: Union[np.ndarray, Any],
                global_shapes: Union[jax.ShapeDtypeStruct,
-                                    Any], global_mesh: maps.Mesh,
+                                    Any], global_mesh: jax.sharding.Mesh,
                pspecs: Any) -> Union[gda_lib.GlobalDeviceArray, Any]:
   """Create GDA from host array.
 
@@ -426,8 +425,8 @@ def convert_fully_replicated_sda_to_gda(sda):
   # SDA is fully replicated, so its device_buffers[0].shape is the global shape.
   global_shape = sda.device_buffers[0].shape
   # Create a 1D mesh to create fully replicated GDA.
-  mesh = maps.Mesh(np.array(jax.devices()), axis_names=('x',))
-  partition_spec = pjit.PartitionSpec(None)
+  mesh = jax.sharding.Mesh(np.array(jax.devices()), axis_names=('x',))
+  partition_spec = jax.sharding.PartitionSpec(None)
   # pmap-produced SDA has a "scrambled" device order.
   return gda_lib.GlobalDeviceArray(
       global_shape, mesh, partition_spec,
@@ -496,8 +495,8 @@ def convert_host_local_array_to_global_array(arr):
   # input `arr` is fully replicated, so it's shape is the global shape.
   global_shape = arr.device_buffers[0].shape
   # Create a 1D mesh to create fully replicated global jax.Array.
-  mesh = maps.Mesh(np.array(jax.devices()), axis_names=('x',))
-  partition_spec = pjit.PartitionSpec(None)
+  mesh = jax.sharding.Mesh(np.array(jax.devices()), axis_names=('x',))
+  partition_spec = jax.sharding.PartitionSpec(None)
   # pmap-produced Array has a "scrambled" device order.
   dbs = sorted(arr.device_buffers, key=lambda x: x.device().id)
   return jax.make_array_from_single_device_arrays(
@@ -534,7 +533,8 @@ def global_mesh_defined() -> bool:
 # This wrapped with_sharding_constraint will not throw error for eval_shape
 # outside pjit. It is also used in p5x.
 def with_sharding_constraint(
-    x: JTensor, axis_resources: Optional[pjit.PartitionSpec]) -> JTensor:
+    x: JTensor, axis_resources: Optional[jax.sharding.PartitionSpec]
+) -> JTensor:
   """Wrapper for pjit with_sharding_constraint, no-op on cpu or outside pjit."""
   if jax.devices()[0].platform == 'cpu' or not global_mesh_defined():
     return x
@@ -543,7 +543,7 @@ def with_sharding_constraint(
 
 
 def get_uneven_sharding_paddings(
-    partition_spec: pjit.PartitionSpec, shape: Sequence[int],
+    partition_spec: jax.sharding.PartitionSpec, shape: Sequence[int],
     mesh_shape: Sequence[int], mesh_axis_names: Sequence[str]) -> Sequence[int]:
   """Returns the padding size on each dimension due to uneven sharding."""
   axes_sizes = {}
@@ -565,7 +565,7 @@ def is_optax_masked_node(x: Any) -> bool:
 
 
 def maybe_pad_uneven_sharding(xs: JTensor,
-                              partition_specs: Union[pjit.PartitionSpec,
+                              partition_specs: Union[jax.sharding.PartitionSpec,
                                                      flax.struct.PyTreeNode],
                               unpadded_shapes: Sequence[int],
                               mesh_shape: Sequence[int],
@@ -594,7 +594,7 @@ def maybe_pad_uneven_sharding(xs: JTensor,
 
 def maybe_slice_uneven_sharding(
     xs: JTensor,
-    partition_spec: pjit.PartitionSpec,
+    partition_spec: jax.sharding.PartitionSpec,
     padded_shapes: Sequence[int],
     is_leaf: Any = None,
 ) -> JTensor:

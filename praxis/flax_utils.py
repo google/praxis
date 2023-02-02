@@ -21,7 +21,6 @@ from flax import traverse_util
 from flax.core import frozen_dict
 from flax.linen import partitioning as flax_partitioning
 import jax
-from jax.experimental import pjit
 import jax.numpy as jnp
 from praxis import base_layer
 from praxis import pytypes
@@ -81,7 +80,7 @@ def convert_to_boxed_params(
   }
 
   def to_boxed(x_param, var_collection: str,
-               logical_axes: Optional[pjit.PartitionSpec]):
+               logical_axes: Optional[jax.sharding.PartitionSpec]):
     if isinstance(x_param, base_layer.BoxedParam):
       # The param might already be boxed (if the flax module contain praxis
       # submodules). We should not box it again.
@@ -126,7 +125,8 @@ def convert_to_boxed_params(
       flat_full_logical_axes_tree = traverse_util.flatten_dict(
           var_tree[key], sep='/')
       flat_full_logical_axes_tree = {
-          k: pjit.PartitionSpec(None) for k in flat_full_logical_axes_tree
+          k: jax.sharding.PartitionSpec(None)
+          for k in flat_full_logical_axes_tree
       }
       for k in flat_logical_axes_tree:
         flat_full_logical_axes_tree[k] = flat_logical_axes_tree[k]

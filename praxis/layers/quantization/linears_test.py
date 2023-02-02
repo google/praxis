@@ -22,7 +22,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
-from jax.experimental import pjit
 import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
@@ -264,10 +263,10 @@ class QuantizeLinearTest(test_utils.TestCase):
     expected_pspec = {
         'params': {
             'w': base_layer.BoxedPartitionSpec(
-                meta=pjit.PartitionSpec('mdl', 'data')
+                meta=jax.sharding.PartitionSpec('mdl', 'data')
             ),
             'w_quantized_scale': base_layer.BoxedPartitionSpec(
-                meta=pjit.PartitionSpec('data')
+                meta=jax.sharding.PartitionSpec('data')
             ),
         }
     }

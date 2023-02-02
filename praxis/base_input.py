@@ -26,7 +26,6 @@ from typing import Dict, Optional, Sequence
 from absl import logging
 import jax
 from jax._src.lib import xla_client as xc
-from jax.experimental import maps
 import numpy as np
 from praxis import base_hyperparams
 from praxis import py_utils
@@ -198,7 +197,7 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     return jax.tree_util.tree_map(py_utils.reshard, arrays)
 
   def reshard_for_spmd(self, arrays: NestedJTensor,
-                       global_mesh: maps.Mesh,
+                       global_mesh: jax.sharding.Mesh,
                        pspecs: NestedPartitionSpec) -> NestedJTensor:
     """Reshards inputs for pjit.
 

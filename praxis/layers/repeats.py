@@ -24,7 +24,6 @@ from typing import Any, Callable, Optional, Union
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
-from jax.experimental import pjit
 from praxis import asserts
 from praxis import base_layer
 from praxis import flax_utils
@@ -226,7 +225,7 @@ class Repeat(base_layer.BaseLayer):
       # Adding a leading 'None' to PartitionSpec for repeats.
       if isinstance(x, base_layer.BoxedPartitionSpec):
         return base_layer.BoxedPartitionSpec(
-            meta=pjit.PartitionSpec(None, *x.meta))
+            meta=jax.sharding.PartitionSpec(None, *x.meta))
       else:
         return x
 

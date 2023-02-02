@@ -26,7 +26,6 @@ import flax
 from flax import struct
 import jax
 from jax import numpy as jnp
-from jax.experimental import pjit
 import numpy as np
 from praxis import base_layer
 from praxis import py_utils
@@ -58,7 +57,7 @@ class PyUtilsTest(test_utils.TestCase):
         mesh_shape=[1, 1],
         device_axis_names=['a', 'b'])
     train_state_partition_specs = TrainState(
-        step=pjit.PartitionSpec(), mdl_vars=w_sepc, opt_states=[]
+        step=jax.sharding.PartitionSpec(), mdl_vars=w_sepc, opt_states=[]
     )
     nested_names = py_utils.extract_prefixed_keys_from_nested_map(
         train_state_partition_specs)
