@@ -1,3 +1,11 @@
+# Version: 0.2.2
+## Major Features and Improvements
+## Breaking changes
+## Deprecations
+## Note
+*   Version: 0.2.2
+*   Build Date: 20230201
+*   Praxis commit: 9e1d13d888ac18a567e249ddb41e6b1bd1fe505a
 # Version: 0.2.1
 ## Note
 *   Version: 0.2.1
