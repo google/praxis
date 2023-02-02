@@ -36,10 +36,9 @@ attrs==22.2.0
     # via
     #   jsonschema
     #   lingvo
-    #   pytest
 backcall==0.2.0
     # via ipython
-beautifulsoup4==4.11.1
+beautifulsoup4==4.11.2
     # via nbconvert
 bleach==6.0.0
     # via nbconvert
@@ -86,8 +85,6 @@ etils[enp,epath]==1.0.0
     #   clu
     #   orbax
     #   tensorflow-datasets
-exceptiongroup==1.1.0
-    # via pytest
 executing==1.2.0
     # via stack-data
 fastjsonschema==2.16.2
@@ -96,7 +93,7 @@ fiddle @ git+https://github.com/google/fiddle
     # via -r praxis-requirements.in
 flatbuffers==1.12
     # via tensorflow
-flax==0.6.3
+flax==0.6.4
     # via
     #   -r praxis-requirements.in
     #   clu
@@ -143,8 +140,6 @@ importlib-resources==5.10.2
     #   jsonschema
     #   orbax
     #   tensorflow-datasets
-iniconfig==2.0.0
-    # via pytest
 ipykernel==6.20.2
     # via
     #   ipywidgets
@@ -154,7 +149,7 @@ ipykernel==6.20.2
     #   nbclassic
     #   notebook
     #   qtconsole
-ipython==8.8.0
+ipython==8.9.0
     # via
     #   ipykernel
     #   ipywidgets
@@ -202,7 +197,7 @@ jsonschema[format-nongpl]==4.17.3
     #   nbformat
 jupyter==1.0.0
     # via lingvo
-jupyter-client==8.0.1
+jupyter-client==8.0.2
     # via
     #   ipykernel
     #   jupyter-console
@@ -213,7 +208,7 @@ jupyter-client==8.0.1
     #   qtconsole
 jupyter-console==6.4.4
     # via jupyter
-jupyter-core==5.1.5
+jupyter-core==5.2.0
     # via
     #   jupyter-client
     #   jupyter-server
@@ -227,7 +222,7 @@ jupyter-events==0.6.3
     # via jupyter-server
 jupyter-http-over-ws==0.0.8
     # via lingvo
-jupyter-server==2.1.0
+jupyter-server==2.2.0
     # via
     #   nbclassic
     #   notebook-shim
@@ -343,7 +338,7 @@ optax==0.1.4
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax==0.1.0
+orbax==0.1.1
     # via flax
 packaging==23.0
     # via
@@ -352,7 +347,6 @@ packaging==23.0
     #   jupyter-server
     #   matplotlib
     #   nbconvert
-    #   pytest
     #   qtpy
     #   tensorflow
 pandocfilters==1.5.0
@@ -371,8 +365,6 @@ pkgutil-resolve-name==1.3.10
     # via jsonschema
 platformdirs==2.6.2
     # via jupyter-core
-pluggy==1.0.0
-    # via pytest
 prometheus-client==0.16.0
     # via
     #   jupyter-server
@@ -423,8 +415,6 @@ pyparsing==3.0.9
     # via matplotlib
 pyrsistent==0.19.3
     # via jsonschema
-pytest==7.2.1
-    # via orbax
 python-dateutil==2.8.2
     # via
     #   jupyter-client
@@ -465,7 +455,7 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rich==13.2.0
+rich==13.3.1
     # via flax
 rsa==4.9
     # via google-auth
@@ -554,8 +544,6 @@ tinycss2==1.2.1
     # via nbconvert
 toml==0.10.2
     # via tensorflow-datasets
-tomli==2.0.1
-    # via pytest
 toolz==0.12.0
     # via chex
 tornado==6.2
@@ -569,7 +557,7 @@ tornado==6.2
     #   terminado
 tqdm==4.64.1
     # via tensorflow-datasets
-traitlets==5.8.1
+traitlets==5.9.0
     # via
     #   comm
     #   ipykernel
@@ -626,7 +614,7 @@ wrapt==1.14.1
     #   clu
     #   tensorflow
     #   tensorflow-datasets
-zipp==3.11.0
+zipp==3.12.0
     # via
     #   etils
     #   importlib-metadata
