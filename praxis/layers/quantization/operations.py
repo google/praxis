@@ -184,10 +184,7 @@ def reduce_einsum_weight_precision(
 
   if t.dtype != calculation_type:
     t = t.astype(calculation_type)
-  bound = jnp.maximum(
-      jnp.abs(jnp.max(t, axis=contract_dims, keepdims=True)),
-      jnp.abs(jnp.min(t, axis=contract_dims, keepdims=True)),
-  )
+  bound = jnp.max(jnp.abs(t), axis=contract_dims, keepdims=True)
 
   t, scale = reduce_precision(
       t,
@@ -248,8 +245,7 @@ def reduce_precision_activation(
     second one is the scaling factor.
   """
   # TODO(jianlijianli): enable zero point as well.
-  bound = jnp.maximum(
-      jnp.abs(jnp.max(t, keepdims=True)), jnp.abs(jnp.min(t, keepdims=True)))
+  bound = jnp.max(jnp.abs(t), keepdims=True)
   return reduce_precision(t, bound, need_gradient, bits, False)
 
 
