@@ -301,7 +301,7 @@ def template_field(
   Returns:
     A `dataclasses.Field` specification for the field.
   """
-  tags = set(tags) | {DoNotBuild}
+  tags = ({tags} if isinstance(tags, type(Tag)) else set(tags)) | {DoNotBuild}
 
   if template is None:
     return fdl_field(default=None, tags=tags)
