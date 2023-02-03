@@ -1,9 +1,14 @@
-# Version: 0.2.2
+# Version: 0.3.0
 ## Major Features and Improvements
-## Breaking changes
-## Deprecations
+* Fiddle migration
+* Improve numerical stability when using bfloat16
+* Improve and add new functionalities to decoding algorithms
+* Improve quantization support and add quantization aware training
+* Improve streaming support
+* Move learners / sgf and train_states modules to paxml
+* Misc renaming / API updates for consistency
 ## Note
-*   Version: 0.2.2
+*   Version: 0.3.0
 *   Build Date: 20230201
 *   Praxis commit: 9e1d13d888ac18a567e249ddb41e6b1bd1fe505a
 # Version: 0.2.1
