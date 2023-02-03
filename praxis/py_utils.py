@@ -713,7 +713,9 @@ def update_matched_variables(old_tree: NestedMap,
   return select_nodes_by_indices(indices, old_tree, new_tree)
 
 
-def l2_normalize(x: JTensor, axis: int = -1, epsilon: float = 1e-12) -> JTensor:
+def l2_normalize(
+    x: JTensor, axis: Union[int, Sequence[int]] = -1, epsilon: float = 1e-12
+) -> JTensor:
   """L2-normalize a Jax tensor along certain dimension."""
   norm = jnp.sqrt(jnp.sum(x * x, axis=axis, keepdims=True) + epsilon)
   return x / norm
