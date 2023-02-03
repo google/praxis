@@ -40,6 +40,8 @@ NestedShapeDtypeStruct = pytypes.NestedShapeDtypeStruct
 NestedPartitionSpec = pytypes.NestedPartitionSpec
 instantiate = base_hyperparams.instantiate
 
+_NAME_REGEX = r'[a-zA-Z0-9.:_-]+'
+
 
 class BaseInput(base_hyperparams.BaseParameterizable):
   """Base class for Praxis input pipelines.
@@ -77,10 +79,10 @@ class BaseInput(base_hyperparams.BaseParameterizable):
       reset_for_eval: If set, eval will continue until tf.errors.OutOfRange is
         raised, and reset() will called for each eval. Implementation must
         ensure that all variant p.infeed_host_index instances raise after the
-        same numberof calls to get_next() to ensure synchronization across
-        hosts. If notset, get_next() must never raise.
+        same number of calls to get_next() to ensure synchronization across
+        hosts. If not set, get_next() must never raise.
       eval_loop_num_batches: Num of batches to process per eval loop. Must be >=
-        1. This valueis ignored if reset_for_eval is set True, in which case,
+        1. This value is ignored if reset_for_eval is set True, in which case,
         this value is dynamically determined by the number of available batches.
         If reset_for_eval is set to False, then each eval loop will process this
         many batches. Metrics over those batches will be aggregated and then
@@ -133,9 +135,9 @@ class BaseInput(base_hyperparams.BaseParameterizable):
       hparams.num_infeed_hosts = 1
     super().__init__(hparams)
     name = self.hparams.name
-    if re.fullmatch(r'[a-zA-Z0-9.:_-]+', name) is None:
+    if re.fullmatch(_NAME_REGEX, name) is None:
       raise ValueError(f'Input hparams p.name string invalid: "{name}" '
-                       'does not fully match "[a-zA-Z0-9._-]+".')
+                       f'does not fully match "{_NAME_REGEX}".')
     if hparams.experimental_remote_input and jax.process_count() > 1:
       raise NotImplementedError(
           'Remote input is not supported when there are multiple controllers.')
@@ -743,12 +745,12 @@ class MultiInput(BaseInput):
     Attributes:
       input_to_params: Dict from input names to input generator parameter
         definitions for each input. Input generators need to implement
-        BaseInput.
+        BaseInput. Required.
       default_input: Default input to use for ids_to_strings or other input
         generator methods.
     """
 
-    input_to_params: Dict[str, BaseInput.HParams] = None
+    input_to_params: Optional[Dict[str, BaseInput.HParams]] = None
     default_input: Optional[str] = None
 
   @classmethod
@@ -777,9 +779,9 @@ class MultiInput(BaseInput):
       hparams.name = 'train' if hparams.is_training else 'input'
     super().__init__(hparams)
     name = self.hparams.name
-    if re.fullmatch(r'[a-zA-Z0-9.:_-]+', name) is None:
+    if re.fullmatch(_NAME_REGEX, name) is None:
       raise ValueError(f'Input hparams p.name string invalid: "{name}" '
-                       'does not fully match "[a-zA-Z0-9._-]+".')
+                       f'does not fully match "{_NAME_REGEX}".')
     if hparams.input_to_params is None:
       raise ValueError('Need to define inputs.')
 
@@ -837,6 +839,9 @@ class MultiInput(BaseInput):
       A list strings of shape [batch]. The converted texts.
     """
     if input_name is None:
+      if self.hparams.default_input is None:
+        raise ValueError(
+            '`input_name` is required when there is no `default_input`')
       input_name = self.hparams.default_input
     return self._inputs[input_name].ids_to_strings(ids, lengths, key)
 
