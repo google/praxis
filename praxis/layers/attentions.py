@@ -943,6 +943,9 @@ class DotProductAttention(base_layer.BaseLayer):
       present in this layer.
     decode_cache: if the attention layer needs decode cache.
     attention_mask_summary: bool = False
+    zero_fully_masked: if True, attention values for fully masked tokens will be
+      forced to zero. This is particularily useful for cross attentions when
+      keys are all padded.
   """
   input_dim: Union[int, Dict[str, int]] = 0
   hidden_dim: int = 0
@@ -973,6 +976,7 @@ class DotProductAttention(base_layer.BaseLayer):
   ngrammer_tpl: Optional[LayerTpl] = template_field(None)
   decode_cache: bool = True
   attention_mask_summary: bool = False
+  zero_fully_masked: bool = False
 
   # SPMD partition related params.
   #
@@ -1298,6 +1302,15 @@ class DotProductAttention(base_layer.BaseLayer):
     probs = self.atten_dropout(probs)
     # Compute the attention context.
     encoded = jnp.einsum('BNTS,BSNH->BTNH', probs, value)
+
+    if self.zero_fully_masked:
+      # Return zeros for tokens which don't attend anything.
+      fully_masked = jnp.all(
+          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+          axis=-1,
+      )[:, 0, :, jnp.newaxis, jnp.newaxis]
+      encoded *= 1 - fully_masked
+
     encoded = checkpoint_name(encoded, 'context')
     encoded = self._shard_blnh(encoded)
     return encoded, probs
@@ -1373,6 +1386,15 @@ class DotProductAttention(base_layer.BaseLayer):
           key.dtype)
     # Compute the attention context.
     encoded = jnp.einsum('BNS,BSNH->BNH', probs, value)
+
+    if self.zero_fully_masked:
+      # Return zeros for tokens which don't attend anything.
+      fully_masked = jnp.all(
+          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+          axis=-1,
+      )[..., jnp.newaxis]
+      encoded *= 1 - fully_masked
+
     encoded = self._shard_bnh(encoded)
     return encoded, probs
 
@@ -2164,6 +2186,24 @@ class DotProductAttentionWithLPB(DotProductAttention):
                                                      am_tdim, [], [],
                                                      [value_state_name], sum)
 
+    if self.zero_fully_masked:
+      # Return zeros for tokens which don't attend anything.
+      fully_masked = jnp.all(
+          atten_mask
+          < py_utils.get_large_negative_number(jnp.float32) / 2,
+          axis=-1,
+      )
+      if not am_batched:
+        fully_masked = jnp.reshape(
+            fully_masked, (1,) * len(batch_dims) + fully_masked.shape[1:]
+        )
+      fully_masked = jnp.squeeze(fully_masked, axis=len(batch_dims))
+      fully_masked = jnp.reshape(
+          fully_masked,
+          fully_masked.shape + (1,) * (encoded.ndim - fully_masked.ndim),
+      )
+      encoded *= 1 - fully_masked
+
     return encoded, probs
 
   # TODO(b/247837331): Separate extend n steps from extend_step API if there
@@ -2811,6 +2851,14 @@ class LocalSelfAttention(DotProductAttention):
     # Compute the attention context vector.
     # -> [B, U, W, N, H]
     encoded = jnp.einsum('bnuwc,bucnh->buwnh', probs, value_block_context)
+
+    if self.zero_fully_masked:
+      # Return zeros for tokens which don't attend anything.
+      fully_masked = jnp.all(mask < minus_inf / 2, axis=-1)[
+          :, 0, :, :, jnp.newaxis, jnp.newaxis
+      ]
+      encoded *= 1 - fully_masked
+
     encoded = jnp.reshape(encoded, [b, u * w, n, h])
     # Remove the extra time padding introduced by converting to blocks.
     encoded = encoded[:, :query.shape[1], ...]

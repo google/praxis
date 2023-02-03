@@ -261,16 +261,16 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     self.run_and_compare(p_f, p_q, inputs)
 
   @parameterized.parameters([
-      (False, True, 3, True, True),
-      (True, True, 3, True, True),
-      (False, True, 3, True, False),
-      (True, True, 3, True, False),
-      (False, True, 4, False, False),
-      (True, True, 4, True, False),
-      (False, False, 1, False, False),
-      (True, False, 1, True, False),
-      (False, False, 1, True, False),
-      (True, False, 1, True, False),
+      (False, True, 3, True, True, True),
+      (True, True, 3, True, True, False),
+      (False, True, 3, True, False, False),
+      (True, True, 3, True, False, True),
+      (False, True, 4, False, False, True),
+      (True, True, 4, True, False, True),
+      (False, False, 1, False, False, False),
+      (True, False, 1, True, False, False),
+      (False, False, 1, True, False, False),
+      (True, False, 1, True, False, True),
   ])
   def test_mha_01_quantized(
       self,
@@ -279,6 +279,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
       dconv_kernel_size,
       use_rotary_position_emb,
       simulate_packed,
+      zero_fully_masked,
   ):
     # Test case copied and modified from test_mha_01.
     mdl_dim = 16
@@ -310,6 +311,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
       p.dconv_qkv = dconv_qkv
       p.dconv_kernel_size = dconv_kernel_size
       p.use_rotary_position_emb = use_rotary_position_emb
+      p.zero_fully_masked = zero_fully_masked
     atten_f = instantiate(atten_f_p)
     atten_q = instantiate(atten_q_p)
 

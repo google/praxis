@@ -22,6 +22,7 @@ import jax
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
 from praxis import base_layer
+from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import attentions
 from praxis.layers.quantization import aqt
@@ -713,6 +714,14 @@ class DotProductAttention(attentions.DotProductAttention):
         rhs_quantizer=self.act_quantizer,
         is_eval=self.do_eval,
     )
+
+    if self.zero_fully_masked:
+      # Return zeros for tokens which don't attend anything.
+      fully_masked = jnp.all(
+          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+          axis=-1,
+      )[:, 0, :, jnp.newaxis, jnp.newaxis]
+      encoded *= 1 - fully_masked
     encoded = checkpoint_name(encoded, 'context')
     encoded = self._shard_blnh(encoded)
     return encoded, probs

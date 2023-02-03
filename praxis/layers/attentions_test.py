@@ -325,18 +325,20 @@ class AttentionsTest(test_utils.TestCase):
                [[[0, 0, 0, -1, -1], [0, 0, 0, -1, -1], [0, 0, 0, -1, -1],
                  [0, 0, 0, 0, -1], [0, 0, 0, 0, 0]]]])
 
-  @parameterized.parameters([(False, True, 3, True, True),
-                             (True, True, 3, True, True),
-                             (False, True, 3, True, False),
-                             (True, True, 3, True, False),
-                             (False, True, 4, False, False),
-                             (True, True, 4, True, False),
-                             (False, False, 1, False, False),
-                             (True, False, 1, True, False),
-                             (False, False, 1, True, False),
-                             (True, False, 1, True, False)])
+  @parameterized.parameters([
+      (False, True, 3, True, True, True),
+      (True, True, 3, True, True, True),
+      (False, True, 3, True, False, False),
+      (True, True, 3, True, False, False),
+      (False, True, 4, False, False, False),
+      (True, True, 4, True, False, False),
+      (False, False, 1, False, False, True),
+      (True, False, 1, True, False, True),
+      (False, False, 1, True, False, False),
+      (True, False, 1, True, False, False),
+  ])
   def test_mha_01(self, combine_qkv, dconv_qkv, dconv_kernel_size,
-                  use_rotary_position_emb, simulate_packed):
+                  use_rotary_position_emb, simulate_packed, zero_fully_masked):
     mdl_dim = 16
     hidden_dim = 32
     num_heads = 4
@@ -352,6 +354,7 @@ class AttentionsTest(test_utils.TestCase):
         dconv_qkv=dconv_qkv,
         dconv_kernel_size=dconv_kernel_size,
         use_rotary_position_emb=use_rotary_position_emb,
+        zero_fully_masked=zero_fully_masked,
     )
     layer = instantiate(test_layer_p)
     prng_key = jax.random.PRNGKey(seed=123)
@@ -426,6 +429,61 @@ class AttentionsTest(test_utils.TestCase):
     logging.info('fprop_out: %s', fprop_out)
     logging.info('decoder_out: %s', decoder_output)
     self.assertAllClose(fprop_out, decoder_out_transposed)
+
+  def test_fully_masked(self):
+    mdl_dim = 16
+    hidden_dim = 32
+    num_heads = 4
+    test_layer_p = pax_fiddle.Config(
+        attentions.DotProductAttention,
+        name='mh',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        dim_per_head=None,
+        atten_logit_cap=20.0,
+        combine_qkv=False,
+        dconv_qkv=False,
+        dconv_kernel_size=3,
+        use_rotary_position_emb=False,
+        zero_fully_masked=True,
+    )
+    layer = instantiate(test_layer_p)
+    prng_key = jax.random.PRNGKey(seed=123)
+    prng_key, init_key = jax.random.split(prng_key)
+    target_batch_size = 3
+    source_max_length = 16
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    key_vec = query_vec
+    value_vec = query_vec
+    fake_query_vec = jnp.zeros_like(query_vec)
+    # Fully masked.
+    atten_mask = attentions.convert_paddings_to_mask(
+        jnp.ones([target_batch_size, source_max_length])
+    )
+    segment_pos = np.tile(np.arange(source_max_length), (target_batch_size, 1))
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(
+          init_key,
+          fake_query_vec,
+          fake_query_vec,
+          fake_query_vec,
+          atten_mask,
+          query_segment_pos=segment_pos,
+          key_segment_pos=segment_pos)
+      fprop_out, _ = layer.apply(
+          initial_vars,
+          query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+          query_segment_pos=segment_pos,
+          key_segment_pos=segment_pos,
+          method=layer.__call__)
+
+    self.assertEqual(jnp.sum(jnp.abs(fprop_out)), 0)
 
   @parameterized.product(
       enable_query_scale=[True, False],
@@ -727,11 +785,16 @@ class AttentionsTest(test_utils.TestCase):
     self.assertAllClose(
         test_utils.to_np(jax_atten_prob), test_utils.to_np(tf_atten_prob))
 
-  @parameterized.parameters([(4, 2, 1, True), (4, 2, 1, False), (8, 3, 5, True),
-                             (8, 3, 5, False), (5, 4, 0, False),
-                             (5, 4, 0, True)])
+  @parameterized.parameters([
+      (4, 2, 1, True, True),
+      (4, 2, 1, False, True),
+      (8, 3, 5, True, False),
+      (8, 3, 5, False, False),
+      (5, 4, 0, False, True),
+      (5, 4, 0, True, True),
+  ])
   def test_local_attention(self, block_size, left_context, right_context,
-                           is_full):
+                           is_full, zero_fully_masked):
     mdl_dim = 16
     hidden_dim = 32
     num_heads = 4
@@ -744,6 +807,7 @@ class AttentionsTest(test_utils.TestCase):
         block_size=block_size,
         left_context=left_context,
         right_context=right_context,
+        zero_fully_masked=zero_fully_masked,
     )
     layer = instantiate(test_layer_p)
 
@@ -790,10 +854,75 @@ class AttentionsTest(test_utils.TestCase):
     logging.info('jax_atten_probs: %s', jax_atten_prob)
     logging.info('tf_layer_out: %s', tf_out)
     logging.info('tf_atten_probs: %s', tf_atten_prob)
+    if zero_fully_masked:
+      mask = 1 - paddings[..., jnp.newaxis]
+      jax_fprop_out *= mask
+      tf_out *= mask
     self.assertAllClose(
         test_utils.to_np(jax_fprop_out), test_utils.to_np(tf_out))
     self.assertAllClose(
         test_utils.to_np(jax_atten_prob), test_utils.to_np(tf_atten_prob))
+
+  def test_local_attention_fully_masked(self):
+    mdl_dim = 16
+    hidden_dim = 32
+    num_heads = 4
+    left_context = 3
+    right_context = 2
+    test_layer_p = pax_fiddle.Config(
+        attentions.LocalSelfAttention,
+        name='mh',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        block_size=None,
+        left_context=left_context,
+        right_context=right_context,
+        zero_fully_masked=True,
+    )
+    layer = instantiate(test_layer_p)
+
+    target_batch_size = 3
+    source_max_length = 16
+
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    key_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    value_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    padding_zone = [3, 8, 14]
+    paddings = [
+        [
+            i > p - left_context and i <= p + right_context
+            for i in range(source_max_length)
+        ]
+        for p in padding_zone
+    ]
+    paddings = np.array(paddings)
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
+      jax_fprop_out, _ = layer.apply(
+          initial_vars, query_vec, key_vec, value_vec, atten_mask
+      )
+
+    # Those positions are fully masked.
+    fully_masked_out = [jax_fprop_out[i, p] for i, p in enumerate(padding_zone)]
+    self.assertEqual(np.sum(np.abs(test_utils.to_np(fully_masked_out))), 0)
+
+    # Example of positions which are not fully masked.
+    non_masked_out = [
+        jax_fprop_out[0, padding_zone[0] + 1],
+        jax_fprop_out[1, padding_zone[1] - 1],
+        jax_fprop_out[1, padding_zone[2] + 1],
+        jax_fprop_out[2, padding_zone[2] - 1],
+    ]
+    self.assertNotEqual(np.amin(np.abs(test_utils.to_np(non_masked_out))), 0)
 
   @parameterized.parameters(
       ([1, 2, 3, 4, 5], 1, 0, [0, 1, 2, 3, 4]),

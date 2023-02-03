@@ -82,6 +82,7 @@ pytype_strict_library(
         ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis/layers:attentions",
     ],
