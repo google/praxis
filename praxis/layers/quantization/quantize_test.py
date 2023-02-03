@@ -108,6 +108,40 @@ class QuantizationTest(test_utils.TestCase):
         qlayer.multi_query_attention.OneHeadedAttentionProjection,
     )
 
+  @parameterized.named_parameters(
+      ('combine_qkv', True),
+      ('separate_qkv', False),
+  )
+  def test_update_transformer_linear_only(self, use_combine_qkv):
+    p = pax_fiddle.Config(
+        layers.transformers.Transformer,
+        name='jax_transformer_layer',
+        input_dims=12,
+        hidden_dims=4,
+        num_heads=8,
+    )
+    p.tr_atten_tpl.combine_qkv = use_combine_qkv
+    quantize.quantize_transformer_layer_weights(
+        p,
+        quantization_hparams.QuantizationType.PTQ,
+        quantization_hparams.QuantizationMode.TRAINING,
+        quantization_hparams.WeightQuantizationParams(precision=8),
+        linear_only=True,
+    )
+
+    # Expect only linear to be quantized.
+    self.assertEqual(
+        p.tr_fflayer_tpl.fflayer_tpl.linear_tpl.cls, qlayer.linears.Linear
+    )
+    self.assertEqual(
+        p.tr_atten_tpl.proj_tpl.cls, layers.attentions.AttentionProjection
+    )
+    if use_combine_qkv:
+      self.assertEqual(
+          p.tr_atten_tpl.combined_qkv_proj_tpl.cls,
+          layers.attentions.CombinedQKVProjectionLayer,
+      )
+
 
 if __name__ == '__main__':
   absltest.main()

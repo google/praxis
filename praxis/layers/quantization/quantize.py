@@ -51,29 +51,35 @@ def quantize_transformer_layer_weights(
     weight_quantization_params: Optional[
         quantization_hparams.WeightQuantizationParams
     ],
+    linear_only: bool = False,
 ) -> None:
   """Rewrites Transformer HParam for weight only quantization."""
-  if issubclass(tr_tpl.tr_atten_tpl.cls, layers.attentions.DotProductAttention):
-    tr_atten_tpl = cast(
-        pax_fiddle.Config[layers.attentions.DotProductAttention],
-        tr_tpl.tr_atten_tpl,
-    )
-    quantize_dot_product_attention_layer_weights(
-        tr_atten_tpl, quantization_type, mode, weight_quantization_params
-    )
+  if not linear_only:
+    # If not linear only, quantize attentions (MHA / MQA) as well.
+    if issubclass(
+        tr_tpl.tr_atten_tpl.cls, layers.attentions.DotProductAttention
+    ):
+      tr_atten_tpl = cast(
+          pax_fiddle.Config[layers.attentions.DotProductAttention],
+          tr_tpl.tr_atten_tpl,
+      )
+      quantize_dot_product_attention_layer_weights(
+          tr_atten_tpl, quantization_type, mode, weight_quantization_params
+      )
 
-  if issubclass(tr_tpl.tr_atten_tpl.cls,
-                layers.multi_query_attention.MultiQueryDotProductAttention):
-    tr_atten_tpl = cast(
-        pax_fiddle.Config[
-            layers.multi_query_attention.MultiQueryDotProductAttention
-        ],
-        tr_tpl.tr_atten_tpl,
-    )
-    quantize_mq_dot_product_attention_layer_weights(
-        tr_atten_tpl, quantization_type, mode, weight_quantization_params
-    )
+    if issubclass(tr_tpl.tr_atten_tpl.cls,
+                  layers.multi_query_attention.MultiQueryDotProductAttention):
+      tr_atten_tpl = cast(
+          pax_fiddle.Config[
+              layers.multi_query_attention.MultiQueryDotProductAttention
+          ],
+          tr_tpl.tr_atten_tpl,
+      )
+      quantize_mq_dot_product_attention_layer_weights(
+          tr_atten_tpl, quantization_type, mode, weight_quantization_params
+      )
 
+  # Always quantize linears layers.
   tr_fflayer_tpl = cast(
       pax_fiddle.Config[layers.transformers.TransformerFeedForward],
       tr_tpl.tr_fflayer_tpl,
@@ -219,6 +225,7 @@ def set_quantization(
     quantization_type: quantization_hparams.QuantizationType = quantization_hparams.QuantizationType.PTQ,
     mode: quantization_hparams.QuantizationMode = quantization_hparams.QuantizationMode.INFERENCE,
     num_bits: int = 8,
+    linear_only: bool = False,
 ):
   """Sets quantization parameters for 'target' in 'config'.
 
@@ -228,6 +235,7 @@ def set_quantization(
     quantization_type: The quantization types (PTQ, FQ, AQT etc)
     mode: The quantization modes (INFERENCE, TRAINING, MATERIALIZE etc)
     num_bits: The number of bits used for quantization.
+    linear_only: Quantize only the linear layers.
   """
   weight_quantization_params = quantization_hparams.WeightQuantizationParams(
       precision=num_bits
@@ -235,7 +243,11 @@ def set_quantization(
   target_tpls = find_target_tpl(config, target)
   for target_tpl in target_tpls:
     quantize_transformer_layer_weights(
-        target_tpl, quantization_type, mode, weight_quantization_params
+        target_tpl,
+        quantization_type,
+        mode,
+        weight_quantization_params,
+        linear_only,
     )  # pytype: disable=wrong-arg-types  # py310-upgrade
 
 
