@@ -749,7 +749,7 @@ class MultiInput(BaseInput):
     """
 
     input_to_params: Dict[str, BaseInput.HParams] = None
-    default_input: str = None
+    default_input: Optional[str] = None
 
   @classmethod
   def get_batch_size(cls, hparams: MultiInput.HParams) -> int:
