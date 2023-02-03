@@ -74,6 +74,11 @@ class Linear(linears.Linear):
             'Static activation quantization is not supported yet.')
         # Additionally add activation scale.
       self.create_quantized_variable('w', pc, [self.output_dims])
+      if not self.quantization.weight_params.use_symmetric:
+        zpc = WeightHParams(
+            shape=[self.output_dims]
+        )
+        self.create_variable('w_quantized_zp', zpc)
     elif self.quantization.mode == QuantizationMode.TRAINING:
       # TODO(jihwanlee): Now, having many different branches and non-unified
       # quantization logic between PTQ, FQ, and AQT, the overall code is quite
@@ -114,7 +119,10 @@ class Linear(linears.Linear):
       elif self.quantization.act_params is not None:
         inputs, act_scale = operations.reduce_precision_activation(inputs)
         s = jnp.multiply(jnp.squeeze(act_scale), s)
-      out = operations.einsum(eqn, inputs, w, s)
+      if not self.quantization.weight_params.use_symmetric:
+        out = operations.einsum(eqn, inputs, w, s, self.theta['w_quantized_zp'])
+      else:
+        out = operations.einsum(eqn, inputs, w, s)
     else:
       w = self.theta.w
       if self.quantization.quantization_type == QuantizationType.AQT:

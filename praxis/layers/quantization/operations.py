@@ -67,7 +67,13 @@ def _get_min_max(bits):
   return -1 * 2 ** (bits - 1), 2 ** (bits - 1) - 1
 
 
-def einsum(eqn: str, x: JTensor, w: JTensor, scale: JTensor) -> JTensor:
+def einsum(
+    eqn: str,
+    x: JTensor,
+    w: JTensor,
+    scale: JTensor,
+    zp: Optional[JTensor] = None,
+) -> JTensor:
   """Performs quantized einsum.
 
   Quantized einsum consists in a regular Einsum on lower precision types,
@@ -79,6 +85,7 @@ def einsum(eqn: str, x: JTensor, w: JTensor, scale: JTensor) -> JTensor:
     w: The weight to the einsum; usually in quantized format.
     scale: The rescaling factor for the einsum. After applying this, the result
       is brought back to true value (no longer associated with scaling factors).
+    zp: Optional zero point tensor.
 
   Returns:
     A JTensor
@@ -98,7 +105,39 @@ def einsum(eqn: str, x: JTensor, w: JTensor, scale: JTensor) -> JTensor:
   if filling_dims:
     scale = jnp.expand_dims(scale, filling_dims)
 
-  return jnp.multiply(ret, scale)
+  ret = jnp.multiply(ret, scale)
+
+
+  def _get_x_reduce_axis(eqn: str, x_dims: int) -> List[int]:
+    """Get reduction axis on activation."""
+    if eqn == 'ANH,DNH->AD' or eqn == 'ABNH,DNH->ABD':
+      return [x_dims - 2, x_dims - 1]
+    else:
+      return [x_dims-1]
+
+
+  def _get_offset_eqn(eqn: str) -> str:
+    """Gets the offset equation dimensions."""
+    if eqn == 'AD,KDNH->KANH':
+      return 'A,KNH->KANH'
+    if eqn == 'ANH,DNH->AD':
+      return 'A,D->AD'
+    if eqn == '...y,yz->...z':
+      return '...y,z->...yz'
+    if eqn == 'ABD,KDNH->KABNH':
+      return 'AB,KNH->KABNH'
+    if eqn == 'ABNH,DNH->ABD':
+      return 'AB,D->ABD'
+    # Add new equations as needed.
+    raise NotImplementedError(f'eqn {eqn} not supported for asymmetric weight.')
+
+  if zp is not None:
+    reduce_axis = _get_x_reduce_axis(eqn, len(x.shape))
+    x_reduce = jnp.sum(x, axis=reduce_axis, keepdims=False)
+    offset_eqn = _get_offset_eqn(eqn)
+    offset = jnp.einsum(offset_eqn, x_reduce, zp)
+    ret = ret - offset
+  return ret
 
 
 def _round_with_gradient(x):

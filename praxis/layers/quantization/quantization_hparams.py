@@ -88,6 +88,8 @@ class WeightQuantizationParams:
   num_optimize_clipping: Number of optimization steps used for
     scale estimation with search over clipping values in
     range [min_clipping ... 1].
+  use_symmetric: do symmetric quantization for weights.
+
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -95,6 +97,7 @@ class WeightQuantizationParams:
   stop_scale_gradient: bool = False
   min_clipping: Optional[float] = None
   num_optimize_clipping: Optional[int] = None
+  use_symmetric: bool = True
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):

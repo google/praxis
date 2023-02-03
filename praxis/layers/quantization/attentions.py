@@ -93,8 +93,14 @@ class AttentionProjection(attentions.AttentionProjection):
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
       if self.is_output_projection:
+        if not self.quantization.weight_params.use_symmetric:
+          zpc = WeightHParams(shape=[self.input_dim])
+          self.create_variable('w_quantized_zp', zpc)
         self.create_quantized_variable('w', pc, [self.input_dim])
       else:
+        if not self.quantization.weight_params.use_symmetric:
+          zpc = WeightHParams(shape=hd_shape)
+          self.create_variable('w_quantized_zp', zpc)
         self.create_quantized_variable('w', pc, hd_shape)
     else:
       self.create_variable('w', pc)
@@ -195,7 +201,12 @@ class AttentionProjection(attentions.AttentionProjection):
             eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
         )
       elif self.quantization.act_params is None:
-        ret = operations.einsum(eqn, inputs, w, s)
+        if not self.quantization.weight_params.use_symmetric:
+          ret = operations.einsum(
+              eqn, inputs, w, s, self.theta['w_quantized_zp']
+          )
+        else:
+          ret = operations.einsum(eqn, inputs, w, s)
     else:
       if self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(
@@ -354,6 +365,9 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
         tensor_split_dims_mapping=weight_split_dims_mapping,
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
+      if not self.quantization.weight_params.use_symmetric:
+        zpc = WeightHParams(shape=[3] + hd_shape)
+        self.create_variable('w_quantized_zp', zpc)
       self.create_quantized_variable('w', pc, [3] + hd_shape)
     else:
       self.create_variable('w', pc)
@@ -433,7 +447,12 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
         )
       elif self.quantization.act_params is None:
-        ret = operations.einsum(eqn, inputs, w, s)
+        if not self.quantization.weight_params.use_symmetric:
+          ret = operations.einsum(
+              eqn, inputs, w, s, self.theta['w_quantized_zp']
+          )
+        else:
+          ret = operations.einsum(eqn, inputs, w, s)
     else:
       if self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(

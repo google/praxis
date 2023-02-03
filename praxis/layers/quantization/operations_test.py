@@ -61,6 +61,22 @@ class QuantizationUtilsTest(test_utils.TestCase):
     expected = jnp.ones([K, A, B, N, H], dtype=jnp.bfloat16) * D
     self.assertArraysEqual(ret, expected)
 
+  @parameterized.named_parameters(
+      ('eqn_with_dot', '...y,yz->...z'),
+  )
+  def test_quantized_einsum_with_zp(self, eqn):
+    x = jnp.array([[1.0, 2.0, 3.0], [4.0, 1.0, 2.0]], dtype=jnp.bfloat16)
+    w = jnp.array([[1, 2, 1], [2, 1, 2], [1, 3, 1]], dtype=jnp.int8)
+    s = jnp.array([0.1, 0.2, 0.3], dtype=jnp.bfloat16)
+    zp = jnp.array([-0.5, 3.2, 2.7])
+
+    ret = operations.einsum(eqn, x, w, s, zp)
+    expected = jnp.array(
+        [[3.800781, -16.590626, -13.793751], [4.300781, -19.4, -16.49375]],
+        dtype=jnp.float32,
+    )
+    self.assertAllClose(ret, expected, rtol=0.02, atol=0.02)
+
 
 class ReducePrecisionEinsumTest(test_utils.TestCase):
 
