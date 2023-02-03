@@ -71,8 +71,8 @@ def convert_to_boxed_params(
   var_tree = frozen_dict.unfreeze(var_tree)
 
   # Converts "_axes" collections from pass-through metadata objects to
-  # pjit.PartitionSpec tuples, which can be tree-mapped later; also removes
-  # extraneous "_axes" names.
+  # jax.sharding.PartitionSpec tuples, which can be tree-mapped later; also
+  # removes extraneous "_axes" names.
   axes_tree = {
       key: flax_partitioning.get_axis_names(var_tree.pop(key))
       for key in list(var_tree)
