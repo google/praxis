@@ -688,6 +688,7 @@ class LanguageModel(base_model.BaseModel):
         num_decodes=1,
         cache_offset=1 if scanned else 0,
         topk=decoder_params.k,
+        max_decode_steps=max_decode_length,
         **decoder_kwargs,
     )
 
