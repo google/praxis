@@ -211,6 +211,7 @@ def for_transformer(num_bits: int = 8):
             quantization_type=quantization_type,
             mode=mode,
             num_bits=num_bits,
+            use_symmetric=True,
         )
         return task_p
 
@@ -226,6 +227,7 @@ def set_quantization(
     mode: quantization_hparams.QuantizationMode = quantization_hparams.QuantizationMode.INFERENCE,
     num_bits: int = 8,
     linear_only: bool = False,
+    use_symmetric: bool = True,
 ):
   """Sets quantization parameters for 'target' in 'config'.
 
@@ -236,9 +238,11 @@ def set_quantization(
     mode: The quantization modes (INFERENCE, TRAINING, MATERIALIZE etc)
     num_bits: The number of bits used for quantization.
     linear_only: Quantize only the linear layers.
+    use_symmetric: Use symmetric weight quantization.
   """
   weight_quantization_params = quantization_hparams.WeightQuantizationParams(
-      precision=num_bits
+      precision=num_bits,
+      use_symmetric=use_symmetric,
   )
   target_tpls = find_target_tpl(config, target)
   for target_tpl in target_tpls:
