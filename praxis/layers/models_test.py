@@ -30,7 +30,9 @@ from praxis import pytypes
 from praxis import test_utils
 from praxis.layers import models
 from praxis.layers import resnets
+from praxis.layers import transformers
 from praxis.layers import transformer_models
+from praxis.layers import embedding_softmax
 
 NestedMap = py_utils.NestedMap
 instantiate = base_layer.instantiate
@@ -964,6 +966,64 @@ class ClassifierModelTest(test_utils.TestCase):
     self.assertContainsSubset(['accuracy', 'error'], metrics)
     if num_classes > 5:
       self.assertContainsSubset(['acc5', 'error5'], metrics)
+
+
+class SequenceModelTest(test_utils.TestCase):
+
+  def test_encode_runs(self):
+    data = NestedMap(
+        ids=jnp.array([[11, 12, 13, 14, 15]], dtype=jnp.int32),
+        paddings=jnp.array([[0, 1, 1, 1, 1]], dtype=jnp.float32),
+        labels=jnp.ones([1, 5], jnp.float32),
+        weights=jnp.ones([1, 5], jnp.float32),
+    )
+
+    input_batch = NestedMap(src=data, tgt=data)
+    model_dims = 8
+    model_p = pax_fiddle.Config(models.SequenceModel, name='test')
+    model_p.model_tpl = pax_fiddle.Config(
+        models.transformer_models.TransformerEncoderDecoder,
+        model_dims=model_dims,
+    )
+    encoder_stacked_transformer_tpl = pax_fiddle.Config(
+        transformers.StackedTransformer
+    )
+    encoder_stacked_transformer_tpl.num_layers = 2
+    encoder_stacked_transformer_tpl.num_heads = 4
+    encoder_stacked_transformer_tpl.model_dims = model_dims
+    encoder_stacked_transformer_tpl.hidden_dims = model_dims * 4
+    encoder_stacked_transformer_tpl.mask_self_attention = False
+    decoder_stacked_transformer_tpl = pax_fiddle.Config(
+        transformers.StackedTransformer
+    )
+    decoder_stacked_transformer_tpl.num_layers = 2
+    decoder_stacked_transformer_tpl.num_heads = 4
+    decoder_stacked_transformer_tpl.model_dims = model_dims
+    decoder_stacked_transformer_tpl.hidden_dims = model_dims * 4
+    decoder_stacked_transformer_tpl.mask_self_attention = True
+    model_p.model_tpl.encoder_stacked_transformer_tpl = (
+        encoder_stacked_transformer_tpl
+    )
+    model_p.model_tpl.decoder_stacked_transformer_tpl = (
+        decoder_stacked_transformer_tpl
+    )
+    model_p.model_tpl.softmax_tpl = pax_fiddle.Config(
+        embedding_softmax.SharedEmbeddingSoftmax,
+        input_dims=model_dims,
+        num_classes=16,
+    )
+    seq_model = instantiate(model_p)
+    prng_key = jax.random.PRNGKey(seed=9)
+    initial_vars = seq_model.init(prng_key, input_batch)
+    results = seq_model.apply(
+        initial_vars,
+        input_batch.src,
+        rngs={RANDOM: prng_key},
+        method=seq_model.encode,
+    )
+
+    self.assertIn('embeddings', results)
+    self.assertSequenceEqual(results.embeddings.shape, (1, 5, 8))
 
 
 if __name__ == '__main__':

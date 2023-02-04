@@ -910,9 +910,11 @@ py_strict_test(
     shard_count = 4,
     srcs_version = "PY3",
     deps = [
+        ":embedding_softmax",
         ":models",
         ":resnets",
         ":transformer_models",
+        ":transformers",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.

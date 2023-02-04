@@ -800,6 +800,19 @@ class SequenceModel(base_model.BaseModel):
         predictions, input_batch.tgt, self.return_predictions
     )
 
+  def encode(self, input_batch: NestedMap) -> NestedMap:
+    """Encodes input_batch.
+
+    Args:
+      input_batch: The input batch containing the `.ids` and `.paddings.`
+
+    Returns:
+      A NestedMap containing '.embeddings' that contains the model's embedding
+      of the text.
+    """
+    embeddings = self.model.encode(input_batch.ids, input_batch.paddings)
+    return py_utils.NestedMap(embeddings=embeddings)
+
   def decode(self, input_batch: NestedMap) -> DecodeOut:
     """Decodes input_batch.
 
