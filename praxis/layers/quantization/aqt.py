@@ -16,7 +16,7 @@
 """Quantization Aware Training ops."""
 
 from __future__ import annotations
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -62,6 +62,7 @@ def create_tensor_quantizer(
   if isinstance(quant_params, WeightQuantizationParams):
     tq_params.min_clipping = quant_params.min_clipping
     tq_params.num_optimize_clipping = quant_params.num_optimize_clipping
+    tq_params.add_scale_eps = quant_params.add_scale_eps
 
   return tq_params
 
@@ -78,11 +79,14 @@ class TensorQuantizer(base_layer.BaseLayer):
     num_optimize_clipping: Number of optimization steps used for
       scale estimation with search over clipping values in
       range [min_clipping ... 1].
+    add_scale_eps: If True add epsilon to scale to avoid division by zero,
+      else it will replace zero scale by 1.
   """
   precision: Optional[int] = None
   stop_scale_gradient: bool = False
   min_clipping: Optional[float] = None
   num_optimize_clipping: Optional[int] = None
+  add_scale_eps: Optional[bool] = True
 
   def setup(self):
     assert (
@@ -133,10 +137,13 @@ class TensorQuantizer(base_layer.BaseLayer):
     scale = x_max / clip_bound
     if self.stop_scale_gradient:
       scale = jax.lax.stop_gradient(scale)
-      scale = jnp.where(scale == 0, jnp.ones_like(scale), scale)
-    else:
-      # Add a small to avoid NaN gradients for near-zero inputs during training.
+
+    if self.add_scale_eps:
+      # Add epsilon to avoid NaN gradients for near-zero inputs during training.
       scale = scale + jnp.finfo(dtype).eps
+    else:
+      scale = jnp.where(scale == 0, jnp.ones_like(scale), scale)
+
     return scale.astype(dtype)
 
   def _get_optimal_scale(

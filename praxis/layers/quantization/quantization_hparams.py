@@ -89,7 +89,8 @@ class WeightQuantizationParams:
     scale estimation with search over clipping values in
     range [min_clipping ... 1].
   use_symmetric: do symmetric quantization for weights.
-
+  add_scale_eps: If True add epsilon to scale to avoid division by zero,
+    else it will replace zero scale by 1.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -98,6 +99,7 @@ class WeightQuantizationParams:
   min_clipping: Optional[float] = None
   num_optimize_clipping: Optional[int] = None
   use_symmetric: bool = True
+  add_scale_eps: Optional[bool] = True
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):

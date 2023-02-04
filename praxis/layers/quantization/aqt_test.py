@@ -31,18 +31,29 @@ JTensor = pytypes.JTensor
 
 class AqtTest(test_utils.TestCase):
 
-  def get_quantized_and_scale(self, p_quant, sample) -> Tuple[JTensor, JTensor]:
+  def get_quantize_dequantized_and_scale(
+      self, p_quant, sample
+  ) -> Tuple[JTensor, JTensor, JTensor]:
+    # Computes quantized-dequantized and scale of input sample.
+
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
     scale = quant.apply(
         state, sample, [0, 1], jnp.float32, method=quant.get_quant_scale
-    )
+        )
+    # Quantize.
     qx = quant.apply(state, sample / scale, jnp.float32, method=quant.to_quant)
-    qx = qx * scale
 
-    return qx, scale
+    # Dequantize.
+    deqx = qx * scale
 
-  def test_single_quant_example(self):
+    return deqx, scale
+
+  @parameterized.named_parameters(
+      dict(testcase_name='add_eps_to_scale', add_scale_eps=True),
+      dict(testcase_name='replace_zero_scale_by_one', add_scale_eps=False),
+  )
+  def test_single_symmetric_quant_example(self, add_scale_eps):
     """Compares quantization to hand-computed example."""
     x = jnp.array([
         [0.99, 1.01, 1.99, 2.01],  #
@@ -61,21 +72,23 @@ class AqtTest(test_utils.TestCase):
         [-4.00, -6.00, -6.00, -6.00],  #
     ], dtype=jnp.float32)
 
-    p_quant = pax_fiddle.Config(aqt.TensorQuantizer, name='tq', precision=3)
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer, name='tq', precision=3, add_scale_eps=add_scale_eps
+    )
 
-    qx, scale = self.get_quantized_and_scale(p_quant, x)
+    q_deq_x, scale = self.get_quantize_dequantized_and_scale(p_quant, x)
 
     self.assertAllClose(scale, jnp.full((1, 1), 2.0, dtype=jnp.float32))
-    self.assertArraysEqual(qx, expected_output)
+    self.assertArraysEqual(q_deq_x, expected_output)
 
   def test_none_prec_not_quantize(self):
     x = jax.random.uniform(
         jax.random.PRNGKey(0), shape=(4, 5), dtype=jnp.float32)
     p_quant = pax_fiddle.Config(aqt.TensorQuantizer, name='tq', precision=None)
-    qx, scale = self.get_quantized_and_scale(p_quant, x)
+    q_deq_x, scale = self.get_quantize_dequantized_and_scale(p_quant, x)
 
     self.assertEqual(scale, jnp.full((1, 1), 1.0, dtype=jnp.float32))
-    self.assertArraysEqual(qx, x)
+    self.assertArraysEqual(q_deq_x, x)
 
   def test_quant_noise_for_different_scaling_granularities(self):
     """Ensures per_example scaling produces smaller noises than per_tensor."""

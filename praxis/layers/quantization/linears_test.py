@@ -283,6 +283,7 @@ class QuantizeLinearTest(test_utils.TestCase):
             weight_params=quantization_hparams.WeightQuantizationParams(
                 precision=3,
                 stop_scale_gradient=True,
+                add_scale_eps=False,
             ),
         ),
     )
