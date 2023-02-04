@@ -32,7 +32,7 @@ def compute_stats(inputs: JTensor,
   inputs = inputs.astype(jnp.float32)
   if padding is None:
     padding = jnp.zeros_like(inputs)
-  assert inputs.ndim == padding.ndim
+  assert inputs.ndim == padding.ndim, f'{inputs.shape}, {padding.shape}'
   mask = 1.0 - padding
 
   sum_v = jnp.sum(inputs * mask)
