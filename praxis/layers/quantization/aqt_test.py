@@ -38,16 +38,16 @@ class AqtTest(test_utils.TestCase):
 
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
-    scale = quant.apply(
-        state, sample, [0, 1], jnp.float32, method=quant.get_quant_scale
-        )
+
     # Quantize.
-    qx = quant.apply(state, sample / scale, jnp.float32, method=quant.to_quant)
+    q_x, q_scale = quant.apply(
+        state, sample, [0, 1], False, jnp.float32, method=quant.quantize
+    )
 
     # Dequantize.
-    deqx = qx * scale
+    deq_q_x = q_x * q_scale
 
-    return deqx, scale
+    return deq_q_x, q_scale
 
   @parameterized.named_parameters(
       dict(testcase_name='add_eps_to_scale', add_scale_eps=True),

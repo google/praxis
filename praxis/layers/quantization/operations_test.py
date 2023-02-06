@@ -132,18 +132,25 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
 class DotGeneral(base_layer.BaseLayer):
   lhs_prec: int = 8
   rhs_prec: int = 8
+  add_scale_eps: bool = False
 
   def setup(self):
     self.create_child(
         'lhs_quantizer',
         pax_fiddle.Config(
-            aqt.TensorQuantizer, name='lhs_quantizer', precision=self.lhs_prec
+            aqt.TensorQuantizer,
+            name='lhs_quantizer',
+            precision=self.lhs_prec,
+            add_scale_eps=self.add_scale_eps,
         ),
     )
     self.create_child(
         'rhs_quantizer',
         pax_fiddle.Config(
-            aqt.TensorQuantizer, name='rhs_quantizer', precision=self.rhs_prec
+            aqt.TensorQuantizer,
+            name='rhs_quantizer',
+            precision=self.rhs_prec,
+            add_scale_eps=self.add_scale_eps,
         ),
     )
 
@@ -178,9 +185,15 @@ class AqtDotGeneralTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(0)
 
-  def get_dot_general_module(self, lhs, rhs, lhs_prec, rhs_prec):
+  def get_dot_general_module(
+      self, lhs, rhs, lhs_prec, rhs_prec, add_scale_eps=False
+  ):
     p_dot_general = pax_fiddle.Config(
-        DotGeneral, name='dot_general', lhs_prec=lhs_prec, rhs_prec=rhs_prec
+        DotGeneral,
+        name='dot_general',
+        lhs_prec=lhs_prec,
+        rhs_prec=rhs_prec,
+        add_scale_eps=add_scale_eps,
     )
     module = base_layer.instantiate(p_dot_general)
     state = module.init(jax.random.PRNGKey(0), lhs, rhs)
@@ -241,7 +254,7 @@ class AqtDotGeneralTest(test_utils.TestCase):
     # rescaling are unnecessarily propagated.
     rhs = np.random.normal(0, 1e-23, size=(3, 4)).astype(np.float32)
 
-    dot_general, _ = self.get_dot_general_module(lhs, rhs, None, 4)
+    dot_general, _ = self.get_dot_general_module(lhs, rhs, None, 4, True)
     matmul_dimension_numbers = [[[1], [0]], [[], []]]
 
     @jax.grad

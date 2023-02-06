@@ -389,15 +389,13 @@ def dot_general(
   input_dtype = lhs.dtype
   lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
 
-  lhs_scale = lhs_quantizer.get_quant_scale(lhs, lhs_contract_dims, input_dtype)
-  lhs = lhs / lhs_scale
-  lhs = lhs_quantizer.to_quant(lhs, input_dtype)
+  lhs, lhs_scale = lhs_quantizer.quantize(
+      lhs, lhs_contract_dims, squeeze_scale=False, dtype=input_dtype)
 
   if rhs_quantized is None:
-    rhs_scale = rhs_quantizer.get_quant_scale(rhs, rhs_contract_dims,
-                                              input_dtype)
-    rhs = rhs / rhs_scale
-    rhs = rhs_quantizer.to_quant(rhs, input_dtype)
+    rhs, rhs_scale = rhs_quantizer.quantize(
+        rhs, rhs_contract_dims, squeeze_scale=False, dtype=input_dtype)
+
   elif rhs is None:
     assert (
         is_eval

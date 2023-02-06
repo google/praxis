@@ -288,11 +288,8 @@ class AttentionProjection(attentions.AttentionProjection):
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
-      q_s = self.weight_quantizer.get_quant_scale(
-          self.theta.w, contract_dims=weight_contract_dims, dtype=self.dtype)
-      q_w = self.theta.w / q_s
-      q_w = self.weight_quantizer.to_quant(q_w, dtype=jnp.int8)
-      q_s = jnp.squeeze(q_s)
+      q_w, q_s = self.weight_quantizer.quantize(
+          self.theta.w, weight_contract_dims, dtype=jnp.int8)
     else:
       raise ValueError(
           f'Unsupported quantization_type {self.quantization.quantization_type}'
@@ -496,7 +493,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       a map from names to partition spec.
     """
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
-    weight_pspec = base_layer._weight_hparam_to_pspec(
+    weight_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
         self._weight_hparams['w'], self.mesh_axis_names
     )
     wp = self.weight_split_dims_mapping
@@ -507,7 +504,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     # scale_weight_hparam is unmaterialized so shape is irrelevant.
     scale_weight_hparam = WeightHParams(
         shape=(), tensor_split_dims_mapping=scale_split_dims_mapping)
-    scale_pspec = base_layer._weight_hparam_to_pspec(
+    scale_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
         scale_weight_hparam, self.mesh_axis_names
     )
     partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
@@ -537,11 +534,8 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
-      q_s = self.weight_quantizer.get_quant_scale(
-          self.theta.w, contract_dims=weight_contract_dims, dtype=self.dtype)
-      q_w = self.theta.w / q_s
-      q_w = self.weight_quantizer.to_quant(q_w, dtype=jnp.int8)
-      q_s = jnp.squeeze(q_s)
+      q_w, q_s = self.weight_quantizer.quantize(
+          self.theta.w, weight_contract_dims, dtype=jnp.int8)
     else:
       raise ValueError(
           f'Unsupported quantization_type {self.quantization.quantization_type}'

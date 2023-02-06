@@ -16,7 +16,7 @@
 """Quantization Aware Training ops."""
 
 from __future__ import annotations
-from typing import Optional, Sequence, Tuple, Union
+from typing import Optional, Sequence, Union
 
 import jax
 import jax.numpy as jnp
@@ -197,6 +197,15 @@ class TensorQuantizer(base_layer.BaseLayer):
     pass
 
   def to_quant(self, x: JTensor, dtype=jnp.bfloat16):
+    """Converts normalized float x to quantized value.
+
+    Args:
+      x: Input tensor. It has to be normalized: x / scale
+      dtype: Output type.
+
+    Returns:
+      Quantized tensor.
+    """
     if self.precision is None:
       return x.astype(dtype)
 
@@ -205,3 +214,28 @@ class TensorQuantizer(base_layer.BaseLayer):
     x = _pass_through(x + 0.5, jnp.floor)
 
     return x.astype(dtype)
+
+  def quantize(
+      self,
+      x: JTensor,
+      contract_dims: Union[int, Sequence[int]],
+      squeeze_scale=True,
+      dtype=jnp.bfloat16,
+  ):
+    """Quantizes input x.
+
+    Args:
+      x: Input tensor.
+      contract_dims: Contraction dims.
+      squeeze_scale: If True it will squeeze output scale.
+      dtype: Output type.
+
+    Returns:
+      Quantized tensor with scale (used for dequantization)
+    """
+    q_s = self.get_quant_scale(x, contract_dims=contract_dims, dtype=self.dtype)
+    q_x = self.to_quant(x / q_s, dtype=dtype)
+
+    if squeeze_scale:
+      q_s = jnp.squeeze(q_s)
+    return q_x, q_s

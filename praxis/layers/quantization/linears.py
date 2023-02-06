@@ -160,7 +160,7 @@ class Linear(linears.Linear):
       a map from names to partition spec.
     """
     scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
-    weight_pspec = base_layer._weight_hparam_to_pspec(
+    weight_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
         self._weight_hparams['w'], self.mesh_axis_names
     )
     wp = self.weight_split_dims_mapping
@@ -168,7 +168,7 @@ class Linear(linears.Linear):
     # scale_weight_hparam is unmaterialized so shape is irrelevant.
     scale_weight_hparam = WeightHParams(
         shape=(), tensor_split_dims_mapping=scale_split_dims_mapping)
-    scale_pspec = base_layer._weight_hparam_to_pspec(
+    scale_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
         scale_weight_hparam, self.mesh_axis_names
     )
     partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
@@ -220,11 +220,9 @@ class Linear(linears.Linear):
     elif self.quantization.quantization_type == QuantizationType.AQT:
       if self._do_static_activation_quantization():
         raise NotImplementedError(
-            'Static activation quantization is not supported yet.')
+            'Static activation quantization is not supported yet.'
+        )
       else:
-        q_s = self.weight_quantizer.get_quant_scale(
-            theta.w, contract_dims=[0], dtype=self.dtype)
-        q_s = jnp.squeeze(q_s)
-        q_w = theta.w / q_s
-        q_w = self.weight_quantizer.to_quant(q_w, dtype=jnp.int8)
+        q_w, q_s = self.weight_quantizer.quantize(
+            self.theta.w, [0], dtype=jnp.int8)
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
