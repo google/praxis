@@ -30,7 +30,7 @@ JTensor = pytypes.JTensor
 
 
 def _get_expand_dims(eqn: str) -> List[int]:
-  """Potentially expand dimentions for scale.
+  """Potentially expand dimensions for scale.
 
   It handles cases such as ABD,KDNH->KABNH and AD,KDNH->KANH, where weight is
   quantized to KNH and need to expand to K11NH and K1NH.
@@ -49,7 +49,7 @@ def _get_expand_dims(eqn: str) -> List[int]:
 
   filling_dims = [i for i, val in enumerate(out) if val not in w]
   # Avoid expanding dim for ab,bc->ac where scale of dim c doesn't need to be
-  # expaneded to (1,c) to be applied on ac.
+  # expanded to (1,c) to be applied on ac.
   if filling_dims and filling_dims[-1] == len(filling_dims) - 1:
     filling_dims = []
   return filling_dims
@@ -77,7 +77,7 @@ def einsum(
   """Performs quantized einsum.
 
   Quantized einsum consists in a regular Einsum on lower precision types,
-  followed by a rescaling operation of element-wise multiplcation.
+  followed by a rescaling operation of element-wise multiplication.
 
   Args:
     eqn: The equation for the einsum between x and w.
@@ -89,7 +89,6 @@ def einsum(
 
   Returns:
     A JTensor
-
   """
   if x.dtype == jnp.int8 and w.dtype == jnp.int8:
     # upcast to int32 so einsum uses int32 as accumulator.
@@ -100,7 +99,7 @@ def einsum(
     x = x.astype(jnp.int32)
   ret = jnp.einsum(eqn, x, w)
 
-  # Potentially expand dimentions of scale to match einsum output.
+  # Potentially expand dimensions of scale to match einsum output.
   filling_dims = _get_expand_dims(eqn)
   if filling_dims:
     scale = jnp.expand_dims(scale, filling_dims)
@@ -199,7 +198,7 @@ def reduce_einsum_weight_precision(
 ) -> Tuple[JTensor, JTensor]:
   """Reduce the precision of the weight of einsum.
 
-  It uses per-channel quantization so einsum equantion is passed in as well.
+  It uses per-channel quantization so einsum equation is passed in as well.
 
   Args:
     eqn: the equation for the einsum.
@@ -247,7 +246,7 @@ def fakequant_einsum(
   """Nudges weight of einsum with FakeQuant.
 
   Args:
-    eqn: the equantion for the einsum. Determines the channel dimension.
+    eqn: the equation for the einsum. Determines the channel dimension.
     t: the weight tensor for the einsum.
     bits: target number of bits.
     calculation_type: the type for calculation.
@@ -365,8 +364,8 @@ def dot_general(
   """Quantized jax.lax.dot_general.
 
   Args:
-    lhs: Left-hand side of the dot_general.
-    rhs: Right-hand side of the dot_general.
+    lhs: Left-hand side of the dot_general (mostly activation).
+    rhs: Right-hand side of the dot_general (mostly weight, can be activation).
     lhs_quantizer: The tensor quantizer for lhs.
     rhs_quantizer: The tensor quantizer for rhs.
     dimension_numbers: a tuple of tuples of the form `((lhs_contracting_dims,
@@ -450,8 +449,8 @@ def aqt_einsum(
 
   Args:
     eqn: The valid binary einsum equation to use.
-    lhs: Left-hand side of the einsum.
-    rhs: Right-hand side of the einsum.
+    lhs: Left-hand side of the einsum (mostly activation).
+    rhs: Right-hand side of the einsum (mostly weight, can be activation).
     lhs_quantizer: The tensor quantizer for lhs.
     rhs_quantizer: The tensor quantizer for rhs.
     is_eval: If False, update the statistics in the tensor quantizers based on
