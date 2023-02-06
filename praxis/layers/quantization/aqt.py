@@ -58,6 +58,7 @@ def create_tensor_quantizer(
   if quant_params is not None:
     tq_params.precision = quant_params.precision
     tq_params.stop_scale_gradient = quant_params.stop_scale_gradient
+    tq_params.unsigned_int_bounds = quant_params.unsigned_int_bounds
 
   if isinstance(quant_params, WeightQuantizationParams):
     tq_params.min_clipping = quant_params.min_clipping
@@ -81,12 +82,16 @@ class TensorQuantizer(base_layer.BaseLayer):
       range [min_clipping ... 1].
     add_scale_eps: If True add epsilon to scale to avoid division by zero,
       else it will replace zero scale by 1.
+    unsigned_int_bounds: If True, use [0, 2**precision-1] clip bound for better
+      quantization bucket utilization in case where the input has a positive
+      distribution (e.g., ReLU).
   """
   precision: Optional[int] = None
   stop_scale_gradient: bool = False
   min_clipping: Optional[float] = None
   num_optimize_clipping: Optional[int] = None
   add_scale_eps: Optional[bool] = True
+  unsigned_int_bounds: bool = False
 
   def setup(self):
     assert (
@@ -109,9 +114,10 @@ class TensorQuantizer(base_layer.BaseLayer):
     pass
 
   def _get_clip_bound(self) -> float:
-    bucket_count = 2.0**self.precision
-    bucket_count -= 1.0
-    return bucket_count / 2.0
+    bound = 2.0**self.precision - 1.0
+    if self.unsigned_int_bounds:
+      return bound
+    return bound / 2.0
 
   def _safe_clip_bound(self) -> float:
     cb_unsafe = self._get_clip_bound()
@@ -210,7 +216,10 @@ class TensorQuantizer(base_layer.BaseLayer):
       return x.astype(dtype)
 
     clip_bound = self._safe_clip_bound()
-    x = jnp.clip(x, -clip_bound, clip_bound)
+    low_clip_bound = 0 if self.unsigned_int_bounds else -clip_bound
+    high_clip_bound = clip_bound
+
+    x = jnp.clip(x, low_clip_bound, high_clip_bound)
     x = _pass_through(x + 0.5, jnp.floor)
 
     return x.astype(dtype)

@@ -55,6 +55,7 @@ class AqtTest(test_utils.TestCase):
   )
   def test_single_symmetric_quant_example(self, add_scale_eps):
     """Compares quantization to hand-computed example."""
+    # representable values: -6, -4, -2, 0, 2, 4, 6
     x = jnp.array([
         [0.99, 1.01, 1.99, 2.01],  #
         [2.99, 3.01, 3.99, 4.01],  #
@@ -216,6 +217,69 @@ class AqtTest(test_utils.TestCase):
     # With feature_dim2 we observe that difference between sum_error_opt and
     # sum_error belongs to range: 10...30, so selected 20 as middle point.
     self.assertLess(sum_error_opt, sum_error-20)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='1bit', precision=1),
+      dict(testcase_name='2bit', precision=2),
+      dict(testcase_name='4bit', precision=4),
+      dict(testcase_name='8bit', precision=8))
+  def test_clip_to_unsigned_int(self, precision):
+    """Checks if an input gets clipped to [0, 2**precision-1] when unsigned_int=True."""
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='tq',
+        precision=precision,
+        unsigned_int_bounds=True,
+    )
+
+    x = jax.random.uniform(
+        jax.random.PRNGKey(0), shape=(1024, 1), minval=0, maxval=1.0
+    )
+    x *= 2.0**8
+    quant = p_quant.Instantiate()
+    state = quant.init(jax.random.PRNGKey(0))
+    scale = quant.apply(
+        state, x, [0, 1], jnp.float32, method=quant.get_quant_scale
+    )
+    ix = quant.apply(state, x / scale, jnp.float32, method=quant.to_quant)
+
+    self.assertGreaterEqual(jnp.min(ix), 0.0)
+    self.assertLessEqual(jnp.max(ix), jnp.float32(2**precision - 1))
+    self.assertArraysEqual(ix, jnp.round(ix))
+
+  def test_single_quant_with_unsigned_int_bound(self):
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='tq',
+        precision=3,
+        unsigned_int_bounds=True
+    )
+
+    x = jnp.array([
+        [0.99, 1.01, 2.99, 3.01],  #
+        [4.99, 5.01, 6.99, 7.01],  #
+        [8.99, 9.01, 10.99, 11.00],  #
+        [12.99, 13.01, 13.99, 14.00],  #
+        [-0.99, -1.01, -2.99, -3.01],  #
+        [-4.99, -5.01, -6.99, -7.01],  #
+        [-8.99, -9.01, -10.99, -11.00],  #
+        [-12.99, -13.01, -13.99, -14.00],  #
+    ], dtype=jnp.float32)
+
+    expected_output = jnp.array([
+        [0.00, 2.00, 2.00, 4.00],  #
+        [4.00, 6.00, 6.00, 8.00],  #
+        [8.00, 10.00, 10.00, 12.00],  #
+        [12.00, 14.00, 14.00, 14.00],  #
+        [-0.00, -0.00, -0.00, -0.00],  #
+        [-0.00, -0.00, -0.00, -0.00],  #
+        [-0.00, -0.00, -0.00, -0.00],  #
+        [-0.00, -0.00, -0.00, -0.00],  #
+    ], dtype=jnp.float32)
+
+    qx, _ = self.get_quantize_dequantized_and_scale(p_quant, x)
+
+    self.assertArraysEqual(qx, expected_output)
 
 
 if __name__ == '__main__':
