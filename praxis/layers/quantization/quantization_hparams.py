@@ -91,6 +91,7 @@ class WeightQuantizationParams:
   use_symmetric: do symmetric quantization for weights.
   add_scale_eps: If True add epsilon to scale to avoid division by zero,
     else it will replace zero scale by 1.
+  dequant_upfront: dequantize weights before it goes into matmul.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -100,6 +101,7 @@ class WeightQuantizationParams:
   num_optimize_clipping: Optional[int] = None
   use_symmetric: bool = True
   add_scale_eps: Optional[bool] = True
+  dequant_upfront: bool = False
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):

@@ -207,7 +207,10 @@ class AttentionProjection(attentions.AttentionProjection):
               eqn, inputs, w, s, self.theta['w_quantized_zp']
           )
         else:
-          ret = operations.einsum(eqn, inputs, w, s)
+          if self.quantization.weight_params.dequant_upfront:
+            raise NotImplementedError('Dequantize upfront not supported.')
+          else:
+            ret = operations.einsum(eqn, inputs, w, s)
     else:
       if self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(
@@ -453,7 +456,10 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
               eqn, inputs, w, s, self.theta['w_quantized_zp']
           )
         else:
-          ret = operations.einsum(eqn, inputs, w, s)
+          if self.quantization.weight_params.dequant_upfront:
+            raise NotImplementedError('Dequantize upfront not supported.')
+          else:
+            ret = operations.einsum(eqn, inputs, w, s)
     else:
       if self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(
