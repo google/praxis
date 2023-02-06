@@ -2894,7 +2894,7 @@ class LocalSelfAttention(DotProductAttention):
 
 
 class LocalSelfAttentionXL(LocalSelfAttention):
-  """Local causal version of transformer-xl self attention.
+  """Local version of transformer-xl self attention.
 
   Attributes:
     rel_pos_emb_dim: Dimension of relative positional embedding.
