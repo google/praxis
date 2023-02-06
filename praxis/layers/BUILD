@@ -955,12 +955,14 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        ":convolutions",
         ":normalizations",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit lingvo.core.bn_layers dependency.
+        # Implicit core.conv_layers_with_time_padding dependency.
         # Implicit lingvo.core.layers dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",

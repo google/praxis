@@ -396,41 +396,6 @@ class ConvolutionsTest(test_utils.TestCase):
 
     self.assertArraysEqual(inputs.shape, jax_out.shape)
 
-  @parameterized.parameters(
-      ((5, 4, 24, 36), (1, 1), [2, 16, 36, 72]),
-      ((2, 4, 16, 8), (2, 2), [2, 16, 32, 128]),
-      ((4, 8, 16, 32), (1, 1), [2, 16, 32, 64]),
-  )
-  def test_weight_norm_conv(self, filter_shape, filter_stride, input_shape):
-    inputs = np.random.normal(1.0, 0.5, input_shape).astype('float32')
-
-    p = pax_fiddle.Config(
-        convolutions.Conv2D,
-        name='jax_conv2d',
-        filter_shape=filter_shape,
-        filter_stride=filter_stride,
-        weight_norm=True,
-    )
-    conv_layer = instantiate(p)
-    initial_vars = conv_layer.init(jax.random.PRNGKey(seed=123), inputs)
-    output = conv_layer.apply(initial_vars, inputs)
-
-    tf_p = clwp.Conv2DLayerWithPadding.Params().Set(
-        name='tf_conv2d',
-        filter_shape=filter_shape,
-        filter_stride=filter_stride,
-        weight_norm=True,
-    )
-    tf_conv_layer = tf_p.Instantiate()
-    self.assertAllClose(tf_conv_layer.theta.g, initial_vars[PARAMS]['g'])
-
-    tf_output, unused_padding = tf_conv_layer.FProp(
-        theta=py_utils.NestedMap.FromNestedDict(initial_vars[PARAMS]),
-        inputs=inputs,
-        paddings=tf.zeros(input_shape[:2]),
-    )
-    self.assertAllClose(tf_output, output)
-
 
 if __name__ == '__main__':
   absltest.main()

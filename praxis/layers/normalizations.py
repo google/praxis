@@ -589,3 +589,28 @@ class GroupNorm(BaseNormalization):
           list(inputs.shape[:2]) + [1] * (expanded_rank - 3))
       gn_output *= 1.0 - expanded_paddings
     return gn_output
+
+
+class WeightNormL2(BaseNormalization):
+  """Weight norm on the last axis by L2 norm https://arxiv.org/abs/1602.07868"""
+
+  def setup(self):
+    """Creates weight normalization variables."""
+    self.create_variable(
+        'g',
+        WeightHParams(
+            shape=[self.dim],
+            init=WeightInit.Constant(0.0),
+            dtype=self.dtype,
+        ),
+    )
+
+  def __call__(
+      self, inputs: JTensor, paddings: Optional[JTensor] = None
+  ) -> JTensor:
+    """Applies the L2 weight normalization."""
+    del paddings  # unused.
+
+    axis = list(range(inputs.ndim - 1))
+    scale = jnp.expand_dims(self.theta.g + 1.0, axis)
+    return scale * py_utils.l2_normalize(inputs, axis)

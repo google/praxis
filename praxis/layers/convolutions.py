@@ -80,8 +80,7 @@ class Conv2D(base_layer.BaseLayer):
       dimension of filter is time and if is_causal=True, each position would not
       observe any positions in the right. This is achieved by adding extra
       padding in the left to shift the whole convolution.
-    weight_norm: If true, apply weight normalization to weights as proposed by
-      Salimans and Kingma, 2016: https://arxiv.org/abs/1602.07868
+    weight_norm_tpl: Template to apply weight normalization to self.theta.w.
   """
   filter_shape: Sequence[int] = (0, 0, 0, 0)
   filter_stride: Sequence[int] = (0, 0)
@@ -91,7 +90,9 @@ class Conv2D(base_layer.BaseLayer):
   padding: str = 'SAME'
   tf_equivalent_padding: bool = False
   is_causal: bool = False
-  weight_norm: bool = False
+  weight_norm_tpl: pax_fiddle.Config[normalizations.BaseNormalization] = (
+      template_field(normalizations.IdentityNorm)
+  )
 
   @classmethod
   def HParamsDepthwise(cls,
@@ -106,8 +107,6 @@ class Conv2D(base_layer.BaseLayer):
           f'kernel_shape must have two elements, got {len(kernel_shape)}')
     if 'filter_shape' in hparams:
       raise ValueError('filter_shape cannot be specified in HParamsDepthwise')
-    if hparams.get('weight_norm', False):
-      raise ValueError('weight_norm is not implemented for depthwise conv.')
     filter_shape = tuple(kernel_shape) + (1, in_channels * channel_multipliers)
     return pax_fiddle.Config(cls, filter_shape=filter_shape, **hparams)
 
@@ -158,15 +157,10 @@ class Conv2D(base_layer.BaseLayer):
               dtype=self.dtype,
           ),
       )
-    if self.weight_norm:
-      self.create_variable(
-          'g',
-          WeightHParams(
-              shape=[self.filter_shape[-1]],
-              init=WeightInit.Constant(0.0),
-              dtype=self.dtype,
-          ),
-      )
+
+    wn = self.weight_norm_tpl.clone().set(dim=self.filter_shape[-1])
+    self.weight_norm: normalizations.BaseNormalization
+    self.create_child('weight_norm', wn)
 
   def _compute_padding(self, inputs_shape, pad_height_zero=False):
     if not self.tf_equivalent_padding:
@@ -218,13 +212,6 @@ class Conv2D(base_layer.BaseLayer):
     ap = self.activation_split_dims_mapping
     return base_layer.maybe_shard(x, ap.out, self.mesh_axis_names)
 
-  def _get_w(self):
-    if not self.weight_norm:
-      return self.theta.w
-
-    scale = jnp.expand_dims(self.theta.g + 1.0, [0, 1, 2])
-    return scale * py_utils.l2_normalize(self.theta.w, [0, 1, 2])
-
   def __call__(self, inputs: JTensor) -> JTensor:
     """FProp that supports strided, dilated convolution, depthwise convolution.
 
@@ -264,7 +251,7 @@ class Conv2D(base_layer.BaseLayer):
     # https://github.com/google/jax/blob/main/jax/_src/lax/lax.py#L622
     outputs = jax.lax.conv_general_dilated(
         lhs=inputs,
-        rhs=self._get_w(),
+        rhs=self.weight_norm(self.theta.w),
         window_strides=self.filter_stride,
         padding=padding,
         rhs_dilation=self.dilations,
