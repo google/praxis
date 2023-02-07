@@ -627,6 +627,14 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
     """
     him: SplitDimsMapping = None
 
+  def _input_channels(self) -> int:
+    """The number of in channels (override for special handling)."""
+    return self.filter_shape[1]
+
+  def _output_channels(self) -> int:
+    """The number of in channels (override for special handling)."""
+    return self.filter_shape[1] * self.filter_shape[2]
+
   def setup(self) -> None:
     wp_him = self.weight_split_dims_mapping.clone().him
 
@@ -638,7 +646,7 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
         1,
         self.filter_shape[1] * self.filter_shape[2],
     ]
-    bias_shape = w_shape[-1]
+    bias_shape = self._output_channels()
 
     if self.use_2d_conv_weight_shape:
       w_shape = w_shape + [1]
@@ -703,7 +711,7 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
         lhs_dilation=(1,),
         rhs_dilation=(self.rhs_dilation_rate,),
         dimension_numbers=dn,
-        feature_group_count=self.filter_shape[1],
+        feature_group_count=self._input_channels(),
     )
     if self.bias:
       out = out + self.theta.b
