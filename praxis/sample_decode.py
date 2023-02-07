@@ -338,6 +338,8 @@ def sample_from_top_p_given_top_k(
     )
 
   # Add gumbel noise.
+  if temperature is None:
+    temperature = 0.0
   gumbel_noise_shape = list(top_p_logits.shape)
   gumbel_noise = _batch_rngs_random_gumbel(
       prng_key, gumbel_noise_shape
