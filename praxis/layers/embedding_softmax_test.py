@@ -104,8 +104,8 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     npy_input = np.random.randint(0, p.num_classes, [10, 20]).astype('int32')
     inputs = jnp.asarray(npy_input)
     prng_key = jax.random.PRNGKey(seed=123)
-    initial_vars = emb_layer.init(prng_key, inputs, method=emb_layer.emb_lookup)
-    outputs = emb_layer.apply(initial_vars, inputs, method=emb_layer.emb_lookup)
+    initial_vars = emb_layer.init(prng_key, inputs)
+    outputs = emb_layer.apply(initial_vars, inputs)
     # Test whether tf Embedding layer returns same output
     # Modify initial_vars to use TF compatible params
     tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars['params'])

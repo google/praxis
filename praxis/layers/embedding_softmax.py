@@ -131,6 +131,9 @@ class Embedding(base_layer.BaseLayer):
         ),
     )
 
+  def __call__(self, ids: JTensor) -> JTensor:
+    return self.emb_lookup(ids)
+
   def emb_lookup(self, ids: JTensor) -> JTensor:
     ap = self.activation_split_dims_mapping
 
