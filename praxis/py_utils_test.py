@@ -369,6 +369,44 @@ class PyUtilsTest(test_utils.TestCase):
     sum_diff = jnp.sum(padded_x) - jnp.sum(x)
     self.assertAllClose(sum_diff, pad_val * 15.0)
 
+  @parameterized.named_parameters(
+      dict(testcase_name='_dim1', dst=(2, 2)),
+      dict(testcase_name='_dim0', dst=(1, 3)),
+      dict(testcase_name='_dim01', dst=(1, 2)))
+  def test_pad_or_trim_to_trim(self, dst):
+    src = (2, 3)
+    x = np.random.uniform(0, 1, src).astype(np.float32)
+    y = py_utils.pad_or_trim_to(x, dst)
+    self.assertSequenceEqual(y.shape, dst)
+    self.assertAllClose(y, x[: dst[0], : dst[1]])
+
+  @parameterized.named_parameters(
+      dict(testcase_name='_dim1', dst=(2, 4)),
+      dict(testcase_name='_dim0', dst=(3, 3)),
+      dict(testcase_name='_dim01', dst=(3, 4)))
+  def test_pad_or_trim_to(self, dst):
+    src = (2, 3)
+    pad_value = 42.0
+    x = np.random.uniform(0, 1, src).astype(np.float32)
+    y = py_utils.pad_or_trim_to(x, dst, pad_value)
+    self.assertSequenceEqual(y.shape, dst)
+    self.assertAllClose(y[: src[0], : src[1]], x)
+    self.assertAllClose(y[src[0] :], pad_value)
+    self.assertAllClose(y[:, src[1] :], pad_value)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='_pad0_trim1', src=(2, 3), dst=(3, 2)),
+      dict(testcase_name='_pad1_trim0', src=(3, 2), dst=(2, 3)),
+  )
+  def test_pad_or_trim_to_mix(self, src, dst):
+    pad_value = 42.0
+    x = np.random.uniform(0, 1, src).astype(np.float32)
+    y = py_utils.pad_or_trim_to(x, dst, pad_value)
+    self.assertSequenceEqual(y.shape, dst)
+    self.assertAllClose(y[:2, :2], x[:2, :2])
+    self.assertAllClose(y[2:], pad_value)
+    self.assertAllClose(y[:, 2:], pad_value)
+
 
 if __name__ == '__main__':
   absltest.main()

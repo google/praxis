@@ -987,7 +987,7 @@ def get_enumeration_id(example: Dict[str, Any],
   )
 
 
-def pad_or_trim_to(x, shape, pad_val=0):
+def pad_or_trim_to(x: JTensor, shape: Sequence[int], pad_val=0) -> JTensor:
   """Pad and slice x to the given shape.
 
   Args:
