@@ -519,6 +519,18 @@ class SchedulesTest(test_utils.TestCase):
         self.assertAllClose(
             jit_value(jnp.array(step)), p2_jit_value(jnp.array(step)))
 
+  def test_continuous_schedule(self):
+    p = schedules.ContinuousSchedule.HParams()
+    lr_schedule = instantiate(p)
+    jit_value = jax.jit(lr_schedule.value)
+
+    tf_p = tf_schedule.ContinuousSchedule.Params()
+    tf_lr_schedule = tf_p.Instantiate()
+    half = p.start_step + p.half_life_steps
+    for step in [0, 1, p.start_step, p.start_step + 1, half, half + 1]:
+      with tf_py_utils.GlobalStepContext(step):
+        self.assertAllClose(jit_value(step), tf_lr_schedule.Value())
+
 
 if __name__ == '__main__':
   absltest.main()

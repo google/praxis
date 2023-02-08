@@ -651,3 +651,33 @@ class CycleSchedule(BaseSchedule):
       output = jnp.where(relative_step < boundary, output,
                          schedule.value(count))
     return output
+
+
+class ContinuousSchedule(BaseSchedule):
+  """Continuous learning rate decay."""
+
+  class HParams(BaseSchedule.HParams):
+    """Hyperparams for schedule.
+
+    Attributes:
+      initial_value: Initial decay value.
+      start_step: Starts to decay the learning rate from this step.
+      half_life_steps: Halve the learning rate every this many steps after
+        start_step.
+      min: Minimum relative learning rate.
+    """
+    initial_value: float = 1.0
+    start_step: int = 400_000
+    half_life_steps: int = 100_000
+    min: float = 0.01
+
+  def __init__(self, hparams: ContinuousSchedule.HParams) -> None:
+    super().__init__(hparams)
+    p: self.HParams = self.hparams
+    limit = p.start_step + p.half_life_steps * math.log(p.min) / math.log(0.5)
+    self.exp: Exponential = instantiate(
+        Exponential.HParams(start=(p.start_step, 1.0), limit=(limit, p.min))
+    )
+
+  def value(self, count: JTensor) -> JTensor:
+    return self.hparams.initial_value * self.exp.value(count)
