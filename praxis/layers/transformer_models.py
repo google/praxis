@@ -220,6 +220,9 @@ class TransformerLm(base_layer.BaseLayer):
       lookup and softmax then we can set this param.
     final_ln_tpl: Parameterization of the layer normalization layer.
     skip_compute_loss: Set to skip compute_loss and output activations.
+    skip_aux_loss: Set to skip aux loss computation to be added to total loss.
+                   Used in cases where the Model class does this, to prevent
+                   double counting. (defaults to False)
   """
   position_emb_tpl: LayerTpl = template_field(
       embedding_softmax.PositionalEmbedding
@@ -241,6 +244,7 @@ class TransformerLm(base_layer.BaseLayer):
   separate_embedding_tpl: Optional[LayerTpl] = template_field(None)
   final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
   skip_compute_loss: bool = False
+  skip_aux_loss: bool = False
 
   @classmethod
   def set_sharding_params_v1(cls,
@@ -535,25 +539,27 @@ class TransformerLm(base_layer.BaseLayer):
       xent_output.per_sequence_xent = jnp.sum(per_token_xent, -1)
 
       # Sum aux_loss and add to avg_xent.
-      aux_loss = 0.0
-      aux_loss_weight = 0.0
-      if AUX_LOSS in self.variables:
-        aux_loss_values = jax.tree_util.tree_leaves(
-            self.variables[AUX_LOSS],
-            is_leaf=lambda x: isinstance(x, AuxLossStruct))
-        for v in aux_loss_values:
-          assert isinstance(v, AuxLossStruct)
-          aux_loss += jnp.sum(v.value)
-          aux_loss_weight += jnp.sum(v.weight)
-      if not isinstance(aux_loss, jnp.ndarray):
-        aux_loss = jnp.array(aux_loss, dtype=self.fprop_dtype)
-        aux_loss_weight = jnp.array(aux_loss_weight, dtype=self.fprop_dtype)
-      self.add_summary('total_aux_loss', aux_loss)
-      self.add_summary('total_aux_loss_weight', aux_loss_weight)
-      xent_output.aux_loss = aux_loss
-      xent_output.aux_loss_weight = aux_loss_weight
-      # This is the loss to minimize.
-      xent_output.total_loss = xent_output.avg_xent + xent_output.aux_loss
+      xent_output.total_loss = xent_output.avg_xent
+      if not self.skip_aux_loss:
+        aux_loss = 0.0
+        aux_loss_weight = 0.0
+        if AUX_LOSS in self.variables:
+          aux_loss_values = jax.tree_util.tree_leaves(
+              self.variables[AUX_LOSS],
+              is_leaf=lambda x: isinstance(x, AuxLossStruct))
+          for v in aux_loss_values:
+            assert isinstance(v, AuxLossStruct)
+            aux_loss += jnp.sum(v.value)
+            aux_loss_weight += jnp.sum(v.weight)
+        if not isinstance(aux_loss, jnp.ndarray):
+          aux_loss = jnp.array(aux_loss, dtype=self.fprop_dtype)
+          aux_loss_weight = jnp.array(aux_loss_weight, dtype=self.fprop_dtype)
+        self.add_summary('total_aux_loss', aux_loss)
+        self.add_summary('total_aux_loss_weight', aux_loss_weight)
+        xent_output.aux_loss = aux_loss
+        xent_output.aux_loss_weight = aux_loss_weight
+        # This is the loss to minimize.
+        xent_output.total_loss += xent_output.aux_loss
     return xent_output
 
   def _prepare_input(self,
