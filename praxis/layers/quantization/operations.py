@@ -407,13 +407,12 @@ def dot_general(
   input_dtype = lhs.dtype
   lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
 
-  lhs, lhs_scale = lhs_quantizer.quantize(
+  lhs, lhs_scale, _ = lhs_quantizer.quantize(
       lhs, lhs_contract_dims, squeeze_scale=False, dtype=input_dtype)
 
   if rhs_quantized is None:
-    rhs, rhs_scale = rhs_quantizer.quantize(
+    rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
         rhs, rhs_contract_dims, squeeze_scale=False, dtype=input_dtype)
-
   elif rhs is None:
     assert (
         is_eval
@@ -430,10 +429,10 @@ def dot_general(
     raise ValueError('Cannot reach here.')
 
   should_int8_quantize = (
-      lhs_quantizer.hparams.precision is not None
-      and lhs_quantizer.hparams.precision <= 8
-      and rhs_quantizer.hparams.precision is not None
-      and rhs_quantizer.hparams.precision <= 8
+      lhs_quantizer.precision is not None
+      and lhs_quantizer.precision <= 8
+      and rhs_quantizer.precision is not None
+      and rhs_quantizer.precision <= 8
   )
 
   out = _dot_general_aqt(

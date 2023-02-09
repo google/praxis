@@ -288,7 +288,7 @@ class AttentionProjection(attentions.AttentionProjection):
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
-      q_w, q_s = self.weight_quantizer.quantize(
+      q_w, q_s, _ = self.weight_quantizer.quantize(
           self.theta.w, weight_contract_dims, dtype=jnp.int8)
     else:
       raise ValueError(
@@ -534,7 +534,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
-      q_w, q_s = self.weight_quantizer.quantize(
+      q_w, q_s, _ = self.weight_quantizer.quantize(
           self.theta.w, weight_contract_dims, dtype=jnp.int8)
     else:
       raise ValueError(

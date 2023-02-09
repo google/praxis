@@ -16,7 +16,7 @@
 """Quantization Aware Training ops."""
 
 from __future__ import annotations
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -64,6 +64,7 @@ def create_tensor_quantizer(
     tq_params.min_clipping = quant_params.min_clipping
     tq_params.num_optimize_clipping = quant_params.num_optimize_clipping
     tq_params.add_scale_eps = quant_params.add_scale_eps
+    tq_params.use_symmetric = quant_params.use_symmetric
 
   return tq_params
 
@@ -85,6 +86,7 @@ class TensorQuantizer(base_layer.BaseLayer):
     unsigned_int_bounds: If True, use [0, 2**precision-1] clip bound for better
       quantization bucket utilization in case where the input has a positive
       distribution (e.g., ReLU).
+    use_symmetric: Do symmetric quantization for weights.
   """
   precision: Optional[int] = None
   stop_scale_gradient: bool = False
@@ -92,6 +94,7 @@ class TensorQuantizer(base_layer.BaseLayer):
   num_optimize_clipping: Optional[int] = None
   add_scale_eps: Optional[bool] = True
   unsigned_int_bounds: bool = False
+  use_symmetric: bool = True
 
   def setup(self):
     assert (
@@ -114,6 +117,8 @@ class TensorQuantizer(base_layer.BaseLayer):
     pass
 
   def _get_clip_bound(self) -> float:
+    # TODO(jihwanlee): run an experiment to compare b/w [-127.5, 127.5] and
+    # [-128, 127], in case of int8.
     bound = 2.0**self.precision - 1.0
     if self.unsigned_int_bounds:
       return bound
@@ -135,12 +140,20 @@ class TensorQuantizer(base_layer.BaseLayer):
     if self.precision is None:
       return jnp.ones(shape=(1,) * x.ndim, dtype=dtype)
 
-    x_max = jnp.max(jnp.abs(x), axis=contract_dims, keepdims=True)
-    if clipping is not None:
-      x_max *= clipping
-
     clip_bound = self._get_clip_bound()
-    scale = x_max / clip_bound
+
+    if self.use_symmetric:
+      x_bound = jnp.max(jnp.abs(x), axis=contract_dims, keepdims=True)
+    else:
+      x_max = jnp.max(x, axis=contract_dims, keepdims=True)
+      x_min = jnp.min(x, axis=contract_dims, keepdims=True)
+      x_bound = x_max - x_min
+      clip_bound = 2**self.precision - 1.0
+
+    if clipping is not None:
+      x_bound *= clipping
+
+    scale = x_bound /clip_bound
     if self.stop_scale_gradient:
       scale = jax.lax.stop_gradient(scale)
 
@@ -156,7 +169,7 @@ class TensorQuantizer(base_layer.BaseLayer):
       self,
       x: JTensor,
       contract_dims: Union[int, Sequence[int]],
-      dtype: jnp.dtype = jnp.bfloat16,):
+      dtype: jnp.dtype = jnp.bfloat16,) -> JTensor:
 
     def quantization_error_and_scale(clipping):
       scale = self._get_scale(x, contract_dims, dtype, clipping=clipping)
@@ -202,7 +215,7 @@ class TensorQuantizer(base_layer.BaseLayer):
     # statistics update will be performed through this function.
     pass
 
-  def to_quant(self, x: JTensor, dtype=jnp.bfloat16):
+  def to_quant(self, x: JTensor, dtype=jnp.bfloat16) -> JTensor:
     """Converts normalized float x to quantized value.
 
     Args:
@@ -224,13 +237,19 @@ class TensorQuantizer(base_layer.BaseLayer):
 
     return x.astype(dtype)
 
+  def _get_zero_point(self, x, contract_dims, scale) -> JTensor:
+    x_min = jnp.min(x, axis=contract_dims, keepdims=True)
+    clip_bound = self._get_clip_bound()
+    zp = -clip_bound - x_min / scale
+    return zp
+
   def quantize(
       self,
       x: JTensor,
       contract_dims: Union[int, Sequence[int]],
       squeeze_scale=True,
       dtype=jnp.bfloat16,
-  ):
+  ) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
     """Quantizes input x.
 
     Args:
@@ -242,9 +261,19 @@ class TensorQuantizer(base_layer.BaseLayer):
     Returns:
       Quantized tensor with scale (used for dequantization)
     """
-    q_s = self.get_quant_scale(x, contract_dims=contract_dims, dtype=self.dtype)
-    q_x = self.to_quant(x / q_s, dtype=dtype)
+    q_s = self.get_quant_scale(
+        x, contract_dims=contract_dims, dtype=self.dtype
+    )
+    if self.use_symmetric:
+      x_scaled = jnp.divide(x, q_s)
+      zp_time_scale = None
+    else:
+      zp = self._get_zero_point(x, contract_dims, q_s)
+      x_scaled = jnp.divide(x, q_s) + zp
+      zp_time_scale = jnp.multiply(q_s, zp).squeeze()
+    q_x = self.to_quant(x_scaled, dtype=dtype)
 
     if squeeze_scale:
       q_s = jnp.squeeze(q_s)
-    return q_x, q_s
+
+    return q_x, q_s, zp_time_scale

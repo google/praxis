@@ -223,6 +223,6 @@ class Linear(linears.Linear):
             'Static activation quantization is not supported yet.'
         )
       else:
-        q_w, q_s = self.weight_quantizer.quantize(
+        q_w, q_s, _ = self.weight_quantizer.quantize(
             self.theta.w, [0], dtype=jnp.int8)
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

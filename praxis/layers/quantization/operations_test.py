@@ -159,9 +159,22 @@ class DotGeneral(base_layer.BaseLayer):
       self.lhs_quantizer.update(lhs)
       self.rhs_quantizer.update(rhs)
 
-    return lambda lhs, rhs, dimension_numbers: operations.dot_general(  # pylint: disable=g-long-lambda
-        lhs, rhs, self.lhs_quantizer, self.rhs_quantizer, dimension_numbers,
-        is_eval)
+    def dot_general(
+        lhs, rhs, dimension_numbers, rhs_quantized=None, rhs_zp=None, eqn=None
+    ):
+      return operations.dot_general(
+          lhs,
+          rhs,
+          self.lhs_quantizer,
+          self.rhs_quantizer,
+          dimension_numbers,
+          is_eval,
+          rhs_quantized,
+          rhs_zp,
+          eqn,
+      )
+
+    return dot_general
 
 
 def _generate_dimension_numbers() -> Sequence[Dict[str, Any]]:
@@ -186,7 +199,7 @@ class AqtDotGeneralTest(test_utils.TestCase):
     np.random.seed(0)
 
   def get_dot_general_module(
-      self, lhs, rhs, lhs_prec, rhs_prec, add_scale_eps=False
+      self, lhs, rhs, lhs_prec, rhs_prec, add_scale_eps=False, is_eval=False,
   ):
     p_dot_general = pax_fiddle.Config(
         DotGeneral,
@@ -197,7 +210,7 @@ class AqtDotGeneralTest(test_utils.TestCase):
     )
     module = base_layer.instantiate(p_dot_general)
     state = module.init(jax.random.PRNGKey(0), lhs, rhs)
-    return module.apply(state, lhs, rhs, mutable=['non_trainable'])
+    return module.apply(state, lhs, rhs, is_eval, mutable=['non_trainable'])
 
   def basic_quant_example(self):
     lhs = np.array(
@@ -274,6 +287,27 @@ class AqtDotGeneralTest(test_utils.TestCase):
     actual_ret = dot_general(lhs, rhs, matmul_dimension_numbers)
     expected_ret = jax.lax.dot_general(lhs, rhs, matmul_dimension_numbers)
     self.assertAllClose(actual_ret, expected_ret)
+
+  @parameterized.named_parameters(
+      ('eqn_with_dot', '...y,yz->...z'),
+  )
+  def test_dot_general_with_zp(self, eqn):
+    lhs = jnp.array([[1.0, 2.0, 3.0], [4.0, 1.0, 2.0]], dtype=jnp.float32)
+    rhs = jnp.array([[1, 2, 1], [2, 1, 2], [1, 3, 1]], dtype=jnp.int8)
+    rhs_scale = jnp.array([0.1, 0.2, 0.3], dtype=jnp.float32)
+    rhs_zp = jnp.array([-0.5, 3.2, 2.7])
+    rhs_quantized = (rhs, rhs_scale)
+    dimension_numbers = (((1,), (0,)), ((), ()))
+
+    dot_general, _ = self.get_dot_general_module(
+        lhs, rhs, None, 8, is_eval=True
+    )
+    ret = dot_general(lhs, None, dimension_numbers, rhs_quantized, rhs_zp, eqn)
+    expected = jnp.array(
+        [[3.800781, -16.590626, -13.793751], [4.300781, -19.4, -16.49375]],
+        dtype=jnp.float32,
+    )
+    self.assertAllClose(ret, expected, rtol=0.02, atol=0.02)
 
 
 if __name__ == '__main__':
