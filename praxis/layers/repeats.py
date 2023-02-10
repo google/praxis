@@ -77,6 +77,8 @@ class Repeat(base_layer.BaseLayer):
       copy/formatting.
     sublayer_name: Name of the sublayer. This affects the checkpoint variable
       paths.
+    optimizer_dims_mapping: Tensor split dims mapping used for the optimizer
+      state variables corresponding to the repeat prefix dims.
   """
   sub_tpl: Optional[LayerTpl] = base_layer.template_field(None)
   x_times: int = 0
@@ -84,6 +86,7 @@ class Repeat(base_layer.BaseLayer):
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_NOTHING
   unroll_in_decode: bool = False
   sublayer_name: str = 'sub'
+  optimizer_dims_mapping: SplitDimsMapping = None
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -136,6 +139,7 @@ class Repeat(base_layer.BaseLayer):
             'is_initializing': self.is_initializing(),
             'sub_weight_split_dims_mapping': self.weight_split_dims_mapping.sub,
             'x_times': self.x_times,
+            'optimizer_dims_mapping': self.optimizer_dims_mapping,
         },
     )
 

@@ -499,6 +499,8 @@ class WeightHParams(BaseHyperParams):
       usage reasons we stack all the variables in creating those n-layers.
     repeat_prefix_split_dims_mapping: Tensor split dims mapping for the
       repeat_prefix dims.
+    repeat_optimizer_dims_mapping: Tensor split dims mapping used for the
+      optimizer state variables corresponding to the repeat prefix dims.
     fan_in_axes: Shape axes used to compute fan in for Xavier init and
       gaussian_sqrt_(fanin|fanout) init variants.
     fan_out_axes: Shape axes used to compute fan out for Xavier init and
@@ -512,6 +514,7 @@ class WeightHParams(BaseHyperParams):
   tensor_split_dims_mapping: SplitDimsMapping = None
   repeat_prefix: Optional[Sequence[int]] = None
   repeat_prefix_split_dims_mapping: SplitDimsMapping = None
+  repeat_optimizer_dims_mapping: SplitDimsMapping = None
   fan_in_axes: Optional[Sequence[int]] = None
   fan_out_axes: Optional[Sequence[int]] = None
 
@@ -738,12 +741,21 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
 
     x_times = metadata_params['x_times']
     wp_sub = metadata_params['sub_weight_split_dims_mapping']
+    optimizer_dims_mapping = metadata_params['optimizer_dims_mapping']
+
     if wp_sub is not None:
       assert isinstance(wp_sub, (list, tuple))
       assert len(wp_sub) == 1
       wp_sub = tuple(wp_sub)
     else:
       wp_sub = (-1,)
+
+    if optimizer_dims_mapping is not None:
+      assert isinstance(optimizer_dims_mapping, (list, tuple))
+      assert len(optimizer_dims_mapping) == 1
+      optimizer_dims_mapping = tuple(optimizer_dims_mapping)
+    else:
+      optimizer_dims_mapping = (-1,)
 
     if self.meta.repeat_prefix:
       assert isinstance(self.meta.repeat_prefix, list)
@@ -759,9 +771,18 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
     else:
       repeat_prefix_split_dims_mapping = wp_sub
 
+    if self.meta.repeat_optimizer_dims_mapping:
+      assert isinstance(self.meta.repeat_optimizer_dims_mapping, tuple)
+      repeat_optimizer_dims_mapping = optimizer_dims_mapping + tuple(
+          self.meta.repeat_optimizer_dims_mapping
+      )
+    else:
+      repeat_optimizer_dims_mapping = optimizer_dims_mapping
+
     new_meta = copy.deepcopy(self.meta)
     new_meta.repeat_prefix = repeat_prefix
     new_meta.repeat_prefix_split_dims_mapping = repeat_prefix_split_dims_mapping
+    new_meta.repeat_optimizer_dims_mapping = repeat_optimizer_dims_mapping
     return self.replace(meta=new_meta)
 
   def remove_axis(
@@ -774,12 +795,21 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
 
     x_times = metadata_params['x_times']
     wp_sub = metadata_params['sub_weight_split_dims_mapping']
+    optimizer_dims_mapping = metadata_params['optimizer_dims_mapping']
+
     if wp_sub is not None:
       assert isinstance(wp_sub, (list, tuple))
       assert len(wp_sub) == 1
       wp_sub = tuple(wp_sub)
     else:
       wp_sub = (-1,)
+
+    if optimizer_dims_mapping is not None:
+      assert isinstance(optimizer_dims_mapping, (list, tuple))
+      assert len(optimizer_dims_mapping) == 1
+      optimizer_dims_mapping = tuple(optimizer_dims_mapping)
+    else:
+      optimizer_dims_mapping = (-1,)
 
     new_meta = copy.deepcopy(self.meta)
     if new_meta.repeat_prefix:
@@ -793,6 +823,14 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
       removed = updated_dims_mapping.pop(0)
       assert (removed,) == tuple(wp_sub)
       new_meta.repeat_prefix_split_dims_mapping = updated_dims_mapping
+
+    if new_meta.repeat_optimizer_dims_mapping:
+      assert isinstance(new_meta.repeat_optimizer_dims_mapping, tuple)
+      updated_dims_mapping = list(new_meta.repeat_optimizer_dims_mapping)
+      removed = updated_dims_mapping.pop(0)
+      assert (removed,) == tuple(optimizer_dims_mapping)
+      new_meta.repeat_optimizer_dims_mapping = updated_dims_mapping
+
     return self.replace(meta=new_meta)
 
 

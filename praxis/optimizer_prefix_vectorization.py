@@ -60,6 +60,8 @@ from praxis import pytypes
 NestedMap = py_utils.NestedMap
 NestedJTensor = pytypes.NestedJTensor
 NestedHParams = pytypes.NestedHParams
+
+SplitDimsMapping = pytypes.SplitDimsMapping
 GeneralGradientTransformation = optimizers.GeneralGradientTransformation
 ShardedGradientTransformation = optimizers.ShardedGradientTransformation
 
@@ -71,15 +73,28 @@ def has_no_prefix(dct: NestedMap) -> bool:
   return dct.keys() == set([NO_PREFIX_KEY])
 
 
-def _vectorize_on_prefix_dims(fn: Callable[..., NestedJTensor],
-                              num_dim: int) -> Callable[..., NestedJTensor]:
+def _vectorize_on_prefix_dims(
+    fn: Callable[..., NestedJTensor],
+    num_dim: int,
+    optimizer_prefix: SplitDimsMapping = None,
+) -> Callable[..., NestedJTensor]:
   """Vectorize fn on multiple dimensions."""
   if num_dim == 0:
     return fn
+
+  if optimizer_prefix is not None and len(optimizer_prefix) != num_dim:
+    raise ValueError('`optimizer_prefix` must be the same length as the '
+                     f'number of dimensions being vmapped across. Got '
+                     f'num_dim={num_dim} vs {len(optimizer_prefix)}')
+
   v_fns = [fn]
-  for _ in range(num_dim):
+  for i in range(num_dim):
     inner_fn = v_fns[-1]
-    v_fns.append(jax.vmap(inner_fn))
+    if optimizer_prefix is not None and optimizer_prefix[i] != -1:
+      spmd_axis = optimizer_prefix[i]
+    else:
+      spmd_axis = None
+    v_fns.append(jax.vmap(inner_fn, spmd_axis_name=spmd_axis))
   return v_fns[-1]
 
 
@@ -127,22 +142,46 @@ def _get_var_param_repeat_prefix_key(var_param: base_layer.WeightHParams,
   if sharding_prefix is None:
     sharding_prefix = [-1] * len(var_param.repeat_prefix)
   assert len(sharding_prefix) == len(var_param.repeat_prefix)
+
+  optimizer_prefix = var_param.repeat_optimizer_dims_mapping
+  if optimizer_prefix is not None:
+    assert len(optimizer_prefix) == len(var_param.repeat_prefix)
+
   shape_str = '.'.join(str(d) for d in var_param.repeat_prefix)
   sharding_str = '.'.join(
       _encode_sharding_dim(d, repeat_prefix_sep) for d in sharding_prefix)
-  return f'p{repeat_prefix_sep}{shape_str}{repeat_prefix_sep}{sharding_str}'
+
+  # If optimizer_prefix is None or all `-1`'s then we omit the prefix string in
+  # order to maintain backward compatibility.
+  if optimizer_prefix is None or all(d == -1 for d in optimizer_prefix):
+    return f'p{repeat_prefix_sep}{shape_str}{repeat_prefix_sep}{sharding_str}'
+
+  optimizer_str = '.'.join(
+      _encode_sharding_dim(d, repeat_prefix_sep) for d in optimizer_prefix)
+  return (
+      f'p{repeat_prefix_sep}{shape_str}{repeat_prefix_sep}{sharding_str}' +
+      f'{repeat_prefix_sep}{optimizer_str}')
 
 
 def _parse_var_param_repeat_prefix_key(
-    prefix: str, repeat_prefix_sep: str) -> Tuple[Sequence[int], Sequence[int]]:
+    prefix: str, repeat_prefix_sep: str
+) -> Tuple[SplitDimsMapping, SplitDimsMapping, SplitDimsMapping]:
   """Parses shape and sharding prefixes from string keys."""
   if prefix == NO_PREFIX_KEY:
-    return [], []
+    return [], [], []
 
-  _, shape_str, sharding_str = prefix.split(repeat_prefix_sep)
+  # optimizer_prefix might have been omitted in the sharding string.
+  if prefix.count(repeat_prefix_sep) == 2:
+    _, shape_str, sharding_str = prefix.split(repeat_prefix_sep)
+    optimizer_prefix = None
+  else:
+    _, shape_str, sharding_str, optimizer_str = prefix.split(repeat_prefix_sep)
+    optimizer_prefix = [
+        _decode_sharding_dim(d) for d in optimizer_str.split('.')]
+
   shape_prefix = [int(d) for d in shape_str.split('.')]
   sharding_prefix = [_decode_sharding_dim(d) for d in sharding_str.split('.')]
-  return shape_prefix, sharding_prefix
+  return shape_prefix, sharding_prefix, optimizer_prefix
 
 
 def _group_by_repeat_prefix(variables: NestedMap, var_hparams: NestedHParams,
@@ -195,10 +234,11 @@ def _init_with_vectorized_repeat_prefix(
                                         repeat_prefix_sep)
   results = NestedMap()
   for prefix, group in vmap_groups.items():
-    shape_prefix, _ = _parse_var_param_repeat_prefix_key(
-        prefix, repeat_prefix_sep)
-    results[prefix] = _vectorize_on_prefix_dims(tx.init, len(shape_prefix))(
-        group)
+    shape_prefix, _, optimizer_prefix = (
+        _parse_var_param_repeat_prefix_key(prefix, repeat_prefix_sep))
+    results[prefix] = _vectorize_on_prefix_dims(
+        tx.init, num_dim=len(shape_prefix), optimizer_prefix=optimizer_prefix)(
+            group)
 
   if has_no_prefix(results):
     # Do not change the structure if no prefix exists.
@@ -230,12 +270,12 @@ def _update_with_vectorized_repeat_prefix(
       return new_updates, new_state, summaries
 
   for prefix, group in grouped_updates.items():
-    shape_prefix, _ = _parse_var_param_repeat_prefix_key(
+    shape_prefix, _, optimizer_prefix = _parse_var_param_repeat_prefix_key(
         prefix, repeat_prefix_sep)
     new_updates, new_state, bwd_summaries = _vectorize_on_prefix_dims(
         functools.partial(pure_tx_update, tx.update),
-        len(shape_prefix))(group, grouped_state[prefix],
-                           grouped_old_vars[prefix])
+        num_dim=len(shape_prefix), optimizer_prefix=optimizer_prefix)(
+            group, grouped_state[prefix], grouped_old_vars[prefix])
     # re-dispatch the summaries to the out-context
     assert isinstance(bwd_summaries, dict), repr(bwd_summaries)
     for k, v in bwd_summaries.items():
@@ -283,7 +323,7 @@ def _init_partition_spec_with_vectorized_repeat_prefix(
                                         repeat_prefix_sep)
   results = NestedMap()
   for prefix, group in vmap_groups.items():
-    shape_prefix, sharding_prefix = _parse_var_param_repeat_prefix_key(
+    shape_prefix, sharding_prefix, _ = _parse_var_param_repeat_prefix_key(
         prefix, repeat_prefix_sep)
     results[prefix] = call_inner_on_group(group, shape_prefix, sharding_prefix)
   if has_no_prefix(results):

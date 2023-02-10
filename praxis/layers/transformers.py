@@ -1837,6 +1837,8 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     checkpoint_policy: How to checkpoint residuals for BProp: save nothing, dot
       only or dot with no batch dimensions.
     unroll_in_decode: Whether to unroll the layers during extend_step.
+    repeat_optimizer_dims_mapping: Tensor split dims mapping used for the
+      optimizer state variables corresponding to the repeat prefix dims.
   """
   block: LayerTpl = template_field(StackedTransformer)
   x_times: int = 0
@@ -1844,6 +1846,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
   unroll_in_decode: bool = True
   repeat_layer_name: str = 'repeat'
   sublayer_name: str = 'sub'
+  repeat_optimizer_dims_mapping: SplitDimsMapping = None
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -1864,6 +1867,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         unpack_summaries=True,
         unroll_in_decode=self.unroll_in_decode,
         sublayer_name=self.sublayer_name,
+        optimizer_dims_mapping=self.repeat_optimizer_dims_mapping,
     )
     repeat_l_params.weight_split_dims_mapping.sub = wp.block
 

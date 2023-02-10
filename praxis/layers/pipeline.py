@@ -110,6 +110,8 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       all stages instead of being computed by the previous stage) will be
       passed stage-by-stage instead of being replicated.
     checkpoint_policy: How to checkpoint residuals for BProp.
+    optimizer_dims_mapping: Tensor split dims mapping used for the
+      optimizer state variables corresponding to the prefix dim.
   """
   num_stages: int = 1
   single_stage_body: Optional[LayerTpl] = base_layer.template_field(None)
@@ -120,6 +122,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
   polluting_bubbles_with_nan: bool = False
   pipeline_broadcast_inputs: bool = False
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
+  optimizer_dims_mapping: SplitDimsMapping = None
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -325,6 +328,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
                 self.weight_split_dims_mapping.stages
             ),
             'x_times': self.num_stages,
+            'optimizer_dims_mapping': self.optimizer_dims_mapping,
         },
     )
     return vmapped_fn
@@ -827,6 +831,7 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
             'is_initializing': self.is_initializing(),
             'sub_weight_split_dims_mapping': (None,),
             'x_times': self.circular_repeat,
+            'optimizer_dims_mapping': self.optimizer_dims_mapping,
         },
     )
 
