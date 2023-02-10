@@ -6,7 +6,7 @@ clu
 einops
 fiddle @ git+https://github.com/google/fiddle
 flax
-jax
+jax @ git+https://github.com/google/jax
 jax-bitempered-loss
 lingvo
 numpy
