@@ -353,10 +353,10 @@ class LingvoInputAdaptor(BaseInput):
     with py_utils.infeed_context_scope(
         infeed_host_index=p.infeed_host_index,
         num_infeed_hosts=p.num_infeed_hosts), self._cluster:
-      self.input = p.input.Instantiate()
+      self.input_inst = p.input.Instantiate()
 
-    if hasattr(self.input, 'datasource') and isinstance(
-        self.input.datasource, py_utils.TFDatasetSource
+    if hasattr(self.input_inst, 'datasource') and isinstance(
+        self.input_inst.datasource, py_utils.TFDatasetSource
     ):
       # For the special case when the input is implemented by a tf.data.Dataset,
       # call eagerly. Using tf.function may result in returning duplicate
@@ -371,7 +371,7 @@ class LingvoInputAdaptor(BaseInput):
     with py_utils.infeed_context_scope(
         infeed_host_index=p.infeed_host_index,
         num_infeed_hosts=p.num_infeed_hosts), self._cluster:
-      ret = self.input.GetPreprocessedInputBatch()
+      ret = self.input_inst.GetPreprocessedInputBatch()
     # Remove unsupported string (byte) array from input.
     return ret.Filter(lambda v: v.dtype != tf.string)
 
@@ -391,10 +391,10 @@ class LingvoInputAdaptor(BaseInput):
     return ret
 
   def reset(self) -> None:
-    if hasattr(self.input, 'datasource') and isinstance(
-        self.input.datasource, py_utils.TFDatasetSource
+    if hasattr(self.input_inst, 'datasource') and isinstance(
+        self.input_inst.datasource, py_utils.TFDatasetSource
     ):
-      self.input.datasource.Reset()
+      self.input_inst.datasource.Reset()
       # reset counter to 0.
       self._num_batches_produced = 0
       return
@@ -406,7 +406,7 @@ class LingvoInputAdaptor(BaseInput):
                      lengths: pytypes.NpTensor,
                      key: Optional[str] = None) -> Sequence[str]:
     """Converts int ids into strings."""
-    bytes_list = self.input.IdsToStrings(ids, lengths, key=key)
+    bytes_list = self.input_inst.IdsToStrings(ids, lengths, key=key)
     if isinstance(bytes_list, tf.Tensor):
       if tf.executing_eagerly():
         bytes_list = bytes_list.numpy()
