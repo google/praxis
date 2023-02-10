@@ -320,6 +320,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         body_fn,
         in_axes=0,
         out_axes=0,
+        spmd_axis_name=self.mesh_axis_names[0],
         variable_axes={PARAMS: 0, AUX_LOSS: 0, SUMMARIES: 0, NON_TRAINABLE: 0},
         split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
         metadata_params={

@@ -39,6 +39,7 @@ pytype_strict_library(
         ":convolutions",
         ":embedding_softmax",
         ":frnn",
+        ":gpu_fast_attention",
         ":linears",
         ":losses",
         ":models",
@@ -101,6 +102,21 @@ pytype_strict_library(
         "//praxis:asserts",
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
+    ],
+)
+
+pytype_strict_library(
+    name = "gpu_fast_attention",
+    srcs = ["gpu_fast_attention.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        # Implicit jax dependency.
+        # Implicit jax_triton dependency.
+        "//praxis:asserts",
+        "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
