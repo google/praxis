@@ -21,6 +21,7 @@ Experimental only. Only tested on NVIDIA A100s.
 import functools
 import logging
 import math
+import os
 from typing import Optional, Tuple
 
 import jax
@@ -110,6 +111,11 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
     )
     mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)
 
+    # TODO(zhangqiaorjc): Use hparam instead of env var.
+    bwd_pass_impl = os.getenv(
+        'pax_flash_attention_backward_pass_impl', default='xla'
+    )
+
     @functools.partial(
         shard_map,
         mesh=mesh,
@@ -123,7 +129,7 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
     )
     def sharded_mha(q, k, v):
       return attention.mha(
-          q, k, v, sm_scale=1.0 / math.sqrt(h), backward_pass_impl='xla'
+          q, k, v, sm_scale=1.0 / math.sqrt(h), backward_pass_impl=bwd_pass_impl
       )
 
     encoded = sharded_mha(query, key, value)
