@@ -41,7 +41,6 @@ from praxis.layers.attentions import LocalSelfAttentionXL
 from praxis.layers.attentions import PerDimScale
 from praxis.layers.attentions import RelativeBias
 from praxis.layers.attentions import segment_mask
-from praxis.layers.gpu_fast_attention import GpuTritonFusedDotProductAttention
 from praxis.layers.augmentations import MaskedLmDataAugmenter
 from praxis.layers.augmentations import TemporalShifting
 from praxis.layers.bregman import BregmanPCA

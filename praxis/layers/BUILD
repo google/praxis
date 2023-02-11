@@ -39,7 +39,6 @@ pytype_strict_library(
         ":convolutions",
         ":embedding_softmax",
         ":frnn",
-        ":gpu_fast_attention",
         ":linears",
         ":losses",
         ":models",
@@ -111,6 +110,7 @@ pytype_strict_library(
     name = "gpu_fast_attention",
     srcs = ["gpu_fast_attention.py"],
     srcs_version = "PY3",
+    visibility = JAX_VISIBILITY,
     deps = [
         ":attentions",
         # Implicit jax dependency.
