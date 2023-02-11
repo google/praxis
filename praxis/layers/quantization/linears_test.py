@@ -39,13 +39,14 @@ QuantizationType = quantization_hparams.QuantizationType
 
 
 def _generate_quantization_types_modes() -> Sequence[Dict[str, Any]]:
-  keys = ['testcase_name', 'quantization_type', 'mode']
+  keys = ['testcase_name', 'quantization_type', 'mode', 'dtype']
   types = [QuantizationType.PTQ, QuantizationType.FQ, QuantizationType.AQT]
   modes = [QuantizationMode.INFERENCE, QuantizationMode.TRAINING]
+  dtypes = [jnp.int8, jnp.uint8]
 
   cases = []
-  for case in itertools.product(types, modes):
-    name = case[0].value + '_' + case[1].value
+  for case in itertools.product(types, modes, dtypes):
+    name = case[0].value + '_' + case[1].value + '_' + str(case[2])
     cases.append([name] + list(case))
 
   return [dict(zip(keys, case)) for case in cases]
@@ -58,14 +59,18 @@ class QuantizedLinearTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.named_parameters(_generate_quantization_types_modes())
-  def test_linear_quantized(self, quantization_type, mode):
+  def test_linear_quantized(self, quantization_type, mode, dtype):
     p = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear',
         input_dims=5,
         output_dims=4,
         quantization=QuantizationHParams(
-            quantization_type=quantization_type, mode=mode
+            quantization_type=quantization_type,
+            mode=mode,
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                dtype=dtype,
+            ),
         ),
     )
     linear = instantiate(p)

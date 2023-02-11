@@ -28,6 +28,8 @@ from praxis.layers.quantization import utils
 
 JTensor = pytypes.JTensor
 
+QUANTIZED_TYPES = [jnp.int8, jnp.uint8]
+
 
 def _get_expand_dims(eqn: str) -> List[int]:
   """Potentially expand dimensions for scale.
@@ -131,7 +133,7 @@ def einsum(
   Returns:
     A JTensor
   """
-  if x.dtype == jnp.int8 and w.dtype == jnp.int8:
+  if x.dtype in QUANTIZED_TYPES and w.dtype in QUANTIZED_TYPES:
     # upcast to int32 so einsum uses int32 as accumulator.
     # TODO(jianlijianli): allow preferred type to pass in as parameter.
     # TODO(jianlijianli): expand to cover for potentially int4.

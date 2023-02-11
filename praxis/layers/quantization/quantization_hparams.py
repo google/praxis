@@ -18,7 +18,7 @@
 import dataclasses
 import enum
 from typing import Optional
-
+import jax.numpy as jnp
 from praxis import base_hyperparams
 
 
@@ -77,9 +77,9 @@ class ActQuantizationParams:
 class WeightQuantizationParams:
   """Parameters for weight quantization.
 
-  precision: the precision (number of bits) for activation quantization.
+  precision: the precision (number of bits) for weight quantization.
   unsigned_int_bounds: whether or not to use unsigned_int_bounds.
-  clipping_coeff: the coefficient to shrink the hard range for activation
+  clipping_coeff: the coefficient to shrink the hard range for weight
     quantization. 1.0 means using hard min/max.
   stop_scale_gradient: stop the gradient of the quantization scale for numerical
     stability. Note: this is numerically incorrect.
@@ -92,6 +92,7 @@ class WeightQuantizationParams:
   add_scale_eps: If True add epsilon to scale to avoid division by zero,
     else it will replace zero scale by 1.
   dequant_upfront: dequantize weights before it goes into matmul.
+  dtype: the datatype for weight quantization. Defaults to int8.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -102,6 +103,7 @@ class WeightQuantizationParams:
   use_symmetric: bool = True
   add_scale_eps: Optional[bool] = True
   dequant_upfront: bool = False
+  dtype: jnp.dtype = jnp.int8
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):

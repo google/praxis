@@ -1963,8 +1963,13 @@ class BaseLayer(nn.Module):
       self.put_variable(DECODE_CACHE, name, new_state)
 
   @nn.nowrap
-  def create_quantized_variable(self, name: str, weight_hparams: WeightHParams,
-                                scale_shape: Sequence[int]):
+  def create_quantized_variable(
+      self,
+      name: str,
+      weight_hparams: WeightHParams,
+      scale_shape: Sequence[int],
+      dtype: jnp.dtype = jnp.int8,
+  ):
     """Creates quantized variables, a pair of weight and scale tensors.
 
     `name` will be name of the weight tensor; `name` + `_quantized_scale` will
@@ -1978,11 +1983,11 @@ class BaseLayer(nn.Module):
       name: Variable name for the weight tensor.
       weight_hparams: HParams for weight.
       scale_shape: Shape of the scales.
+      dtype: Data type of the quantized weight tensor.
     """
 
     quantized_weight_hparams = weight_hparams.clone()
-    # TODO(jianlijianli): support other dtypes.
-    quantized_weight_hparams.dtype = jnp.int8
+    quantized_weight_hparams.dtype = dtype
     quantized_weight_hparams.init = WeightInit.Constant(0)
     self.create_variable(name=name, var_hparams=quantized_weight_hparams)
     self.create_variable(

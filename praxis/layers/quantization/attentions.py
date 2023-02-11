@@ -97,12 +97,19 @@ class AttentionProjection(attentions.AttentionProjection):
         if not self.quantization.weight_params.use_symmetric:
           zpc = WeightHParams(shape=[self.input_dim])
           self.create_variable('w_quantized_zp', zpc)
-        self.create_quantized_variable('w', pc, [self.input_dim])
+        self.create_quantized_variable(
+            'w',
+            pc,
+            [self.input_dim],
+            dtype=self.quantization.weight_params.dtype,
+        )
       else:
         if not self.quantization.weight_params.use_symmetric:
           zpc = WeightHParams(shape=hd_shape)
           self.create_variable('w_quantized_zp', zpc)
-        self.create_quantized_variable('w', pc, hd_shape)
+        self.create_quantized_variable(
+            'w', pc, hd_shape, dtype=self.quantization.weight_params.dtype
+        )
     else:
       self.create_variable('w', pc)
     if self.use_bias:
@@ -289,7 +296,10 @@ class AttentionProjection(attentions.AttentionProjection):
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
       q_w, q_s, _ = self.weight_quantizer.quantize(
-          self.theta.w, weight_contract_dims, dtype=jnp.int8)
+          self.theta.w,
+          weight_contract_dims,
+          dtype=self.quantization.weight_params.dtype,
+      )
     else:
       raise ValueError(
           f'Unsupported quantization_type {self.quantization.quantization_type}'
@@ -369,7 +379,9 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       if not self.quantization.weight_params.use_symmetric:
         zpc = WeightHParams(shape=[3] + hd_shape)
         self.create_variable('w_quantized_zp', zpc)
-      self.create_quantized_variable('w', pc, [3] + hd_shape)
+      self.create_quantized_variable(
+          'w', pc, [3] + hd_shape, dtype=self.quantization.weight_params.dtype
+      )
     else:
       self.create_variable('w', pc)
     if self.use_bias:

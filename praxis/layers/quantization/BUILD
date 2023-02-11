@@ -327,6 +327,7 @@ pytype_strict_library(
     srcs = ["quantization_hparams.py"],
     srcs_version = "PY3",
     deps = [
+        # Implicit jax dependency.
         "//praxis:base_hyperparams",
     ],
 )

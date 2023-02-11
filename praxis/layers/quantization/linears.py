@@ -73,7 +73,12 @@ class Linear(linears.Linear):
         raise NotImplementedError(
             'Static activation quantization is not supported yet.')
         # Additionally add activation scale.
-      self.create_quantized_variable('w', pc, [self.output_dims])
+      self.create_quantized_variable(
+          'w',
+          pc,
+          [self.output_dims],
+          dtype=self.quantization.weight_params.dtype,
+      )
       if not self.quantization.weight_params.use_symmetric:
         zpc = WeightHParams(
             shape=[self.output_dims]
@@ -224,5 +229,6 @@ class Linear(linears.Linear):
         )
       else:
         q_w, q_s, _ = self.weight_quantizer.quantize(
-            self.theta.w, [0], dtype=jnp.int8)
+            self.theta.w, [0], dtype=self.quantization.weight_params.dtype
+        )
         return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
