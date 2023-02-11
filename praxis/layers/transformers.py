@@ -1760,15 +1760,19 @@ class StackedTransformer(base_layer.BaseLayer):
         assert segment_pos.ndim == 1
         # Calculate the segment mask for this step. We assume the segment is
         # contiguous.
-        segment_pos_2d = jnp.expand_dims(segment_pos, 1)
         # [B, T]
-        src_positions = jnp.arange(max_t)[
-            jnp.newaxis, :] - time_step + segment_pos_2d
-        # [B, T]
-        src_segment_ids = jnp.where(src_positions < 0, 0, 1)
+        src_segment_ids = jnp.where(
+            jnp.arange(max_t)[jnp.newaxis, :]
+            < time_step - segment_pos[:, jnp.newaxis],
+            0,
+            1,
+        )
         # [B, 1, 1, T]
         segment_mask = attentions.segment_mask(
-            jnp.ones_like(segment_pos_2d), src_segment_ids, inputs.dtype)
+            jnp.ones_like(segment_pos)[:, jnp.newaxis],
+            src_segment_ids,
+            inputs.dtype,
+        )
         # [B, 1, T]
         segment_mask = jnp.squeeze(segment_mask, 1)
 
