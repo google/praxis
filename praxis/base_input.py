@@ -385,7 +385,11 @@ class LingvoInputAdaptor(BaseInput):
             message=f'num_batches exceeding {self._num_batches_produced}')
       self._num_batches_produced += 1
     ret = self._get_next_fn()
-    ret = jax.tree_util.tree_map(lambda x: x.numpy(), ret)
+    if tf.executing_eagerly():
+      ret = jax.tree_util.tree_map(lambda x: x.numpy(), ret)
+    else:
+      with tf_v1.Session() as sess:
+        ret = sess.run(ret)
     batch_size = jax.tree_util.tree_leaves(ret)[0].shape[0]
     ret.eval_sample_weights = np.ones([batch_size], np.float32)
     return ret
