@@ -306,7 +306,6 @@ class LayerNorm(BaseNormalization):
     use_bias: Whether to use bias.
     reductions_in_fp32: Whether to compute mean and variance 
       in fp32. Recommended for stable training on GPUs.
-
   """
   epsilon: float = 1e-6
   use_scale: bool = True
