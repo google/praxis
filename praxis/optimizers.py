@@ -305,35 +305,35 @@ class _ShardedAdamHelper:
     return update / denom
 
 
-class _HeroLionOptState:
+class _LionOptState:
 
   def __init__(self, *, m):
     self.m = m
 
 
-class _ShardedHeroLionHelper(_ShardedAdamHelper):
-  """A helper class facilitates the creation of sharded_hero_lion_optimizer."""
+class _ShardedLionHelper(_ShardedAdamHelper):
+  """A helper class facilitates the creation of sharded_lion_optimizer."""
 
   def opt_state_sharding_spec(self,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
-                              var_hparams: WeightHParams) -> _HeroLionOptState:
+                              var_hparams: WeightHParams) -> _LionOptState:
     """Returns optimizer sharding spec for one particular variable."""
     m_var_hparams = var_hparams.clone()
     m_var_hparams.init = None
     # m simply share the same sharding.
-    return _HeroLionOptState(m=m_var_hparams)
+    return _LionOptState(m=m_var_hparams)
 
   def init_opt_state(self,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                      var_hparams: WeightHParams,
-                     m_dtype: jnp.dtype = jnp.float32) -> _HeroLionOptState:
+                     m_dtype: jnp.dtype = jnp.float32) -> _LionOptState:
     """Returns optimizer state for one particular variable."""
-    return _HeroLionOptState(m=jnp.zeros_like(var_hparams, dtype=m_dtype))
+    return _LionOptState(m=jnp.zeros_like(var_hparams, dtype=m_dtype))
 
   def update_moments(self, step: JTensor, update: JTensor,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
-                     moments: _HeroLionOptState,
-                     beta2: float) -> _HeroLionOptState:
+                     moments: _LionOptState,
+                     beta2: float) -> _LionOptState:
     """Updates momentum value."""
     m = (1. - beta2) * update + beta2 * moments.m
-    return _HeroLionOptState(m=m)
+    return _LionOptState(m=m)
 
 
 def sharded_chain(
@@ -643,12 +643,12 @@ def sharded_adam(
       init_partition_spec=init_partition_spec_fn)
 
 
-def sharded_hero_lion(learning_rate_fn: optax.Schedule, beta1: float,
-                      beta2: float, m_dtype: jnp.dtype, update_capping: float,
-                      weight_decay: float) -> ShardedGradientTransformation:
-  """Standard HeroLion optimizer that also supports sharding.
+def sharded_lion(learning_rate_fn: optax.Schedule, beta1: float,
+                 beta2: float, m_dtype: jnp.dtype, update_capping: float,
+                 weight_decay: float) -> ShardedGradientTransformation:
+  """Standard Lion optimizer that also supports sharding.
 
-  This HeroLion optimizer supports optional update capping when update_capping
+  This Lion optimizer supports optional update capping when update_capping
   is > 0. Update capping can help stabilizing model learning, avoiding excessive
   updates when gradient variance estimate is stale (e.g. when data distribution
   suddenly shifts).
@@ -668,7 +668,7 @@ def sharded_hero_lion(learning_rate_fn: optax.Schedule, beta1: float,
   if weight_decay:
     logging.warn(_WEIGHT_DECAY_DEPRECATION)
 
-  helper = _ShardedHeroLionHelper()
+  helper = _ShardedLionHelper()
   init_opt_state = functools.partial(helper.init_opt_state, m_dtype=m_dtype)
 
   def init_fn(mdl_vars):
@@ -693,7 +693,7 @@ def sharded_hero_lion(learning_rate_fn: optax.Schedule, beta1: float,
     m_casted = jax.tree_map(lambda u, x: x.astype(u.dtype), updates, state.m)
 
     def _update_momentum(g, m):
-      return helper.update_moments(count, g, _HeroLionOptState(m=m), beta2)
+      return helper.update_moments(count, g, _LionOptState(m=m), beta2)
 
     updated_moments = jax.tree_map(_update_momentum, updates, m_casted)
 
@@ -1231,16 +1231,19 @@ class Adam(BaseOptimizer):
           eps_root=p.epsilon_root)
 
 
-class HeroLion(BaseOptimizer):
-  """HeroLion optimizer discovered in the AutoML-Hero project."""
+class Lion(BaseOptimizer):
+  """Implementation of the Lion optimizer.
+
+   Lion optimizer from the Symbolic Discovery of Optimization Algorithms paper.
+  """
 
   class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for HeroLion.
+    """Defines hyper-params for Lion.
 
     Attributes:
       beta1: Rate to combine the moment and the current gradient.
       beta2: Exponential decay rate to track the moment of past gradients.
-      clip_threshold: An optional float to clip raw HeroLion updates to.
+      clip_threshold: An optional float to clip raw Lion updates to.
       weight_decay: Decoupled weight decay to apply.
     """
     beta1: float = 0.9
@@ -1252,8 +1255,8 @@ class HeroLion(BaseOptimizer):
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
     p = self._hparams
-    logging.info('Using sharded_hero_lion.')
-    return sharded_hero_lion(
+    logging.info('Using sharded_lion.')
+    return sharded_lion(
         learning_rate_fn=lr,
         beta1=p.beta1,
         beta2=p.beta2,
