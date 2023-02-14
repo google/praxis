@@ -203,6 +203,7 @@ py_strict_test(
         ":quantization_hparams",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",

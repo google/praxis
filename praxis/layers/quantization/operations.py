@@ -100,6 +100,12 @@ def compute_offset(x: JTensor, zp: JTensor, eqn: str):
       return 'AB,KNH->KABNH'
     if eqn == 'ABNH,DNH->ABD':
       return 'AB,D->ABD'
+    if eqn == 'ABD,DNH->ABNH':
+      return 'AB,NH->ABNH'
+    if eqn == 'AD,DNH->ANH':
+      return 'A,NH->ANH'
+    if eqn == '...D,DH->...H':
+      return '...D,H->...DH'
     # Add new equations as needed.
     raise NotImplementedError(f'eqn {eqn} not supported for asymmetric weight.')
 

@@ -63,6 +63,11 @@ class OneHeadedAttentionProjection(
         shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
+      if not self.quantization.weight_params.use_symmetric:
+        zpc = WeightHParams(
+            shape=[self.output_dim]
+        )
+        self.create_variable('w_quantized_zp', zpc)
       self.create_quantized_variable('w', pc, [self.output_dim])
     else:
       self.create_variable('w', pc)
@@ -99,7 +104,10 @@ class OneHeadedAttentionProjection(
     eqn = '...D,DH->...H'
     if self.quantization.mode == QuantizationMode.INFERENCE:
       w, s = self.get_quantized_weight('w')
-      ret = operations.einsum(eqn, inputs, w, s)
+      if self.quantization.weight_params.use_symmetric:
+        ret = operations.einsum(eqn, inputs, w, s)
+      else:
+        ret = operations.einsum(eqn, inputs, w, s, self.theta['w_quantized_zp'])
     else:
       w = theta.w
       ret = jnp.einsum(eqn, inputs, w)
