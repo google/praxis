@@ -15,7 +15,7 @@
 
 """Multi-Query Attention layers."""
 
-from typing import Dict, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Sequence, Tuple, Union
 
 from flax import linen as nn
 import jax
@@ -35,8 +35,11 @@ sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 JTensor = pytypes.JTensor
+NestedJTensor = pytypes.NestedJTensor
+NestedInt = pytypes.NestedInt
 
 SplitDimsMapping = pytypes.SplitDimsMapping
+PREFIX_DECODE_CACHE = base_layer.PREFIX_DECODE_CACHE
 
 
 class OneHeadedAttentionProjection(base_layer.BaseLayer):
@@ -723,5 +726,496 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
                             suffix_length: int) -> None:
     """Performs lazy prefix broadcast on the decoding states."""
     raise NotImplementedError(
-        'lazy_broadcast_prefix not implemented, use DotProductAttentionWithLPB '
-        'instead.')
+        'lazy_broadcast_prefix should be used with'
+        'MultiQueryDotProductAttentionLPB instead.')
+
+
+class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
+  # TODO(pax-dev): Implement a single base class for all LPB type models.
+  """Multi-query dot-product attention with lazy prefix broadcast.
+
+  This has the same fprop logic as MultiQueryDotProductAttention except that
+  it supports Lazy Prefix Broadcasting in decoding.
+  """
+
+  def _dot_atten_one_step(self,
+                          query: JTensor,
+                          key_state_name: str,
+                          value_state_name: str,
+                          atten_mask: JTensor,
+                          relative_bias: Optional[JTensor] = None,
+                          time_step: Optional[JTensor] = None) -> JTensor:
+    """Dot attention function for queries with 1 time step with LPB.
+
+    In the shapes listed below, `...` means potential sample dims added for lazy
+    broadcast prefixes.
+
+    Args:
+      query: JTensor of shape [B, ..., N, H] or [B, ..., T, N, H].
+      key_state_name: Name of the decoding key state variable.
+      value_state_name: Name of the decoding value state variable.
+      atten_mask: JTensor of shape [1|B, 1, S] or [1|B, 1, T, S] which is a mask
+        that is applied to prevent attention between unwanted pairs. This has
+        already been converted into large negative logits. The first dimension
+        is allowed to be of size 1, if the mask is shared by all items in the
+        batch (e.g., only a causal mask).
+      relative_bias: Relative bias of shape [1|B, N, 1, S].
+      time_step: The time step tensor.
+
+    Returns:
+      encoded: JTensor of shape [B, ..., N, H] or [B, ..., T, N, H]
+    """
+    del time_step
+    pfx_count = self._broadcast_prefixes_count
+    # When query has shape of [B, ..., N, H], will apply extend_step to a single
+    # token per batch, normal autoregressive decoding logic is applied.
+    #
+    # When query has shape of [B, ..., T, N, H], will apply extend_step to
+    # T tokens per batch. This is used in suffix scoring of T tokens after
+    # autoregressive decoding.
+    extend_one_step = (len(query.shape) == pfx_count + 3)
+
+    batch_dims = self.get_decode_state(key_state_name).shape[:1 + pfx_count]
+    rb_batched = False
+    if relative_bias is not None:
+      rb_batched = relative_bias.shape[0] > 1
+    if rb_batched:
+      relative_bias = jnp.reshape(relative_bias,
+                                  batch_dims + relative_bias.shape[1:])
+    am_batched = atten_mask.shape[0] > 1
+    if am_batched:
+      atten_mask = jnp.reshape(atten_mask, batch_dims + atten_mask.shape[1:])
+
+    def _pre_softmax(layer, batched, batched_slice, non_batched_slice, states):
+      del layer
+      k = states[0]
+      q = batched
+      if am_batched:
+        am, *batched_slice = batched_slice
+      else:
+        am, *non_batched_slice = non_batched_slice
+      if rb_batched:
+        rb, *batched_slice = batched_slice
+      else:
+        rb, *non_batched_slice = non_batched_slice
+      k = self._shard_blh(k)
+      # q is 3d.
+      if extend_one_step:
+        q = self._shard_bnh(q)
+      else:
+        q = self._shard_blnh(q)
+
+      b, s, h = k.shape
+      n = self.num_heads
+      if extend_one_step:
+        base_layer.assert_has_shape(q, [b, n, h])
+        base_layer.assert_has_shape(am, [-1, 1, s])
+      else:
+        base_layer.assert_has_shape(q, [b, -1, n, h])
+        base_layer.assert_has_shape(am, [-1, 1, -1, s])
+      asserts.in_set(am.shape[0], [b, 1])
+
+      q = self._scale_query(q)
+      if extend_one_step:
+        logits = jnp.einsum('BNH,BSH->BNS', q, k)
+      else:
+        logits = jnp.einsum('BTNH,BSH->BNTS', q, k)
+      if rb is not None:
+        base_layer.assert_has_shape(rb, [-1, n, -1, s])
+        asserts.in_set(rb.shape[0], [b, 1])
+        if rb.shape[2] == 1:
+          rb = jnp.squeeze(rb, axis=2)
+        logits += rb
+      logits = self._cap_logits(logits)
+      # Attention softmax is always carried out in fp32.
+      logits = logits.astype(jnp.float32)
+      # Apply attention masking
+      padded_logits = logits + am.astype(jnp.float32)
+      return padded_logits
+
+    batched_to_slice = []
+    batched_to_slice_tdims = []
+    non_batched_to_slice = []
+    non_batched_to_slice_tdims = []
+    if extend_one_step:
+      am_tdim = 2
+      concat_dim = 2
+    else:
+      am_tdim = 3
+      concat_dim = 3
+
+    if am_batched:
+      batched_to_slice.append(atten_mask)
+      batched_to_slice_tdims.append(am_tdim)
+    else:
+      non_batched_to_slice.append(atten_mask)
+      non_batched_to_slice_tdims.append(am_tdim)
+    if rb_batched:
+      batched_to_slice.append(relative_bias)
+      batched_to_slice_tdims.append(3)
+    else:
+      non_batched_to_slice.append(relative_bias)
+      non_batched_to_slice_tdims.append(3)
+
+    def _concat_logits(chunks):
+      if len(chunks) == 1:
+        return chunks[0]
+      return jnp.concatenate(chunks, axis=pfx_count + concat_dim)
+
+    padded_logits = self._run_with_all_decode_state_chunks(
+        _pre_softmax, query, batched_to_slice, batched_to_slice_tdims,
+        non_batched_to_slice, non_batched_to_slice_tdims, [key_state_name],
+        _concat_logits)
+
+    # Of shape [b, ..., n, s]
+    key_dtype = self.get_decode_state(key_state_name).dtype
+    if self.attention_extra_logit is None:
+      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key_dtype)
+    else:
+      probs = jnp.exp(
+          self._log_softmax_with_extra_logit(padded_logits)).astype(key_dtype)
+
+    # Compute the attention context.
+    def _post_softmax(layer, batched, ps, non_batched, states):
+      del layer, batched, non_batched
+      v = self._shard_blnh(states[0])
+      if extend_one_step:
+        return self._shard_bnh(jnp.einsum('BNS,BSH->BNH', ps, v))
+      return self._shard_blnh(jnp.einsum('BNTS,BSH->BTNH', ps, v))
+
+    # Use sum as result combiner since the time dimension is a contracting dim.
+    encoded = self._run_with_all_decode_state_chunks(_post_softmax, [], probs,
+                                                     am_tdim, [], [],
+                                                     [value_state_name], sum)
+    return encoded, probs
+
+  @nn.nowrap
+  def extend_decode_state(self, name: str, value: JTensor, time_step: JTensor,
+                          time_dim: int) -> JTensor:
+    """Extends decode state at time_step.
+
+    The decode state is batch major with shape [B, T, H].
+    Args:
+      name: Variable name in decoder cache.
+      value: Value to extend at time step.
+      time_step: A scalar. Time step to update the state.
+      time_dim: Time dimension in the decode state.
+
+    Returns:
+      Updated decode cache state of that variable.
+    """
+    if len(value.shape) == time_dim + 1:
+      extend_value = jnp.expand_dims(value, axis=time_dim)
+    else:
+      extend_value = value
+    indices = [0] * extend_value.ndim
+    indices[time_dim] = time_step.astype(jnp.int32)
+    state = self.get_decode_state(name)
+    assert state is not None
+    new_state = jax.lax.dynamic_update_slice(state,
+                                             extend_value.astype(state.dtype),
+                                             indices)
+    self.update_decode_state(name, new_state)
+    return new_state
+
+  def _broadcast_prefix_length(self):
+    """Returns the sum of lengths of all lazy broadcast prefixes."""
+    prefix_length = 0
+    for i in range(self._broadcast_prefixes_count):
+      prefix_length += self.get_variable(PREFIX_DECODE_CACHE,
+                                         f'key_state_{i}_pfx').shape[i + 1]
+    return prefix_length
+
+  def _vmap_on_broadcast_prefixes(self, fn: attentions.FnOnDecodeStateChunk,
+                                  chunk_id: int,
+                                  args_time_dims: NestedInt,
+                                  broadcast_args_time_dims: NestedInt):
+    """Transforms `fn` using vmap for a decoding state chunk."""
+
+    # Wraps fn with slicing on args_to_slice and broadcast_args_to_slice.
+    def _sliced_fn(layer, args, args_to_slice, broadcast_args_to_slice, states):
+      sliced = jax.tree_map(
+          lambda x, d: self._slice_decode_chunk(x, chunk_id, d), args_to_slice,
+          args_time_dims)
+      broadcast_sliced = jax.tree_map(
+          lambda x, d: self._slice_decode_chunk(x, chunk_id, d),
+          broadcast_args_to_slice, broadcast_args_time_dims)
+      return fn(layer, args, sliced, broadcast_sliced, states)
+
+    broadcast_dim_sizes = self.get_decode_state(
+        'key_state').shape[1:1 + self._broadcast_prefixes_count]
+    # There can be multiple lazy-broadcast sample dimensions, and we vmap one
+    # dimension at a time. `args` and `args_to_slice` have shape
+    # [b, num_samples0, num_samples1, ..., inner_dims]; after each vmap, one
+    # num_samples dimension will be removed for `fn`.
+    vfns = [_sliced_fn]
+    # The loop works from inner vmap to outer vmap.
+    for i in range(self._broadcast_prefixes_count):
+      # args, args_to_slice have the sample dimensions. broadcast_args_to_slice
+      # does not have them.
+      in_axes = [i + 1, i + 1, None]
+      if chunk_id > i:
+        # This chunk has the current sample dimension to vmap. Since outer vmaps
+        # (to be done at later iterations in this for loop) will handle sample
+        # dimensions AFTER the current one, i + 1 is still the current vmap
+        # even if there are outer vmaps. (1 in `i + 1` is the original batch
+        # dim.)
+        in_axes.append(i + 1)
+      else:
+        # This chunk does not have the current sample dimension to vmap.
+        in_axes.append(None)
+      # Do not vmap any state; they are handle explicitly as the `states`
+      # argument in `fn`.
+      vmapped_fn = nn.vmap(
+          vfns[-1],
+          variable_axes={
+              base_layer.PARAMS: None,
+              base_layer.DECODE_CACHE: None,
+              base_layer.PREFIX_DECODE_CACHE: None,
+          },
+          in_axes=tuple(in_axes),
+          out_axes=i + 1,
+          split_rngs={
+              base_layer.PARAMS: True,
+              base_layer.RANDOM: True
+          },
+          axis_size=broadcast_dim_sizes[i])
+      vfns.append(vmapped_fn)
+    return vfns[-1]
+
+  def _decode_state_chunk_length(self, chunk_id: int) -> int:
+    """Returns the length of a decode state chunk (prefix or current)."""
+    t_dim = chunk_id + 1
+    if chunk_id == self._broadcast_prefixes_count:
+      # Current state, non-prefix.
+      return self.get_decode_state('key_state').shape[t_dim]
+    return self.get_variable(PREFIX_DECODE_CACHE,
+                             f'key_state_{chunk_id}_pfx').shape[t_dim]
+
+  def _slice_decode_chunk(self, x: JTensor, chunk_id: int, dim: int) -> JTensor:
+    """Slices a full-sequence tensor for a decode state chunk."""
+    pfx_count = self._broadcast_prefixes_count
+    start = 0
+    for i in range(min(pfx_count, chunk_id)):
+      t_dim = i + 1
+      start += self.get_variable(PREFIX_DECODE_CACHE,
+                                 f'key_state_{i}_pfx').shape[t_dim]
+    limit = start + self._decode_state_chunk_length(chunk_id)
+    return jax.lax.slice_in_dim(x, start, limit, axis=dim)
+
+  def _run_with_all_decode_state_chunks(
+      self, fn: attentions.FnOnDecodeStateChunk, chunk_inputs: NestedJTensor,
+      args_to_slice: NestedJTensor, args_time_dims: NestedInt,
+      broadcast_args_to_slice: NestedJTensor,
+      broadcast_args_time_dims: NestedInt, state_names: Sequence[str],
+      combine_results: Callable[[Sequence[NestedJTensor]], NestedJTensor]
+  ) -> NestedJTensor:
+    """Runs `fn` on all decoding state chunks, then combine them."""
+    pfx_count = self._broadcast_prefixes_count
+    results = []
+    for i in range(pfx_count + 1):
+      # Get the relevant states for `fn`.
+      if i == pfx_count:
+        states = [self.get_decode_state(s) for s in state_names]
+      else:
+        states = [
+            self.get_variable(PREFIX_DECODE_CACHE, f'{s}_{i}_pfx')
+            for s in state_names
+        ]
+      # Run one chunk with vmaps.
+      results.append(
+          self._vmap_on_broadcast_prefixes(
+              fn, i, args_time_dims,
+              broadcast_args_time_dims)(self, chunk_inputs, args_to_slice,
+                                        broadcast_args_to_slice, states))
+    return combine_results(results)
+
+  def extend_step(self, query_vec: JTensor, *, atten_mask: JTensor,  # pytype: disable=signature-mismatch  # overriding-parameter-name-checks
+                  time_step: JTensor,
+                  segment_pos: Optional[JTensor]) -> JTensor:
+    """Computes the value vector given the query of the current step using LPB.
+
+    This function is used by autoregressive decoding.
+
+    Args:
+      query_vec: JTensor of shape [B, D] corresponding to query vector at index
+        time_step or JTensor of shape [B, T, D] to support extend n steps.
+      atten_mask: JTensor of shape [1|B, 1, S] or of shape [1|B, 1, T, S] to
+        support extend n steps. atten_mask should have already taken care of
+        causal masking for decoding, plus other maskings necessary.
+      time_step: A scalar or JTensor. Current time-step, 0-based.
+      segment_pos: An optional JTensor of shape [B]. Current position in the
+        same segment. If unspecified, time_step will be used.
+
+    Returns:
+      encoded: JTensor of shape [B, D] which returns the attention output at
+        `time_step`.
+    """
+    # When query has shape of [B, D], will apply extend_step to a single
+    # token per batch, normal autoregressive decoding logic is applied.
+    #
+    # When query has shape of [B, T, D], will apply extend_step to
+    # T tokens per batch. This is used in suffix scoring of T tokens after
+    # autoregressive decoding.
+    extend_one_step = (len(query_vec.shape) == 2)
+    # Batch major. Reshape the input batch dim to match the decoding state if
+    # there are lazy broadcast prefixes.
+    pfx_count = self._broadcast_prefixes_count
+    batch_dims = self.get_decode_state('key_state').shape[:1 + pfx_count]
+    if pfx_count > 0:
+      query_vec = jnp.reshape(query_vec, batch_dims + query_vec.shape[1:])
+      if segment_pos is not None:
+        segment_pos = jnp.reshape(segment_pos,
+                                  batch_dims + segment_pos.shape[1:])
+
+    time_step = jnp.array(time_step)
+    assert time_step.ndim == 0
+
+    # vmap a function on the samples dimensions in lazy broadcast prefixes. This
+    # is for functions that do not touch the decoding states.
+    def _vmap_no_state(fn):
+      vfns = [fn]
+      for i in range(pfx_count):
+        vmapped_fn = nn.vmap(
+            vfns[-1],
+            variable_axes={
+                base_layer.PARAMS: None,
+                base_layer.DECODE_CACHE: None,
+                base_layer.PREFIX_DECODE_CACHE: None,
+            },
+            in_axes=i + 1,
+            out_axes=i + 1,
+            split_rngs={
+                base_layer.PARAMS: True,
+                base_layer.RANDOM: True
+            },
+            axis_size=batch_dims[1 + i])
+        vfns.append(vmapped_fn)
+      return vfns[-1]
+
+    def _proj_qkv(layer, q):
+      if self.combine_qkv:
+        # Project inputs to key, value and query using a combined weight for
+        # faster performance on TPU.
+        new_query_proj, new_key_proj, new_value_proj = layer.combined_qkv(q)
+      else:
+        # Project inputs to key, value and query. Each has shape [B, N, H].
+        new_key_proj = layer.key(q)
+        new_value_proj = layer.value(q)
+        new_query_proj = layer.query(q)
+      return new_query_proj, new_key_proj, new_value_proj
+
+    new_query_proj, new_key_proj, new_value_proj = _vmap_no_state(_proj_qkv)(
+        self, query_vec)
+    prefix_length = self._broadcast_prefix_length()
+
+    def _extend_decode_state_and_shard(name: str,
+                                       extend_value: JTensor) -> JTensor:
+      extended_state = self.extend_decode_state(
+          name, extend_value, time_step - prefix_length, time_dim=1 + pfx_count)
+      return self._shard_blh(extended_state)
+
+    # Update key_state
+    key_state_name = 'key_state'
+    _extend_decode_state_and_shard(key_state_name, new_key_proj)
+
+    # Update value state.
+    value_state_name = 'value_state'
+    _extend_decode_state_and_shard(value_state_name, new_value_proj)
+
+    # Apply rotary position embeddings.
+    # Paper: https://arxiv.org/abs/2104.09864.
+    if self.use_rotary_position_emb:
+      if segment_pos is None:
+        position = jnp.broadcast_to(time_step, batch_dims)
+      else:
+        position = segment_pos
+
+      def _rotary(layer, q, k, pos):
+        k = jnp.expand_dims(k, axis=-2)
+
+        if len(query_vec.shape) == pfx_count + 2:
+          new_query_proj = layer.rotary_position_emb.extend_step(q, pos)
+          new_key_proj = layer.rotary_position_emb.extend_step(k, pos)
+        else:
+          # If it is extending n steps, uses a vmap to do the computation.
+          def _get_rotary(q, pos):
+            return layer.rotary_position_emb.extend_step(q, pos)
+
+          new_query_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(q, pos)
+          new_key_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(k, pos)
+
+        new_key_proj = jnp.squeeze(new_key_proj, axis=-2)
+        return new_query_proj, new_key_proj
+
+      new_query_proj, new_key_proj = _vmap_no_state(_rotary)(self,
+                                                             new_query_proj,
+                                                             new_key_proj,
+                                                             position)
+
+      # Update key post rotary position embedding in the cache.
+      key_state_name = 'key_post_rotary_pos_emb'
+      _extend_decode_state_and_shard(key_state_name, new_key_proj)
+
+    if self.relative_bias_tpl:
+      # Relative bias uses time_step instead of segment_pos.
+      if not extend_one_step:
+        raise NotImplementedError(
+            'MultiQueryAttention does not support extend n steps with '
+            'relative bias.')
+      relative_bias = self.relative_bias.extend_step(
+          seq_length=self.decoding_state_sequence_length(), time_step=time_step)
+    else:
+      relative_bias = None
+
+    encoded, atten_prob = self._dot_atten_one_step(new_query_proj,
+                                                   key_state_name,
+                                                   value_state_name, atten_mask,
+                                                   relative_bias)
+    # TODO(yonghui): return atten_probs back to the caller.
+
+    del atten_prob
+    # Post projection.
+    if pfx_count > 0:
+      encoded = jnp.reshape(encoded, (-1,) + encoded.shape[1 + pfx_count:])
+    encoded = self.post(encoded)
+    if extend_one_step:
+      encoded = self._shard_bd(encoded)
+    else:
+      encoded = self._shard_bld(encoded)
+    return encoded
+
+  @property
+  def _broadcast_prefixes_count(self):
+    """Returns the number of prefixes created for lazy broadcast."""
+    if PREFIX_DECODE_CACHE not in self.variables:
+      return 0
+    count = 0
+    while f'key_state_{count}_pfx' in self.variables[PREFIX_DECODE_CACHE]:
+      count += 1
+    return count
+
+  def lazy_broadcast_prefix(self, num_suffix_samples: int,
+                            suffix_length: int) -> None:
+    """Performs lazy prefix broadcast on the decoding states.
+
+    Current decoding states will be moved to PREFIX_DECODE_CACHE. New decoding
+    state will be created for the suffixes with multiple samples sharing
+    previous prefixes. After this call, new extend_step will use a batch size
+    num_suffix_samples times larger than before, which is logically 2 merged
+    dimensions [previous batch dim, new num_samples dim].
+
+    Args:
+      num_suffix_samples: Number of samples that will share the same previous
+        decoding state.
+      suffix_length: The length of the new suffix samples.
+    """
+    prev_pfx_count = self._broadcast_prefixes_count
+
+    for name, state in self.variables[base_layer.DECODE_CACHE].items():
+      assert self.is_mutable_collection(PREFIX_DECODE_CACHE)
+      self.put_variable(PREFIX_DECODE_CACHE, f'{name}_{prev_pfx_count}_pfx',
+                        state)
+      suffix_shape = state.shape[:prev_pfx_count + 1] + (
+          num_suffix_samples, suffix_length) + state.shape[prev_pfx_count + 2:]
+      self.update_decode_state(name, jnp.zeros(suffix_shape, dtype=state.dtype))

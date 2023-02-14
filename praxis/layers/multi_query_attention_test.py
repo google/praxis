@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """Tests for Praxis attention layers."""
-
+import itertools
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -82,10 +82,16 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     self.assertSequenceEqual(encoded.shape, [5, 12, 16])
     self.assertSequenceEqual(attens.shape, [5, 10, 12, 12])
 
-  @parameterized.parameters([False, True])
-  def test_multi_query_attention_decoding_shape(self, use_rotary_position_emb):
+  @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
+  def test_multi_query_attention_decoding_shape(self,
+                                                use_rotary_position_emb,
+                                                lpb):
+    if lpb:
+      mqa = multi_query_attention.MultiQueryDotProductAttentionLPB
+    else:
+      mqa = multi_query_attention.MultiQueryDotProductAttention
     test_layer_p = pax_fiddle.Config(
-        multi_query_attention.MultiQueryDotProductAttention,
+        mqa,
         name='mqa',
         input_dim=16,
         hidden_dim=60,
@@ -110,18 +116,212 @@ class MultiQueryAttentionTest(test_utils.TestCase):
           attentions.causal_mask(query_vec),
           mutable=[base_layer.DECODE_CACHE])
       updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+      atten_mask = attentions.causal_mask(query_vec)[:, :, 0, :]
       encoded = layer.apply(
           updated_vars,
           method=layer.extend_step,
           query_vec=query_vec[:, 0, :],
-          atten_mask=attentions.causal_mask(query_vec)[:, 0, :],
+          atten_mask=atten_mask,
           time_step=1,
           segment_pos=None)
     self.assertSequenceEqual(encoded.shape, [5, 16])
 
-  def test_multi_query_attention_consistent(self):
+  @parameterized.parameters([True, False])
+  def test_mqa_extend_n_steps_with_lazy_broadcast_state(
+      self, use_rotary_position_emb):
+    mdl_dim = 4
+    hidden_dim = 8
+    num_heads = 2
+    mqa_lpb = multi_query_attention.MultiQueryDotProductAttentionLPB
+    test_layer_p = mqa_lpb.config(
+        name='mq',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        dim_per_head=4 if use_rotary_position_emb else None,
+        atten_logit_cap=20.0,
+        use_rotary_position_emb=use_rotary_position_emb)
+    layer = instantiate(test_layer_p)
+    target_batch_size = 3
+    source_max_length = 8
+    prefix_len = 4
+    num_samples = 2
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    prefix = query_vec[:, 0:prefix_len, :]
+    key_vec = query_vec
+    value_vec = query_vec
+    atten_mask = attentions.causal_mask(query_vec)
+    prefix_atten_mask = attentions.causal_mask(prefix)
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
+      logging.info('initial_vars: %s', initial_vars)
+      fprop_out, attention_states = layer.apply(
+          initial_vars,
+          query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+          method=layer.__call__)
+      # Updates decode states in fprop.
+      _, attention_states = layer.apply(
+          initial_vars,
+          prefix,
+          prefix,
+          prefix,
+          prefix_atten_mask,
+          method=layer.__call__,
+          mutable=[base_layer.DECODE_CACHE])
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+
+      # First lazy broadcast.
+      _, attention_states = layer.apply(
+          updated_vars,
+          num_suffix_samples=num_samples,
+          suffix_length=source_max_length - prefix_len,
+          method=layer.lazy_broadcast_prefix,
+          mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+
+      def _broadcast_sample(x, num_samples):
+        return jnp.repeat(x, num_samples, axis=0)
+
+      suffix_segment_pos = jnp.stack(
+          [jnp.arange(prefix_len, source_max_length)] * target_batch_size)
+
+      # Call extend step start from prefix_len.
+      encoded, _ = layer.apply(
+          updated_vars,
+          query_vec=_broadcast_sample(query_vec[:, prefix_len:, :],
+                                      num_samples),
+          atten_mask=atten_mask[:, :, prefix_len:, :],
+          time_step=prefix_len,
+          segment_pos=_broadcast_sample(suffix_segment_pos, num_samples),
+          method=layer.extend_step,
+          mutable=[base_layer.DECODE_CACHE])
+      self.assertAllClose(
+          encoded,
+          _broadcast_sample(fprop_out, num_samples)[:, prefix_len:, :])
+
+  @parameterized.parameters([True, False])
+  def test_mqa_with_lazy_broadcast_state(self, use_rotary_position_emb):
+    mdl_dim = 4
+    hidden_dim = 8
+    num_heads = 2
+    mqa_lpb = multi_query_attention.MultiQueryDotProductAttentionLPB
+    test_layer_p = mqa_lpb.config(
+        name='mq',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        dim_per_head=4 if use_rotary_position_emb else None,
+        atten_logit_cap=20.0)
+    layer = instantiate(test_layer_p)
+    target_batch_size = 3
+    source_max_length = 8
+    suffix_1_len = 2
+    suffix_2_len = 2
+    prefix_len = 4
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    prefix = query_vec[:, 0:prefix_len, :]
+    key_vec = query_vec
+    value_vec = query_vec
+    atten_mask = attentions.causal_mask(query_vec)
+    prefix_atten_mask = attentions.causal_mask(prefix)
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
+      logging.info('initial_vars: %s', initial_vars)
+      fprop_out, attention_states = layer.apply(
+          initial_vars,
+          query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+          method=layer.__call__)
+      # Updates decode states in fprop.
+      _, attention_states = layer.apply(
+          initial_vars,
+          prefix,
+          prefix,
+          prefix,
+          prefix_atten_mask,
+          method=layer.__call__,
+          mutable=[base_layer.DECODE_CACHE])
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+
+      # First lazy broadcast.
+      _, attention_states = layer.apply(
+          updated_vars,
+          num_suffix_samples=2,
+          suffix_length=suffix_1_len,
+          method=layer.lazy_broadcast_prefix,
+          mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+
+      def _broadcast_sample(x, num_samples):
+        return jnp.repeat(x, num_samples, axis=0)
+
+      # Call extend step start from prefix_len.
+      for t in range(prefix_len, prefix_len + suffix_1_len):
+        encoded, attention_states = layer.apply(
+            updated_vars,
+            query_vec=_broadcast_sample(query_vec[:, t, :], 2),
+            atten_mask=atten_mask[:, :, t, :],
+            time_step=t,
+            segment_pos=None,
+            method=layer.extend_step,
+            mutable=[base_layer.DECODE_CACHE])
+        del updated_vars[base_layer.DECODE_CACHE]
+        updated_vars = py_utils.merge_dict(attention_states, updated_vars)
+        encoded = jnp.reshape(encoded, (-1, 2) + encoded.shape[1:])
+        # First sample.
+        self.assertAllClose(fprop_out[:, t, :], encoded[:, 0])
+        # Second sample.
+        self.assertAllClose(fprop_out[:, t, :], encoded[:, 1])
+
+      # Second lazy broadcast.
+      _, attention_states = layer.apply(
+          updated_vars,
+          num_suffix_samples=3,
+          suffix_length=suffix_2_len,
+          method=layer.lazy_broadcast_prefix,
+          mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE])
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+
+      # Call extend step start from prefix_len + suffix_1_len.
+      for t in range(prefix_len + suffix_1_len,
+                     prefix_len + suffix_1_len + suffix_2_len):
+        encoded, attention_states = layer.apply(
+            updated_vars,
+            query_vec=_broadcast_sample(query_vec[:, t, :], 6),
+            atten_mask=atten_mask[:, :, t, :],
+            time_step=t,
+            segment_pos=None,
+            method=layer.extend_step,
+            mutable=[base_layer.DECODE_CACHE])
+        del updated_vars[base_layer.DECODE_CACHE]
+        updated_vars = py_utils.merge_dict(attention_states, updated_vars)
+        encoded = jnp.reshape(encoded, (-1, 6) + encoded.shape[1:])
+        for sample_id in range(6):
+          self.assertAllClose(fprop_out[:, t, :], encoded[:, sample_id])
+
+  @parameterized.parameters([True, False])
+  def test_multi_query_attention_consistent(self, lpb):
+    if lpb:
+      mqa = multi_query_attention.MultiQueryDotProductAttentionLPB
+    else:
+      mqa = multi_query_attention.MultiQueryDotProductAttention
     test_layer_p = pax_fiddle.Config(
-        multi_query_attention.MultiQueryDotProductAttention,
+        mqa,
         name='mqa',
         input_dim=16,
         hidden_dim=50,
