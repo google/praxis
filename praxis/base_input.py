@@ -311,7 +311,6 @@ class LingvoInputAdaptor(BaseInput):
                        f'used. Currently: p.batch_size={hparams.batch_size}, '
                        'it must be None.')
     if not hparams.name:
-      hparams = hparams.clone()  # Ensure input hparams are not mutated.
       hparams.name = hparams.input.name
     if hparams.input is None:
       raise ValueError('Params of a Lingvo input generator is not set.')
