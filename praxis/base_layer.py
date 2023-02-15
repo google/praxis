@@ -1585,14 +1585,13 @@ class BaseLayer(nn.Module):
     hparam_kwargs = {}
     for field in self._hparam_fields:
       value = getattr(self, field)
-      if is_sublayer_template(value):
-        # No need to include sub-layer template params, since the instantiated
-        # sub-layer will show up in its own collection anyways.
+      if is_sublayer_template(value) or isinstance(value, BaseLayer):
+        # No need to include sub-layer template params (or direct-instantiated
+        # children), since the instantiated sub-layer will show up in its own
+        # collection anyways.  Use an explcit `None` value to prevent `fiddle`
+        # from auto-populating fields with default factories.
         value = None
-      elif isinstance(value, BaseLayer):
-        pass  # Don't include child layers (instance_field).
-      else:
-        hparam_kwargs[field] = value
+      hparam_kwargs[field] = value
     hparams = pax_fiddle.Config(type(self), **hparam_kwargs)
 
     self.put_variable(HYPER_PARAMS, '_hparams', WrappedHParams(hparams))

@@ -19,7 +19,8 @@ import copy
 import dataclasses
 import sys
 import typing
-from typing import Any, Optional, Callable, List
+from typing import Any, Callable, Dict, List, Optional
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import fiddle as fdl
@@ -42,6 +43,8 @@ class Identity(base_layer.BaseLayer):
   def __call__(self, x):
     self.add_summary('debug', x, verbosity=3)
     self.add_summary('info', x, verbosity=2)
+    # tensor value can be a deferred callable as well:
+    self.add_summary('callable', lambda: x, verbosity=2)
     return x
 
 
@@ -116,8 +119,10 @@ class BaseLayerTest(test_utils.TestCase):
 
     self.assertIn('debug_scalar', summaries)
     self.assertIn('info_scalar', summaries)
+    self.assertIn('callable_scalar', summaries)
     self.assertArraysEqual(x, summaries['debug_scalar'])
     self.assertArraysEqual(x, summaries['info_scalar'])
+    self.assertArraysEqual(x, summaries['callable_scalar'])
 
   def test_layer_summary_verbosity_no_log(self):
     context_p = base_layer.JaxContext.HParams(
@@ -177,15 +182,6 @@ class BaseLayerTest(test_utils.TestCase):
         base_layer.SummaryType.VIDEO,
         base_layer.get_summary_base_type(
             base_layer.SummaryType.VIDEO))
-
-  def test_summary_callable(self):
-    a = jnp.array([1., 2.], dtype=jnp.float32)
-    with base_layer.JaxContext.new_context() as context:
-      summary_dict = context.summary_dict
-      summary_dict.add_summary('a', lambda: a,
-                               base_layer.SummaryType.SCALAR)
-
-      self.assertEqual(a, summary_dict.dict['a'])
 
   def test_quantize(self):
     layer_p = pax_fiddle.Config(Identity, name='test_identity')
@@ -277,9 +273,9 @@ class BaseLayerTest(test_utils.TestCase):
 
     class FiddleParent(base_layer.BaseLayer):
 
-      child_tpl: Any = base_layer.template_field(FiddleChild)
-      child_tpl_list: Any = base_layer.template_field(None)
-      child_tpl_dict: Any = base_layer.template_field(None)
+      child_tpl: pax_fiddle.Config = base_layer.template_field(FiddleChild)
+      child_tpl_list: List[pax_fiddle.Config] = base_layer.template_field(None)
+      child_tpl_dict: Dict[str, pax_fiddle.Config] = base_layer.template_field(None)
 
       def setup(self):
         child_tpl = self.child_tpl.clone()
@@ -357,9 +353,6 @@ class BaseLayerTest(test_utils.TestCase):
       )
       prms = mod.init({'params': key}, jnp.ones((3, 3)))
       self.assertIn('x', prms['params'])
-
-
-class BaseLayerTest(test_utils.TestCase):
 
   @parameterized.parameters([
       dict(expected=None),
@@ -582,7 +575,7 @@ class BaseLayerTest(test_utils.TestCase):
           ValueError,
           'has a template type, but does not have the pax_fiddle.DoNotBuild.*'):
 
-        class Layer4(base_layer.BaseLayer):
+        class Layer6(base_layer.BaseLayer):
           child_tpl: Optional[List[pax_fiddle.Config]] = None
 
     with self.subTest('tuple_int_int'):
@@ -590,7 +583,7 @@ class BaseLayerTest(test_utils.TestCase):
       if (sys.version_info.major, sys.version_info.minor) < (3, 9):
         self.skipTest('tuple[int, int] not supported in this Python version')
 
-      class Layer6(base_layer.BaseLayer):
+      class Layer7(base_layer.BaseLayer):
         child: tuple[int, int] = (1, 2)
 
   def testMissingDoNotFieldTagError(self):
