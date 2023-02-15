@@ -82,6 +82,9 @@ class CloneAndSetMixin:
       setattr(self, name, value)
     return self
 
+  # TODO(b/269191093): Remove after updating existing users.
+  Set = set  # pylint: disable=invalid-name
+
 
 class PaxConfig(Generic[_T], fdl.Config[_T], CloneAndSetMixin):
   """Subclasses `fdl.Config` to make it more compatible with HParams."""
