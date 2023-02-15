@@ -682,6 +682,10 @@ def sub_config_field(
 BaseParameterizableSelf = TypeVar(
     'BaseParameterizableSelf', bound='BaseParameterizable')
 
+FiddleBaseParameterizableSelf = TypeVar(
+    'FiddleBaseParameterizableSelf', bound='FiddleBaseParameterizable'
+)
+
 
 class BaseParameterizable:
   """Base class for parameterizable entities such as tasks or optimizers.
@@ -779,7 +783,7 @@ class BaseParameterizable:
 
 
 @dataclasses.dataclass(frozen=True)
-class _FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
+class FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
   """Stub for `HParams` attribute in `BaseParameterizable`.
 
   Can be used with base_hyperparams.sub_config_field.  E.g.:
@@ -827,7 +831,7 @@ class _FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
         'fiddle_base_parameterizable_cls': fiddle_base_parameterizable_cls,
     }
     bases = ()
-    # pylint: disable=unused-variable
+    # pylint: disable=unused-variable, redefined-outer-name
     return super().__new__(cls, name, bases, namespace)  # pytype: disable=wrong-arg-count
 
   def __init__(cls, fiddle_base_parameterizable_cls):
@@ -842,7 +846,11 @@ class _FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
         )
     )
 
-  def __to_sub_config_field__(cls):
+  @property
+  def cls(cls):
+    return cls.fiddle_base_parameterizable_cls
+
+  def __to_sub_config_field__(cls):  # pylint: disable=arguments-renamed
     return pax_fiddle.template_field(cls.fiddle_base_parameterizable_cls)
 
   def __call__(cls, *args, **kwargs):
@@ -858,7 +866,7 @@ class _FiddleHParamsClassStubDescriptor:
   """Descriptor used to implement BaseParameterizable.HParams stub."""
 
   def __get__(self, obj, objtype):
-    return _FiddleHParamsClassStub(objtype)
+    return FiddleHParamsClassStub(objtype)
 
 
 class _FiddleHParamsInstanceStub:
@@ -928,6 +936,7 @@ def _require_kwargs(cls):
   return wrapper
 
 
+@dataclasses.dataclass
 class FiddleBaseParameterizable:
   """A base class for classes migrated from `BaseParameterizable`.
 
@@ -948,6 +957,12 @@ class FiddleBaseParameterizable:
 
   name: str = ''
 
+  @classmethod
+  def config(
+      cls: Type[FiddleBaseParameterizableSelf], **kwargs
+  ) -> pax_fiddle.Config[FiddleBaseParameterizableSelf]:
+    return pax_fiddle.Config(cls, **kwargs)
+
   @functools.cached_property
   def _fields(self) -> Set[str]:
     """Returns a list of hyperparameter field names for `self`."""
@@ -955,8 +970,15 @@ class FiddleBaseParameterizable:
 
   def __init_subclass__(cls, **kwargs):
     super().__init_subclass__(**kwargs)
-    dataclasses.dataclass(cls)
+    if not typing.TYPE_CHECKING:
+      dataclasses.dataclass(cls)
     cls.__init__ = _require_kwargs(cls)
+
+  def __post_init__(self, *args, **kwargs):
+    if args or kwargs:
+      raise ValueError(
+          f'Unexpected arguments to __post_init__:\n{args=}\n{kwargs=}'
+      )
 
 
 def _bind_cls_to_nested_params_class(cls: Type[Any]):

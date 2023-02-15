@@ -484,6 +484,14 @@ class FiddleBaseParameterizableTest(absltest.TestCase):
     with self.assertRaisesRegex(TypeError, expected_msg):
       FiddlifiedTestClass(-1, 'goodbye')
 
+  def test_config_stub(self):
+    cfg = FiddlifiedTestClass.config(some_param=3)
+    instance = pax_fiddle.instantiate(cfg)
+    self.assertEqual(instance.some_param, 3)
+
+  def test_hparams_class_stubs_forwards_cls(self):
+    self.assertIs(FiddlifiedTestClass.HParams.cls, FiddlifiedTestClass)
+
 
 class NestedStructToTextTestCase(absltest.TestCase):
 
