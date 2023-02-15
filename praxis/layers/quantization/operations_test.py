@@ -82,7 +82,7 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
 
   def setUp(self):
     super().setUp()
-    np.random.seed(123456)
+    np.random.seed(1234567)
 
   @parameterized.named_parameters(
       ('eqn1', 'ab,bc->ac', (4, 3), (3,), ()),
@@ -102,9 +102,13 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
         weight,
         jnp.multiply(reduced_weight, scale).astype(jnp.float32),
         rtol=0.02,
-        atol=0.02)
-    weight_nudged = operations.fakequant_einsum(eqn, weight)
-    self.assertAllClose(weight, weight_nudged, rtol=0.02, atol=0.02)
+        atol=0.02,
+    )
+    for use_symmetric in [True, False]:
+      weight_nudged = operations.fakequant_einsum(
+          eqn, weight, use_symmetric=use_symmetric
+      )
+      self.assertAllClose(weight, weight_nudged, rtol=0.02, atol=0.02)
 
   def test_percentile(self):
     weight = np.random.normal(-2.0, 2.0, (4, 3)).astype(np.float32)

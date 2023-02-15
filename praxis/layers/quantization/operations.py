@@ -192,6 +192,7 @@ def _reduce_precision(
   Returns:
     the quantized tensor.
     the quantization scale.
+    the quantization zero point (optional).
   """
   min_value, max_value = _get_min_max(bits)
 
@@ -217,7 +218,7 @@ def _reduce_precision(
   else:
     zp = min_value - t_min / scale
     t = jnp.divide(t, scale) + zp
-    zp = jnp.multiply(scale, zp).squeeze()
+    zp = jnp.multiply(scale, zp)
 
   if need_gradient:
     t = _round_with_gradient(t)
@@ -280,6 +281,8 @@ def reduce_einsum_weight_precision(
   )
   if squeeze:
     scale = jnp.squeeze(scale)
+    if zp is not None:
+      zp = jnp.squeeze(zp)
   return t, scale, zp
 
 
@@ -288,6 +291,7 @@ def fakequant_einsum(
     t: JTensor,
     bits: int = 8,
     calculation_type: jnp.dtype = jnp.bfloat16,
+    use_symmetric: bool = True,
 ) -> JTensor:
   """Nudges weight of einsum with FakeQuant.
 
@@ -296,11 +300,12 @@ def fakequant_einsum(
     t: the weight tensor for the einsum.
     bits: target number of bits.
     calculation_type: the type for calculation.
+    use_symmetric: use symmetric quantization for weights.
 
   Returns:
     The nudged weight tensor.
   """
-  q, scale, _ = reduce_einsum_weight_precision(
+  q, scale, zp = reduce_einsum_weight_precision(
       eqn,
       t,
       calculation_type=calculation_type,
@@ -308,8 +313,12 @@ def fakequant_einsum(
       need_gradient=True,
       bits=bits,
       optimization_on_bound=False,
+      use_symmetric=use_symmetric,
   )
-  return jnp.multiply(q, scale).astype(t.dtype)
+  res = jnp.multiply(q, scale)
+  if zp is not None:
+    res = jnp.subtract(res, zp)
+  return res.astype(t.dtype)
 
 
 def reduce_precision_activation(

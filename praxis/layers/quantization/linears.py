@@ -145,8 +145,13 @@ class Linear(linears.Linear):
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
         bits = self.quantization.weight_params.precision
+        use_symmetric = self.quantization.weight_params.use_symmetric
         w = operations.fakequant_einsum(
-            eqn, w, bits=bits, calculation_type=self.dtype
+            eqn,
+            w,
+            bits=bits,
+            calculation_type=self.dtype,
+            use_symmetric=use_symmetric,
         )
         out = linears.project_last_dim(inputs, w)
       else:
