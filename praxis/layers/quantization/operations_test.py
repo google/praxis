@@ -218,7 +218,7 @@ class AqtDotGeneralTest(test_utils.TestCase):
             [-7.0, 4.01, 4.01],  #
             [-7.0, 0.01, -4.01],
         ],)
-    qlhs = np.array(
+    q_deq_lhs = np.array(
         [
             [-6, 4, 4],  #
             [-6, 0, -4]
@@ -231,22 +231,22 @@ class AqtDotGeneralTest(test_utils.TestCase):
             [-0.99, 0],
             [-0.01, 1.5]
         ],)
-    qrhs = np.array(
+    q_deq_rhs = np.array(
         [
             [-1, 1],  #
             [-1, 0],
             [0, 1]
         ],)
 
-    return lhs, qlhs, rhs, qrhs
+    return lhs, q_deq_lhs, rhs, q_deq_rhs
 
   def test_basic_dot_general(self):
-    lhs, qlhs, rhs, qrhs = self.basic_quant_example()
+    lhs, q_deq_lhs, rhs, q_deq_rhs = self.basic_quant_example()
 
     dot_general, _ = self.get_dot_general_module(lhs, rhs, 3, 2)
     dimension_numbers = (((1,), (0,)), ((), ()))
     actual_ret = dot_general(lhs, rhs, dimension_numbers)
-    expected_ret = jax.lax.dot_general(qlhs, qrhs,
+    expected_ret = jax.lax.dot_general(q_deq_lhs, q_deq_rhs,
                                        dimension_numbers).astype(jnp.float32)
     self.assertArraysEqual(actual_ret, expected_ret)
 

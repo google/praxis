@@ -86,6 +86,48 @@ class QuantizedLinearTest(test_utils.TestCase):
       self.assertRaises(AssertionError, self.assertAllClose,
                         jnp.full((2, 4), 0.0, dtype=p.dtype), outputs)
 
+  def test_linear_aqt_quantized(self):
+    p_q = pax_fiddle.Config(
+        qlinears.Linear,
+        name='_linear_q',
+        quantization=QuantizationHParams(
+            quantization_type=QuantizationType.AQT,
+            mode=QuantizationMode.TRAINING,
+            act_params=quantization_hparams.ActQuantizationParams(precision=3),
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                precision=2,
+                add_scale_eps=False,
+            ),
+        ),
+    )
+    p_q.input_dims = 3
+    p_q.output_dims = 2
+
+    inputs = np.array(
+        [
+            [-7.0, 4.01, 4.01],
+            [-7.0, 0.01, -4.01],
+        ],)
+
+    weight = np.array(
+        [
+            [-1.5, 0.99],
+            [-0.99, 0],
+            [-0.01, 1.5]
+        ],)
+    expected_output = np.array(
+        [
+            [2., -2.],
+            [6., -10.]
+        ])
+
+    linear_q = instantiate(p_q)
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars_q = linear_q.init(prng_key, inputs)
+      initial_vars_q['params']['w'] = weight
+      outputs_q = linear_q.apply(initial_vars_q, inputs)
+    self.assertAllClose(expected_output, outputs_q)
 
 class QuantizedLinearsSyncTest(test_utils.TestCase):
   """Sync tests between quantized Linear and regular Linear.
@@ -121,60 +163,6 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
 
     inputs = np.random.normal(1.5, 2.0, [5, 16]).astype(np.float32)
     self.run_and_compare(p_f, p_q, inputs)
-
-  def test_linear_aqt_quantized(self):
-    p_f = pax_fiddle.Config(linears.Linear, name='_linear_f')
-    p_q = pax_fiddle.Config(
-        qlinears.Linear,
-        name='_linear_q',
-        quantization=QuantizationHParams(
-            quantization_type=QuantizationType.AQT,
-            mode=QuantizationMode.TRAINING,
-            act_params=quantization_hparams.ActQuantizationParams(precision=3),
-            weight_params=quantization_hparams.WeightQuantizationParams(
-                precision=2
-            ),
-        ),
-    )
-    for p in [p_f, p_q]:
-      p.input_dims = 3
-      p.output_dims = 2
-
-    inputs = np.array(
-        [
-            [-7.0, 4.01, 4.01],
-            [-7.0, 0.01, -4.01],
-        ],)
-    q_inputs = np.array(
-        [
-            [-6, 4, 4],
-            [-6, 0, -4]
-        ],)
-
-    weight = np.array(
-        [
-            [-1.5, 0.99],
-            [-0.99, 0],
-            [-0.01, 1.5]
-        ],)
-    q_weight = np.array(
-        [
-            [-1, 1],
-            [-1, 0],
-            [0, 1]
-        ],)
-
-    linear_f = instantiate(p_f)
-    linear_q = instantiate(p_q)
-    with base_layer.JaxContext.new_context():
-      prng_key = jax.random.PRNGKey(seed=123)
-      initial_vars_f = linear_f.init(prng_key, q_inputs)
-      initial_vars_q = linear_q.init(prng_key, inputs)
-      initial_vars_f['params']['w'] = q_weight
-      initial_vars_q['params']['w'] = weight
-      outputs_f = linear_f.apply(initial_vars_f, q_inputs)
-      outputs_q = linear_q.apply(initial_vars_q, inputs)
-    self.assertAllClose(outputs_f.astype(outputs_q.dtype), outputs_q)
 
   def test_linear_quantized_in_inference_mode(self):
     p_f = pax_fiddle.Config(linears.Linear, name='_linear_f')
@@ -321,7 +309,7 @@ class QuantizeLinearTest(test_utils.TestCase):
           initial_vars, mutable=[], method=layer.quantize_weight)
 
     self.assertArraysEqual(res['params']['w'], q_weight)
-    self.assertArraysEqual(res['params']['w_quantized_scale'], expected_scale)
+    self.assertAllClose(res['params']['w_quantized_scale'], expected_scale, atol=1e-6)
 
 
 if __name__ == '__main__':

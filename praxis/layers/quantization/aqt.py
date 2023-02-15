@@ -116,19 +116,29 @@ class TensorQuantizer(base_layer.BaseLayer):
     # Since TensorQuantizer does nothing when initialized, __call__ is a no-op.
     pass
 
-  def _get_clip_bound(self) -> float:
+  def _get_clip_bound(self) -> Tuple[float, float]:
     # TODO(jihwanlee): run an experiment to compare b/w [-127.5, 127.5] and
     # [-128, 127], in case of int8.
-    bound = 2.0**self.precision - 1.0
-    if self.unsigned_int_bounds:
-      return bound
-    return bound / 2.0
 
-  def _safe_clip_bound(self) -> float:
-    cb_unsafe = self._get_clip_bound()
-    cb = cb_unsafe - 2.0 ** (-20 + self.precision)
-    assert cb < cb_unsafe, 'Internal error, epsilon too small.'
-    return cb
+    # For unsigned 8 bits precision it is [0, 255]
+    if self.unsigned_int_bounds:
+      return 0, 2.0**self.precision - 1
+    else:
+      # For signed 8 bits precision it is [-128.5, 127.5]
+      return (
+          -(2.0 ** (self.precision - 1)) - 0.5,
+          2.0 ** (self.precision - 1) - 1 + 0.5,
+      )
+
+  def _safe_clip_bound(self) -> Tuple[float, float]:
+    min_unsafe, max_unsafe = self._get_clip_bound()
+    eps = 2.0 ** (-20 + self.precision)
+    max_safe = max_unsafe - eps
+    min_safe = min_unsafe + eps
+    assert max_safe < max_unsafe, 'Internal error, epsilon too small.'
+    assert min_safe > min_unsafe, 'Internal error, epsilon too small.'
+
+    return min_safe, max_safe
 
   def _get_scale(
       self,
@@ -140,20 +150,21 @@ class TensorQuantizer(base_layer.BaseLayer):
     if self.precision is None:
       return jnp.ones(shape=(1,) * x.ndim, dtype=dtype)
 
-    clip_bound = self._get_clip_bound()
+    clip_bound_min, clip_bound_max = self._get_clip_bound()
 
     if self.use_symmetric:
       x_bound = jnp.max(jnp.abs(x), axis=contract_dims, keepdims=True)
+      range_bound = clip_bound_max
     else:
       x_max = jnp.max(x, axis=contract_dims, keepdims=True)
       x_min = jnp.min(x, axis=contract_dims, keepdims=True)
       x_bound = x_max - x_min
-      clip_bound = 2**self.precision - 1.0
+      range_bound = clip_bound_max - clip_bound_min
 
     if clipping is not None:
       x_bound *= clipping
 
-    scale = x_bound /clip_bound
+    scale = x_bound / range_bound
     if self.stop_scale_gradient:
       scale = jax.lax.stop_gradient(scale)
 
@@ -231,19 +242,17 @@ class TensorQuantizer(base_layer.BaseLayer):
     if self.precision is None:
       return x.astype(dtype)
 
-    clip_bound = self._safe_clip_bound()
-    low_clip_bound = 0 if self.unsigned_int_bounds else -clip_bound
-    high_clip_bound = clip_bound
+    clip_bound_min, clip_bound_max = self._safe_clip_bound()
 
-    x = jnp.clip(x, low_clip_bound, high_clip_bound)
+    x = jnp.clip(x, clip_bound_min, clip_bound_max)
     x = _pass_through(x + 0.5, jnp.floor)
 
     return x.astype(dtype)
 
   def _get_zero_point(self, x, contract_dims, scale) -> JTensor:
     x_min = jnp.min(x, axis=contract_dims, keepdims=True)
-    clip_bound = self._get_clip_bound()
-    zp = -clip_bound - x_min / scale
+    clip_bound_min, _ = self._get_clip_bound()
+    zp = clip_bound_min - x_min / scale
     return zp
 
   def quantize(
