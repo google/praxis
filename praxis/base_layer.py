@@ -872,6 +872,7 @@ class SummaryType(enum.Enum):
   # VIDEO summaries can be added to tensorboard using VideoSummaryMetric under
   # pax multimodal metrics but not add_summary.
   VIDEO = 7
+  HISTOGRAM = 8
 
   # Like SCALAR, but this type indicates that this data is suitable for use
   # with sensitive data.
@@ -914,8 +915,9 @@ def trim_summary_type_from_key(key: str) -> str:
 class _SummaryDict:
   """A dict holding summaries generated during forward computation.
 
-  Currently it supports 6 types: SCALAR, AGGREGATE_SCALAR, IMAGE,
-  AGGREGATE_IMAGE, TEXT, AUDIO. Keys will be appended with a type suffix.
+  Currently it supports 8 types: SCALAR, AGGREGATE_SCALAR, IMAGE,
+  AGGREGATE_IMAGE, TEXT, AUDIO, SUMMARY, HISTOGRAM. Keys will be appended with a
+  type suffix.
   """
 
   def __init__(self) -> None:
@@ -1096,9 +1098,10 @@ def add_global_summary(
     name: name of the summary.
     tensor: value of the summary.
     summary_type: type of the summary. Currently it supports 3 types: SCALAR,
-      IMAGE, AUDIO. Keys will be appended with a type suffix. Image tensors
-      must be either [batch, height, width, channels] or
-      [height, width, channels].
+      IMAGE, AUDIO, HISTOGRAM. Keys will be appended with a type suffix. Image
+      tensors must be either [batch, height, width, channels] or [height, width,
+      channels]. The histograms are computed over the batch and do not have the
+      batch dimension.
     verbosity: verbosity level for the summary to add. If the current jax
       context's verbosity level is less verbose (lower value) than the summary,
       the summary does not get added. Refer to
