@@ -2316,9 +2316,14 @@ def _is_template_type(typ):
 
 def assert_has_shape(t: JTensor, shape: Sequence[int]) -> None:
   asserts.eq(t.ndim, len(shape))
+  value_str1 = f't.shape={t.shape}'
+  value_str2 = f'shape={shape}'
   for i in range(t.ndim):
     if shape[i] != -1:
-      asserts.eq(t.shape[i], shape[i])
+      asserts.eq(
+          t.shape[i], shape[i],
+          value_str1=value_str1,
+          value_str2=value_str2)
 
 
 def compatible_hparams(
