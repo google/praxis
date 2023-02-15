@@ -466,10 +466,12 @@ class QuantizeAttentionTest(test_utils.TestCase):
     self.assertEqual(pspec, expected_pspec)
 
   @parameterized.named_parameters(
-      ('PTQ', QuantizationType.PTQ),
-      ('AQT', QuantizationType.AQT),
+      ('PTQ_symmetric', QuantizationType.PTQ, True),
+      ('AQT_symmetric', QuantizationType.AQT, True),
+      ('PTQ_asymmetric', QuantizationType.PTQ, False),
+      ('AQT_asymmetric', QuantizationType.AQT, False),
   )
-  def test_quantize_attention_qkv(self, quantization_type):
+  def test_quantize_attention_qkv(self, quantization_type, use_symmetric):
     p = pax_fiddle.Config(
         qattentions.CombinedQKVProjectionLayer,
         name='_combined_qkv',
@@ -484,6 +486,9 @@ class QuantizeAttentionTest(test_utils.TestCase):
         quantization=QuantizationHParams(
             quantization_type=quantization_type,
             mode=QuantizationMode.TRAINING,
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                use_symmetric=use_symmetric
+            ),
         ),
     )
     layer = instantiate(p)
@@ -494,16 +499,21 @@ class QuantizeAttentionTest(test_utils.TestCase):
       initial_vars = layer.init(prng_key, inputs)
       res, _ = layer.apply(
           initial_vars, mutable=[], method=layer.quantize_weight)
+      pspec, _ = layer.apply(
+          initial_vars, mutable=[], method=layer.quantized_partition_specs
+      )
 
     self.assertEqual(len(res), 1)
-    self.assertEqual(len(res[base_layer.PARAMS]), 2)
-    self.assertEqual(res[base_layer.PARAMS]['w'].shape, (3, 5, 6, 2))
-    self.assertEqual(res[base_layer.PARAMS]['w_quantized_scale'].shape,
-                     (3, 6, 2))
 
-    pspec, _ = layer.apply(
-        initial_vars, mutable=[], method=layer.quantized_partition_specs
-    )
+    shapes = jax.tree_map(lambda x: x.shape, res)
+    types = jax.tree_map(lambda x: x.dtype, res)
+
+    expected_shape = {
+        base_layer.PARAMS: {'w': (3, 5, 6, 2), 'w_quantized_scale': (3, 6, 2)}
+    }
+    expected_types = {
+        base_layer.PARAMS: {'w': jnp.int8, 'w_quantized_scale': p.dtype}
+    }
     expected_pspec = {
         'params': {
             'w': base_layer.BoxedPartitionSpec(
@@ -514,7 +524,20 @@ class QuantizeAttentionTest(test_utils.TestCase):
             ),
         }
     }
+
+    if not use_symmetric:
+      expected_shape[base_layer.PARAMS]['w_quantized_zp'] = (3, 6, 2)
+      expected_types[base_layer.PARAMS]['w_quantized_zp'] = p.dtype
+      expected_pspec['params']['w_quantized_zp'] = (
+          base_layer.BoxedPartitionSpec(
+              meta=jax.sharding.PartitionSpec(None, 'mdl', 'data')
+          )
+      )
+
+    self.assertEqual(shapes, expected_shape)
+    self.assertEqual(types, expected_types)
     self.assertEqual(pspec, expected_pspec)
+
 
 if __name__ == '__main__':
   absltest.main()

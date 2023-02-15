@@ -15,6 +15,7 @@
 
 """Quantized Multi-Query Attention layers."""
 
+import copy
 from typing import Any
 
 from jax import numpy as jnp
@@ -45,12 +46,10 @@ class OneHeadedAttentionProjection(
 
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
-
   def _do_static_activation_quantization(self) -> bool:
     """If activation need to be quantized."""
     act_params = self.quantization.act_params
     return act_params is not None and act_params.stats_config is not None
-
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -63,12 +62,13 @@ class OneHeadedAttentionProjection(
         shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
-      if not self.quantization.weight_params.use_symmetric:
-        zpc = WeightHParams(
-            shape=[self.output_dim]
-        )
-        self.create_variable('w_quantized_zp', zpc)
-      self.create_quantized_variable('w', pc, [self.output_dim])
+      self.create_quantized_variable(
+          'w',
+          pc,
+          [self.output_dim],
+          dtype=self.quantization.weight_params.dtype,
+          use_symmetric=self.quantization.weight_params.use_symmetric,
+      )
     else:
       self.create_variable('w', pc)
     if self.use_bias:
@@ -103,11 +103,14 @@ class OneHeadedAttentionProjection(
     ), f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {self.input_dim}'
     eqn = '...D,DH->...H'
     if self.quantization.mode == QuantizationMode.INFERENCE:
-      w, s = self.get_quantized_weight('w')
+      w, s, zp = self.get_quantized_weight(
+          'w', use_symmetric=self.quantization.weight_params.use_symmetric
+      )
       if self.quantization.weight_params.use_symmetric:
         ret = operations.einsum(eqn, inputs, w, s)
       else:
-        ret = operations.einsum(eqn, inputs, w, s, self.theta['w_quantized_zp'])
+        assert zp is not None, 'zp cannot be None when use_symmetric=False.'
+        ret = operations.einsum(eqn, inputs, w, s, zp)
     else:
       w = theta.w
       ret = jnp.einsum(eqn, inputs, w)
@@ -121,7 +124,7 @@ class OneHeadedAttentionProjection(
     Returns:
       a map from names to partition spec.
     """
-    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     weight_pspec = base_layer._weight_hparam_to_pspec(
         self._weight_hparams['w'], self.mesh_axis_names
     )
@@ -135,6 +138,10 @@ class OneHeadedAttentionProjection(
         scale_weight_hparam, self.mesh_axis_names
     )
     partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
+
+    if not self.quantization.weight_params.use_symmetric:
+      zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
+      partitionspec[zp_name] = copy.deepcopy(scale_pspec)
 
     # Activation variable partitioning is only needed for static quantization.
     if self._do_static_activation_quantization():
@@ -151,7 +158,7 @@ class OneHeadedAttentionProjection(
       a map from names to quantized weights.
     """
     theta = self.theta
-    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     eqn = 'xy,yz->xz'
     bits = self.quantization.weight_params.precision
     percentile = self.quantization.weight_params.clipping_coeff
@@ -161,14 +168,20 @@ class OneHeadedAttentionProjection(
             'Static activation quantization is not supported yet.'
         )
       else:
-        q_w, q_s = operations.reduce_einsum_weight_precision(
+        q_w, q_s, zp = operations.reduce_einsum_weight_precision(
             eqn,
             theta.w,
             calculation_type=self.dtype,
             bits=bits,
             percentile=percentile,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
         )
-        return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
+
+        if self.quantization.weight_params.use_symmetric:
+          return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
+        else:
+          zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
+          return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}
     else:
       raise NotImplementedError(
           'Only PTQ is supported in quantized multi_query_attention.'

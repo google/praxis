@@ -28,7 +28,6 @@ def einsum_eqn_to_dimension_numbers(
   Only supports equations meeting the following conditions:
     - there are two inputs
     - there are no repeated dims
-    - there are no dynamic batch dims ('...')
     - all contractions dims are shared between lhs and rhs
 
   Args:
@@ -38,6 +37,9 @@ def einsum_eqn_to_dimension_numbers(
     lax.DotDimensionNumbers and an optional permutation to pass to
     jax.lax.transpose after jax.lax.dot_general.
   """
+  # TODO(jihwanlee): have a more reliable apporach to handle the ellipis
+  assert '$' not in eqn, f'einsum eqn {eqn}: $ is reserved for replacement of ellipsis.'
+  eqn = eqn.replace('...', '$')
   if '.' in eqn:
     raise NotImplementedError("Dynamic batch dims ('...') are not supported.")
   inputs, out_names = eqn.split('->')

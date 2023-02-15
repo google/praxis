@@ -59,7 +59,6 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     jax_out = layer.apply(initial_vars, inputs)
     self.assertSequenceEqual(jax_out.shape, [5, 5])
 
-
   @parameterized.named_parameters(('symmetric', True), ('asymmetric', False))
   def test_one_headed_projection_quantized(self, use_symmetric):
     input_dim = 16

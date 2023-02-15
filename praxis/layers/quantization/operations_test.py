@@ -93,7 +93,7 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
                                           expected_scale_shape, expand_dims):
 
     weight = np.random.normal(1.5, 2.0, w_shape).astype(np.float32)
-    reduced_weight, scale = operations.reduce_einsum_weight_precision(
+    reduced_weight, scale, _ = operations.reduce_einsum_weight_precision(
         eqn, weight)
     self.assertEqual(scale.shape, expected_scale_shape)
     if expand_dims:
@@ -108,7 +108,7 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
 
   def test_percentile(self):
     weight = np.random.normal(-2.0, 2.0, (4, 3)).astype(np.float32)
-    reduced_weight, scale = operations.reduce_einsum_weight_precision(
+    reduced_weight, scale, _ = operations.reduce_einsum_weight_precision(
         'ab,bc->ac', weight, percentile=0.9
     )
     # Large value discrepancy is expected since we use 0.9 percentile.

@@ -56,7 +56,6 @@ class UtilsTest(test_utils.TestCase):
     self.assertAllClose(einsum_result, dot_general_result)
 
   @parameterized.parameters(
-      dict(eqn='...AB,BC->...AC', error=NotImplementedError, regex=r'\.\.\.'),
       dict(eqn='AB->BA', error=ValueError, regex=r'arguments'),
       dict(eqn='ABB,BC->AC', error=ValueError, regex=r'Repeated'),
       dict(eqn='ABC,AB->AB', error=ValueError, regex=r'Contraction.*C'),

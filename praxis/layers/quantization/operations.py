@@ -16,7 +16,7 @@
 """Operations for quantization."""
 
 import functools
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import jax
 from jax import lax
@@ -166,38 +166,59 @@ def _round_with_gradient(x):
   return zero + jax.lax.stop_gradient(jnp.round(x))
 
 
-def reduce_precision(
+def _reduce_precision(
     t: JTensor,
-    bound: JTensor,
+    contract_dims: Optional[Sequence[int]],
     need_gradient: bool = False,
     bits: int = 8,
     optimization_on_bound: bool = False,
     percentile: float = 1.0,
-) -> Tuple[JTensor, JTensor]:
+    use_symmetric: bool = True,
+) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
   """Reduce the precision of a tensor.
 
   Generic for all tensors.
 
   Args:
     t: input tensor
-    bound: the bound value for the tensor.
+    contract_dims: speficies contracting dimesnions of the input tensor.
     need_gradient: if gradient is needed out of this function.
     bits: target number of bits.
     optimization_on_bound: if MAE bound optimizer is used.
     percentile: percentile factor to apply on the min/max range. Setting this to
       other than 1.0 disables optimization_on_bound.
+    use_symmetric: if the input tensor is quantized symmetrically.
 
   Returns:
     the quantized tensor.
     the quantization scale.
   """
   min_value, max_value = _get_min_max(bits)
+
+  if use_symmetric:
+    bound = jnp.max(jnp.abs(t), axis=contract_dims, keepdims=True)
+    scale_bound = max_value
+  else:
+    t_max = jnp.max(t, axis=contract_dims, keepdims=True)
+    t_min = jnp.min(t, axis=contract_dims, keepdims=True)
+    bound = t_max - t_min
+    scale_bound = 2**bits - 1.0
+
   if percentile < 1.0:
     bound = jnp.multiply(bound, percentile)
   elif optimization_on_bound:
     bound = optimization.get_best_bound(t, bound, min_value, max_value)
-  scale = bound / max_value
-  t = jnp.divide(t, scale)
+
+  scale = bound / scale_bound
+
+  if use_symmetric:
+    zp = None
+    t = jnp.divide(t, scale)
+  else:
+    zp = min_value - t_min / scale
+    t = jnp.divide(t, scale) + zp
+    zp = jnp.multiply(scale, zp).squeeze()
+
   if need_gradient:
     t = _round_with_gradient(t)
     t = jnp.clip(t, min_value, max_value)
@@ -205,7 +226,8 @@ def reduce_precision(
     t = jnp.round(t)
     # Use int8 as container.
     t = jnp.clip(t, min_value, max_value).astype(jnp.int8)
-  return t, scale
+
+  return t, scale, zp
 
 
 def reduce_einsum_weight_precision(
@@ -217,7 +239,8 @@ def reduce_einsum_weight_precision(
     bits: int = 8,
     optimization_on_bound: bool = False,
     percentile: float = 1.0,
-) -> Tuple[JTensor, JTensor]:
+    use_symmetric: bool = True,
+) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
   """Reduce the precision of the weight of einsum.
 
   It uses per-channel quantization so einsum equation is passed in as well.
@@ -231,6 +254,7 @@ def reduce_einsum_weight_precision(
     bits: target number of bits.
     optimization_on_bound: if MAE bound optimizer is used.
     percentile: percentile factor to apply on the min/max range.
+    use_symmetric: if weights are quantized symmetrically.
 
   Returns:
     A tuple of JTensors. The first one is the quantized weight and the second
@@ -244,19 +268,19 @@ def reduce_einsum_weight_precision(
 
   if t.dtype != calculation_type:
     t = t.astype(calculation_type)
-  bound = jnp.max(jnp.abs(t), axis=contract_dims, keepdims=True)
 
-  t, scale = reduce_precision(
+  t, scale, zp = _reduce_precision(
       t,
-      bound,
+      contract_dims,
       need_gradient,
       bits,
       optimization_on_bound,
       percentile=percentile,
+      use_symmetric=use_symmetric,
   )
   if squeeze:
     scale = jnp.squeeze(scale)
-  return t, scale
+  return t, scale, zp
 
 
 def fakequant_einsum(
@@ -276,7 +300,7 @@ def fakequant_einsum(
   Returns:
     The nudged weight tensor.
   """
-  q, scale = reduce_einsum_weight_precision(
+  q, scale, _ = reduce_einsum_weight_precision(
       eqn,
       t,
       calculation_type=calculation_type,
@@ -304,9 +328,8 @@ def reduce_precision_activation(
     A tuple of JTensors. The first one is the quantized activation and the
     second one is the scaling factor.
   """
-  # TODO(jianlijianli): enable zero point as well.
-  bound = jnp.max(jnp.abs(t), keepdims=True)
-  return reduce_precision(t, bound, need_gradient, bits, False)
+  qt, scale, _ = _reduce_precision(t, None, need_gradient, bits, False)
+  return qt, scale
 
 
 def fakequant_activation(t: JTensor, bits: int = 8) -> JTensor:
@@ -384,6 +407,7 @@ def dot_general(
     rhs_quantized: Optional[Tuple[JTensor, JTensor]] = None,
     rhs_zp: Optional[JTensor] = None,
     eqn: Optional[str] = None,
+    perm: Optional[Sequence[int]] = None,
 ) -> JTensor:
   """Quantized jax.lax.dot_general.
 
@@ -401,6 +425,7 @@ def dot_general(
       together.
     rhs_zp: Zero point of right-hand side of the einsum.
     eqn: The valid binary einsum equation to use.
+    perm: the dimenions to be permuated to align with the einsum equation.
 
   Returns:
     An array containing the result with the same dtype as 'lhs' and 'rhs'.
@@ -465,6 +490,8 @@ def dot_general(
           'eqn has to be specified for zero point calculation.'
       )
     offset = compute_offset(lhs, rhs_zp, eqn)
+    if perm is not None:
+      offset = lax.transpose(offset, perm)
     ret = ret - offset
 
   return ret
@@ -512,6 +539,7 @@ def aqt_einsum(
       rhs_quantized=rhs_quantized,
       rhs_zp=rhs_zp,
       eqn=eqn,
+      perm=perm,
   )
   if perm is not None:
     out = lax.transpose(out, perm)

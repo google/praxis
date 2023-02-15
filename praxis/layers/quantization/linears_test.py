@@ -52,6 +52,20 @@ def _generate_quantization_types_modes() -> Sequence[Dict[str, Any]]:
   return [dict(zip(keys, case)) for case in cases]
 
 
+def _generate_quantization_types_symmetric() -> Sequence[Dict[str, Any]]:
+  keys = ['testcase_name', 'quantization_type', 'use_symmetric']
+  types = [QuantizationType.PTQ, QuantizationType.FQ, QuantizationType.AQT]
+  use_symmetric = [True, False]
+
+  cases = []
+  for case in itertools.product(types, use_symmetric):
+    is_symmetric = 'symmetric' if case[1] else 'asymmetric'
+    name = case[0].value + '_' + is_symmetric
+    cases.append([name] + list(case))
+
+  return [dict(zip(keys, case)) for case in cases]
+
+
 class QuantizedLinearTest(test_utils.TestCase):
 
   def setUp(self):
@@ -205,12 +219,8 @@ class QuantizeLinearTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(123456)
 
-  @parameterized.named_parameters(
-      dict(testcase_name='PTQ', quantization_type=QuantizationType.PTQ),
-      dict(testcase_name='FQ', quantization_type=QuantizationType.FQ),
-      dict(testcase_name='AQT', quantization_type=QuantizationType.AQT)
-  )
-  def test_quantize_linear(self, quantization_type):
+  @parameterized.named_parameters(_generate_quantization_types_symmetric())
+  def test_quantize_linear(self, quantization_type, use_symmetric):
     p = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
@@ -221,6 +231,9 @@ class QuantizeLinearTest(test_utils.TestCase):
         quantization=QuantizationHParams(
             quantization_type=quantization_type,
             mode=QuantizationMode.TRAINING,
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                use_symmetric=use_symmetric
+            ),
         ),
     )
     p.input_dims = 6
@@ -235,24 +248,20 @@ class QuantizeLinearTest(test_utils.TestCase):
 
       res, _ = layer.apply(
           initial_vars, mutable=[], method=layer.quantize_weight)
+      # Check ParititionSpecs.
+      pspec, _ = layer.apply(
+          initial_vars, mutable=[], method=layer.quantized_partition_specs
+      )
+
     shapes = jax.tree_map(lambda x: x.shape, res)
     types = jax.tree_map(lambda x: x.dtype, res)
-    self.assertEqual(
-        shapes, {base_layer.PARAMS: {
-            'w': (6, 4),
-            'w_quantized_scale': (4,)
-        }})
-    self.assertEqual(
-        types,
-        {base_layer.PARAMS: {
-            'w': jnp.int8,
-            'w_quantized_scale': p.dtype
-        }})
 
-    # Check ParititionSpecs.
-    pspec, _ = layer.apply(
-        initial_vars, mutable=[], method=layer.quantized_partition_specs
-    )
+    expected_shape = {
+        base_layer.PARAMS: {'w': (6, 4), 'w_quantized_scale': (4,)}
+    }
+    expected_types = {
+        base_layer.PARAMS: {'w': jnp.int8, 'w_quantized_scale': p.dtype}
+    }
     expected_pspec = {
         'params': {
             'w': base_layer.BoxedPartitionSpec(
@@ -263,6 +272,16 @@ class QuantizeLinearTest(test_utils.TestCase):
             ),
         }
     }
+
+    if not use_symmetric:
+      expected_shape[base_layer.PARAMS]['w_quantized_zp'] = (4,)
+      expected_types[base_layer.PARAMS]['w_quantized_zp'] = p.dtype
+      expected_pspec['params']['w_quantized_zp'] = (
+          base_layer.BoxedPartitionSpec(meta=jax.sharding.PartitionSpec('data'))
+      )
+
+    self.assertEqual(shapes, expected_shape)
+    self.assertEqual(types, expected_types)
     self.assertEqual(pspec, expected_pspec)
 
   def test_aqt_quantize_weight(self):

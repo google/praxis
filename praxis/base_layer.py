@@ -108,8 +108,9 @@ DEFAULT_INIT_MUTABLE_LIST = [PARAMS, NON_TRAINABLE] + NON_PAX_VAR_COLLECTION
 RANDOM = 'random'
 NON_PAX_RNG_KEY = 'dropout'
 
-# Postfix for quantized scale name.
-QUANTIZED_NAME_POSTFIX = '_quantized_scale'
+# Postfix for quantized scale and zero point names.
+QUANTIZED_SCALE_NAME_POSTFIX = '_quantized_scale'
+QUANTIZED_ZP_NAME_POSTFIX = '_quantized_zp'
 
 # Public aliase of base_hyperparams.instantiate() for convenience.
 instantiate = base_hyperparams.instantiate
@@ -1969,13 +1970,16 @@ class BaseLayer(nn.Module):
       weight_hparams: WeightHParams,
       scale_shape: Sequence[int],
       dtype: jnp.dtype = jnp.int8,
+      use_symmetric: bool = True,
   ):
     """Creates quantized variables, a pair of weight and scale tensors.
 
-    `name` will be name of the weight tensor; `name` + `_quantized_scale` will
-    be the name of the scale tensor.
+    `name` will be name of the weight tensor; `name` + `_quantized_scale` and
+    `name` + `_quantized_zp` will be the names of the scale tensor and the zero
+    point tensor, respectively.
 
-    Only the shape and mesh for weight_hparams are used.
+    Only the shape and mesh for weight_hparams are used. The scale and the zero
+    point have the same shape, assuming per-channel quantization.
 
     Currently supports only int8 weight types.
 
@@ -1984,6 +1988,8 @@ class BaseLayer(nn.Module):
       weight_hparams: HParams for weight.
       scale_shape: Shape of the scales.
       dtype: Data type of the quantized weight tensor.
+      use_symmetric: If False, additionally create a variable for the zero point
+        used for asymmetric weight quantization.
     """
 
     quantized_weight_hparams = weight_hparams.clone()
@@ -1991,28 +1997,42 @@ class BaseLayer(nn.Module):
     quantized_weight_hparams.init = WeightInit.Constant(0)
     self.create_variable(name=name, var_hparams=quantized_weight_hparams)
     self.create_variable(
-        name=name + QUANTIZED_NAME_POSTFIX,
-        var_hparams=WeightHParams(shape=scale_shape))
+        name=name + QUANTIZED_SCALE_NAME_POSTFIX,
+        var_hparams=WeightHParams(shape=scale_shape),
+    )
+    if not use_symmetric:
+      self.create_variable(
+          name=name + QUANTIZED_ZP_NAME_POSTFIX,
+          var_hparams=WeightHParams(shape=scale_shape),
+      )
 
   @nn.nowrap
-  def get_quantized_weight(self, name: str) -> Tuple[JTensor, JTensor]:
+  def get_quantized_weight(
+      self, name: str, use_symmetric: bool = True
+  ) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
     """Gets quantized variables.
 
-    Gets a pair of weight and scale tensors. To be used together with
-    `create_quantized_variable`.
+    Gets a tuple of weight, scale, and possibly zero point tensors. To be used
+    together with `create_quantized_variable`.
 
-    `name` will be name of the weight tensor; assumes scale tensor has the
-    postfix: `_quantized_scale`
+    `name` will be name of the weight tensor; assumes scale and zero point
+    tensor have the postfix, `_quantized_scale` and `_quantized_zp`,
+    respectively.
 
     Args:
       name: Variable name for the weight tensor.
+      use_symmetric: If False (weight quantized asymmetrically), return the zero
+        point along with quantized weight and scale.
 
     Returns:
-      A Tuple of two elements for weight Tensor and scale Tensor.
+      A Tuple of three elements for weight Tensor, scale Tensor, and zero point
+      Tensor.
     """
 
-    scale_name = name + QUANTIZED_NAME_POSTFIX
-    return self.theta[name], self.theta[scale_name]
+    scale_name = name + QUANTIZED_SCALE_NAME_POSTFIX
+    zp_name = name + QUANTIZED_ZP_NAME_POSTFIX
+    zp = None if use_symmetric else self.theta[zp_name]
+    return self.theta[name], self.theta[scale_name], zp
 
   @nn.nowrap
   def create_variable(self,
