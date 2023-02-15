@@ -894,7 +894,7 @@ class _FiddleHParamsInstanceStub:
   """
 
   def __init__(self, instance: FiddleBaseParameterizable):
-    self._instance = instance
+    object.__setattr__(self, '_instance', instance)
 
   def __getattr__(self, name):
     if '_instance' not in self.__dict__:
@@ -931,6 +931,12 @@ class _FiddleHParamsInstanceStub:
 
   def to_text(self, include_types: bool = False, separator: str = ':'):
     return nested_struct_to_text(self.clone(), include_types, separator)
+
+  def __setattr__(self, name, value):
+    raise AttributeError(
+        'Attempt to modify frozen hparams stub: '
+        f'{type(self._instance)}.{name}={value!r}'
+    )
 
 
 def _require_kwargs(cls):

@@ -475,6 +475,11 @@ class FiddleBaseParameterizableTest(absltest.TestCase):
     self.assertEqual(instance.hparams.some_param, -1)
     self.assertEqual(instance.hparams.some_other_param, 'goodbye')
 
+  def test_hparams_instance_stub_is_frozen(self):
+    instance = FiddlifiedTestClass(some_param=-1, some_other_param='goodbye')
+    with self.assertRaises(AttributeError):
+      instance.hparams.some_param = 3
+
   def test_can_only_construct_with_kwargs(self):
     expected_msg = (
         r'Only keyword arguments are supported when constructing '
