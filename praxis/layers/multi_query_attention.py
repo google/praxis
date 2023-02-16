@@ -738,6 +738,15 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
   it supports Lazy Prefix Broadcasting in decoding.
   """
 
+  def _shard_blh(self, x: JTensor) -> JTensor:
+    """Adds sharding annotations to tensors of shape [b, l, h]."""
+    blh = self.activation_split_dims_mapping.blh
+    if blh is None:
+      return x
+    # It is possible that we added prefix-broadcast dimensions.
+    blh = [blh[0]] + [None] * (x.ndim - len(blh)) + list(blh[1:])
+    return base_layer.maybe_shard(x, blh, self.mesh_axis_names)
+
   def _dot_atten_one_step(self,
                           query: JTensor,
                           key_state_name: str,
