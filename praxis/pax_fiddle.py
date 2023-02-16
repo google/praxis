@@ -221,6 +221,7 @@ def auto_config(
       _auto_config_exemption_policy)
   auto_config_kwargs['experimental_allow_control_flow'] = True
   auto_config_kwargs['experimental_config_cls'] = PaxConfig
+  auto_config_kwargs['experimental_result_must_contain_buildable'] = False
 
   def make_auto_config(fn):
 

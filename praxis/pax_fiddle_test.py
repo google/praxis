@@ -17,7 +17,7 @@
 
 import copy
 import dataclasses
-from typing import List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -289,6 +289,26 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
 
     self.assertEqual(fleet.vehicle_tpl, pax_fiddle.Config(Vehicle))
     self.assertEqual(fleet.vehicles[0].wheel_tpl, pax_fiddle.Config(Wheel))
+
+  def test_instance_field_empty_container_default_factory(self):
+
+    @dataclasses.dataclass
+    class TestCls:
+      items: List[Any] = pax_fiddle.instance_field(list)
+      tags: Dict[str, Any] = pax_fiddle.instance_field(dict)
+
+    cfg = pax_fiddle.Config(TestCls)
+    self.assertDagEqual(cfg, pax_fiddle.Config(TestCls, items=[], tags={}))
+    v1 = cfg.Instantiate()
+    v2 = cfg.Instantiate()
+    self.assertEqual(v1, TestCls(items=[], tags={}))
+    self.assertEqual(v2, TestCls(items=[], tags={}))
+    self.assertIsNot(v1.items, v2.items)
+    self.assertIsNot(v1.tags, v2.tags)
+
+    cfg.items.append(fdl.Config(Wheel))
+    v3 = cfg.Instantiate()
+    self.assertEqual(v3, TestCls(items=[Wheel()]))
 
 
 class PaxConfigTest(testing.TestCase, parameterized.TestCase):
