@@ -151,7 +151,6 @@ class Linear(linears.Linear):
             eqn,
             w,
             bits=bits,
-            calculation_type=self.dtype,
             use_symmetric=use_symmetric,
         )
         out = linears.project_last_dim(inputs, w)
