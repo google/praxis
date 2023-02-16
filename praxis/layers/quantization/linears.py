@@ -135,14 +135,15 @@ class Linear(linears.Linear):
     else:
       w = self.theta.w
       if self.quantization.quantization_type == QuantizationType.AQT:
-        out = operations.aqt_einsum(
-            eqn=eqn,
+        dimension_numbers = (((len(inputs.shape) - 1,), (0,)), ((), ()))
+        out = operations.dot_general(
             lhs=inputs,
             rhs=w,
             lhs_quantizer=self.act_quantizer,
             rhs_quantizer=self.weight_quantizer,
+            dimension_numbers=dimension_numbers,
             is_eval=self.do_eval,
-        )
+            eqn=eqn)
       elif self.quantization.quantization_type == QuantizationType.FQ:
         bits = self.quantization.weight_params.precision
         use_symmetric = self.quantization.weight_params.use_symmetric
