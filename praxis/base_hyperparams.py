@@ -31,6 +31,7 @@ from typing import Any, Callable, Optional, Sequence, Set, Tuple, Type, TypeVar,
 from absl import logging
 import fiddle as fdl
 from flax.core import frozen_dict
+from flax.linen import kw_only_dataclasses
 # Internal config_dict import from ml_collections
 import numpy as np
 from praxis import pax_fiddle
@@ -955,7 +956,7 @@ def _require_kwargs(cls):
   return wrapper
 
 
-@dataclasses.dataclass
+@kw_only_dataclasses.dataclass
 class FiddleBaseParameterizable:
   """A base class for classes migrated from `BaseParameterizable`.
 
@@ -974,7 +975,7 @@ class FiddleBaseParameterizable:
   _hparams = functools.cached_property(_FiddleHParamsInstanceStub)
   HParams = _FiddleHParamsClassStubDescriptor()  # pylint: disable=invalid-name
 
-  name: str = ''
+  name: str = kw_only_dataclasses.field(default='', kw_only=True)
 
   @classmethod
   def config(
@@ -990,7 +991,7 @@ class FiddleBaseParameterizable:
   def __init_subclass__(cls, **kwargs):
     super().__init_subclass__(**kwargs)
     if not typing.TYPE_CHECKING:
-      dataclasses.dataclass(cls)
+      kw_only_dataclasses.dataclass(cls)
     cls.__init__ = _require_kwargs(cls)
 
   def __post_init__(self, *args, **kwargs):
