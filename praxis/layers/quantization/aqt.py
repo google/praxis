@@ -74,7 +74,7 @@ class TensorQuantizer(base_layer.BaseLayer):
 
   Attributes:
     precision: Number of bits to quantize to (e.g 4 for int4). Must be positive.
-    stop_scale_gradient: stop the gradient of the quantization scale for
+    stop_scale_gradient: Stop the gradient of the quantization scale for
       numerical stability. Note: this is numerically incorrect.
     min_clipping: Clipping value which will be used for clipping optimization
       in range [min_clipping ... 1].

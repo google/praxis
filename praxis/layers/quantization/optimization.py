@@ -35,13 +35,13 @@ def get_best_bound(
   TODO(jianlijianli): optimize this at per-channel level.
 
   Args:
-    t: the input float tensor
-    bound: the hard max value for tensor 't'. It has the same length as shape.
-    min_value: minimal value for the quantization bound.
-    max_value: maximal value for the quantization bound.
+    t: The input float tensor.
+    bound: The hard max value for tensor 't'. It has the same length as shape.
+    min_value: Minimal value for the quantization bound.
+    max_value: Maximal value for the quantization bound.
 
   Returns:
-    the best bound values for 't', that minimize average error (MAE).
+    The best bound values for 't', that minimize average error (MAE).
   """
 
   def quantize(scaling_factor):

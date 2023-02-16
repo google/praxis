@@ -211,16 +211,16 @@ def for_transformer(
   TODO(jianlijianli): pass in additional parameters.
 
   Args:
-    num_bits: number of bits for quantized weight. Currently supports 8 and 4
+    num_bits: Number of bits for quantized weight. Currently supports 8 and 4
       but any integer [1, 8] works.
-    quantization_type: indicates the quantization type among PTQ, FQ, and AQT.
+    quantization_type: Indicates the quantization type among PTQ, FQ, and AQT.
     use_symmetric: If true, do symmetric quantization for weights, otherwise
       asymmetric quantization.
     weight_quant_only: If true, quantize weight only, otherweise quantize both
       weight and activation.
 
   Returns:
-    a modifier that quantizes transformers when applied to a config.
+    A modifier that quantizes transformers when applied to a config.
   """
 
   def decorator(cls):

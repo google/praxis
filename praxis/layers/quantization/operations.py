@@ -38,10 +38,10 @@ def _get_expand_dims(eqn: str) -> List[int]:
   quantized to KNH and need to expand to K11NH and K1NH.
 
   Args:
-    eqn: the equation for einsum.
+    eqn: The equation for einsum.
 
   Returns:
-    the expansion dimensions. Can be empty if no expansion is needed.
+    The expansion dimensions. Can be empty if no expansion is needed.
   """
   # TODO(jianlijianli): this is sufficient now but might improve to cover more
   # corner cases.
@@ -61,7 +61,7 @@ def _get_min_max(bits):
   """Gets the min/max range for a given number of bits.
 
   Args:
-    bits: target number of bits for quantization.
+    bits: Target number of bits for quantization.
 
   Returns:
     min/max values for the provide number of bits.
@@ -74,11 +74,11 @@ def compute_offset(x: JTensor, zp: JTensor, eqn: str):
 
   Args:
     x: Not quantized activation.
-    zp: Not quantized zero point of weight
+    zp: Not quantized zero point of weight.
     eqn: The equation for the einsum between x and w.
 
   Returns:
-    Offset tensor
+    Offset tensor.
   """
 
   def _get_x_reduce_axis(eqn: str, x_dims: int) -> List[int]:
@@ -137,7 +137,7 @@ def einsum(
     zp: Optional zero point tensor.
 
   Returns:
-    A JTensor
+    A JTensor.
   """
   if x.dtype in QUANTIZED_TYPES and w.dtype in QUANTIZED_TYPES:
     # upcast to int32 so einsum uses int32 as accumulator.
@@ -180,19 +180,18 @@ def _reduce_precision(
   Generic for all tensors.
 
   Args:
-    t: input tensor
-    contract_dims: speficies contracting dimesnions of the input tensor.
-    need_gradient: if gradient is needed out of this function.
+    t: Input tensor.
+    contract_dims: Speficies contracting dimesnions of the input tensor.
+    need_gradient: If gradient is needed out of this function.
     bits: target number of bits.
-    optimization_on_bound: if MAE bound optimizer is used.
-    percentile: percentile factor to apply on the min/max range. Setting this to
+    optimization_on_bound: If MAE bound optimizer is used.
+    percentile: percentile Factor to apply on the min/max range. Setting this to
       other than 1.0 disables optimization_on_bound.
-    use_symmetric: if the input tensor is quantized symmetrically.
+    use_symmetric: If the input tensor is quantized symmetrically.
 
   Returns:
-    the quantized tensor.
-    the quantization scale.
-    the quantization zero point (optional).
+    A tuple of quantized tensor, quantization scale
+      and quantization zero point (optional).
   """
   min_value, max_value = _get_min_max(bits)
 
@@ -247,15 +246,15 @@ def reduce_einsum_weight_precision(
   It uses per-channel quantization so einsum equation is passed in as well.
 
   Args:
-    eqn: the equation for the einsum.
-    t: the weight tensor for the einsum.
-    calculation_type: the type for calculation.
-    squeeze: if the output scale is squeezed.
-    need_gradient: if gradient is needed out of this function.
-    bits: target number of bits.
-    optimization_on_bound: if MAE bound optimizer is used.
-    percentile: percentile factor to apply on the min/max range.
-    use_symmetric: if weights are quantized symmetrically.
+    eqn: The equation for the einsum.
+    t: The weight tensor for the einsum.
+    calculation_type: The type for calculation.
+    squeeze: If the output scale is squeezed.
+    need_gradient: If gradient is needed out of this function.
+    bits: Target number of bits.
+    optimization_on_bound: If MAE bound optimizer is used.
+    percentile: Percentile factor to apply on the min/max range.
+    use_symmetric: If weights are quantized symmetrically.
 
   Returns:
     A tuple of JTensors. The first one is the quantized weight and the second
@@ -296,11 +295,11 @@ def fakequant_einsum(
   """Nudges weight of einsum with FakeQuant.
 
   Args:
-    eqn: the equation for the einsum. Determines the channel dimension.
-    t: the weight tensor for the einsum.
-    bits: target number of bits.
-    calculation_type: the type for calculation.
-    use_symmetric: use symmetric quantization for weights.
+    eqn: The equation for the einsum. Determines the channel dimension.
+    t: The weight tensor for the einsum.
+    bits: Target number of bits.
+    calculation_type: The type for calculation.
+    use_symmetric: Use symmetric quantization for weights.
 
   Returns:
     The nudged weight tensor.
@@ -329,9 +328,9 @@ def reduce_precision_activation(
   """Reduce the precision of activation.
 
   Args:
-    t: input tensor.
-    need_gradient: if gradient is needed out of this function.
-    bits: target number of bits.
+    t: Input tensor.
+    need_gradient: If gradient is needed out of this function.
+    bits: Target number of bits.
 
   Returns:
     A tuple of JTensors. The first one is the quantized activation and the
@@ -345,11 +344,11 @@ def fakequant_activation(t: JTensor, bits: int = 8) -> JTensor:
   """FakeQuant activation.
 
   Args:
-    t: activation tensor
-    bits: target number of bits.
+    t: Activation tensor
+    bits: Target number of bits.
 
   Returns:
-    nudged activation.
+    Nudged activation.
   """
   qt, scale = reduce_precision_activation(t, need_gradient=True, bits=bits)
   return jnp.multiply(qt, scale).astype(t.dtype)
@@ -425,7 +424,7 @@ def dot_general(
     rhs: Right-hand side of the dot_general (mostly weight, can be activation).
     lhs_quantizer: The tensor quantizer for lhs.
     rhs_quantizer: The tensor quantizer for rhs.
-    dimension_numbers: a tuple of tuples of the form `((lhs_contracting_dims,
+    dimension_numbers: A tuple of tuples of the form `((lhs_contracting_dims,
       rhs_contracting_dims), (lhs_batch_dims, rhs_batch_dims))`
     is_eval: If False, update the statistics in the tensor quantizers based on
       lhs and rhs.

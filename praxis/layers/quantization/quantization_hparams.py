@@ -55,14 +55,14 @@ class QuantizationMode(str, enum.Enum):
 class ActQuantizationParams:
   """Parameters for activation quantization.
 
-  precision: the precision (number of bits) for activation quantization.
-  unsigned_int_bounds: whether or not to use unsigned_int_bounds.
-  clipping_coeff: the coefficient to shrink the hard range for activation
+  precision: The precision (number of bits) for activation quantization.
+  unsigned_int_bounds: Whether or not to use unsigned_int_bounds.
+  clipping_coeff: The coefficient to shrink the hard range for activation
     quantization. 1.0 means using hard min/max.
-  stats_config: static values used for quantize activation.
+  stats_config: Static values used for quantize activation.
     stats_config == None: dynamic activation quantization
     otherwise: static activation quantization
-  stop_scale_gradient: stop the gradient of the quantization scale for numerical
+  stop_scale_gradient: Stop the gradient of the quantization scale for numerical
     stability. Note: this is numerically incorrect.
   """
   precision: int = 8
@@ -77,21 +77,21 @@ class ActQuantizationParams:
 class WeightQuantizationParams:
   """Parameters for weight quantization.
 
-  precision: the precision (number of bits) for weight quantization.
-  unsigned_int_bounds: whether or not to use unsigned_int_bounds.
-  clipping_coeff: the coefficient to shrink the hard range for weight
+  precision: The precision (number of bits) for weight quantization.
+  unsigned_int_bounds: Whether or not to use unsigned_int_bounds.
+  clipping_coeff: The coefficient to shrink the hard range for weight
     quantization. 1.0 means using hard min/max.
-  stop_scale_gradient: stop the gradient of the quantization scale for numerical
+  stop_scale_gradient: Stop the gradient of the quantization scale for numerical
     stability. Note: this is numerically incorrect.
   min_clipping: Clipping value which will be used for clipping optimization
     in range [min_clipping ... 1].
   num_optimize_clipping: Number of optimization steps used for
     scale estimation with search over clipping values in
     range [min_clipping ... 1].
-  use_symmetric: do symmetric quantization for weights.
+  use_symmetric: Do symmetric quantization for weights.
   add_scale_eps: If True add epsilon to scale to avoid division by zero,
     else it will replace zero scale by 1.
-  dequant_upfront: dequantize weights before it goes into matmul.
+  dequant_upfront: Dequantize weights before it goes into matmul.
   dtype: the datatype for weight quantization. Defaults to int8.
   """
   precision: int = 8
@@ -110,8 +110,8 @@ class QuantizationHParams(base_hyperparams.BaseHyperParams):
   """Parameters for quantization.
 
   Attributes:
-    quantization_type: quantization type.
-    mode: the quantization mode associated with this quantization parameter.
+    quantization_type: Quantization type.
+    mode: The quantization mode associated with this quantization parameter.
     act_params: Config for activation quantization.
     weight_params: Config for weight quantization.
   """
