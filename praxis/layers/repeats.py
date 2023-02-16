@@ -46,6 +46,7 @@ NON_TRAINABLE = base_layer.NON_TRAINABLE
 RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
 PREFIX_DECODE_CACHE = base_layer.PREFIX_DECODE_CACHE
+INTERMEDIATES = base_layer.INTERMEDIATES
 AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 SCAN_VARIABLE_AXES = {
@@ -79,6 +80,8 @@ class Repeat(base_layer.BaseLayer):
       paths.
     optimizer_dims_mapping: Tensor split dims mapping used for the optimizer
       state variables corresponding to the repeat prefix dims.
+    collect_intermediate_outputs: If True, makes intermediate sublayers' outputs
+      available for flax capture_intermediates.
   """
   sub_tpl: Optional[LayerTpl] = base_layer.template_field(None)
   x_times: int = 0
@@ -87,6 +90,7 @@ class Repeat(base_layer.BaseLayer):
   unroll_in_decode: bool = False
   sublayer_name: str = 'sub'
   optimizer_dims_mapping: SplitDimsMapping = None
+  collect_intermediate_outputs: bool = False
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -121,7 +125,10 @@ class Repeat(base_layer.BaseLayer):
     def body_fn(sub, layer_in):
       layer_out = sub(layer_in, *args, **kwargs)
       asserts.assert_same_structure(layer_in, layer_out)
-      return layer_out, None
+      if self.collect_intermediate_outputs:
+        return layer_out, layer_out
+      else:
+        return layer_out, None
 
     # TODO(zhangqiaorjc): Use remat-scan?
     rematted_body_fn = nn.remat(
@@ -187,7 +194,9 @@ class Repeat(base_layer.BaseLayer):
           trans_in_fn=_clear_decode_cache,
           trans_out_fn=_unstack_cache)
 
-    layer_out, _ = mapped_scan_fn(self.sublayer, inputs)
+    layer_out, intermediates = mapped_scan_fn(self.sublayer, inputs)
+    if self.collect_intermediate_outputs:
+      self.sow(INTERMEDIATES, 'repeat_intermediates', intermediates)
     return layer_out
 
   def quantize_weight(self) -> NestedJTensor:

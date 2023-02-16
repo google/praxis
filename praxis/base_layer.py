@@ -89,6 +89,8 @@ SUMMARIES = 'summaries'
 NON_TRAINABLE = 'non_trainable'
 DECODE_CACHE = 'decoder_cache'
 PREFIX_DECODE_CACHE = 'prefix_decoder_cache'
+INTERMEDIATES = 'intermediates'
+
 # hyper-params used to construct a layer.
 HYPER_PARAMS = 'hyper_params'
 
