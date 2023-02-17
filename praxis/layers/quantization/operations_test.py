@@ -322,5 +322,118 @@ class AqtDotGeneralTest(test_utils.TestCase):
     self.assertAllClose(ret, expected)
 
 
+def _generate_einsum_eqn() -> Sequence[Dict[str, str]]:
+  """Generates arbitrary dimension numbers for a tensor of shape (2, 2, 2)."""
+  keys = ['testcase_name', 'eqn']
+  # ((lhs_contracting_dims, rhs_contracting_dims), (lhs_batch_dims,
+  # rhs_batch_dims))
+  cases = [
+      ('batch_matmul', 'abc,acd->abd'),
+      ('one_cont_two_batch_dims', 'abc,abc->ab'),
+      ('two_cont_one_batch_dims', 'abc,abc->a'),
+      ('one_contracting_dims', 'abc,dce->abde'),
+      ('two_contracting_dims', 'abc,dbc->ad'),
+  ]
+  return [dict(zip(keys, vals)) for vals in cases]
+
+
+class AqtEinsum(base_layer.BaseLayer):
+  lhs_prec = None
+  rhs_prec: int = 8
+  add_scale_eps: bool = False
+  use_symmetric: bool = True
+
+  def setup(self):
+    self.create_child(
+        'lhs_quantizer',
+        pax_fiddle.Config(
+            aqt.TensorQuantizer, name='lhs_quantizer', precision=self.lhs_prec
+        ),
+    )
+    self.create_child(
+        'rhs_quantizer',
+        pax_fiddle.Config(
+            aqt.TensorQuantizer,
+            name='rhs_quantizer',
+            precision=self.rhs_prec,
+            add_scale_eps=self.add_scale_eps,
+            use_symmetric=self.use_symmetric,
+        ),
+    )
+
+  def __call__(self):
+    def aqt_einsum(eqn, lhs, rhs):
+      return operations.aqt_einsum(
+          eqn,
+          lhs,
+          rhs,
+          lhs_quantizer=self.lhs_quantizer,
+          rhs_quantizer=self.rhs_quantizer,
+      )
+
+    return aqt_einsum
+
+
+class AqtEinsumTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(0)
+
+  def get_aqt_einsum_module(
+      self, rhs_prec, add_scale_eps=False, use_symmetric=True
+  ):
+    p_aqt_einsum = pax_fiddle.Config(
+        AqtEinsum,
+        name='aqt_einsum',
+        rhs_prec=rhs_prec,
+        add_scale_eps=add_scale_eps,
+        use_symmetric=use_symmetric,
+    )
+    module = base_layer.instantiate(p_aqt_einsum)
+    state = module.init(jax.random.PRNGKey(0))
+    return module.apply(state, mutable=['non_trainable'])
+
+  def basic_quant_example(self):
+    lhs = np.array(
+        [
+            [-7.0, 4.01, 4.01],  #
+            [-7.0, 0.01, -4.01],
+        ],)
+    rhs = np.array(
+        [
+            [-1.5, 0.99],  #
+            [-0.99, 0],
+            [-0.01, 1.5]
+        ],)
+    q_deq_rhs = np.array(
+        [
+            [-1, 1],  #
+            [-1, 0],
+            [0, 1]
+        ],)
+
+    return lhs, rhs, q_deq_rhs
+
+  def test_basic_aqt_einsum(self):
+    lhs, rhs, q_deq_rhs = self.basic_quant_example()
+
+    aqt_einsum, _ = self.get_aqt_einsum_module(rhs_prec=2)
+    eqn = 'xy,yz->xz'
+    actual_ret = aqt_einsum(eqn, lhs, rhs)
+    expected_ret = jnp.einsum(eqn, lhs, q_deq_rhs)
+    self.assertArraysEqual(actual_ret, expected_ret)
+
+  @parameterized.named_parameters(_generate_einsum_eqn())
+  def test_aqt_einsum_noquant(self, eqn):
+    lhs = np.random.uniform(-1.0, 1.0, size=(2, 2, 2)).astype(np.float32)
+    rhs = np.random.uniform(-1.0, 1.0, size=(2, 2, 2)).astype(np.float32)
+
+    aqt_einsum, _ = self.get_aqt_einsum_module(rhs_prec=None)
+    actual_ret = aqt_einsum(eqn, lhs, rhs)
+    expected_ret = jnp.einsum(eqn, lhs, rhs)
+    self.assertArraysEqual(actual_ret, expected_ret)
+
+
 if __name__ == '__main__':
   absltest.main()

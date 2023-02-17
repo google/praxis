@@ -220,7 +220,6 @@ class AttentionProjection(attentions.AttentionProjection):
             rhs=w,
             lhs_quantizer=self.act_quantizer,
             rhs_quantizer=self.weight_quantizer,
-            is_eval=self.do_eval,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
         bits = self.quantization.weight_params.precision
@@ -488,7 +487,6 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             rhs=w,
             lhs_quantizer=self.act_quantizer,
             rhs_quantizer=self.weight_quantizer,
-            is_eval=self.do_eval,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
         bits = self.quantization.weight_params.precision
@@ -674,7 +672,6 @@ class DotProductAttention(attentions.DotProductAttention):
         rhs=key,
         lhs_quantizer=self.act_quantizer,
         rhs_quantizer=self.act_quantizer,
-        is_eval=self.do_eval,
     )
     return logits
 
@@ -754,7 +751,6 @@ class DotProductAttention(attentions.DotProductAttention):
         rhs=value,
         lhs_quantizer=self.act_quantizer,
         rhs_quantizer=self.act_quantizer,
-        is_eval=self.do_eval,
     )
 
     if self.zero_fully_masked:
@@ -825,7 +821,6 @@ class DotProductAttention(attentions.DotProductAttention):
         rhs=key,
         lhs_quantizer=self.act_quantizer,
         rhs_quantizer=self.act_quantizer,
-        is_eval=self.do_eval,
     )
     if relative_bias is not None:
       base_layer.assert_has_shape(relative_bias, [-1, n, 1, s])
@@ -851,7 +846,6 @@ class DotProductAttention(attentions.DotProductAttention):
         rhs=value,
         lhs_quantizer=self.act_quantizer,
         rhs_quantizer=self.act_quantizer,
-        is_eval=self.do_eval,
     )
     encoded = self._shard_bnh(encoded)
     return encoded, probs

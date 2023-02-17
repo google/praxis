@@ -16,6 +16,7 @@
 """Operations for quantization."""
 
 import functools
+import string
 from typing import List, Optional, Sequence, Tuple
 
 import jax
@@ -479,18 +480,15 @@ def dot_general(
   return ret
 
 
-# TODO(b/262309036): Make dot_general the default quantized einsum
-# implementation.
 def aqt_einsum(
     eqn: str,
     lhs: JTensor,
-    rhs: Optional[JTensor],
+    rhs: JTensor,
     *,
     lhs_quantizer: aqt.TensorQuantizer,
     rhs_quantizer: aqt.TensorQuantizer,
-    is_eval: bool,
 ) -> JTensor:
-  """Quantized einsum using jax.lax.dot_general.
+  """Quantized einsum with AQT style.
 
   Args:
     eqn: The valid binary einsum equation to use.
@@ -498,22 +496,40 @@ def aqt_einsum(
     rhs: Right-hand side of the einsum (mostly weight, can be activation).
     lhs_quantizer: The tensor quantizer for lhs.
     rhs_quantizer: The tensor quantizer for rhs.
-    is_eval: If False, update the statistics in the tensor quantizers based on
-      lhs and rhs.
 
   Returns:
     An array containing the result with the same dtype as 'lhs' and 'rhs'.
   """
-  dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(eqn)
-  out = dot_general(
-      lhs=lhs,
-      rhs=rhs,
-      lhs_quantizer=lhs_quantizer,
-      rhs_quantizer=rhs_quantizer,
-      dimension_numbers=dimension_numbers,
-      is_eval=is_eval,
-      eqn=eqn,
-      perm=perm,
+  if '.' in eqn:
+    # Replace the ellipsis with arbitrary symbols.
+    eqn_sym = ''.join(sorted(set(string.ascii_uppercase) - set('yz')))
+    rank = len(lhs.shape)
+    batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
+    eqn_edited = f'{batch_eqn}y,yz->{batch_eqn}z'
+    dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn_edited)
+  else:
+    dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
+
+  lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
+
+  lhs, lhs_scale, _ = lhs_quantizer.quantize(
+      lhs, lhs_contract_dims, squeeze_scale=False, quantized_dtype=lhs.dtype
   )
 
-  return out
+  rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
+      rhs, rhs_contract_dims, squeeze_scale=False, quantized_dtype=rhs.dtype)
+
+  out = jnp.einsum(eqn, lhs, rhs)
+  out_scale = jnp.einsum(eqn, lhs_scale, rhs_scale)
+
+  ret = out * out_scale
+
+  if rhs_zp is not None:
+    if lhs_quantizer.precision is not None:
+      raise NotImplementedError(
+          'Activation quantization with weight zero point is not supported yet.'
+      )
+    offset = compute_offset(lhs, rhs_zp, eqn)
+    ret = ret - offset
+
+  return ret
