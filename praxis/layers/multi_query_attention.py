@@ -15,6 +15,7 @@
 
 """Multi-Query Attention layers."""
 
+import math
 from typing import Callable, Dict, Optional, Sequence, Tuple, Union
 
 from flax import linen as nn
@@ -747,6 +748,12 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
     blh = [blh[0]] + [None] * (x.ndim - len(blh)) + list(blh[1:])
     return base_layer.maybe_shard(x, blh, self.mesh_axis_names)
 
+  def decoding_state_sequence_length(self):
+    """Returns the length of full decoding sequences including prefixes."""
+    key_state_length = self.get_decode_state('key_state').shape[
+        1 + self._broadcast_prefixes_count]
+    return key_state_length + self._broadcast_prefix_length()
+
   def _dot_atten_one_step(self,
                           query: JTensor,
                           key_state_name: str,
@@ -887,7 +894,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
     # Compute the attention context.
     def _post_softmax(layer, batched, ps, non_batched, states):
       del layer, batched, non_batched
-      v = self._shard_blnh(states[0])
+      v = self._shard_bnh(states[0])
       if extend_one_step:
         return self._shard_bnh(jnp.einsum('BNS,BSH->BNH', ps, v))
       return self._shard_blnh(jnp.einsum('BNTS,BSH->BTNH', ps, v))
@@ -991,6 +998,78 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
           axis_size=broadcast_dim_sizes[i])
       vfns.append(vmapped_fn)
     return vfns[-1]
+
+  def _left_concat_decode_state(self, state_name: str,
+                                max_prefix_size: int) -> JTensor:
+    """Left-concats the current decode state with prefixes (if any)."""
+    state = self.get_decode_state(state_name)
+    pfx_count = self._broadcast_prefixes_count
+    if pfx_count == 0:
+      return state
+    batch_dims = self.get_decode_state(state_name).shape[:1 + pfx_count]
+    windows = [state]
+    prefix_window_size = max_prefix_size
+    for i in range(pfx_count):
+      if prefix_window_size == 0:
+        break
+      chunk_id = pfx_count - i - 1
+      pfx = self.get_variable(PREFIX_DECODE_CACHE,
+                              f'{state_name}_{chunk_id}_pfx')
+      pfx_len = pfx.shape[chunk_id + 1]
+      subwindow_len = min(pfx_len, prefix_window_size)
+      prefix_window_size -= subwindow_len
+      pfx = jax.lax.slice_in_dim(
+          pfx, pfx_len - subwindow_len, pfx_len, axis=chunk_id + 1)
+      pfx = jnp.reshape(
+          pfx,
+          batch_dims[:chunk_id + 1] + (1,) * (i + 1) + pfx.shape[chunk_id + 1:])
+      pfx = jnp.broadcast_to(pfx, batch_dims + pfx.shape[len(batch_dims):])
+      windows = [pfx] + windows
+    return jnp.concatenate(windows, axis=pfx_count + 1)
+
+  def right_align_decode_state_with_prefix(
+      self, max_prefix_size: int,
+      right_align_fn: base_layer.DecodeStateTransformFn) -> None:
+    """Right aligns decode state with prefix decode states.
+
+    Args:
+      max_prefix_size: Max prefix length of the decode state.
+      right_align_fn: Right align function for decode state.
+    """
+    batch_dim = 0
+    time_dim = 1
+    prev_pfx_count = self._broadcast_prefixes_count
+    # Only one prefix decode state is supported at the moment.
+    assert prev_pfx_count == 1
+    for name, state in self.variables[base_layer.DECODE_CACHE].items():
+      if not isinstance(state, JTensor):
+        continue
+      # Left concat decode state with prefixes.
+      new_state = self._left_concat_decode_state(name, max_prefix_size)
+
+      # Merge batch dims.
+      state_shape = list(new_state.shape)
+      final_state_shape = state_shape.copy()
+      state_shape[batch_dim] = math.prod(state_shape[:prev_pfx_count + 1])
+      state_shape.pop(prev_pfx_count)
+      new_state = jnp.reshape(new_state, state_shape)
+      # Right align decode state.
+      new_state = right_align_fn(new_state, batch_dim, time_dim)
+      # Reshape back.
+      new_state = jnp.reshape(new_state, final_state_shape)
+
+      self.update_decode_state(name, new_state)
+
+      # Set seq_len to 1 in prefix decode state.
+      prefix_name = f'{name}_{prev_pfx_count - 1}_pfx'
+      assert self.is_mutable_collection(PREFIX_DECODE_CACHE)
+      prefix_state = self.get_variable(PREFIX_DECODE_CACHE, prefix_name)
+      prefix_state_shape = list(prefix_state.shape)
+      prefix_state_shape[batch_dim + 1] = 1
+      # Pass all 0s to the prefix state.
+      new_prefix_state = jnp.zeros(prefix_state_shape, prefix_state.dtype)
+
+      self.put_variable(PREFIX_DECODE_CACHE, prefix_name, new_prefix_state)
 
   def _decode_state_chunk_length(self, chunk_id: int) -> int:
     """Returns the length of a decode state chunk (prefix or current)."""
