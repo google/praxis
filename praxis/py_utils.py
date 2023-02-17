@@ -397,16 +397,8 @@ def create_gda(host_arrays: Union[np.ndarray, Any],
   device_buffers = jax.tree_map(_put_to_devices, host_arrays)
 
   def _gda_or_jax_array(global_shape, pspec, dbs):
-    if jax.config.jax_array:
-      # This is cached because creating new sharding objects everytime is
-      # expensive in pjit dispatch path for inputs.
-      s = jax.sharding.NamedSharding(global_mesh, pspec)
-      return jax.make_array_from_single_device_arrays(global_shape.shape, s,
-                                                      dbs)
-    else:
-      return gda_lib.GlobalDeviceArray(global_shape.shape, global_mesh, pspec,
-                                       dbs)
-
+    s = jax.sharding.NamedSharding(global_mesh, pspec)
+    return jax.make_array_from_single_device_arrays(global_shape.shape, s, dbs)
   return jax.tree_map(_gda_or_jax_array, global_shapes, pspecs, device_buffers)
 
 
@@ -417,7 +409,9 @@ def copy_gda(x):
     return jnp.copy(x)
   assert isinstance(x, gda_lib.GlobalDeviceArray)
   buffers = [jnp.copy(s.data) for s in x.addressable_shards]
-  return gda_lib.GlobalDeviceArray(x.shape, x.mesh, x.mesh_axes, buffers)
+  return jax.make_array_from_single_device_arrays(
+      x.shape, jax.sharding.NamedSharding(x.mesh, x.mesh_axes), buffers
+  )
 
 
 def convert_fully_replicated_sda_to_gda(sda):
@@ -428,9 +422,11 @@ def convert_fully_replicated_sda_to_gda(sda):
   mesh = jax.sharding.Mesh(np.array(jax.devices()), axis_names=('x',))
   partition_spec = jax.sharding.PartitionSpec(None)
   # pmap-produced SDA has a "scrambled" device order.
-  return gda_lib.GlobalDeviceArray(
-      global_shape, mesh, partition_spec,
-      sorted(sda.device_buffers, key=lambda x: x.device().id))
+  return jax.make_array_from_single_device_arrays(
+      global_shape,
+      jax.sharding.NamedSharding(mesh, partition_spec),
+      sorted(sda.device_buffers, key=lambda x: x.device().id),
+  )
 
 
 def convert_fully_replicated_gda_to_sda(gda):
