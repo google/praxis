@@ -230,7 +230,9 @@ class Linear(linears.Linear):
         )
       else:
         q_w, q_s, zp = self.weight_quantizer.quantize(
-            self.theta.w, [0], dtype=self.quantization.weight_params.dtype
+            self.theta.w,
+            [0],
+            quantized_dtype=self.quantization.weight_params.dtype,
         )
 
     if self.quantization.weight_params.use_symmetric:

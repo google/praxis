@@ -131,17 +131,17 @@ class AqtTest(test_utils.TestCase):
     state = quant.init(jax.random.PRNGKey(0))
 
     per_example_scale = quant.apply(
-        state, x, 1, jnp.float32, method=quant.get_quant_scale
+        state, x, 1, method=quant.get_quant_scale
     )
     per_tensor_scale = quant.apply(
-        state, x, None, jnp.float32, method=quant.get_quant_scale
+        state, x, None, method=quant.get_quant_scale
     )
 
     per_example_qx = quant.apply(
-        state, x * per_example_scale, jnp.float32, method=quant.to_quant
+        state, x * per_example_scale, method=quant.to_quant
     )
     per_tensor_qx = quant.apply(
-        state, x * per_tensor_scale, jnp.float32, method=quant.to_quant
+        state, x * per_tensor_scale, method=quant.to_quant
     )
 
     float_result = jax.lax.dot(x, y)
@@ -175,7 +175,6 @@ class AqtTest(test_utils.TestCase):
         state,
         x,
         contract_dims=1,
-        dtype=jnp.float32,
         method=quant.get_quant_scale,
     )
     x_scaled = x * scale
@@ -210,12 +209,11 @@ class AqtTest(test_utils.TestCase):
         state,
         x,
         contract_dims=-1,
-        dtype=jnp.float32,
         method=quant.get_quant_scale,
     )
     self.assertEqual(scale.shape, (batch_size, feature_dim1, 1))
 
-    x_q = quant.apply(state, x / scale, jnp.int8, method=quant.to_quant)
+    x_q = quant.apply(state, x / scale, method=quant.to_quant)
     x_q_deq = jnp.multiply(scale, x_q)
     sum_error = jnp.sum(jnp.abs(jnp.subtract(x, x_q_deq)))
 
@@ -224,11 +222,10 @@ class AqtTest(test_utils.TestCase):
         state,
         x,
         contract_dims=-1,
-        dtype=jnp.float32,
         method=quant.get_quant_scale,
     )
     x_q_opt = quant_opt.apply(
-        state, x / scale_opt, jnp.int8, method=quant_opt.to_quant
+        state, x / scale_opt, method=quant_opt.to_quant
     )
     x_q_deq_opt = jnp.multiply(scale_opt, x_q_opt)
     sum_error_opt = jnp.sum(jnp.abs(jnp.subtract(x, x_q_deq_opt)))
@@ -269,9 +266,9 @@ class AqtTest(test_utils.TestCase):
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
     scale = quant.apply(
-        state, x, [0, 1], jnp.float32, method=quant.get_quant_scale
+        state, x, [0, 1], method=quant.get_quant_scale
     )
-    ix = quant.apply(state, x / scale, jnp.float32, method=quant.to_quant)
+    ix = quant.apply(state, x / scale, method=quant.to_quant)
 
     self.assertGreaterEqual(jnp.min(ix), 0.0)
     self.assertLessEqual(jnp.max(ix), jnp.float32(2**precision - 1))

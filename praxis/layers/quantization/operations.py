@@ -440,10 +440,11 @@ def dot_general(
   lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
 
   lhs, lhs_scale, _ = lhs_quantizer.quantize(
-      lhs, lhs_contract_dims, squeeze_scale=False, dtype=input_dtype)
+      lhs, lhs_contract_dims, squeeze_scale=False, quantized_dtype=input_dtype
+  )
 
   rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
-      rhs, rhs_contract_dims, squeeze_scale=False, dtype=input_dtype)
+      rhs, rhs_contract_dims, squeeze_scale=False, quantized_dtype=input_dtype)
 
   should_int8_quantize = (
       lhs_quantizer.precision is not None

@@ -304,7 +304,7 @@ class AttentionProjection(attentions.AttentionProjection):
       q_w, q_s, zp = self.weight_quantizer.quantize(
           self.theta.w,
           weight_contract_dims,
-          dtype=self.quantization.weight_params.dtype,
+          quantized_dtype=self.quantization.weight_params.dtype,
       )
     else:
       raise ValueError(
@@ -570,7 +570,10 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
       q_w, q_s, zp = self.weight_quantizer.quantize(
-          self.theta.w, weight_contract_dims, dtype=jnp.int8)
+          self.theta.w,
+          weight_contract_dims,
+          quantized_dtype=self.quantization.weight_params.dtype,
+      )
     else:
       raise ValueError(
           f'Unsupported quantization_type {self.quantization.quantization_type}'

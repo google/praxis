@@ -97,6 +97,8 @@ class TensorQuantizer(base_layer.BaseLayer):
   use_symmetric: bool = True
 
   def setup(self):
+    del self.dtype  # not used
+
     assert (
         self.precision is None or self.precision <= 23
     ), 'Too many bits, float32 has less precision.'
@@ -144,11 +146,10 @@ class TensorQuantizer(base_layer.BaseLayer):
       self,
       x: JTensor,
       contract_dims: Union[int, Sequence[int]],
-      dtype: jnp.dtype = jnp.bfloat16,
       clipping: Optional[float] = None,
   ) -> JTensor:
     if self.precision is None:
-      return jnp.ones(shape=(1,) * x.ndim, dtype=dtype)
+      return jnp.ones(shape=(1,) * x.ndim, dtype=x.dtype)
 
     clip_bound_min, clip_bound_max = self._get_clip_bound()
 
@@ -170,22 +171,20 @@ class TensorQuantizer(base_layer.BaseLayer):
 
     if self.add_scale_eps:
       # Add epsilon to avoid NaN gradients for near-zero inputs during training.
-      scale = scale + jnp.finfo(dtype).eps
+      scale = scale + jnp.finfo(x.dtype).eps
     else:
       scale = jnp.where(scale == 0, jnp.ones_like(scale), scale)
 
-    return scale.astype(dtype)
+    return scale
 
   def _get_optimal_scale(
       self,
       x: JTensor,
       contract_dims: Union[int, Sequence[int]],
-      dtype: jnp.dtype = jnp.bfloat16,
-      quantized_dtype: jnp.dtype = jnp.int8,
   ) -> JTensor:
     def quantization_error_and_scale(clipping):
-      scale = self._get_scale(x, contract_dims, dtype, clipping=clipping)
-      x_quantized = self.to_quant(jnp.divide(x, scale), quantized_dtype)
+      scale = self._get_scale(x, contract_dims, clipping=clipping)
+      x_quantized = self.to_quant(jnp.divide(x, scale))
       x_quantized_dequantized = jnp.multiply(scale, x_quantized)
       sum_error = jnp.sum(jnp.abs(jnp.subtract(x, x_quantized_dequantized)))
       return sum_error, scale
@@ -195,15 +194,13 @@ class TensorQuantizer(base_layer.BaseLayer):
     )
     res = jax.vmap(quantization_error_and_scale)(clipping)
     best_ind = jnp.argmin(res[0])
-    best_scale = res[1].at[best_ind].get().astype(dtype)
+    best_scale = res[1].at[best_ind].get()
     return best_scale
 
   def get_quant_scale(
       self,
       x: JTensor,
       contract_dims: Union[int, Sequence[int]],
-      dtype: jnp.dtype = jnp.bfloat16,
-      quantized_dtype: jnp.dtype = jnp.int8,
   ) -> JTensor:
     """Computes scale for quantization.
 
@@ -213,41 +210,39 @@ class TensorQuantizer(base_layer.BaseLayer):
     Args:
       x: Input tensor.
       contract_dims: Axis along which to quantize acts (the non-feature axis).
-      dtype: Output type.
-      quantized_dtype: Quantized dtype.
 
     Returns:
       Scale tensor.
     """
     if self.min_clipping is not None and self.num_optimize_clipping is not None:
-      return self._get_optimal_scale(x, contract_dims, dtype, quantized_dtype)
+      return self._get_optimal_scale(x, contract_dims)
     else:
-      return self._get_scale(x, contract_dims, dtype)
+      return self._get_scale(x, contract_dims)
 
   def update(self, x: JTensor):
     # This function is no-op for now. Once static quantization is supported,
     # statistics update will be performed through this function.
     pass
 
-  def to_quant(self, x: JTensor, dtype=jnp.bfloat16) -> JTensor:
+  def to_quant(self, x: JTensor) -> JTensor:
     """Converts normalized float x to quantized value.
 
     Args:
       x: Input tensor. It has to be normalized: x / scale
-      dtype: Output type.
 
     Returns:
       Quantized tensor.
     """
+
     if self.precision is None:
-      return x.astype(dtype)
+      return x
 
     clip_bound_min, clip_bound_max = self._safe_clip_bound()
 
     x = jnp.clip(x, clip_bound_min, clip_bound_max)
     x = _pass_through(x + 0.5, jnp.floor)
 
-    return x.astype(dtype)
+    return x
 
   def _get_zero_point(self, x, contract_dims, scale) -> JTensor:
     x_min = jnp.min(x, axis=contract_dims, keepdims=True)
@@ -260,7 +255,7 @@ class TensorQuantizer(base_layer.BaseLayer):
       x: JTensor,
       contract_dims: Union[int, Sequence[int]],
       squeeze_scale=True,
-      dtype=jnp.bfloat16,
+      quantized_dtype: Union[jnp.dtype, None] = None,
   ) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
     """Quantizes input x.
 
@@ -268,17 +263,13 @@ class TensorQuantizer(base_layer.BaseLayer):
       x: Input tensor.
       contract_dims: Contraction dims.
       squeeze_scale: If True it will squeeze output scale.
-      dtype: Output type.
+      quantized_dtype: Output type.
 
     Returns:
       Quantized tensor with scale (used for dequantization)
     """
-    q_s = self.get_quant_scale(
-        x,
-        contract_dims=contract_dims,
-        dtype=self.dtype,
-        quantized_dtype=dtype,
-    )
+
+    q_s = self.get_quant_scale(x, contract_dims)
     if self.use_symmetric:
       x_scaled = jnp.divide(x, q_s)
       zp_time_scale = None
@@ -286,9 +277,12 @@ class TensorQuantizer(base_layer.BaseLayer):
       zp = self._get_zero_point(x, contract_dims, q_s)
       x_scaled = jnp.divide(x, q_s) + zp
       zp_time_scale = jnp.multiply(q_s, zp).squeeze()
-    q_x = self.to_quant(x_scaled, dtype=dtype)
+    q_x = self.to_quant(x_scaled)
 
     if squeeze_scale:
       q_s = jnp.squeeze(q_s)
+
+    if quantized_dtype is not None:
+      q_x = q_x.astype(quantized_dtype)
 
     return q_x, q_s, zp_time_scale
