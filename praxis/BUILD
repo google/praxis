@@ -241,6 +241,7 @@ pytype_strict_library(
         # Implicit absl.logging dependency.
         # Implicit flax dependency.
         # Implicit jax dependency.
+        # Implicit jax.experimental.global_device_array dependency.
         # Implicit jax.mesh_utils dependency.
         # Implicit numpy dependency.
         # Implicit optax dependency.
