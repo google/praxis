@@ -141,6 +141,9 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     if hparams.experimental_remote_input and jax.process_count() > 1:
       raise NotImplementedError(
           'Remote input is not supported when there are multiple controllers.')
+    # Allows a simple peek into the input, while maintaining correct iteration
+    # sequence in get_next_padded() call.
+    self._peek = None
 
   def get_next(self) -> NestedJTensor:
     raise NotImplementedError
@@ -149,13 +152,39 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     raise NotImplementedError
 
   def get_next_padded(self) -> NestedJTensor:
-    unpadded = self.get_next()
-    pad_size = self.hparams.batch_padding_size
-    if pad_size == 0:
-      return unpadded
-    return jax.tree_util.tree_map(
-        lambda x: np.pad(x, [[0, pad_size]] + [[0, 0]] * (x.ndim - 1)),
-        unpadded)
+    """Gets next padded example from the input pipeline.
+
+    If the example is `peeked` previously, returns the peeked example without
+    actually calling into data pipeline so that we maintain the correct data
+    iteration.
+
+    Note that, if method is overriden in subclasses, it is user's duty to ensure
+    peek behavior, or `peek_padded()` will lead to inconsistent states/results.
+
+    Returns:
+      The padded example from the data pipeline.
+    """
+    if self._peek is None:
+      unpadded = self.get_next()
+      pad_size = self.hparams.batch_padding_size
+      if pad_size == 0:
+        return unpadded
+      return jax.tree_util.tree_map(
+          lambda x: np.pad(x, [[0, pad_size]] + [[0, 0]] * (x.ndim - 1)),
+          unpadded,
+      )
+    peek = self._peek
+    self._peek = None
+    return peek
+
+  def peek_padded(self) -> Optional[NestedJTensor]:
+    """Peeks into the current input data pipeline."""
+    if self._peek is None:
+      try:
+        self._peek = self.get_next_padded()
+      except (tf.errors.OutOfRangeError, StopIteration):
+        self._peek = None
+    return self._peek
 
   def reset(self) -> None:
     pass
