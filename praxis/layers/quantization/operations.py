@@ -412,9 +412,7 @@ def dot_general(
     rhs_quantizer: aqt.TensorQuantizer,
     dimension_numbers: lax.DotDimensionNumbers,
     is_eval: bool,
-    rhs_quantized: Optional[Tuple[JTensor, JTensor]] = None,
-    rhs_zp: Optional[JTensor] = None,
-    eqn: Optional[str] = None,
+    eqn: str,
     perm: Optional[Sequence[int]] = None,
 ) -> JTensor:
   """Quantized jax.lax.dot_general.
@@ -428,19 +426,12 @@ def dot_general(
       rhs_contracting_dims), (lhs_batch_dims, rhs_batch_dims))`
     is_eval: If False, update the statistics in the tensor quantizers based on
       lhs and rhs.
-    rhs_quantized: A pair of quantized rhs and its scale. It should exist only
-      in the inference mode and both rhs and rhs_quantized cannot be passed
-      together.
-    rhs_zp: Zero point of right-hand side of the einsum.
     eqn: The valid binary einsum equation to use.
     perm: the dimenions to be permuated to align with the einsum equation.
 
   Returns:
     An array containing the result with the same dtype as 'lhs' and 'rhs'.
   """
-  assert ((rhs is None and rhs_quantized is not None) or
-          (rhs is not None and rhs_quantized is None))
-
   if not is_eval:
     # TODO(jihwanlee): Stats should be updated during training.
     pass
@@ -451,23 +442,8 @@ def dot_general(
   lhs, lhs_scale, _ = lhs_quantizer.quantize(
       lhs, lhs_contract_dims, squeeze_scale=False, dtype=input_dtype)
 
-  if rhs_quantized is None:
-    rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
-        rhs, rhs_contract_dims, squeeze_scale=False, dtype=input_dtype)
-  elif rhs is None:
-    assert (
-        is_eval
-    ), f'Expected is_eval={is_eval} == True when rhs_quantized is passed.'
-    # If rhs_quantized is passed, then it means the rhs is already quantized and
-    # its scale is provided. Thus, no need to get scale and quantize rhs again.
-    rhs, rhs_scale = rhs_quantized
-    # Make sure lhs and rhs have the same dtype.
-    rhs = rhs.astype(input_dtype)
-    rhs_scale = rhs_scale.astype(input_dtype)
-    # Restore the contracting dimension.
-    rhs_scale = jnp.expand_dims(rhs_scale, axis=rhs_contract_dims)
-  else:
-    raise ValueError('Cannot reach here.')
+  rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
+      rhs, rhs_contract_dims, squeeze_scale=False, dtype=input_dtype)
 
   should_int8_quantize = (
       lhs_quantizer.precision is not None
@@ -488,18 +464,15 @@ def dot_general(
 
   ret = out * out_scale
 
+  if perm is not None:
+    ret = lax.transpose(ret, perm)
+
   if rhs_zp is not None:
     if lhs_quantizer.precision is not None:
       raise NotImplementedError(
           'Activation quantization with weight zero point is not supported yet.'
       )
-    if eqn is None:
-      raise NotImplementedError(
-          'eqn has to be specified for zero point calculation.'
-      )
     offset = compute_offset(lhs, rhs_zp, eqn)
-    if perm is not None:
-      offset = lax.transpose(offset, perm)
     ret = ret - offset
 
   return ret
@@ -515,8 +488,6 @@ def aqt_einsum(
     lhs_quantizer: aqt.TensorQuantizer,
     rhs_quantizer: aqt.TensorQuantizer,
     is_eval: bool,
-    rhs_quantized: Optional[Tuple[JTensor, JTensor]] = None,
-    rhs_zp: Optional[JTensor] = None,
 ) -> JTensor:
   """Quantized einsum using jax.lax.dot_general.
 
@@ -528,10 +499,6 @@ def aqt_einsum(
     rhs_quantizer: The tensor quantizer for rhs.
     is_eval: If False, update the statistics in the tensor quantizers based on
       lhs and rhs.
-    rhs_quantized: A pair of quantized rhs and its scale. It should exist only
-      in the inference mode and both rhs and rhs_quantized cannot be passed
-      together.
-    rhs_zp: Zero point of right-hand side of the einsum.
 
   Returns:
     An array containing the result with the same dtype as 'lhs' and 'rhs'.
@@ -544,11 +511,8 @@ def aqt_einsum(
       rhs_quantizer=rhs_quantizer,
       dimension_numbers=dimension_numbers,
       is_eval=is_eval,
-      rhs_quantized=rhs_quantized,
-      rhs_zp=rhs_zp,
       eqn=eqn,
       perm=perm,
   )
-  if perm is not None:
-    out = lax.transpose(out, perm)
+
   return out
