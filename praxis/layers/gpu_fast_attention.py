@@ -104,7 +104,6 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
     # TODO(zhangqiaorjc): Apply attention dropout.
 
     blnh_pspec = self._blnh_pspec()
-    print('blnh_pspec=', blnh_pspec)
 
     # TODO(zhangqiaorjc): Pass a mesh from caller.
     device_mesh = py_utils.create_device_mesh(
@@ -176,7 +175,6 @@ class GpuTritonFusedLayerNorm(normalizations.LayerNorm):
     if not self.use_scale or not self.use_bias:
       raise NotImplementedError
     ble_pspec = self._ble_pspec()
-    print('ble_pspec=', ble_pspec)
 
     # TODO(zhangqiaorjc): Pass a mesh from caller.
     device_mesh = py_utils.create_device_mesh(
