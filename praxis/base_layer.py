@@ -2385,7 +2385,7 @@ def get_template_fields(
   elif isinstance(template, BaseHyperParams):
     return [
         field.name
-        for field in dataclasses.fields(template)
+        for field in dataclasses.fields(template)  # pytype: disable=wrong-arg-types  # re-none
         if field.name != 'cls'
     ]
   else:
