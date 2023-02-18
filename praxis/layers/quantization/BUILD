@@ -152,6 +152,7 @@ pytype_strict_library(
         ":aqt",
         ":operations",
         ":quantization_hparams",
+        ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pytypes",
@@ -185,6 +186,7 @@ pytype_strict_library(
     deps = [
         ":operations",
         ":quantization_hparams",
+        ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
@@ -201,6 +203,7 @@ py_strict_test(
     deps = [
         ":multi_query_attention",
         ":quantization_hparams",
+        ":utils",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.

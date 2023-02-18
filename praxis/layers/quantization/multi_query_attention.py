@@ -24,6 +24,7 @@ from praxis import pytypes
 from praxis.layers import multi_query_attention
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import utils
 
 WeightInit = base_layer.WeightInit
 QuantizationMode = quantization_hparams.QuantizationMode
@@ -46,6 +47,8 @@ class OneHeadedAttentionProjection(
 
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
+  _PACK_4BIT_DIM = 0
+
   def _do_static_activation_quantization(self) -> bool:
     """If activation need to be quantized."""
     act_params = self.quantization.act_params
@@ -62,11 +65,17 @@ class OneHeadedAttentionProjection(
         shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
+      dtype = self.quantization.weight_params.dtype
+      if self.quantization.weight_params.precision == 4:
+        dtype = jnp.int32
+        pc.shape = utils.get_packed_shape(
+            pc.shape, self._PACK_4BIT_DIM, packing_factor=8
+        )
       self.create_quantized_variable(
           'w',
           pc,
           [self.output_dim],
-          dtype=self.quantization.weight_params.dtype,
+          dtype=dtype,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
     else:
@@ -106,6 +115,10 @@ class OneHeadedAttentionProjection(
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
+      if self.quantization.weight_params.precision == 4:
+        w = utils.unpack_4bit(
+            w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
+        )
       if self.quantization.weight_params.use_symmetric:
         ret = operations.einsum(eqn, inputs, w, s)
       else:
@@ -176,6 +189,8 @@ class OneHeadedAttentionProjection(
             percentile=percentile,
             use_symmetric=self.quantization.weight_params.use_symmetric,
         )
+        if self.quantization.weight_params.precision == 4:
+          q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
 
         if self.quantization.weight_params.use_symmetric:
           return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

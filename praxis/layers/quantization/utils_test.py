@@ -65,6 +65,41 @@ class UtilsTest(test_utils.TestCase):
     with self.assertRaisesRegex(error, regex):
       utils.einsum_eqn_to_dimension_numbers(eqn)
 
+  @parameterized.parameters(
+      dict(vals=[range(-8, 8)], shape=(8, 2), dtype=jnp.int8, pack_dim=0),
+      dict(
+          vals=[range(-8, 8)] * 2, shape=(8, 2, 2), dtype=jnp.int8, pack_dim=0
+      ),
+      dict(
+          vals=[range(-8, 8)] * 2, shape=(2, 8, 2), dtype=jnp.int8, pack_dim=1
+      ),
+      dict(
+          vals=[range(7, -9, -1)] * 2,
+          shape=(2, 8, 2),
+          dtype=jnp.int8,
+          pack_dim=1,
+      ),
+      dict(
+          vals=[range(0, 16)] * 2, shape=(8, 2, 2), dtype=jnp.uint8, pack_dim=0
+      ),
+      dict(
+          vals=[range(0, 16)] * 2, shape=(2, 8, 2), dtype=jnp.uint8, pack_dim=1
+      ),
+  )
+  def test_pack_4bit_unpack_4bit(self, vals, shape, dtype, pack_dim):
+    x = jnp.array(vals).reshape(shape).astype(dtype)
+    packed = utils.pack_4bit(x, pack_dim)
+    expected_packed_shape = list(x.shape)
+    expected_packed_shape[pack_dim] //= 8
+    self.assertSequenceEqual(packed.shape, expected_packed_shape)
+
+    unpacked = utils.unpack_4bit(packed, pack_dim, x.dtype)
+    self.assertArraysEqual(unpacked, x.astype(jnp.int32))
+
+  def test_get_packed_shape(self):
+    self.assertSequenceEqual(utils.get_packed_shape((4, 8, 3), 1, 8), (4, 1, 3))
+    self.assertRaises(ValueError, utils.get_packed_shape, (4, 7, 3), 1, 8)
+
 
 if __name__ == '__main__':
   absltest.main()

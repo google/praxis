@@ -25,6 +25,7 @@ from praxis.layers import linears
 from praxis.layers.quantization import aqt
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import utils
 
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
@@ -43,6 +44,8 @@ class Linear(linears.Linear):
       such as the mode for the quantization.
   """
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+
+  _PACK_4BIT_DIM = 0
 
   def create_tensor_quantizers(self):
     self.create_child(
@@ -69,7 +72,14 @@ class Linear(linears.Linear):
         mesh_shape=self.mesh_shape,
         tensor_split_dims_mapping=wp.wt,
     )
+    dtype = self.quantization.weight_params.dtype
     if self.quantization.mode == QuantizationMode.INFERENCE:
+      if self.quantization.weight_params.precision == 4:
+        pc.shape = utils.get_packed_shape(
+            pc.shape, self._PACK_4BIT_DIM, packing_factor=8
+        )
+        pc.shape = [self.input_dims // 8, self.output_dims]
+        dtype = jnp.int32
       if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.'
@@ -79,7 +89,7 @@ class Linear(linears.Linear):
           'w',
           pc,
           [self.output_dims],
-          dtype=self.quantization.weight_params.dtype,
+          dtype=dtype,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
     elif self.quantization.mode == QuantizationMode.TRAINING:
@@ -118,6 +128,8 @@ class Linear(linears.Linear):
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
+      if self.quantization.weight_params.precision == 4:
+        w = utils.unpack_4bit(w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype)
       if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.'
@@ -221,6 +233,8 @@ class Linear(linears.Linear):
             percentile=percentile,
             use_symmetric=self.quantization.weight_params.use_symmetric,
         )
+        if self.quantization.weight_params.precision == 4:
+          q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
     elif self.quantization.quantization_type == QuantizationType.AQT:
       if self._do_static_activation_quantization():
         raise NotImplementedError(

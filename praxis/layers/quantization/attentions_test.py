@@ -39,15 +39,15 @@ instantiate = base_layer.instantiate
 
 
 def _generate_quantization_types_modes() -> Sequence[Dict[str, Any]]:
-  keys = ['testcase_name', 'quantization_type', 'mode']
+  keys = ['testcase_name', 'quantization_type', 'mode', 'precision']
   types = [QuantizationType.PTQ, QuantizationType.AQT]
   modes = [QuantizationMode.INFERENCE, QuantizationMode.TRAINING]
+  precisions = [8, 4]
 
   cases = []
-  for case in itertools.product(types, modes):
-    name = case[0].value + '_' + case[1].value
+  for case in itertools.product(types, modes, precisions):
+    name = case[0].value + '_' + case[1].value + '_' + str(case[2])
     cases.append([name] + list(case))
-
   return [dict(zip(keys, case)) for case in cases]
 
 
@@ -58,16 +58,22 @@ class QuantizedAttentionTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.named_parameters(_generate_quantization_types_modes())
-  def test_attention_projection_quantized(self, quantization_type, mode):
+  def test_attention_projection_quantized(
+      self, quantization_type, mode, precision
+  ):
     p = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj',
-        input_dim=5,
+        input_dim=8,
         num_heads=2,
         dim_per_head=3,
         is_output_projection=True,
         quantization=QuantizationHParams(
-            quantization_type=quantization_type, mode=mode
+            quantization_type=quantization_type,
+            mode=mode,
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                precision=precision,
+            ),
         ),
     )
     attn = instantiate(p)
@@ -76,29 +82,34 @@ class QuantizedAttentionTest(test_utils.TestCase):
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = attn.init(prng_key, inputs)
       outputs = attn.apply(initial_vars, inputs)
-    self.assertEqual(outputs.shape, (4, 5))
+    self.assertEqual(outputs.shape, (4, 8))
     if mode == QuantizationMode.INFERENCE:
-      self.assertAllClose(jnp.full((4, 5), 0.0), outputs)
+      self.assertAllClose(jnp.full((4, 8), 0.0), outputs)
     else:
       self.assertRaises(AssertionError, self.assertAllClose,
-                        jnp.full((4, 5), 0.0), outputs)
+                        jnp.full((4, 8), 0.0), outputs)
 
   @parameterized.named_parameters(_generate_quantization_types_modes())
   def test_attention_projection_no_output_proj_quantized(
-      self, quantization_type, mode):
+      self, quantization_type, mode, precision
+  ):
     p = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj',
-        input_dim=5,
+        input_dim=8,
         num_heads=2,
         dim_per_head=3,
         is_output_projection=False,
         quantization=QuantizationHParams(
-            quantization_type=quantization_type, mode=mode
+            quantization_type=quantization_type,
+            mode=mode,
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                precision=precision,
+            ),
         ),
     )
     attn = instantiate(p)
-    inputs = jnp.ones((4, 3, 5), dtype=p.dtype)
+    inputs = jnp.ones((4, 3, 8), dtype=p.dtype)
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = attn.init(prng_key, inputs)
@@ -111,19 +122,25 @@ class QuantizedAttentionTest(test_utils.TestCase):
                         jnp.full((4, 3, 2, 3), 0.0), outputs)
 
   @parameterized.named_parameters(_generate_quantization_types_modes())
-  def test_combined_projection_quantized(self, quantization_type, mode):
+  def test_combined_projection_quantized(
+      self, quantization_type, mode, precision
+  ):
     p = pax_fiddle.Config(
         qattentions.CombinedQKVProjectionLayer,
         name='_combined_qkv',
-        input_dim=5,
+        input_dim=8,
         num_heads=3,
         dim_per_head=2,
         quantization=QuantizationHParams(
-            quantization_type=quantization_type, mode=mode
+            quantization_type=quantization_type,
+            mode=mode,
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                precision=precision,
+            ),
         ),
     )
     attn = instantiate(p)
-    inputs = jnp.ones((4, 5), dtype=p.dtype)
+    inputs = jnp.ones((4, 8), dtype=p.dtype)
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = attn.init(prng_key, inputs)

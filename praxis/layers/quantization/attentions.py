@@ -52,6 +52,8 @@ class AttentionProjection(attentions.AttentionProjection):
   """
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
+  _PACK_4BIT_DIM = 0
+
   def create_tensor_quantizers(self):
     self.create_child(
         'act_quantizer',
@@ -94,12 +96,18 @@ class AttentionProjection(attentions.AttentionProjection):
         shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
+      dtype = self.quantization.weight_params.dtype
+      if self.quantization.weight_params.precision == 4:
+        dtype = jnp.int32
+        pc.shape = utils.get_packed_shape(
+            pc.shape, self._PACK_4BIT_DIM, packing_factor=8
+        )
       scale_shape = [self.input_dim] if self.is_output_projection else hd_shape
       self.create_quantized_variable(
           'w',
           pc,
           scale_shape,
-          dtype=self.quantization.weight_params.dtype,
+          dtype=dtype,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
     else:
@@ -187,6 +195,11 @@ class AttentionProjection(attentions.AttentionProjection):
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
+      if self.quantization.weight_params.precision == 4:
+        w = utils.unpack_4bit(
+            w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
+        )
+
       if (
           self.quantization.act_params is not None
           and self.quantization.act_params.stats_config is not None
@@ -297,6 +310,8 @@ class AttentionProjection(attentions.AttentionProjection):
           percentile=percentile,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
+      if self.quantization.weight_params.precision == 4:
+        q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
@@ -328,6 +343,8 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       layer, such as dtype for the quantized weight.
   """
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+
+  _PACK_4BIT_DIM = 1
 
   def create_tensor_quantizers(self):
     self.create_child(
@@ -385,11 +402,17 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
         tensor_split_dims_mapping=weight_split_dims_mapping,
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
+      dtype = self.quantization.weight_params.dtype
+      if self.quantization.weight_params.precision == 4:
+        dtype = jnp.int32
+        pc.shape = utils.get_packed_shape(
+            pc.shape, self._PACK_4BIT_DIM, packing_factor=8
+        )
       self.create_quantized_variable(
           'w',
           pc,
           [3] + hd_shape,
-          dtype=self.quantization.weight_params.dtype,
+          dtype=dtype,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
     else:
@@ -456,6 +479,11 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
+      if self.quantization.weight_params.precision == 4:
+        w = utils.unpack_4bit(
+            w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
+        )
+
       if (
           self.quantization.act_params is not None
           and self.quantization.act_params.stats_config is not None
@@ -564,6 +592,8 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
           percentile=percentile,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
+      if self.quantization.weight_params.precision == 4:
+        q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]

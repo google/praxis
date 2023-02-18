@@ -39,14 +39,23 @@ QuantizationType = quantization_hparams.QuantizationType
 
 
 def _generate_quantization_types_modes() -> Sequence[Dict[str, Any]]:
-  keys = ['testcase_name', 'quantization_type', 'mode', 'dtype']
+  keys = ['testcase_name', 'quantization_type', 'mode', 'dtype', 'precision']
   types = [QuantizationType.PTQ, QuantizationType.FQ, QuantizationType.AQT]
   modes = [QuantizationMode.INFERENCE, QuantizationMode.TRAINING]
   dtypes = [jnp.int8, jnp.uint8]
+  precisions = [8, 4]
 
   cases = []
-  for case in itertools.product(types, modes, dtypes):
-    name = case[0].value + '_' + case[1].value + '_' + str(case[2])
+  for case in itertools.product(types, modes, dtypes, precisions):
+    name = (
+        case[0].value
+        + '_'
+        + case[1].value
+        + '_'
+        + str(case[2])
+        + '_'
+        + str(case[3])
+    )
     cases.append([name] + list(case))
 
   return [dict(zip(keys, case)) for case in cases]
@@ -73,22 +82,26 @@ class QuantizedLinearTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.named_parameters(_generate_quantization_types_modes())
-  def test_linear_quantized(self, quantization_type, mode, dtype):
+  def test_linear_quantized(self, quantization_type, mode, dtype, precision):
     p = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear',
-        input_dims=5,
+        input_dims=8,
         output_dims=4,
         quantization=QuantizationHParams(
             quantization_type=quantization_type,
             mode=mode,
             weight_params=quantization_hparams.WeightQuantizationParams(
                 dtype=dtype,
+                precision=precision,
             ),
         ),
     )
     linear = instantiate(p)
-    inputs = jnp.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]], dtype=p.dtype)
+    inputs = jnp.array(
+        [[1, 2, 3, 4, 5, 6, 7, 8], [9, 10, 11, 12, 13, 14, 15, 16]],
+        dtype=p.dtype,
+    )
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = linear.init(prng_key, inputs)
