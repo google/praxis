@@ -303,7 +303,6 @@ pytype_strict_library(
     deps = [
         ":quantization_hparams",
         # Implicit jax dependency.
-        # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:pytypes",

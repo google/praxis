@@ -20,7 +20,6 @@ from typing import Optional, Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
@@ -189,8 +188,8 @@ class TensorQuantizer(base_layer.BaseLayer):
       sum_error = jnp.sum(jnp.abs(jnp.subtract(x, x_quantized_dequantized)))
       return sum_error, scale
 
-    clipping = np.linspace(
-        1.0, self.min_clipping, num=self.num_optimize_clipping
+    clipping = jnp.linspace(
+        1.0, self.min_clipping, num=self.num_optimize_clipping, dtype=x.dtype
     )
     res = jax.vmap(quantization_error_and_scale)(clipping)
     best_ind = jnp.argmin(res[0])
