@@ -390,12 +390,26 @@ class VisionTransformer(base_layer.BaseLayer):
     transformer_layers_tpl: An integer specifying number of transformers.
     exit_layers_tpl: An integer specifying number of attention heads in
       transformers.
+    full_data_parallel_on_entry_exit: Whether to apply data parallelism over all
+      devices on the entry and exit layers. This is a convenient way to shard
+      small entry/exit layers.
   """
   entry_layers_tpl: LayerTpl = template_field(VitEntryLayers)
   transformer_layers_tpl: LayerTpl = template_field(
       transformers.StackedTransformer
   )
   exit_layers_tpl: LayerTpl = template_field(VitExitLayers)
+  full_data_parallel_on_entry_exit: bool = False
+
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
+    """Represents how intermediate values should be partitioned across a mesh.
+
+    Attributes:
+      network_inputs: How the activations will be sharded in the transformer
+        layers (after entry, before exits).
+    """
+
+    network_inputs: base_layer.SplitDimsMapping = None
 
   def setup(self) -> None:
 
@@ -408,6 +422,19 @@ class VisionTransformer(base_layer.BaseLayer):
 
     if self.exit_layers_tpl is not None:
       self.create_child('exit_stack', self.exit_layers_tpl)
+
+  def shard_entry_exit(self, x: JTensor) -> JTensor:
+    # Fully data parallel on all mesh axes.
+    if (
+        self.mesh_axis_names is None
+        or not self.full_data_parallel_on_entry_exit
+    ):
+      return x
+    return base_layer.maybe_shard(
+        x,
+        [self.mesh_axis_names] + [None] * (x.ndim - 1),
+        self.mesh_axis_names,
+    )
 
   def __call__(self, inputs: JTensor, paddings: JTensor = None) -> JTensor:
     """Applies the Vit model to the inputs.
@@ -423,13 +450,24 @@ class VisionTransformer(base_layer.BaseLayer):
       Output tensor of shape [B, D] or [B, N, D] if pooled == False.
     """
     features = inputs
+    ap = self.activation_split_dims_mapping
     if self.entry_layers_tpl:
+      features = self.shard_entry_exit(features)
       features = self.entry_stack(features)  # [B, N, D]
+      features = self.shard_entry_exit(features)
+      features = base_layer.maybe_shard(
+          features, ap.network_inputs, self.mesh_axis_names
+      )
     if paddings is None:
       paddings = jnp.zeros(features.shape[:-1], dtype=features.dtype)
     features = self.transformers_stack(features, paddings)  # [B, N, D]
     if self.exit_layers_tpl:
+      features = base_layer.maybe_shard(
+          features, ap.network_inputs, self.mesh_axis_names
+      )
+      features = self.shard_entry_exit(features)
       features = self.exit_stack(features)  # [B, D] or [B, N, D]
+      features = self.shard_entry_exit(features)
     return features
 
 
