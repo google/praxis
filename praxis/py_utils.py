@@ -27,7 +27,6 @@ from absl import flags
 from absl import logging
 import flax
 import jax
-from jax.experimental import global_device_array as gda_lib
 from jax.experimental import mesh_utils
 from jax.experimental import multihost_utils
 from jax.experimental import pjit
@@ -165,9 +164,7 @@ def combine_inner_and_outer_batches(array: jnp.ndarray) -> np.ndarray:
 
 def _unreplicate(x):
   """Helper to unreplicated the data based on its type."""
-  if jax.config.jax_array and isinstance(x, jax.Array):
-    return x.addressable_data(0)
-  elif isinstance(x, gda_lib.GlobalDeviceArray):
+  if isinstance(x, jax.Array):
     return x.addressable_data(0)
   elif isinstance(x, pxla.ShardedDeviceArray):
     val = x.device_buffers[0]
@@ -371,10 +368,13 @@ def put_to_devices(host_array: np.ndarray,
 
 # We use Any types to allow nested data structures. They are defined in pytypes
 # which would cause a circular dependency.
-def create_gda(host_arrays: Union[np.ndarray, Any],
-               global_shapes: Union[jax.ShapeDtypeStruct,
-                                    Any], global_mesh: jax.sharding.Mesh,
-               pspecs: Any) -> Union[gda_lib.GlobalDeviceArray, Any]:
+# TODO(pax-dev): Rename globally into e.g. create_jax_array()
+def create_gda(
+    host_arrays: Union[np.ndarray, Any],
+    global_shapes: Union[jax.ShapeDtypeStruct, Any],
+    global_mesh: jax.sharding.Mesh,
+    pspecs: Any,
+) -> Any:
   """Create GDA from host array.
 
   Evenly partitioning x along axis 0 and device_put shards to local devices.
@@ -386,7 +386,7 @@ def create_gda(host_arrays: Union[np.ndarray, Any],
     pspecs: partition specs of the resultant GDA.
 
   Returns:
-    A GDA with x as the host-local data.
+    A Jax Array with x as the host-local data.
   """
 
   local_devices = global_mesh.local_devices
@@ -396,58 +396,13 @@ def create_gda(host_arrays: Union[np.ndarray, Any],
 
   device_buffers = jax.tree_map(_put_to_devices, host_arrays)
 
-  def _gda_or_jax_array(global_shape, pspec, dbs):
+  def _jax_array(global_shape, pspec, dbs):
+    # This is cached because creating new sharding objects everytime is
+    # expensive in pjit dispatch path for inputs.
     s = jax.sharding.NamedSharding(global_mesh, pspec)
     return jax.make_array_from_single_device_arrays(global_shape.shape, s, dbs)
-  return jax.tree_map(_gda_or_jax_array, global_shapes, pspecs, device_buffers)
 
-
-# TODO(b/248152817): Delete this function when jax.Array is enabled globally.
-def copy_gda(x):
-  """Copies a GDA."""
-  if jax.config.jax_array and isinstance(x, jax.Array):
-    return jnp.copy(x)
-  assert isinstance(x, gda_lib.GlobalDeviceArray)
-  buffers = [jnp.copy(s.data) for s in x.addressable_shards]
-  return jax.make_array_from_single_device_arrays(
-      x.shape, jax.sharding.NamedSharding(x.mesh, x.mesh_axes), buffers
-  )
-
-
-def convert_fully_replicated_sda_to_gda(sda):
-  """Convert a fully replicated SDA to GDA."""
-  # SDA is fully replicated, so its device_buffers[0].shape is the global shape.
-  global_shape = sda.device_buffers[0].shape
-  # Create a 1D mesh to create fully replicated GDA.
-  mesh = jax.sharding.Mesh(np.array(jax.devices()), axis_names=('x',))
-  partition_spec = jax.sharding.PartitionSpec(None)
-  # pmap-produced SDA has a "scrambled" device order.
-  return jax.make_array_from_single_device_arrays(
-      global_shape,
-      jax.sharding.NamedSharding(mesh, partition_spec),
-      sorted(sda.device_buffers, key=lambda x: x.device().id),
-  )
-
-
-def convert_fully_replicated_gda_to_sda(gda):
-  """Converts a fully replicated GDA to SDA.
-
-  Args:
-    gda: Fully replicated GDA.
-
-  Returns:
-    Fully replicated SDA.
-  """
-  assert isinstance(gda, gda_lib.GlobalDeviceArray)
-  with jax.transfer_guard('disallow'):
-    local_shape = (jax.local_device_count(),) + gda.shape
-    local_aval = jax.core.ShapedArray(local_shape, gda.dtype)
-    sharded_aval = jax.core.ShapedArray(local_shape[1:], gda.dtype)
-    sharding_spec = pxla._pmap_sharding_spec(  # pylint: disable=protected-access
-        local_shape[0], local_shape[0], 1, None, sharded_aval, 0)
-    indices = pxla.spec_to_indices(local_shape, sharding_spec)
-    return pxla.make_sharded_device_array(local_aval, sharding_spec,
-                                          list(gda._device_buffers), indices)  # pylint: disable=protected-access
+  return jax.tree_map(_jax_array, global_shapes, pspecs, device_buffers)
 
 
 def convert_fully_replicated_array_to_pmap_array(arr):
@@ -473,14 +428,8 @@ def convert_fully_replicated_array_to_pmap_array(arr):
                                                     device_buffers)
 
 
-def gda_or_jax_array():
-  return jax.config.jax_array or jax.config.jax_parallel_functions_output_gda
-
-
 def convert_host_local_array_to_global_array(arr):
   """Converts a host local array from pmap to global jax.Array.
-
-  Similar to `convert_fully_replicated_sda_to_gda` function.
 
   Args:
     arr: Input host local array produced by pmap.

@@ -1226,11 +1226,11 @@ def _maybe_to_bfloat16_dtype(x):
   """Maybe convert input to bf16 dtype.
 
   Args:
-    x: common array types like JTensor, ShapeDtypeStruct or GlobalDeviceArray.
+    x: common array types like JTensor or ShapeDtypeStruct.
 
   Returns:
-    A casted ShapeDtypeStruct if x is one of JTensor, ShapeDtypeStruct or
-    GlobalDeviceArray. Otherwise, returns x.
+    A casted ShapeDtypeStruct if x is one of JTensor or ShapeDtypeStruct.
+    Otherwise, returns x.
   """
   if not hasattr(x, 'dtype'):
     # Ignore common non-array types that shouldn't be cast.
