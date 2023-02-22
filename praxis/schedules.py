@@ -318,9 +318,13 @@ class LinearRampupCosineDecay(BaseSchedule):
     p = self.hparams
 
     assert p.decay_start >= p.warmup_steps, (
-        'decay_start must greater than warmup_steps.')
+        f'decay_start ({p.decay_start}) must greater than warmup_steps'
+        f' ({p.warmup_steps}).'
+    )
     assert p.decay_end >= p.decay_start, (
-        'decay_end must be greater than decay_start')
+        f'decay_end ({p.decay_end}) must be greater than decay_start'
+        f' ({p.decay_start})'
+    )
     assert p.max > 0, 'Must set max.'
 
     self._schedules = []
