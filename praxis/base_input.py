@@ -252,12 +252,12 @@ class BaseInput(base_hyperparams.BaseParameterizable):
     )
     device_order = self.hparams.custom_device_order
     if device_order is None:
-      return py_utils.create_gda(arrays, global_shapes, global_mesh, pspecs)
+      return py_utils.make_array(arrays, global_shapes, global_mesh, pspecs)
     assert jax.config.jax_array
     assert len(device_order) == jax.device_count()
 
     # Use custom device order to create OpSharding in jax.Array.
-    def _create_array(x, global_shape):
+    def _make_array(x, global_shape):
       op_sharding = xc.OpSharding()
       op_sharding.type = xc.OpSharding.Type.OTHER
       # Fully sharded on the batch dim.
@@ -271,7 +271,7 @@ class BaseInput(base_hyperparams.BaseParameterizable):
       return jax.make_array_from_single_device_arrays(global_shape.shape,
                                                       sharding, dbs)
 
-    return jax.tree_util.tree_map(_create_array, arrays, global_shapes)
+    return jax.tree_util.tree_map(_make_array, arrays, global_shapes)
 
 
 class LingvoInputAdaptor(BaseInput):

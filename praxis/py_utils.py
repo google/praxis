@@ -369,21 +369,21 @@ def put_to_devices(host_array: np.ndarray,
 # We use Any types to allow nested data structures. They are defined in pytypes
 # which would cause a circular dependency.
 # TODO(pax-dev): Rename globally into e.g. create_jax_array()
-def create_gda(
+def make_array(
     host_arrays: Union[np.ndarray, Any],
     global_shapes: Union[jax.ShapeDtypeStruct, Any],
     global_mesh: jax.sharding.Mesh,
     pspecs: Any,
 ) -> Any:
-  """Create GDA from host array.
+  """Makes a Jax Array from host array.
 
   Evenly partitioning x along axis 0 and device_put shards to local devices.
 
   Args:
     host_arrays: host-local arrays.
-    global_shapes: global shapes of the resultant GDA.
-    global_mesh: global mesh of the resultant GDA.
-    pspecs: partition specs of the resultant GDA.
+    global_shapes: global shapes of the resultant Array.
+    global_mesh: global mesh of the resultant Array.
+    pspecs: partition specs of the resultant Array.
 
   Returns:
     A Jax Array with x as the host-local data.
