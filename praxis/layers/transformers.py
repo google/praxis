@@ -2011,6 +2011,10 @@ class PipelinedTransformer(base_layer.BaseLayer):
     pipeline_broadcast_inputs: If true, broadcast inputs (shared between all
       stages instead of being computed by the previous stage) will be passed
       stage-by-stage instead of being replicated.
+    enable_async_circular_transfer: If True, when it is possible (which means
+      num_microbatches > stages), transfers from last stage to first stage will
+      be delayed in a later iteration to allow asynchronous transfers. This may
+      be disabled on fast cross-stage networks to avoid extra overhead.
   """
   pipeline_stage: LayerTpl = template_field(StackedTransformer)
   circular_repeat: int = 1
@@ -2020,6 +2024,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
   stream_io: bool = False
   pipeline_broadcast_inputs: bool = False
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
+  enable_async_circular_transfer: bool = True
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -2067,6 +2072,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
           stream_io=self.stream_io,
           pipeline_broadcast_inputs=self.pipeline_broadcast_inputs,
           checkpoint_policy=self.checkpoint_policy,
+          enable_async_circular_transfer=self.enable_async_circular_transfer,
       )
 
     pipeline_params.weight_split_dims_mapping.stages = (

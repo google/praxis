@@ -860,12 +860,19 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
       circular pipeline schedule.
     share_weights: Whether layers in the same stage share the weights. This
       can be useful for token-level autoregressive decoding.
+    enable_async_circular_transfer: If True, when it is possible (which means
+      num_microbatches > stages), transfers from last stage to first stage will
+      be delayed in a later iteration to allow asynchronous transfers. This may
+      be disabled on fast cross-stage networks to avoid extra overhead.
   """
   circular_repeat: int = 1
   share_weights: bool = False
+  enable_async_circular_transfer: bool = True
 
   def _async_circular_transfer(self, num_microbatches: int) -> bool:
     """Whether to delay circular transfers by 1 iteration."""
+    if not self.enable_async_circular_transfer:
+      return False
     if num_microbatches < self.num_stages:
       # TODO(yuanzx): Implement padding on small number of microbatches.
       raise NotImplementedError('num_microbatches must be at least num_stages')
