@@ -605,10 +605,10 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
         stages_in = jax.tree_map(_fill_nan_for_bubbles, stages_in)
 
+      stages_in = jax.tree_map(_select_state_or_input, stages_in, in_state)
       if self._should_checkpoint_stages_in():
         stages_in = jax.tree_map(
             lambda x: checkpoint_name(x, 'iteration_input'), stages_in)
-      stages_in = jax.tree_map(_select_state_or_input, stages_in, in_state)
 
       if self.pipeline_broadcast_inputs:
         per_stage_args = stages_in.broadcast_inputs
