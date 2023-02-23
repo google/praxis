@@ -303,29 +303,29 @@ def set_inference_mode(
     config: The config to apply quantization on.
     target: The target component to be replaced.
   """
+  def set_quantization_mode_inference(tpl):
+    if hasattr(tpl, 'quantization'):
+      tpl.quantization.mode = QuantizationMode.INFERENCE
+
   target_tpls = find_target_tpl(config, target)
   for target_tpl in target_tpls:
-    target_tpl.tr_atten_tpl.proj_tpl.quantization.mode = (
-        QuantizationMode.INFERENCE
-    )
+    set_quantization_mode_inference(target_tpl.tr_atten_tpl.proj_tpl)
     if (
         issubclass(
             target_tpl.tr_atten_tpl.cls, layers.attentions.DotProductAttention
         )
         and target_tpl.tr_atten_tpl.combine_qkv
     ):
-      target_tpl.tr_atten_tpl.combined_qkv_proj_tpl.quantization.mode = (
-          QuantizationMode.INFERENCE
+      set_quantization_mode_inference(
+          target_tpl.tr_atten_tpl.combined_qkv_proj_tpl
       )
     if issubclass(
         target_tpl.tr_atten_tpl.cls,
         layers.multi_query_attention.MultiQueryDotProductAttention,
     ):
-      target_tpl.tr_atten_tpl.headless_proj_tpl.quantization.mode = (
-          QuantizationMode.INFERENCE
-      )
-    target_tpl.tr_fflayer_tpl.fflayer_tpl.linear_tpl.quantization.mode = (
-        QuantizationMode.INFERENCE
+      set_quantization_mode_inference(target_tpl.tr_atten_tpl.headless_proj_tpl)
+    set_quantization_mode_inference(
+        target_tpl.tr_fflayer_tpl.fflayer_tpl.linear_tpl
     )
 
 
