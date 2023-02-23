@@ -109,14 +109,44 @@ py_strict_test(
     ],
 )
 
+pytype_strict_library(
+    name = "quantization_test_utils",
+    srcs = ["tests/test_util.py"],
+    srcs_version = "PY3",
+    deps = [],
+)
+
 py_strict_test(
     name = "attention_projection_ptq_test",
-    srcs = ["quantization/tests/attention_projection_ptq_test.py"],
+    srcs = ["tests/attention_projection_ptq_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
         ":attentions",
         ":quantization_hparams",
+        ":quantization_test_utils",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        "//praxis/layers:attentions",
+    ],
+)
+
+py_strict_test(
+    name = "attention_projection_fq_test",
+    srcs = ["tests/attention_projection_fq_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        ":quantization_hparams",
+        ":quantization_test_utils",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.

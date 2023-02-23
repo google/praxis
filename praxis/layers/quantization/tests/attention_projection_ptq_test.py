@@ -13,10 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for quantized AttentionProjection layer."""
-
-import itertools
-from typing import Any, Dict, Sequence
+"""PTQ Tests for quantized AttentionProjection layer."""
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -29,69 +26,17 @@ from praxis import test_utils
 from praxis.layers import attentions
 from praxis.layers.quantization import attentions as qattentions
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization.tests import test_util as quantization_test_util
 
 QuantizationHParams = quantization_hparams.QuantizationHParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 instantiate = base_layer.instantiate
 
-
-# Convert the given nested array into a python nested list.
-# This is to apply the assertion for python lists.
-def _to_list(w, array_type):
-  if w is None:
-    return None
-
-  try:
-    ret = float(w)
-    if ret.is_integer():
-      return int(ret)
-    return round(ret, 5)
-  except Exception:  # pylint: disable=broad-except
-    pass
-
-  return [_to_list(v, array_type) for v in w]
-
-
-def _generate_quantization_layer_config(
-    add_expected_quantization=False,
-    add_expected_result=False
-) -> Sequence[Dict[str, Any]]:
-  keys = [
-      'is_output_projection',
-      'use_bias',
-      'attention_combine_dims',
-      'use_nhd_shape',
-      'is_weight_symmetric',
-  ]
-
-  # If attention_combine_dims is set to True, use_bias should be set to False.
-  boolean_flags = [
-      [True, True, False, True],
-      [True, False, True, True],
-      [True, True, False, False],
-      [True, False, True, False],
-      [False, True, False, True],
-      [False, False, True, True],
-      [False, False, False, True],
-      [False, False, True, False],
-      [False, True, False, False],
-      [True, False, False, False],
-      [False, False, False, False],
-  ]
-
-  weight_symmetric = [True, False]
-  cases = []
-  for case in itertools.product(boolean_flags, weight_symmetric):
-    cases.append(case[0] + [case[1]])
-
-  if add_expected_quantization:
-    keys, case = _add_expected_quantized_weights(keys, cases)
-
-  if add_expected_result:
-    keys, case = _add_expected_quantization_results(keys, cases)
-
-  return [dict(zip(keys, case)) for case in cases]
+to_list = quantization_test_util.to_list
+generate_quantization_test_config = (
+    quantization_test_util.generate_attention_projection_test_config
+)
 
 
 def _add_expected_quantized_weights(cur_key, cur_samples):
@@ -620,7 +565,7 @@ class AttentionProjectionPTQTest(test_utils.TestCase):
 
   # See if the training results of PTQ-quantized model and original model are
   # the same.
-  @parameterized.parameters(_generate_quantization_layer_config())
+  @parameterized.parameters(generate_quantization_test_config())
   def test_train(
       self,
       is_output_projection,
@@ -666,7 +611,7 @@ class AttentionProjectionPTQTest(test_utils.TestCase):
 
   # Test PTQ weight quantization.
   @parameterized.parameters(
-      _generate_quantization_layer_config(add_expected_quantization=True)
+      generate_quantization_test_config([_add_expected_quantized_weights])
   )
   def test_weight_quantization(
       self,
@@ -739,14 +684,12 @@ class AttentionProjectionPTQTest(test_utils.TestCase):
     weight_scale = res[base_layer.PARAMS].get('w_quantized_scale', None)
     weight_zp = res[base_layer.PARAMS].get('w_quantized_zp', None)
 
-    self.assertEqual(_to_list(weight, type(weight)), expected_weight)
-    self.assertEqual(
-        _to_list(weight_scale, type(weight_scale)), expected_scale
-    )
-    self.assertEqual(_to_list(weight_zp, type(weight_zp)), expected_zp)
+    self.assertEqual(to_list(weight), expected_weight)
+    self.assertEqual(to_list(weight_scale), expected_scale)
+    self.assertEqual(to_list(weight_zp), expected_zp)
 
   # Check Q specification.
-  @parameterized.parameters(_generate_quantization_layer_config())
+  @parameterized.parameters(generate_quantization_test_config())
   def test_quantization_partition_spec(
       self,
       is_output_projection,
@@ -835,7 +778,7 @@ class AttentionProjectionPTQTest(test_utils.TestCase):
 
   # Check inference result.
   @parameterized.parameters(
-      _generate_quantization_layer_config(add_expected_result=True)
+      generate_quantization_test_config([_add_expected_quantization_results])
   )
   def test_inference_call(
       self,
@@ -923,8 +866,8 @@ class AttentionProjectionPTQTest(test_utils.TestCase):
 
     # Since they are quantized results, they may not be exactly equal,
     # but they should be similar in some way.
-    result_f = _to_list(res_f, type(res_f))
-    result_q = _to_list(res_q, type(res_q))
+    result_f = to_list(res_f)
+    result_q = to_list(res_q)
 
     self.assertNotEqual(result_f, result_q)
     self.assertAllClose(res_f, res_q, atol=1e-1)
