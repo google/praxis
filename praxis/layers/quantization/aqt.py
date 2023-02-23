@@ -182,11 +182,14 @@ class TensorQuantizer(base_layer.BaseLayer):
       contract_dims: Union[int, Sequence[int]],
   ) -> JTensor:
     def quantization_error_and_scale(clipping):
-      scale = self._get_scale(x, contract_dims, clipping=clipping)
-      x_quantized = self.to_quant(jnp.divide(x, scale))
-      x_quantized_dequantized = jnp.multiply(scale, x_quantized)
+      q_scale = self._get_scale(x, contract_dims, clipping=clipping)
+      x_scaled, zp_time_scale = self._scale(x, q_scale, contract_dims)
+      x_quantized = self.to_quant(x_scaled)
+      x_quantized_dequantized = self.dequantize(
+          x_quantized, q_scale, contract_dims, zp_time_scale
+      )
       sum_error = jnp.sum(jnp.abs(jnp.subtract(x, x_quantized_dequantized)))
-      return sum_error, scale
+      return sum_error, q_scale
 
     clipping = jnp.linspace(
         1.0, self.min_clipping, num=self.num_optimize_clipping, dtype=x.dtype
@@ -249,6 +252,62 @@ class TensorQuantizer(base_layer.BaseLayer):
     zp = clip_bound_min - x_min / scale
     return zp
 
+  def dequantize(
+      self,
+      q_x: JTensor,
+      q_scale: JTensor,
+      contract_dims: Union[int, Sequence[int]],
+      zp_time_scale: Optional[JTensor] = None) -> JTensor:
+    """Dequantizes quantized q_x.
+
+    Args:
+      q_x: Input tensor.
+      q_scale: Quantization scale.
+      contract_dims: Contraction dims.
+      zp_time_scale: Zero point times q_scale, for asymmetric quantization.
+
+    Returns:
+      Dequantized tensor.
+    """
+    if self.use_symmetric and zp_time_scale is not None:
+      raise ValueError('Symmetric quantization can not be used '
+                       'with zp_time_scale.')
+    if not self.use_symmetric and zp_time_scale is None:
+      raise ValueError('Asymmetric quantization need zp_time_scale.')
+
+    if self.use_symmetric:
+      deq_q_x = q_x * q_scale
+    else:
+      deq_q_x = q_x * q_scale - jnp.expand_dims(zp_time_scale, contract_dims)
+    return deq_q_x
+
+  def _scale(
+      self,
+      x: JTensor,
+      q_scale: JTensor,
+      contract_dims: Union[int, Sequence[int]],
+  ) -> Tuple[JTensor, Optional[JTensor]]:
+    """Rescales input x for quantization.
+
+    Args:
+      x: Input tensor.
+      q_scale: Quantization scale.
+      contract_dims: Contraction dims.
+
+    Returns:
+      Rescaled tensor.
+    """
+
+    if self.use_symmetric:
+      x_scaled = jnp.divide(x, q_scale)
+      zp_time_scale = None
+    else:
+      zp = self._get_zero_point(x, contract_dims, q_scale)
+      x_scaled = jnp.divide(x, q_scale) + zp
+      zp_time_scale = jnp.multiply(q_scale, zp).squeeze()
+
+    return x_scaled, zp_time_scale
+
   def quantize(
       self,
       x: JTensor,
@@ -265,17 +324,11 @@ class TensorQuantizer(base_layer.BaseLayer):
       quantized_dtype: Output type.
 
     Returns:
-      Quantized tensor with scale (used for dequantization)
+      Quantized tensor with scale (used for dequantization).
     """
 
     q_s = self.get_quant_scale(x, contract_dims)
-    if self.use_symmetric:
-      x_scaled = jnp.divide(x, q_s)
-      zp_time_scale = None
-    else:
-      zp = self._get_zero_point(x, contract_dims, q_s)
-      x_scaled = jnp.divide(x, q_s) + zp
-      zp_time_scale = jnp.multiply(q_s, zp).squeeze()
+    x_scaled, zp_time_scale = self._scale(x, q_s, contract_dims)
     q_x = self.to_quant(x_scaled)
 
     if squeeze_scale:

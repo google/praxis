@@ -40,16 +40,14 @@ class AqtTest(test_utils.TestCase):
     state = quant.init(jax.random.PRNGKey(0))
 
     # Quantize.
-    q_x, q_scale, zp = quant.apply(
+    q_x, q_scale, zp_time_scale = quant.apply(
         state, sample, axis, False, jnp.float32, method=quant.quantize
     )
 
     # Dequantize.
-    if zp is None:
-      deq_q_x = q_x * q_scale
-    else:
-      zp = jnp.expand_dims(zp, axis=axis)
-      deq_q_x = q_x * q_scale - zp
+    deq_q_x = quant.apply(
+        state, q_x, q_scale, axis, zp_time_scale, method=quant.dequantize
+    )
 
     return q_x, deq_q_x, q_scale
 
@@ -182,68 +180,96 @@ class AqtTest(test_utils.TestCase):
     x_rescaled = x_scaled / scale
     self.assertArraysEqual(x_rescaled, jnp.zeros_like(x_rescaled))
 
-  def test_clipping_optimization(self):
-    p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
-        name='quant',
-        precision=4,
+  def _quant_with_dequant_error(self, quant, state, x, contract_dims):
+    # Compute dequantization error with the symmetric quantizer:
+    q_x, q_s, zp_time_scale = quant.apply(
+        state,
+        x,
+        contract_dims,
+        squeeze_scale=False,
+        method=quant.quantize,
     )
-    p_quant_opt = pax_fiddle.Config(
+    q_deq_x = quant.apply(
+        state,
+        q_x,
+        q_s,
+        contract_dims,
+        zp_time_scale,
+        method=quant.dequantize,
+    )
+    sum_error = jnp.sum(jnp.abs(jnp.subtract(x, q_deq_x)))
+    return q_x, sum_error
+
+  def test_clipping_optimization(self):
+    sym_p_quant = pax_fiddle.Config(
         aqt.TensorQuantizer,
-        name='quant_opt',
+        name='sym_quant',
+        precision=4,
+        use_symmetric=True,
+    )
+    asym_p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='asym_quant',
+        precision=4,
+        use_symmetric=False,
+    )
+    sym_p_quant_opt = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='sym_quant_opt',
         precision=4,
         min_clipping=0.8,
         num_optimize_clipping=8,
+        use_symmetric=True,
     )
-    quant = p_quant.Instantiate()
-    quant_opt = p_quant_opt.Instantiate()
-    state = quant.init(jax.random.PRNGKey(0))
+    asym_p_quant_opt = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='asym_quant_opt',
+        precision=4,
+        min_clipping=0.8,
+        num_optimize_clipping=8,
+        use_symmetric=False,
+    )
+    sym_quant = sym_p_quant.Instantiate()
+    asym_quant = asym_p_quant.Instantiate()
+    sym_quant_opt = sym_p_quant_opt.Instantiate()
+    asym_quant_opt = asym_p_quant_opt.Instantiate()
+
+    state = sym_quant.init(jax.random.PRNGKey(0))
     batch_size = 3
     feature_dim1 = 2
     feature_dim2 = 256
     input_shape = [batch_size, feature_dim1, feature_dim2]
     x = jax.random.normal(jax.random.PRNGKey(12), input_shape)
+    contract_dims = -1
 
-    # Compute dequantization error with the standard quantizer:
-    scale = quant.apply(
-        state,
-        x,
-        contract_dims=-1,
-        method=quant.get_quant_scale,
+    sym_q, sym_error = self._quant_with_dequant_error(
+        sym_quant, state, x, contract_dims
     )
-    self.assertEqual(scale.shape, (batch_size, feature_dim1, 1))
-
-    x_q = quant.apply(state, x / scale, method=quant.to_quant)
-    x_q_deq = jnp.multiply(scale, x_q)
-    sum_error = jnp.sum(jnp.abs(jnp.subtract(x, x_q_deq)))
-
-    # Compute dequantization error with the clipping optimization:
-    scale_opt = quant_opt.apply(
-        state,
-        x,
-        contract_dims=-1,
-        method=quant.get_quant_scale,
+    asym_q, asym_error = self._quant_with_dequant_error(
+        asym_quant, state, x, contract_dims
     )
-    x_q_opt = quant_opt.apply(
-        state, x / scale_opt, method=quant_opt.to_quant
+    sym_opt_q, sym_opt_error = self._quant_with_dequant_error(
+        sym_quant_opt, state, x, contract_dims
     )
-    x_q_deq_opt = jnp.multiply(scale_opt, x_q_opt)
-    sum_error_opt = jnp.sum(jnp.abs(jnp.subtract(x, x_q_deq_opt)))
+    asym_opt_q, asym_opt_error = self._quant_with_dequant_error(
+        asym_quant_opt, state, x, contract_dims
+    )
 
     # Validate that x is quantized
-    self.assertEqual(7, jnp.max(x_q))
-    self.assertEqual(-7, jnp.min(x_q))
+    self.assertEqual(7, jnp.max(sym_q))
+    self.assertEqual(-7, jnp.min(sym_q))
+    self.assertEqual(7, jnp.max(asym_q))
+    self.assertEqual(-8, jnp.min(asym_q))
+    self.assertEqual(7, jnp.max(sym_opt_q))
+    self.assertEqual(-8, jnp.min(sym_opt_q))
+    self.assertEqual(7, jnp.max(asym_opt_q))
+    self.assertEqual(-8, jnp.min(asym_opt_q))
 
-    self.assertEqual(7, jnp.max(x_q_opt))
-    self.assertEqual(-8, jnp.min(x_q_opt))
-    sum_x_q = jnp.sum(jnp.abs(x_q))
-    sum_x_q_opt = jnp.sum(jnp.abs(x_q_opt))
-    self.assertNotEqual(sum_x_q, sum_x_q_opt)
-
-    # Validated that quantization with optimization has lower error.
-    # With feature_dim2 we observe that difference between sum_error_opt and
-    # sum_error belongs to range: 10...30, so selected 20 as middle point.
-    self.assertLess(sum_error_opt, sum_error-20)
+    delta = 2  # Set experimentally.
+    # They must be in sorted order as below:
+    self.assertLess(asym_error, sym_error - delta)
+    self.assertLess(sym_opt_error, asym_error - delta)
+    self.assertLess(asym_opt_error, sym_opt_error - delta)
 
   @parameterized.named_parameters(
       dict(testcase_name='1bit', precision=1),

@@ -129,7 +129,9 @@ class Linear(linears.Linear):
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
       if self.quantization.weight_params.precision == 4:
-        w = utils.unpack_4bit(w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype)
+        w = utils.unpack_4bit(
+            w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
+        )
       if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.'

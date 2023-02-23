@@ -156,6 +156,7 @@ class QuantizedLinearTest(test_utils.TestCase):
       outputs_q = linear_q.apply(initial_vars_q, inputs)
     self.assertAllClose(expected_output, outputs_q)
 
+
 class QuantizedLinearsSyncTest(test_utils.TestCase):
   """Sync tests between quantized Linear and regular Linear.
 
@@ -338,10 +339,13 @@ class QuantizeLinearTest(test_utils.TestCase):
       initial_vars['params']['w'] = weight
 
       res, _ = layer.apply(
-          initial_vars, mutable=[], method=layer.quantize_weight)
+          initial_vars, mutable=[], method=layer.quantize_weight
+      )
 
     self.assertArraysEqual(res['params']['w'], q_weight)
-    self.assertAllClose(res['params']['w_quantized_scale'], expected_scale, atol=1e-6)
+    self.assertAllClose(
+        res['params']['w_quantized_scale'], expected_scale, atol=1e-6
+    )
 
 
 if __name__ == '__main__':
