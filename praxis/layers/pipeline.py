@@ -896,6 +896,49 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
     if self.share_weights:
       return vmapped_fn
 
+    if self.is_initializing():
+      # Need a vmap for initializing the vars. But during real fprop, we use
+      # scatter/gather instead.
+      vmapped_fn = nn.vmap(
+          vmapped_fn,
+          in_axes=0,
+          out_axes=0,
+          spmd_axis_name=self.mesh_axis_names[0],
+          variable_axes={
+              PARAMS: 0,
+              NON_TRAINABLE: 0,
+          },
+          split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
+          metadata_params={
+              'is_initializing': True,
+              'sub_weight_split_dims_mapping': (None,),
+              'x_times': self.circular_repeat,
+              'optimizer_dims_mapping': None,
+          },
+      )
+      # Other vars immutable.
+      vmapped_fn = nn.map_variables(
+          vmapped_fn,
+          mapped_collections=[
+              SUMMARIES,
+              AUX_LOSS,
+              INTERMEDIATES,
+          ],
+          mutable=False,
+      )
+
+      def _fn(layer, *args, **kwargs):
+        args = jax.tree_map(
+            lambda x: jax.lax.broadcast(x, [self.circular_repeat]), args
+        )
+        kwargs = jax.tree_map(
+            lambda x: jax.lax.broadcast(x, [self.circular_repeat]), kwargs
+        )
+        outs = vmapped_fn(layer, *args, **kwargs)
+        return jax.tree_map(lambda x: x[0], outs)
+
+      return _fn
+
     vmapped_fn = nn.add_metadata_axis(
         vmapped_fn,
         variable_axes={PARAMS: 0, AUX_LOSS: 0, SUMMARIES: 0, NON_TRAINABLE: 0},
