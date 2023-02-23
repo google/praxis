@@ -912,7 +912,7 @@ def get_enumeration_id(example: Dict[str, Any],
       enumeration related fields.
 
   Returns:
-    a string represending the enumeration ID which should be globally unique
+    a string representing the enumeration ID which should be globally unique
       within a given dataset. If enum fields DNE in example, returns None.
   """
   if not all(
