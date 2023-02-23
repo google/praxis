@@ -343,6 +343,17 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
             'optimizer_dims_mapping': self.optimizer_dims_mapping,
         },
     )
+    if self.is_initializing():
+      # Other vars are immutable.
+      vmapped_fn = nn.map_variables(
+          vmapped_fn,
+          mapped_collections=[
+              SUMMARIES,
+              AUX_LOSS,
+              INTERMEDIATES,
+          ],
+          mutable=False,
+      )
     return vmapped_fn
 
   def num_total_iterations(self, num_microbatches: int) -> int:
@@ -915,16 +926,6 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
               'x_times': self.circular_repeat,
               'optimizer_dims_mapping': None,
           },
-      )
-      # Other vars immutable.
-      vmapped_fn = nn.map_variables(
-          vmapped_fn,
-          mapped_collections=[
-              SUMMARIES,
-              AUX_LOSS,
-              INTERMEDIATES,
-          ],
-          mutable=False,
       )
 
       def _fn(layer, *args, **kwargs):
