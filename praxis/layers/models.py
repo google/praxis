@@ -561,6 +561,7 @@ class LanguageModel(base_model.BaseModel):
         per_example_top_p = getattr(input_batch, 'per_example_top_p', None)
         per_example_top_k = getattr(input_batch, 'per_example_top_k', None)
         eos_id = getattr(input_batch, 'eos_id', decoder_params.eos_id)
+        gumbel_prng_key = getattr(input_batch, 'gumbel_prng_key', None)
 
         next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
         # TODO(b/260646361): Avoid this param propagation.
@@ -592,6 +593,7 @@ class LanguageModel(base_model.BaseModel):
             return_result_for_suffix_score=return_result_for_suffix_score,
             result_callback=result_callback,
             cf_guidance_scale=decoder_params.cf_guidance_scale,
+            gumbel_prng_key=gumbel_prng_key,
         )
     elif template_has_type(decoder_params, GreedyDecoderHParams):
       assert isinstance(decoder_params, GreedyDecoderHParams)

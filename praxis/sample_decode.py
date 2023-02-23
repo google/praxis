@@ -577,12 +577,12 @@ def sample_decode(
     next_token_sampler: Layer used to sample next token ids given the logits
       output. See DefaultNextTokenSampler for an example. This can be used to
       implement decoding techniques such repetition penalty.
-    prefix_ids: The token ids that correspond to the prefix sequence. A
-      JTensor of shape [batch, target_sequence_length]. This should have an
-      <SOS> token if one is used.
-    prefix_paddings: The paddings corresponding to the prefix sequence,
-      with a 1 denoting padding token and 0 denoting non-padding tokens. A
-      JTensor of shape [batch, target_sequence_length].
+    prefix_ids: The token ids that correspond to the prefix sequence. A JTensor
+      of shape [batch, target_sequence_length]. This should have an <SOS> token
+      if one is used.
+    prefix_paddings: The paddings corresponding to the prefix sequence, with a 1
+      denoting padding token and 0 denoting non-padding tokens. A JTensor of
+      shape [batch, target_sequence_length].
     seq_len: The output sequence length to decode to. seq_len contains prefix.
     num_samples: Number of samples.
     cf_guidance_scale: If not 1.0, apply classifier-free guidance for
@@ -595,8 +595,11 @@ def sample_decode(
     temperature: Temperature of sampling decoding. It could be a float or a
       JTensor of shape [B].
     gumbel_prng_key: PRNG key for generating gumbel random noise. If None,
-      model.next_prng_key() is used; if not None, must be of shape [B, 2], where
-      B is the batch size before being duplicated wrt num_samples or cfg.
+      model.next_prng_key() is used; if not None, must be of shape [B] or
+      [B, key_shape_dim], where
+      key_shape_dim = jax.random.default_prng_impl().key_shape[0]. 
+      Usually, key_shape_dim = 2 or 4. where B is the batch size before being
+      duplicated wrt num_samples or cfg.
     per_example_top_p: Per example top_p of sampling decoding. Optional JTensor
       of shape [B].
     per_example_top_k: Optional per example top_k of shape [batch_size]. The
@@ -718,6 +721,12 @@ def sample_decode(
 
   if isinstance(per_example_top_p, JTensor):
     per_example_top_p = per_example_top_p[:, jnp.newaxis]
+
+  if gumbel_prng_key is not None and isinstance(gumbel_prng_key, JTensor):
+    gumbel_prng_key = gumbel_prng_key.astype(jnp.uint32)
+    dup_len = jax.random.default_prng_impl().key_shape[0]
+    if len(gumbel_prng_key.shape) == 1:
+      gumbel_prng_key = jnp.stack([gumbel_prng_key] * dup_len, axis=-1)
 
   if seq_len <= 0:
     raise ValueError('The sequence length for decoding must be > 0, '
