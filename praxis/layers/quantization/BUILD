@@ -235,6 +235,7 @@ pytype_strict_library(
     srcs = ["multi_query_attention.py"],
     srcs_version = "PY3",
     deps = [
+        ":aqt",
         ":operations",
         ":quantization_hparams",
         ":utils",
