@@ -219,7 +219,7 @@ class LstmCellSimple(BaseRnnCell):
     state.c = inputs.reset_mask * state.c
     return state
 
-  def get_output(self, state: NestedMap) -> JTensor:
+  def get_output(self, state: NestedMap) -> JTensor:  # pytype: disable=signature-mismatch  # jax-ndarray
     return state.m
 
   def __call__(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:

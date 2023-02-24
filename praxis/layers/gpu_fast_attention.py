@@ -137,7 +137,7 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
     encoded = sharded_mha(query, key, value)
     encoded = self._shard_blnh(encoded)
     # TODO(zhangqiaorjc): return probs.
-    return encoded, None
+    return encoded, None  # pytype: disable=bad-return-type  # jax-ndarray
 
 
 class GpuTritonFusedLayerNorm(normalizations.LayerNorm):

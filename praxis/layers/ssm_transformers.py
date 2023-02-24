@@ -255,7 +255,7 @@ class SSMTransformer(transformers.Transformer):
 
     # Apply FFN layer
     output = self.ff_layer(atten_output, paddings=paddings)
-    return output, None
+    return output, None  # pytype: disable=bad-return-type  # jax-ndarray
 
   def extend_step(self,
                   inputs: JTensor,
@@ -577,7 +577,7 @@ class SSMGated(SSMTransformer):
     atten_output = self.gss_ffn_uco(atten_output)
     output = self.gss_ffn_o(atten_output * v)
 
-    return output, None
+    return output, None  # pytype: disable=bad-return-type  # jax-ndarray
 
   def extend_step(self,
                   inputs: JTensor,

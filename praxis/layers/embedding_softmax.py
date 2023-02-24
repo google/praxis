@@ -86,7 +86,7 @@ class TokenCounter(base_layer.BaseLayer):
       # Force f32 addition.
       new_approx_total_tokens_mm = approx_total_tokens_mm.astype(
           jnp.float32) + batch_total_mm.astype(jnp.float32)
-      self.update_var('approx_total_tokens_mm', new_approx_total_tokens_mm)
+      self.update_var('approx_total_tokens_mm', new_approx_total_tokens_mm)  # pytype: disable=bad-return-type  # jax-ndarray
 
 
 class Embedding(base_layer.BaseLayer):

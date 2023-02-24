@@ -878,4 +878,4 @@ class DotProductAttention(attentions.DotProductAttention):
         rhs_quantizer=self.act_quantizer,
     )
     encoded = self._shard_bnh(encoded)
-    return encoded, probs
+    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray

@@ -1992,7 +1992,7 @@ class _ShardedAdafactorHelper:
 
   def to_state(self, count, result_tree):
     """Maps from a tree of (factored) values to separate trees of values."""
-    return ShardedAdafactorState(
+    return ShardedAdafactorState(  # pytype: disable=wrong-arg-types  # jax-ndarray
         count=count,
         m=jax.tree_map(lambda o: o.m, result_tree),
         m_scale=jax.tree_map(lambda o: o.m_scale, result_tree),
@@ -2625,25 +2625,25 @@ def dynamic_accumulation(
         accumulated_update=accumulated_update,
         accumulated_weight=jnp.zeros(()))
 
-  def update_fn(updates: NestedJTensor,
+  def update_fn(updates: NestedJTensor,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
                 state: NestedJTensor,
                 params: NestedJTensor = None):
     flat_params = dict(NestedMap.FromNestedDict(params).FlattenItems())
     update_weight = flat_params['non_trainable.' + weight_key]
     new_accumulated_update = jax.tree_map(lambda acc, x: acc + x,
-                                          state.accumulated_update, updates)
+                                          state.accumulated_update, updates)  # pytype: disable=attribute-error  # jax-ndarray
 
-    new_accumulated_weight = state.accumulated_weight + update_weight
+    new_accumulated_weight = state.accumulated_weight + update_weight  # pytype: disable=attribute-error  # jax-ndarray
     should_emit = new_accumulated_weight >= threshold
     new_accumulated_weight = jnp.where(should_emit, jnp.array(0.0),
                                        new_accumulated_weight)
 
     emission_updates, emission_base_state = base_tx.update(
-        new_accumulated_update, state.base_state, params)
+        new_accumulated_update, state.base_state, params)  # pytype: disable=attribute-error  # jax-ndarray
 
     new_base_state = jax.tree_map(
         lambda new, old: jnp.where(should_emit, new, old), emission_base_state,
-        state.base_state)
+        state.base_state)  # pytype: disable=attribute-error  # jax-ndarray
 
     zeroed_updates = jax.tree_map(jnp.zeros_like, updates)
 
@@ -2773,9 +2773,9 @@ def sharded_static_accumulation(
                 state: NestedJTensor,
                 params: Optional[NestedJTensor] = None):
     new_accumulated_update = jax.tree_map(lambda acc, x: acc + x,
-                                          state.accumulated_update, updates)
+                                          state.accumulated_update, updates)  # pytype: disable=attribute-error  # jax-ndarray
 
-    new_count = state.count + 1
+    new_count = state.count + 1  # pytype: disable=attribute-error  # jax-ndarray
     should_emit = new_count >= num_sub_batches
     new_count = lax.cond(should_emit, lambda: jnp.array(0, dtype=jnp.int32),
                          lambda: new_count)
@@ -2784,7 +2784,7 @@ def sharded_static_accumulation(
       averaged_updated = jax.tree_map(lambda acc: acc / num_sub_batches,
                                       new_accumulated_update)
       emission_updates, emission_base_state = base_tx.update(
-          averaged_updated, state.base_state, params)
+          averaged_updated, state.base_state, params)  # pytype: disable=attribute-error  # jax-ndarray
       return (emission_updates,
               jax.tree_map(lambda u: jnp.zeros_like(u, dtype=jnp.float32),
                            updates), emission_base_state)
@@ -2796,7 +2796,7 @@ def sharded_static_accumulation(
     new_updates, new_accumulated_update, new_base_state = while_cond(
         should_emit, _run_base_tx, [
             jax.tree_map(jnp.zeros_like, updates), new_accumulated_update,
-            state.base_state
+            state.base_state  # pytype: disable=attribute-error  # jax-ndarray
         ])
 
     return new_updates, NestedMap(

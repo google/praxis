@@ -733,7 +733,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
     if 'eval_sample_weights' not in ret:
       raise ValueError('eval_sample_weights must be included in the data')
     # Sets the weight of invalid samples to 0.
-    ret.eval_sample_weights[num_valid_samples:] = 0.
+    ret.eval_sample_weights[num_valid_samples:] = 0.  # pytype: disable=attribute-error  # jax-ndarray
     self._num_examples_emitted += num_valid_samples
     remaining_samples -= num_valid_samples
     # If there are still remaining samples in this host, skip n-1 batches which

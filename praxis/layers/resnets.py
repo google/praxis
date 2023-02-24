@@ -462,7 +462,7 @@ class ResNet(base_layer.BaseLayer):
         block_group_features[2 + stage_id] = outputs
 
     if self.return_block_features:
-      return block_group_features
+      return block_group_features  # pytype: disable=bad-return-type  # jax-ndarray
 
     # Apply optional spatial global pooling.
     if self.output_spatial_pooling_params is not None:

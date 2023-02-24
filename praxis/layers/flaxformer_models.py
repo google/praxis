@@ -560,7 +560,7 @@ class LanguageModel(base_model.BaseModel):
     # on t5x for loss computations.
     targets = input_batch['decoder_target_tokens']
     loss, z_loss, weight_sum = t5x_losses.compute_weighted_cross_entropy(
-        predictions.logits,
+        predictions.logits,  # pytype: disable=attribute-error  # jax-ndarray
         targets=targets,
         weights=loss_weights,
         label_smoothing=self.label_smoothing,
@@ -568,7 +568,7 @@ class LanguageModel(base_model.BaseModel):
         loss_normalizing_factor=loss_normalizing_factor,
     )
     accuracy = clu_metrics.Accuracy.from_model_output(
-        logits=predictions.logits,
+        logits=predictions.logits,  # pytype: disable=attribute-error  # jax-ndarray
         labels=targets.astype(jnp.int32),
         mask=loss_weights).compute()
 
@@ -829,7 +829,7 @@ class EncoderDecoderModel(base_model.BaseModel):
     # on t5x for loss computations.
     targets = input_batch['decoder_target_tokens']
     loss, z_loss, weight_sum = t5x_losses.compute_weighted_cross_entropy(
-        predictions.logits,
+        predictions.logits,  # pytype: disable=attribute-error  # jax-ndarray
         targets=targets,
         weights=loss_weights,
         label_smoothing=self.label_smoothing,
@@ -837,7 +837,7 @@ class EncoderDecoderModel(base_model.BaseModel):
         loss_normalizing_factor=loss_normalizing_factor,
     )
     accuracy = clu_metrics.Accuracy.from_model_output(
-        logits=predictions.logits,
+        logits=predictions.logits,  # pytype: disable=attribute-error  # jax-ndarray
         labels=targets.astype(jnp.int32),
         mask=loss_weights).compute()
 

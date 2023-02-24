@@ -240,7 +240,7 @@ class OneHeadedAttentionProjection(
       )
 
     if self.quantization.weight_params.use_symmetric:
-      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}  # pytype: disable=bad-return-type  # jax-ndarray
     else:
       zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
-      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}  # pytype: disable=bad-return-type  # jax-ndarray

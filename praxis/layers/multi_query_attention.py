@@ -520,7 +520,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # Compute the attention context.
     encoded = jnp.einsum('BNS,BSH->BNH', probs, value)
     encoded = self._shard_bnh(encoded)
-    return encoded, probs
+    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
 
   def __call__(
       self,
@@ -900,10 +900,10 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
       return self._shard_blnh(jnp.einsum('BNTS,BSH->BTNH', ps, v))
 
     # Use sum as result combiner since the time dimension is a contracting dim.
-    encoded = self._run_with_all_decode_state_chunks(_post_softmax, [], probs,
+    encoded = self._run_with_all_decode_state_chunks(_post_softmax, [], probs,  # pytype: disable=wrong-arg-types  # jax-ndarray
                                                      am_tdim, [], [],
                                                      [value_state_name], sum)
-    return encoded, probs
+    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
 
   @nn.nowrap
   def extend_decode_state(self, name: str, value: JTensor, time_step: JTensor,

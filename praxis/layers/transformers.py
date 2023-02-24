@@ -1005,7 +1005,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     combined_output = combined_output.reshape(token_shape + (output_dims,))
     return combined_output, aux_loss
 
-  def __call__(self,
+  def __call__(self,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
                inputs: JTensor,
                paddings: JTensor = None,
                segment_ids: JTensor = None) -> JTensor:
@@ -1379,7 +1379,7 @@ class Transformer(base_layer.BaseLayer):
 
     # Apply FFN layer
     output = self.ff_layer(atten_output, paddings=paddings)
-    return output, atten_probs
+    return output, atten_probs  # pytype: disable=bad-return-type  # jax-ndarray
 
   def extend_step(self,
                   inputs: JTensor,

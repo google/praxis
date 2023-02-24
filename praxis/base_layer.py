@@ -1910,7 +1910,7 @@ class BaseLayer(nn.Module):
         AUX_LOSS,
         name,
         AuxLossStruct(value, weight),
-        init_fn=lambda: AuxLossStruct(0.0, 0.0),
+        init_fn=lambda: AuxLossStruct(0.0, 0.0),  # pytype: disable=wrong-arg-types  # jax-ndarray
         reduce_fn=reduce_fn)
 
   @nn.nowrap

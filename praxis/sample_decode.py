@@ -241,7 +241,7 @@ def right_align_prefix_ids(prefix_ids: JTensor, prefix_lengths: JTensor,
   prefix_paddings = jnp.where(prefix_iota < 0,
                               jnp.ones_like(prefix_iota, dtype=paddings_dtype),
                               jnp.zeros_like(prefix_iota, dtype=paddings_dtype))
-  return right_align_ids, prefix_paddings
+  return right_align_ids, prefix_paddings  # pytype: disable=bad-return-type  # jax-ndarray
 
 
 def top_p_mask_logits(
@@ -287,7 +287,7 @@ def top_p_mask_logits(
   return logits
 
 
-def sample_from_top_p_given_top_k(
+def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  # jax-ndarray
     top_k_logits: JTensor,
     top_k_indices: JTensor,
     prng_key: pytypes.PRNGKey,

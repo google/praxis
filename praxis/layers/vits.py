@@ -436,7 +436,7 @@ class VisionTransformer(base_layer.BaseLayer):
         self.mesh_axis_names,
     )
 
-  def __call__(self, inputs: JTensor, paddings: JTensor = None) -> JTensor:
+  def __call__(self, inputs: JTensor, paddings: JTensor = None) -> JTensor:  # pytype: disable=annotation-type-mismatch  # jax-ndarray
     """Applies the Vit model to the inputs.
 
     Args:

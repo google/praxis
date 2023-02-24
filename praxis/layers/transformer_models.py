@@ -665,7 +665,7 @@ class TransformerLm(base_layer.BaseLayer):
         segment_mask = attentions.causal_segment_mask(segment_ids, inputs.dtype,
                                                       causal_attention_mask)
 
-    self.update_decode_state('time_step', start_time_step)
+    self.update_decode_state('time_step', start_time_step)  # pytype: disable=wrong-arg-types  # jax-ndarray
     output = self.transformer(
         inputs, paddings, segment_mask=segment_mask, segment_pos=segment_pos)
 
@@ -1604,7 +1604,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
           target_segment_ids, target_emb.dtype)
     # Update caches for decode state.
     if self.is_mutable_collection(base_layer.DECODE_CACHE):
-      self.update_decode_state('time_step', start_time_step)
+      self.update_decode_state('time_step', start_time_step)  # pytype: disable=wrong-arg-types  # jax-ndarray
       self.update_decode_state('encoder_output', encoder_output)
       self.update_decode_state('input_paddings', input_paddings)
     output = self.decoder(
