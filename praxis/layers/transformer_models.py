@@ -865,7 +865,10 @@ class TransformerLm(base_layer.BaseLayer):
         segment_pos=segment_pos,
         atten_mask=atten_mask)
 
-    self.update_decode_state('time_step', time_step + 1)
+    if inputs.ndim == 1 or self.ngrammer_tpl is not None:
+      self.update_decode_state('time_step', time_step + 1)
+    else:
+      self.update_decode_state('time_step', time_step + inputs.shape[1])
     if self.final_ln_tpl is not None:
       outputs = self.final_ln(outputs)
     xent_output = self._softmax_xent(outputs, segment_pos)

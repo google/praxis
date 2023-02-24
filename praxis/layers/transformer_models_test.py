@@ -364,6 +364,8 @@ class TransformerModelsTest(test_utils.TestCase):
           atten_mask=segment_mask,
           mutable=[DECODE_CACHE])
       self.assertAllClose(logits, xent_output.logits)
+
+      # Ensure that calling extend_step 1 step at a time matches fprop.
       for step_i in range(seq_len):
         xent_output, decoder_state = transformer_lm.apply(
             updated_vars,
@@ -374,6 +376,22 @@ class TransformerModelsTest(test_utils.TestCase):
             mutable=[DECODE_CACHE])
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, step_i, :], xent_output.logits)
+
+      # Ensure that calling extend_step k steps at a time matches fprop.
+      k = 2
+      for step_i in range(seq_len // k):
+        xent_output, decoder_state = transformer_lm.apply(
+            updated_vars,
+            inputs[:, step_i * k : (step_i + 1) * k],
+            method=transformer_lm.extend_step,
+            segment_pos=segment_pos[:, step_i * k : (step_i + 1) * k],
+            atten_mask=segment_mask[..., step_i * k : (step_i + 1) * k, :],
+            mutable=[DECODE_CACHE],
+        )
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+        self.assertAllClose(
+            logits[:, step_i * k : (step_i + 1) * k, :], xent_output.logits
+        )
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=5)))
   def test_ngrammer_primer_lm_extendstep(self, use_vq_ngrams,
