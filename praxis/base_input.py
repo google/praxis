@@ -678,7 +678,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
       # remaining samples.
       num_samples += num_samples_remainder
     self._num_samples = num_samples
-    self.num_batches = num_batches
+    self.computed_num_batches = num_batches
     if hparams.num_batches is not None:
       if hparams.num_batches <= 0:
         logging.warning(
@@ -692,7 +692,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
             num_batches,
         )
       else:
-        self.num_batches = hparams.num_batches
+        self.computed_num_batches = hparams.num_batches
         logging.warning(
             '`num_batches` overridden to %d as requested by hparams',
             hparams.num_batches,
@@ -719,11 +719,11 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
     # and there are totally only 1 sample. In this case, the first host has 1
     # sample and the second host has 0 samples. But the second host should still
     # emit 1 batch, with all invalid samples.
-    if self._num_batches_emitted == self.num_batches:
+    if self._num_batches_emitted == self.computed_num_batches:
       raise tf.errors.OutOfRangeError(
           node_def=None,
           op=None,
-          message=f'{self.num_batches} batches have been exhausted.')
+          message=f'{self.computed_num_batches} batches have been exhausted.')
     # Number of remaining samples this host has.
     remaining_samples = self._num_samples - self._num_examples_emitted
     ret = super().get_next()
