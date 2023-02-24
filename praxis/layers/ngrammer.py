@@ -507,18 +507,10 @@ class Ngrammer(base_layer.BaseLayer):
     # Layer norm input embeddings independently for each head.
     input_embs_per_head = jnp.split(input_embs, self.num_heads, 2)
     for i in range(self.num_heads):
-      # Reshape into [B * L, H]
-      per_head_emb = jnp.reshape(
-          input_embs_per_head[i], [-1, self.dim_per_head]
-      )
-      input_embs_per_head[i] = self.emb_layer_norm[i](per_head_emb)
-      # Reshape to [B, L, H]
-      input_embs_per_head[i] = jnp.reshape(
-          input_embs_per_head[i], [batch_size, seq_length, self.dim_per_head]
-      )
+      input_embs_per_head[i] = self.emb_layer_norm[i](input_embs_per_head[i])
 
     # [B, L, N, H].
-    input_embs = jnp.stack(input_embs_per_head, 2)
+    input_embs = jnp.concatenate(input_embs_per_head, 2)
 
     if self.concat_ngrams:
       d = self.dim_per_head - self.ngram_emb_dim
