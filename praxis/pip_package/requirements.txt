@@ -93,7 +93,7 @@ fiddle @ git+https://github.com/google/fiddle
     # via -r praxis-requirements.in
 flatbuffers==1.12
     # via tensorflow
-flax==0.6.5
+flax==0.6.4
     # via
     #   -r praxis-requirements.in
     #   clu
@@ -104,7 +104,7 @@ fqdn==1.5.1
     # via jsonschema
 gast==0.4.0
     # via tensorflow
-google-auth==2.16.0
+google-auth==2.16.1
     # via
     #   google-auth-oauthlib
     #   tensorboard
@@ -118,7 +118,7 @@ graph-compression-google-research==0.0.4
     # via lingvo
 graphviz==0.20.1
     # via fiddle
-grpcio==1.51.1
+grpcio==1.51.3
     # via
     #   tensorboard
     #   tensorflow
@@ -134,13 +134,14 @@ importlib-metadata==6.0.0
     #   jupyter-client
     #   markdown
     #   nbconvert
-importlib-resources==5.10.2
+importlib-resources==5.12.0
     # via
     #   etils
     #   jsonschema
+    #   matplotlib
     #   orbax
     #   tensorflow-datasets
-ipykernel==6.21.1
+ipykernel==6.21.2
     # via
     #   ipywidgets
     #   jupyter
@@ -173,7 +174,7 @@ jax @ git+https://github.com/google/jax
     #   orbax
 jax-bitempered-loss==0.0.2
     # via -r praxis-requirements.in
-jaxlib==0.4.3
+jaxlib==0.4.4
     # via
     #   chex
     #   clu
@@ -197,7 +198,7 @@ jsonschema[format-nongpl]==4.17.3
     #   nbformat
 jupyter==1.0.0
     # via lingvo
-jupyter-client==8.0.2
+jupyter-client==8.0.3
     # via
     #   ipykernel
     #   jupyter-console
@@ -206,7 +207,7 @@ jupyter-client==8.0.2
     #   nbclient
     #   notebook
     #   qtconsole
-jupyter-console==6.5.0
+jupyter-console==6.6.1
     # via jupyter
 jupyter-core==5.2.0
     # via
@@ -224,7 +225,7 @@ jupyter-events==0.6.3
     # via jupyter-server
 jupyter-http-over-ws==0.0.8
     # via lingvo
-jupyter-server==2.2.1
+jupyter-server==2.3.0
     # via
     #   nbclassic
     #   notebook-shim
@@ -248,14 +249,14 @@ lingvo==0.12.6
     # via -r praxis-requirements.in
 markdown==3.4.1
     # via tensorboard
-markdown-it-py==2.1.0
+markdown-it-py==2.2.0
     # via rich
 markupsafe==2.1.2
     # via
     #   jinja2
     #   nbconvert
     #   werkzeug
-matplotlib==3.6.3
+matplotlib==3.7.0
     # via
     #   flax
     #   lingvo
@@ -277,7 +278,7 @@ msgpack==1.0.4
     # via flax
 mypy-extensions==1.0.0
     # via typing-inspect
-nbclassic==0.5.1
+nbclassic==0.5.2
     # via notebook
 nbclient==0.7.2
     # via nbconvert
@@ -340,7 +341,7 @@ optax==0.1.4
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax==0.1.1
+orbax==0.1.2
     # via flax
 packaging==23.0
     # via
@@ -374,7 +375,7 @@ prometheus-client==0.16.0
     #   notebook
 promise==2.3
     # via tensorflow-datasets
-prompt-toolkit==3.0.36
+prompt-toolkit==3.0.37
     # via
     #   ipython
     #   jupyter-console
@@ -421,7 +422,7 @@ python-dateutil==2.8.2
     # via
     #   jupyter-client
     #   matplotlib
-python-json-logger==2.0.4
+python-json-logger==2.0.7
     # via jupyter-events
 pyyaml==6.0
     # via
@@ -464,7 +465,7 @@ rsa==4.9
     # via google-auth
 scikit-learn==1.2.1
     # via lingvo
-scipy==1.10.0
+scipy==1.10.1
     # via
     #   jax
     #   jaxlib
@@ -492,7 +493,7 @@ six==1.16.0
     #   tensorflow
 sniffio==1.3.0
     # via anyio
-soupsieve==2.3.2.post1
+soupsieve==2.4
     # via beautifulsoup4
 stack-data==0.6.2
     # via ipython
@@ -527,7 +528,7 @@ tensorflow-text==2.9.0
     # via
     #   -r praxis-requirements.in
     #   lingvo
-tensorstore==0.1.31
+tensorstore==0.1.32
     # via
     #   flax
     #   orbax
@@ -578,7 +579,7 @@ traitlets==5.9.0
     #   nbformat
     #   notebook
     #   qtconsole
-typing-extensions==4.4.0
+typing-extensions==4.5.0
     # via
     #   chex
     #   clu
@@ -606,7 +607,7 @@ webencodings==0.5.1
     #   tinycss2
 websocket-client==1.5.1
     # via jupyter-server
-werkzeug==2.2.2
+werkzeug==2.2.3
     # via tensorboard
 wheel==0.38.4
     # via
@@ -619,7 +620,7 @@ wrapt==1.14.1
     #   clu
     #   tensorflow
     #   tensorflow-datasets
-zipp==3.13.0
+zipp==3.14.0
     # via
     #   etils
     #   importlib-metadata
