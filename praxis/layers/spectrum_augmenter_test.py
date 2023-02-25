@@ -16,11 +16,12 @@
 """Tests for spectrum_augmenter."""
 
 from absl.testing import absltest
-from praxis import pax_fiddle
+from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import spectrum_augmenter
 
@@ -118,7 +119,11 @@ class SpectrumAugmenterTest(test_utils.TestCase):
           initial_vars, inputs, paddings, rngs={'random': compute_key})
     self.assertAllClose(actual_layer_output, expected_output)
 
-  def testSpectrumEvalMode(self):
+  @parameterized.named_parameters(
+      ('_augment_at_eval', True),
+      ('_no_augment_at_eval', False),
+  )
+  def testSpectrumEvalMode(self, augment_at_eval):
     inputs = jnp.ones([3, 5, 10], dtype=jnp.float32)
     paddings = jnp.zeros([3, 5])
     p = pax_fiddle.Config(
@@ -127,6 +132,7 @@ class SpectrumAugmenterTest(test_utils.TestCase):
         freq_mask_max_bins=6,
         freq_mask_count=2,
         time_mask_max_frames=0,
+        augment_at_eval=augment_at_eval,
     )
     specaug_layer = instantiate(p)
     context_p = base_layer.JaxContext.HParams(do_eval=True)
@@ -140,7 +146,10 @@ class SpectrumAugmenterTest(test_utils.TestCase):
           }, inputs, paddings)
       actual_layer_output, _ = specaug_layer.apply(
           initial_vars, inputs, paddings, rngs={'random': compute_key})
-    self.assertAllClose(actual_layer_output, inputs)
+    if not augment_at_eval:
+      self.assertAllClose(actual_layer_output, inputs)
+    else:
+      self.assertNotAllClose(actual_layer_output, inputs)
 
 
 if __name__ == '__main__':
