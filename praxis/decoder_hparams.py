@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Sequence, Union
 
 from praxis import base_hyperparams
 from praxis import base_layer
+from praxis import decoder_utils
 from praxis import pytypes
 from praxis import sample_decode
 BaseHyperParams = base_hyperparams.BaseHyperParams
@@ -101,3 +102,4 @@ class SampleDecoderHParams(DecoderHParams):
   next_token_sampler_tpl: sample_decode.BaseNextTokenSampler.HParams = (
       sub_config_field(sample_decode.DefaultNextTokenSampler.HParams))
   cf_guidance_scale: Optional[Union[List[float], float]] = None
+  controlled_decoding: Optional[decoder_utils.ControlledDecodingHParams] = None

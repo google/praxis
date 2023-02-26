@@ -121,6 +121,7 @@ pytype_strict_library(
     deps = [
         ":base_hyperparams",
         ":base_layer",
+        ":decoder_utils",
         ":pytypes",
         ":sample_decode",
     ],
@@ -131,6 +132,7 @@ pytype_strict_library(
     srcs = ["decoder_utils.py"],
     srcs_version = "PY3",
     deps = [
+        ":base_hyperparams",
         ":base_layer",
         ":pytypes",
         # Implicit flax.core dependency.
@@ -264,6 +266,7 @@ pytype_strict_library(
     srcs = ["sample_decode.py"],
     srcs_version = "PY3",
     deps = [
+        ":asserts",
         ":base_hyperparams",
         ":base_layer",
         ":decoder_utils",

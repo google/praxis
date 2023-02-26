@@ -594,6 +594,7 @@ class LanguageModel(base_model.BaseModel):
             result_callback=result_callback,
             cf_guidance_scale=decoder_params.cf_guidance_scale,
             gumbel_prng_key=gumbel_prng_key,
+            controlled_decoding=decoder_params.controlled_decoding,
         )
     elif template_has_type(decoder_params, GreedyDecoderHParams):
       assert isinstance(decoder_params, GreedyDecoderHParams)

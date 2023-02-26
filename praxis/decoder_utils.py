@@ -21,6 +21,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 from flax import core as flax_core
 import jax
 from jax import numpy as jnp
+from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import pytypes
 
@@ -34,6 +35,7 @@ TransformStateFn = Callable[
 ]
 # lazy_broadcast_prefix_fn(model, num_suffix_samples, suffix_length)
 LazyBroadcastPrefixFn = Callable[[base_layer.BaseLayerApi, int, int], None]
+BaseHyperParams = base_hyperparams.BaseHyperParams
 
 
 @dataclasses.dataclass(frozen=True)
@@ -53,6 +55,16 @@ class StreamingResultCallback:
 
   # Optional callable to be called at the end of decoding.
   done_fn: Optional[Callable[[], None]] = None
+
+
+class ControlledDecodingHParams(BaseHyperParams):
+  # Number of steps between applying blockwise controlled decoding.
+  # Set to 0 to disable.
+  interval: int = 0
+
+  # Number of samples within each block for controlled decoding reranking.
+  # Only used if interval is > 0.
+  block_num_samples: int = 0
 
 
 def length_norm(t, length_norm_alpha) -> jnp.ndarray:

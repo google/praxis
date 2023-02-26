@@ -26,6 +26,7 @@ from typing import List, Optional, Sequence, Tuple, Union
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
+from praxis import asserts
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import decoder_utils
@@ -422,6 +423,29 @@ def epsilon_mask_logits(logits: JTensor, epsilon: float) -> JTensor:
   return logits
 
 
+def _condense_state(block_num_samples) -> base_layer.DecodeStateTransformFn:
+  """Pads attention states after prefix fprop."""
+
+  def _condense_state_fn(x, batch_dim, time_dim):
+    del batch_dim
+    assert time_dim >= 2
+    temp_shape = (-1, block_num_samples) + x.shape[time_dim:]
+    reshaped_x = x.reshape(temp_shape)
+    reshaped_condensed = jnp.squeeze(
+        jnp.take(reshaped_x, jnp.array([0]), axis=1), axis=1
+    )
+    new_shape = x.shape[: time_dim - 1] + (-1,) + x.shape[time_dim:]
+    new_x = reshaped_condensed.reshape(new_shape)
+    assert (
+        x.shape[time_dim - 1] // new_x.shape[time_dim - 1] == block_num_samples
+    )
+    assert x.size // new_x.size == block_num_samples
+    assert new_x.ndim == x.ndim
+    return new_x
+
+  return _condense_state_fn
+
+
 class BaseNextTokenSampler(
     base_hyperparams.BaseParameterizable, metaclass=abc.ABCMeta):
 
@@ -557,6 +581,9 @@ def sample_decode(
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
     early_exit=True,
+    controlled_decoding: Optional[
+        decoder_utils.ControlledDecodingHParams
+    ] = None,
 ) -> NestedMap:
   """Sampling decode the input batch.
 
@@ -595,11 +622,11 @@ def sample_decode(
     temperature: Temperature of sampling decoding. It could be a float or a
       JTensor of shape [B].
     gumbel_prng_key: PRNG key for generating gumbel random noise. If None,
-      model.next_prng_key() is used; if not None, must be of shape [B] or
-      [B, key_shape_dim], where
-      key_shape_dim = jax.random.default_prng_impl().key_shape[0]. 
-      Usually, key_shape_dim = 2 or 4. where B is the batch size before being
-      duplicated wrt num_samples or cfg.
+      model.next_prng_key() is used; if not None, must be of shape [B] or [B,
+      key_shape_dim], where key_shape_dim =
+      jax.random.default_prng_impl().key_shape[0]. Usually, key_shape_dim = 2 or
+      4. where B is the batch size before being duplicated wrt num_samples or
+      cfg.
     per_example_top_p: Per example top_p of sampling decoding. Optional JTensor
       of shape [B].
     per_example_top_k: Optional per example top_k of shape [batch_size]. The
@@ -631,6 +658,7 @@ def sample_decode(
       score.
     sort_samples: Whether to sort the samples by logprobs.
     early_exit: A bool, whether or not to allow early exit.
+    controlled_decoding: Params to configure blockwise controlled decoding.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -643,6 +671,13 @@ def sample_decode(
   """
   original_batch_size = prefix_ids.shape[0]
   original_prefix_lengths = prefix_lengths
+  if controlled_decoding:
+    asserts.gt(controlled_decoding.interval, 0)
+    asserts.gt(controlled_decoding.block_num_samples, 0)
+    if not isinstance(max_decode_steps, int):
+      raise ValueError(
+          'max_decode_steps must be an int when using controlled decoding.'
+      )
   if isinstance(max_decode_steps, int):
     max_decode_steps = [max_decode_steps]
   max_decode_steps = sorted(max_decode_steps) if max_decode_steps else [seq_len]
@@ -703,7 +738,14 @@ def sample_decode(
       transform_state_fn(model, decoder_utils.slice_state_fn(0, -1))
       # max_decode_steps + 1 to include last token from prefix.
       first_decode_steps = min(max_decode_steps)
-      lazy_broadcast_prefix_fn(model, num_samples, first_decode_steps + 1)
+      if controlled_decoding:
+        lazy_broadcast_prefix_fn(
+            model,
+            num_samples,  # num_suffix_samples
+            controlled_decoding.interval,  # suffix_length
+        )
+      else:
+        lazy_broadcast_prefix_fn(model, num_samples, first_decode_steps + 1)
     else:
       # Broadcast prefix state for num_samples.
       transform_state_fn(model,
@@ -950,7 +992,46 @@ def sample_decode(
     val.step += 1
     return val
 
-  if early_exit:
+  if controlled_decoding:
+    result = val
+    assert max_decode_steps[0] % controlled_decoding.interval == 0
+    chunks = max_decode_steps[0] // controlled_decoding.interval
+    # After the first iteration, condense the decode state since we know that
+    # there are only `controlled_decoding.block_num_samples` unique samples.
+    # Also perform lazy prefix broadcast and create new decode states with
+    # length=controlled_decoding.interval.
+    #
+    # Over the course of decoding, an example of how the shape of decode states
+    # will evolve is below. Given hyperparameters:
+    # num_samples = 16
+    # controlled_decoding.block_num_samples = 2
+    # controlled_decoding.interval = 64
+    #
+    # Attention decode state shapes at each iteration:
+    # Iter 0 (time_dim = 2): [1, 16, 64, 16, 128]
+    # Iter 1 (time_dim = 3): [1, 8, 2, 64, 16, 128]
+    # Iter 2 (time_dim = 4): [1, 8, 1, 2, 64, 16, 128]
+    # Iter 3 (time_dim = 5): [1, 8, 1, 1, 2, 64, 16, 128]
+    for i in range(chunks):
+      if i > 0:
+        transform_state_fn(
+            model, _condense_state(controlled_decoding.block_num_samples)
+        )
+        lazy_broadcast_prefix_fn(
+            model,
+            controlled_decoding.block_num_samples,  # num_suffix_samples
+            controlled_decoding.interval,  # suffix_length
+        )
+      result = nn.while_loop(
+          get_cond_func((i + 1) * controlled_decoding.interval),
+          loop_body,
+          model,
+          result,
+          split_rngs={RANDOM: True},
+          carry_variables=[DECODE_CACHE],
+      )
+
+  elif early_exit:
     result = val
     for i in range(len(max_decode_steps)):
       if i > 0:

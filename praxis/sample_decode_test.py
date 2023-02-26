@@ -373,6 +373,17 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     self.assertAllClose(logits[:, :-1], masked[:, :-1])
     self.assertLess(masked[0, -1], 1e-10)
 
+  def test_condense_state(self):
+    key = jax.random.PRNGKey(1234)
+    state = jax.random.uniform(key, [1, 16, 64, 16, 128])
+    condensed = sample_decode._condense_state(2)(state, 0, 2)
+    self.assertEqual(condensed.shape[1], 8)
+    self.assertTrue(jnp.all(condensed[:, 0, ...] == state[:, 0, ...]))
+
+    condensed = sample_decode._condense_state(8)(state, 0, 2)
+    self.assertEqual(condensed.shape[1], 2)
+    self.assertTrue(jnp.all(condensed[:, 0, ...] == state[:, 0, ...]))
+
   @parameterized.named_parameters(
       dict(
           testcase_name='use_dummy_next_token_sampler',
