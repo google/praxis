@@ -88,3 +88,40 @@ def generate_attention_projection_test_config(
       keys, cases = func(keys, cases)
 
   return [dict(zip(keys, case)) for case in cases]
+
+
+def generate_combined_qkv_projection_test_config(
+    additional_feature_funcs: Optional[List[Any]] = None
+) -> Sequence[Dict[str, Any]]:
+  """Function to generate test configurations for CombinedQKVProjection layer.
+
+  Args:
+    additional_feature_funcs: Additional functions to further populate the
+    configuration.
+
+  Returns:
+    Test configurations for CombinedQKVProjection layer.
+  """
+  keys = [
+      'use_bias',
+      'attention_combine_dims',
+      'is_weight_symmetric',
+  ]
+
+  boolean_flags = [
+      [True, True],
+      [True, False],
+      [False, True],
+      [False, False],
+  ]
+
+  weight_symmetric = [True, False]
+  cases = []
+  for case in itertools.product(boolean_flags, weight_symmetric):
+    cases.append(case[0] + [case[1]])
+
+  if additional_feature_funcs is not None:
+    for func in additional_feature_funcs:
+      keys, cases = func(keys, cases)
+
+  return [dict(zip(keys, case)) for case in cases]
