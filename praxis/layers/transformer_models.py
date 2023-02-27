@@ -1380,7 +1380,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     Returns:
       The encoded sequence after applying the Transformer encoder.
     """
-    batch, seq_length = inputs.shape
+    batch, seq_length = inputs.shape[:2]
     if self.encoder_embedding_tpl is not None:
       # Encoder has its own embedding lookup table for source ids.
       input_emb = self.encoder_embedding_lookup.emb_lookup(inputs)
@@ -1551,8 +1551,8 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       addition, per_sequence_xent is added which equal to the sum of xent loss
       for tokens in a sequence.
     """
-    batch, seq_length = inputs.shape
-    _, target_seq_length = targets.shape
+    batch, seq_length = inputs.shape[:2]
+    target_seq_length = targets.shape[1]
 
     encoder_output = self.encode(inputs, input_paddings, input_segment_ids,
                                  input_segment_pos, input_segment_mask)
