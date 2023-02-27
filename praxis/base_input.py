@@ -364,6 +364,12 @@ class LingvoInputAdaptor(BaseInput):
     # This indirectly sets cluster.require_sequential_input_order as well.
     self._cluster.params.do_eval = (not hparams.is_training and
                                     hparams.cluster_do_eval)
+    # Make sure current cluster tpu, host config correctly, lingvo input
+    # generator behavior rely on this.
+    self._cluster.params.job = 'trainer'
+    self._cluster.params.worker.num_tpu_hosts = hparams.num_infeed_hosts
+    self._cluster.params.worker.tpus_per_replica = jax.device_count()
+    self._cluster.params.worker.devices_per_split = jax.local_device_count()
     self._initialize()
 
   def _update_file_random_seed(self) -> None:
