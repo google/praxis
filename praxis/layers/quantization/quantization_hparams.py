@@ -92,7 +92,8 @@ class WeightQuantizationParams:
   add_scale_eps: If True add epsilon to scale to avoid division by zero,
     else it will replace zero scale by 1.
   dequant_upfront: Dequantize weights before it goes into matmul.
-  dtype: the datatype for weight quantization. Defaults to int8.
+  dtype: The datatype for weight quantization. Defaults to int8.
+  quant_loss_weight: Weight for quantization loss.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -104,6 +105,7 @@ class WeightQuantizationParams:
   add_scale_eps: Optional[bool] = True
   dequant_upfront: bool = False
   dtype: jnp.dtype = jnp.int8
+  quant_loss_weight: Optional[float] = None
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):

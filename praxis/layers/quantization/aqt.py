@@ -64,6 +64,7 @@ def create_tensor_quantizer(
     tq_params.num_optimize_clipping = quant_params.num_optimize_clipping
     tq_params.add_scale_eps = quant_params.add_scale_eps
     tq_params.use_symmetric = quant_params.use_symmetric
+    tq_params.quant_loss_weight = quant_params.quant_loss_weight
 
   return tq_params
 
@@ -86,6 +87,7 @@ class TensorQuantizer(base_layer.BaseLayer):
       quantization bucket utilization in case where the input has a positive
       distribution (e.g., ReLU).
     use_symmetric: Do symmetric quantization for weights.
+    quant_loss_weight: Weight for quantization loss.
   """
   precision: Optional[int] = None
   stop_scale_gradient: bool = False
@@ -94,6 +96,7 @@ class TensorQuantizer(base_layer.BaseLayer):
   add_scale_eps: Optional[bool] = True
   unsigned_int_bounds: bool = False
   use_symmetric: bool = True
+  quant_loss_weight: Optional[float] = None
 
   def setup(self):
     del self.dtype  # not used
@@ -330,6 +333,19 @@ class TensorQuantizer(base_layer.BaseLayer):
     q_s = self.get_quant_scale(x, contract_dims)
     x_scaled, zp_time_scale = self._scale(x, q_s, contract_dims)
     q_x = self.to_quant(x_scaled)
+
+    if (
+        quantized_dtype != jnp.int8  # it is used for materialization
+        and self.quant_loss_weight is not None
+        and not self.do_eval
+    ):
+      q_deq_x = self.dequantize(q_x, q_s, contract_dims, zp_time_scale)
+      quant_loss = (
+          jnp.sum(jnp.square(jnp.subtract(x, q_deq_x))) * self.quant_loss_weight
+      )
+
+      self.add_summary('quant_loss', quant_loss)
+      self.add_aux_loss('quant_loss', quant_loss)
 
     if squeeze_scale:
       q_s = jnp.squeeze(q_s)

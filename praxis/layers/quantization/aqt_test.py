@@ -21,6 +21,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
+from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
 from praxis import test_utils
@@ -532,6 +533,60 @@ class AqtTest(test_utils.TestCase):
     )
     self.assertEqual(bounds, (0, 255))
 
+  def test_aux_quantization_loss(self):
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='quant',
+        precision=4,
+        quant_loss_weight=1,
+    )
+
+    axis = None
+    x = jax.random.uniform(
+        jax.random.PRNGKey(0), shape=(4, 5), dtype=jnp.float32
+    )
+
+    context_p = base_layer.JaxContext.HParams(do_eval=True)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+
+      quant = p_quant.Instantiate()
+      state = quant.init(jax.random.PRNGKey(0))
+      _, states = quant.apply(
+          state,
+          x,
+          axis,
+          False,
+          quantized_dtype=jnp.int8,
+          method=quant.quantize,
+          mutable=True,
+      )
+      self.assertNotIn(base_layer.AUX_LOSS, states)
+
+    context_p = base_layer.JaxContext.HParams(do_eval=False)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+      quant = p_quant.Instantiate()
+      state = quant.init(jax.random.PRNGKey(0))
+      _, states = quant.apply(
+          state,
+          x,
+          axis,
+          False,
+          quantized_dtype=None,
+          method=quant.quantize,
+          mutable=True,
+      )
+      self.assertIn(base_layer.AUX_LOSS, states)
+
+      _, states = quant.apply(
+          state,
+          x,
+          axis,
+          False,
+          quantized_dtype=jnp.int8,
+          method=quant.quantize,
+          mutable=True,
+      )
+      self.assertNotIn(base_layer.AUX_LOSS, states)
 
 if __name__ == '__main__':
   absltest.main()
