@@ -92,6 +92,8 @@ class SampleDecoderHParams(DecoderHParams):
       at the same time.
     next_token_sampler_tpl: HParams for the layer used to sample next token ids
       given the logits output.
+    global_normalize: Normalize the logits over top-k logits or globally in the
+      whole vocabulary. It is used if k is nonzero and p is also not None.
     cf_guidance_scale: If not None, apply classifier-free guidance.
   """
   num_samples: int = 1
@@ -101,5 +103,6 @@ class SampleDecoderHParams(DecoderHParams):
   p: Optional[Union[float, JTensor]] = None
   next_token_sampler_tpl: sample_decode.BaseNextTokenSampler.HParams = (
       sub_config_field(sample_decode.DefaultNextTokenSampler.HParams))
+  global_normalize: bool = False
   cf_guidance_scale: Optional[Union[List[float], float]] = None
   controlled_decoding: Optional[decoder_utils.ControlledDecodingHParams] = None
