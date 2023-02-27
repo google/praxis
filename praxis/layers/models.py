@@ -567,6 +567,7 @@ class LanguageModel(base_model.BaseModel):
         # TODO(b/260646361): Avoid this param propagation.
         next_token_sampler_p.top_k = decoder_params.k
         next_token_sampler_p.top_p = decoder_params.p
+        next_token_sampler_p.global_normalize = decoder_params.global_normalize
         next_token_sampler = base_layer.instantiate(next_token_sampler_p)
 
         result = sample_decode.sample_decode(
