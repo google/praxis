@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """FQ Tests for quantized AttentionProjection layer."""
-
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -22,7 +21,6 @@ from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
-from praxis import test_utils
 from praxis.layers import attentions
 from praxis.layers.quantization import attentions as qattentions
 from praxis.layers.quantization import quantization_hparams
@@ -277,7 +275,7 @@ def _add_expected_training_results(cur_key, cur_samples):
   return updated_key, ret
 
 
-class AttentionProjectionFQTest(test_utils.TestCase):
+class AttentionProjectionFQTest(quantization_test_util.QuantizationTestCase):
   """Test cases for QuantizationType.FQ.
 
   Following tests are required:
@@ -352,7 +350,7 @@ class AttentionProjectionFQTest(test_utils.TestCase):
     self.assertAllClose(updated_w_f_tensor, updated_w_q_tensor, atol=1e-3)
 
     # 2. Value check.
-    self.assertEqual(updated_w_q, expected_trained_weight)
+    self.assertNestedListClose(updated_w_q, expected_trained_weight)
 
   # Test the training with FQ quantization.
   @parameterized.parameters(

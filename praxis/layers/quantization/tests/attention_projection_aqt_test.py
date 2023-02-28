@@ -21,7 +21,6 @@ from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
-from praxis import test_utils
 from praxis.layers import attentions
 from praxis.layers.quantization import attentions as qattentions
 from praxis.layers.quantization import quantization_hparams
@@ -644,7 +643,7 @@ def _add_expected_quantization_results(cur_key, cur_samples):
   return updated_key, ret
 
 
-class AttentionProjectionAQTTest(test_utils.TestCase):
+class AttentionProjectionAQTTest(quantization_test_util.QuantizationTestCase):
   """Test cases for QuantizationType.AQT.
 
   Following tests are required:
@@ -720,7 +719,7 @@ class AttentionProjectionAQTTest(test_utils.TestCase):
     self.assertAllClose(updated_w_f_tensor, updated_w_q_tensor, atol=1e-4)
 
     # 2. Value check.
-    self.assertEqual(updated_w_q, expected_trained_weight)
+    self.assertNestedListClose(updated_w_q, expected_trained_weight)
 
   # Test the training with AQT quantization.
   @parameterized.parameters(
@@ -862,9 +861,9 @@ class AttentionProjectionAQTTest(test_utils.TestCase):
     weight_scale = res[base_layer.PARAMS].get('w_quantized_scale', None)
     weight_zp = res[base_layer.PARAMS].get('w_quantized_zp', None)
 
-    self.assertEqual(to_list(weight), expected_weight)
-    self.assertEqual(to_list(weight_scale), expected_scale)
-    self.assertEqual(to_list(weight_zp), expected_zp)
+    self.assertNestedListClose(to_list(weight), expected_weight)
+    self.assertNestedListClose(to_list(weight_scale), expected_scale)
+    self.assertNestedListClose(to_list(weight_zp), expected_zp)
 
   # Check Q specification.
   @parameterized.parameters(generate_quantization_test_config())
@@ -1053,7 +1052,7 @@ class AttentionProjectionAQTTest(test_utils.TestCase):
     self.assertNotEqual(result_f, result_q)
     self.assertAllClose(res_f, res_q, atol=1e-1)
 
-    self.assertAlmostEqual(result_q, expected_result, places=4)
+    self.assertNestedListClose(result_q, expected_result)
 
 if __name__ == '__main__':
   absltest.main()

@@ -111,9 +111,12 @@ py_strict_test(
 
 pytype_strict_library(
     name = "quantization_test_utils",
+    testonly = 1,
     srcs = ["tests/test_util.py"],
     srcs_version = "PY3",
-    deps = [],
+    deps = [
+        "//praxis:test_utils",
+    ],
 )
 
 py_strict_test(
@@ -133,7 +136,6 @@ py_strict_test(
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
-        "//praxis:test_utils",
         "//praxis/layers:attentions",
     ],
 )
@@ -155,7 +157,6 @@ py_strict_test(
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
-        "//praxis:test_utils",
         "//praxis/layers:attentions",
     ],
 )
@@ -200,7 +201,6 @@ py_strict_test(
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
-        "//praxis:test_utils",
         "//praxis/layers:attentions",
     ],
 )

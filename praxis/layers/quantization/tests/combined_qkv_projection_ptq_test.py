@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """PTQ Tests for quantized CombinedQKVProjection layer."""
-
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -22,7 +21,6 @@ from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
-from praxis import test_utils
 from praxis.layers import attentions
 from praxis.layers.quantization import attentions as qattentions
 from praxis.layers.quantization import quantization_hparams
@@ -603,7 +601,7 @@ def _add_expected_quantization_results(cur_key, cur_samples):
   return updated_key, ret
 
 
-class CombinedQKVProjectionPTQTest(test_utils.TestCase):
+class CombinedQKVProjectionPTQTest(quantization_test_util.QuantizationTestCase):
   """Test cases for QuantizationType.PTQ.
 
   Following tests are required:
@@ -770,9 +768,9 @@ class CombinedQKVProjectionPTQTest(test_utils.TestCase):
     weight_scale = res[base_layer.PARAMS].get('w_quantized_scale', None)
     weight_zp = res[base_layer.PARAMS].get('w_quantized_zp', None)
 
-    self.assertAlmostEqual(to_list(weight), expected_weight, places=4)
-    self.assertAlmostEqual(to_list(weight_scale), expected_scale, places=4)
-    self.assertAlmostEqual(to_list(weight_zp), expected_zp, places=4)
+    self.assertNestedListClose(to_list(weight), expected_weight)
+    self.assertNestedListClose(to_list(weight_scale), expected_scale)
+    self.assertNestedListClose(to_list(weight_zp), expected_zp)
 
   # Check Q specification.
   @parameterized.parameters(generate_quantization_test_config())
@@ -931,9 +929,9 @@ class CombinedQKVProjectionPTQTest(test_utils.TestCase):
       self.assertAllClose(proj_f, proj_q, atol=1e-1)
 
     proj_q_q, proj_k_q, proj_v_q = [to_list(proj) for proj in result_q]
-    self.assertAlmostEqual(proj_q_q, expected_proj_q, places=4)
-    self.assertAlmostEqual(proj_k_q, expected_proj_k, places=4)
-    self.assertAlmostEqual(proj_v_q, expected_proj_v, places=4)
+    self.assertNestedListClose(proj_q_q, expected_proj_q)
+    self.assertNestedListClose(proj_k_q, expected_proj_k)
+    self.assertNestedListClose(proj_v_q, expected_proj_v)
 
 
 if __name__ == '__main__':

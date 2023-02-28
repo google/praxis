@@ -15,7 +15,9 @@
 
 """Test utils for quantization test."""
 import itertools
-from typing import Any, Dict, Sequence, Optional, List
+from typing import Any, Dict, List, Optional, Sequence
+
+from praxis import test_utils
 
 
 def to_list(w):
@@ -34,9 +36,7 @@ def to_list(w):
     ret = float(w)
     if ret.is_integer():
       return int(ret)
-    # TODO(dhchoi): Instead of rounding value here, implement a custom function
-    # to approximately compare the two values of the nested lists.
-    return round(ret, 5)
+    return ret
   except Exception:  # pylint: disable=broad-except
     pass
 
@@ -125,3 +125,37 @@ def generate_combined_qkv_projection_test_config(
       keys, cases = func(keys, cases)
 
   return [dict(zip(keys, case)) for case in cases]
+
+
+class QuantizationTestCase(test_utils.TestCase):
+  """Test case class for quantized layers.
+  """
+
+  def assertNestedListClose(self, list1, list2, places=4):
+    """Function to compare the two nested lists if they are close enough.
+
+    Args:
+      list1: First list to compare.
+      list2: Second list to compare.
+      places: Places to match.
+    """
+    if list1 is None and list2 is None:
+      return
+
+    if (list1 is not None and list2 is None) or (
+        list1 is None and list2 is not None
+    ):
+      self.fail('Comparing None with not-None value.')
+
+    if isinstance(list1, list) and isinstance(list2, list):
+      self.assertEqual(len(list1), len(list2))
+    elif not isinstance(list1, list) and not isinstance(list2, list):
+      self.assertAlmostEqual(list1, list2, places)
+      return
+    else:
+      self.fail(f'Comparing non-list with list: {list1} and {list2}.')
+
+    for v1, v2 in zip(list1, list2):
+      self.assertNestedListClose(v1, v2, places)
+
+
