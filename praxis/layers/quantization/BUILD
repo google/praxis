@@ -161,6 +161,28 @@ py_strict_test(
 )
 
 py_strict_test(
+    name = "attention_projection_aqt_test",
+    srcs = ["tests/attention_projection_aqt_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        ":quantization_hparams",
+        ":quantization_test_utils",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        "//praxis/layers:attentions",
+    ],
+)
+
+py_strict_test(
     name = "combined_qkv_projection_ptq_test",
     srcs = ["tests/combined_qkv_projection_ptq_test.py"],
     python_version = "PY3",
