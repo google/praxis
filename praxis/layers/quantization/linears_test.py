@@ -144,8 +144,8 @@ class QuantizedLinearTest(test_utils.TestCase):
         ],)
     expected_output = np.array(
         [
-            [2., -2.],
-            [6., -10.]
+            [3.5, -3.5],
+            [10.5, -17.5]
         ])
 
     linear_q = instantiate(p_q)
@@ -329,9 +329,9 @@ class QuantizeLinearTest(test_utils.TestCase):
         [
             [-3, -1, 2],
             [-2, 3, 2],
-            [-1, 2, -3]
+            [0, 2, -3]
         ], dtype=np.int8)
-    expected_scale = jnp.array([2, 1, 0.5], dtype=p.dtype)
+    expected_scale = jnp.array([2.333333, 1.166667, 0.583333], dtype=p.dtype)
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)

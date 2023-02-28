@@ -121,28 +121,16 @@ class TensorQuantizer(base_layer.BaseLayer):
     pass
 
   def _get_clip_bound(self) -> Tuple[float, float]:
-    # TODO(jihwanlee): run an experiment to compare b/w [-127.5, 127.5] and
-    # [-128, 127], in case of int8.
 
     # For unsigned 8 bits precision it is [0, 255]
     if self.unsigned_int_bounds:
       return 0, 2.0**self.precision - 1
     else:
-      # For signed 8 bits precision it is [-128.5, 127.5]
+      # For signed 8 bits precision it is [-128, 127]
       return (
-          -(2.0 ** (self.precision - 1)) - 0.5,
-          2.0 ** (self.precision - 1) - 1 + 0.5,
+          -(2.0 ** (self.precision - 1)),
+          2.0 ** (self.precision - 1) - 1,
       )
-
-  def _safe_clip_bound(self) -> Tuple[float, float]:
-    min_unsafe, max_unsafe = self._get_clip_bound()
-    eps = 2.0 ** (-20 + self.precision)
-    max_safe = max_unsafe - eps
-    min_safe = min_unsafe + eps
-    assert max_safe < max_unsafe, 'Internal error, epsilon too small.'
-    assert min_safe > min_unsafe, 'Internal error, epsilon too small.'
-
-    return min_safe, max_safe
 
   def _get_scale(
       self,
@@ -242,10 +230,9 @@ class TensorQuantizer(base_layer.BaseLayer):
     if self.precision is None:
       return x
 
-    clip_bound_min, clip_bound_max = self._safe_clip_bound()
-
-    x = jnp.clip(x, clip_bound_min, clip_bound_max)
     x = _pass_through(x + 0.5, jnp.floor)
+    clip_bound_min, clip_bound_max = self._get_clip_bound()
+    x = jnp.clip(x, clip_bound_min, clip_bound_max)
 
     return x
 

@@ -61,34 +61,34 @@ class AqtTest(test_utils.TestCase):
     # representable values: -6, -4, -2, 0, 2, 4, 6
     x = jnp.array(
         [
-            [0.99, 1.01, 1.99, 2.01],  #
-            [2.99, 3.01, 3.99, 4.01],  #
-            [4.99, 5.01, 5.99, 7.0],  #
-            [-0.99, -1.01, -1.99, -2.01],  #
-            [-2.99, -3.01, -3.99, -4.01],  #
-            [-4.99, -5.01, -5.99, -7.0],  #
+            [0., 1., 2., 2.],  #
+            [2., 3., 3., 4],  #
+            [4., 5., 5., 7.],  #
+            [-0., -1., -1., -2.],  #
+            [-2., -3., -3., -4.],  #
+            [-4., -5., -5., -7.],  #
         ],
         dtype=jnp.float32,
     )
     expected_q_deq = jnp.array(
         [
-            [0.00, 2.00, 2.00, 2.00],  #
-            [2.00, 4.00, 4.00, 4.00],  #
-            [4.00, 6.00, 6.00, 6.00],  #
-            [-0.00, -2.00, -2.00, -2.00],  #
-            [-2.00, -4.00, -4.00, -4.00],  #
-            [-4.00, -6.00, -6.00, -6.00],  #
+            [ 0., 0., 2.3333335, 2.3333335], #
+            [ 2.3333335, 2.3333335, 2.3333335, 4.666667 ], #
+            [ 4.666667, 4.666667, 4.666667, 7.0000005], #
+            [ 0., 0., 0., -2.3333335], #
+            [-2.3333335, -2.3333335, -2.3333335, -4.666667 ], #
+            [-4.666667, -4.666667, -4.666667, -7.0000005], #
         ],
         dtype=jnp.float32,
     )
     expected_q = jnp.array(
         [
-            [0, 1, 1, 1],  #
-            [1, 2, 2, 2],  #
-            [2, 3, 3, 3],  #
-            [0, -1, -1, -1],  #
-            [-1, -2, -2, -2],  #
-            [-2, -3, -3, -3],  #
+            [0, 0, 1, 1],  #
+            [1, 1, 1, 2],  #
+            [2, 2, 2, 3],  #
+            [0, 0, 0, -1],  #
+            [-1, -1, -1, -2],  #
+            [-2, -2, -2, -3],  #
         ],
         dtype=jnp.float32,
     )
@@ -103,7 +103,7 @@ class AqtTest(test_utils.TestCase):
     self.assertLessEqual(-4, jnp.min(q_x))
     self.assertGreaterEqual(3, jnp.max(q_x))
 
-    self.assertAllClose(scale, jnp.full((1, 1), 2, dtype=jnp.float32))
+    self.assertAllClose(scale, jnp.full((1, 1), 2.333333, dtype=jnp.float32))
     self.assertArraysEqual(q_x, expected_q)
     self.assertAllClose(q_deq_x, expected_q_deq, atol=1e-6)
 
@@ -366,10 +366,10 @@ class AqtTest(test_utils.TestCase):
     )
     self.assertTrue((qx == expected_qx).all())
     self.assertAllClose(
-        scale, jnp.array([0.016797, 0.021484], dtype=jnp.float32)
+        scale, jnp.array([0.016863, 0.021569], dtype=jnp.float32)
     )
     self.assertAllClose(
-        zp, jnp.array([-3.358399, -1.260742], dtype=jnp.float32)
+        zp, jnp.array([-3.358431, -1.260784], dtype=jnp.float32)
     )
 
   @parameterized.named_parameters(
@@ -516,7 +516,7 @@ class AqtTest(test_utils.TestCase):
     bounds = quant.apply(
         state, method=quant._get_clip_bound
     )
-    self.assertEqual(bounds, (-128.5, 127.5))
+    self.assertEqual(bounds, (-128, 127))
 
     p_quant = pax_fiddle.Config(
         aqt.TensorQuantizer,
