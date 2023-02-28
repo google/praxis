@@ -678,10 +678,7 @@ class VQNgrammer(base_layer.BaseLayer):
         raise ValueError('input_ids must be provided if using VQ NGrammer with'
                          'use_cached_input_ids_to_cluster_ids = True.')
       cache = self.get_var('input_id_to_cluster_id_cache')
-      cluster_ids_list = []
-      for i in range(self.num_heads):
-        cluster_ids_list.append(cache[:, i][(input_ids,)])
-      cluster_ids = jnp.stack(cluster_ids_list, axis=-1)
+      cluster_ids = cache[(input_ids,)]
     else:
       # Check if `ngram_using_attention_scores` is set to True, then attention
       # scores is not None.
