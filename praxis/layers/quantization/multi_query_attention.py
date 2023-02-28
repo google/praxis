@@ -206,8 +206,6 @@ class OneHeadedAttentionProjection(
     theta = self.theta
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     eqn = 'xy,yz->xz'
-    bits = self.quantization.weight_params.precision
-    percentile = self.quantization.weight_params.clipping_coeff
     if self.quantization.quantization_type == QuantizationType.PTQ:
       if self._do_static_activation_quantization():
         raise NotImplementedError(
@@ -218,8 +216,8 @@ class OneHeadedAttentionProjection(
             eqn,
             theta.w,
             calculation_type=self.dtype,
-            bits=bits,
-            percentile=percentile,
+            bits=self.quantization.weight_params.precision,
+            percentile=self.quantization.weight_params.clipping_coeff,
             use_symmetric=self.quantization.weight_params.use_symmetric,
         )
         if self.quantization.weight_params.precision == 4:

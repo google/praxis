@@ -235,13 +235,11 @@ class AttentionProjection(attentions.AttentionProjection):
             rhs_quantizer=self.weight_quantizer,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
-        bits = self.quantization.weight_params.precision
-        use_symmetric = self.quantization.weight_params.use_symmetric
         w = operations.fakequant_einsum(
             eqn,
             w,
-            bits=bits,
-            use_symmetric=use_symmetric,
+            bits=self.quantization.weight_params.precision,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
         )
         ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:
@@ -299,13 +297,12 @@ class AttentionProjection(attentions.AttentionProjection):
     percentile = self.quantization.weight_params.clipping_coeff
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type == QuantizationType.PTQ:
-      bits = self.quantization.weight_params.precision
       q_w, q_s, zp = operations.reduce_einsum_weight_precision(
           eqn,
           self.theta.w,
           calculation_type=self.dtype,
           need_gradient=False,
-          bits=bits,
+          bits=self.quantization.weight_params.precision,
           optimization_on_bound=False,
           percentile=percentile,
           use_symmetric=self.quantization.weight_params.use_symmetric,
@@ -517,13 +514,11 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             rhs_quantizer=self.weight_quantizer,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
-        bits = self.quantization.weight_params.precision
-        use_symmetric = self.quantization.weight_params.use_symmetric
         w = operations.fakequant_einsum(
             eqn,
             w,
-            bits=bits,
-            use_symmetric=use_symmetric,
+            bits=self.quantization.weight_params.precision,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
         )
         ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:
@@ -578,18 +573,16 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     """
     theta = self.theta
     eqn = 'AD,KDNH->KANH'
-    percentile = self.quantization.weight_params.clipping_coeff
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type == QuantizationType.PTQ:
-      bits = self.quantization.weight_params.precision
       q_w, q_s, zp = operations.reduce_einsum_weight_precision(
           eqn,
           theta.w,
           calculation_type=self.dtype,
           need_gradient=False,
-          bits=bits,
+          bits=self.quantization.weight_params.precision,
           optimization_on_bound=False,
-          percentile=percentile,
+          percentile=self.quantization.weight_params.clipping_coeff,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
       if self.quantization.weight_params.precision == 4:

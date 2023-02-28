@@ -157,13 +157,11 @@ class Linear(linears.Linear):
             rhs_quantizer=self.weight_quantizer,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
-        bits = self.quantization.weight_params.precision
-        use_symmetric = self.quantization.weight_params.use_symmetric
         w = operations.fakequant_einsum(
             eqn,
             w,
-            bits=bits,
-            use_symmetric=use_symmetric,
+            bits=self.quantization.weight_params.precision,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
         )
         out = linears.project_last_dim(inputs, w)
       else:
@@ -216,8 +214,6 @@ class Linear(linears.Linear):
     theta = self.theta
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     eqn = 'xy,yz->xz'
-    bits = self.quantization.weight_params.precision
-    percentile = self.quantization.weight_params.clipping_coeff
     if (
         self.quantization.quantization_type == QuantizationType.PTQ
         or self.quantization.quantization_type == QuantizationType.FQ
@@ -231,8 +227,8 @@ class Linear(linears.Linear):
             eqn,
             theta.w,
             calculation_type=self.dtype,
-            bits=bits,
-            percentile=percentile,
+            bits=self.quantization.weight_params.precision,
+            percentile=self.quantization.weight_params.clipping_coeff,
             use_symmetric=self.quantization.weight_params.use_symmetric,
         )
         if self.quantization.weight_params.precision == 4:
