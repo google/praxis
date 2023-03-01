@@ -1123,6 +1123,15 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     """Useful to let sublasses switch the class (e.g. Streaming version)."""
     return layer_tpl.clone()
 
+  def _validate_decoder_mask_self_attention(
+      self, mask_self_attention: bool
+  ) -> None:
+    """This method can be overriden to remove the check."""
+    if not mask_self_attention:
+      raise ValueError(
+          'Decoder attention should be masked in TransformerEncoderDecoder.'
+      )
+
   def setup(self) -> None:
     """Constructor."""
 
@@ -1316,9 +1325,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     else:
       raise ValueError('Unknown decoder stack.')
 
-    if not mask_self_attention:
-      raise ValueError(
-          'Decoder attention should be masked in TransformerEncoderDecoder.')
+    self._validate_decoder_mask_self_attention(mask_self_attention)
     self.create_child('decoder', decoder_hparams)
 
     # Optional separate embedding layer for target ids.
