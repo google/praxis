@@ -620,7 +620,7 @@ def sample_decode(
       unconditioned branch.
     fprop_for_prefix: Use one fprop for prefix.
     temperature: Temperature of sampling decoding. It could be a float or a
-      JTensor of shape [B].
+      JTensor of shape [B] or [B, num_samples].
     gumbel_prng_key: PRNG key for generating gumbel random noise. If None,
       model.next_prng_key() is used; if not None, must be of shape [B] or [B,
       key_shape_dim], where key_shape_dim =
@@ -706,9 +706,20 @@ def sample_decode(
       x = jnp.repeat(x, axis=0, repeats=num_samples)
       return x
 
-    # Broadcast temperature if it is a JTensor.
+    # If temperature is a JTensor of 1D shape [batch_size]
+    # broadcast it to shape [batch_size * num_samples].
+    # If temperature is of 2D shape [batch_size, num_samples] simply flatten it.
     if isinstance(temperature, JTensor):
-      temperature = _broadcast_input(temperature, 'temperature')
+      if temperature.ndim == 2:   # pytype: disable=attribute-error
+        if temperature.shape != (original_batch_size, num_samples):  # pytype: disable=attribute-error
+          raise ValueError(
+              '2D Dynamic temperature should have shape: '
+              f'({original_batch_size}, {num_samples}), but it has shape: '
+              f'{temperature.shape}.'  # pytype: disable=attribute-error
+          )
+        temperature = jnp.reshape(temperature, (-1,))
+      else:
+        temperature = _broadcast_input(temperature, 'temperature')
 
     # Broadcast per_example_max_decode_steps if it is a JTensor.
     if per_example_max_decode_steps is not None:
