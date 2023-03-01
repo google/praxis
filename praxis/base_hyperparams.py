@@ -971,8 +971,8 @@ class FiddleBaseParameterizable:
   # * `self.hparams` returns a Fiddle Config that can be used to build self.
   # * `self.HParams` returns a stub class that can be called to generate a
   #   `fdl.Config`; or can be used with `base_hyperparams.sub_config_field`.
-  hparams = functools.cached_property(_FiddleHParamsInstanceStub)
-  _hparams = functools.cached_property(_FiddleHParamsInstanceStub)
+  hparams = property(_FiddleHParamsInstanceStub)
+  _hparams = property(_FiddleHParamsInstanceStub)
   HParams = _FiddleHParamsClassStubDescriptor()  # pylint: disable=invalid-name
 
   name: str = kw_only_dataclasses.field(default='', kw_only=True)
