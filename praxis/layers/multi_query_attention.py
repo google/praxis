@@ -754,6 +754,19 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
         1 + self._broadcast_prefixes_count]
     return key_state_length + self._broadcast_prefix_length()
 
+  def transform_decode_state(
+      self, transform_fn: base_layer.DecodeStateTransformFn
+  ):
+    """Transforms all decode state variables based on transform_fn."""
+    batch_dim = 0
+    time_dim = self._broadcast_prefixes_count + 1
+    for name, state in self.variables[base_layer.DECODE_CACHE].items():
+      if not isinstance(state, JTensor):
+        continue
+      new_state = transform_fn(state, batch_dim, time_dim)
+      new_state = self._shard_blh(new_state)
+      self.update_decode_state(name, new_state)
+
   def _dot_atten_one_step(self,
                           query: JTensor,
                           key_state_name: str,
