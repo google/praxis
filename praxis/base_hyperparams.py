@@ -986,7 +986,7 @@ class FiddleBaseParameterizable:
   @functools.cached_property
   def _fields(self) -> Set[str]:
     """Returns a list of hyperparameter field names for `self`."""
-    return set(field.name for field in dataclasses.fields(self) if field.init)
+    return set(field.name for field in dataclasses.fields(self) if field.init)  # pytype: disable=wrong-arg-types  # re-none
 
   def __init_subclass__(cls, **kwargs):
     super().__init_subclass__(**kwargs)
