@@ -1112,7 +1112,10 @@ def sample_decode(
       # stash out the summaries temporarily
       model_summaries_copy = pop_collection(model, base_layer.SUMMARIES)
 
-    dummy_inputs = {'dummy': jnp.zeros([seq_len, 2])}
+    scan_len = seq_len
+    if max_prefix_len:
+      scan_len -= max_prefix_len
+    dummy_inputs = {'dummy': jnp.zeros([scan_len, 2])}
     result, _ = scan_fn(model, val, dummy_inputs)
 
     # Now merge back the summaries.
