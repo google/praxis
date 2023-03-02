@@ -61,23 +61,23 @@ class AqtTest(test_utils.TestCase):
     # representable values: -6, -4, -2, 0, 2, 4, 6
     x = jnp.array(
         [
-            [0., 1., 2., 2.],  #
-            [2., 3., 3., 4],  #
-            [4., 5., 5., 7.],  #
-            [-0., -1., -1., -2.],  #
-            [-2., -3., -3., -4.],  #
-            [-4., -5., -5., -7.],  #
+            [0.0, 1.0, 2.0, 2.0],  #
+            [2.0, 3.0, 3.0, 4],  #
+            [4.0, 5.0, 5.0, 7.0],  #
+            [-0.0, -1.0, -1.0, -2.0],  #
+            [-2.0, -3.0, -3.0, -4.0],  #
+            [-4.0, -5.0, -5.0, -7.0],  #
         ],
         dtype=jnp.float32,
     )
     expected_q_deq = jnp.array(
         [
-            [ 0., 0., 2.3333335, 2.3333335], #
-            [ 2.3333335, 2.3333335, 2.3333335, 4.666667 ], #
-            [ 4.666667, 4.666667, 4.666667, 7.0000005], #
-            [ 0., 0., 0., -2.3333335], #
-            [-2.3333335, -2.3333335, -2.3333335, -4.666667 ], #
-            [-4.666667, -4.666667, -4.666667, -7.0000005], #
+            [0.0, 0.0, 2.3333335, 2.3333335],  #
+            [2.3333335, 2.3333335, 2.3333335, 4.666667],  #
+            [4.666667, 4.666667, 4.666667, 7.0000005],  #
+            [0.0, 0.0, 0.0, -2.3333335],  #
+            [-2.3333335, -2.3333335, -2.3333335, -4.666667],  #
+            [-4.666667, -4.666667, -4.666667, -7.0000005],  #
         ],
         dtype=jnp.float32,
     )
@@ -129,10 +129,10 @@ class AqtTest(test_utils.TestCase):
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
 
-    per_example_scale = quant.apply(
+    per_example_scale, _ = quant.apply(
         state, x, 1, method=quant.get_quant_scale
     )
-    per_tensor_scale = quant.apply(
+    per_tensor_scale, _ = quant.apply(
         state, x, None, method=quant.get_quant_scale
     )
 
@@ -170,7 +170,7 @@ class AqtTest(test_utils.TestCase):
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
     x = jnp.zeros((1, 4))
-    scale = quant.apply(
+    scale, _ = quant.apply(
         state,
         x,
         contract_dims=1,
@@ -292,7 +292,7 @@ class AqtTest(test_utils.TestCase):
     x *= 2.0**8
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
-    scale = quant.apply(
+    scale, _ = quant.apply(
         state, x, [0, 1], method=quant.get_quant_scale
     )
     ix = quant.apply(state, x / scale, method=quant.to_quant)
