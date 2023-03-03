@@ -1780,7 +1780,7 @@ def to_float(quantized: JTensor, bucket_size: JTensor) -> JTensor:
   Args:
     quantized: Quantized values, of type either jnp.int8 or jnp.int16.
     bucket_size: The size of each bucket on the floating-point axis. bucket_size
-      is of rank tf.rank(quantized) - 1. For example, if quantized is of shape
+      is of rank quantized.ndim - 1. For example, if quantized is of shape
       [x, ...], bucket_size is of shape [...].
 
   Returns:

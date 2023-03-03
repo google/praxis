@@ -132,7 +132,7 @@ class BatchNorm(BaseNormalization):
 
   Note that gamma in this layer is reparameterized: the gamma variable is
   0-initialized and input is scaled by (1 + gamma). This is different from
-  Flax, tf.layers, PyTorch etc., where gamma is by default 1-initialized
+  Flax, Tensorflow, PyTorch etc., where gamma is by default 1-initialized
   and used to scale the input. The difference is that in our version,
   weight decay encourages gamma to move towards 1, instead of 0.
 

@@ -114,7 +114,7 @@ def batch_codebook_coverage(codes: JTensor,
     data_parallel_axis: If set will psum() over the axis
 
   Returns:
-    A scalar tf.Tensor, avg coverage across groups.
+    A scalar JTensor, avg coverage across groups.
   """
   # [num_groups, num_classes]
   _, _, histogram = batch_pplx_entropy_from_codes(

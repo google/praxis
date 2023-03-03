@@ -358,7 +358,7 @@ class LstmCellSimple(BaseRnnCell):
     The following are equivalent:
 
     >>> inputs = <a tensor of [T, B, D]>
-    >>> padding = tf.zeros([T, B])
+    >>> padding = jnp.zeros([T, B])
     >>> state = cell.zero_state(B)
 
     # a. Use fprop().
