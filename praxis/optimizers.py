@@ -582,7 +582,7 @@ def sharded_adam(
     A `ShardedGradientTransformation`.
   """
   if weight_decay:
-    logging.warn(_WEIGHT_DECAY_DEPRECATION)
+    logging.warning(_WEIGHT_DECAY_DEPRECATION)
 
   helper = _ShardedAdamHelper(maybe_inf_to_nan=maybe_inf_to_nan)
 
