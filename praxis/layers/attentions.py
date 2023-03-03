@@ -674,10 +674,6 @@ class AttentionProjection(base_layer.BaseLayer):
     """
     theta = self.theta
 
-    # Because tf.einsum is not fully optimized unless all the dimensions are
-    # fully specified, we have to avoid using '...' for batch dimensions in the
-    # equation in tf.einsum for optimized performance. This is only feasible
-    # when the rank of the tensor is known.
     # Sort the available symbols to avoid nondeterminism.
     eqn_sym = ''.join(sorted(set(string.ascii_uppercase) - set('DHN')))
     shape = inputs.shape
@@ -817,10 +813,6 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
     """
     theta = self.theta
 
-    # Because tf.einsum is not fully optimized unless all the dimensions are
-    # fully specified, we have to avoid using '...' for batch dimensions in the
-    # equation in tf.einsum for optimized performance. This is only feasible
-    # when the rank of the tensor is known.
     # Sort the available symbols to avoid nondeterminism.
     eqn_sym = ''.join(sorted(set(string.ascii_uppercase) - set('KDHN')))
     shape = inputs.shape
