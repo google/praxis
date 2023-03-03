@@ -16,6 +16,7 @@
 """Quantization Aware Training ops."""
 
 from __future__ import annotations
+import itertools
 from typing import Optional, Sequence, Tuple, Union
 
 import jax
@@ -88,6 +89,8 @@ class TensorQuantizer(base_layer.BaseLayer):
       distribution (e.g., ReLU).
     use_symmetric: Do symmetric quantization for weights.
     quant_loss_weight: Weight for quantization loss.
+    optimize_clipping_per_channel: If True choose the best clipping value
+      per channel, else per-tensor.
   """
   precision: Optional[int] = None
   stop_scale_gradient: bool = False
@@ -97,6 +100,7 @@ class TensorQuantizer(base_layer.BaseLayer):
   unsigned_int_bounds: bool = False
   use_symmetric: bool = True
   quant_loss_weight: Optional[float] = None
+  optimize_clipping_per_channel: Optional[bool] = False
 
   def setup(self):
     del self.dtype  # not used
@@ -184,20 +188,60 @@ class TensorQuantizer(base_layer.BaseLayer):
       x_quantized_dequantized = self.dequantize(
           x_quantized, q_scale, contract_dims, zp_time_scale
       )
-      sum_error = jnp.sum(jnp.abs(jnp.subtract(x, x_quantized_dequantized)))
+      quant_error = jnp.abs(jnp.subtract(x, x_quantized_dequantized))
+
+      if self.optimize_clipping_per_channel:
+        sum_error = jnp.sum(quant_error, axis=contract_dims, keepdims=True)
+      else:
+        sum_error = jnp.sum(quant_error)
+
       return sum_error, q_scale, x_min
 
     clipping = jnp.linspace(
         1.0, self.min_clipping, num=self.num_optimize_clipping, dtype=x.dtype
     )
-    sum_error, q_scale, x_min = jax.vmap(quantization_error_and_scale)(clipping)
-    best_ind = jnp.argmin(sum_error)
-    best_scale = q_scale.at[best_ind].get()
+    sum_errors, q_scales, x_mins = jax.vmap(
+        quantization_error_and_scale
+    )(clipping)
 
-    if x_min is not None:
-      best_x_min = x_min.at[best_ind].get()
+    reduced_shape = list(x.shape)
+    if isinstance(contract_dims, int):
+      reduced_shape[contract_dims] = 1
+    elif contract_dims is not None:
+      for i in contract_dims:
+        reduced_shape[i] = 1
     else:
+      reduced_shape = ()
+
+    if not self.optimize_clipping_per_channel:
+      best_ind = jnp.array([jnp.argmin(sum_errors)], dtype=jnp.int32)
+    else:
+      # clip_index is a flat tensor containing the indcies to the first
+      # dimension in scales which provide the lowest quantization errors.
+      clip_index = jnp.reshape(jnp.argmin(sum_errors, axis=0), [-1])
+      # scale_index iteratively indexes the trailing dimensions in scales
+      # so we know which scalars to pull out (in tf using tf.gather_nd).
+      scale_index = itertools.product(*[range(d) for d in reduced_shape])
+      scale_index = jnp.array(list(scale_index), dtype=jnp.int32)
+      # optimal_index combines these two indices to specify which clipping value
+      # to use for each feature in inputs.
+      best_ind = jnp.concatenate([clip_index[:, None], scale_index], axis=1)
+
+    # Returns a flat tensor with all of the optimal scale value
+    # for each channel. It is unbatched version of tf.gather_nd:
+    best_ind = tuple(jnp.moveaxis(best_ind, -1, 0))
+    best_scale = q_scales[best_ind]
+
+    if self.optimize_clipping_per_channel:
+      best_scale = jnp.reshape(best_scale, reduced_shape)
+
+    if self.use_symmetric:
       best_x_min = None
+    else:
+      best_x_min = x_mins[best_ind]
+      if self.optimize_clipping_per_channel:
+        best_x_min = jnp.reshape(best_x_min, reduced_shape)
+
     return best_scale, best_x_min
 
   def get_quant_scale(
@@ -215,7 +259,8 @@ class TensorQuantizer(base_layer.BaseLayer):
       contract_dims: Axis along which to quantize acts (the non-feature axis).
 
     Returns:
-      Scale and min tensors.
+      Scale and min value of a tensor x.
+      If clipping is not None then it is applied on both scale and min value.
     """
     if self.min_clipping is not None and self.num_optimize_clipping is not None:
       return self._get_optimal_scale_and_min(x, contract_dims)

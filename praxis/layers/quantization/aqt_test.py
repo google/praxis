@@ -20,6 +20,7 @@ from typing import Tuple
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
+import numpy as np
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle
@@ -587,6 +588,45 @@ class AqtTest(test_utils.TestCase):
           mutable=True,
       )
       self.assertNotIn(base_layer.AUX_LOSS, states)
+
+  def test_clipping_per_channel(self):
+    np.random.seed(0)
+    x = np.random.uniform(size=[2, 512])
+
+    # The first feature will be scaled to 1.0 without clipping, while the second
+    # feature will be clipped to mitigate the effect of the outlier.
+    x[0, :] = 1.0
+    x[1, -1] = 2.0
+
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='quant',
+        precision=2,
+        min_clipping=0.8,
+        num_optimize_clipping=12,
+        use_symmetric=True,
+        add_scale_eps=False,
+        optimize_clipping_per_channel=True,
+    )
+
+    axis = [1]
+    quant = p_quant.Instantiate()
+    state = quant.init(jax.random.PRNGKey(0))
+    _, q_s, _ = quant.apply(
+        state,
+        x,
+        axis,
+        False,
+        quantized_dtype=jnp.int8,
+        method=quant.quantize,
+    )
+
+    # Test that the first feature isn't clipped.
+    self.assertAllClose(q_s[0, 0], 1.0)
+    # Test that the second feature is clipped and will have a smaller max value
+    # than the outlier we added = 2.0.
+    self.assertAllClose(q_s[1, 0], 1.6)
+
 
 if __name__ == '__main__':
   absltest.main()
