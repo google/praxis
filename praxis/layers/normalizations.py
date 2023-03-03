@@ -304,10 +304,13 @@ class LayerNorm(BaseNormalization):
     epsilon: Tiny value to guard rsqrt.
     use_scale: Whether to use a learned scaling.
     use_bias: Whether to use bias.
+    reductions_in_fp32: Whether to compute mean and variance 
+      in fp32. Recommended for stable training on GPUs.
   """
   epsilon: float = 1e-6
   use_scale: bool = True
   use_bias: bool = True
+  reductions_in_fp32: bool = False
 
   def setup(self) -> None:
     """Creates layer normalization variables."""
@@ -358,9 +361,14 @@ class LayerNorm(BaseNormalization):
       'inputs'.
     """
     del paddings  # Unused.
+    if self.reductions_in_fp32:
+      inputs_dtype = inputs.dtype
+      inputs = inputs.astype(jnp.float32)
     mean = jnp.mean(inputs, axis=[-1], keepdims=True)
     var = jnp.mean(jnp.square(inputs - mean), axis=[-1], keepdims=True)
     normed_inputs = (inputs - mean) * jax.lax.rsqrt(var + self.epsilon)
+    if self.reductions_in_fp32:
+      normed_inputs = normed_inputs.astype(inputs_dtype)
     if self.use_scale:
       normed_inputs *= (1 + self.theta.scale)
     if self.use_bias:
