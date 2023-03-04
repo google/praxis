@@ -907,7 +907,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
     # Compute the attention context.
     def _post_softmax(layer, batched, ps, non_batched, states):
       del layer, batched, non_batched
-      v = self._shard_bnh(states[0])
+      v = self._shard_blh(states[0])
       if extend_one_step:
         return self._shard_bnh(jnp.einsum('BNS,BSH->BNH', ps, v))
       return self._shard_blnh(jnp.einsum('BNTS,BSH->BTNH', ps, v))
