@@ -2015,6 +2015,8 @@ class PipelinedTransformer(base_layer.BaseLayer):
       num_microbatches > stages), transfers from last stage to first stage will
       be delayed in a later iteration to allow asynchronous transfers. This may
       be disabled on fast cross-stage networks to avoid extra overhead.
+    bf16_accum_in_fp32: If True, use casts to make bf16 gradient accumulate in
+      f32 precision.
   """
   pipeline_stage: LayerTpl = template_field(StackedTransformer)
   circular_repeat: int = 1
@@ -2025,6 +2027,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
   pipeline_broadcast_inputs: bool = False
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
   enable_async_circular_transfer: bool = True
+  bf16_accum_in_fp32: bool = False
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -2058,6 +2061,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
           stream_io=self.stream_io,
           pipeline_broadcast_inputs=self.pipeline_broadcast_inputs,
           checkpoint_policy=self.checkpoint_policy,
+          bf16_accum_in_fp32=self.bf16_accum_in_fp32,
       )
     else:
       pipeline_params = pax_fiddle.Config(
@@ -2072,6 +2076,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
           stream_io=self.stream_io,
           pipeline_broadcast_inputs=self.pipeline_broadcast_inputs,
           checkpoint_policy=self.checkpoint_policy,
+          bf16_accum_in_fp32=self.bf16_accum_in_fp32,
           enable_async_circular_transfer=self.enable_async_circular_transfer,
       )
 
