@@ -46,11 +46,11 @@ AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 
 def _get_to_f32_converter(
-    vars_to_convert: pytypes.PyTreeDef,
-) -> Callable[[pytypes.PyTreeDef], pytypes.PyTreeDef]:
+    vars_to_convert: pytypes.PyTree,
+) -> Callable[[pytypes.PyTree], pytypes.PyTree]:
   """Creates a function to convert vars to f32 based on vars_to_convert."""
 
-  def _to_f32(var_tree: pytypes.PyTreeDef) -> pytypes.PyTreeDef:
+  def _to_f32(var_tree: pytypes.PyTree) -> pytypes.PyTree:
     new_vars = {}
     for col in var_tree:
       if col in vars_to_convert and var_tree[col]:
@@ -67,11 +67,11 @@ def _get_to_f32_converter(
 
 
 def _get_to_bf16_converter(
-    vars_to_convert: pytypes.PyTreeDef,
-) -> Callable[[pytypes.PyTreeDef], pytypes.PyTreeDef]:
+    vars_to_convert: pytypes.PyTree,
+) -> Callable[[pytypes.PyTree], pytypes.PyTree]:
   """Creates a function to convert vars to bf16 based on vars_to_convert."""
 
-  def _to_bf16(var_tree: pytypes.PyTreeDef) -> pytypes.PyTreeDef:
+  def _to_bf16(var_tree: pytypes.PyTree) -> pytypes.PyTree:
     new_vars = {}
     for col in var_tree:
       if col in vars_to_convert and var_tree[col]:
@@ -286,7 +286,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       self,
       loop_iteration: JTensor,
       num_microbatches: int,
-      bf16_vars_to_convert: Optional[pytypes.PyTreeDef],
+      bf16_vars_to_convert: Optional[pytypes.PyTree],
   ) -> Callable[..., JTensor]:
     """Returns a function that runs the fprop function of the stages."""
     del loop_iteration, num_microbatches
@@ -300,8 +300,8 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
                 *per_stage_args):
 
       def xform_collections(
-          var_tree: pytypes.PyTreeDef, collections: List[str],
-          fn: Callable[[JTensor], JTensor]) -> pytypes.PyTreeDef:
+          var_tree: pytypes.PyTree, collections: List[str],
+          fn: Callable[[JTensor], JTensor]) -> pytypes.PyTree:
         mapped_vars = {}
         for key in var_tree:
           if key in collections:
@@ -312,7 +312,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
       non_trainable_backup_dict_key = '_pipeline_backup'
 
-      def trans_in(var_tree: pytypes.PyTreeDef) -> pytypes.PyTreeDef:
+      def trans_in(var_tree: pytypes.PyTree) -> pytypes.PyTree:
         # Assume there is no AUX_LOSS and SUMMARIES before function call.
         assert AUX_LOSS not in var_tree
         assert SUMMARIES not in var_tree
@@ -328,7 +328,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
           mapped_vars[NON_TRAINABLE][non_trainable_backup_dict_key] = backups
         return mapped_vars
 
-      def trans_out(var_tree: pytypes.PyTreeDef) -> pytypes.PyTreeDef:
+      def trans_out(var_tree: pytypes.PyTree) -> pytypes.PyTree:
         mapped_vars = xform_collections(
             var_tree,
             [AUX_LOSS, SUMMARIES, INTERMEDIATES],
@@ -435,7 +435,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         loop_iteration - stage_id < self.num_valid_iterations(num_microbatches))
 
   def body_fprop(self, loop_iteration: JTensor, num_microbatches: int,
-                 bf16_vars_to_convert: Optional[pytypes.PyTreeDef],
+                 bf16_vars_to_convert: Optional[pytypes.PyTree],
                  per_stage_inputs: JTensor, *per_stage_args,
                  **per_stage_kwargs) -> NestedJTensor:
     per_stage_is_valid_mb = self.get_valid_microbatch_mask(
@@ -797,7 +797,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
           trans_out_fn=_get_to_bf16_converter(bf16_vars_to_convert),
       )
 
-    def post_process(var_tree: pytypes.PyTreeDef) -> pytypes.PyTreeDef:
+    def post_process(var_tree: pytypes.PyTree) -> pytypes.PyTree:
       if AUX_LOSS in var_tree:
         # Normalize aux_loss by num_microbatches.
         var_tree[AUX_LOSS] = jax.tree_map(
@@ -997,7 +997,7 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
       self,
       loop_iteration: JTensor,
       num_microbatches: int,
-      bf16_vars_to_convert: Optional[pytypes.PyTreeDef],
+      bf16_vars_to_convert: Optional[pytypes.PyTree],
   ) -> Callable[..., JTensor]:
     # TODO(chulayuth) Support intermediate outputs gathering in future.
     assert not self.collect_intermediate_outputs
@@ -1059,14 +1059,14 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
     repeat_ids = microbatch_ids // num_microbatches
 
     # Gather per-stage layers; they have different repeat_ids.
-    def trans_in(var_tree: pytypes.PyTreeDef) -> pytypes.PyTreeDef:
+    def trans_in(var_tree: pytypes.PyTree) -> pytypes.PyTree:
       assert SUMMARIES not in var_tree
       return jax.tree_map(
           functools.partial(
               self._vmap_parallel_gather, ids=repeat_ids, ids_dim=0, xs_dim=1),
           var_tree)
 
-    def trans_out(var_tree: pytypes.PyTreeDef) -> pytypes.PyTreeDef:
+    def trans_out(var_tree: pytypes.PyTree) -> pytypes.PyTree:
       mapped_vars = {}
       for collection, tree in var_tree.items():
         if collection in backup_vars:

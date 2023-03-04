@@ -27,8 +27,8 @@ from praxis import pytypes
 
 
 # Internal unpacking comparison."],
-def maybe_unpack_summary(tree: pytypes.PyTreeDef, unpack_summaries: bool,
-                         x_times: int) -> pytypes.PyTreeDef:
+def maybe_unpack_summary(tree: pytypes.PyTree, unpack_summaries: bool,
+                         x_times: int) -> pytypes.PyTree:
   """Unpacks the summary when `unpack_summaries` is set."""
   if not unpack_summaries:
     return tree
@@ -42,8 +42,8 @@ def maybe_unpack_summary(tree: pytypes.PyTreeDef, unpack_summaries: bool,
   return jax.tree_map(unpack, tree)
 
 
-def maybe_repack_summary(tree: pytypes.PyTreeDef, unpack_summaries: bool,
-                         x_times: int) -> pytypes.PyTreeDef:
+def maybe_repack_summary(tree: pytypes.PyTree, unpack_summaries: bool,
+                         x_times: int) -> pytypes.PyTree:
   """Repacks the summary when `unpack_summaries` is set."""
   if not unpack_summaries:
     return tree
@@ -60,10 +60,10 @@ def maybe_repack_summary(tree: pytypes.PyTreeDef, unpack_summaries: bool,
 
 
 def convert_to_boxed_params(
-    var_tree: pytypes.PyTreeDef,
+    var_tree: pytypes.PyTree,
     logical_axes_rules: Optional[pytypes.LogicalAxisRules] = None,
     mesh_shape=None,
-) -> pytypes.PyTreeDef:
+) -> pytypes.PyTree:
   """Converts raw params into BoxedParams."""
   if logical_axes_rules is not None:
     assert mesh_shape is not None

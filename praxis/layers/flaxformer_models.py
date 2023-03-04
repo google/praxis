@@ -51,7 +51,7 @@ template_field = base_layer.template_field
 LogicalAxisRules = pytypes.LogicalAxisRules
 DecodeOut = base_model.DecodeOut
 ProcessDecodeOut = base_model.ProcessDecodeOut
-PyTreeDef = type(jax.tree_util.tree_structure(None))
+PyTree = Any
 SampleDecoderHParams = decoder_hparams.SampleDecoderHParams
 DecoderHParams = decoder_hparams.DecoderHParams
 GreedyDecoderHParams = decoder_hparams.GreedyDecoderHParams
@@ -733,7 +733,7 @@ class LanguageModel(base_model.BaseModel):
   def _compute_logits_from_slice(
       self,
       decoding_state: t5x_decoding.DecodingState,
-      params: PyTreeDef,
+      params: PyTree,
       max_decode_length: int,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """This mimics _compute_logits_from_slice in t5x."""

@@ -25,7 +25,7 @@ from typing import Dict, Optional, Sequence
 
 from absl import logging
 import jax
-from jax._src.lib import xla_client as xc
+from jax.lib import xla_client as xc
 import numpy as np
 from praxis import base_hyperparams
 from praxis import py_utils
