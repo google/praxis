@@ -754,6 +754,74 @@ def sequence_paddings(lengths: Union[JTensor, Sequence[int]],
           lengths[..., jnp.newaxis]).astype(dtype)
 
 
+@jax.vmap
+def flip_sequence(inputs: JTensor, lengths: JTensor):
+  max_length = inputs.shape[0]
+  return jnp.flip(jnp.roll(inputs, max_length - lengths, axis=0), axis=0)
+
+
+def concat_sequences_with_padding(
+    input0: JTensor, paddings0: JTensor, input1: JTensor, paddings1: JTensor
+) -> Tuple[JTensor, JTensor]:
+  """Concatenates input sequences with varying lengths as defined by paddings.
+
+  This is a helper function for concatenating 2 batches of input sequences,
+  where each example in the batch can have different lengths, as defined by
+  the corresponding paddings.
+
+  NOTE: We assume that the tensors have no leading paddings.
+
+  Args:
+    input0: A tensor of size [batch, max_length0, ...]
+    input1:  A tensor of size [batch, max_length0, ...]
+    padding0: A Tensor of size [batch, max_length1]
+    padding1: A Tensor of size [batch, max_length1]
+
+  Returns:
+    The concatenation of input0 and input1, and the corresponding padding.
+  """
+  batch_dim = 0
+  assert (
+      input0.shape[0] == input1.shape[0] and input0.shape[2] == input1.shape[2]
+  )
+  assert input0.shape[:2] == paddings0.shape[:2]
+  assert input1.shape[:2] == paddings1.shape[:2]
+
+  batch_size = input0.shape[0]
+
+  seq_length0 = (1 - paddings0).sum(-1).astype(jnp.int32)
+  seq_length1 = (1 - paddings1).sum(-1).astype(jnp.int32)
+
+  # Concatenate input sequences.
+  input0_seq_dim = (
+      jnp.ones([
+          batch_size,
+      ])
+      * paddings0.shape[1]
+  )
+  input1_seq_dim = (
+      jnp.ones([
+          batch_size,
+      ])
+      * paddings1.shape[1]
+  )
+  reversed_input0 = flip_sequence(input0, seq_length0)
+  reversed_input1 = flip_sequence(input1, input1_seq_dim)
+  reversed_concat = jnp.concatenate([reversed_input1, reversed_input0], axis=1)
+  concat_inputs = flip_sequence(reversed_concat, seq_length0 + input1_seq_dim)
+  # Concatenate paddings. Note that paddings are always a Tensor of 0s and 1s,
+  # so, unlike the inputs, we don't have to reverse padding1, we can simply
+  # concatenate reversed padding0 and padding1.
+  reversed_padding0 = flip_sequence(paddings0, input0_seq_dim)
+  reversed_concat_padding = jnp.concatenate(
+      [reversed_padding0, paddings1], axis=1
+  )
+  concat_paddings = flip_sequence(
+      reversed_concat_padding, input0_seq_dim + seq_length1
+  )
+  return concat_inputs, concat_paddings
+
+
 def tree_unstack(tree: Any, axis: int) -> Sequence[Any]:
   """Extracts an axis' dimension to the list dimension of the output.
 

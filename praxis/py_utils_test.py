@@ -407,6 +407,45 @@ class PyUtilsTest(test_utils.TestCase):
     self.assertAllClose(y[2:], pad_value)
     self.assertAllClose(y[:, 2:], pad_value)
 
+  def test_concat_sequences_with_padding(self):
+    input0 = jnp.array([[1, 2, 3, 4, 5, 6], [6, 5, 4, 3, 2, 1]]).reshape(
+        [2, 6, 1]
+    )
+    input1 = jnp.array([[6, 5, 4, 3, 2, 1], [1, 2, 3, 4, 5, 6]]).reshape(
+        [2, 6, 1]
+    )
+    paddings0 = jnp.array([[1, 1, 1, 1, 1, 1], [0, 0, 0, 0, 0, 0]])
+    paddings1 = jnp.array([[0, 0, 0, 0, 0, 0], [1, 1, 1, 1, 1, 1]])
+
+    expected_output = jnp.array([
+        [6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0],
+        [6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0],
+    ]).reshape([2, 12, 1])
+    output = py_utils.concat_sequences_with_padding(
+        input0, paddings0, input1, paddings1
+    )
+    output = output[0] * jnp.expand_dims(1 - output[1], -1)
+    self.assertAllClose(output, expected_output)
+
+    input0 = jnp.array([[1, 2, 0, 0, 0, 0], [6, 5, 4, 3, 2, 1]]).reshape(
+        [2, 6, 1]
+    )
+    input1 = jnp.array([[6, 5, 4, 3, 2, 1], [1, 2, 3, 4, 5, 6]]).reshape(
+        [2, 6, 1]
+    )
+    paddings0 = jnp.array([[0, 0, 1, 1, 1, 1], [0, 0, 0, 0, 0, 0]])
+    paddings1 = jnp.array([[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]])
+
+    expected_output = jnp.array([
+        [1, 2, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0],
+        [6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6],
+    ]).reshape([2, 12, 1])
+    output = py_utils.concat_sequences_with_padding(
+        input0, paddings0, input1, paddings1
+    )
+    output = output[0] * jnp.expand_dims(1 - output[1], -1)
+    self.assertAllClose(output, expected_output)
+
 
 if __name__ == '__main__':
   absltest.main()
