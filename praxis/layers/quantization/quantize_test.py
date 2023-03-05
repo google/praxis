@@ -20,6 +20,7 @@ from absl.testing import parameterized
 from praxis import layers
 from praxis import pax_fiddle
 from praxis import test_utils
+from praxis.layers import embedding_softmax
 from praxis.layers import quantization as qlayer
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantize
@@ -141,6 +142,58 @@ class QuantizationTest(test_utils.TestCase):
           p.tr_atten_tpl.combined_qkv_proj_tpl.cls,
           layers.attentions.CombinedQKVProjectionLayer,
       )
+
+  @parameterized.named_parameters(
+      ('embedding_transposed', True),
+      ('embedding_not_transposed', False),
+  )
+  def test_set_quantization_quantize_embedding(
+      self, transposed_embedding_softmax
+  ):
+    class DummyNClassMajorSharedEmbeddingSoftmax(
+        embedding_softmax.SharedEmbeddingSoftmax
+    ):
+      """Dummy class for transposed_embedding_softmax=True case."""
+
+      pass
+
+    lm_p = pax_fiddle.Config(
+        layers.TransformerLm, packed_input=True, model_dims=16, vocab_size=8
+    )
+    tr_p = lm_p.stacked_transformer_tpl.transformer_layer_params_tpl
+    tr_p.tr_atten_tpl.combine_qkv = True
+    if transposed_embedding_softmax:
+      embedding_softmax_p = lm_p.softmax_tpl
+      new_embedding_softmax_p = pax_fiddle.Config(
+          DummyNClassMajorSharedEmbeddingSoftmax
+      )
+      new_embedding_softmax_p.copy_fields_from(embedding_softmax_p)
+      lm_p.softmax_tpl = new_embedding_softmax_p
+
+    quantize.set_quantization(
+        lm_p,
+        quantize_embedding_softmax=True,
+        transposed_embedding_softmax=transposed_embedding_softmax,
+    )
+
+    # Expect linears and attentions are all quantized.
+    self.assertEqual(
+        tr_p.tr_fflayer_tpl.fflayer_tpl.linear_tpl.cls, qlayer.linears.Linear
+    )
+    self.assertEqual(
+        tr_p.tr_atten_tpl.proj_tpl.cls, qlayer.attentions.AttentionProjection
+    )
+    self.assertEqual(
+        tr_p.tr_atten_tpl.combined_qkv_proj_tpl.cls,
+        qlayer.attentions.CombinedQKVProjectionLayer,
+    )
+
+    if transposed_embedding_softmax:
+      self.assertEqual(
+          lm_p.softmax_tpl.cls, qlayer.NClassMajorSharedEmbeddingSoftmax
+      )
+    else:
+      self.assertEqual(lm_p.softmax_tpl.cls, qlayer.SharedEmbeddingSoftmax)
 
 
 if __name__ == '__main__':

@@ -31,6 +31,7 @@ pytype_strict_library(
     deps = [
         ":attentions",
         ":conformers",
+        ":embedding_softmax",
         ":linears",
         ":multi_query_attention",
         ":operations",
@@ -68,6 +69,7 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers",
+        "//praxis/layers:embedding_softmax",
     ],
 )
 
@@ -331,6 +333,43 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers:multi_query_attention",
+    ],
+)
+
+pytype_strict_library(
+    name = "embedding_softmax",
+    srcs = ["embedding_softmax.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":linears",
+        ":operations",
+        ":quantization_hparams",
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:pytypes",
+        "//praxis/layers:activations",
+        "//praxis/layers:embedding_softmax",
+        "//praxis/layers:linears",
+    ],
+)
+
+py_strict_test(
+    name = "embedding_softmax_test",
+    srcs = ["embedding_softmax_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":layers",
+        ":quantization_hparams",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:test_utils",
+        "//praxis/layers:embedding_softmax",
     ],
 )
 
