@@ -2827,8 +2827,8 @@ def sharded_static_accumulation(
       averaged_updated = jax.tree_map(lambda acc: acc / num_sub_batches,
                                       new_accumulated_update)
       scaled_updated = scale_gradients(averaged_updated, 
-                                         clip_gradient_norm_to_value,
-                                         clip_gradient_single_norm_to_value)
+                                       clip_gradient_norm_to_value,
+                                       clip_gradient_single_norm_to_value)
       emission_updates, emission_base_state = base_tx.update(
           averaged_updated, state.base_state, params)
       return (emission_updates,
