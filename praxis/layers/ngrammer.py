@@ -132,6 +132,7 @@ class VectorQuantization(base_layer.BaseLayer):
     means = WeightHParams(
         shape=[self.num_heads, self.num_clusters, self.dim_per_head],
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
+        init=self.params_init,
     )
     self.create_variable('means', means, trainable=False)
 

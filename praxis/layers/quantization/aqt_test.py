@@ -40,57 +40,78 @@ class AqtTest(test_utils.TestCase):
     state = quant.init(jax.random.PRNGKey(0))
 
     # Quantize.
-    q_x, q_scale, zp = quant.apply(
+    q_x, q_scale, zp_time_scale = quant.apply(
         state, sample, axis, False, jnp.float32, method=quant.quantize
     )
 
     # Dequantize.
-    if zp is None:
-      deq_q_x = q_x * q_scale
-    else:
-      zp = jnp.expand_dims(zp, axis=axis)
-      deq_q_x = q_x * q_scale - zp
+    deq_q_x = quant.apply(
+        state, q_x, q_scale, axis, zp_time_scale, method=quant.dequantize
+    )
 
-    return deq_q_x, q_scale
+    return q_x, deq_q_x, q_scale
 
   @parameterized.named_parameters(
       dict(testcase_name='add_eps_to_scale', add_scale_eps=True),
       dict(testcase_name='replace_zero_scale_by_one', add_scale_eps=False),
   )
-  def test_single_symmetric_quant_example(self, add_scale_eps):
+  def test_single_symmetric_quant_example(self, add_scale_eps=False):
     """Compares quantization to hand-computed example."""
     # representable values: -6, -4, -2, 0, 2, 4, 6
-    x = jnp.array([
-        [0.99, 1.01, 1.99, 2.01],  #
-        [2.99, 3.01, 3.99, 4.01],  #
-        [4.99, 5.01, 5.99, 7.0],  #
-        [-0.99, -1.01, -1.99, -2.01],  #
-        [-2.99, -3.01, -3.99, -4.01],  #
-        [-4.99, -5.01, -5.99, -7.0],  #
-    ], dtype=jnp.float32)
-    expected_output = jnp.array([
-        [0.00, 2.00, 2.00, 2.00],  #
-        [2.00, 4.00, 4.00, 4.00],  #
-        [4.00, 6.00, 6.00, 6.00],  #
-        [-0.00, -2.00, -2.00, -2.00],  #
-        [-2.00, -4.00, -4.00, -4.00],  #
-        [-4.00, -6.00, -6.00, -6.00],  #
-    ], dtype=jnp.float32)
+    x = jnp.array(
+        [
+            [0.99, 1.01, 1.99, 2.01],  #
+            [2.99, 3.01, 3.99, 4.01],  #
+            [4.99, 5.01, 5.99, 7.0],  #
+            [-0.99, -1.01, -1.99, -2.01],  #
+            [-2.99, -3.01, -3.99, -4.01],  #
+            [-4.99, -5.01, -5.99, -7.0],  #
+        ],
+        dtype=jnp.float32,
+    )
+    expected_q_deq = jnp.array(
+        [
+            [0.00, 2.00, 2.00, 2.00],  #
+            [2.00, 4.00, 4.00, 4.00],  #
+            [4.00, 6.00, 6.00, 6.00],  #
+            [-0.00, -2.00, -2.00, -2.00],  #
+            [-2.00, -4.00, -4.00, -4.00],  #
+            [-4.00, -6.00, -6.00, -6.00],  #
+        ],
+        dtype=jnp.float32,
+    )
+    expected_q = jnp.array(
+        [
+            [0, 1, 1, 1],  #
+            [1, 2, 2, 2],  #
+            [2, 3, 3, 3],  #
+            [0, -1, -1, -1],  #
+            [-1, -2, -2, -2],  #
+            [-2, -3, -3, -3],  #
+        ],
+        dtype=jnp.float32,
+    )
 
     p_quant = pax_fiddle.Config(
         aqt.TensorQuantizer, name='tq', precision=3, add_scale_eps=add_scale_eps
     )
 
-    q_deq_x, scale = self.get_quantize_dequantized_and_scale(p_quant, x)
+    q_x, q_deq_x, scale = self.get_quantize_dequantized_and_scale(p_quant, x)
 
-    self.assertAllClose(scale, jnp.full((1, 1), 2.0, dtype=jnp.float32))
-    self.assertArraysEqual(q_deq_x, expected_output)
+    # Validate quantized range for 3 bits precision:
+    self.assertLessEqual(-4, jnp.min(q_x))
+    self.assertGreaterEqual(3, jnp.max(q_x))
+
+    self.assertAllClose(scale, jnp.full((1, 1), 2, dtype=jnp.float32))
+    self.assertArraysEqual(q_x, expected_q)
+    self.assertAllClose(q_deq_x, expected_q_deq, atol=1e-6)
 
   def test_none_prec_not_quantize(self):
     x = jax.random.uniform(
-        jax.random.PRNGKey(0), shape=(4, 5), dtype=jnp.float32)
+        jax.random.PRNGKey(0), shape=(4, 5), dtype=jnp.float32
+    )
     p_quant = pax_fiddle.Config(aqt.TensorQuantizer, name='tq', precision=None)
-    q_deq_x, scale = self.get_quantize_dequantized_and_scale(p_quant, x)
+    _, q_deq_x, scale = self.get_quantize_dequantized_and_scale(p_quant, x)
 
     self.assertEqual(scale, jnp.full((1, 1), 1.0, dtype=jnp.float32))
     self.assertArraysEqual(q_deq_x, x)
@@ -108,17 +129,17 @@ class AqtTest(test_utils.TestCase):
     state = quant.init(jax.random.PRNGKey(0))
 
     per_example_scale = quant.apply(
-        state, x, 1, jnp.float32, method=quant.get_quant_scale
+        state, x, 1, method=quant.get_quant_scale
     )
     per_tensor_scale = quant.apply(
-        state, x, None, jnp.float32, method=quant.get_quant_scale
+        state, x, None, method=quant.get_quant_scale
     )
 
     per_example_qx = quant.apply(
-        state, x * per_example_scale, jnp.float32, method=quant.to_quant
+        state, x * per_example_scale, method=quant.to_quant
     )
     per_tensor_qx = quant.apply(
-        state, x * per_tensor_scale, jnp.float32, method=quant.to_quant
+        state, x * per_tensor_scale, method=quant.to_quant
     )
 
     float_result = jax.lax.dot(x, y)
@@ -152,7 +173,6 @@ class AqtTest(test_utils.TestCase):
         state,
         x,
         contract_dims=1,
-        dtype=jnp.float32,
         method=quant.get_quant_scale,
     )
     x_scaled = x * scale
@@ -160,67 +180,96 @@ class AqtTest(test_utils.TestCase):
     x_rescaled = x_scaled / scale
     self.assertArraysEqual(x_rescaled, jnp.zeros_like(x_rescaled))
 
+  def _quant_with_dequant_error(self, quant, state, x, contract_dims):
+    # Compute dequantization error with the symmetric quantizer:
+    q_x, q_s, zp_time_scale = quant.apply(
+        state,
+        x,
+        contract_dims,
+        squeeze_scale=False,
+        method=quant.quantize,
+    )
+    q_deq_x = quant.apply(
+        state,
+        q_x,
+        q_s,
+        contract_dims,
+        zp_time_scale,
+        method=quant.dequantize,
+    )
+    sum_error = jnp.sum(jnp.abs(jnp.subtract(x, q_deq_x)))
+    return q_x, sum_error
+
   def test_clipping_optimization(self):
-    p_quant = pax_fiddle.Config(
+    sym_p_quant = pax_fiddle.Config(
         aqt.TensorQuantizer,
-        name='tq',
+        name='sym_quant',
         precision=4,
+        use_symmetric=True,
     )
-    p_quant_opt = pax_fiddle.Config(
+    asym_p_quant = pax_fiddle.Config(
         aqt.TensorQuantizer,
-        name='tq',
+        name='asym_quant',
         precision=4,
-        min_clipping=0.4,
-        num_optimize_clipping=12,
+        use_symmetric=False,
     )
-    quant = p_quant.Instantiate()
-    quant_opt = p_quant_opt.Instantiate()
-    state = quant.init(jax.random.PRNGKey(0))
+    sym_p_quant_opt = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='sym_quant_opt',
+        precision=4,
+        min_clipping=0.8,
+        num_optimize_clipping=8,
+        use_symmetric=True,
+    )
+    asym_p_quant_opt = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='asym_quant_opt',
+        precision=4,
+        min_clipping=0.8,
+        num_optimize_clipping=8,
+        use_symmetric=False,
+    )
+    sym_quant = sym_p_quant.Instantiate()
+    asym_quant = asym_p_quant.Instantiate()
+    sym_quant_opt = sym_p_quant_opt.Instantiate()
+    asym_quant_opt = asym_p_quant_opt.Instantiate()
+
+    state = sym_quant.init(jax.random.PRNGKey(0))
     batch_size = 3
     feature_dim1 = 2
     feature_dim2 = 256
     input_shape = [batch_size, feature_dim1, feature_dim2]
     x = jax.random.normal(jax.random.PRNGKey(12), input_shape)
+    contract_dims = -1
 
-    # Compute dequantization error with the standard quantizer:
-    scale = quant.apply(
-        state,
-        x,
-        contract_dims=-1,
-        dtype=jnp.float32,
-        method=quant.get_quant_scale,
+    sym_q, sym_error = self._quant_with_dequant_error(
+        sym_quant, state, x, contract_dims
     )
-    x_q = quant.apply(state, x / scale, jnp.int8, method=quant.to_quant)
-    x_q_deq = jnp.multiply(scale, x_q)
-    sum_error = jnp.sum(jnp.abs(jnp.subtract(x, x_q_deq)))
-
-    # Compute dequantization error with the clipping optimization:
-    scale_opt = quant_opt.apply(
-        state,
-        x,
-        contract_dims=-1,
-        dtype=jnp.float32,
-        method=quant.get_quant_scale,
+    asym_q, asym_error = self._quant_with_dequant_error(
+        asym_quant, state, x, contract_dims
     )
-    x_q_opt = quant_opt.apply(
-        state, x / scale_opt, jnp.int8, method=quant_opt.to_quant
+    sym_opt_q, sym_opt_error = self._quant_with_dequant_error(
+        sym_quant_opt, state, x, contract_dims
     )
-    x_q_deq_opt = jnp.multiply(scale_opt, x_q_opt)
-    sum_error_opt = jnp.sum(jnp.abs(jnp.subtract(x, x_q_deq_opt)))
+    asym_opt_q, asym_opt_error = self._quant_with_dequant_error(
+        asym_quant_opt, state, x, contract_dims
+    )
 
     # Validate that x is quantized
-    self.assertEqual(7, jnp.max(x_q))
-    self.assertEqual(7, jnp.max(x_q_opt))
-    self.assertEqual(7, -jnp.min(x_q))
-    self.assertEqual(7, -jnp.min(x_q_opt))
-    sum_x_q = jnp.sum(jnp.abs(x_q))
-    sum_x_q_opt = jnp.sum(jnp.abs(x_q_opt))
-    self.assertNotEqual(sum_x_q, sum_x_q_opt)
+    self.assertEqual(7, jnp.max(sym_q))
+    self.assertEqual(-7, jnp.min(sym_q))
+    self.assertEqual(7, jnp.max(asym_q))
+    self.assertEqual(-8, jnp.min(asym_q))
+    self.assertEqual(7, jnp.max(sym_opt_q))
+    self.assertEqual(-8, jnp.min(sym_opt_q))
+    self.assertEqual(7, jnp.max(asym_opt_q))
+    self.assertEqual(-8, jnp.min(asym_opt_q))
 
-    # Validated that quantization with optimization has lower error.
-    # With feature_dim2 we observe that difference between sum_error_opt and
-    # sum_error belongs to range: 10...30, so selected 20 as middle point.
-    self.assertLess(sum_error_opt, sum_error-20)
+    delta = 2  # Set experimentally.
+    # They must be in sorted order as below:
+    self.assertLess(asym_error, sym_error - delta)
+    self.assertLess(sym_opt_error, asym_error - delta)
+    self.assertLess(asym_opt_error, sym_opt_error - delta)
 
   @parameterized.named_parameters(
       dict(testcase_name='1bit', precision=1),
@@ -243,9 +292,9 @@ class AqtTest(test_utils.TestCase):
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
     scale = quant.apply(
-        state, x, [0, 1], jnp.float32, method=quant.get_quant_scale
+        state, x, [0, 1], method=quant.get_quant_scale
     )
-    ix = quant.apply(state, x / scale, jnp.float32, method=quant.to_quant)
+    ix = quant.apply(state, x / scale, method=quant.to_quant)
 
     self.assertGreaterEqual(jnp.min(ix), 0.0)
     self.assertLessEqual(jnp.max(ix), jnp.float32(2**precision - 1))
@@ -270,7 +319,7 @@ class AqtTest(test_utils.TestCase):
         [-12.99, -13.01, -13.99, -14.00],  #
     ], dtype=jnp.float32)
 
-    expected_output = jnp.array([
+    expected_q_deq_x = jnp.array([
         [0.00, 2.00, 2.00, 4.00],  #
         [4.00, 6.00, 6.00, 8.00],  #
         [8.00, 10.00, 10.00, 12.00],  #
@@ -281,9 +330,21 @@ class AqtTest(test_utils.TestCase):
         [-0.00, -0.00, -0.00, -0.00],  #
     ], dtype=jnp.float32)
 
-    qx, _ = self.get_quantize_dequantized_and_scale(p_quant, x)
+    expected_q_x = jnp.array([
+        [0., 1., 1., 2.],  #
+        [2., 3., 3., 4.],  #
+        [4., 5., 5., 6.],  #
+        [6., 7., 7., 7.],  #
+        [0., 0., 0., 0.],  #
+        [0., 0., 0., 0.],  #
+        [0., 0., 0., 0.],  #
+        [0., 0., 0., 0.],  #
+    ], dtype=jnp.float32)
 
-    self.assertArraysEqual(qx, expected_output)
+    q_x, q_deq_x, _ = self.get_quantize_dequantized_and_scale(p_quant, x)
+
+    self.assertArraysEqual(q_deq_x, expected_q_deq_x)
+    self.assertArraysEqual(q_x, expected_q_x)
 
   def test_quantize_asymmetric(self):
     p_quant = pax_fiddle.Config(
@@ -300,13 +361,15 @@ class AqtTest(test_utils.TestCase):
         state, x, [1], True, jnp.float32, method=quant.quantize
     )
     expected_qx = jnp.array(
-        [[-127, -15, 127, -27], [-49, -127, 95, 127]], dtype=jnp.float32
+        [[-128, -15, 127, -27], [-49, -128, 95, 127]], dtype=jnp.float32
     )
     self.assertTrue((qx == expected_qx).all())
     self.assertAllClose(
-        scale, jnp.array([0.016863, 0.021569], dtype=jnp.float32)
+        scale, jnp.array([0.016797, 0.021484], dtype=jnp.float32)
     )
-    self.assertAllClose(zp, jnp.array([-3.35, -1.25], dtype=jnp.float32))
+    self.assertAllClose(
+        zp, jnp.array([-3.358399, -1.260742], dtype=jnp.float32)
+    )
 
   @parameterized.named_parameters(
       dict(testcase_name='2bit', precision=2),
@@ -316,14 +379,14 @@ class AqtTest(test_utils.TestCase):
   def test_asymmetric_quant_error_smaller_than_symmetric(self, precision):
     p_quant_asymmetric = pax_fiddle.Config(
         aqt.TensorQuantizer,
-        name='tq',
+        name='asymmetric',
         precision=precision,
         add_scale_eps=False,
         use_symmetric=False,
     )
     p_quant_symmetric = pax_fiddle.Config(
         aqt.TensorQuantizer,
-        name='tq',
+        name='symmetric',
         precision=precision,
         add_scale_eps=False,
         use_symmetric=True,
@@ -331,12 +394,12 @@ class AqtTest(test_utils.TestCase):
 
     x = jnp.array([[1.2, 3.1, 5.5, 2.9], [0.2, -1.5, 3.3, 4.0]])
 
-    x_dequant_asymmetric, _ = self.get_quantize_dequantized_and_scale(
+    _, x_dequant_asymmetric, _ = self.get_quantize_dequantized_and_scale(
         p_quant_asymmetric, x, axis=[1]
     )
     quant_error_asymmetric = jnp.sum(jnp.abs(x_dequant_asymmetric - x))
 
-    x_dequant_symmetric, _ = self.get_quantize_dequantized_and_scale(
+    _, x_dequant_symmetric, _ = self.get_quantize_dequantized_and_scale(
         p_quant_symmetric, x, axis=[1]
     )
     quant_error_symmetric = jnp.sum(jnp.abs(x_dequant_symmetric - x))
@@ -348,37 +411,126 @@ class AqtTest(test_utils.TestCase):
       dict(testcase_name='4bit', precision=4),
       dict(testcase_name='8bit', precision=8),
   )
-  def test_asymmetric_quant_error_greater_than_unsigned(self, precision):
+  def test_asymmetric_quant_error_less_than_unsigned(self, precision):
+    contract_dims = [1]
     p_quant_asymmetric = pax_fiddle.Config(
         aqt.TensorQuantizer,
-        name='tq',
+        name='asymmetric',
         precision=precision,
         add_scale_eps=False,
         use_symmetric=False,
     )
     p_quant_unsigned = pax_fiddle.Config(
         aqt.TensorQuantizer,
-        name='tq',
+        name='symmetric',
         precision=precision,
         add_scale_eps=False,
         unsigned_int_bounds=True,
     )
 
     x = jax.random.uniform(
-        jax.random.PRNGKey(0), shape=(4, 2), minval=0, maxval=1
+        jax.random.PRNGKey(0), shape=(4, 128), minval=0.1, maxval=1
     )
 
-    x_dequant_asymmetric, _ = self.get_quantize_dequantized_and_scale(
-        p_quant_asymmetric, x, axis=[1]
+    x_quant_asym, x_dequant_asymmetric, q_scale_asym = (
+        self.get_quantize_dequantized_and_scale(
+            p_quant_asymmetric, x, axis=contract_dims
+        )
     )
+    self.assertEqual((4, 1), q_scale_asym.shape)
     quant_error_asymmetric = jnp.sum(jnp.abs(x_dequant_asymmetric - x))
 
-    x_dequant_unsigned, _ = self.get_quantize_dequantized_and_scale(
-        p_quant_unsigned, x, axis=[1]
+    self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant_asym))
+    self.assertEqual(-2 ** (precision - 1), jnp.min(x_quant_asym))
+
+    x_quant_unsigned, x_dequant_unsigned, _ = (
+        self.get_quantize_dequantized_and_scale(
+            p_quant_unsigned, x, axis=contract_dims
+        )
     )
+    self.assertEqual(2**precision - 1, jnp.max(x_quant_unsigned))
     quant_error_unsigned = jnp.sum(jnp.abs(x_dequant_unsigned - x))
 
-    self.assertGreaterEqual(quant_error_asymmetric, quant_error_unsigned)
+    self.assertLessEqual(quant_error_asymmetric, quant_error_unsigned)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='2bit', precision=2),
+      dict(testcase_name='4bit', precision=4),
+  )
+  def test_asymmetric_quant_error_less_than_symmetric(self, precision):
+    contract_dims = [1]
+    p_quant_asymmetric = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='asymmetric',
+        precision=precision,
+        add_scale_eps=False,
+        use_symmetric=False,
+    )
+    p_quant_symmetric = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='symmetric',
+        precision=precision,
+        add_scale_eps=False,
+        unsigned_int_bounds=False,
+        use_symmetric=True,
+    )
+
+    x = jax.random.uniform(
+        jax.random.PRNGKey(0), shape=(2, 128), minval=-1, maxval=1
+    )
+
+    x_quant_asym, x_dequant_asymmetric, q_scale_asym = (
+        self.get_quantize_dequantized_and_scale(
+            p_quant_asymmetric, x, axis=contract_dims
+        )
+    )
+    self.assertEqual((2, 1), q_scale_asym.shape)
+    quant_error_asymmetric = jnp.sum(jnp.abs(x_dequant_asymmetric - x))
+
+    self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant_asym))
+    self.assertEqual(-2 ** (precision - 1), jnp.min(x_quant_asym))
+
+    x_quant_symmetric, x_dequant_symmetric, _ = (
+        self.get_quantize_dequantized_and_scale(
+            p_quant_symmetric, x, axis=contract_dims
+        )
+    )
+    self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant_symmetric))
+    self.assertLessEqual(-(2 ** (precision - 1)), jnp.min(x_quant_symmetric))
+    quant_error_symmetric = jnp.sum(jnp.abs(x_dequant_symmetric - x))
+
+    self.assertLessEqual(quant_error_asymmetric, quant_error_symmetric)
+
+  def test_clip_bound(self):
+    precision = 8
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='signed',
+        precision=precision,
+        add_scale_eps=False,
+        use_symmetric=True,
+    )
+    quant = p_quant.Instantiate()
+    state = quant.init(jax.random.PRNGKey(0))
+    bounds = quant.apply(
+        state, method=quant._get_clip_bound
+    )
+    self.assertEqual(bounds, (-128.5, 127.5))
+
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='unsigned',
+        precision=precision,
+        add_scale_eps=False,
+        use_symmetric=True,
+        unsigned_int_bounds=True,
+    )
+    quant = p_quant.Instantiate()
+    state = quant.init(jax.random.PRNGKey(0))
+    bounds = quant.apply(
+        state, method=quant._get_clip_bound
+    )
+    self.assertEqual(bounds, (0, 255))
 
 
 if __name__ == '__main__':

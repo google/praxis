@@ -113,8 +113,10 @@ pytype_strict_library(
     visibility = JAX_VISIBILITY,
     deps = [
         ":attentions",
+        ":normalizations",
         # Implicit jax dependency.
         # Implicit jax_triton dependency.
+        # Implicit jax_triton GPU dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
         "//praxis:py_utils",

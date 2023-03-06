@@ -41,6 +41,7 @@ AUX_LOSS = base_layer.AUX_LOSS
 SUMMARIES = base_layer.SUMMARIES
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 RANDOM = base_layer.RANDOM
+INTERMEDIATES = base_layer.INTERMEDIATES
 AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 
@@ -123,6 +124,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
   pipeline_broadcast_inputs: bool = False
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
   optimizer_dims_mapping: SplitDimsMapping = None
+  collect_intermediate_outputs: bool = False
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -279,8 +281,10 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
       def trans_out(var_tree: pytypes.PyTreeDef) -> pytypes.PyTreeDef:
         mapped_vars = xform_collections(
-            var_tree, [AUX_LOSS, SUMMARIES],
-            lambda x: jnp.where(is_valid_mb, x, jnp.zeros_like(x)))
+            var_tree,
+            [AUX_LOSS, SUMMARIES, INTERMEDIATES],
+            lambda x: jnp.where(is_valid_mb, x, jnp.zeros_like(x)),
+        )
         if NON_TRAINABLE in var_tree:
           non_trainable = mapped_vars[NON_TRAINABLE]
           backups = non_trainable[non_trainable_backup_dict_key]
@@ -309,8 +313,9 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     # `variable_axes` adds a leading stage axis to PARAMS/NON_TRAINABLE,
     # i.e. N copies of layer vars concatenated in the leading dimension.
     #
-    # `variable_axes` for AUX_LOSS and SUMMARIES allows us to record them for
-    # each layer and potentially aggregated across layers elsewhere.
+    # `variable_axes` for AUX_LOSS, SUMMARIES and INTERMEDIATES allows us to
+    # record them for each layer and potentially aggregated across layers
+    # elsewhere.
     #
     # `split_rngs` for RANDOM because dropout mask should be independent for
     # each layer.
@@ -321,7 +326,13 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         in_axes=0,
         out_axes=0,
         spmd_axis_name=self.mesh_axis_names[0],
-        variable_axes={PARAMS: 0, AUX_LOSS: 0, SUMMARIES: 0, NON_TRAINABLE: 0},
+        variable_axes={
+            PARAMS: 0,
+            AUX_LOSS: 0,
+            SUMMARIES: 0,
+            NON_TRAINABLE: 0,
+            INTERMEDIATES: 0,
+        },
         split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
         metadata_params={
             'is_initializing': self.is_initializing(),
@@ -594,10 +605,10 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
         stages_in = jax.tree_map(_fill_nan_for_bubbles, stages_in)
 
+      stages_in = jax.tree_map(_select_state_or_input, stages_in, in_state)
       if self._should_checkpoint_stages_in():
         stages_in = jax.tree_map(
             lambda x: checkpoint_name(x, 'iteration_input'), stages_in)
-      stages_in = jax.tree_map(_select_state_or_input, stages_in, in_state)
 
       if self.pipeline_broadcast_inputs:
         per_stage_args = stages_in.broadcast_inputs
@@ -672,10 +683,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       variable_broadcast.append(NON_TRAINABLE)
     scan_fn = nn.scan(
         rematted_scan_fn,
-        variable_axes={
-            SUMMARIES: 0,
-            AUX_LOSS: 0,
-        },
+        variable_axes={SUMMARIES: 0, AUX_LOSS: 0, INTERMEDIATES: 0},
         variable_carry=variable_carry,
         variable_broadcast=variable_broadcast,
         # Dropout keys will be split for each iteration.
@@ -715,6 +723,59 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
           var_tree[SUMMARIES] = _unpack(summaries)
         else:
           var_tree[SUMMARIES] = summaries
+
+      # For intermediates layer output values, we gather the data from the
+      # output of all pipeline statges into: (num_stages, batch_size, ...).
+      # The batch_size is num_microbatches x micro_batch_size.
+      #
+      # TODO(chulayuth) Because in each stage, the layers actually mean
+      # different layers in the model, should we separate the intermediate
+      # layer output into different kay name?
+      # For example, instead of "layer_1" => (num_stages, batch_size, ...)
+      # , they could be something like:
+      # "stage_1.layer_1" => (batch_size, ...)
+      # "stage_2.layer_1" => (batch_size, ...)
+      # ...
+      # TODO(chulayuth) Support stream_io case in future.
+      if self.collect_intermediate_outputs and INTERMEDIATES in var_tree:
+        assert not self.stream_io
+
+        def do_shifting(num_microbatches):
+          def vmap_fn(stage_id, x):
+            x = jnp.roll(x, -stage_id, 0)
+            x = x[:num_microbatches]
+            return x
+
+          return vmap_fn
+
+        def do_unrolling(total_iterations, num_stages, shifting_fn):
+          def tree_map_fn(x):
+            x_shape = x.shape
+            if len(x_shape) >= 3 and x_shape[:2] == (
+                total_iterations,
+                num_stages,
+            ):
+              x = jnp.stack(x, axis=1)
+              x = shifting_fn(jnp.arange(num_stages), x)
+              # combine micro_batch_num and micro_batch_size axes.
+              if len(x_shape) > 3:
+                x = jnp.reshape(
+                    x, (x.shape[0], x.shape[1] * x.shape[2], *x.shape[3:])
+                )
+              else:
+                x = jnp.reshape(x, (x.shape[0], x.shape[1] * x.shape[2]))
+
+            return x
+
+          return tree_map_fn
+
+        var_tree[INTERMEDIATES] = jax.tree_map(
+            do_unrolling(
+                total_iterations, L, jax.vmap(do_shifting(num_microbatches))
+            ),
+            var_tree[INTERMEDIATES],
+        )
+
       return var_tree
 
     after_post_process = nn.map_variables(
@@ -799,12 +860,19 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
       circular pipeline schedule.
     share_weights: Whether layers in the same stage share the weights. This
       can be useful for token-level autoregressive decoding.
+    enable_async_circular_transfer: If True, when it is possible (which means
+      num_microbatches > stages), transfers from last stage to first stage will
+      be delayed in a later iteration to allow asynchronous transfers. This may
+      be disabled on fast cross-stage networks to avoid extra overhead.
   """
   circular_repeat: int = 1
   share_weights: bool = False
+  enable_async_circular_transfer: bool = True
 
   def _async_circular_transfer(self, num_microbatches: int) -> bool:
     """Whether to delay circular transfers by 1 iteration."""
+    if not self.enable_async_circular_transfer:
+      return False
     if num_microbatches < self.num_stages:
       # TODO(yuanzx): Implement padding on small number of microbatches.
       raise NotImplementedError('num_microbatches must be at least num_stages')
@@ -821,9 +889,55 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
 
   def _get_body_fprop_fn(self, loop_iteration: JTensor,
                          num_microbatches: int) -> Callable[..., JTensor]:
+    # TODO(chulayuth) Support intermediate outputs gathering in future.
+    assert not self.collect_intermediate_outputs
+
     vmapped_fn = super()._get_body_fprop_fn(loop_iteration, num_microbatches)
     if self.share_weights:
       return vmapped_fn
+
+    if self.is_initializing():
+      # Need a vmap for initializing the vars. But during real fprop, we use
+      # scatter/gather instead.
+      vmapped_fn = nn.vmap(
+          vmapped_fn,
+          in_axes=0,
+          out_axes=0,
+          spmd_axis_name=self.mesh_axis_names[0],
+          variable_axes={
+              PARAMS: 0,
+              NON_TRAINABLE: 0,
+          },
+          split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
+          metadata_params={
+              'is_initializing': True,
+              'sub_weight_split_dims_mapping': (None,),
+              'x_times': self.circular_repeat,
+              'optimizer_dims_mapping': None,
+          },
+      )
+      # Other vars immutable.
+      vmapped_fn = nn.map_variables(
+          vmapped_fn,
+          mapped_collections=[
+              SUMMARIES,
+              AUX_LOSS,
+              INTERMEDIATES,
+          ],
+          mutable=False,
+      )
+
+      def _fn(layer, *args, **kwargs):
+        args = jax.tree_map(
+            lambda x: jax.lax.broadcast(x, [self.circular_repeat]), args
+        )
+        kwargs = jax.tree_map(
+            lambda x: jax.lax.broadcast(x, [self.circular_repeat]), kwargs
+        )
+        outs = vmapped_fn(layer, *args, **kwargs)
+        return jax.tree_map(lambda x: x[0], outs)
+
+      return _fn
 
     vmapped_fn = nn.add_metadata_axis(
         vmapped_fn,
@@ -871,10 +985,11 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
 
     vmapped_fn = nn.map_variables(
         vmapped_fn,
-        mapped_collections=[PARAMS, NON_TRAINABLE, SUMMARIES],
+        mapped_collections=[PARAMS, NON_TRAINABLE, SUMMARIES, INTERMEDIATES],
         mutable=True,
         trans_in_fn=trans_in,
-        trans_out_fn=trans_out)
+        trans_out_fn=trans_out,
+    )
 
     return vmapped_fn
 

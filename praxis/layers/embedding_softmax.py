@@ -182,7 +182,8 @@ class FullSoftmax(base_layer.BaseLayer):
     z_loss_weight: If z_loss_weight is nonzero, we add a loss equal to
       z_loss_weight * square(logsumexp(logits, -1))
     bias_init: Init scale (constant) of bias terms.
-    feed_forward_tpl: Sub configurable field for the feed-forward layer.
+    feed_forward_tpl: Sub configurable field for the feed-forward layer. If
+      None, skip feedforward layer and directly apply softmax to the input.
   """
   input_dims: int = 0
   num_classes: int = 0
@@ -192,21 +193,21 @@ class FullSoftmax(base_layer.BaseLayer):
   label_smoothing_apply_for_eval: bool = True
   z_loss_weight: float = 0.
   bias_init: Optional[float] = 0.0
-
   feed_forward_tpl: LayerTpl = template_field(linears.FeedForward)
 
   def setup(self) -> None:
-    wp = self.weight_split_dims_mapping
-    ap = self.activation_split_dims_mapping
-    ff_p = self.feed_forward_tpl.clone().set(
-        input_dims=self.input_dims,
-        output_dims=self.num_classes,
-        activation_tpl=pax_fiddle.Config(activations.Identity),
-        bias_init=self.bias_init,
-        weight_split_dims_mapping=wp.clone(),
-        activation_split_dims_mapping=ap.clone(),
-    )
-    self.create_child('logits_ffn', ff_p)
+    if self.feed_forward_tpl is not None:
+      wp = self.weight_split_dims_mapping
+      ap = self.activation_split_dims_mapping
+      ff_p = self.feed_forward_tpl.clone().set(
+          input_dims=self.input_dims,
+          output_dims=self.num_classes,
+          activation_tpl=pax_fiddle.Config(activations.Identity),
+          bias_init=self.bias_init,
+          weight_split_dims_mapping=wp.clone(),
+          activation_split_dims_mapping=ap.clone(),
+      )
+      self.create_child('logits_ffn', ff_p)
     if self.bi_tempered_loss_tpl:
       self.create_child('bi_tempered_loss', self.bi_tempered_loss_tpl)
 
@@ -219,8 +220,11 @@ class FullSoftmax(base_layer.BaseLayer):
     Returns:
       logits: with shape [..., num_classes]. Unnormalized softmax's logits.
     """
-    # Compute logits.
-    logits = self.logits_ffn(inputs)
+    if self.feed_forward_tpl is not None:
+      # Compute logits.
+      logits = self.logits_ffn(inputs)
+    else:
+      logits = inputs
 
     # Soft cap logits if applicable.
     if self.soft_cap_logits:

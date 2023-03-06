@@ -37,7 +37,7 @@ NON_TRAINABLE = base_layer.NON_TRAINABLE
 SUMMARIES = base_layer.SUMMARIES
 AUX_LOSS = base_layer.AUX_LOSS
 DECODE_CACHE = base_layer.DECODE_CACHE
-
+INTERMEDIATES = base_layer.INTERMEDIATES
 
 class FeedForward(base_layer.BaseLayer):
   """Feedforward layer.
@@ -235,6 +235,30 @@ class RepeatsTest(test_utils.TestCase):
     k, init_key = jax.random.split(k)
     weight_hparams = repeated_layer.abstract_init_with_metadata(x)
     print('weight_hparams = ', weight_hparams)
+
+  def test_capture_intermediate(self):
+    sub_p = pax_fiddle.Config(FeedForward, input_dim=2, output_dim=2)
+    p = pax_fiddle.Config(
+        repeats.Repeat,
+        name='repeated_ffn',
+        sub_tpl=sub_p,
+        x_times=3,
+        collect_intermediate_outputs=True,
+    )
+    repeated_ffn = instantiate(p)
+
+    k = jax.random.PRNGKey(123)
+    k, input_random_key = jax.random.split(k)
+    x = jax.random.uniform(input_random_key, shape=(4, 2))
+
+    k, init_key = jax.random.split(k)
+    init_vars = repeated_ffn.init(init_key, x)
+    outputs, updated_vars = repeated_ffn.apply(
+        init_vars, x, mutable=[INTERMEDIATES], capture_intermediates=True
+    )
+    intermediates = updated_vars[INTERMEDIATES]['repeat_intermediates'][0]
+    self.assertEqual(intermediates.shape, (3, 4, 2))
+    self.assertAllClose(outputs, intermediates[-1])
 
 
 class RepeatsQuantizeTest(test_utils.TestCase):

@@ -89,6 +89,8 @@ SUMMARIES = 'summaries'
 NON_TRAINABLE = 'non_trainable'
 DECODE_CACHE = 'decoder_cache'
 PREFIX_DECODE_CACHE = 'prefix_decoder_cache'
+INTERMEDIATES = 'intermediates'
+
 # hyper-params used to construct a layer.
 HYPER_PARAMS = 'hyper_params'
 
@@ -108,8 +110,9 @@ DEFAULT_INIT_MUTABLE_LIST = [PARAMS, NON_TRAINABLE] + NON_PAX_VAR_COLLECTION
 RANDOM = 'random'
 NON_PAX_RNG_KEY = 'dropout'
 
-# Postfix for quantized scale name.
-QUANTIZED_NAME_POSTFIX = '_quantized_scale'
+# Postfix for quantized scale and zero point names.
+QUANTIZED_SCALE_NAME_POSTFIX = '_quantized_scale'
+QUANTIZED_ZP_NAME_POSTFIX = '_quantized_zp'
 
 # Public aliase of base_hyperparams.instantiate() for convenience.
 instantiate = base_hyperparams.instantiate
@@ -871,6 +874,7 @@ class SummaryType(enum.Enum):
   # VIDEO summaries can be added to tensorboard using VideoSummaryMetric under
   # pax multimodal metrics but not add_summary.
   VIDEO = 7
+  HISTOGRAM = 8
 
   # Like SCALAR, but this type indicates that this data is suitable for use
   # with sensitive data.
@@ -913,8 +917,9 @@ def trim_summary_type_from_key(key: str) -> str:
 class _SummaryDict:
   """A dict holding summaries generated during forward computation.
 
-  Currently it supports 6 types: SCALAR, AGGREGATE_SCALAR, IMAGE,
-  AGGREGATE_IMAGE, TEXT, AUDIO. Keys will be appended with a type suffix.
+  Currently it supports 8 types: SCALAR, AGGREGATE_SCALAR, IMAGE,
+  AGGREGATE_IMAGE, TEXT, AUDIO, SUMMARY, HISTOGRAM. Keys will be appended with a
+  type suffix.
   """
 
   def __init__(self) -> None:
@@ -1095,9 +1100,10 @@ def add_global_summary(
     name: name of the summary.
     tensor: value of the summary.
     summary_type: type of the summary. Currently it supports 3 types: SCALAR,
-      IMAGE, AUDIO. Keys will be appended with a type suffix. Image tensors
-      must be either [batch, height, width, channels] or
-      [height, width, channels].
+      IMAGE, AUDIO, HISTOGRAM. Keys will be appended with a type suffix. Image
+      tensors must be either [batch, height, width, channels] or [height, width,
+      channels]. The histograms are computed over the batch and do not have the
+      batch dimension.
     verbosity: verbosity level for the summary to add. If the current jax
       context's verbosity level is less verbose (lower value) than the summary,
       the summary does not get added. Refer to
@@ -1220,11 +1226,11 @@ def _maybe_to_bfloat16_dtype(x):
   """Maybe convert input to bf16 dtype.
 
   Args:
-    x: common array types like JTensor, ShapeDtypeStruct or GlobalDeviceArray.
+    x: common array types like JTensor or ShapeDtypeStruct.
 
   Returns:
-    A casted ShapeDtypeStruct if x is one of JTensor, ShapeDtypeStruct or
-    GlobalDeviceArray. Otherwise, returns x.
+    A casted ShapeDtypeStruct if x is one of JTensor or ShapeDtypeStruct.
+    Otherwise, returns x.
   """
   if not hasattr(x, 'dtype'):
     # Ignore common non-array types that shouldn't be cast.
@@ -1581,14 +1587,13 @@ class BaseLayer(nn.Module):
     hparam_kwargs = {}
     for field in self._hparam_fields:
       value = getattr(self, field)
-      if is_sublayer_template(value):
-        # No need to include sub-layer template params, since the instantiated
-        # sub-layer will show up in its own collection anyways.
+      if is_sublayer_template(value) or isinstance(value, BaseLayer):
+        # No need to include sub-layer template params (or direct-instantiated
+        # children), since the instantiated sub-layer will show up in its own
+        # collection anyways.  Use an explcit `None` value to prevent `fiddle`
+        # from auto-populating fields with default factories.
         value = None
-      elif isinstance(value, BaseLayer):
-        pass  # Don't include child layers (instance_field).
-      else:
-        hparam_kwargs[field] = value
+      hparam_kwargs[field] = value
     hparams = pax_fiddle.Config(type(self), **hparam_kwargs)
 
     self.put_variable(HYPER_PARAMS, '_hparams', WrappedHParams(hparams))
@@ -1969,13 +1974,16 @@ class BaseLayer(nn.Module):
       weight_hparams: WeightHParams,
       scale_shape: Sequence[int],
       dtype: jnp.dtype = jnp.int8,
+      use_symmetric: bool = True,
   ):
     """Creates quantized variables, a pair of weight and scale tensors.
 
-    `name` will be name of the weight tensor; `name` + `_quantized_scale` will
-    be the name of the scale tensor.
+    `name` will be name of the weight tensor; `name` + `_quantized_scale` and
+    `name` + `_quantized_zp` will be the names of the scale tensor and the zero
+    point tensor, respectively.
 
-    Only the shape and mesh for weight_hparams are used.
+    Only the shape and mesh for weight_hparams are used. The scale and the zero
+    point have the same shape, assuming per-channel quantization.
 
     Currently supports only int8 weight types.
 
@@ -1984,6 +1992,8 @@ class BaseLayer(nn.Module):
       weight_hparams: HParams for weight.
       scale_shape: Shape of the scales.
       dtype: Data type of the quantized weight tensor.
+      use_symmetric: If False, additionally create a variable for the zero point
+        used for asymmetric weight quantization.
     """
 
     quantized_weight_hparams = weight_hparams.clone()
@@ -1991,28 +2001,42 @@ class BaseLayer(nn.Module):
     quantized_weight_hparams.init = WeightInit.Constant(0)
     self.create_variable(name=name, var_hparams=quantized_weight_hparams)
     self.create_variable(
-        name=name + QUANTIZED_NAME_POSTFIX,
-        var_hparams=WeightHParams(shape=scale_shape))
+        name=name + QUANTIZED_SCALE_NAME_POSTFIX,
+        var_hparams=WeightHParams(shape=scale_shape),
+    )
+    if not use_symmetric:
+      self.create_variable(
+          name=name + QUANTIZED_ZP_NAME_POSTFIX,
+          var_hparams=WeightHParams(shape=scale_shape),
+      )
 
   @nn.nowrap
-  def get_quantized_weight(self, name: str) -> Tuple[JTensor, JTensor]:
+  def get_quantized_weight(
+      self, name: str, use_symmetric: bool = True
+  ) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
     """Gets quantized variables.
 
-    Gets a pair of weight and scale tensors. To be used together with
-    `create_quantized_variable`.
+    Gets a tuple of weight, scale, and possibly zero point tensors. To be used
+    together with `create_quantized_variable`.
 
-    `name` will be name of the weight tensor; assumes scale tensor has the
-    postfix: `_quantized_scale`
+    `name` will be name of the weight tensor; assumes scale and zero point
+    tensor have the postfix, `_quantized_scale` and `_quantized_zp`,
+    respectively.
 
     Args:
       name: Variable name for the weight tensor.
+      use_symmetric: If False (weight quantized asymmetrically), return the zero
+        point along with quantized weight and scale.
 
     Returns:
-      A Tuple of two elements for weight Tensor and scale Tensor.
+      A Tuple of three elements for weight Tensor, scale Tensor, and zero point
+      Tensor.
     """
 
-    scale_name = name + QUANTIZED_NAME_POSTFIX
-    return self.theta[name], self.theta[scale_name]
+    scale_name = name + QUANTIZED_SCALE_NAME_POSTFIX
+    zp_name = name + QUANTIZED_ZP_NAME_POSTFIX
+    zp = None if use_symmetric else self.theta[zp_name]
+    return self.theta[name], self.theta[scale_name], zp
 
   @nn.nowrap
   def create_variable(self,
@@ -2294,9 +2318,14 @@ def _is_template_type(typ):
 
 def assert_has_shape(t: JTensor, shape: Sequence[int]) -> None:
   asserts.eq(t.ndim, len(shape))
+  value_str1 = f't.shape={t.shape}'
+  value_str2 = f'shape={shape}'
   for i in range(t.ndim):
     if shape[i] != -1:
-      asserts.eq(t.shape[i], shape[i])
+      asserts.eq(
+          t.shape[i], shape[i],
+          value_str1=value_str1,
+          value_str2=value_str2)
 
 
 def compatible_hparams(
@@ -2356,7 +2385,7 @@ def get_template_fields(
   elif isinstance(template, BaseHyperParams):
     return [
         field.name
-        for field in dataclasses.fields(template)
+        for field in dataclasses.fields(template)  # pytype: disable=wrong-arg-types  # re-none
         if field.name != 'cls'
     ]
   else:

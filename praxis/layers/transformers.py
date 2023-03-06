@@ -248,9 +248,8 @@ class TransformerFeedForward(base_layer.BaseLayer):
 
   Attributes:
     input_dims: Depth of the input.
-    output_dims: Depth of the output. If unset or output_dims == input_dims,
-      there is no residual projection layer. Otherwise, add a residual
-      projection layer followed by batch normalization.
+    output_dims: Depth of the output. The value of input_dims will be used when
+      output_dims is 0. Must be equal to input_dims if add_skip_connection=True.
     hidden_dims: Hidden dimension of FFN.
     has_bias: Adds bias weights to Feedforward or not.
     apply_padding_first: Apply padding to inputs before everything else or not.
@@ -326,8 +325,12 @@ class TransformerFeedForward(base_layer.BaseLayer):
     if output_dims == 0:
       # Make it compatible with previous implementation
       output_dims = self.input_dims
-    else:
-      assert output_dims == self.input_dims, (self.input_dims, output_dims)
+
+    if self.add_skip_connection and self.input_dims != output_dims:
+      raise ValueError(
+          'Skip connections are only supported when input_dims == output_dims '
+          f'but got {self.input_dims} != {output_dims}'
+      )
 
     wp = self.weight_split_dims_mapping
     ap = self.activation_split_dims_mapping
@@ -2008,6 +2011,10 @@ class PipelinedTransformer(base_layer.BaseLayer):
     pipeline_broadcast_inputs: If true, broadcast inputs (shared between all
       stages instead of being computed by the previous stage) will be passed
       stage-by-stage instead of being replicated.
+    enable_async_circular_transfer: If True, when it is possible (which means
+      num_microbatches > stages), transfers from last stage to first stage will
+      be delayed in a later iteration to allow asynchronous transfers. This may
+      be disabled on fast cross-stage networks to avoid extra overhead.
   """
   pipeline_stage: LayerTpl = template_field(StackedTransformer)
   circular_repeat: int = 1
@@ -2017,6 +2024,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
   stream_io: bool = False
   pipeline_broadcast_inputs: bool = False
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
+  enable_async_circular_transfer: bool = True
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -2064,6 +2072,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
           stream_io=self.stream_io,
           pipeline_broadcast_inputs=self.pipeline_broadcast_inputs,
           checkpoint_policy=self.checkpoint_policy,
+          enable_async_circular_transfer=self.enable_async_circular_transfer,
       )
 
     pipeline_params.weight_split_dims_mapping.stages = (

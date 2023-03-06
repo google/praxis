@@ -475,6 +475,11 @@ class FiddleBaseParameterizableTest(absltest.TestCase):
     self.assertEqual(instance.hparams.some_param, -1)
     self.assertEqual(instance.hparams.some_other_param, 'goodbye')
 
+  def test_hparams_instance_stub_is_frozen(self):
+    instance = FiddlifiedTestClass(some_param=-1, some_other_param='goodbye')
+    with self.assertRaises(AttributeError):
+      instance.hparams.some_param = 3
+
   def test_can_only_construct_with_kwargs(self):
     expected_msg = (
         r'Only keyword arguments are supported when constructing '
@@ -483,6 +488,14 @@ class FiddleBaseParameterizableTest(absltest.TestCase):
     )
     with self.assertRaisesRegex(TypeError, expected_msg):
       FiddlifiedTestClass(-1, 'goodbye')
+
+  def test_config_stub(self):
+    cfg = FiddlifiedTestClass.config(some_param=3)
+    instance = pax_fiddle.instantiate(cfg)
+    self.assertEqual(instance.some_param, 3)
+
+  def test_hparams_class_stubs_forwards_cls(self):
+    self.assertIs(FiddlifiedTestClass.HParams.cls, FiddlifiedTestClass)
 
 
 class NestedStructToTextTestCase(absltest.TestCase):

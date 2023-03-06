@@ -82,7 +82,7 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
 
   def setUp(self):
     super().setUp()
-    np.random.seed(123456)
+    np.random.seed(1234567)
 
   @parameterized.named_parameters(
       ('eqn1', 'ab,bc->ac', (4, 3), (3,), ()),
@@ -93,7 +93,7 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
                                           expected_scale_shape, expand_dims):
 
     weight = np.random.normal(1.5, 2.0, w_shape).astype(np.float32)
-    reduced_weight, scale = operations.reduce_einsum_weight_precision(
+    reduced_weight, scale, _ = operations.reduce_einsum_weight_precision(
         eqn, weight)
     self.assertEqual(scale.shape, expected_scale_shape)
     if expand_dims:
@@ -102,13 +102,17 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
         weight,
         jnp.multiply(reduced_weight, scale).astype(jnp.float32),
         rtol=0.02,
-        atol=0.02)
-    weight_nudged = operations.fakequant_einsum(eqn, weight)
-    self.assertAllClose(weight, weight_nudged, rtol=0.02, atol=0.02)
+        atol=0.02,
+    )
+    for use_symmetric in [True, False]:
+      weight_nudged = operations.fakequant_einsum(
+          eqn, weight, use_symmetric=use_symmetric
+      )
+      self.assertAllClose(weight, weight_nudged, rtol=0.02, atol=0.02)
 
   def test_percentile(self):
     weight = np.random.normal(-2.0, 2.0, (4, 3)).astype(np.float32)
-    reduced_weight, scale = operations.reduce_einsum_weight_precision(
+    reduced_weight, scale, _ = operations.reduce_einsum_weight_precision(
         'ab,bc->ac', weight, percentile=0.9
     )
     # Large value discrepancy is expected since we use 0.9 percentile.
@@ -133,6 +137,7 @@ class DotGeneral(base_layer.BaseLayer):
   lhs_prec: int = 8
   rhs_prec: int = 8
   add_scale_eps: bool = False
+  use_symmetric: bool = True
 
   def setup(self):
     self.create_child(
@@ -151,6 +156,7 @@ class DotGeneral(base_layer.BaseLayer):
             name='rhs_quantizer',
             precision=self.rhs_prec,
             add_scale_eps=self.add_scale_eps,
+            use_symmetric=self.use_symmetric,
         ),
     )
 
@@ -159,9 +165,9 @@ class DotGeneral(base_layer.BaseLayer):
       self.lhs_quantizer.update(lhs)
       self.rhs_quantizer.update(rhs)
 
-    def dot_general(
-        lhs, rhs, dimension_numbers, rhs_quantized=None, rhs_zp=None, eqn=None
-    ):
+    def dot_general(lhs, rhs, dimension_numbers, eqn=None):
+      if not self.use_symmetric:
+        assert eqn is not None
       return operations.dot_general(
           lhs,
           rhs,
@@ -169,8 +175,6 @@ class DotGeneral(base_layer.BaseLayer):
           self.rhs_quantizer,
           dimension_numbers,
           is_eval,
-          rhs_quantized,
-          rhs_zp,
           eqn,
       )
 
@@ -199,7 +203,14 @@ class AqtDotGeneralTest(test_utils.TestCase):
     np.random.seed(0)
 
   def get_dot_general_module(
-      self, lhs, rhs, lhs_prec, rhs_prec, add_scale_eps=False, is_eval=False,
+      self,
+      lhs,
+      rhs,
+      lhs_prec,
+      rhs_prec,
+      add_scale_eps=False,
+      is_eval=False,
+      use_symmetric=True,
   ):
     p_dot_general = pax_fiddle.Config(
         DotGeneral,
@@ -207,6 +218,7 @@ class AqtDotGeneralTest(test_utils.TestCase):
         lhs_prec=lhs_prec,
         rhs_prec=rhs_prec,
         add_scale_eps=add_scale_eps,
+        use_symmetric=use_symmetric,
     )
     module = base_layer.instantiate(p_dot_general)
     state = module.init(jax.random.PRNGKey(0), lhs, rhs)
@@ -218,7 +230,7 @@ class AqtDotGeneralTest(test_utils.TestCase):
             [-7.0, 4.01, 4.01],  #
             [-7.0, 0.01, -4.01],
         ],)
-    qlhs = np.array(
+    q_deq_lhs = np.array(
         [
             [-6, 4, 4],  #
             [-6, 0, -4]
@@ -231,22 +243,22 @@ class AqtDotGeneralTest(test_utils.TestCase):
             [-0.99, 0],
             [-0.01, 1.5]
         ],)
-    qrhs = np.array(
+    q_deq_rhs = np.array(
         [
             [-1, 1],  #
             [-1, 0],
             [0, 1]
         ],)
 
-    return lhs, qlhs, rhs, qrhs
+    return lhs, q_deq_lhs, rhs, q_deq_rhs
 
   def test_basic_dot_general(self):
-    lhs, qlhs, rhs, qrhs = self.basic_quant_example()
+    lhs, q_deq_lhs, rhs, q_deq_rhs = self.basic_quant_example()
 
     dot_general, _ = self.get_dot_general_module(lhs, rhs, 3, 2)
     dimension_numbers = (((1,), (0,)), ((), ()))
     actual_ret = dot_general(lhs, rhs, dimension_numbers)
-    expected_ret = jax.lax.dot_general(qlhs, qrhs,
+    expected_ret = jax.lax.dot_general(q_deq_lhs, q_deq_rhs,
                                        dimension_numbers).astype(jnp.float32)
     self.assertArraysEqual(actual_ret, expected_ret)
 
@@ -291,23 +303,136 @@ class AqtDotGeneralTest(test_utils.TestCase):
   @parameterized.named_parameters(
       ('eqn_with_dot', '...y,yz->...z'),
   )
-  def test_dot_general_with_zp(self, eqn):
+  def test_dot_general_with_asymmetric_quant(self, eqn):
     lhs = jnp.array([[1.0, 2.0, 3.0], [4.0, 1.0, 2.0]], dtype=jnp.float32)
-    rhs = jnp.array([[1, 2, 1], [2, 1, 2], [1, 3, 1]], dtype=jnp.int8)
-    rhs_scale = jnp.array([0.1, 0.2, 0.3], dtype=jnp.float32)
-    rhs_zp = jnp.array([-0.5, 3.2, 2.7])
-    rhs_quantized = (rhs, rhs_scale)
+    rhs = jnp.array(
+        [[1.2, 2.4, 13.5], [5.3, 1.4, 3.0], [8.2, -1.1, -0.5]],
+        dtype=jnp.float32,
+    )
     dimension_numbers = (((1,), (0,)), ((), ()))
 
     dot_general, _ = self.get_dot_general_module(
-        lhs, rhs, None, 8, is_eval=True
+        lhs, rhs, None, 8, is_eval=True, use_symmetric=False
     )
-    ret = dot_general(lhs, None, dimension_numbers, rhs_quantized, rhs_zp, eqn)
+    ret = dot_general(lhs, rhs, dimension_numbers, eqn)
     expected = jnp.array(
-        [[3.800781, -16.590626, -13.793751], [4.300781, -19.4, -16.49375]],
+        [[36.348434, 1.9039061, 18.109375], [26.515232, 8.781445, 55.972656]],
         dtype=jnp.float32,
     )
-    self.assertAllClose(ret, expected, rtol=0.02, atol=0.02)
+    self.assertAllClose(ret, expected)
+
+
+def _generate_einsum_eqn() -> Sequence[Dict[str, str]]:
+  """Generates arbitrary dimension numbers for a tensor of shape (2, 2, 2)."""
+  keys = ['testcase_name', 'eqn']
+  # ((lhs_contracting_dims, rhs_contracting_dims), (lhs_batch_dims,
+  # rhs_batch_dims))
+  cases = [
+      ('batch_matmul', 'abc,acd->abd'),
+      ('one_cont_two_batch_dims', 'abc,abc->ab'),
+      ('two_cont_one_batch_dims', 'abc,abc->a'),
+      ('one_contracting_dims', 'abc,dce->abde'),
+      ('two_contracting_dims', 'abc,dbc->ad'),
+  ]
+  return [dict(zip(keys, vals)) for vals in cases]
+
+
+class AqtEinsum(base_layer.BaseLayer):
+  lhs_prec = None
+  rhs_prec: int = 8
+  add_scale_eps: bool = False
+  use_symmetric: bool = True
+
+  def setup(self):
+    self.create_child(
+        'lhs_quantizer',
+        pax_fiddle.Config(
+            aqt.TensorQuantizer, name='lhs_quantizer', precision=self.lhs_prec
+        ),
+    )
+    self.create_child(
+        'rhs_quantizer',
+        pax_fiddle.Config(
+            aqt.TensorQuantizer,
+            name='rhs_quantizer',
+            precision=self.rhs_prec,
+            add_scale_eps=self.add_scale_eps,
+            use_symmetric=self.use_symmetric,
+        ),
+    )
+
+  def __call__(self):
+    def aqt_einsum(eqn, lhs, rhs):
+      return operations.aqt_einsum(
+          eqn,
+          lhs,
+          rhs,
+          lhs_quantizer=self.lhs_quantizer,
+          rhs_quantizer=self.rhs_quantizer,
+      )
+
+    return aqt_einsum
+
+
+class AqtEinsumTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(0)
+
+  def get_aqt_einsum_module(
+      self, rhs_prec, add_scale_eps=False, use_symmetric=True
+  ):
+    p_aqt_einsum = pax_fiddle.Config(
+        AqtEinsum,
+        name='aqt_einsum',
+        rhs_prec=rhs_prec,
+        add_scale_eps=add_scale_eps,
+        use_symmetric=use_symmetric,
+    )
+    module = base_layer.instantiate(p_aqt_einsum)
+    state = module.init(jax.random.PRNGKey(0))
+    return module.apply(state, mutable=['non_trainable'])
+
+  def basic_quant_example(self):
+    lhs = np.array(
+        [
+            [-7.0, 4.01, 4.01],  #
+            [-7.0, 0.01, -4.01],
+        ],)
+    rhs = np.array(
+        [
+            [-1.5, 0.99],  #
+            [-0.99, 0],
+            [-0.01, 1.5]
+        ],)
+    q_deq_rhs = np.array(
+        [
+            [-1, 1],  #
+            [-1, 0],
+            [0, 1]
+        ],)
+
+    return lhs, rhs, q_deq_rhs
+
+  def test_basic_aqt_einsum(self):
+    lhs, rhs, q_deq_rhs = self.basic_quant_example()
+
+    aqt_einsum, _ = self.get_aqt_einsum_module(rhs_prec=2)
+    eqn = 'xy,yz->xz'
+    actual_ret = aqt_einsum(eqn, lhs, rhs)
+    expected_ret = jnp.einsum(eqn, lhs, q_deq_rhs)
+    self.assertArraysEqual(actual_ret, expected_ret)
+
+  @parameterized.named_parameters(_generate_einsum_eqn())
+  def test_aqt_einsum_noquant(self, eqn):
+    lhs = np.random.uniform(-1.0, 1.0, size=(2, 2, 2)).astype(np.float32)
+    rhs = np.random.uniform(-1.0, 1.0, size=(2, 2, 2)).astype(np.float32)
+
+    aqt_einsum, _ = self.get_aqt_einsum_module(rhs_prec=None)
+    actual_ret = aqt_einsum(eqn, lhs, rhs)
+    expected_ret = jnp.einsum(eqn, lhs, rhs)
+    self.assertArraysEqual(actual_ret, expected_ret)
 
 
 if __name__ == '__main__':

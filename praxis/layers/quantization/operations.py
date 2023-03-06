@@ -16,7 +16,8 @@
 """Operations for quantization."""
 
 import functools
-from typing import List, Optional, Tuple
+import string
+from typing import List, Optional, Sequence, Tuple
 
 import jax
 from jax import lax
@@ -38,10 +39,10 @@ def _get_expand_dims(eqn: str) -> List[int]:
   quantized to KNH and need to expand to K11NH and K1NH.
 
   Args:
-    eqn: the equation for einsum.
+    eqn: The equation for einsum.
 
   Returns:
-    the expansion dimensions. Can be empty if no expansion is needed.
+    The expansion dimensions. Can be empty if no expansion is needed.
   """
   # TODO(jianlijianli): this is sufficient now but might improve to cover more
   # corner cases.
@@ -61,7 +62,7 @@ def _get_min_max(bits):
   """Gets the min/max range for a given number of bits.
 
   Args:
-    bits: target number of bits for quantization.
+    bits: Target number of bits for quantization.
 
   Returns:
     min/max values for the provide number of bits.
@@ -74,11 +75,11 @@ def compute_offset(x: JTensor, zp: JTensor, eqn: str):
 
   Args:
     x: Not quantized activation.
-    zp: Not quantized zero point of weight
+    zp: Not quantized zero point of weight.
     eqn: The equation for the einsum between x and w.
 
   Returns:
-    Offset tensor
+    Offset tensor.
   """
 
   def _get_x_reduce_axis(eqn: str, x_dims: int) -> List[int]:
@@ -100,6 +101,12 @@ def compute_offset(x: JTensor, zp: JTensor, eqn: str):
       return 'AB,KNH->KABNH'
     if eqn == 'ABNH,DNH->ABD':
       return 'AB,D->ABD'
+    if eqn == 'ABD,DNH->ABNH':
+      return 'AB,NH->ABNH'
+    if eqn == 'AD,DNH->ANH':
+      return 'A,NH->ANH'
+    if eqn == '...D,DH->...H':
+      return '...D,H->...DH'
     # Add new equations as needed.
     raise NotImplementedError(f'eqn {eqn} not supported for asymmetric weight.')
 
@@ -131,7 +138,7 @@ def einsum(
     zp: Optional zero point tensor.
 
   Returns:
-    A JTensor
+    A JTensor.
   """
   if x.dtype in QUANTIZED_TYPES and w.dtype in QUANTIZED_TYPES:
     # upcast to int32 so einsum uses int32 as accumulator.
@@ -160,38 +167,59 @@ def _round_with_gradient(x):
   return zero + jax.lax.stop_gradient(jnp.round(x))
 
 
-def reduce_precision(
+def _reduce_precision(
     t: JTensor,
-    bound: JTensor,
+    contract_dims: Optional[Sequence[int]],
     need_gradient: bool = False,
     bits: int = 8,
     optimization_on_bound: bool = False,
     percentile: float = 1.0,
-) -> Tuple[JTensor, JTensor]:
+    use_symmetric: bool = True,
+) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
   """Reduce the precision of a tensor.
 
   Generic for all tensors.
 
   Args:
-    t: input tensor
-    bound: the bound value for the tensor.
-    need_gradient: if gradient is needed out of this function.
+    t: Input tensor.
+    contract_dims: Speficies contracting dimesnions of the input tensor.
+    need_gradient: If gradient is needed out of this function.
     bits: target number of bits.
-    optimization_on_bound: if MAE bound optimizer is used.
-    percentile: percentile factor to apply on the min/max range. Setting this to
+    optimization_on_bound: If MAE bound optimizer is used.
+    percentile: percentile Factor to apply on the min/max range. Setting this to
       other than 1.0 disables optimization_on_bound.
+    use_symmetric: If the input tensor is quantized symmetrically.
 
   Returns:
-    the quantized tensor.
-    the quantization scale.
+    A tuple of quantized tensor, quantization scale
+      and quantization zero point (optional).
   """
   min_value, max_value = _get_min_max(bits)
+
+  if use_symmetric:
+    bound = jnp.max(jnp.abs(t), axis=contract_dims, keepdims=True)
+    scale_bound = max_value
+  else:
+    t_max = jnp.max(t, axis=contract_dims, keepdims=True)
+    t_min = jnp.min(t, axis=contract_dims, keepdims=True)
+    bound = t_max - t_min
+    scale_bound = 2**bits - 1.0
+
   if percentile < 1.0:
     bound = jnp.multiply(bound, percentile)
   elif optimization_on_bound:
     bound = optimization.get_best_bound(t, bound, min_value, max_value)
-  scale = bound / max_value
-  t = jnp.divide(t, scale)
+
+  scale = bound / scale_bound
+
+  if use_symmetric:
+    zp = None
+    t = jnp.divide(t, scale)
+  else:
+    zp = min_value - t_min / scale
+    t = jnp.divide(t, scale) + zp
+    zp = jnp.multiply(scale, zp)
+
   if need_gradient:
     t = _round_with_gradient(t)
     t = jnp.clip(t, min_value, max_value)
@@ -199,7 +227,8 @@ def reduce_precision(
     t = jnp.round(t)
     # Use int8 as container.
     t = jnp.clip(t, min_value, max_value).astype(jnp.int8)
-  return t, scale
+
+  return t, scale, zp
 
 
 def reduce_einsum_weight_precision(
@@ -211,20 +240,22 @@ def reduce_einsum_weight_precision(
     bits: int = 8,
     optimization_on_bound: bool = False,
     percentile: float = 1.0,
-) -> Tuple[JTensor, JTensor]:
+    use_symmetric: bool = True,
+) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
   """Reduce the precision of the weight of einsum.
 
   It uses per-channel quantization so einsum equation is passed in as well.
 
   Args:
-    eqn: the equation for the einsum.
-    t: the weight tensor for the einsum.
-    calculation_type: the type for calculation.
-    squeeze: if the output scale is squeezed.
-    need_gradient: if gradient is needed out of this function.
-    bits: target number of bits.
-    optimization_on_bound: if MAE bound optimizer is used.
-    percentile: percentile factor to apply on the min/max range.
+    eqn: The equation for the einsum.
+    t: The weight tensor for the einsum.
+    calculation_type: The type for calculation.
+    squeeze: If the output scale is squeezed.
+    need_gradient: If gradient is needed out of this function.
+    bits: Target number of bits.
+    optimization_on_bound: If MAE bound optimizer is used.
+    percentile: Percentile factor to apply on the min/max range.
+    use_symmetric: If weights are quantized symmetrically.
 
   Returns:
     A tuple of JTensors. The first one is the quantized weight and the second
@@ -238,19 +269,21 @@ def reduce_einsum_weight_precision(
 
   if t.dtype != calculation_type:
     t = t.astype(calculation_type)
-  bound = jnp.max(jnp.abs(t), axis=contract_dims, keepdims=True)
 
-  t, scale = reduce_precision(
+  t, scale, zp = _reduce_precision(
       t,
-      bound,
+      contract_dims,
       need_gradient,
       bits,
       optimization_on_bound,
       percentile=percentile,
+      use_symmetric=use_symmetric,
   )
   if squeeze:
     scale = jnp.squeeze(scale)
-  return t, scale
+    if zp is not None:
+      zp = jnp.squeeze(zp)
+  return t, scale, zp
 
 
 def fakequant_einsum(
@@ -258,19 +291,21 @@ def fakequant_einsum(
     t: JTensor,
     bits: int = 8,
     calculation_type: jnp.dtype = jnp.bfloat16,
+    use_symmetric: bool = True,
 ) -> JTensor:
   """Nudges weight of einsum with FakeQuant.
 
   Args:
-    eqn: the equation for the einsum. Determines the channel dimension.
-    t: the weight tensor for the einsum.
-    bits: target number of bits.
-    calculation_type: the type for calculation.
+    eqn: The equation for the einsum. Determines the channel dimension.
+    t: The weight tensor for the einsum.
+    bits: Target number of bits.
+    calculation_type: The type for calculation.
+    use_symmetric: Use symmetric quantization for weights.
 
   Returns:
     The nudged weight tensor.
   """
-  q, scale = reduce_einsum_weight_precision(
+  q, scale, zp = reduce_einsum_weight_precision(
       eqn,
       t,
       calculation_type=calculation_type,
@@ -278,8 +313,12 @@ def fakequant_einsum(
       need_gradient=True,
       bits=bits,
       optimization_on_bound=False,
+      use_symmetric=use_symmetric,
   )
-  return jnp.multiply(q, scale).astype(t.dtype)
+  res = jnp.multiply(q, scale)
+  if zp is not None:
+    res = jnp.subtract(res, zp)
+  return res.astype(t.dtype)
 
 
 def reduce_precision_activation(
@@ -290,28 +329,27 @@ def reduce_precision_activation(
   """Reduce the precision of activation.
 
   Args:
-    t: input tensor.
-    need_gradient: if gradient is needed out of this function.
-    bits: target number of bits.
+    t: Input tensor.
+    need_gradient: If gradient is needed out of this function.
+    bits: Target number of bits.
 
   Returns:
     A tuple of JTensors. The first one is the quantized activation and the
     second one is the scaling factor.
   """
-  # TODO(jianlijianli): enable zero point as well.
-  bound = jnp.max(jnp.abs(t), keepdims=True)
-  return reduce_precision(t, bound, need_gradient, bits, False)
+  qt, scale, _ = _reduce_precision(t, None, need_gradient, bits, False)
+  return qt, scale
 
 
 def fakequant_activation(t: JTensor, bits: int = 8) -> JTensor:
   """FakeQuant activation.
 
   Args:
-    t: activation tensor
-    bits: target number of bits.
+    t: Activation tensor
+    bits: Target number of bits.
 
   Returns:
-    nudged activation.
+    Nudged activation.
   """
   qt, scale = reduce_precision_activation(t, need_gradient=True, bits=bits)
   return jnp.multiply(qt, scale).astype(t.dtype)
@@ -375,9 +413,8 @@ def dot_general(
     rhs_quantizer: aqt.TensorQuantizer,
     dimension_numbers: lax.DotDimensionNumbers,
     is_eval: bool,
-    rhs_quantized: Optional[Tuple[JTensor, JTensor]] = None,
-    rhs_zp: Optional[JTensor] = None,
-    eqn: Optional[str] = None,
+    eqn: str,
+    perm: Optional[Sequence[int]] = None,
 ) -> JTensor:
   """Quantized jax.lax.dot_general.
 
@@ -386,22 +423,16 @@ def dot_general(
     rhs: Right-hand side of the dot_general (mostly weight, can be activation).
     lhs_quantizer: The tensor quantizer for lhs.
     rhs_quantizer: The tensor quantizer for rhs.
-    dimension_numbers: a tuple of tuples of the form `((lhs_contracting_dims,
+    dimension_numbers: A tuple of tuples of the form `((lhs_contracting_dims,
       rhs_contracting_dims), (lhs_batch_dims, rhs_batch_dims))`
     is_eval: If False, update the statistics in the tensor quantizers based on
       lhs and rhs.
-    rhs_quantized: A pair of quantized rhs and its scale. It should exist only
-      in the inference mode and both rhs and rhs_quantized cannot be passed
-      together.
-    rhs_zp: Zero point of right-hand side of the einsum.
     eqn: The valid binary einsum equation to use.
+    perm: the dimenions to be permuated to align with the einsum equation.
 
   Returns:
     An array containing the result with the same dtype as 'lhs' and 'rhs'.
   """
-  assert ((rhs is None and rhs_quantized is not None) or
-          (rhs is not None and rhs_quantized is None))
-
   if not is_eval:
     # TODO(jihwanlee): Stats should be updated during training.
     pass
@@ -410,25 +441,11 @@ def dot_general(
   lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
 
   lhs, lhs_scale, _ = lhs_quantizer.quantize(
-      lhs, lhs_contract_dims, squeeze_scale=False, dtype=input_dtype)
+      lhs, lhs_contract_dims, squeeze_scale=False, quantized_dtype=input_dtype
+  )
 
-  if rhs_quantized is None:
-    rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
-        rhs, rhs_contract_dims, squeeze_scale=False, dtype=input_dtype)
-  elif rhs is None:
-    assert (
-        is_eval
-    ), f'Expected is_eval={is_eval} == True when rhs_quantized is passed.'
-    # If rhs_quantized is passed, then it means the rhs is already quantized and
-    # its scale is provided. Thus, no need to get scale and quantize rhs again.
-    rhs, rhs_scale = rhs_quantized
-    # Make sure lhs and rhs have the same dtype.
-    rhs = rhs.astype(input_dtype)
-    rhs_scale = rhs_scale.astype(input_dtype)
-    # Restore the contracting dimension.
-    rhs_scale = jnp.expand_dims(rhs_scale, axis=rhs_contract_dims)
-  else:
-    raise ValueError('Cannot reach here.')
+  rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
+      rhs, rhs_contract_dims, squeeze_scale=False, quantized_dtype=input_dtype)
 
   should_int8_quantize = (
       lhs_quantizer.precision is not None
@@ -449,14 +466,13 @@ def dot_general(
 
   ret = out * out_scale
 
+  if perm is not None:
+    ret = lax.transpose(ret, perm)
+
   if rhs_zp is not None:
     if lhs_quantizer.precision is not None:
       raise NotImplementedError(
           'Activation quantization with weight zero point is not supported yet.'
-      )
-    if eqn is None:
-      raise NotImplementedError(
-          'eqn has to be specified for zero point calculation.'
       )
     offset = compute_offset(lhs, rhs_zp, eqn)
     ret = ret - offset
@@ -464,20 +480,15 @@ def dot_general(
   return ret
 
 
-# TODO(b/262309036): Make dot_general the default quantized einsum
-# implementation.
 def aqt_einsum(
     eqn: str,
     lhs: JTensor,
-    rhs: Optional[JTensor],
+    rhs: JTensor,
     *,
     lhs_quantizer: aqt.TensorQuantizer,
     rhs_quantizer: aqt.TensorQuantizer,
-    is_eval: bool,
-    rhs_quantized: Optional[Tuple[JTensor, JTensor]] = None,
-    rhs_zp: Optional[JTensor] = None,
 ) -> JTensor:
-  """Quantized einsum using jax.lax.dot_general.
+  """Quantized einsum with AQT style.
 
   Args:
     eqn: The valid binary einsum equation to use.
@@ -485,28 +496,40 @@ def aqt_einsum(
     rhs: Right-hand side of the einsum (mostly weight, can be activation).
     lhs_quantizer: The tensor quantizer for lhs.
     rhs_quantizer: The tensor quantizer for rhs.
-    is_eval: If False, update the statistics in the tensor quantizers based on
-      lhs and rhs.
-    rhs_quantized: A pair of quantized rhs and its scale. It should exist only
-      in the inference mode and both rhs and rhs_quantized cannot be passed
-      together.
-    rhs_zp: Zero point of right-hand side of the einsum.
 
   Returns:
     An array containing the result with the same dtype as 'lhs' and 'rhs'.
   """
-  dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(eqn)
-  out = dot_general(
-      lhs=lhs,
-      rhs=rhs,
-      lhs_quantizer=lhs_quantizer,
-      rhs_quantizer=rhs_quantizer,
-      dimension_numbers=dimension_numbers,
-      is_eval=is_eval,
-      rhs_quantized=rhs_quantized,
-      rhs_zp=rhs_zp,
-      eqn=eqn,
+  if '.' in eqn:
+    # Replace the ellipsis with arbitrary symbols.
+    eqn_sym = ''.join(sorted(set(string.ascii_uppercase) - set('yz')))
+    rank = len(lhs.shape)
+    batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
+    eqn_edited = f'{batch_eqn}y,yz->{batch_eqn}z'
+    dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn_edited)
+  else:
+    dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
+
+  lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
+
+  lhs, lhs_scale, _ = lhs_quantizer.quantize(
+      lhs, lhs_contract_dims, squeeze_scale=False, quantized_dtype=lhs.dtype
   )
-  if perm is not None:
-    out = lax.transpose(out, perm)
-  return out
+
+  rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
+      rhs, rhs_contract_dims, squeeze_scale=False, quantized_dtype=rhs.dtype)
+
+  out = jnp.einsum(eqn, lhs, rhs)
+  out_scale = jnp.einsum(eqn, lhs_scale, rhs_scale)
+
+  ret = out * out_scale
+
+  if rhs_zp is not None:
+    if lhs_quantizer.precision is not None:
+      raise NotImplementedError(
+          'Activation quantization with weight zero point is not supported yet.'
+      )
+    offset = compute_offset(lhs, rhs_zp, eqn)
+    ret = ret - offset
+
+  return ret

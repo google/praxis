@@ -15,6 +15,7 @@
 
 """Quantized Attention Layers."""
 
+import copy
 import string
 from typing import Any, Optional, Sequence, Tuple
 
@@ -50,6 +51,8 @@ class AttentionProjection(attentions.AttentionProjection):
       layer, such as dtype for the quantized weight.
   """
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+
+  _PACK_4BIT_DIM = 0
 
   def create_tensor_quantizers(self):
     self.create_child(
@@ -93,23 +96,20 @@ class AttentionProjection(attentions.AttentionProjection):
         shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
-      if self.is_output_projection:
-        if not self.quantization.weight_params.use_symmetric:
-          zpc = WeightHParams(shape=[self.input_dim])
-          self.create_variable('w_quantized_zp', zpc)
-        self.create_quantized_variable(
-            'w',
-            pc,
-            [self.input_dim],
-            dtype=self.quantization.weight_params.dtype,
+      dtype = self.quantization.weight_params.dtype
+      if self.quantization.weight_params.precision == 4:
+        dtype = jnp.int32
+        pc.shape = utils.get_packed_shape(
+            pc.shape, self._PACK_4BIT_DIM, packing_factor=8
         )
-      else:
-        if not self.quantization.weight_params.use_symmetric:
-          zpc = WeightHParams(shape=hd_shape)
-          self.create_variable('w_quantized_zp', zpc)
-        self.create_quantized_variable(
-            'w', pc, hd_shape, dtype=self.quantization.weight_params.dtype
-        )
+      scale_shape = [self.input_dim] if self.is_output_projection else hd_shape
+      self.create_quantized_variable(
+          'w',
+          pc,
+          scale_shape,
+          dtype=dtype,
+          use_symmetric=self.quantization.weight_params.use_symmetric,
+      )
     else:
       self.create_variable('w', pc)
     if self.use_bias:
@@ -192,7 +192,14 @@ class AttentionProjection(attentions.AttentionProjection):
       # dimensions are the same for all types.
       # Note: lower-bit types are not reflected during inference for now due to
       # b/259306620.
-      w, s = self.get_quantized_weight('w')
+      w, s, zp = self.get_quantized_weight(
+          'w', use_symmetric=self.quantization.weight_params.use_symmetric
+      )
+      if self.quantization.weight_params.precision == 4:
+        w = utils.unpack_4bit(
+            w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
+        )
+
       if (
           self.quantization.act_params is not None
           and self.quantization.act_params.stats_config is not None
@@ -209,15 +216,15 @@ class AttentionProjection(attentions.AttentionProjection):
             eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
         )
       elif self.quantization.act_params is None:
-        if not self.quantization.weight_params.use_symmetric:
-          ret = operations.einsum(
-              eqn, inputs, w, s, self.theta['w_quantized_zp']
-          )
-        else:
+        if self.quantization.weight_params.use_symmetric:
           if self.quantization.weight_params.dequant_upfront:
             raise NotImplementedError('Dequantize upfront not supported.')
           else:
             ret = operations.einsum(eqn, inputs, w, s)
+        else:
+          assert zp is not None, 'zp cannot be None when use_symmetric=False.'
+          ret = operations.einsum(eqn, inputs, w, s, zp)
+
     else:
       if self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(
@@ -226,11 +233,16 @@ class AttentionProjection(attentions.AttentionProjection):
             rhs=w,
             lhs_quantizer=self.act_quantizer,
             rhs_quantizer=self.weight_quantizer,
-            is_eval=self.do_eval,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
         bits = self.quantization.weight_params.precision
-        w = operations.fakequant_einsum(eqn, w, bits)
+        use_symmetric = self.quantization.weight_params.use_symmetric
+        w = operations.fakequant_einsum(
+            eqn,
+            w,
+            bits=bits,
+            use_symmetric=use_symmetric,
+        )
         ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:
         ret = jnp.einsum(eqn, inputs, w)
@@ -245,7 +257,7 @@ class AttentionProjection(attentions.AttentionProjection):
     Returns:
       a map from names to partition spec.
     """
-    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     weight_pspec = base_layer._weight_hparam_to_pspec(
         self._weight_hparams['w'], self.mesh_axis_names
     )
@@ -261,6 +273,11 @@ class AttentionProjection(attentions.AttentionProjection):
         scale_weight_hparam, self.mesh_axis_names
     )
     partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
+
+    if not self.quantization.weight_params.use_symmetric:
+      zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
+      partitionspec[zp_name] = copy.deepcopy(scale_pspec)
+
     return {base_layer.PARAMS: partitionspec}
 
   def quantize_weight(self) -> NestedJTensor:
@@ -283,7 +300,7 @@ class AttentionProjection(attentions.AttentionProjection):
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type == QuantizationType.PTQ:
       bits = self.quantization.weight_params.precision
-      q_w, q_s = operations.reduce_einsum_weight_precision(
+      q_w, q_s, zp = operations.reduce_einsum_weight_precision(
           eqn,
           self.theta.w,
           calculation_type=self.dtype,
@@ -291,22 +308,29 @@ class AttentionProjection(attentions.AttentionProjection):
           bits=bits,
           optimization_on_bound=False,
           percentile=percentile,
+          use_symmetric=self.quantization.weight_params.use_symmetric,
       )
+      if self.quantization.weight_params.precision == 4:
+        q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
-      q_w, q_s, _ = self.weight_quantizer.quantize(
+      q_w, q_s, zp = self.weight_quantizer.quantize(
           self.theta.w,
           weight_contract_dims,
-          dtype=self.quantization.weight_params.dtype,
+          quantized_dtype=self.quantization.weight_params.dtype,
       )
     else:
       raise ValueError(
           f'Unsupported quantization_type {self.quantization.quantization_type}'
       )
 
-    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
-    return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
+    scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
+    if self.quantization.weight_params.use_symmetric:
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
+    else:
+      zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}
 
 
 class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
@@ -319,6 +343,8 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       layer, such as dtype for the quantized weight.
   """
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+
+  _PACK_4BIT_DIM = 1
 
   def create_tensor_quantizers(self):
     self.create_child(
@@ -376,11 +402,18 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
         tensor_split_dims_mapping=weight_split_dims_mapping,
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
-      if not self.quantization.weight_params.use_symmetric:
-        zpc = WeightHParams(shape=[3] + hd_shape)
-        self.create_variable('w_quantized_zp', zpc)
+      dtype = self.quantization.weight_params.dtype
+      if self.quantization.weight_params.precision == 4:
+        dtype = jnp.int32
+        pc.shape = utils.get_packed_shape(
+            pc.shape, self._PACK_4BIT_DIM, packing_factor=8
+        )
       self.create_quantized_variable(
-          'w', pc, [3] + hd_shape, dtype=self.quantization.weight_params.dtype
+          'w',
+          pc,
+          [3] + hd_shape,
+          dtype=dtype,
+          use_symmetric=self.quantization.weight_params.use_symmetric,
       )
     else:
       self.create_variable('w', pc)
@@ -443,7 +476,14 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       # dimensions are the same for all types.
       # Note: lower-bit types are not reflected during inference for now due to
       # b/259306620.
-      w, s = self.get_quantized_weight('w')
+      w, s, zp = self.get_quantized_weight(
+          'w', use_symmetric=self.quantization.weight_params.use_symmetric
+      )
+      if self.quantization.weight_params.precision == 4:
+        w = utils.unpack_4bit(
+            w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
+        )
+
       if (
           self.quantization.act_params is not None
           and self.quantization.act_params.stats_config is not None
@@ -460,15 +500,13 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
         )
       elif self.quantization.act_params is None:
-        if not self.quantization.weight_params.use_symmetric:
-          ret = operations.einsum(
-              eqn, inputs, w, s, self.theta['w_quantized_zp']
-          )
-        else:
+        if self.quantization.weight_params.use_symmetric:
           if self.quantization.weight_params.dequant_upfront:
             raise NotImplementedError('Dequantize upfront not supported.')
           else:
             ret = operations.einsum(eqn, inputs, w, s)
+        else:
+          ret = operations.einsum(eqn, inputs, w, s, zp)
     else:
       if self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(
@@ -477,11 +515,16 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             rhs=w,
             lhs_quantizer=self.act_quantizer,
             rhs_quantizer=self.weight_quantizer,
-            is_eval=self.do_eval,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
         bits = self.quantization.weight_params.precision
-        w = operations.fakequant_einsum(eqn, w, bits)
+        use_symmetric = self.quantization.weight_params.use_symmetric
+        w = operations.fakequant_einsum(
+            eqn,
+            w,
+            bits=bits,
+            use_symmetric=use_symmetric,
+        )
         ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:
         ret = jnp.einsum(eqn, inputs, w)
@@ -504,7 +547,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     Returns:
       a map from names to partition spec.
     """
-    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     weight_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
         self._weight_hparams['w'], self.mesh_axis_names
     )
@@ -520,6 +563,11 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
         scale_weight_hparam, self.mesh_axis_names
     )
     partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
+
+    if not self.quantization.weight_params.use_symmetric:
+      zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
+      partitionspec[zp_name] = copy.deepcopy(scale_pspec)
+
     return {base_layer.PARAMS: partitionspec}
 
   def quantize_weight(self) -> NestedJTensor:
@@ -534,7 +582,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type == QuantizationType.PTQ:
       bits = self.quantization.weight_params.precision
-      q_w, q_s = operations.reduce_einsum_weight_precision(
+      q_w, q_s, zp = operations.reduce_einsum_weight_precision(
           eqn,
           theta.w,
           calculation_type=self.dtype,
@@ -542,19 +590,29 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
           bits=bits,
           optimization_on_bound=False,
           percentile=percentile,
+          use_symmetric=self.quantization.weight_params.use_symmetric,
       )
+      if self.quantization.weight_params.precision == 4:
+        q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
-      q_w, q_s, _ = self.weight_quantizer.quantize(
-          self.theta.w, weight_contract_dims, dtype=jnp.int8)
+      q_w, q_s, zp = self.weight_quantizer.quantize(
+          self.theta.w,
+          weight_contract_dims,
+          quantized_dtype=self.quantization.weight_params.dtype,
+      )
     else:
       raise ValueError(
           f'Unsupported quantization_type {self.quantization.quantization_type}'
       )
 
-    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
-    return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
+    scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
+    if self.quantization.weight_params.use_symmetric:
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
+    else:
+      zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}
 
 
 class DotProductAttention(attentions.DotProductAttention):
@@ -644,7 +702,6 @@ class DotProductAttention(attentions.DotProductAttention):
         rhs=key,
         lhs_quantizer=self.act_quantizer,
         rhs_quantizer=self.act_quantizer,
-        is_eval=self.do_eval,
     )
     return logits
 
@@ -724,7 +781,6 @@ class DotProductAttention(attentions.DotProductAttention):
         rhs=value,
         lhs_quantizer=self.act_quantizer,
         rhs_quantizer=self.act_quantizer,
-        is_eval=self.do_eval,
     )
 
     if self.zero_fully_masked:
@@ -795,7 +851,6 @@ class DotProductAttention(attentions.DotProductAttention):
         rhs=key,
         lhs_quantizer=self.act_quantizer,
         rhs_quantizer=self.act_quantizer,
-        is_eval=self.do_eval,
     )
     if relative_bias is not None:
       base_layer.assert_has_shape(relative_bias, [-1, n, 1, s])
@@ -821,7 +876,6 @@ class DotProductAttention(attentions.DotProductAttention):
         rhs=value,
         lhs_quantizer=self.act_quantizer,
         rhs_quantizer=self.act_quantizer,
-        is_eval=self.do_eval,
     )
     encoded = self._shard_bnh(encoded)
     return encoded, probs

@@ -31,6 +31,7 @@ from typing import Any, Callable, Optional, Sequence, Set, Tuple, Type, TypeVar,
 from absl import logging
 import fiddle as fdl
 from flax.core import frozen_dict
+from flax.linen import kw_only_dataclasses
 # Internal config_dict import from ml_collections
 import numpy as np
 from praxis import pax_fiddle
@@ -41,6 +42,19 @@ from google.protobuf import message
 from google.protobuf import text_format
 
 HParams = py_utils.HParams
+
+
+# Monkey patch PaxConfig to add a to_text method. This is done here to avoid a
+# circular dependency.
+# TODO(b/269191093): Remove this after migrating existing users.
+def to_text(self, include_types: bool = False, separator: str = ':'):
+  return nested_struct_to_text(
+      self, include_types=include_types, separator=separator
+  )
+
+
+pax_fiddle.PaxConfig.to_text = to_text
+del to_text
 
 
 def _quote_string(s):
@@ -682,6 +696,10 @@ def sub_config_field(
 BaseParameterizableSelf = TypeVar(
     'BaseParameterizableSelf', bound='BaseParameterizable')
 
+FiddleBaseParameterizableSelf = TypeVar(
+    'FiddleBaseParameterizableSelf', bound='FiddleBaseParameterizable'
+)
+
 
 class BaseParameterizable:
   """Base class for parameterizable entities such as tasks or optimizers.
@@ -779,7 +797,7 @@ class BaseParameterizable:
 
 
 @dataclasses.dataclass(frozen=True)
-class _FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
+class FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
   """Stub for `HParams` attribute in `BaseParameterizable`.
 
   Can be used with base_hyperparams.sub_config_field.  E.g.:
@@ -827,7 +845,7 @@ class _FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
         'fiddle_base_parameterizable_cls': fiddle_base_parameterizable_cls,
     }
     bases = ()
-    # pylint: disable=unused-variable
+    # pylint: disable=unused-variable, redefined-outer-name
     return super().__new__(cls, name, bases, namespace)  # pytype: disable=wrong-arg-count
 
   def __init__(cls, fiddle_base_parameterizable_cls):
@@ -842,7 +860,11 @@ class _FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
         )
     )
 
-  def __to_sub_config_field__(cls):
+  @property
+  def cls(cls):
+    return cls.fiddle_base_parameterizable_cls
+
+  def __to_sub_config_field__(cls):  # pylint: disable=arguments-renamed
     return pax_fiddle.template_field(cls.fiddle_base_parameterizable_cls)
 
   def __call__(cls, *args, **kwargs):
@@ -858,7 +880,7 @@ class _FiddleHParamsClassStubDescriptor:
   """Descriptor used to implement BaseParameterizable.HParams stub."""
 
   def __get__(self, obj, objtype):
-    return _FiddleHParamsClassStub(objtype)
+    return FiddleHParamsClassStub(objtype)
 
 
 class _FiddleHParamsInstanceStub:
@@ -873,7 +895,7 @@ class _FiddleHParamsInstanceStub:
   """
 
   def __init__(self, instance: FiddleBaseParameterizable):
-    self._instance = instance
+    object.__setattr__(self, '_instance', instance)
 
   def __getattr__(self, name):
     if '_instance' not in self.__dict__:
@@ -911,6 +933,12 @@ class _FiddleHParamsInstanceStub:
   def to_text(self, include_types: bool = False, separator: str = ':'):
     return nested_struct_to_text(self.clone(), include_types, separator)
 
+  def __setattr__(self, name, value):
+    raise AttributeError(
+        'Attempt to modify frozen hparams stub: '
+        f'{type(self._instance)}.{name}={value!r}'
+    )
+
 
 def _require_kwargs(cls):
   """Returns a new init method for `cls` that enforces kw_only behavior."""
@@ -928,6 +956,7 @@ def _require_kwargs(cls):
   return wrapper
 
 
+@kw_only_dataclasses.dataclass
 class FiddleBaseParameterizable:
   """A base class for classes migrated from `BaseParameterizable`.
 
@@ -946,7 +975,13 @@ class FiddleBaseParameterizable:
   _hparams = functools.cached_property(_FiddleHParamsInstanceStub)
   HParams = _FiddleHParamsClassStubDescriptor()  # pylint: disable=invalid-name
 
-  name: str = ''
+  name: str = kw_only_dataclasses.field(default='', kw_only=True)
+
+  @classmethod
+  def config(
+      cls: Type[FiddleBaseParameterizableSelf], **kwargs
+  ) -> pax_fiddle.Config[FiddleBaseParameterizableSelf]:
+    return pax_fiddle.Config(cls, **kwargs)
 
   @functools.cached_property
   def _fields(self) -> Set[str]:
@@ -955,8 +990,15 @@ class FiddleBaseParameterizable:
 
   def __init_subclass__(cls, **kwargs):
     super().__init_subclass__(**kwargs)
-    dataclasses.dataclass(cls)
+    if not typing.TYPE_CHECKING:
+      kw_only_dataclasses.dataclass(cls)
     cls.__init__ = _require_kwargs(cls)
+
+  def __post_init__(self, *args, **kwargs):
+    if args or kwargs:
+      raise ValueError(
+          f'Unexpected arguments to __post_init__:\n{args=}\n{kwargs=}'
+      )
 
 
 def _bind_cls_to_nested_params_class(cls: Type[Any]):

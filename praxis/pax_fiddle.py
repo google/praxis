@@ -82,6 +82,9 @@ class CloneAndSetMixin:
       setattr(self, name, value)
     return self
 
+  # TODO(b/269191093): Remove after updating existing users.
+  Set = set  # pylint: disable=invalid-name
+
 
 class PaxConfig(Generic[_T], fdl.Config[_T], CloneAndSetMixin):
   """Subclasses `fdl.Config` to make it more compatible with HParams."""
@@ -218,6 +221,7 @@ def auto_config(
       _auto_config_exemption_policy)
   auto_config_kwargs['experimental_allow_control_flow'] = True
   auto_config_kwargs['experimental_config_cls'] = PaxConfig
+  auto_config_kwargs['experimental_result_must_contain_buildable'] = False
 
   def make_auto_config(fn):
 

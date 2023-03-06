@@ -320,7 +320,7 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
   activation_partitioning_dims: int = 2
 
   def _build_wrapped_module(self) -> linen.Module:
-    p: pax_fiddle.Config[FactoryBasedEncoderDecoder] = self.hparams
+    p: pax_fiddle.Config[FactoryBasedEncoderDecoder] = self.hparams  # pytype: disable=annotation-type-mismatch
     activation_dtype = p.activation_dtype
     embed_dim = p.embed_dim
     num_embeddings = p.num_embeddings

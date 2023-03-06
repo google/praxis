@@ -100,8 +100,8 @@ class FeedForwardQuant(base_layer.BaseLayer):
   def quantize_weight(self):
     theta = self.theta
     eqn = 'xy,yz->xz'
-    q_w, q_s = operations.reduce_einsum_weight_precision(eqn, theta.w)
-    scale_name = 'w' + base_layer.QUANTIZED_NAME_POSTFIX
+    q_w, q_s, _ = operations.reduce_einsum_weight_precision(eqn, theta.w)
+    scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
 
 

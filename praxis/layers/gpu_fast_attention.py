@@ -31,10 +31,12 @@ from praxis import base_layer
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import attentions
+from praxis.layers import normalizations
 
 # pylint: disable=g-import-not-at-top
 try:
   from jax_triton.pallas.ops import attention
+  from jax_triton.pallas.ops import layer_norm
 except ImportError:
   logging.warning('jax_triton not found, please `pip install jax-triton`')
 # pylint: enable=g-import-not-at-top
@@ -136,3 +138,69 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
     encoded = self._shard_blnh(encoded)
     # TODO(zhangqiaorjc): return probs.
     return encoded, None
+
+
+class GpuTritonFusedLayerNorm(normalizations.LayerNorm):
+
+  def _ble_pspec(self):
+    """Return sharding annotations to tensors of shape [b, l, e]."""
+    # TODO(zhangqiaorjc): Avoid hardcode batch dim sharding..
+    return base_layer.to_partition_spec(
+        [('replica', 'data'), None, None], self.mesh_axis_names
+    )
+
+  def _replicated_pspec(self):
+    """Return sharding annotations to weight tensor."""
+    # TODO(zhangqiaorjc): Avoid hardcode batch dim sharding..
+    return base_layer.to_partition_spec([None], self.mesh_axis_names)
+
+  def __call__(
+      self, inputs: JTensor, paddings: Optional[JTensor] = None
+  ) -> JTensor:
+    """Applies layer norm to inputs.
+
+    Args:
+      inputs: The inputs JTensor. Shaped [..., dim].
+      paddings: unused.
+
+    Returns:
+      Output after applying layer normalization, with the same shape as
+      'inputs'.
+    """
+    del paddings  # Unused.
+    wp = self.weight_split_dims_mapping
+    if self.mesh_shape is not None and wp.wt is not None:
+      # Only support replicated weights.
+      raise NotImplementedError
+    if not self.use_scale or not self.use_bias:
+      raise NotImplementedError
+    ble_pspec = self._ble_pspec()
+
+    # TODO(zhangqiaorjc): Pass a mesh from caller.
+    device_mesh = py_utils.create_device_mesh(
+        self.ici_mesh_shape,
+        self.dcn_mesh_shape,
+        contiguous_submeshes=self.contiguous_submeshes,
+    )
+    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)
+
+    # TODO(zhangqiaorjc): Use hparam instead of env var.
+    bwd_pass_impl = os.getenv(
+        'pax_fused_layernorm_backward_pass_impl', default='xla'
+    )
+
+    @functools.partial(
+        shard_map,
+        mesh=mesh,
+        in_specs=(
+            ble_pspec,
+            self._replicated_pspec(),
+            self._replicated_pspec(),
+        ),
+        out_specs=ble_pspec,
+        check_rep=False,
+    )
+    def layernorm(x, w, b):
+      return layer_norm.layer_norm(x, w, b, backward_pass_impl=bwd_pass_impl)
+
+    return layernorm(inputs, 1 + self.theta.scale, self.theta.bias)

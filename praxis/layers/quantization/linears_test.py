@@ -39,14 +39,37 @@ QuantizationType = quantization_hparams.QuantizationType
 
 
 def _generate_quantization_types_modes() -> Sequence[Dict[str, Any]]:
-  keys = ['testcase_name', 'quantization_type', 'mode', 'dtype']
+  keys = ['testcase_name', 'quantization_type', 'mode', 'dtype', 'precision']
   types = [QuantizationType.PTQ, QuantizationType.FQ, QuantizationType.AQT]
   modes = [QuantizationMode.INFERENCE, QuantizationMode.TRAINING]
   dtypes = [jnp.int8, jnp.uint8]
+  precisions = [8, 4]
 
   cases = []
-  for case in itertools.product(types, modes, dtypes):
-    name = case[0].value + '_' + case[1].value + '_' + str(case[2])
+  for case in itertools.product(types, modes, dtypes, precisions):
+    name = (
+        case[0].value
+        + '_'
+        + case[1].value
+        + '_'
+        + str(case[2])
+        + '_'
+        + str(case[3])
+    )
+    cases.append([name] + list(case))
+
+  return [dict(zip(keys, case)) for case in cases]
+
+
+def _generate_quantization_types_symmetric() -> Sequence[Dict[str, Any]]:
+  keys = ['testcase_name', 'quantization_type', 'use_symmetric']
+  types = [QuantizationType.PTQ, QuantizationType.FQ, QuantizationType.AQT]
+  use_symmetric = [True, False]
+
+  cases = []
+  for case in itertools.product(types, use_symmetric):
+    is_symmetric = 'symmetric' if case[1] else 'asymmetric'
+    name = case[0].value + '_' + is_symmetric
     cases.append([name] + list(case))
 
   return [dict(zip(keys, case)) for case in cases]
@@ -59,22 +82,26 @@ class QuantizedLinearTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.named_parameters(_generate_quantization_types_modes())
-  def test_linear_quantized(self, quantization_type, mode, dtype):
+  def test_linear_quantized(self, quantization_type, mode, dtype, precision):
     p = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear',
-        input_dims=5,
+        input_dims=8,
         output_dims=4,
         quantization=QuantizationHParams(
             quantization_type=quantization_type,
             mode=mode,
             weight_params=quantization_hparams.WeightQuantizationParams(
                 dtype=dtype,
+                precision=precision,
             ),
         ),
     )
     linear = instantiate(p)
-    inputs = jnp.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]], dtype=p.dtype)
+    inputs = jnp.array(
+        [[1, 2, 3, 4, 5, 6, 7, 8], [9, 10, 11, 12, 13, 14, 15, 16]],
+        dtype=p.dtype,
+    )
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = linear.init(prng_key, inputs)
@@ -85,6 +112,49 @@ class QuantizedLinearTest(test_utils.TestCase):
     else:
       self.assertRaises(AssertionError, self.assertAllClose,
                         jnp.full((2, 4), 0.0, dtype=p.dtype), outputs)
+
+  def test_linear_aqt_quantized(self):
+    p_q = pax_fiddle.Config(
+        qlinears.Linear,
+        name='_linear_q',
+        quantization=QuantizationHParams(
+            quantization_type=QuantizationType.AQT,
+            mode=QuantizationMode.TRAINING,
+            act_params=quantization_hparams.ActQuantizationParams(precision=3),
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                precision=2,
+                add_scale_eps=False,
+            ),
+        ),
+    )
+    p_q.input_dims = 3
+    p_q.output_dims = 2
+
+    inputs = np.array(
+        [
+            [-7.0, 4.01, 4.01],
+            [-7.0, 0.01, -4.01],
+        ],)
+
+    weight = np.array(
+        [
+            [-1.5, 0.99],
+            [-0.99, 0],
+            [-0.01, 1.5]
+        ],)
+    expected_output = np.array(
+        [
+            [2., -2.],
+            [6., -10.]
+        ])
+
+    linear_q = instantiate(p_q)
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars_q = linear_q.init(prng_key, inputs)
+      initial_vars_q['params']['w'] = weight
+      outputs_q = linear_q.apply(initial_vars_q, inputs)
+    self.assertAllClose(expected_output, outputs_q)
 
 
 class QuantizedLinearsSyncTest(test_utils.TestCase):
@@ -121,60 +191,6 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
 
     inputs = np.random.normal(1.5, 2.0, [5, 16]).astype(np.float32)
     self.run_and_compare(p_f, p_q, inputs)
-
-  def test_linear_aqt_quantized(self):
-    p_f = pax_fiddle.Config(linears.Linear, name='_linear_f')
-    p_q = pax_fiddle.Config(
-        qlinears.Linear,
-        name='_linear_q',
-        quantization=QuantizationHParams(
-            quantization_type=QuantizationType.AQT,
-            mode=QuantizationMode.TRAINING,
-            act_params=quantization_hparams.ActQuantizationParams(precision=3),
-            weight_params=quantization_hparams.WeightQuantizationParams(
-                precision=2
-            ),
-        ),
-    )
-    for p in [p_f, p_q]:
-      p.input_dims = 3
-      p.output_dims = 2
-
-    inputs = np.array(
-        [
-            [-7.0, 4.01, 4.01],
-            [-7.0, 0.01, -4.01],
-        ],)
-    q_inputs = np.array(
-        [
-            [-6, 4, 4],
-            [-6, 0, -4]
-        ],)
-
-    weight = np.array(
-        [
-            [-1.5, 0.99],
-            [-0.99, 0],
-            [-0.01, 1.5]
-        ],)
-    q_weight = np.array(
-        [
-            [-1, 1],
-            [-1, 0],
-            [0, 1]
-        ],)
-
-    linear_f = instantiate(p_f)
-    linear_q = instantiate(p_q)
-    with base_layer.JaxContext.new_context():
-      prng_key = jax.random.PRNGKey(seed=123)
-      initial_vars_f = linear_f.init(prng_key, q_inputs)
-      initial_vars_q = linear_q.init(prng_key, inputs)
-      initial_vars_f['params']['w'] = q_weight
-      initial_vars_q['params']['w'] = weight
-      outputs_f = linear_f.apply(initial_vars_f, q_inputs)
-      outputs_q = linear_q.apply(initial_vars_q, inputs)
-    self.assertAllClose(outputs_f.astype(outputs_q.dtype), outputs_q)
 
   def test_linear_quantized_in_inference_mode(self):
     p_f = pax_fiddle.Config(linears.Linear, name='_linear_f')
@@ -217,12 +233,8 @@ class QuantizeLinearTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(123456)
 
-  @parameterized.named_parameters(
-      dict(testcase_name='PTQ', quantization_type=QuantizationType.PTQ),
-      dict(testcase_name='FQ', quantization_type=QuantizationType.FQ),
-      dict(testcase_name='AQT', quantization_type=QuantizationType.AQT)
-  )
-  def test_quantize_linear(self, quantization_type):
+  @parameterized.named_parameters(_generate_quantization_types_symmetric())
+  def test_quantize_linear(self, quantization_type, use_symmetric):
     p = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
@@ -233,6 +245,9 @@ class QuantizeLinearTest(test_utils.TestCase):
         quantization=QuantizationHParams(
             quantization_type=quantization_type,
             mode=QuantizationMode.TRAINING,
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                use_symmetric=use_symmetric
+            ),
         ),
     )
     p.input_dims = 6
@@ -247,24 +262,20 @@ class QuantizeLinearTest(test_utils.TestCase):
 
       res, _ = layer.apply(
           initial_vars, mutable=[], method=layer.quantize_weight)
+      # Check ParititionSpecs.
+      pspec, _ = layer.apply(
+          initial_vars, mutable=[], method=layer.quantized_partition_specs
+      )
+
     shapes = jax.tree_map(lambda x: x.shape, res)
     types = jax.tree_map(lambda x: x.dtype, res)
-    self.assertEqual(
-        shapes, {base_layer.PARAMS: {
-            'w': (6, 4),
-            'w_quantized_scale': (4,)
-        }})
-    self.assertEqual(
-        types,
-        {base_layer.PARAMS: {
-            'w': jnp.int8,
-            'w_quantized_scale': p.dtype
-        }})
 
-    # Check ParititionSpecs.
-    pspec, _ = layer.apply(
-        initial_vars, mutable=[], method=layer.quantized_partition_specs
-    )
+    expected_shape = {
+        base_layer.PARAMS: {'w': (6, 4), 'w_quantized_scale': (4,)}
+    }
+    expected_types = {
+        base_layer.PARAMS: {'w': jnp.int8, 'w_quantized_scale': p.dtype}
+    }
     expected_pspec = {
         'params': {
             'w': base_layer.BoxedPartitionSpec(
@@ -275,6 +286,16 @@ class QuantizeLinearTest(test_utils.TestCase):
             ),
         }
     }
+
+    if not use_symmetric:
+      expected_shape[base_layer.PARAMS]['w_quantized_zp'] = (4,)
+      expected_types[base_layer.PARAMS]['w_quantized_zp'] = p.dtype
+      expected_pspec['params']['w_quantized_zp'] = (
+          base_layer.BoxedPartitionSpec(meta=jax.sharding.PartitionSpec('data'))
+      )
+
+    self.assertEqual(shapes, expected_shape)
+    self.assertEqual(types, expected_types)
     self.assertEqual(pspec, expected_pspec)
 
   def test_aqt_quantize_weight(self):
@@ -318,10 +339,13 @@ class QuantizeLinearTest(test_utils.TestCase):
       initial_vars['params']['w'] = weight
 
       res, _ = layer.apply(
-          initial_vars, mutable=[], method=layer.quantize_weight)
+          initial_vars, mutable=[], method=layer.quantize_weight
+      )
 
     self.assertArraysEqual(res['params']['w'], q_weight)
-    self.assertArraysEqual(res['params']['w_quantized_scale'], expected_scale)
+    self.assertAllClose(
+        res['params']['w_quantized_scale'], expected_scale, atol=1e-6
+    )
 
 
 if __name__ == '__main__':
