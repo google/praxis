@@ -1846,6 +1846,8 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     unroll_in_decode: Whether to unroll the layers during extend_step.
     repeat_optimizer_dims_mapping: Tensor split dims mapping used for the
       optimizer state variables corresponding to the repeat prefix dims.
+    nd_prefix_shape: If not None, there are multiple prefix dims of this shape
+      and np.prod(nd_prefix_shape) == x_times.
   """
   block: LayerTpl = template_field(StackedTransformer)
   x_times: int = 0
@@ -1854,6 +1856,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
   repeat_layer_name: str = 'repeat'
   sublayer_name: str = 'sub'
   repeat_optimizer_dims_mapping: SplitDimsMapping = None
+  nd_prefix_shape: Optional[Sequence[int]] = None
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -1875,6 +1878,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         unroll_in_decode=self.unroll_in_decode,
         sublayer_name=self.sublayer_name,
         optimizer_dims_mapping=self.repeat_optimizer_dims_mapping,
+        nd_prefix_shape=self.nd_prefix_shape,
     )
     repeat_l_params.weight_split_dims_mapping.sub = wp.block
 

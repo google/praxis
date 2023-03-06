@@ -194,6 +194,66 @@ class RepeatsTest(test_utils.TestCase):
     print(jax.tree_map(lambda x: x.shape, updated_vars))
 
   @parameterized.parameters((False,), (True,))
+  def test_repeats_nd(self, unpack_summaries):
+
+    sub_p = pax_fiddle.Config(FeedForward, input_dim=2, output_dim=2)
+    p = pax_fiddle.Config(
+        repeats.Repeat,
+        name='repeated_ffn',
+        sub_tpl=sub_p,
+        x_times=6,
+        nd_prefix_shape=(2, 3),
+        unpack_summaries=unpack_summaries,
+    )
+    repeated_ffn = instantiate(p)
+
+    k = jax.random.PRNGKey(123)
+    k, input_random_key = jax.random.split(k)
+    x = jax.random.uniform(input_random_key, shape=(4, 2))
+
+    k, init_key = jax.random.split(k)
+    weight_hparams = repeated_ffn.abstract_init_with_metadata(x)
+    self.assertEqual(set(weight_hparams), {PARAMS, NON_TRAINABLE})
+    self.assertEqual(weight_hparams[PARAMS]['sub']['w'].shape, [2, 2])
+    self.assertEqual(weight_hparams[PARAMS]['sub']['w'].repeat_prefix, [2, 3])
+    self.assertEqual(
+        weight_hparams[PARAMS]['sub']['w'].repeat_prefix_split_dims_mapping,
+        (-1, -1))
+
+    init_vars = repeated_ffn.init(init_key, x)
+    init_vars_shape = jax.tree_map(lambda x: x.shape, init_vars)
+    self.assertEqual(set(init_vars_shape), {PARAMS, NON_TRAINABLE})
+    self.assertEqual(init_vars_shape[PARAMS]['sub']['w'], (2, 3, 2, 2))
+    self.assertEqual(init_vars_shape[NON_TRAINABLE]['sub']['step'], (2, 3,))
+    self.assertArraysEqual(init_vars[NON_TRAINABLE]['sub']['step'],
+                           jnp.zeros((2, 3,), dtype=jnp.int32))
+
+    _, updated_vars = repeated_ffn.apply(
+        init_vars, x, mutable=[NON_TRAINABLE, SUMMARIES, AUX_LOSS])
+    self.assertArraysEqual(updated_vars[NON_TRAINABLE]['sub']['step'],
+                           jnp.ones((2, 3,), dtype=jnp.int32))
+
+    # Ensure top level variables all exist with the right shape.
+    updated_vars_shape = jax.tree_map(lambda x: x.shape, updated_vars)
+    self.assertEqual(
+        set(updated_vars_shape), {NON_TRAINABLE, SUMMARIES, AUX_LOSS})
+    self.assertEqual(updated_vars_shape[NON_TRAINABLE]['sub']['step'], (2, 3,))
+    self.assertEqual(updated_vars_shape[AUX_LOSS]['sub']['z_loss'].value, ())
+    self.assertEqual(updated_vars_shape[AUX_LOSS]['sub']['z_loss'].weight, ())
+    self.assertEqual(updated_vars[AUX_LOSS]['sub']['z_loss'].value, 6.0)
+    self.assertEqual(updated_vars[AUX_LOSS]['sub']['z_loss'].weight, 3.0)
+
+    if unpack_summaries:
+      self.assertEqual(
+          updated_vars_shape[SUMMARIES]['sub']['inputs_mean_scalar'],
+          [(1,), (1,), (1,), (1,), (1,), (1,)])
+    else:
+      self.assertEqual(
+          updated_vars_shape[SUMMARIES]['sub']['inputs_mean_scalar'], (6,))
+
+    print(jax.tree_map(lambda x: x.shape, updated_vars))
+
+  @parameterized.parameters((False,), (True,))
   def test_extend_step(self, unroll):
 
     sub_p = pax_fiddle.Config(Decoder, model_dim=4)

@@ -19,9 +19,10 @@ This simply passes input through the layer stack.
 """
 
 import functools
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Sequence, Union
 
 from flax import linen as nn
+from flax.core import meta
 import jax
 from jax import numpy as jnp
 from praxis import asserts
@@ -82,6 +83,9 @@ class Repeat(base_layer.BaseLayer):
       state variables corresponding to the repeat prefix dims.
     collect_intermediate_outputs: If True, makes intermediate sublayers' outputs
       available for flax capture_intermediates.
+    nd_prefix_shape: If not None, there are multiple prefix dims of this shape
+      and np.prod(nd_prefix_shape) == x_times. It enables circular
+      pipeline-compatible repeat layer decoding.
   """
   sub_tpl: Optional[LayerTpl] = base_layer.template_field(None)
   x_times: int = 0
@@ -91,6 +95,7 @@ class Repeat(base_layer.BaseLayer):
   sublayer_name: str = 'sub'
   optimizer_dims_mapping: SplitDimsMapping = None
   collect_intermediate_outputs: bool = False
+  nd_prefix_shape: Optional[Sequence[int]] = None
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -104,8 +109,70 @@ class Repeat(base_layer.BaseLayer):
     """Constructor."""
     assert self.x_times > 0
     assert self.sub_tpl is not None
+    nd_shape = self.nd_prefix_shape
+    if nd_shape is not None:
+      assert len(nd_shape) >= 1
+      assert functools.reduce(lambda x, y: x * y, nd_shape) == self.x_times
 
     self.create_child(self.sublayer_name, self.sub_tpl)
+
+  def _wrap_for_nd(
+      self, fn: Callable[..., Any], unrolled: bool = False
+  ) -> Callable[..., Any]:
+    nd_shape = self.nd_prefix_shape
+    if nd_shape is None or len(nd_shape) <= 1:
+      return fn
+    # Do not support prefix sharding.
+    assert self.weight_split_dims_mapping.sub is None
+    assert self.optimizer_dims_mapping is None
+
+    if not unrolled:
+      # Remove leading axis for 1D repeat.
+      metadata_params = {
+          'is_initializing': self.is_initializing(),
+          'sub_weight_split_dims_mapping': (-1,),
+          'x_times': self.x_times,
+          'optimizer_dims_mapping': None,
+      }
+    fn = nn.map_variables(
+        fn,
+        [PARAMS, NON_TRAINABLE],
+        trans_in_fn=lambda x: meta.add_axis(x, 0, metadata_params),
+        trans_out_fn=lambda x: meta.remove_axis(x, 0, metadata_params),
+        mutable=True,
+    )
+
+    n = len(nd_shape)
+
+    def merge_dims(tree: pytypes.PyTree) -> pytypes.PyTree:
+      return jax.tree_map(lambda x: jnp.reshape(x, (-1,) + x.shape[n:]), tree)
+
+    def split_dims(tree: pytypes.PyTree) -> pytypes.PyTree:
+      return jax.tree_map(
+          lambda x: jnp.reshape(x, tuple(nd_shape) + x.shape[1:]), tree
+      )
+
+    mapped_fn = nn.map_variables(
+        fn,
+        [PARAMS, NON_TRAINABLE],
+        mutable=True,
+        trans_in_fn=merge_dims,
+        trans_out_fn=split_dims,
+    )
+
+    # Add leading axes for ND repeat.
+    for i in range(n):
+      mapped_fn = nn.add_metadata_axis(
+          mapped_fn,
+          variable_axes={PARAMS: 0, NON_TRAINABLE: 0},
+          metadata_params={
+              'is_initializing': self.is_initializing(),
+              'sub_weight_split_dims_mapping': (-1,),
+              'x_times': nd_shape[n - i - 1],
+              'optimizer_dims_mapping': None,
+          },
+      )
+    return mapped_fn
 
   def __call__(self, inputs: NestedJTensor, *args: Any, **kwargs: Any) -> Any:
     """FProp inputs through the sub layer stack.
@@ -149,6 +216,7 @@ class Repeat(base_layer.BaseLayer):
             'optimizer_dims_mapping': self.optimizer_dims_mapping,
         },
     )
+    scan_fn = self._wrap_for_nd(scan_fn)
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -200,7 +268,7 @@ class Repeat(base_layer.BaseLayer):
     return layer_out
 
   def quantize_weight(self) -> NestedJTensor:
-    """Quantize the current layer and it's children layer(s).
+    """Quantize the current layer and its children layer(s).
 
     Returns:
       a nested map from names to quantized weights.
@@ -208,7 +276,7 @@ class Repeat(base_layer.BaseLayer):
     return self._quantize_fn(return_pspec=False)
 
   def quantized_partition_specs(self) -> Any:
-    """Get quantization spec for the current layer and it's children layer(s).
+    """Get quantization spec for the current layer and its children layer(s).
 
     Returns:
       a nested map from names to partition spec.
@@ -248,6 +316,7 @@ class Repeat(base_layer.BaseLayer):
         split_rngs={RANDOM: True},
         length=self.x_times,
     )
+    scan_fn = self._wrap_for_nd(scan_fn)
 
     _, res = scan_fn(self.sublayer, None)
     ret = {}
@@ -293,6 +362,7 @@ class Repeat(base_layer.BaseLayer):
         split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
         length=self.x_times,
     )
+    scan_fn = self._wrap_for_nd(scan_fn)
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -377,6 +447,7 @@ class Repeat(base_layer.BaseLayer):
       mapped_fn = nn.map_variables(
           mapped_fn, [PARAMS, NON_TRAINABLE, SUMMARIES, AUX_LOSS],
           mutable=False)
+      mapped_fn = self._wrap_for_nd(mapped_fn, unrolled=True)
       return mapped_fn(self.sublayer, inp)
 
     out = inputs
@@ -417,6 +488,7 @@ class Repeat(base_layer.BaseLayer):
         split_rngs={RANDOM: True},
         length=self.x_times,
     )
+    scan_fn = self._wrap_for_nd(scan_fn)
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -467,6 +539,7 @@ class Repeat(base_layer.BaseLayer):
         split_rngs={RANDOM: True},
         length=self.x_times,
     )
+    scan_fn = self._wrap_for_nd(scan_fn)
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -515,6 +588,7 @@ class Repeat(base_layer.BaseLayer):
         split_rngs={RANDOM: True},
         length=self.x_times,
     )
+    scan_fn = self._wrap_for_nd(scan_fn)
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
@@ -557,6 +631,7 @@ class Repeat(base_layer.BaseLayer):
         split_rngs={RANDOM: True},
         length=self.x_times,
     )
+    scan_fn = self._wrap_for_nd(scan_fn)
 
     mapped_scan_fn = nn.map_variables(
         scan_fn,
