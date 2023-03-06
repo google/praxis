@@ -2790,9 +2790,12 @@ def sharded_static_accumulation(
           clip_grad_norm_to_value: Optional[float] = None,
           clip_grad_single_norm_to_value: Optional[float] = None):
         
-        def clip_grads(grads, grad_norm):
+        def clip_grads(grads):
           if clip_grad_norm_to_value:
             assert clip_grad_single_norm_to_value == 0.
+            
+            grad_norm = _compute_grad_norm(raw_grads)
+            
             grad_scale = jnp.minimum(
                 jnp.array(1, grad_norm.dtype),
                 jnp.array(clip_grad_norm_to_value, grad_norm.dtype)
@@ -2801,7 +2804,7 @@ def sharded_static_accumulation(
           elif clip_grad_single_norm_to_value:
             assert clip_grad_norm_to_value == 0.
             grad_single_norm = jax.tree_map(lambda x: jnp.sqrt(jnp.sum(x * x)),
-                                          grads)
+                                            grads)
             
             def scale_gradient(grad, norm):
               return grad * jnp.minimum(
@@ -2809,20 +2812,15 @@ def sharded_static_accumulation(
                   jnp.array(clip_grad_single_norm_to_value,
                             norm.dtype) / norm)
             grads = jax.tree_map(scale_gradient, grads, grad_single_norm)
-            grad_scale = jnp.array(1.0)
-          else:
-            # no clipping is needed.
-            grad_scale = jnp.array(1.0)
-          return grads, grad_scale
-    
-        raw_grad_norm = _compute_grad_norm(raw_grads)
+
+          return grads
         
-        grads, grad_scale = clip_grads(raw_grads, raw_grad_norm)
+        grads = clip_grads(raw_grads)
         return grads
     
       averaged_updated = jax.tree_map(lambda acc: acc / num_sub_batches,
                                       new_accumulated_update)
-      averaged_updated = scale_gradients(averaged_updated, 
+      scaled_updated = scale_gradients(averaged_updated, 
                                          clip_gradient_norm_to_value,
                                          clip_gradient_single_norm_to_value)
       emission_updates, emission_base_state = base_tx.update(
