@@ -1781,12 +1781,15 @@ class BaseLayer(nn.Module):
   def abstract_init_with_metadata(self,
                                   *args,
                                   do_eval=False,
+                                  method=None,
                                   **kwargs) -> NestedWeightHParams:
     # Dummy key is enough because we eval_shape only.
     k = jax.random.PRNGKey(1)
     rngs = {PARAMS: k, RANDOM: k, NON_PAX_RNG_KEY: k}
     # Only PARAMS and NON_TRAINABLE have BoxedParam.
-    init_fn = functools.partial(super().init, mutable=DEFAULT_INIT_MUTABLE_LIST)
+    init_fn = functools.partial(super().init,
+                                mutable=DEFAULT_INIT_MUTABLE_LIST,
+                                method=method)
     # Disable logging to reduce logspam.
     with py_utils.logging_verbosity_level('FATAL'):
       context_p = JaxContext.HParams(do_eval=do_eval)
