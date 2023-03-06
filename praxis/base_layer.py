@@ -430,6 +430,12 @@ class WeightInit(BaseHyperParams):
 
   @pax_fiddle.auto_config
   @staticmethod
+  def UniformSqrtFanAvg(scale: float = 1.0):
+    """sqrt(6 * scale / (in + out)) * jax.random.uniform(-1, 1)."""
+    return WeightInit('uniform_sqrt_fanavg', scale)
+
+  @pax_fiddle.auto_config
+  @staticmethod
   def UniformUnitScaling(scale: float = 1.0):
     """scale * sqrt(3) / sqrt(dim0) * jax.random.uniform(-1, 1)."""
     return WeightInit('uniform_unit_scaling', scale)
@@ -661,7 +667,7 @@ def init_var(
     _, fan_out = get_fan_in_fan_out(shape, fan_in_axes, fan_out_axes)
     if fan_out is not None:
       scale *= 1.0 / math.sqrt(fan_out)
-  if method in ['gaussian_sqrt_fanavg']:
+  if method in ['gaussian_sqrt_fanavg', 'uniform_sqrt_fanavg']:
     fan_in, fan_out = get_fan_in_fan_out(shape, fan_in_axes, fan_out_axes)
     if fan_in is not None and fan_out is not None:
       scale *= math.sqrt(2.0 / (fan_in + fan_out))
@@ -681,9 +687,17 @@ def init_var(
   elif method in ['uniform', 'uniform_sqrt_dim']:
     return scale * jrandom.uniform(
         prng_key, shape, init_dtype, minval=-1.0, maxval=1.0)
+  elif method in ['uniform_sqrt_fanavg']:
+    return (
+        jnp.sqrt(3)
+        * scale
+        * jrandom.uniform(prng_key, shape, init_dtype, minval=-1.0, maxval=1.0)
+    )
   elif method in [
-      'truncated_gaussian', 'truncated_gaussian_sqrt_dim',
-      'truncated_gaussian_sqrt_fanin', 'truncated_gaussian_sqrt_fanout'
+      'truncated_gaussian',
+      'truncated_gaussian_sqrt_dim',
+      'truncated_gaussian_sqrt_fanin',
+      'truncated_gaussian_sqrt_fanout',
   ]:
     return scale * jrandom.truncated_normal(
         prng_key, lower=-2.0, upper=2.0, shape=shape, dtype=init_dtype)
