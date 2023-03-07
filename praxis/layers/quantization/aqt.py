@@ -66,6 +66,9 @@ def create_tensor_quantizer(
     tq_params.add_scale_eps = quant_params.add_scale_eps
     tq_params.use_symmetric = quant_params.use_symmetric
     tq_params.quant_loss_weight = quant_params.quant_loss_weight
+    tq_params.optimize_clipping_per_channel = (
+        quant_params.optimize_clipping_per_channel
+    )
 
   return tq_params
 
@@ -100,7 +103,7 @@ class TensorQuantizer(base_layer.BaseLayer):
   unsigned_int_bounds: bool = False
   use_symmetric: bool = True
   quant_loss_weight: Optional[float] = None
-  optimize_clipping_per_channel: Optional[bool] = False
+  optimize_clipping_per_channel: bool = False
 
   def setup(self):
     del self.dtype  # not used
@@ -119,13 +122,17 @@ class TensorQuantizer(base_layer.BaseLayer):
       )
       assert self.min_clipping > 0.0 and self.min_clipping < 1.0
       assert self.num_optimize_clipping > 0
+    elif self.optimize_clipping_per_channel:
+      raise ValueError(
+          'optimize_clipping_per_channel can not be True if '
+          'min_clipping is None and num_optimize_clipping is None.'
+      )
 
   def __call__(self):
     # Since TensorQuantizer does nothing when initialized, __call__ is a no-op.
     pass
 
   def _get_clip_bound(self) -> Tuple[float, float]:
-
     # For unsigned 8 bits precision it is [0, 255]
     if self.unsigned_int_bounds:
       return 0, 2.0**self.precision - 1
@@ -336,7 +343,7 @@ class TensorQuantizer(base_layer.BaseLayer):
     Args:
       x: Input tensor.
       q_scale: Quantization scale.
-      x_min: Per channel minimum values of x. It is requred only
+      x_min: Per channel minimum values of x. It is required only
         for asymmetric quantization.
 
     Returns:
@@ -350,7 +357,7 @@ class TensorQuantizer(base_layer.BaseLayer):
       zp_time_scale = None
     else:
       if x_min is None:
-        raise ValueError('x_min is requred for asymmetric quantization.')
+        raise ValueError('x_min is required for asymmetric quantization.')
       zp = self._get_zero_point(x, x_min, q_scale)
       x_scaled = jnp.divide(x, q_scale) + zp
       zp_time_scale = jnp.multiply(q_scale, zp).squeeze()

@@ -94,6 +94,9 @@ class WeightQuantizationParams:
   dequant_upfront: Dequantize weights before it goes into matmul.
   dtype: The datatype for weight quantization. Defaults to int8.
   quant_loss_weight: Weight for quantization loss.
+  optimize_clipping_per_channel: If True choose the best clipping value
+    per channel, else per-tensor. It only works when min_clipping
+    and num_optimize_clipping are set.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -106,6 +109,7 @@ class WeightQuantizationParams:
   dequant_upfront: bool = False
   dtype: jnp.dtype = jnp.int8
   quant_loss_weight: Optional[float] = None
+  optimize_clipping_per_channel: bool = False
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):
