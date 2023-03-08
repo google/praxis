@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -132,7 +132,7 @@ class BatchNorm(BaseNormalization):
 
   Note that gamma in this layer is reparameterized: the gamma variable is
   0-initialized and input is scaled by (1 + gamma). This is different from
-  Flax, tf.layers, PyTorch etc., where gamma is by default 1-initialized
+  Flax, Tensorflow, PyTorch etc., where gamma is by default 1-initialized
   and used to scale the input. The difference is that in our version,
   weight decay encourages gamma to move towards 1, instead of 0.
 
@@ -159,7 +159,7 @@ class BatchNorm(BaseNormalization):
   gamma_init: WeightInit = WeightInit.Constant(0.0)
 
   def _get_weight_shape(self) -> JTensor:
-    return [self.dim]
+    return [self.dim]  # pytype: disable=bad-return-type  # jax-ndarray
 
   def setup(self) -> None:
     """Creates batch normalization layer variables."""
@@ -204,7 +204,7 @@ class BatchNorm(BaseNormalization):
     else:
       beta = self.theta.beta
       gamma = self.theta.gamma + 1.0
-    return beta, gamma
+    return beta, gamma  # pytype: disable=bad-return-type  # jax-ndarray
 
   def compute_and_update_moments(
       self, inputs: JTensor,
@@ -304,10 +304,13 @@ class LayerNorm(BaseNormalization):
     epsilon: Tiny value to guard rsqrt.
     use_scale: Whether to use a learned scaling.
     use_bias: Whether to use bias.
+    reductions_in_fp32: Whether to compute mean and variance 
+      in fp32. Recommended for stable training on GPUs.
   """
   epsilon: float = 1e-6
   use_scale: bool = True
   use_bias: bool = True
+  reductions_in_fp32: bool = False
 
   def setup(self) -> None:
     """Creates layer normalization variables."""
@@ -358,9 +361,14 @@ class LayerNorm(BaseNormalization):
       'inputs'.
     """
     del paddings  # Unused.
+    if self.reductions_in_fp32:
+      inputs_dtype = inputs.dtype
+      inputs = inputs.astype(jnp.float32)
     mean = jnp.mean(inputs, axis=[-1], keepdims=True)
     var = jnp.mean(jnp.square(inputs - mean), axis=[-1], keepdims=True)
     normed_inputs = (inputs - mean) * jax.lax.rsqrt(var + self.epsilon)
+    if self.reductions_in_fp32:
+      normed_inputs = normed_inputs.astype(inputs_dtype)
     if self.use_scale:
       normed_inputs *= (1 + self.theta.scale)
     if self.use_bias:

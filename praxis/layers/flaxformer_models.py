@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ template_field = base_layer.template_field
 LogicalAxisRules = pytypes.LogicalAxisRules
 DecodeOut = base_model.DecodeOut
 ProcessDecodeOut = base_model.ProcessDecodeOut
-PyTreeDef = type(jax.tree_util.tree_structure(None))
+PyTree = Any
 SampleDecoderHParams = decoder_hparams.SampleDecoderHParams
 DecoderHParams = decoder_hparams.DecoderHParams
 GreedyDecoderHParams = decoder_hparams.GreedyDecoderHParams
@@ -124,7 +124,7 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
     use_output_logits = self.use_output_logits
 
     def token_embedder_factory():
-      emb_init_kwargs = dict(
+      return embedding.Embed(
           attend_dtype='float32',
           cast_input_dtype='int32',
           dtype=activation_dtype,
@@ -132,18 +132,19 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
           features=embed_dim,
           name='token_embedder',
           num_embeddings=num_embeddings,
-          one_hot=False)
-      return embedding.Embed(**emb_init_kwargs)
+          one_hot=False,
+      )
 
     def relative_position_emb_factory():
-      init_kwargs = dict(
+      return relative_position_biases.RelativePositionBiases(
           dtype=activation_dtype,
           embedding_init=linen.initializers.variance_scaling(
-              distribution='uniform', mode='fan_avg', scale=init_scale),
+              distribution='uniform', mode='fan_avg', scale=init_scale
+          ),
           max_distance=128,
           num_buckets=32,
-          num_heads=num_heads)
-      return relative_position_biases.RelativePositionBiases(**init_kwargs)
+          num_heads=num_heads,
+      )
 
     def layer_norm_factory():
       t5_layer_norm = layer_norm.T5LayerNorm(dtype=activation_dtype)
@@ -169,14 +170,16 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
           use_bias=False,
           use_rotary_embedding=use_rotary_embedding)
       if use_multi_query_attention:
-        init_kwargs['rescale_logits'] = True
-        init_kwargs['split_head_kernel'] = True
-        init_kwargs['out_features'] = embed_dim
-        return dense_attention.MultiQueryDotProductAttention(**init_kwargs)
+        return dense_attention.MultiQueryDotProductAttention(
+            rescale_logits=True,
+            split_head_kernel=True,
+            out_features=embed_dim,
+            **init_kwargs,
+        )
       return dense_attention.MultiHeadDotProductAttention(**init_kwargs)
 
     def mlp_factory():
-      init_kwargs = dict(
+      return dense.MlpBlock(
           activations=mlp_activations,
           bias_init=linen.initializers.normal(stddev=1e-06),
           dtype=activation_dtype,
@@ -184,22 +187,24 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
           intermediate_dim=mlp_dim,
           intermediate_dropout_rate=dropout_rate,
           kernel_init=linen.initializers.variance_scaling(
-              distribution='truncated_normal', mode='fan_in', scale=init_scale),
+              distribution='truncated_normal', mode='fan_in', scale=init_scale
+          ),
           use_bias=False,
           out_dim=mlp_out_dim,
-          precomputed_intermediates=mlp_precomputed_intermediates)
-      return dense.MlpBlock(**init_kwargs)
+          precomputed_intermediates=mlp_precomputed_intermediates,
+      )
 
     def output_logits_factory():
-      init_kwargs = dict(
+      return dense.DenseGeneral(
           bias_init=linen.initializers.normal(stddev=1e-06),
           dtype='float32',
           features=num_embeddings,
           kernel_axis_names=['embed', 'vocab'],
           kernel_init=linen.initializers.variance_scaling(
-              distribution='truncated_normal', mode='fan_in', scale=init_scale),
-          use_bias=False)
-      return dense.DenseGeneral(**init_kwargs)
+              distribution='truncated_normal', mode='fan_in', scale=init_scale
+          ),
+          use_bias=False,
+      )
 
     def dropout_factory():
       return linen.Dropout(broadcast_dims=(-2,), rate=dropout_rate)
@@ -212,23 +217,25 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
           mlp=mlp_factory(),
           self_attention=self_attention_factory())
       if parallel_fused_decoder_layer:
-        init_kwargs['scanned'] = scan_layers
-        return parallel_fused_decoder.ParallelFusedDecoderLayer(**init_kwargs)
-      init_kwargs['encoder_decoder_attention'] = None
-      init_kwargs[
-          'shared_relative_position_bias'] = shared_relative_position_bias
-      return t5_architecture.DecoderLayer(**init_kwargs)
+        return parallel_fused_decoder.ParallelFusedDecoderLayer(
+            scanned=scan_layers, **init_kwargs
+        )
+      return t5_architecture.DecoderLayer(
+          encoder_decoder_attention=None,
+          shared_relative_position_bias=shared_relative_position_bias,
+          **init_kwargs,
+      )
 
     def decoder_factory(shared_token_embedder=None):
-      init_kwargs = dict(
+      return t5_architecture.Decoder(
           dropout_factory=dropout_factory,
           dtype=activation_dtype,
           layer_factory=decoder_layer_factory,
           layer_norm_factory=final_layer_norm_factory,
           num_layers=num_decoder_layers,
-          output_logits_factory=output_logits_factory
-          if use_output_logits
-          else None,
+          output_logits_factory=(
+              output_logits_factory if use_output_logits else None
+          ),
           position_embedder_factory=None,
           scan_axis=decoder_scan_axis,
           shared_relative_position_bias_factory=(
@@ -238,14 +245,13 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
           shared_token_embedder=shared_token_embedder,
           scan_layers=scan_layers,
       )
-      return t5_architecture.Decoder(**init_kwargs)
 
     def decoder_only_factory():
-      init_kwargs = dict(
+      return t5_architecture.DecoderOnly(
           decoder_factory=decoder_factory,
           dtype=activation_dtype,
-          scan_layers=scan_layers)
-      return t5_architecture.DecoderOnly(**init_kwargs)
+          scan_layers=scan_layers,
+      )
 
     flaxformer_decoder = pax_fiddle.Config(
         flax_adapter.FlaxModuleAdapter,
@@ -271,7 +277,7 @@ class EncoderDecoder(base_layer.BaseLayer):
   def _build_wrapped_module(self) -> linen.Module:
     if self.encoder_decoder_factory is None:
       raise ValueError('encoder_decoder_factory is required!')
-    return self.encoder_decoder_factory()
+    return self.encoder_decoder_factory()  # pylint: disable=not-callable
 
   def setup(self) -> None:
     super().setup()
@@ -334,7 +340,7 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
     num_decoder_layers = p.num_decoder_layers
 
     def shared_token_embedder_factory():
-      init_kwargs = dict(
+      return embedding.Embed(
           attend_dtype='float32',
           cast_input_dtype='int32',
           dtype=activation_dtype,
@@ -342,37 +348,39 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
           features=embed_dim,
           name='token_embedder',
           num_embeddings=num_embeddings,
-          one_hot=True)
-      return embedding.Embed(**init_kwargs)
+          one_hot=True,
+      )
 
     def relative_position_bias_factory():
-      init_kwargs = dict(
+      return relative_position_biases.RelativePositionBiases(
           dtype=activation_dtype,
           embedding_init=linen.initializers.variance_scaling(
-              distribution='uniform', mode='fan_avg', scale=init_scale),
+              distribution='uniform', mode='fan_avg', scale=init_scale
+          ),
           max_distance=128,
           num_buckets=32,
-          num_heads=num_heads)
-      return relative_position_biases.RelativePositionBiases(**init_kwargs)
+          num_heads=num_heads,
+      )
 
     def layer_norm_factory():
       return layer_norm.T5LayerNorm(dtype=activation_dtype)
 
     def self_attention_factory():
-      init_kwargs = dict(
+      return dense_attention.MultiHeadDotProductAttention(
           bias_init=linen.initializers.normal(stddev=1e-06),
           broadcast_dropout=True,
           dropout_rate=dropout_rate,
           dtype=activation_dtype,
           head_dim=head_dim,
           kernel_init=linen.initializers.variance_scaling(
-              distribution='normal', mode='fan_in', scale=init_scale),
+              distribution='normal', mode='fan_in', scale=init_scale
+          ),
           num_heads=num_heads,
-          use_bias=False)
-      return dense_attention.MultiHeadDotProductAttention(**init_kwargs)
+          use_bias=False,
+      )
 
     def mlp_factory():
-      init_kwargs = dict(
+      return dense.MlpBlock(
           activations=('gelu', 'linear'),
           bias_init=linen.initializers.normal(stddev=1e-06),
           dtype=activation_dtype,
@@ -380,27 +388,29 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
           intermediate_dim=mlp_dim,
           intermediate_dropout_rate=dropout_rate,
           kernel_init=linen.initializers.variance_scaling(
-              distribution='normal', mode='fan_in', scale=init_scale),
-          use_bias=False)
-      return dense.MlpBlock(**init_kwargs)
+              distribution='normal', mode='fan_in', scale=init_scale
+          ),
+          use_bias=False,
+      )
 
     def output_logits_factory():
-      init_kwargs = dict(
+      return dense.DenseGeneral(
           bias_init=linen.initializers.normal(stddev=1e-06),
           dtype='float32',
           features=num_embeddings,
           kernel_axis_names=['embed', 'vocab'],
           kernel_init=linen.initializers.variance_scaling(
-              distribution='truncated_normal', mode='fan_in', scale=init_scale),
-          use_bias=False)
-      return dense.DenseGeneral(**init_kwargs)
+              distribution='truncated_normal', mode='fan_in', scale=init_scale
+          ),
+          use_bias=False,
+      )
 
     def dropout_factory():
       # TODO(jqmu): dropout is not needed for inference.
       return linen.Dropout(broadcast_dims=(-2,), rate=dropout_rate)
 
     def encoder_layer_factory(shared_relative_position_bias=None):
-      init_kwargs = dict(
+      return t5_architecture.EncoderLayer(
           activation_partitioning_dims=activation_partitioning_dims,
           attention=self_attention_factory(),
           dropout_factory=dropout_factory,
@@ -408,11 +418,11 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
           mlp=mlp_factory(),
           relative_position_bias_factory=relative_position_bias_factory,
           scanned=True,
-          shared_relative_position_bias=shared_relative_position_bias)
-      return t5_architecture.EncoderLayer(**init_kwargs)
+          shared_relative_position_bias=shared_relative_position_bias,
+      )
 
     def encoder_factory(shared_token_embedder):
-      init_kwargs = dict(
+      return t5_architecture.Encoder(
           dtype=activation_dtype,
           input_dropout_factory=dropout_factory,
           layer_factory=encoder_layer_factory,
@@ -425,10 +435,9 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
           shared_relative_position_bias_factory=None,
           shared_token_embedder=shared_token_embedder,
       )
-      return t5_architecture.Encoder(**init_kwargs)
 
     def decoder_layer_factory(shared_relative_position_bias=None):
-      init_kwargs = dict(
+      return t5_architecture.DecoderLayer(
           activation_partitioning_dims=activation_partitioning_dims,
           dropout_factory=dropout_factory,
           encoder_decoder_attention=self_attention_factory(),
@@ -439,10 +448,9 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
           self_attention=self_attention_factory(),
           shared_relative_position_bias=shared_relative_position_bias,
       )
-      return t5_architecture.DecoderLayer(**init_kwargs)
 
     def decoder_factory(shared_token_embedder):
-      init_kwargs = dict(
+      return t5_architecture.Decoder(
           dropout_factory=dropout_factory,
           dtype=activation_dtype,
           layer_factory=decoder_layer_factory,
@@ -455,7 +463,6 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
           shared_relative_position_bias_factory=None,
           shared_token_embedder=shared_token_embedder,
       )
-      return t5_architecture.Decoder(**init_kwargs)
 
     return t5_architecture.EncoderDecoder(
         encoder_factory=encoder_factory,
@@ -560,7 +567,7 @@ class LanguageModel(base_model.BaseModel):
     # on t5x for loss computations.
     targets = input_batch['decoder_target_tokens']
     loss, z_loss, weight_sum = t5x_losses.compute_weighted_cross_entropy(
-        predictions.logits,
+        predictions.logits,  # pytype: disable=attribute-error  # jax-ndarray
         targets=targets,
         weights=loss_weights,
         label_smoothing=self.label_smoothing,
@@ -568,7 +575,7 @@ class LanguageModel(base_model.BaseModel):
         loss_normalizing_factor=loss_normalizing_factor,
     )
     accuracy = clu_metrics.Accuracy.from_model_output(
-        logits=predictions.logits,
+        logits=predictions.logits,  # pytype: disable=attribute-error  # jax-ndarray
         labels=targets.astype(jnp.int32),
         mask=loss_weights).compute()
 
@@ -726,7 +733,7 @@ class LanguageModel(base_model.BaseModel):
   def _compute_logits_from_slice(
       self,
       decoding_state: t5x_decoding.DecodingState,
-      params: PyTreeDef,
+      params: PyTree,
       max_decode_length: int,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """This mimics _compute_logits_from_slice in t5x."""
@@ -829,7 +836,7 @@ class EncoderDecoderModel(base_model.BaseModel):
     # on t5x for loss computations.
     targets = input_batch['decoder_target_tokens']
     loss, z_loss, weight_sum = t5x_losses.compute_weighted_cross_entropy(
-        predictions.logits,
+        predictions.logits,  # pytype: disable=attribute-error  # jax-ndarray
         targets=targets,
         weights=loss_weights,
         label_smoothing=self.label_smoothing,
@@ -837,7 +844,7 @@ class EncoderDecoderModel(base_model.BaseModel):
         loss_normalizing_factor=loss_normalizing_factor,
     )
     accuracy = clu_metrics.Accuracy.from_model_output(
-        logits=predictions.logits,
+        logits=predictions.logits,  # pytype: disable=attribute-error  # jax-ndarray
         labels=targets.astype(jnp.int32),
         mask=loss_weights).compute()
 

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -86,7 +86,7 @@ class TokenCounter(base_layer.BaseLayer):
       # Force f32 addition.
       new_approx_total_tokens_mm = approx_total_tokens_mm.astype(
           jnp.float32) + batch_total_mm.astype(jnp.float32)
-      self.update_var('approx_total_tokens_mm', new_approx_total_tokens_mm)
+      self.update_var('approx_total_tokens_mm', new_approx_total_tokens_mm)  # pytype: disable=bad-return-type  # jax-ndarray
 
 
 class Embedding(base_layer.BaseLayer):
@@ -240,32 +240,32 @@ class FullSoftmax(base_layer.BaseLayer):
                class_weights: JTensor,
                class_ids: Optional[JTensor] = None,
                class_probabilities: Optional[JTensor] = None) -> NestedMap:
+    # pyformat:disable
     """Computes logits, softmax cross entropy etc.
 
     Args:
-      inputs: a single JTensor with shape [..., input_dim].
-      class_weights: a JTensor with shape [..., 1] containing the weights for
-        each target word.
-      class_ids: a JTensor with shape [..., 1] of int32 dtype containing the
-        target class labels.
-      class_probabilities: a JTensor with shape [..., num_classes] of float
-        values indicating class-membership probabilities.
+      inputs:        [..., input_dims].
+      class_weights: [..., 1], weights for each target word.
+      class_ids:     [..., 1], int32 type, target labels.
+      class_probabilities: [..., num_classes].
 
     Returns:
       A `.NestedMap` containing the following fields
 
-      - logits: with shape [..., num_classes]. Unnormalized softmax's logits.
-      - per_example_argmax: with shape [...]. argmax of i-th example.
-      - per_example_xent: with shape [...]. Cross entropy between i-th example's
+      - logits:    [..., num_classes], unnormalized softmax logits.
+      - log_probs: [..., num_classes], normalized softmax logits.
+      - per_example_argmax: [...]. argmax of i-th example.
+      - per_example_xent:   [...]. Cross entropy between i-th example's
         prediction and its label.
-      - per_example_weight: with shape [...]. class_weights casted to
-        this layer's dtype.
-      - total_xent: A scalar. The sum of per_example_weight * per_example_xent.
-      - total_weight: A scalar. The sum of per_example_weight.
+      - per_example_weight: [...]. class_weights casted to this layer's dtype.
+      - total_xent:   a scalar, the sum of per_example_weight * per_example_xent.
+      - total_weight: a scalar, the sum of per_example_weight.
       - avg_xent: A scalar. total_loss / total_weight.
-      - z_loss [optional]: A scalar. The square of logsum logits when
+      - z_loss: (optional) a scalar, the square of logsum logits when
         z_loss_weight > 0.
     """
+    # pyformat:enable
+
     # Assert one of class_ids or class_probabilities is not None
     if class_ids is None and class_probabilities is None:
       raise ValueError('One of class_ids or class_probabilities must be given.')

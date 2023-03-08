@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -665,7 +665,7 @@ class TransformerLm(base_layer.BaseLayer):
         segment_mask = attentions.causal_segment_mask(segment_ids, inputs.dtype,
                                                       causal_attention_mask)
 
-    self.update_decode_state('time_step', start_time_step)
+    self.update_decode_state('time_step', start_time_step)  # pytype: disable=wrong-arg-types  # jax-ndarray
     output = self.transformer(
         inputs, paddings, segment_mask=segment_mask, segment_pos=segment_pos)
 
@@ -865,7 +865,10 @@ class TransformerLm(base_layer.BaseLayer):
         segment_pos=segment_pos,
         atten_mask=atten_mask)
 
-    self.update_decode_state('time_step', time_step + 1)
+    if inputs.ndim == 1 or self.ngrammer_tpl is not None:
+      self.update_decode_state('time_step', time_step + 1)
+    else:
+      self.update_decode_state('time_step', time_step + inputs.shape[1])
     if self.final_ln_tpl is not None:
       outputs = self.final_ln(outputs)
     xent_output = self._softmax_xent(outputs, segment_pos)
@@ -1120,6 +1123,15 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     """Useful to let sublasses switch the class (e.g. Streaming version)."""
     return layer_tpl.clone()
 
+  def _validate_decoder_mask_self_attention(
+      self, mask_self_attention: bool
+  ) -> None:
+    """This method can be overriden to remove the check."""
+    if not mask_self_attention:
+      raise ValueError(
+          'Decoder attention should be masked in TransformerEncoderDecoder.'
+      )
+
   def setup(self) -> None:
     """Constructor."""
 
@@ -1313,9 +1325,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     else:
       raise ValueError('Unknown decoder stack.')
 
-    if not mask_self_attention:
-      raise ValueError(
-          'Decoder attention should be masked in TransformerEncoderDecoder.')
+    self._validate_decoder_mask_self_attention(mask_self_attention)
     self.create_child('decoder', decoder_hparams)
 
     # Optional separate embedding layer for target ids.
@@ -1377,7 +1387,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     Returns:
       The encoded sequence after applying the Transformer encoder.
     """
-    batch, seq_length = inputs.shape
+    batch, seq_length = inputs.shape[:2]
     if self.encoder_embedding_tpl is not None:
       # Encoder has its own embedding lookup table for source ids.
       input_emb = self.encoder_embedding_lookup.emb_lookup(inputs)
@@ -1548,8 +1558,8 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       addition, per_sequence_xent is added which equal to the sum of xent loss
       for tokens in a sequence.
     """
-    batch, seq_length = inputs.shape
-    _, target_seq_length = targets.shape
+    batch, seq_length = inputs.shape[:2]
+    target_seq_length = targets.shape[1]
 
     encoder_output = self.encode(inputs, input_paddings, input_segment_ids,
                                  input_segment_pos, input_segment_mask)
@@ -1601,7 +1611,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
           target_segment_ids, target_emb.dtype)
     # Update caches for decode state.
     if self.is_mutable_collection(base_layer.DECODE_CACHE):
-      self.update_decode_state('time_step', start_time_step)
+      self.update_decode_state('time_step', start_time_step)  # pytype: disable=wrong-arg-types  # jax-ndarray
       self.update_decode_state('encoder_output', encoder_output)
       self.update_decode_state('input_paddings', input_paddings)
     output = self.decoder(

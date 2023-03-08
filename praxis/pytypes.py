@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,8 @@ PRNGKey = JTensor
 JTensorOrPartitionSpec = Union[JTensor, jax.sharding.PartitionSpec]
 NpTensor = np.ndarray
 SummaryDict = Union[py_utils.NestedMap, Dict[str, JTensor]]
-PyTreeDef = type(jax.tree_util.tree_structure(None))
+PyTree = Any
+PyTreeDef = jax.tree_util.PyTreeDef
 
 T = TypeVar('T')
 Nested = Union[T, Tuple[Any, ...], List[Any], Dict[str, Any],

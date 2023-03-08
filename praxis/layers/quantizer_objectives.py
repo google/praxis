@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -114,7 +114,7 @@ def batch_codebook_coverage(codes: JTensor,
     data_parallel_axis: If set will psum() over the axis
 
   Returns:
-    A scalar tf.Tensor, avg coverage across groups.
+    A scalar JTensor, avg coverage across groups.
   """
   # [num_groups, num_classes]
   _, _, histogram = batch_pplx_entropy_from_codes(

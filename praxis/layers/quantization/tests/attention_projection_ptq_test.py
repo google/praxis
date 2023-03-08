@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """PTQ Tests for quantized AttentionProjection layer."""
-
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -22,7 +21,6 @@ from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
-from praxis import test_utils
 from praxis.layers import attentions
 from praxis.layers.quantization import attentions as qattentions
 from praxis.layers.quantization import quantization_hparams
@@ -509,7 +507,7 @@ def _add_expected_quantization_results(cur_key, cur_samples):
   return updated_key, ret
 
 
-class AttentionProjectionPTQTest(test_utils.TestCase):
+class AttentionProjectionPTQTest(quantization_test_util.QuantizationTestCase):
   """Test cases for QuantizationType.PTQ.
 
   Following tests are required:
@@ -684,9 +682,9 @@ class AttentionProjectionPTQTest(test_utils.TestCase):
     weight_scale = res[base_layer.PARAMS].get('w_quantized_scale', None)
     weight_zp = res[base_layer.PARAMS].get('w_quantized_zp', None)
 
-    self.assertEqual(to_list(weight), expected_weight)
-    self.assertEqual(to_list(weight_scale), expected_scale)
-    self.assertEqual(to_list(weight_zp), expected_zp)
+    self.assertNestedListClose(to_list(weight), expected_weight)
+    self.assertNestedListClose(to_list(weight_scale), expected_scale)
+    self.assertNestedListClose(to_list(weight_zp), expected_zp)
 
   # Check Q specification.
   @parameterized.parameters(generate_quantization_test_config())
@@ -872,7 +870,7 @@ class AttentionProjectionPTQTest(test_utils.TestCase):
     self.assertNotEqual(result_f, result_q)
     self.assertAllClose(res_f, res_q, atol=1e-1)
 
-    self.assertEqual(result_q, expected_result)
+    self.assertNestedListClose(result_q, expected_result)
 
 
 if __name__ == '__main__':

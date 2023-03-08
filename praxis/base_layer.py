@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -430,6 +430,12 @@ class WeightInit(BaseHyperParams):
 
   @pax_fiddle.auto_config
   @staticmethod
+  def UniformSqrtFanAvg(scale: float = 1.0):
+    """sqrt(6 * scale / (in + out)) * jax.random.uniform(-1, 1)."""
+    return WeightInit('uniform_sqrt_fanavg', scale)
+
+  @pax_fiddle.auto_config
+  @staticmethod
   def UniformUnitScaling(scale: float = 1.0):
     """scale * sqrt(3) / sqrt(dim0) * jax.random.uniform(-1, 1)."""
     return WeightInit('uniform_unit_scaling', scale)
@@ -661,7 +667,7 @@ def init_var(
     _, fan_out = get_fan_in_fan_out(shape, fan_in_axes, fan_out_axes)
     if fan_out is not None:
       scale *= 1.0 / math.sqrt(fan_out)
-  if method in ['gaussian_sqrt_fanavg']:
+  if method in ['gaussian_sqrt_fanavg', 'uniform_sqrt_fanavg']:
     fan_in, fan_out = get_fan_in_fan_out(shape, fan_in_axes, fan_out_axes)
     if fan_in is not None and fan_out is not None:
       scale *= math.sqrt(2.0 / (fan_in + fan_out))
@@ -681,9 +687,17 @@ def init_var(
   elif method in ['uniform', 'uniform_sqrt_dim']:
     return scale * jrandom.uniform(
         prng_key, shape, init_dtype, minval=-1.0, maxval=1.0)
+  elif method in ['uniform_sqrt_fanavg']:
+    return (
+        jnp.sqrt(3)
+        * scale
+        * jrandom.uniform(prng_key, shape, init_dtype, minval=-1.0, maxval=1.0)
+    )
   elif method in [
-      'truncated_gaussian', 'truncated_gaussian_sqrt_dim',
-      'truncated_gaussian_sqrt_fanin', 'truncated_gaussian_sqrt_fanout'
+      'truncated_gaussian',
+      'truncated_gaussian_sqrt_dim',
+      'truncated_gaussian_sqrt_fanin',
+      'truncated_gaussian_sqrt_fanout',
   ]:
     return scale * jrandom.truncated_normal(
         prng_key, lower=-2.0, upper=2.0, shape=shape, dtype=init_dtype)
@@ -1781,12 +1795,15 @@ class BaseLayer(nn.Module):
   def abstract_init_with_metadata(self,
                                   *args,
                                   do_eval=False,
+                                  method=None,
                                   **kwargs) -> NestedWeightHParams:
     # Dummy key is enough because we eval_shape only.
     k = jax.random.PRNGKey(1)
     rngs = {PARAMS: k, RANDOM: k, NON_PAX_RNG_KEY: k}
     # Only PARAMS and NON_TRAINABLE have BoxedParam.
-    init_fn = functools.partial(super().init, mutable=DEFAULT_INIT_MUTABLE_LIST)
+    init_fn = functools.partial(super().init,
+                                mutable=DEFAULT_INIT_MUTABLE_LIST,
+                                method=method)
     # Disable logging to reduce logspam.
     with py_utils.logging_verbosity_level('FATAL'):
       context_p = JaxContext.HParams(do_eval=do_eval)
@@ -1910,7 +1927,7 @@ class BaseLayer(nn.Module):
         AUX_LOSS,
         name,
         AuxLossStruct(value, weight),
-        init_fn=lambda: AuxLossStruct(0.0, 0.0),
+        init_fn=lambda: AuxLossStruct(0.0, 0.0),  # pytype: disable=wrong-arg-types  # jax-ndarray
         reduce_fn=reduce_fn)
 
   @nn.nowrap

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -272,7 +272,7 @@ def flat_beam_search(model: base_layer.BaseLayerApi,
   def loop_body(model, val):
     """From ids at `step`, update output ids at `step + 1`."""
     step = val.step
-    logits = extend_step_fn(model, val.output_ids[step], None)
+    logits = extend_step_fn(model, val.output_ids[step], None)  # pytype: disable=wrong-arg-types  # jax-ndarray
     eos_scores = val.hyp_scores + logits[:, eos_id]
     eos_scores_norm = eos_scores / decoder_utils.length_norm(
         step + 1, length_norm_alpha)

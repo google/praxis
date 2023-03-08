@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -149,7 +149,7 @@ class TestModel01(base_model.BaseModel):
     in_normed = self.bn(input_batch.inputs)
     return jnp.einsum('bi,io->bo', in_normed, self.theta.var01)
 
-  def compute_loss(self, predictions: JTensor,
+  def compute_loss(self, predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
                    input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
     del input_batch
     loss = jnp.sum(predictions)
@@ -211,7 +211,7 @@ class TestBatchNormalizationModel(base_model.BaseModel):
     with base_layer.JaxContext.new_context(hparams=params):
       return self.bn(input_batch.inputs)
 
-  def compute_loss(self, predictions: JTensor,
+  def compute_loss(self, predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
                    input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
     targets = input_batch.targets
     error = predictions - targets
@@ -234,7 +234,7 @@ class TestSpmdModel(base_model.BaseModel):
   def compute_predictions(self, input_batch: NestedMap) -> JTensor:
     return self.ffwd(input_batch.inputs)
 
-  def compute_loss(self, predictions: JTensor,
+  def compute_loss(self, predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
                    input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
     loss = jnp.mean(jnp.square(predictions))
     per_example_out = NestedMap(predictions=predictions)

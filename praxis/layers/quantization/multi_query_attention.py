@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import multi_query_attention
+from praxis.layers.quantization import aqt
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import utils
@@ -48,6 +49,20 @@ class OneHeadedAttentionProjection(
   quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
 
   _PACK_4BIT_DIM = 0
+
+  def create_tensor_quantizers(self):
+    self.create_child(
+        'act_quantizer',
+        aqt.create_tensor_quantizer(
+            'aqt_quantizer', self.quantization.act_params
+        ),
+    )
+    self.create_child(
+        'weight_quantizer',
+        aqt.create_tensor_quantizer(
+            'weight_quantizer', self.quantization.weight_params
+        ),
+    )
 
   def _do_static_activation_quantization(self) -> bool:
     """If activation need to be quantized."""
@@ -93,6 +108,9 @@ class OneHeadedAttentionProjection(
       )
       self.create_variable('b', pc_bias)
 
+    if self.quantization.quantization_type == QuantizationType.AQT:
+      self.create_tensor_quantizers()
+
   def __call__(self, inputs: JTensor) -> JTensor:
     """Computes the multi headed projection for inputs.
 
@@ -126,7 +144,22 @@ class OneHeadedAttentionProjection(
         ret = operations.einsum(eqn, inputs, w, s, zp)
     else:
       w = theta.w
-      ret = jnp.einsum(eqn, inputs, w)
+      if self.quantization.quantization_type == QuantizationType.AQT:
+        ret = operations.aqt_einsum(
+            eqn=eqn,
+            lhs=inputs,
+            rhs=w,
+            lhs_quantizer=self.act_quantizer,
+            rhs_quantizer=self.weight_quantizer,
+        )
+      elif self.quantization.quantization_type == QuantizationType.PTQ:
+        ret = jnp.einsum(eqn, inputs, w)
+      else:
+        raise ValueError(
+            'Unsupported quantization_type'
+            f' {self.quantization.quantization_type} in quantized'
+            ' multi_query_attention.'
+        )
     if self.use_bias:
       ret += theta.b
     return ret
@@ -173,8 +206,6 @@ class OneHeadedAttentionProjection(
     theta = self.theta
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     eqn = 'xy,yz->xz'
-    bits = self.quantization.weight_params.precision
-    percentile = self.quantization.weight_params.clipping_coeff
     if self.quantization.quantization_type == QuantizationType.PTQ:
       if self._do_static_activation_quantization():
         raise NotImplementedError(
@@ -185,19 +216,29 @@ class OneHeadedAttentionProjection(
             eqn,
             theta.w,
             calculation_type=self.dtype,
-            bits=bits,
-            percentile=percentile,
+            bits=self.quantization.weight_params.precision,
+            percentile=self.quantization.weight_params.clipping_coeff,
             use_symmetric=self.quantization.weight_params.use_symmetric,
         )
         if self.quantization.weight_params.precision == 4:
           q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
-
-        if self.quantization.weight_params.use_symmetric:
-          return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
-        else:
-          zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
-          return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}
-    else:
-      raise NotImplementedError(
-          'Only PTQ is supported in quantized multi_query_attention.'
+    elif self.quantization.quantization_type == QuantizationType.AQT:
+      dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
+      weight_contract_dims = dimension_numbers[0][1]
+      q_w, q_s, zp = self.weight_quantizer.quantize(
+          theta.w,
+          weight_contract_dims,
+          quantized_dtype=self.quantization.weight_params.dtype,
       )
+    else:
+      raise ValueError(
+          'Unsupported quantization_type'
+          f' {self.quantization.quantization_type} in quantized'
+          ' multi_query_attention.'
+      )
+
+    if self.quantization.weight_params.use_symmetric:
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}  # pytype: disable=bad-return-type  # jax-ndarray
+    else:
+      zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}  # pytype: disable=bad-return-type  # jax-ndarray

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,6 +47,7 @@ class SpectrumAugmenter(base_layer.BaseLayer):
       the number of frames. If > 0, multiplicity of the time mask is
       determined by min(time_masks_per_frame * utterance_length,
       time_mask_count).
+    augment_at_eval: Whether to augment when self.do_eval=True.
 
   TODO(hankliao): add augmentation policies from paper in HParam classmethods.
   """
@@ -57,6 +58,7 @@ class SpectrumAugmenter(base_layer.BaseLayer):
   time_mask_count: int = 10
   time_mask_max_ratio: float = 0.05
   time_masks_per_frame: float = 0.0
+  augment_at_eval: bool = False
 
   def _get_mask(self,
                 batch_size: int,
@@ -254,7 +256,7 @@ class SpectrumAugmenter(base_layer.BaseLayer):
       new_inputs: same shape as inputs.
       paddings:   same shape as input paddings.
     """
-    if not self.do_eval:
+    if not self.do_eval or self.augment_at_eval:
       lengths = jnp.einsum('bh->b', 1 - paddings).astype(jnp.int32)
       inputs = self._time_mask(inputs, lengths)
       inputs = self._frequency_mask(inputs)

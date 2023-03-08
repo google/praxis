@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Sequence, Union
 
 from praxis import base_hyperparams
 from praxis import base_layer
+from praxis import decoder_utils
 from praxis import pytypes
 from praxis import sample_decode
 BaseHyperParams = base_hyperparams.BaseHyperParams
@@ -91,6 +92,8 @@ class SampleDecoderHParams(DecoderHParams):
       at the same time.
     next_token_sampler_tpl: HParams for the layer used to sample next token ids
       given the logits output.
+    global_normalize: Normalize the logits over top-k logits or globally in the
+      whole vocabulary. It is used if k is nonzero and p is also not None.
     cf_guidance_scale: If not None, apply classifier-free guidance.
   """
   num_samples: int = 1
@@ -100,4 +103,6 @@ class SampleDecoderHParams(DecoderHParams):
   p: Optional[Union[float, JTensor]] = None
   next_token_sampler_tpl: sample_decode.BaseNextTokenSampler.HParams = (
       sub_config_field(sample_decode.DefaultNextTokenSampler.HParams))
+  global_normalize: bool = False
   cf_guidance_scale: Optional[Union[List[float], float]] = None
+  controlled_decoding: Optional[decoder_utils.ControlledDecodingHParams] = None

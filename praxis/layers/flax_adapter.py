@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -102,7 +102,7 @@ class FlaxModuleAdapter(FlaxModuleAdapterBase):
   Attributes:
     module_factory_method: A callable that constructs an instance of a module.
   """
-  module_factory_method: Optional[Callable[[], Any]] = None
+  module_factory_method: Optional[Callable[[], nn.Module]] = None
 
   def _build_wrapped_module(self) -> nn.Module:
     if self.module_factory_method is None:
@@ -127,19 +127,3 @@ class EncoderDecoderFlaxModuleAdaptor(FlaxModuleAdapter):
     return self._call_with_boxed_params_init(
         self.cld.compute_logits.__func__, *args, **kwargs  # pytype: disable=attribute-error
     )
-
-
-# TODO(austinwaters): verify that post_init_hparams does something reasonable
-# when hparams contain a fdl.Config.
-class FiddleFlaxModuleAdapter(FlaxModuleAdapterBase):
-  """Adapts an nn.Module built from a fdl.Config.
-
-  Attributes:
-    fdl_config: A fdl.Config expressing the module to be created.
-  """
-  flax_module_factory: Optional[Callable[[], nn.Module]] = None
-
-  def _build_wrapped_module(self) -> nn.Module:
-    if self.flax_module_factory is None:
-      raise ValueError('flax_module_factory must be set.')
-    return self.flax_module_factory()

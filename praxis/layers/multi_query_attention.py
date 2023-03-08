@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -520,7 +520,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # Compute the attention context.
     encoded = jnp.einsum('BNS,BSH->BNH', probs, value)
     encoded = self._shard_bnh(encoded)
-    return encoded, probs
+    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
 
   def __call__(
       self,
@@ -754,6 +754,19 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
         1 + self._broadcast_prefixes_count]
     return key_state_length + self._broadcast_prefix_length()
 
+  def transform_decode_state(
+      self, transform_fn: base_layer.DecodeStateTransformFn
+  ):
+    """Transforms all decode state variables based on transform_fn."""
+    batch_dim = 0
+    time_dim = self._broadcast_prefixes_count + 1
+    for name, state in self.variables[base_layer.DECODE_CACHE].items():
+      if not isinstance(state, JTensor):
+        continue
+      new_state = transform_fn(state, batch_dim, time_dim)
+      new_state = self._shard_blh(new_state)
+      self.update_decode_state(name, new_state)
+
   def _dot_atten_one_step(self,
                           query: JTensor,
                           key_state_name: str,
@@ -894,16 +907,16 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
     # Compute the attention context.
     def _post_softmax(layer, batched, ps, non_batched, states):
       del layer, batched, non_batched
-      v = self._shard_bnh(states[0])
+      v = self._shard_blh(states[0])
       if extend_one_step:
         return self._shard_bnh(jnp.einsum('BNS,BSH->BNH', ps, v))
       return self._shard_blnh(jnp.einsum('BNTS,BSH->BTNH', ps, v))
 
     # Use sum as result combiner since the time dimension is a contracting dim.
-    encoded = self._run_with_all_decode_state_chunks(_post_softmax, [], probs,
+    encoded = self._run_with_all_decode_state_chunks(_post_softmax, [], probs,  # pytype: disable=wrong-arg-types  # jax-ndarray
                                                      am_tdim, [], [],
                                                      [value_state_name], sum)
-    return encoded, probs
+    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
 
   @nn.nowrap
   def extend_decode_state(self, name: str, value: JTensor, time_step: JTensor,

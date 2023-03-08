@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,9 @@ from typing import Tuple
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
+import numpy as np
 from jax import numpy as jnp
+from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
 from praxis import test_utils
@@ -60,34 +62,34 @@ class AqtTest(test_utils.TestCase):
     # representable values: -6, -4, -2, 0, 2, 4, 6
     x = jnp.array(
         [
-            [0.99, 1.01, 1.99, 2.01],  #
-            [2.99, 3.01, 3.99, 4.01],  #
-            [4.99, 5.01, 5.99, 7.0],  #
-            [-0.99, -1.01, -1.99, -2.01],  #
-            [-2.99, -3.01, -3.99, -4.01],  #
-            [-4.99, -5.01, -5.99, -7.0],  #
+            [0.0, 1.0, 2.0, 2.0],  #
+            [2.0, 3.0, 3.0, 4],  #
+            [4.0, 5.0, 5.0, 7.0],  #
+            [-0.0, -1.0, -1.0, -2.0],  #
+            [-2.0, -3.0, -3.0, -4.0],  #
+            [-4.0, -5.0, -5.0, -7.0],  #
         ],
         dtype=jnp.float32,
     )
     expected_q_deq = jnp.array(
         [
-            [0.00, 2.00, 2.00, 2.00],  #
-            [2.00, 4.00, 4.00, 4.00],  #
-            [4.00, 6.00, 6.00, 6.00],  #
-            [-0.00, -2.00, -2.00, -2.00],  #
-            [-2.00, -4.00, -4.00, -4.00],  #
-            [-4.00, -6.00, -6.00, -6.00],  #
+            [0.0, 0.0, 2.3333335, 2.3333335],  #
+            [2.3333335, 2.3333335, 2.3333335, 4.666667],  #
+            [4.666667, 4.666667, 4.666667, 7.0000005],  #
+            [0.0, 0.0, 0.0, -2.3333335],  #
+            [-2.3333335, -2.3333335, -2.3333335, -4.666667],  #
+            [-4.666667, -4.666667, -4.666667, -7.0000005],  #
         ],
         dtype=jnp.float32,
     )
     expected_q = jnp.array(
         [
-            [0, 1, 1, 1],  #
-            [1, 2, 2, 2],  #
-            [2, 3, 3, 3],  #
-            [0, -1, -1, -1],  #
-            [-1, -2, -2, -2],  #
-            [-2, -3, -3, -3],  #
+            [0, 0, 1, 1],  #
+            [1, 1, 1, 2],  #
+            [2, 2, 2, 3],  #
+            [0, 0, 0, -1],  #
+            [-1, -1, -1, -2],  #
+            [-2, -2, -2, -3],  #
         ],
         dtype=jnp.float32,
     )
@@ -102,7 +104,7 @@ class AqtTest(test_utils.TestCase):
     self.assertLessEqual(-4, jnp.min(q_x))
     self.assertGreaterEqual(3, jnp.max(q_x))
 
-    self.assertAllClose(scale, jnp.full((1, 1), 2, dtype=jnp.float32))
+    self.assertAllClose(scale, jnp.full((1, 1), 2.333333, dtype=jnp.float32))
     self.assertArraysEqual(q_x, expected_q)
     self.assertAllClose(q_deq_x, expected_q_deq, atol=1e-6)
 
@@ -128,10 +130,10 @@ class AqtTest(test_utils.TestCase):
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
 
-    per_example_scale = quant.apply(
+    per_example_scale, _ = quant.apply(
         state, x, 1, method=quant.get_quant_scale
     )
-    per_tensor_scale = quant.apply(
+    per_tensor_scale, _ = quant.apply(
         state, x, None, method=quant.get_quant_scale
     )
 
@@ -169,7 +171,7 @@ class AqtTest(test_utils.TestCase):
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
     x = jnp.zeros((1, 4))
-    scale = quant.apply(
+    scale, _ = quant.apply(
         state,
         x,
         contract_dims=1,
@@ -291,7 +293,7 @@ class AqtTest(test_utils.TestCase):
     x *= 2.0**8
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
-    scale = quant.apply(
+    scale, _ = quant.apply(
         state, x, [0, 1], method=quant.get_quant_scale
     )
     ix = quant.apply(state, x / scale, method=quant.to_quant)
@@ -365,10 +367,10 @@ class AqtTest(test_utils.TestCase):
     )
     self.assertTrue((qx == expected_qx).all())
     self.assertAllClose(
-        scale, jnp.array([0.016797, 0.021484], dtype=jnp.float32)
+        scale, jnp.array([0.016863, 0.021569], dtype=jnp.float32)
     )
     self.assertAllClose(
-        zp, jnp.array([-3.358399, -1.260742], dtype=jnp.float32)
+        zp, jnp.array([-3.358431, -1.260784], dtype=jnp.float32)
     )
 
   @parameterized.named_parameters(
@@ -515,7 +517,7 @@ class AqtTest(test_utils.TestCase):
     bounds = quant.apply(
         state, method=quant._get_clip_bound
     )
-    self.assertEqual(bounds, (-128.5, 127.5))
+    self.assertEqual(bounds, (-128, 127))
 
     p_quant = pax_fiddle.Config(
         aqt.TensorQuantizer,
@@ -531,6 +533,99 @@ class AqtTest(test_utils.TestCase):
         state, method=quant._get_clip_bound
     )
     self.assertEqual(bounds, (0, 255))
+
+  def test_aux_quantization_loss(self):
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='quant',
+        precision=4,
+        quant_loss_weight=1,
+    )
+
+    axis = None
+    x = jax.random.uniform(
+        jax.random.PRNGKey(0), shape=(4, 5), dtype=jnp.float32
+    )
+
+    context_p = base_layer.JaxContext.HParams(do_eval=True)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+
+      quant = p_quant.Instantiate()
+      state = quant.init(jax.random.PRNGKey(0))
+      _, states = quant.apply(
+          state,
+          x,
+          axis,
+          False,
+          quantized_dtype=jnp.int8,
+          method=quant.quantize,
+          mutable=True,
+      )
+      self.assertNotIn(base_layer.AUX_LOSS, states)
+
+    context_p = base_layer.JaxContext.HParams(do_eval=False)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+      quant = p_quant.Instantiate()
+      state = quant.init(jax.random.PRNGKey(0))
+      _, states = quant.apply(
+          state,
+          x,
+          axis,
+          False,
+          quantized_dtype=None,
+          method=quant.quantize,
+          mutable=True,
+      )
+      self.assertIn(base_layer.AUX_LOSS, states)
+
+      _, states = quant.apply(
+          state,
+          x,
+          axis,
+          False,
+          quantized_dtype=jnp.int8,
+          method=quant.quantize,
+          mutable=True,
+      )
+      self.assertNotIn(base_layer.AUX_LOSS, states)
+
+  def test_clipping_per_channel(self):
+    np.random.seed(0)
+    x = np.random.uniform(size=[2, 512])
+
+    # The first feature will be scaled to 1.0 without clipping, while the second
+    # feature will be clipped to mitigate the effect of the outlier.
+    x[0, :] = 1.0
+    x[1, -1] = 2.0
+
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='quant',
+        precision=2,
+        min_clipping=0.8,
+        num_optimize_clipping=12,
+        use_symmetric=True,
+        add_scale_eps=False,
+        optimize_clipping_per_channel=True,
+    )
+
+    axis = [1]
+    quant = p_quant.Instantiate()
+    state = quant.init(jax.random.PRNGKey(0))
+    _, q_s, _ = quant.apply(
+        state,
+        x,
+        axis,
+        False,
+        quantized_dtype=jnp.int8,
+        method=quant.quantize,
+    )
+
+    # Test that the first feature isn't clipped.
+    self.assertAllClose(q_s[0, 0], 1.0)
+    # Test that the second feature is clipped and will have a smaller max value
+    # than the outlier we added = 2.0.
+    self.assertAllClose(q_s[1, 0], 1.6)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -223,7 +223,7 @@ class LanguageModel(base_model.BaseModel):
 
     return predictions
 
-  def compute_loss(
+  def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap,
       input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
@@ -561,11 +561,13 @@ class LanguageModel(base_model.BaseModel):
         per_example_top_p = getattr(input_batch, 'per_example_top_p', None)
         per_example_top_k = getattr(input_batch, 'per_example_top_k', None)
         eos_id = getattr(input_batch, 'eos_id', decoder_params.eos_id)
+        gumbel_prng_key = getattr(input_batch, 'gumbel_prng_key', None)
 
         next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
         # TODO(b/260646361): Avoid this param propagation.
         next_token_sampler_p.top_k = decoder_params.k
         next_token_sampler_p.top_p = decoder_params.p
+        next_token_sampler_p.global_normalize = decoder_params.global_normalize
         next_token_sampler = base_layer.instantiate(next_token_sampler_p)
 
         result = sample_decode.sample_decode(
@@ -592,6 +594,8 @@ class LanguageModel(base_model.BaseModel):
             return_result_for_suffix_score=return_result_for_suffix_score,
             result_callback=result_callback,
             cf_guidance_scale=decoder_params.cf_guidance_scale,
+            gumbel_prng_key=gumbel_prng_key,
+            controlled_decoding=decoder_params.controlled_decoding,
         )
     elif template_has_type(decoder_params, GreedyDecoderHParams):
       assert isinstance(decoder_params, GreedyDecoderHParams)
@@ -1040,7 +1044,7 @@ class ClassificationModel(base_model.BaseModel):
         softmax_output=softmax_output,
         example_weights=example_weights)
 
-  def compute_loss(
+  def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap,
       input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
@@ -1117,7 +1121,7 @@ class ClassificationModel(base_model.BaseModel):
     eval_metrics = NestedMap()
 
     eval_metrics.accuracy = clu_metrics.Accuracy.from_model_output(
-        logits=predictions.softmax_output.logits,
+        logits=predictions.softmax_output.logits,  # pytype: disable=attribute-error  # jax-ndarray
         labels=jnp.argmax(label_probs, axis=-1))
     return losses, per_example_out, eval_metrics
 
@@ -1195,7 +1199,7 @@ class BertModel(base_model.BaseModel):
     lm_out.augmented_pos = augmented_pos
     return lm_out
 
-  def compute_loss(
+  def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap,
       input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
@@ -1268,7 +1272,7 @@ class ClassificationMLPModel(base_model.BaseModel):
         class_ids=input_batch.ids[:, :, jnp.newaxis])
     return predictions
 
-  def compute_loss(
+  def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap,
       input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
     labels = input_batch.labels

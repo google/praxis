@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -219,7 +219,7 @@ class LstmCellSimple(BaseRnnCell):
     state.c = inputs.reset_mask * state.c
     return state
 
-  def get_output(self, state: NestedMap) -> JTensor:
+  def get_output(self, state: NestedMap) -> JTensor:  # pytype: disable=signature-mismatch  # jax-ndarray
     return state.m
 
   def __call__(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
@@ -358,7 +358,7 @@ class LstmCellSimple(BaseRnnCell):
     The following are equivalent:
 
     >>> inputs = <a tensor of [T, B, D]>
-    >>> padding = tf.zeros([T, B])
+    >>> padding = jnp.zeros([T, B])
     >>> state = cell.zero_state(B)
 
     # a. Use fprop().

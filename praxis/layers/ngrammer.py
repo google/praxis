@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,11 +16,12 @@
 """N-grammer layers from https://arxiv.org/abs/2207.06366."""
 
 from typing import Optional, Tuple, Union
-from praxis import pax_fiddle
+
 import jax
 from jax import numpy as jnp
 from praxis import asserts
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import bregman
@@ -425,8 +426,8 @@ class Ngrammer(base_layer.BaseLayer):
 
     Args:
       input_ids: Input unigram id tensor of shape [B, L] or [B, L, N].
-      input_embs: Input unigram embedding tensor of shape [B, L, D] to which to
-        add the ngram embedding.
+      input_embs: Input unigram embedding tensor of shape [B, L, D] or
+        [B, L, N, H] to which to add the ngram embedding.
       paddings: If not None, a tensor of shape [B, L] corresponding to padding.
       segment_pos: If not None, a tensor of shape [B, L] corresponding to the
         position of an id in a packed sequence.
@@ -466,10 +467,11 @@ class Ngrammer(base_layer.BaseLayer):
           jnp.squeeze(ids, axis=-1) for ids in input_ids_per_head
       ]
 
-    # Reshape to [B, L, N, H].
-    input_embs = jnp.reshape(
-        input_embs, [batch_size, seq_length, self.num_heads, -1]
-    )
+    # Reshape to [B, L, N, H] if of shape [B, L, D].
+    if len(input_embs.shape) == 3:
+      input_embs = jnp.reshape(
+          input_embs, [batch_size, seq_length, self.num_heads, -1]
+      )
 
     def _multi_way_hash_ids(x, a, b, prime, buckets):
       return ((x * a + b) % prime) % buckets
@@ -493,32 +495,21 @@ class Ngrammer(base_layer.BaseLayer):
       ngram_ids_for_head = _multi_way_hash_ids(ngram_ids, i + 1, i + 1,
                                                primes[i], vocab_size)
       ngram_embs_to_concat.append(self.ngram_table[i].emb_lookup(
-          jnp.reshape(ngram_ids_for_head, [-1])))
-      # [B * L, H]
+          ngram_ids_for_head))
+      # [B, L, H]
       ngram_embs_to_concat[i] = self.ngram_layer_norm[i](
           ngram_embs_to_concat[i])
 
-    # [B * L, N * H].
-    ngram_embs = jnp.concatenate(ngram_embs_to_concat, 1)
-    ngram_embs = jnp.reshape(
-        ngram_embs, [batch_size, seq_length, self.num_heads, self.ngram_emb_dim]
-    )
+    # [B, L, N, H].
+    ngram_embs = jnp.stack(ngram_embs_to_concat, axis=2)
 
     # Layer norm input embeddings independently for each head.
     input_embs_per_head = jnp.split(input_embs, self.num_heads, 2)
     for i in range(self.num_heads):
-      # Reshape into [B * L, H]
-      per_head_emb = jnp.reshape(
-          input_embs_per_head[i], [-1, self.dim_per_head]
-      )
-      input_embs_per_head[i] = self.emb_layer_norm[i](per_head_emb)
-      # Reshape to [B, L, H]
-      input_embs_per_head[i] = jnp.reshape(
-          input_embs_per_head[i], [batch_size, seq_length, self.dim_per_head]
-      )
+      input_embs_per_head[i] = self.emb_layer_norm[i](input_embs_per_head[i])
 
     # [B, L, N, H].
-    input_embs = jnp.stack(input_embs_per_head, 2)
+    input_embs = jnp.concatenate(input_embs_per_head, 2)
 
     if self.concat_ngrams:
       d = self.dim_per_head - self.ngram_emb_dim
@@ -687,10 +678,7 @@ class VQNgrammer(base_layer.BaseLayer):
         raise ValueError('input_ids must be provided if using VQ NGrammer with'
                          'use_cached_input_ids_to_cluster_ids = True.')
       cache = self.get_var('input_id_to_cluster_id_cache')
-      cluster_ids_list = []
-      for i in range(self.num_heads):
-        cluster_ids_list.append(cache[:, i][(input_ids,)])
-      cluster_ids = jnp.stack(cluster_ids_list, axis=-1)
+      cluster_ids = cache[(input_ids,)]
     else:
       # Check if `ngram_using_attention_scores` is set to True, then attention
       # scores is not None.
@@ -1012,19 +1000,13 @@ class BregmanNgrammer(base_layer.BaseLayer):
       # [B, L, H].
       ngram_embs_i = jnp.einsum('BLV, VH -> BLH', ngram_corrs_i,
                                 embedding_tables[i])
-      # [B * L, H]
-      ngram_embs_i = jnp.reshape(ngram_embs_i, [-1, self.ngram_emb_dim])
       ngram_embs_to_concat.append(ngram_embs_i)
 
       ngram_embs_to_concat[i] = self.ngram_layer_norm[i](
           ngram_embs_to_concat[i])
 
-    # [B * L, N * H].
-    ngram_embs = jnp.concatenate(ngram_embs_to_concat, axis=-1)
-    # [B, L, N, H]
-    ngram_embs = jnp.reshape(
-        ngram_embs, [batch_size, seq_length, self.num_heads, self.ngram_emb_dim]
-    )
+    # [B, L, N, H].
+    ngram_embs = jnp.stack(ngram_embs_to_concat, axis=2)
 
     # Layer norm input embeddings independently for each head.
     input_embs_per_head = jnp.split(input_embs, self.num_heads, 2)
@@ -1040,7 +1022,7 @@ class BregmanNgrammer(base_layer.BaseLayer):
       )
 
     # [B, L, N, H].
-    input_embs = jnp.stack(input_embs_per_head, 2)
+    input_embs = jnp.stack(input_embs_per_head, axis=2)
 
     if self.concat_ngrams:
       d = self.dim_per_head - self.ngram_emb_dim

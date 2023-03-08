@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ pytype_strict_library(
     deps = [
         ":attentions",
         ":conformers",
+        ":embedding_softmax",
         ":linears",
         ":multi_query_attention",
         ":operations",
@@ -68,6 +69,7 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers",
+        "//praxis/layers:embedding_softmax",
     ],
 )
 
@@ -111,9 +113,12 @@ py_strict_test(
 
 pytype_strict_library(
     name = "quantization_test_utils",
+    testonly = 1,
     srcs = ["tests/test_util.py"],
     srcs_version = "PY3",
-    deps = [],
+    deps = [
+        "//praxis:test_utils",
+    ],
 )
 
 py_strict_test(
@@ -133,7 +138,6 @@ py_strict_test(
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
-        "//praxis:test_utils",
         "//praxis/layers:attentions",
     ],
 )
@@ -155,7 +159,92 @@ py_strict_test(
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
+        "//praxis/layers:attentions",
+    ],
+)
+
+# TODO(dhchoi) simplify test
+py_strict_test(
+    name = "attention_projection_aqt_test",
+    srcs = ["tests/attention_projection_aqt_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        ":quantization_hparams",
+        ":quantization_test_utils",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
         "//praxis:test_utils",
+        "//praxis/layers:attentions",
+    ],
+)
+
+py_strict_test(
+    name = "combined_qkv_projection_ptq_test",
+    srcs = ["tests/combined_qkv_projection_ptq_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        ":quantization_hparams",
+        ":quantization_test_utils",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis/layers:attentions",
+    ],
+)
+
+py_strict_test(
+    name = "combined_qkv_projection_fq_test",
+    srcs = ["tests/combined_qkv_projection_fq_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        ":quantization_hparams",
+        ":quantization_test_utils",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis/layers:attentions",
+    ],
+)
+
+py_strict_test(
+    name = "combined_qkv_projection_aqt_test",
+    srcs = ["tests/combined_qkv_projection_aqt_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        ":quantization_hparams",
+        ":quantization_test_utils",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
         "//praxis/layers:attentions",
     ],
 )
@@ -235,6 +324,7 @@ pytype_strict_library(
     srcs = ["multi_query_attention.py"],
     srcs_version = "PY3",
     deps = [
+        ":aqt",
         ":operations",
         ":quantization_hparams",
         ":utils",
@@ -264,6 +354,43 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers:multi_query_attention",
+    ],
+)
+
+pytype_strict_library(
+    name = "embedding_softmax",
+    srcs = ["embedding_softmax.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":linears",
+        ":operations",
+        ":quantization_hparams",
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:pytypes",
+        "//praxis/layers:activations",
+        "//praxis/layers:embedding_softmax",
+        "//praxis/layers:linears",
+    ],
+)
+
+py_strict_test(
+    name = "embedding_softmax_test",
+    srcs = ["embedding_softmax_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":layers",
+        ":quantization_hparams",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:test_utils",
+        "//praxis/layers:embedding_softmax",
     ],
 )
 
@@ -370,6 +497,8 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:pytypes",
         "//praxis:test_utils",

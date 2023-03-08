@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1005,7 +1005,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     combined_output = combined_output.reshape(token_shape + (output_dims,))
     return combined_output, aux_loss
 
-  def __call__(self,
+  def __call__(self,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
                inputs: JTensor,
                paddings: JTensor = None,
                segment_ids: JTensor = None) -> JTensor:
@@ -1379,7 +1379,7 @@ class Transformer(base_layer.BaseLayer):
 
     # Apply FFN layer
     output = self.ff_layer(atten_output, paddings=paddings)
-    return output, atten_probs
+    return output, atten_probs  # pytype: disable=bad-return-type  # jax-ndarray
 
   def extend_step(self,
                   inputs: JTensor,
@@ -1846,6 +1846,8 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     unroll_in_decode: Whether to unroll the layers during extend_step.
     repeat_optimizer_dims_mapping: Tensor split dims mapping used for the
       optimizer state variables corresponding to the repeat prefix dims.
+    nd_prefix_shape: If not None, there are multiple prefix dims of this shape
+      and np.prod(nd_prefix_shape) == x_times.
   """
   block: LayerTpl = template_field(StackedTransformer)
   x_times: int = 0
@@ -1854,6 +1856,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
   repeat_layer_name: str = 'repeat'
   sublayer_name: str = 'sub'
   repeat_optimizer_dims_mapping: SplitDimsMapping = None
+  nd_prefix_shape: Optional[Sequence[int]] = None
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -1875,6 +1878,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         unroll_in_decode=self.unroll_in_decode,
         sublayer_name=self.sublayer_name,
         optimizer_dims_mapping=self.repeat_optimizer_dims_mapping,
+        nd_prefix_shape=self.nd_prefix_shape,
     )
     repeat_l_params.weight_split_dims_mapping.sub = wp.block
 
@@ -2015,6 +2019,8 @@ class PipelinedTransformer(base_layer.BaseLayer):
       num_microbatches > stages), transfers from last stage to first stage will
       be delayed in a later iteration to allow asynchronous transfers. This may
       be disabled on fast cross-stage networks to avoid extra overhead.
+    bf16_accum_in_fp32: If True, use casts to make bf16 gradient accumulate in
+      f32 precision.
   """
   pipeline_stage: LayerTpl = template_field(StackedTransformer)
   circular_repeat: int = 1
@@ -2025,6 +2031,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
   pipeline_broadcast_inputs: bool = False
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
   enable_async_circular_transfer: bool = True
+  bf16_accum_in_fp32: bool = False
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -2058,6 +2065,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
           stream_io=self.stream_io,
           pipeline_broadcast_inputs=self.pipeline_broadcast_inputs,
           checkpoint_policy=self.checkpoint_policy,
+          bf16_accum_in_fp32=self.bf16_accum_in_fp32,
       )
     else:
       pipeline_params = pax_fiddle.Config(
@@ -2072,6 +2080,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
           stream_io=self.stream_io,
           pipeline_broadcast_inputs=self.pipeline_broadcast_inputs,
           checkpoint_policy=self.checkpoint_policy,
+          bf16_accum_in_fp32=self.bf16_accum_in_fp32,
           enable_async_circular_transfer=self.enable_async_circular_transfer,
       )
 

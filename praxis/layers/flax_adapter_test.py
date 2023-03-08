@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -168,13 +168,11 @@ class FlaxWrapperTest(test_utils.TestCase):
     b_sharding = variables['params']['cld']['b'].tensor_split_dims_mapping
     self.assertEqual(b_sharding, [None])
 
-
-class FiddleFlaxModuleAdapter(test_utils.TestCase):
-
-  def test_simple_dense(self):
-    test_layer_p = flax_adapter.FiddleFlaxModuleAdapter.config(
+  def test_adapter_with_fdl_partial(self):
+    test_layer_p = flax_adapter.FlaxModuleAdapter.config(
         name='test_layer',
-        flax_module_factory=fdl.Partial(flax_nn.Dense, features=32))
+        module_factory_method=fdl.Partial(flax_nn.Dense, features=32),
+    )
     test_layer = instantiate(test_layer_p)
 
     inputs = jnp.zeros(5)

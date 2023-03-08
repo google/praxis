@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,12 +41,21 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(123456)
 
-  def test_one_headed_projection_shape(self):
+  @parameterized.named_parameters(
+      dict(testcase_name='PTQ', quantization_type=QuantizationType.PTQ),
+      dict(testcase_name='AQT', quantization_type=QuantizationType.AQT),
+  )
+  def test_one_headed_projection_shape(self, quantization_type):
     test_layer_p = pax_fiddle.Config(
         mqa_q.OneHeadedAttentionProjection,
         name='mh',
         input_dim=16,
         output_dim=5,
+        quantization=QuantizationHParams(
+            quantization_type=quantization_type,
+            mode=QuantizationMode.TRAINING,
+            weight_params=quantization_hparams.WeightQuantizationParams(),
+        ),
     )
     layer = instantiate(test_layer_p)
 
@@ -60,8 +69,14 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     jax_out = layer.apply(initial_vars, inputs)
     self.assertSequenceEqual(jax_out.shape, [5, 5])
 
-  @parameterized.product(use_symmetric=[True, False], precision=[8, 4])
-  def test_one_headed_projection_quantized(self, use_symmetric, precision):
+  @parameterized.product(
+      quantization_type=[QuantizationType.PTQ, QuantizationType.AQT],
+      use_symmetric=[True, False],
+      precision=[8, 4],
+  )
+  def test_one_headed_projection_quantized(
+      self, quantization_type, use_symmetric, precision
+  ):
     input_dim = 16
     output_dim = 3
     batch = 5

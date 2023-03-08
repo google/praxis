@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ from typing import List, Optional, Sequence, Tuple, Union
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
+from praxis import asserts
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import decoder_utils
@@ -241,7 +242,7 @@ def right_align_prefix_ids(prefix_ids: JTensor, prefix_lengths: JTensor,
   prefix_paddings = jnp.where(prefix_iota < 0,
                               jnp.ones_like(prefix_iota, dtype=paddings_dtype),
                               jnp.zeros_like(prefix_iota, dtype=paddings_dtype))
-  return right_align_ids, prefix_paddings
+  return right_align_ids, prefix_paddings  # pytype: disable=bad-return-type  # jax-ndarray
 
 
 def top_p_mask_logits(
@@ -287,7 +288,7 @@ def top_p_mask_logits(
   return logits
 
 
-def sample_from_top_p_given_top_k(
+def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  # jax-ndarray
     top_k_logits: JTensor,
     top_k_indices: JTensor,
     prng_key: pytypes.PRNGKey,
@@ -420,6 +421,29 @@ def epsilon_mask_logits(logits: JTensor, epsilon: float) -> JTensor:
                      py_utils.get_large_negative_number(logits.dtype), logits)
   # note: logits are no longer normalized after this, sum(exp(logits)) < 1
   return logits
+
+
+def _condense_state(block_num_samples) -> base_layer.DecodeStateTransformFn:
+  """Pads attention states after prefix fprop."""
+
+  def _condense_state_fn(x, batch_dim, time_dim):
+    del batch_dim
+    assert time_dim >= 2
+    temp_shape = (-1, block_num_samples) + x.shape[time_dim:]
+    reshaped_x = x.reshape(temp_shape)
+    reshaped_condensed = jnp.squeeze(
+        jnp.take(reshaped_x, jnp.array([0]), axis=1), axis=1
+    )
+    new_shape = x.shape[: time_dim - 1] + (-1,) + x.shape[time_dim:]
+    new_x = reshaped_condensed.reshape(new_shape)
+    assert (
+        x.shape[time_dim - 1] // new_x.shape[time_dim - 1] == block_num_samples
+    )
+    assert x.size // new_x.size == block_num_samples
+    assert new_x.ndim == x.ndim
+    return new_x
+
+  return _condense_state_fn
 
 
 class BaseNextTokenSampler(
@@ -557,6 +581,9 @@ def sample_decode(
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
     early_exit=True,
+    controlled_decoding: Optional[
+        decoder_utils.ControlledDecodingHParams
+    ] = None,
 ) -> NestedMap:
   """Sampling decode the input batch.
 
@@ -577,12 +604,12 @@ def sample_decode(
     next_token_sampler: Layer used to sample next token ids given the logits
       output. See DefaultNextTokenSampler for an example. This can be used to
       implement decoding techniques such repetition penalty.
-    prefix_ids: The token ids that correspond to the prefix sequence. A
-      JTensor of shape [batch, target_sequence_length]. This should have an
-      <SOS> token if one is used.
-    prefix_paddings: The paddings corresponding to the prefix sequence,
-      with a 1 denoting padding token and 0 denoting non-padding tokens. A
-      JTensor of shape [batch, target_sequence_length].
+    prefix_ids: The token ids that correspond to the prefix sequence. A JTensor
+      of shape [batch, target_sequence_length]. This should have an <SOS> token
+      if one is used.
+    prefix_paddings: The paddings corresponding to the prefix sequence, with a 1
+      denoting padding token and 0 denoting non-padding tokens. A JTensor of
+      shape [batch, target_sequence_length].
     seq_len: The output sequence length to decode to. seq_len contains prefix.
     num_samples: Number of samples.
     cf_guidance_scale: If not 1.0, apply classifier-free guidance for
@@ -593,10 +620,13 @@ def sample_decode(
       unconditioned branch.
     fprop_for_prefix: Use one fprop for prefix.
     temperature: Temperature of sampling decoding. It could be a float or a
-      JTensor of shape [B].
+      JTensor of shape [B] or [B, num_samples].
     gumbel_prng_key: PRNG key for generating gumbel random noise. If None,
-      model.next_prng_key() is used; if not None, must be of shape [B, 2], where
-      B is the batch size before being duplicated wrt num_samples or cfg.
+      model.next_prng_key() is used; if not None, must be of shape [B] or [B,
+      key_shape_dim], where key_shape_dim =
+      jax.random.default_prng_impl().key_shape[0]. Usually, key_shape_dim = 2 or
+      4. where B is the batch size before being duplicated wrt num_samples or
+      cfg.
     per_example_top_p: Per example top_p of sampling decoding. Optional JTensor
       of shape [B].
     per_example_top_k: Optional per example top_k of shape [batch_size]. The
@@ -628,6 +658,7 @@ def sample_decode(
       score.
     sort_samples: Whether to sort the samples by logprobs.
     early_exit: A bool, whether or not to allow early exit.
+    controlled_decoding: Params to configure blockwise controlled decoding.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -640,6 +671,13 @@ def sample_decode(
   """
   original_batch_size = prefix_ids.shape[0]
   original_prefix_lengths = prefix_lengths
+  if controlled_decoding:
+    asserts.gt(controlled_decoding.interval, 0)
+    asserts.gt(controlled_decoding.block_num_samples, 0)
+    if not isinstance(max_decode_steps, int):
+      raise ValueError(
+          'max_decode_steps must be an int when using controlled decoding.'
+      )
   if isinstance(max_decode_steps, int):
     max_decode_steps = [max_decode_steps]
   max_decode_steps = sorted(max_decode_steps) if max_decode_steps else [seq_len]
@@ -668,9 +706,20 @@ def sample_decode(
       x = jnp.repeat(x, axis=0, repeats=num_samples)
       return x
 
-    # Broadcast temperature if it is a JTensor.
+    # If temperature is a JTensor of 1D shape [batch_size]
+    # broadcast it to shape [batch_size * num_samples].
+    # If temperature is of 2D shape [batch_size, num_samples] simply flatten it.
     if isinstance(temperature, JTensor):
-      temperature = _broadcast_input(temperature, 'temperature')
+      if temperature.ndim == 2:   # pytype: disable=attribute-error
+        if temperature.shape != (original_batch_size, num_samples):  # pytype: disable=attribute-error
+          raise ValueError(
+              '2D Dynamic temperature should have shape: '
+              f'({original_batch_size}, {num_samples}), but it has shape: '
+              f'{temperature.shape}.'  # pytype: disable=attribute-error
+          )
+        temperature = jnp.reshape(temperature, (-1,))
+      else:
+        temperature = _broadcast_input(temperature, 'temperature')
 
     # Broadcast per_example_max_decode_steps if it is a JTensor.
     if per_example_max_decode_steps is not None:
@@ -700,7 +749,14 @@ def sample_decode(
       transform_state_fn(model, decoder_utils.slice_state_fn(0, -1))
       # max_decode_steps + 1 to include last token from prefix.
       first_decode_steps = min(max_decode_steps)
-      lazy_broadcast_prefix_fn(model, num_samples, first_decode_steps + 1)
+      if controlled_decoding:
+        lazy_broadcast_prefix_fn(
+            model,
+            num_samples,  # num_suffix_samples
+            controlled_decoding.interval,  # suffix_length
+        )
+      else:
+        lazy_broadcast_prefix_fn(model, num_samples, first_decode_steps + 1)
     else:
       # Broadcast prefix state for num_samples.
       transform_state_fn(model,
@@ -718,6 +774,12 @@ def sample_decode(
 
   if isinstance(per_example_top_p, JTensor):
     per_example_top_p = per_example_top_p[:, jnp.newaxis]
+
+  if gumbel_prng_key is not None and isinstance(gumbel_prng_key, JTensor):
+    gumbel_prng_key = gumbel_prng_key.astype(jnp.uint32)
+    dup_len = jax.random.default_prng_impl().key_shape[0]
+    if len(gumbel_prng_key.shape) == 1:
+      gumbel_prng_key = jnp.stack([gumbel_prng_key] * dup_len, axis=-1)
 
   if seq_len <= 0:
     raise ValueError('The sequence length for decoding must be > 0, '
@@ -941,7 +1003,46 @@ def sample_decode(
     val.step += 1
     return val
 
-  if early_exit:
+  if controlled_decoding:
+    result = val
+    assert max_decode_steps[0] % controlled_decoding.interval == 0
+    chunks = max_decode_steps[0] // controlled_decoding.interval
+    # After the first iteration, condense the decode state since we know that
+    # there are only `controlled_decoding.block_num_samples` unique samples.
+    # Also perform lazy prefix broadcast and create new decode states with
+    # length=controlled_decoding.interval.
+    #
+    # Over the course of decoding, an example of how the shape of decode states
+    # will evolve is below. Given hyperparameters:
+    # num_samples = 16
+    # controlled_decoding.block_num_samples = 2
+    # controlled_decoding.interval = 64
+    #
+    # Attention decode state shapes at each iteration:
+    # Iter 0 (time_dim = 2): [1, 16, 64, 16, 128]
+    # Iter 1 (time_dim = 3): [1, 8, 2, 64, 16, 128]
+    # Iter 2 (time_dim = 4): [1, 8, 1, 2, 64, 16, 128]
+    # Iter 3 (time_dim = 5): [1, 8, 1, 1, 2, 64, 16, 128]
+    for i in range(chunks):
+      if i > 0:
+        transform_state_fn(
+            model, _condense_state(controlled_decoding.block_num_samples)
+        )
+        lazy_broadcast_prefix_fn(
+            model,
+            controlled_decoding.block_num_samples,  # num_suffix_samples
+            controlled_decoding.interval,  # suffix_length
+        )
+      result = nn.while_loop(
+          get_cond_func((i + 1) * controlled_decoding.interval),
+          loop_body,
+          model,
+          result,
+          split_rngs={RANDOM: True},
+          carry_variables=[DECODE_CACHE],
+      )
+
+  elif early_exit:
     result = val
     for i in range(len(max_decode_steps)):
       if i > 0:
@@ -1011,7 +1112,10 @@ def sample_decode(
       # stash out the summaries temporarily
       model_summaries_copy = pop_collection(model, base_layer.SUMMARIES)
 
-    dummy_inputs = {'dummy': jnp.zeros([seq_len, 2])}
+    scan_len = seq_len
+    if max_prefix_len:
+      scan_len -= max_prefix_len
+    dummy_inputs = {'dummy': jnp.zeros([scan_len, 2])}
     result, _ = scan_fn(model, val, dummy_inputs)
 
     # Now merge back the summaries.

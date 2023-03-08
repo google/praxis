@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -232,8 +232,8 @@ class AqtDotGeneralTest(test_utils.TestCase):
         ],)
     q_deq_lhs = np.array(
         [
-            [-6, 4, 4],  #
-            [-6, 0, -4]
+            [-7., 4.6666665, 4.6666665],  #
+            [-7., 0., -4.6666665],
         ],)
 
     # Representable values: -1, 0, 1
@@ -245,9 +245,9 @@ class AqtDotGeneralTest(test_utils.TestCase):
         ],)
     q_deq_rhs = np.array(
         [
-            [-1, 1],  #
-            [-1, 0],
-            [0, 1]
+            [-1.5, 1.5],  #
+            [-1.5, 0.0],
+            [0.0, 1.5]
         ],)
 
     return lhs, q_deq_lhs, rhs, q_deq_rhs
@@ -260,7 +260,7 @@ class AqtDotGeneralTest(test_utils.TestCase):
     actual_ret = dot_general(lhs, rhs, dimension_numbers)
     expected_ret = jax.lax.dot_general(q_deq_lhs, q_deq_rhs,
                                        dimension_numbers).astype(jnp.float32)
-    self.assertArraysEqual(actual_ret, expected_ret)
+    self.assertAllClose(actual_ret, expected_ret)
 
   @parameterized.named_parameters(_generate_dimension_numbers())
   def test_dot_general_none(self, dimension_numbers):
@@ -316,7 +316,7 @@ class AqtDotGeneralTest(test_utils.TestCase):
     )
     ret = dot_general(lhs, rhs, dimension_numbers, eqn)
     expected = jnp.array(
-        [[36.348434, 1.9039061, 18.109375], [26.515232, 8.781445, 55.972656]],
+        [[36.380394, 1.896078, 18.027452], [26.490196, 8.798038, 56.013725]],
         dtype=jnp.float32,
     )
     self.assertAllClose(ret, expected)
@@ -408,9 +408,9 @@ class AqtEinsumTest(test_utils.TestCase):
         ],)
     q_deq_rhs = np.array(
         [
-            [-1, 1],  #
-            [-1, 0],
-            [0, 1]
+            [-1.5, 1.5],  #
+            [-1.5, 0],
+            [0, 1.5]
         ],)
 
     return lhs, rhs, q_deq_rhs

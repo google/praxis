@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -92,7 +92,11 @@ class WeightQuantizationParams:
   add_scale_eps: If True add epsilon to scale to avoid division by zero,
     else it will replace zero scale by 1.
   dequant_upfront: Dequantize weights before it goes into matmul.
-  dtype: the datatype for weight quantization. Defaults to int8.
+  dtype: The datatype for weight quantization. Defaults to int8.
+  quant_loss_weight: Weight for quantization loss.
+  optimize_clipping_per_channel: If True choose the best clipping value
+    per channel, else per-tensor. It only works when min_clipping
+    and num_optimize_clipping are set.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -104,6 +108,8 @@ class WeightQuantizationParams:
   add_scale_eps: Optional[bool] = True
   dequant_upfront: bool = False
   dtype: jnp.dtype = jnp.int8
+  quant_loss_weight: Optional[float] = None
+  optimize_clipping_per_channel: bool = False
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):

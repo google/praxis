@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -436,7 +436,7 @@ class VisionTransformer(base_layer.BaseLayer):
         self.mesh_axis_names,
     )
 
-  def __call__(self, inputs: JTensor, paddings: JTensor = None) -> JTensor:
+  def __call__(self, inputs: JTensor, paddings: JTensor = None) -> JTensor:  # pytype: disable=annotation-type-mismatch  # jax-ndarray
     """Applies the Vit model to the inputs.
 
     Args:

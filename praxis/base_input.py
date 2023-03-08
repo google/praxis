@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ from typing import Dict, Optional, Sequence
 
 from absl import logging
 import jax
-from jax._src.lib import xla_client as xc
+from jax.lib import xla_client as xc
 import numpy as np
 from praxis import base_hyperparams
 from praxis import py_utils
@@ -678,7 +678,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
       # remaining samples.
       num_samples += num_samples_remainder
     self._num_samples = num_samples
-    self.num_batches = num_batches
+    self.computed_num_batches = num_batches
     if hparams.num_batches is not None:
       if hparams.num_batches <= 0:
         logging.warning(
@@ -692,7 +692,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
             num_batches,
         )
       else:
-        self.num_batches = hparams.num_batches
+        self.computed_num_batches = hparams.num_batches
         logging.warning(
             '`num_batches` overridden to %d as requested by hparams',
             hparams.num_batches,
@@ -719,11 +719,11 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
     # and there are totally only 1 sample. In this case, the first host has 1
     # sample and the second host has 0 samples. But the second host should still
     # emit 1 batch, with all invalid samples.
-    if self._num_batches_emitted == self.num_batches:
+    if self._num_batches_emitted == self.computed_num_batches:
       raise tf.errors.OutOfRangeError(
           node_def=None,
           op=None,
-          message=f'{self.num_batches} batches have been exhausted.')
+          message=f'{self.computed_num_batches} batches have been exhausted.')
     # Number of remaining samples this host has.
     remaining_samples = self._num_samples - self._num_examples_emitted
     ret = super().get_next()
@@ -733,7 +733,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
     if 'eval_sample_weights' not in ret:
       raise ValueError('eval_sample_weights must be included in the data')
     # Sets the weight of invalid samples to 0.
-    ret.eval_sample_weights[num_valid_samples:] = 0.
+    ret.eval_sample_weights[num_valid_samples:] = 0.  # pytype: disable=attribute-error  # jax-ndarray
     self._num_examples_emitted += num_valid_samples
     remaining_samples -= num_valid_samples
     # If there are still remaining samples in this host, skip n-1 batches which

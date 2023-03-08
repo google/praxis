@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 """Quantization Aware Training ops."""
 
 from __future__ import annotations
+import itertools
 from typing import Optional, Sequence, Tuple, Union
 
 import jax
@@ -64,6 +65,10 @@ def create_tensor_quantizer(
     tq_params.num_optimize_clipping = quant_params.num_optimize_clipping
     tq_params.add_scale_eps = quant_params.add_scale_eps
     tq_params.use_symmetric = quant_params.use_symmetric
+    tq_params.quant_loss_weight = quant_params.quant_loss_weight
+    tq_params.optimize_clipping_per_channel = (
+        quant_params.optimize_clipping_per_channel
+    )
 
   return tq_params
 
@@ -86,6 +91,9 @@ class TensorQuantizer(base_layer.BaseLayer):
       quantization bucket utilization in case where the input has a positive
       distribution (e.g., ReLU).
     use_symmetric: Do symmetric quantization for weights.
+    quant_loss_weight: Weight for quantization loss.
+    optimize_clipping_per_channel: If True choose the best clipping value
+      per channel, else per-tensor.
   """
   precision: Optional[int] = None
   stop_scale_gradient: bool = False
@@ -94,6 +102,8 @@ class TensorQuantizer(base_layer.BaseLayer):
   add_scale_eps: Optional[bool] = True
   unsigned_int_bounds: bool = False
   use_symmetric: bool = True
+  quant_loss_weight: Optional[float] = None
+  optimize_clipping_per_channel: bool = False
 
   def setup(self):
     del self.dtype  # not used
@@ -112,48 +122,41 @@ class TensorQuantizer(base_layer.BaseLayer):
       )
       assert self.min_clipping > 0.0 and self.min_clipping < 1.0
       assert self.num_optimize_clipping > 0
+    elif self.optimize_clipping_per_channel:
+      raise ValueError(
+          'optimize_clipping_per_channel can not be True if '
+          'min_clipping is None and num_optimize_clipping is None.'
+      )
 
   def __call__(self):
     # Since TensorQuantizer does nothing when initialized, __call__ is a no-op.
     pass
 
   def _get_clip_bound(self) -> Tuple[float, float]:
-    # TODO(jihwanlee): run an experiment to compare b/w [-127.5, 127.5] and
-    # [-128, 127], in case of int8.
-
     # For unsigned 8 bits precision it is [0, 255]
     if self.unsigned_int_bounds:
       return 0, 2.0**self.precision - 1
     else:
-      # For signed 8 bits precision it is [-128.5, 127.5]
+      # For signed 8 bits precision it is [-128, 127]
       return (
-          -(2.0 ** (self.precision - 1)) - 0.5,
-          2.0 ** (self.precision - 1) - 1 + 0.5,
+          -(2.0 ** (self.precision - 1)),
+          2.0 ** (self.precision - 1) - 1,
       )
 
-  def _safe_clip_bound(self) -> Tuple[float, float]:
-    min_unsafe, max_unsafe = self._get_clip_bound()
-    eps = 2.0 ** (-20 + self.precision)
-    max_safe = max_unsafe - eps
-    min_safe = min_unsafe + eps
-    assert max_safe < max_unsafe, 'Internal error, epsilon too small.'
-    assert min_safe > min_unsafe, 'Internal error, epsilon too small.'
-
-    return min_safe, max_safe
-
-  def _get_scale(
+  def _get_scale_and_min(
       self,
       x: JTensor,
       contract_dims: Union[int, Sequence[int]],
       clipping: Optional[float] = None,
-  ) -> JTensor:
+  ) -> Tuple[JTensor, Optional[JTensor]]:
     if self.precision is None:
-      return jnp.ones(shape=(1,) * x.ndim, dtype=x.dtype)
+      return jnp.ones(shape=(1,) * x.ndim, dtype=x.dtype), None
 
     clip_bound_min, clip_bound_max = self._get_clip_bound()
 
     if self.use_symmetric:
       x_bound = jnp.max(jnp.abs(x), axis=contract_dims, keepdims=True)
+      x_min = None
       range_bound = clip_bound_max
     else:
       x_max = jnp.max(x, axis=contract_dims, keepdims=True)
@@ -163,6 +166,8 @@ class TensorQuantizer(base_layer.BaseLayer):
 
     if clipping is not None:
       x_bound *= clipping
+      if x_min is not None:
+        x_min *= clipping
 
     scale = x_bound / range_bound
     if self.stop_scale_gradient:
@@ -174,36 +179,83 @@ class TensorQuantizer(base_layer.BaseLayer):
     else:
       scale = jnp.where(scale == 0, jnp.ones_like(scale), scale)
 
-    return scale
+    return scale, x_min
 
-  def _get_optimal_scale(
+  def _get_optimal_scale_and_min(
       self,
       x: JTensor,
       contract_dims: Union[int, Sequence[int]],
-  ) -> JTensor:
+  ) -> Tuple[JTensor, Optional[JTensor]]:
     def quantization_error_and_scale(clipping):
-      q_scale = self._get_scale(x, contract_dims, clipping=clipping)
-      x_scaled, zp_time_scale = self._scale(x, q_scale, contract_dims)
+      q_scale, x_min = self._get_scale_and_min(
+          x, contract_dims, clipping=clipping
+      )
+      x_scaled, zp_time_scale = self._scale(x, q_scale, x_min)
       x_quantized = self.to_quant(x_scaled)
       x_quantized_dequantized = self.dequantize(
           x_quantized, q_scale, contract_dims, zp_time_scale
       )
-      sum_error = jnp.sum(jnp.abs(jnp.subtract(x, x_quantized_dequantized)))
-      return sum_error, q_scale
+      quant_error = jnp.abs(jnp.subtract(x, x_quantized_dequantized))
+
+      if self.optimize_clipping_per_channel:
+        sum_error = jnp.sum(quant_error, axis=contract_dims, keepdims=True)
+      else:
+        sum_error = jnp.sum(quant_error)
+
+      return sum_error, q_scale, x_min
 
     clipping = jnp.linspace(
         1.0, self.min_clipping, num=self.num_optimize_clipping, dtype=x.dtype
     )
-    res = jax.vmap(quantization_error_and_scale)(clipping)
-    best_ind = jnp.argmin(res[0])
-    best_scale = res[1].at[best_ind].get()
-    return best_scale
+    sum_errors, q_scales, x_mins = jax.vmap(
+        quantization_error_and_scale
+    )(clipping)
+
+    reduced_shape = list(x.shape)
+    if isinstance(contract_dims, int):
+      reduced_shape[contract_dims] = 1
+    elif contract_dims is not None:
+      for i in contract_dims:
+        reduced_shape[i] = 1
+    else:
+      reduced_shape = ()
+
+    if not self.optimize_clipping_per_channel:
+      best_ind = jnp.array([jnp.argmin(sum_errors)], dtype=jnp.int32)
+    else:
+      # clip_index is a flat tensor containing the indcies to the first
+      # dimension in scales which provide the lowest quantization errors.
+      clip_index = jnp.reshape(jnp.argmin(sum_errors, axis=0), [-1])
+      # scale_index iteratively indexes the trailing dimensions in scales
+      # so we know which scalars to pull out (in tf using tf.gather_nd).
+      scale_index = itertools.product(*[range(d) for d in reduced_shape])
+      scale_index = jnp.array(list(scale_index), dtype=jnp.int32)
+      # optimal_index combines these two indices to specify which clipping value
+      # to use for each feature in inputs.
+      best_ind = jnp.concatenate([clip_index[:, None], scale_index], axis=1)
+
+    # Returns a flat tensor with all of the optimal scale value
+    # for each channel. It is unbatched version of tf.gather_nd:
+    best_ind = tuple(jnp.moveaxis(best_ind, -1, 0))
+    best_scale = q_scales[best_ind]
+
+    if self.optimize_clipping_per_channel:
+      best_scale = jnp.reshape(best_scale, reduced_shape)
+
+    if self.use_symmetric:
+      best_x_min = None
+    else:
+      best_x_min = x_mins[best_ind]
+      if self.optimize_clipping_per_channel:
+        best_x_min = jnp.reshape(best_x_min, reduced_shape)
+
+    return best_scale, best_x_min
 
   def get_quant_scale(
       self,
       x: JTensor,
       contract_dims: Union[int, Sequence[int]],
-  ) -> JTensor:
+  ) -> Tuple[JTensor, Optional[JTensor]]:
     """Computes scale for quantization.
 
     It can compute standard scale or scale optimized over different
@@ -214,12 +266,13 @@ class TensorQuantizer(base_layer.BaseLayer):
       contract_dims: Axis along which to quantize acts (the non-feature axis).
 
     Returns:
-      Scale tensor.
+      Scale and min value of a tensor x.
+      If clipping is not None then it is applied on both scale and min value.
     """
     if self.min_clipping is not None and self.num_optimize_clipping is not None:
-      return self._get_optimal_scale(x, contract_dims)
+      return self._get_optimal_scale_and_min(x, contract_dims)
     else:
-      return self._get_scale(x, contract_dims)
+      return self._get_scale_and_min(x, contract_dims)
 
   def update(self, x: JTensor):
     # This function is no-op for now. Once static quantization is supported,
@@ -239,15 +292,13 @@ class TensorQuantizer(base_layer.BaseLayer):
     if self.precision is None:
       return x
 
-    clip_bound_min, clip_bound_max = self._safe_clip_bound()
-
-    x = jnp.clip(x, clip_bound_min, clip_bound_max)
     x = _pass_through(x + 0.5, jnp.floor)
+    clip_bound_min, clip_bound_max = self._get_clip_bound()
+    x = jnp.clip(x, clip_bound_min, clip_bound_max)
 
     return x
 
-  def _get_zero_point(self, x, contract_dims, scale) -> JTensor:
-    x_min = jnp.min(x, axis=contract_dims, keepdims=True)
+  def _get_zero_point(self, x, x_min, scale) -> JTensor:
     clip_bound_min, _ = self._get_clip_bound()
     zp = clip_bound_min - x_min / scale
     return zp
@@ -285,24 +336,29 @@ class TensorQuantizer(base_layer.BaseLayer):
       self,
       x: JTensor,
       q_scale: JTensor,
-      contract_dims: Union[int, Sequence[int]],
+      x_min: Optional[JTensor] = None,
   ) -> Tuple[JTensor, Optional[JTensor]]:
     """Rescales input x for quantization.
 
     Args:
       x: Input tensor.
       q_scale: Quantization scale.
-      contract_dims: Contraction dims.
+      x_min: Per channel minimum values of x. It is required only
+        for asymmetric quantization.
 
     Returns:
       Rescaled tensor.
     """
 
     if self.use_symmetric:
+      if x_min is not None:
+        raise ValueError('x_min has to be None for symmetric quantization.')
       x_scaled = jnp.divide(x, q_scale)
       zp_time_scale = None
     else:
-      zp = self._get_zero_point(x, contract_dims, q_scale)
+      if x_min is None:
+        raise ValueError('x_min is required for asymmetric quantization.')
+      zp = self._get_zero_point(x, x_min, q_scale)
       x_scaled = jnp.divide(x, q_scale) + zp
       zp_time_scale = jnp.multiply(q_scale, zp).squeeze()
 
@@ -327,9 +383,22 @@ class TensorQuantizer(base_layer.BaseLayer):
       Quantized tensor with scale (used for dequantization).
     """
 
-    q_s = self.get_quant_scale(x, contract_dims)
-    x_scaled, zp_time_scale = self._scale(x, q_s, contract_dims)
+    q_s, x_min = self.get_quant_scale(x, contract_dims)
+    x_scaled, zp_time_scale = self._scale(x, q_s, x_min)
     q_x = self.to_quant(x_scaled)
+
+    if (
+        quantized_dtype != jnp.int8  # it is used for materialization
+        and self.quant_loss_weight is not None
+        and not self.do_eval
+    ):
+      q_deq_x = self.dequantize(q_x, q_s, contract_dims, zp_time_scale)
+      quant_loss = (
+          jnp.sum(jnp.square(jnp.subtract(x, q_deq_x))) * self.quant_loss_weight
+      )
+
+      self.add_summary('quant_loss', quant_loss)
+      self.add_aux_loss('quant_loss', quant_loss)
 
     if squeeze_scale:
       q_s = jnp.squeeze(q_s)

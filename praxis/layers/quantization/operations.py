@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -107,6 +107,8 @@ def compute_offset(x: JTensor, zp: JTensor, eqn: str):
       return 'A,NH->ANH'
     if eqn == '...D,DH->...H':
       return '...D,H->...DH'
+    if eqn == '...y,zy->...z':
+      return '...y,z->...yz'
     # Add new equations as needed.
     raise NotImplementedError(f'eqn {eqn} not supported for asymmetric weight.')
 
@@ -231,6 +233,13 @@ def _reduce_precision(
   return t, scale, zp
 
 
+def eqn_to_weight_contract_dims(eqn: str):
+  segs = eqn.split('->')
+  ins = segs[0].split(',')
+  w, out = ins[1].replace('.', ''), segs[1].replace('.', '')
+  return [i for i, val in enumerate(w) if val not in out]
+
+
 def reduce_einsum_weight_precision(
     eqn: str,
     t: JTensor,
@@ -261,11 +270,7 @@ def reduce_einsum_weight_precision(
     A tuple of JTensors. The first one is the quantized weight and the second
     one is the scaling factor.
   """
-  segs = eqn.split('->')
-  ins = segs[0].split(',')
-  w, out = ins[1].replace('.', ''), segs[1].replace('.', '')
-
-  contract_dims = [i for i, val in enumerate(w) if val not in out]
+  contract_dims = eqn_to_weight_contract_dims(eqn)
 
   if t.dtype != calculation_type:
     t = t.astype(calculation_type)

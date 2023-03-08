@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ from praxis.layers.quantization.attentions import AttentionProjection
 from praxis.layers.quantization.attentions import CombinedQKVProjectionLayer
 from praxis.layers.quantization.attentions import DotProductAttention
 from praxis.layers.quantization.conformers import DotProductAttentionWithContext
+from praxis.layers.quantization.embedding_softmax import NClassMajorSharedEmbeddingSoftmax
+from praxis.layers.quantization.embedding_softmax import SharedEmbeddingSoftmax
 from praxis.layers.quantization.linears import Linear
 from praxis.layers.quantization.multi_query_attention import OneHeadedAttentionProjection
 from praxis.layers.quantization.operations import einsum

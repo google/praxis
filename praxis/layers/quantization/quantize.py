@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,6 +46,41 @@ QuantizationType = quantization_hparams.QuantizationType
 QuantizationMode = quantization_hparams.QuantizationMode
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
 ActQuantizationParams = quantization_hparams.ActQuantizationParams
+
+
+def _quantize_embedding_softmax_layer_weights(
+    lm_tpl: pax_fiddle.Config[layers.TransformerLm],
+    quantization_type: QuantizationType,
+    mode: QuantizationMode,
+    weight_quantization_params: WeightQuantizationParams,
+    transposed_embedding_softmax: bool,
+) -> None:
+  """Rewrites Embedding HParam for weight only quantization."""
+  if issubclass(lm_tpl.softmax_tpl.cls, layers.SharedEmbeddingSoftmax):
+    if transposed_embedding_softmax:
+      # Transposed embedding quantization.
+      # Replace softmax_tpl to quantized NClassMajorSharedEmbeddingSoftmax.
+      new_softmax_tpl = pax_fiddle.Config(
+          quantization.NClassMajorSharedEmbeddingSoftmax,
+          quantization=QuantizationHParams(
+              quantization_type=quantization_type,
+              mode=mode,
+              weight_params=weight_quantization_params,
+          ),
+      )
+    else:
+      # Non-transposed embedding quantization.
+      # Replace softmax_tpl to quantized SharedEmbeddingSoftmax.
+      new_softmax_tpl = pax_fiddle.Config(
+          quantization.SharedEmbeddingSoftmax,
+          quantization=QuantizationHParams(
+              quantization_type=quantization_type,
+              mode=mode,
+              weight_params=weight_quantization_params,
+          ),
+      )
+    new_softmax_tpl.copy_fields_from(lm_tpl.softmax_tpl)
+    lm_tpl.softmax_tpl = new_softmax_tpl
 
 
 # TODO(jianlijianli): mark quantize_* as private.
@@ -200,6 +235,8 @@ def for_transformer(
     use_symmetric: bool = True,
     *,
     weight_quant_only: bool = True,
+    quantize_embedding_softmax: bool = False,
+    transposed_embedding_softmax: bool = False,
 ):
   """Find and quantize transformer.
 
@@ -218,6 +255,10 @@ def for_transformer(
       asymmetric quantization.
     weight_quant_only: If true, quantize weight only, otherweise quantize both
       weight and activation.
+    quantize_embedding_softmax: Quantize embedding table of embedding softmax
+      layer.
+    transposed_embedding_softmax: If the model is using transposed embedding for
+      embedding softmax layer.
 
   Returns:
     A modifier that quantizes transformers when applied to a config.
@@ -242,7 +283,9 @@ def for_transformer(
             mode=mode,
             num_bits=num_bits,
             use_symmetric=use_symmetric,
-            weight_quant_only=weight_quant_only
+            weight_quant_only=weight_quant_only,
+            quantize_embedding_softmax=quantize_embedding_softmax,
+            transposed_embedding_softmax=transposed_embedding_softmax,
         )
         return task_p
 
@@ -261,8 +304,14 @@ def set_quantization(
     use_symmetric: bool = True,
     *,
     weight_quant_only: bool = True,
+    quantize_embedding_softmax: bool = False,
+    transposed_embedding_softmax: bool = False,
 ):
   """Sets quantization parameters for 'target' in 'config'.
+
+  NOTE: If `quantize_embedding_softmax` is True, this rewrites
+  TransformerLm.softmax_tpl
+  if it is in `config`, regardless of `target` argument.
 
   Args:
     config: The config to apply quantization on.
@@ -272,6 +321,13 @@ def set_quantization(
     num_bits: The number of bits used for quantization.
     linear_only: Quantize only the linear layers.
     use_symmetric: Use symmetric weight quantization.
+    weight_quant_only: If true, quantize weight only, otherweise quantize both
+      weight and activation.
+    quantize_embedding_softmax: If true, Quantize embedding table of embedding
+      softmax layer. Regardless of `target` argument, this results in rewriting
+      TransformerLm.softmax_tpl in `config`.
+    transposed_embedding_softmax: If the model is using transposed embedding for
+      embedding softmax layer.
   """
   weight_quantization_params = WeightQuantizationParams(
       precision=num_bits,
@@ -291,6 +347,17 @@ def set_quantization(
         act_quantization_params,
         linear_only,
     )  # pytype: disable=wrong-arg-types  # py310-upgrade
+
+  if quantize_embedding_softmax:
+    lm_tpls = find_target_tpl(config, layers.TransformerLm)
+    for lm_tpl in lm_tpls:
+      _quantize_embedding_softmax_layer_weights(
+          lm_tpl,
+          quantization_type,
+          mode,
+          weight_quantization_params,
+          transposed_embedding_softmax,
+      )  # pytype: disable=wrong-arg-types  # py310-upgrade
 
 
 def set_inference_mode(
@@ -327,6 +394,14 @@ def set_inference_mode(
     set_quantization_mode_inference(
         target_tpl.tr_fflayer_tpl.fflayer_tpl.linear_tpl
     )
+
+  lm_tpls = find_target_tpl(config, layers.TransformerLm)
+  for lm_tpl in lm_tpls:
+    set_quantization_mode_inference(lm_tpl.softmax_tpl)
+    if hasattr(lm_tpl.softmax_tpl, 'feed_forward_tpl'):
+      set_quantization_mode_inference(
+          lm_tpl.softmax_tpl.feed_forward_tpl.linear_tpl
+      )
 
 
 # Traverse entire config HParam and find the tpl of the target type.

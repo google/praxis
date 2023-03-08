@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 Google LLC.
+# Copyright 2022 The Pax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -100,9 +100,9 @@ class GELU(BaseActivation):
   """Gaussian Error Linear Unit (GELU) activation layer.
 
   Attributes:
-    approximate: Whtether to use the approximate or exact formulation.
+    approximate: Whether to use the approximate or exact formulation.
   """
-  # By default `tf.nn.gelu` is exact.
+  # By default, use approximate.
   approximate: bool = True
 
   def __call__(self, inputs: JTensor) -> JTensor:
