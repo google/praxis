@@ -237,6 +237,7 @@ def for_transformer(
     weight_quant_only: bool = True,
     quantize_embedding_softmax: bool = False,
     transposed_embedding_softmax: bool = False,
+    linear_only: bool = False,
 ):
   """Find and quantize transformer.
 
@@ -259,6 +260,7 @@ def for_transformer(
       layer.
     transposed_embedding_softmax: If the model is using transposed embedding for
       embedding softmax layer.
+    linear_only: quantize only linear layer.
 
   Returns:
     A modifier that quantizes transformers when applied to a config.
@@ -282,6 +284,7 @@ def for_transformer(
             quantization_type=quantization_type,
             mode=mode,
             num_bits=num_bits,
+            linear_only=linear_only,
             use_symmetric=use_symmetric,
             weight_quant_only=weight_quant_only,
             quantize_embedding_softmax=quantize_embedding_softmax,
