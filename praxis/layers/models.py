@@ -124,15 +124,15 @@ def compute_xent_loss_helper(
 
   num_acc = jnp.sum(weights, axis=-1, dtype=jnp.float32)
   ## mask out padding examples
-  num_acc = jax.lax.select(input_batch.eval_sample_weights.astype(jnp.int32), 
+  num_acc = jax.lax.select(input_batch.eval_sample_weights.astype(jnp.int32),
                            num_acc, jnp.inf*jnp.ones_like(num_acc))
-  num_nonpadding = jnp.sum(input_batch.eval_sample_weights) 
+  num_nonpadding = jnp.sum(input_batch.eval_sample_weights)
 
   mean_acc = jnp.sum(
       (labels == predicted_labels) * weights) / jnp.maximum(num_preds, 1)
   metric_weight = jnp.array(num_preds, predictions.avg_xent.dtype)
-    
-  mean_acc_strict = (jnp.sum(jnp.sum((labels == predicted_labels) 
+
+  mean_acc_strict = (jnp.sum(jnp.sum((labels == predicted_labels)
                                      * weights, axis=-1) == num_acc)
                      /jnp.maximum(num_nonpadding, 1))
   strict_weight = jnp.array(num_nonpadding, predictions.avg_xent.dtype)
