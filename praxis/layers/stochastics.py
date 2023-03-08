@@ -43,11 +43,15 @@ class Dropout(base_layer.BaseLayer):
       typically want to replace dropout by expectation during eval. However, in
       certain cases E(f(x)) != f(E(x)), and replacing dropout by its expectation
       during eval leads to worse quality.
+    transpose_qk: Whether or not to transpose the sequence length dimensions
+      correspond to query and key in the generated random numbers to avoid
+      expensive copies.
   """
   keep_prob: float = 1.0
   noise_shape: Optional[Sequence[int]] = None
   noise_shape_broadcast_dims: Optional[Sequence[int]] = None
   dropout_at_eval: bool = False
+  transpose_qk: Optional[bool] = False
 
   def _dropout(self, inputs: JTensor, noise_shape: List[int]) -> JTensor:
     if noise_shape is None:
@@ -57,6 +61,13 @@ class Dropout(base_layer.BaseLayer):
     assert keep_prob > 0.0
     random_nums = keep_prob + jax.random.uniform(
         prng_key, noise_shape, inputs.dtype, minval=0.0, maxval=1.0)
+    transpose = (
+        len(noise_shape) == 4
+        and noise_shape[3] == noise_shape[2]
+        and self.transpose_qk
+    )
+    if transpose:
+      random_nums = jnp.transpose(random_nums, (0, 1, 3, 2))
     binary_mask = jnp.floor(random_nums)
     return inputs * binary_mask / keep_prob
 
