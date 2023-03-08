@@ -18,13 +18,15 @@
 from __future__ import annotations
 
 import abc
+import dataclasses
 import math
-from typing import Optional, Sequence, Tuple
+from typing import Any, Optional, Sequence, Tuple
 
 import jax
 from jax import numpy as jnp
 import optax
 from praxis import base_hyperparams
+from praxis import pax_fiddle
 from praxis import pytypes
 
 JTensor = pytypes.JTensor
@@ -32,7 +34,7 @@ InstantiableHyperParams = base_hyperparams.InstantiableHyperParams
 instantiate = base_hyperparams.instantiate
 
 
-class BaseSchedule(base_hyperparams.BaseParameterizable, abc.ABC):
+class BaseSchedule(base_hyperparams.FiddleBaseParameterizable, abc.ABC):
   """Base class for all schedules."""
 
   @abc.abstractmethod
@@ -49,15 +51,12 @@ class BaseSchedule(base_hyperparams.BaseParameterizable, abc.ABC):
 
 
 class Constant(BaseSchedule):
-  """A schedule whose value is a constant."""
+  """A schedule whose value is a constant.
 
-  class HParams(BaseSchedule.HParams):
-    """Associated hyperparams for this Schedule.
-
-    Attributes:
-      value: The constant value.
-    """
-    value: float = 1.0
+  Attributes:
+    value: The constant value.
+  """
+  value: float = 1.0
 
   def value_at(self, step: JTensor) -> JTensor:
     del step
@@ -69,24 +68,20 @@ class Polynomial(BaseSchedule):
 
   If x < x0, returns y0. If x >= x1, returns y1. Otherwise, interpolate with
   a polynomial between (x0, y0) and (x1, y1).
+
+  Attributes:
+    power: Polynomial power.
+    start: (x0, y0)
+    limit: (x1, y1)
+    origin: Origin of the polynomial. Can be "start" or "limit".
   """
+  power: int = 1
+  start: Tuple[int, float] = (0, 1.0)
+  limit: Tuple[int, float] = (1, 1.0)
+  origin: str = 'start'
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for schedule.
-
-    Attributes:
-      power: Polynomial power.
-      start: (x0, y0)
-      limit: (x1, y1)
-      origin: Origin of the polynomial. Can be "start" or "limit".
-    """
-    power: int = 1
-    start: Tuple[int, float] = (0, 1.)
-    limit: Tuple[int, float] = (1, 1.)
-    origin: str = 'start'
-
-  def __init__(self, hparams: Polynomial.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     p = self.hparams
     if len(p.start) != 2:
       raise ValueError(f'{p.start} must be of length 2.')
@@ -118,33 +113,26 @@ class Linear(Polynomial):
 
   If x < x0, returns y0. If x >= x1, returns y1. Otherwise, interpolate
   linearly between (x0, y0) and (x1, y1).
+
+  Attributes:
+    value: The constant value.
   """
-
-  class HParams(Polynomial.HParams):
-    """Associated hyperparams for this Schedule.
-
-    Attributes:
-      value: The constant value.
-    """
-    _attribute_overrides = ('power',)
-    power: int = 1
+  power: int = 1
 
 
 class Exponential(BaseSchedule):
-  """Exponential learning rate schedule."""
+  """Exponential learning rate schedule.
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for schedule.
+  Attributes:
+    start: (x0, y0)
+    limit: (x1, y1)
+  """
+  start: Tuple[int, float] = (0, 1.0)
+  limit: Tuple[int, float] = (1, 0.5)
+  linear: Any = dataclasses.field(init=False, repr=False)
 
-    Attributes:
-      start: (x0, y0)
-      limit: (x1, y1)
-    """
-    start: Tuple[int, float] = (0, 1.)
-    limit: Tuple[int, float] = (1, 0.5)
-
-  def __init__(self, hparams: Exponential.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     p = self.hparams
     x0, y0 = p.start
     x1, y1 = p.limit
@@ -159,19 +147,16 @@ class Exponential(BaseSchedule):
 
 
 class Cosine(BaseSchedule):
-  """Cosine learning rate schedule."""
+  """Cosine learning rate schedule.
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparms for schedule.
-
-    Attributes:
-      initial_value: Initial decay value.
-      final_value: Final decay value.
-      total_steps: Number of steps to reach full decay.
-    """
-    initial_value: float = 1.0
-    final_value: float = 0.
-    total_steps: int = 0
+  Attributes:
+    initial_value: Initial decay value.
+    final_value: Final decay value.
+    total_steps: Number of steps to reach full decay.
+  """
+  initial_value: float = 1.0
+  final_value: float = 0.0
+  total_steps: int = 0
 
   def value_at(self, step: JTensor) -> JTensor:
     p = self.hparams
@@ -188,20 +173,20 @@ class Cosine(BaseSchedule):
 
 
 class DelayedCosine(BaseSchedule):
-  """Cosine learning rate schedule that can be delayed before it starts."""
+  """Cosine learning rate schedule that can be delayed before it starts.
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparms for schedule.
+  Attributes:
+    start: (x0, y0)
+    limit: (x1, y1)
+  """
+  start: Tuple[int, float] = (0, 1.0)
+  limit: Tuple[int, float] = (1, 0.5)
+  max: Any = dataclasses.field(init=False, repr=False)
+  min: Any = dataclasses.field(init=False, repr=False)
+  linear: Any = dataclasses.field(init=False, repr=False)
 
-    Attributes:
-      start: (x0, y0)
-      limit: (x1, y1)
-    """
-    start: Tuple[int, float] = (0, 1.)
-    limit: Tuple[int, float] = (1, 0.5)
-
-  def __init__(self, hparams: Exponential.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     p = self.hparams
     x0, y0 = p.start
     x1, y1 = p.limit
@@ -221,29 +206,28 @@ class DelayedCosine(BaseSchedule):
 
 
 class LinearRampupPolynomialDecay(BaseSchedule):
-  """Learning rate that linearly ramps up to max and then polynomial decays."""
+  """Learning rate that linearly ramps up to max and then polynomial decays.
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for schedule.
+  Attributes:
+    warmup_steps: Increases the learning rate linearly before warmup steps.
+    decay_start: Starts the learning rate decay at decay_start-th step.
+    decay_end: Ends the learning rate decay at decay_end-th step.
+    power: Polynomial power.
+    min_ratio: After decay_end, the multiplier stays at min.
+    max: The schedule is never larger than this value.
+  """
 
-    Attributes:
-      warmup_steps: Increases the learning rate linearly before warmup steps.
-      decay_start: Starts the learning rate decay at decay_start-th step.
-      decay_end: Ends the learning rate decay at decay_end-th step.
-      power: Polynomial power.
-      min_ratio: After decay_end, the multiplier stays at min.
-      max: The schedule is never larger than this value.
-    """
+  warmup_steps: int = 0
+  decay_start: int = 0
+  decay_end: int = 0
+  power: int = 1
+  min_ratio: float = 0.01
+  max: float = 0.0
+  _schedules: Any = dataclasses.field(init=False, repr=False)
+  _boundaries: Any = dataclasses.field(init=False, repr=False)
 
-    warmup_steps: int = 0
-    decay_start: int = 0
-    decay_end: int = 0
-    power: int = 1
-    min_ratio: float = 0.01
-    max: float = 0.0
-
-  def __init__(self, hparams: LinearRampupPolynomialDecay.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
 
     p = self.hparams
 
@@ -294,26 +278,25 @@ class LinearRampupPolynomialDecay(BaseSchedule):
 
 
 class LinearRampupCosineDecay(BaseSchedule):
-  """Learning rate that first linearly ramps up to max and then cos decays."""
+  """Learning rate that first linearly ramps up to max and then cos decays.
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for schedule.
+  Attributes:
+    warmup_steps: Increases the learning rate linearly before warmup steps.
+    decay_start: Starts the learning rate decay at decay_start-th step.
+    decay_end: Ends the learning rate decay at decay_end-th step.
+    min_ratio: After decay_end, the multiplier stays at min.
+    max: The schedule is never larger than this value.
+  """
+  warmup_steps: int = 0
+  decay_start: int = 0
+  decay_end: int = 0
+  min_ratio: float = 0.01
+  max: float = 0.0
+  _schedules: Any = dataclasses.field(init=False, repr=False)
+  _boundaries: Any = dataclasses.field(init=False, repr=False)
 
-    Attributes:
-      warmup_steps: Increases the learning rate linearly before warmup steps.
-      decay_start: Starts the learning rate decay at decay_start-th step.
-      decay_end: Ends the learning rate decay at decay_end-th step.
-      min_ratio: After decay_end, the multiplier stays at min.
-      max: The schedule is never larger than this value.
-    """
-    warmup_steps: int = 0
-    decay_start: int = 0
-    decay_end: int = 0
-    min_ratio: float = 0.01
-    max: float = 0.0
-
-  def __init__(self, hparams: LinearRampupCosineDecay.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
 
     p = self.hparams
 
@@ -357,21 +340,18 @@ class LinearRampupCosineDecay(BaseSchedule):
 
 
 class PiecewiseConstant(BaseSchedule):
-  """A schedule with piecewise constants rate decay."""
+  """A schedule with piecewise constants rate decay.
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparms for schedule.
+  Attributes:
+    boundaries: Boundaries at which learning rate drops.
+    values: Values in each interval. The number of values must be equal to the
+      the number of boundaries plus 1.
+  """
+  boundaries: Optional[Sequence[int]] = None
+  values: Optional[Sequence[int]] = None
 
-    Attributes:
-      boundaries: Boundaries at which learning rate drops.
-      values: Values in each interval. The number of values must be equal to the
-        the number of boundaries plus 1.
-    """
-    boundaries: Optional[Sequence[int]] = None
-    values: Optional[Sequence[int]] = None
-
-  def __init__(self, hparams: PiecewiseConstant.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     p = self.hparams
     if p.boundaries is None or p.values is None:
       raise ValueError(
@@ -403,23 +383,20 @@ class PiecewiseConstant(BaseSchedule):
 
 
 class Transformer(BaseSchedule):
-  """Inverse-decay learning rate until warmup_steps, then decay."""
+  """Inverse-decay learning rate until warmup_steps, then decay.
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for schedule.
-
-    Attributes:
-      warmup_steps: Increase the learning rate linearly for the first
-        warmup_steps training steps.
-      model_dim: Model dimension that applies to embedding layers and all
-        Transformer layers.
-      worker_replicas: Number of worker replicas.
-      decay_end: Ends the learning rate decay at decay_end-th step.
-    """
-    warmup_steps: int = 4000
-    model_dim: int = 512
-    worker_replicas: int = 1
-    decay_end: Optional[int] = None
+  Attributes:
+    warmup_steps: Increase the learning rate linearly for the first warmup_steps
+      training steps.
+    model_dim: Model dimension that applies to embedding layers and all
+      Transformer layers.
+    worker_replicas: Number of worker replicas.
+    decay_end: Ends the learning rate decay at decay_end-th step.
+  """
+  warmup_steps: int = 4000
+  model_dim: int = 512
+  worker_replicas: int = 1
+  decay_end: Optional[int] = None
 
   def value_at(self, step: JTensor) -> JTensor:
     """Returns the current learning rate decay."""
@@ -437,20 +414,17 @@ class Transformer(BaseSchedule):
 
 
 class SqrtDecay(BaseSchedule):
-  """Square root decay learning rate after decay_start steps."""
+  """Square root decay learning rate after decay_start steps.
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for schedule.
-
-    Attributes:
-      decay_start: Keep the learning rate constant till this step, and begin
-        decaying using inverse square root after this step.
-      multiplier: Multiplier for the loss.
-      offset: Offset for computing when to start decaying the learning rate.
-    """
-    decay_start: int = 10000
-    multiplier: float = 1.
-    offset: float = 0.
+  Attributes:
+    decay_start: Keep the learning rate constant till this step, and begin
+      decaying using inverse square root after this step.
+    multiplier: Multiplier for the loss.
+    offset: Offset for computing when to start decaying the learning rate.
+  """
+  decay_start: int = 10000
+  multiplier: float = 1.0
+  offset: float = 0.0
 
   def value_at(self, step: JTensor) -> JTensor:
     """Returns the current learning rate decay."""
@@ -471,19 +445,15 @@ class LinearRampupSqrtDecay(BaseSchedule):
 
   For the original Transformer schedule, the peak value is
     1.0 / sqrt(model_dim * warmup_steps).
+
+  Attributes:
+    decay_start: Keep the learning rate constant till this step, and begin
+      decaying using inverse square root after this step.
+    multiplier: Multiplier for the loss.
+    offset: Offset for computing when to start decaying the learning rate.
   """
-
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for the schedule.
-
-    Attributes:
-      decay_start: Keep the learning rate constant till this step, and begin
-        decaying using inverse square root after this step.
-      multiplier: Multiplier for the loss.
-      offset: Offset for computing when to start decaying the learning rate.
-    """
-    peak: float = 1.0
-    warmup_steps: int = 4000
+  peak: float = 1.0
+  warmup_steps: int = 4000
 
   def value_at(self, step: JTensor) -> JTensor:
     """Returns the current schedule value."""
@@ -496,27 +466,25 @@ class LinearRampupSqrtDecay(BaseSchedule):
 
 class LinearRampupExponentialDecay(BaseSchedule):
   """Learning rate that first linearly ramps up to max and exponentially decays.
+
+  Attributes:
+    warmup_steps: Increases the learning rate linearly  before warmup_steps *
+      num_splits steps.
+    decay_start: Starts the learning rate decay at decay_start-th step.
+    decay_end: Ends the learning rate decay at decay_end-th step.
+    min_ratio: After decay_end, the multiplier stays at min.
+    max: The schedule is never larger than this value.
   """
+  warmup_steps: int = 0
+  decay_start: int = 0
+  decay_end: int = 0
+  min_ratio: float = 0.01
+  max: float = 0.0
+  _schedules: Any = dataclasses.field(init=False, repr=False)
+  _boundaries: Any = dataclasses.field(init=False, repr=False)
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for schedule.
-
-    Attributes:
-      warmup_steps: Increases the learning rate linearly  before warmup_steps *
-        num_splits steps.
-      decay_start: Starts the learning rate decay at decay_start-th step.
-      decay_end: Ends the learning rate decay at decay_end-th step.
-      min_ratio: After decay_end, the multiplier stays at min.
-      max: The schedule is never larger than this value.
-    """
-    warmup_steps: int = 0
-    decay_start: int = 0
-    decay_end: int = 0
-    min_ratio: float = 0.01
-    max: float = 0.0
-
-  def __init__(self, hparams: LinearRampupExponentialDecay.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
 
     p = self.hparams
 
@@ -566,22 +534,20 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
   2. After peak, the multiplier stays values[i] when step falls into
      [boundaries[i], boundaries[i+1]).
   3. When step is more than boundaries[-1], then the multiplier is values[-1].
+
+  Attributes:
+    boundaries: Boundaries at which learning rate changes.
+    values: The learning rate values for the PiecewiseConstant schedule and if
+      the step is between boundaries[i] and boundaries[i + 1] then values[i] is
+      returned, except when it is linearly ramping up from to values[0].
   """
+  boundaries: Optional[Sequence[int]] = None
+  values: Optional[Sequence[float]] = None
+  p0: Any = dataclasses.field(init=False, repr=False)
+  p1: Any = dataclasses.field(init=False, repr=False)
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for schedule.
-
-    Attributes:
-      boundaries: Boundaries at which learning rate changes.
-      values: The learning rate values for the PiecewiseConstant schedule and if
-        the step is between boundaries[i] and boundaries[i + 1] then values[i]
-        is returned, except when it is linearly ramping up from to values[0].
-    """
-    boundaries: Optional[Sequence[int]] = None
-    values: Optional[Sequence[float]] = None
-
-  def __init__(self, hparams: LinearRampupPiecewiseConstant.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     p = self.hparams
     assert len(p.boundaries) >= 1 and len(p.boundaries) == len(p.values)
     self.p0 = instantiate(
@@ -604,23 +570,21 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
 
 
 class PiecewiseSchedule(BaseSchedule):
-  """Piecewise schedule composed of sub-schedules."""
+  """Piecewise schedule composed of sub-schedules.
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for schedule.
+  Attributes:
+    boundaries: Boundaries between subschedules.
+    schedules: A list of sub-schedules. The length must be len(boundaries) + 1.
+      schedules[i] starts at boundaries[i-1] (inclusive) and ends at
+      boundaries[i] (exclusive). The *relative* step in each interval will be
+      passed to the sub-schedule for Value.
+  """
+  boundaries: Optional[Sequence[int]] = None
+  schedules: Optional[Sequence[pax_fiddle.Config[BaseSchedule]]] = None
+  _schedules_inst: Any = dataclasses.field(init=False, repr=False)
 
-    Attributes:
-      boundaries: Boundaries between subschedules.
-      schedules: A list of sub-schedules. The length must be len(boundaries) +
-        1. schedules[i] starts at boundaries[i-1] (inclusive) and ends at
-        boundaries[i] (exclusive). The *relative* step in each interval will be
-        passed to the sub-schedule for Value.
-    """
-    boundaries: Optional[Sequence[int]] = None
-    schedules: Optional[Sequence[BaseSchedule.HParams]] = None
-
-  def __init__(self, hparams: PiecewiseSchedule.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     p = self.hparams
     prev_boundary = 0
     for boundary in p.boundaries:
@@ -643,21 +607,21 @@ class PiecewiseSchedule(BaseSchedule):
 
 
 class CycleSchedule(BaseSchedule):
-  """Piecewise schedule composed of sub-schedules in a cycle."""
+  """Piecewise schedule composed of sub-schedules in a cycle.
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for schedule.
+  Attributes:
+    schedules: A list of sub-schedules. Unlike PiecewiseSchedule, the absolute
+      step is passed to the sub-schedule.
+    steps: The number of steps to run each sub-schedule.
+  """
+  schedules: Optional[Sequence[pax_fiddle.Config[BaseSchedule]]] = None
+  steps: Optional[Sequence[int]] = None
+  _schedules_inst: Any = dataclasses.field(init=False, repr=False)
+  _period: Any = dataclasses.field(init=False, repr=False)
+  _boundaries: Any = dataclasses.field(init=False, repr=False)
 
-    Attributes:
-      schedules: A list of sub-schedules. Unlike PiecewiseSchedule, the absolute
-        step is passed to the sub-schedule.
-      steps: The number of steps to run each sub-schedule.
-    """
-    schedules: Optional[Sequence[BaseSchedule.HParams]] = None
-    steps: Optional[Sequence[int]] = None
-
-  def __init__(self, hparams: CycleSchedule.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     p = self.hparams
     if len(p.schedules) != len(p.steps):
       raise ValueError('len(schedules) != len(steps): %s vs %s' %
@@ -680,25 +644,23 @@ class CycleSchedule(BaseSchedule):
 
 
 class ContinuousSchedule(BaseSchedule):
-  """Continuous learning rate decay."""
+  """Continuous learning rate decay.
 
-  class HParams(BaseSchedule.HParams):
-    """Hyperparams for schedule.
+  Attributes:
+    initial_value: Initial decay value.
+    start_step: Starts to decay the learning rate from this step.
+    half_life_steps: Halve the learning rate every this many steps after
+      start_step.
+    min: Minimum relative learning rate.
+  """
+  initial_value: float = 1.0
+  start_step: int = 400_000
+  half_life_steps: int = 100_000
+  min: float = 0.01
+  exp: Exponential = dataclasses.field(init=False, repr=False)
 
-    Attributes:
-      initial_value: Initial decay value.
-      start_step: Starts to decay the learning rate from this step.
-      half_life_steps: Halve the learning rate every this many steps after
-        start_step.
-      min: Minimum relative learning rate.
-    """
-    initial_value: float = 1.0
-    start_step: int = 400_000
-    half_life_steps: int = 100_000
-    min: float = 0.01
-
-  def __init__(self, hparams: ContinuousSchedule.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     p: self.HParams = self.hparams
     limit = p.start_step + p.half_life_steps * math.log(p.min) / math.log(0.5)
     self.exp: Exponential = instantiate(

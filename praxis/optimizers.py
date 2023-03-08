@@ -17,9 +17,9 @@
 
 from __future__ import annotations
 
-import re
 import dataclasses
 import functools
+import re
 from typing import Any, Callable, NamedTuple, Optional, Sequence, Tuple, Union
 
 from absl import logging
@@ -31,9 +31,11 @@ from praxis import asserts
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import gshard_utils
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis import schedules
+
 from optax_shampoo import distributed_shampoo
 
 # DistributedShampoo types
@@ -917,56 +919,54 @@ def apply_ewc_regularization(
       init_partition_spec=init_partition_spec_fn)
 
 
-class BaseOptimizer(base_hyperparams.BaseParameterizable):
-  """Base class for all optimizers."""
+class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
+  """Base class for all optimizers.
 
-  class HParams(base_hyperparams.BaseParameterizable.HParams):
-    """Defines hyper-params for all optimizers.
+  Attributes:
+    l2_regularizer_weight: If not None, L2 regularization to apply to the model
+      weights. Otherwise, disable L2 regularization.
+    l1_regularizer_weight: If not None, L1 regularization to apply to the model
+      weights. Otherwise, disable L1 regularization.
+    skip_lp_1d_vectors: If True, skip L1/L2 regularization for 1d vector vars.
+    decoupled_weight_decay: If not None, (decoupled) weight decay to apply to
+      the model weights. Otherwise, disable weight decay. Note, lp regularizers
+      add loss to final loss objective, while decoupled weight decay adds decay
+      directly into weights. They are different especially when there are moment
+      statistics in optimizers. A good reference can be found in:
+      https://www.fast.ai/2018/07/02/adam-weight-decay/#adamw
+    clip_gradient_norm_to_value: Clip gradient by global norm to this value.
+      This is similar to the bahaviour of tf.clip_by_global_norm. If you are
+      looking for tf.clip_by_norm refer to clip_gradient_single_norm_to_value.
+      Note these are mutually exclusive.
+    clip_gradient_single_norm_to_value: Clip gradient by single tensor norm to
+      this value. This is similar to the bahaviour of tf.clip_by_norm. Note this
+      is mutually exclusive to using clip_gradient_norm_to_value.
+    learning_rate: learning rate to use.
+    lr_schedule: Learning rate decay schedule. The value returned by this
+      schedule is *multiplied* by your base learning rate.
+    ema_decay: If > 0, enable ExponentialMovingAverage during training with the
+      give decay. Must be < 1. Disabled if <= 0.
+    ewc_regularizer_weight: If > 0, EWC regularization is applied to the model
+      weights.
+    ewc_weight_per_var: If not None, set weight for each model weight, e.g.,
+      refer to https://arxiv.org/abs/1612.00796 by using a Fisher information
+      matrix.
+  """
 
-    Attributes:
-      l2_regularizer_weight: If not None, L2 regularization to apply to the
-        model weights. Otherwise, disable L2 regularization.
-      l1_regularizer_weight: If not None, L1 regularization to apply to the
-        model weights. Otherwise, disable L1 regularization.
-      skip_lp_1d_vectors: If True, skip L1/L2 regularization for 1d vector vars.
-      decoupled_weight_decay: If not None, (decoupled) weight decay to apply to
-        the model weights. Otherwise, disable weight decay. Note, lp
-        regularizers add loss to final loss objective, while decoupled weight
-        decay adds decay directly into weights. They are different especially
-        when there are moment statistics in optimizers. A good reference can be
-        found in: https://www.fast.ai/2018/07/02/adam-weight-decay/#adamw
-      clip_gradient_norm_to_value: Clip gradient by global norm to this value.
-        This is similar to the bahaviour of tf.clip_by_global_norm. If you are
-        looking for tf.clip_by_norm refer to clip_gradient_single_norm_to_value.
-        Note these are mutually exclusive.
-      clip_gradient_single_norm_to_value: Clip gradient by single tensor norm to
-        this value. This is similar to the bahaviour of tf.clip_by_norm. Note
-        this is mutually exclusive to using clip_gradient_norm_to_value.
-      learning_rate: learning rate to use.
-      lr_schedule: Learning rate decay schedule. The value returned by this
-        schedule is *multiplied* by your base learning rate.
-      ema_decay: If > 0, enable ExponentialMovingAverage during training with
-        the give decay. Must be < 1. Disabled if <= 0.
-      ewc_regularizer_weight: If > 0, EWC regularization is applied to
-        the model weights.
-      ewc_weight_per_var: If not None, set weight for each model weight, e.g.,
-        refer to https://arxiv.org/abs/1612.00796 by using a Fisher information
-        matrix.
-    """
-    l2_regularizer_weight: Optional[float] = None
-    l1_regularizer_weight: Optional[float] = None
-    skip_lp_1d_vectors: bool = False
-    decoupled_weight_decay: Optional[float] = None
-    clip_gradient_norm_to_value: float = 0.0
-    clip_gradient_single_norm_to_value: float = 0.0
-    learning_rate: float = 0.0
-    lr_schedule: Optional[schedules.BaseSchedule.HParams] = None
-    ema_decay: float = 0.0
-    ewc_regularizer_weight: float = 0.0
-    ewc_weight_per_var: Optional[NestedMap] = None
+  l2_regularizer_weight: Optional[float] = None
+  l1_regularizer_weight: Optional[float] = None
+  skip_lp_1d_vectors: bool = False
+  decoupled_weight_decay: Optional[float] = None
+  clip_gradient_norm_to_value: float = 0.0
+  clip_gradient_single_norm_to_value: float = 0.0
+  learning_rate: float = 0.0
+  lr_schedule: Optional[pax_fiddle.Config[schedules.BaseSchedule]] = None
+  ema_decay: float = 0.0
+  ewc_regularizer_weight: float = 0.0
+  ewc_weight_per_var: Optional[NestedMap] = None
+  _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
 
-  def __init__(self, hparams: BaseOptimizer.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
     p = self._hparams
     self._lr_schedule_inst = instantiate(self._hparams.lr_schedule)
     # Should not mix L1, L2 regularizer and weight decay together.
@@ -1061,18 +1061,15 @@ class BaseOptimizer(base_hyperparams.BaseParameterizable):
 
 
 class Sgd(BaseOptimizer):
-  """Canonical SGD optimizer."""
+  """Canonical SGD optimizer.
 
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for Sgd.
-
-    Attributes:
-      momentum: Decay rate used by the momentum term. If set to None, momentum
-        is not used.
-      nesterov: Whether Nesterov momentum is used or not.
-    """
-    momentum: Optional[float] = None
-    nesterov: bool = False
+  Attributes:
+    momentum: Decay rate used by the momentum term. If set to None, momentum is
+      not used.
+    nesterov: Whether Nesterov momentum is used or not.
+  """
+  momentum: Optional[float] = None
+  nesterov: bool = False
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> optax.GradientTransformation:
@@ -1081,33 +1078,30 @@ class Sgd(BaseOptimizer):
 
 
 class Lamb(BaseOptimizer):
-  """Canonical Lamb optimizer."""
+  """Canonical Lamb optimizer.
 
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for Lamb.
+  Please check optax lamb doc for more details.
 
-    Please check optax lamb doc for more details.
+  Attributes:
+    momentum: Decay rate used by the momentum term. If set to None, momentum is
+      not used.
+    b1: Exponential decay rate to track the first moment of past gradients.
+      nesterov: Whether Nesterov momentum is used or not.
+    b2: Exponential decay rate to track the second moment of past gradients.
+    eps: A small constant applied to denominator outside of the square root (as
+      in the Adam paper) to avoid dividing by zero when rescaling.
+    eps_root: A small constant applied to denominator inside the square root (as
+      in RMSProp), to avoid dividing by zero when rescaling.
+    weight_decay: Strength of the weight decay regularization.
+    mask: A boolean tree mask that determines which leaves to transform.
+  """
 
-    Attributes:
-      momentum: Decay rate used by the momentum term. If set to None, momentum
-        is not used.
-      b1: Exponential decay rate to track the first moment of past gradients.
-        nesterov: Whether Nesterov momentum is used or not.
-      b2: Exponential decay rate to track the second moment of past gradients.
-      eps: A small constant applied to denominator outside of the square root
-        (as in the Adam paper) to avoid dividing by zero when rescaling.
-      eps_root: A small constant applied to denominator inside the square root
-        (as in RMSProp), to avoid dividing by zero when rescaling.
-      weight_decay: Strength of the weight decay regularization.
-      mask: A boolean tree mask that determines which leaves to transform.
-    """
-
-    b1: float = 0.9
-    b2: float = 0.999
-    eps: float = 1e-6
-    eps_root: float = 0.0
-    weight_decay: float = 0.0
-    mask: Optional[Any] = None
+  b1: float = 0.9
+  b2: float = 0.999
+  eps: float = 1e-6
+  eps_root: float = 0.0
+  weight_decay: float = 0.0
+  mask: Optional[Any] = None
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule
@@ -1125,18 +1119,15 @@ class Lamb(BaseOptimizer):
 
 
 class ShardedSgd(BaseOptimizer):
-  """Sharded SGD optimizer."""
+  """Sharded SGD optimizer.
 
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for ShardedSgd.
-
-    Attributes:
-      momentum: Decay rate used by the momentum term. If set to None, momentum
-        is not used.
-      nesterov: Whether Nesterov momentum is used or not.
-    """
-    momentum: Optional[float] = None
-    nesterov: bool = False
+  Attributes:
+    momentum: Decay rate used by the momentum term. If set to None, momentum is
+      not used.
+    nesterov: Whether Nesterov momentum is used or not.
+  """
+  momentum: Optional[float] = None
+  nesterov: bool = False
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
@@ -1146,18 +1137,15 @@ class ShardedSgd(BaseOptimizer):
 
 
 class ShardedAdagrad(BaseOptimizer):
-  """Sharded Adagrad optimizer."""
+  """Sharded Adagrad optimizer.
 
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for ShardedAdagrad.
-
-    Attributes:
-      initial_accumulator_value: Initial value of the accumulator.
-      epsilon: Small constant applied to the denominator outside of the square
-        root to avoid dividing by zero when rescaling.
-    """
-    initial_accumulator_value: float = 1e-12
-    epsilon: float = 1e-12
+  Attributes:
+    initial_accumulator_value: Initial value of the accumulator.
+    epsilon: Small constant applied to the denominator outside of the square
+      root to avoid dividing by zero when rescaling.
+  """
+  initial_accumulator_value: float = 1e-12
+  epsilon: float = 1e-12
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
@@ -1169,41 +1157,36 @@ class ShardedAdagrad(BaseOptimizer):
 
 
 class Adam(BaseOptimizer):
-  """Adam optimizer."""
+  """Adam optimizer.
 
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for Adam.
-
-    Attributes:
-      beta1: Expenonential decay rate to track the first moment of past
-        gradients.
-      beta2: Exponential decay rate to track the second moment of past
-        gradients.
-      epsilon: Small constant applied to the denominator outside of the square
-        root to avoid dividing by zero when rescaling.
-      epsilon_root: Small constant applied to the denominator inside of the
-        square root to avoid dividing by zero when rescaling.
-      clip_threshold: An optional float to clip raw adam updates to.
-      weight_decay: Decoupled weight decay to apply.
-      sharded_adam: whether or not to use sharded_adam
-      maybe_inf_to_nan: Will use jax.nan_to_num during update when True.
-    """
-    beta1: float = 0.9
-    beta2: float = 0.999
-    epsilon: float = 1e-6
-    epsilon_root: float = 0.0
-    clip_threshold: float = 1.0
-    weight_decay: float = 0.0
-    sharded_adam: bool = True
-    maybe_inf_to_nan: bool = True
+  Attributes:
+    beta1: Expenonential decay rate to track the first moment of past gradients.
+    beta2: Exponential decay rate to track the second moment of past gradients.
+    epsilon: Small constant applied to the denominator outside of the square
+      root to avoid dividing by zero when rescaling.
+    epsilon_root: Small constant applied to the denominator inside of the square
+      root to avoid dividing by zero when rescaling.
+    clip_threshold: An optional float to clip raw adam updates to.
+    weight_decay: Decoupled weight decay to apply.
+    sharded_adam: whether or not to use sharded_adam
+    maybe_inf_to_nan: Will use jax.nan_to_num during update when True.
+  """
+  beta1: float = 0.9
+  beta2: float = 0.999
+  epsilon: float = 1e-6
+  epsilon_root: float = 0.0
+  clip_threshold: float = 1.0
+  weight_decay: float = 0.0
+  sharded_adam: bool = True
+  maybe_inf_to_nan: bool = True
 
   @classmethod
-  def HParamsA(cls) -> Adam.HParams:  # pylint: disable=invalid-name
+  def HParamsA(cls) -> pax_fiddle.Config[Adam]:  # pylint: disable=invalid-name
     """Convenient method for a commonly used Adam config."""
     return cls.HParams(beta1=0.9, beta2=0.997, epsilon=1e-9)
 
   @classmethod
-  def HParamsB(cls) -> Adam.HParams:  # pylint: disable=invalid-name
+  def HParamsB(cls) -> pax_fiddle.Config[Adam]:  # pylint: disable=invalid-name
     """Convenient method for another commonly used Adam config."""
     return cls.HParams(beta1=0.9, beta2=0.98, epsilon=1e-9)
 
@@ -1237,23 +1220,19 @@ class Adam(BaseOptimizer):
 class Lion(BaseOptimizer):
   """Implementation of the Lion optimizer.
 
-   Lion optimizer from the Symbolic Discovery of Optimization Algorithms paper.
+  Lion optimizer from the Symbolic Discovery of Optimization Algorithms paper.
+
+  Attributes:
+    beta1: Rate to combine the moment and the current gradient.
+    beta2: Exponential decay rate to track the moment of past gradients.
+    clip_threshold: An optional float to clip raw Lion updates to.
+    weight_decay: Decoupled weight decay to apply.
   """
-
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for Lion.
-
-    Attributes:
-      beta1: Rate to combine the moment and the current gradient.
-      beta2: Exponential decay rate to track the moment of past gradients.
-      clip_threshold: An optional float to clip raw Lion updates to.
-      weight_decay: Decoupled weight decay to apply.
-    """
-    beta1: float = 0.9
-    beta2: float = 0.99
-    clip_threshold: float = 1.0
-    weight_decay: float = 0.0
-    m_dtype: jnp.dtype = jnp.bfloat16
+  beta1: float = 0.9
+  beta2: float = 0.99
+  clip_threshold: float = 1.0
+  weight_decay: float = 0.0
+  m_dtype: jnp.dtype = jnp.bfloat16
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
@@ -1269,37 +1248,34 @@ class Lion(BaseOptimizer):
 
 
 class Adafactor(BaseOptimizer):
-  """Adafactor optimizer from Optax."""
+  """Adafactor optimizer from Optax.
 
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for Adafactor.
-
-    Attributes:
-      min_dim_size_to_factor: Only factor the statistics if two array dimensions
-        have at least this size.
-      decay_rate: Controls second-moment exponential decay schedule.
-      decay_offset: For finetuning, one may set this to the starting step number
-        of the finetuning phase.
-      multiply_by_parameter_scale: If True, then scale learning_rate by
-        parameter norm. if False, provided learning_rate is absolute step size.
-      clip_threshold: Optional value; if None, clipping disabled.
-      momentum: Optional value between 0 and 1, enables momentum and uses extra
-        memory if non-None! None by default.
-      dtype_momentum: dtype of momentum buffers.
-      weight_decay_rate: Optional rate at which to decay weights.
-      eps: Regularization constant for root mean squared gradient.
-      factored: Whether to use factored second-moment estimates.
-    """
-    min_dim_size_to_factor: int = 128
-    decay_rate: float = 0.8
-    decay_offset: float = 0.
-    multiply_by_parameter_scale: bool = True
-    clip_threshold: Optional[float] = 1.
-    momentum: Optional[float] = None
-    dtype_momentum: str = 'float32'
-    weight_decay_rate: Optional[float] = None
-    eps: float = 1e-30
-    factored: bool = True
+  Attributes:
+    min_dim_size_to_factor: Only factor the statistics if two array dimensions
+      have at least this size.
+    decay_rate: Controls second-moment exponential decay schedule.
+    decay_offset: For finetuning, one may set this to the starting step number
+      of the finetuning phase.
+    multiply_by_parameter_scale: If True, then scale learning_rate by parameter
+      norm. if False, provided learning_rate is absolute step size.
+    clip_threshold: Optional value; if None, clipping disabled.
+    momentum: Optional value between 0 and 1, enables momentum and uses extra
+      memory if non-None! None by default.
+    dtype_momentum: dtype of momentum buffers.
+    weight_decay_rate: Optional rate at which to decay weights.
+    eps: Regularization constant for root mean squared gradient.
+    factored: Whether to use factored second-moment estimates.
+  """
+  min_dim_size_to_factor: int = 128
+  decay_rate: float = 0.8
+  decay_offset: float = 0.0
+  multiply_by_parameter_scale: bool = True
+  clip_threshold: Optional[float] = 1.0
+  momentum: Optional[float] = None
+  dtype_momentum: str = 'float32'
+  weight_decay_rate: Optional[float] = None
+  eps: float = 1e-30
+  factored: bool = True
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> optax.GradientTransformation:
@@ -1321,105 +1297,114 @@ class Adafactor(BaseOptimizer):
 
 
 class DistributedShampoo(BaseOptimizer):
-  """DistributedShampoo optimizer from Optax."""
+  """DistributedShampoo optimizer from Optax.
 
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for DistributedShampoo.
+  Attributes:
+    block_size: Size of the preconditioner (block size x block size).
+    beta1: Momentum parameter.
+    beta2: Second moment averaging parameter.
+    diagonal_epsilon: Epsilon parameter for the diagonal adaptive method.
+    matrix_epsilon: Epsilon parameter as part of computing the inverse-pth
+      roots.
+    weight_decay: Weight decay.
+    start_preconditioning_step: Start preconditionining after N steps.
+    preconditioning_compute_steps: How often to compute the inverse-pth roots.
+    statistics_compute_steps: How often to compute the statistics.
+    graft_type: Type of Grafting. 1 for SGD, 2 for AdaGrad, 3 for RMSPROP .
+    batch_axis_name: Batch axis name for pmap.
+    mesh_axis_names: Axis names for the mesh (used in pjit).
+    num_devices_for_pjit: Number of devices to parallelize over in pjit mode.
+    nesterov: Use nesterov update for momentum.
+    exponent_override: Exponent override.
+    inverse_failure_threshold: Numerics are hard and inverses fail sometimes; we
+      determine that using this threshold.
+    moving_average_for_momentum: Moving average for momentum.
+    skip_preconditioning_dim_size_gt: Skips preconditioning if any dim is
+      greater than this value.
+    clip_by_scaled_gradient_norm: Clip by scaled gradient norm (if not None).
+    best_effort_shape_interpretation: Best effort shape interpretation to
+      coalesce dimensions.
+    tensor_split_dims_mapping: Sharding information for statistics and
+      preconditioner matrices.
+    tensor_split_dims_mapping_for_inverse_pth_root: Sharding information for
+      preconditioner matrices.
+    best_effort_memory_usage_reduction: Experimental mode: Best effort memory
+      usage reduction.
+    merge_small_dims_block_size: Block size for merging dims.
+    lobpcg_topk_precondition: If nonzero, specifies the number of top
+      eigenvectors to subtract out before performing LOBPCG
+    lobpcg_max_iter: If nonzero, specifies the maximum number of iterations to
+      perform LOBPCG if activated by lobpcg_topk_precondition. If zero, uses a
+      default value equal to `lobpcg_topk_precondition` itself.
+    skip_preconditioning_rank_lt: Skips preconditioning if param rank is less
+      than this value.
+    summarize_training_metrics: Summarize training statistics (for example:
+      inverse pth root)
+    decoupled_weight_decay_from_momentum: Decouple weight decay from momentum.
+    decoupled_learning_rate_from_momentum: Decouple learning rate from momentum.
+    eigh: If True, uses eigendecomposition to compute inverse-pth roots.
+    compression_rank: If nonzero, whether to use low-rank preconditioners.
+    frequent_directions: Use frequent directions sketching for preconditioner.
+    average_grad: Whether to average gradients before usage in FD statistics.
+    reuse_preconditioner: Wire in previous preconditioner for root updates. must
+      be set to true for frequent directions.
+  """
+  block_size: int = 1024
+  beta1: float = 0.9
+  beta2: float = 0.999
+  diagonal_epsilon: float = 1e-16
+  matrix_epsilon: float = 1e-6
+  weight_decay: float = 0.0
+  start_preconditioning_step: int = 101
+  preconditioning_compute_steps: int = 100
+  statistics_compute_steps: int = 1
+  graft_type: Any = GraftingType.ADAGRAD
+  batch_axis_name: str = 'batch'
+  mesh_axis_names: Optional[Sequence[str]] = None
+  num_devices_for_pjit: Optional[int] = None
+  nesterov: bool = True
+  exponent_override: int = 0
+  inverse_failure_threshold: float = 0.1
+  moving_average_for_momentum: bool = False
+  skip_preconditioning_dim_size_gt: int = 4096
+  clip_by_scaled_gradient_norm: Optional[float] = None
+  best_effort_shape_interpretation: bool = True
+  tensor_split_dims_mapping: Sequence[int] = pax_fiddle.instance_field(
+      default_factory=lambda: [-1, 1, -1]
+  )
+  tensor_split_dims_mapping_for_inverse_pth_root: Sequence[int] = (
+      pax_fiddle.instance_field(default_factory=lambda: [-1, 1, -1])
+  )
+  best_effort_memory_usage_reduction: bool = False
+  relative_matrix_epsilon: bool = True
+  cholesky: bool = False
+  qr_based_root: bool = False
+  merge_small_dims_block_size: int = 4096
+  lobpcg_topk_precondition: int = 0
+  lobpcg_max_iter: int = 0
+  skip_preconditioning_rank_lt: int = 1
+  summarize_training_metrics: bool = True
+  decoupled_weight_decay_from_momentum: bool = True
+  decoupled_learning_rate_from_momentum: bool = False
+  eigh: bool = False
+  compression_rank: int = 0
+  frequent_directions: bool = False
+  average_grad: bool = False
+  reuse_preconditioner: bool = False
+  _shard_optimizer_states: Any = dataclasses.field(init=False, repr=False)
+  _statistics_partition_spec: Any = dataclasses.field(init=False, repr=False)
+  _preconditioner_partition_spec: Any = dataclasses.field(
+      init=False, repr=False
+  )
 
-    Attributes:
-      block_size: Size of the preconditioner (block size x block size).
-      beta1: Momentum parameter.
-      beta2: Second moment averaging parameter.
-      diagonal_epsilon: Epsilon parameter for the diagonal adaptive method.
-      matrix_epsilon: Epsilon parameter as part of computing the inverse-pth
-        roots.
-      weight_decay: Weight decay.
-      start_preconditioning_step: Start preconditionining after N steps.
-      preconditioning_compute_steps: How often to compute the inverse-pth roots.
-      statistics_compute_steps: How often to compute the statistics.
-      graft_type: Type of Grafting. 1 for SGD, 2 for AdaGrad, 3 for RMSPROP .
-      batch_axis_name: Batch axis name for pmap.
-      mesh_axis_names: Axis names for the mesh (used in pjit).
-      num_devices_for_pjit: Number of devices to parallelize over in pjit mode.
-      nesterov: Use nesterov update for momentum.
-      exponent_override: Exponent override.
-      inverse_failure_threshold: Numerics are hard and inverses fail sometimes;
-        we determine that using this threshold.
-      moving_average_for_momentum: Moving average for momentum.
-      skip_preconditioning_dim_size_gt: Skips preconditioning if any dim is
-        greater than this value.
-      clip_by_scaled_gradient_norm: Clip by scaled gradient norm (if not None).
-      best_effort_shape_interpretation: Best effort shape interpretation to
-        coalesce dimensions.
-      tensor_split_dims_mapping: Sharding information for statistics and
-        preconditioner matrices.
-      tensor_split_dims_mapping_for_inverse_pth_root: Sharding information for
-        preconditioner matrices.
-      best_effort_memory_usage_reduction: Experimental mode: Best effort memory
-        usage reduction.
-      merge_small_dims_block_size: Block size for merging dims.
-      lobpcg_topk_precondition: If nonzero, specifies the number of top
-        eigenvectors to subtract out before performing LOBPCG
-      lobpcg_max_iter: If nonzero, specifies the maximum number of iterations to
-        perform LOBPCG if activated by lobpcg_topk_precondition. If zero, uses a
-        default value equal to `lobpcg_topk_precondition` itself.
-      skip_preconditioning_rank_lt: Skips preconditioning if param rank is less
-        than this value.
-      summarize_training_metrics: Summarize training statistics (for example:
-        inverse pth root)
-      decoupled_weight_decay_from_momentum: Decouple weight decay from momentum.
-      decoupled_learning_rate_from_momentum: Decouple learning rate from
-        momentum.
-      eigh: If True, uses eigendecomposition to compute inverse-pth roots.
-      compression_rank: If nonzero, whether to use low-rank preconditioners.
-      frequent_directions: Use frequent directions sketching for preconditioner.
-      average_grad: Whether to average gradients before usage in FD statistics.
-      reuse_preconditioner: Wire in previous preconditioner for root updates.
-        must be set to true for frequent directions.
-    """
-    block_size: int = 1024
-    beta1: float = 0.9
-    beta2: float = 0.999
-    diagonal_epsilon: float = 1e-16
-    matrix_epsilon: float = 1e-6
-    weight_decay: float = 0.0
-    start_preconditioning_step: int = 101
-    preconditioning_compute_steps: int = 100
-    statistics_compute_steps: int = 1
-    graft_type: Any = GraftingType.ADAGRAD
-    batch_axis_name: str = 'batch'
-    mesh_axis_names: Optional[Sequence[str]] = None
-    num_devices_for_pjit: Optional[int] = None
-    nesterov: bool = True
-    exponent_override: int = 0
-    inverse_failure_threshold: float = 0.1
-    moving_average_for_momentum: bool = False
-    skip_preconditioning_dim_size_gt: int = 4096
-    clip_by_scaled_gradient_norm: Optional[float] = None
-    best_effort_shape_interpretation: bool = True
-    tensor_split_dims_mapping: Sequence[int] = dataclasses.field(
-        default_factory=lambda: [-1, 1, -1])
-    tensor_split_dims_mapping_for_inverse_pth_root: Sequence[
-        int] = dataclasses.field(default_factory=lambda: [-1, 1, -1])
-    best_effort_memory_usage_reduction: bool = False
-    relative_matrix_epsilon: bool = True
-    cholesky: bool = False
-    qr_based_root: bool = False
-    merge_small_dims_block_size: int = 4096
-    lobpcg_topk_precondition: int = 0
-    lobpcg_max_iter: int = 0
-    skip_preconditioning_rank_lt: int = 1
-    summarize_training_metrics: bool = True
-    decoupled_weight_decay_from_momentum: bool = True
-    decoupled_learning_rate_from_momentum: bool = False
-    eigh: bool = False
-    compression_rank: int = 0
-    frequent_directions: bool = False
-    average_grad: bool = False
-    reuse_preconditioner: bool = False
+  def __post_init__(self):
+    super().__post_init__()
+    self._shard_optimizer_states = False
+    self._statistics_partition_spec = None
+    self._preconditioner_partition_spec = None
 
   @classmethod
-  def HParamsImageClassification(cls) -> DistributedShampoo.HParams:  # pylint: disable=invalid-name
+  def HParamsImageClassification(cls) -> pax_fiddle.Config[DistributedShampoo]:  # pylint: disable=invalid-name
     """Common Shampoo config for Image Classification."""
     return cls.HParams(
         beta1=0.9,
@@ -1432,7 +1417,7 @@ class DistributedShampoo(BaseOptimizer):
         graft_type=GraftingType.SGD)
 
   @classmethod
-  def HParamsLanguageModeling(cls) -> DistributedShampoo.HParams:  # pylint: disable=invalid-name
+  def HParamsLanguageModeling(cls) -> pax_fiddle.Config[DistributedShampoo]:  # pylint: disable=invalid-name
     """Common Shampoo config for Language Modeling."""
     return cls.HParams(
         block_size=1536,
@@ -1449,12 +1434,6 @@ class DistributedShampoo(BaseOptimizer):
         skip_preconditioning_dim_size_gt=4096,
         moving_average_for_momentum=True,
         clip_by_scaled_gradient_norm=None)
-
-  def __init__(self, hparams: DistributedShampoo.HParams) -> None:
-    super().__init__(hparams)
-    self._shard_optimizer_states = False
-    self._statistics_partition_spec = None
-    self._preconditioner_partition_spec = None
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> optax.GradientTransformation:
@@ -1540,9 +1519,14 @@ class DistributedShampoo(BaseOptimizer):
 
 class ShardedDistributedShampoo(DistributedShampoo):
   """Sharded version of distributed shampoo for model parallel training."""
+  _shard_optimizer_states: Any = dataclasses.field(init=False, repr=False)
+  _statistics_partition_spec: Any = dataclasses.field(init=False, repr=False)
+  _preconditioner_partition_spec: Any = dataclasses.field(
+      init=False, repr=False
+  )
 
-  def __init__(self, hparams: DistributedShampoo.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     self._shard_optimizer_states = True
     self._statistics_partition_spec = jax.sharding.PartitionSpec(
         *self._sharded_axes(
@@ -1556,7 +1540,9 @@ class ShardedDistributedShampoo(DistributedShampoo):
             self._hparams.tensor_split_dims_mapping_for_inverse_pth_root))
 
   @classmethod
-  def HParamsLargeLanguageModeling(cls) -> DistributedShampoo.HParams:  # pylint: disable=invalid-name
+  def HParamsLargeLanguageModeling(
+      cls,
+  ) -> pax_fiddle.Config[DistributedShampoo]:  # pylint: disable=invalid-name
     """Common Shampoo config for Large Language Modeling (8B+)."""
     return cls.HParams(
         block_size=4096,
@@ -1693,18 +1679,15 @@ class ShardedDistributedShampoo(DistributedShampoo):
 
 
 class Adagrad(BaseOptimizer):
-  """Adagrad optimizer."""
+  """Adagrad optimizer.
 
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for Adagrad.
-
-    Attributes:
-      initial_accumulator_value: Initial value of the accumulator.
-      epsilon: Small constant applied to the denominator outside of the square
-        root to avoid dividing by zero when rescaling.
-    """
-    initial_accumulator_value: float = 0.1
-    epsilon: float = 1e-10
+  Attributes:
+    initial_accumulator_value: Initial value of the accumulator.
+    epsilon: Small constant applied to the denominator outside of the square
+      root to avoid dividing by zero when rescaling.
+  """
+  initial_accumulator_value: float = 0.1
+  epsilon: float = 1e-10
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> optax.GradientTransformation:
@@ -2515,65 +2498,62 @@ def sharded_adafactor(
 
 
 class ShardedAdafactor(BaseOptimizer):
-  """Sharded AdaFactor optimizer."""
+  """Sharded AdaFactor optimizer.
 
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for Adafactor.
-
-    Attributes:
-      weight_decay: an optional float tensor as decoupled weight decay value, or
-        a dictionary with key as regex scope pattern and value as corresponding
-        weight decay float tensor. The value will apply to all variables under
-        that scope name.
-      layerwise_adaptation: A boolean, whether or not to use layer-wise adaptive
-        moments (LAMB): https://arxiv.org/abs/1904.00962.
-      exclude_from_layerwise_adaptation: A dictionary with key as regex scope
-        pattern for variables to be skipped.
-      decay_method: A string, deciding how decay_rate should be computed.
-        Permitted values are `adam` and `pow`.
-      decay_adam: A float, decay if decay_method == `adam`.
-      decay_pow: A float, decay if decay_method == `pow`.
-      beta1: A float value between 0 and 1 for the momentum.
-      clip_threshold: An optional float >= 1.
-      factored: A boolean, whether or not to use factored second order momentum.
-      epsilon1_grad_sq_reg: Regularization constant for squared gradient.
-      quantized_dtype: Type of the quantized input. Allowed options are
-        jnp.int8, jnp.int16, and jnp.bfloat16. If jnp.bfloat16 is specified,
-        accumulators are stored as bfloat16, instead of quantized integers.
-      respect_skip_lp_regularization: Whether or not to respect lingvo
-        SKIP_LP_REGULARIZATION var collection that skips decoupled weight decay.
-      per_var_learning_summary: If True, output per var learning summary.
-      sort_factored_second_moment_dims: If True, will select largest and second
-        largest dims as row and column dims for factored second moment.
-      min_dim_size_to_factor: Only factor the statistics if two array dimensions
-        have at least this size. NOTE: min_dim_size_to_factor threshold only
-        applies when
-      multiply_by_parameter_scale: If True, then scale learning_rate by
-        parameter norm. if False, provided learning_rate is absolute step size.
-      epsilon2_param_scale_reg: Regularization constant for parameter scale.
-      maybe_inf_to_nan: Will use jax.nan_to_num during update when True.
-    """
-    weight_decay: Optional[Union[float, dict[str, float]]] = None
-    layerwise_adaptation: bool = False
-    exclude_from_layerwise_adaptation: Optional[list[str]] = None
-    decay_method: str = ''
-    decay_adam: float = 0.
-    decay_pow: float = 0.
-    beta1: float = 0.
-    clip_threshold: Optional[float] = 1.
-    factored: bool = True
-    epsilon1_grad_sq_reg: float = 1e-30
-    quantized_dtype: str = 'int8'
-    respect_skip_lp_regularization: bool = False
-    per_var_learning_summary: bool = False
-    sort_factored_second_moment_dims: bool = False
-    min_dim_size_to_factor: int = 128
-    multiply_by_parameter_scale: bool = False
-    epsilon2_param_scale_reg: float = 1e-3
-    maybe_inf_to_nan: bool = True
+  Attributes:
+    weight_decay: an optional float tensor as decoupled weight decay value, or a
+      dictionary with key as regex scope pattern and value as corresponding
+      weight decay float tensor. The value will apply to all variables under
+      that scope name.
+    layerwise_adaptation: A boolean, whether or not to use layer-wise adaptive
+      moments (LAMB): https://arxiv.org/abs/1904.00962.
+    exclude_from_layerwise_adaptation: A dictionary with key as regex scope
+      pattern for variables to be skipped.
+    decay_method: A string, deciding how decay_rate should be computed.
+      Permitted values are `adam` and `pow`.
+    decay_adam: A float, decay if decay_method == `adam`.
+    decay_pow: A float, decay if decay_method == `pow`.
+    beta1: A float value between 0 and 1 for the momentum.
+    clip_threshold: An optional float >= 1.
+    factored: A boolean, whether or not to use factored second order momentum.
+    epsilon1_grad_sq_reg: Regularization constant for squared gradient.
+    quantized_dtype: Type of the quantized input. Allowed options are jnp.int8,
+      jnp.int16, and jnp.bfloat16. If jnp.bfloat16 is specified, accumulators
+      are stored as bfloat16, instead of quantized integers.
+    respect_skip_lp_regularization: Whether or not to respect lingvo
+      SKIP_LP_REGULARIZATION var collection that skips decoupled weight decay.
+    per_var_learning_summary: If True, output per var learning summary.
+    sort_factored_second_moment_dims: If True, will select largest and second
+      largest dims as row and column dims for factored second moment.
+    min_dim_size_to_factor: Only factor the statistics if two array dimensions
+      have at least this size. NOTE: min_dim_size_to_factor threshold only
+      applies when
+    multiply_by_parameter_scale: If True, then scale learning_rate by parameter
+      norm. if False, provided learning_rate is absolute step size.
+    epsilon2_param_scale_reg: Regularization constant for parameter scale.
+    maybe_inf_to_nan: Will use jax.nan_to_num during update when True.
+  """
+  weight_decay: Optional[Union[float, dict[str, float]]] = None
+  layerwise_adaptation: bool = False
+  exclude_from_layerwise_adaptation: Optional[list[str]] = None
+  decay_method: str = ''
+  decay_adam: float = 0.0
+  decay_pow: float = 0.0
+  beta1: float = 0.0
+  clip_threshold: Optional[float] = 1.0
+  factored: bool = True
+  epsilon1_grad_sq_reg: float = 1e-30
+  quantized_dtype: str = 'int8'
+  respect_skip_lp_regularization: bool = False
+  per_var_learning_summary: bool = False
+  sort_factored_second_moment_dims: bool = False
+  min_dim_size_to_factor: int = 128
+  multiply_by_parameter_scale: bool = False
+  epsilon2_param_scale_reg: float = 1e-3
+  maybe_inf_to_nan: bool = True
 
   @classmethod
-  def HParamsAdamB(cls) -> ShardedAdafactor.HParams:  # pylint: disable=invalid-name
+  def HParamsAdamB(cls) -> pax_fiddle.Config[ShardedAdafactor]:  # pylint: disable=invalid-name
     """Convenient method for another commonly used Adam config."""
     return cls.HParams(
         beta1=0.9, decay_method='adam', decay_adam=0.98, quantized_dtype='int8')
@@ -2677,23 +2657,20 @@ class DynamicAccumulator(BaseOptimizer):
   of the batch processed in the last fprop.
   Use `BaseLayer.create_optimizer_context_variable` in `setup` for defining the
   value, and `BaseLayer.put_variable` for updating the value.
+
+  Attributes:
+    optimizer_tpl: Parameter for base optimizer.
+    min_accum_weight: Threshold.
+    weight_key: Key for obtaining the weight variable from model variables.
+      Usually, this key starts with 'optimizer_context.'.
   """
+  optimizer_tpl: Optional[pax_fiddle.Config[BaseOptimizer]] = None
+  min_accum_weight: float = 0.0
+  weight_key: str = ''
+  base_optimizer: Any = dataclasses.field(init=False, repr=False)
 
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for DynamicAccumulator.
-
-    Attributes:
-      optimizer_tpl: Parameter for base optimizer.
-      min_accum_weight: Threshold.
-      weight_key: Key for obtaining the weight variable from model variables.
-        Usually, this key starts with 'optimizer_context.'.
-    """
-    optimizer_tpl: Optional[BaseOptimizer.HParams] = None
-    min_accum_weight: float = 0.0
-    weight_key: str = ''
-
-  def __init__(self, hparams: BaseOptimizer.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     p = self._hparams
     if not p.weight_key:
       raise ValueError('Specify `p.weight_key`.')
@@ -2827,21 +2804,18 @@ class ShardedStaticAccumulator(BaseOptimizer):
   When used with ShardedAdafactor turn off per_var_learning_summary since
   accessing global summary within lax.while_loop won't work. Other summaries
   should work ok.
+
+  Attributes:
+    optimizer_tpl: Parameter for base optimizer.
+    num_sub_batches: The number of batches whose updates should be accumulated
+      before sending to the base optimizer transformation.
   """
+  optimizer_tpl: Optional[pax_fiddle.Config[BaseOptimizer]] = None
+  num_sub_batches: int = 1
+  base_optimizer: Any = dataclasses.field(init=False, repr=False)
 
-  class HParams(BaseOptimizer.HParams):
-    """Defines hyper-params for ShardedStaticAccumulator.
-
-    Attributes:
-      optimizer_tpl: Parameter for base optimizer.
-      num_sub_batches: The number of batches whose updates should be accumulated
-        before sending to the base optimizer transformation.
-    """
-    optimizer_tpl: Optional[BaseOptimizer.HParams] = None
-    num_sub_batches: int = 1
-
-  def __init__(self, hparams: BaseOptimizer.HParams) -> None:
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     p = self._hparams
     if p.num_sub_batches < 1:
       raise ValueError('Set `p.num_sub_batches >= 1`.')

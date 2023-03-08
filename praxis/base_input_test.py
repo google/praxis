@@ -15,7 +15,9 @@
 
 """Tests for base_input."""
 
+import dataclasses
 import os
+from typing import Any
 
 from absl import flags
 from absl.testing import absltest
@@ -34,9 +36,11 @@ instantiate = base_hyperparams.instantiate
 
 
 class TestInput(base_input.BaseInput):
+  _dataset: Any = dataclasses.field(init=False, repr=False)
+  _iter: Any = dataclasses.field(init=False, repr=False)
 
-  def __init__(self, hparams):
-    super().__init__(hparams)
+  def __post_init__(self):
+    super().__post_init__()
     self._dataset = self._get_dataset()
     self._iter = iter(self._dataset)
 

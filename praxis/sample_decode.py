@@ -448,7 +448,8 @@ def _condense_state(block_num_samples) -> base_layer.DecodeStateTransformFn:
 
 
 class BaseNextTokenSampler(
-    base_hyperparams.BaseParameterizable, metaclass=abc.ABCMeta):
+    base_hyperparams.FiddleBaseParameterizable, metaclass=abc.ABCMeta
+):
 
   @abc.abstractmethod
   def __call__(self, model: base_layer.BaseLayerApi, logits: JTensor,
@@ -482,26 +483,22 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
   If all the values in gumbel_prng_key is set to DUMMY_PRNG_KEY, gumbel_prng_key
   will be ignored and model.next_prng_key() is used to generate random noise
   for sampling decode.
+
+  Attributes:
+    top_k: if nonzero, use top-k sampling, only selecting amongthe most likely k
+      tokens at each step.
+    top_p: if not None, use the smallest number of logits whose cumulative sum
+      of probs adds up to (at least) p.
+    epsilon_p: if positive, use epsilon sampling, only selecting among the
+      tokens with probability at least epsilon at each step.
+    global_normalize: if top_k and top_p are enabled together, this flag
+      indicates whether we need to normalize the logits in top_k logits or
+      globally in the whole vocabulary.
   """
-
-  class HParams(BaseNextTokenSampler.HParams):
-    """Associated hyper-params for this layer class.
-
-    Attributes:
-      top_k: if nonzero, use top-k sampling, only selecting amongthe most likely
-        k tokens at each step.
-      top_p: if not None, use the smallest number of logits whose cumulative sum
-        of probs adds up to (at least) p.
-      epsilon_p: if positive, use epsilon sampling, only selecting among the
-        tokens with probability at least epsilon at each step.
-      global_normalize: if top_k and top_p are enabled together, this flag
-        indicates whether we need to normalize the logits in top_k logits or
-        globally in the whole vocabulary.
-    """
-    top_k: int = 40
-    top_p: Optional[Union[float, JTensor]] = None
-    epsilon_p: float = 0.
-    global_normalize: bool = False
+  top_k: int = 40
+  top_p: Optional[Union[float, JTensor]] = None
+  epsilon_p: float = 0.0
+  global_normalize: bool = False
 
   def __call__(
       self,
