@@ -36,6 +36,8 @@ TransformStateFn = Callable[
 # lazy_broadcast_prefix_fn(model, num_suffix_samples, suffix_length)
 LazyBroadcastPrefixFn = Callable[[base_layer.BaseLayerApi, int, int], None]
 BaseHyperParams = base_hyperparams.BaseHyperParams
+# Dummy prng key to avoid deterministic random seed from sample decode input.
+DUMMY_PRNG_KEY = 0
 
 
 @dataclasses.dataclass(frozen=True)

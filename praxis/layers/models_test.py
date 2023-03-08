@@ -83,11 +83,14 @@ class MockLM(base_layer.BaseLayer):
 
 class LanguageModelTest(test_utils.TestCase):
 
-  def _run_decode(self,
-                  decoder_p,
-                  logits,
-                  input_batch,
-                  model_type=LanguageModelType.CAUSAL):
+  def _run_decode(
+      self,
+      decoder_p,
+      logits,
+      input_batch,
+      model_type=LanguageModelType.CAUSAL,
+      prng_seed=9,
+  ):
     p = pax_fiddle.Config(
         models.LanguageModel,
         name='mock_lm',
@@ -98,7 +101,7 @@ class LanguageModelTest(test_utils.TestCase):
     lang_model = instantiate(p)
     theta = NestedMap(lm=NestedMap())
     # We fix seed to 9 to get the desired prefix lengths below.
-    prng_key = jax.random.PRNGKey(seed=9)
+    prng_key = jax.random.PRNGKey(seed=prng_seed)
     results, _ = lang_model.apply(
         theta,
         input_batch,
@@ -730,6 +733,57 @@ class LanguageModelTest(test_utils.TestCase):
           results.decode_lengths,
           np.array([[5, 5], [4, 5], [3, 3]], dtype=np.int32),
       )
+
+  def test_sample_decoding_with_gumbel_prng(self):
+    p = models.SampleDecoderHParams(
+        seqlen=5,
+        min_prefix_len=0,
+        eos_id=1,
+        num_samples=2,
+        k=3,
+        temperature=20.0,
+    )
+
+    prng_seed_a = 123
+    prng_seed_b = 456
+    logits = np.ones(shape=(4, 3, 5), dtype=np.float32) * 0.1
+    sample_logits = jnp.repeat(jnp.array(logits), axis=1, repeats=2)
+
+    # input batch with dummy gumbel_prng_key, gumbel_prng_key will be ignored.
+    input_batch_c = NestedMap(
+        ids=jnp.array(
+            [[11, 13, 15], [12, 14, 16], [20, 30, 40]], dtype=jnp.int32
+        ),
+        paddings=jnp.zeros(shape=(3, 3), dtype=jnp.float32),
+        gumbel_prng_key=jnp.array([0, 0, 0], dtype=jnp.uint32),
+        prefix_lengths=jnp.array([3, 3, 3], dtype=jnp.int32),
+    )
+    results_ac = self._run_decode(
+        p, sample_logits, input_batch_c, prng_seed=prng_seed_a
+    )
+    results_bc = self._run_decode(
+        p, sample_logits, input_batch_c, prng_seed=prng_seed_b
+    )
+
+    # results will be different with different prng_seed
+    self.assertNotAllClose(results_ac.output_ids, results_bc.output_ids)
+
+    # input batch with deterministic gumbel_prng_key, prng_seed will be ignored.
+    input_batch_d = NestedMap(
+        ids=jnp.array(
+            [[11, 13, 15], [12, 14, 16], [20, 30, 40]], dtype=jnp.int32
+        ),
+        paddings=jnp.zeros(shape=(3, 3), dtype=jnp.float32),
+        gumbel_prng_key=jnp.array([123, 23, 56], dtype=jnp.uint32),
+        prefix_lengths=jnp.array([3, 3, 3], dtype=jnp.int32),
+    )
+    results_ad = self._run_decode(
+        p, sample_logits, input_batch_d, prng_seed=prng_seed_a
+    )
+    results_bd = self._run_decode(
+        p, sample_logits, input_batch_d, prng_seed=prng_seed_b
+    )
+    self.assertArraysEqual(results_ad.output_ids, results_bd.output_ids)
 
   @parameterized.parameters(
       (1, False),
