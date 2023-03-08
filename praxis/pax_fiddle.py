@@ -128,8 +128,11 @@ class PaxConfig(Generic[_T], fdl.Config[_T], CloneAndSetMixin):
         to be missing in `self`.
     """
     if not isinstance(source, PaxConfig):
-      raise TypeError('Can only copy fields to PaxConfig from another '
-                      'PaxConfig.  (Copying from HParams not supported yet).')
+      raise TypeError(
+          'Can only copy fields to PaxConfig from another '
+          f'PaxConfig, but got {type(source)}. '
+          '(Copying from HParams not supported yet).'
+      )
 
     # Deepcopy the source, so we don't introduce any unintentional sharing.
     source = source.clone()
