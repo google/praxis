@@ -20,7 +20,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import re
-from typing import Any, Callable, NamedTuple, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
 
 from absl import logging
 import jax
@@ -1882,13 +1882,14 @@ class _ShardedAdafactorHelper:
       quantized_dtype: jnp.dtype,
       # TODO(bf-jax) Update default value to True, once this is supported.
       respect_skip_lp_regularization: bool,
-      exclude_from_layerwise_adaptation: Optional[list[str]],
+      exclude_from_layerwise_adaptation: Optional[List[str]],
       per_var_learning_summary: bool,
       sort_factored_second_moment_dims: bool,
       min_dim_size_to_factor: int,
       multiply_by_parameter_scale: bool,
       epsilon2_param_scale_reg: float,
-      maybe_inf_to_nan: bool) -> None:
+      maybe_inf_to_nan: bool,
+  ) -> None:
     """Constructor. See ShardedAdafactor() below."""
     if weight_decay:
       logging.warning(_WEIGHT_DECAY_DEPRECATION)
@@ -2329,19 +2330,19 @@ class _ShardedAdafactorHelper:
 
 def sharded_adafactor(
     learning_rate_fn: optax.Schedule,
-    weight_decay: Optional[Union[float, dict[str, float]]] = None,
+    weight_decay: Optional[Union[float, Dict[str, float]]] = None,
     layerwise_adaptation: bool = False,
     decay_method: str = '',
-    decay_adam: float = 0.,
-    decay_pow: float = 0.,
-    beta1: float = 0.,
-    clip_threshold: Optional[float] = 1.,
+    decay_adam: float = 0.0,
+    decay_pow: float = 0.0,
+    beta1: float = 0.0,
+    clip_threshold: Optional[float] = 1.0,
     factored: bool = True,
     epsilon1_grad_sq_reg: float = 1e-30,
     quantized_dtype: jnp.dtype = jnp.int8,
     # TODO(bf-jax) Update default value to True, once this is supported.
     respect_skip_lp_regularization: bool = False,
-    exclude_from_layerwise_adaptation: Optional[list[str]] = None,
+    exclude_from_layerwise_adaptation: Optional[List[str]] = None,
     per_var_learning_summary=False,
     sort_factored_second_moment_dims=False,
     # min_dim_size_to_factor is only used when
@@ -2533,9 +2534,9 @@ class ShardedAdafactor(BaseOptimizer):
     epsilon2_param_scale_reg: Regularization constant for parameter scale.
     maybe_inf_to_nan: Will use jax.nan_to_num during update when True.
   """
-  weight_decay: Optional[Union[float, dict[str, float]]] = None
+  weight_decay: Optional[Union[float, Dict[str, float]]] = None
   layerwise_adaptation: bool = False
-  exclude_from_layerwise_adaptation: Optional[list[str]] = None
+  exclude_from_layerwise_adaptation: Optional[List[str]] = None
   decay_method: str = ''
   decay_adam: float = 0.0
   decay_pow: float = 0.0
