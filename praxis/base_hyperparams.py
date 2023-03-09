@@ -208,9 +208,9 @@ def visit_nested_struct(obj_to_visit: Any,
           args.pop('parent')
         # Add cls (except for *_split_dims_mapping -- for compat w/ HParams).
         if not key.endswith('_split_dims_mapping'):
-          _visit(f'{key}.cls', cls)
+          _visit(f'{_sub_key(key, "cls")}', cls)
         for param_name, param_val in args.items():
-          _visit(f'{key}.{param_name}', param_val)
+          _visit(f'{_sub_key(key, param_name)}', param_val)
         exit_fn(key, val)
       else:
         visit_fn(key, val)
