@@ -24,6 +24,7 @@ import jax.numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
+from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 
 
@@ -142,23 +143,14 @@ class TensorQuantizer(base_layer.BaseLayer):
           'min_clipping is None and num_optimize_clipping is None.'
       )
 
-    if self.clipping_coeff is not None and (self.clipping_coeff < 0 or self.clipping_coeff > 1):
+    if self.clipping_coeff is not None and (
+        self.clipping_coeff < 0 or self.clipping_coeff > 1
+    ):
       raise ValueError('clipping_coeff has to be in range 0...1')
 
   def __call__(self):
     # Since TensorQuantizer does nothing when initialized, __call__ is a no-op.
     pass
-
-  def _get_clip_bound(self) -> Tuple[float, float]:
-    # For unsigned 8 bits precision it is [0, 255]
-    if self.unsigned_int_bounds:
-      return 0, 2.0**self.precision - 1
-    else:
-      # For signed 8 bits precision it is [-128, 127]
-      return (
-          -(2.0 ** (self.precision - 1)),
-          2.0 ** (self.precision - 1) - 1,
-      )
 
   def _get_scale_and_min(
       self,
@@ -169,7 +161,9 @@ class TensorQuantizer(base_layer.BaseLayer):
     if self.precision is None:
       return jnp.ones(shape=(1,) * x.ndim, dtype=x.dtype), None
 
-    clip_bound_min, clip_bound_max = self._get_clip_bound()
+    clip_bound_min, clip_bound_max = operations.get_min_max(
+        self.precision, self.unsigned_int_bounds
+    )
 
     if self.use_symmetric:
       x_bound = jnp.max(jnp.abs(x), axis=contract_dims, keepdims=True)
@@ -311,14 +305,18 @@ class TensorQuantizer(base_layer.BaseLayer):
     if self.precision is None:
       return x
 
-    x = _pass_through(x + 0.5, jnp.floor)
-    clip_bound_min, clip_bound_max = self._get_clip_bound()
+    x = operations.pass_through(x + 0.5, jnp.floor)
+    clip_bound_min, clip_bound_max = operations.get_min_max(
+        self.precision, self.unsigned_int_bounds
+    )
     x = jnp.clip(x, clip_bound_min, clip_bound_max)
 
     return x
 
   def _get_zero_point(self, x, x_min, scale) -> JTensor:
-    clip_bound_min, _ = self._get_clip_bound()
+    clip_bound_min, _ = operations.get_min_max(
+        self.precision, self.unsigned_int_bounds
+    )
     zp = clip_bound_min - x_min / scale
     return zp
 

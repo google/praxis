@@ -15,15 +15,12 @@
 
 """Operations for quantization."""
 
-import functools
 import string
-from typing import List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Sequence, Tuple
 
 import jax
-from jax import lax
 from jax import numpy as jnp
 from praxis import pytypes
-from praxis.layers.quantization import aqt
 from praxis.layers.quantization import optimization
 from praxis.layers.quantization import utils
 
@@ -58,16 +55,22 @@ def _get_expand_dims(eqn: str) -> List[int]:
   return filling_dims
 
 
-def _get_min_max(bits):
+def get_min_max(bits: int, unsigned=False) -> Tuple[float, float]:
   """Gets the min/max range for a given number of bits.
 
   Args:
     bits: Target number of bits for quantization.
+    unsigned: If True compute min and max for unsigned number, else for signed.
 
   Returns:
     min/max values for the provide number of bits.
   """
-  return -1 * 2 ** (bits - 1), 2 ** (bits - 1) - 1
+  if unsigned:
+    # For unsigned 8 bits precision it is [0, 255]
+    return 0, 2**bits - 1
+  else:
+    # For signed 8 bits precision it is [-128, 127]
+    return -1 * 2 ** (bits - 1), 2 ** (bits - 1) - 1
 
 
 def compute_offset(x: JTensor, zp: JTensor, eqn: str):
@@ -164,9 +167,10 @@ def einsum(
   return ret
 
 
-def _round_with_gradient(x):
-  zero = x - jax.lax.stop_gradient(x)
-  return zero + jax.lax.stop_gradient(jnp.round(x))
+def pass_through(x: JTensor, fn: Any) -> JTensor:
+  # Create an exactly-zero expression with Sterbenz lemma that has an
+  # exactly-one gradient.
+  return x - jax.lax.stop_gradient(x) + jax.lax.stop_gradient(fn(x))
 
 
 def _reduce_precision(
@@ -196,7 +200,7 @@ def _reduce_precision(
     A tuple of quantized tensor, quantization scale
       and quantization zero point (optional).
   """
-  min_value, max_value = _get_min_max(bits)
+  min_value, max_value = get_min_max(bits)
 
   if use_symmetric:
     bound = jnp.max(jnp.abs(t), axis=contract_dims, keepdims=True)
@@ -223,7 +227,7 @@ def _reduce_precision(
     zp = jnp.multiply(scale, zp)
 
   if need_gradient:
-    t = _round_with_gradient(t)
+    t = pass_through(t, jnp.round)
     t = jnp.clip(t, min_value, max_value)
   else:
     t = jnp.round(t)
@@ -360,138 +364,13 @@ def fakequant_activation(t: JTensor, bits: int = 8) -> JTensor:
   return jnp.multiply(qt, scale).astype(t.dtype)
 
 
-@functools.partial(jax.custom_jvp, nondiff_argnums=(2, 3))
-def _dot_general_aqt(lhs, rhs, dimension_numbers, should_int8_quantize):
-  """Wrapper around lax.dot_general, but with option to use integer dot."""
-  def dot_general_float(ops):
-    lhs_, rhs_ = ops
-    return lax.dot_general(lhs_, rhs_, dimension_numbers=dimension_numbers)
-
-  def dot_general_int(ops):
-    lhs_, rhs_ = ops
-    # The dtype of output is determined by the dtype of activation if the
-    # activation and weight have different dtypes.
-    input_dtype = lhs_.dtype
-    lhs_int = lhs_.astype(jnp.int8)
-    rhs_int = rhs_.astype(jnp.int8)
-    return lax.dot_general(
-        lhs_int,
-        rhs_int,
-        dimension_numbers=dimension_numbers,
-        preferred_element_type=jnp.int32).astype(input_dtype)
-
-  if should_int8_quantize:
-    return dot_general_int((lhs, rhs))
-  else:
-    return dot_general_float((lhs, rhs))
-
-
-@_dot_general_aqt.defjvp
-def _dot_general_aqt_jvp(
-    dimension_numbers,
-    should_int8_quantize,
-    primals,
-    tangents):
-  """Custom gradient for dot_general_aqt that ignores integer casts."""
-  lhs, rhs = primals
-  lhs_dot, rhs_dot = tangents
-  y = _dot_general_aqt(
-      lhs,
-      rhs,
-      dimension_numbers=dimension_numbers,
-      should_int8_quantize=should_int8_quantize)
-
-  def differentiable_dot_general(lhs_, rhs_):
-    return lax.dot_general(lhs_, rhs_, dimension_numbers=dimension_numbers)
-
-  _, y_tangent = jax.jvp(
-      differentiable_dot_general,
-      (lhs, rhs),
-      (lhs_dot, rhs_dot))
-  return y, y_tangent
-
-
-def dot_general(
-    lhs: JTensor,
-    rhs: Optional[JTensor],
-    lhs_quantizer: aqt.TensorQuantizer,
-    rhs_quantizer: aqt.TensorQuantizer,
-    dimension_numbers: lax.DotDimensionNumbers,
-    is_eval: bool,
-    eqn: str,
-    perm: Optional[Sequence[int]] = None,
-) -> JTensor:
-  """Quantized jax.lax.dot_general.
-
-  Args:
-    lhs: Left-hand side of the dot_general (mostly activation).
-    rhs: Right-hand side of the dot_general (mostly weight, can be activation).
-    lhs_quantizer: The tensor quantizer for lhs.
-    rhs_quantizer: The tensor quantizer for rhs.
-    dimension_numbers: A tuple of tuples of the form `((lhs_contracting_dims,
-      rhs_contracting_dims), (lhs_batch_dims, rhs_batch_dims))`
-    is_eval: If False, update the statistics in the tensor quantizers based on
-      lhs and rhs.
-    eqn: The valid binary einsum equation to use.
-    perm: the dimenions to be permuated to align with the einsum equation.
-
-  Returns:
-    An array containing the result with the same dtype as 'lhs' and 'rhs'.
-  """
-  if not is_eval:
-    # TODO(jihwanlee): Stats should be updated during training.
-    pass
-
-  input_dtype = lhs.dtype
-  lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
-
-  lhs, lhs_scale, _ = lhs_quantizer.quantize(
-      lhs, lhs_contract_dims, squeeze_scale=False, quantized_dtype=input_dtype
-  )
-
-  rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
-      rhs, rhs_contract_dims, squeeze_scale=False, quantized_dtype=input_dtype)
-
-  should_int8_quantize = (
-      lhs_quantizer.precision is not None
-      and lhs_quantizer.precision <= 8
-      and rhs_quantizer.precision is not None
-      and rhs_quantizer.precision <= 8
-  )
-
-  out = _dot_general_aqt(
-      lhs,
-      rhs,
-      dimension_numbers=dimension_numbers,
-      should_int8_quantize=should_int8_quantize)
-
-  out_scale = lax.dot_general(
-      lhs_scale, rhs_scale, dimension_numbers=dimension_numbers
-  )
-
-  ret = out * out_scale
-
-  if perm is not None:
-    ret = lax.transpose(ret, perm)
-
-  if rhs_zp is not None:
-    if lhs_quantizer.precision is not None:
-      raise NotImplementedError(
-          'Activation quantization with weight zero point is not supported yet.'
-      )
-    offset = compute_offset(lhs, rhs_zp, eqn)
-    ret = ret - offset
-
-  return ret
-
-
 def aqt_einsum(
     eqn: str,
     lhs: JTensor,
     rhs: JTensor,
     *,
-    lhs_quantizer: aqt.TensorQuantizer,
-    rhs_quantizer: aqt.TensorQuantizer,
+    lhs_quantizer: Any,
+    rhs_quantizer: Any,
 ) -> JTensor:
   """Quantized einsum with AQT style.
 

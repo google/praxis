@@ -20,8 +20,8 @@ from typing import Tuple
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
-import numpy as np
 from jax import numpy as jnp
+import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
@@ -548,37 +548,6 @@ class AqtTest(test_utils.TestCase):
     quant_error_symmetric = jnp.sum(jnp.abs(x_dequant_symmetric - x))
 
     self.assertLessEqual(quant_error_asymmetric, quant_error_symmetric)
-
-  def test_clip_bound(self):
-    precision = 8
-    p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
-        name='signed',
-        precision=precision,
-        add_scale_eps=False,
-        use_symmetric=True,
-    )
-    quant = p_quant.Instantiate()
-    state = quant.init(jax.random.PRNGKey(0))
-    bounds = quant.apply(
-        state, method=quant._get_clip_bound
-    )
-    self.assertEqual(bounds, (-128, 127))
-
-    p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
-        name='unsigned',
-        precision=precision,
-        add_scale_eps=False,
-        use_symmetric=True,
-        unsigned_int_bounds=True,
-    )
-    quant = p_quant.Instantiate()
-    state = quant.init(jax.random.PRNGKey(0))
-    bounds = quant.apply(
-        state, method=quant._get_clip_bound
-    )
-    self.assertEqual(bounds, (0, 255))
 
   def test_aux_quantization_loss(self):
     p_quant = pax_fiddle.Config(

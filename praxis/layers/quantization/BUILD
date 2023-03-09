@@ -399,7 +399,6 @@ pytype_strict_library(
     srcs = ["operations.py"],
     srcs_version = "PY3",
     deps = [
-        ":aqt",
         ":optimization",
         ":utils",
         # Implicit flax.core dependency.
@@ -479,6 +478,7 @@ pytype_strict_library(
     srcs = ["aqt.py"],
     srcs_version = "PY3",
     deps = [
+        ":operations",
         ":quantization_hparams",
         # Implicit jax dependency.
         "//praxis:base_layer",
