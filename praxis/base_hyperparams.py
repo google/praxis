@@ -24,6 +24,7 @@ import enum
 import functools
 import inspect
 import re
+import sys
 import types
 import typing
 from typing import Any, Callable, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
@@ -790,6 +791,16 @@ class BaseParameterizable:
                             str, ...]] = None,
                         **kwargs: Any) -> None:
     """Automatically initializes all subclasses as custom dataclasses."""
+    if not (
+        hasattr(cls, '_USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE')
+        or 'google.colab' in sys.modules
+    ):
+      raise ValueError(
+          'New Pax classes should be subclassed from '
+          'FiddleBaseParameterizable. If you need to override this, then add '
+          '_USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE=True to your class '
+          'definition.'
+      )
     super().__init_subclass__(**kwargs)
     _bind_cls_to_nested_params_class(cls)
     _add_precise_signature_to_make(cls, init_params_arg_name,

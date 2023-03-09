@@ -38,6 +38,8 @@ nested_struct_to_text = base_hyperparams.nested_struct_to_text
 
 class SimpleTestClass(base_hyperparams.BaseParameterizable):
 
+  _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
+
   class HParams(base_hyperparams.BaseHyperParams):
     a: int
     b: str = 'b'
@@ -59,6 +61,8 @@ class SimpleTestChild(SimpleTestClass):
 
 class NestedTestClass(base_hyperparams.BaseParameterizable):
 
+  _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
+
   class HParams(base_hyperparams.BaseHyperParams):
     # Note: This is now no longer recommended; only Params should be fields of
     # Params.
@@ -73,6 +77,9 @@ class NestedTestBehaveClass(NestedTestClass):
 
 
 class NestedNestedTestClass(base_hyperparams.BaseParameterizable):
+
+  _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
+
   class HParams(base_hyperparams.BaseHyperParams):
     tpl: NestedTestClass.HParams
 
@@ -85,6 +92,8 @@ class NestedNestedOverrideTestClass(NestedNestedTestClass):
 
 
 class FiddleTestClass(base_hyperparams.BaseParameterizable):
+
+  _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
   class HParams(base_hyperparams.BaseHyperParams):
     f: fdl.Config = None
@@ -106,6 +115,8 @@ class FiddleToTextTestClass(base_layer.BaseLayer):
 
 
 class NestedStructToTextTestClass(base_hyperparams.BaseParameterizable):
+
+  _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
   class HParams(base_hyperparams.BaseHyperParams):
     tpl: Any = base_hyperparams.sub_config_field(None)
@@ -360,6 +371,8 @@ class HyperParamsTest(absltest.TestCase):
 
       class DuplicatedParameter(base_hyperparams.BaseParameterizable):  # pylint: disable=unused-variable
 
+        _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
+
         class HParams(base_hyperparams.BaseHyperParams):
           foo: int = 0
 
@@ -375,6 +388,8 @@ class HyperParamsTest(absltest.TestCase):
 
       class WrongInit(base_hyperparams.BaseParameterizable):  # pylint: disable=unused-variable
 
+        _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
+
         class HParams(base_hyperparams.BaseHyperParams):
           something: int = 42
 
@@ -384,6 +399,8 @@ class HyperParamsTest(absltest.TestCase):
   def test_make_factories(self):
 
     class DefaultFactoryTestClass(base_hyperparams.BaseParameterizable):
+
+      _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
       class HParams(base_hyperparams.BaseHyperParams):
         a: List[str] = dataclasses.field(default_factory=lambda: [1, 2, 3])
@@ -399,10 +416,14 @@ class HyperParamsTest(absltest.TestCase):
 
     class Foo(base_hyperparams.BaseParameterizable):
 
+      _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
+
       class HParams(base_hyperparams.BaseHyperParams):
         foo_a: int = 0
 
     class Bar(base_hyperparams.BaseParameterizable):
+
+      _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
       class HParams(base_hyperparams.BaseHyperParams):
         foo_tpl: base_hyperparams.BaseHyperParams = (
@@ -422,6 +443,8 @@ class HyperParamsTest(absltest.TestCase):
   def test_hparams_special_attributes(self):
 
     class Foo(base_hyperparams.BaseParameterizable):
+
+      _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
       class HParams(base_hyperparams.BaseHyperParams):
         """Test."""
@@ -443,6 +466,8 @@ class HyperParamsTest(absltest.TestCase):
         return dataclasses.field(metadata={'custom': True})
 
     class Foo(base_hyperparams.BaseParameterizable):
+
+      _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
       class HParams(base_hyperparams.BaseHyperParams):
         a_tpl: Any = base_hyperparams.sub_config_field(CustomSubConfigField())
