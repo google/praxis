@@ -143,6 +143,12 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     assert hparams.num_infeed_hosts is not None
     return cls.get_batch_size(hparams) * hparams.num_infeed_hosts
 
+  def save(self, checkpoint_path: Any):
+    raise NotImplementedError
+
+  def restore(self, checkpoint_path: Any):
+    raise NotImplementedError
+
   def get_next(self) -> NestedJTensor:
     raise NotImplementedError
 
