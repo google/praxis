@@ -401,6 +401,7 @@ pytype_strict_library(
     deps = [
         ":optimization",
         ":utils",
+        # Implicit absl.logging dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.

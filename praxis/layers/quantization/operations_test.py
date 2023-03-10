@@ -250,5 +250,87 @@ class AqtEinsumTest(test_utils.TestCase):
     self.assertArraysEqual(actual_ret, expected_ret)
 
 
+class SubChannelTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(0)
+
+  def test_last_dim_subchannel_reshape(self):
+    inputs = np.array([[0, 1, 2, 3, 4, 5, 6, 7]])
+    inputs_shape = inputs.shape
+
+    # Get the new tensor size with specified number of subchannels.
+    new_inputs_shape = operations.compute_shape_with_subchannels(
+        sub_channels=4, inputs_shape=inputs_shape, contract_dims=[1]
+    )
+    self.assertArraysEqual(new_inputs_shape, [4, 2])
+
+    # Split tensor into subchannels.
+    sub_channel = jnp.reshape(inputs, new_inputs_shape)
+    expected_subchannel = np.array([[0, 1], [2, 3], [4, 5], [6, 7]])
+    self.assertArraysEqual(sub_channel, expected_subchannel)
+
+    # Here quantization could be applied.
+
+    # Reshape it back to original order.
+    outputs = jnp.reshape(sub_channel, inputs_shape)
+    self.assertArraysEqual(outputs, inputs)
+
+  def test_middle_dim_subchannel_reshape(self):
+    inputs = np.array([[
+        [0],  #
+        [1],  #
+        [2],  #
+        [3],  #
+        [4],  #
+        [5],  #
+        [6],  #
+        [7]]])
+    inputs_shape = inputs.shape
+
+    # Get the new tensor size with specified number of subchannels.
+    new_inputs_shape = operations.compute_shape_with_subchannels(
+        sub_channels=4, inputs_shape=inputs_shape, contract_dims=[1],
+        min_sub_channel_size=1
+    )
+    self.assertArraysEqual(new_inputs_shape, [4, 2, 1])
+
+    # Split tensor into subchannels.
+    sub_channel = jnp.reshape(inputs, new_inputs_shape)
+    expected_subchannel = np.array([
+        [[0],  #
+         [1]],  #
+        [[2],  #
+         [3]],  #
+        [[4],  #
+         [5]],  #
+        [[6],  #
+         [7]]])
+    self.assertArraysEqual(sub_channel, expected_subchannel)
+
+    # Reshape it back to original order.
+    outputs = jnp.reshape(sub_channel, inputs_shape)
+    self.assertArraysEqual(outputs, inputs)
+
+  @parameterized.parameters(2, 4, 8)
+  def test_subchannel_shape(self, sub_channels):
+    feature0, feature1, feature2, feature3 = (3, 3, 4, 16)
+    new_shape = operations.compute_shape_with_subchannels(
+        sub_channels=sub_channels,
+        inputs_shape=[feature0, feature1, feature2, feature3],
+        contract_dims=[2, 3],
+        min_sub_channel_size=1,
+    )
+
+    expected_shape = [
+        feature0 * sub_channels,
+        feature1,
+        feature2,
+        feature3 // sub_channels,
+    ]
+    self.assertArraysEqual(new_shape, expected_shape)
+
+
 if __name__ == '__main__':
   absltest.main()

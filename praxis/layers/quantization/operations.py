@@ -19,6 +19,7 @@ import string
 from typing import Any, List, Optional, Sequence, Tuple
 
 import jax
+from absl import logging
 from jax import numpy as jnp
 from praxis import pytypes
 from praxis.layers.quantization import optimization
@@ -363,6 +364,73 @@ def fakequant_activation(t: JTensor, bits: int = 8) -> JTensor:
   qt, scale = reduce_precision_activation(t, need_gradient=True, bits=bits)
   return jnp.multiply(qt, scale).astype(t.dtype)
 
+
+def compute_shape_with_subchannels(
+    sub_channels: int,
+    inputs_shape: List[int],
+    contract_dims: List[int],
+    min_sub_channel_size: int = -1,
+) -> List[int]:
+  """Computes new shape of input tensor for subchannel quantization.
+
+  Args:
+    sub_channels: Number of subchannels for splitting reduction dimension.
+    inputs_shape: Input tensor shape.
+    contract_dims: Axis along which to quantize acts (the non-feature axis).
+    min_sub_channel_size: Minimum feature size, after which there will be
+      no more sub channel division.
+
+  Returns:
+    New shape for subchannel quantization.
+  """
+  # pylint: disable=logging-fstring-interpolation
+  logging.info(f'inputs_shape before sub-channel split {inputs_shape}')
+  ndims = len(inputs_shape)
+
+  feature_axis = tuple(i for i in range(ndims) if i not in contract_dims)
+
+  new_inputs_shape = list(inputs_shape)
+  # Find index of the max size
+  axis_ind_max_size = 0
+  max_size = 0
+  for axis in contract_dims:
+    if new_inputs_shape[axis]:
+      if max_size < new_inputs_shape[axis]:
+        max_size = new_inputs_shape[axis]
+        axis_ind_max_size = axis
+
+  if max_size < sub_channels:
+    raise ValueError(f'Maximum dimension: {max_size} can not be '
+                     f'smaller than sub_channels: {sub_channels}.')
+
+  remainder = sub_channels
+  while remainder > 1:
+    # Split largest reduction dimension into sub channels
+    # and increase the first feature dim proportionally.
+    new_size = new_inputs_shape[axis_ind_max_size] // 2
+
+    # The right way to do it is to introduce another dimension for
+    # sub channel, but we also will have to modify all downstream ops.
+    # To avoid it, we do feature size redistribution,
+    # so feature size has to be divisible by 2:
+    if new_size*2 != new_inputs_shape[axis_ind_max_size]:
+      logging.info(
+          f'inputs_shape[axis_ind_max_size]: {inputs_shape[axis_ind_max_size]} '
+          f'is not divisible by sub_channels: {sub_channels} '
+          'so early stoping of dividing into sub-channels'
+      )
+      break
+
+    if new_size < min_sub_channel_size:
+      break
+
+    new_inputs_shape[axis_ind_max_size] = new_size
+    new_inputs_shape[feature_axis[0]] *= 2
+
+    remainder /= 2
+  logging.info(f'new_inputs_shape after sub-channel split: {new_inputs_shape}')
+  # pylint: enable=logging-fstring-interpolation
+  return new_inputs_shape
 
 def aqt_einsum(
     eqn: str,
