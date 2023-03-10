@@ -469,7 +469,7 @@ def replace_jax_conformer_layer_vars_to_tf(
 
 
 def get_tfevent_log_dirs(root: str) -> List[str]:
-  """Return list of log dirs that contain tfevent files."""
+  """Return list of log dirs relative to `root` that contain tfevent files."""
   log_dir_names = []
   for dirname, subdir, fnames in tf.io.gfile.walk(root):
     if subdir:
@@ -481,7 +481,8 @@ def get_tfevent_log_dirs(root: str) -> List[str]:
         found = True
         continue
     if found:
-      log_dir_names.append(dirname)
+      last_dir = os.path.relpath(os.path.normpath(dirname), root)
+      log_dir_names.append(last_dir)
   return log_dir_names
 
 
