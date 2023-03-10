@@ -124,6 +124,7 @@ pytype_strict_library(
         ":base_hyperparams",
         ":base_layer",
         ":decoder_utils",
+        ":pax_fiddle",
         ":pytypes",
         ":sample_decode",
     ],

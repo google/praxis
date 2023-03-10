@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Sequence, Union
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import decoder_utils
+from praxis import pax_fiddle
 from praxis import pytypes
 from praxis import sample_decode
 BaseHyperParams = base_hyperparams.BaseHyperParams
@@ -101,8 +102,9 @@ class SampleDecoderHParams(DecoderHParams):
   temperature: float = 1.0
   k: int = 40
   p: Optional[Union[float, JTensor]] = None
-  next_token_sampler_tpl: sample_decode.BaseNextTokenSampler.HParams = (
-      sub_config_field(sample_decode.DefaultNextTokenSampler.HParams))
+  next_token_sampler_tpl: pax_fiddle.Config[
+      sample_decode.BaseNextTokenSampler] = (
+          pax_fiddle.template_field(sample_decode.DefaultNextTokenSampler))
   global_normalize: bool = False
   cf_guidance_scale: Optional[Union[List[float], float]] = None
   controlled_decoding: Optional[decoder_utils.ControlledDecodingHParams] = None
