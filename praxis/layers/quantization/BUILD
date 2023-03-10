@@ -250,6 +250,27 @@ py_strict_test(
     ],
 )
 
+py_strict_test(
+    name = "linear_ptq_test",
+    srcs = ["tests/linear_ptq_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":linears",
+        ":quantization_hparams",
+        ":quantization_test_utils",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis/layers:linears",
+    ],
+)
+
 pytype_strict_library(
     name = "conformers",
     srcs = ["conformers.py"],

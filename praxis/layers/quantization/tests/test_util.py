@@ -127,6 +127,31 @@ def generate_combined_qkv_projection_test_config(
   return [dict(zip(keys, case)) for case in cases]
 
 
+def generate_linears_test_config(
+    additional_feature_funcs: Optional[List[Any]] = None,
+) -> Sequence[Dict[str, Any]]:
+  """Function to generate test configurations for Linears layer.
+
+  Args:
+    additional_feature_funcs: Additional functions to further populate the
+      configuration.
+
+  Returns:
+    Test configurations for Linears layer.
+  """
+  keys = [
+      'is_weight_symmetric',
+  ]
+
+  cases = [[True], [False]]
+
+  if additional_feature_funcs is not None:
+    for func in additional_feature_funcs:
+      keys, cases = func(keys, cases)
+
+  return [dict(zip(keys, case)) for case in cases]
+
+
 class QuantizationTestCase(test_utils.TestCase):
   """Test case class for quantized layers.
   """
@@ -157,5 +182,3 @@ class QuantizationTestCase(test_utils.TestCase):
 
     for v1, v2 in zip(list1, list2):
       self.assertNestedListClose(v1, v2, places)
-
-
