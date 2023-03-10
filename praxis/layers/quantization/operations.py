@@ -477,7 +477,10 @@ def aqt_einsum(
   ret = out * out_scale
 
   if rhs_zp is not None:
-    if lhs_quantizer.precision is not None:
+    if (
+        hasattr(lhs_quantizer, 'precision')
+        and lhs_quantizer.precision is not None
+    ):
       raise NotImplementedError(
           'Activation quantization with weight zero point is not supported yet.'
       )

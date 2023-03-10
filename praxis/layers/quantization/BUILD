@@ -30,6 +30,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":attentions",
+        ":automl_select",
         ":conformers",
         ":embedding_softmax",
         ":linears",
@@ -525,6 +526,18 @@ pytype_strict_library(
     ],
 )
 
+pytype_strict_library(
+    name = "automl_select",
+    srcs = ["automl_select.py"],
+    deps = [
+        # Implicit flax.core dependency.
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:pytypes",
+    ],
+)
+
 py_strict_test(
     name = "utils_test",
     srcs = ["utils_test.py"],
@@ -536,6 +549,21 @@ py_strict_test(
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
+        "//praxis:test_utils",
+    ],
+)
+
+py_strict_test(
+    name = "automl_select_test",
+    srcs = ["automl_select_test.py"],
+    deps = [
+        ":aqt",
+        ":automl_select",
+        ":quantization_hparams",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        "//praxis:base_hyperparams",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
     ],
 )
