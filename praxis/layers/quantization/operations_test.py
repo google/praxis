@@ -15,7 +15,7 @@
 
 """Tests for quantized operations."""
 
-from typing import Any, Dict, Sequence
+from typing import Dict, Sequence
 
 from absl.testing import absltest
 from absl.testing import parameterized
