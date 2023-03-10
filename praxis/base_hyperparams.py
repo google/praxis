@@ -852,6 +852,7 @@ class FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
     name = 'HParams'
     qualname = f'{fiddle_base_parameterizable_cls.__qualname__}.{name}'
     namespace = {
+        '__module__': fiddle_base_parameterizable_cls.__module__,
         '__qualname__': qualname,
         'fiddle_base_parameterizable_cls': fiddle_base_parameterizable_cls,
     }
@@ -890,8 +891,13 @@ class FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
 class _FiddleHParamsClassStubDescriptor:
   """Descriptor used to implement BaseParameterizable.HParams stub."""
 
+  def __init__(self):
+    self._cached_values = {}
+
   def __get__(self, obj, objtype):
-    return FiddleHParamsClassStub(objtype)
+    if objtype not in self._cached_values:
+      self._cached_values[objtype] = FiddleHParamsClassStub(objtype)
+    return self._cached_values[objtype]
 
 
 class _FiddleHParamsInstanceStub:

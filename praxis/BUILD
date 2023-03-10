@@ -358,6 +358,7 @@ py_strict_test(
         ":pax_fiddle",
         # Implicit absl.testing.absltest dependency.
         # Implicit fiddle dependency.
+        # Implicit fiddle.experimental.serialization dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit ml_collections config_dict dependency.
