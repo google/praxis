@@ -75,6 +75,7 @@ def create_tensor_quantizer(
         if quant_params.clipping_coeff == 1.0
         else quant_params.clipping_coeff
     )
+    tq_params.sub_channels = quant_params.sub_channels
 
   return tq_params
 
@@ -102,6 +103,7 @@ class TensorQuantizer(base_layer.BaseLayer):
     quant_loss_weight: Weight for quantization loss.
     optimize_clipping_per_channel: If True choose the best clipping value
       per channel, else per-tensor.
+    sub_channels: Number of sub channels for splitting channelwise quantization.
   """
   precision: Optional[int] = None
   stop_scale_gradient: bool = False
@@ -113,6 +115,7 @@ class TensorQuantizer(base_layer.BaseLayer):
   use_symmetric: bool = True
   quant_loss_weight: Optional[float] = None
   optimize_clipping_per_channel: bool = False
+  sub_channels: Optional[int] = None
 
   def setup(self):
     del self.dtype  # not used

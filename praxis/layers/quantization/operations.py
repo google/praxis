@@ -18,8 +18,8 @@
 import string
 from typing import Any, List, Optional, Sequence, Tuple
 
-import jax
 from absl import logging
+import jax
 from jax import numpy as jnp
 from praxis import pytypes
 from praxis.layers.quantization import optimization
@@ -367,8 +367,8 @@ def fakequant_activation(t: JTensor, bits: int = 8) -> JTensor:
 
 def compute_shape_with_subchannels(
     sub_channels: int,
-    inputs_shape: List[int],
-    contract_dims: List[int],
+    inputs_shape: Sequence[int],
+    contract_dims: Sequence[int],
     min_sub_channel_size: int = -1,
 ) -> List[int]:
   """Computes new shape of input tensor for subchannel quantization.
@@ -432,6 +432,7 @@ def compute_shape_with_subchannels(
   # pylint: enable=logging-fstring-interpolation
   return new_inputs_shape
 
+
 def aqt_einsum(
     eqn: str,
     lhs: JTensor,
@@ -464,17 +465,39 @@ def aqt_einsum(
 
   lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
 
-  lhs, lhs_scale, _ = lhs_quantizer.quantize(
-      lhs, lhs_contract_dims, squeeze_scale=False, quantized_dtype=lhs.dtype
-  )
+  if rhs_quantizer.sub_channels is not None:
+    if lhs_quantizer.precision is not None:
+      raise ValueError(
+          'sub_channels is not implemented for activation quantization yet.'
+      )
 
-  rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
-      rhs, rhs_contract_dims, squeeze_scale=False, quantized_dtype=rhs.dtype)
+    input_shape = rhs.shape
+    new_shape = compute_shape_with_subchannels(
+        rhs_quantizer.sub_channels, rhs.shape, rhs_contract_dims
+    )
+    rhs = jnp.reshape(rhs, new_shape)
 
-  out = jnp.einsum(eqn, lhs, rhs)
-  out_scale = jnp.einsum(eqn, lhs_scale, rhs_scale)
+    # It is weights only fake quantization for evaluation purposes.
+    rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
+        rhs, rhs_contract_dims, squeeze_scale=False, quantized_dtype=rhs.dtype
+    )
+    deq_rhs = rhs_quantizer.dequantize(
+        rhs, rhs_scale, rhs_contract_dims, rhs_zp
+    )
+    deq_rhs = jnp.reshape(deq_rhs, input_shape)
+    ret = jnp.einsum(eqn, lhs, deq_rhs)
+  else:
+    lhs, lhs_scale, _ = lhs_quantizer.quantize(
+        lhs, lhs_contract_dims, squeeze_scale=False, quantized_dtype=lhs.dtype
+    )
 
-  ret = out * out_scale
+    rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
+        rhs, rhs_contract_dims, squeeze_scale=False, quantized_dtype=rhs.dtype)
+
+    out = jnp.einsum(eqn, lhs, rhs)
+    out_scale = jnp.einsum(eqn, lhs_scale, rhs_scale)
+
+    ret = out * out_scale
 
   if rhs_zp is not None:
     if (

@@ -642,6 +642,54 @@ class AqtTest(test_utils.TestCase):
     # than the outlier we added = 2.0.
     self.assertAllClose(q_s[1, 0], 1.6)
 
+  @parameterized.named_parameters(
+      dict(testcase_name='2bit', precision=2),
+      dict(testcase_name='4bit', precision=4),
+  )
+  def test_sub_channel_quant_error_less_than_standard(self, precision):
+    contract_dims = [1]
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='asymmetric',
+        precision=precision,
+        add_scale_eps=False,
+        use_symmetric=False,
+    )
+    p_quant_sub = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='asymmetric_sub_channel',
+        precision=precision,
+        add_scale_eps=False,
+        use_symmetric=False,
+        sub_channels=8,
+    )
+
+    x = jax.random.uniform(
+        jax.random.PRNGKey(0), shape=(2, 128), minval=-1, maxval=1
+    )
+
+    x_quant, x_dequant, q_scale = (
+        self.get_quantize_dequantized_and_scale(
+            p_quant, x, axis=contract_dims
+        )
+    )
+    self.assertEqual((2, 1), q_scale.shape)
+    quant_error = jnp.sum(jnp.abs(x_dequant - x))
+
+    self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant))
+    self.assertEqual(-2 ** (precision - 1), jnp.min(x_quant))
+
+    x_quant_sub, x_dequant_sub, _ = (
+        self.get_quantize_dequantized_and_scale(
+            p_quant_sub, x, axis=contract_dims
+        )
+    )
+    self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant_sub))
+    self.assertLessEqual(-(2 ** (precision - 1)), jnp.min(x_quant_sub))
+    quant_error_sub = jnp.sum(jnp.abs(x_dequant_sub - x))
+
+    self.assertLessEqual(quant_error, quant_error_sub)
+
 
 if __name__ == '__main__':
   absltest.main()
