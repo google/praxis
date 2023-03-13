@@ -187,6 +187,37 @@ def generate_dotproduct_attention_test_config(
   return [dict(zip(keys, case)) for case in cases]
 
 
+def generate_one_headed_attention_projection_test_config(
+    additional_feature_funcs: Optional[List[Any]] = None
+) -> Sequence[Dict[str, Any]]:
+  """Generate test configurations for OneHeadedAttentionProjection layer.
+
+  Args:
+    additional_feature_funcs: Additional functions to further populate the
+    configuration.
+
+  Returns:
+    Test configurations for OneHeadedAttentionProjection layer.
+  """
+  keys = [
+      'use_bias',
+      'is_weight_symmetric',
+  ]
+
+  bias = [True, False]
+  weight_symmetric = [True, False]
+
+  cases = []
+  for case in itertools.product(bias, weight_symmetric):
+    cases.append([case[0], case[1]])
+
+  if additional_feature_funcs is not None:
+    for func in additional_feature_funcs:
+      keys, cases = func(keys, cases)
+
+  return [dict(zip(keys, case)) for case in cases]
+
+
 class QuantizationTestCase(test_utils.TestCase):
   """Test case class for quantized layers.
   """
