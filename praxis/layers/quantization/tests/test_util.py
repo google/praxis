@@ -152,6 +152,41 @@ def generate_linears_test_config(
   return [dict(zip(keys, case)) for case in cases]
 
 
+def generate_dotproduct_attention_test_config(
+    additional_feature_funcs: Optional[List[Any]] = None
+) -> Sequence[Dict[str, Any]]:
+  """Function to generate test configurations for DotProductAttention layer.
+
+  Args:
+    additional_feature_funcs: Additional functions to further populate the
+    configuration.
+
+  Returns:
+    Test configurations for DotProductAttention layer.
+  """
+  keys = [
+      'dconv_qkv',
+      'combine_qkv',
+      'output_proj_use_nhd_shape',
+      'use_rotary_position_emb',
+      'cast_rotary_position_emb',
+      'zero_fully_masked',
+      'simulate_packed'
+  ]
+
+  flags = [[True, False] for _ in range(len(keys))]
+
+  cases = []
+  for case in itertools.product(*flags):
+    cases.append(list(case))
+
+  if additional_feature_funcs is not None:
+    for func in additional_feature_funcs:
+      keys, cases = func(keys, cases)
+
+  return [dict(zip(keys, case)) for case in cases]
+
+
 class QuantizationTestCase(test_utils.TestCase):
   """Test case class for quantized layers.
   """
