@@ -1149,7 +1149,7 @@ py_strict_test(
     size = "large",
     srcs = ["transformer_models_test.py"],
     python_version = "PY3",
-    shard_count = 27,
+    shard_count = 8,
     srcs_version = "PY3",
     deps = [
         ":attentions",
@@ -1166,6 +1166,31 @@ py_strict_test(
         # Implicit lingvo.core.gshard_builder dependency.
         # Implicit numpy dependency.
         "//praxis:base_hyperparams",
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        # Implicit tensorflow_no_contrib dependency.
+    ],
+)
+
+py_strict_test(
+    name = "transformer_models_encoder_decoder_test",
+    size = "large",
+    srcs = ["transformer_models_encoder_decoder_test.py"],
+    python_version = "PY3",
+    shard_count = 48,
+    srcs_version = "PY3",
+    deps = [
+        ":embedding_softmax",
+        ":ngrammer",
+        ":transformer_models",
+        ":transformers",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit fiddle dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
