@@ -223,6 +223,67 @@ class LinearsPTQTest(quantization_test_util.QuantizationTestCase):
     self.assertNestedListClose(to_list(weight_scale), expected_scale)
     self.assertNestedListClose(to_list(weight_zp), expected_zp)
 
+  # Check Q specification.
+  @parameterized.parameters(generate_quantization_test_config())
+  def test_quantization_partition_spec(
+      self,
+      is_weight_symmetric,
+  ):
+    quantization_option = QuantizationHParams(
+        quantization_type=QuantizationType.PTQ,
+        mode=QuantizationMode.MATERIALIZE,
+        weight_params=quantization_hparams.WeightQuantizationParams(
+            use_symmetric=is_weight_symmetric
+        ),
+    )
+
+    cfg = pax_fiddle.Config(
+        qlinears.Linear,
+        name='_linear_quantized',
+        mesh_axis_names=['replica', 'mdl', 'data'],
+        weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
+            wt=['mdl', 'data']
+        ),
+        quantization=quantization_option,
+        input_dims=4,
+        output_dims=3,
+    )
+
+    layer = instantiate(cfg)
+    inputs = np.random.normal(1.5, 2.0, [1, 4]).astype(np.float32)
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = layer.init(prng_key, inputs)
+
+      pspec, _ = layer.apply(
+          initial_vars, mutable=[], method=layer.quantized_partition_specs
+      )
+
+    expected_pspec = {
+        'params': {
+            'w': base_layer.BoxedPartitionSpec(
+                meta=jax.sharding.PartitionSpec('mdl', 'data')
+            ),
+            'w_quantized_scale': base_layer.BoxedPartitionSpec(
+                meta=jax.sharding.PartitionSpec(
+                    'data',
+                )
+            ),
+        }
+    }
+
+    if not is_weight_symmetric:
+      expected_pspec['params']['w_quantized_zp'] = (
+          base_layer.BoxedPartitionSpec(
+              meta=jax.sharding.PartitionSpec(
+                  'data',
+              )
+          )
+      )
+
+    self.assertEqual(pspec, expected_pspec)
+
 
 if __name__ == '__main__':
   absltest.main()
