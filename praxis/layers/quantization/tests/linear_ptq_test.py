@@ -82,6 +82,39 @@ def _add_expected_quantized_weights(cur_key, cur_samples):
   return updated_key, ret
 
 
+def _add_expected_quantization_results(cur_key, cur_samples):
+  sample_weight = [
+      1.76405235,
+      0.40015721,
+      0.97873798,
+      2.2408932,
+      1.86755799,
+      -0.97727788,
+      0.95008842,
+      -0.15135721,
+      -0.10321885,
+      0.4105985,
+      0.14404357,
+      1.45427351,
+  ]
+  sample_input = [-0.6712612, 3.494691, 2.065957, -1.5125895]
+  expected_results = [
+      [[8.0014305, 5.733789, -6.4674907]],
+      [[7.984358, 5.729262, -6.4777813]],
+  ]
+
+  updated_key = cur_key + ['sample_weight', 'sample_input', 'expected_result']
+  ret = []
+  for sample, expected_result in zip(cur_samples, expected_results):
+    sample.append(sample_weight)
+    sample.append(sample_input)
+    sample.append(expected_result)
+
+    ret.append(sample)
+
+  return updated_key, ret
+
+
 class LinearsPTQTest(quantization_test_util.QuantizationTestCase):
   """Test cases for QuantizationType.PTQ on Linears layer
 
@@ -283,6 +316,69 @@ class LinearsPTQTest(quantization_test_util.QuantizationTestCase):
       )
 
     self.assertEqual(pspec, expected_pspec)
+
+  # Check inference result.
+  @parameterized.parameters(
+      generate_quantization_test_config([_add_expected_quantization_results])
+  )
+  def test_inference_call(
+      self,
+      is_weight_symmetric,
+      sample_weight,
+      sample_input,
+      expected_result,
+  ):
+    quantization_option = QuantizationHParams(
+        quantization_type=QuantizationType.PTQ,
+        mode=QuantizationMode.INFERENCE,
+        weight_params=quantization_hparams.WeightQuantizationParams(
+            use_symmetric=is_weight_symmetric
+        ),
+    )
+    linear_cfg_float = pax_fiddle.Config(linears.Linear, name='_linear_float')
+    linear_cfg_quantized = pax_fiddle.Config(
+        qlinears.Linear,
+        name='_linear_quantized',
+        quantization=quantization_option,
+    )
+    for cfg in [linear_cfg_float, linear_cfg_quantized]:
+      cfg.input_dims = 4
+      cfg.output_dims = 3
+
+    layer_f = instantiate(linear_cfg_float)
+    layer_q = instantiate(linear_cfg_quantized)
+    inputs = np.array(sample_input).astype(np.float32).reshape([1, 4])
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars_f = layer_f.init(prng_key, inputs)
+      initial_vars_q = layer_q.init(prng_key, inputs)
+      weight_shape_f = initial_vars_f[base_layer.PARAMS]['w'].shape
+      weight_shape_q = initial_vars_q[base_layer.PARAMS]['w'].shape
+      sample_weight = sample_weight[: np.prod(weight_shape_f)]
+      initial_vars_f[base_layer.PARAMS]['w'] = np.array(sample_weight).reshape(
+          weight_shape_f
+      )
+      initial_vars_q[base_layer.PARAMS]['w'] = np.array(sample_weight).reshape(
+          weight_shape_q
+      )
+      quantized_vars, _ = layer_q.apply(
+          initial_vars_q, mutable=[], method=layer_q.quantize_weight
+      )
+      for k, v in quantized_vars[base_layer.PARAMS].items():
+        initial_vars_q[base_layer.PARAMS][k] = v
+
+      res_f = layer_f.apply(initial_vars_f, inputs)
+      res_q = layer_q.apply(initial_vars_q, inputs)
+
+    # Since they are quantized results, they may not be exactly equal,
+    # but they should be similar in some way.
+    result_f = to_list(res_f)
+    result_q = to_list(res_q)
+    self.assertNotEqual(result_f, result_q)
+    self.assertAllClose(res_f, res_q, atol=1e-1)
+
+    self.assertNestedListClose(result_q, expected_result)
 
 
 if __name__ == '__main__':
