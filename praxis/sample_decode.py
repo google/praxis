@@ -703,7 +703,11 @@ def sample_decode(
     # [cond_a, cond_a, cond_a, uncond_a, uncond_a, uncond_a, ...].
     prefix_ids = jnp.repeat(prefix_ids, axis=0, repeats=num_samples)
     prefix_paddings = jnp.repeat(prefix_paddings, axis=0, repeats=num_samples)
-    prefix_lengths = jnp.repeat(prefix_lengths, axis=0, repeats=num_samples)
+    prefix_lengths = (
+        None
+        if prefix_lengths is None
+        else jnp.repeat(prefix_lengths, axis=0, repeats=num_samples)
+    )
 
     def _broadcast_input(x: JTensor, name: str) -> JTensor:
       if cf_guidance_scale is not None:
@@ -769,7 +773,7 @@ def sample_decode(
         )
       else:
         lazy_broadcast_prefix_fn(model, num_samples, first_decode_steps + 1)
-    else:
+    elif transform_state_fn is not None:
       # Broadcast prefix state for num_samples.
       transform_state_fn(model,
                          decoder_utils.batch_broadcast_state_fn(num_samples))
