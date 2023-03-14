@@ -166,14 +166,6 @@ def _unreplicate(x):
   """Helper to unreplicated the data based on its type."""
   if isinstance(x, jax.Array):
     return x.addressable_data(0)
-  elif isinstance(x, pxla.ShardedDeviceArray):
-    val = x.device_buffers[0]
-    # DeviceArrays returned by the `.device_buffers` property of SDA might not
-    # have avals set on them. So set the avals before returning so that
-    # computations don't error down the stack.
-    if val.aval is None:
-      val.aval = jax.ShapedArray(val.shape, val.dtype)
-    return val
   else:
     return x
 
