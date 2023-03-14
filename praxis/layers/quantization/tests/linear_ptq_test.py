@@ -31,11 +31,55 @@ QuantizationHParams = quantization_hparams.QuantizationHParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 instantiate = base_layer.instantiate
-
 to_list = quantization_test_util.to_list
 generate_quantization_test_config = (
     quantization_test_util.generate_linears_test_config
 )
+
+
+def _add_expected_quantized_weights(cur_key, cur_samples):
+  target_weight = [
+      1.76405235,
+      0.40015721,
+      0.97873798,
+      2.2408932,
+      1.86755799,
+      -0.97727788,
+      0.95008842,
+      -0.15135721,
+      -0.10321885,
+      0.4105985,
+      0.14404357,
+      1.45427351,
+  ]
+  expected_weights = [
+      [[100, 27, 85], [127, 127, -85], [54, -10, -9], [23, 10, 127]],
+      [[61, -58, 77], [127, 127, -128], [-53, -128, -36], [-128, -91, 127]],
+  ]
+  expected_scales = [
+      [0.01764483, 0.01470518, 0.01145097],
+      [0.00717763, 0.00791731, 0.0095355],
+  ]
+  expected_zps = [None, [-1.3293346, -0.86205906, -0.24326566]]
+
+  updated_key = cur_key + [
+      'target_weight',
+      'expected_weight',
+      'expected_scale',
+      'expected_zp',
+  ]
+  ret = []
+  for sample, expected_weight, expected_scale, expected_zp in zip(
+      cur_samples, expected_weights, expected_scales, expected_zps
+  ):
+    sample.append(target_weight)
+    sample.append(expected_weight)
+    sample.append(expected_scale)
+    sample.append(expected_zp)
+
+    ret.append(sample)
+
+  return updated_key, ret
 
 
 class LinearsPTQTest(quantization_test_util.QuantizationTestCase):
@@ -117,6 +161,67 @@ class LinearsPTQTest(quantization_test_util.QuantizationTestCase):
     inputs = np.random.normal(1.5, 2.0, [2, 4]).astype(np.float32)
     inputs = jnp.asarray(inputs)
     self.train_and_compare(linear_cfg_float, linear_cfg_quantized, inputs)
+
+  # Test PTQ weight quantization.
+  @parameterized.parameters(
+      generate_quantization_test_config([_add_expected_quantized_weights])
+  )
+  def test_weight_quantization(
+      self,
+      is_weight_symmetric,
+      target_weight,
+      expected_weight,
+      expected_scale,
+      expected_zp,
+  ):
+    quantization_option = QuantizationHParams(
+        quantization_type=QuantizationType.PTQ,
+        mode=QuantizationMode.MATERIALIZE,
+        weight_params=quantization_hparams.WeightQuantizationParams(
+            use_symmetric=is_weight_symmetric
+        ),
+    )
+
+    cfg = pax_fiddle.Config(
+        qlinears.Linear,
+        name='_linear_quantized',
+        mesh_axis_names=['replica', 'mdl', 'data'],
+        weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
+            wt=['mdl', 'data']
+        ),
+        quantization=quantization_option,
+        input_dims=4,
+        output_dims=3,
+    )
+
+    layer = instantiate(cfg)
+    inputs = np.random.normal(1.5, 2.0, [1, 4]).astype(np.float32)
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = layer.init(prng_key, inputs)
+      weight_shape = initial_vars[base_layer.PARAMS]['w'].shape
+      # set the weight (before quantization) to the desired target weight
+      initial_vars[base_layer.PARAMS]['w'] = np.array(target_weight).reshape(
+          weight_shape
+      )
+
+      res, _ = layer.apply(
+          initial_vars, mutable=[], method=layer.quantize_weight
+      )
+
+    expected_params = ['w', 'w_quantized_scale']
+    if not quantization_option.weight_params.use_symmetric:
+      expected_params.append('w_quantized_zp')
+
+    # Check quantized parameters values.
+    weight = res[base_layer.PARAMS].get('w', None)
+    weight_scale = res[base_layer.PARAMS].get('w_quantized_scale', None)
+    weight_zp = res[base_layer.PARAMS].get('w_quantized_zp', None)
+
+    self.assertNestedListClose(to_list(weight), expected_weight)
+    self.assertNestedListClose(to_list(weight_scale), expected_scale)
+    self.assertNestedListClose(to_list(weight_zp), expected_zp)
 
 
 if __name__ == '__main__':
