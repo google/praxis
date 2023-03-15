@@ -16,12 +16,12 @@
 """Tests for Praxis repeats layers."""
 
 from absl.testing import absltest
-from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import repeats
@@ -73,6 +73,19 @@ class FeedForward(base_layer.BaseLayer):
     out = jnp.einsum('...y,yz->...z', inputs, self.theta.w)
     out = jax.nn.sigmoid(out)
     return out
+
+
+class FeedForwardWithPadding(FeedForward):
+  """Feedforward layer with paddings in input."""
+
+  def __call__(self, inputs, paddings):
+    self.add_summary('inputs_mean', jnp.mean(inputs))
+    self.add_aux_loss('z_loss', 1, 0.5)
+    self.update_var('step', self.get_var('step') + 1)
+    out = jnp.einsum('...y,yz->...z', inputs, self.theta.w)
+    out = jax.nn.sigmoid(out)
+    out = py_utils.apply_padding(out, paddings)
+    return out, paddings
 
 
 class RepeatCalledTwice(base_layer.BaseLayer):
@@ -136,11 +149,11 @@ class RepeatsTest(test_utils.TestCase):
 
   @parameterized.parameters((False,), (True,))
   def test_repeats(self, unpack_summaries):
-
-    sub_p = pax_fiddle.Config(FeedForward, input_dim=2, output_dim=2)
+    sub_p = pax_fiddle.Config(FeedForwardWithPadding, input_dim=2, output_dim=2)
     p = pax_fiddle.Config(
         repeats.Repeat,
         name='repeated_ffn',
+        positional_args_as_scan_carry=True,
         sub_tpl=sub_p,
         x_times=5,
         unpack_summaries=unpack_summaries,
@@ -150,9 +163,10 @@ class RepeatsTest(test_utils.TestCase):
     k = jax.random.PRNGKey(123)
     k, input_random_key = jax.random.split(k)
     x = jax.random.uniform(input_random_key, shape=(4, 2))
+    paddings = jnp.ones((4, 2))
 
     k, init_key = jax.random.split(k)
-    weight_hparams = repeated_ffn.abstract_init_with_metadata(x)
+    weight_hparams = repeated_ffn.abstract_init_with_metadata(x, paddings)
     self.assertEqual(set(weight_hparams), {PARAMS, NON_TRAINABLE})
     self.assertEqual(weight_hparams[PARAMS]['sub']['w'].shape, [2, 2])
     self.assertEqual(weight_hparams[PARAMS]['sub']['w'].repeat_prefix, [5])
@@ -160,7 +174,7 @@ class RepeatsTest(test_utils.TestCase):
         weight_hparams[PARAMS]['sub']['w'].repeat_prefix_split_dims_mapping,
         (-1,))
 
-    init_vars = repeated_ffn.init(init_key, x)
+    init_vars = repeated_ffn.init(init_key, x, paddings)
     init_vars_shape = jax.tree_map(lambda x: x.shape, init_vars)
     self.assertEqual(set(init_vars_shape), {PARAMS, NON_TRAINABLE})
     self.assertEqual(init_vars_shape[PARAMS]['sub']['w'], (5, 2, 2))
@@ -169,7 +183,8 @@ class RepeatsTest(test_utils.TestCase):
                            jnp.zeros((5,), dtype=jnp.int32))
 
     _, updated_vars = repeated_ffn.apply(
-        init_vars, x, mutable=[NON_TRAINABLE, SUMMARIES, AUX_LOSS])
+        init_vars, x, paddings, mutable=[NON_TRAINABLE, SUMMARIES, AUX_LOSS]
+    )
     self.assertArraysEqual(updated_vars[NON_TRAINABLE]['sub']['step'],
                            jnp.ones((5,), dtype=jnp.int32))
 
