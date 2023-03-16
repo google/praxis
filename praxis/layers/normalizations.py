@@ -384,9 +384,12 @@ class RmsNorm(BaseNormalization):
     direct_scale: Whether to apply scale directly without a +1.0. Var is
       initialized to 1.0 instead when true. This makes the weight compatible
       with the implementation in gshard/glam.
+    intermediate_dtype: If not None, use this datatype in the intermediate
+      computations.
   """
   epsilon: float = 1e-6
   direct_scale: bool = True
+  intermediate_dtype: Optional[jnp.dtype] = None
 
   def setup(self) -> None:
     """Creates RMS normalization variables."""
@@ -420,8 +423,12 @@ class RmsNorm(BaseNormalization):
       Output after applying RMS normalization, with the same shape as 'inputs'.
     """
     del paddings  # Unused.
+    if self.intermediate_dtype is not None:
+      inputs = jnp.asarray(inputs, dtype=self.intermediate_dtype)
     var = jnp.mean(jnp.square(inputs), axis=[-1], keepdims=True)
-    normed_inputs = inputs * jax.lax.rsqrt(var + self.epsilon)
+    normed_inputs = jnp.asarray(
+        inputs * jax.lax.rsqrt(var + self.epsilon), self.fprop_dtype
+    )
     scale = self.theta.scale if self.direct_scale else 1 + self.theta.scale
     normed_inputs *= scale
     return normed_inputs

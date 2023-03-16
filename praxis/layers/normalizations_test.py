@@ -331,6 +331,37 @@ class NormalizationsTest(test_utils.TestCase):
     )
     self.assertAllClose(tf_output, output)
 
+  def test_higher_intermediate_precision(self):
+    rms_norm = instantiate(
+        pax_fiddle.Config(
+            normalizations.RmsNorm,
+            fprop_dtype=jnp.bfloat16,
+            name='jax_rmsn',
+            dim=10,
+            epsilon=1e-6,
+            direct_scale=False,
+            intermediate_dtype=jnp.float32,
+        )
+    )
+    inputs = jnp.asarray(
+        jnp.arange(100).reshape((10, 10)) * 1e-10, jnp.bfloat16
+    )
+    float32_inputs = jnp.asarray(inputs, jnp.float32)
+
+    # The scale is all zeros, which with direct_scale=False means the scaling
+    # is a no-op, as it is multiplication by 1.
+    output = rms_norm.apply({'params': {'scale': jnp.zeros((10,))}}, inputs)
+
+    # The expected output is the bfloat16-rounded version of the correct,
+    # float32 answer.
+    expected_output = jnp.asarray(
+        float32_inputs * jax.lax.rsqrt(jnp.square(float32_inputs) + 1e-6),
+        jnp.bfloat16,
+    )
+
+    # The bfloat16 version would have too much rounding error.
+    self.assertAllClose(expected_output, output, atol=1e-12)
+
 
 if __name__ == '__main__':
   absltest.main()
