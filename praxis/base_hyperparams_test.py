@@ -541,6 +541,11 @@ class FiddleBaseParameterizableTest(absltest.TestCase):
     self.assertIsInstance(instance, FiddlifiedTestClass)
     self.assertEqual(instance.some_param, 3)
 
+  def test_missing_type_annotation(self):
+    with self.assertRaisesRegex(TypeError, 'some_param.*int'):
+      class MissingTypeAnnotation(FiddlifiedTestClass):
+        some_param = 2
+
 
 class NestedStructToTextTestCase(absltest.TestCase):
 

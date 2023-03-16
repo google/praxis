@@ -27,7 +27,7 @@ import re
 import sys
 import types
 import typing
-from typing import Any, Callable, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, cast, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 from absl import logging
 import fiddle as fdl
@@ -1010,6 +1010,15 @@ class FiddleBaseParameterizable:
     if not typing.TYPE_CHECKING:
       kw_only_dataclasses.dataclass(cls)
     cls.__init__ = _require_kwargs(cls)
+    # Note: we cast cls to Any because Pytype doesn't recognize
+    # kw_only_dataclasses as a proper dataclass transformation.
+    for field in dataclasses.fields(cast(Any, cls)):
+      if field.name in cls.__dict__ and field.name not in cls.__annotations__:
+        raise TypeError(
+            f'Class attribute `{cls.__qualname__}.{field.name}` overrides a'
+            ' dataclass field, but is missing a type annotation. This is '
+            f'likely a bug. Consider adding the type annotation {field.type}.'
+        )
 
   def __post_init__(self, *args, **kwargs):
     if args or kwargs:
