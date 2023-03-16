@@ -257,7 +257,6 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     device_order = self.hparams.custom_device_order
     if device_order is None:
       return py_utils.make_array(arrays, global_shapes, global_mesh, pspecs)
-    assert jax.config.jax_array
     assert len(device_order) == jax.device_count()
 
     # Use custom device order to create OpSharding in jax.Array.
