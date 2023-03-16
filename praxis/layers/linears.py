@@ -15,8 +15,9 @@
 
 """Linear layers."""
 
-from typing import Optional
+from typing import Optional, Callable
 
+import jax
 from jax import numpy as jnp
 from jax import vmap
 from praxis import base_layer
@@ -34,7 +35,11 @@ LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 JTensor = pytypes.JTensor
 
 
-def project_last_dim(inputs: JTensor, weight: JTensor) -> JTensor:
+def project_last_dim(
+    inputs: JTensor,
+    weight: JTensor,
+    dot_general=jax.lax.dot_general,
+) -> JTensor:
   """Linear projection on the last dim of the input JTensor.
 
   This is a TPU efficient implementation to avoid reshaping inputs to Rank-2
@@ -55,7 +60,7 @@ def project_last_dim(inputs: JTensor, weight: JTensor) -> JTensor:
   assert input_shape[-1] == weight_shape[0], (
       f'input_shape[-1] = {input_shape[-1]}, '
       f'weight_shape[0] = {weight_shape[0]}')
-  return jnp.einsum('...y,yz->...z', inputs, weight)
+  return jnp.einsum('...y,yz->...z', inputs, weight, _dot_general=dot_general)
 
 
 class Linear(base_layer.BaseLayer):
@@ -67,6 +72,7 @@ class Linear(base_layer.BaseLayer):
   """
   input_dims: int = 0
   output_dims: int = 0
+  dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -89,7 +95,7 @@ class Linear(base_layer.BaseLayer):
       Projected inputs.
     """
     ap = self.activation_split_dims_mapping
-    out = project_last_dim(inputs, self.theta.w)
+    out = project_last_dim(inputs, self.theta.w, dot_general=self.dot_general)
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
     ap_out = ap.out

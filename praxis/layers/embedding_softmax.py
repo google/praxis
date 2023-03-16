@@ -16,7 +16,7 @@
 """Embedding and softmax layers."""
 
 import math
-from typing import Optional, Union
+from typing import Optional, Union, Callable
 
 import jax
 from jax import numpy as jnp
@@ -340,6 +340,7 @@ class SharedEmbeddingSoftmax(FullSoftmax):
   """
   lookup_style: str = 'index'
   scale_sqrt_depth: bool = False
+  dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
@@ -359,7 +360,9 @@ class SharedEmbeddingSoftmax(FullSoftmax):
       one_hot_ids = jax.nn.one_hot(
           ids, self.num_classes, dtype=self.fprop_dtype
       )
-      embs = linears.project_last_dim(one_hot_ids, emb_var)
+      embs = linears.project_last_dim(
+          one_hot_ids, emb_var, dot_general=self.dot_general
+      )
     else:
       raise ValueError('Unknown lookup style.')
     # Scale with sqrt(embedding dims)

@@ -580,6 +580,7 @@ class AttentionProjection(base_layer.BaseLayer):
   attention_combine_dims: bool = False
   use_nhd_shape: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
+  dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -701,7 +702,7 @@ class AttentionProjection(base_layer.BaseLayer):
       ), f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {self.input_dim}'
       batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
-    ret = jnp.einsum(eqn, inputs, w)
+    ret = jnp.einsum(eqn, inputs, w, _dot_general=self.dot_general)
     if self.use_bias:
       ret += theta.b
     return ret
@@ -737,6 +738,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
   use_bias: bool = True
   attention_combine_dims: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
+  dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
 
   def setup(self) -> None:
     # Sharding has the same convention of AttentionProjection, which doesn't
@@ -835,7 +837,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
 
     # K indexes qkv.
     eqn = f'{batch_eqn}D,KDNH->K{batch_eqn}NH'
-    ret = jnp.einsum(eqn, inputs, w)
+    ret = jnp.einsum(eqn, inputs, w, _dot_general=self.dot_general)
     ret = checkpoint_name(ret, 'combined_qkv_proj')
     if self.use_bias:
       # Add newaxis to bias weight for each batch dim since ret is K...NH
@@ -969,6 +971,8 @@ class DotProductAttention(base_layer.BaseLayer):
   decode_cache: bool = True
   attention_mask_summary: bool = False
   zero_fully_masked: bool = False
+  qk_dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
+  pv_dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
 
   # SPMD partition related params.
   #
@@ -1219,7 +1223,9 @@ class DotProductAttention(base_layer.BaseLayer):
 
   def _atten_logits(self, query: JTensor, key: JTensor) -> JTensor:
     """Compute logits from query and key."""
-    logits = jnp.einsum('BTNH,BSNH->BNTS', query, key)
+    logits = jnp.einsum(
+        'BTNH,BSNH->BNTS', query, key, _dot_general=self.qk_dot_general
+    )
     return logits
 
   def _dot_atten(
@@ -1293,7 +1299,9 @@ class DotProductAttention(base_layer.BaseLayer):
     # Apply attention dropout.
     probs = self.atten_dropout(probs)
     # Compute the attention context.
-    encoded = jnp.einsum('BNTS,BSNH->BTNH', probs, value)
+    encoded = jnp.einsum(
+        'BNTS,BSNH->BTNH', probs, value, _dot_general=self.pv_dot_general
+    )
 
     if self.zero_fully_masked:
       # Return zeros for tokens which don't attend anything.
