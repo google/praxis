@@ -95,8 +95,7 @@ flax==0.6.7
     # via
     #   -r praxis-requirements.in
     #   clu
-    #   orbax
-fonttools==4.39.0
+fonttools==4.39.2
     # via matplotlib
 fqdn==1.5.1
     # via jsonschema
@@ -207,7 +206,7 @@ jupyter-client==8.0.3
     #   qtconsole
 jupyter-console==6.6.3
     # via jupyter
-jupyter-core==5.2.0
+jupyter-core==5.3.0
     # via
     #   ipykernel
     #   jupyter-client
@@ -223,7 +222,7 @@ jupyter-events==0.6.3
     # via jupyter-server
 jupyter-http-over-ws==0.0.8
     # via lingvo
-jupyter-server==2.4.0
+jupyter-server==2.5.0
     # via
     #   nbclassic
     #   notebook-shim
@@ -271,14 +270,16 @@ model-pruning-google-research==0.0.5
 mpmath==1.3.0
     # via sympy
 msgpack==1.0.5
-    # via flax
+    # via
+    #   flax
+    #   orbax
 mypy-extensions==1.0.0
     # via typing-inspect
 nbclassic==0.5.3
     # via notebook
 nbclient==0.7.2
     # via nbconvert
-nbconvert==7.2.9
+nbconvert==7.2.10
     # via
     #   jupyter
     #   jupyter-server
@@ -337,7 +338,7 @@ optax==0.1.4
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax==0.1.3
+orbax==0.1.4
     # via flax
 packaging==23.0
     # via
@@ -376,9 +377,8 @@ prompt-toolkit==3.0.38
     # via
     #   ipython
     #   jupyter-console
-protobuf==3.19.5
+protobuf==3.19.6
     # via
-    #   -r praxis-requirements.in
     #   googleapis-common-protos
     #   lingvo
     #   tensorboard
@@ -513,7 +513,7 @@ tensorflow-datasets==4.8.3
     # via lingvo
 tensorflow-estimator==2.9.0
     # via tensorflow
-tensorflow-hub==0.12.0
+tensorflow-hub==0.13.0
     # via
     #   lingvo
     #   tensorflow-text
@@ -585,6 +585,7 @@ typing-extensions==4.5.0
     #   flax
     #   libcst
     #   optax
+    #   orbax
     #   rich
     #   tensorflow
     #   typing-inspect
@@ -606,7 +607,7 @@ websocket-client==1.5.1
     # via jupyter-server
 werkzeug==2.2.3
     # via tensorboard
-wheel==0.38.4
+wheel==0.40.0
     # via
     #   astunparse
     #   tensorboard
