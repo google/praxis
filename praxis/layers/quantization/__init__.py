@@ -24,3 +24,6 @@ from praxis.layers.quantization.embedding_softmax import SharedEmbeddingSoftmax
 from praxis.layers.quantization.linears import Linear
 from praxis.layers.quantization.multi_query_attention import OneHeadedAttentionProjection
 from praxis.layers.quantization.operations import einsum
+from praxis.layers.quantization.searchable import SearchableAttentionProjection
+from praxis.layers.quantization.searchable import SearchableCombinedQKVProjectionLayer
+from praxis.layers.quantization.searchable import SearchableLinear

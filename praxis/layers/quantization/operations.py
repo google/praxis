@@ -465,7 +465,10 @@ def aqt_einsum(
 
   lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
 
-  if rhs_quantizer.sub_channels is not None:
+  if (
+      hasattr(rhs_quantizer, 'sub_channels')
+      and rhs_quantizer.sub_channels is not None
+  ):
     if lhs_quantizer.precision is not None:
       raise ValueError(
           'sub_channels is not implemented for activation quantization yet.'
