@@ -2771,13 +2771,12 @@ def sharded_static_accumulation(
 
       def scale_gradients(
           raw_grads: NestedMap,
-          clip_grad_norm_to_value: Optional[float] = None,
-          clip_grad_single_norm_to_value: Optional[float] = None):
+          clip_grad_norm_to_value: float = 0.0,
+          clip_grad_single_norm_to_value: float = 0.0):
 
         def clip_grads(grads):
+          assert not (clip_grad_norm_to_value and clip_grad_single_norm_to_value)
           if clip_grad_norm_to_value:
-            assert clip_grad_single_norm_to_value == 0.
-
             grad_norm = _compute_grad_norm(raw_grads)
 
             grad_scale = jnp.minimum(
@@ -2786,7 +2785,6 @@ def sharded_static_accumulation(
                 / grad_norm)
             grads = jax.tree_map(lambda g: g * grad_scale, grads)
           elif clip_grad_single_norm_to_value:
-            assert clip_grad_norm_to_value == 0.
             grad_single_norm = jax.tree_map(lambda x: jnp.sqrt(jnp.sum(x * x)),
                                             grads)
 
