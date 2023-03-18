@@ -24,9 +24,10 @@ import enum
 import functools
 import inspect
 import re
+import sys
 import types
 import typing
-from typing import Any, Callable, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, cast, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 from absl import logging
 import fiddle as fdl
@@ -207,9 +208,9 @@ def visit_nested_struct(obj_to_visit: Any,
           args.pop('parent')
         # Add cls (except for *_split_dims_mapping -- for compat w/ HParams).
         if not key.endswith('_split_dims_mapping'):
-          _visit(f'{key}.cls', cls)
+          _visit(f'{_sub_key(key, "cls")}', cls)
         for param_name, param_val in args.items():
-          _visit(f'{key}.{param_name}', param_val)
+          _visit(f'{_sub_key(key, param_name)}', param_val)
         exit_fn(key, val)
       else:
         visit_fn(key, val)
@@ -790,6 +791,16 @@ class BaseParameterizable:
                             str, ...]] = None,
                         **kwargs: Any) -> None:
     """Automatically initializes all subclasses as custom dataclasses."""
+    if not (
+        hasattr(cls, '_USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE')
+        or 'google.colab' in sys.modules
+    ):
+      raise ValueError(
+          'New Pax classes should be subclassed from '
+          'FiddleBaseParameterizable. If you need to override this, then add '
+          '_USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE=True to your class '
+          'definition.'
+      )
     super().__init_subclass__(**kwargs)
     _bind_cls_to_nested_params_class(cls)
     _add_precise_signature_to_make(cls, init_params_arg_name,
@@ -841,6 +852,7 @@ class FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
     name = 'HParams'
     qualname = f'{fiddle_base_parameterizable_cls.__qualname__}.{name}'
     namespace = {
+        '__module__': fiddle_base_parameterizable_cls.__module__,
         '__qualname__': qualname,
         'fiddle_base_parameterizable_cls': fiddle_base_parameterizable_cls,
     }
@@ -879,8 +891,13 @@ class FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
 class _FiddleHParamsClassStubDescriptor:
   """Descriptor used to implement BaseParameterizable.HParams stub."""
 
+  def __init__(self):
+    self._cached_values = {}
+
   def __get__(self, obj, objtype):
-    return FiddleHParamsClassStub(objtype)
+    if objtype not in self._cached_values:
+      self._cached_values[objtype] = FiddleHParamsClassStub(objtype)
+    return self._cached_values[objtype]
 
 
 class _FiddleHParamsInstanceStub:
@@ -993,6 +1010,15 @@ class FiddleBaseParameterizable:
     if not typing.TYPE_CHECKING:
       kw_only_dataclasses.dataclass(cls)
     cls.__init__ = _require_kwargs(cls)
+    # Note: we cast cls to Any because Pytype doesn't recognize
+    # kw_only_dataclasses as a proper dataclass transformation.
+    for field in dataclasses.fields(cast(Any, cls)):
+      if field.name in cls.__dict__ and field.name not in cls.__annotations__:
+        raise TypeError(
+            f'Class attribute `{cls.__qualname__}.{field.name}` overrides a'
+            ' dataclass field, but is missing a type annotation. This is '
+            f'likely a bug. Consider adding the type annotation {field.type}.'
+        )
 
   def __post_init__(self, *args, **kwargs):
     if args or kwargs:

@@ -24,6 +24,7 @@ from typing import Any, List, NamedTuple, Optional, Tuple
 
 from absl.testing import absltest
 import fiddle as fdl
+from fiddle.experimental import serialization as fdl_serialization
 from flax.core import frozen_dict
 from jax import numpy as jnp
 # Internal config_dict import from ml_collections
@@ -37,6 +38,8 @@ nested_struct_to_text = base_hyperparams.nested_struct_to_text
 
 
 class SimpleTestClass(base_hyperparams.BaseParameterizable):
+
+  _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
   class HParams(base_hyperparams.BaseHyperParams):
     a: int
@@ -59,6 +62,8 @@ class SimpleTestChild(SimpleTestClass):
 
 class NestedTestClass(base_hyperparams.BaseParameterizable):
 
+  _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
+
   class HParams(base_hyperparams.BaseHyperParams):
     # Note: This is now no longer recommended; only Params should be fields of
     # Params.
@@ -73,6 +78,9 @@ class NestedTestBehaveClass(NestedTestClass):
 
 
 class NestedNestedTestClass(base_hyperparams.BaseParameterizable):
+
+  _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
+
   class HParams(base_hyperparams.BaseHyperParams):
     tpl: NestedTestClass.HParams
 
@@ -85,6 +93,8 @@ class NestedNestedOverrideTestClass(NestedNestedTestClass):
 
 
 class FiddleTestClass(base_hyperparams.BaseParameterizable):
+
+  _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
   class HParams(base_hyperparams.BaseHyperParams):
     f: fdl.Config = None
@@ -106,6 +116,8 @@ class FiddleToTextTestClass(base_layer.BaseLayer):
 
 
 class NestedStructToTextTestClass(base_hyperparams.BaseParameterizable):
+
+  _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
   class HParams(base_hyperparams.BaseHyperParams):
     tpl: Any = base_hyperparams.sub_config_field(None)
@@ -360,6 +372,8 @@ class HyperParamsTest(absltest.TestCase):
 
       class DuplicatedParameter(base_hyperparams.BaseParameterizable):  # pylint: disable=unused-variable
 
+        _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
+
         class HParams(base_hyperparams.BaseHyperParams):
           foo: int = 0
 
@@ -375,6 +389,8 @@ class HyperParamsTest(absltest.TestCase):
 
       class WrongInit(base_hyperparams.BaseParameterizable):  # pylint: disable=unused-variable
 
+        _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
+
         class HParams(base_hyperparams.BaseHyperParams):
           something: int = 42
 
@@ -384,6 +400,8 @@ class HyperParamsTest(absltest.TestCase):
   def test_make_factories(self):
 
     class DefaultFactoryTestClass(base_hyperparams.BaseParameterizable):
+
+      _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
       class HParams(base_hyperparams.BaseHyperParams):
         a: List[str] = dataclasses.field(default_factory=lambda: [1, 2, 3])
@@ -399,10 +417,14 @@ class HyperParamsTest(absltest.TestCase):
 
     class Foo(base_hyperparams.BaseParameterizable):
 
+      _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
+
       class HParams(base_hyperparams.BaseHyperParams):
         foo_a: int = 0
 
     class Bar(base_hyperparams.BaseParameterizable):
+
+      _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
       class HParams(base_hyperparams.BaseHyperParams):
         foo_tpl: base_hyperparams.BaseHyperParams = (
@@ -422,6 +444,8 @@ class HyperParamsTest(absltest.TestCase):
   def test_hparams_special_attributes(self):
 
     class Foo(base_hyperparams.BaseParameterizable):
+
+      _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
       class HParams(base_hyperparams.BaseHyperParams):
         """Test."""
@@ -443,6 +467,8 @@ class HyperParamsTest(absltest.TestCase):
         return dataclasses.field(metadata={'custom': True})
 
     class Foo(base_hyperparams.BaseParameterizable):
+
+      _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
       class HParams(base_hyperparams.BaseHyperParams):
         a_tpl: Any = base_hyperparams.sub_config_field(CustomSubConfigField())
@@ -496,6 +522,29 @@ class FiddleBaseParameterizableTest(absltest.TestCase):
 
   def test_hparams_class_stubs_forwards_cls(self):
     self.assertIs(FiddlifiedTestClass.HParams.cls, FiddlifiedTestClass)
+
+  def test_hparams_class_stub_is_serializable(self):
+    hparams_cfg = pax_fiddle.Config(FiddlifiedTestClass.HParams, some_param=3)
+
+    # Ensure we can serialize and deserialize an HParams config.
+    json = fdl_serialization.dump_json(hparams_cfg)
+    deserialized_hparams_cfg = fdl_serialization.load_json(json)
+    self.assertEqual(deserialized_hparams_cfg.some_param, 3)
+
+    # Check that instantiating the HParams stub gives us a pax_fiddle.Config.
+    cfg_instance = pax_fiddle.instantiate(deserialized_hparams_cfg)
+    self.assertIsInstance(cfg_instance, pax_fiddle.Config)
+    self.assertEqual(cfg_instance.some_param, 3)
+
+    # And finally we can actually get an instance of FiddlifiedTestClass.
+    instance = pax_fiddle.instantiate(cfg_instance)
+    self.assertIsInstance(instance, FiddlifiedTestClass)
+    self.assertEqual(instance.some_param, 3)
+
+  def test_missing_type_annotation(self):
+    with self.assertRaisesRegex(TypeError, 'some_param.*int'):
+      class MissingTypeAnnotation(FiddlifiedTestClass):
+        some_param = 2
 
 
 class NestedStructToTextTestCase(absltest.TestCase):
@@ -599,26 +648,26 @@ class NestedStructToTextTestCase(absltest.TestCase):
     self.assertEqual(
         nested_struct_to_text(x).splitlines(),
         [
-            '.a : 4',
-            '.activation_split_dims_mapping.out : NoneType',
-            ".b : 'b'",
-            f".cls : <class '{__name__}.FiddleToTextTestClass'>",
-            '.contiguous_submeshes : False',
-            '.dcn_mesh_shape : NoneType',
-            '.dtype : 7',
-            '.fprop_dtype : NoneType',
-            '.ici_mesh_shape : NoneType',
-            '.mesh_axis_names : NoneType',
-            '.name : NoneType',
-            ".params_init.cls : <class 'praxis.base_layer.WeightInit'>",
-            ".params_init.method : 'xavier'",
-            '.params_init.scale : 1.000001',
-            '.shared_weight_layer_id : NoneType',
-            '.skip_lp_regularization : NoneType',
-            '.tpl.a : 7',
-            ".tpl.b : 'b'",
-            f'.tpl.cls : type/{__name__}/SimpleTestClass',
-            '.weight_split_dims_mapping.wt : NoneType',
+            'a : 4',
+            'activation_split_dims_mapping.out : NoneType',
+            "b : 'b'",
+            f"cls : <class '{__name__}.FiddleToTextTestClass'>",
+            'contiguous_submeshes : False',
+            'dcn_mesh_shape : NoneType',
+            'dtype : 7',
+            'fprop_dtype : NoneType',
+            'ici_mesh_shape : NoneType',
+            'mesh_axis_names : NoneType',
+            'name : NoneType',
+            "params_init.cls : <class 'praxis.base_layer.WeightInit'>",
+            "params_init.method : 'xavier'",
+            'params_init.scale : 1.000001',
+            'shared_weight_layer_id : NoneType',
+            'skip_lp_regularization : NoneType',
+            'tpl.a : 7',
+            "tpl.b : 'b'",
+            f'tpl.cls : type/{__name__}/SimpleTestClass',
+            'weight_split_dims_mapping.wt : NoneType',
         ],
     )
 

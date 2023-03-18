@@ -58,9 +58,11 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
+        ":pax_fiddle",
         ":py_utils",
         ":pytypes",
         # Implicit absl.logging dependency.
+        # Implicit fiddle dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         # Implicit tensorflow_no_contrib dependency.
@@ -122,6 +124,7 @@ pytype_strict_library(
         ":base_hyperparams",
         ":base_layer",
         ":decoder_utils",
+        ":pax_fiddle",
         ":pytypes",
         ":sample_decode",
     ],
@@ -223,6 +226,7 @@ pytype_strict_library(
         ":base_hyperparams",
         ":base_layer",
         ":gshard_utils",
+        ":pax_fiddle",
         ":py_utils",
         ":pytypes",
         ":schedules",
@@ -283,6 +287,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
+        ":pax_fiddle",
         ":pytypes",
         # Implicit jax dependency.
         # Implicit optax dependency.
@@ -354,6 +359,7 @@ py_strict_test(
         ":pax_fiddle",
         # Implicit absl.testing.absltest dependency.
         # Implicit fiddle dependency.
+        # Implicit fiddle.experimental.serialization dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit ml_collections config_dict dependency.

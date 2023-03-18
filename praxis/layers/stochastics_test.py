@@ -16,18 +16,18 @@
 """Tests for Praxis stochastic layers."""
 
 from absl import logging
-from praxis import pax_fiddle
 from absl.testing import absltest
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import stochastics
 
 instantiate = base_layer.instantiate
 
 
-class StochaticsTest(test_utils.TestCase):
+class StochasticsTest(test_utils.TestCase):
 
   def test_dropout_layer01(self):
     test_layer_p = pax_fiddle.Config(

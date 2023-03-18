@@ -50,13 +50,15 @@ def _shift(values: np.ndarray, shift_amounts: np.ndarray, pad_value):
   col_dim = values.shape[-1]
   rowranges = jnp.tile(jnp.arange(col_dim), values.shape[:-1] + (1,))
   column_indexes = rowranges - shift_amounts
+  invalid_column_indexes = jnp.logical_or(
+      column_indexes >= col_dim, column_indexes < 0)
   clamped_column_indexes = jnp.where(
-      jnp.logical_or(column_indexes >= col_dim, column_indexes <= 0),
+      invalid_column_indexes,
       jnp.zeros_like(column_indexes), column_indexes)
   shifted_values = jnp.take_along_axis(values, clamped_column_indexes, axis=-1)
-  shifted_values = jnp.where(column_indexes >= col_dim,
-                             jnp.ones_like(shifted_values) * pad_value,
-                             shifted_values)
+  shifted_values = jnp.where(
+      invalid_column_indexes,
+      jnp.ones_like(shifted_values) * pad_value, shifted_values)
   return shifted_values
 
 

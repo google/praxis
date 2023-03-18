@@ -16,7 +16,7 @@
 """Utility functions for JAX tests."""
 import math
 import os
-from typing import Any, Mapping, Optional
+from typing import Any, List, Mapping, Optional
 
 from absl import flags
 from absl.testing import parameterized
@@ -466,6 +466,24 @@ def replace_jax_conformer_layer_vars_to_tf(
   tf_initial_vars.trans_atten.atten.atten_dropout = py_utils.NestedMap()
   tf_initial_vars = to_tf_nmap(tf_initial_vars)
   return tf_initial_vars
+
+
+def get_tfevent_log_dirs(root: str) -> List[str]:
+  """Return list of log dirs relative to `root` that contain tfevent files."""
+  log_dir_names = []
+  for dirname, subdir, fnames in tf.io.gfile.walk(root):
+    if subdir:
+      continue
+
+    found = False
+    for fname in fnames:
+      if fname.startswith('events.out.tfevents'):
+        found = True
+        continue
+    if found:
+      last_dir = os.path.relpath(os.path.normpath(dirname), root)
+      log_dir_names.append(last_dir)
+  return log_dir_names
 
 
 def get_tfevent_scalars(root: str) -> Mapping[str, float]:

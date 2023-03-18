@@ -109,7 +109,7 @@ def _set_embedding_softmax_sharding_params_for_transformers(
 
 def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
                                       w_emh, a_bld, a_blf, a_blnh, a_egch,
-                                      a_egcm):
+                                      a_egcm, a_blh=None):
   """Set sharding params for the stacked transformer layer."""
   stacked_p = stacked_transformer_p
   if fdl.get_callable(stacked_p) == transformers.PipelinedTransformer:
@@ -139,7 +139,10 @@ def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
           == multi_query_attention.MultiQueryDotProductAttention
       ):
         atten_wp.proj_headless = [w_dnh[0], w_dnh[2]]
-        atten_ap.blh = [a_blnh[0], a_blnh[1], a_blnh[3]]
+        if a_blh is None:
+          atten_ap.blh = [a_blnh[0], a_blnh[1], a_blnh[3]]
+        else:
+          atten_ap.blh = a_blh
 
     ff_p = t_p.tr_fflayer_tpl
     ff_wp = ff_p.weight_split_dims_mapping
@@ -346,6 +349,7 @@ class TransformerLm(base_layer.BaseLayer):
       w_vd=None,
       a_bld=None,
       a_blf=None,
+      a_blh=None,
       a_blnh=None,
       a_blv=None,
       a_egch=None,
@@ -368,6 +372,8 @@ class TransformerLm(base_layer.BaseLayer):
       w_vd: sharding of the embedding weight of (vocab_size, d).
       a_bld: sharding of output of ffn/attention, shape (b, l, d).
       a_blf: sharding of output of ffn0, shape (b, l, f).
+      a_blh: sharding of the multiquery attention activation of shaep (b, l,
+        per_head_size)
       a_blnh: sharding of the attention activation of shape (b, l, num_heads,
         per_head_size).
       a_blv: sharding of the logits activation of shape (b, l, vocab_size).
@@ -405,6 +411,7 @@ class TransformerLm(base_layer.BaseLayer):
           w_emh=w_emh,
           a_bld=a_bld,
           a_blf=a_blf,
+          a_blh=a_blh,
           a_blnh=a_blnh,
           a_egch=a_egch,
           a_egcm=a_egcm)

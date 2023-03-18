@@ -35,6 +35,7 @@ pytype_strict_library(
         ":linears",
         ":multi_query_attention",
         ":operations",
+        ":searchable",
     ],
 )
 
@@ -249,6 +250,49 @@ py_strict_test(
     ],
 )
 
+py_strict_test(
+    name = "dotproduct_attention_aqt_test",
+    srcs = ["tests/dotproduct_attention_aqt_test.py"],
+    python_version = "PY3",
+    shard_count = 30,
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        ":quantization_hparams",
+        ":quantization_test_utils",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis/layers:attentions",
+    ],
+)
+
+py_strict_test(
+    name = "linear_ptq_test",
+    srcs = ["tests/linear_ptq_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":linears",
+        ":quantization_hparams",
+        ":quantization_test_utils",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis/layers:linears",
+    ],
+)
+
 pytype_strict_library(
     name = "conformers",
     srcs = ["conformers.py"],
@@ -357,6 +401,28 @@ py_strict_test(
     ],
 )
 
+py_strict_test(
+    name = "one_headed_attention_projection_aqt_test",
+    srcs = ["tests/one_headed_attention_projection_aqt_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":multi_query_attention",
+        ":quantization_hparams",
+        ":quantization_test_utils",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        "//praxis/layers:multi_query_attention",
+    ],
+)
+
 pytype_strict_library(
     name = "embedding_softmax",
     srcs = ["embedding_softmax.py"],
@@ -399,15 +465,10 @@ pytype_strict_library(
     srcs = ["operations.py"],
     srcs_version = "PY3",
     deps = [
-        ":aqt",
         ":optimization",
         ":utils",
-        # Implicit flax.core dependency.
+        # Implicit absl.logging dependency.
         # Implicit jax dependency.
-        # Implicit numpy dependency.
-        "//praxis:asserts",
-        "//praxis:base_layer",
-        "//praxis:py_utils",
         "//praxis:pytypes",
     ],
 )
@@ -479,6 +540,7 @@ pytype_strict_library(
     srcs = ["aqt.py"],
     srcs_version = "PY3",
     deps = [
+        ":operations",
         ":quantization_hparams",
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -524,6 +586,32 @@ pytype_strict_library(
     ],
 )
 
+pytype_strict_library(
+    name = "automl_select",
+    srcs = ["automl_select.py"],
+    deps = [
+        # Implicit flax.core dependency.
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:pytypes",
+    ],
+)
+
+pytype_strict_library(
+    name = "searchable",
+    srcs = ["searchable.py"],
+    deps = [
+        ":aqt",
+        ":attentions",
+        ":automl_select",
+        ":linears",
+        ":quantization_hparams",
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+    ],
+)
+
 py_strict_test(
     name = "utils_test",
     srcs = ["utils_test.py"],
@@ -535,6 +623,35 @@ py_strict_test(
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
+        "//praxis:test_utils",
+    ],
+)
+
+py_strict_test(
+    name = "automl_select_test",
+    srcs = ["automl_select_test.py"],
+    deps = [
+        ":aqt",
+        ":automl_select",
+        ":quantization_hparams",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        "//praxis:base_hyperparams",
+        "//praxis:pax_fiddle",
+        "//praxis:test_utils",
+    ],
+)
+
+py_strict_test(
+    name = "searchable_test",
+    srcs = ["searchable_test.py"],
+    deps = [
+        ":quantization_hparams",
+        ":searchable",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        "//praxis:base_hyperparams",
+        "//praxis:pax_fiddle",
         "//praxis:test_utils",
     ],
 )

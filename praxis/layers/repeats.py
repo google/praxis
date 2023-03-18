@@ -19,7 +19,7 @@ This simply passes input through the layer stack.
 """
 
 import functools
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Optional, Sequence, Tuple, Union
 
 from flax import linen as nn
 from flax.core import meta
@@ -86,6 +86,8 @@ class Repeat(base_layer.BaseLayer):
     nd_prefix_shape: If not None, there are multiple prefix dims of this shape
       and np.prod(nd_prefix_shape) == x_times. It enables circular
       pipeline-compatible repeat layer decoding.
+    positional_args_as_scan_carry: Passing positional args as scan carry instead
+      of broadcast args.
   """
   sub_tpl: Optional[LayerTpl] = base_layer.template_field(None)
   x_times: int = 0
@@ -96,6 +98,7 @@ class Repeat(base_layer.BaseLayer):
   optimizer_dims_mapping: SplitDimsMapping = None
   collect_intermediate_outputs: bool = False
   nd_prefix_shape: Optional[Sequence[int]] = None
+  positional_args_as_scan_carry: bool = False
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -190,7 +193,11 @@ class Repeat(base_layer.BaseLayer):
     """
 
     def body_fn(sub, layer_in):
-      layer_out = sub(layer_in, *args, **kwargs)
+      if self.positional_args_as_scan_carry:
+        layer_out = _ensure_tuple(sub(*layer_in, **kwargs))
+      else:
+        layer_out = sub(layer_in, *args, **kwargs)
+
       asserts.assert_same_structure(layer_in, layer_out)
       if self.collect_intermediate_outputs:
         return layer_out, layer_out
@@ -262,7 +269,11 @@ class Repeat(base_layer.BaseLayer):
           trans_in_fn=_clear_decode_cache,
           trans_out_fn=_unstack_cache)
 
-    layer_out, intermediates = mapped_scan_fn(self.sublayer, inputs)
+    if self.positional_args_as_scan_carry:
+      scan_inputs = (inputs,) + args
+    else:
+      scan_inputs = inputs
+    layer_out, intermediates = mapped_scan_fn(self.sublayer, scan_inputs)
     if self.collect_intermediate_outputs:
       self.sow(INTERMEDIATES, 'repeat_intermediates', intermediates)
     return layer_out
@@ -650,3 +661,8 @@ class Repeat(base_layer.BaseLayer):
     )
 
     mapped_scan_fn(self.sublayer, None)
+
+
+def _ensure_tuple(x: Any) -> Tuple[Any, ...]:
+  """Ensures that `x` is a tuple."""
+  return x if isinstance(x, tuple) else (x,)

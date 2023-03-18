@@ -281,6 +281,7 @@ class Conv3D(base_layer.BaseLayer):
       dimension.
     bias: Whether or not to apply a bias before activation.
     bias_init: Bias initializer to use if bias is to be applied.
+    kernel_init: Optional kernel initializer to use.
     padding: The type of padding to use.
     tf_equivalent_padding: Whether to make it equivalent to tf. By default we
       apply extra padding that is different than tf conv when stride > 1. This
@@ -295,6 +296,7 @@ class Conv3D(base_layer.BaseLayer):
   dilations: Sequence[int] = (1, 1, 1)
   bias: bool = False
   bias_init: WeightInit = WeightInit.Constant(0.0)
+  kernel_init: Optional[WeightInit] = None
   padding: str = 'SAME'
   tf_equivalent_padding: bool = False
   is_causal: bool = False
@@ -350,6 +352,7 @@ class Conv3D(base_layer.BaseLayer):
             shape=self.filter_shape,
             mesh_shape=self.mesh_shape,
             tensor_split_dims_mapping=wp.wt,
+            init=self.kernel_init,
         ),
     )
     if self.bias:

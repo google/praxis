@@ -127,6 +127,97 @@ def generate_combined_qkv_projection_test_config(
   return [dict(zip(keys, case)) for case in cases]
 
 
+def generate_linears_test_config(
+    additional_feature_funcs: Optional[List[Any]] = None,
+) -> Sequence[Dict[str, Any]]:
+  """Function to generate test configurations for Linears layer.
+
+  Args:
+    additional_feature_funcs: Additional functions to further populate the
+      configuration.
+
+  Returns:
+    Test configurations for Linears layer.
+  """
+  keys = [
+      'is_weight_symmetric',
+  ]
+
+  cases = [[True], [False]]
+
+  if additional_feature_funcs is not None:
+    for func in additional_feature_funcs:
+      keys, cases = func(keys, cases)
+
+  return [dict(zip(keys, case)) for case in cases]
+
+
+def generate_dotproduct_attention_test_config(
+    additional_feature_funcs: Optional[List[Any]] = None
+) -> Sequence[Dict[str, Any]]:
+  """Function to generate test configurations for DotProductAttention layer.
+
+  Args:
+    additional_feature_funcs: Additional functions to further populate the
+    configuration.
+
+  Returns:
+    Test configurations for DotProductAttention layer.
+  """
+  keys = [
+      'dconv_qkv',
+      'combine_qkv',
+      'output_proj_use_nhd_shape',
+      'use_rotary_position_emb',
+      'cast_rotary_position_emb',
+      'zero_fully_masked',
+      'simulate_packed'
+  ]
+
+  flags = [[True, False] for _ in range(len(keys))]
+
+  cases = []
+  for case in itertools.product(*flags):
+    cases.append(list(case))
+
+  if additional_feature_funcs is not None:
+    for func in additional_feature_funcs:
+      keys, cases = func(keys, cases)
+
+  return [dict(zip(keys, case)) for case in cases]
+
+
+def generate_one_headed_attention_projection_test_config(
+    additional_feature_funcs: Optional[List[Any]] = None
+) -> Sequence[Dict[str, Any]]:
+  """Generate test configurations for OneHeadedAttentionProjection layer.
+
+  Args:
+    additional_feature_funcs: Additional functions to further populate the
+    configuration.
+
+  Returns:
+    Test configurations for OneHeadedAttentionProjection layer.
+  """
+  keys = [
+      'use_bias',
+      'is_weight_symmetric',
+  ]
+
+  bias = [True, False]
+  weight_symmetric = [True, False]
+
+  cases = []
+  for case in itertools.product(bias, weight_symmetric):
+    cases.append([case[0], case[1]])
+
+  if additional_feature_funcs is not None:
+    for func in additional_feature_funcs:
+      keys, cases = func(keys, cases)
+
+  return [dict(zip(keys, case)) for case in cases]
+
+
 class QuantizationTestCase(test_utils.TestCase):
   """Test case class for quantized layers.
   """
@@ -157,5 +248,3 @@ class QuantizationTestCase(test_utils.TestCase):
 
     for v1, v2 in zip(list1, list2):
       self.assertNestedListClose(v1, v2, places)
-
-

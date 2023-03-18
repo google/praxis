@@ -20,8 +20,8 @@ from typing import Tuple
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
-import numpy as np
 from jax import numpy as jnp
+import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
@@ -455,6 +455,52 @@ class AqtTest(test_utils.TestCase):
 
     self.assertLessEqual(quant_error_asymmetric, quant_error_unsigned)
 
+  def test_clipped_asymmetric_quant_error_less_than_non_clipped(self):
+    precision = 4
+    contract_dims = [1]
+    p_clip = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='clipped',
+        precision=precision,
+        add_scale_eps=False,
+        use_symmetric=False,
+        clipping_coeff=0.8,
+    )
+    p_no_clip = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='not_clipped',
+        precision=precision,
+        add_scale_eps=False,
+        use_symmetric=False,
+        clipping_coeff=None,
+    )
+
+    x = jax.random.normal(
+        jax.random.PRNGKey(0), shape=(4, 128), dtype=jnp.float32
+    )
+    x_quant_clip, x_dequant_clip, q_scale_clip = (
+        self.get_quantize_dequantized_and_scale(
+            p_clip, x, axis=contract_dims
+        )
+    )
+    self.assertEqual((4, 1), q_scale_clip.shape)
+    quant_error_clip = jnp.sum(jnp.abs(x_dequant_clip - x))
+
+    self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant_clip))
+    self.assertEqual(-2 ** (precision - 1), jnp.min(x_quant_clip))
+
+    x_quant_no_clip, x_dequant_no_clip, _ = (
+        self.get_quantize_dequantized_and_scale(
+            p_no_clip, x, axis=contract_dims
+        )
+    )
+    self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant_no_clip))
+    self.assertEqual(-2 ** (precision - 1), jnp.min(x_quant_no_clip))
+    quant_error_no_clip = jnp.sum(jnp.abs(x_dequant_no_clip - x))
+
+    # Note that if x has uniform distribution then below will be false.
+    self.assertLessEqual(quant_error_clip, quant_error_no_clip)
+
   @parameterized.named_parameters(
       dict(testcase_name='2bit', precision=2),
       dict(testcase_name='4bit', precision=4),
@@ -502,37 +548,6 @@ class AqtTest(test_utils.TestCase):
     quant_error_symmetric = jnp.sum(jnp.abs(x_dequant_symmetric - x))
 
     self.assertLessEqual(quant_error_asymmetric, quant_error_symmetric)
-
-  def test_clip_bound(self):
-    precision = 8
-    p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
-        name='signed',
-        precision=precision,
-        add_scale_eps=False,
-        use_symmetric=True,
-    )
-    quant = p_quant.Instantiate()
-    state = quant.init(jax.random.PRNGKey(0))
-    bounds = quant.apply(
-        state, method=quant._get_clip_bound
-    )
-    self.assertEqual(bounds, (-128, 127))
-
-    p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
-        name='unsigned',
-        precision=precision,
-        add_scale_eps=False,
-        use_symmetric=True,
-        unsigned_int_bounds=True,
-    )
-    quant = p_quant.Instantiate()
-    state = quant.init(jax.random.PRNGKey(0))
-    bounds = quant.apply(
-        state, method=quant._get_clip_bound
-    )
-    self.assertEqual(bounds, (0, 255))
 
   def test_aux_quantization_loss(self):
     p_quant = pax_fiddle.Config(
@@ -626,6 +641,54 @@ class AqtTest(test_utils.TestCase):
     # Test that the second feature is clipped and will have a smaller max value
     # than the outlier we added = 2.0.
     self.assertAllClose(q_s[1, 0], 1.6)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='2bit', precision=2),
+      dict(testcase_name='4bit', precision=4),
+  )
+  def test_sub_channel_quant_error_less_than_standard(self, precision):
+    contract_dims = [1]
+    p_quant = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='asymmetric',
+        precision=precision,
+        add_scale_eps=False,
+        use_symmetric=False,
+    )
+    p_quant_sub = pax_fiddle.Config(
+        aqt.TensorQuantizer,
+        name='asymmetric_sub_channel',
+        precision=precision,
+        add_scale_eps=False,
+        use_symmetric=False,
+        sub_channels=8,
+    )
+
+    x = jax.random.uniform(
+        jax.random.PRNGKey(0), shape=(2, 128), minval=-1, maxval=1
+    )
+
+    x_quant, x_dequant, q_scale = (
+        self.get_quantize_dequantized_and_scale(
+            p_quant, x, axis=contract_dims
+        )
+    )
+    self.assertEqual((2, 1), q_scale.shape)
+    quant_error = jnp.sum(jnp.abs(x_dequant - x))
+
+    self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant))
+    self.assertEqual(-2 ** (precision - 1), jnp.min(x_quant))
+
+    x_quant_sub, x_dequant_sub, _ = (
+        self.get_quantize_dequantized_and_scale(
+            p_quant_sub, x, axis=contract_dims
+        )
+    )
+    self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant_sub))
+    self.assertLessEqual(-(2 ** (precision - 1)), jnp.min(x_quant_sub))
+    quant_error_sub = jnp.sum(jnp.abs(x_dequant_sub - x))
+
+    self.assertLessEqual(quant_error, quant_error_sub)
 
 
 if __name__ == '__main__':

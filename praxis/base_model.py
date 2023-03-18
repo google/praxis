@@ -78,7 +78,8 @@ class BaseModel(base_layer.BaseLayer):
     Returns:
       - WeightedScalars - A dict or NestedMap containing str keys and
         (value, weight) pairs as values, where one or more entries are
-        expected to correspond to the loss (or losses).
+        expected to correspond to the loss (or losses).  These values will be
+        aggregated upstream as: sum(weight * value) / sum(weight).
       - A dict containing arbitrary tensors describing something about each
         training example, where the first dimension of each tensor is the batch
         index.

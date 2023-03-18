@@ -210,6 +210,29 @@ class LinearsTest(test_utils.TestCase):
     logging.info('params_inits: \n%s',
                  base_hyperparams.nested_struct_to_text(params_inits))
 
+  def test_dot_general_injection(self):
+    def run(dg):
+      p = pax_fiddle.Config(
+          linears.Linear,
+          # name='jax_ffn',
+          input_dims=10,
+          output_dims=20,
+          dot_general=dg,
+      )
+      ffn = instantiate(p)
+      inputs = jnp.ones((4, 10))
+      initial_vars = ffn.init(jax.random.PRNGKey(seed=123), inputs)
+      return ffn.apply(initial_vars, inputs)
+
+    def my_dg(*args):
+      return jax.lax.dot_general(*args) / 2.0
+
+    output1 = run(jax.lax.dot_general)
+    output2 = run(my_dg)
+    # We can use exact equality beacuse in floats division by 2.0 does not
+    # have a rounding error.
+    self.assertAllClose(output1, output2 * 2, atol=0.0)
+
 
 class StackingOverTimeLayerTest(test_utils.TestCase):
 

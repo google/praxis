@@ -44,6 +44,7 @@ AUX_LOSS = base_layer.AUX_LOSS
 SUMMARIES = base_layer.SUMMARIES
 DECODE_CACHE = base_layer.DECODE_CACHE
 PREFIX_DECODE_CACHE = base_layer.PREFIX_DECODE_CACHE
+DUMMY_PRNG_KEY = decoder_utils.DUMMY_PRNG_KEY
 
 
 def _batch_rngs_random_gumbel(rngs: JTensor, shape: Sequence[int]) -> JTensor:
@@ -447,7 +448,8 @@ def _condense_state(block_num_samples) -> base_layer.DecodeStateTransformFn:
 
 
 class BaseNextTokenSampler(
-    base_hyperparams.BaseParameterizable, metaclass=abc.ABCMeta):
+    base_hyperparams.FiddleBaseParameterizable, metaclass=abc.ABCMeta
+):
 
   @abc.abstractmethod
   def __call__(self, model: base_layer.BaseLayerApi, logits: JTensor,
@@ -476,26 +478,27 @@ class BaseNextTokenSampler(
 
 
 class DefaultNextTokenSampler(BaseNextTokenSampler):
-  """The default sampling logic implementing top-K and top-P sampling."""
+  """The default sampling logic implementing top-K and top-P sampling.
 
-  class HParams(BaseNextTokenSampler.HParams):
-    """Associated hyper-params for this layer class.
+  If all the values in gumbel_prng_key is set to DUMMY_PRNG_KEY, gumbel_prng_key
+  will be ignored and model.next_prng_key() is used to generate random noise
+  for sampling decode.
 
-    Attributes:
-      top_k: if nonzero, use top-k sampling, only selecting amongthe most likely
-        k tokens at each step.
-      top_p: if not None, use the smallest number of logits whose cumulative sum
-        of probs adds up to (at least) p.
-      epsilon_p: if positive, use epsilon sampling, only selecting among the
-        tokens with probability at least epsilon at each step.
-      global_normalize: if top_k and top_p are enabled together, this flag
-        indicates whether we need to normalize the logits in top_k logits or
-        globally in the whole vocabulary.
-    """
-    top_k: int = 40
-    top_p: Optional[Union[float, JTensor]] = None
-    epsilon_p: float = 0.
-    global_normalize: bool = False
+  Attributes:
+    top_k: if nonzero, use top-k sampling, only selecting amongthe most likely k
+      tokens at each step.
+    top_p: if not None, use the smallest number of logits whose cumulative sum
+      of probs adds up to (at least) p.
+    epsilon_p: if positive, use epsilon sampling, only selecting among the
+      tokens with probability at least epsilon at each step.
+    global_normalize: if top_k and top_p are enabled together, this flag
+      indicates whether we need to normalize the logits in top_k logits or
+      globally in the whole vocabulary.
+  """
+  top_k: int = 40
+  top_p: Optional[Union[float, JTensor]] = None
+  epsilon_p: float = 0.0
+  global_normalize: bool = False
 
   def __call__(
       self,
@@ -513,13 +516,21 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
     assert p.top_k >= 0
     input_logits = logits
 
-    def _get_prng_key():
-      if gumbel_prng_key is None:
+    def _get_prng_key(prng_key):
+      if prng_key is None:
         # Default method, use `next_prng_key` to generate noise.
         return model.next_prng_key()
       else:
-        assert gumbel_prng_key.shape[0] == logits.shape[0]
-        return gumbel_prng_key
+        assert prng_key.shape[0] == logits.shape[0]
+        next_model_key = model.next_prng_key()
+        batch_size = prng_key.shape[0]
+        split_next_model_key = jax.random.split(next_model_key, batch_size)
+        prng_key = jax.lax.cond(
+            jnp.all(prng_key == DUMMY_PRNG_KEY),
+            lambda: split_next_model_key,
+            lambda: prng_key,
+        )
+        return prng_key
 
     top_p = (
         per_example_top_p
@@ -533,7 +544,7 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
     if p.top_k > 1:
       new_ids = sample_from_top_k_and_top_p(
           logits,
-          _get_prng_key(),
+          _get_prng_key(gumbel_prng_key),
           temperature=temperature,
           top_k=p.top_k,
           top_p=top_p,
@@ -546,7 +557,7 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
         logits = top_p_mask_logits(logits, top_p)
       if isinstance(temperature, JTensor) or temperature > 0.0:
         gumbel_noise = _batch_rngs_random_gumbel(
-            _get_prng_key(), logits.shape
+            _get_prng_key(gumbel_prng_key), logits.shape
         ).astype(logits.dtype)
         logits += gumbel_noise * temperature
       new_ids = jnp.argmax(logits, axis=1)
@@ -626,7 +637,8 @@ def sample_decode(
       key_shape_dim], where key_shape_dim =
       jax.random.default_prng_impl().key_shape[0]. Usually, key_shape_dim = 2 or
       4. where B is the batch size before being duplicated wrt num_samples or
-      cfg.
+      cfg. If all the values in gumbel_prng_key is set to DUMMY_PRNG_KEY,
+      gumbel_prng_key will be ignored and model.next_prng_key() is used.
     per_example_top_p: Per example top_p of sampling decoding. Optional JTensor
       of shape [B].
     per_example_top_k: Optional per example top_k of shape [batch_size]. The
@@ -691,7 +703,11 @@ def sample_decode(
     # [cond_a, cond_a, cond_a, uncond_a, uncond_a, uncond_a, ...].
     prefix_ids = jnp.repeat(prefix_ids, axis=0, repeats=num_samples)
     prefix_paddings = jnp.repeat(prefix_paddings, axis=0, repeats=num_samples)
-    prefix_lengths = jnp.repeat(prefix_lengths, axis=0, repeats=num_samples)
+    prefix_lengths = (
+        None
+        if prefix_lengths is None
+        else jnp.repeat(prefix_lengths, axis=0, repeats=num_samples)
+    )
 
     def _broadcast_input(x: JTensor, name: str) -> JTensor:
       if cf_guidance_scale is not None:
@@ -710,7 +726,7 @@ def sample_decode(
     # broadcast it to shape [batch_size * num_samples].
     # If temperature is of 2D shape [batch_size, num_samples] simply flatten it.
     if isinstance(temperature, JTensor):
-      if temperature.ndim == 2:   # pytype: disable=attribute-error
+      if temperature.ndim == 2:  # pytype: disable=attribute-error
         if temperature.shape != (original_batch_size, num_samples):  # pytype: disable=attribute-error
           raise ValueError(
               '2D Dynamic temperature should have shape: '
@@ -757,7 +773,7 @@ def sample_decode(
         )
       else:
         lazy_broadcast_prefix_fn(model, num_samples, first_decode_steps + 1)
-    else:
+    elif transform_state_fn is not None:
       # Broadcast prefix state for num_samples.
       transform_state_fn(model,
                          decoder_utils.batch_broadcast_state_fn(num_samples))
@@ -869,6 +885,12 @@ def sample_decode(
           lambda x: jax.random.fold_in(x, step)
       )(split_gumbel_prng_key)
       assert split_gumbel_prng_key.shape[0] == logits.shape[0]
+
+      split_gumbel_prng_key = jax.lax.cond(
+          jnp.all(gumbel_prng_key == DUMMY_PRNG_KEY),
+          lambda: jnp.ones_like(split_gumbel_prng_key) * DUMMY_PRNG_KEY,
+          lambda: split_gumbel_prng_key,
+      )
     else:
       split_gumbel_prng_key = None
     sampler_output = next_token_sampler(

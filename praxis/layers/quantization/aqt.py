@@ -24,6 +24,7 @@ import jax.numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
+from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 
 
@@ -69,6 +70,12 @@ def create_tensor_quantizer(
     tq_params.optimize_clipping_per_channel = (
         quant_params.optimize_clipping_per_channel
     )
+    tq_params.clipping_coeff = (
+        None
+        if quant_params.clipping_coeff == 1.0
+        else quant_params.clipping_coeff
+    )
+    tq_params.sub_channels = quant_params.sub_channels
 
   return tq_params
 
@@ -85,6 +92,8 @@ class TensorQuantizer(base_layer.BaseLayer):
     num_optimize_clipping: Number of optimization steps used for
       scale estimation with search over clipping values in
       range [min_clipping ... 1].
+    clipping_coeff: The coefficient to shrink the hard range for weight
+      quantization. None means using hard min/max.
     add_scale_eps: If True add epsilon to scale to avoid division by zero,
       else it will replace zero scale by 1.
     unsigned_int_bounds: If True, use [0, 2**precision-1] clip bound for better
@@ -94,16 +103,19 @@ class TensorQuantizer(base_layer.BaseLayer):
     quant_loss_weight: Weight for quantization loss.
     optimize_clipping_per_channel: If True choose the best clipping value
       per channel, else per-tensor.
+    sub_channels: Number of sub channels for splitting channelwise quantization.
   """
   precision: Optional[int] = None
   stop_scale_gradient: bool = False
   min_clipping: Optional[float] = None
   num_optimize_clipping: Optional[int] = None
+  clipping_coeff: Optional[float] = None
   add_scale_eps: Optional[bool] = True
   unsigned_int_bounds: bool = False
   use_symmetric: bool = True
   quant_loss_weight: Optional[float] = None
   optimize_clipping_per_channel: bool = False
+  sub_channels: Optional[int] = None
 
   def setup(self):
     del self.dtype  # not used
@@ -122,37 +134,39 @@ class TensorQuantizer(base_layer.BaseLayer):
       )
       assert self.min_clipping > 0.0 and self.min_clipping < 1.0
       assert self.num_optimize_clipping > 0
+
+      if self.clipping_coeff is not None:
+        raise ValueError(
+            'clipping_coeff can not be used together with min_clipping '
+            'and num_optimize_clipping'
+        )
     elif self.optimize_clipping_per_channel:
       raise ValueError(
           'optimize_clipping_per_channel can not be True if '
           'min_clipping is None and num_optimize_clipping is None.'
       )
 
+    if self.clipping_coeff is not None and (
+        self.clipping_coeff < 0 or self.clipping_coeff > 1
+    ):
+      raise ValueError('clipping_coeff has to be in range 0...1')
+
   def __call__(self):
     # Since TensorQuantizer does nothing when initialized, __call__ is a no-op.
     pass
-
-  def _get_clip_bound(self) -> Tuple[float, float]:
-    # For unsigned 8 bits precision it is [0, 255]
-    if self.unsigned_int_bounds:
-      return 0, 2.0**self.precision - 1
-    else:
-      # For signed 8 bits precision it is [-128, 127]
-      return (
-          -(2.0 ** (self.precision - 1)),
-          2.0 ** (self.precision - 1) - 1,
-      )
 
   def _get_scale_and_min(
       self,
       x: JTensor,
       contract_dims: Union[int, Sequence[int]],
-      clipping: Optional[float] = None,
+      clipping_coeff: Optional[float] = None,
   ) -> Tuple[JTensor, Optional[JTensor]]:
     if self.precision is None:
       return jnp.ones(shape=(1,) * x.ndim, dtype=x.dtype), None
 
-    clip_bound_min, clip_bound_max = self._get_clip_bound()
+    clip_bound_min, clip_bound_max = operations.get_min_max(
+        self.precision, self.unsigned_int_bounds
+    )
 
     if self.use_symmetric:
       x_bound = jnp.max(jnp.abs(x), axis=contract_dims, keepdims=True)
@@ -164,10 +178,10 @@ class TensorQuantizer(base_layer.BaseLayer):
       x_bound = x_max - x_min
       range_bound = clip_bound_max - clip_bound_min
 
-    if clipping is not None:
-      x_bound *= clipping
+    if clipping_coeff is not None:
+      x_bound *= clipping_coeff
       if x_min is not None:
-        x_min *= clipping
+        x_min *= clipping_coeff
 
     scale = x_bound / range_bound
     if self.stop_scale_gradient:
@@ -188,7 +202,7 @@ class TensorQuantizer(base_layer.BaseLayer):
   ) -> Tuple[JTensor, Optional[JTensor]]:
     def quantization_error_and_scale(clipping):
       q_scale, x_min = self._get_scale_and_min(
-          x, contract_dims, clipping=clipping
+          x, contract_dims, clipping_coeff=clipping
       )
       x_scaled, zp_time_scale = self._scale(x, q_scale, x_min)
       x_quantized = self.to_quant(x_scaled)
@@ -272,7 +286,9 @@ class TensorQuantizer(base_layer.BaseLayer):
     if self.min_clipping is not None and self.num_optimize_clipping is not None:
       return self._get_optimal_scale_and_min(x, contract_dims)
     else:
-      return self._get_scale_and_min(x, contract_dims)
+      return self._get_scale_and_min(
+          x, contract_dims, clipping_coeff=self.clipping_coeff
+      )
 
   def update(self, x: JTensor):
     # This function is no-op for now. Once static quantization is supported,
@@ -292,14 +308,18 @@ class TensorQuantizer(base_layer.BaseLayer):
     if self.precision is None:
       return x
 
-    x = _pass_through(x + 0.5, jnp.floor)
-    clip_bound_min, clip_bound_max = self._get_clip_bound()
+    x = operations.pass_through(x + 0.5, jnp.floor)
+    clip_bound_min, clip_bound_max = operations.get_min_max(
+        self.precision, self.unsigned_int_bounds
+    )
     x = jnp.clip(x, clip_bound_min, clip_bound_max)
 
     return x
 
   def _get_zero_point(self, x, x_min, scale) -> JTensor:
-    clip_bound_min, _ = self._get_clip_bound()
+    clip_bound_min, _ = operations.get_min_max(
+        self.precision, self.unsigned_int_bounds
+    )
     zp = clip_bound_min - x_min / scale
     return zp
 

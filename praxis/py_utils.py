@@ -166,14 +166,6 @@ def _unreplicate(x):
   """Helper to unreplicated the data based on its type."""
   if isinstance(x, jax.Array):
     return x.addressable_data(0)
-  elif isinstance(x, pxla.ShardedDeviceArray):
-    val = x.device_buffers[0]
-    # DeviceArrays returned by the `.device_buffers` property of SDA might not
-    # have avals set on them. So set the avals before returning so that
-    # computations don't error down the stack.
-    if val.aval is None:
-      val.aval = jax.ShapedArray(val.shape, val.dtype)
-    return val
   else:
     return x
 
@@ -773,14 +765,13 @@ def concat_sequences_with_padding(
 
   Args:
     input0: A tensor of size [batch, max_length0, ...]
+    paddings0: A Tensor of size [batch, max_length1]
     input1:  A tensor of size [batch, max_length0, ...]
-    padding0: A Tensor of size [batch, max_length1]
-    padding1: A Tensor of size [batch, max_length1]
+    paddings1: A Tensor of size [batch, max_length1]
 
   Returns:
     The concatenation of input0 and input1, and the corresponding padding.
   """
-  batch_dim = 0
   assert (
       input0.shape[0] == input1.shape[0] and input0.shape[2] == input1.shape[2]
   )
@@ -1000,7 +991,9 @@ def get_enumeration_id(example: Dict[str, Any],
   )
 
 
-def pad_or_trim_to(x: JTensor, shape: Sequence[int], pad_val=0) -> JTensor:
+def pad_or_trim_to(
+    x: Optional[JTensor], shape: Sequence[int], pad_val=0
+) -> Optional[JTensor]:
   """Pad and slice x to the given shape.
 
   Args:
@@ -1012,6 +1005,9 @@ def pad_or_trim_to(x: JTensor, shape: Sequence[int], pad_val=0) -> JTensor:
     'x' is padded with pad_val and sliced so that the result has the given
     shape.
   """
+  if x is None:
+    return x
+
   expected_rank = len(shape)
   assert len(x.shape) == expected_rank, (x.shape, expected_rank)
   padings = [
