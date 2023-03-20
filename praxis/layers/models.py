@@ -99,8 +99,10 @@ def compute_xent_loss_helper(
       example weights from the input `eval_sample_weights` or not. When enabled,
       these per-example weights will be merged with the per token
       `input_batch.weights`.
-    report_strict_acc: Whether to report strict accuracy. Used for eval on 
-      Lambada dataset.
+    report_strict_acc: Whether to report strict accuracy. In general, this requires 
+      the entire portion of the sequence with nonzero weight be predicted correctly.
+      Frequently used for eval on the Lambada dataset, in which case this metric is 
+      equivalent to full-word matching. 
 
   Returns:
     - A dict or NestedMap containing str keys and (value, weight) pairs as
@@ -121,21 +123,9 @@ def compute_xent_loss_helper(
         weights, input_batch.eval_sample_weights)
   predicted_labels = predictions.per_example_argmax.astype(labels.dtype)
   num_preds = predictions.total_weight
-
-  num_acc = jnp.sum(weights, axis=-1, dtype=jnp.float32)
-  ## mask out padding examples
-  num_acc = jax.lax.select(input_batch.eval_sample_weights.astype(jnp.int32),
-                           num_acc, jnp.inf*jnp.ones_like(num_acc))
-  num_nonpadding = jnp.sum(input_batch.eval_sample_weights)
-
   mean_acc = jnp.sum(
       (labels == predicted_labels) * weights) / jnp.maximum(num_preds, 1)
   metric_weight = jnp.array(num_preds, predictions.avg_xent.dtype)
-
-  mean_acc_strict = (jnp.sum(jnp.sum((labels == predicted_labels)
-                                     * weights, axis=-1) == num_acc)
-                     /jnp.maximum(num_nonpadding, 1))
-  strict_weight = jnp.array(num_nonpadding, predictions.avg_xent.dtype)
 
   if hasattr(predictions, 'avg_xent_weight'):
     avg_xent_weight = predictions.avg_xent_weight
@@ -152,6 +142,17 @@ def compute_xent_loss_helper(
       num_predictions=(num_preds, jnp.array(1.0, num_preds.dtype)),
   )
   if report_strict_acc:
+    num_acc = jnp.sum(weights, axis=-1, dtype=jnp.float32)
+    ## mask out padding examples
+    num_acc = jax.lax.select(input_batch.eval_sample_weights.astype(jnp.int32),
+                             num_acc, jnp.inf*jnp.ones_like(num_acc))
+    num_nonpadding = jnp.sum(input_batch.eval_sample_weights)
+
+    mean_acc_strict = (jnp.sum(jnp.sum((labels == predicted_labels)
+                                       * weights, axis=-1) == num_acc)
+                       /jnp.maximum(num_nonpadding, 1))
+    strict_weight = jnp.array(num_nonpadding, predictions.avg_xent.dtype)
+
     metrics.acc_strict=(mean_acc_strict, strict_weight)
 
   # The score for the sequence is the negative of the sum of per token cross
