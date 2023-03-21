@@ -153,6 +153,8 @@ def einsum(
     # TODO(jianlijianli): check if int32 is necessary since it will cast to
     # bf16/f32 for next op (accuracy-wise).
     x = x.astype(jnp.int32)
+  if w.dtype == jnp.float8_e4m3fn or w.dtype == jnp.float8_e5m2:
+    w = w.astype(jnp.bfloat16)
   ret = jnp.einsum(eqn, x, w)
 
   # Potentially expand dimensions of scale to match einsum output.
