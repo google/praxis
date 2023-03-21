@@ -15,8 +15,10 @@
 
 """A generic flax.nn.Module adapter layers."""
 
+from praxis import pax_fiddle
 import abc
 import functools
+import typing
 from typing import Any, Callable, Optional
 
 import flax.linen as nn
@@ -29,30 +31,33 @@ JTensor = pytypes.JTensor
 LogicalAxisRules = pytypes.LogicalAxisRules
 
 
-class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
-  """Base class for converting an arbitrary nn.Module into a proper Pax Layer.
+class _InternalBaseFlaxAdapter(base_layer.BaseLayer):
+  """Internal base class for FlaxModuleAdapterBase and DirectFlaxModuleAdapter.
 
-  Subclasses must implement a `_build_wrapped_module()` method that instantiates
-  the nn.Module.
-
-  This adapter assumes that the module has a single compact method __call__. If
-  this constraint is not satisfied, a similar adapter can be easily constructed.
+  This base class is agnostic to how `cld` is provided, as an attribute or in
+  setup().
 
   Attributes:
     logical_axes_rules: Optional logical axes rules, e.g., [('input', 'mdl'),
       ('output', 'data')]
   """
+
   logical_axes_rules: Optional[LogicalAxisRules] = None
 
-  def setup(self) -> None:
-    # Construct the child, which can be an arbitrary nn.Module.
-    self.cld: nn.Module = self._build_wrapped_module()
-    assert isinstance(self.cld, nn.Module)
+  if typing.TYPE_CHECKING:
 
-  @abc.abstractmethod
-  def _build_wrapped_module(self) -> nn.Module:
-    """Builds the Flax module to be wrapped by this layer."""
-    pass
+    @property
+    def cld(self) -> nn.Module:
+      # Stub returning a child. May actually be a Flax module attribute, or set
+      # in setup().
+      raise NotImplementedError()
+
+  def setup(self):
+    if not isinstance(self.cld, nn.Module):
+      raise TypeError(
+          f"Expected {type(self)} to have a `cld` property of "
+          f"type nn.Module, but got {type(self.cld)}"
+      )
 
   def _call_with_boxed_params_init(self, unbound_method, *args, **kwargs):
 
@@ -94,6 +99,45 @@ class FlaxModuleAdapterBase(base_layer.BaseLayer, metaclass=abc.ABCMeta):
     return self._call_with_boxed_params_init(
         self.cld.__call__.__func__, *args, **kwargs  # pytype: disable=attribute-error
     )
+
+
+class DirectFlaxModuleAdapter(_InternalBaseFlaxAdapter):
+  """The preferred way of wrapping Flax modules for Praxis.
+
+  Construct/configure this with a Flax module instance.
+
+  Attributes:
+    logical_axes_rules: Optional logical axes rules, e.g., [('input', 'mdl'),
+      ('output', 'data')]
+    cld: Child Flax module.
+  """
+
+  cld: Optional[nn.Module] = pax_fiddle.instance_field(None)
+
+
+class FlaxModuleAdapterBase(_InternalBaseFlaxAdapter, metaclass=abc.ABCMeta):
+  """Base class for converting an arbitrary nn.Module into a proper Pax Layer.
+
+  Subclasses must implement a `_build_wrapped_module()` method that instantiates
+  the nn.Module.
+
+  This adapter assumes that the module has a single compact method __call__. If
+  this constraint is not satisfied, a similar adapter can be easily constructed.
+
+  Attributes:
+    logical_axes_rules: Optional logical axes rules, e.g., [('input', 'mdl'),
+      ('output', 'data')]
+  """
+
+  def setup(self) -> None:
+    # Construct the child, which can be an arbitrary nn.Module.
+    self.cld: nn.Module = self._build_wrapped_module()
+    super().setup()
+
+  @abc.abstractmethod
+  def _build_wrapped_module(self) -> nn.Module:
+    """Builds the Flax module to be wrapped by this layer."""
+    pass
 
 
 class FlaxModuleAdapter(FlaxModuleAdapterBase):

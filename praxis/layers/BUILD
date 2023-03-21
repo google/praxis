@@ -1207,6 +1207,7 @@ pytype_strict_library(
         # Implicit flax.core dependency.
         "//praxis:base_layer",
         "//praxis:flax_utils",
+        "//praxis:pax_fiddle",
         "//praxis:pytypes",
     ],
 )

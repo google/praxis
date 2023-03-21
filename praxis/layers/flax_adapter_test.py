@@ -15,8 +15,7 @@
 
 """Tests for Flax adapter."""
 
-from typing import Any, Tuple
-from praxis import pax_fiddle
+from typing import Any, Optional, Tuple
 
 from absl.testing import absltest
 import fiddle as fdl
@@ -26,10 +25,12 @@ import jax
 from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import pytypes
 from praxis import test_utils
 from praxis.layers import flax_adapter
 from praxis.layers import normalizations
+
 
 instantiate = base_layer.instantiate
 JTensor = pytypes.JTensor
@@ -65,7 +66,7 @@ class MixLayer(base_layer.BaseLayer):
   """A layer that mixes Pax native layer with nn.Module wrapper layer.
 
   Attributes:
-  use_running_average: bool as if BN layers are using running average or not.
+    use_running_average: bool as if BN layers are using running average or not.
   """
   use_running_average: bool = False
 
@@ -89,6 +90,35 @@ class MixLayer(base_layer.BaseLayer):
     out2 = self.cnn_p2(x, use_running_average=self.use_running_average)
     out = self.bn(out1 + out2)
     return out1, out2, out
+
+
+class DirectMixLayer(base_layer.BaseLayer):
+  """Direct instantiation version of the mix layer above."""
+
+  cnn_p1: Optional[flax_nn.Module] = None
+  cnn_p2: Optional[flax_nn.Module] = None
+  bn: Optional[flax_nn.Module] = None
+  use_running_average: bool = False
+
+  def __call__(self, x: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
+    # Call cnn_p1 twice to verify this doesn't break initialization.
+    # pylint: disable=not-callable
+    out1 = self.cnn_p1(
+        x, use_running_average=self.use_running_average
+    ) + self.cnn_p1(x / 2.0, use_running_average=self.use_running_average)
+    out2 = self.cnn_p2(x, use_running_average=self.use_running_average)
+    out = self.bn(out1 + out2)
+    # pylint: enable=not-callable
+    return out1, out2, out
+
+
+@pax_fiddle.auto_config
+def direct_mix_layer_fixture():
+  return DirectMixLayer(
+      cnn_p1=flax_adapter.DirectFlaxModuleAdapter(cld=CNN()),
+      cnn_p2=flax_adapter.DirectFlaxModuleAdapter(cld=CNN()),
+      bn=normalizations.BatchNorm(dim=10),
+  )
 
 
 class FlaxWrapperTest(test_utils.TestCase):
@@ -131,6 +161,23 @@ class FlaxWrapperTest(test_utils.TestCase):
     with base_layer.JaxContext.new_context():
       init_vars = test_layer.init(jax.random.PRNGKey(seed=123), input_x)
       _ = test_layer.apply(init_vars, input_x)
+
+  def test_direct_mix_layer_is_same(self):
+    old_layer_config = pax_fiddle.Config(MixLayer, name='test_layer')
+    old_layer = instantiate(old_layer_config)
+
+    new_layer_config = direct_mix_layer_fixture.as_buildable()
+    new_layer = pax_fiddle.build(new_layer_config)
+
+    input_x = jnp.zeros((256, 256, 3))
+    with base_layer.JaxContext.new_context():
+      init_vars = old_layer.init(jax.random.PRNGKey(seed=123), input_x)
+      old_outputs, _ = old_layer.apply(init_vars, input_x, mutable=True)
+      new_outputs, _ = new_layer.apply(init_vars, input_x, mutable=True)
+
+    self.assertLen(old_outputs, len(new_outputs))
+    for old, new in zip(old_outputs, new_outputs):
+      self.assertAllClose(old, new)
 
   def test_wrap_sharding_spec(self):
 
