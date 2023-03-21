@@ -23,7 +23,7 @@ import jax.numpy as jnp
 from praxis import base_hyperparams
 from praxis import pax_fiddle
 from praxis import test_utils
-from praxis.layers.quantization import aqt
+from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import automl_select
 from praxis.layers.quantization import quantization_hparams
 
@@ -37,8 +37,8 @@ class AutomlSelectTest(test_utils.TestCase):
   def test_automl_select(self):
     p = pax_fiddle.Config(automl_select.AutoMLSelect)
     p.search_options_tpl = [
-        aqt.create_tensor_quantizer('int4', ActQuantizationParams(precision=4)),
-        aqt.create_tensor_quantizer('int8', ActQuantizationParams(precision=8)),
+        quantizer.create_tensor_quantizer('int4', ActQuantizationParams(precision=4)),
+        quantizer.create_tensor_quantizer('int8', ActQuantizationParams(precision=8)),
     ]
 
     m = instantiate(p)

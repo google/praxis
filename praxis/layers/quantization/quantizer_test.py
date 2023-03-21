@@ -26,12 +26,12 @@ from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
 from praxis import test_utils
-from praxis.layers.quantization import aqt
+from praxis.layers.quantization import quantizer
 
 JTensor = pytypes.JTensor
 
 
-class AqtTest(test_utils.TestCase):
+class QuantizerTest(test_utils.TestCase):
 
   def get_quantize_dequantized_and_scale(
       self, p_quant, sample, axis=None
@@ -95,7 +95,7 @@ class AqtTest(test_utils.TestCase):
     )
 
     p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer, name='tq', precision=3, add_scale_eps=add_scale_eps
+        quantizer.TensorQuantizer, name='tq', precision=3, add_scale_eps=add_scale_eps
     )
 
     q_x, q_deq_x, scale = self.get_quantize_dequantized_and_scale(p_quant, x)
@@ -112,7 +112,7 @@ class AqtTest(test_utils.TestCase):
     x = jax.random.uniform(
         jax.random.PRNGKey(0), shape=(4, 5), dtype=jnp.float32
     )
-    p_quant = pax_fiddle.Config(aqt.TensorQuantizer, name='tq', precision=None)
+    p_quant = pax_fiddle.Config(quantizer.TensorQuantizer, name='tq', precision=None)
     _, q_deq_x, scale = self.get_quantize_dequantized_and_scale(p_quant, x)
 
     self.assertEqual(scale, jnp.full((1, 1), 1.0, dtype=jnp.float32))
@@ -126,7 +126,7 @@ class AqtTest(test_utils.TestCase):
     y = jax.random.normal(
         jax.random.PRNGKey(0), shape=(512, 256), dtype=jnp.float32
     )
-    p_quant = pax_fiddle.Config(aqt.TensorQuantizer, name='tq', precision=8)
+    p_quant = pax_fiddle.Config(quantizer.TensorQuantizer, name='tq', precision=8)
     quant = p_quant.Instantiate()
     state = quant.init(jax.random.PRNGKey(0))
 
@@ -163,7 +163,7 @@ class AqtTest(test_utils.TestCase):
   )
   def test_zeros_quant_rescaling(self, stop_scale_gradient):
     p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='tq',
         precision=8,
         stop_scale_gradient=stop_scale_gradient,
@@ -204,19 +204,19 @@ class AqtTest(test_utils.TestCase):
 
   def test_clipping_optimization(self):
     sym_p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='sym_quant',
         precision=4,
         use_symmetric=True,
     )
     asym_p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='asym_quant',
         precision=4,
         use_symmetric=False,
     )
     sym_p_quant_opt = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='sym_quant_opt',
         precision=4,
         min_clipping=0.8,
@@ -224,7 +224,7 @@ class AqtTest(test_utils.TestCase):
         use_symmetric=True,
     )
     asym_p_quant_opt = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='asym_quant_opt',
         precision=4,
         min_clipping=0.8,
@@ -281,7 +281,7 @@ class AqtTest(test_utils.TestCase):
   def test_clip_to_unsigned_int(self, precision):
     """Checks if an input gets clipped to [0, 2**precision-1] when unsigned_int=True."""
     p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='tq',
         precision=precision,
         unsigned_int_bounds=True,
@@ -304,7 +304,7 @@ class AqtTest(test_utils.TestCase):
 
   def test_single_quant_with_unsigned_int_bound(self):
     p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='tq',
         precision=3,
         unsigned_int_bounds=True
@@ -350,7 +350,7 @@ class AqtTest(test_utils.TestCase):
 
   def test_quantize_asymmetric(self):
     p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='tq',
         precision=8,
         add_scale_eps=False,
@@ -380,14 +380,14 @@ class AqtTest(test_utils.TestCase):
   )
   def test_asymmetric_quant_error_smaller_than_symmetric(self, precision):
     p_quant_asymmetric = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='asymmetric',
         precision=precision,
         add_scale_eps=False,
         use_symmetric=False,
     )
     p_quant_symmetric = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='symmetric',
         precision=precision,
         add_scale_eps=False,
@@ -416,14 +416,14 @@ class AqtTest(test_utils.TestCase):
   def test_asymmetric_quant_error_less_than_unsigned(self, precision):
     contract_dims = [1]
     p_quant_asymmetric = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='asymmetric',
         precision=precision,
         add_scale_eps=False,
         use_symmetric=False,
     )
     p_quant_unsigned = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='symmetric',
         precision=precision,
         add_scale_eps=False,
@@ -459,7 +459,7 @@ class AqtTest(test_utils.TestCase):
     precision = 4
     contract_dims = [1]
     p_clip = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='clipped',
         precision=precision,
         add_scale_eps=False,
@@ -467,7 +467,7 @@ class AqtTest(test_utils.TestCase):
         clipping_coeff=0.8,
     )
     p_no_clip = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='not_clipped',
         precision=precision,
         add_scale_eps=False,
@@ -508,14 +508,14 @@ class AqtTest(test_utils.TestCase):
   def test_asymmetric_quant_error_less_than_symmetric(self, precision):
     contract_dims = [1]
     p_quant_asymmetric = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='asymmetric',
         precision=precision,
         add_scale_eps=False,
         use_symmetric=False,
     )
     p_quant_symmetric = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='symmetric',
         precision=precision,
         add_scale_eps=False,
@@ -551,7 +551,7 @@ class AqtTest(test_utils.TestCase):
 
   def test_aux_quantization_loss(self):
     p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='quant',
         precision=4,
         quant_loss_weight=1,
@@ -614,7 +614,7 @@ class AqtTest(test_utils.TestCase):
     x[1, -1] = 2.0
 
     p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='quant',
         precision=2,
         min_clipping=0.8,
@@ -649,14 +649,14 @@ class AqtTest(test_utils.TestCase):
   def test_sub_channel_quant_error_less_than_standard(self, precision):
     contract_dims = [1]
     p_quant = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='asymmetric',
         precision=precision,
         add_scale_eps=False,
         use_symmetric=False,
     )
     p_quant_sub = pax_fiddle.Config(
-        aqt.TensorQuantizer,
+        quantizer.TensorQuantizer,
         name='asymmetric_sub_channel',
         precision=precision,
         add_scale_eps=False,

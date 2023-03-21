@@ -25,7 +25,7 @@ import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import test_utils
-from praxis.layers.quantization import aqt
+from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import operations
 
 
@@ -162,13 +162,13 @@ class AqtEinsum(base_layer.BaseLayer):
     self.create_child(
         'lhs_quantizer',
         pax_fiddle.Config(
-            aqt.TensorQuantizer, name='lhs_quantizer', precision=self.lhs_prec
+            quantizer.TensorQuantizer, name='lhs_quantizer', precision=self.lhs_prec
         ),
     )
     self.create_child(
         'rhs_quantizer',
         pax_fiddle.Config(
-            aqt.TensorQuantizer,
+            quantizer.TensorQuantizer,
             name='rhs_quantizer',
             precision=self.rhs_prec,
             add_scale_eps=self.add_scale_eps,

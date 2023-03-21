@@ -79,9 +79,9 @@ pytype_strict_library(
     srcs = ["attentions.py"],
     srcs_version = "PY3",
     deps = [
-        ":aqt",
         ":operations",
         ":quantization_hparams",
+        ":quantizer",
         ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -333,9 +333,9 @@ pytype_strict_library(
     srcs = ["linears.py"],
     srcs_version = "PY3",
     deps = [
-        ":aqt",
         ":operations",
         ":quantization_hparams",
+        ":quantizer",
         ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -368,9 +368,9 @@ pytype_strict_library(
     srcs = ["multi_query_attention.py"],
     srcs_version = "PY3",
     deps = [
-        ":aqt",
         ":operations",
         ":quantization_hparams",
+        ":quantizer",
         ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -479,8 +479,8 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":aqt",
         ":operations",
+        ":quantizer",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
@@ -536,8 +536,8 @@ py_strict_test(
 )
 
 pytype_strict_library(
-    name = "aqt",
-    srcs = ["aqt.py"],
+    name = "quantizer",
+    srcs = ["quantizer.py"],
     srcs_version = "PY3",
     deps = [
         ":operations",
@@ -550,12 +550,12 @@ pytype_strict_library(
 )
 
 py_strict_test(
-    name = "aqt_test",
-    srcs = ["aqt_test.py"],
+    name = "quantizer_test",
+    srcs = ["quantizer_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":aqt",
+        ":quantizer",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
@@ -602,11 +602,11 @@ pytype_strict_library(
     name = "searchable",
     srcs = ["searchable.py"],
     deps = [
-        ":aqt",
         ":attentions",
         ":automl_select",
         ":linears",
         ":quantization_hparams",
+        ":quantizer",
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
     ],
@@ -631,9 +631,9 @@ py_strict_test(
     name = "automl_select_test",
     srcs = ["automl_select_test.py"],
     deps = [
-        ":aqt",
         ":automl_select",
         ":quantization_hparams",
+        ":quantizer",
         # Implicit absl.testing.absltest dependency.
         # Implicit jax dependency.
         "//praxis:base_hyperparams",

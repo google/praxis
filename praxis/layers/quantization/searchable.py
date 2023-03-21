@@ -19,7 +19,7 @@ from typing import Sequence, Dict, Any
 
 from praxis import base_layer
 from praxis import pax_fiddle
-from praxis.layers.quantization import aqt
+from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import attentions
 from praxis.layers.quantization import automl_select
 from praxis.layers.quantization import linears
@@ -46,12 +46,12 @@ def _build_quantization_templates(
       raise AttributeError('Precision %d is not supported.' % precision)
     act_params = base.act_params
     act_params.precision = precision
-    act_qtzr_tmpl = aqt.create_tensor_quantizer(
+    act_qtzr_tmpl = quantizer.create_tensor_quantizer(
         f'act_quantizer_int{str(precision)}', act_params
     )
     weight_params = base.weight_params
     weight_params.precision = precision
-    weight_qtzr_tmpl = aqt.create_tensor_quantizer(
+    weight_qtzr_tmpl = quantizer.create_tensor_quantizer(
         f'weight_quantizer_int{str(precision)}', weight_params
     )
     act_qtzr_tmpls.append(act_qtzr_tmpl)

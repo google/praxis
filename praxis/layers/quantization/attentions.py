@@ -26,7 +26,7 @@ from praxis import base_layer
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import attentions
-from praxis.layers.quantization import aqt
+from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import utils
@@ -57,13 +57,13 @@ class AttentionProjection(attentions.AttentionProjection):
   def create_tensor_quantizers(self):
     self.create_child(
         'act_quantizer',
-        aqt.create_tensor_quantizer(
+        quantizer.create_tensor_quantizer(
             'aqt_quantizer', self.quantization.act_params
         ),
     )
     self.create_child(
         'weight_quantizer',
-        aqt.create_tensor_quantizer(
+        quantizer.create_tensor_quantizer(
             'weight_quantizer', self.quantization.weight_params
         ),
     )
@@ -346,13 +346,13 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
   def create_tensor_quantizers(self):
     self.create_child(
         'act_quantizer',
-        aqt.create_tensor_quantizer(
+        quantizer.create_tensor_quantizer(
             'aqt_quantizer', self.quantization.act_params
         ),
     )
     self.create_child(
         'weight_quantizer',
-        aqt.create_tensor_quantizer(
+        quantizer.create_tensor_quantizer(
             'weight_quantizer', self.quantization.weight_params
         ),
     )
@@ -651,7 +651,7 @@ class DotProductAttention(attentions.DotProductAttention):
   def create_tensor_quantizers(self):
     self.create_child(
         'act_quantizer',
-        aqt.create_tensor_quantizer(
+        quantizer.create_tensor_quantizer(
             'aqt_quantizer', self.quantization.act_params
         ),
     )
