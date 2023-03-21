@@ -124,7 +124,7 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
     use_output_logits = self.use_output_logits
 
     def token_embedder_factory():
-      return embedding.Embed(
+      return embedding.Embed(  # pytype: disable=wrong-arg-types  # jax-types
           attend_dtype='float32',
           cast_input_dtype='int32',
           dtype=activation_dtype,
@@ -170,13 +170,13 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
           use_bias=False,
           use_rotary_embedding=use_rotary_embedding)
       if use_multi_query_attention:
-        return dense_attention.MultiQueryDotProductAttention(
+        return dense_attention.MultiQueryDotProductAttention(  # pytype: disable=wrong-arg-types  # jax-types
             rescale_logits=True,
             split_head_kernel=True,
             out_features=embed_dim,
             **init_kwargs,
         )
-      return dense_attention.MultiHeadDotProductAttention(**init_kwargs)
+      return dense_attention.MultiHeadDotProductAttention(**init_kwargs)  # pytype: disable=wrong-arg-types  # jax-types
 
     def mlp_factory():
       return dense.MlpBlock(
@@ -195,7 +195,7 @@ class FlaxFormerDecoder(base_layer.BaseLayer):
       )
 
     def output_logits_factory():
-      return dense.DenseGeneral(
+      return dense.DenseGeneral(  # pytype: disable=wrong-arg-types  # jax-types
           bias_init=linen.initializers.normal(stddev=1e-06),
           dtype='float32',
           features=num_embeddings,
@@ -340,7 +340,7 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
     num_decoder_layers = p.num_decoder_layers
 
     def shared_token_embedder_factory():
-      return embedding.Embed(
+      return embedding.Embed(  # pytype: disable=wrong-arg-types  # jax-types
           attend_dtype='float32',
           cast_input_dtype='int32',
           dtype=activation_dtype,
@@ -366,7 +366,7 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
       return layer_norm.T5LayerNorm(dtype=activation_dtype)
 
     def self_attention_factory():
-      return dense_attention.MultiHeadDotProductAttention(
+      return dense_attention.MultiHeadDotProductAttention(  # pytype: disable=wrong-arg-types  # jax-types
           bias_init=linen.initializers.normal(stddev=1e-06),
           broadcast_dropout=True,
           dropout_rate=dropout_rate,
@@ -394,7 +394,7 @@ class FactoryBasedEncoderDecoder(EncoderDecoder):
       )
 
     def output_logits_factory():
-      return dense.DenseGeneral(
+      return dense.DenseGeneral(  # pytype: disable=wrong-arg-types  # jax-types
           bias_init=linen.initializers.normal(stddev=1e-06),
           dtype='float32',
           features=num_embeddings,
