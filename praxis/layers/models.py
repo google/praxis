@@ -82,6 +82,7 @@ def compute_xent_loss_helper(
     input_batch: NestedMap,
     return_predictions: bool,
     apply_eval_sample_weights: bool = False,
+    report_strict_acc: bool = False,
 ) -> Tuple[WeightedScalars, Dict[str, Any]]:
   """Helper for computing the xent loss for Language model and Sequence model.
 
@@ -98,6 +99,10 @@ def compute_xent_loss_helper(
       example weights from the input `eval_sample_weights` or not. When enabled,
       these per-example weights will be merged with the per token
       `input_batch.weights`.
+    report_strict_acc: Whether to report strict accuracy. In general, this requires 
+      the entire portion of the sequence with nonzero weight be predicted correctly.
+      Frequently used for eval on the Lambada dataset, in which case this metric is 
+      equivalent to full-word matching. 
 
   Returns:
     - A dict or NestedMap containing str keys and (value, weight) pairs as
@@ -136,6 +141,20 @@ def compute_xent_loss_helper(
       fraction_of_correct_next_step_preds=(mean_acc, metric_weight),
       num_predictions=(num_preds, jnp.array(1.0, num_preds.dtype)),
   )
+  if report_strict_acc:
+    num_acc = jnp.sum(weights, axis=-1, dtype=jnp.float32)
+    ## mask out padding examples
+    num_acc = jax.lax.select(input_batch.eval_sample_weights.astype(jnp.int32),
+                             num_acc, jnp.inf*jnp.ones_like(num_acc))
+    num_nonpadding = jnp.sum(input_batch.eval_sample_weights)
+
+    mean_acc_strict = (jnp.sum(jnp.sum((labels == predicted_labels)
+                                       * weights, axis=-1) == num_acc)
+                       /jnp.maximum(num_nonpadding, 1))
+    strict_weight = jnp.array(num_nonpadding, predictions.avg_xent.dtype)
+
+    metrics.acc_strict=(mean_acc_strict, strict_weight)
+
   # The score for the sequence is the negative of the sum of per token cross
   # entropy, which is the (weighted) sum of log probs on the tokens.
   per_example_output = NestedMap(
@@ -159,6 +178,8 @@ class LanguageModel(base_model.BaseModel):
     count_tokens: Whether to track total tokens trained on in the checkpoint.
     apply_eval_sample_weights: Boolean indicating whether to apply the per
       example weights from the input `eval_sample_weights` or not.
+    report_strict_acc: Whether to report strict accuracy. Used for eval on 
+      Lambada dataset.
   """
   lm_tpl: LayerTpl = template_field(transformer_models.TransformerLm)
   return_predictions: bool = False
@@ -166,6 +187,7 @@ class LanguageModel(base_model.BaseModel):
   model_type: LanguageModelType = LanguageModelType.CAUSAL
   count_tokens: bool = False
   apply_eval_sample_weights: bool = False
+  report_strict_acc: bool = False
 
   def setup(self) -> None:
     super().setup()
@@ -244,6 +266,7 @@ class LanguageModel(base_model.BaseModel):
         input_batch,
         self.return_predictions,
         self.apply_eval_sample_weights,
+        self.report_strict_acc,
     )
 
   def _prepare_guidance_decode_data(self, decode_data: NestedMap) -> NestedMap:
