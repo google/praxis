@@ -16,7 +16,6 @@
 """Tests for Praxis embedding and softmax layers."""
 
 import itertools
-from praxis import pax_fiddle
 
 from absl import logging
 from absl.testing import absltest
@@ -26,6 +25,7 @@ from jax import numpy as jnp
 from lingvo.core import layers as lingvo_layers
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import embedding_softmax
@@ -668,6 +668,36 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     np_pos = to_np(output)
     tf_np_pos = to_np(tf_output)
     self.assertAllClose(tf_np_pos, np_pos, atol=1e-3)
+
+  @parameterized.parameters((1, 10), (1, 1e5), (10, 20), (10, 1e5))
+  def test_rotary_position_embedding_layer_shift_invariant(
+      self, min_timescale, max_timescale
+  ):
+    embedding_dims = 8
+    p = pax_fiddle.Config(
+        embedding_softmax.RotaryPositionalEmbedding,
+        name='jax_rotary_pos',
+        embedding_dims=embedding_dims,
+        min_timescale=min_timescale,
+        max_timescale=max_timescale,
+    )
+    pos_layer = instantiate(p)
+    seq_len = 7
+    inputs = np.random.normal(1.5, 2.5, (1, seq_len, 2, embedding_dims))
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pos_layer.init(prng_key, inputs)
+
+    def attn(pos):
+      v = pos_layer.apply(initial_vars, inputs, pos)
+      return tf.einsum('BSNH,BTNH->BSTN', v, v)
+
+    positions = np.expand_dims(np.arange(0, seq_len, dtype=np.int32), axis=0)
+    ref_attn = attn(positions)
+    for i in range(1, 4):
+      # The key property of rotary position embedding is the shift invariance,
+      # i.e., if we add shift all the positions by the same amount, the inner
+      # products should stay the same.
+      self.assertAllClose(ref_attn, attn(positions + i))
 
   @parameterized.parameters((1, 10, 1), (1, 1e5, 3), (10, 20, 4), (10, 1e5, 5))
   def test_rotary_position_embedding_layer_prefix(self, min_timescale,

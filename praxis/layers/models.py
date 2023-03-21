@@ -222,6 +222,11 @@ class LanguageModel(base_model.BaseModel):
           'segment_ids': input_batch.segment_ids,
           'segment_pos': input_batch.segment_pos,
       }
+      if 'segment_mask' in input_batch:
+        # Note that the "real" segment mask is inferred from segment ids (and
+        # possibly paddings.) If segment mask is explicitly specified here, what
+        # we are saying is "I want to provide my own attention mask."
+        extra_input_kwargs['segment_mask'] = input_batch.segment_mask
 
     if self.model_type == LanguageModelType.BIDIRECTIONAL:
       causal_attention_mask = jnp.zeros_like(inputs)
