@@ -45,7 +45,7 @@ chain = praxis.layers.chain
 """
 import collections
 import copy
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple, List
 
 from absl import logging
 from jax import numpy as jnp
@@ -126,7 +126,7 @@ def repeat(
   )
 
 
-def _name_layers_uniquely(layers_tpl: Sequence[LayerTpl]) -> list[LayerTpl]:
+def _name_layers_uniquely(layers_tpl: Sequence[LayerTpl]) -> List[LayerTpl]:
   """Returns layers with unique names assigned."""
   if not layers_tpl:
     return []
