@@ -66,19 +66,17 @@ HParams = lingvo_lib.HParams
 JTensor = jnp.ndarray
 
 
-# A utility function to flatten copied from jax/_src/util.py
-def _unzip2(xys):
-  xs = []
-  ys = []
-  for x, y in xys:
-    xs.append(x)
-    ys.append(y)
-  return tuple(xs), tuple(ys)
+def flatten_with_keys(tree: NestedMap):
+  items = sorted(tree.items())
+  flat_with_keys = [(jax.tree_util.DictKey(k), v) for k, v in items]
+  return flat_with_keys, [k for k, _ in items]
 
 
-jax.tree_util.register_pytree_node(NestedMap,
-                                   lambda xs: _unzip2(sorted(xs.items()))[::-1],
-                                   lambda keys, xs: NestedMap(zip(keys, xs)))
+jax.tree_util.register_pytree_with_keys(
+    NestedMap,
+    flatten_with_keys,
+    lambda keys, xs: NestedMap(zip(keys, xs)),
+)
 
 
 def merge_dict(dict1, dict2):
