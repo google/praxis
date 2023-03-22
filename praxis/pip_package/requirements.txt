@@ -58,7 +58,7 @@ click==8.1.3
     # via tensorflow-datasets
 clu==0.0.8
     # via -r praxis-requirements.in
-comm==0.1.2
+comm==0.1.3
     # via ipykernel
 contextlib2==21.6.0
     # via ml-collections
@@ -243,7 +243,7 @@ libcst==0.4.9
     # via fiddle
 lingvo==0.12.6
     # via -r praxis-requirements.in
-markdown==3.4.1
+markdown==3.4.2
     # via tensorboard
 markdown-it-py==2.2.0
     # via rich
@@ -338,7 +338,7 @@ optax==0.1.4
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax==0.1.5
+orbax==0.1.6
     # via flax
 packaging==23.0
     # via
