@@ -53,7 +53,8 @@ RUN mkdir /bazel && \
 
 COPY . /praxis
 RUN mkdir $WHEEL_FOLDER
-RUN pip3 install -r /praxis/praxis/pip_package/requirements.txt
+RUN sed -i 's/ @ git.*//g' /praxis/praxis/pip_package/requirements.in
+RUN pip3 install -r /praxis/praxis/pip_package/requirements.in
 
 RUN git clone https://github.com/google/flaxformer.git
 RUN cd flaxformer && pip3 install .
