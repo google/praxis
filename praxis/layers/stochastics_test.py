@@ -59,10 +59,17 @@ class StochasticsTest(test_utils.TestCase):
     logging.info('out1_nonzero: %s', out1_nonzero)
     logging.info('out2_nonzero: %s', out2_nonzero)
 
+    finfo = jnp.finfo(inputs.dtype)
+    nmant = finfo.nmant
     self.assertEqual(9984.0, out1_sum)
-    self.assertEqual(9984.0, out2_sum)
-    self.assertEqual(7983.0, out1_nonzero)
-    self.assertEqual(7964.0, out2_nonzero)
+    if jax._src.lib.xla_extension_version >= 140 and nmant < 8:
+      self.assertEqual(9984.0, out2_sum)
+      self.assertEqual(7983.0, out1_nonzero)
+      self.assertEqual(7964.0, out2_nonzero)
+    else:
+      self.assertEqual(9920.0, out2_sum)
+      self.assertEqual(8000.0, out1_nonzero)
+      self.assertEqual(7952.0, out2_nonzero)
 
   def test_dropout_layer_02(self):
     test_layer_p = pax_fiddle.Config(
