@@ -899,6 +899,13 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
   """
   cast_as_fprop_dtype: bool = True
 
+  def setup(self) -> None:
+    if self.embedding_dims % 2:
+      raise ValueError(
+          'Embedding dim for rotary position embedding must be a multiple of 2.'
+      )
+    super().setup()
+
   def __call__(self,
                inputs: JTensor,
                position: Optional[JTensor] = None) -> JTensor:
@@ -919,9 +926,6 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     if len(inputs.shape) != 4:
       raise ValueError('Input is assumed to be a rank 4 tensor of shape'
                        '[batch, sequence, heads, dims].')
-    if self.embedding_dims % 2:
-      raise ValueError('Embedding dim for rotary position embedding must be a'
-                       'multiple of 2.')
     if self.embedding_dims != inputs.shape[3]:
       raise ValueError('The embedding dims of the rotary position embedding'
                        'must match the hidden dimension of the inputs.')
