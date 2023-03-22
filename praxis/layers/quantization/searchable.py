@@ -15,15 +15,15 @@
 
 """Layers for Mixed-Precision Quantization Search."""
 import dataclasses
-from typing import Sequence, Dict, Any
+from typing import Any, Dict, Sequence
 
 from praxis import base_layer
 from praxis import pax_fiddle
-from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import attentions
 from praxis.layers.quantization import automl_select
 from praxis.layers.quantization import linears
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import quantizer
 
 QuantizationHParams = quantization_hparams.QuantizationHParams
 template_field = pax_fiddle.template_field
@@ -32,7 +32,7 @@ _SUPPORTED_PRECISIONS = [2, 4, 8]
 
 
 def _build_quantization_templates(
-    precisions: Sequence[int], base: QuantizationHParams
+    precisions: Sequence[int], base_qhparams: QuantizationHParams
 ):
   """Build templates for precision search from the base quantization hparams."""
   act_qtzr_tmpls = []
@@ -44,17 +44,17 @@ def _build_quantization_templates(
   for precision in precisions:  # pylint: disable=not-an-iterable
     if precision not in _SUPPORTED_PRECISIONS:
       raise AttributeError('Precision %d is not supported.' % precision)
-    act_params = base.act_params
-    act_params.precision = precision
     act_qtzr_tmpl = quantizer.create_tensor_quantizer(
-        f'act_quantizer_int{str(precision)}', act_params
+        f'act_quantizer_int{str(precision)}', base_qhparams.act_params
     )
-    weight_params = base.weight_params
-    weight_params.precision = precision
-    weight_qtzr_tmpl = quantizer.create_tensor_quantizer(
-        f'weight_quantizer_int{str(precision)}', weight_params
-    )
+    # if not quantizing activations, then don't set precision to indicate.
+    if base_qhparams.act_params.precision:
+      act_qtzr_tmpl.precision = precision
     act_qtzr_tmpls.append(act_qtzr_tmpl)
+    weight_qtzr_tmpl = quantizer.create_tensor_quantizer(
+        f'weight_quantizer_int{str(precision)}', base_qhparams.weight_params
+    )
+    weight_qtzr_tmpl.precision = precision
     weight_qtzr_tmpls.append(weight_qtzr_tmpl)
   return act_qtzr_tmpls, weight_qtzr_tmpls
 
