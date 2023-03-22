@@ -69,10 +69,9 @@ Chain = chain_lib.Chain
 
 def chain(*layers_tpl: Any, **kwargs: Any) -> Config[Chain]:
   """Parameterizes Chain passing output from one layer to the next."""
-  named = _name_layers_uniquely([copy.deepcopy(l) for l in layers_tpl])
   return Config(
       Chain,
-      layers=named,
+      layers=_name_layers_uniquely(layers_tpl),
       **kwargs_with_name('chain', **kwargs),
   )
 
@@ -93,12 +92,8 @@ def copy_n_times(
   Returns:
     A Chain configuration.
   """
-
-  named = _name_layers_uniquely(
-      [copy.deepcopy(l) for l in layers_tpl * num_times]
-  )
   return chain(
-      *named,
+      *[copy.deepcopy(l) for l in layers_tpl * num_times],
       **kwargs_with_name('chain_copy_n_times', **kwargs),
   )
 
@@ -186,7 +181,7 @@ def add_residual(*layers: Any, **kwargs: Any) -> Config[AddResidual]:
   """`Config(AddResidual)`; stacks `layers` and adds a residual."""
   return Config(
       AddResidual,
-      layers=layers,
+      layers=_name_layers_uniquely(layers),
       **kwargs_with_name('add_residual', **kwargs),
   )
 
