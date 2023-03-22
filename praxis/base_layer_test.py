@@ -275,7 +275,11 @@ class BaseLayerTest(test_utils.TestCase):
 
       child_tpl: pax_fiddle.Config = base_layer.template_field(FiddleChild)
       child_tpl_list: List[pax_fiddle.Config] = base_layer.template_field(None)
-      child_tpl_dict: Dict[str, pax_fiddle.Config] = base_layer.template_field(None)
+      child_tpl_dict: Dict[str, pax_fiddle.Config] = base_layer.template_field(
+          None
+      )
+      child_instance_list: Optional[List[base_layer.BaseLayer]] = None
+      child_instance_dict: Optional[List[base_layer.BaseLayer]] = None
 
       def setup(self):
         child_tpl = self.child_tpl.clone()
@@ -292,6 +296,8 @@ class BaseLayerTest(test_utils.TestCase):
         pax_fiddle.Config(FiddleChild, x=12),
     ]
     p.child_tpl_dict = {'x': pax_fiddle.Config(FiddleChild, x=12)}
+    p.child_instance_list = p.child_tpl_list
+    p.child_instance_dict = p.child_tpl_dict
     layer = p.Instantiate()
 
     model = layer.bind(
@@ -309,6 +315,8 @@ class BaseLayerTest(test_utils.TestCase):
     self.assertIsNone(hyper_params['_hparams'].child_tpl)
     self.assertIsNone(hyper_params['_hparams'].child_tpl_list)
     self.assertIsNone(hyper_params['_hparams'].child_tpl_dict)
+    self.assertIsNone(hyper_params['_hparams'].child_instance_list)
+    self.assertIsNone(hyper_params['_hparams'].child_instance_dict)
 
   @parameterized.parameters([
       (pax_fiddle.Config(SimpleBaseLayer),

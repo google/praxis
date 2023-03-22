@@ -1581,7 +1581,10 @@ class BaseLayer(nn.Module):
       *args: used for scan's rigid signature requirements.
     """
 
-    def is_sublayer_template(val):
+    def is_sublayer_template_or_instance(val):
+      if isinstance(val, BaseLayer):
+        return True
+
       template_types = (
           base_hyperparams.InstantiableHyperParams,
           pax_fiddle.Config,
@@ -1591,20 +1594,23 @@ class BaseLayer(nn.Module):
 
       # Check if val is a container of sub-layer templates.
       if isinstance(val, Mapping) and all(isinstance(key, str) for key in val):
-        return is_sublayer_template(list(val.values()))
+        return is_sublayer_template_or_instance(list(val.values()))
       if isinstance(val, (list, tuple)):
-        if any(is_sublayer_template(child) for child in val):
-          if all(is_sublayer_template(child) or child is None for child in val):
+        if any(is_sublayer_template_or_instance(child) for child in val):
+          if all(
+              is_sublayer_template_or_instance(child) or child is None
+              for child in val
+          ):
             return True
       return False
 
     hparam_kwargs = {}
     for field in self._hparam_fields:
       value = getattr(self, field)
-      if is_sublayer_template(value) or isinstance(value, BaseLayer):
+      if is_sublayer_template_or_instance(value):
         # No need to include sub-layer template params (or direct-instantiated
         # children), since the instantiated sub-layer will show up in its own
-        # collection anyways.  Use an explcit `None` value to prevent `fiddle`
+        # collection anyways.  Use an explicit `None` value to prevent `fiddle`
         # from auto-populating fields with default factories.
         value = None
       hparam_kwargs[field] = value
