@@ -56,6 +56,7 @@ class OneHeadedAttentionProjection(base_layer.BaseLayer):
   input_dim: int = 0
   output_dim: int = 0
   use_bias: bool = True
+  dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -100,7 +101,7 @@ class OneHeadedAttentionProjection(base_layer.BaseLayer):
         shape[-1] == self.input_dim
     ), f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {self.input_dim}'
     eqn = '...D,DH->...H'
-    ret = jnp.einsum(eqn, inputs, w)
+    ret = jnp.einsum(eqn, inputs, w, _dot_general=self.dot_general)
     if self.use_bias:
       ret += theta.b
     return ret
@@ -186,6 +187,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   attention_extra_logit: Optional[float] = None
   dconv_qkv: bool = False
   combine_qkv: bool = False
+  qk_dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
+  pv_dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
 
   # SPMD partition related params.
   #
@@ -393,7 +396,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   def _atten_logits(self, query: JTensor, key: JTensor) -> JTensor:
     """Compute logits from query and key."""
     query = query.transpose(0, 2, 1, 3)
-    logits = jnp.einsum('BNTH,BSH->BNTS', query, key)
+    logits = jnp.einsum(
+        'BNTH,BSH->BNTS',
+        query,
+        key,
+        _dot_general=self.qk_dot_general,
+    )
     return logits
 
   def _dot_atten(
@@ -456,7 +464,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # Apply attention dropout.
     probs = self.atten_dropout(probs)
     # Compute the attention context.
-    encoded = jnp.einsum('BNTS,BSH->BNTH', probs, value)
+    encoded = jnp.einsum(
+        'BNTS,BSH->BNTH',
+        probs,
+        value,
+        _dot_general=self.pv_dot_general,
+    )
     encoded = encoded.transpose(0, 2, 1, 3)
     encoded = checkpoint_name(encoded, 'context')
     encoded = self._shard_blnh(encoded)
@@ -500,7 +513,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     base_layer.assert_has_shape(atten_mask, [-1, -1, s])
     asserts.in_set(atten_mask.shape[0], [1, b])
     query = self._scale_query(query)
-    logits = jnp.einsum('BNH,BSH->BNS', query, key)
+    logits = jnp.einsum(
+        'BNH,BSH->BNS',
+        query,
+        key,
+        _dot_general=self.qk_dot_general,
+    )
     if relative_bias is not None:
       base_layer.assert_has_shape(relative_bias, [-1, -1, 1, s])
       asserts.in_set(relative_bias.shape[0], [1, b])
@@ -518,7 +536,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
           key.dtype)
     # Compute the attention context.
-    encoded = jnp.einsum('BNS,BSH->BNH', probs, value)
+    encoded = jnp.einsum(
+        'BNS,BSH->BNH',
+        probs,
+        value,
+        _dot_general=self.pv_dot_general,
+    )
     encoded = self._shard_bnh(encoded)
     return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
 
@@ -846,9 +869,19 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
 
       q = self._scale_query(q)
       if extend_one_step:
-        logits = jnp.einsum('BNH,BSH->BNS', q, k)
+        logits = jnp.einsum(
+            'BNH,BSH->BNS',
+            q,
+            k,
+            _dot_general=self.qk_dot_general,
+        )
       else:
-        logits = jnp.einsum('BTNH,BSH->BNTS', q, k)
+        logits = jnp.einsum(
+            'BTNH,BSH->BNTS',
+            q,
+            k,
+            _dot_general=self.qk_dot_general,
+        )
       if rb is not None:
         base_layer.assert_has_shape(rb, [-1, n, -1, s])
         asserts.in_set(rb.shape[0], [b, 1])
@@ -909,8 +942,22 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
       del layer, batched, non_batched
       v = self._shard_blh(states[0])
       if extend_one_step:
-        return self._shard_bnh(jnp.einsum('BNS,BSH->BNH', ps, v))
-      return self._shard_blnh(jnp.einsum('BNTS,BSH->BTNH', ps, v))
+        return self._shard_bnh(
+            jnp.einsum(
+                'BNS,BSH->BNH',
+                ps,
+                v,
+                _dot_general=self.pv_dot_general,
+            )
+        )
+      return self._shard_blnh(
+          jnp.einsum(
+              'BNTS,BSH->BTNH',
+              ps,
+              v,
+              _dot_general=self.pv_dot_general,
+          )
+      )
 
     # Use sum as result combiner since the time dimension is a contracting dim.
     encoded = self._run_with_all_decode_state_chunks(_post_softmax, [], probs,  # pytype: disable=wrong-arg-types  # jax-ndarray

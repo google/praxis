@@ -1367,7 +1367,12 @@ class DotProductAttention(base_layer.BaseLayer):
     base_layer.assert_has_shape(atten_mask, [-1, 1, s])
     asserts.in_set(atten_mask.shape[0], [b, 1])
     query = self._scale_query(query)
-    logits = jnp.einsum('BNH,BSNH->BNS', query, key)
+    logits = jnp.einsum(
+        'BNH,BSNH->BNS',
+        query,
+        key,
+        _dot_general=self.qk_dot_general,
+    )
     if relative_bias is not None:
       base_layer.assert_has_shape(relative_bias, [-1, n, 1, s])
       asserts.in_set(relative_bias.shape[0], [b, 1])
@@ -1385,7 +1390,12 @@ class DotProductAttention(base_layer.BaseLayer):
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
           key.dtype)
     # Compute the attention context.
-    encoded = jnp.einsum('BNS,BSNH->BNH', probs, value)
+    encoded = jnp.einsum(
+        'BNS,BSNH->BNH',
+        probs,
+        value,
+        _dot_general=self.pv_dot_general,
+    )
 
     if self.zero_fully_masked:
       # Return zeros for tokens which don't attend anything.
