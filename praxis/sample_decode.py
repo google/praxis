@@ -1145,13 +1145,13 @@ def sample_decode(
       # recursively merge two dictionaries.
       reinsert_collection(model, base_layer.SUMMARIES, model_summaries_copy)
 
-  del result.segment_pos
-
   if result_callback is not None and result_callback.done_fn is not None:
     result_callback.done_fn()
 
   if return_result_for_suffix_score:
     return result
+
+  del result.segment_pos
 
   result.prefix_lengths = prefix_lengths
   result.original_lengths = jnp.sum(
