@@ -1662,7 +1662,7 @@ class AttentionsTest(test_utils.TestCase):
                      [0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 2]]], jnp.int32))
       self.assertArraysEqual(
           attention_states[base_layer.PREFIX_DECODE_CACHE]['key_state_0_pfx'],
-          np.array([[0], [0]], jnp.int32))
+          jnp.zeros((2, 0), jnp.int32))
 
   def test_no_attention_decode_state(self):
     mdl_dim = 16

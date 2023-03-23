@@ -1099,8 +1099,6 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
     batch_dim = 0
     time_dim = 1
     prev_pfx_count = self._broadcast_prefixes_count
-    # Only one prefix decode state is supported at the moment.
-    assert prev_pfx_count == 1
     for name, state in self.variables[base_layer.DECODE_CACHE].items():
       if not isinstance(state, JTensor):
         continue
@@ -1110,8 +1108,8 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
       # Merge batch dims.
       state_shape = list(new_state.shape)
       final_state_shape = state_shape.copy()
-      state_shape[batch_dim] = math.prod(state_shape[:prev_pfx_count + 1])
-      state_shape.pop(prev_pfx_count)
+      batch_size = math.prod(state_shape[:prev_pfx_count + 1])
+      state_shape = [batch_size] + state_shape[prev_pfx_count + 1:]
       new_state = jnp.reshape(new_state, state_shape)
       # Right align decode state.
       new_state = right_align_fn(new_state, batch_dim, time_dim)
@@ -1120,16 +1118,17 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
 
       self.update_decode_state(name, new_state)
 
-      # Set seq_len to 1 in prefix decode state.
-      prefix_name = f'{name}_{prev_pfx_count - 1}_pfx'
-      assert self.is_mutable_collection(PREFIX_DECODE_CACHE)
-      prefix_state = self.get_variable(PREFIX_DECODE_CACHE, prefix_name)
-      prefix_state_shape = list(prefix_state.shape)
-      prefix_state_shape[batch_dim + 1] = 1
-      # Pass all 0s to the prefix state.
-      new_prefix_state = jnp.zeros(prefix_state_shape, prefix_state.dtype)
+      # Set seq_len to 0 in prefix decode state.
+      for i in range(prev_pfx_count):
+        prefix_name = f'{name}_{i}_pfx'
+        assert self.is_mutable_collection(PREFIX_DECODE_CACHE)
+        assert prefix_name in self.variables[PREFIX_DECODE_CACHE]
+        prefix_state = self.get_variable(PREFIX_DECODE_CACHE, prefix_name)
+        prefix_state_shape = list(prefix_state.shape)
+        prefix_state_shape[i+1] = 0
+        new_prefix_state = jnp.zeros(prefix_state_shape, prefix_state.dtype)
 
-      self.put_variable(PREFIX_DECODE_CACHE, prefix_name, new_prefix_state)
+        self.put_variable(PREFIX_DECODE_CACHE, prefix_name, new_prefix_state)
 
   def _decode_state_chunk_length(self, chunk_id: int) -> int:
     """Returns the length of a decode state chunk (prefix or current)."""
