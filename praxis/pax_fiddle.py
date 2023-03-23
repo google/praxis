@@ -208,20 +208,22 @@ def has_do_not_build_tag(field: dataclasses.Field[Any]) -> bool:
   return fdl_dataclasses.field_has_tag(field, DoNotBuild)
 
 
-def _auto_config_exemption_policy(fn_or_cls) -> bool:
-  return (fn_or_cls is PaxConfig or
-          (getattr(fn_or_cls, '__func__', None) is
-           fdl_auto_config.AutoConfig.as_buildable) or
-          fdl_auto_config.auto_config_policy.latest(fn_or_cls))
-
-
 def auto_config(
     fn: Optional[Callable[..., Any]] = None,
     **auto_config_kwargs: Any,
 ) -> Any:
   """Version of Fiddle's auto_config that generates PaxConfig objects."""
-  auto_config_kwargs['experimental_exemption_policy'] = (
-      _auto_config_exemption_policy)
+  user_exemption_policy = auto_config_kwargs.pop(
+      'experimental_exemption_policy',
+      fdl_auto_config.auto_config_policy.latest)
+
+  def exemption_policy(fn_or_cls):
+    return (fn_or_cls is PaxConfig or
+            (getattr(fn_or_cls, '__func__', None) is
+             fdl_auto_config.AutoConfig.as_buildable) or
+            user_exemption_policy(fn_or_cls))
+
+  auto_config_kwargs['experimental_exemption_policy'] = exemption_policy
   auto_config_kwargs['experimental_allow_control_flow'] = True
   auto_config_kwargs['experimental_config_cls'] = PaxConfig
   auto_config_kwargs['experimental_result_must_contain_buildable'] = False
@@ -285,7 +287,7 @@ def instance_field(
 
 
 def template_field(
-    template: Optional[Callable[..., Any]],
+    template: Optional[Callable[..., Any]] = dataclasses.MISSING,
     tags: TagOrTags = (),
 ) -> Union[dataclasses.Field[Any], Any]:
   """Dataclass field specification for a Fiddle-configurable template field.
@@ -301,7 +303,8 @@ def template_field(
 
   Args:
     template: The template type (or factory function).  If `None`, then the
-      field defaults to `None`.
+      field defaults to `None`. If not given, then the field is a required field
+      that does not have a default.
     tags: One or more tags to attach to the `fdl.Buildable`'s argument
       corresponding to the field, when building a `fdl.Buildable`.
 
@@ -310,8 +313,8 @@ def template_field(
   """
   tags = ({tags} if isinstance(tags, type(Tag)) else set(tags)) | {DoNotBuild}
 
-  if template is None:
-    return fdl_field(default=None, tags=tags)
+  if template is None or template is dataclasses.MISSING:
+    return fdl_field(default=template, tags=tags)
 
   # `factory` will return a PaxConfig object in both the Fiddle.as_buildable
   # path and the Python path.
