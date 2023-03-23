@@ -2822,6 +2822,7 @@ class ShardedAdafactor(BaseOptimizer):
 def sharded_static_accumulation(
     num_sub_batches: int,
     base_tx: ShardedGradientTransformation,
+    accumulation_use_cond_op: bool = False,
 ) -> ShardedGradientTransformation:
   """Gradient transformation for ShardedStaticAccumulator optimizer."""
 
@@ -2862,21 +2863,7 @@ def sharded_static_accumulation(
         base_state=base_tx.init_partition_spec(params),
         accumulated_update=accumulated_update,
         count=count)
-
-  def while_cond(predicate, compute_fn, init_state, *args, **kwargs):
-    """Rewrites a cond as a while loop."""
-
-    def _iter_body(unused_state):
-      results = compute_fn(*args, **kwargs)
-      return tuple([False] + list(results))
-
-    def _iter_condition(state):
-      return state[0]
-
-    results = jax.lax.while_loop(_iter_condition, _iter_body,
-                                 tuple([predicate] + init_state))
-    return tuple(results[1:])
-
+  
   def update_fn(updates: NestedJTensor,
                 state: NestedJTensor,
                 params: Optional[NestedJTensor] = None):
@@ -2897,16 +2884,38 @@ def sharded_static_accumulation(
               jax.tree_map(lambda u: jnp.zeros_like(u, dtype=jnp.float32),
                            updates), emission_base_state)
 
-    # PAX makes use of vectorized map for repeated layers. XLA currently doesn't
-    # handle conds with-in vmap well and thus calls into both branches with a
-    # select. Here we rewrite a lax.cond as while_loop to get around this issue
-    # and get faster step time.
-    new_updates, new_accumulated_update, new_base_state = while_cond(
-        should_emit, _run_base_tx, [
-            jax.tree_map(jnp.zeros_like, updates), new_accumulated_update,
-            state.base_state  # pytype: disable=attribute-error  # jax-ndarray
-        ])
+    if accumulation_use_cond_op:
+        def _continue_accumulating():
+          return (jax.tree_map(jnp.zeros_like, updates), new_accumulated_update,
+                  state.base_state) # pytype: disable=attribute-error # jax-ndarray
 
+        new_updates, new_accumulated_update, new_base_state = lax.cond(
+            should_emit, _run_base_tx, _continue_accumulating)
+    else:
+        # PAX makes use of vectorized map for repeated layers. XLA currently doesn't
+        # handle conds with-in vmap well and thus calls into both branches with a
+        # select. Here we rewrite a lax.cond as while_loop to get around this issue
+        # and get faster step time.
+        def while_cond(predicate, compute_fn, init_state, *args, **kwargs):
+          """Rewrites a cond as a while loop."""
+
+          def _iter_body(unused_state):
+            results = compute_fn(*args, **kwargs)
+            return tuple([False] + list(results))
+
+          def _iter_condition(state):
+            return state[0]
+
+          results = jax.lax.while_loop(_iter_condition, _iter_body,
+                                       tuple([predicate] + init_state))
+          return tuple(results[1:])
+
+        new_updates, new_accumulated_update, new_base_state = while_cond(
+            should_emit, _run_base_tx, [
+                jax.tree_map(jnp.zeros_like, updates), new_accumulated_update,
+                state.base_state  # pytype: disable=attribute-error  # jax-ndarray
+            ])
+    
     return new_updates, NestedMap(
         base_state=new_base_state,
         accumulated_update=new_accumulated_update,
@@ -2940,10 +2949,15 @@ class ShardedStaticAccumulator(BaseOptimizer):
     optimizer_tpl: Parameter for base optimizer.
     num_sub_batches: The number of batches whose updates should be accumulated
       before sending to the base optimizer transformation.
+    accumulation_use_cond_op: whether to use lax.while_loop (default) or lax.cond 
+      operator for checking if current step needs to gradient accumulation, using
+      lax.cond may have memory benefits, but saw some cases where it can have perf 
+      regression.
   """
   optimizer_tpl: Optional[pax_fiddle.Config[BaseOptimizer]] = None
   num_sub_batches: int = 1
   base_optimizer: Any = dataclasses.field(init=False, repr=False)
+  accumulation_use_cond_op: bool = False;
 
   def __post_init__(self):
     super().__post_init__()
@@ -2959,4 +2973,4 @@ class ShardedStaticAccumulator(BaseOptimizer):
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> GeneralGradientTransformation:
     base_tx = self.base_optimizer._get_raw_grad_transformation(lr)  # pylint: disable=protected-access
-    return sharded_static_accumulation(self.num_sub_batches, base_tx)
+    return sharded_static_accumulation(self.num_sub_batches, base_tx, accumulation_use_cond_op)
