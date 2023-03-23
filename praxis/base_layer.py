@@ -2380,6 +2380,12 @@ def compatible_hparams(
     return p1.to_text() == p2.to_text()
 
 
+class MakeDotGeneral(BaseLayer):
+
+  def __call__(self) -> pytypes.DotGeneralT:
+    return jax.lax.dot_general
+
+
 class _WrapperLayer(BaseLayer):
   """A simple wrapper layer."""
 

@@ -580,7 +580,7 @@ class AttentionProjection(base_layer.BaseLayer):
   attention_combine_dims: bool = False
   use_nhd_shape: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
-  dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
+  make_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -661,6 +661,8 @@ class AttentionProjection(base_layer.BaseLayer):
         )
       self.create_variable('b', pc_bias)
 
+    self.create_child('make_dot_general', self.make_dot_general_tpl.clone())
+
   def __call__(self, inputs: JTensor) -> JTensor:
     """Computes the multi headed projection for inputs.
 
@@ -702,7 +704,7 @@ class AttentionProjection(base_layer.BaseLayer):
       ), f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {self.input_dim}'
       batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
-    ret = jnp.einsum(eqn, inputs, w, _dot_general=self.dot_general)
+    ret = jnp.einsum(eqn, inputs, w, _dot_general=self.make_dot_general())
     if self.use_bias:
       ret += theta.b
     return ret
@@ -738,7 +740,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
   use_bias: bool = True
   attention_combine_dims: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
-  dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
+  make_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
 
   def setup(self) -> None:
     # Sharding has the same convention of AttentionProjection, which doesn't
@@ -801,6 +803,8 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
       )
       self.create_variable('b', pc_bias)
 
+    self.create_child('make_dot_general', self.make_dot_general_tpl.clone())
+
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
   # attentions.
   def __call__(self, inputs: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
@@ -837,7 +841,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
 
     # K indexes qkv.
     eqn = f'{batch_eqn}D,KDNH->K{batch_eqn}NH'
-    ret = jnp.einsum(eqn, inputs, w, _dot_general=self.dot_general)
+    ret = jnp.einsum(eqn, inputs, w, _dot_general=self.make_dot_general())
     ret = checkpoint_name(ret, 'combined_qkv_proj')
     if self.use_bias:
       # Add newaxis to bias weight for each batch dim since ret is K...NH
@@ -971,8 +975,8 @@ class DotProductAttention(base_layer.BaseLayer):
   decode_cache: bool = True
   attention_mask_summary: bool = False
   zero_fully_masked: bool = False
-  qk_dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
-  pv_dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
+  make_qk_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
+  make_pv_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
 
   # SPMD partition related params.
   #
@@ -1135,6 +1139,12 @@ class DotProductAttention(base_layer.BaseLayer):
       post_proj_p.weight_split_dims_mapping.wt = wp.proj
 
     self.create_child('post', post_proj_p)
+    self.create_child(
+        'make_qk_dot_general', self.make_qk_dot_general_tpl.clone()
+    )
+    self.create_child(
+        'make_pv_dot_general', self.make_pv_dot_general_tpl.clone()
+    )
 
   def _shard_bnh(self, x: JTensor) -> JTensor:
     """Shards tensors of shape [b, n, h].
@@ -1224,7 +1234,7 @@ class DotProductAttention(base_layer.BaseLayer):
   def _atten_logits(self, query: JTensor, key: JTensor) -> JTensor:
     """Compute logits from query and key."""
     logits = jnp.einsum(
-        'BTNH,BSNH->BNTS', query, key, _dot_general=self.qk_dot_general
+        'BTNH,BSNH->BNTS', query, key, _dot_general=self.make_qk_dot_general()
     )
     return logits
 
@@ -1300,7 +1310,7 @@ class DotProductAttention(base_layer.BaseLayer):
     probs = self.atten_dropout(probs)
     # Compute the attention context.
     encoded = jnp.einsum(
-        'BNTS,BSNH->BTNH', probs, value, _dot_general=self.pv_dot_general
+        'BNTS,BSNH->BTNH', probs, value, _dot_general=self.make_pv_dot_general()
     )
 
     if self.zero_fully_masked:
@@ -1371,7 +1381,7 @@ class DotProductAttention(base_layer.BaseLayer):
         'BNH,BSNH->BNS',
         query,
         key,
-        _dot_general=self.qk_dot_general,
+        _dot_general=self.make_qk_dot_general(),
     )
     if relative_bias is not None:
       base_layer.assert_has_shape(relative_bias, [-1, n, 1, s])
@@ -1394,7 +1404,7 @@ class DotProductAttention(base_layer.BaseLayer):
         'BNS,BSNH->BNH',
         probs,
         value,
-        _dot_general=self.pv_dot_general,
+        _dot_general=self.make_pv_dot_general(),
     )
 
     if self.zero_fully_masked:

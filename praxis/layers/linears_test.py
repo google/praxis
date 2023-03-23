@@ -211,27 +211,80 @@ class LinearsTest(test_utils.TestCase):
                  base_hyperparams.nested_struct_to_text(params_inits))
 
   def test_dot_general_injection(self):
-    def run(dg):
+
+    class MakeDotGeneral(base_layer.BaseLayer):
+
+      def setup(self):
+        self.create_variable(
+            'mult',
+            base_layer.WeightHParams(
+                shape=[1],
+                init=base_layer.WeightInit.Constant(2.0),
+            ),
+            trainable=False,
+        )
+
+      def __call__(self):
+        mult = self.get_var('mult')
+        self.update_var('mult', mult * 2.0)
+
+        def dg(*args):
+          return jax.lax.dot_general(*args) * mult
+
+        return dg
+
+    def run(tpl, expected_shapes):
       p = pax_fiddle.Config(
           linears.Linear,
-          # name='jax_ffn',
+          name='jax_ffn',
           input_dims=10,
           output_dims=20,
-          dot_general=dg,
       )
+      if tpl:
+        p.set(make_dot_general_tpl=tpl)
+
       ffn = instantiate(p)
       inputs = jnp.ones((4, 10))
-      initial_vars = ffn.init(jax.random.PRNGKey(seed=123), inputs)
-      return ffn.apply(initial_vars, inputs)
+      initial_vars = ffn.init(
+          {
+              'params': jax.random.PRNGKey(seed=123),
+              'random': jax.random.PRNGKey(seed=123),
+          },
+          inputs,
+      )
+      vars_shapes = jax.tree_util.tree_map(jnp.shape, initial_vars)
+      self.assertEqual(vars_shapes, expected_shapes)
+      v1, new_vars = ffn.apply(
+          initial_vars,
+          inputs,
+          rngs={'random': jax.random.PRNGKey(seed=123)},
+          mutable=True,
+      )
+      v2, _ = ffn.apply(
+          new_vars,
+          inputs,
+          rngs={'random': jax.random.PRNGKey(seed=123)},
+          mutable=True,
+      )
+      return v1, v2
 
-    def my_dg(*args):
-      return jax.lax.dot_general(*args) / 2.0
+    expected_shapes_original = {
+        'params': {'w': (10, 20)},
+    }
 
-    output1 = run(jax.lax.dot_general)
-    output2 = run(my_dg)
+    expected_shapes_new = {
+        'non_trainable': {'make_dot_general': {'mult': (1,)}},
+        'params': {'w': (10, 20)},
+    }
+
+    output1a, output1b = run(None, expected_shapes_original)
+    tpl = pax_fiddle.Config(MakeDotGeneral)
+    output2a, output2b = run(tpl, expected_shapes_new)
     # We can use exact equality beacuse in floats division by 2.0 does not
     # have a rounding error.
-    self.assertAllClose(output1, output2 * 2, atol=0.0)
+    self.assertAllClose(output1a, output1b, atol=0.0)
+    self.assertAllClose(output1a, output2a / 2.0, atol=0.0)
+    self.assertAllClose(output1a, output2b / 4.0, atol=0.0)
 
 
 class StackingOverTimeLayerTest(test_utils.TestCase):

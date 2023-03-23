@@ -72,7 +72,7 @@ class Linear(base_layer.BaseLayer):
   """
   input_dims: int = 0
   output_dims: int = 0
-  dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
+  make_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -84,6 +84,7 @@ class Linear(base_layer.BaseLayer):
             tensor_split_dims_mapping=wp.wt,
         ),
     )
+    self.create_child('make_dot_general', self.make_dot_general_tpl.clone())
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Apply projection to inputs.
@@ -95,7 +96,9 @@ class Linear(base_layer.BaseLayer):
       Projected inputs.
     """
     ap = self.activation_split_dims_mapping
-    out = project_last_dim(inputs, self.theta.w, dot_general=self.dot_general)
+    out = project_last_dim(
+        inputs, self.theta.w, dot_general=self.make_dot_general()
+    )
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
     ap_out = ap.out

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """Common pytype definitions."""
-from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
 
 import clu.metrics as clu_metrics
 import jax
@@ -61,3 +61,5 @@ WeightedScalarsList = Union[Dict[str, Sequence[WeightedScalar]],
 Metrics = Union[py_utils.NestedMap, Dict[str, clu_metrics.Metric]]
 
 LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]
+
+DotGeneralT = Callable[..., jnp.ndarray]
