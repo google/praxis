@@ -232,7 +232,7 @@ def ctc_loss_with_alignments(
   # (frames, batch) -> (batch, frames)
   alignment = jnp.transpose(alignment, (1, 0))
 
-  return per_seq_loss, CtcAlignments(
+  return per_seq_loss, CtcAlignments(  # pytype: disable=bad-return-type  # numpy-scalars
       alignment=alignment,
       logalpha_phi=logalpha_phi,
       logalpha_emit=logalpha_emit,

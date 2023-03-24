@@ -161,7 +161,7 @@ def sharded_sgd(learning_rate_fn: optax.Schedule, momentum: Optional[float],
         shape=[], init=None, dtype=jnp.int32, collections=None)
 
     if momentum is None:
-      return (optax.EmptyState(), optax.ScaleByScheduleState(count=count))
+      return (optax.EmptyState(), optax.ScaleByScheduleState(count=count))  # pytype: disable=wrong-arg-types  # numpy-scalars
 
     def _opt_state_sharding_spec(var_hparams: WeightHParams) -> WeightHParams:
       """Returns optimizer sharding spec for one particular variable."""
@@ -172,7 +172,7 @@ def sharded_sgd(learning_rate_fn: optax.Schedule, momentum: Optional[float],
 
     momentum_sharding = jax.tree_map(_opt_state_sharding_spec, mdl_params)
     return (optax.TraceState(trace=momentum_sharding),
-            optax.ScaleByScheduleState(count=count))
+            optax.ScaleByScheduleState(count=count))  # pytype: disable=wrong-arg-types  # numpy-scalars
 
   def update_fn(updates, state, params=None):
     del params
@@ -221,7 +221,7 @@ def sharded_adagrad(learning_rate_fn: optax.Schedule,
 
     scale_by_rss_sharding = jax.tree_map(_opt_state_sharding_spec, mdl_params)
     return (optax.ScaleByRssState(sum_of_squares=scale_by_rss_sharding),
-            optax.ScaleByScheduleState(count=count))
+            optax.ScaleByScheduleState(count=count))  # pytype: disable=wrong-arg-types  # numpy-scalars
 
   def update_fn(updates, state, params=None):
     del params
@@ -1445,7 +1445,7 @@ class DistributedShampoo(BaseOptimizer):
       new_params, new_state = grad_transformation.update(grads, state, params)
       p = self._hparams
       if p.summarize_training_metrics:
-        param_stats = new_state.stats
+        param_stats = new_state.stats  # pytype: disable=attribute-error  # numpy-scalars
 
         # Construct an almost parallel-structured pytree with key prefixes to
         # annotate per-parameter metrics for the summary name. Frustratingly,
@@ -1645,13 +1645,13 @@ class ShardedDistributedShampoo(DistributedShampoo):
     result = self._shampoo_transformation(lr)
     # TODO(rohananil): Refactor after PartitionSpec layering is finalized in
     # the JAX ecosystem.
-    fns = result.init(None)
+    fns = result.init(None)  # pytype: disable=wrong-arg-types  # numpy-scalars
 
     def _wrapped_update_fn(grads, state, params):
       new_params, new_state = result.update(grads, state, params)
       p = self._hparams
       if p.summarize_training_metrics:
-        local_stats = new_state.stats.local_stats
+        local_stats = new_state.stats.local_stats  # pytype: disable=attribute-error  # numpy-scalars
         var_keys, _ = jax.tree_util.tree_flatten(
             py_utils.extract_prefixed_keys_from_nested_map(local_stats))
         var_keys = [x for x in var_keys if 'inverse_pth_root_errors' in x]
@@ -2195,7 +2195,7 @@ class _ShardedAdafactorHelper:
     old_val = param
 
     if self._multiply_by_parameter_scale:
-      update_scale *= self.parameter_scale(old_val).astype(update_scale.dtype)
+      update_scale *= self.parameter_scale(old_val).astype(update_scale.dtype)  # pytype: disable=attribute-error  # numpy-scalars
       if self._per_var_learning_summary:
         # Add summary for this var.
         base_layer.add_global_summary(
