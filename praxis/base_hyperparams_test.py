@@ -20,7 +20,7 @@ import functools
 import inspect
 import pickle
 import textwrap
-from typing import Any, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from absl.testing import absltest
 import fiddle as fdl
@@ -547,6 +547,26 @@ class FiddleBaseParameterizableTest(absltest.TestCase):
         some_param = 2
 
 
+class CheckpointLoadingRules(NamedTuple):
+  task_p: str = 'my task'
+  safe_load: bool = False
+
+
+class CheckPointRuleTest(base_hyperparams.FiddleBaseParameterizable):
+  init_from_checkpoint_rules: Dict[str, CheckpointLoadingRules] = (
+      pax_fiddle.instance_field(default_factory=dict)
+  )
+
+
+class CheckPointRuleDataclassTest(base_hyperparams.FiddleBaseParameterizable):
+
+  @dataclasses.dataclass
+  class Train(base_hyperparams.FiddleBaseParameterizable):
+    init_from_checkpoint_rules: Optional[Dict[str, CheckpointLoadingRules]] = (
+        None
+    )
+
+
 class NestedStructToTextTestCase(absltest.TestCase):
 
   def test_dict(self):
@@ -585,9 +605,9 @@ class NestedStructToTextTestCase(absltest.TestCase):
       a: str
 
     self.assertEqual(
-        nested_struct_to_text(MyNamedTuple(7, 'hi')).splitlines(), [
-            " : {'a': 'hi', 'b': 7}",
-        ])
+        nested_struct_to_text(MyNamedTuple(7, 'hi')).splitlines(),
+        ["[a] : 'hi'", '[b] : 7'],
+    )
 
   def test_np_array(self):
     self.assertEqual(
@@ -748,6 +768,40 @@ class NestedStructToTextTestCase(absltest.TestCase):
         nested_struct_to_text(jnp.float32).splitlines(), [
             ' : type/jax.numpy/float32',
         ])
+
+  def test_named_tuple_subconfig(self):
+    sub_config = CheckpointLoadingRules()
+    checkpoint_rule_config = pax_fiddle.Config(
+        CheckPointRuleTest,
+        name='my_checkpoint_rules',
+        init_from_checkpoint_rules=sub_config,
+    )
+    self.assertEqual(
+        nested_struct_to_text(checkpoint_rule_config).splitlines(),
+        [
+            "cls : <class '__main__.CheckPointRuleTest'>",
+            'init_from_checkpoint_rules[safe_load] : False',
+            "init_from_checkpoint_rules[task_p] : 'my task'",
+            "name : 'my_checkpoint_rules'",
+        ],
+    )
+
+  def test_named_tuple_dataclass_subconfig(self):
+    sub_config = CheckpointLoadingRules()
+    x = pax_fiddle.Config(
+        CheckPointRuleDataclassTest.Train,
+        name='my_checkpoint_rules',
+        init_from_checkpoint_rules=sub_config,
+    )
+    self.assertEqual(
+        nested_struct_to_text(x).splitlines(),
+        [
+            "cls : <class '__main__.CheckPointRuleDataclassTest.Train'>",
+            'init_from_checkpoint_rules[safe_load] : False',
+            "init_from_checkpoint_rules[task_p] : 'my task'",
+            "name : 'my_checkpoint_rules'",
+        ],
+    )
 
 
 if __name__ == '__main__':

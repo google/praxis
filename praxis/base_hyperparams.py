@@ -295,6 +295,10 @@ def nested_struct_to_text(obj_to_visit: Any,
     del key
     if isinstance(val, HParams):
       return True
+    elif dataclasses.is_dataclass(val) and not isinstance(val, type):
+      return True
+    elif _is_named_tuple(val):
+      return True
     elif isinstance(val, BaseHyperParams):
       return True
     # Internal handle of type config_dict.ConfigDict in nested_struct_to_text
