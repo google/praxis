@@ -369,8 +369,10 @@ def sharded_chain(
 
   def update_fn(updates, state, params=None):
     if len(args) != len(state):
-      raise ValueError('The number of updates and states has to be the same in '
-                       'sharded chain.')
+      raise ValueError(
+          'The number of updates and states has to be the same in '
+          f'sharded chain. got {len(args)=}, {len(state)=}'
+      )
 
     new_state = []
     for s, fn in zip(state, args):
