@@ -754,6 +754,10 @@ def sample_decode(
       )
 
     if eos_id is not None and isinstance(eos_id, JTensor):
+      assert eos_id.ndim == 2, (
+          'eos_id in sample_decode as JTensor needs to be rank 2, eos_id'
+          f' has dimension: {eos_id.ndim}'
+      )
       eos_id = _broadcast_input(eos_id, 'eos_id').astype(jnp.int32)
 
     if lazy_broadcast_prefix_fn is not None:
