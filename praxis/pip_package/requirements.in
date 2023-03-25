@@ -12,6 +12,5 @@ lingvo
 numpy
 optax
 optax-shampoo
-t5x
 tensorflow~=2.9.2
 tensorflow-text~=2.9.0
