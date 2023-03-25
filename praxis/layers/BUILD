@@ -1233,35 +1233,6 @@ py_strict_test(
 )
 
 pytype_strict_library(
-    name = "flaxformer_models",
-    srcs = ["flaxformer_models.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":flax_adapter",
-        # Implicit flaxformer.architectures.t5.parallel_fused_decoder dependency.
-        # Implicit flaxformer.architectures.t5.t5_architecture dependency.
-        # Implicit flaxformer.components.dense dependency.
-        # Implicit flaxformer.components.embedding dependency.
-        # Implicit flaxformer.components.layer_norm dependency.
-        # Implicit flaxformer.components.relative_position_biases dependency.
-        # Implicit flaxformer.components.attention.dense_attention dependency.
-        # Implicit clu dependency.
-        # Implicit flax.core dependency.
-        # Implicit jax dependency.
-        # Implicit numpy dependency.
-        "//praxis:base_input",
-        "//praxis:base_layer",
-        "//praxis:base_model",
-        "//praxis:decoder_hparams",
-        "//praxis:pax_fiddle",
-        "//praxis:py_utils",
-        "//praxis:pytypes",
-        # Implicit t5x.decoding dependency.
-        # Implicit t5x.losses dependency.
-    ],
-)
-
-pytype_strict_library(
     name = "vits",
     srcs = ["vits.py"],
     deps = [
@@ -1296,33 +1267,6 @@ pytype_strict_library(
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:pytypes",
-    ],
-)
-
-py_strict_test(
-    name = "flaxformer_models_test",
-    srcs = ["flaxformer_models_test.py"],
-    data = glob(["testdata/*.json"]),
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":flaxformer_models",
-        # Implicit flaxformer.testing_utils dependency.
-        # Implicit flaxformer.t5x.fiddle.architectures.t5_1_1 dependency.
-        # Implicit flaxformer.flaxformer.t5x.fiddle.models.t5x_model dependency.
-        # Implicit absl.testing.absltest dependency.
-        # Implicit absl.testing.parameterized dependency.
-        # Implicit fiddle dependency.
-        # Implicit jax dependency.
-        # Implicit numpy dependency.
-        "//praxis:base_input",
-        "//praxis:base_layer",
-        "//praxis:pax_fiddle",
-        "//praxis:py_utils",
-        "//praxis:pytypes",
-        "//praxis:test_utils",
-        # Implicit t5x.models dependency.
-        # Implicit t5x.partitioning dependency.
     ],
 )
 
