@@ -20,7 +20,6 @@ RUN cd /praxis && \
     -praxis/layers:convolutions_test \
     -praxis/layers:ctc_objectives_test \
     -praxis/layers:embedding_softmax_test \
-    -praxis/layers:flaxformer_models_test \
     -praxis/layers:models_test \
     -praxis/layers:ngrammer_test \
     -praxis/layers:normalizations_test \
