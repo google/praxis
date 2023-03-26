@@ -1010,6 +1010,16 @@ class DotProductAttention(base_layer.BaseLayer):
     blnh: SplitDimsMapping = None
     bld: SplitDimsMapping = None
 
+  # This function is meant to be overridden by subclasses, e.g. the streaming
+  # subclass.
+  def _create_rotary_position_emb(
+      self, layer_tpl: LayerTpl, dim_per_head: int
+  ) -> None:
+    pos_emb_p = layer_tpl.clone()
+    pos_emb_p.embedding_dims = dim_per_head
+    pos_emb_p.cast_as_fprop_dtype = self.cast_rotary_position_emb
+    self.create_child('rotary_position_emb', pos_emb_p)
+
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
     assert self.input_dim, 'input_dim is {}'.format(self.input_dim)
@@ -1081,10 +1091,9 @@ class DotProductAttention(base_layer.BaseLayer):
       self.create_child('value', project_input(value_input_dim, value_std))
 
     if self.use_rotary_position_emb:
-      pos_emb_p = self.rotary_position_emb_tpl.clone()
-      pos_emb_p.embedding_dims = dim_per_head
-      pos_emb_p.cast_as_fprop_dtype = self.cast_rotary_position_emb
-      self.create_child('rotary_position_emb', pos_emb_p)
+      self._create_rotary_position_emb(
+          self.rotary_position_emb_tpl, dim_per_head
+      )
 
     if self.relative_bias_tpl is not None:
       relative_bias_p = self.relative_bias_tpl.clone()
