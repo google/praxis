@@ -187,8 +187,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   attention_extra_logit: Optional[float] = None
   dconv_qkv: bool = False
   combine_qkv: bool = False
-  qk_dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
-  pv_dot_general: Callable[..., jnp.ndarray] = jax.lax.dot_general
+  make_qk_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
+  make_pv_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
 
   # SPMD partition related params.
   #
@@ -305,6 +305,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     post_proj_p.weight_split_dims_mapping.wt = wp.proj
 
     self.create_child('post', post_proj_p)
+    self.create_child(
+        'make_qk_dot_general', self.make_qk_dot_general_tpl.clone()
+    )
+    self.create_child(
+        'make_pv_dot_general', self.make_pv_dot_general_tpl.clone()
+    )
 
   def _shard_bnh(self, x: JTensor) -> JTensor:
     """Shards tensors of shape [b, n, h].
@@ -400,7 +406,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         'BNTH,BSH->BNTS',
         query,
         key,
-        _dot_general=self.qk_dot_general,
+        _dot_general=self.make_qk_dot_general(),
     )
     return logits
 
@@ -468,7 +474,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         'BNTS,BSH->BNTH',
         probs,
         value,
-        _dot_general=self.pv_dot_general,
+        _dot_general=self.make_pv_dot_general(),
     )
     encoded = encoded.transpose(0, 2, 1, 3)
     encoded = checkpoint_name(encoded, 'context')
@@ -517,7 +523,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         'BNH,BSH->BNS',
         query,
         key,
-        _dot_general=self.qk_dot_general,
+        _dot_general=self.make_qk_dot_general(),
     )
     if relative_bias is not None:
       base_layer.assert_has_shape(relative_bias, [-1, -1, 1, s])
@@ -540,7 +546,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         'BNS,BSH->BNH',
         probs,
         value,
-        _dot_general=self.pv_dot_general,
+        _dot_general=self.make_pv_dot_general(),
     )
     encoded = self._shard_bnh(encoded)
     return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
@@ -873,14 +879,14 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
             'BNH,BSH->BNS',
             q,
             k,
-            _dot_general=self.qk_dot_general,
+            _dot_general=self.make_qk_dot_general(),
         )
       else:
         logits = jnp.einsum(
             'BTNH,BSH->BNTS',
             q,
             k,
-            _dot_general=self.qk_dot_general,
+            _dot_general=self.make_qk_dot_general(),
         )
       if rb is not None:
         base_layer.assert_has_shape(rb, [-1, n, -1, s])
@@ -947,7 +953,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
                 'BNS,BSH->BNH',
                 ps,
                 v,
-                _dot_general=self.pv_dot_general,
+                _dot_general=self.make_pv_dot_general(),
             )
         )
       return self._shard_blnh(
@@ -955,7 +961,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
               'BNTS,BSH->BTNH',
               ps,
               v,
-              _dot_general=self.pv_dot_general,
+              _dot_general=self.make_pv_dot_general(),
           )
       )
 
