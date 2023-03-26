@@ -33,6 +33,7 @@ class AutodiffCheckpointType(str, enum.Enum):
   SAVE_DOT_FOR_MLPERF_200B = 'save_dot_for_mlperf_200b'
   SAVE_ITERATION_INPUT = 'save_iteration_input'
   SAVE_TRANSFORMER_LAYER_OUTPUT = 'save_transformer_layer_output'
+  SAVE_QUANTIZED = 'save_quantized'
 
 
 def custom_policy(checkpoint_policy: AutodiffCheckpointType):
@@ -58,6 +59,16 @@ def custom_policy(checkpoint_policy: AutodiffCheckpointType):
     return jax.checkpoint_policies.save_only_these_names(
         'combined_qkv_proj', 'query_proj', 'value_proj', 'key_proj', 'context',
         'out_proj')
+  if checkpoint_policy == AutodiffCheckpointType.SAVE_QUANTIZED:
+    return jax.checkpoint_policies.save_only_these_names(
+        'context',
+        'out_proj',
+        'combined_qkv_proj',
+        'qlhs',
+        'qrhs',
+        'lhs_scale',
+        'rhs_scale',
+    )
   if checkpoint_policy == AutodiffCheckpointType.SAVE_ITERATION_INPUT:
     return jax.checkpoint_policies.save_only_these_names('iteration_input')
   if checkpoint_policy == AutodiffCheckpointType.SAVE_TRANSFORMER_LAYER_OUTPUT:
