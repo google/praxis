@@ -1164,6 +1164,58 @@ class TransformerModelsTest(test_utils.TestCase):
       # Assert the sharding strategy of the two lms are the same!
       self.assertEqual(lm_p_1_txt, lm_p_2_txt)
 
+  def test_record_activations_in_xent_output(self):
+    seq_len = 64
+    p = pax_fiddle.Config(
+        transformer_models.TransformerLm,
+        name='lm',
+        model_dims=32,
+        vocab_size=52,
+        record_activations_in_xent_output=True,
+    )
+    stacked_transformer_tpl = p.stacked_transformer_tpl
+    stacked_transformer_tpl.model_dims = 32
+    stacked_transformer_tpl.hidden_dims = 4 * 32
+    stacked_transformer_tpl.num_heads = 4
+    stacked_transformer_tpl.num_layers = 1
+    p.softmax_tpl.scale_sqrt_depth = True
+    batch_size = 8
+    lm = instantiate(p)
+    input_ids = jax.random.randint(
+        jax.random.PRNGKey(1234), [batch_size, seq_len], 0, 51
+    )
+    input_paddings = jnp.zeros([batch_size, seq_len])
+    input_weights = jnp.ones([batch_size, seq_len])
+    input_segment_ids = jnp.ones([batch_size, seq_len])
+    input_segment_pos = jnp.tile(
+        jnp.arange(0, seq_len)[jnp.newaxis, :], [batch_size, 1]
+    )
+
+    labels = py_utils.NestedMap()
+    labels.class_ids = input_ids
+    labels.class_weights = input_weights
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = lm.init(
+          prng_key,
+          input_ids,
+          input_paddings,
+          labels=labels,
+          segment_ids=input_segment_ids,
+          segment_pos=input_segment_pos,
+      )
+      outputs = lm.apply(
+          initial_vars,
+          input_ids,
+          input_paddings,
+          labels=labels,
+          segment_ids=input_segment_ids,
+          segment_pos=input_segment_pos,
+      )
+      # Activations is [batch, seq_len, hidden_dims].
+      self.assertSequenceEqual(outputs.activations.shape, [8, 64, 32])
+
 
 if __name__ == '__main__':
   absltest.main()

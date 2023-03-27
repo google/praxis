@@ -206,26 +206,28 @@ class TransformerLm(base_layer.BaseLayer):
     vocab_size: Size of the vocabulary for LM.
     packed_input: Whether the inputs are packed.
     model_type: The type of language model based on the tokens visibility.
-    ngrammer_tpl: Params or list of params for the Ngrammer layer applied to
-      the input sequence (at the beginning of the network). This param may be
-      of type Ngrammer as well as VQNgrammer layer. If this is None then the
+    ngrammer_tpl: Params or list of params for the Ngrammer layer applied to the
+      input sequence (at the beginning of the network). This param may be of
+      type Ngrammer as well as VQNgrammer layer. If this is None then the
       Ngrammer layer is not used.
     post_attention_ngrammer_tpls: Sequence of params for the Ngrammer layer
       applied after every attention layer. This param must be of the form
       VQNgrammer layer, since we do not have any input ids for intermediate
-      layers. The length of this sequence must match the number of layers of
-      the model. To disable the application at a particular layer, set its
-      value to None. To completely disable this layer set it to either None or
-      a sequence of all Nones.
-    separate_embedding_tpl: Optional separate embedding lookup layer params.
-      By default this is None since the softmax and embedding lookup share
+      layers. The length of this sequence must match the number of layers of the
+      model. To disable the application at a particular layer, set its value to
+      None. To completely disable this layer set it to either None or a sequence
+      of all Nones.
+    separate_embedding_tpl: Optional separate embedding lookup layer params. By
+      default this is None since the softmax and embedding lookup share
       parameters, however if we wish to separate the parameters of embedding
       lookup and softmax then we can set this param.
     final_ln_tpl: Parameterization of the layer normalization layer.
     skip_compute_loss: Set to skip compute_loss and output activations.
     skip_aux_loss: Set to skip aux loss computation to be added to total loss.
-                   Used in cases where the Model class does this, to prevent
-                   double counting. (defaults to False)
+      Used in cases where the Model class does this, to prevent double counting.
+      (defaults to False)
+    record_activations_in_xent_output: If true, record activations in the
+      compute_loss output, so we have both the activations and logits available.
   """
   position_emb_tpl: LayerTpl = template_field(
       embedding_softmax.PositionalEmbedding
@@ -248,6 +250,7 @@ class TransformerLm(base_layer.BaseLayer):
   final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
   skip_compute_loss: bool = False
   skip_aux_loss: bool = False
+  record_activations_in_xent_output: bool = False
 
   @classmethod
   def set_sharding_params_v1(cls,
@@ -567,6 +570,19 @@ class TransformerLm(base_layer.BaseLayer):
         xent_output.aux_loss_weight = aux_loss_weight
         # This is the loss to minimize.
         xent_output.total_loss += xent_output.aux_loss
+
+    # Also output the activations, so that if necessary, we can attach a pooler
+    # on top of the activations.
+    #
+    # NOTE: Recording activations here is a bit awkward yet unfortunately
+    # necessary, as we often need both activations and logits. The current
+    # implementation returns either activations or logits based on
+    # `skip_compute_loss` which is fixed at the module level, and it is
+    # tricky to first compute the activation and then logits which would require
+    # extensive modification to `LanguageModel.compute_loss` (and other
+    # callers).
+    if self.record_activations_in_xent_output:
+      xent_output.activations = activations
     return xent_output
 
   def _prepare_input(self,
