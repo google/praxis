@@ -22,9 +22,9 @@ from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import linears
-from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import utils
 
 QuantizationMode = quantization_hparams.QuantizationMode
