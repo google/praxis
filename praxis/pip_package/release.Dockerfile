@@ -53,8 +53,8 @@ RUN mkdir /bazel && \
 
 COPY . /praxis
 RUN mkdir $WHEEL_FOLDER
-RUN sed -i 's/ @ git.*//g' /praxis/praxis/pip_package/requirements.in
-RUN pip3 install -r /praxis/praxis/pip_package/requirements.in
+RUN sed -i 's/ @ git.*//g' /praxis/requirements.in
+RUN pip3 install -r /praxis/requirements.in
 
 RUN cd /praxis && bazel build ...
 
