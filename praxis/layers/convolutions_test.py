@@ -362,20 +362,27 @@ class ConvolutionsTest(test_utils.TestCase):
     features = jnp.asarray(npy_features)
     paddings = jnp.asarray(npy_paddings)
 
-    theta = layer.init(
-        prng_key, features, paddings)
-    _, output = layer.apply(
-        theta, features, paddings)
+    theta = layer.init(prng_key, features, paddings)
+    output, output_padding = layer.apply(theta, features, paddings)
     if padding == 'SAME':
-      expect_output = get_padding_from_length((length + stride - 1) // stride)
+      expect_output_padding = get_padding_from_length(
+          (length + stride - 1) // stride
+      )
       # get_padding_from_length() doesn't consider paddings, here we fix it for
       # stride 1. But this may break for other inputs.
       if stride == 1:
-        expect_output[0, -1] = 1.
+        expect_output_padding[0, -1] = 1.0
     elif padding == 'VALID':
-      expect_output = get_padding_from_length(
-          (length - kernel_size + 1 + stride - 1) // stride)
-    self.assertAllClose(expect_output[:, :output.shape[1]], to_np(output))
+      expect_output_padding = get_padding_from_length(
+          (length - kernel_size + 1 + stride - 1) // stride
+      )
+    self.assertAllClose(
+        expect_output_padding[:, : output_padding.shape[1]],
+        to_np(output_padding),
+    )
+
+    # Validate that batch and time dimension are the same.
+    self.assertArraysEqual(output.shape[0:2], output_padding.shape)
 
   @parameterized.parameters(1, 2)
   def test_dilated_conv(self, rhs_dilation_rate):
