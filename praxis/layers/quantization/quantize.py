@@ -34,6 +34,7 @@ quantizing all transformer blocks.
 import functools
 from typing import cast, Optional, Type
 import fiddle as fdl
+from jax import numpy as jnp
 from praxis import base_layer
 from praxis import layers
 from praxis import pax_fiddle
@@ -238,6 +239,7 @@ def for_transformer(
     quantize_embedding_softmax: bool = False,
     transposed_embedding_softmax: bool = False,
     linear_only: bool = False,
+    dtype: jnp.dtype = jnp.int8,
 ):
   """Find and quantize transformer.
 
@@ -261,6 +263,7 @@ def for_transformer(
     transposed_embedding_softmax: If the model is using transposed embedding for
       embedding softmax layer.
     linear_only: quantize only linear layer.
+    dtype: Dtype of the quantized variables.
 
   Returns:
     A modifier that quantizes transformers when applied to a config.
@@ -289,6 +292,7 @@ def for_transformer(
             weight_quant_only=weight_quant_only,
             quantize_embedding_softmax=quantize_embedding_softmax,
             transposed_embedding_softmax=transposed_embedding_softmax,
+            dtype=dtype,
         )
         return task_p
 
@@ -309,6 +313,7 @@ def set_quantization(
     weight_quant_only: bool = True,
     quantize_embedding_softmax: bool = False,
     transposed_embedding_softmax: bool = False,
+    dtype: jnp.dtype = jnp.int8,
 ):
   """Sets quantization parameters for 'target' in 'config'.
 
@@ -331,10 +336,12 @@ def set_quantization(
       TransformerLm.softmax_tpl in `config`.
     transposed_embedding_softmax: If the model is using transposed embedding for
       embedding softmax layer.
+    dtype: Dtype of the quantized variables.
   """
   weight_quantization_params = WeightQuantizationParams(
       precision=num_bits,
       use_symmetric=use_symmetric,
+      dtype=dtype,
   )
   act_quantization_params = (
       None if weight_quant_only else ActQuantizationParams(precision=num_bits)

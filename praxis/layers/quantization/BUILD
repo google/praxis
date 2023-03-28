@@ -47,6 +47,7 @@ pytype_strict_library(
         ":layers",
         ":quantization_hparams",
         # Implicit fiddle dependency.
+        # Implicit jax dependency.
         "//praxis:base_hyperparams",
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
