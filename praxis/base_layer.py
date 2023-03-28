@@ -114,6 +114,10 @@ NON_PAX_RNG_KEY = 'dropout'
 QUANTIZED_SCALE_NAME_POSTFIX = '_quantized_scale'
 QUANTIZED_ZP_NAME_POSTFIX = '_quantized_zp'
 
+# Postfix for sparsity mask
+SPARSITY_NAME_POSTFIX = '_sparsity_mask'
+
+
 # Public aliase of base_hyperparams.instantiate() for convenience.
 instantiate = base_hyperparams.instantiate
 
@@ -379,16 +383,18 @@ class WeightInit(BaseHyperParams):
 
   @pax_fiddle.auto_config
   @staticmethod
-  def XavierWithFixupParams(scale: float = 1.0,
+  def XavierWithFixupParams(
+      scale: float = 1.0,
       depth: float = 1.0,
-                            layers_per_residual_block: float = 1.0):
+      layers_per_residual_block: float = 1.0,
+  ):
     """Xavier initialization with Fixup."""
     scale = scale * math.pow(depth, (-1.0 / (2 * layers_per_residual_block)))
     return WeightInit('xavier', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def Constant(scale: float = 1.0):
+  def Constant(scale: Union[float, bool] = 1.0):
     """scale."""
     return WeightInit('constant', scale)
 
@@ -2032,7 +2038,7 @@ class BaseLayer(nn.Module):
           name=name + QUANTIZED_ZP_NAME_POSTFIX,
           var_hparams=WeightHParams(shape=scale_shape),
       )
-
+    
   @nn.nowrap
   def get_quantized_weight(
       self, name: str, use_symmetric: bool = True
@@ -2060,6 +2066,48 @@ class BaseLayer(nn.Module):
     zp_name = name + QUANTIZED_ZP_NAME_POSTFIX
     zp = None if use_symmetric else self.theta[zp_name]
     return self.theta[name], self.theta[scale_name], zp
+
+  @nn.nowrap
+  def create_sparse_variable(self, name: str, weight_hparams: WeightHParams):
+    """Creates the weight and mask tensors for sparse variables.
+
+    `name` is the name of the weight tensor; `name` + `_sparsity_mask`
+    is the name of the mask tensor.
+
+    Only the shape and mesh for weight_hparams are used.
+
+    Args:
+      name: Variable name for the weight tensor.
+      weight_hparams: HParams for weight.
+    """
+    self.create_variable(name=name, var_hparams=weight_hparams)
+    sparsity_weight_hparams = weight_hparams.clone()
+    sparsity_weight_hparams.init = WeightInit.Constant(False)
+    sparsity_weight_hparams.dtype = jnp.bool_
+    self.create_variable(
+        name=name + SPARSITY_NAME_POSTFIX,
+        var_hparams=sparsity_weight_hparams,
+        trainable=False,
+    )
+
+  @nn.nowrap
+  def get_sparse_weight(self, name: str) -> Tuple[JTensor, JTensor]:
+    """Gets sparsity variables.
+
+    Gets a pair of weight and mask tensors. To be used together with
+    `create_sparse_variable`.
+
+    `name` will be name of the weight tensor; assumes mask tensor has the
+    postfix: `_sparsity_mask`
+
+    Args:
+      name: Variable name for the weight tensor.
+
+    Returns:
+      A Tuple of two elements for weight Tensor and mask Tensor.
+    """
+    mask_name = name + SPARSITY_NAME_POSTFIX
+    return self.theta[name], self.get_var(mask_name)
 
   @nn.nowrap
   def create_variable(self,
