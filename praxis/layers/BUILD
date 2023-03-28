@@ -483,6 +483,7 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        ":linears",
         ":repeats",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
@@ -492,6 +493,8 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
+        "//praxis/layers/sparsity:linears",
+        "//praxis/layers/sparsity:sparsity_hparams",
     ],
 )
 

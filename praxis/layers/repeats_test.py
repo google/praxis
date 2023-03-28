@@ -25,6 +25,12 @@ from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import repeats
+from praxis.layers.linears import FeedForward as ff
+from praxis.layers.sparsity import linears as slinears
+from praxis.layers.sparsity import sparsity_hparams
+
+
+template_field = base_layer.template_field
 
 NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
@@ -38,6 +44,12 @@ SUMMARIES = base_layer.SUMMARIES
 AUX_LOSS = base_layer.AUX_LOSS
 DECODE_CACHE = base_layer.DECODE_CACHE
 INTERMEDIATES = base_layer.INTERMEDIATES
+
+SparsityHParams = sparsity_hparams.SparsityHParams
+WeightSparsityParams = sparsity_hparams.WeightSparsityParams
+SparsityMode = sparsity_hparams.SparsityMode
+SparsityType = sparsity_hparams.SparsityType
+
 
 class FeedForward(base_layer.BaseLayer):
   """Feedforward layer.
@@ -307,7 +319,7 @@ class RepeatsTest(test_utils.TestCase):
     k = jax.random.PRNGKey(123)
     k, input_random_key = jax.random.split(k)
     x = jax.random.uniform(input_random_key, shape=(4, 2))
-    k, init_key = jax.random.split(k)
+    k, _ = jax.random.split(k)
     weight_hparams = repeated_layer.abstract_init_with_metadata(x)
     print('weight_hparams = ', weight_hparams)
 
@@ -334,6 +346,81 @@ class RepeatsTest(test_utils.TestCase):
     intermediates = updated_vars[INTERMEDIATES]['repeat_intermediates'][0]
     self.assertEqual(intermediates.shape, (3, 4, 2))
     self.assertAllClose(outputs, intermediates[-1])
+
+
+class RepeatsSparsityTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
+  def test_sparsity_repeats(self):
+    sparse_linear = pax_fiddle.Config(
+        slinears.Linear,
+        name='_sparse',
+        sparsity=SparsityHParams(
+            sparsity_type=SparsityType.STRUCTURED_NM,
+            weight_params=WeightSparsityParams(prune_rate=(2, 4)),
+            mode=SparsityMode.TRAINING,
+        ),
+    )
+    sub_p = pax_fiddle.Config(
+        ff,
+        input_dims=4,
+        output_dims=4,
+        linear_tpl=sparse_linear,
+    )
+    p = pax_fiddle.Config(repeats.Repeat, name='ffn', sub_tpl=sub_p, x_times=2)
+    ffn = instantiate(p)
+
+    inputs = np.random.normal(1.0, 1.5, [4, 4]).astype(np.float32)
+    prng_key = jax.random.PRNGKey(seed=123)
+    init_vars = ffn.init(prng_key, inputs)
+    init_vars['params']['sub']['linear']['w'] = jnp.array([
+        [
+            [1.0, 2.0, 3.0, 4.0],
+            [-3.0, -4.0, 1.0, 2.0],
+            [3.0, 1.0, -4.0, 2.0],
+            [-3.0, 1.0, 2.0, -4.0],
+        ],
+        [
+            [-3.0, 1.0, 2.0, -4.0],
+            [3.0, 1.0, -4.0, 2.0],
+            [-3.0, -4.0, 1.0, 2.0],
+            [1.0, 2.0, 3.0, 4.0],
+        ],
+    ])
+    res, state = ffn.apply(init_vars, inputs, mutable=True)
+    self.assertArraysEqual(
+        state['non_trainable']['sub']['linear'][
+            'w' + base_layer.SPARSITY_NAME_POSTFIX
+        ],
+        jnp.array([
+            [
+                [False, False, True, True],
+                [True, True, False, False],
+                [True, False, True, False],
+                [True, False, False, True],
+            ],
+            [
+                [True, False, False, True],
+                [True, False, True, False],
+                [True, True, False, False],
+                [False, False, True, True],
+            ],
+        ]),
+    )
+    self.assertEqual(res.shape, (4, 4))
+    shapes = jax.tree_map(lambda x: x.shape, state)
+    expected_shapes = {
+        'non_trainable': {
+            'sub': {
+                'linear': {'w' + base_layer.SPARSITY_NAME_POSTFIX: (2, 4, 4)}
+            }
+        },
+        'params': {'sub': {'linear': {'w': (2, 4, 4)}, 'bias': {'b': (2, 4)}}},
+    }
+    self.assertEqual(shapes, expected_shapes)
 
 
 class RepeatsQuantizeTest(test_utils.TestCase):
