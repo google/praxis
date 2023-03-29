@@ -62,7 +62,7 @@ class StochasticsTest(test_utils.TestCase):
     finfo = jnp.finfo(inputs.dtype)
     nmant = finfo.nmant
     self.assertEqual(9984.0, out1_sum)
-    if jax._src.lib.xla_extension_version >= 140 and nmant < 8:
+    if nmant < 8:
       self.assertEqual(9984.0, out2_sum)
       self.assertEqual(7983.0, out1_nonzero)
       self.assertEqual(7964.0, out2_nonzero)
