@@ -79,7 +79,7 @@ def call_chain(
   """
   outputs = []
   args_stack = args
-  for i, l in enumerate(layers):
+  for i, l in enumerate([l for l in layers if l is not None]):
     try:
       layer_outs = call_chained_layer(l, *args_stack, **kwargs)
     except Exception as e:
@@ -89,6 +89,9 @@ def call_chain(
 
     outputs.append(layer_outs)
     args_stack = ensure_tuple(layer_outs)
+
+  if not outputs:
+    return [args if len(args) > 1 else args[0]]
 
   return outputs
 

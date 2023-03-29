@@ -79,6 +79,22 @@ class ChainTest(test_utils.TestCase):
     self.assertArraysEqual([[6.0, 0], [6, 6]], outputs)
     self.assertArraysEqual([[0.0, 1], [0, 0]], paddings)
 
+  def test_chain_with_none_layer(self):
+    p = chain.chain(
+        chain.chain(),
+        chain.full_like(2.0),
+        chain.chain(None),
+        chain.apply_padding(),
+        None,
+        _scale(3.0),
+        chain.chain(),
+    )
+    outputs, paddings = self._run(
+        p, jnp.ones((2, 2)), jnp.array([[0.0, 1], [0, 0]])
+    )
+    self.assertArraysEqual([[6.0, 0], [6, 6]], outputs)
+    self.assertArraysEqual([[0.0, 1], [0, 0]], paddings)
+
   def test_chain_with_special_kwarg(self):
     class SpecialKWarg(BaseLayer):
 

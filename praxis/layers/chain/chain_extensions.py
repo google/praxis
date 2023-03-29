@@ -123,6 +123,7 @@ def repeat(
 
 def _name_layers_uniquely(layers_tpl: Sequence[LayerTpl]) -> List[LayerTpl]:
   """Returns layers with unique names assigned."""
+  layers_tpl = [l for l in layers_tpl if l]
   if not layers_tpl:
     return []
   name_or_default = lambda layer: layer.name or 'layers'
@@ -208,7 +209,7 @@ class DictToArgs(BaseLayer):
 
 
 def dict_to_args(*keys: str, **kwargs: Any) -> Config[DictToArgs]:
-  """`Config(DictToArgs); looks up tensors by keys in a dictionary."""
+  """`Config(DictToArgs)`; looks up tensors by keys in a dictionary."""
   return Config(
       DictToArgs,
       keys=keys,
@@ -250,12 +251,12 @@ class LogArgs(BaseLayer):
 
 
 def log_args(
-    message: str, log_values: bool = False, **kwargs: Any
+    message: Optional[str] = None, log_values: bool = False, **kwargs: Any
 ) -> Config[LogArgs]:
   """`Config(LogArgs)`; logs the arguments (for easy debugging)."""
   return Config(
       LogArgs,
-      message=message,
+      message=message or '',
       log_values=log_values,
       **kwargs_with_name('log_args', **kwargs),
   )
