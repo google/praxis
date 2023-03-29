@@ -73,7 +73,8 @@ class Conv2D(base_layer.BaseLayer):
     bias: Whether or not to apply a bias before activation.
     bias_init: Bias initializer to use if bias is to be applied.
     kernel_init: Optional kernel initializer to use.
-    padding: The type of padding to use.
+    padding: The type of padding to use. It can be 'SAME' or 'VALID'.
+      Note that only 'SAME' padding can be combined with is_causal=True.
     tf_equivalent_padding: Whether to make it equivalent to tf. By default we
       apply extra padding that is different than tf conv when stride > 1. This
       is mainly used for multimodal which leads to better accuracy.
@@ -166,13 +167,15 @@ class Conv2D(base_layer.BaseLayer):
     self.create_child('weight_norm', wn)
 
   def _compute_padding(self, inputs_shape, pad_height_zero=False):
+    filter_height = (self.filter_shape[0] - 1) * self.dilations[0] + 1
+    filter_width = (self.filter_shape[1] - 1) * self.dilations[1] + 1
     if not self.tf_equivalent_padding:
       if self.padding == 'SAME':
         pad_height_beg, pad_height_end = _extract_pad_beg_end(
-            self.filter_shape[0]
+            filter_height
         )
         pad_width_beg, pad_width_end = _extract_pad_beg_end(
-            self.filter_shape[1]
+            filter_width
         )
       else:
         assert self.padding == 'VALID', self.padding
@@ -189,8 +192,6 @@ class Conv2D(base_layer.BaseLayer):
         # Compute padding for causal convolution
         # Reference:
         # https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2
-        filter_height = (self.filter_shape[0] - 1) * self.dilations[0] + 1
-        filter_width = (self.filter_shape[1] - 1) * self.dilations[1] + 1
         pad_height_total = _causal_padding(
             inputs_shape[1], filter_height, self.filter_stride[0]
         )

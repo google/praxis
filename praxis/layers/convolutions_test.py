@@ -46,18 +46,31 @@ class ConvolutionsTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.parameters(
-      ((5, 4, 24, 36), (1, 1), [2, 16, 36, 72]),
-      ((2, 4, 16, 8), (2, 2), [2, 16, 32, 128]),
-      ((4, 8, 16, 32), (1, 1), [2, 16, 32, 64]),
+      ((5, 4, 24, 36), (1, 1), (1, 1), False, [2, 16, 36, 72]),
+      ((2, 4, 16, 8), (2, 2), (1, 1), False, [2, 16, 32, 128]),
+      ((4, 8, 16, 32), (1, 1), (1, 1), False, [2, 16, 32, 64]),
+      ((2, 8, 16, 32), (1, 1), (2, 2), False, [2, 16, 32, 64]),
+      ((2, 8, 16, 32), (2, 2), (2, 2), False, [2, 16, 32, 64]),
+      ((2, 8, 16, 32), (1, 1), (2, 1), False, [2, 16, 32, 64]),
+      ((2, 8, 16, 32), (2, 2), (2, 1), False, [2, 16, 32, 64]),
+      ((2, 8, 16, 32), (1, 1), (2, 2), True, [2, 16, 32, 64]),
+      ((2, 8, 16, 32), (2, 2), (2, 2), True, [2, 16, 32, 64]),
   )
-  def test_conv2d_layer_same_padding(self, filter_shape, filter_stride,
-                                     input_shape):
+  def test_conv2d_layer_same_padding(
+      self,
+      filter_shape,
+      filter_stride,
+      dilations,
+      tf_equivalent_padding,
+      input_shape,
+  ):
     p = pax_fiddle.Config(
         convolutions.Conv2D,
         name='jax_conv2d',
         filter_shape=filter_shape,
         filter_stride=filter_stride,
-        dilations=(1, 1),
+        dilations=dilations,
+        tf_equivalent_padding=tf_equivalent_padding,
         padding='SAME',
     )
     conv_layer = instantiate(p)
