@@ -14,7 +14,8 @@
 # limitations under the License.
 
 """Activation layers."""
-
+from __future__ import annotations
+from typing import Type
 import jax
 import jax.numpy as jnp
 from praxis import base_layer
@@ -30,6 +31,33 @@ class BaseActivation(base_layer.BaseLayer):
     """Applies the activation function."""
     raise NotImplementedError(
         'Activation layers are expected to implement __call__().')
+
+  @classmethod
+  def get_subclass_by_name(cls, name: str) -> Type[BaseActivation]:
+    """Returns a subclass with the given name.
+
+    Matching is case insensitive and ignores underscores.
+
+    Args:
+      name: Name of subclass.
+
+    Returns:
+      A subclass.
+
+    Raises:
+      KeyError: if cannot find a unique subclass that matches the name.
+    """
+    candidates = []
+    normalized_name = name.replace('_', '').lower()
+    for subcls in cls.__subclasses__():
+      if subcls.__name__.lower() == normalized_name:
+        candidates.append(subcls)
+    if len(candidates) > 1:
+      full_names = [k.__module__ + ':' + k.__qualname__ for k in candidates]
+      raise KeyError(f'Found >1 activation layers named {name}: {full_names}')
+    if not candidates:
+      raise KeyError(f'Cannot found activation layer named {name}.')
+    return candidates[0]
 
 
 class ReLU(BaseActivation):

@@ -16,10 +16,10 @@
 """Tests for activations."""
 
 from absl.testing import absltest
-from praxis import pax_fiddle
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import activations
 
@@ -38,6 +38,20 @@ class ActivationsTest(test_utils.TestCase):
     self._run(
         pax_fiddle.Config(activations.Softplus), inputs, jax.nn.softplus(inputs)
     )
+
+  def test_get_subclass_by_name(self):
+    layer_cls = activations.BaseActivation.get_subclass_by_name('swish')
+    self.assertIs(layer_cls, activations.Swish)
+
+    layer_cls = activations.BaseActivation.get_subclass_by_name('cubed_relu')
+    self.assertIs(layer_cls, activations.CubedReLU)
+
+  def test_get_subclass_by_name_ambiguous(self):
+    class Exp(activations.BaseActivation):  # pylint: disable=unused-variable
+      pass
+
+    with self.assertRaises(KeyError):
+      activations.BaseActivation.get_subclass_by_name('exp')
 
 
 if __name__ == '__main__':
