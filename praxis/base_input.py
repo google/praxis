@@ -269,7 +269,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
       # Custom device order.
       op_sharding.tile_assignment_devices = device_order
       dbs = py_utils.put_to_devices(x, global_mesh.local_devices)
-      sharding = jax.sharding.OpShardingSharding(
+      sharding = jax.sharding.GSPMDSharding(
           list(global_mesh.devices.flat), op_sharding)
       return jax.make_array_from_single_device_arrays(global_shape.shape,
                                                       sharding, dbs)
