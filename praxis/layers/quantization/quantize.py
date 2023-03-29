@@ -372,46 +372,22 @@ def set_quantization(
 
 def set_inference_mode(
     config: LayerTpl,
-    target: Type[base_layer.BaseLayer] = layers.transformers.Transformer,
 ):
   """Sets quantization mode to be INFERENCE while keeping other quantization configs unchanged.
 
   Args:
     config: The config to apply quantization on.
-    target: The target component to be replaced.
   """
   def set_quantization_mode_inference(tpl):
     if hasattr(tpl, 'quantization'):
       tpl.quantization.mode = QuantizationMode.INFERENCE
 
-  target_tpls = find_target_tpl(config, target)
-  for target_tpl in target_tpls:
-    set_quantization_mode_inference(target_tpl.tr_atten_tpl.proj_tpl)
-    if (
-        issubclass(
-            target_tpl.tr_atten_tpl.cls, layers.attentions.DotProductAttention
-        )
-        and target_tpl.tr_atten_tpl.combine_qkv
-    ):
-      set_quantization_mode_inference(
-          target_tpl.tr_atten_tpl.combined_qkv_proj_tpl
-      )
-    if issubclass(
-        target_tpl.tr_atten_tpl.cls,
-        layers.multi_query_attention.MultiQueryDotProductAttention,
-    ):
-      set_quantization_mode_inference(target_tpl.tr_atten_tpl.headless_proj_tpl)
-    set_quantization_mode_inference(
-        target_tpl.tr_fflayer_tpl.fflayer_tpl.linear_tpl
-    )
-
-  lm_tpls = find_target_tpl(config, layers.TransformerLm)
-  for lm_tpl in lm_tpls:
-    set_quantization_mode_inference(lm_tpl.softmax_tpl)
-    if hasattr(lm_tpl.softmax_tpl, 'feed_forward_tpl'):
-      set_quantization_mode_inference(
-          lm_tpl.softmax_tpl.feed_forward_tpl.linear_tpl
-      )
+  to_process = [config]
+  while to_process:
+    param = to_process.pop()
+    set_quantization_mode_inference(param)
+    if isinstance(param, fdl.Config):
+      to_process.extend(fdl.ordered_arguments(param).values())
 
 
 # Traverse entire config HParam and find the tpl of the target type.
