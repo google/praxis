@@ -298,10 +298,7 @@ class LanguageModel(base_model.BaseModel):
       # Note that computing the sum with bf16 is not precise enough, so convert
       # paddings to integers first.
       maxval = jnp.sum(1 - input_batch.paddings.astype(jnp.int32), axis=1)
-      minval = jnp.minimum(maxval, decoder_params.min_prefix_len)
-      prefix_lengths = jax.random.randint(self.next_prng_key(), [batch_size],
-                                          minval, maxval + 1,
-                                          input_batch.ids.dtype)
+      prefix_lengths = maxval
 
     if self.model_type == LanguageModelType.BIDIRECTIONAL:
       raise NotImplementedError(type(self))

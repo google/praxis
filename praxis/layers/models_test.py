@@ -505,10 +505,11 @@ class LanguageModelTest(test_utils.TestCase):
     input_batch = NestedMap(
         ids=jnp.array([[11, 13, 15], [12, 14, 16], [20, 30, 40]],
                       dtype=jnp.int32),
-        paddings=jnp.zeros(shape=(3, 3), dtype=jnp.float32),
+        paddings=jnp.array([[0, 0, 1], [0, 1, 1], [1, 1, 1]],
+                           dtype=jnp.float32),
     )
     results = self._run_decode(p, logits, input_batch)
-    # This is fixed by the prng seed provided.
+    # This is fixed by the paddings provided.
     self.assertArraysEqual(results.prefix_lengths,
                            np.array([[2], [1], [0]], dtype=np.int32))
     # Row 0 copies 2 ids from the input as prefix, and continues without
@@ -553,11 +554,12 @@ class LanguageModelTest(test_utils.TestCase):
     input_batch = NestedMap(
         ids=jnp.array([[11, 13, 15], [12, 14, 16], [20, 30, 40]],
                       dtype=jnp.int32),
-        paddings=jnp.array([[0, 0, 1], [0, 1, 1], [0, 1, 1]], dtype=jnp.int32),
+        paddings=jnp.array([[0, 0, 1], [0, 1, 1], [0, 1, 1]],
+                           dtype=jnp.float32),
         prefix_lengths=jnp.array([2, 1, 1], dtype=jnp.int32),
     )
     results = self._run_decode(p, logits, input_batch)
-    # This is fixed by the prng seed provided.
+    # This is fixed by the paddings provided.
     self.assertArraysEqual(results.prefix_lengths,
                            np.array([2, 1, 1], dtype=np.int32))
     # Row 0 copies 2 ids from the input as prefix, and continues without
@@ -593,10 +595,10 @@ class LanguageModelTest(test_utils.TestCase):
     ]
     input_batch = NestedMap(
         ids=jnp.array([[2, 2, 2], [2, 2, 2]], dtype=jnp.int32),
-        paddings=jnp.zeros(shape=(2, 3), dtype=jnp.float32),
+        paddings=jnp.array([[0, 0, 0], [0, 1, 1]], dtype=jnp.float32),
     )
     results = self._run_decode(p, logits, input_batch)
-    # This is fixed by the prng seed provided.
+    # This is fixed by the paddings provided.
     self.assertArraysEqual(results.prefix_lengths,
                            np.array([[3], [1]], dtype=np.int32))
     # Row 0 copies the first 3 ids, and does not terminate even though these
@@ -634,10 +636,11 @@ class LanguageModelTest(test_utils.TestCase):
     input_batch = NestedMap(
         ids=jnp.array([[11, 13, 15], [12, 14, 16], [20, 30, 40]],
                       dtype=jnp.int32),
-        paddings=jnp.zeros(shape=(3, 3), dtype=jnp.float32),
+        paddings=jnp.array([[0, 0, 1], [0, 1, 1], [1, 1, 1]],
+                           dtype=jnp.float32),
     )
     results = self._run_decode(p, logits, input_batch)
-    # This is fixed by the prng seed provided.
+    # This is fixed by the paddings provided.
     self.assertArraysEqual(results.prefix_lengths,
                            np.array([[2], [1], [0]], dtype=np.int32))
     # Row 0 has prefix length 2, and hit EOS after decode for one step, so it
@@ -700,11 +703,12 @@ class LanguageModelTest(test_utils.TestCase):
     input_batch = NestedMap(
         ids=jnp.array([[11, 13, 15], [12, 14, 16], [20, 30, 40]],
                       dtype=jnp.int32),
-        paddings=jnp.zeros(shape=(3, 3), dtype=jnp.float32),
+        paddings=jnp.array([[0, 0, 1], [0, 1, 1], [1, 1, 1]],
+                           dtype=jnp.float32),
     )
     results = self._run_decode(p, sample_logits, input_batch)
 
-    # This is fixed by the prng seed provided.
+    # This is fixed by the paddings provided.
     self.assertArraysEqual(results.prefix_lengths,
                            np.array([[2, 2], [1, 1], [0, 0]], dtype=np.int32))
     # Row 0 copies 2 ids from the input as prefix, and continues without
@@ -829,7 +833,8 @@ class LanguageModelTest(test_utils.TestCase):
     input_batch = NestedMap(
         ids=jnp.array([[11, 13, 15], [12, 14, 16], [20, 30, 40]],
                       dtype=jnp.int32),
-        paddings=jnp.zeros(shape=(3, 3), dtype=jnp.float32),
+        paddings=jnp.array([[0, 0, 1], [0, 1, 1], [0, 1, 1]],
+                           dtype=jnp.float32),
         prefix_lengths=jnp.array([2, 1, 1], dtype=jnp.int32),
     )
 
@@ -847,7 +852,7 @@ class LanguageModelTest(test_utils.TestCase):
 
     results = self._run_decode(p, sample_logits, input_batch)
 
-    # This is fixed by the prng seed provided.
+    # This is fixed by the paddings provided.
     self.assertArraysEqual(results.prefix_lengths,
                            np.array([2, 1, 1], dtype=np.int32))
     # Row 0 copies 2 ids from the input as prefix, and continues without
@@ -910,11 +915,12 @@ class LanguageModelTest(test_utils.TestCase):
     input_batch = NestedMap(
         ids=jnp.array([[11, 13, 15], [12, 14, 16], [20, 30, 40]],
                       dtype=jnp.int32),
-        paddings=jnp.zeros(shape=(3, 3), dtype=jnp.float32),
+        paddings=jnp.array([[0, 0, 1], [0, 1, 1], [1, 1, 1]],
+                           dtype=jnp.float32),
     )
     results = self._run_decode(p, logits, input_batch)
 
-    # This is fixed by the prng seed provided.
+    # This is fixed by the paddings provided.
     self.assertArraysEqual(results.prefix_lengths,
                            np.array([[2], [1], [0]], dtype=np.int32))
     # Row 0 copies 2 ids from the input as prefix, and continues without
