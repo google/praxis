@@ -26,7 +26,6 @@ import jax
 from jax import numpy as jnp
 import optax
 from praxis import base_hyperparams
-from praxis import pax_fiddle
 from praxis import pytypes
 
 JTensor = pytypes.JTensor
@@ -580,27 +579,24 @@ class PiecewiseSchedule(BaseSchedule):
       passed to the sub-schedule for Value.
   """
   boundaries: Optional[Sequence[int]] = None
-  schedules: Optional[Sequence[pax_fiddle.Config[BaseSchedule]]] = None
-  _schedules_inst: Any = dataclasses.field(init=False, repr=False)
+  schedules: Optional[Sequence[BaseSchedule]] = None
 
   def __post_init__(self):
     super().__post_init__()
-    p = self.hparams
     prev_boundary = 0
-    for boundary in p.boundaries:
+    for boundary in self.boundaries:
       if boundary < prev_boundary:
         raise ValueError('Invalid boundary %s < %s' % (boundary, prev_boundary))
       prev_boundary = boundary
-    if len(p.schedules) != len(p.boundaries) + 1:
+    if len(self.schedules) != len(self.boundaries) + 1:
       raise ValueError('len(schedules) != len(boundaries) + 1: %s vs %s' %
-                       (len(p.schedules), len(p.boundaries)))
-    self._schedules_inst = [instantiate(s) for s in p.schedules]
+                       (len(self.schedules), len(self.boundaries)))
 
   def value_at(self, step: JTensor) -> JTensor:
     p = self.hparams
     return jnp.array(
         optax.join_schedules(
-            [s.value_at for s in self._schedules_inst], p.boundaries
+            [s.value_at for s in self.schedules], p.boundaries
         )(step),
         jnp.float32,
     )
@@ -614,29 +610,26 @@ class CycleSchedule(BaseSchedule):
       step is passed to the sub-schedule.
     steps: The number of steps to run each sub-schedule.
   """
-  schedules: Optional[Sequence[pax_fiddle.Config[BaseSchedule]]] = None
+  schedules: Optional[Sequence[BaseSchedule]] = None
   steps: Optional[Sequence[int]] = None
-  _schedules_inst: Any = dataclasses.field(init=False, repr=False)
   _period: Any = dataclasses.field(init=False, repr=False)
   _boundaries: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
     super().__post_init__()
-    p = self.hparams
-    if len(p.schedules) != len(p.steps):
+    if len(self.schedules) != len(self.steps):
       raise ValueError('len(schedules) != len(steps): %s vs %s' %
-                       (len(p.schedules), len(p.steps)))
-    self._schedules_inst = [instantiate(s) for s in p.schedules]
+                       (len(self.schedules), len(self.steps)))
     boundaries = [0]
-    for step in p.steps:
+    for step in self.steps:
       boundaries.append(boundaries[-1] + step)
     self._period = boundaries[-1]
     self._boundaries = boundaries[1:-1]
 
   def value_at(self, step: JTensor) -> JTensor:
     relative_step = jnp.mod(step, self._period)
-    output = self._schedules_inst[0].value_at(step)
-    for boundary, schedule in zip(self._boundaries, self._schedules_inst[1:]):
+    output = self.schedules[0].value_at(step)
+    for boundary, schedule in zip(self._boundaries, self.schedules[1:]):
       output = jnp.where(
           relative_step < boundary, output, schedule.value_at(step)
       )
