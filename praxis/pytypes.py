@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar
 
 import clu.metrics as clu_metrics
 import jax
+from jax import core
 from jax import numpy as jnp
 import numpy as np
 from praxis import py_utils
@@ -42,7 +43,7 @@ NestedHParams = Nested[HParamsT]
 NestedPartitionSpec = Nested[jax.sharding.PartitionSpec]
 NestedJTensorOrPartitionSpec = Nested[JTensorOrPartitionSpec]
 NestedShapeDtypeStruct = Nested[jax.ShapeDtypeStruct]
-NestedShapedArray = Nested[jax.ShapedArray]
+NestedShapedArray = Nested[core.ShapedArray]
 NestedShapeDtypeLike = Union[NestedJTensor, NestedNpTensor,
                              NestedShapeDtypeStruct, NestedShapedArray]
 
