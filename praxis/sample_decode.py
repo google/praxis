@@ -476,6 +476,19 @@ class BaseNextTokenSampler(
           logic.
     """
 
+  def init_decode_loop_state(
+      self,
+      decode_loop_state: NestedMap,
+      batch_size: Optional[int] = None,
+      eos_id: Optional[Union[int, Sequence[int], JTensor]] = None) -> NestedMap:
+    """Initialize any addition decode loop state."""
+    return decode_loop_state
+
+  def post_process_decode_loop_state(
+      self, decode_loop_state: NestedMap) -> NestedMap:
+    """Delete unused decode loop state."""
+    return decode_loop_state
+
 
 class DefaultNextTokenSampler(BaseNextTokenSampler):
   """The default sampling logic implementing top-K and top-P sampling.
@@ -844,6 +857,7 @@ def sample_decode(
   val.decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
   # We use a positive value of 1.0 to indicate blank or padded positions.
   val.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
+  val = next_token_sampler.init_decode_loop_state(val, batch_size, eos_id)
 
   if result_callback is not None and result_callback.init_fn is not None:
     result_callback.init_fn((original_batch_size, num_samples))
@@ -1187,6 +1201,7 @@ def sample_decode(
                                                       max_prefix_len)
 
   del result.start_step, result.step, result.done, result.has_eos
+  result = next_token_sampler.post_process_decode_loop_state(result)
 
   if cf_guidance_scale is not None:
     # Split cond / uncond branches and only return conditioned branch.
