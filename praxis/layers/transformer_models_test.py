@@ -108,6 +108,83 @@ class TransformerModelsTest(test_utils.TestCase):
           segment_pos=input_segment_pos)
       logging.info('outputs: %s', outputs)
 
+  @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
+  def test_lm_causal(
+      self, use_rotary_position_emb, share_embedding_and_softmax
+  ):
+    vocab_size = 8
+    num_layers = 2
+    num_heads = 2
+    dim_per_head = 4
+    p = pax_fiddle.Config(
+        transformer_models.TransformerLm,
+        name='jax_lm_layer',
+        model_dims=num_heads * dim_per_head,
+        model_type=transformer_models.LanguageModelType.CAUSAL,
+        packed_input=False,
+        vocab_size=vocab_size,
+    )
+    stacked_transformer_tpl = p.stacked_transformer_tpl
+    stacked_transformer_tpl.model_dims = num_heads * dim_per_head
+    stacked_transformer_tpl.hidden_dims = 2 * num_heads * dim_per_head
+    stacked_transformer_tpl.num_heads = num_heads
+    stacked_transformer_tpl.num_layers = num_layers
+    if not share_embedding_and_softmax:
+      p.separate_embedding_tpl = pax_fiddle.Config(embedding_softmax.Embedding)
+      p.softmax_tpl = pax_fiddle.Config(embedding_softmax.FullSoftmax)
+    seq_len = 12
+    batch_size = 3
+    # Rotary position embedding.
+    params = p.stacked_transformer_tpl.transformer_layer_params_tpl
+    params.tr_atten_tpl = pax_fiddle.Config(
+        attentions.DotProductAttentionWithLPB,
+        input_dim=num_heads * dim_per_head,
+        hidden_dim=2 * num_heads * dim_per_head,
+        num_heads=num_heads,
+        dim_per_head=dim_per_head if use_rotary_position_emb else None,
+        atten_logit_cap=20.0,
+        combine_qkv=True,
+        use_rotary_position_emb=use_rotary_position_emb,
+    )
+    transformer_lm = instantiate(p)
+    npy_inputs = np.random.randint(
+        vocab_size, size=(batch_size, seq_len)
+    ).astype('int32')
+    inputs = jnp.asarray(npy_inputs)
+    context_params = base_layer.JaxContext.HParams(do_eval=True)
+    with base_layer.JaxContext.new_context(hparams=context_params):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_lm.init(
+          prng_key,
+          inputs,
+          jnp.zeros_like(inputs),
+      )
+      fprop_outputs = transformer_lm.apply(
+          initial_vars,
+          inputs,
+          jnp.zeros_like(inputs),
+          method=transformer_lm.__call__,
+      )
+      logits = fprop_outputs.logits
+
+      for i in range(1, seq_len):
+        new_npy_inputs = npy_inputs.copy()
+        new_npy_inputs[:, i] = (new_npy_inputs[:, i] + 1) % vocab_size
+        new_inputs = jnp.asarray(new_npy_inputs)
+
+        new_fprop_outputs = transformer_lm.apply(
+            initial_vars,
+            new_inputs,
+            jnp.zeros_like(inputs),
+            method=transformer_lm.__call__,
+        )
+        new_logits = new_fprop_outputs.logits
+
+        # check that logits at position < i are unchanged
+        self.assertAllClose(logits[:, :i], new_logits[:, :i])
+        # check that logits at position i are changed
+        self.assertNotAllClose(logits[:, i], new_logits[:, i])
+
   @parameterized.parameters(*list(itertools.product([True, False], repeat=5)))
   def test_ngrammer_lm_extendstep(self, use_vq_ngrams, use_rotary_position_emb,
                                   use_post_attention_ngrammer,
