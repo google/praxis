@@ -82,10 +82,6 @@ class SharedEmbeddingSoftmaxTest(test_utils.TestCase):
         input_dims=self.INPUT_DIMS,
         num_classes=self.NUM_CLASSES,
     )
-    q_p.feed_forward_tpl.linear_tpl = pax_fiddle.Config(
-        quantization.Linear,
-        quantization=copy.deepcopy(quantization_option),
-    )
     q_layer = instantiate(q_p)
     f_layer = instantiate(f_p)
 

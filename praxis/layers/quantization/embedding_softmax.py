@@ -75,7 +75,8 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
           activation_split_dims_mapping=ap.clone(),
       )
       new_linear_tpl = pax_fiddle.Config(
-          quantized_linears.Linear, copy.deepcopy(self.quantization)
+          quantized_linears.Linear,
+          quantization=copy.deepcopy(self.quantization),
       )
       new_linear_tpl.copy_fields_from(ff_p.linear_tpl)
       ff_p.linear_tpl = new_linear_tpl
