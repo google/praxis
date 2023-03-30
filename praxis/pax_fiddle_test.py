@@ -17,7 +17,7 @@
 
 import copy
 import dataclasses
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Union
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -108,6 +108,16 @@ class HourlyBusStop(BusStop):
 class WheelFactory:
   wheel_tpl: List[pax_fiddle.Config[Wheel]] = dataclasses.field(
       default_factory=list)
+
+
+class NonDataclassWheelFactory:
+
+  def __init__(self, wheel_tpl: List[pax_fiddle.Config]):
+    self.wheel_tpl = wheel_tpl
+
+
+class NamedTupleWheelFactory(NamedTuple):
+  wheel_tpl: List[pax_fiddle.Config[Wheel]]
 
 
 class SubFieldAndTemplateFieldTest(testing.TestCase):
@@ -587,8 +597,7 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
       result = pax_fiddle.build(cfg)
       self.assertDagEqual(result, pax_fiddle.Config(Wheel))
 
-  def test_do_not_build_if_type_is_pax_config_container(self):
-
+  def test_do_not_build_function_args_if_arg_is_pax_config_container(self):
     def f1(x: List[pax_fiddle.Config]):
       return x
 
@@ -606,13 +615,16 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
       result = pax_fiddle.build(cfg)
       self.assertDagEqual(result, [pax_fiddle.Config(Wheel)])
 
-    with self.subTest("Dataclass"):
-      wheel_tpl=[
-          pax_fiddle.Config(Wheel), pax_fiddle.Config(Wheel, radius=8)
-      ]
-      cfg = pax_fiddle.Config(WheelFactory, wheel_tpl=wheel_tpl)
-      factory = pax_fiddle.build(cfg)
-      self.assertDagEqual(factory.wheel_tpl, wheel_tpl)
+  @parameterized.named_parameters([
+      ("_dataclass", WheelFactory),
+      ("_regular_class", NonDataclassWheelFactory),
+      ("_named_tuple", NamedTupleWheelFactory),
+  ])
+  def test_do_not_build_type_args_if_arg_is_pax_config_container(self, cls):
+    wheel_tpl = [pax_fiddle.Config(Wheel), pax_fiddle.Config(Wheel, radius=8)]
+    cfg = pax_fiddle.Config(cls, wheel_tpl=wheel_tpl)
+    instance = pax_fiddle.build(cfg)
+    self.assertDagEqual(instance.wheel_tpl, wheel_tpl)
 
   def test_do_build_default_factory_list(self):
     cfg = pax_fiddle.Config(WheelFactory)

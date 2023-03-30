@@ -318,6 +318,7 @@ pytype_strict_library(
         # Implicit fiddle.building dependency.
         # Implicit fiddle.daglish dependency.
         # Implicit fiddle.history dependency.
+        # Implicit fiddle.signatures dependency.
         # Implicit fiddle.experimental.auto_config dependency.
         # Implicit fiddle.experimental.dataclasses dependency.
         # Implicit fiddle.extensions.jax dependency.

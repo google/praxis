@@ -21,13 +21,13 @@ import contextlib
 import copy
 import dataclasses
 import functools
-import typing
 from typing import Any, Callable, Collection, Container, Generic, Optional, TypeVar, Union, overload, Mapping, Sequence, List, Tuple, Dict
 
 import fiddle as fdl
 from fiddle import building
 from fiddle import daglish
 from fiddle import history
+from fiddle import signatures
 from fiddle.experimental import auto_config as fdl_auto_config
 from fiddle.experimental import dataclasses as fdl_dataclasses
 from fiddle.experimental.dataclasses import field as fdl_field
@@ -363,10 +363,7 @@ def build(buildable):
   def _build(value, state):
     if isinstance(value, fdl.Buildable):
       arguments = {}
-      try:
-        annotations = _get_type_hints(value.__fn_or_cls__)
-      except TypeError:  # e.g., if fn_or_cls is a functor object.
-        annotations = {}
+      annotations = signatures.get_type_hints(value.__fn_or_cls__)
       for key, sub_value in value.__arguments__.items():
         context = f'{value.__fn_or_cls__}.{key}'
         annotation = annotations.get(key, None)
@@ -397,10 +394,6 @@ def build(buildable):
       return state.map_children(value)
 
   return daglish.MemoizedTraversal.run(_build, buildable)
-
-
-# get_type_hints can be slow, so cache its results.
-_get_type_hints = functools.lru_cache(typing.get_type_hints)
 
 
 def _is_buildable_type(typ):
