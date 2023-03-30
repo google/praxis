@@ -1,3 +1,11 @@
+# Version: 0.4.0
+## Major Features and Improvements
+## Breaking changes
+## Deprecations
+## Note
+*   Version: 0.4.0
+*   Build Date: 20230329
+*   Praxis commit: 621c2ca7bfcd0e21ea118a3d8e40e29b48313c0c
 # Version: 0.3.0
 ## Major Features and Improvements
 * Fiddle migration
