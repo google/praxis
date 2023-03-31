@@ -1177,7 +1177,8 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     def set_model_dims_and_packing(stacked_transformer_tpl, model_dims,
                                    packed_input):
       if issubclass(
-          stacked_transformer_tpl.cls, transformers.StackedTransformer
+          fdl.get_callable(stacked_transformer_tpl),
+          transformers.StackedTransformer,
       ):
         assert (stacked_transformer_tpl.model_dims == 0 or
                 stacked_transformer_tpl.model_dims == model_dims)

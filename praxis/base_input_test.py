@@ -21,6 +21,7 @@ from typing import Any
 
 from absl import flags
 from absl.testing import absltest
+import fiddle as fdl
 from lingvo.core import base_input_generator
 from lingvo.core import generic_input
 from lingvo.core import py_utils as tf_py_utils
@@ -458,8 +459,10 @@ class InputTest(test_utils.TestCase):
         bucket_batch_limit=[1])
     adaptor_p = base_input.LingvoEvalAdaptor.HParams(
         input=input_p, batch_size=2, num_infeed_hosts=3)
-    self.assertEqual(adaptor_p.cls.get_batch_size(adaptor_p), 2)
-    self.assertEqual(adaptor_p.cls.get_global_batch_size(adaptor_p), 6)
+    self.assertEqual(fdl.get_callable(adaptor_p).get_batch_size(adaptor_p), 2)
+    self.assertEqual(
+        fdl.get_callable(adaptor_p).get_global_batch_size(adaptor_p), 6
+    )
 
   def test_lingvo_lazy_eval_adaptor(self):
     tmp = os.path.join(FLAGS.test_tmpdir, 'lazy_eval_adaptor')
