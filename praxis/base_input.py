@@ -113,7 +113,10 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   experimental_remote_input: bool = False
   batch_padding_size: int = 0
   custom_device_order: Optional[Sequence[int]] = None
+  # Allows a simple peek into the input, while maintaining correct iteration
+  # sequence in get_next_padded() call.
   _peek: Any = dataclasses.field(init=False, repr=False)
+  _state_before_peek: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
     if self._VALIDATE_BATCH_SIZE_NOT_NONE and (self.batch_size is None):
@@ -129,9 +132,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     if self.experimental_remote_input and jax.process_count() > 1:
       raise NotImplementedError(
           'Remote input is not supported when there are multiple controllers.')
-    # Allows a simple peek into the input, while maintaining correct iteration
-    # sequence in get_next_padded() call.
-    self._peek = None
+    self._reset_peek()
 
   @classmethod
   def get_batch_size(cls, hparams: pax_fiddle.Config[BaseInput]) -> int:
@@ -149,11 +150,28 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   def restore(self, checkpoint_path: Any):
     raise NotImplementedError
 
+  def get_state(self) -> bytes:
+    raise NotImplementedError
+
+  def set_state(self, state: bytes) -> None:
+    raise NotImplementedError
+
   def get_next(self) -> NestedJTensor:
     raise NotImplementedError
 
   def get_child(self, input_name: str) -> NestedJTensor:
     raise NotImplementedError
+
+  def _record_state_before_peek(self):
+    # Not all subclasses support get_state().
+    try:
+      self._state_before_peek = self.get_state()
+    except NotImplementedError:
+      pass
+
+  def _reset_peek(self):
+    self._state_before_peek = None
+    self._peek = None
 
   def get_next_padded(self) -> NestedJTensor:
     """Gets next padded example from the input pipeline.
@@ -178,16 +196,17 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
           unpadded,
       )
     peek = self._peek
-    self._peek = None
+    self._reset_peek()
     return peek
 
   def peek_padded(self) -> Optional[NestedJTensor]:
     """Peeks into the current input data pipeline."""
     if self._peek is None:
       try:
+        self._record_state_before_peek()
         self._peek = self.get_next_padded()
       except (tf.errors.OutOfRangeError, StopIteration):
-        self._peek = None
+        self._reset_peek()
     return self._peek
 
   def reset(self) -> None:
