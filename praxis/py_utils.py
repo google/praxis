@@ -1017,3 +1017,47 @@ def pad_or_trim_to(
   x = jnp.pad(x, padings, constant_values=pad_val)
   x = jax.lax.slice(x, [0] * expected_rank, shape)
   return jnp.reshape(x, shape)
+
+
+def append_eos(
+    x: JTensor, paddings: JTensor, eos_id: int, extend_if_overflow: bool=True
+) -> Tuple[JTensor, JTensor]:
+  """Ensure each sequence ends with eos by padding.
+
+  Args:
+    x: [b, t], input sequence
+    paddings: [b, t], input paddings
+    eos_id: id of eos for padding
+    extend_if_overflow: if True, extend the output time dimension to t+1 in
+      case of overflow, i.e., when input sequence does not end with eos and
+      has no padded position. If false, the output will have shape [b, t]
+      and eos is not appended in case of overflow.
+
+  Returns:
+    Updated x and paddings. Output paddings include appended eos as valid
+    (non-padded). Padded positions of output sequences are filled with eos_id.
+  """
+  b, t = x.shape
+  input_lens = (1 - paddings).astype(jnp.int32).sum(-1, keepdims=False)
+  reversed_x = flip_sequence(x, input_lens)
+  appended_reversed_x = jnp.concatenate(
+      [jnp.ones([b, 1], x.dtype) * eos_id, reversed_x], axis=1
+  )
+  # shape [b, t+1]
+  output_x = flip_sequence(appended_reversed_x, input_lens + 1)
+
+  append_mask = jnp.logical_or(input_lens == 0, reversed_x[:, 0] != eos_id)
+  output_lens = input_lens + append_mask.astype(jnp.int32)
+
+  # shape [b, t+1]
+  output_paddings = sequence_paddings(output_lens, t + 1, x.dtype)
+  output_x = output_x * (1 - output_paddings) + eos_id * output_paddings
+
+  # If no overflow or if extend_if_overflow=False, truncate time dimension to t.
+  truncate = jnp.logical_or(
+      jnp.all(output_lens <= t), not extend_if_overflow,
+  ).astype(jnp.int32)
+  return (
+      output_x[:, :t+1-truncate],
+      output_paddings.astype(paddings.dtype)[:, :t+1-truncate],
+  )

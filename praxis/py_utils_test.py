@@ -407,6 +407,43 @@ class PyUtilsTest(test_utils.TestCase):
     self.assertAllClose(y[2:], pad_value)
     self.assertAllClose(y[:, 2:], pad_value)
 
+  @parameterized.named_parameters(('truncate', False), ('extend', True))
+  def test_append_eos(self, extend_if_overflow):
+    x = jnp.array(
+        [[0, 0, 1, 2], [1, 2, 3, 0], [2, 3, 4, 0], [2, 3, 4, 5], [2, 3, 4, 5]],
+        jnp.int32,
+    )
+    paddings = jnp.array(
+        [[1, 1, 1, 1], [0, 0, 0, 1], [0, 0, 0, 1], [0, 0, 1, 1], [0, 0, 0, 0]],
+        jnp.float32,
+    )
+    expected_output = jnp.array(
+        [[4, 4, 4, 4], [1, 2, 3, 4], [2, 3, 4, 4], [2, 3, 4, 4], [2, 3, 4, 5]],
+        jnp.int32,
+    )
+    expected_paddings = jnp.array(
+        [[0, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 1], [0, 0, 0, 1], [0, 0, 0, 0]],
+        jnp.float32,
+    )
+    eos_id = 4
+    if extend_if_overflow:
+      expected_output = jnp.concatenate(
+          [expected_output, jnp.ones([5, 1], jnp.int32) * eos_id], 1
+      )
+      expected_paddings = jnp.concatenate(
+          [
+              expected_paddings,
+              jnp.array([[1], [1], [1], [1], [0]], jnp.float32),
+          ],
+          1,
+      )
+
+    output_x, output_paddings = py_utils.append_eos(
+        x, paddings, eos_id, extend_if_overflow
+    )
+    self.assertArraysEqual(output_x, expected_output)
+    self.assertArraysEqual(output_paddings, expected_paddings)
+
   def test_concat_sequences_with_padding(self):
     input0 = jnp.array([[1, 2, 3, 4, 5, 6], [6, 5, 4, 3, 2, 1]]).reshape(
         [2, 6, 1]
