@@ -951,13 +951,7 @@ def sample_decode(
             eos_id, val.output_ids, val.step + 1
         )
       else:
-        has_eos = jnp.any(
-            jnp.equal(
-                new_ids[:, jnp.newaxis],
-                jnp.array(eos_id, dtype=jnp.int32)[jnp.newaxis, :],
-            ),
-            axis=-1,
-        )
+        has_eos = decoder_utils.has_any_eos(new_ids, eos_id)
       val.done = jnp.logical_or(
           prev_done,
           has_eos,

@@ -515,3 +515,9 @@ def end_with_sequences(
       jnp.equal(sliced_output_ids, end_sequences), ignore_tokens
   )
   return jnp.all(tokens_equal, axis=-1)
+
+
+def has_any_eos(arr: JTensor, eos_ids: Union[int, Sequence[int]]):
+  """Check if the given array contains any of the eos_ids."""
+  eos = jnp.array(eos_ids, dtype=jnp.int32).reshape([1] * arr.ndim + [-1])
+  return jnp.any(jnp.equal(arr[..., jnp.newaxis], eos), axis=-1)

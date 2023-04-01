@@ -191,6 +191,21 @@ class DecoderUtilsTest(test_utils.TestCase):
     )
     self.assertArraysEqual(result, jnp.array([0, 0, 1], dtype=jnp.bool_))
 
+  def test_has_any_eos(self):
+    test_arr = jnp.array([[0, 1, 2], [10, 11, 12], [20, 21, 22]])
+    has_eos = decoder_utils.has_any_eos(test_arr, 1)
+    self.assertArraysEqual(
+        has_eos, jnp.array([[0, 1, 0], [0, 0, 0], [0, 0, 0]], dtype=jnp.bool_)
+    )
+    has_eos = decoder_utils.has_any_eos(test_arr, [1])
+    self.assertArraysEqual(
+        has_eos, jnp.array([[0, 1, 0], [0, 0, 0], [0, 0, 0]], dtype=jnp.bool_)
+    )
+    has_eos = decoder_utils.has_any_eos(test_arr, [10, 21])
+    self.assertArraysEqual(
+        has_eos, jnp.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=jnp.bool_)
+    )
+
 
 if __name__ == '__main__':
   absltest.main()
