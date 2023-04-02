@@ -240,6 +240,7 @@ class AttentionProjection(attentions.AttentionProjection):
             w,
             bits=self.quantization.weight_params.precision,
             use_symmetric=self.quantization.weight_params.use_symmetric,
+            calculation_type=self.quantization.weight_params.calculation_dtype,
         )
         ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:
@@ -519,6 +520,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             w,
             bits=self.quantization.weight_params.precision,
             use_symmetric=self.quantization.weight_params.use_symmetric,
+            calculation_type=self.quantization.weight_params.calculation_dtype,
         )
         ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:

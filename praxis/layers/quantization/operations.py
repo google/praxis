@@ -302,7 +302,7 @@ def fakequant_einsum(
     eqn: str,
     t: JTensor,
     bits: int = 8,
-    calculation_type: jnp.dtype = jnp.bfloat16,
+    calculation_type: jnp.dtype = jnp.float32,
     use_symmetric: bool = True,
 ) -> JTensor:
   """Nudges weight of einsum with FakeQuant.

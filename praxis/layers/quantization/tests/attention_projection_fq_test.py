@@ -372,7 +372,8 @@ class AttentionProjectionFQTest(quantization_test_util.QuantizationTestCase):
         quantization_type=QuantizationType.FQ,
         mode=QuantizationMode.TRAINING,
         weight_params=quantization_hparams.WeightQuantizationParams(
-            use_symmetric=is_weight_symmetric
+            use_symmetric=is_weight_symmetric,
+            calculation_dtype=jnp.bfloat16,
         ),
     )
     p_f = pax_fiddle.Config(
@@ -437,7 +438,8 @@ class AttentionProjectionFQTest(quantization_test_util.QuantizationTestCase):
         quantization_type=QuantizationType.FQ,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=quantization_hparams.WeightQuantizationParams(
-            use_symmetric=is_weight_symmetric
+            use_symmetric=is_weight_symmetric,
+            calculation_dtype=jnp.bfloat16,
         ),
     )
 

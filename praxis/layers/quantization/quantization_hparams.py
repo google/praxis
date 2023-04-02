@@ -98,6 +98,7 @@ class WeightQuantizationParams:
     per channel, else per-tensor. It only works when min_clipping
     and num_optimize_clipping are set.
   sub_channels: Number of sub channels for splitting channelwise quantization.
+  calculation_dtype: The type used for calculation around quantization.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -112,6 +113,7 @@ class WeightQuantizationParams:
   quant_loss_weight: Optional[float] = None
   optimize_clipping_per_channel: bool = False
   sub_channels: Optional[int] = None
+  calculation_dtype: jnp.dtype = jnp.float32
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):

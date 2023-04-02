@@ -162,6 +162,7 @@ class Linear(linears.Linear):
             w,
             bits=self.quantization.weight_params.precision,
             use_symmetric=self.quantization.weight_params.use_symmetric,
+            calculation_type=self.quantization.weight_params.calculation_dtype,
         )
         out = linears.project_last_dim(inputs, w)
       else:
