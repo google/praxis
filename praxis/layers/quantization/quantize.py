@@ -32,7 +32,7 @@ quantizing all transformer blocks.
 """
 
 import functools
-from typing import cast, Optional, Type
+from typing import cast, Optional, Type, Sequence
 import fiddle as fdl
 from jax import numpy as jnp
 from praxis import base_layer
@@ -385,9 +385,11 @@ def set_inference_mode(
   to_process = [config]
   while to_process:
     param = to_process.pop()
-    set_quantization_mode_inference(param)
-    if isinstance(param, fdl.Config):
-      to_process.extend(fdl.ordered_arguments(param).values())
+    params = param if isinstance(param, Sequence) else [param]
+    for param_elem in params:
+      set_quantization_mode_inference(param_elem)
+      if isinstance(param_elem, fdl.Config):
+        to_process.extend(fdl.ordered_arguments(param_elem).values())
 
 
 # Traverse entire config HParam and find the tpl of the target type.
