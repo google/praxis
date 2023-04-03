@@ -1344,7 +1344,7 @@ class TransformersTest(test_utils.TestCase):
     tf_np_outputs = test_utils.to_np(tf_output)
     self.assertAllClose(tf_np_outputs, np_outputs, atol=1e-5)
 
-  @parameterized.parameters(['pre', 'primer_hybrid', 'post'])
+  @parameterized.parameters(['pre', 'primer_hybrid', 'post', 'post_skip'])
   def test_transformer_layer_norm_policies(self, norm_policy):
     p = pax_fiddle.Config(
         transformers.Transformer,
@@ -1386,7 +1386,7 @@ class TransformersTest(test_utils.TestCase):
     # Plumbing test.
     self.assertAllClose(np_outputs, np_outputs, atol=1e-5)
 
-  @parameterized.parameters(['pre', 'primer_hybrid', 'post'])
+  @parameterized.parameters(['pre', 'primer_hybrid', 'post', 'post_skip'])
   def test_transformer_cross_attention_layer_norm_policies(self, norm_policy):
     p = pax_fiddle.Config(
         transformers.Transformer,

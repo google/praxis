@@ -274,7 +274,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
     norm_policy: Policy for applying normaliztion wrt. transformations. Options
       are: (1) "pre", applied before transformation. (2) "primer_hybrid",
       applied before and after transformation. (3) "post", applied after
-      transformation.
+      transformation, (4) "post_skip", applied after the skip connection.
     internal_gshard_variance_scaling_fan_in_init: Feedforward weight init
       follows uniform distribution withbound = 1.0 / sqrt(3 / dim_0).
   """
@@ -340,7 +340,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
       ln_p.dim = self.input_dims
       self.create_child('pre_layer_norm', ln_p)
       self.create_child('post_layer_norm', ln_p)
-    elif self.norm_policy == 'pre' or self.norm_policy == 'post':
+    elif self.norm_policy in ['pre', 'post', 'post_skip']:
       ln_p = self.ln_tpl.clone()
       ln_p.name = 'fflayer_ln'
       ln_p.dim = self.input_dims
@@ -487,6 +487,9 @@ class TransformerFeedForward(base_layer.BaseLayer):
         outputs = self.residual_droppath(residual, outputs)
       else:
         outputs = residual + outputs * self.residual_weight
+
+    if self.norm_policy == 'post_skip':
+      outputs = self.layer_norm(outputs)
 
     # Cosine similarity between inputs (residual) and outputs.
     self.add_summary('output_rel_cos', _rel_cos(residual, outputs), verbosity=4)
@@ -1128,7 +1131,7 @@ class Transformer(base_layer.BaseLayer):
     norm_policy: Policy for applying normaliztion wrt. transformations. Options
       are: (1) "pre", applied before transformation. (2) "primer_hybrid",
       applied before and after transformation. (3) "post", applied after
-      transformation.
+      transformation. (4) "post_skip", applied after the skip connection.
     tr_atten_tpl: Parameterization of the DotProductAttention layer.
     packed_input: If True, each training example may pack multiple sequences.
     tr_fflayer_tpl: Parameterization of the transformer Feed-Forward Layer.
@@ -1182,7 +1185,7 @@ class Transformer(base_layer.BaseLayer):
       params.dim = self.input_dims
       self.create_child('pre_layer_norm', params)
       self.create_child('post_layer_norm', params)
-    elif self.norm_policy == 'pre' or self.norm_policy == 'post':
+    elif self.norm_policy in ('pre', 'post', 'post_skip'):
       params = self.ln_tpl.clone()
       params.name = 'layer_norm'
       params.dim = self.input_dims
@@ -1200,7 +1203,7 @@ class Transformer(base_layer.BaseLayer):
 
     # Initialize multi-headed cross-attention and layer norm.
     if self.use_cross_attention:
-      if self.norm_policy in ('pre', 'post'):
+      if self.norm_policy in ('pre', 'post', 'post_skip'):
         params = self.ln_tpl.clone()
         params.name = 'cross_layer_norm'
         params.dim = self.input_dims
@@ -1341,6 +1344,9 @@ class Transformer(base_layer.BaseLayer):
     else:
       atten_output += inputs
 
+    if self.norm_policy == 'post_skip':
+      atten_output = self.layer_norm(atten_output)
+
     self.add_summary('attention_output_rel_cos', _rel_cos(inputs, atten_output),
                      verbosity=4)
 
@@ -1354,7 +1360,7 @@ class Transformer(base_layer.BaseLayer):
         atten_output_normalized = self.cross_layer_norm(atten_output)
       elif self.norm_policy == 'primer_hybrid':
         atten_output_normalized = self.pre_cross_layer_norm(atten_output)
-      elif self.norm_policy == 'post':
+      elif self.norm_policy in ('post', 'post_skip'):
         atten_output_normalized = atten_output
 
       cross_atten_output, cross_atten_probs = self.cross_attention(
@@ -1376,6 +1382,9 @@ class Transformer(base_layer.BaseLayer):
         atten_output = self.residual_droppath(atten_output, cross_atten_output)
       else:
         atten_output += cross_atten_output
+
+      if self.norm_policy == 'post_skip':
+        cross_atten_output = self.cross_layer_norm(cross_atten_output)
 
     # Apply FFN layer
     output = self.ff_layer(atten_output, paddings=paddings)
