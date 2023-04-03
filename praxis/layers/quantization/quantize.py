@@ -162,16 +162,15 @@ def quantize_dot_product_attention_layer_weights(
       ),
   )
 
-  if attn_tpl.combine_qkv:
-    attn_tpl.combined_qkv_proj_tpl = pax_fiddle.Config(
-        quantization.attentions.CombinedQKVProjectionLayer,
-        quantization=QuantizationHParams(
-            quantization_type=quantization_type,
-            mode=mode,
-            act_params=act_quantization_params,
-            weight_params=weight_quantization_params,
-        ),
-    )
+  attn_tpl.combined_qkv_proj_tpl = pax_fiddle.Config(
+      quantization.attentions.CombinedQKVProjectionLayer,
+      quantization=QuantizationHParams(
+          quantization_type=quantization_type,
+          mode=mode,
+          act_params=act_quantization_params,
+          weight_params=weight_quantization_params,
+      ),
+  )
 
 
 def quantize_mq_dot_product_attention_layer_weights(

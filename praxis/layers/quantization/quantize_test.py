@@ -29,10 +29,10 @@ from praxis.layers.quantization import quantize
 class QuantizationTest(test_utils.TestCase):
 
   @parameterized.named_parameters(
-      ('combine_qkv', True, qlayer.attentions.CombinedQKVProjectionLayer),
-      ('separate_qkv', False, layers.attentions.CombinedQKVProjectionLayer),
+      ('combine_qkv', True),
+      ('separate_qkv', False),
   )
-  def test_update_transformer(self, use_combine_qkv, qkv_cls):
+  def test_update_transformer(self, use_combine_qkv):
     p = pax_fiddle.Config(
         layers.transformers.Transformer,
         name='jax_transformer_layer',
@@ -53,7 +53,10 @@ class QuantizationTest(test_utils.TestCase):
     self.assertEqual(
         p.tr_atten_tpl.proj_tpl.cls, qlayer.attentions.AttentionProjection
     )
-    self.assertEqual(p.tr_atten_tpl.combined_qkv_proj_tpl.cls, qkv_cls)
+    self.assertEqual(
+        p.tr_atten_tpl.combined_qkv_proj_tpl.cls,
+        qlayer.attentions.CombinedQKVProjectionLayer,
+    )
 
   @parameterized.named_parameters(
       ('4bits', 4),
