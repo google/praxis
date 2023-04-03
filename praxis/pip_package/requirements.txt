@@ -101,7 +101,7 @@ fqdn==1.5.1
     # via jsonschema
 gast==0.4.0
     # via tensorflow
-google-auth==2.17.0
+google-auth==2.17.1
     # via
     #   google-auth-oauthlib
     #   tensorboard
@@ -147,7 +147,7 @@ ipykernel==6.22.0
     #   nbclassic
     #   notebook
     #   qtconsole
-ipython==8.11.0
+ipython==8.12.0
     # via
     #   ipykernel
     #   ipywidgets
@@ -279,7 +279,7 @@ msgpack==1.0.5
     #   orbax
 mypy-extensions==1.0.0
     # via typing-inspect
-nbclassic==0.5.3
+nbclassic==0.5.4
     # via notebook
 nbclient==0.7.2
     # via nbconvert
@@ -344,7 +344,7 @@ optax==0.1.4
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax==0.1.6
+orbax==0.1.7
     # via flax
 packaging==23.0
     # via
@@ -445,7 +445,7 @@ pyzmq==25.0.2
     #   qtconsole
 qtconsole==5.4.1
     # via jupyter
-qtpy==2.3.0
+qtpy==2.3.1
     # via qtconsole
 requests==2.28.2
     # via
@@ -521,7 +521,7 @@ tensorflow-hub==0.13.0
     # via
     #   lingvo
     #   tensorflow-text
-tensorflow-io-gcs-filesystem==0.31.0
+tensorflow-io-gcs-filesystem==0.32.0
     # via tensorflow
 tensorflow-metadata==1.12.0
     # via tensorflow-datasets
@@ -587,6 +587,7 @@ typing-extensions==4.5.0
     #   etils
     #   fiddle
     #   flax
+    #   ipython
     #   libcst
     #   optax
     #   orbax
