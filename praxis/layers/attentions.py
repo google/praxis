@@ -927,6 +927,8 @@ class DotProductAttention(base_layer.BaseLayer):
       variants (GShard, T5) use internal_enable_per_dim_scale=False and adjust
       initialization of the linear transformations(einsums), in conjunction
       with Adafactor optimizer.
+    scale_logits_by_head_dims: Enables a 1/sqrt(head dim) scaling to the
+      logits.  This occurs prior to logit cap, if any.
     atten_logit_cap: Cap the absolute values of logits by tanh. Enabled when a
       positive value is specified. May not be supported by a subclass.
     use_rotary_position_emb: Whether to add rotary position embedding to the
@@ -961,6 +963,7 @@ class DotProductAttention(base_layer.BaseLayer):
   output_proj_use_nhd_shape: bool = False
   internal_enable_query_scale: bool = True
   internal_enable_per_dim_scale: bool = True
+  scale_logits_by_head_dims: bool = False
   atten_logit_cap: float = 0.0
   # TODO(pax-dev): merge use_rotary_position_emb and rotary_position_emb_tpl
   # by initializing rotary_position_emb_tpl = None.
@@ -1295,6 +1298,10 @@ class DotProductAttention(base_layer.BaseLayer):
       base_layer.assert_has_shape(relative_bias, [-1, n, t, s])
       logits += relative_bias
     logits = checkpoint_name(logits, 'logits')
+
+    if self.scale_logits_by_head_dims:
+      logits = jnp.multiply(logits, 1.0/np.sqrt(h))
+
     self.add_summary(
         'max_logit_precap',
         jnp.max(logits + atten_mask.astype(jnp.float32)),

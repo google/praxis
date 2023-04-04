@@ -1712,6 +1712,52 @@ class AttentionsTest(test_utils.TestCase):
     # Makes sure there is no decoder state.
     self.assertEqual(attention_states, {})
 
+  def test_scale_logits_by_head_dims(self):
+
+    layer = attentions.DotProductAttention(
+        input_dim=2, hidden_dim=2, num_heads=1, scale_logits_by_head_dims=True
+    )
+
+    key = np.reshape(np.identity(2), (1, 2, 2))
+    query = np.reshape(np.identity(2), (1, 2, 2))
+    value = np.ones((1, 2, 2))
+    mask = np.reshape(np.zeros((2,)), (1, 1, 1, 2))
+
+    params = py_utils.NestedMap.FromNestedDict(
+        {
+            'params': {
+                'key': {
+                    'b': np.zeros((1, 2)),
+                    'w': np.reshape(np.identity(2), (2, 1, 2)),
+                },
+                'per_dim_scale': {'per_dim_scale': np.ones((2,))},
+                'post': {
+                    'b': np.zeros((2,)),
+                    'w': np.reshape(np.identity(2), (2, 1, 2)),
+                },
+                'query': {
+                    'b': np.zeros((1, 2)),
+                    'w': np.reshape(np.identity(2), (2, 1, 2)),
+                },
+                'value': {
+                    'b': np.zeros((1, 2)),
+                    'w': np.reshape(np.identity(2), (2, 1, 2)),
+                },
+            }
+        }
+    )
+
+    _, probs = layer.apply(params, key, query, value, mask)
+
+    # Without scaling, result is:
+    #   [[[[0.79244286, 0.20755713],
+    #      [0.20755713, 0.79244286]]]]
+    expected = np.array(
+        [[[[0.72057605, 0.27942392], [0.27942392, 0.72057605]]]]
+    )
+
+    self.assertAllClose(probs, expected)
+
 
 if __name__ == '__main__':
   absltest.main()
