@@ -12,7 +12,7 @@ absl-py==1.4.0
     #   fiddle
     #   ml-collections
     #   optax
-    #   orbax
+    #   orbax-checkpoint
     #   tensorboard
     #   tensorflow
     #   tensorflow-datasets
@@ -43,7 +43,7 @@ beautifulsoup4==4.12.0
 bleach==6.0.0
     # via nbconvert
 cached-property==1.5.2
-    # via orbax
+    # via orbax-checkpoint
 cachetools==5.3.0
     # via google-auth
 certifi==2022.12.7
@@ -81,7 +81,7 @@ einops==0.6.0
 etils[enp,epath]==1.1.1
     # via
     #   clu
-    #   orbax
+    #   orbax-checkpoint
     #   tensorflow-datasets
 executing==1.2.0
     # via stack-data
@@ -136,7 +136,7 @@ importlib-resources==5.12.0
     #   etils
     #   jsonschema
     #   matplotlib
-    #   orbax
+    #   orbax-checkpoint
     #   tensorflow-datasets
 ipykernel==6.22.0
     # via
@@ -168,7 +168,7 @@ jax @ git+https://github.com/google/jax
     #   clu
     #   flax
     #   optax
-    #   orbax
+    #   orbax-checkpoint
 jax-bitempered-loss==0.0.2
     # via -r praxis-requirements.in
 jaxlib==0.4.7
@@ -176,7 +176,7 @@ jaxlib==0.4.7
     #   chex
     #   clu
     #   optax
-    #   orbax
+    #   orbax-checkpoint
 jedi==0.18.2
     # via ipython
 jinja2==3.1.2
@@ -276,7 +276,7 @@ mpmath==1.3.0
 msgpack==1.0.5
     # via
     #   flax
-    #   orbax
+    #   orbax-checkpoint
 mypy-extensions==1.0.0
     # via typing-inspect
 nbclassic==0.5.4
@@ -301,7 +301,7 @@ nest-asyncio==1.5.6
     #   ipykernel
     #   nbclassic
     #   notebook
-    #   orbax
+    #   orbax-checkpoint
 notebook==6.5.3
     # via
     #   jupyter
@@ -324,7 +324,7 @@ numpy==1.24.2
     #   ml-dtypes
     #   opt-einsum
     #   optax
-    #   orbax
+    #   orbax-checkpoint
     #   scikit-learn
     #   scipy
     #   tensorboard
@@ -344,7 +344,7 @@ optax==0.1.4
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax==0.1.7
+orbax-checkpoint==0.1.8
     # via flax
 packaging==23.0
     # via
@@ -433,7 +433,7 @@ pyyaml==6.0
     #   jupyter-events
     #   libcst
     #   ml-collections
-    #   orbax
+    #   orbax-checkpoint
 pyzmq==25.0.2
     # via
     #   ipykernel
@@ -532,7 +532,7 @@ tensorflow-text==2.9.0
 tensorstore==0.1.35
     # via
     #   flax
-    #   orbax
+    #   orbax-checkpoint
 termcolor==2.2.0
     # via
     #   tensorflow
@@ -590,7 +590,7 @@ typing-extensions==4.5.0
     #   ipython
     #   libcst
     #   optax
-    #   orbax
+    #   orbax-checkpoint
     #   rich
     #   tensorflow
     #   typing-inspect
