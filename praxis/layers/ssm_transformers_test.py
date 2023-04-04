@@ -55,7 +55,6 @@ class SSMTransformersTest(test_utils.TestCase):
         input_dims=8,
         hidden_dims=32,
         num_heads=4,
-        mask_self_attention=True,
         use_cross_attention=cross_attention,
         ssm_nheads=4, 
         ssm_dim=8, 

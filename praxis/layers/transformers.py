@@ -1116,7 +1116,6 @@ class Transformer(base_layer.BaseLayer):
     relu_dropout_prob: Probability at which we apply dropout to the FFN layers.
     residual_droppath_prob: Probability at which we drop the entire residual
       path.
-    mask_self_attention: If True, use causal mask.
     cross_attention: If True, perform cross encoder-decoder attention.
     allow_skip_cross_attention: If True, allow skipping cross attention during
       forward pass and decoding. This allows to skip cross attention when cross
@@ -1148,7 +1147,6 @@ class Transformer(base_layer.BaseLayer):
   residual_dropout_prob: float = 0.0
   relu_dropout_prob: float = 0.0
   residual_droppath_prob: float = 0.0
-  mask_self_attention: bool = False
   use_cross_attention: bool = False
   allow_skip_cross_attention: bool = False
   cross_atten_tpl: Optional[LayerTpl] = template_field(None)
@@ -1606,7 +1604,6 @@ class StackedTransformer(base_layer.BaseLayer):
         p_i = self._clone_layer_params(self.transformer_layer_params_tpl)
       p_i.name = f'layer_{i}'
       p_i.use_cross_attention = self.use_cross_attention
-      p_i.mask_self_attention = self.mask_self_attention
       p_i.num_heads = self.num_heads
       p_i.dim_per_head = self.dim_per_head
       p_i.input_dims = self.model_dims

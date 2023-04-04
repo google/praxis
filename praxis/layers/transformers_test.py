@@ -58,7 +58,6 @@ class TransformersTest(test_utils.TestCase):
         input_dims=32,
         hidden_dims=128,
         num_heads=8,
-        mask_self_attention=mask_self_attention,
         packed_input=packed_input,
         use_cross_attention=use_cross_attention,
     )
@@ -174,7 +173,6 @@ class TransformersTest(test_utils.TestCase):
         input_dims=8,
         hidden_dims=32,
         num_heads=4,
-        mask_self_attention=True,
         packed_input=packed_input,
         use_cross_attention=cross_attention,
     )
@@ -291,7 +289,6 @@ class TransformersTest(test_utils.TestCase):
         input_dims=input_dims,
         hidden_dims=hidden_dims,
         num_heads=num_heads,
-        mask_self_attention=True,
         packed_input=packed_input,
         use_cross_attention=True,
     )
@@ -421,7 +418,6 @@ class TransformersTest(test_utils.TestCase):
         hidden_dims=32,
         num_heads=4,
         use_cross_attention=True,
-        mask_self_attention=True,
     )
     # Enable cross attention.
     p.cross_atten_tpl = copy.deepcopy(p.tr_atten_tpl)
@@ -445,7 +441,6 @@ class TransformersTest(test_utils.TestCase):
         hidden_dims=32,
         num_heads=4,
         use_cross_attention=True,
-        mask_self_attention=True,
     )
     # Enable cross attention.
     p.cross_atten_tpl = copy.deepcopy(p.tr_atten_tpl)
@@ -1352,7 +1347,6 @@ class TransformersTest(test_utils.TestCase):
         input_dims=32,
         hidden_dims=128,
         num_heads=8,
-        mask_self_attention=True,
         packed_input=True,
         use_cross_attention=False,
         norm_policy=norm_policy,
@@ -1394,7 +1388,6 @@ class TransformersTest(test_utils.TestCase):
         input_dims=32,
         hidden_dims=128,
         num_heads=8,
-        mask_self_attention=True,
         packed_input=True,
         use_cross_attention=True,
         norm_policy=norm_policy,
@@ -1446,7 +1439,6 @@ class TransformersTest(test_utils.TestCase):
         input_dims=32,
         hidden_dims=128,
         num_heads=8,
-        mask_self_attention=True,
         packed_input=True,
         use_cross_attention=False,
     )
