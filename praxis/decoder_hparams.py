@@ -96,6 +96,7 @@ class SampleDecoderHParams(DecoderHParams):
     global_normalize: Normalize the logits over top-k logits or globally in the
       whole vocabulary. It is used if k is nonzero and p is also not None.
     cf_guidance_scale: If not None, apply classifier-free guidance.
+    sort_samples:  Whether to sort the samples by logprobs.
   """
   num_samples: int = 1
   # TODO(wangtao): supports per-example temperature.
@@ -108,3 +109,4 @@ class SampleDecoderHParams(DecoderHParams):
   global_normalize: bool = False
   cf_guidance_scale: Optional[Union[List[float], float]] = None
   controlled_decoding: Optional[decoder_utils.ControlledDecodingHParams] = None
+  sort_samples: Optional[bool] = True
