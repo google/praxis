@@ -34,6 +34,7 @@ WeightHParams = base_layer.WeightHParams
 sub_config_field = base_layer.sub_config_field
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
+WeightInit = base_layer.WeightInit
 
 
 class Linear(linears.Linear):
@@ -108,6 +109,14 @@ class Linear(linears.Linear):
     if self.quantization.quantization_type == QuantizationType.AQT:
       self.create_tensor_quantizers()
 
+    # With int32 there is an error:
+    # TypeError: grad requires real- or complex-valued inputs
+    step_count_pc = WeightHParams(
+        shape=[],
+        init=WeightInit.Constant(0),
+        dtype=jnp.float32)
+    self.create_variable('step_count', step_count_pc, trainable=False)
+
   def __call__(self, inputs: JTensor) -> JTensor:
     """Apply projection to inputs.
 
@@ -117,6 +126,11 @@ class Linear(linears.Linear):
     Returns:
       Projected inputs.
     """
+    step_count = self.get_var('step_count')
+    if not self.do_eval:
+      self.update_var('step_count', step_count + 1)
+    self.add_summary('step_count', step_count)
+
     ap = self.activation_split_dims_mapping
     eqn = '...y,yz->...z'
     if self.quantization.mode == QuantizationMode.INFERENCE:

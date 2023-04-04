@@ -116,7 +116,7 @@ def _add_expected_quantization_results(cur_key, cur_samples):
 
 
 class LinearsPTQTest(quantization_test_util.QuantizationTestCase):
-  """Test cases for QuantizationType.PTQ on Linears layer
+  """Test cases for QuantizationType.PTQ on Linears layer.
 
   Following tests are required:
   1. Training test: The results compared to the non-quantized model should be
@@ -145,26 +145,28 @@ class LinearsPTQTest(quantization_test_util.QuantizationTestCase):
           lambda theta, grad: theta - lr * grad, params, grads
       )
 
-    prng_key = jax.random.PRNGKey(seed=123)
-    params_float = float_model.init(prng_key, inputs)
-    params_quantized = quantized_model.init(prng_key, inputs)
-    outputs_float = float_model.apply(params_float, inputs)
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      params_float = float_model.init(prng_key, inputs)
+      params_quantized = quantized_model.init(prng_key, inputs)
+      outputs_float = float_model.apply(params_float, inputs)
     pseudo_answer = np.random.normal(0.0, 2.0, outputs_float.shape)
     pseudo_answer = jnp.asarray(pseudo_answer)
 
-    params_float = update(float_model, params_float, inputs, pseudo_answer)
-    params_quantized = update(
-        quantized_model, params_quantized, inputs, pseudo_answer
-    )
+    with base_layer.JaxContext.new_context():
+      params_float = update(float_model, params_float, inputs, pseudo_answer)
+      params_quantized = update(
+          quantized_model, params_quantized, inputs, pseudo_answer
+      )
 
     # 1. Check if the trained weights are the same.
-    params_float_flat = tree_util.tree_flatten(params_float)[0]
-    params_quantized_flat = tree_util.tree_flatten(params_quantized)[0]
-    self.assertAllClose(params_float_flat, params_quantized_flat)
+    self.assertAllClose(params_float['params']['w'],
+                        params_quantized['params']['w'])
 
     # 2. Check if the inference result with updated results are the same.
-    outputs_float = float_model.apply(params_float, inputs)
-    outputs_quantized = quantized_model.apply(params_quantized, inputs)
+    with base_layer.JaxContext.new_context():
+      outputs_float = float_model.apply(params_float, inputs)
+      outputs_quantized = quantized_model.apply(params_quantized, inputs)
     self.assertAllClose(outputs_float, outputs_quantized)
 
   # See if the training results of PTQ-quantized model and original model are
