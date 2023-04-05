@@ -96,6 +96,9 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
       inputs. This is needed when there are data paddings on some devices in a
       multi-process environment. Values in the list are logical partition IDs
       (offsets in global_mesh.devices.flat) in the global mesh.
+    input_checkpointing_enabled: overridden by
+      task.train.enable_input_checkpointing; indicates whether training input
+      should be checkpointed.
   """
 
   _VALIDATE_BATCH_SIZE_NOT_NONE = True
@@ -113,6 +116,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   experimental_remote_input: bool = False
   batch_padding_size: int = 0
   custom_device_order: Optional[Sequence[int]] = None
+  input_checkpointing_enabled: bool = False
   _peek: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
