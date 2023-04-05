@@ -118,7 +118,7 @@ QUANTIZED_ZP_NAME_POSTFIX = '_quantized_zp'
 SPARSITY_NAME_POSTFIX = '_sparsity_mask'
 
 
-# Public aliase of base_hyperparams.instantiate() for convenience.
+# Public alias of base_hyperparams.instantiate() for convenience.
 instantiate = base_hyperparams.instantiate
 
 # A function that transforms a decode state variable of a layer. It has three
@@ -156,7 +156,7 @@ class WeightHParamsCollection:
   """Weight hparams collection annotation.
 
   Weight hparams collections annotates variables with special properties,
-  e.g. whether or not the variable is leanable, whether or not the variable is
+  e.g. whether or not the variable is learnable, whether or not the variable is
   subject to lp regularization.
   """
   SKIP_LP_REGULARIZATION = '__lingvo_jax_skip_regularization'
