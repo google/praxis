@@ -498,8 +498,8 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
   for sampling decode.
 
   Attributes:
-    top_k: if nonzero, use top-k sampling, only selecting amongthe most likely k
-      tokens at each step.
+    top_k: if nonzero, use top-k sampling, only selecting among the most likely
+      k tokens at each step.
     top_p: if not None, use the smallest number of logits whose cumulative sum
       of probs adds up to (at least) p.
     epsilon_p: if positive, use epsilon sampling, only selecting among the
