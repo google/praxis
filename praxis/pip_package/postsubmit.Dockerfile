@@ -6,7 +6,7 @@ RUN rm -rf /praxis
 COPY . /praxis
 RUN pip3 uninstall -y fiddle
 RUN pip3 uninstall -y jax
-RUN pip3 install -r /praxis/praxis/pip_package/requirements.txt
+RUN pip3 install --no-deps -r /praxis/praxis/pip_package/requirements.txt
 
 RUN cd /praxis && bazel build ...
 
