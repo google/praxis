@@ -26,6 +26,7 @@ from praxis import asserts
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
+from praxis import py_utils
 from praxis.layers import attentions
 from praxis.layers import embedding_softmax
 from praxis.layers import stochastics
@@ -461,7 +462,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # Attention softmax is always carried out in fp32.
     logits = logits.astype(jnp.float32)
     # Apply attention masking
-    padded_logits = logits + atten_mask.astype(jnp.float32)
+    padded_logits = py_utils.apply_mask_to_logits(logits, atten_mask)
     if self.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
     else:
@@ -534,7 +535,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # Attention softmax is always carried out in fp32.
     logits = logits.astype(jnp.float32)
     # Apply attention masking
-    padded_logits = logits + atten_mask.astype(jnp.float32)
+    padded_logits = py_utils.apply_mask_to_logits(logits, atten_mask)
     # Of shape [b, n, s]
     if self.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)

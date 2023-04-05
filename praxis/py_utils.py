@@ -710,6 +710,31 @@ def get_large_negative_number(dtype: jnp.dtype) -> JTensor:
   return jnp.asarray(-0.7 * dtype_max, dtype=dtype)
 
 
+def apply_mask_to_logits(logits: JTensor, mask: JTensor) -> JTensor:
+  """Applies a floating-point mask to a set of logits.
+
+  The mask is represented as a float32 tensor where 0 represents true and values
+  below a large negative number (here set to
+  get_large_negative_number(jnp.float32) / 2) represent false. Applying the mask
+  leaves the logits alone in the true case and replaces them by
+  get_large_negative_number(jnp.float32) in the false case. Previously, this was
+  done by adding the logits to the mask; however, this leads to a bad fusion
+  decision in the compiler that saves the float32 values in memory rather than
+  just the predicate. This implementation avoids that problem.
+
+  Args:
+    logits: A JTensor of logit values.
+    mask: A JTensor (float32) of mask values with the encoding described in the
+      function documentation.
+
+  Returns:
+    Masked logits.
+  """
+
+  min_value = get_large_negative_number(logits.dtype)
+  return jnp.where((mask >= min_value * 0.5), logits, min_value)
+
+
 def sequence_mask(lengths: Union[JTensor, Sequence[int]],
                   maxlen: int,
                   dtype=jnp.bool_) -> JTensor:

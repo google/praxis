@@ -1304,8 +1304,9 @@ class DotProductAttention(base_layer.BaseLayer):
 
     self.add_summary(
         'max_logit_precap',
-        jnp.max(logits + atten_mask.astype(jnp.float32)),
-        verbosity=4)
+        jnp.max(py_utils.apply_mask_to_logits(logits, atten_mask)),
+        verbosity=4,
+    )
     self.add_summary(
         'rms_logits_precap',
         ((logits ** 2.).mean().astype(jnp.float32) **.5),
@@ -1314,7 +1315,7 @@ class DotProductAttention(base_layer.BaseLayer):
     # Attention softmax is always carried out in fp32.
     logits = logits.astype(jnp.float32)
     # Apply attention masking
-    padded_logits = logits + atten_mask.astype(jnp.float32)
+    padded_logits = py_utils.apply_mask_to_logits(logits, atten_mask)
     if self.attention_mask_summary:
       self.add_summary('attention_mask', atten_mask)
     if self.attention_extra_logit is None:
@@ -1408,7 +1409,7 @@ class DotProductAttention(base_layer.BaseLayer):
     # Attention softmax is always carried out in fp32.
     logits = logits.astype(jnp.float32)
     # Apply attention masking
-    padded_logits = logits + atten_mask.astype(jnp.float32)
+    padded_logits = py_utils.apply_mask_to_logits(logits, atten_mask)
     # Of shape [b, n, s]
     if self.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
@@ -2163,7 +2164,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
       # Attention softmax is always carried out in fp32.
       logits = logits.astype(jnp.float32)
       # Apply attention masking
-      padded_logits = logits + am.astype(jnp.float32)
+      padded_logits = py_utils.apply_mask_to_logits(logits, am)
       return padded_logits
 
     batched_to_slice = []
@@ -2645,7 +2646,7 @@ class DotProductAttentionXL(DotProductAttention):
     # Attention softmax is always carried out in fp32.
     logits = logits.astype(jnp.float32)
     # Apply attention masking
-    padded_logits = logits + atten_mask.astype(jnp.float32)
+    padded_logits = py_utils.apply_mask_to_logits(logits, atten_mask)
     # Of shape [b, n, s]
     if self.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
@@ -2865,8 +2866,7 @@ class LocalSelfAttention(DotProductAttention):
     # Attention softmax is always carried out in fp32.
     logits = logits.astype(jnp.float32)
 
-    padded_logits = logits * (mask > minus_inf / 2).astype(
-        jnp.float32) + mask.astype(jnp.float32)
+    padded_logits = py_utils.apply_mask_to_logits(logits, mask)
 
     if self.attention_extra_logit is None:
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
