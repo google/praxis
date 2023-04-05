@@ -195,34 +195,52 @@ class ConformerTest(test_utils.TestCase):
           atten_mask=local_atten_mask_padding)[0]
       self.assertAllClose(out_local, out_global, atol=1e-5)
 
-  @parameterized.parameters([(10, 1, 1), (10, 2, 0)])
-  def test_local_attention_xl(self, rel_pos_emb_dim, left_context,
-                              right_context):
+  @parameterized.parameters([
+      ('None', 1, 1),
+      ('None', 2, 0),
+      ('XL', 1, 1),
+      ('XL', 2, 0),
+      ('RoPE', 1, 1),
+      ('RoPE', 2, 0),
+  ])
+  def test_local_attention(self, pos_emb_type, left_context, right_context):
     mdl_dim = 16
     hidden_dim = 32
     num_heads = 4
 
+    local_cls = attentions.LocalSelfAttention
+    global_cls = attentions.DotProductAttention
+    if pos_emb_type == 'XL':
+      local_cls = attentions.LocalSelfAttentionXL
+      global_cls = attentions.DotProductAttentionXL
+
     # Layer which can do only local self attention.
     local_layer_p = pax_fiddle.Config(
-        attentions.LocalSelfAttentionXL,
+        local_cls,
         name='local_mh',
         input_dim=mdl_dim,
         hidden_dim=hidden_dim,
         num_heads=num_heads,
-        rel_pos_emb_dim=rel_pos_emb_dim,
         left_context=left_context,
         right_context=right_context,
     )
 
     # Layer which can do only global attention.
     global_layer_p = pax_fiddle.Config(
-        attentions.DotProductAttentionXL,
+        global_cls,
         name='global_mh',
         input_dim=mdl_dim,
         hidden_dim=hidden_dim,
         num_heads=num_heads,
-        rel_pos_emb_dim=rel_pos_emb_dim,
     )
+
+    if pos_emb_type == 'XL':
+      rel_pos_emb_dim = 10
+      local_layer_p.rel_pos_emb_dim = rel_pos_emb_dim
+      global_layer_p.rel_pos_emb_dim = rel_pos_emb_dim
+    elif pos_emb_type == 'RoPE':
+      local_layer_p.use_rotary_position_emb = True
+      global_layer_p.use_rotary_position_emb = True
 
     # Prepare input data.
     target_batch_size = 3
@@ -253,8 +271,8 @@ class ConformerTest(test_utils.TestCase):
     local_atten_mask_padding = jnp.minimum(dot_product_atten_mask_padding,
                                            context_mask)
 
-    # Run LocalSelfAttentionXL which computes local self attention explicitly
-    # vs DotProductAttentionXL which uses local_atten_mask_padding for emulation
+    # Run LocalSelfAttention which computes local self attention explicitly
+    # vs DotProductAttention which uses local_atten_mask_padding for emulation
     # of local self attention.
     global_layer = instantiate(global_layer_p)
     local_layer = instantiate(local_layer_p)
