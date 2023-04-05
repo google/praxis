@@ -37,10 +37,6 @@ QuantizationHParams = quantization_hparams.QuantizationHParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 
-PARAMS = base_layer.PARAMS
-NON_TRAINABLE = base_layer.NON_TRAINABLE
-SUMMARIES = base_layer.SUMMARIES
-
 
 def _generate_quantization_types_modes() -> Sequence[Dict[str, Any]]:
   keys = ['testcase_name', 'quantization_type', 'mode', 'dtype', 'precision']
@@ -160,66 +156,6 @@ class QuantizedLinearTest(test_utils.TestCase):
       outputs_q = linear_q.apply(initial_vars_q, inputs)
     self.assertAllClose(expected_output, outputs_q)
 
-  def _get_layer_and_inputs(self):
-    p_q = pax_fiddle.Config(
-        qlinears.Linear,
-        name='_linear_q',
-        quantization=QuantizationHParams(
-            quantization_type=QuantizationType.AQT,
-            mode=QuantizationMode.TRAINING,
-            act_params=quantization_hparams.ActQuantizationParams(precision=3),
-            weight_params=quantization_hparams.WeightQuantizationParams(
-                precision=2,
-            ),
-        ),
-    )
-    p_q.input_dims = 4
-    p_q.output_dims = 4
-
-    inputs = np.random.normal(size=[4, 4, p_q.input_dims]).astype(np.float32)
-
-    linear_q = instantiate(p_q)
-    return linear_q, inputs
-
-  def test_linear_step_count_in_eval(self):
-    linear_q, inputs = self._get_layer_and_inputs()
-    context_params = base_layer.JaxContext.HParams(do_eval=True)
-    with base_layer.JaxContext.new_context(hparams=context_params):
-      prng_key = jax.random.PRNGKey(seed=123)
-      initial_vars_q = linear_q.init(prng_key, inputs)
-      _, updated_variables = linear_q.apply(
-          initial_vars_q, inputs, mutable=[NON_TRAINABLE])
-    # In eval mode step_count is not changed
-    self.assertArraysEqual(updated_variables[NON_TRAINABLE]['step_count'],
-                           np.array([0.0]))
-
-  def test_linear_step_count_in_train(self):
-    linear_q, inputs = self._get_layer_and_inputs()
-    context_params = base_layer.JaxContext.HParams(do_eval=False)
-    with base_layer.JaxContext.new_context(hparams=context_params):
-      prng_key = jax.random.PRNGKey(seed=123)
-      initial_vars_q = linear_q.init(prng_key, inputs)
-      _, updated_vars = linear_q.apply(
-          initial_vars_q, inputs, mutable=[PARAMS, NON_TRAINABLE, SUMMARIES]
-      )
-    self.assertArraysEqual(
-        updated_vars[NON_TRAINABLE]['step_count'], np.array([1.0])
-    )
-    self.assertArraysEqual(
-        updated_vars[SUMMARIES]['step_count_scalar'], np.array([0.0])
-    )
-
-    with base_layer.JaxContext.new_context(hparams=context_params):
-      _, updated_vars = linear_q.apply(
-          updated_vars, inputs, mutable=[PARAMS, NON_TRAINABLE, SUMMARIES]
-      )
-    self.assertArraysEqual(
-        updated_vars[NON_TRAINABLE]['step_count'], np.array([2.0])
-    )
-    self.assertArraysEqual(
-        updated_vars[SUMMARIES]['step_count_scalar'], np.array([1.0])
-    )
-
 
 class QuantizedLinearsSyncTest(test_utils.TestCase):
   """Sync tests between quantized Linear and regular Linear.
@@ -235,12 +171,11 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
   def run_and_compare(self, p_f, p_q, inputs):
     linear_f = instantiate(p_f)
     linear_q = instantiate(p_q)
-    with base_layer.JaxContext.new_context():
-      prng_key = jax.random.PRNGKey(seed=123)
-      initial_vars_f = linear_f.init(prng_key, inputs)
-      initial_vars_q = linear_q.init(prng_key, inputs)
-      outputs_f = linear_f.apply(initial_vars_f, inputs)
-      outputs_q = linear_q.apply(initial_vars_q, inputs)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars_f = linear_f.init(prng_key, inputs)
+    initial_vars_q = linear_q.init(prng_key, inputs)
+    outputs_f = linear_f.apply(initial_vars_f, inputs)
+    outputs_q = linear_q.apply(initial_vars_q, inputs)
     self.assertAllClose(outputs_f, outputs_q)
 
   def test_linear_ptq_quantized(self):
@@ -279,15 +214,15 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
 
     linear_f = instantiate(p_f)
     linear_q = instantiate(p_q)
-    with base_layer.JaxContext.new_context():
-      prng_key = jax.random.PRNGKey(seed=123)
-      initial_vars_f = linear_f.init(prng_key, inputs)
-      initial_vars_q = linear_q.init(prng_key, inputs)
-      initial_vars_f['params']['w'] = weight_rescaled
-      initial_vars_q['params']['w'] = quantized_weight
-      initial_vars_q['params']['w_quantized_scale'] = w_scale
-      outputs_f = linear_f.apply(initial_vars_f, inputs)
-      outputs_q = linear_q.apply(initial_vars_q, inputs)
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars_f = linear_f.init(prng_key, inputs)
+    initial_vars_q = linear_q.init(prng_key, inputs)
+    initial_vars_f['params']['w'] = weight_rescaled
+    initial_vars_q['params']['w'] = quantized_weight
+    initial_vars_q['params']['w_quantized_scale'] = w_scale
+    outputs_f = linear_f.apply(initial_vars_f, inputs)
+    outputs_q = linear_q.apply(initial_vars_q, inputs)
     self.assertAllClose(outputs_f, outputs_q)
 
 

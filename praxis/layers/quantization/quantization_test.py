@@ -54,11 +54,11 @@ class RepeatsLinearQuantizeTest(test_utils.TestCase):
     ffn = instantiate(p)
 
     inputs = np.random.normal(1.0, 1.5, [2, 2]).astype(np.float32)
-    with base_layer.JaxContext.new_context():
-      prng_key = jax.random.PRNGKey(seed=123)
-      init_vars = ffn.init(prng_key, inputs)
-      shapes = jax.tree_map(lambda x: x.shape, init_vars)
-      res, _ = ffn.apply(init_vars, mutable=[], method=ffn.quantize_weight)
+    prng_key = jax.random.PRNGKey(seed=123)
+    init_vars = ffn.init(prng_key, inputs)
+    shapes = jax.tree_map(lambda x: x.shape, init_vars)
+
+    res, _ = ffn.apply(init_vars, mutable=[], method=ffn.quantize_weight)
     shapes = jax.tree_map(lambda x: x.shape, res)
     expected_shapes = {
         base_layer.PARAMS: {
@@ -155,33 +155,38 @@ class ChildrenQuantizeTest(test_utils.TestCase):
     layer = instantiate(p)
 
     inputs = np.random.normal(1.5, 2.0, [5, 3]).astype(np.float32)
-    with base_layer.JaxContext.new_context():
-      prng_key = jax.random.PRNGKey(seed=123)
-      initial_vars = layer.init(prng_key, inputs)
-      res, _ = layer.apply(
-          initial_vars, mutable=[], method=layer.quantize_weight
-      )
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = layer.init(prng_key, inputs)
 
+    res, _ = layer.apply(initial_vars, mutable=[], method=layer.quantize_weight)
     shapes = jax.tree_map(lambda x: x.shape, res)
     types = jax.tree_map(lambda x: x.dtype, res)
     self.assertEqual(
-        shapes,
-        {
+        shapes, {
             base_layer.PARAMS: {
-                'ff1': {'w': (3, 2), 'w_quantized_scale': (2,)},
-                'ff2': {'b': (3,), 'w': (2, 3)},
+                'ff1': {
+                    'w': (3, 2),
+                    'w_quantized_scale': (2,)
+                },
+                'ff2': {
+                    'b': (3,),
+                    'w': (2, 3)
+                }
             }
-        },
-    )
+        })
     self.assertEqual(
-        types,
-        {
+        types, {
             base_layer.PARAMS: {
-                'ff1': {'w': jnp.int8, 'w_quantized_scale': jnp.bfloat16},
-                'ff2': {'b': jnp.float32, 'w': jnp.float32},
+                'ff1': {
+                    'w': jnp.int8,
+                    'w_quantized_scale': jnp.bfloat16
+                },
+                'ff2': {
+                    'b': jnp.float32,
+                    'w': jnp.float32
+                }
             }
-        },
-    )
+        })
 
 
 if __name__ == '__main__':

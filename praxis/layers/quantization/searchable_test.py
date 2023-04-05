@@ -20,7 +20,6 @@ from absl.testing import absltest
 import jax
 import jax.numpy as jnp
 
-from praxis import base_layer
 from praxis import base_hyperparams
 from praxis import pax_fiddle
 from praxis import test_utils
@@ -50,13 +49,12 @@ class SearchableTest(test_utils.TestCase):
 
   def _test_common(self, p, x):
     m = instantiate(p)
+    m_vars = m.init(jax.random.PRNGKey(0), x)
 
-    with base_layer.JaxContext.new_context():
-      m_vars = m.init(jax.random.PRNGKey(0), x)
-      a4w4 = _run_option(m, m_vars, x, 0, 0)
-      a4w8 = _run_option(m, m_vars, x, 0, 1)
-      a8w4 = _run_option(m, m_vars, x, 1, 0)
-      a8w8 = _run_option(m, m_vars, x, 1, 1)
+    a4w4 = _run_option(m, m_vars, x, 0, 0)
+    a4w8 = _run_option(m, m_vars, x, 0, 1)
+    a8w4 = _run_option(m, m_vars, x, 1, 0)
+    a8w8 = _run_option(m, m_vars, x, 1, 1)
 
     self.assertAllClose(a4w4, a4w8, rtol=0.05, atol=0.05)
     self.assertAllClose(a4w4, a8w4, rtol=0.05, atol=0.05)

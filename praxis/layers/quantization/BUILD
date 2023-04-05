@@ -356,7 +356,6 @@ py_strict_test(
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
-        "//praxis:schedules",
         "//praxis:test_utils",
         "//praxis/layers:linears",
     ],
@@ -650,7 +649,6 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit jax dependency.
         "//praxis:base_hyperparams",
-        "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
     ],
