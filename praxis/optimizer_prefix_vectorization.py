@@ -236,7 +236,8 @@ def _ungroup_by_repeat_prefix(groups: NestedMap, var_hparams: NestedHParams,
 
 def _init_with_vectorized_repeat_prefix(
     tx: GeneralGradientTransformation, var_vals: NestedJTensor,
-    var_hparams: NestedHParams, repeat_prefix_sep: str) -> optax.OptState:
+    var_hparams: NestedHParams, repeat_prefix_sep: str,
+    force_prefix_structure: bool = False) -> optax.OptState:
   """init function for vectorized optimizers based on var_hparams."""
   vmap_groups = _group_by_repeat_prefix(var_vals, var_hparams,
                                         repeat_prefix_sep)
@@ -248,7 +249,7 @@ def _init_with_vectorized_repeat_prefix(
         tx.init, num_dim=len(shape_prefix), optimizer_prefix=optimizer_prefix)(
             group)
 
-  if has_no_prefix(results):
+  if has_no_prefix(results) and not force_prefix_structure:
     # Do not change the structure if no prefix exists.
     results = results[NO_PREFIX_KEY]
   return results
@@ -257,7 +258,9 @@ def _init_with_vectorized_repeat_prefix(
 def _update_with_vectorized_repeat_prefix(
     tx: GeneralGradientTransformation, updates: NestedJTensor,
     state: optax.OptState, old_vars: NestedJTensor, var_hparams: NestedHParams,
-    repeat_prefix_sep: str) -> Tuple[NestedJTensor, optax.OptState]:
+    repeat_prefix_sep: str,
+    force_prefix_structure: bool = False
+    ) -> Tuple[NestedJTensor, optax.OptState]:
   """update function for vectorized optimizers based on var_hparams."""
   grouped_updates = _group_by_repeat_prefix(updates, var_hparams,
                                             repeat_prefix_sep)
@@ -294,7 +297,7 @@ def _update_with_vectorized_repeat_prefix(
 
     update_results[prefix] = new_updates
     state_results[prefix] = new_state
-  if has_no_prefix(state_results):
+  if has_no_prefix(state_results) and not force_prefix_structure:
     # Do not change the structure if no prefix exists.
     state_results = state_results[NO_PREFIX_KEY]
   update_results = _ungroup_by_repeat_prefix(update_results, var_hparams,
@@ -303,8 +306,11 @@ def _update_with_vectorized_repeat_prefix(
 
 
 def _init_partition_spec_with_vectorized_repeat_prefix(
-    tx: ShardedGradientTransformation, var_hparams: NestedHParams,
-    repeat_prefix_sep: str) -> NestedHParams:
+    tx: ShardedGradientTransformation,
+    var_hparams: NestedHParams,
+    repeat_prefix_sep: str,
+    force_prefix_structure: bool = False,
+) -> NestedHParams:
   """init_partition_spec for vectorized optimizers based on var_hparams."""
 
   def call_inner_on_group(group, shape_prefix, sharding_prefix):
@@ -334,7 +340,7 @@ def _init_partition_spec_with_vectorized_repeat_prefix(
     shape_prefix, sharding_prefix, _ = _parse_var_param_repeat_prefix_key(
         prefix, repeat_prefix_sep)
     results[prefix] = call_inner_on_group(group, shape_prefix, sharding_prefix)
-  if has_no_prefix(results):
+  if has_no_prefix(results) and not force_prefix_structure:
     # Do not change the structure if no prefix exists.
     results = results[NO_PREFIX_KEY]
   return results
@@ -344,21 +350,38 @@ def get_transformations_with_vectorized_repeat_prefix(
     tx: GeneralGradientTransformation,
     var_hparams: NestedHParams,
     repeat_prefix_sep: str = _REPEAT_PREFIX_SEP,
+    force_prefix_structure: bool = False
 ) -> GeneralGradientTransformation:
   """Vectorizes a transformation on shape/sharding prefixes."""
 
   def _init(variables):
-    return _init_with_vectorized_repeat_prefix(tx, variables, var_hparams,
-                                               repeat_prefix_sep)
+    return _init_with_vectorized_repeat_prefix(
+        tx,
+        variables,
+        var_hparams,
+        repeat_prefix_sep,
+        force_prefix_structure=force_prefix_structure,
+    )
 
   def _update(updates, state, params=None):
-    return _update_with_vectorized_repeat_prefix(tx, updates, state, params,
-                                                 var_hparams, repeat_prefix_sep)
+    return _update_with_vectorized_repeat_prefix(
+        tx,
+        updates,
+        state,
+        params,
+        var_hparams,
+        repeat_prefix_sep,
+        force_prefix_structure=force_prefix_structure,
+    )
 
   def _init_partition_spec(var_param_args):
     assert isinstance(tx, ShardedGradientTransformation)
     return _init_partition_spec_with_vectorized_repeat_prefix(
-        tx, var_param_args, repeat_prefix_sep)
+        tx,
+        var_param_args,
+        repeat_prefix_sep,
+        force_prefix_structure=force_prefix_structure,
+    )
 
   if isinstance(tx, ShardedGradientTransformation):
     return ShardedGradientTransformation(
