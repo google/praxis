@@ -1708,12 +1708,16 @@ class BaseLayer(nn.Module):
       cls.activation_split_dims_mapping = template_field(cls.ActivationSharding)
 
   def __post_init__(self):
-    if isinstance(self.dtype, (BaseHyperParams, fdl.Config)):
+    try:
+      if isinstance(self.dtype, (BaseHyperParams, fdl.Config)):
+        raise TypeError()
+      jnp.dtype(self.dtype)
+    except TypeError:
       type_name = f'{type(self).__module__}.{type(self).__qualname__}'
       raise TypeError(
           f'Expected first argument to {type_name} to be a dtype, '
-          f'but got a {type(self.dtype)} instead.  This can happen if '
-          f'you try to instantiate {type_name} using '
+          f'but got {self.dtype!r} with type {type(self.dtype)} instead.  '
+          f'This can happen if you try to instantiate {type_name} using '
           f'`{type_name}(layer_p)`, which is no longer supported for '
           'Fiddle-configured layers.  Please use `layer_p.Instantiate()` '
           'instead.'
@@ -2038,7 +2042,7 @@ class BaseLayer(nn.Module):
           name=name + QUANTIZED_ZP_NAME_POSTFIX,
           var_hparams=WeightHParams(shape=scale_shape),
       )
-    
+
   @nn.nowrap
   def get_quantized_weight(
       self, name: str, use_symmetric: bool = True

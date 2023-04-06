@@ -654,12 +654,14 @@ class BaseLayerTest(test_utils.TestCase):
                      hyper_params['child']['_hparams'].params_init.method)
 
   def testTypeCheckingForDtype(self):
-    layer_p = pax_fiddle.Config(
-        SimpleBaseLayer,
-    )
+    layer_p = pax_fiddle.Config(SimpleBaseLayer)
     with self.assertRaisesRegex(
         TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
       SimpleBaseLayer(layer_p)
+
+    with self.assertRaisesRegex(
+        TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
+      SimpleBaseLayer('foo')
 
   def test_get_fan_in_fan_out(self):
     self.assertEqual((None, None), base_layer.get_fan_in_fan_out(shape=[]))
