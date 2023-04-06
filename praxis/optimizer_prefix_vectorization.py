@@ -202,8 +202,10 @@ def _group_by_repeat_prefix(variables: NestedMap, var_hparams: NestedHParams,
 
     return jax.tree_map(_filter_one, variables, var_hparams)
 
+  # Iterate `key_set` in a stable order to ensure determinism. Otherwise, the
+  # produced HLO may differ across runs.
   groups = NestedMap()
-  for key in key_set:
+  for key in sorted(key_set):
     groups[key] = _filter_key(key)
   # Make sure we still have NO_PREFIX_KEY, so that we can easily tell if it's
   # vectorized.
