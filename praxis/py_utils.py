@@ -21,7 +21,7 @@ import functools
 import re
 import threading
 import time
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, NamedTuple, Optional, Sequence, Tuple, Union
 
 from absl import flags
 from absl import logging
@@ -1086,3 +1086,17 @@ def append_eos(
       output_x[:, :t+1-truncate],
       output_paddings.astype(paddings.dtype)[:, :t+1-truncate],
   )
+
+
+class BpropMaskedNode(NamedTuple):
+  """A node used to mask out vars excluded from bprop.
+
+  We use this class help FLAX checkpointer to detect these nodes to be backward-
+  compatible with legacy checkpoints where such nodes have placeholder tensors,
+  while newer checkpoints don't have them.
+  """
+
+
+def is_bprop_masked_node(x: Any) -> bool:
+  """Returns if x is an instance of BpropMaskedNode."""
+  return isinstance(x, BpropMaskedNode)

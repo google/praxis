@@ -205,6 +205,12 @@ def _group_by_repeat_prefix(variables: NestedMap, var_hparams: NestedHParams,
   groups = NestedMap()
   for key in key_set:
     groups[key] = _filter_key(key)
+  # Make sure we still have NO_PREFIX_KEY, so that we can easily tell if it's
+  # vectorized.
+  if NO_PREFIX_KEY not in groups:
+    groups[NO_PREFIX_KEY] = jax.tree_map(
+        lambda _: optax.MaskedNode(), variables
+    )
 
   return groups
 
