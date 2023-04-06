@@ -137,13 +137,13 @@ class Repeat(base_layer.BaseLayer):
           'x_times': self.x_times,
           'optimizer_dims_mapping': None,
       }
-    fn = nn.map_variables(
-        fn,
-        [PARAMS, NON_TRAINABLE],
-        trans_in_fn=lambda x: meta.add_axis(x, 0, metadata_params),
-        trans_out_fn=lambda x: meta.remove_axis(x, 0, metadata_params),
-        mutable=True,
-    )
+      fn = nn.map_variables(
+          fn,
+          [PARAMS, NON_TRAINABLE],
+          trans_in_fn=lambda x: meta.add_axis(x, 0, metadata_params),
+          trans_out_fn=lambda x: meta.remove_axis(x, 0, metadata_params),
+          mutable=True,
+      )
 
     n = len(nd_shape)
 
