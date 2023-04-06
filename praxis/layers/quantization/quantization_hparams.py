@@ -99,6 +99,9 @@ class WeightQuantizationParams:
     and num_optimize_clipping are set.
   sub_channels: Number of sub channels for splitting channelwise quantization.
   calculation_dtype: The type used for calculation around quantization.
+  use_step_count: If True step_count non-trainable variable will added.
+    It is used for counting forward propagation training steps.
+    By default it is disabled for backward compatibility with prod.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -114,6 +117,7 @@ class WeightQuantizationParams:
   optimize_clipping_per_channel: bool = False
   sub_channels: Optional[int] = None
   calculation_dtype: jnp.dtype = jnp.float32
+  use_step_count: bool = False
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):
