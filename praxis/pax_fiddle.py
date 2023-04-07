@@ -21,8 +21,7 @@ import contextlib
 import copy
 import dataclasses
 import functools
-from typing import Any, Callable, Collection, Container, Dict, Generic, List, Mapping, Optional, Sequence, Set, Tuple, TypeVar, Union, overload
-import weakref
+from typing import Any, Callable, Collection, Container, Generic, Optional, TypeVar, Union, overload, Mapping, Sequence, List, Tuple, Dict
 
 import fiddle as fdl
 from fiddle import building
@@ -348,20 +347,11 @@ def build(buildable: Any) -> Any:
 
 
 def build(buildable):
-  """Specialized version of `fdl.build` with pax-specific behavior.
+  """Specialized version of `fdl.build` that respects the `DoNotBuild` tag.
 
-  1. Any template arguments (i.e., arguments whose annotated type is
-     `pax_fiddle.Config` or a container of `pax_fiddle.Config`) are left as-is.
-     This ensures that the templates can be used for deferred subtree building.
-
-  2. BaseLayer "inheritable fields" are copied from parent objects to child
-     objects, unless either:
-
-     * The field has been overridden in the child object; or
-     * The parent and child object are both templates.
-
-  3. BaseLayers are built with an empty flax module stack.  This ensures that
-     they don't get auto-parented to the wrong parent.
+  When building `buildable`, if any arguments are tagged with `DoNotBuild`,
+  then return them as-is, rather than building them.  This makes it possible
+  to keep templates unbuilt, so they can be used for deferred subtree building.
 
   Args:
     buildable: A `Buildable` instance to build, or a nested structure of
@@ -370,202 +360,40 @@ def build(buildable):
   Returns:
     The built version of `buildable`.
   """
-  buildable = wrap_templates(buildable)  # Do not build templates.
-  buildable = copy_inheritable_base_layer_params(buildable)
-  return build_with_empty_flax_module_stack(buildable)
-
-
-@dataclasses.dataclass(frozen=True)
-class TemplateWrapper:
-  """Functor that returns a wrapped `Buildable` when called.
-
-  I.e., `TemplateWrapper(tpl)` is equivalent to `lambda: tpl`, with the added
-  benefit that we can use `isinstance` to identify template wrappers.
-
-  Replacing a template `tpl` with `fdl.Config(TemplateWrapper(tpl))` prevents
-  `fdl.build` from building the template, making it possible to use the
-  template for deferred subtree building.
-  """
-
-  template: fdl.Buildable
-
-  def __call__(self):
-    return self.template
-
-
-def wrap_templates(buildable: Any) -> Any:
-  """Returns copy of `buildable` with templates wrapped in `TemplateWrapper`s.
-
-  In particular, any template `tpl` in `buildable` will be replaced by
-  `fdl.Config(TemplateWrapper(tpl))`.  This ensures that the built value for
-  `tpl` will be `TemplateWrapper(tpl)()`, which returns `tpl` -- i.e., the
-  template is not built.
-
-  A `fdl.Buildable` is considered a template if it is the value for an argument
-  whose type annotation indicates it should contain `Buildable` values (or
-  containers of `Buildable` values).
-
-  Only top-level templates are wrapped; i.e., templates nested inside other
-  templates are *not* wrapped.
-
-  Args:
-    buildable: A `Buildable` instance to transform, or a nested structure of
-      `Buildable` objects.
-  """
-  # As we traverse, keep track of whether we're inside a template field or not.
-  in_template_field = False
-
-  def traverse(value, state):
-    nonlocal in_template_field
-
-    # Do a normal depth-first traversal for everything but fdl.Buildable.
-    if not isinstance(value, fdl.Buildable):
-      return state.map_children(value)
-
-    if in_template_field:
-      return Config(TemplateWrapper(value))
-
-    template_args = _get_template_arguments(value.__fn_or_cls__)
-    fn_or_cls = value.__fn_or_cls__
-
-    new_arguments = {}
-    for arg_name, arg_value in value.__arguments__.items():
-      if (
-          arg_name not in template_args
-          and DoNotBuild in value.__argument_tags__.get(arg_name, ())
-      ):
-        raise ValueError(
-            f'{fn_or_cls}.{arg_name} was built using `template_field`, but its '
-            'type annotation is not `Config` or `<container>[Config]`.\n'
-            'Either change `template_field` to `instance_field`, or update the '
-            'type annotation.'
-        )
-      in_template_field = arg_name in template_args
-      new_arguments[arg_name] = state.call(arg_value, daglish.Attr(arg_name))
-      in_template_field = False
-
-    return fdl.copy_with(value, **new_arguments)
-
-  return daglish.MemoizedTraversal.run(traverse, buildable)
-
-
-# Cache dictionary for `_get_template_arguments`.
-_template_argument_cache = weakref.WeakKeyDictionary()
-
-
-def _get_template_arguments(fn_or_cls: Any) -> Set[str]:
-  """Returns names of arguments whose type indicates they contain templates.
-
-  I.e., return any arguments whose type is `Buildable` (or a subclass), or
-  a container of `Buildable`.  The result may be cached.
-
-  Args:
-    fn_or_cls: The callable whose arguments should be checked.
-  """
-  try:
-    return _template_argument_cache[fn_or_cls]
-  except TypeError:  # Unhashable value.
-    add_to_cache = False
-  except KeyError:  # Not cached yet.
-    add_to_cache = True
-  signature = _get_template_arguments_uncached(fn_or_cls)
-  if add_to_cache:
-    _template_argument_cache[fn_or_cls] = signature
-  return signature
-
-
-def _get_template_arguments_uncached(fn_or_cls: Any) -> Set[str]:
-  """Returns names of arguments whose type indicates they contain templates."""
-  result = set()
-  annotations = signatures.get_type_hints(fn_or_cls)
-
-  for arg_name, annotation in annotations.items():
-    context = f'{fn_or_cls}.{arg_name}'
-    arg_is_template = _contains_buildable_type(annotation, context)
-    if arg_is_template:
-      result.add(arg_name)
-      if not _is_supported_buildable_type(annotation):
-        raise ValueError(
-            f'Unsupported type {annotation!r} in BaseLayer field {context}:'
-            ' types that contain pax_fiddle.Config may only use list,'
-            ' tuple, dict, Mapping, Sequence, and Union.'
-        )
-
-  return result
-
-
-def copy_inheritable_base_layer_params(buildable: Any) -> Any:
-  """Copies inheritable BaseLayer params from parent layers to child layers.
-
-  See `base_layer.BaseLayer.copy_base_hparams` for more information about
-  inheritable BaseLayer parameters.
-
-  Args:
-    buildable: A `Buildable` instance to transform, or a nested structure of
-      `Buildable` objects.
-
-  Returns:
-    A copy of `buildable` with inherited fields copied from parent to child.
-  """
-  # As we do a depth first traversal of `buildable`, keep track of ancestors
-  # that have type `fdl.Buildable[BaseLayer]`.
-  base_layer_config_ancestors = []
-
-  def traverse(value, state):
-    value_is_base_layer_config = False
-    if isinstance(value, fdl.Buildable):
-      # Copy inheritable BaseLayer fields from parent to child.
-      fn_or_cls = value.__fn_or_cls__
-      copy_base_hparams = getattr(fn_or_cls, 'copy_base_hparams', None)
-      value_is_base_layer_config = copy_base_hparams is not None
-      if value_is_base_layer_config and base_layer_config_ancestors:
-        value = copy.copy(value)  # copy_base_hparams modifies `value` in place.
-        copy_base_hparams(base_layer_config_ancestors[-1], value)
-
-      # Leave wrapped templates as-is (after inheriting fields from parent).
-      if isinstance(value, TemplateWrapper):
-        return value
-
-    if value_is_base_layer_config:
-      base_layer_config_ancestors.append(value)
-    result = state.map_children(value)
-    if value_is_base_layer_config:
-      base_layer_config_ancestors.pop()
-    return result
-
-  return daglish.MemoizedTraversal.run(traverse, buildable)
-
-
-def build_with_empty_flax_module_stack(buildable: Any) -> Any:
-  """Build `buildable`, ensuring the flax module stack is always empty.
-
-  This avoids having `nn.Module`s be auto-parented to the current module,
-  and is important for directly instantiated *nested* descendants.
-
-  Args:
-    buildable: A `Buildable` instance to transform, or a nested structure of
-      `Buildable` objects.
-
-  Returns:
-    A value built from `buildable`.
-  """
-  # Clear the flax module stack, to avoid having `nn.Module`s be auto-
-  # parented to the current module.  This is important for directly
-  # instantiated *nested* descendants.
-
-  def traverse(value, state):
+  def _build(value, state):
     if isinstance(value, fdl.Buildable):
       arguments = {}
-      for arg_name, arg_value in value.__arguments__.items():
-        with empty_flax_module_stack():
-          arguments[arg_name] = state.call(arg_value, daglish.Attr(arg_name))
+      annotations = signatures.get_type_hints(value.__fn_or_cls__)
+      for key, sub_value in value.__arguments__.items():
+        context = f'{value.__fn_or_cls__}.{key}'
+        annotation = annotations.get(key, None)
+        if _contains_buildable_type(annotation, context):
+          if not _is_supported_buildable_type(annotation):
+            raise ValueError(
+                f'Unsupported type {annotation!r} in BaseLayer field {context}:'
+                ' types that contain pax_fiddle.Config may only use list,'
+                ' tuple, dict, Mapping, Sequence, and Union.'
+            )
+          arguments[key] = sub_value
+        else:
+          # Check that the DoNotBuild tag agrees with the type annotation.
+          if DoNotBuild in value.__argument_tags__.get(key, ()):
+            raise ValueError(
+                f'{context} has DoNotBuild tag but the type annotation '
+                f'{annotation!r} is not pax_fiddle.Config.'
+            )
+
+          # Clear the flax module stack, to avoid having `nn.Module`s be auto-
+          # parented to the current module.  This is important for directly
+          # instantiated *nested* descendants.
+          with empty_flax_module_stack():
+            arguments[key] = state.call(sub_value, daglish.Attr(key))
       return building.call_buildable(
           value, arguments, current_path=state.current_path)
     else:
       return state.map_children(value)
 
-  result = daglish.MemoizedTraversal.run(traverse, buildable)
-  return result
+  return daglish.MemoizedTraversal.run(_build, buildable)
 
 
 def _is_buildable_type(typ):
@@ -573,10 +401,7 @@ def _is_buildable_type(typ):
   origin = typing_extensions.get_origin(typ)
   if origin is not None:
     typ = origin
-  return isinstance(typ, type) and (
-      issubclass(typ, fdl.Buildable)
-      or type(typ).__name__ == 'FiddleHParamsClassStub'
-  )
+  return isinstance(typ, type) and issubclass(typ, fdl.Buildable)
 
 
 def _contains_buildable_type(typ, context):
@@ -635,6 +460,7 @@ def _is_supported_buildable_type(typ):
   elif origin is Optional:
     return all(_is_supported_buildable_type(arg) for arg in args)
   else:
+    print("I don't like", typ, origin, typing_extensions.get_args(typ))
     return False
 
 
