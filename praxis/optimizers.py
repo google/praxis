@@ -106,18 +106,13 @@ def count_init_fn(_):
 def count_init_partition_spec_fn(
     var_hparams: NestedWeightHParams) -> NestedWeightHParams:
   """Init partition spec for only partitioning the count/step."""
-  var_spec_flattened, _ = jax.tree_util.tree_flatten(var_hparams)
-  assert var_spec_flattened
-  first_var = var_spec_flattened[0]
-  assert isinstance(first_var, WeightHParams)
-  mesh_shape = first_var.mesh_shape
+  del var_hparams
   return NestedMap(
       count=WeightHParams(
           shape=[],
           init=None,
           dtype=jnp.int32,
           collections=None,
-          mesh_shape=mesh_shape,
           tensor_split_dims_mapping=[]))
 
 
@@ -771,11 +766,6 @@ def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
     return updates, NestedMap(count=count_inc, ema=new_ema)
 
   def init_partition_spec_fn(params):
-    var_spec_flattened, _ = jax.tree_util.tree_flatten(params)
-    assert var_spec_flattened
-    first_var = var_spec_flattened[0]
-    assert isinstance(first_var, WeightHParams)
-    mesh_shape = first_var.mesh_shape
 
     def _infer_ema_pspec(x):
       return WeightHParams(
@@ -783,7 +773,6 @@ def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
           init=None,
           dtype=x.dtype,
           collections=None,
-          mesh_shape=x.mesh_shape,
           tensor_split_dims_mapping=x.tensor_split_dims_mapping,
       )
 
@@ -793,7 +782,6 @@ def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
             init=None,
             dtype=jnp.int32,
             collections=None,
-            mesh_shape=mesh_shape,
             tensor_split_dims_mapping=[]),
         ema=jax.tree_map(_infer_ema_pspec, params))
 
@@ -870,11 +858,6 @@ def apply_ewc_regularization(
     return updates, update_states
 
   def init_partition_spec_fn(params):
-    var_spec_flattened, _ = jax.tree_util.tree_flatten(params)
-    assert var_spec_flattened
-    first_var = var_spec_flattened[0]
-    assert isinstance(first_var, WeightHParams)
-    mesh_shape = first_var.mesh_shape
 
     def _infer_ewc_pspec(x):
       return WeightHParams(
@@ -882,7 +865,6 @@ def apply_ewc_regularization(
           init=None,
           dtype=x.dtype,
           collections=None,
-          mesh_shape=mesh_shape,
           tensor_split_dims_mapping=x.tensor_split_dims_mapping)
 
     def _infer_ewc_weights_pspec(x):
@@ -891,7 +873,6 @@ def apply_ewc_regularization(
           init=None,
           dtype=x.dtype,
           collections=None,
-          mesh_shape=mesh_shape,
           tensor_split_dims_mapping=[])
 
     if ewc_regularizer_weight > 0.0:
@@ -901,7 +882,6 @@ def apply_ewc_regularization(
               init=None,
               dtype=jnp.int32,
               collections=None,
-              mesh_shape=mesh_shape,
               tensor_split_dims_mapping=[]),
           pretrain_vars=jax.tree_map(_infer_ewc_pspec, params),
           var_weights=jax.tree_map(_infer_ewc_weights_pspec, params))
@@ -912,7 +892,6 @@ def apply_ewc_regularization(
               init=None,
               dtype=jnp.int32,
               collections=None,
-              mesh_shape=mesh_shape,
               tensor_split_dims_mapping=[]))
 
   return ShardedGradientTransformation(
@@ -2461,17 +2440,11 @@ def sharded_adafactor(
 
   def init_partition_spec_fn(
       var_hparams: NestedWeightHParams) -> NestedWeightHParams:
-    var_spec_flattened, _ = jax.tree_util.tree_flatten(var_hparams)
-    assert var_spec_flattened
-    first_var = var_spec_flattened[0]
-    assert isinstance(first_var, WeightHParams)
-    mesh_shape = first_var.mesh_shape
     count = WeightHParams(
         shape=[],
         init=None,
         dtype=jnp.int32,
         collections=None,
-        mesh_shape=mesh_shape,
         tensor_split_dims_mapping=[])
     return sharded_adafactor_helper.to_state(
         count,
