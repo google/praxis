@@ -191,7 +191,7 @@ class DelayedCosine(BaseSchedule):
     x1, y1 = p.limit
     assert x0 < x1, '%s must be < %s' % (x0, x1)
     assert y0 > 0, '%s must be > 0' % y0
-    assert y1 > 0, '%s must be > 0' % y1
+    assert y1 >= 0, '%s must be >= 0' % y1
     self.max = y0
     self.min = y1
     self.linear = instantiate(
