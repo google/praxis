@@ -692,9 +692,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     assert time_step.ndim == 0
     # Project inputs to key, value and query. Query has shape [B, N, H],
     # key/value shapes [B, H]
-    new_key_proj = self.key(query_vec)
-    new_value_proj = self.value(query_vec)
-    new_query_proj = self.query(query_vec)
+    key_proj = self.key(query_vec)
+    value_proj = self.value(query_vec)
+    query_proj = self.query(query_vec)
 
     def _extend_decode_state_and_shard_blh(name: str,
                                            extend_value: JTensor) -> JTensor:
@@ -704,25 +704,25 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
 
     # Update value state.
     value_state_name = 'value_state'
-    _extend_decode_state_and_shard_blh(value_state_name, new_value_proj)
+    _extend_decode_state_and_shard_blh(value_state_name, value_proj)
     # Update key state.
     key_state_name = 'key_state'
-    _extend_decode_state_and_shard_blh(key_state_name, new_key_proj)
+    _extend_decode_state_and_shard_blh(key_state_name, key_proj)
 
     if self.use_rotary_position_emb:
       if segment_pos is None:
         position = jnp.broadcast_to(time_step, [query_vec.shape[0]])
       else:
         position = segment_pos
-      new_query_proj = self.rotary_position_emb.extend_step(
-          new_query_proj, position)
-      key_shape = new_key_proj.shape
-      new_key_proj = jnp.expand_dims(new_key_proj, axis=-2)
-      new_key_proj = self.rotary_position_emb.extend_step(
-          new_key_proj, position)
-      new_key_proj = jnp.reshape(new_key_proj, key_shape)
+      query_proj = self.rotary_position_emb.extend_step(
+          query_proj, position)
+      key_shape = key_proj.shape
+      key_proj = jnp.expand_dims(key_proj, axis=-2)
+      key_proj = self.rotary_position_emb.extend_step(
+          key_proj, position)
+      key_proj = jnp.reshape(key_proj, key_shape)
       key_state_name = 'key_post_rotary_pos_emb'
-      _extend_decode_state_and_shard_blh(key_state_name, new_key_proj)
+      _extend_decode_state_and_shard_blh(key_state_name, key_proj)
 
     if self.relative_bias_tpl:
       # Relative bias uses time_step instead of segment_pos.
@@ -731,7 +731,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     else:
       relative_bias = None
 
-    encoded, atten_prob = self._dot_atten_one_step(new_query_proj,
+    encoded, atten_prob = self._dot_atten_one_step(query_proj,
                                                    key_state_name,
                                                    value_state_name, atten_mask,
                                                    relative_bias)
@@ -1251,15 +1251,15 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
       if self.combine_qkv:
         # Project inputs to key, value and query using a combined weight for
         # faster performance on TPU.
-        new_query_proj, new_key_proj, new_value_proj = layer.combined_qkv(q)
+        query_proj, key_proj, value_proj = layer.combined_qkv(q)
       else:
         # Project inputs to key, value and query. Each has shape [B, N, H].
-        new_key_proj = layer.key(q)
-        new_value_proj = layer.value(q)
-        new_query_proj = layer.query(q)
-      return new_query_proj, new_key_proj, new_value_proj
+        key_proj = layer.key(q)
+        value_proj = layer.value(q)
+        query_proj = layer.query(q)
+      return query_proj, key_proj, value_proj
 
-    new_query_proj, new_key_proj, new_value_proj = _vmap_no_state(_proj_qkv)(
+    query_proj, key_proj, value_proj = _vmap_no_state(_proj_qkv)(
         self, query_vec)
     prefix_length = self._broadcast_prefix_length()
 
@@ -1271,11 +1271,11 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
 
     # Update key_state
     key_state_name = 'key_state'
-    _extend_decode_state_and_shard(key_state_name, new_key_proj)
+    _extend_decode_state_and_shard(key_state_name, key_proj)
 
     # Update value state.
     value_state_name = 'value_state'
-    _extend_decode_state_and_shard(value_state_name, new_value_proj)
+    _extend_decode_state_and_shard(value_state_name, value_proj)
 
     # Apply rotary position embeddings.
     # Paper: https://arxiv.org/abs/2104.09864.
@@ -1289,27 +1289,27 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
         k = jnp.expand_dims(k, axis=-2)
 
         if len(query_vec.shape) == pfx_count + 2:
-          new_query_proj = layer.rotary_position_emb.extend_step(q, pos)
-          new_key_proj = layer.rotary_position_emb.extend_step(k, pos)
+          query_proj = layer.rotary_position_emb.extend_step(q, pos)
+          key_proj = layer.rotary_position_emb.extend_step(k, pos)
         else:
           # If it is extending n steps, uses a vmap to do the computation.
           def _get_rotary(q, pos):
             return layer.rotary_position_emb.extend_step(q, pos)
 
-          new_query_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(q, pos)
-          new_key_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(k, pos)
+          query_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(q, pos)
+          key_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(k, pos)
 
-        new_key_proj = jnp.squeeze(new_key_proj, axis=-2)
-        return new_query_proj, new_key_proj
+        key_proj = jnp.squeeze(key_proj, axis=-2)
+        return query_proj, key_proj
 
-      new_query_proj, new_key_proj = _vmap_no_state(_rotary)(self,
-                                                             new_query_proj,
-                                                             new_key_proj,
-                                                             position)
+      query_proj, key_proj = _vmap_no_state(_rotary)(self,
+                                                     query_proj,
+                                                     key_proj,
+                                                     position)
 
       # Update key post rotary position embedding in the cache.
       key_state_name = 'key_post_rotary_pos_emb'
-      _extend_decode_state_and_shard(key_state_name, new_key_proj)
+      _extend_decode_state_and_shard(key_state_name, key_proj)
 
     if self.relative_bias_tpl:
       # Relative bias uses time_step instead of segment_pos.
@@ -1322,7 +1322,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
     else:
       relative_bias = None
 
-    encoded, atten_prob = self._dot_atten_one_step(new_query_proj,
+    encoded, atten_prob = self._dot_atten_one_step(query_proj,
                                                    key_state_name,
                                                    value_state_name, atten_mask,
                                                    relative_bias)

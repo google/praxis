@@ -1632,13 +1632,13 @@ class DotProductAttention(base_layer.BaseLayer):
     if self.combine_qkv:
       # Project inputs to key, value and query using a combined weight for
       # faster performance on TPU.
-      new_query_proj, new_key_proj, new_value_proj = (
+      query_proj, key_proj, value_proj = (
           self.combined_qkv.extend_step(query_vec, time_step=time_step))
     else:
       # Project inputs to key, value and query. Each has shape [B, N, H].
-      new_key_proj = self.key.extend_step(query_vec, time_step=time_step)
-      new_value_proj = self.value.extend_step(query_vec, time_step=time_step)
-      new_query_proj = self.query.extend_step(query_vec, time_step=time_step)
+      key_proj = self.key.extend_step(query_vec, time_step=time_step)
+      value_proj = self.value.extend_step(query_vec, time_step=time_step)
+      query_proj = self.query.extend_step(query_vec, time_step=time_step)
 
     def _extend_decode_state_and_shard(name: str,
                                        extend_value: JTensor) -> JTensor:
@@ -1651,12 +1651,12 @@ class DotProductAttention(base_layer.BaseLayer):
 
     # Update key_state
     key_state_name = 'key_state'
-    key_state = _extend_decode_state_and_shard(key_state_name, new_key_proj)
+    key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
 
     # Update value state.
     value_state_name = 'value_state'
     value_state = _extend_decode_state_and_shard(value_state_name,
-                                                 new_value_proj)
+                                                 value_proj)
 
     # Apply depth-wise convolution as in Primer.
     # Paper: https://arxiv.org/abs/2109.08668.
@@ -1664,25 +1664,25 @@ class DotProductAttention(base_layer.BaseLayer):
       assert not is_cross_attention
       # Update query in cache.
       query_state = _extend_decode_state_and_shard('query_state',
-                                                   new_query_proj)
+                                                   query_proj)
 
       # Aggregate depth-wise convolution for keys and values at time step.
-      new_query_proj = self.dconv_q.extend_step(
+      query_proj = self.dconv_q.extend_step(
           query_state, axis=time_dim, step=time_step, segment_pos=segment_pos)
-      new_key_proj = self.dconv_k.extend_step(
+      key_proj = self.dconv_k.extend_step(
           key_state, axis=time_dim, step=time_step, segment_pos=segment_pos)
-      new_value_proj = self.dconv_v.extend_step(
+      value_proj = self.dconv_v.extend_step(
           value_state, axis=time_dim, step=time_step, segment_pos=segment_pos)
 
       # Update queries, keys and values post dconv in cache.
 
       query_state = _extend_decode_state_and_shard('query_post_dconv',
-                                                   new_query_proj)
+                                                   query_proj)
       key_state_name = 'key_post_dconv'
-      key_state = _extend_decode_state_and_shard(key_state_name, new_key_proj)
+      key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
       value_state_name = 'value_post_dconv'
       value_state = _extend_decode_state_and_shard(value_state_name,
-                                                   new_value_proj)
+                                                   value_proj)
 
     # Apply rotary position embeddings.
     # Paper: https://arxiv.org/abs/2104.09864.
@@ -1692,14 +1692,14 @@ class DotProductAttention(base_layer.BaseLayer):
         position = jnp.broadcast_to(time_step, [query_vec.shape[0]])
       else:
         position = segment_pos
-      new_query_proj = self.rotary_position_emb.extend_step(
-          new_query_proj, position)
-      new_key_proj = self.rotary_position_emb.extend_step(
-          new_key_proj, position)
+      query_proj = self.rotary_position_emb.extend_step(
+          query_proj, position)
+      key_proj = self.rotary_position_emb.extend_step(
+          key_proj, position)
 
       # Update key post rotary position embedding in the cache.
       key_state_name = 'key_post_rotary_pos_emb'
-      key_state = _extend_decode_state_and_shard(key_state_name, new_key_proj)
+      key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
 
     if self.relative_bias_tpl:
       # Relative bias uses time_step instead of segment_pos.
@@ -1709,7 +1709,7 @@ class DotProductAttention(base_layer.BaseLayer):
       relative_bias = None
 
     encoded, atten_prob = self._dot_atten_one_step(
-        new_query_proj,
+        query_proj,
         key_state_name,
         value_state_name,
         atten_mask,
@@ -2311,15 +2311,15 @@ class DotProductAttentionWithLPB(DotProductAttention):
       if self.combine_qkv:
         # Project inputs to key, value and query using a combined weight for
         # faster performance on TPU.
-        new_query_proj, new_key_proj, new_value_proj = layer.combined_qkv(q)
+        query_proj, key_proj, value_proj = layer.combined_qkv(q)
       else:
         # Project inputs to key, value and query. Each has shape [B, N, H].
-        new_key_proj = layer.key(q)
-        new_value_proj = layer.value(q)
-        new_query_proj = layer.query(q)
-      return new_query_proj, new_key_proj, new_value_proj
+        key_proj = layer.key(q)
+        value_proj = layer.value(q)
+        query_proj = layer.query(q)
+      return query_proj, key_proj, value_proj
 
-    new_query_proj, new_key_proj, new_value_proj = _vmap_no_state(_proj_qkv)(
+    query_proj, key_proj, value_proj = _vmap_no_state(_proj_qkv)(
         self, query_vec)
     prefix_length = self._broadcast_prefix_length()
 
@@ -2331,11 +2331,11 @@ class DotProductAttentionWithLPB(DotProductAttention):
 
     # Update key_state
     key_state_name = 'key_state'
-    _extend_decode_state_and_shard(key_state_name, new_key_proj)
+    _extend_decode_state_and_shard(key_state_name, key_proj)
 
     # Update value state.
     value_state_name = 'value_state'
-    _extend_decode_state_and_shard(value_state_name, new_value_proj)
+    _extend_decode_state_and_shard(value_state_name, value_proj)
 
     # Apply depth-wise convolution as in Primer.
     # Paper: https://arxiv.org/abs/2109.08668.
@@ -2345,7 +2345,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
             'DotProductAttentionWithLPB does not support extend n steps '
             'with dconv.')
       # Update query in cache.
-      _extend_decode_state_and_shard('query_state', new_query_proj)
+      _extend_decode_state_and_shard('query_state', query_proj)
 
       # For lazy prefix broadcast, we need to concat the current state with part
       # of prefixes to cover the dconv window.
@@ -2358,26 +2358,26 @@ class DotProductAttentionWithLPB(DotProductAttention):
         left_window_size = min(layer.dconv_q.hparams.kernel_size - 1,
                                prefix_length)
         ts = time_step - prefix_length + left_window_size
-        new_query_proj = layer.dconv_q.extend_step(
+        query_proj = layer.dconv_q.extend_step(
             q, axis=t_dim, step=ts, segment_pos=pos)
-        new_key_proj = layer.dconv_k.extend_step(
+        key_proj = layer.dconv_k.extend_step(
             k, axis=t_dim, step=ts, segment_pos=pos)
-        new_value_proj = layer.dconv_v.extend_step(
+        value_proj = layer.dconv_v.extend_step(
             v, axis=t_dim, step=ts, segment_pos=pos)
-        return new_query_proj, new_key_proj, new_value_proj
+        return query_proj, key_proj, value_proj
 
-      new_query_proj, new_key_proj, new_value_proj = _vmap_no_state(_dconv)(
+      query_proj, key_proj, value_proj = _vmap_no_state(_dconv)(
           self, self._left_concat_decode_state('query_state', left_window_size),
           self._left_concat_decode_state('key_state', left_window_size),
           self._left_concat_decode_state('value_state',
                                          left_window_size), segment_pos)
 
       # Update queries, keys and values post dconv in cache.
-      _extend_decode_state_and_shard('query_post_dconv', new_query_proj)
+      _extend_decode_state_and_shard('query_post_dconv', query_proj)
       key_state_name = 'key_post_dconv'
-      _extend_decode_state_and_shard(key_state_name, new_key_proj)
+      _extend_decode_state_and_shard(key_state_name, key_proj)
       value_state_name = 'value_post_dconv'
-      _extend_decode_state_and_shard(value_state_name, new_value_proj)
+      _extend_decode_state_and_shard(value_state_name, value_proj)
 
     # Apply rotary position embeddings.
     # Paper: https://arxiv.org/abs/2104.09864.
@@ -2390,26 +2390,26 @@ class DotProductAttentionWithLPB(DotProductAttention):
       def _rotary(layer, q, k, pos):
 
         if len(query_vec.shape) == pfx_count + 2:
-          new_query_proj = layer.rotary_position_emb.extend_step(q, pos)
-          new_key_proj = layer.rotary_position_emb.extend_step(k, pos)
+          query_proj = layer.rotary_position_emb.extend_step(q, pos)
+          key_proj = layer.rotary_position_emb.extend_step(k, pos)
         else:
           # If it is extending n steps, uses a vmap to do the computation.
           def _get_rotary(q, pos):
             return layer.rotary_position_emb.extend_step(q, pos)
 
-          new_query_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(q, pos)
-          new_key_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(k, pos)
+          query_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(q, pos)
+          key_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(k, pos)
 
-        return new_query_proj, new_key_proj
+        return query_proj, key_proj
 
-      new_query_proj, new_key_proj = _vmap_no_state(_rotary)(self,
-                                                             new_query_proj,
-                                                             new_key_proj,
-                                                             position)
+      query_proj, key_proj = _vmap_no_state(_rotary)(self,
+                                                     query_proj,
+                                                     key_proj,
+                                                     position)
 
       # Update key post rotary position embedding in the cache.
       key_state_name = 'key_post_rotary_pos_emb'
-      _extend_decode_state_and_shard(key_state_name, new_key_proj)
+      _extend_decode_state_and_shard(key_state_name, key_proj)
 
     if self.relative_bias_tpl:
       # Relative bias uses time_step instead of segment_pos.
@@ -2422,7 +2422,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
     else:
       relative_bias = None
 
-    encoded, atten_prob = self._dot_atten_one_step(new_query_proj,
+    encoded, atten_prob = self._dot_atten_one_step(query_proj,
                                                    key_state_name,
                                                    value_state_name, atten_mask,
                                                    relative_bias)
