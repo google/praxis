@@ -269,7 +269,7 @@ def _update_with_vectorized_repeat_prefix(
   update_results = NestedMap()
   state_results = NestedMap()
   grouped_state = state
-  if has_no_prefix(grouped_updates):
+  if has_no_prefix(grouped_updates) and not force_prefix_structure:
     # state structure did not change if no prefix exists.
     grouped_state = NestedMap()
     grouped_state[NO_PREFIX_KEY] = state
