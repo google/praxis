@@ -228,8 +228,8 @@ class LinearsTest(test_utils.TestCase):
         mult = self.get_var('mult')
         self.update_var('mult', mult * 2.0)
 
-        def dg(*args):
-          return jax.lax.dot_general(*args) * mult
+        def dg(*args, **kwargs):
+          return jax.lax.dot_general(*args, **kwargs) * mult
 
         return dg
 
