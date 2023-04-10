@@ -436,7 +436,6 @@ def sharded_masked(
 
 
 def apply_lp_regularizer(
-    learning_rate_fn: optax.Schedule,
     var_lp_mask: NestedHParams,
     regularizer_weight: Optional[float] = 0.0,
     p: Optional[float] = 2.0,
@@ -450,7 +449,6 @@ def apply_lp_regularizer(
   in: https://www.fast.ai/2018/07/02/adam-weight-decay/#adamw
 
   Args:
-    learning_rate_fn: An optax schedule that infers the lr given the step.
     var_lp_mask: mask to apply lp based on SKIP_LP_REGULARIZATION. If it is 0,
       the lp regularization is not applied.
     regularizer_weight: Weight for L2 regularization.
@@ -460,9 +458,6 @@ def apply_lp_regularizer(
   Returns:
     A ShardedGradientTransformation applying Lp regularizers.
   """
-  # Adjust raw gradients directly.
-  del learning_rate_fn
-
   asserts.in_set(p, [1.0, 2.0])
 
   def skip_mask(var):
@@ -995,14 +990,12 @@ class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
 
     optax_list = [
         apply_lp_regularizer(
-            self.get_learning_rate,
             var_lp_mask=var_lp_mask,
             regularizer_weight=p.l1_regularizer_weight,
             p=1.0,
             skip_lp_1d_vectors=p.skip_lp_1d_vectors,
         ),
         apply_lp_regularizer(
-            self.get_learning_rate,
             var_lp_mask=var_lp_mask,
             regularizer_weight=p.l2_regularizer_weight,
             p=2.0,
