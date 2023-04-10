@@ -546,120 +546,105 @@ class LanguageModel(base_model.BaseModel):
       )
     elif template_has_type(decoder_params, SampleDecoderHParams):
       assert isinstance(decoder_params, SampleDecoderHParams)
-      # Init cache states, batch size needs to multiply by num_samples.
-      self.lm(
-          decode_data.fprop_input_ids,
-          decode_data.fprop_input_paddings,
-          segment_ids=decode_data.fprop_segment_ids,
-          segment_pos=decode_data.fprop_segment_pos,
-          start_time_step=decode_data.start_time_step,
-          causal_attention_mask=decode_data.causal_attention_mask,
-          **decode_data.extra_input_kwargs
+      def fprop_fn(mdl, ids, paddings):
+        del ids, paddings
+        mdl(
+            decode_data.fprop_input_ids,
+            decode_data.fprop_input_paddings,
+            segment_ids=decode_data.fprop_segment_ids,
+            segment_pos=decode_data.fprop_segment_pos,
+            start_time_step=decode_data.start_time_step,
+            causal_attention_mask=decode_data.causal_attention_mask,
+            **decode_data.extra_input_kwargs,
+        )
+
+      # Fetch dynamic temperature from input_batch if the input_batch has this
+      # information.
+      if hasattr(input_batch, 'temperature'):
+        temperature = input_batch.temperature
+      else:
+        temperature = decoder_params.temperature
+
+      # Fetch dynamic per params from input_batch if the
+      # input_batch has this information.
+      per_example_max_decode_steps = getattr(
+          input_batch, 'per_example_max_decode_steps', None
       )
-      mdl_for_decode = decoder_utils.maybe_reshard_mdl_for_decode(
+      per_example_top_p = getattr(input_batch, 'per_example_top_p', None)
+      per_example_top_k = getattr(input_batch, 'per_example_top_k', None)
+      eos_id = getattr(input_batch, 'eos_id', decoder_params.eos_id)
+      gumbel_prng_key = getattr(input_batch, 'gumbel_prng_key', None)
+
+      next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
+      # TODO(b/260646361): Avoid this param propagation.
+      next_token_sampler_p.top_k = decoder_params.k
+      next_token_sampler_p.top_p = decoder_params.p
+      next_token_sampler_p.global_normalize = decoder_params.global_normalize
+      next_token_sampler = base_layer.instantiate(next_token_sampler_p)
+
+      result = sample_decode.sample_decode(
           self.lm,
-          decode_mesh_transpose,
-          lm_var_pspecs,
+          extend_step_fn,
           transform_decode_state_fn,
+          lazy_broadcast_prefix_fn
+          if decoder_params.lazy_prefix_broadcast
+          else None,
+          next_token_sampler,
+          decode_data.input_ids,
+          decode_data.input_paddings,
+          decode_data.seqlen,
+          fprop_fn=fprop_fn,
+          num_samples=decoder_params.num_samples,
+          fprop_for_prefix=decoder_params.fprop_for_prefix,
+          temperature=temperature,
+          per_example_top_p=per_example_top_p,
+          per_example_top_k=per_example_top_k,
+          max_prefix_len=max_prefix_len,
+          max_decode_steps=decoder_params.max_decode_steps,
+          per_example_max_decode_steps=per_example_max_decode_steps,
+          prefix_lengths=decode_data.prefix_lengths,
+          eos_id=eos_id,
+          return_result_for_suffix_score=return_result_for_suffix_score,
+          result_callback=result_callback,
+          cf_guidance_scale=decoder_params.cf_guidance_scale,
+          gumbel_prng_key=gumbel_prng_key,
+          controlled_decoding=decoder_params.controlled_decoding,
+          decode_loop_mesh_axes_transpose=decode_mesh_transpose,
+          model_var_pspecs=lm_var_pspecs,
+          sort_samples=decoder_params.sort_samples,
       )
-      with decoder_utils.maybe_decode_mesh_transpose(
-          mdl_for_decode, decode_mesh_transpose
-      ):
-        if not decoder_params.lazy_prefix_broadcast:
-          # Pad to full-sequence length.
-          mdl_for_decode.transform_decode_state(
-              decoder_utils.pad_state_fn(decode_data.state_padding_size)
-          )
 
-        # Fetch dynamic temperature from input_batch if the input_batch has this
-        # information.
-        if hasattr(input_batch, 'temperature'):
-          temperature = input_batch.temperature
-        else:
-          temperature = decoder_params.temperature
-
-        # Fetch dynamic per params from input_batch if the
-        # input_batch has this information.
-        per_example_max_decode_steps = getattr(
-            input_batch, 'per_example_max_decode_steps', None
-        )
-        per_example_top_p = getattr(input_batch, 'per_example_top_p', None)
-        per_example_top_k = getattr(input_batch, 'per_example_top_k', None)
-        eos_id = getattr(input_batch, 'eos_id', decoder_params.eos_id)
-        gumbel_prng_key = getattr(input_batch, 'gumbel_prng_key', None)
-
-        next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
-        # TODO(b/260646361): Avoid this param propagation.
-        next_token_sampler_p.top_k = decoder_params.k
-        next_token_sampler_p.top_p = decoder_params.p
-        next_token_sampler_p.global_normalize = decoder_params.global_normalize
-        next_token_sampler = base_layer.instantiate(next_token_sampler_p)
-
-        result = sample_decode.sample_decode(
-            mdl_for_decode,
-            extend_step_fn,
-            transform_decode_state_fn,
-            lazy_broadcast_prefix_fn
-            if decoder_params.lazy_prefix_broadcast
-            else None,
-            next_token_sampler,
-            decode_data.input_ids,
-            decode_data.input_paddings,
-            decode_data.seqlen,
-            num_samples=decoder_params.num_samples,
-            fprop_for_prefix=decoder_params.fprop_for_prefix,
-            temperature=temperature,
-            per_example_top_p=per_example_top_p,
-            per_example_top_k=per_example_top_k,
-            max_prefix_len=max_prefix_len,
-            max_decode_steps=decoder_params.max_decode_steps,
-            per_example_max_decode_steps=per_example_max_decode_steps,
-            prefix_lengths=decode_data.prefix_lengths,
-            eos_id=eos_id,
-            return_result_for_suffix_score=return_result_for_suffix_score,
-            result_callback=result_callback,
-            cf_guidance_scale=decoder_params.cf_guidance_scale,
-            gumbel_prng_key=gumbel_prng_key,
-            controlled_decoding=decoder_params.controlled_decoding,
-            sort_samples=decoder_params.sort_samples,
-        )
     elif template_has_type(decoder_params, GreedyDecoderHParams):
       assert isinstance(decoder_params, GreedyDecoderHParams)
-      # Init cache states.
-      self.lm(
-          decode_data.fprop_input_ids,
-          decode_data.fprop_input_paddings,
-          segment_ids=decode_data.fprop_segment_ids,
-          segment_pos=decode_data.fprop_segment_pos,
-          start_time_step=decode_data.start_time_step,
-          causal_attention_mask=decode_data.causal_attention_mask,
-          **decode_data.extra_input_kwargs,
-      )
-      mdl_for_decode = decoder_utils.maybe_reshard_mdl_for_decode(
+
+      def fprop_fn(mdl, ids, paddings):
+        del ids, paddings
+        mdl(
+            decode_data.fprop_input_ids,
+            decode_data.fprop_input_paddings,
+            segment_ids=decode_data.fprop_segment_ids,
+            segment_pos=decode_data.fprop_segment_pos,
+            start_time_step=decode_data.start_time_step,
+            causal_attention_mask=decode_data.causal_attention_mask,
+            **decode_data.extra_input_kwargs,
+        )
+
+      result = sample_decode.greedy_decode(
           self.lm,
-          decode_mesh_transpose,
-          lm_var_pspecs,
-          transform_decode_state_fn,
+          extend_step_fn,
+          decode_data.input_ids,
+          decode_data.input_paddings,
+          decode_data.seqlen,
+          fprop_fn=fprop_fn,
+          fprop_for_prefix=decoder_params.fprop_for_prefix,
+          transform_state_fn=transform_decode_state_fn,
+          max_prefix_len=max_prefix_len,
+          max_decode_steps=decoder_params.max_decode_steps,
+          prefix_lengths=decode_data.prefix_lengths,
+          eos_id=decoder_params.eos_id,
+          decode_loop_mesh_axes_transpose=decode_mesh_transpose,
+          model_var_pspecs=lm_var_pspecs,
       )
-      with decoder_utils.maybe_decode_mesh_transpose(
-          mdl_for_decode, decode_mesh_transpose
-      ):
-        # Pad to full-sequence length.
-        mdl_for_decode.transform_decode_state(
-            decoder_utils.pad_state_fn(decode_data.state_padding_size)
-        )
-        result = sample_decode.greedy_decode(
-            mdl_for_decode,
-            extend_step_fn,
-            decode_data.input_ids,
-            decode_data.input_paddings,
-            decode_data.seqlen,
-            fprop_for_prefix=decoder_params.fprop_for_prefix,
-            max_prefix_len=max_prefix_len,
-            max_decode_steps=decoder_params.max_decode_steps,
-            prefix_lengths=decode_data.prefix_lengths,
-            eos_id=decoder_params.eos_id,
-        )
     else:
       # Needs to define a decoding algorithm.
       raise NotImplementedError(
@@ -916,13 +901,16 @@ class SequenceModel(base_model.BaseModel):
     elif template_has_type(decoder_params, SampleDecoderHParams):
       raise NotImplementedError('sample decode not supported')
     elif template_has_type(decoder_params, GreedyDecoderHParams):
-      self.model(
-          inputs=input_batch.src.ids,
-          input_paddings=input_batch.src.paddings,
-          targets=input_batch.tgt.ids[:, :1],
-          target_paddings=input_batch.tgt.paddings[:, :1])
-      self.model.transform_decode_state(
-          decoder_utils.pad_state_fn(self.decoder_tpl.seqlen))
+
+      def fprop_fn(mdl, ids, paddings):
+        del ids, paddings
+        mdl.model(
+            inputs=input_batch.src.ids,
+            input_paddings=input_batch.src.paddings,
+            targets=input_batch.tgt.ids[:, :1],
+            target_paddings=input_batch.tgt.paddings[:, :1],
+        )
+
       result = sample_decode.greedy_decode(
           self,
           extend_step_fn,
@@ -930,6 +918,8 @@ class SequenceModel(base_model.BaseModel):
           input_batch.tgt.paddings,
           decoder_params.seqlen,
           eos_id=decoder_params.eos_id,
+          fprop_fn=fprop_fn,
+          transform_state_fn=transform_decode_state_fn,
       )
     else:
       # Needs to define a decoding algorithm.

@@ -21,7 +21,7 @@ Greedy decode is a special case for sample decode.
 
 import abc
 import functools
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 from flax import linen as nn
 import jax
@@ -590,12 +590,187 @@ def sample_decode(
     prefix_paddings: JTensor,
     seq_len: int,
     num_samples: int,
+    fprop_fn: Optional[decoder_utils.FPropFn] = None,
     cf_guidance_scale: Optional[Union[List[float], float]] = None,
     fprop_for_prefix: bool = False,
     temperature: Union[float, JTensor] = 1.0,
     gumbel_prng_key: Optional[JTensor] = None,
     per_example_top_p: Optional[Union[JTensor, float]] = None,
     per_example_top_k: Optional[Union[JTensor, int]] = None,
+    max_prefix_len: Optional[int] = None,
+    max_decode_steps: Optional[Union[int, Sequence[int]]] = None,
+    per_example_max_decode_steps: Optional[JTensor] = None,
+    prefix_lengths: Optional[JTensor] = None,
+    eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
+    result_callback: Optional[StreamingResultCallback] = None,
+    decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
+    model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
+    return_result_for_suffix_score: bool = False,
+    sort_samples: bool = True,
+    early_exit=True,
+    controlled_decoding: Optional[
+        decoder_utils.ControlledDecodingHParams
+    ] = None,
+) -> NestedMap:
+  """Sampling decode the input batch.
+
+  Top-K sampling with num_samples for each batch, in which the K most likely
+  tokens are filtered and the probability mass is redistributed among only
+  those K tokens.
+
+  Args:
+    model: The model object.
+    extend_step_fn: A function that takes in `states` and the decoded sequence
+      at the current time step (with shape [B] or [B, P] where B corresponds to
+      the batch size and P corresponds to a possible prefix) and returns a tuple
+      of (`NestedMap`, `JTensor`), where the first `NestedMap` corresponds to
+      the `new_states` and the second `JTensor` corresponds to the logits of the
+      next step.
+    transform_state_fn: A function that transforms the decode state.
+    lazy_broadcast_prefix_fn: A function that lazily broadcasts decode prefix.
+    next_token_sampler: Layer used to sample next token ids given the logits
+      output. See DefaultNextTokenSampler for an example. This can be used to
+      implement decoding techniques such repetition penalty.
+    prefix_ids: The token ids that correspond to the prefix sequence. A JTensor
+      of shape [batch, target_sequence_length]. This should have an <SOS> token
+      if one is used.
+    prefix_paddings: The paddings corresponding to the prefix sequence, with a 1
+      denoting padding token and 0 denoting non-padding tokens. A JTensor of
+      shape [batch, target_sequence_length].
+    seq_len: The output sequence length to decode to. seq_len contains prefix.
+    num_samples: Number of samples.
+    fprop_fn: A function that takes in the prefix information and initialize the
+      decode cache states.
+    cf_guidance_scale: If not 1.0, apply classifier-free guidance for
+      conditioned generation assuming the inputs are with [cond_a, uncond_a,
+      cond_b, uncond_b, ...]. Before sampling, we modify logits as logits =
+      uncond_logits + cf_guidance_scale * (cond_logits - uncond_logits) while
+      after sampling, we force align sampled token ids of conditioned and
+      unconditioned branch.
+    fprop_for_prefix: Use one fprop for prefix.
+    temperature: Temperature of sampling decoding. It could be a float or a
+      JTensor of shape [B] or [B, num_samples].
+    gumbel_prng_key: PRNG key for generating gumbel random noise. If None,
+      model.next_prng_key() is used; if not None, must be of shape [B] or [B,
+      key_shape_dim], where key_shape_dim =
+      jax.random.default_prng_impl().key_shape[0]. Usually, key_shape_dim = 2 or
+      4. where B is the batch size before being duplicated wrt num_samples or
+      cfg. If all the values in gumbel_prng_key is set to DUMMY_PRNG_KEY,
+      gumbel_prng_key will be ignored and model.next_prng_key() is used.
+    per_example_top_p: Per example top_p of sampling decoding. Optional JTensor
+      of shape [B].
+    per_example_top_k: Optional per example top_k of shape [batch_size]. The
+      value of per_example_top_k should be smaller or equal to `top_k` and
+      larger than 0.
+    max_prefix_len: Python int or None, the max prefix length for decoding.
+    max_decode_steps: Python int or None, the max decode step to run after the
+      prefix (if any). Since the prefixes might be of unequal lengths, this
+      value is not equivalent with `seq_len` above. When None, decode steps is
+      only limited by `seq_len` above. If it is a list, decoding state will be
+      padded at each given steps.
+    per_example_max_decode_steps: Optional JTensor of shape [B], the maximum
+      decode steps defined for each batch. If per_example_max_decode_steps is
+      defined, the decoding for each example will be stopped either
+      `per_example_max_decode_steps` is reached or `max_decode_steps` is
+      reached. If EOS is reached, will also stop early. Normally,
+      `per_example_max_decode_steps` should not be set to values larger than
+      `max_decode_steps`.
+    prefix_lengths: Optional argument supplying prefix sizes to initialize the
+      model to decode from a certain target prefix for each position in the
+      batch. This can either be None or a JTensor of shape [batch] signifying
+      the prefix length for each sequence in the batch.
+    eos_id: Optional EOS id which to terminate the decoding early. Could be a
+      sequence, an integer or a JTensor. When it is a JTensor, it is 2D tensor
+      of shape [batch, eos_len] with padded 0s on the left.
+    result_callback: Optional callback function to be called for decoding
+      results with a configurable interval.
+    decode_loop_mesh_axes_transpose: Optional mesh transpose for decoding loop.
+    model_var_pspecs: Optional partition specs for model variables.
+    return_result_for_suffix_score: Whether or not to return result for suffix
+      score.
+    sort_samples: Whether to sort the samples by logprobs.
+    early_exit: A bool, whether or not to allow early exit.
+    controlled_decoding: Params to configure blockwise controlled decoding.
+
+  Returns:
+    A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
+    each target sequence), `.output_ids` (matrix of int ids with the
+    decoded output), `.decode_lengths` (vector of ints indicating the lengths
+    of non-padding tokens in `.output_ids`, which includes the prefix), and
+    `.logprobs` (the log probability of selected tokens, including the prefix,
+    where a positive value of 1.0 is used to indicate padded positions).
+    The outputs has shape [batch, num_samples, ...].
+  """
+  # Init decode state using fprop_fn, state seq size is max_prefix_len.
+  if fprop_fn:
+    fprop_fn(model, prefix_ids, prefix_paddings)
+  model = decoder_utils.maybe_reshard_mdl_for_decode(
+      model,
+      decode_loop_mesh_axes_transpose,
+      model_var_pspecs,
+      transform_state_fn,
+  )
+  with decoder_utils.maybe_decode_mesh_transpose(
+      model, decode_loop_mesh_axes_transpose
+  ):
+    if fprop_fn and lazy_broadcast_prefix_fn is None and transform_state_fn:
+      # Pad to full-sequence length.
+      first_max_decode_steps = (
+          min(max_decode_steps)
+          if isinstance(max_decode_steps, Sequence)
+          else max_decode_steps
+      )
+      pad_state_sizes = (
+          first_max_decode_steps if fprop_for_prefix else seq_len - 1
+      )
+
+      transform_state_fn(model, decoder_utils.pad_state_fn(pad_state_sizes))
+    return sample_decode_after_fprop(
+        model,
+        extend_step_fn,
+        transform_state_fn,
+        lazy_broadcast_prefix_fn,
+        next_token_sampler,
+        prefix_ids,
+        prefix_paddings,
+        seq_len,
+        num_samples,
+        cf_guidance_scale,
+        fprop_for_prefix,
+        temperature,
+        gumbel_prng_key,
+        per_example_top_p,
+        per_example_top_k,
+        max_prefix_len,
+        max_decode_steps,
+        per_example_max_decode_steps,
+        prefix_lengths,
+        eos_id,
+        result_callback,
+        return_result_for_suffix_score,
+        sort_samples,
+        early_exit,
+        controlled_decoding,
+    )
+
+
+# TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
+def sample_decode_after_fprop(
+    model: base_layer.BaseLayerApi,
+    extend_step_fn: decoder_utils.ExtendStepFn,
+    transform_state_fn: Optional[decoder_utils.TransformStateFn],
+    lazy_broadcast_prefix_fn: Optional[decoder_utils.LazyBroadcastPrefixFn],
+    next_token_sampler: base_layer.BaseLayerApi,
+    prefix_ids: JTensor,
+    prefix_paddings: JTensor,
+    seq_len: int,
+    num_samples: int,
+    cf_guidance_scale: Optional[Union[List[float], float]] = None,
+    fprop_for_prefix: bool = False,
+    temperature: Union[float, JTensor] = 1.0,
+    gumbel_prng_key: Optional[JTensor] = None,
+    per_example_top_p: Optional[JTensor] = None,
+    per_example_top_k: Optional[JTensor] = None,
     max_prefix_len: Optional[int] = None,
     max_decode_steps: Optional[Union[int, Sequence[int]]] = None,
     per_example_max_decode_steps: Optional[JTensor] = None,
@@ -609,7 +784,10 @@ def sample_decode(
         decoder_utils.ControlledDecodingHParams
     ] = None,
 ) -> NestedMap:
-  """Sampling decode the input batch.
+  """Sampling decode after init decode state the input batch.
+
+  fprop is called to initialize decode states. This function runs decoding
+  loops after decode state are initialized.
 
   Top-K sampling with num_samples for each batch, in which the K most likely
   tokens are filtered and the probability mass is redistributed among only
@@ -1218,9 +1396,13 @@ def greedy_decode(
     prefix_paddings: JTensor,
     seq_len: int,
     fprop_for_prefix: bool = False,
+    fprop_fn: Optional[decoder_utils.FPropFn] = None,
+    transform_state_fn: Optional[decoder_utils.TransformStateFn] = None,
     max_prefix_len: Optional[int] = None,
     max_decode_steps: Optional[Union[int, Sequence[int]]] = None,
     prefix_lengths: Optional[JTensor] = None,
+    decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
+    model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
     eos_id: Optional[int] = None,
 ) -> NestedMap:
   """Greedy decode the input batch.
@@ -1239,6 +1421,9 @@ def greedy_decode(
       denoting padding token and 0 denoting non-padding tokens.
     seq_len: The output sequence length to decode to. seq_len contains prefix.
     fprop_for_prefix: Use one fprop for prefix.
+    fprop_fn: A function that takes in the prefix information and initialize the
+      decode cache states.
+    transform_state_fn: A function that transforms the decode state.
     max_prefix_len: Python int or None, the max prefix length for decoding.
     max_decode_steps: Python int or None, the max decode step to run after the
       prefix (if any). Since the prefixes might be of unequal lengths, this
@@ -1249,6 +1434,8 @@ def greedy_decode(
       model to decode from a certain target prefix for each position in the
       batch. This can either be None or a JTensor of shape [batch] signifying
       the prefix length for each sequence in the batch.
+    decode_loop_mesh_axes_transpose: Optional mesh transpose for decoding loop.
+    model_var_pspecs: Optional partition specs for model variables.
     eos_id: Optional EOS id which to terminate the decoding early.
 
   Returns:
@@ -1264,8 +1451,9 @@ def greedy_decode(
   return sample_decode(
       model,
       extend_step_fn,
-      transform_state_fn=None,
+      transform_state_fn=transform_state_fn,
       lazy_broadcast_prefix_fn=None,
+      fprop_fn=fprop_fn,
       next_token_sampler=next_token_sampler,
       prefix_ids=prefix_ids,
       prefix_paddings=prefix_paddings,
@@ -1274,6 +1462,9 @@ def greedy_decode(
       max_prefix_len=max_prefix_len,
       max_decode_steps=max_decode_steps,
       prefix_lengths=prefix_lengths,
+      decode_loop_mesh_axes_transpose=decode_loop_mesh_axes_transpose,
+      model_var_pspecs=model_var_pspecs,
       eos_id=eos_id,
       num_samples=1,
-      temperature=0.0)
+      temperature=0.0,
+  )
