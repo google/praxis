@@ -68,9 +68,11 @@ def _batch_rngs_random_gumbel(rngs: JTensor, shape: Sequence[int]) -> JTensor:
     return jax.random.gumbel(rng, remaining_shape)
 
   if rngs.ndim != 2 or rngs.shape[0] != batch_size:
-    raise ValueError('When sample for a batch of PRNGKeys, rngs must be 2d '
-                     f'with batch_size as its first dim, get {rngs.shape} '
-                     f'instead when batch_size is {batch_size}.')
+    raise ValueError(
+        'When sample for a batch of PRNGKeys, rngs must be 2d '
+        f'with batch_size as its first dim, get {rngs.shape} '
+        f'instead when batch_size is {batch_size}.'
+    )
 
   return jax.vmap(_impl)(rngs)
 
@@ -88,7 +90,8 @@ def reorder_with_indices(x: JTensor, indices: JTensor):
   assert len(indices.shape) == 2
   assert len(x.shape) >= 2
   batch_indices = jnp.repeat(
-      jnp.expand_dims(jnp.arange(x.shape[0]), 1), indices.shape[1], axis=1)
+      jnp.expand_dims(jnp.arange(x.shape[0]), 1), indices.shape[1], axis=1
+  )
   return x[batch_indices, indices]
 
 
@@ -110,18 +113,22 @@ def sort_samples_by_scores(result: NestedMap) -> NestedMap:
 
   # Logprobs are set to 1.0 after the end of sequence(EOS) character.
   logprobs = jnp.where(
-      jnp.greater_equal(result.logprobs, 1.0), jnp.zeros_like(result.logprobs),
-      result.logprobs)
+      jnp.greater_equal(result.logprobs, 1.0),
+      jnp.zeros_like(result.logprobs),
+      result.logprobs,
+  )
   scores = jnp.sum(logprobs, -1)
   num_samples = scores.shape[-1]
   # Uses top_k to get indices.
-  _, indices = jax.lax.top_k(scores, num_samples)
+  _, indices = jax.lax.approx_max_k(scores, num_samples, recall_target=0.85)
   return jax.tree_map(
-      functools.partial(reorder_with_indices, indices=indices), result)
+      functools.partial(reorder_with_indices, indices=indices), result
+  )
 
 
-def split_batch_dim(x: jnp.ndarray, batch_dim: int,
-                    num_samples: int) -> jnp.ndarray:
+def split_batch_dim(
+    x: jnp.ndarray, batch_dim: int, num_samples: int
+) -> jnp.ndarray:
   """Split the tensor at batch dimension.
 
   Args:
@@ -140,30 +147,33 @@ def split_batch_dim(x: jnp.ndarray, batch_dim: int,
   return jnp.reshape(x, x_shape)
 
 
-def _get_argmax_ids(
-    top_k_argmax_ids: JTensor, top_k_indices: JTensor
-) -> JTensor:
-  """Gets the original argmax ids from top_k_indices.
+def _get_argmax_ids(top_k_argmax_ids: JTensor, top_k_items: JTensor) -> JTensor:
+  """Gets the original top_k items with top_k_argmax_ids.
 
   Args:
     top_k_argmax_ids: JTensor of shape [batch_size], the argmax among
       top_k_logits.
-    top_k_indices: JTensor of shape [batch_size, top_k], the top_k indices among
-      the original logits.
+    top_k_items: JTensor of shape [batch_size, top_k], the top_k items.
 
   Returns:
     A tensor of shape [batch_size].
   """
-  top_k = top_k_indices.shape[-1]
-  return jnp.sum(
-      jax.nn.one_hot(top_k_argmax_ids, top_k, dtype=top_k_argmax_ids.dtype)
-      * top_k_indices,
-      -1,
-  )
+
+  selectors = [
+      jax.lax.broadcasted_iota(
+          jnp.int32, shape=top_k_argmax_ids.shape, dimension=d
+      )
+      for d in range(len(top_k_argmax_ids.shape))
+  ]
+  selectors.append(top_k_argmax_ids)
+  return top_k_items[tuple(selectors)]
 
 
 def get_top_k(
-    logits: JTensor, top_k: int, per_example_top_k: JTensor
+    logits: JTensor,
+    top_k: int,
+    per_example_top_k: JTensor,
+    top_k_recall_target: float = 1.0,
 ) -> Sequence[JTensor]:
   """Gets top k logits and indices from given top K.
 
@@ -175,13 +185,22 @@ def get_top_k(
     per_example_top_k: Optional per example top_k of shape [batch_size *
       num_samples]. The value of per_example_top_k should be smaller or equal to
       `top_k` and larger than 0.
+    top_k_recall_target: if less than 1.0, use TPU optimized approx_top_k with
+      specified recall target for the top_k sampling. See
+      https://arxiv.org/abs/2206.14286 for more details.
 
   Returns:
     A tuple of top_k_logits of shape [batch_size * num_samples, top_k] and
       top_k_indices of shape [batch_size * num_samples, top_k].
   """
   # TopK of shape [batch_size * num_samples, top_k]
-  top_k_logits, top_k_indices = jax.lax.top_k(logits, top_k)
+  if top_k_recall_target < 1.0:
+    assert top_k_recall_target > 0.0
+    top_k_logits, top_k_indices = jax.lax.approx_max_k(
+        logits, top_k, recall_target=top_k_recall_target
+    )
+  else:
+    top_k_logits, top_k_indices = jax.lax.top_k(logits, top_k)
 
   if per_example_top_k is not None:
     per_example_top_k = jnp.minimum(per_example_top_k.astype(jnp.int32), top_k)
@@ -220,8 +239,9 @@ def right_align_segment_position(lengths: JTensor, max_length: int) -> JTensor:
   return iota
 
 
-def right_align_prefix_ids(prefix_ids: JTensor, prefix_lengths: JTensor,
-                           paddings_dtype: jnp.dtype) -> JTensor:
+def right_align_prefix_ids(
+    prefix_ids: JTensor, prefix_lengths: JTensor, paddings_dtype: jnp.dtype
+) -> JTensor:
   """Right align prefix ids.
 
   Args:
@@ -235,14 +255,17 @@ def right_align_prefix_ids(prefix_ids: JTensor, prefix_lengths: JTensor,
   """
   max_prefix_len = prefix_ids.shape[-1]
 
-  right_align_ids = decoder_utils.right_align_tensors(prefix_ids,
-                                                      prefix_lengths)
+  right_align_ids = decoder_utils.right_align_tensors(
+      prefix_ids, prefix_lengths
+  )
   prefix_lengths = prefix_lengths[:, jnp.newaxis]
   prefix_iota = jax.lax.iota(dtype=jnp.int32, size=max_prefix_len)
   prefix_iota = prefix_iota - (max_prefix_len - prefix_lengths)
-  prefix_paddings = jnp.where(prefix_iota < 0,
-                              jnp.ones_like(prefix_iota, dtype=paddings_dtype),
-                              jnp.zeros_like(prefix_iota, dtype=paddings_dtype))
+  prefix_paddings = jnp.where(
+      prefix_iota < 0,
+      jnp.ones_like(prefix_iota, dtype=paddings_dtype),
+      jnp.zeros_like(prefix_iota, dtype=paddings_dtype),
+  )
   return right_align_ids, prefix_paddings  # pytype: disable=bad-return-type  # jax-ndarray
 
 
@@ -260,8 +283,8 @@ def top_p_mask_logits(
   Args:
     logits: logits of shape [B, T].
     p: A scalar or a JTensor of shape [B]. In practice this means selecting the
-    highest probability tokens whose cumulative probability mass exceeds this
-    pre-chosen threshold p.
+      highest probability tokens whose cumulative probability mass exceeds this
+      pre-chosen threshold p.
     logits_is_sorted: where or not the logits is sorted.
     logits_sum: If none, apply softmax over logits to get probabilities.
 
@@ -284,8 +307,11 @@ def top_p_mask_logits(
   sorted_cum_probs = jnp.cumsum(probs, axis=-1)
   cutoff_idx = jnp.sum((sorted_cum_probs <= p).astype(jnp.int32), axis=-1)
   cutoff_logit = logits_sorted[jnp.arange(batch_size), cutoff_idx]
-  logits = jnp.where(logits < jnp.expand_dims(cutoff_logit, -1),
-                     py_utils.get_large_negative_number(logits.dtype), logits)
+  logits = jnp.where(
+      logits < jnp.expand_dims(cutoff_logit, -1),
+      py_utils.get_large_negative_number(logits.dtype),
+      logits,
+  )
   return logits
 
 
@@ -297,7 +323,7 @@ def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  
     top_p: Optional[Union[float, JTensor]] = None,
     topk_is_sorted: bool = True,
     logits_sum: JTensor = None,
-) -> JTensor:
+) -> Sequence[JTensor]:
   """Sample decode algorithm from TopP given output from TopK.
 
   Args:
@@ -311,7 +337,9 @@ def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  
     logits_sum: logits sum.
 
   Returns:
-    A tensor of shape [batch_size * num_samples].
+    A tuple of next_token_id of shape [batch_size * num_samples] and
+      logprobs_at_new_ids of shape [batch_size * num_samples] computed from the
+      top_k_logits.  next_token_id of shape [batch_size * num_samples].
   """
   if top_p is None:
     top_p_logits = top_k_logits
@@ -324,7 +352,7 @@ def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  
           top_k_logits,
           top_p,
           logits_is_sorted=topk_is_sorted,
-          logits_sum=logits_sum
+          logits_sum=logits_sum,
       )
 
     def _false_fn():
@@ -343,14 +371,21 @@ def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  
   if temperature is None:
     temperature = 0.0
   gumbel_noise_shape = list(top_p_logits.shape)
-  gumbel_noise = _batch_rngs_random_gumbel(
-      prng_key, gumbel_noise_shape
-  ).astype(top_k_logits.dtype)
+  gumbel_noise = _batch_rngs_random_gumbel(prng_key, gumbel_noise_shape).astype(
+      top_k_logits.dtype
+  )
 
   # Apply gumbel noise.
   logits_with_noise = top_p_logits + gumbel_noise * temperature
   argmax_ids_in_topk = jnp.argmax(logits_with_noise, axis=-1)
-  return _get_argmax_ids(argmax_ids_in_topk, top_k_indices)
+  # Computes log probabilities from top_k logits
+  top_k_logprobs = jax.nn.log_softmax(top_k_logits.astype(jnp.float32))
+  batch_size = top_k_logits.shape[0]
+
+  return (
+      _get_argmax_ids(argmax_ids_in_topk, top_k_indices),
+      _get_argmax_ids(argmax_ids_in_topk, top_k_logprobs),
+  )
 
 
 def sample_from_top_k_and_top_p(
@@ -361,6 +396,7 @@ def sample_from_top_k_and_top_p(
     top_p: Optional[Union[float, JTensor]] = None,
     per_example_top_k: Optional[JTensor] = None,
     global_normalize: bool = False,
+    top_k_recall_target: float = 1.0,
 ) -> JTensor:
   """Sample decode algorithm from TopK and TopP.
 
@@ -383,13 +419,81 @@ def sample_from_top_k_and_top_p(
       `top_k` and larger than 0.
     global_normalize: Normalize the logits over top-k logits or globally in the
       whole vocabulary.
+    top_k_recall_target: if less than 1.0, use TPU optimized approx_top_k with
+      specified recall target for the top_k sampling. See
+      https://arxiv.org/abs/2206.14286 for more details.
+    use_top_k_for_logprobs: computes the log probability from the top k logits
+      instead of all logits.
 
   Returns:
     A tensor of shape [batch_size * num_samples].
   """
 
   # TopK of shape [batch_size * num_samples, top_k]
-  top_k_logits, top_k_indices = get_top_k(logits, top_k, per_example_top_k)
+  top_k_logits, top_k_indices = get_top_k(
+      logits, top_k, per_example_top_k, top_k_recall_target
+  )
+  if global_normalize:
+    logits_sum = jnp.sum(logits.astype(jnp.float32), axis=-1, keepdims=True)
+  else:
+    logits_sum = None
+  return sample_from_top_p_given_top_k(
+      top_k_logits,
+      top_k_indices,
+      prng_key,
+      temperature,
+      top_p,
+      topk_is_sorted=True,
+      logits_sum=logits_sum,
+  )[0]
+
+
+def sample_from_top_k_and_top_p_with_topk_logprob(
+    logits: JTensor,
+    prng_key: pytypes.PRNGKey,
+    temperature: Union[JTensor, float],
+    top_k: int,
+    top_p: Optional[Union[float, JTensor]] = None,
+    per_example_top_k: Optional[JTensor] = None,
+    global_normalize: bool = False,
+    top_k_recall_target: float = 1.0,
+) -> Sequence[JTensor]:
+  """Sample decode algorithm from TopK and TopP with topk log probability.
+
+  Similar to sample_from_top_k_and_top_p, but includes the log probability
+  in the returned tuple.
+
+  Args:
+    logits: Logits of current step. This is a JTensor of [batch_size *
+      num_samples, vocab_size].
+    prng_key: The prng key.
+    temperature: Temperature of sampling decoding. It could be a float or a
+      JTensor of shape [batch_size * num_samples].
+    top_k: If nonzero, use top-k sampling, only selecting among the most likely
+      k tokens at each step. top_k is set to the maximum k value for sampling
+      decode.
+    top_p: Optional cutoff probability. A scalar or a JTensor. Use the smallest
+      number of logits whose cumulative sum of probs adds up to (at least)
+      top_p. If it is a JTensor, it has shape [batch_size * num_samples, 1]
+    per_example_top_k: Optional per example top_k of shape [batch_size *
+      num_samples]. The value of per_example_top_k should be smaller or equal to
+      `top_k` and larger than 0.
+    global_normalize: Normalize the logits over top-k logits or globally in the
+      whole vocabulary.
+    top_k_recall_target: if less than 1.0, use TPU optimized approx_top_k with
+      specified recall target for the top_k sampling. See
+      https://arxiv.org/abs/2206.14286 for more details.
+
+  Returns:
+    A tuple of next_token_id of shape [batch_size * num_samples] and
+      logprobs_at_new_ids of shape [batch_size * num_samples] computed from the
+      top_k_logits.  next_token_id of shape [batch_size * num_samples].
+  """
+
+  # TopK of shape [batch_size * num_samples, top_k]
+  top_k_logits, top_k_indices = get_top_k(
+      logits, top_k, per_example_top_k, top_k_recall_target
+  )
   if global_normalize:
     logits_sum = jnp.sum(logits.astype(jnp.float32), axis=-1, keepdims=True)
   else:
@@ -418,8 +522,9 @@ def epsilon_mask_logits(logits: JTensor, epsilon: float) -> JTensor:
   if epsilon <= 0:
     return logits
   probs = jax.nn.softmax(logits.astype(jnp.float32), axis=-1)
-  logits = jnp.where(probs < epsilon,
-                     py_utils.get_large_negative_number(logits.dtype), logits)
+  logits = jnp.where(
+      probs < epsilon, py_utils.get_large_negative_number(logits.dtype), logits
+  )
   # note: logits are no longer normalized after this, sum(exp(logits)) < 1
   return logits
 
@@ -452,9 +557,13 @@ class BaseNextTokenSampler(
 ):
 
   @abc.abstractmethod
-  def __call__(self, model: base_layer.BaseLayerApi, logits: JTensor,
-               temperature: Union[float, JTensor],
-               decode_loop_state: NestedMap) -> NestedMap:
+  def __call__(
+      self,
+      model: base_layer.BaseLayerApi,
+      logits: JTensor,
+      temperature: Union[float, JTensor],
+      decode_loop_state: NestedMap,
+  ) -> NestedMap:
     """Samples the next token ids given the logits output.
 
     Args:
@@ -468,24 +577,29 @@ class BaseNextTokenSampler(
     Returns:
       A NestedMap containing 2 fields:
         new_ids: JTensor of shape [B] containing the selected next token for
-          each sequencein the batch.
+          each sequence in the batch.
         logits: JTensor of shape [B, V] containing the (possibly modified)
           logits at the current step. This return value is used to ensure that
           the recorded logprobs per sequence takes into account the
           modifications made to the logits as part of the next token sampling
           logic.
+        logprobs: [Optional] JTensor of shape [B] containing the log softmax
+          of the selected token for each sequence in. This field allows a faster
+          log probability computation within the sampler itself.
     """
 
   def init_decode_loop_state(
       self,
       decode_loop_state: NestedMap,
       batch_size: Optional[int] = None,
-      eos_id: Optional[Union[int, Sequence[int], JTensor]] = None) -> NestedMap:
+      eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
+  ) -> NestedMap:
     """Initialize any addition decode loop state."""
     return decode_loop_state
 
   def post_process_decode_loop_state(
-      self, decode_loop_state: NestedMap) -> NestedMap:
+      self, decode_loop_state: NestedMap
+  ) -> NestedMap:
     """Delete unused decode loop state."""
     return decode_loop_state
 
@@ -507,11 +621,19 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
     global_normalize: if top_k and top_p are enabled together, this flag
       indicates whether we need to normalize the logits in top_k logits or
       globally in the whole vocabulary.
+    top_k_recall_target: if less than 1.0, use TPU optimized approx_top_k with
+      specified recall target for the top_k sampling. See
+      https://arxiv.org/abs/2206.14286 for more details.
+    use_top_k_for_logprobs: computes the log probability from the top k logits
+      instead of all logits.
   """
+
   top_k: int = 40
   top_p: Optional[Union[float, JTensor]] = None
   epsilon_p: float = 0.0
   global_normalize: bool = False
+  top_k_recall_target: float = 1.0
+  use_top_k_for_logprobs: bool = False
 
   def __call__(
       self,
@@ -551,21 +673,44 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
         else getattr(p, 'top_p', None)
     )
 
-    if p.epsilon_p > 0.:
+    if p.epsilon_p > 0.0:
       logits = epsilon_mask_logits(logits, p.epsilon_p)
 
     if p.top_k > 1:
-      new_ids = sample_from_top_k_and_top_p(
-          logits,
-          _get_prng_key(gumbel_prng_key),
-          temperature=temperature,
-          top_k=p.top_k,
-          top_p=top_p,
-          per_example_top_k=per_example_top_k,
-          global_normalize=p.global_normalize,
-      )
+      if p.use_top_k_for_logprobs:
+        new_ids, logprobs_at_new_ids = (
+            sample_from_top_k_and_top_p_with_topk_logprob(
+                logits,
+                _get_prng_key(gumbel_prng_key),
+                temperature=temperature,
+                top_k=p.top_k,
+                top_p=top_p,
+                per_example_top_k=per_example_top_k,
+                global_normalize=p.global_normalize,
+                top_k_recall_target=p.top_k_recall_target,
+            )
+        )
+        return NestedMap(
+            new_ids=new_ids,
+            logits=input_logits,
+            logprobs_at_new_ids=logprobs_at_new_ids,
+        )
+      else:
+        new_ids = sample_from_top_k_and_top_p(
+            logits,
+            _get_prng_key(gumbel_prng_key),
+            temperature=temperature,
+            top_k=p.top_k,
+            top_p=top_p,
+            per_example_top_k=per_example_top_k,
+            global_normalize=p.global_normalize,
+            top_k_recall_target=p.top_k_recall_target,
+        )
+        return NestedMap(
+            new_ids=new_ids,
+            logits=input_logits,
+        )
     elif p.top_k == 0:
-
       if top_p is not None:
         logits = top_p_mask_logits(logits, top_p)
       if isinstance(temperature, JTensor) or temperature > 0.0:
@@ -608,6 +753,7 @@ def sample_decode(
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
     early_exit=True,
+    use_top_k_for_logprobs: bool = False,
     controlled_decoding: Optional[
         decoder_utils.ControlledDecodingHParams
     ] = None,
@@ -690,6 +836,8 @@ def sample_decode(
       score.
     sort_samples: Whether to sort the samples by logprobs.
     early_exit: A bool, whether or not to allow early exit.
+    use_top_k_for_logprobs: computes the log probability from the top k logits
+      instead of all logits.
     controlled_decoding: Params to configure blockwise controlled decoding.
 
   Returns:
@@ -750,6 +898,7 @@ def sample_decode(
         return_result_for_suffix_score,
         sort_samples,
         early_exit,
+        use_top_k_for_logprobs,
         controlled_decoding,
     )
 
@@ -780,6 +929,7 @@ def sample_decode_after_fprop(
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
     early_exit=True,
+    use_top_k_for_logprobs: bool = False,
     controlled_decoding: Optional[
         decoder_utils.ControlledDecodingHParams
     ] = None,
@@ -861,6 +1011,8 @@ def sample_decode_after_fprop(
       score.
     sort_samples: Whether to sort the samples by logprobs.
     early_exit: A bool, whether or not to allow early exit.
+    use_top_k_for_logprobs: computes the log probability from the top k logits
+      instead of all logits.
     controlled_decoding: Params to configure blockwise controlled decoding.
 
   Returns:
@@ -906,10 +1058,11 @@ def sample_decode_after_fprop(
       else:
         x_expected_shape = (original_batch_size,)
       if x.shape[0] != x_expected_shape[0]:  # pytype: disable=attribute-error
-        raise ValueError(f'Dynamic {name} should have shape: '
-                         f'{x_expected_shape}, but it has shape: '
-                         f'{x.shape}.'  # pytype: disable=attribute-error
-                        )
+        raise ValueError(
+            f'Dynamic {name} should have shape: '
+            f'{x_expected_shape}, but it has shape: '
+            f'{x.shape}.'  # pytype: disable=attribute-error
+        )
       x = jnp.repeat(x, axis=0, repeats=num_samples)
       return x
 
@@ -932,7 +1085,8 @@ def sample_decode_after_fprop(
     if per_example_max_decode_steps is not None:
       per_example_max_decode_steps = _broadcast_input(
           per_example_max_decode_steps.astype(jnp.int32),
-          'per_example_max_decode_steps')
+          'per_example_max_decode_steps',
+      )
 
     if per_example_top_p is not None:
       per_example_top_p = _broadcast_input(
@@ -970,8 +1124,9 @@ def sample_decode_after_fprop(
         lazy_broadcast_prefix_fn(model, num_samples, first_decode_steps + 1)
     elif transform_state_fn is not None:
       # Broadcast prefix state for num_samples.
-      transform_state_fn(model,
-                         decoder_utils.batch_broadcast_state_fn(num_samples))
+      transform_state_fn(
+          model, decoder_utils.batch_broadcast_state_fn(num_samples)
+      )
 
     # If cf guidance scale is a list floats with length == num_samples, we
     # convert it to the target shape to be used in decode loop_body.
@@ -993,8 +1148,10 @@ def sample_decode_after_fprop(
       gumbel_prng_key = jnp.stack([gumbel_prng_key] * dup_len, axis=-1)
 
   if seq_len <= 0:
-    raise ValueError('The sequence length for decoding must be > 0, '
-                     f'current value = {seq_len}.')
+    raise ValueError(
+        'The sequence length for decoding must be > 0, '
+        f'current value = {seq_len}.'
+    )
   last_decode_steps = max(max_decode_steps) if max_decode_steps else seq_len
   per_example_max_decode_steps = (
       last_decode_steps
@@ -1015,8 +1172,9 @@ def sample_decode_after_fprop(
   val = NestedMap()
   if fprop_for_prefix:
     # Update output_ids with prefix_ids.
-    output_ids = jax.lax.dynamic_update_slice(output_ids, prefix_ids,
-                                              [0] * output_ids.ndim)
+    output_ids = jax.lax.dynamic_update_slice(
+        output_ids, prefix_ids, [0] * output_ids.ndim
+    )
     assert max_prefix_len is not None
     # Update loop init states with prefix.
     start_step = max_prefix_len - 1
@@ -1067,7 +1225,6 @@ def sample_decode_after_fprop(
       uncond_logits = logits_split[:, num_samples:]
       logits = uncond_logits + cf_guidance_scale * (cond_logits - uncond_logits)
       logits = jnp.reshape(logits, (-1,) + logits.shape[2:])
-    logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
     if gumbel_prng_key is not None:
       # Splits prng_key for num_samples.
       split_gumbel_prng_key = jax.vmap(
@@ -1077,9 +1234,9 @@ def sample_decode_after_fprop(
           split_gumbel_prng_key, (-1, *gumbel_prng_key.shape[1:])
       )
       # Folds split prng_key for step.
-      split_gumbel_prng_key = jax.vmap(
-          lambda x: jax.random.fold_in(x, step)
-      )(split_gumbel_prng_key)
+      split_gumbel_prng_key = jax.vmap(lambda x: jax.random.fold_in(x, step))(
+          split_gumbel_prng_key
+      )
       assert split_gumbel_prng_key.shape[0] == logits.shape[0]
 
       split_gumbel_prng_key = jax.lax.cond(
@@ -1098,12 +1255,12 @@ def sample_decode_after_fprop(
         per_example_top_k=per_example_top_k,
         gumbel_prng_key=split_gumbel_prng_key,
     )
-    new_ids, logits = sampler_output.new_ids, sampler_output.logits
-    assert new_ids.shape == (logits.shape[0],)
+    new_ids, sample_logits = sampler_output.new_ids, sampler_output.logits
+    assert new_ids.shape == (sample_logits.shape[0],)
     assert new_ids.dtype == jnp.int32
 
     model.add_summary('new_ids', new_ids)
-    model.add_summary('sample_logits', logits)
+    model.add_summary('sample_logits', sample_logits)
 
     if cf_guidance_scale is not None:
       # Force-align unconditioned branch as conditioned sampled tokens ids.
@@ -1118,8 +1275,9 @@ def sample_decode_after_fprop(
     # Selects prefix ids when step smaller than prefix_lengths when using
     # extend_step for prefix.
     if not fprop_for_prefix:
-      new_ids = jnp.where(step < prefix_lengths - 1, prefix_ids[:, step + 1],
-                          new_ids)
+      new_ids = jnp.where(
+          step < prefix_lengths - 1, prefix_ids[:, step + 1], new_ids
+      )
     prev_done = val.done
     new_ids = jnp.where(prev_done, jnp.zeros_like(new_ids), new_ids)
     val.output_ids = val.output_ids.at[:, step + 1].set(new_ids)
@@ -1145,14 +1303,20 @@ def sample_decode_after_fprop(
       decode_lengths = jnp.ones_like(val.decode_lengths) * (step + 2)
     val.segment_pos += 1
 
-    max_decoding_steps_reached = (jnp.ones_like(prefix_lengths) * (step + 2) -
-                                  prefix_offset) >= per_example_max_decode_steps
+    max_decoding_steps_reached = (
+        jnp.ones_like(prefix_lengths) * (step + 2) - prefix_offset
+    ) >= per_example_max_decode_steps
     val.done = jnp.logical_or(val.done, max_decoding_steps_reached)
     done_at_this_step = jnp.logical_and(jnp.logical_not(prev_done), val.done)
-    val.decode_lengths = jnp.where(done_at_this_step, decode_lengths,
-                                   val.decode_lengths)
+    val.decode_lengths = jnp.where(
+        done_at_this_step, decode_lengths, val.decode_lengths
+    )
 
-    logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size), new_ids].get()
+    if use_top_k_for_logprobs and sampler_output.Has('logprobs_at_new_ids'):
+      logprobs_at_new_ids = sampler_output.logprobs_at_new_ids
+    else:
+      logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
+      logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size), new_ids].get()
     logprobs_at_new_ids = jnp.where(
         prev_done, jnp.ones_like(logprobs_at_new_ids), logprobs_at_new_ids
     )
@@ -1198,7 +1362,8 @@ def sample_decode_after_fprop(
         )
         outfeed_tensors.scores = jnp.sum(
             # Padded logprobs can have values of 1.0, so we cap it to 0.0.
-            jnp.minimum(_get_slice(val.logprobs), 0.0), axis=-1
+            jnp.minimum(_get_slice(val.logprobs), 0.0),
+            axis=-1,
         )
         outfeed_tensors = jax.tree_map(
             lambda x: split_batch_dim(x, 0, num_samples), outfeed_tensors
@@ -1281,10 +1446,7 @@ def sample_decode_after_fprop(
 
     scan_fn = nn.scan(
         scan_body,
-        variable_axes={
-            AUX_LOSS: 0,
-            SUMMARIES: 0
-        },
+        variable_axes={AUX_LOSS: 0, SUMMARIES: 0},
         variable_broadcast=[PARAMS, NON_TRAINABLE],
         variable_carry=[DECODE_CACHE, PREFIX_DECODE_CACHE],
         split_rngs={RANDOM: True},
@@ -1344,20 +1506,24 @@ def sample_decode_after_fprop(
   del result.segment_pos
 
   result.prefix_lengths = prefix_lengths
-  result.original_lengths = jnp.sum(
-      1.0 - prefix_paddings, axis=1).astype(jnp.int32)
+  result.original_lengths = jnp.sum(1.0 - prefix_paddings, axis=1).astype(
+      jnp.int32
+  )
 
   if fprop_for_prefix:
-    prefix_ids = decoder_utils.left_align_tensor(prefix_ids, prefix_lengths,
-                                                 max_prefix_len)
+    prefix_ids = decoder_utils.left_align_tensor(
+        prefix_ids, prefix_lengths, max_prefix_len
+    )
 
   # We manually pad out the ids not belonging to the prefix because some
   # tokenizers tested do not always obey the lengths arg.
   indices = jnp.tile(jnp.arange(prefix_ids.shape[1]), (prefix_ids.shape[0], 1))
-  prefix_lengths_2d = jnp.tile(prefix_lengths[:, None],
-                               (1, prefix_ids.shape[1]))
-  prefix_ids = jnp.where(indices < prefix_lengths_2d, prefix_ids,
-                         jnp.zeros_like(prefix_ids))
+  prefix_lengths_2d = jnp.tile(
+      prefix_lengths[:, None], (1, prefix_ids.shape[1])
+  )
+  prefix_ids = jnp.where(
+      indices < prefix_lengths_2d, prefix_ids, jnp.zeros_like(prefix_ids)
+  )
   result.prefix_ids = prefix_ids
 
   if fprop_for_prefix:
@@ -1365,12 +1531,12 @@ def sample_decode_after_fprop(
     # remove left align logic here.
 
     # Change output_ids to left align.
-    result.output_ids = decoder_utils.left_align_tensor(result.output_ids,
-                                                        prefix_lengths,
-                                                        max_prefix_len)
-    result.logprobs = decoder_utils.left_align_tensor(result.logprobs,
-                                                      prefix_lengths,
-                                                      max_prefix_len)
+    result.output_ids = decoder_utils.left_align_tensor(
+        result.output_ids, prefix_lengths, max_prefix_len
+    )
+    result.logprobs = decoder_utils.left_align_tensor(
+        result.logprobs, prefix_lengths, max_prefix_len
+    )
 
   del result.start_step, result.step, result.done, result.has_eos
   result = next_token_sampler.post_process_decode_loop_state(result)
@@ -1379,7 +1545,8 @@ def sample_decode_after_fprop(
     # Split cond / uncond branches and only return conditioned branch.
     result = jax.tree_map(
         lambda x: split_batch_dim(x, 0, 2 * num_samples)[:, :num_samples],
-        result)
+        result,
+    )
   else:
     result = jax.tree_map(lambda x: split_batch_dim(x, 0, num_samples), result)
   if num_samples > 1 and sort_samples:
@@ -1447,7 +1614,8 @@ def greedy_decode(
     where a positive value of 1.0 is used to indicate padded positions).
   """
   next_token_sampler = base_layer.instantiate(
-      DefaultNextTokenSampler.HParams(top_k=1))
+      DefaultNextTokenSampler.HParams(top_k=1)
+  )
   return sample_decode(
       model,
       extend_step_fn,

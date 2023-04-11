@@ -108,7 +108,8 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     x = jnp.array([[1, 2], [1, 2], [3, 4], [3, 4]], dtype=np.int32)
     self.assertArraysEqual(
         sample_decode.split_batch_dim(x, batch_dim=0, num_samples=2),
-        np.array([[[1, 2], [1, 2]], [[3, 4], [3, 4]]], dtype=np.int32))
+        np.array([[[1, 2], [1, 2]], [[3, 4], [3, 4]]], dtype=np.int32),
+    )
 
   def test_sample_from_top_k(self):
     logits = jnp.array(
@@ -118,12 +119,37 @@ class SampleDecodeHelperTest(test_utils.TestCase):
             [0, 1, 0, 0, 0],  # argmax: 1
             [1, 0, 0, 0, 0],  # argmax: 0
         ],
-        dtype=jnp.float32)
+        dtype=jnp.float32,
+    )
     new_ids = sample_decode.sample_from_top_k_and_top_p(
         logits, jax.random.PRNGKey(seed=123), temperature=1.0, top_k=2
     )
     # gumbel noise is relatively smaller compared to the logits value.
     self.assertArraysEqual(new_ids, np.array([2, 0, 1, 0], dtype=np.int32))
+
+  def test_sample_from_top_k_with_topk_logprobs(self):
+    logits = jnp.array(
+        [
+            [0, 0, 1, 0, 0],  # argmax: 2
+            [1, 0, 0, 0, 0],  # argmax: 0
+            [0, 1, 0, 0, 0],  # argmax: 1
+            [1, 0, 0, 0, 0],  # argmax: 0
+        ],
+        dtype=jnp.float32,
+    )
+    new_ids, top_k_logprobs = (
+        sample_decode.sample_from_top_k_and_top_p_with_topk_logprob(
+            logits,
+            jax.random.PRNGKey(seed=123),
+            temperature=1.0,
+            top_k=2,
+        )
+    )
+    expected_logprobs = jax.nn.log_softmax(jax.lax.top_k(logits, 2)[0])
+    expected_logprobs = expected_logprobs[jnp.arange(4), 0]
+    # gumbel noise is relatively smaller compared to the logits value.
+    self.assertArraysEqual(new_ids, np.array([2, 0, 1, 0], dtype=np.int32))
+    self.assertAllClose(top_k_logprobs, expected_logprobs)
 
   def test_sample_from_top_k_and_top_p_scalar(self):
     logits = jnp.array(
@@ -235,7 +261,8 @@ class SampleDecodeHelperTest(test_utils.TestCase):
                 [1, 0, 0, 0, 0],  # argmax: 0
             ],
         ],
-        dtype=jnp.float32)
+        dtype=jnp.float32,
+    )
 
     temperature = jnp.array([[0.1], [0.2]], dtype=jnp.float32)
     new_ids = sample_decode.sample_from_top_k_and_top_p(
@@ -245,9 +272,12 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     self.assertArraysEqual(new_ids, np.array([[2, 0], [1, 0]], dtype=np.int32))
 
   def test_sample_from_top_k_distribution(self):
-    logits = jnp.array([
-        [0, 0.25, 0.2, 0.15, 0.4],
-    ], dtype=jnp.float32)
+    logits = jnp.array(
+        [
+            [0, 0.25, 0.2, 0.15, 0.4],
+        ],
+        dtype=jnp.float32,
+    )
     count = [0] * 5
 
     for i in range(100):
@@ -277,15 +307,21 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     indices = jnp.array([[0, 2, 1], [2, 0, 1]], dtype=jnp.int32)
     x = jnp.array(
         [[[0, 0, 0], [1, 1, 1], [2, 2, 2]], [[0, 0, 0], [1, 1, 1], [2, 2, 2]]],
-        dtype=jnp.int32)
+        dtype=jnp.int32,
+    )
 
     reordered_x = sample_decode.reorder_with_indices(x, indices)
 
     self.assertArraysEqual(
         reordered_x,
-        jnp.array([[[0, 0, 0], [2, 2, 2], [1, 1, 1]],
-                   [[2, 2, 2], [0, 0, 0], [1, 1, 1]]],
-                  dtype=jnp.int32))
+        jnp.array(
+            [
+                [[0, 0, 0], [2, 2, 2], [1, 1, 1]],
+                [[2, 2, 2], [0, 0, 0], [1, 1, 1]],
+            ],
+            dtype=jnp.int32,
+        ),
+    )
 
   def test_sort_samples_by_scores(self):
     logprobs = jnp.array(
@@ -293,18 +329,20 @@ class SampleDecodeHelperTest(test_utils.TestCase):
             [
                 [0.1, 0.1, 1.0],  #  sum is 0.2
                 [0.3, 0.3, 0.3],  #  sum is 0.9
-                [0.2, 0.2, 1.0]  #  sum is 0.4
+                [0.2, 0.2, 1.0],  #  sum is 0.4
             ],
             [
                 [0.9, 0.9, 0.9],  # sum is 2.7
                 [0.1, 1.0, 1.0],  # sum is 0.1
-                [0.2, 0.2, 1.0]  # sum is 0.4
-            ]
+                [0.2, 0.2, 1.0],  # sum is 0.4
+            ],
         ],
-        dtype=jnp.float32)
+        dtype=jnp.float32,
+    )
     x = jnp.array(
         [[[0, 0, 0], [1, 1, 1], [2, 2, 2]], [[0, 0, 0], [1, 1, 1], [2, 2, 2]]],
-        dtype=jnp.int32)
+        dtype=jnp.int32,
+    )
     result = NestedMap()
     result.logprobs = logprobs
     result.x = x
@@ -314,9 +352,14 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     # Verify values in result are sorted and ordered at dimension 1.
     self.assertArraysEqual(
         result.x,
-        jnp.array([[[1, 1, 1], [2, 2, 2], [0, 0, 0]],
-                   [[0, 0, 0], [2, 2, 2], [1, 1, 1]]],
-                  dtype=jnp.int32))
+        jnp.array(
+            [
+                [[1, 1, 1], [2, 2, 2], [0, 0, 0]],
+                [[0, 0, 0], [2, 2, 2], [1, 1, 1]],
+            ],
+            dtype=jnp.int32,
+        ),
+    )
     self.assertArraysEqual(
         result.logprobs,
         jnp.array(
@@ -330,36 +373,46 @@ class SampleDecodeHelperTest(test_utils.TestCase):
                     [0.9, 0.9, 0.9],  # sum is 2.7
                     [0.2, 0.2, 1.0],  # sum is 0.4
                     [0.1, 1.0, 1.0],  # sum is 0.1
-                ]
+                ],
             ],
-            dtype=jnp.float32))
+            dtype=jnp.float32,
+        ),
+    )
 
   def test_right_align_prefix_ids(self):
     prefix_ids = jnp.array([[1, 2, 0], [1, 0, 0], [0, 1, 2]], dtype=jnp.int32)
     prefix_lengths = jnp.array([2, 1, 3], dtype=jnp.int32)
 
-    (right_align_prefix_ids,
-     right_align_prefix_paddings) = sample_decode.right_align_prefix_ids(
-         prefix_ids, prefix_lengths, jnp.int32)
+    (right_align_prefix_ids, right_align_prefix_paddings) = (
+        sample_decode.right_align_prefix_ids(
+            prefix_ids, prefix_lengths, jnp.int32
+        )
+    )
 
     self.assertArraysEqual(
         right_align_prefix_ids,
-        jnp.array([[0, 1, 2], [0, 0, 1], [0, 1, 2]], dtype=jnp.int32))
+        jnp.array([[0, 1, 2], [0, 0, 1], [0, 1, 2]], dtype=jnp.int32),
+    )
 
     self.assertArraysEqual(
         right_align_prefix_paddings,
-        jnp.array([[1, 0, 0], [1, 1, 0], [0, 0, 0]], dtype=jnp.int32))
+        jnp.array([[1, 0, 0], [1, 1, 0], [0, 0, 0]], dtype=jnp.int32),
+    )
 
   def test_right_align_segment_position(self):
     lengths = jnp.array([5, 4, 6], dtype=jnp.int32)
 
     right_align_segment_pos = sample_decode.right_align_segment_position(
-        lengths, max_length=6)
+        lengths, max_length=6
+    )
 
     self.assertArraysEqual(
         right_align_segment_pos,
-        jnp.array([[0, 0, 1, 2, 3, 4], [0, 0, 0, 1, 2, 3], [0, 1, 2, 3, 4, 5]],
-                  dtype=jnp.int32))
+        jnp.array(
+            [[0, 0, 1, 2, 3, 4], [0, 0, 0, 1, 2, 3], [0, 1, 2, 3, 4, 5]],
+            dtype=jnp.int32,
+        ),
+    )
 
   def test_top_p_mask_logits(self):
     logits = jnp.array([[1.0, 1.0, 1.0, -1e6]])
@@ -463,9 +516,9 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     rngs = {'random': jax.random.PRNGKey(9382)}
 
     # test that we can fetch arbitrary summary out.
-    _, updated_vars = nn.apply(
-        decode_fn, model, mutable=mutables)(
-            init_vars, input_ids, input_paddings, rngs=rngs)
+    _, updated_vars = nn.apply(decode_fn, model, mutable=mutables)(
+        init_vars, input_ids, input_paddings, rngs=rngs
+    )
     logits_summary = updated_vars['summaries']['logits_scalar']
     new_ids_summary = updated_vars['summaries']['new_ids_scalar']
     time_step_summary = updated_vars['summaries']['time_step_scalar']

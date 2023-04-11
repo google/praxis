@@ -580,6 +580,12 @@ class LanguageModel(base_model.BaseModel):
       next_token_sampler_p.top_k = decoder_params.k
       next_token_sampler_p.top_p = decoder_params.p
       next_token_sampler_p.global_normalize = decoder_params.global_normalize
+      next_token_sampler_p.top_k_recall_target = (
+          decoder_params.top_k_recall_target
+      )
+      next_token_sampler_p.use_top_k_for_logprobs = (
+          decoder_params.use_top_k_for_logprobs
+      )
       next_token_sampler = base_layer.instantiate(next_token_sampler_p)
 
       result = sample_decode.sample_decode(
@@ -612,6 +618,7 @@ class LanguageModel(base_model.BaseModel):
           decode_loop_mesh_axes_transpose=decode_mesh_transpose,
           model_var_pspecs=lm_var_pspecs,
           sort_samples=decoder_params.sort_samples,
+          use_top_k_for_logprobs=decoder_params.use_top_k_for_logprobs,
       )
 
     elif template_has_type(decoder_params, GreedyDecoderHParams):

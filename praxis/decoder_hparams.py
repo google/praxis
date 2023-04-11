@@ -88,9 +88,14 @@ class SampleDecoderHParams(DecoderHParams):
     temperature: Temperature of sampling decoding.
     k: if nonzero, use top-k sampling, only selecting amongthe most likely k
       tokens at each step.
+    top_k_recall_target: if less than 1.0, use TPU optimized approx_top_k with
+      specified recall target for the top_k sampling. See
+      https://arxiv.org/abs/2206.14286 for more details.
+    use_top_k_for_logprobs: computes the log probability from the top k logits
+      instead of all logits.
     p: if not None, use the smallest number of logits whose cumulative sum of
-      probs adds up to (at least) p. Notice that it should not be used with k
-      at the same time.
+      probs adds up to (at least) p. Notice that it should not be used with k at
+      the same time.
     next_token_sampler_tpl: HParams for the layer used to sample next token ids
       given the logits output.
     global_normalize: Normalize the logits over top-k logits or globally in the
@@ -102,6 +107,8 @@ class SampleDecoderHParams(DecoderHParams):
   # TODO(wangtao): supports per-example temperature.
   temperature: float = 1.0
   k: int = 40
+  top_k_recall_target: float = 1.0
+  use_top_k_for_logprobs: bool = False
   p: Optional[Union[float, JTensor]] = None
   next_token_sampler_tpl: pax_fiddle.Config[
       sample_decode.BaseNextTokenSampler] = (
