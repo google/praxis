@@ -362,6 +362,33 @@ class NormalizationsTest(test_utils.TestCase):
     # The bfloat16 version would have too much rounding error.
     self.assertAllClose(expected_output, output, atol=1e-12)
 
+  @parameterized.product(kernel_size=[2, 3, 5], do_eval=[True, False])
+  def test_spectral_norm(self, kernel_size: int, do_eval: bool):
+    # This test is based on keras SpectralNormalizationTest.test_normalization,
+    # which checks that SN normalizes weights by the maximum eigen value.
+    dim = 1
+    w = np.random.rand(kernel_size, kernel_size).astype(np.float32)
+    w = w @ w.T
+    eigen_val, _ = jnp.linalg.eig(w)
+    expected = w / jnp.max(jnp.abs(eigen_val))
+
+    layer = normalizations.SpectralNorm(dim=dim, n_power_iteration=10)
+    prng_key = jax.random.PRNGKey(seed=1234)
+    context_p = base_layer.JaxContext.HParams(do_eval=do_eval)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+      init = layer.init(prng_key, w[:, :, None, None])
+      actual, updated = layer.apply(
+          init, w[:, :, None, None], mutable=[NON_TRAINABLE]
+      )
+
+    self.assertAllClose(actual[:, :, 0, 0], expected, atol=1e-2)
+    if do_eval:
+      self.assertAllClose(updated[NON_TRAINABLE]['u'], init[NON_TRAINABLE]['u'])
+    else:
+      self.assertNotAllClose(
+          updated[NON_TRAINABLE]['u'], init[NON_TRAINABLE]['u']
+      )
+
 
 if __name__ == '__main__':
   absltest.main()

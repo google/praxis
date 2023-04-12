@@ -629,3 +629,45 @@ class WeightNormL2(BaseNormalization):
     axis = list(range(inputs.ndim - 1))
     scale = jnp.expand_dims(self.theta.g + 1.0, axis)
     return scale * py_utils.l2_normalize(inputs, axis)
+
+
+class SpectralNorm(BaseNormalization):
+  """Spectral normalization on the last weight dim.
+
+  Normalizes W / σ(W), where σ(W) = max_{h≠0} |W h| / |h|.
+  https://arxiv.org/abs/1802.05957.
+  """
+
+  n_power_iteration: int = 1
+
+  def setup(self):
+    """Creates weight normalization variables."""
+    self.create_variable(
+        'u',
+        base_layer.WeightHParams(
+            shape=[self.dim],
+            init=base_layer.WeightInit.Gaussian(),
+            dtype=self.dtype,
+            collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
+        ),
+        trainable=False,
+    )
+
+  def __call__(
+      self, inputs: pytypes.JTensor, paddings: Optional[pytypes.JTensor] = None
+  ) -> pytypes.JTensor:
+    del paddings  # Unused.
+    w = jnp.reshape(inputs, [-1, self.dim])
+    u = self.get_var('u')
+    for _ in range(self.n_power_iteration):
+      v = py_utils.l2_normalize(w @ u)
+      u = py_utils.l2_normalize(v @ w)
+    v = jax.lax.stop_gradient(v)
+    u = jax.lax.stop_gradient(u)
+
+    if not self.do_eval:
+      self.update_var('u', u)
+
+    norm = v @ w @ u
+    wn = w / norm
+    return jnp.reshape(wn, inputs.shape)
