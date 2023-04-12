@@ -1,7 +1,14 @@
-# Version: 0.4.0
+# Version: 1.0.0
 ## Major Features and Improvements
-## Breaking changes
-## Deprecations
+* **Fiddle** - Praxis layers and BaseParameterizable are now configured with [Fiddle](https://github.com/google/fiddle), a Python-first configuration library. Fiddle reduces boilerplate, and adds productivity features including history tracking, graphviz visualization, support for aliasing objects, and more.
+* **CLI Experiment and Data Injectability** - Enable Pax users to select which experiments to run without the need to recompile for each experiment.  Using a CLI interface based on Fiddle, users can override subsets of the experiment’s canonical dataset.
+* **CLU Metrics** - Praxis has adopted CLU metrics as its standard metric interface.  This allows other Jax/Flax codebases that have CLU metrics to use them in Praxis.
+* **Flax Interoperability** - Praxis now supports shape inference, __call__ for forward propagation, and has adopted Linen’s AxisMetadata for its mid-level sharding APIs.  These changes improve interoperability with other Flax-based libraries such as T5X.
+## Note
+*   Version: 1.0.0
+*   Build Date: 20230329
+*   Praxis commit: 621c2ca7bfcd0e21ea118a3d8e40e29b48313c0c
+# Version: 0.4.0
 ## Note
 *   Version: 0.4.0
 *   Build Date: 20230329
