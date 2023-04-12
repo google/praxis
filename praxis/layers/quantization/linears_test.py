@@ -192,7 +192,7 @@ class QuantizedLinearTest(test_utils.TestCase):
           initial_vars_q, inputs, mutable=[NON_TRAINABLE])
     # In eval mode step_count is not changed
     self.assertArraysEqual(updated_variables[NON_TRAINABLE]['step_count'],
-                           np.array([0.0]))
+                           np.array([0]))
 
   def test_linear_step_count_in_train(self):
     linear_q, inputs = self._get_layer_and_inputs()
@@ -204,10 +204,10 @@ class QuantizedLinearTest(test_utils.TestCase):
           initial_vars_q, inputs, mutable=[PARAMS, NON_TRAINABLE, SUMMARIES]
       )
     self.assertArraysEqual(
-        updated_vars[NON_TRAINABLE]['step_count'], np.array([1.0])
+        updated_vars[NON_TRAINABLE]['step_count'], np.array([1])
     )
     self.assertArraysEqual(
-        updated_vars[SUMMARIES]['step_count_scalar'], np.array([0.0])
+        updated_vars[SUMMARIES]['step_count_scalar'], np.array([0])
     )
 
     with base_layer.JaxContext.new_context(hparams=context_params):
@@ -215,10 +215,10 @@ class QuantizedLinearTest(test_utils.TestCase):
           updated_vars, inputs, mutable=[PARAMS, NON_TRAINABLE, SUMMARIES]
       )
     self.assertArraysEqual(
-        updated_vars[NON_TRAINABLE]['step_count'], np.array([2.0])
+        updated_vars[NON_TRAINABLE]['step_count'], np.array([2])
     )
     self.assertArraysEqual(
-        updated_vars[SUMMARIES]['step_count_scalar'], np.array([1.0])
+        updated_vars[SUMMARIES]['step_count_scalar'], np.array([1])
     )
 
 

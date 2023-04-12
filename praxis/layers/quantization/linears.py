@@ -110,12 +110,11 @@ class Linear(linears.Linear):
       self.create_tensor_quantizers()
 
     if self.quantization.weight_params.use_step_count:
-      # With int32 there is an error:
-      # TypeError: grad requires real- or complex-valued inputs
       step_count_pc = WeightHParams(
           shape=[],
           init=WeightInit.Constant(0),
-          dtype=jnp.float32)
+          dtype=jnp.int32,
+      )
       self.create_variable('step_count', step_count_pc, trainable=False)
 
   def __call__(self, inputs: JTensor) -> JTensor:
