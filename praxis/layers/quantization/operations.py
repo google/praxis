@@ -15,11 +15,13 @@
 
 """Operations for quantization."""
 
+import functools
 import string
 from typing import Any, List, Optional, Sequence, Tuple
 
 from absl import logging
 import jax
+from jax import lax
 from jax import numpy as jnp
 from praxis import pytypes
 from praxis.layers.quantization import optimization
@@ -28,7 +30,7 @@ from praxis.layers.quantization import utils
 JTensor = pytypes.JTensor
 
 QUANTIZED_TYPES = [jnp.int8, jnp.uint8]
-
+INT_TYPES = [jnp.int8, jnp.uint8, jnp.int16, jnp.uint16, jnp.int32, jnp.uint32]
 
 def _get_expand_dims(eqn: str) -> List[int]:
   """Potentially expand dimensions for scale.
@@ -123,6 +125,48 @@ def compute_offset(x: JTensor, zp: JTensor, eqn: str):
   return offset
 
 
+@functools.partial(jax.custom_jvp, nondiff_argnums=(2,))
+def dot_general_int(lhs, rhs, dimension_numbers):
+  """Wrapper around lax.dot_general, with int dot."""
+
+  def _dot_general_int(ops):
+    lhs_, rhs_ = ops
+    return lax.dot_general(
+        lhs_,
+        rhs_,
+        dimension_numbers=dimension_numbers,
+        preferred_element_type=jnp.int32)
+
+  if lhs.dtype not in INT_TYPES:
+    raise ValueError(f'lhs.dtype: {lhs.dtype} is not int type: {INT_TYPES} ')
+  if rhs.dtype not in INT_TYPES:
+    raise ValueError(f'lhs.dtype: {rhs.dtype} is not int type: {INT_TYPES} ')
+  return _dot_general_int((lhs, rhs))
+
+
+@dot_general_int.defjvp
+def dot_general_int_jvp(
+    dimension_numbers,
+    primals,
+    tangents):
+  """Custom gradient for dot_general_int that ignores integer casts."""
+  lhs, rhs = primals
+  lhs_dot, rhs_dot = tangents
+  y = dot_general_int(
+      lhs,
+      rhs,
+      dimension_numbers=dimension_numbers)
+
+  def differentiable_dot_general_int(lhs_, rhs_):
+    return lax.dot_general(lhs_, rhs_, dimension_numbers=dimension_numbers)
+
+  _, y_tangent = jax.jvp(
+      differentiable_dot_general_int,
+      (lhs, rhs),
+      (lhs_dot, rhs_dot))
+  return y, y_tangent
+
+
 def einsum(
     eqn: str,
     x: JTensor,
@@ -146,16 +190,25 @@ def einsum(
   Returns:
     A JTensor.
   """
-  if x.dtype in QUANTIZED_TYPES and w.dtype in QUANTIZED_TYPES:
-    # upcast to int32 so einsum uses int32 as accumulator.
-    # TODO(jianlijianli): allow preferred type to pass in as parameter.
-    # TODO(jianlijianli): expand to cover for potentially int4.
-    # TODO(jianlijianli): check if int32 is necessary since it will cast to
-    # bf16/f32 for next op (accuracy-wise).
-    x = x.astype(jnp.int32)
+
+  use_int_dot_general = (
+      x.dtype in QUANTIZED_TYPES and w.dtype in QUANTIZED_TYPES
+  )
+
   if w.dtype == jnp.float8_e4m3fn or w.dtype == jnp.float8_e5m2:
     w = w.astype(jnp.bfloat16)
-  ret = jnp.einsum(eqn, x, w)
+
+  if use_int_dot_general:
+    dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(eqn)
+    ret = dot_general_int(
+        x,
+        w,
+        dimension_numbers=dimension_numbers,
+    )
+    if perm is not None:
+      ret = lax.transpose(ret, perm)
+  else:
+    ret = jnp.einsum(eqn, x, w)
 
   # Potentially expand dimensions of scale to match einsum output.
   filling_dims = _get_expand_dims(eqn)

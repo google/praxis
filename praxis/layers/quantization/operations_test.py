@@ -25,8 +25,8 @@ import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import test_utils
-from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import operations
+from praxis.layers.quantization import quantizer
 
 
 class QuantizationUtilsTest(test_utils.TestCase):
@@ -59,6 +59,19 @@ class QuantizationUtilsTest(test_utils.TestCase):
 
     ret = operations.einsum('ABD,KDNH->KABNH', x, w, s)
     expected = jnp.ones([K, A, B, N, H], dtype=jnp.bfloat16) * D
+    self.assertArraysEqual(ret, expected)
+
+  @parameterized.parameters(jnp.int8, jnp.uint8)
+  def test_int_einsum(self, dtype):
+    # pylint: disable=invalid-name
+    A, D, H = 6, 5, 2
+
+    x = jnp.ones([A, D], dtype=dtype)
+    w = jnp.ones([D, H], dtype=dtype)
+    s = jnp.ones([H], dtype=dtype)
+
+    ret = operations.einsum('AD,DH->AH', x, w, s)
+    expected = jnp.ones([A, H], dtype=jnp.int32) * D
     self.assertArraysEqual(ret, expected)
 
   @parameterized.named_parameters(
@@ -162,7 +175,9 @@ class AqtEinsum(base_layer.BaseLayer):
     self.create_child(
         'lhs_quantizer',
         pax_fiddle.Config(
-            quantizer.TensorQuantizer, name='lhs_quantizer', precision=self.lhs_prec
+            quantizer.TensorQuantizer,
+            name='lhs_quantizer',
+            precision=self.lhs_prec,
         ),
     )
     self.create_child(
