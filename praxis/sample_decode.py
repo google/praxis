@@ -648,7 +648,7 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
     """The default sampling logic implementing top-K and top-P sampling."""
     del decode_loop_state
     p = self.hparams
-    assert p.top_k >= 0
+    assert self.top_k >= 0
     input_logits = logits
 
     def _get_prng_key(prng_key):
@@ -673,21 +673,21 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
         else getattr(p, 'top_p', None)
     )
 
-    if p.epsilon_p > 0.0:
-      logits = epsilon_mask_logits(logits, p.epsilon_p)
+    if self.epsilon_p > 0.0:
+      logits = epsilon_mask_logits(logits, self.epsilon_p)
 
-    if p.top_k > 1:
-      if p.use_top_k_for_logprobs:
+    if self.top_k > 1:
+      if self.use_top_k_for_logprobs:
         new_ids, logprobs_at_new_ids = (
             sample_from_top_k_and_top_p_with_topk_logprob(
                 logits,
                 _get_prng_key(gumbel_prng_key),
                 temperature=temperature,
-                top_k=p.top_k,
+                top_k=self.top_k,
                 top_p=top_p,
                 per_example_top_k=per_example_top_k,
-                global_normalize=p.global_normalize,
-                top_k_recall_target=p.top_k_recall_target,
+                global_normalize=self.global_normalize,
+                top_k_recall_target=self.top_k_recall_target,
             )
         )
         return NestedMap(
@@ -700,17 +700,17 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
             logits,
             _get_prng_key(gumbel_prng_key),
             temperature=temperature,
-            top_k=p.top_k,
+            top_k=self.top_k,
             top_p=top_p,
             per_example_top_k=per_example_top_k,
-            global_normalize=p.global_normalize,
-            top_k_recall_target=p.top_k_recall_target,
+            global_normalize=self.global_normalize,
+            top_k_recall_target=self.top_k_recall_target,
         )
         return NestedMap(
             new_ids=new_ids,
             logits=input_logits,
         )
-    elif p.top_k == 0:
+    elif self.top_k == 0:
       if top_p is not None:
         logits = top_p_mask_logits(logits, top_p)
       if isinstance(temperature, JTensor) or temperature > 0.0:
@@ -1205,7 +1205,7 @@ def sample_decode_after_fprop(
       """Whether the while loop should continue."""
       del model
       # We continue the decoding search iff both:
-      #   (1) We have yet to exceed the max steps set by p.decoder.seqlen, AND;
+      #   (1) We have yet to exceed the max steps set by self.decoder.seqlen
       #   (2) At least one row in the batch has not terminated.
       max_steps = start_step + stop_at_decode_steps
       length_ok = val.step < min(seq_len - 1, max_steps)

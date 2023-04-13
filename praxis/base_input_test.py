@@ -51,7 +51,7 @@ class TestInput(base_input.BaseInput):
     return tf.nest.map_structure(lambda x: x.numpy(), ret)
 
   def reset(self):
-    if self.hparams.reset_for_eval:
+    if self.reset_for_eval:
       self._iter = iter(self._dataset)
 
   def _to_nested_map(self, x) -> py_utils.NestedMap:
@@ -59,14 +59,13 @@ class TestInput(base_input.BaseInput):
     return py_utils.NestedMap(data=t)
 
   def _get_dataset(self):
-    p = self.hparams
     d = tf.data.Dataset.range(10)
-    d = d.shard(p.num_infeed_hosts, p.infeed_host_index)
-    d = d.shuffle(10, seed=p.input_random_seed).repeat(-1)
-    if p.reset_for_eval:
-      d = d.take(p.batch_size * 2)
+    d = d.shard(self.num_infeed_hosts, self.infeed_host_index)
+    d = d.shuffle(10, seed=self.input_random_seed).repeat(-1)
+    if self.reset_for_eval:
+      d = d.take(self.batch_size * 2)
     d = d.map(self._to_nested_map)
-    d = d.batch(p.batch_size)
+    d = d.batch(self.batch_size)
     return d
 
 
@@ -312,16 +311,16 @@ class InputTest(test_utils.TestCase):
     p = base_input.LingvoInputAdaptorNewBatchSize.HParams()
     p.input = LingvoInput.Params().Set(
         file_pattern='tfrecord:' + tmp, file_random_seed=0)
-    with self.assertRaisesRegex(ValueError, 'p.batch_size'):
+    with self.assertRaisesRegex(ValueError, 'self.batch_size'):
       instantiate(p)
 
     p2 = base_input.LingvoInputAdaptor.HParams(input=p.input)
     p2.batch_size = 2
-    with self.assertRaisesRegex(ValueError, 'p.batch_size'):
+    with self.assertRaisesRegex(ValueError, 'self.batch_size'):
       instantiate(p2)
 
     p3 = TestInput.HParams()
-    with self.assertRaisesRegex(ValueError, 'p.batch_size'):
+    with self.assertRaisesRegex(ValueError, 'self.batch_size'):
       instantiate(p3)
 
   def test_lingvo_eval_adaptor_tfdata(self):

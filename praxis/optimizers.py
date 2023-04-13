@@ -943,22 +943,19 @@ class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
   _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
-    p = self._hparams
-    self._lr_schedule_inst = instantiate(self._hparams.lr_schedule)
+    self._lr_schedule_inst = instantiate(self.lr_schedule)
     # Should not mix L1, L2 regularizer and weight decay together.
-    if p.l2_regularizer_weight and p.l1_regularizer_weight:
+    if self.l2_regularizer_weight and self.l1_regularizer_weight:
       raise ValueError('Should not mix L1 and L2 regularization.')
-    if (p.decoupled_weight_decay and
-        (p.l2_regularizer_weight or p.l1_regularizer_weight)):
+    if self.decoupled_weight_decay and (
+        self.l2_regularizer_weight or self.l1_regularizer_weight
+    ):
       raise ValueError(
           'Should not mix decoupled weight decay with L1 or L2 regularization.')
 
   def get_learning_rate(self, step_count: JTensor) -> JTensor:
     """Get the learning rate of this optimizer at a particular step."""
-    return (
-        self._lr_schedule_inst.value_at(step_count)
-        * self._hparams.learning_rate
-    )
+    return self._lr_schedule_inst.value_at(step_count) * self.learning_rate
 
   def get_grad_transformation(
       self,
@@ -978,7 +975,6 @@ class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
     Returns:
       an optax.GradientTransformation or ShardedGradientTransformation.
     """
-    p = self._hparams
 
     # Compute the mask for lp regularization
     if var_weight_hparams:
@@ -991,32 +987,35 @@ class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
     optax_list = [
         apply_lp_regularizer(
             var_lp_mask=var_lp_mask,
-            regularizer_weight=p.l1_regularizer_weight,
+            regularizer_weight=self.l1_regularizer_weight,
             p=1.0,
-            skip_lp_1d_vectors=p.skip_lp_1d_vectors,
+            skip_lp_1d_vectors=self.skip_lp_1d_vectors,
         ),
         apply_lp_regularizer(
             var_lp_mask=var_lp_mask,
-            regularizer_weight=p.l2_regularizer_weight,
+            regularizer_weight=self.l2_regularizer_weight,
             p=2.0,
-            skip_lp_1d_vectors=p.skip_lp_1d_vectors,
+            skip_lp_1d_vectors=self.skip_lp_1d_vectors,
         ),
         self._get_raw_grad_transformation(self.get_learning_rate),
         apply_decoupled_weight_decay(
             self.get_learning_rate,
             var_wd_mask=var_lp_mask,
-            regularizer_weight=p.decoupled_weight_decay),
+            regularizer_weight=self.decoupled_weight_decay,
+        ),
     ]
-    if p.ewc_regularizer_weight > 0.0:
+    if self.ewc_regularizer_weight > 0.0:
       optax_list.append(
           apply_ewc_regularization(
               self.get_learning_rate,
-              ewc_regularizer_weight=p.ewc_regularizer_weight,
-              ewc_weight_per_var=p.ewc_weight_per_var))
-    if p.ema_decay > 0.0 and include_ema:
+              ewc_regularizer_weight=self.ewc_regularizer_weight,
+              ewc_weight_per_var=self.ewc_weight_per_var,
+          )
+      )
+    if self.ema_decay > 0.0 and include_ema:
       # EMA adds new optimizer states that is not compatible
-      asserts.lt(p.ema_decay, 1.)
-      optax_list.append(apply_ema_weights(decay=p.ema_decay))
+      asserts.lt(self.ema_decay, 1.0)
+      optax_list.append(apply_ema_weights(decay=self.ema_decay))
     return sharded_chain(*optax_list)
 
   def _get_raw_grad_transformation(
@@ -1047,8 +1046,9 @@ class Sgd(BaseOptimizer):
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> optax.GradientTransformation:
-    p = self._hparams
-    return optax.sgd(learning_rate=lr, momentum=p.momentum, nesterov=p.nesterov)
+    return optax.sgd(
+        learning_rate=lr, momentum=self.momentum, nesterov=self.nesterov
+    )
 
 
 class Lamb(BaseOptimizer):
@@ -1080,15 +1080,14 @@ class Lamb(BaseOptimizer):
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule
   ) -> optax.GradientTransformation:
-    p = self._hparams
     return optax.lamb(
         learning_rate=lr,
-        b1=p.b1,
-        b2=p.b2,
-        eps=p.eps,
-        eps_root=p.eps_root,
-        weight_decay=p.weight_decay,
-        mask=p.mask,
+        b1=self.b1,
+        b2=self.b2,
+        eps=self.eps,
+        eps_root=self.eps_root,
+        weight_decay=self.weight_decay,
+        mask=self.mask,
     )
 
 
@@ -1105,9 +1104,9 @@ class ShardedSgd(BaseOptimizer):
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
-    p = self._hparams
     return sharded_sgd(
-        learning_rate_fn=lr, momentum=p.momentum, nesterov=p.nesterov)
+        learning_rate_fn=lr, momentum=self.momentum, nesterov=self.nesterov
+    )
 
 
 class ShardedAdagrad(BaseOptimizer):
@@ -1123,11 +1122,11 @@ class ShardedAdagrad(BaseOptimizer):
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
-    p = self._hparams
     return sharded_adagrad(
         learning_rate_fn=lr,
-        initial_accumulator_value=p.initial_accumulator_value,
-        epsilon=p.epsilon)
+        initial_accumulator_value=self.initial_accumulator_value,
+        epsilon=self.epsilon,
+    )
 
 
 class Adam(BaseOptimizer):
@@ -1166,29 +1165,30 @@ class Adam(BaseOptimizer):
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> GeneralGradientTransformation:
-    p = self._hparams
-    if p.weight_decay:
+    if self.weight_decay:
       logging.warning(_WEIGHT_DECAY_DEPRECATION)
 
-    if p.sharded_adam:
+    if self.sharded_adam:
       logging.info('Using sharded_adam.')
       return sharded_adam(
           learning_rate_fn=lr,
-          beta1=p.beta1,
-          beta2=p.beta2,
-          epsilon=p.epsilon,
-          epsilon_root=p.epsilon_root,
-          update_capping=p.clip_threshold,
-          weight_decay=p.weight_decay,
-          maybe_inf_to_nan=p.maybe_inf_to_nan)
+          beta1=self.beta1,
+          beta2=self.beta2,
+          epsilon=self.epsilon,
+          epsilon_root=self.epsilon_root,
+          update_capping=self.clip_threshold,
+          weight_decay=self.weight_decay,
+          maybe_inf_to_nan=self.maybe_inf_to_nan,
+      )
     else:
       logging.info('Using optax.adam.')
       return optax.adam(
           learning_rate=lr,
-          b1=p.beta1,
-          b2=p.beta2,
-          eps=p.epsilon,
-          eps_root=p.epsilon_root)
+          b1=self.beta1,
+          b2=self.beta2,
+          eps=self.epsilon,
+          eps_root=self.epsilon_root,
+      )
 
 
 class Lion(BaseOptimizer):
@@ -1210,15 +1210,15 @@ class Lion(BaseOptimizer):
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
-    p = self._hparams
     logging.info('Using sharded_lion.')
     return sharded_lion(
         learning_rate_fn=lr,
-        beta1=p.beta1,
-        beta2=p.beta2,
-        m_dtype=p.m_dtype,
-        update_capping=p.clip_threshold,
-        weight_decay=p.weight_decay)
+        beta1=self.beta1,
+        beta2=self.beta2,
+        m_dtype=self.m_dtype,
+        update_capping=self.clip_threshold,
+        weight_decay=self.weight_decay,
+    )
 
 
 class Adafactor(BaseOptimizer):
@@ -1242,7 +1242,7 @@ class Adafactor(BaseOptimizer):
   """
   min_dim_size_to_factor: int = 128
   decay_rate: float = 0.8
-  decay_offset: float = 0.0
+  decay_offset: int = 0
   multiply_by_parameter_scale: bool = True
   clip_threshold: Optional[float] = 1.0
   momentum: Optional[float] = None
@@ -1253,21 +1253,21 @@ class Adafactor(BaseOptimizer):
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> optax.GradientTransformation:
-    p = self._hparams
-    if p.weight_decay_rate:
+    if self.weight_decay_rate:
       logging.warning(_WEIGHT_DECAY_RATE_DEPRECATION)
     return optax.adafactor(
         learning_rate=lr,
-        min_dim_size_to_factor=p.min_dim_size_to_factor,
-        decay_rate=p.decay_rate,
-        decay_offset=p.decay_offset,
-        multiply_by_parameter_scale=p.multiply_by_parameter_scale,
-        clipping_threshold=p.clip_threshold,
-        momentum=p.momentum,
-        dtype_momentum=getattr(jnp, p.dtype_momentum),
-        weight_decay_rate=p.weight_decay_rate,
-        eps=p.eps,
-        factored=p.factored)
+        min_dim_size_to_factor=self.min_dim_size_to_factor,
+        decay_rate=self.decay_rate,
+        decay_offset=self.decay_offset,
+        multiply_by_parameter_scale=self.multiply_by_parameter_scale,
+        clipping_threshold=self.clip_threshold,
+        momentum=self.momentum,
+        dtype_momentum=getattr(jnp, self.dtype_momentum),
+        weight_decay_rate=self.weight_decay_rate,
+        eps=self.eps,
+        factored=self.factored,
+    )
 
 
 class DistributedShampoo(BaseOptimizer):
@@ -1415,8 +1415,7 @@ class DistributedShampoo(BaseOptimizer):
 
     def wrapped_update_fn(grads, state, params=None):
       new_params, new_state = grad_transformation.update(grads, state, params)
-      p = self._hparams
-      if p.summarize_training_metrics:
+      if self.summarize_training_metrics:
         param_stats = new_state.stats  # pytype: disable=attribute-error  # numpy-scalars
 
         # Construct an almost parallel-structured pytree with key prefixes to
@@ -1446,48 +1445,47 @@ class DistributedShampoo(BaseOptimizer):
                                         wrapped_update_fn)
 
   def _shampoo_transformation(self, lr):
-    p = self._hparams
     return distributed_shampoo_optimizer(
         learning_rate=lr,
-        block_size=p.block_size,
-        beta1=p.beta1,
-        beta2=p.beta2,
-        diagonal_epsilon=p.diagonal_epsilon,
-        matrix_epsilon=p.matrix_epsilon,
-        weight_decay=p.weight_decay,
-        start_preconditioning_step=p.start_preconditioning_step,
-        preconditioning_compute_steps=p.preconditioning_compute_steps,
-        statistics_compute_steps=p.statistics_compute_steps,
-        best_effort_shape_interpretation=p.best_effort_shape_interpretation,
-        graft_type=p.graft_type,
-        nesterov=p.nesterov,
-        exponent_override=p.exponent_override,
-        batch_axis_name=p.batch_axis_name,
-        num_devices_for_pjit=p.num_devices_for_pjit,
+        block_size=self.block_size,
+        beta1=self.beta1,
+        beta2=self.beta2,
+        diagonal_epsilon=self.diagonal_epsilon,
+        matrix_epsilon=self.matrix_epsilon,
+        weight_decay=self.weight_decay,
+        start_preconditioning_step=self.start_preconditioning_step,
+        preconditioning_compute_steps=self.preconditioning_compute_steps,
+        statistics_compute_steps=self.statistics_compute_steps,
+        best_effort_shape_interpretation=self.best_effort_shape_interpretation,
+        graft_type=self.graft_type,
+        nesterov=self.nesterov,
+        exponent_override=self.exponent_override,
+        batch_axis_name=self.batch_axis_name,
+        num_devices_for_pjit=self.num_devices_for_pjit,
         statistics_partition_spec=self._statistics_partition_spec,
         preconditioner_partition_spec=self._preconditioner_partition_spec,
         shard_optimizer_states=self._shard_optimizer_states,
-        inverse_failure_threshold=p.inverse_failure_threshold,
-        moving_average_for_momentum=p.moving_average_for_momentum,
-        skip_preconditioning_dim_size_gt=p.skip_preconditioning_dim_size_gt,
-        clip_by_scaled_gradient_norm=p.clip_by_scaled_gradient_norm,
+        inverse_failure_threshold=self.inverse_failure_threshold,
+        moving_average_for_momentum=self.moving_average_for_momentum,
+        skip_preconditioning_dim_size_gt=self.skip_preconditioning_dim_size_gt,
+        clip_by_scaled_gradient_norm=self.clip_by_scaled_gradient_norm,
         precision=lax.Precision.HIGHEST,
-        best_effort_memory_usage_reduction=p.best_effort_memory_usage_reduction,
-        relative_matrix_epsilon=p.relative_matrix_epsilon,
-        lobpcg_topk_precondition=p.lobpcg_topk_precondition,
-        lobpcg_max_iter=p.lobpcg_max_iter,
-        cholesky=p.cholesky,
-        qr_based_root=p.qr_based_root,
-        merge_small_dims_block_size=p.merge_small_dims_block_size,
-        skip_preconditioning_rank_lt=p.skip_preconditioning_rank_lt,
-        decoupled_weight_decay=p.decoupled_weight_decay_from_momentum,
-        decoupled_learning_rate=p.decoupled_learning_rate_from_momentum,
-        generate_training_metrics=p.summarize_training_metrics,
-        eigh=p.eigh,
-        compression_rank=p.compression_rank,
-        frequent_directions=p.frequent_directions,
-        average_grad=p.average_grad,
-        reuse_preconditioner=p.reuse_preconditioner,
+        best_effort_memory_usage_reduction=self.best_effort_memory_usage_reduction,
+        relative_matrix_epsilon=self.relative_matrix_epsilon,
+        lobpcg_topk_precondition=self.lobpcg_topk_precondition,
+        lobpcg_max_iter=self.lobpcg_max_iter,
+        cholesky=self.cholesky,
+        qr_based_root=self.qr_based_root,
+        merge_small_dims_block_size=self.merge_small_dims_block_size,
+        skip_preconditioning_rank_lt=self.skip_preconditioning_rank_lt,
+        decoupled_weight_decay=self.decoupled_weight_decay_from_momentum,
+        decoupled_learning_rate=self.decoupled_learning_rate_from_momentum,
+        generate_training_metrics=self.summarize_training_metrics,
+        eigh=self.eigh,
+        compression_rank=self.compression_rank,
+        frequent_directions=self.frequent_directions,
+        average_grad=self.average_grad,
+        reuse_preconditioner=self.reuse_preconditioner,
     )
 
 
@@ -1504,14 +1502,16 @@ class ShardedDistributedShampoo(DistributedShampoo):
     self._shard_optimizer_states = True
     self._statistics_partition_spec = jax.sharding.PartitionSpec(
         *self._sharded_axes(
-            self._hparams.mesh_axis_names,
-            self._hparams.tensor_split_dims_mapping,
+            self.mesh_axis_names,
+            self.tensor_split_dims_mapping,
         )
     )
     self._preconditioner_partition_spec = jax.sharding.PartitionSpec(
         *self._sharded_axes(
-            self._hparams.mesh_axis_names,
-            self._hparams.tensor_split_dims_mapping_for_inverse_pth_root))
+            self.mesh_axis_names,
+            self.tensor_split_dims_mapping_for_inverse_pth_root,
+        )
+    )
 
   @classmethod
   def HParamsLargeLanguageModeling(
@@ -1567,11 +1567,12 @@ class ShardedDistributedShampoo(DistributedShampoo):
     assert param_pspec_flattened
     first_param = param_pspec_flattened[0]
     assert isinstance(first_param, WeightHParams)
-    assert len(axes_names) == len(p.tensor_split_dims_mapping)
+    assert len(axes_names) == len(self.tensor_split_dims_mapping)
     mesh_shape = first_param.mesh_shape
 
     partition_spec_statistics = jax.sharding.PartitionSpec(
-        *self._sharded_axes(axes_names, p.tensor_split_dims_mapping))
+        *self._sharded_axes(axes_names, self.tensor_split_dims_mapping)
+    )
 
     def _pspec_from_weight_param(param):
       p = jax.sharding.PartitionSpec(
@@ -1621,8 +1622,7 @@ class ShardedDistributedShampoo(DistributedShampoo):
 
     def _wrapped_update_fn(grads, state, params):
       new_params, new_state = result.update(grads, state, params)
-      p = self._hparams
-      if p.summarize_training_metrics:
+      if self.summarize_training_metrics:
         local_stats = new_state.stats.local_stats  # pytype: disable=attribute-error  # numpy-scalars
         var_keys, _ = jax.tree_util.tree_flatten(
             py_utils.extract_prefixed_keys_from_nested_map(local_stats))
@@ -1646,10 +1646,13 @@ class ShardedDistributedShampoo(DistributedShampoo):
     return ShardedGradientTransformation(
         init=fns.init_fn,
         update=_wrapped_update_fn,
-        init_partition_spec=functools.partial(self.init_partition_spec_fn,
-                                              fns.pspec_fn,
-                                              fns.shape_and_dtype_fn,
-                                              self._hparams.mesh_axis_names))
+        init_partition_spec=functools.partial(
+            self.init_partition_spec_fn,
+            fns.pspec_fn,
+            fns.shape_and_dtype_fn,
+            self.mesh_axis_names,
+        ),
+    )
 
 
 class Adagrad(BaseOptimizer):
@@ -1665,11 +1668,11 @@ class Adagrad(BaseOptimizer):
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> optax.GradientTransformation:
-    p = self._hparams
     return optax.adagrad(
         learning_rate=lr,
-        initial_accumulator_value=p.initial_accumulator_value,
-        eps=p.epsilon)
+        initial_accumulator_value=self.initial_accumulator_value,
+        eps=self.epsilon,
+    )
 
 
 def to_quantized(fvalue: JTensor,
@@ -2529,30 +2532,30 @@ class ShardedAdafactor(BaseOptimizer):
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
-    p = self._hparams
-    if p.weight_decay:
+    if self.weight_decay:
       logging.warning(_WEIGHT_DECAY_DEPRECATION)
 
     return sharded_adafactor(
         learning_rate_fn=lr,
-        weight_decay=p.weight_decay,
-        layerwise_adaptation=p.layerwise_adaptation,
-        decay_method=p.decay_method,
-        decay_adam=p.decay_adam,
-        decay_pow=p.decay_pow,
-        beta1=p.beta1,
-        clip_threshold=p.clip_threshold,
-        factored=p.factored,
-        epsilon1_grad_sq_reg=p.epsilon1_grad_sq_reg,
-        quantized_dtype=getattr(jnp, p.quantized_dtype),
-        respect_skip_lp_regularization=p.respect_skip_lp_regularization,
-        exclude_from_layerwise_adaptation=p.exclude_from_layerwise_adaptation,
-        per_var_learning_summary=p.per_var_learning_summary,
-        sort_factored_second_moment_dims=p.sort_factored_second_moment_dims,
-        min_dim_size_to_factor=p.min_dim_size_to_factor,
-        multiply_by_parameter_scale=p.multiply_by_parameter_scale,
-        epsilon2_param_scale_reg=p.epsilon2_param_scale_reg,
-        maybe_inf_to_nan=p.maybe_inf_to_nan)
+        weight_decay=self.weight_decay,
+        layerwise_adaptation=self.layerwise_adaptation,
+        decay_method=self.decay_method,
+        decay_adam=self.decay_adam,
+        decay_pow=self.decay_pow,
+        beta1=self.beta1,
+        clip_threshold=self.clip_threshold,
+        factored=self.factored,
+        epsilon1_grad_sq_reg=self.epsilon1_grad_sq_reg,
+        quantized_dtype=getattr(jnp, self.quantized_dtype),
+        respect_skip_lp_regularization=self.respect_skip_lp_regularization,
+        exclude_from_layerwise_adaptation=self.exclude_from_layerwise_adaptation,
+        per_var_learning_summary=self.per_var_learning_summary,
+        sort_factored_second_moment_dims=self.sort_factored_second_moment_dims,
+        min_dim_size_to_factor=self.min_dim_size_to_factor,
+        multiply_by_parameter_scale=self.multiply_by_parameter_scale,
+        epsilon2_param_scale_reg=self.epsilon2_param_scale_reg,
+        maybe_inf_to_nan=self.maybe_inf_to_nan,
+    )
 
 
 def sharded_static_accumulation(
@@ -2683,17 +2686,15 @@ class ShardedStaticAccumulator(BaseOptimizer):
 
   def __post_init__(self):
     super().__post_init__()
-    p = self._hparams
-    if p.num_sub_batches < 1:
+    if self.num_sub_batches < 1:
       raise ValueError('Set `p.num_sub_batches >= 1`.')
 
-    base_opt_tpl = p.optimizer_tpl.clone()
+    base_opt_tpl = self.optimizer_tpl.clone()
     if base_opt_tpl.lr_schedule is None:
-      base_opt_tpl.lr_schedule = p.lr_schedule
+      base_opt_tpl.lr_schedule = self.lr_schedule
     self.base_optimizer = instantiate(base_opt_tpl)
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> GeneralGradientTransformation:
-    p = self._hparams
     base_tx = self.base_optimizer._get_raw_grad_transformation(lr)  # pylint: disable=protected-access
-    return sharded_static_accumulation(p.num_sub_batches, base_tx)
+    return sharded_static_accumulation(self.num_sub_batches, base_tx)

@@ -56,7 +56,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   of train/eval/etc.
 
   If supported, for eval, reset() is called after each eval step.
-  See p.reset_for_eval below.
+  See self.reset_for_eval below.
 
   A tf.data based input should inherit this class directly and implement
   get_next() and reset(). For an example of how to handle sharding for both
@@ -77,9 +77,9 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
       seed randomness, e.g. when shuffling in a deterministic manner.
     reset_for_eval: If set, eval will continue until tf.errors.OutOfRange is
       raised, and reset() will called for each eval. Implementation must ensure
-      that all variant p.infeed_host_index instances raise after the same number
-      of calls to get_next() to ensure synchronization across hosts. If not set,
-      get_next() must never raise.
+      that all variant self.infeed_host_index instances raise after the same
+      number of calls to get_next() to ensure synchronization across hosts. If
+      not set, get_next() must never raise.
     eval_loop_num_batches: Num of batches to process per eval loop. Must be >=
       1. This value is ignored if reset_for_eval is set True, in which case,
       this value is dynamically determined by the number of available batches.
@@ -121,15 +121,17 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
 
   def __post_init__(self):
     if self._VALIDATE_BATCH_SIZE_NOT_NONE and (self.batch_size is None):
-      raise ValueError('Must specify p.batch_size.')
+      raise ValueError('Must specify self.batch_size.')
     if not self.name:
       self.name = 'train' if self.is_training else 'input'
     if self.num_infeed_hosts == 0:
       self.num_infeed_hosts = 1
-    name = self.hparams.name
+    name = self.name
     if re.fullmatch(_NAME_REGEX, name) is None:
-      raise ValueError(f'Input hparams p.name string invalid: "{name}" '
-                       f'does not fully match "{_NAME_REGEX}".')
+      raise ValueError(
+          f'Input hparams self.name string invalid: "{name}" '
+          f'does not fully match "{_NAME_REGEX}".'
+      )
     if self.experimental_remote_input and jax.process_count() > 1:
       raise NotImplementedError(
           'Remote input is not supported when there are multiple controllers.')
@@ -174,7 +176,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     """
     if self._peek is None:
       unpadded = self.get_next()
-      pad_size = self.hparams.batch_padding_size
+      pad_size = self.batch_padding_size
       if pad_size == 0:
         return unpadded
       return jax.tree_util.tree_map(
@@ -232,7 +234,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     Returns:
       Resharded inputs.
     """
-    assert self.hparams.custom_device_order is None
+    assert self.custom_device_order is None
     return jax.tree_util.tree_map(py_utils.reshard, arrays)
 
   def reshard_for_spmd(self, arrays: NestedJTensor,
@@ -258,7 +260,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     global_shapes = jax.tree_util.tree_map(
         py_utils.get_global_input_shape_dtype, arrays
     )
-    device_order = self.hparams.custom_device_order
+    device_order = self.custom_device_order
     if device_order is None:
       return py_utils.make_array(arrays, global_shapes, global_mesh, pspecs)
     assert len(device_order) == jax.device_count()
@@ -285,35 +287,38 @@ class LingvoInputAdaptor(BaseInput):
   """Syntactic sugar for adapting a Lingvo style input for Pax.
 
   This should be able to wrap any Lingvo TF input generator to be used in
-  Pax. Remember to set `p.is_training=True` on the training dataset.
+  Pax. Remember to set `self.is_training=True` on the training dataset.
 
   Some usage caveats below.
 
-  For eval, `p.num_samples` or other similar params like samples_per_summary are
-  completely ignored by Pax. Caller should instead set `p.num_batches` to
-  (p.num_samples // batch_size) with `p.reset_for_eval=True` so that each eval
+  For eval, `self.num_samples` or other similar params like samples_per_summary
+  are
+  completely ignored by Pax. Caller should instead set `self.num_batches` to
+  (self.num_samples // batch_size) with `self.reset_for_eval=True` so that each
+  eval
   step reads (approximately) one epoch of eval data. This might not be needed if
-  the input already is finite (e.g. with p.repeat_count=1).
+  the input already is finite (e.g. with self.repeat_count=1).
 
   When multiple infeed hosts are used, one must take care to ensure that the
   Lingvo input either already uses InfeedContextScope for proper sharding, or
   alternatively do not use the same random seed on all hosts. In other words,
   one must avoid the failure case where each host emits identical training data.
-  See also p.allow_fixed_file_random_seed below.
+  See also self.allow_fixed_file_random_seed below.
 
   Attributes:
     input: Params of a Lingvo input generator.
     num_batches: If specified and positive, raises tf.errors.OutOfRange after
       this manybatches have been produced. This forces a raise after get_next()
-      is called this many times, to support p.reset_for_eval=True.
+      is called this many times, to support self.reset_for_eval=True.
     allow_fixed_file_random_seed: If not set, disallows a fixed, non-zero
-      p.input.file_random_seed. We disallow by default to avoid having identical
-      input batches across different infeed hosts. If set, random seeds are
-      adjusted by p.infeed_host_index to ensure different random seeds.
+      self.input.file_random_seed. We disallow by default to avoid having
+      identical input batches across different infeed hosts. If set, random
+      seeds are adjusted by self.infeed_host_index to ensure different random
+      seeds.
     cluster_do_eval: Whether to set cluster.do_eval to True for non-training
       data. Note that if set to True, this will change
       cluster.require_sequential_input_order to True as a result. Ignored when
-      p.is_training is True.
+      self.is_training is True.
   """
   _VALIDATE_BATCH_SIZE_NOT_NONE = False
   _VALIDATE_BATCH_SIZE_NONE = True
@@ -329,11 +334,11 @@ class LingvoInputAdaptor(BaseInput):
   def __post_init__(self):
     if self._VALIDATE_BATCH_SIZE_NONE and self.batch_size is not None:
       raise ValueError(
-          'LingvoInputAdaptor does not support p.batch_size. '
-          'Please specify batch size on p.input, e.g. with '
-          'p.input.bucket_batch_limit = [4] or '
-          'p.input.args.batch=4, depeding the Lingvo input '
-          f'used. Currently: p.batch_size={self.batch_size}, '
+          'LingvoInputAdaptor does not support self.batch_size. '
+          'Please specify batch size on self.input, e.g. with '
+          'self.input.bucket_batch_limit = [4] or '
+          'self.input.args.batch=4, depeding the Lingvo input '
+          f'used. Currently: self.batch_size={self.batch_size}, '
           'it must be None.'
       )
     if not self.name:
@@ -380,21 +385,20 @@ class LingvoInputAdaptor(BaseInput):
 
   def _update_file_random_seed(self) -> None:
     """Updates file random seed to use different seeds for different hosts."""
-    p = self.hparams
-    if hasattr(p.input, 'file_random_seed') and p.input.file_random_seed:
+    if hasattr(self.input, 'file_random_seed') and self.input.file_random_seed:
       # Make sure each host uses a different random seed.
-      p.input.file_random_seed += p.infeed_host_index
+      self.input.file_random_seed += self.infeed_host_index
 
   def _initialize(self) -> None:
     """Initializes the relevant fields of this adaptor input."""
-    p = self.hparams
     self._update_file_random_seed()
     # We make self.input public so that users can access its methods like
     # IdsToStrings if needed.
     with py_utils.infeed_context_scope(
-        infeed_host_index=p.infeed_host_index,
-        num_infeed_hosts=p.num_infeed_hosts), self._cluster:
-      self.input_inst = p.input.Instantiate()
+        infeed_host_index=self.infeed_host_index,
+        num_infeed_hosts=self.num_infeed_hosts,
+    ), self._cluster:
+      self.input_inst = self.input.Instantiate()
 
     if hasattr(self.input_inst, 'datasource') and isinstance(
         self.input_inst.datasource, py_utils.TFDatasetSource
@@ -408,18 +412,17 @@ class LingvoInputAdaptor(BaseInput):
     self._num_batches_produced = 0
 
   def _get_batch(self) -> NestedMap:
-    p = self.hparams
     with py_utils.infeed_context_scope(
-        infeed_host_index=p.infeed_host_index,
-        num_infeed_hosts=p.num_infeed_hosts), self._cluster:
+        infeed_host_index=self.infeed_host_index,
+        num_infeed_hosts=self.num_infeed_hosts,
+    ), self._cluster:
       ret = self.input_inst.GetPreprocessedInputBatch()
     # Remove unsupported string (byte) array from input.
     return ret.Filter(lambda v: v.dtype != tf.string)
 
   def get_next(self) -> NestedJTensor:
-    p = self.hparams
-    if p.num_batches is not None and p.num_batches > 0:
-      if self._num_batches_produced >= p.num_batches:
+    if self.num_batches is not None and self.num_batches > 0:
+      if self._num_batches_produced >= self.num_batches:
         raise tf.errors.OutOfRangeError(
             node_def=None,
             op=None,
@@ -465,22 +468,22 @@ class LingvoInputAdaptorNewBatchSize(LingvoInputAdaptor):
   """A similar adapter as LingvoInputAdaptor supporting a new batch size.
 
   LingvoInputAdaptor uses the batch size specified by the underlying Lingvo
-  input. This class, however, allows specifying a smaller p.batch_size.
+  input. This class, however, allows specifying a smaller self.batch_size.
   This can be useful when the Lingvo input expects a large batch size,
   but the user wants a smaller batch size, e.g. when the Lingvo input uses
   a fixed packing factor to do packing, which can more efficiently pack with
   more data.
 
   We require that the batch size of the underlying Lingvo input must divide
-  p.batch_size. Internally this class acts as a cache, retrieving the large
+  self.batch_size. Internally this class acts as a cache, retrieving the large
   batches from the parent class size, and consuming it by slicing it to the
   smaller batch size specified by the user.
 
   Example usage:
       p = ChangeBatchSizeInput.HParams(...)
-      p.input.packing_factor = 3.5
-      p.input.bucket_batch_limit = [4096]
-      p.batch_size = 4
+      self.input.packing_factor = 3.5
+      self.input.bucket_batch_limit = [4096]
+      self.batch_size = 4
   """
   _VALIDATE_BATCH_SIZE_NOT_NONE = True
   _VALIDATE_BATCH_SIZE_NONE = False
@@ -504,7 +507,7 @@ class LingvoInputAdaptorNewBatchSize(LingvoInputAdaptor):
     if self._inner_batch_size % self.batch_size != 0:
       raise ValueError(
           f'Lingvo input batch size {self._inner_batch_size} '
-          'must be a multiple of p.batch_size='
+          'must be a multiple of self.batch_size='
           f'{self.batch_size}.'
       )
     self._current_batch_index = 0
@@ -515,17 +518,16 @@ class LingvoInputAdaptorNewBatchSize(LingvoInputAdaptor):
     return hparams.batch_size
 
   def get_next(self) -> py_utils.NestedMap:
-    p = self.hparams
     if self._current_batch_index >= self._inner_batch_size:
       self._current_batch = super().get_next()
       self._current_batch_index = 0
 
     def _get_subrows(b):
       start = self._current_batch_index
-      return b[start:start + p.batch_size]
+      return b[start : start + self.batch_size]
 
     ret = jax.tree_util.tree_map(_get_subrows, self._current_batch)
-    self._current_batch_index += p.batch_size
+    self._current_batch_index += self.batch_size
     return ret
 
   def reset(self) -> None:
@@ -541,19 +543,20 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
   on one epoch. This adaptor handles multihost infeed and padding the data to
   multiples of global batch size.
 
-  We make the following assumptions on the underlying Lingvo input p.input:
+  We make the following assumptions on the underlying Lingvo input self.input:
   * it returns the entire data in a deterministic manner;
   * it is finite (does not repeat).
 
   To avoid dropping remainder issues and to guarantee the eval dataset is
-  complete, we recommend that the underlying Lingvo input p.input uses a batch
+  complete, we recommend that the underlying Lingvo input self.input uses a
+  batch
   size of 1. (The actual batch size used on this input is specified on
-  `p.batch_size`.)
+  `self.batch_size`.)
 
   Example usage:
       p = LingvoEvalAdaptor.HParams(...)
-      p.input.bucket_batch_limit = [1]
-      p.batch_size = 4
+      self.input.bucket_batch_limit = [1]
+      self.batch_size = 4
   """
   _VALIDATE_BATCH_SIZE_NOT_NONE = True
   _VALIDATE_BATCH_SIZE_NONE = False
@@ -564,9 +567,9 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
   def __post_init__(self):
     super().__post_init__()
     if self.is_training:
-      raise ValueError('LingvoEvalAdaptor requires p.is_traing=False.')
+      raise ValueError('LingvoEvalAdaptor requires self.is_traing=False.')
     if not self.reset_for_eval:
-      raise ValueError('LingvoEvalAdaptor requires p.reset_for_eval=True.')
+      raise ValueError('LingvoEvalAdaptor requires self.reset_for_eval=True.')
     self._num_samples = None
     self._dataset = self._get_dataset()
     self._iter = self._dataset.as_numpy_iterator()
@@ -602,19 +605,25 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
       return b
 
     ds = ds.map(_add_weight)
-    p = self.hparams
     eval_set_size = len(list(ds.as_numpy_iterator()))
     self._num_samples = eval_set_size
     logging.info(
-        'LingvoEvalAdaptor p.name=%s contains %d examples before '
-        'padding.', p.name, eval_set_size)
-    global_batch_size = p.batch_size * p.num_infeed_hosts
+        'LingvoEvalAdaptor self.name=%s contains %d examples before padding.',
+        self.name,
+        eval_set_size,
+    )
+    global_batch_size = self.batch_size * self.num_infeed_hosts
     if eval_set_size % global_batch_size == 0:
       return ds
     total_size = (eval_set_size // global_batch_size + 1) * global_batch_size
     logging.info(
-        'LingvoEvalAdaptor p.name=%s is expanded to contain %d '
-        'examples globally after padding.', p.name, total_size)
+        (
+            'LingvoEvalAdaptor self.name=%s is expanded to contain %d '
+            'examples globally after padding.'
+        ),
+        self.name,
+        total_size,
+    )
     pad_ds = ds.take(1).map(_add_pad).repeat(total_size - eval_set_size)
     return ds.concatenate(pad_ds)
 
@@ -630,9 +639,10 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
           lambda x, y: tf.concat([x, y], axis=0), data_tensor, new_data)
     ds = tf.data.Dataset.from_tensor_slices(data_tensor)
     ds = self._pad(ds)
-    p = self.hparams
-    ds = ds.batch(p.batch_size, drop_remainder=False)
-    return ds.shard(num_shards=p.num_infeed_hosts, index=p.infeed_host_index)
+    ds = ds.batch(self.batch_size, drop_remainder=False)
+    return ds.shard(
+        num_shards=self.num_infeed_hosts, index=self.infeed_host_index
+    )
 
   def get_next(self) -> py_utils.NestedMap:
     return next(self._iter)
@@ -650,15 +660,16 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
   (`LingvoLazyEvalAdaptor`) does NOT read the whole dataset into memory. This
   can be helpful if the eval set is quite large.
 
-  We make the following assumptions on the underlying Lingvo input p.input:
+  We make the following assumptions on the underlying Lingvo input self.input:
   * it returns the entire data in a deterministic manner;
-  * it knows the number of samples in p.input.num_samples;
+  * it knows the number of samples in self.input.num_samples;
   * it has a feature named `eval_sample_weights` to represent the validity of
       each sample, 1 for valid and 0 for invalid;
   * it repeats after all samples are exhausted (this requirement can be easily
       lifted in the future if necessary).
 
-  The batch_size is handled by the underlying Lingvo input: p.input.batch_size.
+  The batch_size is handled by the underlying Lingvo input:
+  self.input.batch_size.
 
   Example usage:
       input_p.batch_size = 4
@@ -675,9 +686,11 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
   def __post_init__(self):
     super().__post_init__()
     if self.is_training:
-      raise ValueError('LingvoLazyEvalAdaptor requires p.is_traing=False.')
+      raise ValueError('LingvoLazyEvalAdaptor requires self.is_traing=False.')
     if not self.reset_for_eval:
-      raise ValueError('LingvoLazyEvalAdaptor requires p.reset_for_eval=True.')
+      raise ValueError(
+          'LingvoLazyEvalAdaptor requires self.reset_for_eval=True.'
+      )
     if self.infeed_host_index >= self.num_infeed_hosts:
       raise ValueError('Must have infeed_host_index < num_infeed_hosts')
     if not isinstance(self.input.batch_size, int) or self.input.batch_size <= 0:
@@ -772,14 +785,14 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
     # If there are still remaining samples in this host, skip n-1 batches which
     # belong to other hosts.
     if remaining_samples > 0:
-      for _ in range(self.hparams.num_infeed_hosts - 1):
+      for _ in range(self.num_infeed_hosts - 1):
         self._get_next_fn()
     return ret
 
   def reset(self):
     super().reset()
     # Skips k batches which belong to other hosts.
-    for _ in range(self.hparams.infeed_host_index):
+    for _ in range(self.infeed_host_index):
       self._get_next_fn()
     self._num_examples_emitted = 0
     self._num_batches_emitted = 0
@@ -819,17 +832,17 @@ class MultiInput(BaseInput):
   def __post_init__(self):
     if self._VALIDATE_BATCH_SIZE_NONE and self.batch_size is not None:
       raise ValueError(
-          'MultiInput does not support p.batch_size. '
+          'MultiInput does not support self.batch_size. '
           'Please specify batch size on each child input '
           'separately.'
       )
     if not self.name:
       self.name = 'train' if self.is_training else 'input'
     super().__post_init__()
-    name = self.hparams.name
+    name = self.name
     if re.fullmatch(_NAME_REGEX, name) is None:
       raise ValueError(
-          f'Input hparams p.name string invalid: "{name}" '
+          f'Input hparams self.name string invalid: "{name}" '
           f'does not fully match "{_NAME_REGEX}".'
       )
     if self.input_to_params is None:
@@ -907,10 +920,10 @@ class MultiInput(BaseInput):
       A list strings of shape [batch]. The converted texts.
     """
     if input_name is None:
-      if self.hparams.default_input is None:
+      if self.default_input is None:
         raise ValueError(
             '`input_name` is required when there is no `default_input`')
-      input_name = self.hparams.default_input
+      input_name = self.default_input
     return self._inputs[input_name].ids_to_strings(ids, lengths, key)
 
 
@@ -938,7 +951,7 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
     # method only once at model initialization time.
     # Few inputs (e.g. BaseInput) may try to still mutate this hparams.
     # Clone it to make it mutable for now before calliing instantiate.
-    input_pipeline = instantiate(self.hparams.input_p.clone())
+    input_pipeline = instantiate(self.input_p.clone())
     return jax.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
                         input_pipeline.get_next_padded())
 
