@@ -1027,11 +1027,13 @@ def sample_decode_after_fprop(
   original_batch_size = prefix_ids.shape[0]
   original_prefix_lengths = prefix_lengths
   if controlled_decoding:
-    asserts.gt(controlled_decoding.interval, 0)
     asserts.gt(controlled_decoding.block_num_samples, 0)
-    if not isinstance(max_decode_steps, int):
+    if controlled_decoding.interval > 0 and not isinstance(
+        max_decode_steps, int
+    ):
       raise ValueError(
-          'max_decode_steps must be an int when using controlled decoding.'
+          'max_decode_steps must be an int when controlled_decoding.interval is'
+          ' specified.'
       )
   if isinstance(max_decode_steps, int):
     max_decode_steps = [max_decode_steps]
@@ -1112,15 +1114,13 @@ def sample_decode_after_fprop(
       # the multi-sample suffix. This is because the last token only as an Input
       # ID, but not an output ID (label), and we need to start decoding from it.
       transform_state_fn(model, decoder_utils.slice_state_fn(0, -1))
-      # max_decode_steps + 1 to include last token from prefix.
       first_decode_steps = min(max_decode_steps)
       if controlled_decoding:
-        lazy_broadcast_prefix_fn(
-            model,
-            num_samples,  # num_suffix_samples
-            controlled_decoding.interval,  # suffix_length
-        )
+        if controlled_decoding.interval:
+          first_decode_steps = controlled_decoding.interval
+        lazy_broadcast_prefix_fn(model, num_samples, first_decode_steps)
       else:
+        # max_decode_steps + 1 to include last token from prefix.
         lazy_broadcast_prefix_fn(model, num_samples, first_decode_steps + 1)
     elif transform_state_fn is not None:
       # Broadcast prefix state for num_samples.
@@ -1382,8 +1382,14 @@ def sample_decode_after_fprop(
 
   if controlled_decoding:
     result = val
-    assert max_decode_steps[0] % controlled_decoding.interval == 0
-    chunks = max_decode_steps[0] // controlled_decoding.interval
+    if controlled_decoding.interval:
+      assert max_decode_steps[0] % controlled_decoding.interval == 0
+      chunks = max_decode_steps[0] // controlled_decoding.interval
+      decode_buckets = [
+          (i + 1) * controlled_decoding.interval for i in range(chunks)
+      ]
+    else:
+      decode_buckets = max_decode_steps
     # After the first iteration, condense the decode state since we know that
     # there are only `controlled_decoding.block_num_samples` unique samples.
     # Also perform lazy prefix broadcast and create new decode states with
@@ -1400,18 +1406,19 @@ def sample_decode_after_fprop(
     # Iter 1 (time_dim = 3): [1, 8, 2, 64, 16, 128]
     # Iter 2 (time_dim = 4): [1, 8, 1, 2, 64, 16, 128]
     # Iter 3 (time_dim = 5): [1, 8, 1, 1, 2, 64, 16, 128]
-    for i in range(chunks):
+    for i in range(len(decode_buckets)):
       if i > 0:
+        pad_size = decode_buckets[i] - decode_buckets[i - 1]
         transform_state_fn(
             model, _condense_state(controlled_decoding.block_num_samples)
         )
         lazy_broadcast_prefix_fn(
             model,
             controlled_decoding.block_num_samples,  # num_suffix_samples
-            controlled_decoding.interval,  # suffix_length
+            pad_size,  # suffix_length
         )
       result = nn.while_loop(
-          get_cond_func((i + 1) * controlled_decoding.interval),
+          get_cond_func(decode_buckets[i]),
           loop_body,
           model,
           result,
