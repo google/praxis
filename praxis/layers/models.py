@@ -1046,8 +1046,8 @@ class ClassificationModel(base_model.BaseModel):
       - A NestedMap containing str keys and features, softmax output and the
         class weights as values.
     """
-    inputs = input_batch.Get(self.input_field)
-    label_probs = input_batch.Get(self.label_field)
+    inputs = input_batch[self.input_field]
+    label_probs = input_batch[self.label_field]
     features = self.network(inputs)
     batch_size = inputs.shape[0]
     example_weights = jnp.ones([batch_size])
@@ -1083,7 +1083,7 @@ class ClassificationModel(base_model.BaseModel):
         training example, where the first dimension of each tensor is the batch
         index. The base class just returns an empty dict.
     """
-    label_probs = input_batch.Get(self.label_field)
+    label_probs = input_batch[self.label_field]
     avg_xent = predictions.softmax_output.avg_xent
     total_weight = predictions.softmax_output.total_weight
     metrics = NestedMap(
@@ -1128,7 +1128,7 @@ class ClassificationModel(base_model.BaseModel):
     Returns:
       - A NestedMap containing logits and logp scores.
     """
-    inputs = input_batch.Get(self.input_field)
+    inputs = input_batch[self.input_field]
     features = self.network(inputs)
     logits = self.softmax.get_logits(inputs=features)
     logp = self.softmax.logits_to_logp(logits)
@@ -1136,7 +1136,7 @@ class ClassificationModel(base_model.BaseModel):
 
   def decode(self, input_batch: NestedMap) -> DecodeOut:
     """Computes predictions and runs metrics."""
-    label_probs = input_batch.Get(self.label_field)
+    label_probs = input_batch[self.label_field]
     predictions = self.compute_predictions(input_batch)
     losses, _ = self.compute_loss(predictions, input_batch)
 
