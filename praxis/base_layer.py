@@ -1519,19 +1519,11 @@ class BaseLayer(nn.Module):
       source: The configuration object to copy parameters from.
       target: The configuration object to copy parameters to.  Mutated in-place.
     """
-    assert isinstance(
-        source, (pax_fiddle.Config, BaseLayer)
-    ), source
+    assert isinstance(source, (pax_fiddle.Config, BaseLayer)), source
     assert isinstance(target, pax_fiddle.Config), target
     if isinstance(source, pax_fiddle.Config):
-      assert issubclass(fdl.get_callable(source), BaseLayer)
-    assert issubclass(target.cls, BaseLayer)
-    BaseLayer._copy_base_params_to_fdl_config(source, target)
-
-  @staticmethod
-  def _copy_base_hparams(
-      source: Union[pax_fiddle.Config, BaseLayer], target: pax_fiddle.Config
-  ):
+      assert issubclass(fdl.get_callable(source), BaseLayer), source
+    assert issubclass(fdl.get_callable(target), BaseLayer), target
     if target.dtype == jnp.float32:
       target.dtype = source.dtype
     if target.fprop_dtype is None:
@@ -1551,46 +1543,6 @@ class BaseLayer(nn.Module):
       # Params().Set syntax in which case, source.params_init is a
       # WeightInit, copy.deepcopy(source.params_init) works in both cases.
       target.params_init = copy.deepcopy(source.params_init)
-
-  @staticmethod
-  def _copy_base_params_to_fdl_config(
-      source: Union[pax_fiddle.Config, BaseLayer], target: pax_fiddle.Config
-  ):
-    # TODO(edloper): Once we start using `base_layer.instance_field`, we will
-    # also need to copy base hparams to child objects in `pax_fiddle.build`
-    # (because create_child won't get called for those sub-fields).
-
-    # We copy from parent to child, then from child to grandchild, etc.  This
-    # stack keeps track of the ancestors of `value` in `visit` (defined below).
-    source_stack = [source]
-
-    def visit(value, state: daglish.State) -> None:
-      # Copy params if `value` is a BaseLayer config.
-      value_is_base_layer = isinstance(value, BaseLayer) or (
-          isinstance(value, pax_fiddle.Config)
-          and isinstance(fdl.get_callable(value), type)
-          and issubclass(fdl.get_callable(value), BaseLayer)
-      )
-      if value_is_base_layer:
-        BaseLayer._copy_base_hparams(source_stack[-1], value)
-        source_stack.append(value)
-
-      # Recurse to child objects (skipping fields tagged "DoNotBuild").
-      # We skip DoNotBuild objects, because those are child-templates, and
-      # they will inherit parameters from their parent object when their
-      # parent calls self.create_child.
-      if isinstance(value, pax_fiddle.Config):
-        for arg_name, arg_val in value.__arguments__.items():
-          arg_tags = value.__argument_tags__.get(arg_name, ())
-          if pax_fiddle.DoNotBuild not in arg_tags:
-            state.call(arg_val, daglish.Attr(arg_name))
-      elif state.is_traversable(value):
-        state.flattened_map_children(value)
-
-      if value_is_base_layer:
-        source_stack.pop()
-
-    daglish.MemoizedTraversal.run(visit, target)
 
   def post_init_hparams(self, *args):
     """Recursively populates the HYPER_PARAMS collection with hyper-params ...
