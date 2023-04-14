@@ -1286,6 +1286,95 @@ class AttentionsTest(test_utils.TestCase):
     self.assertAllClose(k_proj_ref, k_proj_combine)
     self.assertAllClose(v_proj_ref, v_proj_combine)
 
+  @parameterized.parameters([
+      (False, True, 3, True, 1, 0),
+      (True, True, 3, True, 2, 1),
+      (False, True, 4, False, 3, 3),
+      (True, True, 4, True, 4, 1),
+      (False, False, 1, False, 5, 8),
+      (True, False, 1, True, 6, 7),
+      (False, False, 1, True, 7, 2),
+      (True, False, 1, True, 8, 6),
+  ])
+  def test_local_attention_extend_step(
+      self,
+      combine_qkv,
+      dconv_qkv,
+      dconv_kernel_size,
+      use_rotary_position_emb,
+      left_context,
+      prefix_len,
+  ):
+    mdl_dim = 16
+    hidden_dim = 32
+    num_heads = 4
+    test_layer_p = attentions.LocalSelfAttention.config(
+        left_context=left_context,
+        right_context=0,
+        name='mh',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        dim_per_head=16 if use_rotary_position_emb else None,
+        atten_logit_cap=20.0,
+        combine_qkv=combine_qkv,
+        dconv_qkv=dconv_qkv,
+        dconv_kernel_size=dconv_kernel_size,
+        use_rotary_position_emb=use_rotary_position_emb)
+    layer = instantiate(test_layer_p)
+    target_batch_size = 3
+    source_max_length = 16
+    target_max_length = 16
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    prefix = jnp.zeros_like(query_vec)
+    prefix = jax.lax.dynamic_update_slice(prefix, query_vec[:, 0:prefix_len, :],
+                                          [0, 0, 0])
+    key_vec = query_vec
+    value_vec = query_vec
+
+    atten_mask = jnp.tile(
+        attentions.causal_mask(query_vec), (target_batch_size, 1, 1, 1)
+    )
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, query_vec, key_vec, value_vec,
+                                atten_mask)
+      logging.info('initial_vars: %s', initial_vars)
+      fprop_out, _ = layer.apply(
+          initial_vars,
+          query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+          method=layer.__call__)
+      # Updates decode states in fprop.
+      _, attention_states = layer.apply(
+          initial_vars,
+          prefix,
+          prefix,
+          prefix,
+          atten_mask,
+          method=layer.__call__,
+          mutable=[base_layer.DECODE_CACHE])
+
+      # Call extend step start from prefix_len.
+      for t in range(prefix_len, target_max_length):
+        updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+        encoded, attention_states = layer.apply(
+            updated_vars,
+            query_vec=query_vec[:, t, :],
+            atten_mask=atten_mask[:, :, t, :],
+            time_step=t,
+            segment_pos=None,
+            method=layer.extend_step,
+            mutable=[base_layer.DECODE_CACHE])
+        logging.info('encoded: %s', encoded)
+        logging.info('fprop_out[:, t, :]: %s', fprop_out[:, t, :])
+        self.assertAllClose(fprop_out[:, t, :], encoded)
+
   @parameterized.parameters([(False, True, 3, True), (True, True, 3, True),
                              (False, True, 4, False), (True, True, 4, True),
                              (False, False, 1, False), (True, False, 1, True),

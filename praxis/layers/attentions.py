@@ -2909,22 +2909,82 @@ class LocalSelfAttention(DotProductAttention):
                           atten_mask: JTensor,
                           relative_bias: Optional[JTensor] = None,
                           time_step: Optional[JTensor] = None) -> JTensor:
-    raise NotImplementedError('One step is not implemented for %s' %
-                              self.__name__)
+    if self.right_context > 0:
+      raise ValueError('Local attention must be causal to extend step.')
+
+    key = self._shard_blnh(self.get_decode_state(key_state_name))
+    value = self._shard_blnh(self.get_decode_state(value_state_name))
+    k_b = key.shape[0]
+    q_b = query.shape[0]
+    if q_b != k_b:
+      if q_b % k_b != 0:
+        raise ValueError(
+            f'q batch size {q_b} is not divisible by state batch size {k_b}')
+      key = jnp.repeat(key, q_b // k_b, axis=0)
+      value = jnp.repeat(value, q_b // k_b, axis=0)
+    if atten_mask.shape[0] != q_b and atten_mask.shape[0] != 1:
+      assert atten_mask.shape[0] == k_b, (atten_mask.shape, k_b)
+      atten_mask = jnp.repeat(atten_mask, q_b // k_b, axis=0)
+    # query is 3d.
+    query = self._shard_bnh(query)
+
+    left_index = max(time_step - self.left_context + 1, 0)
+    key = key[:, left_index : time_step + 1]
+    value = value[:, left_index : time_step + 1]
+    atten_mask = atten_mask[..., left_index : time_step + 1]
+
+    b, l, n, h = key.shape
+    base_layer.assert_has_shape(value, [b, l, n, h])
+    base_layer.assert_has_shape(query, [b, n, h])
+    base_layer.assert_has_shape(atten_mask, [-1, 1, l])
+    asserts.in_set(atten_mask.shape[0], [b, 1])
+    query = self._scale_query(query)
+    logits = jnp.einsum(
+        'BNH,BLNH->BNL',
+        query,
+        key,
+        _dot_general=self.make_qk_dot_general(),
+    )
+    if relative_bias is not None:
+      relative_bias = relative_bias[..., left_index : time_step + 1]
+      base_layer.assert_has_shape(relative_bias, [-1, n, 1, l])
+      asserts.in_set(relative_bias.shape[0], [b, 1])
+      relative_bias = jnp.squeeze(relative_bias, axis=2)
+      logits += relative_bias
+    logits = self._cap_logits(logits)
+    # Attention softmax is always carried out in fp32.
+    logits = logits.astype(jnp.float32)
+    # Apply attention masking
+    padded_logits = logits + atten_mask.astype(jnp.float32)
+    # Of shape [b, n, s]
+    if self.attention_extra_logit is None:
+      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
+    else:
+      probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
+          key.dtype)
+    # Compute the attention context.
+    encoded = jnp.einsum(
+        'BNL,BLNH->BNH',
+        probs,
+        value,
+        _dot_general=self.make_pv_dot_general(),
+    )
+
+    if self.zero_fully_masked:
+      # Return zeros for tokens which don't attend anything.
+      fully_masked = jnp.all(
+          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+          axis=-1,
+      )[..., jnp.newaxis]
+      encoded *= 1 - fully_masked
+
+    encoded = self._shard_bnh(encoded)
+    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
 
   def init_states(self, target_batch_size: int,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                   target_max_length: int) -> NestedMap:
 
     raise NotImplementedError('init_states is not implemented for %s' %
-                              self.__name__)
-
-  def extend_step(self, query_vec: JTensor,  # pytype: disable=signature-mismatch  # overriding-parameter-name-checks
-                  *,
-                  atten_mask: JTensor,
-                  time_step: JTensor,
-                  segment_pos: Optional[JTensor],
-                  is_cross_attention: bool = False) -> JTensor:
-    raise NotImplementedError('extend_step is not implemented for %s' %
                               self.__name__)
 
 
@@ -2977,6 +3037,15 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     # Keeps useful slices. [B, N, U, W, C]
     term_bd = term_bd[:, :, :, :w, :]
     return term_ac + term_bd
+
+  def extend_step(self, query_vec: JTensor,  # pytype: disable=signature-mismatch  # overriding-parameter-name-checks
+                  *,
+                  atten_mask: JTensor,
+                  time_step: JTensor,
+                  segment_pos: Optional[JTensor],
+                  is_cross_attention: bool = False) -> JTensor:
+    raise NotImplementedError('extend_step is not implemented for %s' %
+                              self.__name__)
 
 
 class CausalDepthwiseConv1D(base_layer.BaseLayer):
