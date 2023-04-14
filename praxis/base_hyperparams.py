@@ -798,12 +798,15 @@ class BaseParameterizable:
     if not (
         hasattr(cls, '_USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE')
         or 'google.colab' in sys.modules
+        # TODO(edloper): Remove this once pax-rfc-52 has been applied to
+        # classes in deployment/pax.
+        or '.deployment.pax.' in cls.__module__
     ):
       raise ValueError(
           'New Pax classes should be subclassed from '
           'FiddleBaseParameterizable. If you need to override this, then add '
           '_USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE=True to your class '
-          'definition.'
+          f'definition.  Module={cls.__module__}, name={cls.__qualname__}'
       )
     super().__init_subclass__(**kwargs)
     _bind_cls_to_nested_params_class(cls)
