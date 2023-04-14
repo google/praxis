@@ -379,7 +379,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   def _log_softmax_with_extra_logit(self, logits: JTensor) -> JTensor:
     """Computes log softmax with extra logit.
 
-    self.hparams.attention_extra_logit is a user defined float value that
+    self.attention_extra_logit is a user defined float value that
     helps to stabilize logit values so that they don't drift too much from it.
 
     Args:

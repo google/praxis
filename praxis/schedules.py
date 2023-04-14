@@ -567,7 +567,6 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
 
   def __post_init__(self):
     super().__post_init__()
-    p = self.hparams
     assert len(self.boundaries) >= 1 and len(self.boundaries) == len(
         self.values
     )
@@ -579,7 +578,7 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
     # Offset the boundaries, since each schedule passed to
     # optax.join_schedules() will receive a step count indicating the number
     # of steps since the previous boundary transition.
-    boundaries_pc = [b - p.boundaries[0] for b in self.boundaries[1:]]
+    boundaries_pc = [b - self.boundaries[0] for b in self.boundaries[1:]]
     self.p1 = instantiate(
         PiecewiseConstant.HParams(boundaries=boundaries_pc, values=self.values)
     )
@@ -678,10 +677,13 @@ class ContinuousSchedule(BaseSchedule):
 
   def __post_init__(self):
     super().__post_init__()
-    p: self.HParams = self.hparams
-    limit = p.start_step + p.half_life_steps * math.log(p.min) / math.log(0.5)
+    limit = self.start_step + self.half_life_steps * math.log(
+        self.min
+    ) / math.log(0.5)
     self.exp: Exponential = instantiate(
-        Exponential.HParams(start=(p.start_step, 1.0), limit=(limit, p.min))
+        Exponential.HParams(
+            start=(self.start_step, 1.0), limit=(limit, self.min)
+        )
     )
 
   def value_at(self, step: JTensor) -> JTensor:

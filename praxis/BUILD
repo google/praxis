@@ -287,7 +287,6 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
-        ":pax_fiddle",
         ":pytypes",
         # Implicit jax dependency.
         # Implicit optax dependency.

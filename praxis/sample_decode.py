@@ -647,7 +647,6 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
   ) -> NestedMap:
     """The default sampling logic implementing top-K and top-P sampling."""
     del decode_loop_state
-    p = self.hparams
     assert self.top_k >= 0
     input_logits = logits
 
@@ -667,11 +666,10 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
         )
         return prng_key
 
-    top_p = (
-        per_example_top_p
-        if per_example_top_p is not None
-        else getattr(p, 'top_p', None)
-    )
+    if per_example_top_p is not None:
+      top_p = per_example_top_p
+    else:
+      top_p = getattr(self, 'top_p', None)
 
     if self.epsilon_p > 0.0:
       logits = epsilon_mask_logits(logits, self.epsilon_p)

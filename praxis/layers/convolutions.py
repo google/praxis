@@ -115,7 +115,7 @@ class Conv2D(base_layer.BaseLayer):
 
   def setup(self) -> None:
     if not self.name:
-      raise ValueError('self.hparams.name needs to be set.')
+      raise ValueError('self.name needs to be set.')
     if self.padding not in ['SAME', 'VALID']:
       raise ValueError(f'padding should be SAME or VALID, got {self.padding}')
     if len(self.filter_shape) != 4:
@@ -320,7 +320,7 @@ class Conv3D(base_layer.BaseLayer):
 
   def setup(self) -> None:
     if not self.name:
-      raise ValueError('self.hparams.name needs to be set.')
+      raise ValueError('self.name needs to be set.')
     if self.padding not in ['SAME', 'VALID']:
       raise ValueError(f'padding should be SAME or VALID, got {self.padding}')
     if len(self.filter_shape) != 5:
