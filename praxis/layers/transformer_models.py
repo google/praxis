@@ -1489,11 +1489,14 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     """
     if labels is None:
       logits = self.softmax.get_logits(inputs=activations)
-      return NestedMap(
-          logits=logits,
-          log_probs=jax.nn.log_softmax(logits),
-          probs=jax.nn.softmax(logits),
-      )
+      xent_output = NestedMap(logits=logits)
+      # For numerical stability, use fp32 for softmax and log_softmax.
+      logits_dtype = logits.dtype
+      casted_logits = logits.astype(jnp.float32)
+      xent_output.log_probs = jax.nn.log_softmax(casted_logits).astype(
+          logits_dtype)
+      xent_output.probs = jax.nn.softmax(casted_logits).astype(logits_dtype)
+      return xent_output
     class_ids = None
     class_probabilities = None
     if 'class_ids' in labels:
