@@ -352,9 +352,7 @@ def put_to_devices(host_array: np.ndarray,
     raise ValueError(
         f'Unable to put to devices shape {host_array.shape} with '
         f'local device count {local_device_count}') from array_split_error
-  device_buffers = [
-      jax.device_put(arr, d) for arr, d in zip(per_device_arrays, local_devices)
-  ]
+  device_buffers = jax.device_put(per_device_arrays, local_devices)
   return device_buffers
 
 
