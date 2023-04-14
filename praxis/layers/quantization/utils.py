@@ -125,27 +125,20 @@ def pack_4bit(x: JTensor, pack_dim: int) -> JTensor:
   rows = x.shape[pack_dim]
   cols = x.shape[pack_dim + 1]
   blocks = rows // 8
-  shift = jnp.array([s * 4 for s in range(8)], packed_dtype)
-  shift = jnp.tile(shift, blocks)
-  shift_shape = [1] * x.ndim
-  shift_shape[pack_dim] = rows
-  shift = shift.reshape(*shift_shape)
 
+  rep_shape = list(x.shape)
+  rep_shape.insert(pack_dim + 1, 8)
+  rep_shape[pack_dim] //= 8
+
+  shifts = lax.broadcasted_iota(jnp.int32, rep_shape, pack_dim + 1)
+  shifts *= 4
+
+  # Promote x to int32
   x = x & jnp.array(0x0F, packed_dtype)
-  x = x << shift
-  x = jnp.concatenate(jnp.split(x, blocks, axis=pack_dim), axis=pack_dim + 1)
-
-  a_shape = list(x.shape)
-  a_shape[pack_dim] = 1
-  a_shape[pack_dim + 1] = blocks * cols
-  a = jnp.zeros(a_shape, packed_dtype)
-  for i in range(8):
-    a = a | lax.slice_in_dim(x, i, i + 1, axis=pack_dim)
-
-  a_shape[pack_dim] = blocks
-  a_shape[pack_dim + 1] = cols
-  a = a.reshape(*a_shape)
-  return a
+  x = lax.reshape(x, rep_shape)
+  x = x << shifts
+  x = lax.reduce(x, jnp.array(0x0, packed_dtype), lax.add, [pack_dim + 1])
+  return x
 
 
 def unpack_4bit(
@@ -182,26 +175,18 @@ def unpack_4bit(
 
   rep_shape = list(packed.shape)
   rep_shape.insert(pack_dim + 1, 8)
-
   rep = jnp.broadcast_to(jnp.expand_dims(packed, pack_dim + 1), rep_shape)
+  shifts = lax.broadcasted_iota(jnp.int32, rep_shape, pack_dim + 1)
 
-  shifts_values = [
-      s * 4
-      for s in (range(7, -1, -1) if original_dtype == jnp.int8 else range(0, 8))
-  ]
-  shifts = jnp.reshape(
-      jnp.array(
-          shifts_values,
-          dtype=jnp.int32,
-      ),
-      [8] + [1] * (packed.ndim - 1 - pack_dim),
-  )
+  rep = lax.collapse(rep, pack_dim, pack_dim + 2)
+  shifts = lax.collapse(shifts, pack_dim, pack_dim + 2)
+  shifts = 7 - shifts
+  shifts *= 4
+  rep <<= shifts
   if original_dtype == jnp.int8:
-    rep = (rep << shifts) >> 28
+    return lax.shift_right_arithmetic(rep, 28)
   else:
-    rep = (rep >> shifts) & jnp.int32(0x0F)
-
-  return lax.collapse(rep, pack_dim, pack_dim + 2)
+    return lax.shift_right_logical(rep, 28)
 
 
 def get_packed_shape(shape: Sequence[int], pack_dim: int, packing_factor: int):
