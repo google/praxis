@@ -25,7 +25,7 @@ import functools
 import itertools
 import math
 import typing
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union, Mapping
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 from absl import flags
 from absl import logging
@@ -1467,6 +1467,23 @@ class BaseLayer(nn.Module):
       assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)
       return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
 
+  def get_shard_count_on_dim(
+      self, dim_sharding: Optional[Union[str, Sequence[str]]]
+  ) -> int:
+    """Returns the number of shards on a tensor dim given its sharding."""
+    if dim_sharding is None or self.mesh_axis_names is None:
+      return 1
+    if isinstance(dim_sharding, str):
+      dim_sharding = [dim_sharding]
+    count = 1
+    for s in dim_sharding:
+      axis_idx = self.mesh_axis_names.index(s)
+      if self.ici_mesh_shape:
+        count *= self.ici_mesh_shape[axis_idx]
+      if self.dcn_mesh_shape:
+        count *= self.dcn_mesh_shape[axis_idx]
+    return count
+
   # Fetches variables from flax 'params' class via theta "dot" syntax.
   theta = ThetaDescriptor()
 
@@ -2205,7 +2222,11 @@ class BaseLayer(nn.Module):
 
   @nn.nowrap
   def create_child(
-      self, name: str, params: pax_fiddle.Config[BaseLayerT]
+      self,
+      name: str,
+      params: pax_fiddle.Config[BaseLayerT],
+      *,
+      skip_clone: bool = False,
   ) -> BaseLayerT:
     """Creates a sub layer.
 
@@ -2220,19 +2241,25 @@ class BaseLayer(nn.Module):
     Args:
       name: Sub layer name which is used as the key into vars/theta.
       params: `Hyperparams` object to instantiate a layer.
+      skip_clone: Skips defensive copies if true.  If true, you must not modify
+        or re-use `params`.
 
     Returns:
       The created sub layer, or makes the sub layer an assess of this layer.
     """
     self._check_child_layername_conflict(name)
-    child = self._create_child(name, params)
+    child = self._create_child(name, params, skip_clone=skip_clone)
     if self._state.in_setup:
       setattr(self, name, child)
     return child
 
   @nn.nowrap
   def create_children(
-      self, name: str, params: Sequence[pax_fiddle.Config[BaseLayer]]
+      self,
+      name: str,
+      params: Sequence[pax_fiddle.Config[BaseLayer]],
+      *,
+      skip_clone: bool = False,
   ) -> Sequence[BaseLayer]:
     """Creates a list of sub layers.
 
@@ -2245,6 +2272,8 @@ class BaseLayer(nn.Module):
       name: The name for the sub layers, which is used as the key into
         vars/theta.
       params: a list of `Hyperparams` objects to create.
+      skip_clone: Avoids defensive copies if True.  If true, you must not modify
+        or re-use `params`.
 
     Returns:
       The created sub layers, or makes the sub layers an assess of this layer.
@@ -2252,14 +2281,17 @@ class BaseLayer(nn.Module):
     assert isinstance(params, Sequence)
     uid = itertools.count()
     self._check_child_layername_conflict(name)
-    children = [self._create_child(f'{name}_{next(uid)}', p) for p in params]
+    children = [
+        self._create_child(f'{name}_{next(uid)}', p, skip_clone=skip_clone)
+        for p in params
+    ]
     if self._state.in_setup:
       setattr(self, name, children)
     return children
 
   @nn.nowrap
   def _create_child(
-      self, name: str, params: pax_fiddle.Config[BaseLayer]
+      self, name: str, params: pax_fiddle.Config[BaseLayer], *, skip_clone: bool
   ) -> BaseLayer:
     """Creates and returns a child (w/o adding it as an attribute of `self`)."""
     if not isinstance(params, pax_fiddle.Config):
@@ -2274,7 +2306,10 @@ class BaseLayer(nn.Module):
           f'Child `{name}` already exists: make sure to use unique child names.'
       )
 
-    p = params.clone()
+    if skip_clone:
+      p = params
+    else:
+      p = params.clone()
     self.copy_base_hparams(self, p)  # mutates p in place.
     p.name = name
     child = instantiate_layer(p, self.scope.root)
