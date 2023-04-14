@@ -17,6 +17,7 @@
 
 from praxis.layers.activations import BaseActivation
 from praxis.layers.activations import CubedReLU
+from praxis.layers.activations import ELU
 from praxis.layers.activations import GELU
 from praxis.layers.activations import Identity
 from praxis.layers.activations import LeakyReLU

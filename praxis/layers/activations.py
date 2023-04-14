@@ -108,6 +108,14 @@ class LeakyReLU(BaseActivation):
     return jax.nn.leaky_relu(inputs, negative_slope=self.negative_slope)
 
 
+class ELU(BaseActivation):
+  """Exponential Linear Unit (ELU) activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    return jax.nn.elu(inputs)
+
+
 class Sigmoid(BaseActivation):
   """Sigmoid activation layer."""
 
