@@ -40,7 +40,6 @@ LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 AuxLossStruct = base_layer.AuxLossStruct
 
 AUX_LOSS = base_layer.AUX_LOSS
-sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 
 

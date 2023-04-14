@@ -56,7 +56,6 @@ JTensor = pytypes.JTensor
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 WeightHParams = base_layer.WeightHParams
 WeightInit = base_layer.WeightInit
-sub_config_field = base_hyperparams.sub_config_field
 template_field = base_layer.template_field
 
 

@@ -25,8 +25,6 @@ from praxis import sample_decode
 BaseHyperParams = base_hyperparams.BaseHyperParams
 JTensor = pytypes.JTensor
 
-sub_config_field = base_layer.sub_config_field
-
 
 class DecoderHParams(BaseHyperParams):
   """HParams for decoder.

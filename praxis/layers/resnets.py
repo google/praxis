@@ -33,7 +33,6 @@ WeightInit = base_layer.WeightInit
 JTensor = pytypes.JTensor
 
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
-sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 
 

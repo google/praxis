@@ -33,7 +33,6 @@ from praxis.layers import stochastics
 
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
-sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 JTensor = pytypes.JTensor

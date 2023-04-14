@@ -55,7 +55,6 @@ SampleDecoderHParams = decoder_hparams.SampleDecoderHParams
 GreedyDecoderHParams = decoder_hparams.GreedyDecoderHParams
 LanguageModelType = transformer_models.LanguageModelType
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
-sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 
 

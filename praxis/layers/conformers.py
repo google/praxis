@@ -33,7 +33,6 @@ from praxis.layers import transformers
 
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
-sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 BaseHyperParams = base_hyperparams.BaseHyperParams

@@ -31,7 +31,6 @@ from praxis.layers import stochastics
 
 NestedMap = py_utils.NestedMap
 SplitDimsMapping = pytypes.SplitDimsMapping
-sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 WeightInit = base_layer.WeightInit
