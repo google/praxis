@@ -155,7 +155,18 @@ def visit_nested_struct(obj_to_visit: Any,
       return f'{key}.{subkey}'
     return subkey
 
+  # Contains the ids of all the values that are being visited currently. Used to
+  # detect circular reference chains.
+  visiting_values = set()
+
   def _visit(key: str, val: Any):
+    if id(val) in visiting_values:
+      # Note we can't format `val` which may cause infinite recursion itself.
+      raise ValueError(
+          f'A circular reference chain is detected. Current key: {key}'
+      )
+    visiting_values.add(id(val))
+
     if isinstance(val, HParams):
       if enter_fn(key, val):
         for k, v in val.IterParams():
@@ -216,6 +227,8 @@ def visit_nested_struct(obj_to_visit: Any,
         visit_fn(key, val)
     else:
       visit_fn(key, val)
+
+    visiting_values.remove(id(val))
 
   _visit('', obj_to_visit)
 

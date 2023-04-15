@@ -803,6 +803,14 @@ class NestedStructToTextTestCase(absltest.TestCase):
         ],
     )
 
+  def test_circular_reference_chain(self):
+    p = SimpleTestChild.config(a=40, c=-1.3)
+    p.child = p
+    with self.assertRaisesRegex(
+        ValueError, 'A circular reference chain is detected'
+    ):
+      nested_struct_to_text(p, lambda key, val: None)
+
 
 if __name__ == '__main__':
   absltest.main()
