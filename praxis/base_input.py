@@ -193,6 +193,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
       try:
         self._peek = self.get_next_padded()
       except (tf.errors.OutOfRangeError, StopIteration):
+        logging.warning('Peek failed: input %s out of range.', self.name)
         self._peek = None
     return self._peek
 
