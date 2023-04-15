@@ -734,7 +734,7 @@ def sample_decode(
     seq_len: int,
     num_samples: int,
     fprop_fn: Optional[decoder_utils.FPropFn] = None,
-    cf_guidance_scale: Optional[Union[List[float], float]] = None,
+    cf_guidance_scale: Optional[Union[List[float], float, JTensor]] = None,
     fprop_for_prefix: bool = False,
     temperature: Union[float, JTensor] = 1.0,
     gumbel_prng_key: Optional[JTensor] = None,
@@ -912,7 +912,7 @@ def sample_decode_after_fprop(
     prefix_paddings: JTensor,
     seq_len: int,
     num_samples: int,
-    cf_guidance_scale: Optional[Union[List[float], float]] = None,
+    cf_guidance_scale: Optional[Union[List[float], float, JTensor]] = None,
     fprop_for_prefix: bool = False,
     temperature: Union[float, JTensor] = 1.0,
     gumbel_prng_key: Optional[JTensor] = None,
@@ -1126,12 +1126,16 @@ def sample_decode_after_fprop(
           model, decoder_utils.batch_broadcast_state_fn(num_samples)
       )
 
-    # If cf guidance scale is a list floats with length == num_samples, we
-    # convert it to the target shape to be used in decode loop_body.
-    if isinstance(cf_guidance_scale, Sequence):
-      assert len(cf_guidance_scale) == num_samples
-      cf_guidance_scale = jnp.array(cf_guidance_scale)
-      cf_guidance_scale = cf_guidance_scale[jnp.newaxis, :, jnp.newaxis]
+  # If cf guidance scale is a list floats with length == num_samples, we
+  # convert it to the target shape to be used in decode loop_body.
+  if isinstance(cf_guidance_scale, Sequence):
+    assert len(cf_guidance_scale) == num_samples
+    cf_guidance_scale = jnp.array(cf_guidance_scale)
+    cf_guidance_scale = cf_guidance_scale[jnp.newaxis, :, jnp.newaxis]
+  elif isinstance(cf_guidance_scale, JTensor):
+    assert cf_guidance_scale.ndim == 2
+    assert cf_guidance_scale.shape[-1] == num_samples
+    cf_guidance_scale = cf_guidance_scale[:, :, jnp.newaxis]
 
   if isinstance(temperature, JTensor):
     temperature = temperature[:, jnp.newaxis]
@@ -1159,6 +1163,15 @@ def sample_decode_after_fprop(
   per_example_max_decode_steps = jnp.minimum(
       per_example_max_decode_steps, last_decode_steps
   )
+  if cf_guidance_scale is not None and isinstance(
+      per_example_max_decode_steps, JTensor
+  ) and per_example_max_decode_steps.ndim == 1:
+    per_example_max_decode_steps = jnp.concatenate(
+        [per_example_max_decode_steps[:, None]] * 2, axis=1
+    )
+    per_example_max_decode_steps = jnp.reshape(
+        per_example_max_decode_steps, (-1)
+    )
   batch_size = prefix_ids.shape[0]
 
   # If prefix length is not specified, set it to 0.
