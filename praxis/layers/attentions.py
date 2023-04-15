@@ -18,7 +18,7 @@
 import functools
 import math
 import string
-from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple, Union, Any
 
 from absl import logging
 from flax import linen as nn
@@ -2927,10 +2927,46 @@ class LocalSelfAttention(DotProductAttention):
     # query is 3d.
     query = self._shard_bnh(query)
 
-    left_index = max(time_step - self.left_context + 1, 0)
-    key = key[:, left_index : time_step + 1]
-    value = value[:, left_index : time_step + 1]
-    atten_mask = atten_mask[..., left_index : time_step + 1]
+    def context_slice(
+        x: JTensor,
+        axis: int,
+        padding_value: Any,
+        time_step: JTensor,
+        slice_size: int,
+    ) -> JTensor:
+      """Returns a slice of x on the left of index `timestep` (inclusive).
+
+      If not enough elements, paddings will complete the slice.
+
+      Args:
+        x: Tensor to slice
+        axis: Axis to slice
+        padding_value: If the slice goes further left than x index 0, this value
+          will be used.
+        time_step: Index (inclusive) that finishes the slice.
+        slice_size: Size of the slice.
+
+      Returns:
+        Slice as a JTensor.
+      """
+      paddings_shape = list(x.shape)
+      paddings_shape[axis] = slice_size
+      paddings = jnp.full(paddings_shape, padding_value, dtype=x.dtype)
+
+      long_x = jnp.concatenate([paddings, x], axis=axis)
+      return jax.lax.dynamic_slice_in_dim(
+          long_x, time_step + 1, slice_size, axis=axis
+      )
+
+    key = context_slice(key, 1, 0.0, time_step, self.left_context)
+    value = context_slice(value, 1, 0.0, time_step, self.left_context)
+    atten_mask = context_slice(
+        atten_mask,
+        -1,
+        py_utils.get_large_negative_number(jnp.float32),
+        time_step,
+        self.left_context,
+    )
 
     b, l, n, h = key.shape
     base_layer.assert_has_shape(value, [b, l, n, h])
@@ -2945,7 +2981,9 @@ class LocalSelfAttention(DotProductAttention):
         _dot_general=self.make_qk_dot_general(),
     )
     if relative_bias is not None:
-      relative_bias = relative_bias[..., left_index : time_step + 1]
+      relative_bias = context_slice(
+          relative_bias, -1, 0.0, time_step, self.left_context
+      )
       base_layer.assert_has_shape(relative_bias, [-1, n, 1, l])
       asserts.in_set(relative_bias.shape[0], [b, 1])
       relative_bias = jnp.squeeze(relative_bias, axis=2)
