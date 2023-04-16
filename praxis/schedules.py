@@ -501,7 +501,7 @@ class LinearRampupExponentialDecay(BaseSchedule):
     assert self.max > 0, 'Must set max.'
 
     # Offset the boundaries, since each schedule passed to
-    # optax.join_schedules() will receive a step step indicating the number
+    # optax.join_schedules() will receive a step count indicating the number
     # of steps since the previous boundary transition.
     self._schedules = []
     self._boundaries = []
