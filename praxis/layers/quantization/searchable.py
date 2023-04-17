@@ -44,13 +44,13 @@ def _build_quantization_templates(
   for precision in precisions:  # pylint: disable=not-an-iterable
     if precision not in _SUPPORTED_PRECISIONS:
       raise AttributeError('Precision %d is not supported.' % precision)
-    act_qtzr_tmpl = quantizer.create_tensor_quantizer(
-        f'act_quantizer_int{str(precision)}', base_qhparams.act_params
-    )
     # if not quantizing activations, then don't set precision to indicate.
-    if base_qhparams.act_params.precision:
+    if base_qhparams.act_params and base_qhparams.act_params.precision:
+      act_qtzr_tmpl = quantizer.create_tensor_quantizer(
+          f'act_quantizer_int{str(precision)}', base_qhparams.act_params
+      )
       act_qtzr_tmpl.precision = precision
-    act_qtzr_tmpls.append(act_qtzr_tmpl)
+      act_qtzr_tmpls.append(act_qtzr_tmpl)
     weight_qtzr_tmpl = quantizer.create_tensor_quantizer(
         f'weight_quantizer_int{str(precision)}', base_qhparams.weight_params
     )
@@ -68,13 +68,21 @@ class SearchableQuantizedLayer(base_layer.BaseLayer):
         self.precisions, self.quantization
     )
     # Use AutoMLSelect as quantizer
-    self.create_child(
-        'act_quantizer',
-        pax_fiddle.Config(
-            automl_select.AutoMLSelect,
-            search_options_tpl=act_qtzr_tmpls,
-        ),
-    )
+    if act_qtzr_tmpls:
+      self.create_child(
+          'act_quantizer',
+          pax_fiddle.Config(
+              automl_select.AutoMLSelect,
+              search_options_tpl=act_qtzr_tmpls,
+          ),
+      )
+    else:
+      self.create_child(
+          'act_quantizer',
+          quantizer.create_tensor_quantizer(
+              'aqt_quantizer', self.quantization.act_params
+          ),
+      )
     self.create_child(
         'weight_quantizer',
         pax_fiddle.Config(

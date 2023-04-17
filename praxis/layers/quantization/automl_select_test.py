@@ -23,9 +23,9 @@ import jax.numpy as jnp
 from praxis import base_hyperparams
 from praxis import pax_fiddle
 from praxis import test_utils
-from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import automl_select
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import quantizer
 
 
 ActQuantizationParams = quantization_hparams.ActQuantizationParams
@@ -37,8 +37,12 @@ class AutomlSelectTest(test_utils.TestCase):
   def test_automl_select(self):
     p = pax_fiddle.Config(automl_select.AutoMLSelect)
     p.search_options_tpl = [
-        quantizer.create_tensor_quantizer('int4', ActQuantizationParams(precision=4)),
-        quantizer.create_tensor_quantizer('int8', ActQuantizationParams(precision=8)),
+        quantizer.create_tensor_quantizer(
+            'int4', ActQuantizationParams(precision=4)
+        ),
+        quantizer.create_tensor_quantizer(
+            'int8', ActQuantizationParams(precision=8)
+        ),
     ]
 
     m = instantiate(p)
@@ -50,6 +54,7 @@ class AutomlSelectTest(test_utils.TestCase):
     q_x2, q_s2, _ = m.apply(m_vars, x, 0)
     self.assertNotAllClose(q_x1, q_x2)
     self.assertNotAllClose(q_s1, q_s2)
+    self.assertIn('rl_variables', m_vars['non_trainable'])
 
 
 if __name__ == '__main__':

@@ -20,8 +20,8 @@ from absl.testing import absltest
 import jax
 import jax.numpy as jnp
 
-from praxis import base_layer
 from praxis import base_hyperparams
+from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers.quantization import quantization_hparams
@@ -71,6 +71,19 @@ class SearchableTest(test_utils.TestCase):
         precisions=[4, 8],
     )
     self._test_common(p, jnp.ones((1, 3), dtype=p.dtype))
+
+  def test_searchable_linear_without_act_quant(self):
+    self.quantization_tpl.act_params.precision = None
+    p = pax_fiddle.Config(
+        searchable.SearchableLinear,
+        quantization=self.quantization_tpl,
+        input_dims=3,
+        output_dims=1,
+        precisions=[4, 8],
+    )
+    m = instantiate(p)
+    m_vars = m.init(jax.random.PRNGKey(0), jnp.ones((1, 3), dtype=p.dtype))
+    self.assertNotIn('act_quantizer', m_vars['non_trainable'])
 
   def test_attention_projections(self):
     p = pax_fiddle.Config(
