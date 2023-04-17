@@ -44,6 +44,125 @@ sub_config_field = base_layer.sub_config_field
 template_field = base_layer.template_field
 
 
+class Embedding(embedding_softmax.Embedding):
+  """Quantized Embedding layer."""
+
+  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+
+  def setup(self) -> None:
+    wp = self.weight_split_dims_mapping
+    pc = WeightHParams(
+        shape=[self.num_classes, self.input_dims],
+        mesh_shape=self.mesh_shape,
+        tensor_split_dims_mapping=wp.wt,
+    )
+    if self.quantization.mode == QuantizationMode.INFERENCE:
+      self.create_quantized_variable(
+          'emb_var',
+          pc,
+          [self.num_classes],
+          dtype=jnp.int8,
+          use_symmetric=self.quantization.weight_params.use_symmetric,
+      )
+    else:
+      self.create_variable('emb_var', pc)
+
+  def emb_lookup(self, ids: JTensor) -> JTensor:
+    ap = self.activation_split_dims_mapping
+
+    if self.quantization.mode == QuantizationMode.INFERENCE:
+      emb_var, scale_var, zp_var = self.get_quantized_weight(
+          'emb_var', use_symmetric=self.quantization.weight_params.use_symmetric
+      )
+    else:
+      emb_var = self.theta.emb_var
+
+    if self.lookup_style == 'index':
+      embs = jnp.asarray(emb_var)[(ids,)]
+    elif self.lookup_style == 'matmul':
+      # Explicit casting to fprop_dtype needed for bf16.
+      one_hot_ids = jax.nn.one_hot(
+          ids, self.num_classes, dtype=self.fprop_dtype
+      )
+      embs = linears.project_last_dim(one_hot_ids, emb_var)
+    else:
+      raise ValueError('Unknown lookup style.')
+
+    if self.quantization.mode == QuantizationMode.INFERENCE:
+      scale = jnp.expand_dims(scale_var[(ids,)], axis=2)
+      embs = jnp.multiply(embs, scale)
+      if not self.quantization.weight_params.use_symmetric:
+        zp = jnp.expand_dims(zp_var[(ids,)], axis=2)
+        embs = embs - zp
+
+    # map out-of-boundary ids to nan for easier debug
+    if self.set_nan_for_oob_id:
+      embs = jnp.where(ids[..., jnp.newaxis] < self.num_classes, embs, jnp.nan)
+
+    if self.scale_sqrt_depth:
+      embs *= self.input_dims**0.5
+
+    embs = base_layer.maybe_shard(
+        embs, ap.emb_out_split_dims_mapping, self.mesh_axis_names
+    )
+    return embs
+
+  def quantized_partition_specs(self) -> Any:
+    """Get quantized PartitionSpec.
+
+    Returns:
+      a map from names to partition spec.
+    """
+    scale_name = 'emb_var' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
+    wp = self.weight_split_dims_mapping
+    weight_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
+        self._weight_hparams['emb_var'], self.mesh_axis_names
+    )
+    scale_split_dims_mapping = [wp.wt[0]] if wp.wt is not None else None
+    # scale_weight_hparam is unmaterialized so shape is irrelevant.
+    scale_weight_hparam = WeightHParams(
+        shape=(), tensor_split_dims_mapping=scale_split_dims_mapping
+    )
+    scale_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
+        scale_weight_hparam, self.mesh_axis_names
+    )
+    partitionspec = {'emb_var': weight_pspec, scale_name: scale_pspec}
+
+    if not self.quantization.weight_params.use_symmetric:
+      zp_name = 'emb_var' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
+      partitionspec[zp_name] = copy.deepcopy(scale_pspec)
+
+    res = {base_layer.PARAMS: partitionspec}
+    return res
+
+  def quantize_weight(self) -> NestedJTensor:
+    """Get quantized weight, where w is transposed and class-dim (dim 0) wise quantized.
+
+    Returns:
+      a map from names to quantized weights.
+    """
+    scale_name = 'emb_var' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
+    eqn = 'xy,zy->xz'
+    bits = self.quantization.weight_params.precision
+    percentile = self.quantization.weight_params.clipping_coeff
+
+    q_w, q_s, zp = quantized_operations.reduce_einsum_weight_precision(
+        eqn,
+        self.theta.emb_var,
+        calculation_type=self.dtype,
+        bits=bits,
+        percentile=percentile,
+        use_symmetric=self.quantization.weight_params.use_symmetric,
+    )
+
+    if self.quantization.weight_params.use_symmetric:
+      res = {base_layer.PARAMS: {'emb_var': q_w, scale_name: q_s}}
+    else:
+      zp_name = 'emb_var' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
+      res = {base_layer.PARAMS: {'emb_var': q_w, scale_name: q_s, zp_name: zp}}
+    return res
+
+
 class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
   """A softmax layer that also supports embedding lookups.
 
@@ -276,12 +395,14 @@ class NClassMajorSharedEmbeddingSoftmax(
 
     wp = self.weight_split_dims_mapping
     weight_hparams_transposed = copy.deepcopy(self._weight_hparams['w'])
-    weight_hparams_transposed.tensor_split_dims_mapping = [wp.wt[1], wp.wt[0]]
+    weight_hparams_transposed.tensor_split_dims_mapping = (
+        [wp.wt[1], wp.wt[0]] if wp.wt is not None else None
+    )
     weight_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
         weight_hparams_transposed, self.mesh_axis_names
     )
     # wp.wt is not transposed at this point.
-    scale_split_dims_mapping = [wp.wt[1]]
+    scale_split_dims_mapping = [wp.wt[1]] if wp.wt is not None else None
     # scale_weight_hparam is unmaterialized so shape is irrelevant.
     scale_weight_hparam = WeightHParams(
         shape=(), tensor_split_dims_mapping=scale_split_dims_mapping

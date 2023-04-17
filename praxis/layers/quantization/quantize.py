@@ -84,6 +84,34 @@ def _quantize_embedding_softmax_layer_weights(
     lm_tpl.softmax_tpl = new_softmax_tpl
 
 
+def _quantize_ngrammer_embedding_weights(
+    lm_tpl: pax_fiddle.Config[layers.TransformerLm],
+    quantization_type: QuantizationType,
+    mode: QuantizationMode,
+    weight_quantization_params: WeightQuantizationParams,
+) -> None:
+  """Rewrites Ngrammer Embedding HParam for weight only quantization."""
+  if lm_tpl.ngrammer_tpl is None:
+    return
+  if issubclass(lm_tpl.ngrammer_tpl.cls, layers.ngrammer.Ngrammer):
+    new_ngrammer_cls = quantization.Ngrammer
+  elif issubclass(lm_tpl.ngrammer_tpl.cls, layers.ngrammer.VQNgrammer):
+    new_ngrammer_cls = quantization.VQNgrammer
+  else:
+    return
+
+  new_ngrammer_tpl = pax_fiddle.Config(
+      new_ngrammer_cls,
+      quantization=QuantizationHParams(
+          quantization_type=quantization_type,
+          mode=mode,
+          weight_params=weight_quantization_params,
+      ),
+  )
+  new_ngrammer_tpl.copy_fields_from(lm_tpl.ngrammer_tpl)
+  lm_tpl.ngrammer_tpl = new_ngrammer_tpl
+
+
 # TODO(jianlijianli): mark quantize_* as private.
 def quantize_transformer_layer_weights(
     tr_tpl: pax_fiddle.Config[layers.transformers.Transformer],
@@ -237,6 +265,7 @@ def for_transformer(
     weight_quant_only: bool = True,
     quantize_embedding_softmax: bool = False,
     transposed_embedding_softmax: bool = False,
+    quantize_ngrammer_embedding: bool = False,
     linear_only: bool = False,
     dtype: jnp.dtype = jnp.int8,
 ):
@@ -261,6 +290,8 @@ def for_transformer(
       layer.
     transposed_embedding_softmax: If the model is using transposed embedding for
       embedding softmax layer.
+    quantize_ngrammer_embedding: Quantize embedding table of each embedding in
+      Ngrammer/VQNgrammer layer.
     linear_only: quantize only linear layer.
     dtype: Dtype of the quantized variables.
 
@@ -291,6 +322,7 @@ def for_transformer(
             weight_quant_only=weight_quant_only,
             quantize_embedding_softmax=quantize_embedding_softmax,
             transposed_embedding_softmax=transposed_embedding_softmax,
+            quantize_ngrammer_embedding=quantize_ngrammer_embedding,
             dtype=dtype,
         )
         return task_p
@@ -312,6 +344,7 @@ def set_quantization(
     weight_quant_only: bool = True,
     quantize_embedding_softmax: bool = False,
     transposed_embedding_softmax: bool = False,
+    quantize_ngrammer_embedding: bool = False,
     dtype: jnp.dtype = jnp.int8,
 ):
   """Sets quantization parameters for 'target' in 'config'.
@@ -335,6 +368,9 @@ def set_quantization(
       TransformerLm.softmax_tpl in `config`.
     transposed_embedding_softmax: If the model is using transposed embedding for
       embedding softmax layer.
+    quantize_ngrammer_embedding: If true, Quantize embedding table of each
+      embedding in Ngrammer/VQNgrammer layer. Regardless of `target` argument,
+      this results in rewriting TransformerLm.ngrammer_tpl in `config`.
     dtype: Dtype of the quantized variables.
   """
   weight_quantization_params = WeightQuantizationParams(
@@ -357,16 +393,24 @@ def set_quantization(
         linear_only,
     )  # pytype: disable=wrong-arg-types  # py310-upgrade
 
-  if quantize_embedding_softmax:
+  if quantize_embedding_softmax or quantize_ngrammer_embedding:
     lm_tpls = find_target_tpl(config, layers.TransformerLm)
     for lm_tpl in lm_tpls:
-      _quantize_embedding_softmax_layer_weights(
-          lm_tpl,
-          quantization_type,
-          mode,
-          weight_quantization_params,
-          transposed_embedding_softmax,
-      )  # pytype: disable=wrong-arg-types  # py310-upgrade
+      if quantize_embedding_softmax:
+        _quantize_embedding_softmax_layer_weights(
+            lm_tpl,
+            quantization_type,
+            mode,
+            weight_quantization_params,
+            transposed_embedding_softmax,
+        )  # pytype: disable=wrong-arg-types  # py310-upgrade
+      if quantize_ngrammer_embedding:
+        _quantize_ngrammer_embedding_weights(
+            lm_tpl,
+            quantization_type,
+            mode,
+            weight_quantization_params,
+        )  # pytype: disable=wrong-arg-types  # py310-upgrade
 
 
 def set_inference_mode(

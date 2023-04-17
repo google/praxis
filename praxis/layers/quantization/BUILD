@@ -34,6 +34,7 @@ pytype_strict_library(
         ":embedding_softmax",
         ":linears",
         ":multi_query_attention",
+        ":ngrammer",
         ":operations",
         ":searchable",
     ],
@@ -456,6 +457,41 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers:embedding_softmax",
+    ],
+)
+
+pytype_strict_library(
+    name = "ngrammer",
+    srcs = ["ngrammer.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":embedding_softmax",
+        ":quantization_hparams",
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis/layers:ngrammer",
+        "//praxis/layers:normalizations",
+    ],
+)
+
+py_strict_test(
+    name = "ngrammer_test",
+    srcs = ["ngrammer_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":layers",
+        ":quantization_hparams",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:test_utils",
+        "//praxis/layers:embedding_softmax",
+        "//praxis/layers:ngrammer",
     ],
 )
 
