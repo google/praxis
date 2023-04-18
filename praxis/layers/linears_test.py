@@ -210,9 +210,8 @@ class LinearsTest(test_utils.TestCase):
     logging.info('params_inits: \n%s',
                  base_hyperparams.nested_struct_to_text(params_inits))
 
-  def test_dot_general_injection(self):
-
-    class MakeDotGeneral(base_layer.BaseLayer):
+  def test_einsum_injection(self):
+    class CustomEinsum(base_layer.BaseLayer):
 
       def setup(self):
         self.create_variable(
@@ -224,24 +223,24 @@ class LinearsTest(test_utils.TestCase):
             trainable=False,
         )
 
-      def __call__(self):
+      def __call__(self, equation, lhs, rhs):
         mult = self.get_var('mult')
         self.update_var('mult', mult * 2.0)
 
         def dg(*args, **kwargs):
           return jax.lax.dot_general(*args, **kwargs) * mult
 
-        return dg
+        return jnp.einsum(equation, lhs, rhs, _dot_general=dg)
 
-    def run(tpl, expected_shapes):
+    def run(custom_einsum_tpl, expected_shapes):
       p = pax_fiddle.Config(
           linears.Linear,
           name='jax_ffn',
           input_dims=10,
           output_dims=20,
       )
-      if tpl:
-        p.set(make_dot_general_tpl=tpl)
+      if custom_einsum_tpl:
+        p.set(einsum_tpl=custom_einsum_tpl)
 
       ffn = instantiate(p)
       inputs = jnp.ones((4, 10))
@@ -273,13 +272,13 @@ class LinearsTest(test_utils.TestCase):
     }
 
     expected_shapes_new = {
-        'non_trainable': {'make_dot_general': {'mult': (1,)}},
+        'non_trainable': {'einsum': {'mult': (1,)}},
         'params': {'w': (10, 20)},
     }
 
     output1a, output1b = run(None, expected_shapes_original)
-    tpl = pax_fiddle.Config(MakeDotGeneral)
-    output2a, output2b = run(tpl, expected_shapes_new)
+    einsum_tpl = pax_fiddle.Config(CustomEinsum)
+    output2a, output2b = run(einsum_tpl, expected_shapes_new)
     # We can use exact equality beacuse in floats division by 2.0 does not
     # have a rounding error.
     self.assertAllClose(output1a, output1b, atol=0.0)

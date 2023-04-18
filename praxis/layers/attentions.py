@@ -579,7 +579,7 @@ class AttentionProjection(base_layer.BaseLayer):
   attention_combine_dims: bool = False
   use_nhd_shape: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
-  make_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
+  einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -660,7 +660,7 @@ class AttentionProjection(base_layer.BaseLayer):
         )
       self.create_variable('b', pc_bias)
 
-    self.create_child('make_dot_general', self.make_dot_general_tpl.clone())
+    self.create_child('einsum', self.einsum_tpl.clone())
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Computes the multi headed projection for inputs.
@@ -703,7 +703,7 @@ class AttentionProjection(base_layer.BaseLayer):
       ), f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {self.input_dim}'
       batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
-    ret = jnp.einsum(eqn, inputs, w, _dot_general=self.make_dot_general())
+    ret = self.einsum(eqn, inputs, w)
     if self.use_bias:
       ret += theta.b
     return ret
@@ -739,7 +739,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
   use_bias: bool = True
   attention_combine_dims: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
-  make_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
+  einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
 
   def setup(self) -> None:
     # Sharding has the same convention of AttentionProjection, which doesn't
@@ -801,8 +801,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
           tensor_split_dims_mapping=bias_split_dims_mapping,
       )
       self.create_variable('b', pc_bias)
-
-    self.create_child('make_dot_general', self.make_dot_general_tpl.clone())
+    self.create_child('einsum', self.einsum_tpl.clone())
 
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
   # attentions.
@@ -840,7 +839,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
 
     # K indexes qkv.
     eqn = f'{batch_eqn}D,KDNH->K{batch_eqn}NH'
-    ret = jnp.einsum(eqn, inputs, w, _dot_general=self.make_dot_general())
+    ret = self.einsum(eqn, inputs, w)
     ret = checkpoint_name(ret, 'combined_qkv_proj')
     if self.use_bias:
       # Add newaxis to bias weight for each batch dim since ret is K...NH
@@ -977,8 +976,8 @@ class DotProductAttention(base_layer.BaseLayer):
   decode_cache: bool = True
   attention_mask_summary: bool = False
   zero_fully_masked: bool = False
-  make_qk_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
-  make_pv_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
+  qk_einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
+  pv_einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
 
   # SPMD partition related params.
   #
@@ -1150,12 +1149,8 @@ class DotProductAttention(base_layer.BaseLayer):
       post_proj_p.weight_split_dims_mapping.wt = wp.proj
 
     self.create_child('post', post_proj_p)
-    self.create_child(
-        'make_qk_dot_general', self.make_qk_dot_general_tpl.clone()
-    )
-    self.create_child(
-        'make_pv_dot_general', self.make_pv_dot_general_tpl.clone()
-    )
+    self.create_child('qk_einsum', self.qk_einsum_tpl.clone())
+    self.create_child('pv_einsum', self.pv_einsum_tpl.clone())
 
   def _shard_bnh(self, x: JTensor) -> JTensor:
     """Shards tensors of shape [b, n, h].
@@ -1244,9 +1239,7 @@ class DotProductAttention(base_layer.BaseLayer):
 
   def _atten_logits(self, query: JTensor, key: JTensor) -> JTensor:
     """Compute logits from query and key."""
-    logits = jnp.einsum(
-        'BTNH,BSNH->BNTS', query, key, _dot_general=self.make_qk_dot_general()
-    )
+    logits = self.qk_einsum('BTNH,BSNH->BNTS', query, key)
     return logits
 
   def _dot_atten(
@@ -1325,9 +1318,7 @@ class DotProductAttention(base_layer.BaseLayer):
     # Apply attention dropout.
     probs = self.atten_dropout(probs)
     # Compute the attention context.
-    encoded = jnp.einsum(
-        'BNTS,BSNH->BTNH', probs, value, _dot_general=self.make_pv_dot_general()
-    )
+    encoded = self.pv_einsum('BNTS,BSNH->BTNH', probs, value)
 
     if self.zero_fully_masked:
       # Return zeros for tokens which don't attend anything.
@@ -1393,12 +1384,7 @@ class DotProductAttention(base_layer.BaseLayer):
     base_layer.assert_has_shape(atten_mask, [-1, 1, s])
     asserts.in_set(atten_mask.shape[0], [b, 1])
     query = self._scale_query(query)
-    logits = jnp.einsum(
-        'BNH,BSNH->BNS',
-        query,
-        key,
-        _dot_general=self.make_qk_dot_general(),
-    )
+    logits = self.qk_einsum('BNH,BSNH->BNS', query, key)
     if relative_bias is not None:
       base_layer.assert_has_shape(relative_bias, [-1, n, 1, s])
       asserts.in_set(relative_bias.shape[0], [b, 1])
@@ -1416,12 +1402,7 @@ class DotProductAttention(base_layer.BaseLayer):
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
           key.dtype)
     # Compute the attention context.
-    encoded = jnp.einsum(
-        'BNS,BSNH->BNH',
-        probs,
-        value,
-        _dot_general=self.make_pv_dot_general(),
-    )
+    encoded = self.pv_einsum('BNS,BSNH->BNH', probs, value)
 
     if self.zero_fully_masked:
       # Return zeros for tokens which don't attend anything.
@@ -2974,12 +2955,7 @@ class LocalSelfAttention(DotProductAttention):
     base_layer.assert_has_shape(atten_mask, [-1, 1, l])
     asserts.in_set(atten_mask.shape[0], [b, 1])
     query = self._scale_query(query)
-    logits = jnp.einsum(
-        'BNH,BLNH->BNL',
-        query,
-        key,
-        _dot_general=self.make_qk_dot_general(),
-    )
+    logits = self.qk_einsum('BNH,BLNH->BNL', query, key)
     if relative_bias is not None:
       relative_bias = context_slice(
           relative_bias, -1, 0.0, time_step, self.left_context
@@ -3000,12 +2976,7 @@ class LocalSelfAttention(DotProductAttention):
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
           key.dtype)
     # Compute the attention context.
-    encoded = jnp.einsum(
-        'BNL,BLNH->BNH',
-        probs,
-        value,
-        _dot_general=self.make_pv_dot_general(),
-    )
+    encoded = self.pv_einsum('BNL,BLNH->BNH', probs, value)
 
     if self.zero_fully_masked:
       # Return zeros for tokens which don't attend anything.

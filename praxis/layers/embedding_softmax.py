@@ -339,11 +339,11 @@ class SharedEmbeddingSoftmax(FullSoftmax):
   """
   lookup_style: str = 'index'
   scale_sqrt_depth: bool = False
-  make_dot_general_tpl: LayerTpl = template_field(base_layer.MakeDotGeneral)
+  einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
 
   def setup(self) -> None:
     super().setup()
-    self.create_child('make_dot_general', self.make_dot_general_tpl.clone())
+    self.create_child('einsum', self.einsum_tpl.clone())
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
@@ -363,9 +363,7 @@ class SharedEmbeddingSoftmax(FullSoftmax):
       one_hot_ids = jax.nn.one_hot(
           ids, self.num_classes, dtype=self.fprop_dtype
       )
-      embs = linears.project_last_dim(
-          one_hot_ids, emb_var, dot_general=self.make_dot_general()
-      )
+      embs = self.einsum('...y,yz->...z', one_hot_ids, emb_var)
     else:
       raise ValueError('Unknown lookup style.')
     # Scale with sqrt(embedding dims)
