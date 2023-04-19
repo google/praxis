@@ -26,9 +26,9 @@ from praxis import base_layer
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import attentions
-from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import utils
 
 QuantizationHParams = quantization_hparams.QuantizationHParams
@@ -241,6 +241,8 @@ class AttentionProjection(attentions.AttentionProjection):
             rhs_quantizer=self.weight_quantizer,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
+        if self.quantization.act_params is not None:
+          inputs = operations.fakequant_activation(inputs)
         w = operations.fakequant_einsum(
             eqn,
             w,
@@ -531,6 +533,8 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             rhs_quantizer=self.weight_quantizer,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
+        if self.quantization.act_params is not None:
+          inputs = operations.fakequant_activation(inputs)
         w = operations.fakequant_einsum(
             eqn,
             w,

@@ -44,6 +44,18 @@ class QuantizationUtilsTest(test_utils.TestCase):
     w = jnp.array([[1, 2, 1], [2, 1, 2], [1, 3, 1]], dtype=jnp.int8)
     s = jnp.array([0.1, 0.2, 0.3], dtype=jnp.bfloat16)
 
+    # It will use einsum with float multiplication.
+    ret = operations.einsum(eqn, x, w, s)
+    expected = jnp.array([[0.800781, 2.60938, 2.40625], [0.800781, 3, 2.40625]],
+                         dtype=jnp.bfloat16)
+    self.assertArraysEqual(ret, expected)
+
+  def test_native_quantized_einsum(self):
+    x = jnp.array([[1.0, 2.0, 3.0], [4.0, 1.0, 2.0]], dtype=jnp.int8)
+    w = jnp.array([[1, 2, 1], [2, 1, 2], [1, 3, 1]], dtype=jnp.int8)
+    s = jnp.array([0.1, 0.2, 0.3], dtype=jnp.bfloat16)
+    eqn = '...y,yz->...z'
+    # It will use dot_general with native int8 multiplication.
     ret = operations.einsum(eqn, x, w, s)
     expected = jnp.array([[0.800781, 2.60938, 2.40625], [0.800781, 3, 2.40625]],
                          dtype=jnp.bfloat16)

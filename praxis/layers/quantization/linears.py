@@ -179,6 +179,8 @@ class Linear(linears.Linear):
             rhs_quantizer=self.weight_quantizer,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
+        if self.quantization.act_params is not None:
+          inputs = operations.fakequant_activation(inputs)
         w = operations.fakequant_einsum(
             eqn,
             w,

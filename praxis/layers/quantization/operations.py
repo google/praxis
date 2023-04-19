@@ -32,6 +32,7 @@ JTensor = pytypes.JTensor
 QUANTIZED_TYPES = [jnp.int8, jnp.uint8]
 INT_TYPES = [jnp.int8, jnp.uint8, jnp.int16, jnp.uint16, jnp.int32, jnp.uint32]
 
+
 def _get_expand_dims(eqn: str) -> List[int]:
   """Potentially expand dimensions for scale.
 
@@ -199,7 +200,16 @@ def einsum(
     w = w.astype(jnp.bfloat16)
 
   if use_int_dot_general:
-    dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(eqn)
+    if '.' in eqn:
+      # Replace the ellipsis with arbitrary symbols. Because
+      # einsum_eqn_to_dimension_numbers does not support ...
+      eqn_sym = ''.join(sorted(set(string.ascii_uppercase) - set('yz')))
+      rank = len(x.shape)
+      batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
+      eqn_edited = f'{batch_eqn}y,yz->{batch_eqn}z'
+    else:
+      eqn_edited = eqn
+    dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(eqn_edited)
     ret = dot_general_int(
         x,
         w,
@@ -273,6 +283,7 @@ def _reduce_precision(
     bound = optimization.get_best_bound(t, bound, min_value, max_value)
 
   scale = bound / scale_bound
+  scale = jnp.where(scale == 0.0, 1.0, scale)
 
   if use_symmetric:
     zp = None

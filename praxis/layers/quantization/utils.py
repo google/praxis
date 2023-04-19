@@ -43,7 +43,7 @@ def einsum_eqn_to_dimension_numbers(
   """
   if '.' in eqn:
     raise NotImplementedError(f"Dynamic batch dims ('...') are not supported. "
-                              f'Given input eqn: {eqn}. ')
+                              f'Input eqn: {eqn}. ')
   inputs, out_names = eqn.split('->')
   num_commas = inputs.count(',')
   if num_commas != 1:
@@ -114,11 +114,12 @@ def pack_4bit(x: JTensor, pack_dim: int) -> JTensor:
     )
   if pack_dim >= x.ndim - 1:
     raise ValueError(
-        f'pack_dim: {pack_dim} must be < x.ndim - 1. Given x.ndim: {x.ndim}'
+        f'pack_dim must be < input ndim - 1. input shape {x.shape} and pack_dim'
+        f' {pack_dim}'
     )
   if x.shape[pack_dim] % 8 != 0:
     raise ValueError(
-        f'input x.shape[pack_dim]: {x.shape[pack_dim]} must be divisible by 8.'
+        f'input shape[pack_dim] must be divisible by 8. Given shape {x.shape}'
     )
 
   packed_dtype = jnp.int32
@@ -166,8 +167,8 @@ def unpack_4bit(
     )
   if pack_dim >= packed.ndim - 1:
     raise ValueError(
-        f'pack_dim: {pack_dim} must be < packed.ndim - 1. '
-        f'Given packed.ndim: {packed.ndim}'
+        f'pack_dim must be < input ndim - 1. input shape {packed.shape} and'
+        f' pack_dim {pack_dim}'
     )
 
   rep_shape = list(packed.shape)
