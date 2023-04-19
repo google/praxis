@@ -22,9 +22,9 @@ from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import multi_query_attention
-from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import utils
 
 WeightInit = base_layer.WeightInit
@@ -81,7 +81,10 @@ class OneHeadedAttentionProjection(
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
       dtype = self.quantization.weight_params.dtype
-      if self.quantization.weight_params.precision == 4:
+      if (
+          self.quantization.weight_params.precision == 4
+          and self.quantization.weight_params.use_int4_packed_weights
+      ):
         dtype = jnp.int32
         pc.shape = utils.get_packed_shape(
             pc.shape, self._PACK_4BIT_DIM, packing_factor=8
@@ -133,7 +136,10 @@ class OneHeadedAttentionProjection(
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
-      if self.quantization.weight_params.precision == 4:
+      if (
+          self.quantization.weight_params.precision == 4
+          and self.quantization.weight_params.use_int4_packed_weights
+      ):
         w = utils.unpack_4bit(
             w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
         )
@@ -220,8 +226,6 @@ class OneHeadedAttentionProjection(
             percentile=self.quantization.weight_params.clipping_coeff,
             use_symmetric=self.quantization.weight_params.use_symmetric,
         )
-        if self.quantization.weight_params.precision == 4:
-          q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
@@ -236,6 +240,12 @@ class OneHeadedAttentionProjection(
           f' {self.quantization.quantization_type} in quantized'
           ' multi_query_attention.'
       )
+
+    if (
+        self.quantization.weight_params.precision == 4
+        and self.quantization.weight_params.use_int4_packed_weights
+    ):
+      q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
 
     if self.quantization.weight_params.use_symmetric:
       return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}  # pytype: disable=bad-return-type  # jax-ndarray

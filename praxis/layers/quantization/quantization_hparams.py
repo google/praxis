@@ -102,6 +102,9 @@ class WeightQuantizationParams:
   use_step_count: If True step_count non-trainable variable will added.
     It is used for counting forward propagation training steps.
     By default it is disabled for backward compatibility with prod.
+  use_int4_packed_weights: If True, pack/unpack int4 weights into int32. 
+    It is for int4 weights only and has not effect on other type. 
+    If False int4 weights will be kept in int8.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -118,6 +121,7 @@ class WeightQuantizationParams:
   sub_channels: Optional[int] = None
   calculation_dtype: jnp.dtype = jnp.float32
   use_step_count: bool = False
+  use_int4_packed_weights: bool = True
 
 
 class QuantizationHParams(base_hyperparams.BaseHyperParams):

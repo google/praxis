@@ -97,7 +97,10 @@ class AttentionProjection(attentions.AttentionProjection):
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
       dtype = self.quantization.weight_params.dtype
-      if self.quantization.weight_params.precision == 4:
+      if (
+          self.quantization.weight_params.precision == 4
+          and self.quantization.weight_params.use_int4_packed_weights
+      ):
         dtype = jnp.int32
         pc.shape = utils.get_packed_shape(
             pc.shape, self._PACK_4BIT_DIM, packing_factor=8
@@ -195,7 +198,10 @@ class AttentionProjection(attentions.AttentionProjection):
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
-      if self.quantization.weight_params.precision == 4:
+      if (
+          self.quantization.weight_params.precision == 4
+          and self.quantization.weight_params.use_int4_packed_weights
+      ):
         w = utils.unpack_4bit(
             w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
         )
@@ -308,8 +314,6 @@ class AttentionProjection(attentions.AttentionProjection):
           percentile=percentile,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
-      if self.quantization.weight_params.precision == 4:
-        q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
@@ -322,6 +326,12 @@ class AttentionProjection(attentions.AttentionProjection):
       raise ValueError(
           f'Unsupported quantization_type {self.quantization.quantization_type}'
       )
+
+    if (
+        self.quantization.weight_params.precision == 4
+        and self.quantization.weight_params.use_int4_packed_weights
+    ):
+      q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
 
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     if self.quantization.weight_params.use_symmetric:
@@ -401,7 +411,10 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     )
     if self.quantization.mode == QuantizationMode.INFERENCE:
       dtype = self.quantization.weight_params.dtype
-      if self.quantization.weight_params.precision == 4:
+      if (
+          self.quantization.weight_params.precision == 4
+          and self.quantization.weight_params.use_int4_packed_weights
+      ):
         dtype = jnp.int32
         pc.shape = utils.get_packed_shape(
             pc.shape, self._PACK_4BIT_DIM, packing_factor=8
@@ -477,7 +490,10 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
-      if self.quantization.weight_params.precision == 4:
+      if (
+          self.quantization.weight_params.precision == 4
+          and self.quantization.weight_params.use_int4_packed_weights
+      ):
         w = utils.unpack_4bit(
             w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
         )
@@ -587,8 +603,6 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
           percentile=self.quantization.weight_params.clipping_coeff,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
-      if self.quantization.weight_params.precision == 4:
-        q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
@@ -601,6 +615,12 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       raise ValueError(
           f'Unsupported quantization_type {self.quantization.quantization_type}'
       )
+
+    if (
+        self.quantization.weight_params.precision == 4
+        and self.quantization.weight_params.use_int4_packed_weights
+    ):
+      q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
 
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     if self.quantization.weight_params.use_symmetric:

@@ -75,12 +75,15 @@ class Linear(linears.Linear):
     )
     dtype = self.quantization.weight_params.dtype
     if self.quantization.mode == QuantizationMode.INFERENCE:
-      if self.quantization.weight_params.precision == 4:
+      if (
+          self.quantization.weight_params.precision == 4
+          and self.quantization.weight_params.use_int4_packed_weights
+      ):
         pc.shape = utils.get_packed_shape(
             pc.shape, self._PACK_4BIT_DIM, packing_factor=8
         )
         pc.shape = [self.input_dims // 8, self.output_dims]
-        dtype = jnp.int32
+        dtype = jnp.int32  # It will be used for storing 8 4bit values.
       if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.'
@@ -144,7 +147,10 @@ class Linear(linears.Linear):
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
-      if self.quantization.weight_params.precision == 4:
+      if (
+          self.quantization.weight_params.precision == 4
+          and self.quantization.weight_params.use_int4_packed_weights
+      ):
         w = utils.unpack_4bit(
             w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
         )
@@ -248,8 +254,6 @@ class Linear(linears.Linear):
             percentile=self.quantization.weight_params.clipping_coeff,
             use_symmetric=self.quantization.weight_params.use_symmetric,
         )
-        if self.quantization.weight_params.precision == 4:
-          q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
     elif self.quantization.quantization_type == QuantizationType.AQT:
       if self._do_static_activation_quantization():
         raise NotImplementedError(
@@ -261,6 +265,12 @@ class Linear(linears.Linear):
             [0],
             quantized_dtype=self.quantization.weight_params.dtype,
         )
+
+    if (
+        self.quantization.weight_params.precision == 4
+        and self.quantization.weight_params.use_int4_packed_weights
+    ):
+      q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
 
     if self.quantization.weight_params.use_symmetric:
       return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
