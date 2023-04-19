@@ -26,6 +26,7 @@ import re
 from typing import Any, Dict, Optional, Sequence
 
 from absl import logging
+from etils import epath
 import fiddle as fdl
 import jax
 from jax.lib import xla_client as xc
@@ -62,6 +63,17 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   get_next() and reset(). For an example of how to handle sharding for both
   training and eval data, please refer to the implementation of
   TFRecordBertInput at tasks/lm/input_generator.py.
+
+  Supporting checkpointing:
+  Subclasses that support checkpointing of the input pipeline can enable
+  preemption handling via 2 paths:
+  1) Implement _get_state_internal() and _set_state_internal(). This will enable
+     deterministic training. _get_state_internal() should be cheap as it might
+     be executed more often than actual checkpointing. This is required to
+     support `peek_padded()` correctly.
+  2) Implement save() and restore(). This will allow Pax to handle preemptions
+     but it might skip a batch each time the job restarts. Usually skipping
+     a single batch doesn't impact model quality.
 
   If there is already a Lingvo TF input generator that one would like to
   use directly, please use LingvoInputAdaptor below.
@@ -118,6 +130,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   custom_device_order: Optional[Sequence[int]] = None
   input_checkpointing_enabled: bool = False
   _peek: Any = dataclasses.field(init=False, repr=False)
+  _state_before_peek: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
     if self._VALIDATE_BATCH_SIZE_NOT_NONE and (self.batch_size is None):
@@ -138,6 +151,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     # Allows a simple peek into the input, while maintaining correct iteration
     # sequence in get_next_padded() call.
     self._peek = None
+    self._state_before_peek = None
 
   @classmethod
   def get_batch_size(cls, hparams: pax_fiddle.Config[BaseInput]) -> int:
@@ -149,10 +163,32 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     assert hparams.num_infeed_hosts is not None
     return cls.get_batch_size(hparams) * hparams.num_infeed_hosts
 
-  def save(self, checkpoint_path: Any):
+  def save(self, checkpoint_path: epath.PathLike):
+    state = self.get_state() if self._peek is None else self._state_before_peek
+    epath.Path(checkpoint_path).write_bytes(state)
+
+  def restore(self, checkpoint_path: epath.PathLike):
+    state = epath.Path(checkpoint_path).read_bytes()
+    self.set_state(state)
+
+  def get_state(self) -> bytes:
+    """Returns the serialized state as bytes object."""
+    if self._peek is not None:
+      return self._state_before_peek
+    return self._get_state_internal()
+
+  def _get_state_internal(self) -> bytes:
+    """Returns the serialized state as bytes object."""
     raise NotImplementedError
 
-  def restore(self, checkpoint_path: Any):
+  def set_state(self, state: bytes) -> None:
+    """Set the internal state from serialized bytes."""
+    self._peek = None
+    self._state_before_peek = None
+    self._set_state_internal(state)
+
+  def _set_state_internal(self, state: bytes) -> None:
+    """Set the internal state from serialized bytes."""
     raise NotImplementedError
 
   def get_next(self) -> NestedJTensor:
@@ -185,20 +221,31 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
       )
     peek = self._peek
     self._peek = None
+    self._state_before_peek = None
     return peek
 
   def peek_padded(self) -> Optional[NestedJTensor]:
     """Peeks into the current input data pipeline."""
     if self._peek is None:
       try:
+        # Not all subclasses support get_state().
+        try:
+          assert (
+              self._state_before_peek is None
+          ), "_peek was None, but _state_before_peek wasn't None"
+          self._state_before_peek = self._get_state_internal()
+        except NotImplementedError:
+          pass
         self._peek = self.get_next_padded()
       except (tf.errors.OutOfRangeError, StopIteration):
         logging.warning('Peek failed: input %s out of range.', self.name)
         self._peek = None
+        self._state_before_peek = None
     return self._peek
 
   def reset(self) -> None:
-    pass
+    self._peek = None
+    self._state_before_peek = None
 
   def ids_to_strings(self,
                      ids: pytypes.NpTensor,

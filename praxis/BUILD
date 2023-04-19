@@ -62,6 +62,7 @@ pytype_strict_library(
         ":py_utils",
         ":pytypes",
         # Implicit absl.logging dependency.
+        # Implicit etils dependency.
         # Implicit fiddle dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -380,6 +381,7 @@ py_strict_test(
         ":test_utils",
         # Implicit absl.flags dependency.
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit fiddle dependency.
         # Implicit lingvo.core.base_input_generator dependency.
         # Implicit lingvo.core.generic_input dependency.

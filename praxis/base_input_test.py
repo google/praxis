@@ -16,11 +16,14 @@
 """Tests for base_input."""
 
 import dataclasses
+import itertools
 import os
 from typing import Any
+from unittest import mock
 
 from absl import flags
 from absl.testing import absltest
+from absl.testing import parameterized
 import fiddle as fdl
 from lingvo.core import base_input_generator
 from lingvo.core import generic_input
@@ -39,6 +42,7 @@ instantiate = base_hyperparams.instantiate
 class TestInput(base_input.BaseInput):
   _dataset: Any = dataclasses.field(init=False, repr=False)
   _iter: Any = dataclasses.field(init=False, repr=False)
+  shuffle: bool = True
 
   def __post_init__(self):
     super().__post_init__()
@@ -61,12 +65,38 @@ class TestInput(base_input.BaseInput):
   def _get_dataset(self):
     d = tf.data.Dataset.range(10)
     d = d.shard(self.num_infeed_hosts, self.infeed_host_index)
-    d = d.shuffle(10, seed=self.input_random_seed).repeat(-1)
+    if self.shuffle:
+      d = d.shuffle(10, seed=self.input_random_seed).repeat(-1)
     if self.reset_for_eval:
       d = d.take(self.batch_size * 2)
     d = d.map(self._to_nested_map)
     d = d.batch(self.batch_size)
     return d
+
+
+class TestInputCheckpointable(TestInput):
+
+  def __post_init__(self):
+    super().__post_init__()
+    self._state = 0
+
+  def get_next(self) -> py_utils.NestedMap:
+    self._state += 1
+    return super().get_next()
+
+  def reset(self):
+    if self.reset_for_eval:
+      self._iter = iter(self._dataset)
+      self._state = 0
+
+  def _get_state_internal(self) -> bytes:
+    return str(self._state).encode()
+
+  def _set_state_internal(self, state: bytes):
+    self._state = int(state.decode())
+    self._iter = iter(self._dataset)
+    for _ in range(self._state):
+      next(self._iter)
 
 
 class LingvoInput(base_input_generator.BaseInputGeneratorFromFiles):
@@ -301,6 +331,73 @@ class InputTest(test_utils.TestCase):
       test[i].reset()
       batch = test[i].get_next()
       self.assertEqual(batch.data[0, 0] % p.num_infeed_hosts, i)
+
+  @parameterized.parameters(
+      itertools.product([True, False], [True, False], [True, False])
+  )
+  def test_peek(
+      self, before_first: bool, after_first: bool, checkpointable: bool
+  ):
+    """Using peek_padded() doesn't change results of get_next_padded()."""
+    if checkpointable:
+      pipeline_p = TestInputCheckpointable.HParams()
+    else:
+      pipeline_p = TestInput.HParams()
+    pipeline_p.batch_size = 2
+    pipeline_p.shuffle = False
+    pipeline = instantiate(pipeline_p)
+    batch1 = [[0, 0, 0, 0], [1, 1, 1, 1]]
+    batch2 = [[2, 2, 2, 2], [3, 3, 3, 3]]
+    batch3 = [[4, 4, 4, 4], [5, 5, 5, 5]]
+    if before_first:
+      self.assertAllClose(pipeline.peek_padded()['data'], batch1)
+    self.assertAllClose(pipeline.get_next_padded()['data'], batch1)
+    if after_first:
+      self.assertAllClose(pipeline.peek_padded()['data'], batch2)
+    self.assertAllClose(pipeline.get_next_padded()['data'], batch2)
+    self.assertAllClose(pipeline.get_next_padded()['data'], batch3)
+
+  def test_peek_does_not_use_get_state(self):
+    with mock.patch.object(
+        TestInput, 'get_state', autospec=True
+    ) as mock_get_state:
+      pipeline_p = TestInput.HParams()
+      pipeline_p.batch_size = 2
+      pipeline = instantiate(pipeline_p)
+      pipeline.peek_padded()
+      mock_get_state.assert_not_called()
+
+  @parameterized.parameters(
+      (True, True), (False, False), (True, False), (False, True)
+  )
+  def test_peek_handles_state(
+      self, peek_after_restore: bool, create_new_pipeline: bool
+  ):
+    """Using peek_padded() works with get_state()/set_state()."""
+
+    def create_pipeline():
+      pipeline_p = TestInputCheckpointable.HParams()
+      pipeline_p.batch_size = 2
+      pipeline_p.shuffle = False
+      return instantiate(pipeline_p)
+
+    pipeline = create_pipeline()
+    batch1 = [[0, 0, 0, 0], [1, 1, 1, 1]]
+    batch2 = [[2, 2, 2, 2], [3, 3, 3, 3]]
+    self.assertAllClose(pipeline.peek_padded()['data'], batch1)
+    state: bytes = pipeline.get_state()
+    self.assertAllClose(pipeline.peek_padded()['data'], batch1)
+    self.assertAllClose(pipeline.get_next_padded()['data'], batch1)
+    self.assertAllClose(pipeline.get_next_padded()['data'], batch2)
+
+    if create_new_pipeline:
+      pipeline = create_pipeline()
+    pipeline.set_state(state)
+
+    if peek_after_restore:
+      self.assertAllClose(pipeline.peek_padded()['data'], batch1)
+    self.assertAllClose(pipeline.get_next_padded()['data'], batch1)
+    self.assertAllClose(pipeline.get_next_padded()['data'], batch2)
 
   def test_validate_batch_size(self):
     tmp = os.path.join(FLAGS.test_tmpdir, 'tmptest3')
