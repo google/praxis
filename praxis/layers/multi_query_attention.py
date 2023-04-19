@@ -432,10 +432,11 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     key = self._shard_blh(key)
     value = self._shard_blh(value)
 
-    b, s, n, h = query.shape
+    b, t, n, h = query.shape
+    s = key.shape[1]
+    base_layer.assert_has_shape(key, [b, s, h])
     base_layer.assert_has_shape(value, [b, s, h])
     base_layer.assert_has_shape(query, [b, -1, n, h])
-    t = query.shape[1]
     # If only padding bias is supplied, then atten_mask can be [B, 1, 1, S]
     # since each target token is prohibited from attending to the same set of
     # source tokens. In this case tiling is inefficient and unnecessary.
