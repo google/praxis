@@ -15,6 +15,9 @@
 
 """Sparse Linear Layers."""
 
+import jax
+import jax.numpy as jnp
+
 from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import linears
@@ -24,6 +27,7 @@ from praxis.layers.sparsity import sparsity_hparams
 SparsityMode = sparsity_hparams.SparsityMode
 SparsityType = sparsity_hparams.SparsityType
 SparsityHParams = sparsity_hparams.SparsityHParams
+WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 
 sub_config_field = base_layer.sub_config_field
@@ -52,6 +56,32 @@ class Linear(linears.Linear):
       self.create_variable('w', pc)
     else:
       self.create_sparse_variable('w', pc)
+      count_pc = WeightHParams(
+          shape=[], init=WeightInit.Constant(0), dtype=jnp.int32
+      )
+      if (
+          self.sparsity.mode == SparsityMode.ONESHOT
+          or self.sparsity.mode == SparsityMode.FEWSHOT
+      ):
+        self.create_variable('mask_update_count', count_pc, trainable=False)
+
+  def _update_mask(self, weight):
+    return sparsity.get_sparsity_mask(
+        weight,
+        n_sparsity=self.sparsity.weight_params.prune_rate[0],
+        m_sparsity=self.sparsity.weight_params.prune_rate[1],
+    )
+
+  def _maybe_update_mask(self, update_count, weight, mask):
+    def _true_fn():
+      return self._update_mask(weight), update_count + 1
+
+    def _false_fn():
+      return mask, update_count
+
+    return jax.lax.cond(
+        update_count < self.sparsity.num_shots, _true_fn, _false_fn
+    )
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Apply projection to inputs.
@@ -72,11 +102,16 @@ class Linear(linears.Linear):
             'Unstructured sparsity is not currently supported.'
         )
       elif self.sparsity.sparsity_type == SparsityType.STRUCTURED_NM:
-        m = sparsity.get_sparsity_mask(
-            w,
-            n_sparsity=self.sparsity.weight_params.prune_rate[0],
-            m_sparsity=self.sparsity.weight_params.prune_rate[1],
-        )
+        if (
+            self.sparsity.mode == SparsityMode.ONESHOT
+            or self.sparsity.mode == SparsityMode.FEWSHOT
+        ):
+          up_cnt = self.get_var('mask_update_count')
+          m, up_cnt = self._maybe_update_mask(up_cnt, w, m)
+          self.update_var('mask_update_count', up_cnt)
+        else:
+          m = self._update_mask(w)
+
         self.update_var('w' + base_layer.SPARSITY_NAME_POSTFIX, m)
         w = sparsity.apply_sparsity(w, m)
         out = linears.project_last_dim(inputs, w)

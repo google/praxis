@@ -45,6 +45,11 @@ class SparsityMode(str, enum.Enum):
   """
 
   TRAINING = 'training'
+  # Oneshot pruning do sparsity mask updating for the very first step.
+  ONESHOT = 'oneshot'
+  # Fewshot pruning do sparsity mask updating for the beginning steps, user
+  # needs to define num_shots > 1 correspondingly.
+  FEWSHOT = 'fewshot'
   MATERIALIZE = 'materialize'
   INFERENCE = 'inference'
 
@@ -72,20 +77,34 @@ class SparsityHParams(base_hyperparams.BaseHyperParams):
   sparsity_type: SparsityType = SparsityType.STRUCTURED_NM
   weight_params: Optional[WeightSparsityParams] = None
   mode: SparsityMode = SparsityMode.INFERENCE
+  num_shots: int = 0
 
   def __post_init__(self):
-    if self.weight_params is not None:
-      if self.weight_params.prune_rate is not None:
-        if self.sparsity_type == SparsityType.STRUCTURED_NM:
-          assert isinstance(self.weight_params.prune_rate, Tuple), (
-              'Prune rate must be either None '
-              'for no pruning or a Tuple[int, int] for '
-              'N:M structured sparsity.'
-          )
-        elif self.sparsity_type == SparsityType.UNSTRUCTURED:
-          assert isinstance(self.weight_params.prune_rate, float), (
-              'Prune rate must be either None for no pruning or float '
-              'for unstructured sparsity.'
-          )
-        else:
-          assert False, f'Unrecognized sparsity type {self.sparsity_type}.'
+    if (
+        self.weight_params is not None
+        and self.weight_params.prune_rate is not None
+    ):
+      # Check sparsity types.
+      if self.sparsity_type == SparsityType.STRUCTURED_NM:
+        assert isinstance(self.weight_params.prune_rate, Tuple), (
+            'Prune rate must be either None '
+            'for no pruning or a Tuple[int, int] for '
+            'N:M structured sparsity.'
+        )
+      elif self.sparsity_type == SparsityType.UNSTRUCTURED:
+        assert isinstance(self.weight_params.prune_rate, float), (
+            'Prune rate must be either None for no pruning or float '
+            'for unstructured sparsity.'
+        )
+      else:
+        assert False, f'Unrecognized sparsity type {self.sparsity_type}.'
+
+      # Check sparsity mode.
+      if self.mode == SparsityMode.ONESHOT:
+        assert (
+            self.num_shots == 1
+        ), '`num_shots should be set for ONESHOT sparse.`'
+      elif self.mode == SparsityMode.FEWSHOT:
+        assert (
+            self.num_shots > 1
+        ), '`num_shots should be set for FEWSHOT sparse.`'

@@ -47,6 +47,7 @@ pytype_strict_library(
     deps = [
         ":sparsity",
         ":sparsity_hparams",
+        # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pytypes",
         "//praxis/layers:linears",
