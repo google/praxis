@@ -1218,8 +1218,8 @@ def instantiate_layer(layer_p: pax_fiddle.Config, scope: Any) -> BaseLayer:
       assert compatible_hparams(
           pre_created.hparams,
           layer_p), (f'shared layers are of incompatible configs '
-          f'\n\n{pre_created.hparams.to_text()} \n\n vs '
-                     f'\n\n {layer_p.to_text()}')
+          f'\n\n{base_hyperparams.nested_struct_to_text(pre_created.hparams)}'
+          f' \n\n vs \n\n {base_hyperparams.nested_struct_to_text(layer_p)}')
       # simply reuse existing layer.
       layer = pre_created.layer
     else:
@@ -2416,7 +2416,9 @@ def compatible_hparams(
                        f'got {hparams1!r} and {hparams2!r}')
     return p1 == p2
   else:
-    return p1.to_text() == p2.to_text()
+    p1_text = base_hyperparams.nested_struct_to_text(p1)
+    p2_text = base_hyperparams.nested_struct_to_text(p2)
+    return p1_text == p2_text
 
 
 class _WrapperLayer(BaseLayer):

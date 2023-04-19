@@ -185,7 +185,7 @@ class HyperParamsTest(absltest.TestCase):
     x = NestedTestClass.HParams(
         d=SimpleTestChild.HParams(a=456, b='hello'), e=37)
     self.assertEqual(
-        x.to_text(),
+        nested_struct_to_text(x),
         textwrap.dedent("""\
         cls : type/__main__/NestedTestClass
         d.a : 456
@@ -201,7 +201,7 @@ class HyperParamsTest(absltest.TestCase):
                                           pax_fiddle.Config(sample_fn, 3, 4)]),
         g=pax_fiddle.Config(SimpleTestClass, SimpleTestClass.HParams(a=12)))
     self.assertEqual(
-        x.to_text(),
+        nested_struct_to_text(x),
         textwrap.dedent("""\
         cls : type/__main__/FiddleTestClass
         f.cls : callable/__main__/sample_fn
