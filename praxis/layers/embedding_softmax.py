@@ -16,7 +16,7 @@
 """Embedding and softmax layers."""
 
 import math
-from typing import Optional, Union, Callable
+from typing import Optional, Union
 
 import jax
 from jax import numpy as jnp
@@ -26,6 +26,7 @@ from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
+from praxis.layers import base_ops
 from praxis.layers import linears
 
 NestedMap = py_utils.NestedMap
@@ -339,7 +340,7 @@ class SharedEmbeddingSoftmax(FullSoftmax):
   """
   lookup_style: str = 'index'
   scale_sqrt_depth: bool = False
-  einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
 
   def setup(self) -> None:
     super().setup()

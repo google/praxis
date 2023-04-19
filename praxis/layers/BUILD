@@ -33,6 +33,7 @@ pytype_strict_library(
         ":adapters",
         ":attentions",
         ":augmentations",
+        ":base_ops",
         ":bregman",
         ":checkpoint_policy",
         ":conformers",
@@ -129,6 +130,7 @@ pytype_strict_library(
     srcs = ["attentions.py"],
     srcs_version = "PY3",
     deps = [
+        ":base_ops",
         ":embedding_softmax",
         ":stochastics",
         # Implicit absl.logging dependency.
@@ -151,6 +153,17 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:py_utils",
+        "//praxis:pytypes",
+    ],
+)
+
+pytype_strict_library(
+    name = "base_ops",
+    srcs = ["base_ops.py"],
+    srcs_version = "PY3",
+    deps = [
+        # Implicit jax dependency.
+        "//praxis:base_layer",
         "//praxis:pytypes",
     ],
 )
@@ -189,6 +202,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":activations",
+        ":base_ops",
         ":linears",
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -237,6 +251,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":activations",
+        ":base_ops",
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
@@ -1262,6 +1277,7 @@ pytype_strict_library(
     srcs = ["multi_query_attention.py"],
     deps = [
         ":attentions",
+        ":base_ops",
         ":embedding_softmax",
         ":stochastics",
         # Implicit flax.core dependency.

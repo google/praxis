@@ -44,6 +44,7 @@ from praxis.layers.attentions import RelativeBias
 from praxis.layers.attentions import segment_mask
 from praxis.layers.augmentations import MaskedLmDataAugmenter
 from praxis.layers.augmentations import TemporalShifting
+from praxis.layers.base_ops import Einsum
 from praxis.layers.bregman import BregmanPCA
 from praxis.layers.checkpoint_policy import AutodiffCheckpointType
 from praxis.layers.conformers import Conformer
@@ -83,10 +84,10 @@ from praxis.layers.ngrammer import Ngrammer
 from praxis.layers.ngrammer import VectorQuantization
 from praxis.layers.ngrammer import VQNgrammer
 from praxis.layers.normalizations import BaseNormalization
-from praxis.layers.normalizations import IdentityNorm
 from praxis.layers.normalizations import BatchNorm
 from praxis.layers.normalizations import compute_moments
 from praxis.layers.normalizations import GroupNorm
+from praxis.layers.normalizations import IdentityNorm
 from praxis.layers.normalizations import LayerNorm
 from praxis.layers.normalizations import RmsNorm
 from praxis.layers.normalizations import RmsNormNoScale
@@ -105,8 +106,8 @@ from praxis.layers.rnn_cell import LstmCellSimple
 from praxis.layers.sequential import Sequential
 from praxis.layers.spectrum_augmenter import SpectrumAugmenter
 from praxis.layers.ssm import SSM
-from praxis.layers.ssm_transformers import SSMTransformer
 from praxis.layers.ssm_transformers import SSMGated
+from praxis.layers.ssm_transformers import SSMTransformer
 from praxis.layers.stochastics import Dropout
 from praxis.layers.stochastics import StochasticResidual
 from praxis.layers.transformer_models import LanguageModelType

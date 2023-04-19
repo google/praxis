@@ -25,11 +25,13 @@ from jax.ad_checkpoint import checkpoint_name
 from praxis import asserts
 from praxis import base_layer
 from praxis import pax_fiddle
-from praxis import pytypes
 from praxis import py_utils
+from praxis import pytypes
 from praxis.layers import attentions
+from praxis.layers import base_ops
 from praxis.layers import embedding_softmax
 from praxis.layers import stochastics
+
 
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
@@ -56,7 +58,7 @@ class OneHeadedAttentionProjection(base_layer.BaseLayer):
   input_dim: int = 0
   output_dim: int = 0
   use_bias: bool = True
-  einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -188,8 +190,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   attention_extra_logit: Optional[float] = None
   dconv_qkv: bool = False
   combine_qkv: bool = False
-  qk_einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
-  pv_einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
+  qk_einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  pv_einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
 
   # SPMD partition related params.
   #

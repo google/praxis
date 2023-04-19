@@ -31,6 +31,7 @@ from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
+from praxis.layers import base_ops
 from praxis.layers import embedding_softmax
 from praxis.layers import stochastics
 
@@ -579,7 +580,7 @@ class AttentionProjection(base_layer.BaseLayer):
   attention_combine_dims: bool = False
   use_nhd_shape: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
-  einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -739,7 +740,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
   use_bias: bool = True
   attention_combine_dims: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
-  einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
 
   def setup(self) -> None:
     # Sharding has the same convention of AttentionProjection, which doesn't
@@ -976,8 +977,8 @@ class DotProductAttention(base_layer.BaseLayer):
   decode_cache: bool = True
   attention_mask_summary: bool = False
   zero_fully_masked: bool = False
-  qk_einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
-  pv_einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
+  qk_einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  pv_einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
 
   # SPMD partition related params.
   #

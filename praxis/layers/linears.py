@@ -15,9 +15,8 @@
 
 """Linear layers."""
 
-from typing import Optional, Callable
+from typing import Optional
 
-import jax
 from jax import numpy as jnp
 from jax import vmap
 from praxis import base_layer
@@ -25,6 +24,7 @@ from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
+from praxis.layers import base_ops
 
 NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
@@ -70,7 +70,7 @@ class Linear(base_layer.BaseLayer):
   """
   input_dims: int = 0
   output_dims: int = 0
-  einsum_tpl: LayerTpl = template_field(base_layer.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
