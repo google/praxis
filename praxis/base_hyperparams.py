@@ -266,7 +266,7 @@ def nested_struct_to_text(obj_to_visit: Any,
           for f in dataclasses.fields(val)
           if hasattr(val, f.name)
       })
-    if dataclasses.is_dataclass(val):
+    if dataclasses.is_dataclass(val) and not isinstance(val, type):
       return str(val)
     if _is_named_tuple(val):
       return _SortedDict({k: get_repr(v) for k, v in val._asdict().items()})
@@ -284,7 +284,7 @@ def nested_struct_to_text(obj_to_visit: Any,
     if isinstance(val, StrOverride):
       return str(val)
     if isinstance(val, type):
-      return 'type/' + inspect.getmodule(val).__name__ + '/' + val.__name__
+      return 'type/' + inspect.getmodule(val).__name__ + '/' + val.__qualname__
     if callable(val) and hasattr(val, '__qualname__'):
       return f'callable/{inspect.getmodule(val).__name__}/{val.__qualname__}'
     if isinstance(val, fdl.Buildable):

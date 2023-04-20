@@ -515,7 +515,7 @@ class BaseLayerTest(test_utils.TestCase):
       expected_to_text = (
           '\n'.join([
               'activation_split_dims_mapping.out : NoneType',
-              f'cls : {Layer!r}',
+              f'cls : type/__main__/{Layer.__qualname__}',
               'contiguous_submeshes : NoneType',
               'dcn_mesh_shape : [3, 4]',
               'dtype : type/jax.numpy/float32',

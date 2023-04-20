@@ -644,7 +644,7 @@ class NestedStructToTextTestCase(absltest.TestCase):
             'tpl.a : 4',
             'tpl.activation_split_dims_mapping.out : NoneType',
             "tpl.b : 'b'",
-            f"tpl.cls : <class '{__name__}.FiddleToTextTestClass'>",
+            f'tpl.cls : type/{__name__}/FiddleToTextTestClass',
             'tpl.contiguous_submeshes : NoneType',
             'tpl.dcn_mesh_shape : NoneType',
             'tpl.dtype : 7',
@@ -652,7 +652,7 @@ class NestedStructToTextTestCase(absltest.TestCase):
             'tpl.ici_mesh_shape : NoneType',
             'tpl.mesh_axis_names : NoneType',
             'tpl.name : NoneType',
-            "tpl.params_init.cls : <class 'praxis.base_layer.WeightInit'>",
+            'tpl.params_init.cls : type/praxis.base_layer/WeightInit',
             "tpl.params_init.method : 'xavier'",
             'tpl.params_init.scale : 1.000001',
             'tpl.shared_weight_layer_id : NoneType',
@@ -671,7 +671,7 @@ class NestedStructToTextTestCase(absltest.TestCase):
             'a : 4',
             'activation_split_dims_mapping.out : NoneType',
             "b : 'b'",
-            f"cls : <class '{__name__}.FiddleToTextTestClass'>",
+            f'cls : type/{__name__}/FiddleToTextTestClass',
             'contiguous_submeshes : NoneType',
             'dcn_mesh_shape : NoneType',
             'dtype : 7',
@@ -679,7 +679,7 @@ class NestedStructToTextTestCase(absltest.TestCase):
             'ici_mesh_shape : NoneType',
             'mesh_axis_names : NoneType',
             'name : NoneType',
-            "params_init.cls : <class 'praxis.base_layer.WeightInit'>",
+            'params_init.cls : type/praxis.base_layer/WeightInit',
             "params_init.method : 'xavier'",
             'params_init.scale : 1.000001',
             'shared_weight_layer_id : NoneType',
@@ -779,7 +779,7 @@ class NestedStructToTextTestCase(absltest.TestCase):
     self.assertEqual(
         nested_struct_to_text(checkpoint_rule_config).splitlines(),
         [
-            "cls : <class '__main__.CheckPointRuleTest'>",
+            'cls : type/__main__/CheckPointRuleTest',
             'init_from_checkpoint_rules[safe_load] : False',
             "init_from_checkpoint_rules[task_p] : 'my task'",
             "name : 'my_checkpoint_rules'",
@@ -796,7 +796,7 @@ class NestedStructToTextTestCase(absltest.TestCase):
     self.assertEqual(
         nested_struct_to_text(x).splitlines(),
         [
-            "cls : <class '__main__.CheckPointRuleDataclassTest.Train'>",
+            'cls : type/__main__/CheckPointRuleDataclassTest.Train',
             'init_from_checkpoint_rules[safe_load] : False',
             "init_from_checkpoint_rules[task_p] : 'my task'",
             "name : 'my_checkpoint_rules'",
