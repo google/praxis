@@ -238,6 +238,7 @@ class BaseLayerTest(test_utils.TestCase):
         ici_mesh_shape=[2, 3, 4],
         dcn_mesh_shape=[5, 6, 7],
         params_init=base_layer.default_param_init(),
+        contiguous_submeshes=True,
     )
 
     with self.subTest('fiddle_to_fiddle'):
@@ -248,6 +249,7 @@ class BaseLayerTest(test_utils.TestCase):
       self.assertEqual(target.dtype, jnp.float16)
       self.assertEqual(target.ici_mesh_shape, [2, 3, 4])
       self.assertEqual(target.dcn_mesh_shape, [5, 6, 7])
+      self.assertTrue(target.contiguous_submeshes)
 
   def test_copy_base_hparams_instantiate(self):
     class ChildLayer(base_layer.BaseLayer):
@@ -514,7 +516,7 @@ class BaseLayerTest(test_utils.TestCase):
           '\n'.join([
               'activation_split_dims_mapping.out : NoneType',
               f'cls : {Layer!r}',
-              'contiguous_submeshes : False',
+              'contiguous_submeshes : NoneType',
               'dcn_mesh_shape : [3, 4]',
               'dtype : type/jax.numpy/float32',
               'fprop_dtype : type/jax.numpy/float16',

@@ -1445,7 +1445,7 @@ class BaseLayer(nn.Module):
   skip_lp_regularization: Optional[bool] = None
   ici_mesh_shape: Optional[Sequence[int]] = None
   dcn_mesh_shape: Optional[Sequence[int]] = None
-  contiguous_submeshes: bool = False
+  contiguous_submeshes: Optional[bool] = None
   mesh_axis_names: Optional[Sequence[str]] = None
   shared_weight_layer_id: Optional[str] = None
   # TODO(b/249483164): Change these to use instance_field rather than
@@ -1513,7 +1513,8 @@ class BaseLayer(nn.Module):
     This is used by `self.create_child` to allow child layers to "inherit" these
     parameters from their parent layer (unless they override them).  The
     following parameters are inherited: dtype, fprop_dtype,
-    skip_lp_regularization, ici_mesh_shape, dcn_mesh_shape, and params_init.
+    skip_lp_regularization, ici_mesh_shape, dcn_mesh_shape, contiguous_submeshes
+    and params_init.
 
     Args:
       source: The configuration object to copy parameters from.
@@ -1536,6 +1537,8 @@ class BaseLayer(nn.Module):
       target.dcn_mesh_shape = copy.deepcopy(source.dcn_mesh_shape)
     if target.mesh_axis_names is None:
       target.mesh_axis_names = copy.deepcopy(source.mesh_axis_names)
+    if target.contiguous_submeshes is None:
+      target.contiguous_submeshes = source.contiguous_submeshes
     if is_default_param_init(target.params_init):
       # Copy params_init as well. Both target.params_init and
       # source.params_init are hyperparams.HParams.

@@ -667,7 +667,7 @@ def l2_normalize(
 def create_device_mesh(
     ici_mesh_shape: Sequence[int],
     dcn_mesh_shape: Optional[Sequence[int]] = None,
-    contiguous_submeshes: bool = False,
+    contiguous_submeshes: Optional[bool] = False,
 ):
   """Creates a single- or multi-slice device mesh from mesh shapes.
 
@@ -683,6 +683,7 @@ def create_device_mesh(
   Returns:
     An ndarray of JAX devices.
   """
+  contiguous_submeshes = bool(contiguous_submeshes)
   if dcn_mesh_shape is not None and any(s > 1 for s in dcn_mesh_shape):
     devices = jax.devices()
     device_kind = devices[-1].device_kind
