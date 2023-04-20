@@ -45,19 +45,6 @@ from google.protobuf import text_format
 HParams = py_utils.HParams
 
 
-# Monkey patch PaxConfig to add a to_text method. This is done here to avoid a
-# circular dependency.
-# TODO(b/269191093): Remove this after migrating existing users.
-def to_text(self, include_types: bool = False, separator: str = ':'):
-  return nested_struct_to_text(
-      self, include_types=include_types, separator=separator
-  )
-
-
-pax_fiddle.PaxConfig.to_text = to_text
-del to_text
-
-
 def _quote_string(s):
   """Quotes a string with appropriate quotes and escaping.
 
