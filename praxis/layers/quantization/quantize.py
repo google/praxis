@@ -260,6 +260,7 @@ def quantize_transformer_feed_forward_layer_weights(
 def for_transformer(
     num_bits: int = 8,
     quantization_type: QuantizationType = QuantizationType.FQ,
+    mode: QuantizationMode = QuantizationMode.TRAINING,
     use_symmetric: bool = True,
     *,
     weight_quant_only: bool = True,
@@ -282,6 +283,8 @@ def for_transformer(
     num_bits: Number of bits for quantized weight. Currently supports 8 and 4
       but any integer [1, 8] works.
     quantization_type: Indicates the quantization type among PTQ, FQ, and AQT.
+    mode: Indicates the quantization mode. Only TRAINING and INFERENCE
+      (excluding MATERIALIZE) are valid for non-servable models.
     use_symmetric: If true, do symmetric quantization for weights, otherwise
       asymmetric quantization.
     weight_quant_only: If true, quantize weight only, otherweise quantize both
@@ -309,7 +312,6 @@ def for_transformer(
       def task(self):
         config = super(Wrapper, self)
         task_p = config.task()
-        mode = QuantizationMode.TRAINING
         assert num_bits in [2, 4, 8]
         set_quantization(
             task_p.model,
