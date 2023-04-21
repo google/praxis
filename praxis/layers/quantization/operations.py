@@ -239,7 +239,7 @@ def pass_through(x: JTensor, fn: Any) -> JTensor:
   return x - jax.lax.stop_gradient(x) + jax.lax.stop_gradient(fn(x))
 
 
-def _reduce_precision(
+def reduce_precision(
     t: JTensor,
     contract_dims: Optional[Sequence[int]],
     need_gradient: bool = False,
@@ -346,7 +346,7 @@ def reduce_einsum_weight_precision(
   if t.dtype != calculation_type:
     t = t.astype(calculation_type)
 
-  t, scale, zp = _reduce_precision(
+  t, scale, zp = reduce_precision(
       t,
       contract_dims,
       need_gradient,
@@ -413,7 +413,7 @@ def reduce_precision_activation(
     A tuple of JTensors. The first one is the quantized activation and the
     second one is the scaling factor.
   """
-  qt, scale, _ = _reduce_precision(t, None, need_gradient, bits, False)
+  qt, scale, _ = reduce_precision(t, None, need_gradient, bits, False)
   return qt, scale
 
 
