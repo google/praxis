@@ -19,6 +19,7 @@ from absl.testing import absltest
 from jax import numpy as jnp
 import optax
 from praxis import optimizers
+from praxis import pax_fiddle
 from praxis import schedules
 from praxis import test_utils
 
@@ -26,13 +27,15 @@ from praxis import test_utils
 class OptimizersTest(test_utils.TestCase):
 
   def test_static_accumulator(self):
-    base_opt_tpl = optimizers.ShardedSgd.HParams()
+    base_opt_tpl = pax_fiddle.Config(optimizers.ShardedSgd)
     num_sub_batches = 3
-    acc_opt_tpl = optimizers.ShardedStaticAccumulator.HParams(
+    acc_opt_tpl = pax_fiddle.Config(
+        optimizers.ShardedStaticAccumulator,
         optimizer_tpl=base_opt_tpl,
         num_sub_batches=num_sub_batches,
-        lr_schedule=schedules.Constant.HParams(value=1.0),
-        learning_rate=1.0)
+        lr_schedule=pax_fiddle.Config(schedules.Constant, value=1.0),
+        learning_rate=1.0,
+    )
     acc_opt = optimizers.instantiate(acc_opt_tpl)
     tx = acc_opt.get_grad_transformation()
     mdl_vars = {'var': jnp.array(0.0, dtype=jnp.float32)}
@@ -50,11 +53,13 @@ class OptimizersTest(test_utils.TestCase):
         mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32))
 
   def test_ewc_regularization(self):
-    opt_tpl = optimizers.ShardedSgd.HParams(
-        lr_schedule=schedules.Constant.HParams(value=1.0),
+    opt_tpl = pax_fiddle.Config(
+        optimizers.ShardedSgd,
+        lr_schedule=pax_fiddle.Config(schedules.Constant, value=1.0),
         learning_rate=1.0,
         ewc_regularizer_weight=1.0,
-        ewc_weight_per_var={'var': 1.0})
+        ewc_weight_per_var={'var': 1.0},
+    )
     acc_opt = optimizers.instantiate(opt_tpl)
     tx = acc_opt.get_grad_transformation()
     mdl_vars = {'var': jnp.array(0, dtype=jnp.float32)}

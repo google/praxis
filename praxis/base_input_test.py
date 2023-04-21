@@ -31,6 +31,7 @@ from lingvo.core import py_utils as tf_py_utils
 import numpy as np
 from praxis import base_hyperparams
 from praxis import base_input
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 import tensorflow.compat.v2 as tf
@@ -163,7 +164,7 @@ class InputTest(test_utils.TestCase):
       for i in range(num_data):
         w.write(('%04d' % i).encode('utf-8'))
 
-    p = base_input.LingvoInputAdaptor.HParams()
+    p = pax_fiddle.Config(base_input.LingvoInputAdaptor)
     p.input = LingvoInput.Params()
     p.input.file_pattern = 'tfrecord:' + tmp
     p.input.file_random_seed = 0
@@ -211,7 +212,7 @@ class InputTest(test_utils.TestCase):
       for i in range(num_data):
         w.write(('%04d' % i).encode('utf-8'))
 
-    p = base_input.LingvoInputAdaptorNewBatchSize.HParams()
+    p = pax_fiddle.Config(base_input.LingvoInputAdaptorNewBatchSize)
     p.input = LingvoInput.Params()
     p.input.file_pattern = 'tfrecord:' + tmp
     p.input.file_random_seed = 0
@@ -231,8 +232,12 @@ class InputTest(test_utils.TestCase):
   def test_lingvo_input_change_batch_size_tfdata(self):
     input_p = TestDataset.Params()
     input_p.args.num = 6
-    p = base_input.LingvoInputAdaptorNewBatchSize.HParams(
-        batch_size=1, input=input_p, is_training=True)
+    p = pax_fiddle.Config(
+        base_input.LingvoInputAdaptorNewBatchSize,
+        batch_size=1,
+        input=input_p,
+        is_training=True,
+    )
     inp = instantiate(p)
     for i in range(input_p.args.num):
       batch = inp.get_next()
@@ -243,8 +248,12 @@ class InputTest(test_utils.TestCase):
     num_batches = 10
     input_p = TestDataset.Params()
     input_p.args.num = num_batches
-    p = base_input.LingvoInputAdaptor.HParams(
-        input=input_p, is_training=True, cluster_do_eval=True)
+    p = pax_fiddle.Config(
+        base_input.LingvoInputAdaptor,
+        input=input_p,
+        is_training=True,
+        cluster_do_eval=True,
+    )
     inp = instantiate(p)
     # When used for training data, cluster.do_eval is never set.
     # The input repeats the data indefinitely.
@@ -265,10 +274,18 @@ class InputTest(test_utils.TestCase):
     input_p.args.num = num_batches
     # We have two versions of the input, with different values for
     # cluster.do_eval.
-    p_eval = base_input.LingvoInputAdaptor.HParams(
-        input=input_p, is_training=False, cluster_do_eval=True)
-    p_noeval = base_input.LingvoInputAdaptor.HParams(
-        input=input_p, is_training=False, cluster_do_eval=False)
+    p_eval = pax_fiddle.Config(
+        base_input.LingvoInputAdaptor,
+        input=input_p,
+        is_training=False,
+        cluster_do_eval=True,
+    )
+    p_noeval = pax_fiddle.Config(
+        base_input.LingvoInputAdaptor,
+        input=input_p,
+        is_training=False,
+        cluster_do_eval=False,
+    )
     inp_eval = instantiate(p_eval)
     inp_noeval = instantiate(p_noeval)
     for i in range(num_batches):
@@ -287,7 +304,9 @@ class InputTest(test_utils.TestCase):
     num_batches = 10
     input_p = TestDatasetOverride.Params()
     input_p.args.num = num_batches
-    p = base_input.LingvoInputAdaptor.HParams(input=input_p, is_training=True)
+    p = pax_fiddle.Config(
+        base_input.LingvoInputAdaptor, input=input_p, is_training=True
+    )
     inp = instantiate(p)
     for i in range(int(num_batches * 2.5)):
       x = inp.get_next()
@@ -299,7 +318,7 @@ class InputTest(test_utils.TestCase):
     self.assertEqual(x.data2, 1)
 
   def test_tfdata_input(self):
-    p = TestInput.HParams()
+    p = pax_fiddle.Config(TestInput)
     p.num_infeed_hosts = 3
     p.input_random_seed = 345
     p.batch_size = 2
@@ -405,29 +424,31 @@ class InputTest(test_utils.TestCase):
       for i in range(12):
         w.write(('%04d' % i).encode('utf-8'))
 
-    p = base_input.LingvoInputAdaptorNewBatchSize.HParams()
+    p = pax_fiddle.Config(base_input.LingvoInputAdaptorNewBatchSize)
     p.input = LingvoInput.Params().Set(
         file_pattern='tfrecord:' + tmp, file_random_seed=0)
     with self.assertRaisesRegex(ValueError, 'self.batch_size'):
       instantiate(p)
 
-    p2 = base_input.LingvoInputAdaptor.HParams(input=p.input)
+    p2 = pax_fiddle.Config(base_input.LingvoInputAdaptor, input=p.input)
     p2.batch_size = 2
     with self.assertRaisesRegex(ValueError, 'self.batch_size'):
       instantiate(p2)
 
-    p3 = TestInput.HParams()
+    p3 = pax_fiddle.Config(TestInput)
     with self.assertRaisesRegex(ValueError, 'self.batch_size'):
       instantiate(p3)
 
   def test_lingvo_eval_adaptor_tfdata(self):
     input_p = TestDataset.Params()
     input_p.args.num = 11
-    eval_p = base_input.LingvoEvalAdaptor.HParams(
+    eval_p = pax_fiddle.Config(
+        base_input.LingvoEvalAdaptor,
         input=input_p,
         is_training=False,
         cluster_do_eval=True,  # required to not repeat the data.
-        reset_for_eval=True)
+        reset_for_eval=True,
+    )
     eval_p.batch_size = 3
     eval_p.num_infeed_hosts = 3
     input_params = [
@@ -481,11 +502,13 @@ class InputTest(test_utils.TestCase):
     input_p = LingvoInput.Params().Set(
         file_pattern='tfrecord:' + tmp, file_random_seed=0, repeat_count=1)
     # Set is_training and cluster_do_eval to get sequential input.
-    p = base_input.LingvoEvalAdaptor.HParams(
+    p = pax_fiddle.Config(
+        base_input.LingvoEvalAdaptor,
         input=input_p,
         reset_for_eval=True,
         is_training=False,
-        cluster_do_eval=True)
+        cluster_do_eval=True,
+    )
     p.batch_size = 3
     inp = instantiate(p)
     batches = []
@@ -520,7 +543,8 @@ class InputTest(test_utils.TestCase):
     input_p = LingvoInput.Params().Set(
         file_pattern='tfrecord:' + tmp, file_random_seed=1, batch_size=1)
     # Set cluster_do_eval=False to not use sequential input.
-    adaptor_p = base_input.LingvoEvalAdaptor.HParams(
+    adaptor_p = pax_fiddle.Config(
+        base_input.LingvoEvalAdaptor,
         input=input_p,
         num_batches=num_data,
         reset_for_eval=True,
@@ -528,7 +552,8 @@ class InputTest(test_utils.TestCase):
         num_infeed_hosts=2,
         batch_size=3,
         allow_fixed_file_random_seed=True,
-        cluster_do_eval=False)
+        cluster_do_eval=False,
+    )
 
     input_params = [
         adaptor_p.clone().set(infeed_host_index=i)
@@ -553,8 +578,12 @@ class InputTest(test_utils.TestCase):
   def test_lingvo_eval_adaptor_get_batch_size(self):
     input_p = base_input_generator.BaseSequenceInputGenerator.Params().Set(
         bucket_batch_limit=[1])
-    adaptor_p = base_input.LingvoEvalAdaptor.HParams(
-        input=input_p, batch_size=2, num_infeed_hosts=3)
+    adaptor_p = pax_fiddle.Config(
+        base_input.LingvoEvalAdaptor,
+        input=input_p,
+        batch_size=2,
+        num_infeed_hosts=3,
+    )
     self.assertEqual(fdl.get_callable(adaptor_p).get_batch_size(adaptor_p), 2)
     self.assertEqual(
         fdl.get_callable(adaptor_p).get_global_batch_size(adaptor_p), 6
@@ -573,13 +602,15 @@ class InputTest(test_utils.TestCase):
     input_p.num_samples = num_data
     input_p.file_buffer_size = 1
     input_p.file_parallelism = 1
-    eval_p = base_input.LingvoLazyEvalAdaptor.HParams(
+    eval_p = pax_fiddle.Config(
+        base_input.LingvoLazyEvalAdaptor,
         input=input_p,
         is_training=False,
         cluster_do_eval=True,
         reset_for_eval=True,
         num_infeed_hosts=3,
-        allow_fixed_file_random_seed=True)
+        allow_fixed_file_random_seed=True,
+    )
     input_params = [
         eval_p.clone().set(infeed_host_index=i)
         for i in range(eval_p.num_infeed_hosts)
@@ -637,7 +668,8 @@ class InputTest(test_utils.TestCase):
     input_p.num_samples = num_data
     input_p.file_buffer_size = 1
     input_p.file_parallelism = 1
-    eval_p = base_input.LingvoLazyEvalAdaptor.HParams(
+    eval_p = pax_fiddle.Config(
+        base_input.LingvoLazyEvalAdaptor,
         input=input_p,
         is_training=False,
         cluster_do_eval=True,
@@ -702,7 +734,7 @@ class InputTest(test_utils.TestCase):
       for i in range(num_data_2):
         w.write(('%04d' % (num_data_2 - i)).encode('utf-8'))
 
-    p = base_input.LingvoInputAdaptor.HParams()
+    p = pax_fiddle.Config(base_input.LingvoInputAdaptor)
     p.input = LingvoInput.Params()
     p.input.file_pattern = 'tfrecord:' + tmp_1
     p.input.batch_size = batch_size_1
@@ -712,7 +744,7 @@ class InputTest(test_utils.TestCase):
     p.is_training = False
     p.cluster_do_eval = True
 
-    p2 = base_input.LingvoInputAdaptor.HParams()
+    p2 = pax_fiddle.Config(base_input.LingvoInputAdaptor)
     p2.input = LingvoInput.Params()
     p2.input.file_pattern = 'tfrecord:' + tmp_2
     p2.input.batch_size = batch_size_2
@@ -726,7 +758,7 @@ class InputTest(test_utils.TestCase):
         'input_1': p,
         'input_2': p2,
     }
-    multi_p = base_input.MultiInput.HParams(input_to_params=inputs)
+    multi_p = pax_fiddle.Config(base_input.MultiInput, input_to_params=inputs)
     multi_p.default_input = 'input_1'
     inp = instantiate(multi_p)
     for i in range(num_batches):
@@ -745,7 +777,7 @@ class InputTest(test_utils.TestCase):
       for i in range(num_data_1):
         w.write(('%04d' % i).encode('utf-8'))
 
-    p = base_input.LingvoInputAdaptor.HParams()
+    p = pax_fiddle.Config(base_input.LingvoInputAdaptor)
     p.input = LingvoInput.Params()
     p.input.file_pattern = 'tfrecord:' + tmp_1
     p.input.batch_size = batch_size_1
@@ -758,7 +790,7 @@ class InputTest(test_utils.TestCase):
     inputs = {
         'input_1': p,
     }
-    multi_p = base_input.MultiInput.HParams(input_to_params=inputs)
+    multi_p = pax_fiddle.Config(base_input.MultiInput, input_to_params=inputs)
     multi_p.default_input = 'input_1'
     multi_p.reset_for_eval = True
     inp = instantiate(multi_p)
@@ -779,7 +811,7 @@ class InputTest(test_utils.TestCase):
     batch_size_1 = 4
     batch_size_2 = 6
 
-    p = base_input.LingvoInputAdaptor.HParams()
+    p = pax_fiddle.Config(base_input.LingvoInputAdaptor)
     p.input = LingvoInput.Params()
     p.input.file_pattern = 'tfrecord:dummy'
     p.input.batch_size = batch_size_1
@@ -787,7 +819,7 @@ class InputTest(test_utils.TestCase):
     p.input.repeat_count = 1
     p.is_training = True
 
-    p2 = base_input.LingvoInputAdaptor.HParams()
+    p2 = pax_fiddle.Config(base_input.LingvoInputAdaptor)
     p2.input = LingvoInput.Params()
     p2.input.file_pattern = 'tfrecord:dummy'
     p2.input.batch_size = batch_size_2
@@ -799,7 +831,7 @@ class InputTest(test_utils.TestCase):
         'input_1': p,
         'input_2': p2,
     }
-    multi_p = base_input.MultiInput.HParams(input_to_params=inputs)
+    multi_p = pax_fiddle.Config(base_input.MultiInput, input_to_params=inputs)
     multi_bs = base_input.MultiInput.get_batch_size(multi_p)
     # Batch size should be greatest common factor of children batch sizes.
     self.assertEqual(multi_bs, 2)

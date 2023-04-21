@@ -26,6 +26,7 @@ import jax
 from jax import numpy as jnp
 import optax
 from praxis import base_hyperparams
+from praxis import pax_fiddle
 from praxis import pytypes
 
 JTensor = pytypes.JTensor
@@ -136,7 +137,10 @@ class Exponential(BaseSchedule):
     assert y0 > 0, '%s must be > 0' % y0
     assert y1 > 0, '%s must be > 0' % y1
     self.linear = instantiate(
-        Linear.HParams(start=(x0, math.log(y0)), limit=(x1, math.log(y1))))
+        pax_fiddle.Config(
+            Linear, start=(x0, math.log(y0)), limit=(x1, math.log(y1))
+        )
+    )
 
   def value_at(self, step: JTensor) -> JTensor:
     return jnp.exp(self.linear.value_at(step))
@@ -190,7 +194,8 @@ class DelayedCosine(BaseSchedule):
     self.max = y0
     self.min = y1
     self.linear = instantiate(
-        Linear.HParams(start=(x0, 0), limit=(x1, math.pi)))
+        pax_fiddle.Config(Linear, start=(x0, 0), limit=(x1, math.pi))
+    )
 
   def value_at(self, step: JTensor) -> JTensor:
     decay_gap = self.max - self.min
@@ -236,8 +241,8 @@ class LinearRampupPolynomialDecay(BaseSchedule):
     if self.warmup_steps > 0:
       self._schedules.append(
           instantiate(
-              Linear.HParams(
-                  start=(0, 0.0), limit=(self.warmup_steps, self.max)
+              pax_fiddle.Config(
+                  Linear, start=(0, 0.0), limit=(self.warmup_steps, self.max)
               )
           )
       )
@@ -245,7 +250,8 @@ class LinearRampupPolynomialDecay(BaseSchedule):
     if self.decay_start > self.warmup_steps:
       self._schedules.append(
           instantiate(
-              Linear.HParams(
+              pax_fiddle.Config(
+                  Linear,
                   start=(0, self.max),
                   limit=(self.decay_start - self.warmup_steps, self.max),
               )
@@ -254,7 +260,8 @@ class LinearRampupPolynomialDecay(BaseSchedule):
       self._boundaries.append(self.decay_start)
     self._schedules.append(
         instantiate(
-            Polynomial.HParams(
+            pax_fiddle.Config(
+                Polynomial,
                 start=(0, self.max),
                 limit=(
                     self.decay_end - self.decay_start,
@@ -310,8 +317,8 @@ class LinearRampupCosineDecay(BaseSchedule):
     if self.warmup_steps > 0:
       self._schedules.append(
           instantiate(
-              Linear.HParams(
-                  start=(0, 0.0), limit=(self.warmup_steps, self.max)
+              pax_fiddle.Config(
+                  Linear, start=(0, 0.0), limit=(self.warmup_steps, self.max)
               )
           )
       )
@@ -319,7 +326,8 @@ class LinearRampupCosineDecay(BaseSchedule):
     if self.decay_start > self.warmup_steps:
       self._schedules.append(
           instantiate(
-              Linear.HParams(
+              pax_fiddle.Config(
+                  Linear,
                   start=(0, self.max),
                   limit=(self.decay_start - self.warmup_steps, self.max),
               )
@@ -328,7 +336,8 @@ class LinearRampupCosineDecay(BaseSchedule):
       self._boundaries.append(self.decay_start)
     self._schedules.append(
         instantiate(
-            DelayedCosine.HParams(
+            pax_fiddle.Config(
+                DelayedCosine,
                 start=(0, self.max),
                 limit=(
                     self.decay_end - self.decay_start,
@@ -508,8 +517,8 @@ class LinearRampupExponentialDecay(BaseSchedule):
     if self.warmup_steps > 0:
       self._schedules.append(
           instantiate(
-              Linear.HParams(
-                  start=(0, 0.0), limit=(self.warmup_steps, self.max)
+              pax_fiddle.Config(
+                  Linear, start=(0, 0.0), limit=(self.warmup_steps, self.max)
               )
           )
       )
@@ -517,7 +526,8 @@ class LinearRampupExponentialDecay(BaseSchedule):
     if self.decay_start > self.warmup_steps:
       self._schedules.append(
           instantiate(
-              Linear.HParams(
+              pax_fiddle.Config(
+                  Linear,
                   start=(0, self.max),
                   limit=(self.decay_start - self.warmup_steps, self.max),
               )
@@ -526,7 +536,8 @@ class LinearRampupExponentialDecay(BaseSchedule):
       self._boundaries.append(self.decay_start)
     self._schedules.append(
         instantiate(
-            Exponential.HParams(
+            pax_fiddle.Config(
+                Exponential,
                 start=(0, self.max),
                 limit=(
                     self.decay_end - self.decay_start,
@@ -571,8 +582,8 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
         self.values
     )
     self.p0 = instantiate(
-        Linear.HParams(
-            start=(0, 0.0), limit=(self.boundaries[0], self.values[0])
+        pax_fiddle.Config(
+            Linear, start=(0, 0.0), limit=(self.boundaries[0], self.values[0])
         )
     )
     # Offset the boundaries, since each schedule passed to
@@ -580,7 +591,9 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
     # of steps since the previous boundary transition.
     boundaries_pc = [b - self.boundaries[0] for b in self.boundaries[1:]]
     self.p1 = instantiate(
-        PiecewiseConstant.HParams(boundaries=boundaries_pc, values=self.values)
+        pax_fiddle.Config(
+            PiecewiseConstant, boundaries=boundaries_pc, values=self.values
+        )
     )
 
   def value_at(self, step: JTensor) -> JTensor:
@@ -681,8 +694,8 @@ class ContinuousSchedule(BaseSchedule):
         self.min
     ) / math.log(0.5)
     self.exp: Exponential = instantiate(
-        Exponential.HParams(
-            start=(self.start_step, 1.0), limit=(limit, self.min)
+        pax_fiddle.Config(
+            Exponential, start=(self.start_step, 1.0), limit=(limit, self.min)
         )
     )
 

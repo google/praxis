@@ -78,11 +78,13 @@ class TestModel(base_model.BaseModel):
     self.create_variable('logits', logits_wp)
     if self.use_dummy_next_token_sampler:
       self.next_token_sampler = base_layer.instantiate(
-          TestNextTokenSampler.HParams()
+          pax_fiddle.Config(TestNextTokenSampler)
       )
     else:
       self.next_token_sampler = base_layer.instantiate(
-          sample_decode.DefaultNextTokenSampler.HParams(top_k=0, top_p=1.0)
+          pax_fiddle.Config(
+              sample_decode.DefaultNextTokenSampler, top_k=0, top_p=1.0
+          )
       )
 
   def __call__(self, *args, **kwargs):

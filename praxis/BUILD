@@ -275,6 +275,7 @@ pytype_strict_library(
         ":base_hyperparams",
         ":base_layer",
         ":decoder_utils",
+        ":pax_fiddle",
         ":py_utils",
         ":pytypes",
         # Implicit flax.core dependency.
@@ -288,6 +289,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
+        ":pax_fiddle",
         ":pytypes",
         # Implicit jax dependency.
         # Implicit optax dependency.
@@ -377,6 +379,7 @@ py_strict_test(
     deps = [
         ":base_hyperparams",
         ":base_input",
+        ":pax_fiddle",
         ":py_utils",
         ":test_utils",
         # Implicit absl.flags dependency.
@@ -464,6 +467,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":optimizers",
+        ":pax_fiddle",
         ":schedules",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
@@ -516,6 +520,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
+        ":pax_fiddle",
         ":schedules",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.

@@ -22,6 +22,7 @@ from jax import numpy as jnp
 from lingvo.core import py_utils as tf_py_utils
 from lingvo.core import schedule as tf_schedule
 from praxis import base_hyperparams
+from praxis import pax_fiddle
 from praxis import schedules
 from praxis import test_utils
 
@@ -483,8 +484,12 @@ class SchedulesTest(test_utils.TestCase):
             tf_lr_schedule.Value().numpy())
 
   def test_piecewise_schedule(self):
-    p1 = schedules.Exponential.HParams(start=(0, 1.0), limit=(50, 0.1))
-    p2 = schedules.Exponential.HParams(start=(0, 4.0), limit=(50, 1.0))
+    p1 = pax_fiddle.Config(
+        schedules.Exponential, start=(0, 1.0), limit=(50, 0.1)
+    )
+    p2 = pax_fiddle.Config(
+        schedules.Exponential, start=(0, 4.0), limit=(50, 1.0)
+    )
     p = schedules.PiecewiseSchedule.config(boundaries=[50], schedules=[p1, p2])
     lr_schedule = instantiate(p)
     jit_value = jax.jit(lr_schedule.value_at)
@@ -501,8 +506,12 @@ class SchedulesTest(test_utils.TestCase):
           jit_value(jnp.array(step + 50)), p2_jit_value(jnp.array(step)))
 
   def test_cycle_schedule(self):
-    p1 = schedules.Exponential.HParams(start=(0, 1.0), limit=(50, 0.1))
-    p2 = schedules.Exponential.HParams(start=(0, 4.0), limit=(50, 1.0))
+    p1 = pax_fiddle.Config(
+        schedules.Exponential, start=(0, 1.0), limit=(50, 0.1)
+    )
+    p2 = pax_fiddle.Config(
+        schedules.Exponential, start=(0, 4.0), limit=(50, 1.0)
+    )
     p = schedules.CycleSchedule.config(steps=[1, 2], schedules=[p1, p2])
     lr_schedule = instantiate(p)
     jit_value = jax.jit(lr_schedule.value_at)
@@ -520,7 +529,7 @@ class SchedulesTest(test_utils.TestCase):
             jit_value(jnp.array(step)), p2_jit_value(jnp.array(step)))
 
   def test_continuous_schedule(self):
-    p = schedules.ContinuousSchedule.HParams()
+    p = pax_fiddle.Config(schedules.ContinuousSchedule)
     lr_schedule = instantiate(p)
     jit_value = jax.jit(lr_schedule.value_at)
 

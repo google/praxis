@@ -30,6 +30,7 @@ from praxis import asserts
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import decoder_utils
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 
@@ -1632,7 +1633,7 @@ def greedy_decode(
     where a positive value of 1.0 is used to indicate padded positions).
   """
   next_token_sampler = base_layer.instantiate(
-      DefaultNextTokenSampler.HParams(top_k=1)
+      pax_fiddle.Config(DefaultNextTokenSampler, top_k=1)
   )
   return sample_decode(
       model,
