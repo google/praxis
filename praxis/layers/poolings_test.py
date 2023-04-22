@@ -16,13 +16,14 @@
 """Tests for Praxis pooling layers."""
 
 from absl.testing import absltest
-from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
+from lingvo.core import batch_major_attention
 from lingvo.core import layers as lingvo_layers
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import poolings
 import tensorflow.compat.v2 as tf
@@ -188,6 +189,67 @@ class PoolingsTest(test_utils.TestCase):
         initial_vars, inputs, compatible_paddings=paddings)
 
     self.assertAllClose(output, ground_truth)
+
+
+class FunnelPoolingsTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+    tf.random.set_seed(123)
+
+  @parameterized.parameters(
+      (2, 2, 'MAX', True),
+      (2, 3, 'AVG', True),
+      (3, 4, 'MAX', False),
+      (4, 5, 'AVG', False),
+  )
+  def test_pooling_layer(
+      self,
+      stride,
+      pool_window,
+      pooling_type,
+      has_paddings,
+  ):
+    p = pax_fiddle.Config(
+        poolings.FunnelPooling,
+        name='funnel_pooling',
+        stride=stride,
+        pool_window=pool_window,
+        pooling_type=pooling_type,
+    )
+    pooling_layer = instantiate(p)
+    input_shape = [2, 10, 2]
+    npy_inputs = np.random.normal(1.0, 0.5, input_shape).astype('float32')
+    inputs = jnp.asarray(npy_inputs)
+    if has_paddings:
+      npy_paddings = np.zeros(input_shape[:2]).astype(npy_inputs.dtype)
+      npy_paddings[1, -3:] = 1.0
+      paddings = jnp.asarray(npy_paddings)
+      tf_paddings = tf.constant(npy_paddings, dtype=tf.float32)
+    else:
+      paddings = None
+      tf_paddings = None
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pooling_layer.init(prng_key, inputs, paddings)
+    output, out_paddings = pooling_layer.apply(initial_vars, inputs, paddings)
+    # Test whether tf Pooling layer returns the same output.
+    # Modify initial_vars to use TF compatible params.
+    tf_initial_vars = initial_vars
+    tf_p = batch_major_attention.FunnelPoolingLayer.Params().Set(
+        name='tf_pooling',
+        stride=stride,
+        pool_window=pool_window,
+        pooling_type=pooling_type,
+    )
+    tf_pooling_layer = tf_p.Instantiate()
+    tf_input = tf.constant(npy_inputs, dtype=tf.float32)
+    tf_output = tf_pooling_layer.FProp(tf_initial_vars, tf_input, tf_paddings)
+    if has_paddings:
+      tf_output, tf_out_paddings = tf_output
+      self.assertAllClose(to_np(tf_out_paddings), to_np(out_paddings))
+    self.assertAllClose(to_np(tf_output), to_np(output))
+
 
 if __name__ == '__main__':
   absltest.main()

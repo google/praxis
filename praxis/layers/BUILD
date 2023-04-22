@@ -454,6 +454,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
+        "//praxis:asserts",
         "//praxis:base_layer",
         "//praxis:py_utils",
         "//praxis:pytypes",
@@ -1020,6 +1021,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
+        # Implicit lingvo.core.batch_major_attention dependency.
         # Implicit lingvo.core.layers dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
