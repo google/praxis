@@ -45,7 +45,7 @@ NestedShapeDtypeStruct = pytypes.NestedShapeDtypeStruct
 NestedPartitionSpec = pytypes.NestedPartitionSpec
 instantiate = base_hyperparams.instantiate
 
-_NAME_REGEX = r'[a-zA-Z0-9.:_-]+'
+_NAME_REGEX = r'[a-zA-Z0-9.:_+-]+'
 
 
 class BaseInput(base_hyperparams.FiddleBaseParameterizable):
