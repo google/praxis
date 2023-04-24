@@ -269,6 +269,7 @@ def for_transformer(
     quantize_ngrammer_embedding: bool = False,
     linear_only: bool = False,
     dtype: jnp.dtype = jnp.int8,
+    quantize_init_from_checkpoint_rules_task: bool = False,
 ):
   """Find and quantize transformer.
 
@@ -297,6 +298,8 @@ def for_transformer(
       Ngrammer/VQNgrammer layer.
     linear_only: quantize only linear layer.
     dtype: Dtype of the quantized variables.
+    quantize_init_from_checkpoint_rules_task: Apply quantization to the tasks
+      that are defined in task_p.train.init_from_checkpoint_rules.values()
 
   Returns:
     A modifier that quantizes transformers when applied to a config.
@@ -313,20 +316,29 @@ def for_transformer(
         config = super(Wrapper, self)
         task_p = config.task()
         assert num_bits in [2, 4, 8]
-        set_quantization(
-            task_p.model,
-            layers.transformers.Transformer,
-            quantization_type=quantization_type,
-            mode=mode,
-            num_bits=num_bits,
-            linear_only=linear_only,
-            use_symmetric=use_symmetric,
-            weight_quant_only=weight_quant_only,
-            quantize_embedding_softmax=quantize_embedding_softmax,
-            transposed_embedding_softmax=transposed_embedding_softmax,
-            quantize_ngrammer_embedding=quantize_ngrammer_embedding,
-            dtype=dtype,
-        )
+        models = [task_p.model]
+        if (
+            quantize_init_from_checkpoint_rules_task
+            and hasattr(task_p, 'train')
+            and hasattr(task_p.train, 'init_from_checkpoint_rules')
+        ):
+          for _, ckpt_rules in task_p.train.init_from_checkpoint_rules.items():
+            models.append(ckpt_rules.task_p.model)
+        for model in models:
+          set_quantization(
+              model,
+              layers.transformers.Transformer,
+              quantization_type=quantization_type,
+              mode=mode,
+              num_bits=num_bits,
+              linear_only=linear_only,
+              use_symmetric=use_symmetric,
+              weight_quant_only=weight_quant_only,
+              quantize_embedding_softmax=quantize_embedding_softmax,
+              transposed_embedding_softmax=transposed_embedding_softmax,
+              quantize_ngrammer_embedding=quantize_ngrammer_embedding,
+              dtype=dtype,
+          )
         return task_p
 
     return Wrapper
