@@ -997,9 +997,7 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
     # Note that this re-instantiate the input pipeline every time
     # `.get_input_specs()` is called. In practice, we typically call this
     # method only once at model initialization time.
-    # Few inputs (e.g. BaseInput) may try to still mutate this hparams.
-    # Clone it to make it mutable for now before calliing instantiate.
-    input_pipeline = instantiate(self.input_p.clone())
+    input_pipeline = instantiate(self.input_p)
     return jax.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
                         input_pipeline.get_next_padded())
 
