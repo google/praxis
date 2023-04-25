@@ -166,7 +166,9 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
   stream_io: bool = False
   polluting_bubbles_with_nan: bool = False
   pipeline_broadcast_inputs: bool = False
-  checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
+  checkpoint_policy: AutodiffCheckpointType = (
+      AutodiffCheckpointType.SAVE_ITERATION_INPUT
+  )
   optimizer_dims_mapping: SplitDimsMapping = None
   collect_intermediate_outputs: bool = False
   bf16_accum_in_fp32: bool = False
