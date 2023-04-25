@@ -359,9 +359,9 @@ class InputTest(test_utils.TestCase):
   ):
     """Using peek_padded() doesn't change results of get_next_padded()."""
     if checkpointable:
-      pipeline_p = TestInputCheckpointable.HParams()
+      pipeline_p = pax_fiddle.Config(TestInputCheckpointable)
     else:
-      pipeline_p = TestInput.HParams()
+      pipeline_p = pax_fiddle.Config(TestInput)
     pipeline_p.batch_size = 2
     pipeline_p.shuffle = False
     pipeline = instantiate(pipeline_p)
@@ -380,7 +380,7 @@ class InputTest(test_utils.TestCase):
     with mock.patch.object(
         TestInput, 'get_state', autospec=True
     ) as mock_get_state:
-      pipeline_p = TestInput.HParams()
+      pipeline_p = pax_fiddle.Config(TestInput)
       pipeline_p.batch_size = 2
       pipeline = instantiate(pipeline_p)
       pipeline.peek_padded()
@@ -395,7 +395,7 @@ class InputTest(test_utils.TestCase):
     """Using peek_padded() works with get_state()/set_state()."""
 
     def create_pipeline():
-      pipeline_p = TestInputCheckpointable.HParams()
+      pipeline_p = pax_fiddle.Config(TestInputCheckpointable)
       pipeline_p.batch_size = 2
       pipeline_p.shuffle = False
       return instantiate(pipeline_p)
