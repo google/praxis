@@ -16,52 +16,46 @@
 """Basic functionalities for pruning neural networks implemented in jax."""
 
 import dataclasses
-import enum
 import functools
 import math
-import typing
 from typing import Tuple, Union
 
 from absl import logging
 from flax import linen as nn
 import jax
 import jax.numpy as jnp
-
-# TODO(ayazdan): Create abstract class for sparsity configurations.
-class SparseType(str, enum.Enum):
-  """Pruning types dataclass."""
-
-  STRUCTURED_NM = 'STRUCTURED_NM'
-  UNSTRUCTURED = 'UNSTRUCTURED'
+from praxis.layers.sparsity import sparsity_hparams
 
 
+# TODO(shivaniagrawal): merge SparseHparams with SparsityHparams
 @dataclasses.dataclass
 class SparseHParams:
   """Hyper parameters for sparsity.
 
   Attributes:
-    type: Input array for which pruning mask is computed.
+    type: Types for sparsity to be applied, one of 'structured_nm' or
+      'unstructured'.
     prune_rate: Pruning rate.
     order: Apply pruning using this index order. Supported values are `C`, `R`.
       `C` and `R` indicate column-wise and row-wise ordering, respectively.
     absolute: If True, the absolute value of the values are used for sorting.
     smallest: If True, the smallest values in inputs are masked.
     structure_decay: If True, a decaying mechanism is applied on the structure.
-    mask_decay_weight: If 0.0, no mask decay is applied. The mask value
-      start with 1.0 and each time `num_update_sparsity` * `mask_decay_weight`
-      is subtracted from 1.0. Due to overhead of jit, we limited the number of
+    mask_decay_weight: If 0.0, no mask decay is applied. The mask value start
+      with 1.0 and each time `num_update_sparsity` * `mask_decay_weight` is
+      subtracted from 1.0. Due to overhead of jit, we limited the number of
       updates to `num_update_sparsity` to 16. After 16 iterations, we forcefully
       set `mask_decay_value` to zero. Mask decaying works for both structured
       and unstructured sparsity.
-    sparse_ste: If True, a sparse-refined straight-through estimator (SR-STE)
-      is applied, following the algorithm described in:
+    sparse_ste: If True, a sparse-refined straight-through estimator (SR-STE) is
+      applied, following the algorithm described in:
         https://arxiv.org/abs/2102.04010
     sparse_ste_weight: Denotes the relative weight for the sparse-refined term.
       As mentioned in the paper (https://arxiv.org/abs/2102.04010), the best
       default value is 0.0002 (lambda_w in the paper).
   """
 
-  type: SparseType
+  type: sparsity_hparams.SparsityType
   # Prune_rate data type varies with SparseHParams::type.
   # float: If SparseHParams::type is UNSTRUCTURED.
   # Tuple[int]: If SparseHParams::type is STRUCTURED_NM,  Tuple of type N, M.
@@ -76,42 +70,48 @@ class SparseHParams:
 
   def __post_init__(self):
     if self.prune_rate is not None:
-      if self.type == SparseType.STRUCTURED_NM:
-        assert isinstance(self.prune_rate,
-                          Tuple), ('prune rate should be either '
-                                   'None for no pruning or a '
-                                   'Tuple (N, M) for '
-                                   'STRUCTURED_NM sparsity')
-      elif self.type == SparseType.UNSTRUCTURED:
-        assert isinstance(self.prune_rate,
-                          float), ('prune rate should be either '
-                                   'None for no pruning or float for '
-                                   'UNSTRUCTURED sparsity')
+      if self.type == sparsity_hparams.SparsityType.STRUCTURED_NM:
+        assert isinstance(self.prune_rate, Tuple), (
+            'prune rate should be either '
+            'None for no pruning or a '
+            'Tuple (N, M) for '
+            'STRUCTURED_NM sparsity'
+        )
+      elif self.type == sparsity_hparams.SparsityType.UNSTRUCTURED:
+        assert isinstance(self.prune_rate, float), (
+            'prune rate should be either '
+            'None for no pruning or float for '
+            'UNSTRUCTURED sparsity'
+        )
       else:
         assert False, 'prune rate unknown!'
 
       assert self.mask_decay_weight >= 0.0, (
           'Invalid value for '
           f'{self.mask_decay_weight}. '
-          '`mask_decay_weight` must be positive.')
+          '`mask_decay_weight` must be positive.'
+      )
 
       if self.sparse_ste:
         if self.mask_decay_weight != 0.0:
           raise ValueError('SR-STE only works with non-decaying mask.')
         if self.structure_decay:
           raise ValueError(
-              'SR-STE only works with non-decaying sparse structure.')
-        if self.type != SparseType.STRUCTURED_NM:
+              'SR-STE only works with non-decaying sparse structure.'
+          )
+        if self.type != sparsity_hparams.SparsityType.STRUCTURED_NM:
           raise ValueError('SR-STE only works with structured sparsity.')
 
 
 @functools.partial(jax.custom_vjp, nondiff_argnums=(4, 5, 6))
-def sr_ste(inputs: jnp.ndarray,
-           mask: jnp.ndarray,
-           update_mask: bool,
-           apply_mask: bool,
-           n_sparsity: int = 0,
-           m_sparsity: int = 0):
+def sr_ste(
+    inputs: jnp.ndarray,
+    mask: jnp.ndarray,
+    update_mask: bool,
+    apply_mask: bool,
+    n_sparsity: int = 0,
+    m_sparsity: int = 0,
+):
   """Wrapper function for custom derivative rule for structured sparsity.
 
   Algorithm description: https://arxiv.org/abs/2102.04010
@@ -271,14 +271,14 @@ class Sparsity(nn.Module):
       return inputs
 
 
-def apply_sparsity(inputs: jnp.ndarray, mask: jnp.ndarray):
+def apply_sparsity(inputs: jnp.ndarray, mask: jnp.ndarray) -> jnp.ndarray:
   """Returns sparsified inputs based on input mask."""
   return jnp.where(mask, inputs, jnp.zeros(inputs.shape, inputs.dtype))
 
 
 def get_sparsity_mask(
     inputs: jnp.ndarray, n_sparsity: int = 0, m_sparsity: int = 0
-):
+) -> jnp.ndarray:
   """Returns sparsified inputs based on sparsity hparams."""
   assert (
       n_sparsity <= m_sparsity
@@ -320,3 +320,23 @@ def get_pruning_n_m_mask(inputs: jnp.ndarray, n: int, m: int) -> jnp.ndarray:
   return jax.vmap(lambda x, i: x.at[i].set(True))(mask, top_k_indices).reshape(
       inputs.shape
   )
+
+
+# TODO(shivaniagrawal): Only used for testing the functionality of
+# get_prune_mask; update the test to call get_pruning_n_m_mask instead.
+def prune_inputs_n_m(inputs: jnp.ndarray, *, n: int, m: int) -> jnp.ndarray:
+  """Returns pruned array with N:M (structured) pruning.
+
+  N:M pruning makes at most N values non-zero in each block of M consecutive
+  values.
+
+  Args:
+    inputs: Input array for which N:M pruning mask is computed.
+    n: Maximum number of non-zero values in each block.
+    m: Number of values in each block.
+
+  Returns:
+    An array with the same shape as inputs pruned with N:M strategy.
+  """
+  mask = get_pruning_n_m_mask(inputs, n, m)
+  return jnp.where(mask, inputs, jnp.zeros(inputs.shape, inputs.dtype))

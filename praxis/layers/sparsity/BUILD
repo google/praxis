@@ -58,9 +58,26 @@ pytype_strict_library(
     name = "sparsity",
     srcs = ["sparsity.py"],
     deps = [
+        ":sparsity_hparams",
         # Implicit absl.logging dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.
+    ],
+)
+
+py_strict_test(
+    name = "sparsity_test",
+    srcs = ["sparsity_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":sparsity",
+        ":sparsity_hparams",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit flax.core dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
     ],
 )
 
