@@ -908,7 +908,7 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
       )
     super().setup()
 
-  def __call__(self,
+  def __call__(self,  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
                inputs: JTensor,
                position: Optional[JTensor] = None) -> JTensor:
     """Generates a JTensor of sinusoids with different frequencies.
