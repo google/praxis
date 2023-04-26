@@ -14,20 +14,24 @@
 # limitations under the License.
 
 """HParams for the decoder."""
-from typing import Dict, List, Optional, Sequence, Union
 
-from praxis import base_hyperparams
-from praxis import base_layer
+import copy
+import dataclasses
+from typing import Dict, List, Optional, Sequence, TypeVar, Union
+
 from praxis import decoder_utils
 from praxis import pax_fiddle
 from praxis import pytypes
 from praxis import sample_decode
-BaseHyperParams = base_hyperparams.BaseHyperParams
 JTensor = pytypes.JTensor
 
 
-class DecoderHParams(BaseHyperParams):
-  """HParams for decoder.
+_TDecoderHParams = TypeVar('_TDecoderHParams', bound='DecoderHParams')
+
+
+@dataclasses.dataclass
+class DecoderHParams:
+  """Decoder parameters to tune decoding.
 
   Attributes:
     seqlen: Maximum output sequence length.
@@ -58,11 +62,16 @@ class DecoderHParams(BaseHyperParams):
   decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None
   emb_lookup_style: str = 'matmul'
 
+  def clone(self: _TDecoderHParams) -> _TDecoderHParams:
+    return copy.deepcopy(self)
 
+
+@dataclasses.dataclass
 class GreedyDecoderHParams(DecoderHParams):
   """HParams for greedy decode."""
 
 
+@dataclasses.dataclass
 class BeamSearchHParams(DecoderHParams):
   """HParams for beam search.
 
@@ -74,10 +83,12 @@ class BeamSearchHParams(DecoderHParams):
   length_norm_alpha: float = 0.8
 
 
+@dataclasses.dataclass
 class FlatBeamSearchHParams(BeamSearchHParams):
   """HParams for flat beam search."""
 
 
+@dataclasses.dataclass
 class SampleDecoderHParams(DecoderHParams):
   """HParams for sample decode.
 

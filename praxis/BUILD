@@ -122,8 +122,6 @@ pytype_strict_library(
     srcs = ["decoder_hparams.py"],
     srcs_version = "PY3",
     deps = [
-        ":base_hyperparams",
-        ":base_layer",
         ":decoder_utils",
         ":pax_fiddle",
         ":pytypes",
