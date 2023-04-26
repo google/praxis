@@ -18,15 +18,14 @@
 import dataclasses
 from absl.testing import absltest
 from absl.testing import parameterized
-import flax
-from flax import linen as nn
-import jax
 from jax import numpy as jnp
-from jax import random
 import numpy as np
 from praxis.layers.sparsity import sparsity
+from praxis.layers.sparsity import sparsity_hparams
+
 
 dataclass = dataclasses.dataclass
+
 
 class PruningParamsTest(parameterized.TestCase):
 
@@ -36,50 +35,49 @@ class PruningParamsTest(parameterized.TestCase):
   )
   def test_invalid_params(self, sparse_type, prune_rate):
     with self.assertRaisesRegex(
-        AssertionError, 'prune rate should be either None for no pruning'
+        AssertionError, 'Prune rate must be either None'
     ):
-      sparsity.SparseHParams(type=sparse_type, prune_rate=prune_rate)
+      weight_params = sparsity_hparams.WeightSparsityParams(
+          prune_rate=prune_rate
+      )
+      sparsity_hparams.SparsityHParams(
+          sparsity_type=sparse_type, weight_params=weight_params
+      )
 
   @parameterized.parameters(
-      dict(
-          sparse_type='structured_nm', prune_rate=(1, 4), mask_decay_weight=-0.1
-      ),
-      dict(sparse_type='unstructured', prune_rate=0.2, mask_decay_weight=-0.1),
+      dict(prune_rate=(1, 4), mask_decay_weight=-0.1),
+      dict(prune_rate=0.2, mask_decay_weight=-0.1),
   )
   def test_invalid_mask_decay_weight(
-      self, sparse_type, prune_rate, mask_decay_weight
+      self, prune_rate, mask_decay_weight
   ):
     with self.assertRaisesRegex(
         AssertionError, '.* `mask_decay_weight` must be positive.'
     ):
-      sparsity.SparseHParams(
-          type=sparse_type,
+      sparsity_hparams.WeightSparsityParams(
           prune_rate=prune_rate,
-          mask_decay_weight=mask_decay_weight,
+          mask_decay_weight=mask_decay_weight
       )
 
   @parameterized.parameters(
       dict(
-          sparse_type='structured_nm',
           prune_rate=(1, 4),
           sparse_ste=True,
           mask_decay_weight=0.1,
       ),
       dict(
-          sparse_type='unstructured',
           prune_rate=0.2,
           sparse_ste=True,
           mask_decay_weight=0.1,
       ),
   )
   def test_invalid_sparse_ste_with_non_zero_mask_decay_weight(
-      self, sparse_type, prune_rate, sparse_ste, mask_decay_weight
+      self, prune_rate, sparse_ste, mask_decay_weight
   ):
     with self.assertRaisesRegex(
         ValueError, 'SR-STE only works with non-decaying mask.'
     ):
-      sparsity.SparseHParams(
-          type=sparse_type,
+      sparsity_hparams.WeightSparsityParams(
           prune_rate=prune_rate,
           sparse_ste=sparse_ste,
           mask_decay_weight=mask_decay_weight,
@@ -87,26 +85,23 @@ class PruningParamsTest(parameterized.TestCase):
 
   @parameterized.parameters(
       dict(
-          sparse_type='structured_nm',
           prune_rate=(1, 4),
           sparse_ste=True,
           structure_decay=True,
       ),
       dict(
-          sparse_type='unstructured',
           prune_rate=0.2,
           sparse_ste=True,
           structure_decay=True,
       ),
   )
   def test_invalid_sparse_ste_with_structure_decay(
-      self, sparse_type, prune_rate, sparse_ste, structure_decay
+      self, prune_rate, sparse_ste, structure_decay
   ):
     with self.assertRaisesRegex(
         ValueError, 'SR-STE only works with non-decaying sparse structure.'
     ):
-      sparsity.SparseHParams(
-          type=sparse_type,
+      sparsity_hparams.WeightSparsityParams(
           prune_rate=prune_rate,
           sparse_ste=sparse_ste,
           structure_decay=structure_decay,
@@ -121,8 +116,11 @@ class PruningParamsTest(parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, 'SR-STE only works with structured sparsity.'
     ):
-      sparsity.SparseHParams(
-          type=sparse_type, prune_rate=prune_rate, sparse_ste=sparse_ste
+      weight_params = sparsity_hparams.WeightSparsityParams(
+          prune_rate=prune_rate, sparse_ste=sparse_ste
+      )
+      sparsity_hparams.SparsityHParams(
+          sparsity_type=sparse_type, weight_params=weight_params
       )
 
   def test_invalid_prune_rate(self):
