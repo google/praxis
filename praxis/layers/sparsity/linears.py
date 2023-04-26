@@ -66,11 +66,13 @@ class Linear(linears.Linear):
         self.create_variable('mask_update_count', count_pc, trainable=False)
 
   def _update_mask(self, weight):
-    return sparsity.get_sparsity_mask(
+    m = sparsity.get_sparsity_mask(
         weight,
         n_sparsity=self.sparsity.weight_params.prune_rate[0],
         m_sparsity=self.sparsity.weight_params.prune_rate[1],
     )
+    self.update_var('w' + base_layer.SPARSITY_NAME_POSTFIX, m)
+    return m
 
   def _maybe_update_mask(self, update_count, weight, mask):
     def _true_fn():
@@ -112,11 +114,11 @@ class Linear(linears.Linear):
         else:
           m = self._update_mask(w)
 
-        self.update_var('w' + base_layer.SPARSITY_NAME_POSTFIX, m)
         w = sparsity.apply_sparsity(w, m)
         out = linears.project_last_dim(inputs, w)
       else:
-        out = linears.project_last_dim(inputs, w)
+        raise ValueError('Unknown sparsity_type. It should be UNSTRUCTURED or'
+                         'STRUCTURED_NM.')
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
     ap_out = ap.out

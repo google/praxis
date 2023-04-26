@@ -99,3 +99,37 @@ py_strict_test(
         "//praxis/layers:linears",
     ],
 )
+
+pytype_strict_library(
+    name = "attentions",
+    srcs = ["attentions.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":sparsity",
+        ":sparsity_hparams",
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pytypes",
+        "//praxis/layers:attentions",
+    ],
+)
+
+py_strict_test(
+    name = "attentions_test",
+    srcs = ["attentions_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":attentions",
+        ":sparsity_hparams",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        "//praxis/layers:attentions",
+    ],
+)
