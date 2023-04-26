@@ -273,20 +273,22 @@ def right_align_prefix_ids(
 def top_p_mask_logits(
     logits: JTensor,
     p: Union[float, JTensor],
-    logits_is_sorted: bool = False,
+    logits_sorted_in_descending_order: bool = False,
     logits_sum: Optional[JTensor] = None,
 ) -> JTensor:
-  """Adjust logits so that the smallest number of logits whose cumulative...
+  """Keep only logits in the top `p` percentile of the softmax distribution.
 
-  sum of probs adds up to (at least) p. The other logits are masked with a
-  large negative number.
+  All other logits are masked with a large negative number. Typical values of p
+  are 0.95 or 0.99. Also known as nucleus sampling. Note that logits may be
+  passed in descending order with the `logits_sorted_in_descending_order`
 
   Args:
     logits: logits of shape [B, T].
     p: A scalar or a JTensor of shape [B]. In practice this means selecting the
       highest probability tokens whose cumulative probability mass exceeds this
       pre-chosen threshold p.
-    logits_is_sorted: where or not the logits is sorted.
+    logits_sorted_in_descending_order: whether or not the logits is sorted in
+      descending order.
     logits_sum: If none, apply softmax over logits to get probabilities.
 
   Returns:
@@ -295,18 +297,21 @@ def top_p_mask_logits(
   if not isinstance(p, JTensor) and p >= 1.0:
     return logits
   batch_size = logits.shape[0]
-  # Ascending order. Cumsum will go through small numbers first, which is
-  # more numerically stable.
-  if logits_is_sorted:
+  if logits_sorted_in_descending_order:
     logits_sorted = logits
   else:
+    # Ascending order. Cumsum will go through small numbers first, which is
+    # more numerically stable.
     logits_sorted = jnp.sort(logits, axis=-1)
   if logits_sum is not None:
     probs = logits_sorted.astype(jnp.float32) / logits_sum
   else:
     probs = jax.nn.softmax(logits_sorted.astype(jnp.float32), axis=-1)
   sorted_cum_probs = jnp.cumsum(probs, axis=-1)
-  cutoff_idx = jnp.sum((sorted_cum_probs <= p).astype(jnp.int32), axis=-1)
+  cutoff_threshold = p if logits_sorted_in_descending_order else 1.0 - p
+  cutoff_idx = jnp.sum(
+      (sorted_cum_probs <= cutoff_threshold).astype(jnp.int32), axis=-1
+  )
   cutoff_logit = logits_sorted[jnp.arange(batch_size), cutoff_idx]
   logits = jnp.where(
       logits < jnp.expand_dims(cutoff_logit, -1),
@@ -352,8 +357,8 @@ def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  
       return top_p_mask_logits(
           top_k_logits,
           top_p,
-          logits_is_sorted=topk_is_sorted,
           logits_sum=logits_sum,
+          logits_sorted_in_descending_order=topk_is_sorted,
       )
 
     def _false_fn():
@@ -364,8 +369,8 @@ def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  
     top_p_logits = top_p_mask_logits(
         top_k_logits,
         top_p,
-        logits_is_sorted=topk_is_sorted,
         logits_sum=logits_sum,
+        logits_sorted_in_descending_order=topk_is_sorted,
     )
 
   # Add gumbel noise.
@@ -381,7 +386,6 @@ def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  
   argmax_ids_in_topk = jnp.argmax(logits_with_noise, axis=-1)
   # Computes log probabilities from top_k logits
   top_k_logprobs = jax.nn.log_softmax(top_k_logits.astype(jnp.float32))
-  batch_size = top_k_logits.shape[0]
 
   return (
       _get_argmax_ids(argmax_ids_in_topk, top_k_indices),

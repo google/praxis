@@ -422,6 +422,48 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     self.assertAllClose(logits[:, :-1], masked[:, :-1])
     self.assertLess(masked[0, -1], 1e-10)
 
+  def test_top_p_mask_logits_logits_unsorted(self):
+    logits = jnp.array([[0.2, 2.0, 0.5, 1.5, 1.0]])
+    # softmax of logits:
+    # [0.06995774 0.42321967 0.09443307 0.2566957  0.15569381]
+    masked = sample_decode.top_p_mask_logits(logits, p=0.4)
+    ninf = -2.381976e38
+    self.assertAllClose(masked[0], np.array([ninf, 2.0, ninf, ninf, ninf]))
+
+    masked = sample_decode.top_p_mask_logits(logits, p=0.6)
+    self.assertAllClose(masked[0], np.array([ninf, 2.0, ninf, 1.5, ninf]))
+
+    masked = sample_decode.top_p_mask_logits(logits, p=0.8)
+    self.assertAllClose(masked[0], np.array([ninf, 2.0, ninf, 1.5, 1.0]))
+
+    masked = sample_decode.top_p_mask_logits(logits, p=0.9)
+    self.assertAllClose(masked[0], np.array([ninf, 2.0, 0.5, 1.5, 1.0]))
+
+  def test_top_p_mask_logits_logits_sorted(self):
+    logits = jnp.array([[2.0, 1.5, 1.0, 0.5, 0.2]])
+    # softmax of logits:
+    # [0.42321967 0.2566957  0.15569381 0.09443307 0.06995774]
+    masked = sample_decode.top_p_mask_logits(
+        logits, p=0.4, logits_sorted_in_descending_order=True
+    )
+    ninf = -2.381976e38
+    self.assertAllClose(masked[0], np.array([2.0, ninf, ninf, ninf, ninf]))
+
+    masked = sample_decode.top_p_mask_logits(
+        logits, p=0.6, logits_sorted_in_descending_order=True
+    )
+    self.assertAllClose(masked[0], np.array([2.0, 1.5, ninf, ninf, ninf]))
+
+    masked = sample_decode.top_p_mask_logits(
+        logits, p=0.8, logits_sorted_in_descending_order=True
+    )
+    self.assertAllClose(masked[0], np.array([2.0, 1.5, 1.0, ninf, ninf]))
+
+    masked = sample_decode.top_p_mask_logits(
+        logits, p=0.9, logits_sorted_in_descending_order=True
+    )
+    self.assertAllClose(masked[0], np.array([2.0, 1.5, 1.0, 0.5, ninf]))
+
   def test_epsilon_mask_logits(self):
     logits = jnp.array([[1.0, 1.0, 0.5, -1e6]])
     masked = sample_decode.epsilon_mask_logits(logits, epsilon=0.1)
