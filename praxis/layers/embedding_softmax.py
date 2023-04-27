@@ -108,6 +108,8 @@ class Embedding(base_layer.BaseLayer):
   lookup_style: str = 'index'
   scale_sqrt_depth: bool = False
   set_nan_for_oob_id: bool = False
+  array_lookup_tpl: LayerTpl = template_field(base_ops.ArrayLookup)
+  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
@@ -130,6 +132,8 @@ class Embedding(base_layer.BaseLayer):
             tensor_split_dims_mapping=wp.wt,
         ),
     )
+    self.create_child('array_lookup', self.array_lookup_tpl.clone())
+    self.create_child('einsum', self.einsum_tpl.clone())
 
   def __call__(self, ids: JTensor) -> JTensor:
     return self.emb_lookup(ids)
@@ -138,13 +142,13 @@ class Embedding(base_layer.BaseLayer):
     ap = self.activation_split_dims_mapping
 
     if self.lookup_style == 'index':
-      embs = jnp.asarray(self.theta.emb_var)[(ids,)]
+      embs = self.array_lookup(jnp.asarray(self.theta.emb_var), (ids,))
     elif self.lookup_style == 'matmul':
       # Explicit casting to fprop_dtype needed for bf16.
       one_hot_ids = jax.nn.one_hot(
           ids, self.num_classes, dtype=self.fprop_dtype
       )
-      embs = linears.project_last_dim(one_hot_ids, self.theta.emb_var)
+      embs = self.einsum('...y,yz->...z', one_hot_ids, self.theta.emb_var)
     else:
       raise ValueError('Unknown lookup style.')
 
@@ -340,10 +344,12 @@ class SharedEmbeddingSoftmax(FullSoftmax):
   """
   lookup_style: str = 'index'
   scale_sqrt_depth: bool = False
+  array_lookup_tpl: LayerTpl = template_field(base_ops.ArrayLookup)
   einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
 
   def setup(self) -> None:
     super().setup()
+    self.create_child('array_lookup', self.array_lookup_tpl.clone())
     self.create_child('einsum', self.einsum_tpl.clone())
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
@@ -358,7 +364,7 @@ class SharedEmbeddingSoftmax(FullSoftmax):
     ap = self.activation_split_dims_mapping
     emb_var = jnp.transpose(self.logits_ffn.linear.theta.w)
     if self.lookup_style == 'index':
-      embs = jnp.asarray(emb_var)[(ids,)]
+      embs = self.array_lookup(jnp.asarray(emb_var), (ids,))
     elif self.lookup_style == 'matmul':
       # Explicit casting to fprop_dtype needed for bf16.
       one_hot_ids = jax.nn.one_hot(
@@ -1003,6 +1009,8 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
   """
   max_seq_length: int = 10_240
   lookup_style: str = 'matmul'
+  array_lookup_tpl: LayerTpl = template_field(base_ops.ArrayLookup)
+  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
@@ -1024,6 +1032,8 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
             tensor_split_dims_mapping=wp.wt,
         ),
     )
+    self.create_child('array_lookup', self.array_lookup_tpl.clone())
+    self.create_child('einsum', self.einsum_tpl.clone())
 
   def __call__(self,
                seq_length: Optional[int] = None,
@@ -1049,10 +1059,11 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
     pos_emb_var = self.theta.emb_var
     pos_emb_var = jax.lax.slice_in_dim(pos_emb_var, 0, seq_length, axis=0)
     if self.lookup_style == 'index':
-      embs = jnp.asarray(pos_emb_var)[(position,)]
+      embs = self.array_lookup(jnp.asarray(pos_emb_var), (position,))
     elif self.lookup_style == 'matmul':
       one_hot_ids = jax.nn.one_hot(position, seq_length, dtype=self.fprop_dtype)
       embs = jnp.matmul(one_hot_ids, pos_emb_var)
+      embs = self.einsum('...y,yz->...z', one_hot_ids, pos_emb_var)
     else:
       raise ValueError('Unknown lookup style.')
 
