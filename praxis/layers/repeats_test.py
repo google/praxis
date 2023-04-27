@@ -83,6 +83,7 @@ class FeedForward(base_layer.BaseLayer):
     self.add_aux_loss('z_loss', 1, 0.5)
     self.update_var('step', self.get_var('step') + 1)
     out = jnp.einsum('...y,yz->...z', inputs, self.theta.w)
+    self.sow(INTERMEDIATES, 'before_sigmoid', out)
     out = jax.nn.sigmoid(out)
     return out
 
@@ -343,6 +344,7 @@ class RepeatsTest(test_utils.TestCase):
     outputs, updated_vars = repeated_ffn.apply(
         init_vars, x, mutable=[INTERMEDIATES], capture_intermediates=True
     )
+    self.assertIn('before_sigmoid', updated_vars[INTERMEDIATES]['sub'])
     intermediates = updated_vars[INTERMEDIATES]['repeat_intermediates'][0]
     self.assertEqual(intermediates.shape, (3, 4, 2))
     self.assertAllClose(outputs, intermediates[-1])
