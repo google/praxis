@@ -392,7 +392,8 @@ class TransformerLm(base_layer.BaseLayer):
     if (lm_p.position_emb_tpl is not None and lm_p.position_emb_tpl.cls
         == embedding_softmax.TrainablePositionalEmbedding):
       lm_p.position_emb_tpl.weight_split_dims_mapping.wt = pos_emb_w_ld
-      lm_p.position_emb_tpl.activation_split_dims_mapping.out = pos_emb_w_ld
+      (lm_p.position_emb_tpl.activation_split_dims_mapping
+       .emb_out_split_dims_mapping) = a_bld
 
     if lm_p.ngrammer_tpl is not None:
       lm_p.ngrammer_tpl.weight_split_dims_mapping.wt = w_vd
