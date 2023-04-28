@@ -143,11 +143,7 @@ class OneHeadedAttentionProjection(
         w = utils.unpack_4bit(
             w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
         )
-      if self.quantization.weight_params.use_symmetric:
-        ret = operations.einsum(eqn, inputs, w, s)
-      else:
-        assert zp is not None, 'zp cannot be None when use_symmetric=False.'
-        ret = operations.einsum(eqn, inputs, w, s, zp)
+      ret = operations.einsum(eqn, inputs, w, s, zp)
     else:
       w = theta.w
       if self.quantization.quantization_type == QuantizationType.AQT:

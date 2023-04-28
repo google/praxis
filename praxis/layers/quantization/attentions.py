@@ -222,14 +222,7 @@ class AttentionProjection(attentions.AttentionProjection):
             eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
         )
       elif self.quantization.act_params is None:
-        if self.quantization.weight_params.use_symmetric:
-          if self.quantization.weight_params.dequant_upfront:
-            raise NotImplementedError('Dequantize upfront not supported.')
-          else:
-            ret = operations.einsum(eqn, inputs, w, s)
-        else:
-          assert zp is not None, 'zp cannot be None when use_symmetric=False.'
-          ret = operations.einsum(eqn, inputs, w, s, zp)
+        ret = operations.einsum(eqn, inputs, w, s, zp)
 
     else:
       if self.quantization.quantization_type == QuantizationType.AQT:
@@ -516,13 +509,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
         )
       elif self.quantization.act_params is None:
-        if self.quantization.weight_params.use_symmetric:
-          if self.quantization.weight_params.dequant_upfront:
-            raise NotImplementedError('Dequantize upfront not supported.')
-          else:
-            ret = operations.einsum(eqn, inputs, w, s)
-        else:
-          ret = operations.einsum(eqn, inputs, w, s, zp)
+        ret = operations.einsum(eqn, inputs, w, s, zp)
     else:
       if self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(

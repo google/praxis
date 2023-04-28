@@ -161,13 +161,7 @@ class Linear(linears.Linear):
       elif self.quantization.act_params is not None:
         inputs, act_scale = operations.reduce_precision_activation(inputs)
         s = jnp.multiply(jnp.squeeze(act_scale), s)
-      if self.quantization.weight_params.use_symmetric:
-        if self.quantization.weight_params.dequant_upfront:
-          raise NotImplementedError('Dequantize upfront not supported.')
-        else:
-          out = operations.einsum(eqn, inputs, w, s)
-      else:
-        out = operations.einsum(eqn, inputs, w, s, zp)
+      out = operations.einsum(eqn, inputs, w, s, zp)
     else:
       w = self.theta.w
       if self.quantization.quantization_type == QuantizationType.AQT:
