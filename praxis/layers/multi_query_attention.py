@@ -400,8 +400,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
 
   def _atten_logits(self, query: JTensor, key: JTensor) -> JTensor:
     """Compute logits from query and key."""
-    query = query.transpose(0, 2, 1, 3)
-    logits = self.qk_einsum('BNTH,BSH->BNTS', query, key)
+    logits = self.qk_einsum('BTNH,BSH->BNTS', query, key)
     return logits
 
   def _dot_atten(
@@ -465,8 +464,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # Apply attention dropout.
     probs = self.atten_dropout(probs)
     # Compute the attention context.
-    encoded = self.pv_einsum('BNTS,BSH->BNTH', probs, value)
-    encoded = encoded.transpose(0, 2, 1, 3)
+    encoded = self.pv_einsum('BNTS,BSH->BTNH', probs, value)
     encoded = checkpoint_name(encoded, 'context')
     encoded = self._shard_blnh(encoded)
     return encoded, probs
