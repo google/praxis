@@ -32,7 +32,8 @@ QuantizationType = quantization_hparams.QuantizationType
 
 
 def _run_option(model, model_vars, inputs, act_decision, weight_decision):
-  model_vars['non_trainable']['act_quantizer']['decision'] = act_decision
+  if 'act_quantizer' in model_vars['non_trainable']:
+    model_vars['non_trainable']['act_quantizer']['decision'] = act_decision
   model_vars['non_trainable']['weight_quantizer']['decision'] = weight_decision
   return model.apply(model_vars, inputs)
 
