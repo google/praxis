@@ -1052,7 +1052,7 @@ def pad_or_trim_to(
 
 
 def append_eos(
-    x: JTensor, paddings: JTensor, eos_id: int, extend_if_overflow: bool=True
+    x: JTensor, paddings: JTensor, eos_id: int, extend_if_overflow: bool = True
 ) -> Tuple[JTensor, JTensor]:
   """Ensure each sequence ends with eos by padding.
 
@@ -1090,8 +1090,8 @@ def append_eos(
       jnp.all(output_lens <= t), not extend_if_overflow,
   ).astype(jnp.int32)
   return (
-      output_x[:, :t+1-truncate],
-      output_paddings.astype(paddings.dtype)[:, :t+1-truncate],
+      output_x[:, : t + 1 - truncate],
+      output_paddings.astype(paddings.dtype)[:, : t + 1 - truncate],
   )
 
 
