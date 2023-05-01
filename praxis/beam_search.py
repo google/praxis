@@ -15,7 +15,8 @@
 
 """Vanilla Beam search algorithm."""
 
-from typing import Dict, Optional, Sequence, Tuple
+import inspect
+from typing import Callable, cast, Dict, Optional, Sequence, Tuple, Union
 
 from flax import linen as nn
 import jax
@@ -29,6 +30,16 @@ NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
 BeamSearchHParams = decoder_hparams.BeamSearchHParams
 DecodeInfo = Tuple[JTensor, JTensor, JTensor, JTensor, JTensor]
+ExpandedExtendStepFn = Callable[
+    [
+        base_layer.BaseLayerApi,  # model
+        JTensor,  # extend_ids
+        JTensor,  # segment_pos
+        JTensor,  # step, counting from 0
+        JTensor,  # hyp_ids of last round, initially 0
+    ],
+    JTensor,  # logits
+]
 
 
 def update_topk_scores_with_eos(end_hyps: DecodeInfo,
@@ -99,7 +110,7 @@ def broadcast_beam_dim(x: JTensor, beam_dim: int, beam_size: int) -> JTensor:
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def beam_search(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: decoder_utils.ExtendStepFn,
+    extend_step_fn: Union[decoder_utils.ExtendStepFn, ExpandedExtendStepFn],
     fprop_fn: decoder_utils.FPropFn,
     transform_state_fn: decoder_utils.TransformStateFn,
     prefix_ids: JTensor,
@@ -115,7 +126,9 @@ def beam_search(
     extend_step_fn: A function that takes in the decoded sequence at the current
       time step (with shape [B] or [B, P] where B corresponds to the batch size
       and P corresponds to a possible prefix) and returns `JTensor` corresponds
-      to the logits of the next step.
+      to the logits of the next step.  The following signatures are allowed:
+        extend_step_fn(model, extend_ids, segment_pos)
+        extend_step_fn(model, extend_ids, segment_pos, step, hyp_ids)
     fprop_fn: A function that takes in the prefix information and initialize the
       decode cache states.
     transform_state_fn: A function that transforms the decode state.
@@ -161,7 +174,7 @@ def beam_search(
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def beam_search_after_prefix_fprop(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: decoder_utils.ExtendStepFn,
+    extend_step_fn: Union[decoder_utils.ExtendStepFn, ExpandedExtendStepFn],
     transform_state_fn: decoder_utils.TransformStateFn,
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
@@ -210,6 +223,7 @@ def beam_search_after_prefix_fprop(
   val.hyp_scores = jnp.zeros(shape=loop_state_shape, dtype=jnp.float32)
   # Penalize all hyps except the first
   val.hyp_scores -= jnp.arange(beam_size, dtype=jnp.float32) * 1e9
+  val.hyp_ids = jnp.zeros(shape=loop_state_shape, dtype=jnp.int32)
   val.logprobs = jnp.ones(
       shape=(batch_size, beam_size, seq_len), dtype=jnp.float32)
   val.end_logprobs = jnp.zeros(
@@ -228,9 +242,21 @@ def beam_search_after_prefix_fprop(
                                                 [0] * val.output_ids.ndim)
   val.end_ids = val.output_ids
   # Update loop init states with prefix.
-  val.step = max_prefix_len - 1
+  start_step = max_prefix_len - 1
+  val.step = start_step
   val.segment_pos = jnp.reshape(prefix_lengths - 1, (batch_size * beam_size,))
   val.end_decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
+
+  # If we got an `ExtendStepFn`, expand it to an `ExpandedExtendStepFn`.
+  if len(inspect.signature(extend_step_fn).parameters) == 3:
+    extend_step_fn = cast(decoder_utils.ExtendStepFn, extend_step_fn)
+
+    def expanded_extend_step_fn(model, extend_ids, segment_pos, step, hyp_ids):
+      del step, hyp_ids
+      return extend_step_fn(model, extend_ids, segment_pos)
+
+  else:
+    expanded_extend_step_fn = cast(ExpandedExtendStepFn, extend_step_fn)
 
   def get_cond_func(stop_decode_steps):
     """Get condition function for given stop decode steps."""
@@ -246,7 +272,9 @@ def beam_search_after_prefix_fprop(
     """From ids at `step`, update output ids at `step + 1`."""
     step = val.step
     extend_ids = jnp.reshape(val.output_ids[:, :, step], (-1,))
-    logits = extend_step_fn(model, extend_ids, val.segment_pos)
+    logits = expanded_extend_step_fn(
+        model, extend_ids, val.segment_pos, step - start_step, val.hyp_ids
+    )
     logits = jnp.reshape(logits, (batch_size, beam_size, -1))
     # TODO(b/229679837): consider add logprobs to while loop state and
     # shuffle it.
@@ -280,6 +308,7 @@ def beam_search_after_prefix_fprop(
     # update scores without EOS.
     val.hyp_scores = final_topk_value
     hyp_id = final_topk_indices // beam_size
+    val.hyp_ids = hyp_id
 
     # Shuffle at beam dimension for the cache states using hyp_id.
     def _shuffle_state_fn(x, batch_dim, time_dim):
