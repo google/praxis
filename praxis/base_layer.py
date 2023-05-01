@@ -242,8 +242,10 @@ def to_partition_spec(
 
 
 def var_partition_specs(
-    var_specs: NestedHParams, mesh_shape: Sequence[int],
-    device_axis_names: List[str]) -> NestedJTensorOrPartitionSpec:
+    var_specs: NestedHParams,
+    mesh_shape: Sequence[int],
+    device_axis_names: Sequence[str],
+) -> NestedJTensorOrPartitionSpec:
   """Given variable specs (WeightHParams), returns pjit partition specs.
 
   Args:
