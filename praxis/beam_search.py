@@ -348,6 +348,7 @@ def beam_search_after_prefix_fprop(
         loop_body,
         model,
         val,
+        split_rngs={base_layer.RANDOM: True},
         carry_variables=[base_layer.DECODE_CACHE],
     )
 
