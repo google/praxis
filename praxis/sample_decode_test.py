@@ -497,9 +497,16 @@ class SampleDecodeHelperTest(test_utils.TestCase):
           use_dummy_next_token_sampler=False,
           use_gumbel_prng_key=True,
       ),
+      dict(
+          testcase_name='return_entropy_score',
+          use_dummy_next_token_sampler=True,
+          use_gumbel_prng_key=False,  # doesn't matter
+          return_entropy_score=True,
+      ),
   )
   def test_sample_decode(
-      self, use_dummy_next_token_sampler, use_gumbel_prng_key
+      self, use_dummy_next_token_sampler, use_gumbel_prng_key,
+      return_entropy_score=False
   ):
     batch_size = 1
     num_samples = 2
@@ -554,13 +561,14 @@ class SampleDecodeHelperTest(test_utils.TestCase):
           fprop_for_prefix=True,
           # Call the scan loop.
           early_exit=False,
+          return_entropy_score=return_entropy_score,
       )
 
     mutables = [SUMMARIES, DECODE_CACHE]
     rngs = {'random': jax.random.PRNGKey(9382)}
 
     # test that we can fetch arbitrary summary out.
-    _, updated_vars = nn.apply(decode_fn, model, mutable=mutables)(
+    result, updated_vars = nn.apply(decode_fn, model, mutable=mutables)(
         init_vars, input_ids, input_paddings, rngs=rngs
     )
     logits_summary = updated_vars['summaries']['logits_scalar']
@@ -579,6 +587,15 @@ class SampleDecodeHelperTest(test_utils.TestCase):
       self.assertAllClose(new_ids_summary, jnp.array([[1, 2], [3, 0], [0, 0]]))
     else:
       self.assertAllClose(new_ids_summary, jnp.array([[3, 0], [2, 1], [0, 1]]))
+    # Check score
+    if return_entropy_score:
+      prob = jax.nn.softmax(logits_var)
+      entropy = jnp.transpose(-jnp.sum(prob * jnp.log(prob), axis=-1))
+      self.assertEqual(entropy.shape, result['entropy'][0].shape)
+      np.testing.assert_array_almost_equal(
+          entropy, result['entropy'][0], decimal=5)
+    else:
+      self.assertNotIn('entropy', result)
 
 
 if __name__ == '__main__':

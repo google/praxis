@@ -573,6 +573,7 @@ class LanguageModel(base_model.BaseModel):
       per_example_top_k = getattr(input_batch, 'per_example_top_k', None)
       eos_id = getattr(input_batch, 'eos_id', decoder_params.eos_id)
       gumbel_prng_key = getattr(input_batch, 'gumbel_prng_key', None)
+      return_entropy_score = hasattr(input_batch, 'return_entropy_score')
 
       next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
       # TODO(b/260646361): Avoid this param propagation.
@@ -618,6 +619,7 @@ class LanguageModel(base_model.BaseModel):
           model_var_pspecs=lm_var_pspecs,
           sort_samples=decoder_params.sort_samples,
           use_top_k_for_logprobs=decoder_params.use_top_k_for_logprobs,
+          return_entropy_score=return_entropy_score,
       )
 
     elif template_has_type(decoder_params, GreedyDecoderHParams):

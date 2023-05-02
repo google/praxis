@@ -760,6 +760,7 @@ def sample_decode(
     controlled_decoding: Optional[
         decoder_utils.ControlledDecodingHParams
     ] = None,
+    return_entropy_score: bool = False,
 ) -> NestedMap:
   """Sampling decode the input batch.
 
@@ -842,6 +843,7 @@ def sample_decode(
     use_top_k_for_logprobs: computes the log probability from the top k logits
       instead of all logits.
     controlled_decoding: Params to configure blockwise controlled decoding.
+    return_entropy_score: Whether to return entropy score for every token.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -903,6 +905,7 @@ def sample_decode(
         early_exit,
         use_top_k_for_logprobs,
         controlled_decoding,
+        return_entropy_score,
     )
 
 
@@ -936,6 +939,7 @@ def sample_decode_after_fprop(
     controlled_decoding: Optional[
         decoder_utils.ControlledDecodingHParams
     ] = None,
+    return_entropy_score: bool = False,
 ) -> NestedMap:
   """Sampling decode after init decode state the input batch.
 
@@ -1017,6 +1021,7 @@ def sample_decode_after_fprop(
     use_top_k_for_logprobs: computes the log probability from the top k logits
       instead of all logits.
     controlled_decoding: Params to configure blockwise controlled decoding.
+    return_entropy_score: Whether to return entropy score for every token.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -1209,6 +1214,8 @@ def sample_decode_after_fprop(
   val.decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
   # We use a positive value of 1.0 to indicate blank or padded positions.
   val.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
+  if return_entropy_score:
+    val.entropy = jnp.zeros_like(output_ids, dtype=jnp.float32)
   val = next_token_sampler.init_decode_loop_state(val, batch_size, eos_id)
 
   if result_callback is not None and result_callback.init_fn is not None:
@@ -1337,6 +1344,9 @@ def sample_decode_after_fprop(
         prev_done, jnp.ones_like(logprobs_at_new_ids), logprobs_at_new_ids
     )
     val.logprobs = val.logprobs.at[:, step + 1].set(logprobs_at_new_ids)
+    if hasattr(val, 'entropy'):
+      val.entropy = val.entropy.at[:, step + 1].set(
+          -jnp.sum(logprobs * jnp.exp(logprobs), axis=-1))
 
     if result_callback is not None:
 
@@ -1560,6 +1570,10 @@ def sample_decode_after_fprop(
     result.logprobs = decoder_utils.left_align_tensor(
         result.logprobs, prefix_lengths, max_prefix_len
     )
+    if hasattr(result, 'entropy'):
+      result.entropy = decoder_utils.left_align_tensor(
+          result.entropy, prefix_lengths, max_prefix_len
+      )
 
   del result.start_step, result.step, result.done, result.has_eos
   result = next_token_sampler.post_process_decode_loop_state(result)
