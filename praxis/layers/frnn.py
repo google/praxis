@@ -276,8 +276,23 @@ class LstmFrnn(FRnn):
     if not isinstance(inputs.act, (list, tuple)):
       inputs.act = [inputs.act]
 
-    # TODO(pax): support packed input.
-    inputs.reset_mask = jnp.zeros_like(inputs.padding)
+    if hasattr(inputs, 'segment_ids'):
+      batch_size = inputs.segment_ids.shape[0]
+      left_padding = jnp.full(
+          [batch_size, 1, 1], -1, dtype=inputs.segment_ids.dtype
+      )
+      # Segment ids of previous step. Using -1 for the first step.
+      segment_ids_of_previous_step = jnp.concatenate(
+          [left_padding, inputs.segment_ids[:, :-1]], axis=1
+      )
+      # 0/1 array with 1 indicating the start position of a segment.
+      segment_start_indicator = (
+          jnp.not_equal(segment_ids_of_previous_step, inputs.segment_ids)
+          * (1.0 - inputs.padding)
+      ).astype(jnp.int32)
+      inputs.reset_mask = 1 - segment_start_indicator
+    else:
+      inputs.reset_mask = jnp.ones_like(inputs.padding)
 
     if self.reverse:
       inputs = jax.tree_map(lambda x: jnp.flip(x, axis=[1]), inputs)

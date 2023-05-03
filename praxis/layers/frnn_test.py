@@ -38,14 +38,14 @@ class FRNNTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(123456)
 
-  def _get_cell_params(self,
-                       jax_cell_class,
-                       output_nonlinearity,
-                       direct_config=False):
+  def _get_cell_params(
+      self, jax_cell_class, reset_cell_state, output_nonlinearity
+  ):
     params = pax_fiddle.Config(jax_cell_class, name='rnn')
     params.params_init = WeightInit.Uniform(1.24)
     params.num_input_nodes = 7
     params.num_output_nodes = 9
+    params.reset_cell_state = reset_cell_state
     params.zo_prob = 0.0
     params.output_nonlinearity = output_nonlinearity
     return params
@@ -57,18 +57,45 @@ class FRNNTest(test_utils.TestCase):
     c = jnp.less_equal(b, lengths[:, jnp.newaxis]).astype(dtype)
     return c
 
-  def _get_test_inputs(self):
+  def _get_test_inputs(self, packed_input: bool = False):
     seqlen, batch, input_dim, output_dim = 4, 5, 7, 9
     inputs = jnp.array(
         np.random.rand(batch, seqlen, input_dim).astype(np.float32))
     input_lens = np.random.randint(1, seqlen + 1, size=batch)
-    padding = 1. - self._sequence_mask(
-        input_lens, maxlen=seqlen, dtype=jnp.float32)
+    sequence_mask = self._sequence_mask(
+        input_lens, maxlen=seqlen, dtype=jnp.float32
+    )
+    padding = 1.0 - sequence_mask
     padding = padding[:, :, None]
+
+    if packed_input:
+      segment_start_indicator = (
+          jnp.concatenate(
+              [
+                  jnp.ones([batch, 1], dtype=jnp.int32),
+                  jnp.array(np.random.randint(2, size=(batch, seqlen - 1))),
+              ],
+              axis=-1,
+          )
+          * sequence_mask
+      ).astype(jnp.int32)
+      segment_ids = (
+          jnp.cumsum(segment_start_indicator, axis=-1) * sequence_mask
+      ).astype(jnp.int32)
+      segment_ids = jnp.expand_dims(segment_ids, axis=-1)
+      reset_mask = 1 - segment_start_indicator
+      reset_mask = jnp.expand_dims(reset_mask, axis=-1)
+    else:
+      segment_ids = (
+          jnp.ones([batch, seqlen], dtype=jnp.int32) * sequence_mask
+      ).astype(jnp.int32)
+      segment_ids = jnp.expand_dims(segment_ids, axis=-1)
+      reset_mask = jnp.ones_like(segment_ids)
 
     m = jnp.array(np.random.rand(batch, output_dim).astype(np.float32))
     c = jnp.array(np.random.rand(batch, output_dim).astype(np.float32))
-    return inputs, padding, m, c
+
+    return inputs, padding, segment_ids, m, c, reset_mask
 
   @parameterized.parameters(
       (jax_rnn_cell.LstmCellSimple, False),
@@ -77,10 +104,10 @@ class FRNNTest(test_utils.TestCase):
       (jax_rnn_cell.CifgLstmCellSimple, True),
   )
   def test_frnn_lstm_cell(self, jax_cell_class, output_nonlinearity):
-    cell_p = self._get_cell_params(jax_cell_class, output_nonlinearity)
+    cell_p = self._get_cell_params(jax_cell_class, False, output_nonlinearity)
     frnn_p = pax_fiddle.Config(frnn.LstmFrnn, name='frnn', cell_tpl=cell_p)
 
-    act_in, padding, m0, c0 = self._get_test_inputs()
+    act_in, padding, _, m0, c0, _ = self._get_test_inputs()
     cell = instantiate(cell_p)
     frnn_model = instantiate(frnn_p)
 
@@ -113,7 +140,7 @@ class FRNNTest(test_utils.TestCase):
   def test_stackfrnn_lstm(self, jax_cell_class, output_nonlinearity,
                           num_layers):
     input_dim, output_dim = 7, 9
-    cell_p = self._get_cell_params(jax_cell_class, output_nonlinearity)
+    cell_p = self._get_cell_params(jax_cell_class, False, output_nonlinearity)
     frnn_p = pax_fiddle.Config(frnn.LstmFrnn, name='frnn', cell_tpl=cell_p)
     stack_frnn_p = pax_fiddle.Config(
         frnn.StackFrnn,
@@ -124,7 +151,7 @@ class FRNNTest(test_utils.TestCase):
         num_layers=num_layers,
     )
 
-    act_in, padding, m0, c0 = self._get_test_inputs()
+    act_in, padding, _, m0, c0, _ = self._get_test_inputs()
     stack_frnn_model = instantiate(stack_frnn_p)
 
     state0 = [NestedMap(m=jnp.copy(m0), c=jnp.copy(c0)) for _ in range(num_layers)]
@@ -162,7 +189,7 @@ class FRNNTest(test_utils.TestCase):
   )
   def test_frnn_vs_lstm(self, jax_cell_class, output_nonlinearity, num_layers):
     input_dim, output_dim = 7, 9
-    cell_p = self._get_cell_params(jax_cell_class, output_nonlinearity)
+    cell_p = self._get_cell_params(jax_cell_class, False, output_nonlinearity)
     lstm_p = pax_fiddle.Config(frnn.LstmFrnn, cell_tpl=cell_p)
     frnn_p = pax_fiddle.Config(frnn.FRnn, cell_tpl=cell_p)
     stack_frnn_p = pax_fiddle.Config(
@@ -182,7 +209,7 @@ class FRNNTest(test_utils.TestCase):
         num_layers=num_layers,
     )
 
-    act_in, padding, m0, c0 = self._get_test_inputs()
+    act_in, padding, _, m0, c0, _ = self._get_test_inputs()
     stack_frnn_model = instantiate(stack_frnn_p)
     stack_lstm_model = instantiate(stack_lstm_p)
 
@@ -200,6 +227,46 @@ class FRNNTest(test_utils.TestCase):
       self.assertAllClose(stack_frnn_state[ii].m, stack_lstm_state[ii].m)
       self.assertAllClose(stack_frnn_state[ii].c, stack_lstm_state[ii].c)
     self.assertAllClose(stack_frnn_act, stack_lstm_act)
+
+  @parameterized.parameters(
+      (jax_rnn_cell.LstmCellSimple, False),
+      (jax_rnn_cell.LstmCellSimple, True),
+      (jax_rnn_cell.CifgLstmCellSimple, False),
+      (jax_rnn_cell.CifgLstmCellSimple, True),
+  )
+  def test_lstm_reset_cell_state(self, jax_cell_class, output_nonlinearity):
+    cell_p = self._get_cell_params(jax_cell_class, True, output_nonlinearity)
+    lstm_p = pax_fiddle.Config(frnn.LstmFrnn, cell_tpl=cell_p)
+
+    act_in, padding, segment_ids, m0, c0, reset_mask = self._get_test_inputs(
+        packed_input=True
+    )
+    cell = instantiate(cell_p)
+    frnn_model = instantiate(lstm_p)
+
+    state0 = NestedMap(m=m0, c=c0)
+    inputs = py_utils.NestedMap(
+        act=act_in, padding=padding, segment_ids=segment_ids
+    )
+
+    with base_layer.JaxContext.new_context():
+      theta = frnn_model.init(jax.random.PRNGKey(5678), inputs, state0=state0)
+      frnn_act, frnn_state = frnn_model.apply(theta, inputs, state0=state0)
+
+    rnn_theta = {'params': theta['params']['cell']}
+    ys = []
+    cell_state = jax.tree_map(lambda x: x, state0)
+    for t in range(act_in.shape[1]):
+      with base_layer.JaxContext.new_context():
+        inputs_t = NestedMap(
+            act=act_in[:, t], padding=padding[:, t], reset_mask=reset_mask[:, t]
+        )
+        cell_state = cell.apply(rnn_theta, cell_state, inputs_t)
+        y = cell.get_output(cell_state)
+      ys.append(y)
+    np.testing.assert_allclose(frnn_state.m, cell_state.m, atol=1e-5, rtol=1e-5)
+    np.testing.assert_allclose(frnn_state.c, cell_state.c, atol=1e-5, rtol=1e-5)
+    np.testing.assert_allclose(frnn_act, jnp.stack(ys, 1), atol=1e-5, rtol=1e-5)
 
 
 if __name__ == '__main__':
