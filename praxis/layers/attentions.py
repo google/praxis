@@ -2330,13 +2330,13 @@ class DotProductAttentionWithLPB(DotProductAttention):
 
       # For lazy prefix broadcast, we need to concat the current state with part
       # of prefixes to cover the dconv window.
-      left_window_size = min(self.dconv_q.hparams.kernel_size - 1,
+      left_window_size = min(self.dconv_q.kernel_size - 1,
                              prefix_length)
 
       def _dconv(layer, q, k, v, pos):
         # Aggregate depth-wise convolution for keys and values at time step.
         t_dim = 1
-        left_window_size = min(layer.dconv_q.hparams.kernel_size - 1,
+        left_window_size = min(layer.dconv_q.kernel_size - 1,
                                prefix_length)
         ts = time_step - prefix_length + left_window_size
         query_proj = layer.dconv_q.extend_step(

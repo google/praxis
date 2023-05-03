@@ -493,8 +493,8 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
 
     batch, input_length, depth = inputs.shape
     stacked_length = stacked.shape[1]
-    stride = stacker.hparams.stride
-    right_context = stacker.hparams.right_context
+    stride = stacker.stride
+    right_context = stacker.right_context
 
     self.assertAllClose(
         unstacked.shape,

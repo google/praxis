@@ -528,7 +528,7 @@ class LingvoInputAdaptorNewBatchSize(LingvoInputAdaptor):
   smaller batch size specified by the user.
 
   Example usage:
-      p = ChangeBatchSizeInput.HParams(...)
+      p = pax_fiddle.Config(ChangeBatchSizeInput, ...)
       self.input.packing_factor = 3.5
       self.input.bucket_batch_limit = [4096]
       self.batch_size = 4
@@ -602,7 +602,7 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
   `self.batch_size`.)
 
   Example usage:
-      p = LingvoEvalAdaptor.HParams(...)
+      p = pax_fiddle.Config(LingvoEvalAdaptor, ...)
       self.input.bucket_batch_limit = [1]
       self.batch_size = 4
   """
@@ -721,7 +721,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
 
   Example usage:
       input_p.batch_size = 4
-      p = LingvoLazyEvalAdaptor.HParams(input_p)
+      p = pax_fiddle.Config(LingvoLazyEvalAdaptor, input_p)
   """
   _VALIDATE_BATCH_SIZE_NOT_NONE = False
   _VALIDATE_BATCH_SIZE_NONE = True
@@ -935,7 +935,7 @@ class MultiInput(BaseInput):
     for input_name, input_gen in self._inputs.items():
       input_batches[input_name] = input_gen.get_next()
     combined_batch = NestedMap(input_batches)
-    outer_batch_size = self.hparams.cls.get_batch_size(self.hparams)
+    outer_batch_size = self.get_batch_size(self.hparams)
     return combined_batch.Transform(
         lambda x: py_utils.reshape_with_outer_batch_size(x, outer_batch_size))
 

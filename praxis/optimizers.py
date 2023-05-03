@@ -1156,12 +1156,12 @@ class Adam(BaseOptimizer):
   @classmethod
   def HParamsA(cls) -> pax_fiddle.Config[Adam]:  # pylint: disable=invalid-name
     """Convenient method for a commonly used Adam config."""
-    return cls.HParams(beta1=0.9, beta2=0.997, epsilon=1e-9)
+    return pax_fiddle.Config(cls, beta1=0.9, beta2=0.997, epsilon=1e-9)
 
   @classmethod
   def HParamsB(cls) -> pax_fiddle.Config[Adam]:  # pylint: disable=invalid-name
     """Convenient method for another commonly used Adam config."""
-    return cls.HParams(beta1=0.9, beta2=0.98, epsilon=1e-9)
+    return pax_fiddle.Config(cls, beta1=0.9, beta2=0.98, epsilon=1e-9)
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> GeneralGradientTransformation:
@@ -1380,7 +1380,8 @@ class DistributedShampoo(BaseOptimizer):
   @classmethod
   def HParamsImageClassification(cls) -> pax_fiddle.Config[DistributedShampoo]:  # pylint: disable=invalid-name
     """Common Shampoo config for Image Classification."""
-    return cls.HParams(
+    return pax_fiddle.Config(
+        cls,
         beta1=0.9,
         beta2=0.95,
         block_size=128,
@@ -1393,7 +1394,8 @@ class DistributedShampoo(BaseOptimizer):
   @classmethod
   def HParamsLanguageModeling(cls) -> pax_fiddle.Config[DistributedShampoo]:  # pylint: disable=invalid-name
     """Common Shampoo config for Language Modeling."""
-    return cls.HParams(
+    return pax_fiddle.Config(
+        cls,
         block_size=1536,
         beta1=0.9,
         beta2=0.999,
@@ -1518,7 +1520,8 @@ class ShardedDistributedShampoo(DistributedShampoo):
       cls,
   ) -> pax_fiddle.Config[DistributedShampoo]:  # pylint: disable=invalid-name
     """Common Shampoo config for Large Language Modeling (8B+)."""
-    return cls.HParams(
+    return pax_fiddle.Config(
+        cls,
         block_size=4096,
         # Should be ~block_size x 3
         merge_small_dims_block_size=4096 * 3,
@@ -2527,8 +2530,12 @@ class ShardedAdafactor(BaseOptimizer):
   @classmethod
   def HParamsAdamB(cls) -> pax_fiddle.Config[ShardedAdafactor]:  # pylint: disable=invalid-name
     """Convenient method for another commonly used Adam config."""
-    return cls.HParams(
-        beta1=0.9, decay_method='adam', decay_adam=0.98, quantized_dtype='int8')
+    return pax_fiddle.Config(
+        cls,
+        beta1=0.9,
+        decay_method='adam',
+        decay_adam=0.98,
+        quantized_dtype='int8')
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
