@@ -1381,7 +1381,7 @@ class Transformer(base_layer.BaseLayer):
         atten_output += cross_atten_output
 
       if self.norm_policy == 'post_skip':
-        cross_atten_output = self.cross_layer_norm(cross_atten_output)
+        atten_output = self.cross_layer_norm(atten_output)
 
     # Apply FFN layer
     output = self.ff_layer(atten_output, paddings=paddings)
