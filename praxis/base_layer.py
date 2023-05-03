@@ -242,10 +242,10 @@ def to_partition_spec(
 
 
 def var_partition_specs(
-    var_specs: NestedHParams,
+    var_specs: NestedWeightHParams,
     mesh_shape: Sequence[int],
     device_axis_names: Sequence[str],
-) -> NestedJTensorOrPartitionSpec:
+) -> NestedPartitionSpec:
   """Given variable specs (WeightHParams), returns pjit partition specs.
 
   Args:
@@ -259,28 +259,8 @@ def var_partition_specs(
 
   assert len(device_axis_names) == len(mesh_shape)
 
-  def _get_spec(var_p):
-    v_shape = var_p.shape
-    # v_split_dim_mapping may contain a mixture of -1, integers, str, or None.
-    # -1 and None both indicates that the corresponding dim is not partitioned.
-    v_split_dim_mapping = var_p.tensor_split_dims_mapping
-    if v_split_dim_mapping is not None:
-      assert len(v_split_dim_mapping) == len(v_shape)
-    else:
-      v_split_dim_mapping = [-1] * len(v_shape)
-
-    if var_p.repeat_prefix is not None:
-      repeat_prefix = var_p.repeat_prefix
-      if var_p.repeat_prefix_split_dims_mapping is not None:
-        prefix_split_dims_mapping = var_p.repeat_prefix_split_dims_mapping
-        assert len(prefix_split_dims_mapping) == len(repeat_prefix)
-      else:
-        prefix_split_dims_mapping = [-1] * len(repeat_prefix)
-      # Append sharding annotations for the prefix part.
-      v_split_dim_mapping = (
-          list(prefix_split_dims_mapping) + list(v_split_dim_mapping))
-
-    return to_partition_spec(v_split_dim_mapping, device_axis_names)
+  def _get_spec(var_p: WeightHParams) -> jax.sharding.PartitionSpec:
+    return to_partition_spec(var_p.full_split_dims_mapping, device_axis_names)
 
   return jax.tree_map(_get_spec, var_specs)
 
@@ -490,7 +470,9 @@ class WeightHParams(BaseHyperParams):
   """Hyperparams for a weight variable specifying shape/init/dtype etc.
 
   Attributes:
-    shape: The weight shape.
+    shape: The weight shape of the tensor. Important: the actual variable might
+    have additional dimensions described by 'repeat_prefix'. Use `full_shape`
+    property to access full shape.
     init: The initialization method.
     dtype: The weight data type.
     collections: Variable collections this weight belongs to.
@@ -528,7 +510,7 @@ class WeightHParams(BaseHyperParams):
   dtype: Optional[jnp.dtype] = None
   collections: Optional[Sequence[str]] = None
   mesh_shape: Optional[Sequence[int]] = None
-  tensor_split_dims_mapping: SplitDimsMapping = None
+  tensor_split_dims_mapping: Optional[SplitDimsMapping] = None
   repeat_prefix: Optional[Sequence[int]] = None
   repeat_prefix_split_dims_mapping: SplitDimsMapping = None
   repeat_optimizer_dims_mapping: SplitDimsMapping = None
@@ -548,6 +530,21 @@ class WeightHParams(BaseHyperParams):
             self.shape, self.tensor_split_dims_mapping)
       assert len(self.tensor_split_dims_mapping) == len(self.shape)
 
+  @property
+  def full_shape(self) -> Sequence[int]:
+    return (*(self.repeat_prefix or ()), *self.shape)
+
+  @property
+  def full_split_dims_mapping(self) -> SplitDimsMapping:
+    split_dim_mapping = self.tensor_split_dims_mapping or (-1, ) * len(
+        self.shape)
+    prefix_split_dims_mapping = self.repeat_prefix_split_dims_mapping
+    if self.repeat_prefix is not None:
+      if prefix_split_dims_mapping is None:
+        prefix_split_dims_mapping = (-1,) * len(self.repeat_prefix)
+      assert len(prefix_split_dims_mapping) == len(self.repeat_prefix)
+      # Append sharding annotations for the prefix part.
+    return (*(prefix_split_dims_mapping or ()), *split_dim_mapping)
 
 NestedWeightHParams = Nested[WeightHParams]
 
