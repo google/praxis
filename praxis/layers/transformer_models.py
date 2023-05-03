@@ -133,9 +133,9 @@ def _set_stacked_transformer_sharding(stacked_transformer_p, *, w_df, w_dnh,
       atten_ap = atten_p.activation_split_dims_mapping
       atten_ap.blnh = a_blnh
       atten_ap.bld = a_bld
-      if (
-          fdl.get_callable(atten_p)
-          == multi_query_attention.MultiQueryDotProductAttention
+      if issubclass(
+          fdl.get_callable(atten_p),
+          multi_query_attention.MultiQueryDotProductAttention,
       ):
         atten_wp.proj_headless = [w_dnh[0], w_dnh[2]]
         if a_blh is None:
