@@ -546,3 +546,25 @@ py_strict_test(
         # Implicit jax dependency.
     ],
 )
+
+pytype_strict_library(
+    name = "trees",
+    srcs = ["trees.py"],
+    deps = [
+        ":pytypes",
+        # Implicit jax dependency.
+    ],
+)
+
+py_strict_test(
+    name = "trees_test",
+    srcs = ["trees_test.py"],
+    deps = [
+        ":py_utils",
+        ":pytypes",
+        ":test_utils",
+        ":trees",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+    ],
+)
