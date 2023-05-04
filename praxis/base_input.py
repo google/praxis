@@ -465,8 +465,11 @@ class LingvoInputAdaptor(BaseInput):
         num_infeed_hosts=self.num_infeed_hosts,
     ), self._cluster:
       ret = self.input_inst.GetPreprocessedInputBatch()
-    # Remove unsupported string (byte) array from input.
-    return ret.Filter(lambda v: v.dtype != tf.string)
+    # Remove unsupported string (byte) array from input if training.
+    if self.is_training:
+      return ret.Filter(lambda v: v.dtype != tf.string)
+    else:
+      return ret
 
   def get_next(self) -> NestedJTensor:
     if self.num_batches is not None and self.num_batches > 0:
