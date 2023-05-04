@@ -702,7 +702,6 @@ pytype_strict_library(
         # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:asserts",
-        "//praxis:base_hyperparams",
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",

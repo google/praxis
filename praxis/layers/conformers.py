@@ -20,7 +20,6 @@ from typing import Optional, Tuple
 import fiddle as fdl
 import jax.numpy as jnp
 from praxis import asserts
-from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import py_utils
@@ -35,7 +34,6 @@ NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
 template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
-BaseHyperParams = base_hyperparams.BaseHyperParams
 
 
 class DotProductAttentionWithContext(attentions.DotProductAttention):

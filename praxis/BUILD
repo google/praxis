@@ -134,7 +134,6 @@ pytype_strict_library(
     srcs = ["decoder_utils.py"],
     srcs_version = "PY3",
     deps = [
-        ":base_hyperparams",
         ":base_layer",
         ":pytypes",
         # Implicit flax.core dependency.
