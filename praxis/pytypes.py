@@ -21,20 +21,25 @@ import jax
 from jax import core
 from jax import numpy as jnp
 import numpy as np
-from praxis import py_utils
+from praxis import lingvo_lib
 
-HParamsT = py_utils.HParams
+# No other imports from lingvo should be accessed by core JAX library.
+InstantiableParams = lingvo_lib.InstantiableParams
+NestedMap = lingvo_lib.NestedMap
+HParams = lingvo_lib.HParams
+HParamsT = HParams
+
 JTensor = jnp.ndarray
 PRNGKey = JTensor
 JTensorOrPartitionSpec = Union[JTensor, jax.sharding.PartitionSpec]
 NpTensor = np.ndarray
-SummaryDict = Union[py_utils.NestedMap, Dict[str, JTensor]]
+SummaryDict = Union[NestedMap, Dict[str, JTensor]]
 PyTree = Any
 PyTreeDef = jax.tree_util.PyTreeDef
 
+
 T = TypeVar('T')
-Nested = Union[T, Tuple[Any, ...], List[Any], Dict[str, Any],
-               py_utils.NestedMap]
+Nested = Union[T, Tuple[Any, ...], List[Any], Dict[str, Any], NestedMap]
 NestedJTensor = Nested[JTensor]
 NestedNpTensor = Nested[NpTensor]
 NestedBool = Nested[bool]
@@ -44,8 +49,9 @@ NestedPartitionSpec = Nested[jax.sharding.PartitionSpec]
 NestedJTensorOrPartitionSpec = Nested[JTensorOrPartitionSpec]
 NestedShapeDtypeStruct = Nested[jax.ShapeDtypeStruct]
 NestedShapedArray = Nested[core.ShapedArray]
-NestedShapeDtypeLike = Union[NestedJTensor, NestedNpTensor,
-                             NestedShapeDtypeStruct, NestedShapedArray]
+NestedShapeDtypeLike = Union[
+    NestedJTensor, NestedNpTensor, NestedShapeDtypeStruct, NestedShapedArray
+]
 
 # Sharding annotation for a dim can be a single int, or a str, or a sequence of
 # (int, str), or None. For example "1", "-1", "None", "data", "(data, replia)"
@@ -56,10 +62,9 @@ SplitDimsMapping = Optional[Sequence[DimShardingAnnotation]]
 # Note(b/238657605): pytypes Metrics were renamed to WeightedScalars
 # and Metrics are now true metric objects using clu.metrics
 WeightedScalar = Tuple[JTensor, JTensor]
-WeightedScalars = Union[Dict[str, WeightedScalar], py_utils.NestedMap]
-WeightedScalarsList = Union[Dict[str, Sequence[WeightedScalar]],
-                            py_utils.NestedMap]
-Metrics = Union[py_utils.NestedMap, Dict[str, clu_metrics.Metric]]
+WeightedScalars = Union[Dict[str, WeightedScalar], NestedMap]
+WeightedScalarsList = Union[Dict[str, Sequence[WeightedScalar]], NestedMap]
+Metrics = Union[NestedMap, Dict[str, clu_metrics.Metric]]
 
 LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]
 

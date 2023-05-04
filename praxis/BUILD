@@ -242,6 +242,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":lingvo_lib",
+        ":pytypes",
         # Implicit absl.flags dependency.
         # Implicit absl.logging dependency.
         # Implicit flax dependency.
@@ -257,7 +258,7 @@ pytype_strict_library(
     srcs = ["pytypes.py"],
     srcs_version = "PY3",
     deps = [
-        ":py_utils",
+        ":lingvo_lib",
         # Implicit clu.metrics dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.

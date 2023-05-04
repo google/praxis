@@ -35,6 +35,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 from praxis import lingvo_lib
+from praxis import pytypes
 
 flags.DEFINE_bool(
     'pmap_use_tensorstore', False,
@@ -53,16 +54,14 @@ def pmap_use_tensorstore():
   return flags.FLAGS.pmap_use_tensorstore
 
 
+# No other imports from lingvo should be accessed by core JAX library.
 current_cluster = lingvo_lib.current_cluster
 infeed_context_scope = lingvo_lib.infeed_context_scope
 TFDatasetSource = lingvo_lib.TFDatasetSource
+InstantiableParams = pytypes.InstantiableParams
+NestedMap = pytypes.NestedMap
+HParams = pytypes.HParams
 
-NestedMap = lingvo_lib.NestedMap
-
-InstantiableParams = lingvo_lib.InstantiableParams
-HParams = lingvo_lib.HParams
-
-# No more imports from lingvo should be accessed by core JAX library.
 JTensor = jnp.ndarray
 
 
