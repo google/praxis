@@ -36,7 +36,7 @@ QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
-sub_config_field = base_layer.sub_config_field
+instance_field = base_layer.instance_field
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 
@@ -50,7 +50,7 @@ class AttentionProjection(attentions.AttentionProjection):
     quantization: Information related to the quantization applied to this
       layer, such as dtype for the quantized weight.
   """
-  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  quantization: QuantizationHParams = instance_field(QuantizationHParams)
 
   _PACK_4BIT_DIM = 0
 
@@ -345,7 +345,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     quantization: Information related to the quantization applied to this
       layer, such as dtype for the quantized weight.
   """
-  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  quantization: QuantizationHParams = instance_field(QuantizationHParams)
 
   _PACK_4BIT_DIM = 1
 
@@ -659,7 +659,7 @@ class DotProductAttention(attentions.DotProductAttention):
       such as dtype for the quantized weight.
   """
 
-  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  quantization: QuantizationHParams = instance_field(QuantizationHParams)
 
   def create_tensor_quantizers(self):
     self.create_child(

@@ -29,13 +29,13 @@ QuantizationHParams = quantization_hparams.QuantizationHParams
 WeightHParams = base_layer.WeightHParams
 
 
-sub_config_field = base_layer.sub_config_field
+instance_field = base_layer.instance_field
 
 
 class Ngrammer(ngrammer.Ngrammer):
   """Quantized Ngrammer."""
 
-  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  quantization: QuantizationHParams = instance_field(QuantizationHParams)
 
   def setup(self) -> None:
     """Constructs an instance which looks up ngrams."""
@@ -83,7 +83,7 @@ class Ngrammer(ngrammer.Ngrammer):
 class VQNgrammer(ngrammer.VQNgrammer):
   """Quantized VQNgrammer."""
 
-  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  quantization: QuantizationHParams = instance_field(QuantizationHParams)
 
   def setup(self) -> None:
     """Constructs a VQ layer and an N-grammer layer."""

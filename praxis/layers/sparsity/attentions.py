@@ -32,7 +32,7 @@ SparsityMode = sparsity_hparams.SparsityMode
 SparsityType = sparsity_hparams.SparsityType
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
-sub_config_field = base_layer.sub_config_field
+instance_field = base_layer.instance_field
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 
@@ -47,7 +47,7 @@ class AttentionProjection(attentions.AttentionProjection):
     sparsity: Information related to the sparsity applied to this
       layer.
   """
-  sparsity: SparsityHParams = sub_config_field(SparsityHParams)
+  sparsity: SparsityHParams = instance_field(SparsityHParams)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -240,7 +240,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     sparsity: Information related to the sparsity applied to this
       layer.
   """
-  sparsity: SparsityHParams = sub_config_field(SparsityHParams)
+  sparsity: SparsityHParams = instance_field(SparsityHParams)
 
   def setup(self) -> None:
     # Sharding has the same convention of AttentionProjection, which doesn't

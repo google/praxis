@@ -40,14 +40,14 @@ NestedJTensor = pytypes.NestedJTensor
 SplitDimsMapping = pytypes.SplitDimsMapping
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
-sub_config_field = base_layer.sub_config_field
+instance_field = base_layer.instance_field
 template_field = base_layer.template_field
 
 
 class Embedding(embedding_softmax.Embedding):
   """Quantized Embedding layer."""
 
-  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  quantization: QuantizationHParams = instance_field(QuantizationHParams)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -179,7 +179,7 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
       such as dtype for the quantized weight.
   """
 
-  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  quantization: QuantizationHParams = instance_field(QuantizationHParams)
 
   def setup(self) -> None:
     if self.feed_forward_tpl is not None:
@@ -261,7 +261,7 @@ class NClassMajorSharedEmbeddingSoftmax(
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
       template_field(activations.Identity)
   )
-  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  quantization: QuantizationHParams = instance_field(QuantizationHParams)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping

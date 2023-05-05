@@ -30,7 +30,7 @@ SparsityHParams = sparsity_hparams.SparsityHParams
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 
-sub_config_field = base_layer.sub_config_field
+instance_field = base_layer.instance_field
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 
@@ -43,7 +43,7 @@ class Linear(linears.Linear):
       applied to this layer.
   """
 
-  sparsity: SparsityHParams = sub_config_field(SparsityHParams)
+  sparsity: SparsityHParams = instance_field(SparsityHParams)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping

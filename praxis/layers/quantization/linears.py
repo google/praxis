@@ -31,7 +31,7 @@ QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 QuantizationHParams = quantization_hparams.QuantizationHParams
 WeightHParams = base_layer.WeightHParams
-sub_config_field = base_layer.sub_config_field
+instance_field = base_layer.instance_field
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 WeightInit = base_layer.WeightInit
@@ -44,7 +44,7 @@ class Linear(linears.Linear):
     quantization: Information related to the quantization applied to this layer,
       such as the mode for the quantization.
   """
-  quantization: QuantizationHParams = sub_config_field(QuantizationHParams)
+  quantization: QuantizationHParams = instance_field(QuantizationHParams)
 
   _PACK_4BIT_DIM = 0
 
