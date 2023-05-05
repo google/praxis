@@ -70,6 +70,7 @@ class Linear(base_layer.BaseLayer):
   """
   input_dims: int = 0
   output_dims: int = 0
+  weight_init: Optional[WeightInit] = None
   einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
 
   def setup(self) -> None:
@@ -78,6 +79,7 @@ class Linear(base_layer.BaseLayer):
         'w',
         WeightHParams(
             shape=[self.input_dims, self.output_dims],
+            init=self.weight_init,
             mesh_shape=self.mesh_shape,
             tensor_split_dims_mapping=wp.wt,
         ),
@@ -157,6 +159,7 @@ class FeedForward(base_layer.BaseLayer):
   activation_tpl: pax_fiddle.Config[
       activations.BaseActivation
   ] = template_field(activations.ReLU)
+  weight_init: Optional[WeightInit] = None
   bias_init: Optional[float] = 0.0
 
   def setup(self) -> None:
@@ -166,6 +169,7 @@ class FeedForward(base_layer.BaseLayer):
     linear_layer_p.set(
         input_dims=self.input_dims,
         output_dims=self.output_dims,
+        weight_init=self.weight_init,
         weight_split_dims_mapping=wp.clone(),
         activation_split_dims_mapping=ap.clone(),
     )

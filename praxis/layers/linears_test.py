@@ -79,6 +79,78 @@ class LinearsTest(test_utils.TestCase):
         activation_tpl=activation_tpl.clone(),
     )
     ffn = instantiate(p)
+    npy_input = np.random.normal(1.0, 0.5, [10, 10, p.input_dims]).astype(
+        'float32'
+    )
+    inputs = jnp.asarray(npy_input)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = ffn.init(prng_key, inputs)
+    outputs = ffn.apply(initial_vars, inputs)
+    logging.info('initial_vars in ffn = %s', initial_vars)
+    # Test whether tf projection layer returns same output
+    # Modify initial_vars to use TF compatible params
+    initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars['params'])
+    tf_initial_vars = py_utils.NestedMap()
+    tf_initial_vars.w = initial_vars.linear.w
+    tf_initial_vars.b = initial_vars.bias.b
+    tf_initial_vars = to_tf_nmap(tf_initial_vars)
+    tf_p = lingvo_layers.ProjectionLayer.Params().Set(
+        name='tf_ffn',
+        input_dim=p.input_dims,
+        output_dim=p.output_dims,
+        batch_norm=False,
+        has_bias=True,
+        activation=lingvo_activation_name,
+    )
+    tf_ffn = tf_p.Instantiate()
+    tf_output = tf_ffn.FProp(
+        tf_initial_vars, tf.constant(inputs, dtype=tf.float32)
+    )
+    np_outputs = to_np(outputs)
+    tf_np_outputs = to_np(tf_output)
+    self.assertAllClose(tf_np_outputs, np_outputs, atol=1e-6)
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'ReLU',
+          'activation_tpl': pax_fiddle.Config(activations.ReLU),
+          'lingvo_activation_name': 'RELU',
+      },
+      {
+          'testcase_name': 'Tanh',
+          'activation_tpl': pax_fiddle.Config(activations.Tanh),
+          'lingvo_activation_name': 'TANH',
+      },
+      {
+          'testcase_name': 'ReLU6',
+          'activation_tpl': pax_fiddle.Config(activations.ReLU6),
+          'lingvo_activation_name': 'RELU6',
+      },
+      {
+          'testcase_name': 'Sigmoid',
+          'activation_tpl': pax_fiddle.Config(activations.Sigmoid),
+          'lingvo_activation_name': 'SIGMOID',
+      },
+      {
+          'testcase_name': 'Identity',
+          'activation_tpl': pax_fiddle.Config(activations.Identity),
+          'lingvo_activation_name': 'NONE',
+      },
+  )
+  def test_feedforward_layer_weight_init(
+      self, activation_tpl, lingvo_activation_name
+  ):
+    p = pax_fiddle.Config(
+        linears.FeedForward,
+        name='jax_ffn',
+        input_dims=3,
+        output_dims=20,
+        linear_tpl=pax_fiddle.Config(
+            linears.Linear, weight_init=base_layer.WeightInit.Xavier(scale=1.0)
+        ),
+        activation_tpl=activation_tpl.clone(),
+    )
+    ffn = instantiate(p)
     npy_input = np.random.normal(1.0, 0.5,
                                  [10, 10, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_input)
