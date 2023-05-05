@@ -66,7 +66,7 @@ def limited_context_mask(
     dtype: data type of the output.
 
   Returns:
-    A JTensor of shape [B, 1, T, T] ready to add to attention logits.
+    A JTensor of shape [T, T] ready to add to attention logits.
   """
   large_negative_number = py_utils.get_large_negative_number(dtype)
 
