@@ -591,7 +591,7 @@ class TransformerLm(base_layer.BaseLayer):
                      segment_pos: Optional[JTensor] = None,
                      **input_kwargs) -> JTensor:
     del input_kwargs
-    _, seq_length = inputs.shape
+    seq_length = inputs.shape[1]
 
     # Get the input embeddings.
     if self.separate_embedding_tpl is not None:
@@ -660,7 +660,7 @@ class TransformerLm(base_layer.BaseLayer):
       addition, per_sequence_xent is added which equal to the sum of xent loss
       for tokens in a sequence.
     """
-    batch, seq_length = inputs.shape
+    batch, seq_length = inputs.shape[:2]
 
     paddings_float32 = paddings.astype(jnp.float32)
     num_unpadded_tokens = jnp.sum(1.0 - paddings_float32)
