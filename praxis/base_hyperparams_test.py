@@ -729,9 +729,9 @@ class NestedStructToTextTestCase(absltest.TestCase):
                 ' : ["<PaxConfig[FiddleToTextTestClass(\\n  dtype=7,\\n '
                 ' params_init='
                 "<PaxConfig[WeightInit(method='xavier', scale=1.000001)]>,\\n  "
-                'weight_split_dims_mapping[#praxis.pax_fiddle.DoNotBuild]=<'
+                'weight_split_dims_mapping=<'
                 'PaxConfig[BaseLayer.WeightSharding()]>,\\n  '
-                'activation_split_dims_mapping[#praxis.pax_fiddle.DoNotBuild]=<'
+                'activation_split_dims_mapping=<'
                 'PaxConfig[BaseLayer.ActivationSharding()]>)]>", 1]'
             ),
         ],

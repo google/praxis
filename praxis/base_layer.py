@@ -1630,13 +1630,6 @@ class BaseLayer(nn.Module):
             'instance of fdl.Buildable.  Please update this field to use a '
             'default_factory instead, to avoid unintentional object sharing.'
         )
-      if _is_template_type(field.type) and not pax_fiddle.has_do_not_build_tag(
-          field
-      ):
-        raise ValueError(
-            f'{cls.__qualname__}.{field.name} has a template type, but '
-            'does not have the pax_fiddle.DoNotBuild tag set.  Please use '
-            'base_layer.template_field to declare this field.')
 
   @classmethod
   def _override_split_dim_mapping_fields(cls):
@@ -2252,8 +2245,10 @@ class BaseLayer(nn.Module):
       msg = ('Expected templates for `create_child` to be Fiddle Configs; got '
              f'{type(params)}.')
       if isinstance(params, BaseLayer):
-        msg += (' This may be caused by a missing DoNotBuild tag on a field '
-                'that contains a Fiddle Config.')
+        msg += (
+            ' This may be caused by an incorrect type annotation on a '
+            'field that contains a Fiddle Config.'
+        )
       raise ValueError(msg + f'\nparams={params}')
     if name is self._private_children:
       raise ValueError(

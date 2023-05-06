@@ -197,16 +197,9 @@ def instantiate(config: fdl.Buildable, **kwargs):
   return build(config)
 
 
+# TODO(b/249483164): Remove this once all references have been deleted.
 class DoNotBuild(fdl.Tag):
-  """Tag specifying that a value should not be built by `fdl.build`.
-
-  This is used for template fields, which should contain `fdl.Buildable` objects
-  even after they are built.
-  """
-
-
-def has_do_not_build_tag(field: dataclasses.Field[Any]) -> bool:
-  return fdl_dataclasses.field_has_tag(field, DoNotBuild)
+  """Deprecated -- do not use this tag."""
 
 
 def auto_config(
@@ -312,8 +305,6 @@ def template_field(
   Returns:
     A `dataclasses.Field` specification for the field.
   """
-  tags = ({tags} if isinstance(tags, type(Tag)) else set(tags)) | {DoNotBuild}
-
   if template is None or template is dataclasses.MISSING:
     return fdl_field(default=template, tags=tags)
 
@@ -430,16 +421,6 @@ def wrap_templates(buildable: Any) -> Any:
 
     new_arguments = {}
     for arg_name, arg_value in value.__arguments__.items():
-      if (
-          arg_name not in template_args
-          and DoNotBuild in value.__argument_tags__.get(arg_name, ())
-      ):
-        raise ValueError(
-            f'{fn_or_cls}.{arg_name} was built using `template_field`, but its '
-            'type annotation is not `Config` or `<container>[Config]`.\n'
-            'Either change `template_field` to `instance_field`, or update the '
-            'type annotation.'
-        )
       in_template_field = arg_name in template_args
       new_arguments[arg_name] = state.call(arg_value, daglish.Attr(arg_name))
       in_template_field = False
@@ -590,7 +571,7 @@ def _contains_buildable_type(typ, context):
 
 
 # Origins for type annotations.  Note that these may depend on the Python
-# version -- e.g., the orgin for `typing.Sequence[int]` might be
+# version -- e.g., the origin for `typing.Sequence[int]` might be
 # `typing.Sequence` or `collections.abc.Sequence.`
 _SEQUENCE_ORIGINS = {
     typing_extensions.get_origin(typ)

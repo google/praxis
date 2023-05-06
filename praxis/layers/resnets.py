@@ -308,7 +308,8 @@ class ResNet(base_layer.BaseLayer):
   """
   # pylint: disable=g-long-lambda
   conv_params: LayerTpl = pax_fiddle.fdl_field(
-      default_factory=_res_net_conv_params_default, tags=pax_fiddle.DoNotBuild)
+      default_factory=_res_net_conv_params_default
+  )
   # pylint: enable=g-long-lambda
   block_params: LayerTpl = template_field(ResNetBlock)
   strides: Sequence[int] = (1, 2, 2, 2)
@@ -318,8 +319,8 @@ class ResNet(base_layer.BaseLayer):
   entryflow_conv_kernel: Sequence[int] = (7, 7, 3)
   entryflow_conv_stride: Sequence[int] = (2, 2)
   output_spatial_pooling_params: Optional[LayerTpl] = pax_fiddle.fdl_field(
-      default_factory=_res_net_output_spatial_pooling_params_default,
-      tags=pax_fiddle.DoNotBuild)
+      default_factory=_res_net_output_spatial_pooling_params_default
+  )
   return_block_features: bool = False
 
   @classmethod

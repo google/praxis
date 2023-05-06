@@ -644,56 +644,6 @@ class BaseLayerTest(test_utils.TestCase):
         class HParams:
           x: int = 0
 
-  def test_check_template_has_do_not_build_tag(self):
-
-    # pylint: disable=unused-variable
-    with self.subTest('FiddleConfig'):
-      with self.assertRaisesRegex(
-          ValueError,
-          'has a template type, but does not have the pax_fiddle.DoNotBuild.*'):
-
-        class Layer2(base_layer.BaseLayer):
-          child_tpl: pax_fiddle.Config = dataclasses.field(
-              default_factory=lambda: pax_fiddle.Config(SimpleBaseLayer))
-
-    with self.subTest('Optional_FiddleConfig'):
-      if not hasattr(typing, 'get_origin'):
-        self.skipTest('This version of Python has not typing.get_origin')
-      with self.assertRaisesRegex(
-          ValueError,
-          'has a template type, but does not have the pax_fiddle.DoNotBuild.*'):
-
-        class Layer4(base_layer.BaseLayer):
-          child_tpl: Optional[pax_fiddle.Config] = None
-
-    with self.subTest('Optional_Parameterized_FiddleConfig'):
-      if not hasattr(typing, 'get_origin'):
-        self.skipTest('This version of Python has not typing.get_origin')
-      with self.assertRaisesRegex(
-          ValueError,
-          'has a template type, but does not have the pax_fiddle.DoNotBuild.*'):
-
-        class Layer5(base_layer.BaseLayer):
-          child_tpl: Optional[pax_fiddle.Config[TrivialFiddleLayer]] = None
-
-    with self.subTest('Optional_List_FiddleConfig'):
-      if not hasattr(typing, 'get_origin'):
-        self.skipTest('This version of Python has not typing.get_origin')
-      with self.assertRaisesRegex(
-          ValueError,
-          'has a template type, but does not have the pax_fiddle.DoNotBuild.*'):
-
-        class Layer6(base_layer.BaseLayer):
-          child_tpl: Optional[List[pax_fiddle.Config]] = None
-
-    with self.subTest('tuple_int_int'):
-
-      if (sys.version_info.major, sys.version_info.minor) < (3, 9):
-        self.skipTest('tuple[int, int] not supported in this Python version')
-
-      class Layer7(base_layer.BaseLayer):
-        child: Tuple[int, int] = (1, 2)
-
   def testMissingDoNotFieldTagError(self):
 
     class Parent(base_layer.BaseLayer):
@@ -711,8 +661,12 @@ class BaseLayerTest(test_utils.TestCase):
     layer = pax_fiddle.build(cfg)
     with self.assertRaisesRegex(
         ValueError,
-        'Expected .* to be Fiddle Configs.* This may be caused by '
-        'a missing DoNotBuild tag on a field that contains a Fiddle Config.'):
+        (
+            'Expected .* to be Fiddle Configs.* This may be caused by an'
+            ' incorrect type annotation on a field that contains a Fiddle'
+            ' Config.'
+        ),
+    ):
       layer.init(jax.random.PRNGKey(0), 0)
 
   def testOverrideParamsInit(self):

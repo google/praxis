@@ -63,8 +63,8 @@ class VanillaBlock(base_layer.BaseLayer):
   input_dim: int = 0
   output_dim: int = 0
   conv_params: LayerTpl = pax_fiddle.fdl_field(
-      default_factory=_vanilla_block_conv_params_default,
-      tags=pax_fiddle.DoNotBuild)
+      default_factory=_vanilla_block_conv_params_default
+  )
   kernel_size: int = 3
   stride: int = 1
   negative_slope: float = 0.4
@@ -165,8 +165,8 @@ class VanillaNet(base_layer.BaseLayer):
     negative_slope: Negative slope for leaky relu.
   """
   conv_params: LayerTpl = pax_fiddle.fdl_field(
-      default_factory=_vanilla_net_conv_params_default,
-      tags=pax_fiddle.DoNotBuild)
+      default_factory=_vanilla_net_conv_params_default
+  )
   block_params: LayerTpl = template_field(VanillaBlock)
   strides: Sequence[int] = (1, 2, 2, 2)
   channels: Sequence[int] = (256, 512, 1024, 2048)
