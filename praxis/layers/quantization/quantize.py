@@ -327,7 +327,6 @@ def for_transformer(
         for model in models:
           set_quantization(
               model,
-              layers.transformers.Transformer,
               quantization_type=quantization_type,
               mode=mode,
               num_bits=num_bits,
@@ -348,7 +347,6 @@ def for_transformer(
 
 def set_quantization(
     config: LayerTpl,
-    target: Type[base_layer.BaseLayer] = layers.transformers.Transformer,
     quantization_type: QuantizationType = QuantizationType.PTQ,
     mode: QuantizationMode = QuantizationMode.INFERENCE,
     num_bits: int = 8,
@@ -361,15 +359,10 @@ def set_quantization(
     quantize_ngrammer_embedding: bool = False,
     dtype: jnp.dtype = jnp.int8,
 ):
-  """Sets quantization parameters for 'target' in 'config'.
-
-  NOTE: If `quantize_embedding_softmax` is True, this rewrites
-  TransformerLm.softmax_tpl
-  if it is in `config`, regardless of `target` argument.
+  """Sets quantization parameters for TransformerLm in 'config'.
 
   Args:
     config: The config to apply quantization on.
-    target: The target component to be replaced.
     quantization_type: The quantization types (PTQ, FQ, AQT etc)
     mode: The quantization modes (INFERENCE, TRAINING, MATERIALIZE etc)
     num_bits: The number of bits used for quantization.
@@ -378,13 +371,12 @@ def set_quantization(
     weight_quant_only: If true, quantize weight only, otherweise quantize both
       weight and activation.
     quantize_embedding_softmax: If true, Quantize embedding table of embedding
-      softmax layer. Regardless of `target` argument, this results in rewriting
-      TransformerLm.softmax_tpl in `config`.
+      softmax layer. This rewrites TransformerLm.softmax_tpl in `config`.
     transposed_embedding_softmax: If the model is using transposed embedding for
       embedding softmax layer.
     quantize_ngrammer_embedding: If true, Quantize embedding table of each
-      embedding in Ngrammer/VQNgrammer layer. Regardless of `target` argument,
-      this results in rewriting TransformerLm.ngrammer_tpl in `config`.
+      embedding in Ngrammer/VQNgrammer layer. This rewrites
+      TransformerLm.ngrammer_tpl in `config`.
     dtype: Dtype of the quantized variables.
   """
   weight_quantization_params = WeightQuantizationParams(
@@ -396,10 +388,10 @@ def set_quantization(
       None if weight_quant_only else ActQuantizationParams(precision=num_bits)
   )
 
-  target_tpls = find_target_tpl(config, target)
-  for target_tpl in target_tpls:
+  transformer_tpls = find_target_tpl(config, layers.transformers.Transformer)
+  for transformer_tpl in transformer_tpls:
     quantize_transformer_layer_weights(
-        target_tpl,
+        transformer_tpl,
         quantization_type,
         mode,
         weight_quantization_params,
