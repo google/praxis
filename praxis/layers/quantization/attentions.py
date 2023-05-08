@@ -808,7 +808,7 @@ class DotProductAttention(attentions.DotProductAttention):
       atten_mask: JTensor,
       relative_bias: Optional[JTensor] = None,
       time_step: Optional[JTensor] = None,
-  ) -> JTensor:
+  ) -> Tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
     Args:
@@ -884,4 +884,4 @@ class DotProductAttention(attentions.DotProductAttention):
         rhs_quantizer=self.act_quantizer,
     )
     encoded = self._shard_bnh(encoded)
-    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
+    return encoded, probs

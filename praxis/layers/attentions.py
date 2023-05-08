@@ -1337,13 +1337,15 @@ class DotProductAttention(base_layer.BaseLayer):
     """Returns the length of full decoding sequences."""
     return self.get_decode_state('key_state').shape[1]
 
-  def _dot_atten_one_step(self,
-                          query: JTensor,
-                          key_state_name: str,
-                          value_state_name: str,
-                          atten_mask: JTensor,
-                          relative_bias: Optional[JTensor] = None,
-                          time_step: Optional[JTensor] = None) -> JTensor:
+  def _dot_atten_one_step(
+      self,
+      query: JTensor,
+      key_state_name: str,
+      value_state_name: str,
+      atten_mask: JTensor,
+      relative_bias: Optional[JTensor] = None,
+      time_step: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
     Args:
@@ -1414,7 +1416,7 @@ class DotProductAttention(base_layer.BaseLayer):
       encoded *= 1 - fully_masked
 
     encoded = self._shard_bnh(encoded)
-    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
+    return encoded, probs
 
   def __call__(
       self,
@@ -2054,13 +2056,15 @@ class DotProductAttentionWithLPB(DotProductAttention):
       windows = [pfx] + windows
     return jnp.concatenate(windows, axis=pfx_count + 1)
 
-  def _dot_atten_one_step(self,
-                          query: JTensor,
-                          key_state_name: str,
-                          value_state_name: str,
-                          atten_mask: JTensor,
-                          relative_bias: Optional[JTensor] = None,
-                          time_step: Optional[JTensor] = None) -> JTensor:
+  def _dot_atten_one_step(
+      self,
+      query: JTensor,
+      key_state_name: str,
+      value_state_name: str,
+      atten_mask: JTensor,
+      relative_bias: Optional[JTensor] = None,
+      time_step: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
     In the shapes listed below, `...` means potential sample dims added for lazy
@@ -2221,7 +2225,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
       )
       encoded *= 1 - fully_masked
 
-    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
+    return encoded, probs
 
   # TODO(b/247837331): Separate extend n steps from extend_step API if there
   # are  more use cases to run scoring right after decoding.
@@ -2569,13 +2573,15 @@ class DotProductAttentionXL(DotProductAttention):
     term_bd = jnp.einsum('BNH,TNH->BNT', content, sin_emb)
     return term_ac + term_bd
 
-  def _dot_atten_one_step(self,
-                          query: JTensor,
-                          key_state_name: str,
-                          value_state_name: str,
-                          atten_mask: JTensor,
-                          relative_bias: Optional[JTensor] = None,
-                          time_step: Optional[JTensor] = None) -> JTensor:
+  def _dot_atten_one_step(
+      self,
+      query: JTensor,
+      key_state_name: str,
+      value_state_name: str,
+      atten_mask: JTensor,
+      relative_bias: Optional[JTensor] = None,
+      time_step: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
     Args:
@@ -2637,7 +2643,7 @@ class DotProductAttentionXL(DotProductAttention):
     # Compute the attention context.
     encoded = jnp.einsum('BNS,BSNH->BNH', probs, value)
     encoded = self._shard_bnh(encoded)
-    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
+    return encoded, probs
 
   def init_states(self, target_batch_size: int,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                   target_max_length: int) -> NestedMap:
@@ -2883,13 +2889,15 @@ class LocalSelfAttention(DotProductAttention):
     encoded = self._shard_blnh(encoded)
     return encoded, probs
 
-  def _dot_atten_one_step(self,
-                          query: JTensor,
-                          key_state_name: str,
-                          value_state_name: str,
-                          atten_mask: JTensor,
-                          relative_bias: Optional[JTensor] = None,
-                          time_step: Optional[JTensor] = None) -> JTensor:
+  def _dot_atten_one_step(
+      self,
+      query: JTensor,
+      key_state_name: str,
+      value_state_name: str,
+      atten_mask: JTensor,
+      relative_bias: Optional[JTensor] = None,
+      time_step: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
     if self.right_context > 0:
       raise ValueError('Local attention must be causal to extend step.')
 
@@ -2988,7 +2996,7 @@ class LocalSelfAttention(DotProductAttention):
       encoded *= 1 - fully_masked
 
     encoded = self._shard_bnh(encoded)
-    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
+    return encoded, probs
 
   def init_states(self, target_batch_size: int,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                   target_max_length: int) -> NestedMap:
