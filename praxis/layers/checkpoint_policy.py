@@ -34,6 +34,7 @@ class AutodiffCheckpointType(str, enum.Enum):
   SAVE_ITERATION_INPUT = 'save_iteration_input'
   SAVE_TRANSFORMER_LAYER_OUTPUT = 'save_transformer_layer_output'
   SAVE_QUANTIZED = 'save_quantized'
+  SAVE_QKV_OUT_PROJ_SEPARATE = 'save_qkv_out_proj_separate'
 
 
 def custom_policy(checkpoint_policy: AutodiffCheckpointType):
@@ -49,6 +50,10 @@ def custom_policy(checkpoint_policy: AutodiffCheckpointType):
   if checkpoint_policy == AutodiffCheckpointType.SAVE_QKV_OUT_PROJ:
     return jax.checkpoint_policies.save_only_these_names(
         'combined_qkv_proj', 'out_proj')
+  if checkpoint_policy == AutodiffCheckpointType.SAVE_QKV_OUT_PROJ_SEPARATE:
+    return jax.checkpoint_policies.save_only_these_names(
+        'query_proj', 'value_proj', 'key_proj', 'out_proj'
+    )
   if checkpoint_policy == AutodiffCheckpointType.SAVE_CONTEXT:
     return jax.checkpoint_policies.save_only_these_names('context')
   if checkpoint_policy == AutodiffCheckpointType.SAVE_OUT_PROJ:
