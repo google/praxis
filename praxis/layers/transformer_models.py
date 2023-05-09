@@ -1646,7 +1646,6 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     # Update caches for decode state.
     if self.is_mutable_collection(base_layer.DECODE_CACHE):
       self.update_decode_state('time_step', start_time_step)  # pytype: disable=wrong-arg-types  # jax-ndarray
-      self.update_decode_state('encoder_output', encoder_output)
       self.update_decode_state('input_paddings', input_paddings)
     output = self.decoder(
         target_emb,
