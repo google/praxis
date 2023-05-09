@@ -761,6 +761,7 @@ def sample_decode(
         decoder_utils.ControlledDecodingHParams
     ] = None,
     return_entropy_score: bool = False,
+    process_result_fn: Optional[decoder_utils.ProcessResultFn] = None,
 ) -> NestedMap:
   """Sampling decode the input batch.
 
@@ -844,6 +845,8 @@ def sample_decode(
       instead of all logits.
     controlled_decoding: Params to configure blockwise controlled decoding.
     return_entropy_score: Whether to return entropy score for every token.
+    process_result_fn: Optional function that further processes the results,
+      such as performing suffix scoring.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -878,7 +881,7 @@ def sample_decode(
       )
 
       transform_state_fn(model, decoder_utils.pad_state_fn(pad_state_sizes))
-    return sample_decode_after_fprop(
+    result = sample_decode_after_fprop(
         model,
         extend_step_fn,
         transform_state_fn,
@@ -907,6 +910,9 @@ def sample_decode(
         controlled_decoding,
         return_entropy_score,
     )
+    if process_result_fn is not None:
+      result = process_result_fn(model, result)
+    return result
 
 
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
@@ -1608,6 +1614,7 @@ def greedy_decode(
     decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
     model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
     eos_id: Optional[int] = None,
+    process_result_fn: Optional[decoder_utils.ProcessResultFn] = None,
 ) -> NestedMap:
   """Greedy decode the input batch.
 
@@ -1641,6 +1648,8 @@ def greedy_decode(
     decode_loop_mesh_axes_transpose: Optional mesh transpose for decoding loop.
     model_var_pspecs: Optional partition specs for model variables.
     eos_id: Optional EOS id which to terminate the decoding early.
+    process_result_fn: Optional function that further processes the results,
+      such as performing suffix scoring.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -1672,4 +1681,5 @@ def greedy_decode(
       eos_id=eos_id,
       num_samples=1,
       temperature=0.0,
+      process_result_fn=process_result_fn,
   )

@@ -118,6 +118,7 @@ def beam_search(
     beam_search_hparams: BeamSearchHParams,
     decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
     model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
+    process_result_fn: Optional[decoder_utils.ProcessResultFn] = None,
 ) -> NestedMap:
   """Vanilla beam search decode the input batch.
 
@@ -127,18 +128,20 @@ def beam_search(
       time step (with shape [B] or [B, P] where B corresponds to the batch size
       and P corresponds to a possible prefix) and returns `JTensor` corresponds
       to the logits of the next step.  The following signatures are allowed:
-        extend_step_fn(model, extend_ids, segment_pos)
-        extend_step_fn(model, extend_ids, segment_pos, step, hyp_ids)
+      extend_step_fn(model, extend_ids, segment_pos) extend_step_fn(model,
+      extend_ids, segment_pos, step, hyp_ids)
     fprop_fn: A function that takes in the prefix information and initialize the
       decode cache states.
     transform_state_fn: A function that transforms the decode state.
-    prefix_ids: The token ids that correspond to the prefix sequence,
+    prefix_ids: The token ids that correspond to the prefix sequence, with shape
+      [batch_size, prefix_sequence_length].
+    prefix_paddings: The token paddings that correspond to the prefix sequence,
       with shape [batch_size, prefix_sequence_length].
-    prefix_paddings: The token paddings that correspond to the prefix
-      sequence, with shape [batch_size, prefix_sequence_length].
     beam_search_hparams: Beam search hyper parameters.
     decode_loop_mesh_axes_transpose: Optional mesh transpose for decoding loop.
     model_var_pspecs: needed if decode_loop_mesh_axes_transpose is provided.
+    process_result_fn: Optional function that further processes the results,
+      such as performing suffix scoring.
 
   Returns:
     A NestedMap with `.decode_lengths` (vector of ints indicating the lengths
@@ -161,7 +164,7 @@ def beam_search(
   with decoder_utils.maybe_decode_mesh_transpose(
       model, decode_loop_mesh_axes_transpose
   ):
-    return beam_search_after_prefix_fprop(
+    result = beam_search_after_prefix_fprop(
         model,
         extend_step_fn,
         transform_state_fn,
@@ -169,6 +172,9 @@ def beam_search(
         prefix_paddings,
         beam_search_hparams,
     )
+    if process_result_fn is not None:
+      result = process_result_fn(model, result)
+    return result
 
 
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.

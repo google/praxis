@@ -50,6 +50,8 @@ class DecoderHParams:
       lazy_broadcast_prefix() method in the attention layer, which is
       DotProductAttentionWithLPB.
     decode_loop_mesh_axes_transpose: Optional mesh transpose for decoding loop.
+    process_result_fn: Optional function that further processes the results,
+      such as performing suffix scoring.
     emb_lookup_style: lookup style for the softmax embedding layer.
   """
   # TODO(b/229679837): remove seqlen and uses max_decode_steps.
@@ -60,6 +62,7 @@ class DecoderHParams:
   fprop_for_prefix: bool = False
   lazy_prefix_broadcast: bool = False
   decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None
+  process_result_fn: Optional[decoder_utils.ProcessResultFn] = None
   emb_lookup_style: str = 'matmul'
 
   def clone(self: _TDecoderHParams) -> _TDecoderHParams:

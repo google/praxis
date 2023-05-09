@@ -27,6 +27,7 @@ from praxis import pytypes
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
+NestedMap = pytypes.NestedMap
 ExtendStepFn = Callable[[base_layer.BaseLayerApi, JTensor, JTensor], JTensor]
 FPropFn = Callable[[base_layer.BaseLayerApi, JTensor, JTensor], None]
 TransformStateFn = Callable[
@@ -34,6 +35,7 @@ TransformStateFn = Callable[
 ]
 # lazy_broadcast_prefix_fn(model, num_suffix_samples, suffix_length)
 LazyBroadcastPrefixFn = Callable[[base_layer.BaseLayerApi, int, int], None]
+ProcessResultFn = Callable[[base_layer.BaseLayerApi, NestedMap], NestedMap]
 # Dummy prng key to avoid deterministic random seed from sample decode input.
 DUMMY_PRNG_KEY = 0
 

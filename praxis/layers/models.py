@@ -517,6 +517,8 @@ class LanguageModel(base_model.BaseModel):
             eos_id=decoder_params.eos_id,
             length_norm_alpha=decoder_params.length_norm_alpha,
         )
+        if decoder_params.process_result_fn is not None:
+          result = decoder_params.process_result_fn(mdl_for_decode, result)
     elif template_has_type(decoder_params, BeamSearchHParams):
       assert isinstance(decoder_params, BeamSearchHParams)
       assert decoder_params.fprop_for_prefix
@@ -542,6 +544,7 @@ class LanguageModel(base_model.BaseModel):
           decoder_params,
           decode_loop_mesh_axes_transpose=decode_mesh_transpose,
           model_var_pspecs=lm_var_pspecs,
+          process_result_fn=decoder_params.process_result_fn,
       )
     elif template_has_type(decoder_params, SampleDecoderHParams):
       assert isinstance(decoder_params, SampleDecoderHParams)
@@ -620,6 +623,7 @@ class LanguageModel(base_model.BaseModel):
           sort_samples=decoder_params.sort_samples,
           use_top_k_for_logprobs=decoder_params.use_top_k_for_logprobs,
           return_entropy_score=return_entropy_score,
+          process_result_fn=decoder_params.process_result_fn,
       )
 
     elif template_has_type(decoder_params, GreedyDecoderHParams):
@@ -652,6 +656,7 @@ class LanguageModel(base_model.BaseModel):
           eos_id=decoder_params.eos_id,
           decode_loop_mesh_axes_transpose=decode_mesh_transpose,
           model_var_pspecs=lm_var_pspecs,
+          process_result_fn=decoder_params.process_result_fn,
       )
     else:
       # Needs to define a decoding algorithm.
