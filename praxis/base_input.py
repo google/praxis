@@ -466,7 +466,10 @@ class LingvoInputAdaptor(BaseInput):
     ), self._cluster:
       ret = self.input_inst.GetPreprocessedInputBatch()
     # Remove unsupported string (byte) array from input if training.
-    if self.is_training:
+    # Also remove unsupported string (byte) array from input if there are
+    # multiple hosts for eval, since xla passthrough does not support multihost
+    # eval b/279795947.
+    if self.is_training or self.num_infeed_hosts > 1:
       return ret.Filter(lambda v: v.dtype != tf.string)
     else:
       return ret
