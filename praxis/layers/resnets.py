@@ -283,28 +283,28 @@ class ResNet(base_layer.BaseLayer):
     not match.
 
   Attributes:
-  conv_params: A layer params template specifying Conv-BN-Activation template
-    used by the ResNet model.
-  block_params: A layer params template specifying Convolution Block used in
-    each stage. We use the same ResNetBlock tpl in all stages (4 stages in
-    total) in ResNet.
-  strides: A list of integers specifying the stride for each stage. A stage is
-    defined as a stack of Convolution Blocks that share same type, channels
-    and kernels. The stride is always applied only at the beginning of each
-    stage, while within that stage, all other strides are set to 1 (no
-    stride).
-  channels: A list of integers specifying the number of channels at different
-    stages. The first channel is usually 4x the input dim.
-  blocks: A list of integers specifying the number of blocks at different
-    stages.
-  kernels: A list of integers specifying the number of kernel sizes at
-    different stages.
-  entryflow_conv_kernel: A tuple of three integers as the kernel size of
-    entryflow convolution.
-  entryflow_conv_stride: A tuple of two integers as the stride of entryflow
-    convolution.
-  output_spatial_pooling_params: A layer params template specifying spatial
-    pooling before output. If None, spatial pooling is not added.
+    conv_params: A layer params template specifying Conv-BN-Activation template
+      used by the ResNet model.
+    block_params: A layer params template specifying Convolution Block used in
+      each stage. We use the same ResNetBlock tpl in all stages (4 stages in
+      total) in ResNet.
+    strides: A list of integers specifying the stride for each stage. A stage is
+      defined as a stack of Convolution Blocks that share same type, channels
+      and kernels. The stride is always applied only at the beginning of each
+      stage, while within that stage, all other strides are set to 1 (no
+      stride).
+    channels: A list of integers specifying the number of channels at different
+      stages. The first channel is usually 4x the input dim.
+    blocks: A list of integers specifying the number of blocks at different
+      stages.
+    kernels: A list of integers specifying the number of kernel sizes at
+      different stages.
+    entryflow_conv_kernel: A tuple of three integers as the kernel size of
+      entryflow convolution.
+    entryflow_conv_stride: A tuple of two integers as the stride of entryflow
+      convolution.
+    output_spatial_pooling_params: A layer params template specifying spatial
+      pooling before output. If None, spatial pooling is not added.
   """
   # pylint: disable=g-long-lambda
   conv_params: LayerTpl = pax_fiddle.fdl_field(

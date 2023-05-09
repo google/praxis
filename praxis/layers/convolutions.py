@@ -60,8 +60,8 @@ class Conv2D(base_layer.BaseLayer):
   """Conv2D with support of SAME/VALID paddings.
 
   Attributes:
-  filter_shape: Filter shape. Must be a sequence of length 4. Elements are in
-    the order of height (time), width (frequency), in_channel, out_channel.
+    filter_shape: Filter shape. Must be a sequence of length 4. Elements are in
+      the order of height (time), width (frequency), in_channel, out_channel.
     filter_stride: Filter stride to use. Must be a pair of ints. The first int
       specifies the stride on the height dimension. The second int specifies the
       stride on the width dimension.
@@ -128,17 +128,21 @@ class Conv2D(base_layer.BaseLayer):
     if len(self.dilations) != 2:
       raise ValueError(f'dilations should have 2 values, got {self.dilations}')
     if not all(x > 0 for x in self.filter_stride):
-      raise ValueError(f'filter_stide should be > 0, got f{self.filter_stride}')
+      raise ValueError(
+          f'filter_stride should be > 0, got f{self.filter_stride}'
+      )
 
     # error if is_causal but not tf_equivalent_padding
     if self.is_causal and (not self.tf_equivalent_padding):
       raise ValueError(
-          'Causal convolution is only supported for tf equivalent padding')
+          'Causal convolution is only supported for tf equivalent padding'
+      )
 
     # error if is_causal but padding == 'valid'
     if self.is_causal and self.padding == 'VALID':
       raise NotImplementedError(
-          'Causal convolution doesn\'t support valid padding')
+          "Causal convolution doesn't support valid padding"
+      )
 
     wp = self.weight_split_dims_mapping
     self.create_variable(
