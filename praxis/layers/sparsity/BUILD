@@ -27,6 +27,7 @@ pytype_strict_library(
     srcs = ["__init__.py"],
     srcs_version = "PY3",
     deps = [
+        ":attentions",
         ":linears",
     ],
 )

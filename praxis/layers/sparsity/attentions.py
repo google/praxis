@@ -140,13 +140,11 @@ class AttentionProjection(attentions.AttentionProjection):
       self.create_variable('b', pc_bias)
 
   def _update_mask(self, weight):
-    m = sparsity.get_sparsity_mask(
+    return sparsity.get_sparsity_mask(
         weight,
         n_sparsity=self.sparsity.weight_params.prune_rate[0],  # pytype: disable=attribute-error
         m_sparsity=self.sparsity.weight_params.prune_rate[1],  # pytype: disable=attribute-error
     )
-    self.update_var('w' + base_layer.SPARSITY_NAME_POSTFIX, m)
-    return m
 
   def _maybe_update_mask(self, update_count, weight, mask):
     def _true_fn():
@@ -221,6 +219,10 @@ class AttentionProjection(attentions.AttentionProjection):
           self.update_var('mask_update_count', up_cnt)
         else:
           m = self._update_mask(w)
+        # update_var function needs to be out of jax.lax.cond, due to
+        # flax.errors.JaxTransformError: Jax transforms and Flax models cannot
+        # be mixed.
+        self.update_var('w' + base_layer.SPARSITY_NAME_POSTFIX, m)
         w = sparsity.apply_sparsity(w, m)
         ret = jnp.einsum(eqn, inputs, w)
       else:
@@ -315,13 +317,11 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       self.create_variable('b', pc_bias)
 
   def _update_mask(self, weight):
-    m = sparsity.get_sparsity_mask(
+    return sparsity.get_sparsity_mask(
         weight,
         n_sparsity=self.sparsity.weight_params.prune_rate[0],  # pytype: disable=attribute-error
         m_sparsity=self.sparsity.weight_params.prune_rate[1],  # pytype: disable=attribute-error
     )
-    self.update_var('w' + base_layer.SPARSITY_NAME_POSTFIX, m)
-    return m
 
   def _maybe_update_mask(self, update_count, weight, mask):
     def _true_fn():
@@ -392,6 +392,10 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
           self.update_var('mask_update_count', up_cnt)
         else:
           m = self._update_mask(w)
+        # update_var function needs to be out of jax.lax.cond, due to
+        # flax.errors.JaxTransformError: Jax transforms and Flax models cannot
+        # be mixed.
+        self.update_var('w' + base_layer.SPARSITY_NAME_POSTFIX, m)
         w = sparsity.apply_sparsity(w, m)
         ret = jnp.einsum(eqn, inputs, w)
       else:

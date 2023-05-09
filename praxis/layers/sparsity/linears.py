@@ -66,13 +66,11 @@ class Linear(linears.Linear):
         self.create_variable('mask_update_count', count_pc, trainable=False)
 
   def _update_mask(self, weight):
-    m = sparsity.get_sparsity_mask(
+    return sparsity.get_sparsity_mask(
         weight,
         n_sparsity=self.sparsity.weight_params.prune_rate[0],
         m_sparsity=self.sparsity.weight_params.prune_rate[1],
     )
-    self.update_var('w' + base_layer.SPARSITY_NAME_POSTFIX, m)
-    return m
 
   def _maybe_update_mask(self, update_count, weight, mask):
     def _true_fn():
@@ -114,6 +112,10 @@ class Linear(linears.Linear):
         else:
           m = self._update_mask(w)
 
+        # update_var function needs to be out of jax.lax.cond, due to
+        # flax.errors.JaxTransformError: Jax transforms and Flax models cannot
+        # be mixed.
+        self.update_var('w' + base_layer.SPARSITY_NAME_POSTFIX, m)
         w = sparsity.apply_sparsity(w, m)
         out = linears.project_last_dim(inputs, w)
       else:
