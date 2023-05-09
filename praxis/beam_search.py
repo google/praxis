@@ -291,11 +291,22 @@ def beam_search_after_prefix_fprop(
     new_end_logprobs = val.logprobs
     for terminal_id in terminal_ids:
       eos_scores_candidate = val.hyp_scores + logprobs[:, :, terminal_id]
+      new_best = eos_scores_candidate > eos_scores
       eos_scores = jnp.maximum(eos_scores, eos_scores_candidate)
       new_end_ids = new_end_ids.at[:, :, step + 1].set(
-          terminal_id * jnp.ones_like(prefix_lengths))
+          jnp.where(
+              new_best,
+              terminal_id * jnp.ones_like(prefix_lengths),
+              new_end_ids[:, :, step + 1],
+          )
+      )
       new_end_logprobs = new_end_logprobs.at[:, :, step + 1].set(
-          logprobs[:, :, terminal_id])
+          jnp.where(
+              new_best,
+              logprobs[:, :, terminal_id],
+              new_end_logprobs[:, :, step + 1],
+          )
+      )
     decode_length = step + 2
     new_decode_lengths = jnp.ones_like(prefix_lengths) * decode_length
     eos_scores_norm = eos_scores / decoder_utils.length_norm(
