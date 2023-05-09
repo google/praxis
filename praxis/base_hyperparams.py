@@ -605,21 +605,6 @@ class BaseHyperParams:
         self, include_types=include_types, separator=separator)
 
 
-class InstantiableHyperParams(BaseHyperParams):
-  """Parameters from which an object can be instantiated.
-
-  Attributes:
-    cls: The class that this HyperParams is associated with.
-    name: The name of the object instance that this param configs.
-  """
-  cls: Type[Any]
-  name: str = ''
-
-  def Instantiate(self, **kwargs) -> Any:  # pylint: disable=invalid-name
-    assert self.cls is not None
-    return self.cls(self, **kwargs)
-
-
 @dataclasses.dataclass(frozen=True)
 class SubConfigFactory:
   """Inspectable sub-configuration factory.
@@ -713,8 +698,14 @@ class BaseParameterizable:
   such as inputs, learners, optimizers, schedules and tasks.
   """
 
-  class HParams(InstantiableHyperParams):
+  class HParams(BaseHyperParams):
     """Hyper-parameters for this parameterizable component."""
+    cls: Type[Any]
+    name: str = ''
+
+    def Instantiate(self, **kwargs) -> Any:  # pylint: disable=invalid-name
+      assert self.cls is not None
+      return self.cls(self, **kwargs)
 
   # The argument name used in the initializer to pass the configured
   # cls.HParams instance.
@@ -1158,7 +1149,7 @@ def _add_precise_signature_to_make(
   cls.make.__func__.__doc__ = cls.__doc__  # pytype: disable=attribute-error
 
 
-def instantiate(config: Union[InstantiableHyperParams, fdl.Buildable],
+def instantiate(config: Union[BaseParameterizable.HParams, fdl.Buildable],
                 **kwargs) -> Any:
   """Converts a config into an instance of the configured type.
 
@@ -1174,7 +1165,7 @@ def instantiate(config: Union[InstantiableHyperParams, fdl.Buildable],
   """
   if isinstance(config, fdl.Buildable):
     return pax_fiddle.instantiate(config, **kwargs)
-  if isinstance(config, InstantiableHyperParams):
+  if isinstance(config, BaseParameterizable.HParams):
     return config.Instantiate(**kwargs)
   raise ValueError(f'Unknown configuration type: {type(config)}. (Full config: '
                    f'{config})')

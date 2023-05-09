@@ -58,7 +58,6 @@ SummaryDict = pytypes.SummaryDict
 
 BaseHyperParams = base_hyperparams.BaseHyperParams
 BaseParameterizable = base_hyperparams.BaseParameterizable
-InstantiableHyperParams = base_hyperparams.InstantiableHyperParams
 sub_config_field = base_hyperparams.sub_config_field
 template_field = pax_fiddle.template_field
 instance_field = pax_fiddle.instance_field
@@ -1563,7 +1562,7 @@ class BaseLayer(nn.Module):
         return True
 
       template_types = (
-          base_hyperparams.InstantiableHyperParams,
+          base_hyperparams.BaseParameterizable.HParams,
           pax_fiddle.Config,
       )
       if isinstance(val, template_types) and issubclass(val.cls, BaseLayer):

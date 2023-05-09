@@ -30,7 +30,6 @@ from praxis import pax_fiddle
 from praxis import pytypes
 
 JTensor = pytypes.JTensor
-InstantiableHyperParams = base_hyperparams.InstantiableHyperParams
 instantiate = base_hyperparams.instantiate
 
 
