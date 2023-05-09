@@ -17,6 +17,7 @@
 
 import copy
 import dataclasses
+from lingvo.core import nested_map
 from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Union
 
 from absl.testing import absltest
@@ -24,6 +25,7 @@ from absl.testing import parameterized
 import fiddle as fdl
 from fiddle import daglish
 from fiddle import testing
+from fiddle.experimental import serialization
 from flax import core as flax_core
 from flax import linen as nn
 import jax
@@ -486,6 +488,12 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
     self.assertEqual(cfg.mesh_shape, [1, 2])
     cfg.dcn_mesh_shape = [3, 4]
     self.assertEqual(cfg.mesh_shape, [1 * 3, 2 * 4])
+
+  def test_nested_map_serialization(self):
+    cfg = pax_fiddle.Config(nested_map.NestedMap, x=1, y="y")
+    serialized_cfg = serialization.dump_json(cfg)
+    deserialized_cfg = serialization.load_json(serialized_cfg)
+    self.assertEqual(cfg, deserialized_cfg)
 
 
 class LayerA(nn.Module):

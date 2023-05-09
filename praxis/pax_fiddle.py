@@ -34,6 +34,7 @@ from fiddle.experimental import dataclasses as fdl_dataclasses
 from fiddle.experimental.dataclasses import field as fdl_field
 import fiddle.extensions.jax
 from flax.linen import module as flax_module
+from lingvo.core import nested_map
 import typing_extensions
 
 
@@ -549,6 +550,19 @@ def build_with_empty_flax_module_stack(buildable: Any) -> Any:
   return result
 
 
+def _make_nested_maps_serializable():
+  """Adds node traverser to make NestedMap serializable."""
+  daglish.register_node_traverser(
+      nested_map.NestedMap,
+      flatten_fn=lambda x: (tuple(x.values()), tuple(x.keys())),
+      unflatten_fn=lambda values, keys: nested_map.NestedMap(zip(keys, values)),
+      path_elements_fn=lambda x: [daglish.Key(key) for key in x.keys()],
+  )
+
+
+_make_nested_maps_serializable()
+
+
 def _is_buildable_type(typ):
   """Returns true if `typ` is a subclass of `Buildable` or `Buildable[...]`."""
   origin = typing_extensions.get_origin(typ)
@@ -630,7 +644,6 @@ def empty_flax_module_stack():
 
 _hparams_node_traverser_registry = daglish.NodeTraverserRegistry(
     use_fallback=True)
-
 
 def _register_traversers_for_subclass(subclass):
   """Registers traversal routines for an HParams subclass."""

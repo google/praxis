@@ -323,6 +323,7 @@ pytype_strict_library(
         # Implicit fiddle.experimental.dataclasses dependency.
         # Implicit fiddle.extensions.jax dependency.
         # Implicit flax.core dependency.
+        # Implicit lingvo.core.nested_map dependency.
         # Implicit typing_extensions dependency.
     ],
 )
@@ -541,9 +542,11 @@ py_strict_test(
         # Implicit absl.testing.parameterized dependency.
         # Implicit fiddle dependency.
         # Implicit fiddle.daglish dependency.
+        # Implicit fiddle.experimental.serialization dependency.
         # Implicit fiddle.testing dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.
+        # Implicit lingvo.core.nested_map dependency.
     ],
 )
 
