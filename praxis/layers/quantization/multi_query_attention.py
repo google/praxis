@@ -20,6 +20,7 @@ from typing import Any
 
 from jax import numpy as jnp
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import pytypes
 from praxis.layers import multi_query_attention
 from praxis.layers.quantization import operations
@@ -32,7 +33,6 @@ QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 QuantizationHParams = quantization_hparams.QuantizationHParams
 WeightHParams = base_layer.WeightHParams
-instance_field = base_layer.instance_field
 JTensor = pytypes.JTensor
 
 
@@ -46,7 +46,9 @@ class OneHeadedAttentionProjection(
       such as the mode for the quantization.
   """
 
-  quantization: QuantizationHParams = instance_field(QuantizationHParams)
+  quantization: QuantizationHParams = pax_fiddle.instance_field(
+      QuantizationHParams
+  )
 
   _PACK_4BIT_DIM = 0
 
