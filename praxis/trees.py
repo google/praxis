@@ -29,7 +29,7 @@ from praxis import pytypes
 Nested = pytypes.Nested
 
 
-def is_subset(superset: Nested, subset: Nested) -> bool:
+def is_subset(subset: Nested, superset: Nested) -> bool:
   """Returns True if subset is completely contained in superset (from root).
 
   Note that for Sequences a and b, a is not considered a subset of b unless all
@@ -37,8 +37,8 @@ def is_subset(superset: Nested, subset: Nested) -> bool:
   NestedMaps (e.g. [1, 3] is not a subset of [1, 2, 3]).
 
   Args:
-    superset: a nested object which may contain subset
     subset: a nested object which might be contained in superset
+    superset: a nested object which may contain subset
 
   Returns:
     True if subset is a subset of superset (i.e. share the same root, etc), in
