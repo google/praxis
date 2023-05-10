@@ -334,7 +334,8 @@ def maybe_shard(x: JTensor,
   return py_utils.with_sharding_constraint(x, partition_spec)
 
 
-class WeightInit(BaseHyperParams):
+@dataclasses.dataclass
+class WeightInit:
   """Static class providing weight initialization config params.
 
   Attributes:
@@ -2107,7 +2108,7 @@ class BaseLayer(nn.Module):
     # If users did not specify init and dtype for var_hparams, fill in from
     # self.
     if var_hparams.init is None:
-      var_hparams.init = self.params_init.clone()
+      var_hparams.init = copy.deepcopy(self.params_init)
     if var_hparams.dtype is None:
       var_hparams.dtype = self.dtype
 
