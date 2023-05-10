@@ -36,9 +36,6 @@ pytype_strict_library(
     name = "sparsity_hparams",
     srcs = ["sparsity_hparams.py"],
     srcs_version = "PY3",
-    deps = [
-        "//praxis:base_hyperparams",
-    ],
 )
 
 pytype_strict_library(

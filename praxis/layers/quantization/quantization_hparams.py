@@ -19,7 +19,6 @@ import dataclasses
 import enum
 from typing import Optional
 import jax.numpy as jnp
-from praxis import base_hyperparams
 
 
 @enum.unique
@@ -124,7 +123,8 @@ class WeightQuantizationParams:
   use_int4_packed_weights: bool = True
 
 
-class QuantizationHParams(base_hyperparams.BaseHyperParams):
+@dataclasses.dataclass
+class QuantizationHParams:
   """Parameters for quantization.
 
   Attributes:

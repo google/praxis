@@ -18,7 +18,6 @@
 import dataclasses
 import enum
 from typing import Optional, Tuple, Union
-from praxis import base_hyperparams
 
 
 @enum.unique
@@ -109,7 +108,8 @@ class WeightSparsityParams:
         )
 
 
-class SparsityHParams(base_hyperparams.BaseHyperParams):
+@dataclasses.dataclass
+class SparsityHParams:
   """Collection of hyper-parameters for sparsity.
 
   Attributes:

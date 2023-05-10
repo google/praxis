@@ -608,7 +608,6 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
-        "//praxis:base_hyperparams",
     ],
 )
 
