@@ -129,7 +129,7 @@ class Linear(linears.Linear):
     Returns:
       Projected inputs.
     """
-
+    step_count = None
     if self.quantization.weight_params.use_step_count:
       step_count = self.get_var('step_count')
       if not self.do_eval:
@@ -183,6 +183,18 @@ class Linear(linears.Linear):
             calculation_type=self.quantization.weight_params.calculation_dtype,
         )
         out = linears.project_last_dim(inputs, w)
+      elif self.quantization.quantization_type == QuantizationType.FQ_VN:
+        w = operations.fakequant_vn(
+            eqn,
+            w,
+            self.next_prng_key(),
+            self.quantization.weight_params,
+            step_count,
+            self.do_eval,
+            bits=self.quantization.weight_params.precision,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
+        )
+        out = linears.project_last_dim(inputs, w)
       else:
         out = linears.project_last_dim(inputs, w)
     # Adjust sharding annotation during decoding.
@@ -233,10 +245,11 @@ class Linear(linears.Linear):
     theta = self.theta
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     eqn = 'xy,yz->xz'
-    if (
-        self.quantization.quantization_type == QuantizationType.PTQ
-        or self.quantization.quantization_type == QuantizationType.FQ
-    ):
+    if self.quantization.quantization_type in [
+        QuantizationType.PTQ,
+        QuantizationType.FQ,
+        QuantizationType.FQ_VN,
+    ]:
       if self._do_static_activation_quantization():
         raise NotImplementedError(
             'Static activation quantization is not supported yet.'

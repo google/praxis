@@ -25,9 +25,12 @@ from jax import lax
 from jax import numpy as jnp
 from praxis import pytypes
 from praxis.layers.quantization import optimization
+from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import utils
 
 JTensor = pytypes.JTensor
+PRNGKey = pytypes.PRNGKey
+WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
 
 QUANTIZED_TYPES = [jnp.int8, jnp.uint8]
 INT_TYPES = [jnp.int8, jnp.uint8, jnp.int16, jnp.uint16, jnp.int32, jnp.uint32]
@@ -581,3 +584,80 @@ def aqt_einsum(
       ret = ret - offset
 
   return ret
+
+
+def fakequant_vn(
+    eqn: str,
+    w: JTensor,
+    next_prng_key: PRNGKey,
+    wp: WeightQuantizationParams,
+    step: JTensor,
+    do_eval: bool,
+    bits: int = 8,
+    calculation_type: jnp.dtype = jnp.bfloat16,
+    use_symmetric: bool = True,
+):
+  """Add variational noise to weight w.
+
+  Args:
+    eqn: The equation for the einsum between x and w.
+    w: Input weight to add variational noise to.
+    next_prng_key: RNG key.
+    wp: Weight quantization parameters.
+    step: Current training step.
+    do_eval: Evaluation mode, if True.
+    bits: Target number of bits.
+    calculation_type: The type for calculation.
+    use_symmetric: Use symmetric quantization for weights.
+
+  Returns:
+    The input with variational noise added according to params.
+  """
+
+  assert wp.vn_weight_norm_type in ('L2', 'Linf', 'PerChannelLinf')
+
+  if None in [
+      wp.vn_scale,
+      wp.vn_start_step,
+      wp.vn_noise_type,
+      wp.vn_weight_norm_type,
+      wp.stop_scale_gradient,
+  ]:
+    raise ValueError('VN parameter must be set.')
+
+  if do_eval:
+    # TODO(rybakov): replace fakequant by native quantization.
+    return fakequant_einsum(
+        eqn,
+        w,
+        bits=bits,
+        calculation_type=calculation_type,
+        use_symmetric=use_symmetric,
+    )
+  else:
+    if wp.vn_noise_type == 'uniform':
+      noises = jax.random.uniform(
+          next_prng_key, shape=w.shape, minval=-0.5, maxval=0.5, dtype=w.dtype
+      )
+    elif wp.vn_noise_type == 'normal':
+      noises = jax.random.normal(next_prng_key, shape=w.shape, dtype=w.dtype)
+    else:
+      raise ValueError('Unsupported noise type.')
+
+    # During warmup period (defined by vn_start_step) there is no noise addition
+    scale = jax.lax.select(step >= wp.vn_start_step, wp.vn_scale, 0.0)
+
+    if wp.vn_weight_norm_type == 'L2':
+      raise ValueError('Not implemented.')
+    elif wp.vn_weight_norm_type == 'Linf':
+      # Per tensor scaling.
+      scale *= jnp.max(jnp.abs(w))
+    elif wp.vn_weight_norm_type == 'PerChannelLinf':
+      # Per channel scaling.
+      contract_dims = eqn_to_weight_contract_dims(eqn)
+      scale *= jnp.max(jnp.abs(w), axis=contract_dims, keepdims=True)
+
+    if wp.stop_scale_gradient:
+      scale = jax.lax.stop_gradient(scale)
+
+    return w + scale.astype(w.dtype) * noises

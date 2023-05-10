@@ -501,6 +501,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         ":optimization",
+        ":quantization_hparams",
         ":utils",
         # Implicit absl.logging dependency.
         # Implicit jax dependency.
@@ -515,6 +516,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":operations",
+        ":quantization_hparams",
         ":quantizer",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.

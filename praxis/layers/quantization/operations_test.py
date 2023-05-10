@@ -26,6 +26,7 @@ from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers.quantization import operations
+from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
 
 
@@ -275,6 +276,36 @@ class AqtEinsumTest(test_utils.TestCase):
     actual_ret = aqt_einsum(eqn, lhs, rhs)
     expected_ret = jnp.einsum(eqn, lhs, rhs)
     self.assertArraysEqual(actual_ret, expected_ret)
+
+
+class QuantizationVNTest(test_utils.TestCase):
+
+  def test_warmup_step(self):
+
+    wp = quantization_hparams.WeightQuantizationParams
+    wp.precision = 4
+    wp.use_symmetric = False
+    wp.vn_scale = 1. / 7
+    wp.vn_start_step = 3
+    wp.vn_noise_type = 'uniform'
+    wp.vn_weight_norm_type = 'PerChannelLinf'
+    wp.stop_scale_gradient = False
+
+    next_prng_key = jax.random.PRNGKey(0)
+    weight = np.random.normal(1.5, 2.0, (4, 3)).astype(np.float32)
+    eqn = 'ab,bc->ac'
+
+    weight_ret = operations.fakequant_vn(
+        eqn,
+        weight,
+        next_prng_key,
+        wp,
+        step=wp.vn_start_step-1,
+        do_eval=False,
+        bits=wp.precision,
+        use_symmetric=wp.use_symmetric,
+    )
+    self.assertArraysEqual(weight, weight_ret)
 
 
 class SubChannelTest(test_utils.TestCase):

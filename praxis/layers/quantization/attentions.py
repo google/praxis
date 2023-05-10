@@ -143,6 +143,14 @@ class AttentionProjection(attentions.AttentionProjection):
     if self.quantization.quantization_type == QuantizationType.AQT:
       self.create_tensor_quantizers()
 
+    if self.quantization.weight_params.use_step_count:
+      step_count_pc = WeightHParams(
+          shape=[],
+          init=WeightInit.Constant(0),
+          dtype=jnp.int32,
+      )
+      self.create_variable('step_count', step_count_pc, trainable=False)
+
   def __call__(self, inputs: JTensor) -> JTensor:
     """Computes the multi headed projection for inputs.
 
@@ -156,6 +164,11 @@ class AttentionProjection(attentions.AttentionProjection):
       otherwise.
     """
     theta = self.theta
+    step_count = None
+    if self.quantization.weight_params.use_step_count:
+      step_count = self.get_var('step_count')
+      if not self.do_eval:
+        self.update_var('step_count', step_count + 1)
 
     # Because tf.einsum is not fully optimized unless all the dimensions are
     # fully specified, we have to avoid using '...' for batch dimensions in the
@@ -244,6 +257,18 @@ class AttentionProjection(attentions.AttentionProjection):
             calculation_type=self.quantization.weight_params.calculation_dtype,
         )
         ret = jnp.einsum(eqn, inputs, w)
+      elif self.quantization.quantization_type == QuantizationType.FQ_VN:
+        w = operations.fakequant_vn(
+            eqn,
+            w,
+            self.next_prng_key(),
+            self.quantization.weight_params,
+            step_count,
+            self.do_eval,
+            bits=self.quantization.weight_params.precision,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
+        )
+        ret = jnp.einsum(eqn, inputs, w)
       elif self.quantization.quantization_type == QuantizationType.PTQ:
         ret = jnp.einsum(eqn, inputs, w)
 
@@ -258,7 +283,7 @@ class AttentionProjection(attentions.AttentionProjection):
       a map from names to partition spec.
     """
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
-    weight_pspec = base_layer._weight_hparam_to_pspec(
+    weight_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
         self._weight_hparams['w'], self.mesh_axis_names
     )
     wp = self.weight_split_dims_mapping
@@ -269,7 +294,7 @@ class AttentionProjection(attentions.AttentionProjection):
     # scale_weight_hparam is unmaterialized so shape is irrelevant.
     scale_weight_hparam = WeightHParams(
         shape=(), tensor_split_dims_mapping=scale_split_dims_mapping)
-    scale_pspec = base_layer._weight_hparam_to_pspec(
+    scale_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
         scale_weight_hparam, self.mesh_axis_names
     )
     partitionspec = {'w': weight_pspec, scale_name: scale_pspec}
@@ -298,7 +323,10 @@ class AttentionProjection(attentions.AttentionProjection):
 
     percentile = self.quantization.weight_params.clipping_coeff
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
-    if self.quantization.quantization_type == QuantizationType.PTQ:
+    if self.quantization.quantization_type in [
+        QuantizationType.PTQ,
+        QuantizationType.FQ_VN,
+    ]:
       q_w, q_s, zp = operations.reduce_einsum_weight_precision(
           eqn,
           self.theta.w,
@@ -436,6 +464,14 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     if self.quantization.quantization_type == QuantizationType.AQT:
       self.create_tensor_quantizers()
 
+    if self.quantization.weight_params.use_step_count:
+      step_count_pc = WeightHParams(
+          shape=[],
+          init=WeightInit.Constant(0),
+          dtype=jnp.int32,
+      )
+      self.create_variable('step_count', step_count_pc, trainable=False)
+
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
   # attentions.
   def __call__(self, inputs: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
@@ -449,6 +485,11 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       in q_proj, k_proj and v_proj order.
     """
     theta = self.theta
+    step_count = None
+    if self.quantization.weight_params.use_step_count:
+      step_count = self.get_var('step_count')
+      if not self.do_eval:
+        self.update_var('step_count', step_count + 1)
 
     # Because tf.einsum is not fully optimized unless all the dimensions are
     # fully specified, we have to avoid using '...' for batch dimensions in the
@@ -527,6 +568,18 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             w,
             bits=self.quantization.weight_params.precision,
             use_symmetric=self.quantization.weight_params.use_symmetric,
+        )
+        ret = jnp.einsum(eqn, inputs, w)
+      elif self.quantization.quantization_type == QuantizationType.FQ_VN:
+        w = operations.fakequant_vn(
+            eqn,
+            w,
+            self.next_prng_key(),
+            self.quantization.weight_params,
+            step_count,
+            self.do_eval,
+            bits=self.quantization.weight_params.precision,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
             calculation_type=self.quantization.weight_params.calculation_dtype,
         )
         ret = jnp.einsum(eqn, inputs, w)
@@ -583,7 +636,10 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     theta = self.theta
     eqn = 'AD,KDNH->KANH'
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
-    if self.quantization.quantization_type == QuantizationType.PTQ:
+    if self.quantization.quantization_type in [
+        QuantizationType.PTQ,
+        QuantizationType.FQ_VN,
+    ]:
       q_w, q_s, zp = operations.reduce_einsum_weight_precision(
           eqn,
           theta.w,

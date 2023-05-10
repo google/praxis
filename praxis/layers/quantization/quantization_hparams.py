@@ -25,13 +25,15 @@ import jax.numpy as jnp
 class QuantizationType(str, enum.Enum):
   """The different types for quantization.
 
-  PTQ indicates Post Training Quantization.
-  AQT indicates Accurate Quantized Training, which is one flavor of QAT.
-  FQ  indicates Fake Quantization, which is one flavor of QAT.
+  PTQ: Post Training Quantization.
+  AQT: Accurate Quantized Training, which is one flavor of QAT.
+  FQ:  Fake Quantization, which is one flavor of QAT.
+  FQ_VN:  Use variational noise to emulate quantization noise.
   """
   PTQ = 'ptq'
   AQT = 'aqt'
   FQ = 'fq'
+  FQ_VN = 'fq_vn'
 
 
 @enum.unique
@@ -82,6 +84,7 @@ class WeightQuantizationParams:
     quantization. 1.0 means using hard min/max.
   stop_scale_gradient: Stop the gradient of the quantization scale for numerical
     stability. Note: this is numerically incorrect.
+    Note stop_scale_gradient is also used by VN.
   min_clipping: Clipping value which will be used for clipping optimization
     in range [min_clipping ... 1].
   num_optimize_clipping: Number of optimization steps used for
@@ -101,9 +104,17 @@ class WeightQuantizationParams:
   use_step_count: If True step_count non-trainable variable will added.
     It is used for counting forward propagation training steps.
     By default it is disabled for backward compatibility with prod.
-  use_int4_packed_weights: If True, pack/unpack int4 weights into int32. 
-    It is for int4 weights only and has not effect on other type. 
+  use_int4_packed_weights: If True, pack/unpack int4 weights into int32.
+    It is for int4 weights only and has not effect on other type.
     If False int4 weights will be kept in int8.
+  vn_scale: Scale coefficient for VN quantization. TODO(rybakov) use bits.
+  vn_start_step: Step number after which VN is applied. If training step is less
+    than vn_start_step then standard float model is trained.
+  vn_noise_type: Noise type, can be 'uniform' of 'normal'.
+    else use noise with normal distribution.
+  vn_weight_norm_type: Type of weight normalization: 'L2', 'Linf',
+    'PerChannelLinf'. Default value is 'PerChannelLinf' it is a
+      standard scale normalization used by QAT.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -121,7 +132,10 @@ class WeightQuantizationParams:
   calculation_dtype: jnp.dtype = jnp.float32
   use_step_count: bool = False
   use_int4_packed_weights: bool = True
-
+  vn_scale: Optional[float] = None
+  vn_start_step: Optional[int] = None
+  vn_noise_type: str = 'uniform'
+  vn_weight_norm_type: str = 'PerChannelLinf'
 
 @dataclasses.dataclass
 class QuantizationHParams:
