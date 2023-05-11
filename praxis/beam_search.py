@@ -38,10 +38,9 @@ GlobalBeam = Tuple[
 ExpandedExtendStepFn = Callable[
     [
         base_layer.BaseLayerApi,  # model
-        JTensor,  # extend_ids
-        JTensor,  # segment_pos
-        JTensor,  # step, counting from 0
-        JTensor,  # hyp_ids of last round, initially 0
+        JTensor,  # int[batch_size, beam_size] extend_ids
+        JTensor,  # int[batch_size * beam_size] segment_pos
+        NestedMap,  # decode_loop_state
     ],
     JTensor,  # logits
 ]
@@ -132,8 +131,8 @@ def beam_search(
       time step (with shape [B] or [B, P] where B corresponds to the batch size
       and P corresponds to a possible prefix) and returns `JTensor` corresponds
       to the logits of the next step.  The following signatures are allowed:
-      extend_step_fn(model, extend_ids, segment_pos) extend_step_fn(model,
-      extend_ids, segment_pos, step, hyp_ids)
+      extend_step_fn(model, extend_ids, segment_pos)
+      extend_step_fn(model, extend_ids, segment_pos, decode_loop_state)
     fprop_fn: A function that takes in the prefix information and initialize the
       decode cache states.
     transform_state_fn: A function that transforms the decode state.
@@ -251,8 +250,8 @@ def beam_search_after_prefix_fprop(
                                                 [0] * val.output_ids.ndim)
   val.end_ids = val.output_ids
   # Update loop init states with prefix.
-  start_step = max_prefix_len - 1
-  val.step = start_step
+  val.start_step = max_prefix_len - 1
+  val.step = val.start_step
   val.segment_pos = jnp.reshape(prefix_lengths - 1, (batch_size * beam_size,))
   val.end_decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
 
@@ -260,8 +259,13 @@ def beam_search_after_prefix_fprop(
   if len(inspect.signature(extend_step_fn).parameters) == 3:
     extend_step_fn = cast(decoder_utils.ExtendStepFn, extend_step_fn)
 
-    def expanded_extend_step_fn(model, extend_ids, segment_pos, step, hyp_ids):
-      del step, hyp_ids
+    def expanded_extend_step_fn(
+        model: base_layer.BaseLayerApi,
+        extend_ids: JTensor,
+        segment_pos: JTensor,
+        decode_loop_state: NestedMap,
+    ):
+      del decode_loop_state
       return extend_step_fn(model, extend_ids, segment_pos)
 
   else:
@@ -281,9 +285,7 @@ def beam_search_after_prefix_fprop(
     """From ids at `step`, update output ids at `step + 1`."""
     step = val.step
     extend_ids = jnp.reshape(val.output_ids[:, :, step], (-1,))
-    logits = expanded_extend_step_fn(
-        model, extend_ids, val.segment_pos, step - start_step, val.hyp_ids
-    )
+    logits = expanded_extend_step_fn(model, extend_ids, val.segment_pos, val)
     logits = jnp.reshape(logits, (batch_size, beam_size, -1))
     logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
     # Select the best ids with terminal tokens.
