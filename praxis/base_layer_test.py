@@ -110,6 +110,14 @@ class BaseLayerTest(test_utils.TestCase):
           list(summary_dict.dict.keys()),
           {'my_custom_summary_scalar', 'my_custom_summary1_scalar'})
 
+  def test_summary_type_from_key(self):
+    for t in base_layer.SummaryType:
+      name = 'summary'
+      key = name + base_layer.get_summary_type_suffix(t)
+      t_key = base_layer.get_summary_type_from_key(key)
+      self.assertEqual(t, t_key)
+      self.assertEqual(name, base_layer.trim_summary_type_from_key(key))
+
   def test_layer_summary_verbosity_log(self):
     layer_p = pax_fiddle.Config(Identity, name='test_identity')
     layer = base_layer.instantiate(layer_p)

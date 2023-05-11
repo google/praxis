@@ -914,18 +914,18 @@ def get_summary_base_type(summary_type: SummaryType) -> SummaryType:
 
 
 def get_summary_type_suffix(summary_type: SummaryType) -> str:
-  return '_' + get_summary_base_type(summary_type).name.lower()
+  return '_' + summary_type.name.lower()
 
 
 def get_summary_type_from_key(key: str) -> SummaryType:
-  for t in SummaryType:
+  for t in sorted(SummaryType, key=lambda t: len(t.name.lower()), reverse=True):
     if key.endswith('_' + t.name.lower()):
       return t
   raise ValueError('Cannot parse summary type from key: ' + key)
 
 
 def trim_summary_type_from_key(key: str) -> str:
-  for t in SummaryType:
+  for t in sorted(SummaryType, key=lambda t: len(t.name.lower()), reverse=True):
     suffix = '_' + t.name.lower()
     if key.endswith(suffix):
       return key[:-len(suffix)]
