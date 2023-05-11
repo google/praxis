@@ -56,7 +56,6 @@ JTensorOrPartitionSpec = pytypes.JTensorOrPartitionSpec
 NpTensor = pytypes.NpTensor
 SummaryDict = pytypes.SummaryDict
 
-BaseHyperParams = base_hyperparams.BaseHyperParams
 sub_config_field = base_hyperparams.sub_config_field
 template_field = pax_fiddle.template_field
 instance_field = pax_fiddle.instance_field
@@ -860,8 +859,7 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
 class WrappedHParams:
   # We do not want to transform hyper-params in post_init_hparams, so we mark
   # the field pytree_node=False to prevent JAX transforms from touching it.
-  meta: Union[BaseHyperParams,
-              pax_fiddle.Config] = struct.field(pytree_node=False)
+  meta: pax_fiddle.Config = struct.field(pytree_node=False)
 
 
 @struct.dataclass
@@ -1566,11 +1564,7 @@ class BaseLayer(nn.Module):
       if isinstance(val, BaseLayer):
         return True
 
-      template_types = (
-          base_hyperparams.BaseParameterizable.HParams,
-          pax_fiddle.Config,
-      )
-      if isinstance(val, template_types) and issubclass(val.cls, BaseLayer):
+      if isinstance(val, pax_fiddle.Config) and issubclass(val.cls, BaseLayer):
         return True
 
       # Check if val is a container of sub-layer templates.
@@ -1677,7 +1671,7 @@ class BaseLayer(nn.Module):
 
   def __post_init__(self):
     try:
-      if isinstance(self.dtype, (BaseHyperParams, fdl.Config)):
+      if isinstance(self.dtype, fdl.Config):
         raise TypeError()
       jnp.dtype(self.dtype)
     except TypeError:
@@ -2434,8 +2428,7 @@ class _WrapperLayer(BaseLayer):
     self.cld = getattr(self, self.name)
 
 
-def get_template_fields(
-    template: Union[BaseHyperParams, pax_fiddle.Config]) -> List[str]:
+def get_template_fields(template: pax_fiddle.Config) -> List[str]:
   """Returns the names of the configurable fields for `template`.
 
   Does not include `"cls"`.
@@ -2447,12 +2440,6 @@ def get_template_fields(
     return list(
         fdl.ordered_arguments(
             template, include_defaults=True, include_unset=True))
-  elif isinstance(template, BaseHyperParams):
-    return [
-        field.name
-        for field in dataclasses.fields(template)  # pytype: disable=wrong-arg-types  # re-none
-        if field.name != 'cls'
-    ]
   else:
     raise TypeError(f'Unexpected type for template: {type(template)}')
 
