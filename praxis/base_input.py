@@ -111,6 +111,10 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     input_checkpointing_enabled: overridden by
       task.train.enable_input_checkpointing; indicates whether training input
       should be checkpointed.
+    tf_data_service_address: May be set to the address of the tf.data service
+      dispatcher. This is usually set automatically by the trainer (not by the
+      user). tf.data based input pipelines can use this to distribute input
+      processing across many worker jobs.
   """
 
   _VALIDATE_BATCH_SIZE_NOT_NONE = True
@@ -129,6 +133,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   batch_padding_size: int = 0
   custom_device_order: Optional[Sequence[int]] = None
   input_checkpointing_enabled: bool = False
+  tf_data_service_address: Optional[str] = None
   _peek: Any = dataclasses.field(init=False, repr=False)
   _state_before_peek: Any = dataclasses.field(init=False, repr=False)
 
@@ -416,6 +421,7 @@ class LingvoInputAdaptor(BaseInput):
     self._cluster.params.enable_asserts = False
     # This indirectly sets cluster.require_sequential_input_order as well.
     self._cluster.params.do_eval = not self.is_training and self.cluster_do_eval
+    self._cluster.params.tf_data_service_address = self.tf_data_service_address
     self._initialize()
 
   @classmethod
