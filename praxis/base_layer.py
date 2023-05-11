@@ -57,7 +57,6 @@ NpTensor = pytypes.NpTensor
 SummaryDict = pytypes.SummaryDict
 
 BaseHyperParams = base_hyperparams.BaseHyperParams
-BaseParameterizable = base_hyperparams.BaseParameterizable
 sub_config_field = base_hyperparams.sub_config_field
 template_field = pax_fiddle.template_field
 instance_field = pax_fiddle.instance_field
