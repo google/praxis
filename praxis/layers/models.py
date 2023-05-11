@@ -912,7 +912,54 @@ class SequenceModel(base_model.BaseModel):
           decoder_params,
       )
     elif template_has_type(decoder_params, SampleDecoderHParams):
-      raise NotImplementedError('sample decode not supported')
+      assert isinstance(decoder_params, SampleDecoderHParams)
+
+      def fprop_fn(mdl, ids, paddings):
+        del ids, paddings
+        mdl.model(
+            inputs=input_batch.src.ids,
+            input_paddings=input_batch.src.paddings,
+            targets=input_batch.tgt.ids[:, :1],
+            target_paddings=input_batch.tgt.paddings[:, :1],
+        )
+
+      temperature = decoder_params.temperature
+
+      next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
+      # TODO(b/260646361): Avoid this param propagation.
+      next_token_sampler_p.top_k = decoder_params.k
+      next_token_sampler_p.top_p = decoder_params.p
+      next_token_sampler_p.global_normalize = decoder_params.global_normalize
+      next_token_sampler_p.top_k_recall_target = (
+          decoder_params.top_k_recall_target
+      )
+      next_token_sampler_p.use_top_k_for_logprobs = (
+          decoder_params.use_top_k_for_logprobs
+      )
+      next_token_sampler = base_layer.instantiate(next_token_sampler_p)
+
+      result = sample_decode.sample_decode(
+          self,
+          extend_step_fn,
+          transform_state_fn=transform_decode_state_fn,
+          lazy_broadcast_prefix_fn=None,
+          next_token_sampler=next_token_sampler,
+          prefix_ids=input_batch.tgt.ids,
+          prefix_paddings=input_batch.tgt.paddings,
+          seq_len=decoder_params.seqlen,
+          fprop_fn=fprop_fn,
+          num_samples=decoder_params.num_samples,
+          fprop_for_prefix=decoder_params.fprop_for_prefix,
+          temperature=temperature,
+          max_decode_steps=decoder_params.max_decode_steps,
+          eos_id=decoder_params.eos_id,
+          cf_guidance_scale=decoder_params.cf_guidance_scale,
+          controlled_decoding=decoder_params.controlled_decoding,
+          sort_samples=decoder_params.sort_samples,
+          use_top_k_for_logprobs=decoder_params.use_top_k_for_logprobs,
+          return_entropy_score=False,
+          process_result_fn=decoder_params.process_result_fn,
+      )
     elif template_has_type(decoder_params, GreedyDecoderHParams):
 
       def fprop_fn(mdl, ids, paddings):
