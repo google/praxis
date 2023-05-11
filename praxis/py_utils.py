@@ -61,6 +61,7 @@ TFDatasetSource = lingvo_lib.TFDatasetSource
 InstantiableParams = pytypes.InstantiableParams
 NestedMap = pytypes.NestedMap
 HParams = pytypes.HParams
+Nested = pytypes.Nested
 
 JTensor = jnp.ndarray
 
@@ -966,23 +967,18 @@ def timeit(min_elapsed: float = 1e-6) -> Iterator[RunningPeriod]:
     period.end = time.time()
 
 
-# We use Any types to allow nested data structures. They are defined in pytypes
-# which would cause a circular dependency.
 def filter_by_matching_keys(
-    batch: Any,
-    prefixes: Sequence[str] = ()) -> Tuple[NestedMap, NestedMap]:
+    batch: Dict[str, Nested], prefixes: Sequence[str]
+) -> Tuple[Dict[str, Nested], Dict[str, Nested]]:
   """Filter a map into one that matches any prefix and one that doesn't."""
 
   def _matching_fn(k: str) -> bool:
-    for prefix in prefixes:
-      if k.startswith(prefix):
-        return True
-
-    return False
+    return any(k.startswith(prefix) for prefix in prefixes)
 
   matching = NestedMap()
   non_matching = NestedMap()
-  for k in batch.keys():
+
+  for k in batch:
     if _matching_fn(k):
       matching[k] = batch[k]
     else:
