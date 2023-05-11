@@ -465,7 +465,8 @@ def is_default_param_init(p: Union[WeightInit, pax_fiddle.Config[WeightInit]]):
   return p.method == 'xavier' and abs(p.scale - _DEFAULT_XAVIER_INIT) < 1e-7
 
 
-class WeightHParams(BaseHyperParams):
+@dataclasses.dataclass
+class WeightHParams:
   """Hyperparams for a weight variable specifying shape/init/dtype etc.
 
   Attributes:
@@ -1992,7 +1993,7 @@ class BaseLayer(nn.Module):
         used for asymmetric weight quantization.
     """
 
-    quantized_weight_hparams = weight_hparams.clone()
+    quantized_weight_hparams = copy.deepcopy(weight_hparams)
     quantized_weight_hparams.dtype = dtype
     quantized_weight_hparams.init = WeightInit.Constant(0)
     self.create_variable(name=name, var_hparams=quantized_weight_hparams)
@@ -2048,7 +2049,7 @@ class BaseLayer(nn.Module):
       weight_hparams: HParams for weight.
     """
     self.create_variable(name=name, var_hparams=weight_hparams)
-    sparsity_weight_hparams = weight_hparams.clone()
+    sparsity_weight_hparams = copy.deepcopy(weight_hparams)
     sparsity_weight_hparams.init = WeightInit.Constant(False)
     sparsity_weight_hparams.dtype = jnp.bool_
     self.create_variable(
@@ -2102,7 +2103,7 @@ class BaseLayer(nn.Module):
           f'{self.__class__} can not create a new variable named {name!r} '
           'because it already has a field with that name.')
 
-    var_hparams = var_hparams.clone()
+    var_hparams = copy.deepcopy(var_hparams)
 
     # If users did not specify init and dtype for var_hparams, fill in from
     # self.
@@ -2141,7 +2142,7 @@ class BaseLayer(nn.Module):
       ]
 
     # Store a private copy of var_hparams.
-    self._weight_hparams[name] = var_hparams.clone()
+    self._weight_hparams[name] = copy.deepcopy(var_hparams)
 
     if trainable:
       # This is a param in Flax terminology.

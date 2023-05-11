@@ -158,8 +158,8 @@ class BatchNorm(BaseNormalization):
   force_eval_mode: bool = False
   gamma_init: WeightInit = WeightInit.Constant(0.0)
 
-  def _get_weight_shape(self) -> JTensor:
-    return [self.dim]  # pytype: disable=bad-return-type  # jax-ndarray
+  def _get_weight_shape(self) -> List[int]:
+    return [self.dim]
 
   def setup(self) -> None:
     """Creates batch normalization layer variables."""

@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import functools
 import re
@@ -160,7 +161,7 @@ def sharded_sgd(learning_rate_fn: optax.Schedule, momentum: Optional[float],
 
     def _opt_state_sharding_spec(var_hparams: WeightHParams) -> WeightHParams:
       """Returns optimizer sharding spec for one particular variable."""
-      m_var_hparams = var_hparams.clone()
+      m_var_hparams = copy.deepcopy(var_hparams)
       m_var_hparams.init = None
       # Momentum has same sharding as mdl var.
       return m_var_hparams
@@ -209,7 +210,7 @@ def sharded_adagrad(learning_rate_fn: optax.Schedule,
 
     def _opt_state_sharding_spec(var_hparams: WeightHParams) -> WeightHParams:
       """Returns optimizer sharding spec for one particular variable."""
-      s_var_hparams = var_hparams.clone()
+      s_var_hparams = copy.deepcopy(var_hparams)
       s_var_hparams.init = None
       # ScaleByRssState has same sharding as `mdl_var`.
       return s_var_hparams
@@ -244,9 +245,9 @@ class _ShardedAdamHelper:
   def opt_state_sharding_spec(self,
                               var_hparams: WeightHParams) -> _AdamOptState:
     """Returns optimizer sharding spec for one particular variable."""
-    m_var_hparams = var_hparams.clone()
+    m_var_hparams = copy.deepcopy(var_hparams)
     m_var_hparams.init = None
-    v_var_hparams = var_hparams.clone()
+    v_var_hparams = copy.deepcopy(var_hparams)
     v_var_hparams.init = None
     # m and v simply share the same sharding.
     return _AdamOptState(m=m_var_hparams, v=v_var_hparams)
@@ -314,7 +315,7 @@ class _ShardedLionHelper(_ShardedAdamHelper):
   def opt_state_sharding_spec(self,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                               var_hparams: WeightHParams) -> _LionOptState:
     """Returns optimizer sharding spec for one particular variable."""
-    m_var_hparams = var_hparams.clone()
+    m_var_hparams = copy.deepcopy(var_hparams)
     m_var_hparams.init = None
     # m simply share the same sharding.
     return _LionOptState(m=m_var_hparams)

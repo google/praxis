@@ -47,6 +47,7 @@ Stacking variables helps reduce the number of individual variables, which can be
 beneficial for compilation time and the current GDA-based checkpointing.
 """
 
+import copy
 import functools
 from typing import Callable, Optional, Sequence, Tuple, Union
 
@@ -316,7 +317,7 @@ def _init_partition_spec_with_vectorized_repeat_prefix(
   def call_inner_on_group(group, shape_prefix, sharding_prefix):
 
     def _remove_prefix(p):
-      p = p.clone()
+      p = copy.deepcopy(p)
       p.repeat_prefix = None
       p.repeat_prefix_split_dims_mapping = None
       return p
