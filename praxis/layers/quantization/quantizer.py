@@ -34,12 +34,6 @@ ActQuantizationParams = quantization_hparams.ActQuantizationParams
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
 
 
-def _pass_through(x: JTensor, fn) -> JTensor:
-  # Create an exactly-zero expression with Sterbenz lemma that has an
-  # exactly-one gradient.
-  return x - jax.lax.stop_gradient(x) + jax.lax.stop_gradient(fn(x))
-
-
 def create_tensor_quantizer(
     name: str,
     quant_params: Optional[
