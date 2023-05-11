@@ -989,7 +989,8 @@ _SharedLayerCacheEntry = collections.namedtuple('_SharedLayerCacheEntry',
 class JaxContext:
   """Global context under which jax computations are carried out."""
 
-  class HParams(base_hyperparams.BaseHyperParams):
+  @dataclasses.dataclass
+  class HParams:
     """HParams for `JaxContent`.
 
     Attributes:
@@ -1009,6 +1010,9 @@ class JaxContext:
     do_eval: Optional[bool] = None
     summary_verbosity: int = 3
     mesh_axes_transpose: Optional[Dict[str, str]] = None
+
+    def clone(self) -> JaxContext.HParams:
+      return copy.deepcopy(self)
 
   def __init__(self, hparams: JaxContext.HParams) -> None:
     self._hparams = hparams.clone()
