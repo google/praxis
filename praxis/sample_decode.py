@@ -402,71 +402,10 @@ def sample_from_top_k_and_top_p(
     per_example_top_k: Optional[JTensor] = None,
     global_normalize: bool = False,
     top_k_recall_target: float = 1.0,
-) -> JTensor:
+) -> Sequence[JTensor]:
   """Sample decode algorithm from TopK and TopP.
 
   When both top_k and top_p are defined, top_k will be applied first.
-
-  Args:
-    logits: Logits of current step. This is a JTensor of [batch_size *
-      num_samples, vocab_size].
-    prng_key: The prng key.
-    temperature: Temperature of sampling decoding. It could be a float or a
-      JTensor of shape [batch_size * num_samples].
-    top_k: If nonzero, use top-k sampling, only selecting among the most likely
-      k tokens at each step. top_k is set to the maximum k value for sampling
-      decode.
-    top_p: Optional cutoff probability. A scalar or a JTensor. Use the smallest
-      number of logits whose cumulative sum of probs adds up to (at least)
-      top_p. If it is a JTensor, it has shape [batch_size * num_samples, 1]
-    per_example_top_k: Optional per example top_k of shape [batch_size *
-      num_samples]. The value of per_example_top_k should be smaller or equal to
-      `top_k` and larger than 0.
-    global_normalize: Normalize the logits over top-k logits or globally in the
-      whole vocabulary.
-    top_k_recall_target: if less than 1.0, use TPU optimized approx_top_k with
-      specified recall target for the top_k sampling. See
-      https://arxiv.org/abs/2206.14286 for more details.
-    use_top_k_for_logprobs: computes the log probability from the top k logits
-      instead of all logits.
-
-  Returns:
-    A tensor of shape [batch_size * num_samples].
-  """
-
-  # TopK of shape [batch_size * num_samples, top_k]
-  top_k_logits, top_k_indices = get_top_k(
-      logits, top_k, per_example_top_k, top_k_recall_target
-  )
-  if global_normalize:
-    logits_sum = jnp.sum(logits.astype(jnp.float32), axis=-1, keepdims=True)
-  else:
-    logits_sum = None
-  return sample_from_top_p_given_top_k(
-      top_k_logits,
-      top_k_indices,
-      prng_key,
-      temperature,
-      top_p,
-      topk_is_sorted=True,
-      logits_sum=logits_sum,
-  )[0]
-
-
-def sample_from_top_k_and_top_p_with_topk_logprob(
-    logits: JTensor,
-    prng_key: pytypes.PRNGKey,
-    temperature: Union[JTensor, float],
-    top_k: int,
-    top_p: Optional[Union[float, JTensor]] = None,
-    per_example_top_k: Optional[JTensor] = None,
-    global_normalize: bool = False,
-    top_k_recall_target: float = 1.0,
-) -> Sequence[JTensor]:
-  """Sample decode algorithm from TopK and TopP with topk log probability.
-
-  Similar to sample_from_top_k_and_top_p, but includes the log probability
-  in the returned tuple.
 
   Args:
     logits: Logits of current step. This is a JTensor of [batch_size *
@@ -680,35 +619,23 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
       logits = epsilon_mask_logits(logits, self.epsilon_p)
 
     if self.top_k > 1:
+      new_ids, logprobs_at_new_ids = sample_from_top_k_and_top_p(
+          logits,
+          _get_prng_key(gumbel_prng_key),
+          temperature=temperature,
+          top_k=self.top_k,
+          top_p=top_p,
+          per_example_top_k=per_example_top_k,
+          global_normalize=self.global_normalize,
+          top_k_recall_target=self.top_k_recall_target,
+      )
       if self.use_top_k_for_logprobs:
-        new_ids, logprobs_at_new_ids = (
-            sample_from_top_k_and_top_p_with_topk_logprob(
-                logits,
-                _get_prng_key(gumbel_prng_key),
-                temperature=temperature,
-                top_k=self.top_k,
-                top_p=top_p,
-                per_example_top_k=per_example_top_k,
-                global_normalize=self.global_normalize,
-                top_k_recall_target=self.top_k_recall_target,
-            )
-        )
         return NestedMap(
             new_ids=new_ids,
             logits=input_logits,
             logprobs_at_new_ids=logprobs_at_new_ids,
         )
       else:
-        new_ids = sample_from_top_k_and_top_p(
-            logits,
-            _get_prng_key(gumbel_prng_key),
-            temperature=temperature,
-            top_k=self.top_k,
-            top_p=top_p,
-            per_example_top_k=per_example_top_k,
-            global_normalize=self.global_normalize,
-            top_k_recall_target=self.top_k_recall_target,
-        )
         return NestedMap(
             new_ids=new_ids,
             logits=input_logits,

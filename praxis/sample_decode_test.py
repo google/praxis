@@ -123,7 +123,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         ],
         dtype=jnp.float32,
     )
-    new_ids = sample_decode.sample_from_top_k_and_top_p(
+    new_ids, _ = sample_decode.sample_from_top_k_and_top_p(
         logits, jax.random.PRNGKey(seed=123), temperature=1.0, top_k=2
     )
     # gumbel noise is relatively smaller compared to the logits value.
@@ -140,7 +140,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         dtype=jnp.float32,
     )
     new_ids, top_k_logprobs = (
-        sample_decode.sample_from_top_k_and_top_p_with_topk_logprob(
+        sample_decode.sample_from_top_k_and_top_p(
             logits,
             jax.random.PRNGKey(seed=123),
             temperature=1.0,
@@ -163,7 +163,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         ],
         dtype=jnp.float32,
     )
-    new_ids = sample_decode.sample_from_top_k_and_top_p(
+    new_ids, _ = sample_decode.sample_from_top_k_and_top_p(
         logits,
         jax.random.PRNGKey(seed=123),
         temperature=1.0,
@@ -183,7 +183,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         ],
         dtype=jnp.float32,
     )
-    new_ids = sample_decode.sample_from_top_k_and_top_p(
+    new_ids, _ = sample_decode.sample_from_top_k_and_top_p(
         logits,
         jax.random.PRNGKey(seed=123),
         temperature=1.0,
@@ -203,7 +203,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         ],
         dtype=jnp.float32,
     )
-    new_ids = sample_decode.sample_from_top_k_and_top_p(
+    new_ids, _ = sample_decode.sample_from_top_k_and_top_p(
         logits,
         jax.random.PRNGKey(seed=123),
         temperature=1.0,
@@ -221,7 +221,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         ],
         dtype=jnp.float32,
     )
-    new_ids = sample_decode.sample_from_top_k_and_top_p(
+    new_ids, _ = sample_decode.sample_from_top_k_and_top_p(
         logits,
         jax.random.PRNGKey(seed=123),
         temperature=1.0,
@@ -241,7 +241,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         ],
         dtype=jnp.float32,
     )
-    new_ids = sample_decode.sample_from_top_k_and_top_p(
+    new_ids, _ = sample_decode.sample_from_top_k_and_top_p(
         logits,
         jax.random.PRNGKey(seed=123),
         temperature=1.0,
@@ -267,7 +267,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     )
 
     temperature = jnp.array([[0.1], [0.2]], dtype=jnp.float32)
-    new_ids = sample_decode.sample_from_top_k_and_top_p(
+    new_ids, _ = sample_decode.sample_from_top_k_and_top_p(
         logits, jax.random.PRNGKey(seed=123), temperature=temperature, top_k=2
     )
     # gumbel noise is relatively smaller compared to the logits value.
@@ -283,7 +283,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     count = [0] * 5
 
     for i in range(100):
-      new_ids = sample_decode.sample_from_top_k_and_top_p(
+      new_ids, _ = sample_decode.sample_from_top_k_and_top_p(
           logits, jax.random.PRNGKey(seed=i), temperature=1.0, top_k=4
       )
       count[new_ids[0]] += 1
