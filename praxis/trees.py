@@ -53,6 +53,8 @@ def is_subset(subset: Nested, superset: Nested) -> bool:
     return False
 
   elif type(subset) in (tuple, list):  # pylint:disable=unidiomatic-typecheck
-    return all(is_subset(sub, sup) for sub, sup in zip(subset, superset))
+    if len(subset) <= len(superset):
+      return all(is_subset(sub, sup) for sub, sup in zip(subset, superset))
+    return False
 
   return subset == superset

@@ -37,31 +37,31 @@ class TestPair(NamedTuple):
 class TreesTest(test_utils.TestCase):
 
   @parameterized.named_parameters(
-      ('trivial', TestPair(123, 123)),
-      ('lists_prefix', TestPair([1, 2], [1, 2, 3])),
-      ('lists', TestPair([1, 2, 3], [1, 2, 3])),
+      ('trivial', TestPair(subset=123, superset=123)),
+      ('lists_prefix', TestPair(subset=[1, 2], superset=[1, 2, 3])),
+      ('lists', TestPair(subset=[1, 2, 3], superset=[1, 2, 3])),
       (
           'mixed_types',
           TestPair(
-              {'a': [1, 2, 3], 'b': {'c': 'hello', 'd': [123]}},
-              {'a': [1, 2, 3], 'b': {'c': 'hello', 'd': [123]}},
+              subset={'a': [1, 2, 3], 'b': {'c': 'hello', 'd': [123]}},
+              superset={'a': [1, 2, 3], 'b': {'c': 'hello', 'd': [123]}},
           ),
       ),
       (
           'mixed_types_strict',
           TestPair(
-              {'a': [1, 2, 3]},
-              {'a': [1, 2, 3], 'b': {'c': 'hello', 'd': [123]}},
+              subset={'a': [1, 2, 3]},
+              superset={'a': [1, 2, 3], 'b': {'c': 'hello', 'd': [123]}},
           ),
       ),
       (
           'nestedmap',
           TestPair(
-              NestedMap.FromNestedDict({
+              subset=NestedMap.FromNestedDict({
                   'a': [1, 2, 3],
                   'b': {'c': 'hello', 'd': [123]},
               }),
-              NestedMap.FromNestedDict({
+              superset=NestedMap.FromNestedDict({
                   'a': [1, 2, 3],
                   'b': {'c': 'hello', 'd': [123]},
               }),
@@ -70,11 +70,11 @@ class TreesTest(test_utils.TestCase):
       (
           'nestedmap_strict',
           TestPair(
-              NestedMap.FromNestedDict({
+              subset=NestedMap.FromNestedDict({
                   'a': [1, 2, 3],
                   'b': {'c': 'hello', 'd': [123]},
               }),
-              NestedMap.FromNestedDict({
+              superset=NestedMap.FromNestedDict({
                   'a': [1, 2, 3],
                   'b': {'c': 'hello', 'd': [123]},
                   'e': 'not in subset',
@@ -84,8 +84,10 @@ class TreesTest(test_utils.TestCase):
       (
           'mixed_nested_dtypes',
           TestPair(
-              {'a': [1, 2, 3]},
-              NestedMap.FromNestedDict({'a': [1, 2, 3, 4], 'b': 'hello'}),
+              subset={'a': [1, 2, 3]},
+              superset=NestedMap.FromNestedDict(
+                  {'a': [1, 2, 3, 4], 'b': 'hello'}
+              ),
           ),
       ),
   )
@@ -93,51 +95,60 @@ class TreesTest(test_utils.TestCase):
     self.assertTrue(trees.is_subset(pair.subset, pair.superset))
 
   @parameterized.named_parameters(
-      ('trivial', TestPair(345, 123)),
-      ('lists_reorder', TestPair([1, 3, 2], [1, 2, 3])),
-      ('lists_strict', TestPair([1, 3], [1, 2, 3])),
-      ('lists_flipped', TestPair([1, 2, 3], [2])),
-      ('lists_types', TestPair([1, 2, 3, 'dev'], [2, 3, 'testing'])),
+      ('trivial', TestPair(subset=345, superset=123)),
+      ('lists_reorder', TestPair(subset=[1, 3, 2], superset=[1, 2, 3])),
+      ('lists_strict', TestPair(subset=[1, 3], superset=[1, 2, 3])),
+      ('lists_flipped', TestPair(subset=[1, 2, 3], superset=[2])),
+      ('lists_prefix_flipped', TestPair(subset=[1, 2, 3], superset=[1, 2])),
+      (
+          'lists_types',
+          TestPair(subset=[1, 2, 3, 'dev'], superset=[2, 3, 'testing']),
+      ),
       (
           'mixed_types',
           TestPair(
-              {'a': [12345678, 456]},
-              {'a': [1, 2, 3], 'b': {'c': 'hello', 'd': [123]}},
+              subset={'a': [12345678, 456]},
+              superset={'a': [1, 2, 3], 'b': {'c': 'hello', 'd': [123]}},
           ),
       ),
       (
           'nestedmap',
           TestPair(
-              NestedMap.FromNestedDict({
+              subset=NestedMap.FromNestedDict({
                   'a': [999, 444],
                   'b': {'c': 'hello', 'd': [123]},
               }),
-              NestedMap.FromNestedDict({
+              superset=NestedMap.FromNestedDict({
                   'a': [1, 2, 3],
                   'b': {'c': 'hello', 'd': [123]},
               }),
           ),
       ),
-      ('mixed_dtypes', TestPair((1, 2, 3, 4), [1, 2, 3])),
+      ('mixed_dtypes', TestPair(subset=(1, 2, 3, 4), superset=[1, 2, 3])),
       (
           'mixed_nested_dtypes',
           TestPair(
-              NestedMap.FromNestedDict({'a': (1, 2, 3, 4), 'b': 'hello'}),
-              {'a': [1, 2, 3]},
+              subset=NestedMap.FromNestedDict(
+                  {'a': (1, 2, 3, 4), 'b': 'hello'}
+              ),
+              superset={'a': [1, 2, 3]},
           ),
       ),
       (
           'dicts_simple',
-          TestPair({'a': 123, 'b': 456}, {'a': 123}),
+          TestPair(subset={'a': 123, 'b': 456}, superset={'a': 123}),
       ),
       (
           'dicts_overlapping',
           TestPair(
-              {'a': 123, 'b': 456},
-              {'a': 123, 'c': 456},
+              subset={'a': 123, 'b': 456},
+              superset={'a': 123, 'c': 456},
           ),
       ),
-      ('partitionspec', TestPair([()], [jax.sharding.PartitionSpec()])),
+      (
+          'partitionspec',
+          TestPair(subset=(), superset=jax.sharding.PartitionSpec()),
+      ),
   )
   def test_is_not_subset(self, pair):
     self.assertFalse(trees.is_subset(pair.subset, pair.superset))
