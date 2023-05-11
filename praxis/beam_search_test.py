@@ -64,28 +64,25 @@ class BeamSearchHelperTest(test_utils.TestCase):
         beam_search.broadcast_beam_dim(x, beam_dim=0, beam_size=2),
         np.array([[[1, 2], [3, 4]], [[1, 2], [3, 4]]], dtype=np.int32))
 
-  def test_update_topk_scores_with_eos(self):
+  def test_update_global_beam(self):
     end_ids = jnp.array([[[0, 1, 0, 0], [4, 5, 0, 0]]], dtype=np.int32)
     cur_ids = jnp.array([[[0, 1, 2, 3], [4, 5, 6, 7]]], dtype=np.int32)
 
     end_lengths = jnp.array([[2, 2]], dtype=np.int32)
     cur_lengths = jnp.array([[4, 4]], dtype=np.int32)
 
-    end_scores = jnp.array([[0, 1]], dtype=np.float32)
-    cur_scores = jnp.array([[2, 3]], dtype=np.float32)
-
-    end_scores_norm = jnp.array([[2, 0]], dtype=np.float32)
-    cur_scores_norm = jnp.array([[3, 1]], dtype=np.float32)
+    end_scores = jnp.array([[2, 0]], dtype=np.float32)
+    cur_scores = jnp.array([[3, 1]], dtype=np.float32)
 
     end_logprobs = jnp.array(
         [[[-0.1, -1.1, 0., 0.], [-1.3, -2.3, 0., 0.]]], dtype=np.float32)
     cur_logprobs = jnp.array(
         [[[-0.1, -1.2, -1.1, 0.], [-1., -2., -0.3, 0.]]], dtype=np.float32)
 
-    (output_ids, output_lengths, output_scores, output_scores_norm,
-     output_logprobs) = beam_search.update_topk_scores_with_eos(
-         (end_ids, end_lengths, end_scores, end_scores_norm, end_logprobs),
-         (cur_ids, cur_lengths, cur_scores, cur_scores_norm, cur_logprobs))
+    (output_ids, output_lengths, output_scores,
+     output_logprobs) = beam_search.update_global_beam(
+         (end_ids, end_lengths, end_scores, end_logprobs),
+         (cur_ids, cur_lengths, cur_scores, cur_logprobs))
 
     self.assertArraysEqual(
         output_ids, np.array([[[0, 1, 2, 3], [0, 1, 0, 0]]], dtype=np.int32))
@@ -93,9 +90,7 @@ class BeamSearchHelperTest(test_utils.TestCase):
         output_logprobs, np.array(
             [[[-0.1, -1.2, -1.1, 0.], [-0.1, -1.1, 0., 0.]]], dtype=np.float32))
     self.assertArraysEqual(output_lengths, np.array([[4, 2]], dtype=np.int32))
-    self.assertArraysEqual(output_scores, np.array([[2, 0]], dtype=np.float32))
-    self.assertArraysEqual(output_scores_norm,
-                           np.array([[3, 2]], dtype=np.float32))
+    self.assertArraysEqual(output_scores, np.array([[3, 2]], dtype=np.float32))
 
 
 class MockLM(base_layer.BaseLayer):

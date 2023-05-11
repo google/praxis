@@ -29,7 +29,12 @@ from praxis import py_utils
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
 BeamSearchHParams = decoder_hparams.BeamSearchHParams
-DecodeInfo = Tuple[JTensor, JTensor, JTensor, JTensor, JTensor]
+GlobalBeam = Tuple[
+    JTensor,  # int[batch_size, beam_size, seq_len] Decoded IDs including </s>
+    JTensor,  # int[batch_size, beam_size] Complete sequence lengths
+    JTensor,  # float[batch_size, beam_size] Complete sequence scores
+    JTensor,  # float[batch_size, beam_size, seq_len] Per-step log-probs
+]
 ExpandedExtendStepFn = Callable[
     [
         base_layer.BaseLayerApi,  # model
@@ -42,37 +47,33 @@ ExpandedExtendStepFn = Callable[
 ]
 
 
-def update_topk_scores_with_eos(end_hyps: DecodeInfo,
-                                cur_hyps: DecodeInfo) -> DecodeInfo:
-  """Updates topk scores with eos.
+def update_global_beam(
+    end_hyps: GlobalBeam, cur_hyps: GlobalBeam
+) -> GlobalBeam:
+  """Updates top-k beams of ended sequences.
 
   Args:
-    end_hyps: Tuple (ids, decode_lengths, score, score_norms, logprobs) with
-      eos, each element has shape [batch_size, beam_size...].
-    cur_hyps: Tuple (ids, score, decode_lengths, score_norms, logprobs) without
-      eos, each element has shape [batch_size, beam_size...].
+    end_hyps: Tuple of best completed sequences; see comments on `GlobalBeam`.
+    cur_hyps: Tuple of new completed sequences to maximize in.
 
   Returns:
-    Updated end_hyps.
+    Updated `end_hyps`.
   """
-
-  (end_ids, end_lengths, end_scores, end_scores_norm, end_logprobs) = end_hyps
-  (cur_ids, cur_lengths, cur_scores, cur_scores_norm, cur_logprobs) = cur_hyps
+  (end_ids, end_lengths, end_scores, end_logprobs) = end_hyps
+  (cur_ids, cur_lengths, cur_scores, cur_logprobs) = cur_hyps
   beam_dim = 1
   k = end_ids.shape[beam_dim]
   m = cur_ids.shape[beam_dim]
   ids = jnp.concatenate([end_ids, cur_ids], beam_dim)
   lengths = jnp.concatenate([end_lengths, cur_lengths], beam_dim)
   scores = jnp.concatenate([end_scores, cur_scores], beam_dim)
-  scores_norm = jnp.concatenate([end_scores_norm, cur_scores_norm], beam_dim)
   logprobs = jnp.concatenate([end_logprobs, cur_logprobs], beam_dim)
-  end_scores_norm, indices = jax.lax.top_k(scores_norm, k)
+  end_scores, indices = jax.lax.top_k(scores, k)
   one_hot = jax.nn.one_hot(indices, k + m, dtype=jnp.int32)
   end_ids = jnp.einsum("bkt,bjk->bjt", ids, one_hot)
   end_lengths = jnp.einsum("bk,bjk->bj", lengths, one_hot)
-  end_scores = jnp.einsum("bk,bjk->bj", scores, one_hot)
   end_logprobs = jnp.einsum("bkt,bjk->bjt", logprobs, one_hot)
-  return (end_ids, end_lengths, end_scores, end_scores_norm, end_logprobs)
+  return (end_ids, end_lengths, end_scores, end_logprobs)
 
 
 def shuffle_state(x: JTensor, hyp_id: JTensor):
@@ -97,11 +98,14 @@ def broadcast_beam_dim(x: JTensor, beam_dim: int, beam_size: int) -> JTensor:
 
   Args:
     x: The input tensor of shape [batch_size, ...].
-    beam_dim: Beam dimension.
+    beam_dim: Beam dimension to insert.
     beam_size: Beam size in beam search.
 
   Returns:
-    A tensor of shape [batch_size * beam_size, ...].
+    A tensor with `beam_size` copies of `x` along the newly-inserted `beam_dim`
+    axis.  Its shape depends on `beam_dim`; for example,
+      if beam_dim=0: [beam_size, batch_size, ...]
+      if beam_dim=1: [batch_size, beam_size, ...]
   """
   return jnp.repeat(
       jnp.expand_dims(x, beam_dim), repeats=beam_size, axis=beam_dim)
@@ -223,9 +227,8 @@ def beam_search_after_prefix_fprop(
   loop_state_shape = (batch_size, beam_size)
   val.output_ids = jnp.zeros(
       shape=(batch_size, beam_size, seq_len), dtype=jnp.int32)
-  val.end_scores = jnp.zeros(shape=loop_state_shape, dtype=jnp.float32)
-  val.end_scores -= 1e9
-  val.end_scores_norm = val.end_scores
+  val.end_scores_norm = jnp.zeros(shape=loop_state_shape, dtype=jnp.float32)
+  val.end_scores_norm -= 1e9
   val.hyp_scores = jnp.zeros(shape=loop_state_shape, dtype=jnp.float32)
   # Penalize all hyps except the first
   val.hyp_scores -= jnp.arange(beam_size, dtype=jnp.float32) * 1e9
@@ -282,8 +285,6 @@ def beam_search_after_prefix_fprop(
         model, extend_ids, val.segment_pos, step - start_step, val.hyp_ids
     )
     logits = jnp.reshape(logits, (batch_size, beam_size, -1))
-    # TODO(b/229679837): consider add logprobs to while loop state and
-    # shuffle it.
     logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
     # Select the best ids with terminal tokens.
     eos_scores = jnp.ones_like(val.hyp_scores) * -1e9
@@ -311,13 +312,11 @@ def beam_search_after_prefix_fprop(
     new_decode_lengths = jnp.ones_like(prefix_lengths) * decode_length
     eos_scores_norm = eos_scores / decoder_utils.length_norm(
         decode_length - max_prefix_len, beam_search_hparams.length_norm_alpha)
-    updated_topk_scores = update_topk_scores_with_eos(
-        (val.end_ids, val.end_decode_lengths, val.end_scores,
-         val.end_scores_norm, val.end_logprobs),
-        (new_end_ids, new_decode_lengths, val.hyp_scores,
-         eos_scores_norm, new_end_logprobs))
-    (val.end_ids, val.end_decode_lengths, val.end_scores,
-     val.end_scores_norm, val.end_logprobs) = updated_topk_scores
+    (val.end_ids, val.end_decode_lengths, val.end_scores_norm,
+     val.end_logprobs) = update_global_beam(
+        (val.end_ids, val.end_decode_lengths, val.end_scores_norm,
+         val.end_logprobs),
+        (new_end_ids, new_decode_lengths, eos_scores_norm, new_end_logprobs))
 
     # Choose the topk indices.
     _, topk_indices, final_topk_value, final_topk_indices = (
@@ -390,6 +389,6 @@ def beam_search_after_prefix_fprop(
   result.original_lengths = prefix_lengths
   result.prefix_lengths = prefix_lengths
   result.prefix_ids = prefix_ids
-  del (result.end_ids, result.end_scores, result.end_decode_lengths,
-       result.end_scores_norm, result.hyp_scores)
+  del (result.end_ids, result.end_decode_lengths, result.end_scores_norm,
+       result.hyp_scores)
   return result
