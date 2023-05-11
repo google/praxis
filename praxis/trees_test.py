@@ -18,6 +18,8 @@ from typing import NamedTuple
 from absl.testing import absltest
 from absl.testing import parameterized
 
+import jax
+import numpy as np
 from praxis import py_utils
 from praxis import pytypes
 from praxis import test_utils
@@ -79,6 +81,13 @@ class TreesTest(test_utils.TestCase):
               }),
           ),
       ),
+      (
+          'mixed_nested_dtypes',
+          TestPair(
+              {'a': [1, 2, 3]},
+              NestedMap.FromNestedDict({'a': [1, 2, 3, 4], 'b': 'hello'}),
+          ),
+      ),
   )
   def test_is_subset(self, pair):
     self.assertTrue(trees.is_subset(pair.subset, pair.superset))
@@ -109,9 +118,70 @@ class TreesTest(test_utils.TestCase):
               }),
           ),
       ),
+      ('mixed_dtypes', TestPair((1, 2, 3, 4), [1, 2, 3])),
+      (
+          'mixed_nested_dtypes',
+          TestPair(
+              NestedMap.FromNestedDict({'a': (1, 2, 3, 4), 'b': 'hello'}),
+              {'a': [1, 2, 3]},
+          ),
+      ),
+      (
+          'dicts_simple',
+          TestPair({'a': 123, 'b': 456}, {'a': 123}),
+      ),
+      (
+          'dicts_overlapping',
+          TestPair(
+              {'a': 123, 'b': 456},
+              {'a': 123, 'c': 456},
+          ),
+      ),
+      ('partitionspec', TestPair([()], [jax.sharding.PartitionSpec()])),
   )
   def test_is_not_subset(self, pair):
     self.assertFalse(trees.is_subset(pair.subset, pair.superset))
+
+  def test_special_case(self):
+    subset = {
+        'eval_sample_weights': jax.ShapeDtypeStruct(
+            shape=(128,), dtype=np.float32
+        ),
+        'ids': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.int32),
+        'inputs_indicator': jax.ShapeDtypeStruct(
+            shape=(128, 8208), dtype=np.int32
+        ),
+        'labels': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.int32),
+        'paddings': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.float32),
+        'segment_ids': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.int32),
+        'segment_pos': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.int32),
+        'weights': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.float32),
+    }
+    superset = {
+        '_seqio_provenance/index_within_shard': jax.ShapeDtypeStruct(
+            shape=(128,), dtype=np.int32
+        ),
+        '_seqio_provenance/num_shards': jax.ShapeDtypeStruct(
+            shape=(128,), dtype=np.int32
+        ),
+        '_seqio_provenance/shard_index': jax.ShapeDtypeStruct(
+            shape=(128,), dtype=np.int32
+        ),
+        'eval_sample_weights': jax.ShapeDtypeStruct(
+            shape=(128,), dtype=np.float32
+        ),
+        'ids': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.int32),
+        'inputs_indicator': jax.ShapeDtypeStruct(
+            shape=(128, 8208), dtype=np.int32
+        ),
+        'labels': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.int32),
+        'paddings': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.float32),
+        'segment_ids': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.int32),
+        'segment_pos': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.int32),
+        'weights': jax.ShapeDtypeStruct(shape=(128, 8208), dtype=np.float32),
+    }
+
+    self.assertTrue(trees.is_subset(subset, superset))
 
 
 if __name__ == '__main__':

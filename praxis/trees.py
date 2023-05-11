@@ -21,9 +21,6 @@ Longer-term, we ought to aim to move all tree-related utility functions here.
 # object-oriented way here, rename the module nested.py, and write a full suite
 # of utility functions for it. E.g. the way `Set` has `issubset`/`<=`, we could
 # have for all Nesteds in the Praxis context.
-
-
-from jax import tree_util
 from praxis import pytypes
 
 Nested = pytypes.Nested
@@ -45,6 +42,17 @@ def is_subset(subset: Nested, superset: Nested) -> bool:
     that they have identical structure and values, but sets, dictionaries, and
     NestedMaps may have fields missing and sequences can have suffixes missing.
   """
-  subset_paths_and_values = tree_util.tree_flatten_with_path(subset)[0]
-  superset_paths_and_values = tree_util.tree_flatten_with_path(superset)[0]
-  return set(subset_paths_and_values) <= set(superset_paths_and_values)
+  if isinstance(subset, dict) and isinstance(superset, dict):
+    if set(subset) <= set(superset):
+      return all(is_subset(subset[k], superset[k]) for k in subset)
+    return False
+
+  elif type(subset) != type(superset):  # pylint:disable=unidiomatic-typecheck
+    # This conditional is here insetad of above to permit nestedmaps and dicts
+    # to be comperable, i.e. those can differ by type if they're both dicts.
+    return False
+
+  elif type(subset) in (tuple, list):  # pylint:disable=unidiomatic-typecheck
+    return all(is_subset(sub, sup) for sub, sup in zip(subset, superset))
+
+  return subset == superset
