@@ -32,7 +32,7 @@ from praxis.layers.quantization import quantization_hparams
 
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 
 WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
@@ -47,7 +47,7 @@ template_field = base_layer.template_field
 class Embedding(embedding_softmax.Embedding):
   """Quantized Embedding layer."""
 
-  quantization: QuantizationHParams = instance_field(QuantizationHParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -179,7 +179,7 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
       such as dtype for the quantized weight.
   """
 
-  quantization: QuantizationHParams = instance_field(QuantizationHParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)
 
   def setup(self) -> None:
     if self.feed_forward_tpl is not None:
@@ -261,7 +261,7 @@ class NClassMajorSharedEmbeddingSoftmax(
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
       template_field(activations.Identity)
   )
-  quantization: QuantizationHParams = instance_field(QuantizationHParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping

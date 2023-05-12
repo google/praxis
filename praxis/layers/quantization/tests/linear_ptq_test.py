@@ -27,7 +27,7 @@ from praxis.layers.quantization import linears as qlinears
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization.tests import test_util as quantization_test_util
 
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 instantiate = base_layer.instantiate
@@ -176,7 +176,7 @@ class LinearsPTQTest(quantization_test_util.QuantizationTestCase):
       self,
       is_weight_symmetric,
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.TRAINING,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -209,7 +209,7 @@ class LinearsPTQTest(quantization_test_util.QuantizationTestCase):
       expected_scale,
       expected_zp,
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -264,7 +264,7 @@ class LinearsPTQTest(quantization_test_util.QuantizationTestCase):
       self,
       is_weight_symmetric,
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -330,7 +330,7 @@ class LinearsPTQTest(quantization_test_util.QuantizationTestCase):
       sample_input,
       expected_result,
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.INFERENCE,
         weight_params=quantization_hparams.WeightQuantizationParams(

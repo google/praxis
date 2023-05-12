@@ -26,7 +26,7 @@ from praxis.layers import conformers
 from praxis.layers.quantization import conformers as qconformers
 from praxis.layers.quantization import quantization_hparams
 
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 instantiate = base_layer.instantiate
@@ -49,7 +49,7 @@ class DotProductAttentionWithContexSyncTest(test_utils.TestCase):
     atten_q_p = pax_fiddle.Config(
         qconformers.DotProductAttentionWithContext,
         name='atten_q',
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=QuantizationType.AQT,
             mode=QuantizationMode.TRAINING,
             # Test using 23 bits to minimize the quantization error and test

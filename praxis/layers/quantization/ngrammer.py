@@ -23,7 +23,7 @@ from praxis.layers.quantization import embedding_softmax as quantized_embedding_
 from praxis.layers.quantization import quantization_hparams
 
 
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 
 
 WeightHParams = base_layer.WeightHParams
@@ -35,7 +35,7 @@ instance_field = base_layer.instance_field
 class Ngrammer(ngrammer.Ngrammer):
   """Quantized Ngrammer."""
 
-  quantization: QuantizationHParams = instance_field(QuantizationHParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)
 
   def setup(self) -> None:
     """Constructs an instance which looks up ngrams."""
@@ -83,7 +83,7 @@ class Ngrammer(ngrammer.Ngrammer):
 class VQNgrammer(ngrammer.VQNgrammer):
   """Quantized VQNgrammer."""
 
-  quantization: QuantizationHParams = instance_field(QuantizationHParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)
 
   def setup(self) -> None:
     """Constructs a VQ layer and an N-grammer layer."""

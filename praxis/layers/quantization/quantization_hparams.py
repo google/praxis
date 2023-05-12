@@ -138,7 +138,7 @@ class WeightQuantizationParams:
   vn_weight_norm_type: str = 'PerChannelLinf'
 
 @dataclasses.dataclass
-class QuantizationHParams:
+class QuantizationParams:
   """Parameters for quantization.
 
   Attributes:

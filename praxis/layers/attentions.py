@@ -2898,6 +2898,7 @@ class LocalSelfAttention(DotProductAttention):
       relative_bias: Optional[JTensor] = None,
       time_step: Optional[JTensor] = None,
   ) -> Tuple[JTensor, JTensor]:
+    assert self.right_context is not None
     if self.right_context > 0:
       raise ValueError('Local attention must be causal to extend step.')
 
@@ -3031,6 +3032,7 @@ class LocalSelfAttentionXL(LocalSelfAttention):
 
     # term b and d
     # [1, F]
+    assert l is not None and r is not None
     pos = jnp.expand_dims(jnp.arange(l - 1, -r - 1, -1), 0)
     sin_emb = self.pos_emb(position=pos)
     # [1, F, N, H]

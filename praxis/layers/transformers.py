@@ -1621,6 +1621,7 @@ class StackedTransformer(base_layer.BaseLayer):
 
       if self.moe_layers and i in self.moe_layers:
         assert self.num_experts > 0
+        assert self.moe_layer_tpl is not None
         moe_p = self.moe_layer_tpl.clone()
         moe_p.num_experts = self.num_experts
         moe_p.num_groups = self.num_groups
@@ -2055,7 +2056,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
     final_out: SplitDimsMapping = None
 
   def setup(self) -> None:
-    assert self.num_pipeline_stages > 0
+    assert self.num_pipeline_stages is not None and self.num_pipeline_stages > 0
 
     stage_params = self.pipeline_stage.clone()
     if self.circular_repeat == 1:

@@ -31,7 +31,7 @@ from praxis.layers.quantization import utils
 WeightInit = base_layer.WeightInit
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
 
@@ -46,10 +46,9 @@ class OneHeadedAttentionProjection(
       such as the mode for the quantization.
   """
 
-  quantization: QuantizationHParams = pax_fiddle.instance_field(
-      QuantizationHParams
-  )
-
+  quantization: QuantizationParams = pax_fiddle.instance_field(
+        QuantizationParams
+    )
   _PACK_4BIT_DIM = 0
 
   def create_tensor_quantizers(self):

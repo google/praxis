@@ -336,6 +336,7 @@ class Conformer(base_layer.BaseLayer):
 
   def _create_conv(self):
     if 'conv' in self.layer_order:
+      assert self.lconv_tpl is not None
       lconv_p = self.lconv_tpl.clone().set(
           input_dims=self.model_dims,
           kernel_size=self.kernel_size,

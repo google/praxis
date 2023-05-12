@@ -123,7 +123,7 @@ instantiate = base_hyperparams.instantiate
 # The transformation is done on the batch and/or time dimension; if a required
 # dimension is missing (represented as -1), the function should not change the
 # state.
-DecodeStateTransformFn = Callable[[JTensor, int, int], JTensor]
+DecodeStateTransformFn = Callable[[JTensor, int, Optional[int]], JTensor]
 
 # The axis name that is pmmaped over.
 PMAP_PARALLEL_AXIS_NAME = 'batch'
@@ -621,6 +621,7 @@ def init_var(
     var_p: WeightHParams, prng_key: PRNGKey, var_full_name: str
 ) -> JTensor:
   """Creates an initial value of a var."""
+  assert var_p is not None and var_p.init is not None
   method = var_p.init.method
   scale = var_p.init.scale
   assert isinstance(scale, (int, float))
@@ -630,7 +631,7 @@ def init_var(
   fan_out_axes = var_p.fan_out_axes
   logging.info(
       'Creating var %s with shape=%s, dtype=%s, init method=%s and scale=%s',
-      var_full_name, shape, init_dtype.dtype, var_p.init.method,
+      var_full_name, shape, init_dtype, var_p.init.method,
       var_p.init.scale)
   # We rely on nn.scan to transform vars, hence init_var shouldn't expect a
   # repeat_prefix or repeat_prefix_split_dims_mapping.

@@ -29,7 +29,7 @@ from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import utils
 
 instantiate = base_layer.instantiate
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
@@ -51,7 +51,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
         name='mh',
         input_dim=16,
         output_dim=5,
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=quantization_type,
             mode=QuantizationMode.TRAINING,
             weight_params=quantization_hparams.WeightQuantizationParams(),
@@ -91,7 +91,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
         name='ohp_q',
         input_dim=input_dim,
         output_dim=output_dim,
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=QuantizationType.PTQ,
             mode=QuantizationMode.INFERENCE,
             weight_params=WeightQuantizationParams(

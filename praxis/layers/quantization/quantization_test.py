@@ -46,7 +46,7 @@ class RepeatsLinearQuantizeTest(test_utils.TestCase):
         name='_linear_q',
         input_dims=2,
         output_dims=2,
-        quantization=quantization_hparams.QuantizationHParams(
+        quantization=quantization_hparams.QuantizationParams(
             mode=quantization_hparams.QuantizationMode.TRAINING
         ),
     )

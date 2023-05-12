@@ -29,7 +29,7 @@ from praxis.layers.quantization import utils
 
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 WeightHParams = base_layer.WeightHParams
 instance_field = base_layer.instance_field
 JTensor = pytypes.JTensor
@@ -44,7 +44,7 @@ class Linear(linears.Linear):
     quantization: Information related to the quantization applied to this layer,
       such as the mode for the quantization.
   """
-  quantization: QuantizationHParams = instance_field(QuantizationHParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)
 
   _PACK_4BIT_DIM = 0
 

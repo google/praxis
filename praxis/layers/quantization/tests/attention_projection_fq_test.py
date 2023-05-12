@@ -26,7 +26,7 @@ from praxis.layers.quantization import attentions as qattentions
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization.tests import test_util as quantization_test_util
 
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 instantiate = base_layer.instantiate
@@ -368,7 +368,7 @@ class AttentionProjectionFQTest(quantization_test_util.QuantizationTestCase):
       pseudo_answer,
       expected_trained_weight
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.FQ,
         mode=QuantizationMode.TRAINING,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -434,7 +434,7 @@ class AttentionProjectionFQTest(quantization_test_util.QuantizationTestCase):
       use_nhd_shape,
       is_weight_symmetric
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.FQ,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=quantization_hparams.WeightQuantizationParams(

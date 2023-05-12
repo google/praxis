@@ -31,7 +31,7 @@ from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import utils
 
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 WeightInit = base_layer.WeightInit
@@ -50,7 +50,7 @@ class AttentionProjection(attentions.AttentionProjection):
     quantization: Information related to the quantization applied to this
       layer, such as dtype for the quantized weight.
   """
-  quantization: QuantizationHParams = instance_field(QuantizationHParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)
 
   _PACK_4BIT_DIM = 0
 
@@ -373,7 +373,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     quantization: Information related to the quantization applied to this
       layer, such as dtype for the quantized weight.
   """
-  quantization: QuantizationHParams = instance_field(QuantizationHParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)
 
   _PACK_4BIT_DIM = 1
 
@@ -715,7 +715,7 @@ class DotProductAttention(attentions.DotProductAttention):
       such as dtype for the quantized weight.
   """
 
-  quantization: QuantizationHParams = instance_field(QuantizationHParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)
 
   def create_tensor_quantizers(self):
     self.create_child(

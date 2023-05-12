@@ -42,7 +42,7 @@ class SearchableTest(test_utils.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.quantization_tpl = quantization_hparams.QuantizationHParams(
+    self.quantization_tpl = quantization_hparams.QuantizationParams(
         quantization_type=quantization_hparams.QuantizationType.AQT,
         mode=quantization_hparams.QuantizationMode.TRAINING,
         act_params=quantization_hparams.ActQuantizationParams,

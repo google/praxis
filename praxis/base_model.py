@@ -154,7 +154,7 @@ class LegosModel(BaseModel):
   def setup(self) -> None:
     """Build the mixer from the collection of components."""
     # TODO(b/227407216): Check that this is robust enough and/or fix if needed.
-    for f in dataclasses.fields(self.components):
+    for f in dataclasses.fields(self.components):  # pytype: disable=wrong-arg-types
       if hasattr(self.components, f.name):
         self.create_child(f.name, getattr(self.components, f.name))
 

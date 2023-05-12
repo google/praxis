@@ -31,7 +31,7 @@ from praxis.layers.quantization import quantization_hparams
 instantiate = base_layer.instantiate
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
@@ -53,7 +53,7 @@ class EmbeddingTest(test_utils.TestCase):
 
   @parameterized.named_parameters(('symmetric', True), ('asymmetric', False))
   def test_quantize(self, use_symmetric):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=WeightQuantizationParams(use_symmetric=use_symmetric),
@@ -141,7 +141,7 @@ class EmbeddingTest(test_utils.TestCase):
       use_symmetric=[True, False], lookup_style=['index', 'matmul']
   )
   def test_ptq_quantized(self, use_symmetric, lookup_style):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.INFERENCE,
         weight_params=WeightQuantizationParams(use_symmetric=use_symmetric),
@@ -221,7 +221,7 @@ class SharedEmbeddingSoftmaxTest(test_utils.TestCase):
       use_symmetric=[True, False], lookup_style=['index', 'matmul']
   )
   def test_ptq_quantized(self, use_symmetric, lookup_style):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.INFERENCE,
         weight_params=WeightQuantizationParams(use_symmetric=use_symmetric),
@@ -317,7 +317,7 @@ class NClassMajorSharedEmbeddingSoftmaxTest(test_utils.TestCase):
 
   @parameterized.named_parameters(('symmetric', True), ('asymmetric', False))
   def test_quantize(self, use_symmetric):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=WeightQuantizationParams(use_symmetric=use_symmetric),
@@ -412,7 +412,7 @@ class NClassMajorSharedEmbeddingSoftmaxTest(test_utils.TestCase):
       use_symmetric=[True, False], lookup_style=['index', 'matmul']
   )
   def test_ptq_quantized(self, use_symmetric, lookup_style):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.INFERENCE,
         weight_params=WeightQuantizationParams(use_symmetric=use_symmetric),

@@ -26,7 +26,7 @@ from praxis.layers.quantization import multi_query_attention as qmulti_query_att
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization.tests import test_util as quantization_test_util
 
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 instantiate = base_layer.instantiate
@@ -359,7 +359,7 @@ class OneHeadedAttentionProjectionAQTTest(
       pseudo_answer,
       expected_trained_weight
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.AQT,
         mode=QuantizationMode.TRAINING,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -404,7 +404,7 @@ class OneHeadedAttentionProjectionAQTTest(
       expected_scale,
       expected_zp
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.AQT,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -460,7 +460,7 @@ class OneHeadedAttentionProjectionAQTTest(
       use_bias,
       is_weight_symmetric
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.AQT,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -523,7 +523,7 @@ class OneHeadedAttentionProjectionAQTTest(
       sample_input,
       expected_result
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.AQT,
         mode=QuantizationMode.INFERENCE,
         weight_params=quantization_hparams.WeightQuantizationParams(

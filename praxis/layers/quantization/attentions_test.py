@@ -32,7 +32,7 @@ from praxis.layers import attentions
 from praxis.layers.quantization import attentions as qattentions
 from praxis.layers.quantization import quantization_hparams
 
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 instantiate = base_layer.instantiate
@@ -68,7 +68,7 @@ class QuantizedAttentionTest(test_utils.TestCase):
         num_heads=2,
         dim_per_head=3,
         is_output_projection=True,
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=quantization_type,
             mode=mode,
             weight_params=quantization_hparams.WeightQuantizationParams(
@@ -100,7 +100,7 @@ class QuantizedAttentionTest(test_utils.TestCase):
         num_heads=2,
         dim_per_head=3,
         is_output_projection=False,
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=quantization_type,
             mode=mode,
             weight_params=quantization_hparams.WeightQuantizationParams(
@@ -131,7 +131,7 @@ class QuantizedAttentionTest(test_utils.TestCase):
         input_dim=8,
         num_heads=3,
         dim_per_head=2,
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=quantization_type,
             mode=mode,
             weight_params=quantization_hparams.WeightQuantizationParams(
@@ -203,7 +203,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationHParams(mode=QuantizationMode.TRAINING),
+        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
     )
     for p in [p_f, p_q]:
       p.input_dim = 16
@@ -221,7 +221,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationHParams(mode=QuantizationMode.TRAINING),
+        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
     )
     for p in [p_f, p_q]:
       p.input_dim = 16
@@ -239,7 +239,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationHParams(mode=QuantizationMode.TRAINING),
+        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
     )
     for p in [p_f, p_q]:
       p.input_dim = 256
@@ -266,7 +266,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qattentions.CombinedQKVProjectionLayer,
         name='_attn_qkv_q',
-        quantization=QuantizationHParams(mode=QuantizationMode.TRAINING),
+        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
     )
     for p in [p_f, p_q]:
       p.input_dim = 64
@@ -309,7 +309,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     atten_q_p = pax_fiddle.Config(
         qattentions.DotProductAttention,
         name='mh_quant',
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=QuantizationType.AQT,
             mode=QuantizationMode.TRAINING,
             # Test using 23 bits to minimize the quantization error and test
@@ -443,7 +443,7 @@ class QuantizeAttentionTest(test_utils.TestCase):
         weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
             wt=['mdl', 'data']
         ),
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=quantization_type,
             mode=QuantizationMode.TRAINING,
         ),
@@ -500,7 +500,7 @@ class QuantizeAttentionTest(test_utils.TestCase):
         weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
             wt=['replica', 'mdl', 'data']
         ),
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=quantization_type,
             mode=QuantizationMode.TRAINING,
             weight_params=quantization_hparams.WeightQuantizationParams(

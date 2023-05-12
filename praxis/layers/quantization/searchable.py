@@ -25,14 +25,14 @@ from praxis.layers.quantization import linears
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
 
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 template_field = pax_fiddle.template_field
 
 _SUPPORTED_PRECISIONS = [2, 4, 8]
 
 
 def _build_quantization_templates(
-    precisions: Sequence[int], base_qhparams: QuantizationHParams
+    precisions: Sequence[int], base_qhparams: QuantizationParams
 ):
   """Build templates for precision search from the base quantization hparams."""
   act_qtzr_tmpls = []

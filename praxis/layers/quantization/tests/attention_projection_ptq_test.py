@@ -26,7 +26,7 @@ from praxis.layers.quantization import attentions as qattentions
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization.tests import test_util as quantization_test_util
 
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 instantiate = base_layer.instantiate
@@ -572,7 +572,7 @@ class AttentionProjectionPTQTest(quantization_test_util.QuantizationTestCase):
       use_nhd_shape,
       is_weight_symmetric,
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.TRAINING,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -630,7 +630,7 @@ class AttentionProjectionPTQTest(quantization_test_util.QuantizationTestCase):
     if attention_combine_dims:
       return
 
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -696,7 +696,7 @@ class AttentionProjectionPTQTest(quantization_test_util.QuantizationTestCase):
       use_nhd_shape,
       is_weight_symmetric
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -800,7 +800,7 @@ class AttentionProjectionPTQTest(quantization_test_util.QuantizationTestCase):
     if is_output_projection and use_nhd_shape and not is_weight_symmetric:
       return
 
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.INFERENCE,
         weight_params=quantization_hparams.WeightQuantizationParams(

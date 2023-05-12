@@ -178,6 +178,7 @@ class StackFrnn(base_layer.BaseLayer):
     assert self.num_layers > 0
     input_nodes = self.num_input_nodes
     frnns_p = []
+    assert self.frnn_tpl is not None
     for _ in range(self.num_layers):
       frnn_p = self.frnn_tpl.clone()
       frnn_p.cell_tpl.set(

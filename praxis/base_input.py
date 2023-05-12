@@ -23,7 +23,7 @@ import dataclasses
 import inspect
 import math
 import re
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, Union
 
 from absl import logging
 from etils import epath
@@ -147,7 +147,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     name = self.name
     if re.fullmatch(_NAME_REGEX, name) is None:
       raise ValueError(
-          f'Input hparams self.name string invalid: "{name}" '
+          f'Input params self.name string invalid: "{name}" '
           f'does not fully match "{_NAME_REGEX}".'
       )
     if self.experimental_remote_input and jax.process_count() > 1:
@@ -159,14 +159,16 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     self._state_before_peek = None
 
   @classmethod
-  def get_batch_size(cls, hparams: pax_fiddle.Config[BaseInput]) -> int:
-    assert hparams.batch_size is not None
-    return hparams.batch_size
+  def get_batch_size(
+      cls, params: Union[pax_fiddle.Config[BaseInput], BaseInput]
+  ) -> int:
+    assert params.batch_size is not None
+    return params.batch_size
 
   @classmethod
-  def get_global_batch_size(cls, hparams: pax_fiddle.Config[BaseInput]) -> int:
-    assert hparams.num_infeed_hosts is not None
-    return cls.get_batch_size(hparams) * hparams.num_infeed_hosts
+  def get_global_batch_size(cls, params: pax_fiddle.Config[BaseInput]) -> int:
+    assert params.num_infeed_hosts is not None
+    return cls.get_batch_size(params) * params.num_infeed_hosts
 
   def save(self, checkpoint_path: epath.PathLike):
     state = self.get_state() if self._peek is None else self._state_before_peek
@@ -385,6 +387,7 @@ class LingvoInputAdaptor(BaseInput):
   _num_batches_produced: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
+    assert self.input is not None
     if self._VALIDATE_BATCH_SIZE_NONE and self.batch_size is not None:
       raise ValueError(
           'LingvoInputAdaptor does not support self.batch_size. '
@@ -405,10 +408,10 @@ class LingvoInputAdaptor(BaseInput):
     ):
       raise ValueError(
           'Input data using fixed non-zero file_random_seed: '
-          f'hparams.input.file_random_seed={self.input.file_random_seed}. '
+          f'self.input.file_random_seed={self.input.file_random_seed}. '
           'This means each host *might* infeed identical batches. You can set '
-          'hparams.input.file_random_seed = 0, or if certain this is intended, '
-          'suppress this error by setting hparams.allow_fixed_file_random_seed '
+          'self.input.file_random_seed = 0, or if certain this is intended, '
+          'suppress this error by setting self.allow_fixed_file_random_seed '
           '= True.'
       )
     super().__post_init__()
@@ -426,16 +429,18 @@ class LingvoInputAdaptor(BaseInput):
 
   @classmethod
   def get_batch_size(
-      cls, hparams: pax_fiddle.Config[LingvoInputAdaptor]
+      cls,
+      params: Union[pax_fiddle.Config[LingvoInputAdaptor], LingvoInputAdaptor],
   ) -> int:
-    assert hparams.input is not None
-    if hasattr(hparams.input, 'bucket_batch_limit'):
-      return hparams.input.bucket_batch_limit[0]
-    elif hasattr(hparams.input, 'batch_size'):
-      return hparams.input.batch_size
+    assert params.input is not None
+    if hasattr(params.input, 'bucket_batch_limit'):
+      return params.input.bucket_batch_limit[0]
+    elif hasattr(params.input, 'batch_size'):
+      return params.input.batch_size
     else:
       raise ValueError(
-          'hparams.input has no attribute of bucket_batch_limit or batch_size.')
+          'params.input has no attribute of bucket_batch_limit or batch_size.'
+      )
 
   def _update_file_random_seed(self) -> None:
     """Updates file random seed to use different seeds for different hosts."""
@@ -445,6 +450,7 @@ class LingvoInputAdaptor(BaseInput):
 
   def _initialize(self) -> None:
     """Initializes the relevant fields of this adaptor input."""
+    assert self.input is not None
     self._update_file_random_seed()
     # We make self.input public so that users can access its methods like
     # IdsToStrings if needed.
@@ -573,9 +579,11 @@ class LingvoInputAdaptorNewBatchSize(LingvoInputAdaptor):
     self._current_batch_index = 0
 
   @classmethod
-  def get_batch_size(cls, hparams: pax_fiddle.Config[BaseInput]) -> int:
-    assert hparams.batch_size is not None
-    return hparams.batch_size
+  def get_batch_size(
+      cls, params: Union[pax_fiddle.Config[BaseInput], BaseInput]
+  ) -> int:
+    assert params.batch_size is not None
+    return params.batch_size
 
   def get_next(self) -> py_utils.NestedMap:
     if self._current_batch_index >= self._inner_batch_size:
@@ -636,16 +644,18 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
 
   @classmethod
   def get_batch_size(
-      cls, hparams: pax_fiddle.Config[LingvoInputAdaptor]
+      cls,
+      params: Union[pax_fiddle.Config[LingvoInputAdaptor], LingvoInputAdaptor],
   ) -> int:
-    return hparams.batch_size
+    assert params.batch_size is not None
+    return params.batch_size
 
   def _update_file_random_seed(self) -> None:
     """Updates file random seed.
 
     This overrides LingvoInputAdaptor._update_file_random_seed where each host
     is assigned a different file random seed. It does nothing to make sure every
-    host uses the same file random seed in hparams.input.
+    host uses the same file random seed in params.input.
     """
     pass
 
@@ -745,6 +755,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
 
   def __post_init__(self):
     super().__post_init__()
+    assert self.input is not None
     if self.is_training:
       raise ValueError('LingvoLazyEvalAdaptor requires self.is_traing=False.')
     if not self.reset_for_eval:
@@ -758,7 +769,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
           'Must have positive batch_size in the underlying input: '
           f'get {self.input.batch_size} instead.'
       )
-    self.batch_size = self.get_batch_size(self.hparams)
+    self.batch_size = self.get_batch_size(self)
     # Global batch size across all hosts
     global_batch_size = self.num_infeed_hosts * self.batch_size
     # Global number of samples across all hosts
@@ -800,7 +811,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
       else:
         self.computed_num_batches = self.num_batches
         logging.warning(
-            '`num_batches` overridden to %d as requested by hparams',
+            '`num_batches` overridden to %d as requested by params',
             self.num_batches,
         )
     self.reset()
@@ -810,7 +821,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
 
     This overrides LingvoInputAdaptor._update_file_random_seed where each host
     is assigned a different file random seed. It does nothing to make sure every
-    host uses the same file random seed in hparams.input.
+    host uses the same file random seed in params.input.
     """
     pass
 
@@ -902,7 +913,7 @@ class MultiInput(BaseInput):
     name = self.name
     if re.fullmatch(_NAME_REGEX, name) is None:
       raise ValueError(
-          f'Input hparams self.name string invalid: "{name}" '
+          f'Input params self.name string invalid: "{name}" '
           f'does not fully match "{_NAME_REGEX}".'
       )
     if self.input_to_params is None:
@@ -926,17 +937,19 @@ class MultiInput(BaseInput):
       self._inputs[input_name] = instantiate(input_params)
 
   @classmethod
-  def get_batch_size(cls, hparams: pax_fiddle.Config[MultiInput]) -> int:
-    assert hparams.input_to_params
+  def get_batch_size(
+      cls, params: Union[pax_fiddle.Config[MultiInput], MultiInput]
+  ) -> int:
+    assert params.input_to_params
     logging.warning(
         'get_batch_size for MultiInput only returns the outer batch size '
         'determined from the children input generators. This will be different '
         'from the actual batch sizes for children inputs.'
     )
     children_batch_sizes = []
-    for child_ig_hparams in hparams.input_to_params.values():
+    for child_ig_params in params.input_to_params.values():
       children_batch_sizes.append(
-          child_ig_hparams.cls.get_batch_size(child_ig_hparams)
+          child_ig_params.cls.get_batch_size(child_ig_params)
       )
     if len(children_batch_sizes) == 1:
       return children_batch_sizes[0]
@@ -947,7 +960,7 @@ class MultiInput(BaseInput):
     for input_name, input_gen in self._inputs.items():
       input_batches[input_name] = input_gen.get_next()
     combined_batch = NestedMap(input_batches)
-    outer_batch_size = self.get_batch_size(self.hparams)
+    outer_batch_size = self.get_batch_size(self)
     return combined_batch.Transform(
         lambda x: py_utils.reshape_with_outer_batch_size(x, outer_batch_size))
 

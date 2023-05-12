@@ -26,7 +26,7 @@ from praxis.layers.quantization import attentions as qattentions
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization.tests import test_util as quantization_test_util
 
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 instantiate = base_layer.instantiate
@@ -993,7 +993,7 @@ class CombinedQKVProjectionAQTTest(quantization_test_util.QuantizationTestCase):
       pseudo_answer_v,
       expected_trained_weight
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.AQT,
         mode=QuantizationMode.TRAINING,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -1050,7 +1050,7 @@ class CombinedQKVProjectionAQTTest(quantization_test_util.QuantizationTestCase):
     if attention_combine_dims:
       return
 
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.AQT,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -1105,7 +1105,7 @@ class CombinedQKVProjectionAQTTest(quantization_test_util.QuantizationTestCase):
       attention_combine_dims,
       is_weight_symmetric
   ):
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.AQT,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -1194,7 +1194,7 @@ class CombinedQKVProjectionAQTTest(quantization_test_util.QuantizationTestCase):
     if attention_combine_dims:
       return
 
-    quantization_option = QuantizationHParams(
+    quantization_option = QuantizationParams(
         quantization_type=QuantizationType.AQT,
         mode=QuantizationMode.INFERENCE,
         weight_params=quantization_hparams.WeightQuantizationParams(
@@ -1261,4 +1261,3 @@ class CombinedQKVProjectionAQTTest(quantization_test_util.QuantizationTestCase):
 
 if __name__ == '__main__':
   absltest.main()
-

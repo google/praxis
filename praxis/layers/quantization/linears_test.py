@@ -33,7 +33,7 @@ from praxis.layers.quantization import quantization_hparams
 instantiate = base_layer.instantiate
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 
@@ -92,7 +92,7 @@ class QuantizedLinearTest(test_utils.TestCase):
         name='_linear',
         input_dims=8,
         output_dims=4,
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=quantization_type,
             mode=mode,
             weight_params=quantization_hparams.WeightQuantizationParams(
@@ -121,7 +121,7 @@ class QuantizedLinearTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=QuantizationType.AQT,
             mode=QuantizationMode.TRAINING,
             act_params=quantization_hparams.ActQuantizationParams(precision=3),
@@ -164,7 +164,7 @@ class QuantizedLinearTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=QuantizationType.AQT,
             mode=QuantizationMode.TRAINING,
             act_params=quantization_hparams.ActQuantizationParams(precision=3),
@@ -249,7 +249,7 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
-        quantization=QuantizationHParams(mode=QuantizationMode.TRAINING),
+        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
     )
     for p in [p_f, p_q]:
       p.input_dims = 16
@@ -263,7 +263,7 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
     p_q = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
-        quantization=QuantizationHParams(mode=QuantizationMode.INFERENCE),
+        quantization=QuantizationParams(mode=QuantizationMode.INFERENCE),
     )
     for p in [p_f, p_q]:
       p.input_dims = 4
@@ -308,7 +308,7 @@ class QuantizeLinearTest(test_utils.TestCase):
         weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
             wt=['mdl', 'data']
         ),
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=quantization_type,
             mode=QuantizationMode.TRAINING,
             weight_params=quantization_hparams.WeightQuantizationParams(
@@ -368,7 +368,7 @@ class QuantizeLinearTest(test_utils.TestCase):
     p = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
-        quantization=QuantizationHParams(
+        quantization=QuantizationParams(
             quantization_type=QuantizationType.AQT,
             mode=QuantizationMode.TRAINING,
             act_params=None,

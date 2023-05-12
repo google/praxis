@@ -1986,7 +1986,7 @@ class _ShardedAdafactorHelper:
         output_m = jnp.zeros(shape, dtype=jnp.float32)
     if self.should_use_factored_second_moment_estimate(shape):
       factored_dims = self.factored_second_moment_dims(shape)
-      vr_axis, vc_axis = factored_dims
+      vr_axis, vc_axis = factored_dims  # pytype: disable=attribute-error
       output_vr_shape = list(shape).copy()
       del output_vr_shape[vr_axis]
       output_vc_shape = list(shape).copy()
@@ -2070,7 +2070,7 @@ class _ShardedAdafactorHelper:
             tensor_split_dims_mapping=tensor_split_dims_mapping)
     if self.should_use_factored_second_moment_estimate(shape):
       factored_dims = self.factored_second_moment_dims(shape)
-      vr_axis, vc_axis = factored_dims
+      vr_axis, vc_axis = factored_dims  # pytype: disable=attribute-error
       # TODO(shafey): Fix logic for updating sharding annotations.
       if sharding_specified:
         vr_split_dims_mapping = gshard_utils.remove_dim(
@@ -2694,6 +2694,7 @@ class ShardedStaticAccumulator(BaseOptimizer):
 
   def __post_init__(self):
     super().__post_init__()
+    assert self.optimizer_tpl is not None
     if self.num_sub_batches < 1:
       raise ValueError('Set `p.num_sub_batches >= 1`.')
 

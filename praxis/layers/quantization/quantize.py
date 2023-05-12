@@ -42,7 +42,7 @@ from praxis.layers import quantization
 from praxis.layers.quantization import quantization_hparams
 
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
-QuantizationHParams = quantization_hparams.QuantizationHParams
+QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationType = quantization_hparams.QuantizationType
 QuantizationMode = quantization_hparams.QuantizationMode
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
@@ -63,7 +63,7 @@ def _quantize_embedding_softmax_layer_weights(
       # Replace softmax_tpl to quantized NClassMajorSharedEmbeddingSoftmax.
       new_softmax_tpl = pax_fiddle.Config(
           quantization.NClassMajorSharedEmbeddingSoftmax,
-          quantization=QuantizationHParams(
+          quantization=QuantizationParams(
               quantization_type=quantization_type,
               mode=mode,
               weight_params=weight_quantization_params,
@@ -74,7 +74,7 @@ def _quantize_embedding_softmax_layer_weights(
       # Replace softmax_tpl to quantized SharedEmbeddingSoftmax.
       new_softmax_tpl = pax_fiddle.Config(
           quantization.SharedEmbeddingSoftmax,
-          quantization=QuantizationHParams(
+          quantization=QuantizationParams(
               quantization_type=quantization_type,
               mode=mode,
               weight_params=weight_quantization_params,
@@ -102,7 +102,7 @@ def _quantize_ngrammer_embedding_weights(
 
   new_ngrammer_tpl = pax_fiddle.Config(
       new_ngrammer_cls,
-      quantization=QuantizationHParams(
+      quantization=QuantizationParams(
           quantization_type=quantization_type,
           mode=mode,
           weight_params=weight_quantization_params,
@@ -182,7 +182,7 @@ def quantize_dot_product_attention_layer_weights(
 
   attn_tpl.proj_tpl = pax_fiddle.Config(
       quantization.AttentionProjection,
-      quantization=QuantizationHParams(
+      quantization=QuantizationParams(
           quantization_type=quantization_type,
           mode=mode,
           act_params=act_quantization_params,
@@ -192,7 +192,7 @@ def quantize_dot_product_attention_layer_weights(
 
   attn_tpl.combined_qkv_proj_tpl = pax_fiddle.Config(
       quantization.attentions.CombinedQKVProjectionLayer,
-      quantization=QuantizationHParams(
+      quantization=QuantizationParams(
           quantization_type=quantization_type,
           mode=mode,
           act_params=act_quantization_params,
@@ -214,7 +214,7 @@ def quantize_mq_dot_product_attention_layer_weights(
 
   attn_tpl.proj_tpl = pax_fiddle.Config(
       quantization.attentions.AttentionProjection,
-      quantization=QuantizationHParams(
+      quantization=QuantizationParams(
           quantization_type=quantization_type,
           mode=mode,
           act_params=act_quantization_params,
@@ -224,7 +224,7 @@ def quantize_mq_dot_product_attention_layer_weights(
 
   attn_tpl.headless_proj_tpl = pax_fiddle.Config(
       quantization.multi_query_attention.OneHeadedAttentionProjection,
-      quantization=QuantizationHParams(
+      quantization=QuantizationParams(
           quantization_type=quantization_type,
           mode=mode,
           act_params=act_quantization_params,
@@ -246,7 +246,7 @@ def quantize_transformer_feed_forward_layer_weights(
 
   tr_fflayer_tpl.fflayer_tpl.linear_tpl = pax_fiddle.Config(
       quantization.Linear,
-      quantization=QuantizationHParams(
+      quantization=QuantizationParams(
           quantization_type=quantization_type,
           mode=mode,
           act_params=act_quantization_params,
