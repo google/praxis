@@ -806,9 +806,18 @@ def concat_sequences_with_padding(
   """
   assert (
       input0.shape[0] == input1.shape[0] and input0.shape[2] == input1.shape[2]
+  ), (
+      f'dim0 and dim2 should match. input0 shape: {input0.shape}, '
+      f'input1 shape: {input1.shape}'
   )
-  assert input0.shape[:2] == paddings0.shape[:2]
-  assert input1.shape[:2] == paddings1.shape[:2]
+  assert input0.shape[:2] == paddings0.shape[:2], (
+      f'dim0 and dim1 should match. input0 shape: {input0.shape}, '
+      f'paddings0 shape: {paddings0.shape}'
+  )
+  assert input1.shape[:2] == paddings1.shape[:2], (
+      f'dim0 and dim1 should match. input1 shape: {input1.shape}, '
+      f'paddings1 shape: {paddings1.shape}'
+  )
 
   batch_size = input0.shape[0]
 
