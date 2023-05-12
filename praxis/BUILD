@@ -553,7 +553,10 @@ py_strict_test(
 pytype_strict_library(
     name = "trees",
     srcs = ["trees.py"],
-    deps = [":pytypes"],
+    deps = [
+        ":pytypes",
+        # Implicit jax dependency.
+    ],
 )
 
 py_strict_test(

@@ -21,9 +21,13 @@ Longer-term, we ought to aim to move all tree-related utility functions here.
 # object-oriented way here, rename the module nested.py, and write a full suite
 # of utility functions for it. E.g. the way `Set` has `issubset`/`<=`, we could
 # have for all Nesteds in the Praxis context.
+
+import jax
 from praxis import pytypes
 
 Nested = pytypes.Nested
+NestedShapeDtypeLike = pytypes.NestedShapeDtypeLike
+NestedShapeDtypeStruct = pytypes.NestedShapeDtypeStruct
 
 
 def is_subset(subset: Nested, superset: Nested) -> bool:
@@ -58,3 +62,9 @@ def is_subset(subset: Nested, superset: Nested) -> bool:
     return False
 
   return subset == superset
+
+
+def get_shape_dtype(nested_obj: NestedShapeDtypeLike) -> NestedShapeDtypeStruct:
+  """Returns the shape/dtype information for the given nested input."""
+  fn = lambda x: jax.ShapeDtypeStruct(shape=x.shape, dtype=x.dtype)
+  return jax.tree_map(fn, nested_obj)
