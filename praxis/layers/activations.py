@@ -60,15 +60,14 @@ class BaseActivation(base_layer.BaseLayer):
     return candidates[0]
 
 
-  class ReLU(BaseActivation):
+class ReLU(BaseActivation):
   """Rectified Linear Unit (ReLU) activation layer."""
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the activation function."""
     return jax.nn.relu(inputs)
 
-  
-  class sineReLU(BaseActivation):
+class sineReLU(BaseActivation):
   """sineReLU activation layer."""
 
   def __call__(self, inputs: JTensor) -> JTensor:
