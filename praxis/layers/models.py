@@ -580,15 +580,16 @@ class LanguageModel(base_model.BaseModel):
 
       next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
       # TODO(b/260646361): Avoid this param propagation.
-      next_token_sampler_p.top_k = decoder_params.k
-      next_token_sampler_p.top_p = decoder_params.p
-      next_token_sampler_p.global_normalize = decoder_params.global_normalize
-      next_token_sampler_p.top_k_recall_target = (
-          decoder_params.top_k_recall_target
-      )
-      next_token_sampler_p.use_top_k_for_logprobs = (
-          decoder_params.use_top_k_for_logprobs
-      )
+      if decoder_params.override_next_token_sampler_params:
+        next_token_sampler_p.top_k = decoder_params.k
+        next_token_sampler_p.top_p = decoder_params.p
+        next_token_sampler_p.global_normalize = decoder_params.global_normalize
+        next_token_sampler_p.top_k_recall_target = (
+            decoder_params.top_k_recall_target
+        )
+        next_token_sampler_p.use_top_k_for_logprobs = (
+            decoder_params.use_top_k_for_logprobs
+        )
       next_token_sampler = base_layer.instantiate(next_token_sampler_p)
 
       result = sample_decode.sample_decode(

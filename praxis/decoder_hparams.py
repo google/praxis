@@ -114,6 +114,9 @@ class SampleDecoderHParams(DecoderHParams):
       whole vocabulary. It is used if k is nonzero and p is also not None.
     cf_guidance_scale: If not None, apply classifier-free guidance.
     sort_samples:  Whether to sort the samples by logprobs.
+    override_next_token_sampler_params: Whether to override, the next token
+      sampler params from the decoder ones. Ideally, this should not be
+      performed, but it is currently enabled for back-compatibility reasons.
   """
   num_samples: int = 1
   # TODO(wangtao): supports per-example temperature.
@@ -129,3 +132,4 @@ class SampleDecoderHParams(DecoderHParams):
   cf_guidance_scale: Optional[Union[List[float], float]] = None
   controlled_decoding: Optional[decoder_utils.ControlledDecodingHParams] = None
   sort_samples: Optional[bool] = True
+  override_next_token_sampler_params: bool = True
