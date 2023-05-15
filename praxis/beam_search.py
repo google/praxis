@@ -65,12 +65,13 @@ def update_global_beam(
   return (end_ids, end_lengths, end_scores, end_logprobs)
 
 
-def shuffle_state(x: JTensor, hyp_id: JTensor):
+def shuffle_state(x: JTensor, hyp_id: JTensor, use_one_hot_matmul=False):
   """Shuffle cache state at beam dimension.
 
   Args:
     x: The decode state with shape [batch_size, ...].
     hyp_id: The desired beam ids with shape [batch_size, beam_size].
+    use_one_hot_matmul: Use one hot matmul to shuffle decode state or not.
 
   Returns:
     A reshuffle of x on beam dimension.
@@ -78,6 +79,10 @@ def shuffle_state(x: JTensor, hyp_id: JTensor):
   # No need to shuffle R1 tensor such as time_step.
   if not isinstance(x, JTensor) or len(x.shape) < 2:
     return x
+
+  if use_one_hot_matmul:
+    one_hot_matrix = jax.nn.one_hot(hyp_id, hyp_id.shape[1], dtype=x.dtype)
+    return jnp.einsum("bk...,bjk->bj...", x, one_hot_matrix)
   return jax.vmap(
       lambda s, i: jnp.take(s, i, axis=0), in_axes=0, out_axes=0)(x, hyp_id)
 

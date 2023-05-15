@@ -58,6 +58,22 @@ class BeamSearchHelperTest(test_utils.TestCase):
     self.assertArraysEqual(transformed_cache_state,
                            np.array([0, 1, 2, 3], dtype=np.float32))
 
+  def test_shuffle_state_match(self):
+    cache_state = jnp.array(
+        np.random.normal(size=(2, 4, 4, 8)), dtype=jnp.float32
+    )
+    hyp_ids = jnp.array(
+        np.random.randint(low=0, high=4, size=(2, 4)), dtype=jnp.int32
+    )
+    transformed_state = beam_search.shuffle_state(
+        cache_state, hyp_ids, use_one_hot_matmul=False
+    )
+    one_hot_transformed_state = beam_search.shuffle_state(
+        cache_state, hyp_ids, use_one_hot_matmul=True
+    )
+
+    self.assertAllClose(transformed_state, one_hot_transformed_state)
+
   def test_broadcast_beam_dim(self):
     x = jnp.array([[1, 2], [3, 4]], dtype=jnp.int32)
     self.assertArraysEqual(
