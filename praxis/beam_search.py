@@ -15,8 +15,7 @@
 
 """Vanilla Beam search algorithm."""
 
-import inspect
-from typing import Callable, cast, Dict, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, Optional, Sequence, Tuple, Union
 
 from flax import linen as nn
 import jax
@@ -34,15 +33,6 @@ GlobalBeam = Tuple[
     JTensor,  # int[batch_size, beam_size] Complete sequence lengths
     JTensor,  # float[batch_size, beam_size] Complete sequence scores
     JTensor,  # float[batch_size, beam_size, seq_len] Per-step log-probs
-]
-ExpandedExtendStepFn = Callable[
-    [
-        base_layer.BaseLayerApi,  # model
-        JTensor,  # int[batch_size, beam_size] extend_ids
-        JTensor,  # int[batch_size * beam_size] segment_pos
-        NestedMap,  # decode_loop_state
-    ],
-    JTensor,  # logits
 ]
 
 
@@ -113,7 +103,9 @@ def broadcast_beam_dim(x: JTensor, beam_dim: int, beam_size: int) -> JTensor:
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def beam_search(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: Union[decoder_utils.ExtendStepFn, ExpandedExtendStepFn],
+    extend_step_fn: Union[
+        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
+    ],
     fprop_fn: decoder_utils.FPropFn,
     transform_state_fn: decoder_utils.TransformStateFn,
     prefix_ids: JTensor,
@@ -183,7 +175,9 @@ def beam_search(
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def beam_search_after_prefix_fprop(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: Union[decoder_utils.ExtendStepFn, ExpandedExtendStepFn],
+    extend_step_fn: Union[
+        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
+    ],
     transform_state_fn: decoder_utils.TransformStateFn,
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
@@ -255,21 +249,10 @@ def beam_search_after_prefix_fprop(
   val.segment_pos = jnp.reshape(prefix_lengths - 1, (batch_size * beam_size,))
   val.end_decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
 
-  # If we got an `ExtendStepFn`, expand it to an `ExpandedExtendStepFn`.
-  if len(inspect.signature(extend_step_fn).parameters) == 3:
-    extend_step_fn = cast(decoder_utils.ExtendStepFn, extend_step_fn)
-
-    def expanded_extend_step_fn(
-        model: base_layer.BaseLayerApi,
-        extend_ids: JTensor,
-        segment_pos: JTensor,
-        decode_loop_state: NestedMap,
-    ):
-      del decode_loop_state
-      return extend_step_fn(model, extend_ids, segment_pos)
-
-  else:
-    expanded_extend_step_fn = cast(ExpandedExtendStepFn, extend_step_fn)
+  # Get an `ExpandedExtendStepFn`, regardless of which variant was passed in.
+  expanded_extend_step_fn = decoder_utils.coerce_to_expanded_extend_step_fn(
+      extend_step_fn
+  )
 
   def get_cond_func(stop_decode_steps):
     """Get condition function for given stop decode steps."""

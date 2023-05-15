@@ -437,6 +437,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":decoder_utils",
+        ":pytypes",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.

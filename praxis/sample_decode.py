@@ -657,7 +657,9 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def sample_decode(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: decoder_utils.ExtendStepFn,
+    extend_step_fn: Union[
+        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
+    ],
     transform_state_fn: Optional[decoder_utils.TransformStateFn],
     lazy_broadcast_prefix_fn: Optional[decoder_utils.LazyBroadcastPrefixFn],
     next_token_sampler: base_layer.BaseLayerApi,
@@ -698,12 +700,12 @@ def sample_decode(
 
   Args:
     model: The model object.
-    extend_step_fn: A function that takes in `states` and the decoded sequence
-      at the current time step (with shape [B] or [B, P] where B corresponds to
-      the batch size and P corresponds to a possible prefix) and returns a tuple
-      of (`NestedMap`, `JTensor`), where the first `NestedMap` corresponds to
-      the `new_states` and the second `JTensor` corresponds to the logits of the
-      next step.
+    extend_step_fn: A function that takes in the decoded sequence at the current
+      time step (with shape [B] or [B, P] where B corresponds to the batch size
+      and P corresponds to a possible prefix) and returns `JTensor` corresponds
+      to the logits of the next step.  The following signatures are allowed:
+      extend_step_fn(model, extend_ids, segment_pos)
+      extend_step_fn(model, extend_ids, segment_pos, decode_loop_state)
     transform_state_fn: A function that transforms the decode state.
     lazy_broadcast_prefix_fn: A function that lazily broadcasts decode prefix.
     next_token_sampler: Layer used to sample next token ids given the logits
@@ -845,7 +847,9 @@ def sample_decode(
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def sample_decode_after_fprop(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: decoder_utils.ExtendStepFn,
+    extend_step_fn: Union[
+        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
+    ],
     transform_state_fn: Optional[decoder_utils.TransformStateFn],
     lazy_broadcast_prefix_fn: Optional[decoder_utils.LazyBroadcastPrefixFn],
     next_token_sampler: base_layer.BaseLayerApi,
@@ -885,12 +889,12 @@ def sample_decode_after_fprop(
 
   Args:
     model: The model object.
-    extend_step_fn: A function that takes in `states` and the decoded sequence
-      at the current time step (with shape [B] or [B, P] where B corresponds to
-      the batch size and P corresponds to a possible prefix) and returns a tuple
-      of (`NestedMap`, `JTensor`), where the first `NestedMap` corresponds to
-      the `new_states` and the second `JTensor` corresponds to the logits of the
-      next step.
+    extend_step_fn: A function that takes in the decoded sequence at the current
+      time step (with shape [B] or [B, P] where B corresponds to the batch size
+      and P corresponds to a possible prefix) and returns `JTensor` corresponds
+      to the logits of the next step.  The following signatures are allowed:
+      extend_step_fn(model, extend_ids, segment_pos)
+      extend_step_fn(model, extend_ids, segment_pos, decode_loop_state)
     transform_state_fn: A function that transforms the decode state.
     lazy_broadcast_prefix_fn: A function that lazily broadcasts decode prefix.
     next_token_sampler: Layer used to sample next token ids given the logits
@@ -1154,6 +1158,11 @@ def sample_decode_after_fprop(
   if result_callback is not None and result_callback.init_fn is not None:
     result_callback.init_fn((original_batch_size, num_samples))
 
+  # Get an `ExpandedExtendStepFn`, regardless of which variant was passed in.
+  expanded_extend_step_fn = decoder_utils.coerce_to_expanded_extend_step_fn(
+      extend_step_fn
+  )
+
   def get_cond_func(stop_at_decode_steps):
     """Gets conditional function for different decode steps."""
 
@@ -1173,7 +1182,9 @@ def sample_decode_after_fprop(
   def loop_body(model, val):
     """From ids at `step`, update output ids at `step + 1`."""
     step = val.step
-    logits = extend_step_fn(model, val.output_ids[:, step], val.segment_pos)
+    logits = expanded_extend_step_fn(
+        model, val.output_ids[:, step], val.segment_pos, val
+    )
     if cf_guidance_scale is not None:
       # Split cond / uncond logits.
       logits_split = split_batch_dim(logits, 0, 2 * num_samples)
@@ -1528,7 +1539,9 @@ def sample_decode_after_fprop(
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def greedy_decode(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: decoder_utils.ExtendStepFn,
+    extend_step_fn: Union[
+        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
+    ],
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
     seq_len: int,
@@ -1547,12 +1560,12 @@ def greedy_decode(
 
   Args:
     model: The model object.
-    extend_step_fn: A function that takes in `states` and the decoded sequence
-      at the current time step (with shape [B] or [B, P] where B corresponds to
-      the batch size and P corresponds to a possible prefix) and returns a tuple
-      of (`NestedMap`, `JTensor`), where the first `NestedMap` corresponds to
-      the `new_states` and the second `JTensor` corresponds to the logits of the
-      next step.
+    extend_step_fn: A function that takes in the decoded sequence at the current
+      time step (with shape [B] or [B, P] where B corresponds to the batch size
+      and P corresponds to a possible prefix) and returns `JTensor` corresponds
+      to the logits of the next step.  The following signatures are allowed:
+      extend_step_fn(model, extend_ids, segment_pos)
+      extend_step_fn(model, extend_ids, segment_pos, decode_loop_state)
     prefix_ids: The token ids that correspond to the prefix sequence. This
       should contain an <SOS> token if one is used.
     prefix_paddings: The paddings corresponding to the prefix sequence, with a 1

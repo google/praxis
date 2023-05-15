@@ -16,7 +16,8 @@
 """Util functions for decoder."""
 
 import dataclasses
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
+import inspect
+from typing import Callable, cast, Dict, List, Optional, Sequence, Tuple, Union
 
 from flax import core as flax_core
 import jax
@@ -29,6 +30,15 @@ JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 NestedMap = pytypes.NestedMap
 ExtendStepFn = Callable[[base_layer.BaseLayerApi, JTensor, JTensor], JTensor]
+ExpandedExtendStepFn = Callable[
+    [
+        base_layer.BaseLayerApi,  # model
+        JTensor,  # int[batch_size] or int[batch_size, beam_size] extend_ids
+        JTensor,  # int[batch_size] or int[batch_size * beam_size] segment_pos
+        NestedMap,  # decode_loop_state
+    ],
+    JTensor,  # logits
+]
 FPropFn = Callable[[base_layer.BaseLayerApi, JTensor, JTensor], None]
 TransformStateFn = Callable[
     [base_layer.BaseLayerApi, base_layer.DecodeStateTransformFn], None
@@ -522,3 +532,24 @@ def has_any_eos(arr: JTensor, eos_ids: Union[int, Sequence[int]]):
   """Check if the given array contains any of the eos_ids."""
   eos = jnp.array(eos_ids, dtype=jnp.int32).reshape([1] * arr.ndim + [-1])
   return jnp.any(jnp.equal(arr[..., jnp.newaxis], eos), axis=-1)
+
+
+def coerce_to_expanded_extend_step_fn(
+    extend_step_fn: Union[ExtendStepFn, ExpandedExtendStepFn]
+) -> ExpandedExtendStepFn:
+  """Wraps or casts the `extend_step_fn` into an `ExpandedExtendStepFn`."""
+  if len(inspect.signature(extend_step_fn).parameters) == 4:
+    return cast(ExpandedExtendStepFn, extend_step_fn)
+
+  extend_step_fn = cast(ExtendStepFn, extend_step_fn)
+
+  def _expanded_extend_step_fn(
+      model: base_layer.BaseLayerApi,
+      extend_ids: JTensor,
+      segment_pos: JTensor,
+      decode_loop_state: NestedMap,
+  ) -> JTensor:
+    del decode_loop_state
+    return extend_step_fn(model, extend_ids, segment_pos)
+
+  return _expanded_extend_step_fn

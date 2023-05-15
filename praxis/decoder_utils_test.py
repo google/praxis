@@ -20,6 +20,7 @@ from absl.testing import parameterized
 from jax import numpy as jnp
 import numpy as np
 from praxis import decoder_utils
+from praxis import pytypes
 from praxis import test_utils
 
 
@@ -204,6 +205,39 @@ class DecoderUtilsTest(test_utils.TestCase):
     has_eos = decoder_utils.has_any_eos(test_arr, [10, 21])
     self.assertArraysEqual(
         has_eos, jnp.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=jnp.bool_)
+    )
+
+  def test_coerce_to_expanded_extend_step_fn_wrap(self):
+
+    def _extend_step_fn(model, ids, pos):
+      return ids.astype(jnp.float32) / 2
+
+    expanded_extend_step_fn = decoder_utils.coerce_to_expanded_extend_step_fn(
+        _extend_step_fn
+    )
+
+    self.assertArraysEqual(
+        expanded_extend_step_fn(
+            None, jnp.array([[1, 2]]), jnp.array([3, 4]), pytypes.NestedMap()
+        ),
+        jnp.array([[0.5, 1.0]]),
+    )
+
+  def test_coerce_to_expanded_extend_step_fn_cast(self):
+
+    def _extend_step_fn(model, ids, pos, state):
+      return ids.astype(jnp.float32) / 2
+
+    expanded_extend_step_fn = decoder_utils.coerce_to_expanded_extend_step_fn(
+        _extend_step_fn
+    )
+
+    self.assertIs(expanded_extend_step_fn, _extend_step_fn)  # merely casted
+    self.assertArraysEqual(
+        expanded_extend_step_fn(
+            None, jnp.array([[1, 2]]), jnp.array([3, 4]), pytypes.NestedMap()
+        ),
+        jnp.array([[0.5, 1.0]]),
     )
 
 
