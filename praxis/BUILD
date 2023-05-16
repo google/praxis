@@ -421,6 +421,7 @@ py_strict_test(
         ":pax_fiddle",
         ":py_utils",
         ":test_utils",
+        # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
