@@ -1217,14 +1217,6 @@ class Transformer(base_layer.BaseLayer):
         params = self.cross_atten_tpl
       else:
         params = self.tr_atten_tpl
-      # Note that cross attention should not use any position embeddings.
-      if params.use_rotary_position_emb:
-        raise ValueError('Rotary position embedding should not be enabled for '
-                         'cross attention.')
-      # Note that cross attention should not use depth-wise convolution.
-      if params.dconv_qkv:
-        raise ValueError('Depth-wise convolution should not be enabled for '
-                         'cross attention.')
       self._setup_attention(params, 'cross_attention')
 
     # Initialize residual droppath

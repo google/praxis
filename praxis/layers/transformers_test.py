@@ -410,51 +410,6 @@ class TransformersTest(test_utils.TestCase):
         np.var(atten_output_normalized),
         atol=5e-3)
 
-  def test_transformer_layer_cross_attention_dconv_value_error(self):
-    p = pax_fiddle.Config(
-        transformers.Transformer,
-        name='jax_transformer_layer',
-        input_dims=8,
-        hidden_dims=32,
-        num_heads=4,
-        use_cross_attention=True,
-    )
-    # Enable cross attention.
-    p.cross_atten_tpl = copy.deepcopy(p.tr_atten_tpl)
-    # Enable depth-wise convolution.
-    p.cross_atten_tpl.dconv_qkv = True
-    # Dummy inputs.
-    seq_len = 5
-    batch_size = 4
-    dummy_inputs = jnp.ones([batch_size, seq_len, p.input_dims])
-    dummy_paddings = jnp.ones([batch_size, seq_len])
-    with self.assertRaises(ValueError):
-      transformer_layer = instantiate(p)
-      prng_key = jax.random.PRNGKey(seed=123)
-      _ = transformer_layer.init(prng_key, dummy_inputs, dummy_paddings)
-
-  def test_transformer_layer_cross_attention_pos_emb_value_error(self):
-    p = pax_fiddle.Config(
-        transformers.Transformer,
-        name='jax_transformer_layer',
-        input_dims=8,
-        hidden_dims=32,
-        num_heads=4,
-        use_cross_attention=True,
-    )
-    # Enable cross attention.
-    p.cross_atten_tpl = copy.deepcopy(p.tr_atten_tpl)
-    # Enable rotary position embedding.
-    p.cross_atten_tpl.use_rotary_position_emb = True
-    # Dummy inputs.
-    seq_len = 5
-    batch_size = 4
-    dummy_inputs = jnp.ones([batch_size, seq_len, p.input_dims])
-    dummy_paddings = jnp.ones([batch_size, seq_len])
-    with self.assertRaises(ValueError):
-      transformer_layer = instantiate(p)
-      prng_key = jax.random.PRNGKey(seed=123)
-      _ = transformer_layer.init(prng_key, dummy_inputs, dummy_paddings)
 
   # TODO(lingvo-team): Figure out a solution to use identical Flax prng stream
   # for the two configurations considered. At the moment, the

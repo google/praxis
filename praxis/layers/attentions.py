@@ -1619,32 +1619,28 @@ class DotProductAttention(base_layer.BaseLayer):
           self.combined_qkv.extend_step(query_vec, time_step=time_step))
     else:
       # Project inputs to key, value and query. Each has shape [B, N, H].
-      key_proj = self.key.extend_step(query_vec, time_step=time_step)
-      value_proj = self.value.extend_step(query_vec, time_step=time_step)
       query_proj = self.query.extend_step(query_vec, time_step=time_step)
+      if not is_cross_attention:
+        key_proj = self.key.extend_step(query_vec, time_step=time_step)
+        value_proj = self.value.extend_step(query_vec, time_step=time_step)
 
     def _extend_decode_state_and_shard(name: str,
                                        extend_value: JTensor) -> JTensor:
-      if is_cross_attention:
-        extended_state = self.get_decode_state(name)
-      else:
-        extended_state = self.extend_decode_state(
-            name, extend_value, time_step, time_dim=time_dim)
+      extended_state = self.extend_decode_state(
+          name, extend_value, time_step, time_dim=time_dim)
       return self._shard_blnh(extended_state)
 
-    # Update key_state
     key_state_name = 'key_state'
-    key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
-
-    # Update value state.
     value_state_name = 'value_state'
-    value_state = _extend_decode_state_and_shard(value_state_name,
-                                                 value_proj)
+    if not is_cross_attention:
+      key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
+      value_state = _extend_decode_state_and_shard(value_state_name, value_proj)
 
     # Apply depth-wise convolution as in Primer.
     # Paper: https://arxiv.org/abs/2109.08668.
     if self.dconv_qkv:
-      assert not is_cross_attention
+      key_state_name = 'key_post_dconv'
+      value_state_name = 'value_post_dconv'
       # Update query in cache.
       query_state = _extend_decode_state_and_shard('query_state',
                                                    query_proj)
@@ -1652,37 +1648,37 @@ class DotProductAttention(base_layer.BaseLayer):
       # Aggregate depth-wise convolution for keys and values at time step.
       query_proj = self.dconv_q.extend_step(
           query_state, axis=time_dim, step=time_step, segment_pos=segment_pos)
-      key_proj = self.dconv_k.extend_step(
-          key_state, axis=time_dim, step=time_step, segment_pos=segment_pos)
-      value_proj = self.dconv_v.extend_step(
-          value_state, axis=time_dim, step=time_step, segment_pos=segment_pos)
-
-      # Update queries, keys and values post dconv in cache.
-
       query_state = _extend_decode_state_and_shard('query_post_dconv',
                                                    query_proj)
-      key_state_name = 'key_post_dconv'
-      key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
-      value_state_name = 'value_post_dconv'
-      value_state = _extend_decode_state_and_shard(value_state_name,
-                                                   value_proj)
+      if not is_cross_attention:
+        key_proj = self.dconv_k.extend_step(
+            key_state, axis=time_dim, step=time_step, segment_pos=segment_pos)
+        value_proj = self.dconv_v.extend_step(
+            value_state, axis=time_dim, step=time_step, segment_pos=segment_pos)
+
+        # Update queries, keys and values post dconv in cache.
+
+        key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
+        value_state = _extend_decode_state_and_shard(
+            value_state_name, value_proj
+        )
 
     # Apply rotary position embeddings.
     # Paper: https://arxiv.org/abs/2104.09864.
     if self.use_rotary_position_emb:
-      assert not is_cross_attention
+      key_state_name = 'key_post_rotary_pos_emb'
       if segment_pos is None:
         position = jnp.broadcast_to(time_step, [query_vec.shape[0]])
       else:
         position = segment_pos
       query_proj = self.rotary_position_emb.extend_step(
           query_proj, position)
-      key_proj = self.rotary_position_emb.extend_step(
-          key_proj, position)
+      if not is_cross_attention:
+        key_proj = self.rotary_position_emb.extend_step(
+            key_proj, position)
 
-      # Update key post rotary position embedding in the cache.
-      key_state_name = 'key_post_rotary_pos_emb'
-      key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
+        # Update key post rotary position embedding in the cache.
+        key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
 
     if self.relative_bias_tpl:
       # Relative bias uses time_step instead of segment_pos.

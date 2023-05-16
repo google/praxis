@@ -373,7 +373,9 @@ class AttentionsTest(test_utils.TestCase):
     starting_index = 0
     if simulate_packed:
       starting_index = dconv_kernel_size
-      atten_mask = atten_mask.at[:, :, :, :starting_index].set(-2.3819763e+38)
+      atten_mask = atten_mask.at[:, :, :, :starting_index].set(
+          py_utils.get_large_negative_number(jnp.float32)
+      )
       segment_pos = jnp.maximum(segment_pos - starting_index, 0)
 
     with base_layer.JaxContext.new_context():
@@ -425,6 +427,109 @@ class AttentionsTest(test_utils.TestCase):
     decoder_output = decoder_output[starting_index:]
     decoder_out_transposed = jnp.transpose(decoder_output, [1, 0, 2])
     fprop_out = fprop_out[:, starting_index:]
+
+    logging.info('fprop_out: %s', fprop_out)
+    logging.info('decoder_out: %s', decoder_output)
+    self.assertAllClose(fprop_out, decoder_out_transposed)
+
+  @parameterized.parameters([
+      (True, 3, True, True),
+      (True, 3, True, False),
+      (True, 4, False, False),
+      (False, 1, False, True),
+      (False, 1, True, False),
+  ])
+  def test_cross_mha1_01(
+      self,
+      dconv_qkv,
+      dconv_kernel_size,
+      use_rotary_position_emb,
+      zero_fully_masked,
+  ):
+    mdl_dim = 16
+    hidden_dim = 32
+    num_heads = 4
+    test_layer_p = pax_fiddle.Config(
+        attentions.DotProductAttention,
+        name='mh',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        dim_per_head=16 if use_rotary_position_emb else None,
+        atten_logit_cap=20.0,
+        dconv_qkv=dconv_qkv,
+        dconv_kernel_size=dconv_kernel_size,
+        use_rotary_position_emb=use_rotary_position_emb,
+        zero_fully_masked=zero_fully_masked,
+    )
+    layer = instantiate(test_layer_p)
+    prng_key = jax.random.PRNGKey(seed=123)
+    prng_key, init_key = jax.random.split(prng_key)
+    target_batch_size = 3
+    source_max_length = 16
+    cross_source_max_length = 10
+    target_max_length = 16
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]).astype(np.float32)
+    key_vec = np.random.normal(
+        size=[target_batch_size, cross_source_max_length, mdl_dim]
+    ).astype(np.float32)
+    value_vec = key_vec
+    fake_query_vec = jnp.zeros_like(query_vec)
+    segment_pos = np.tile(np.arange(source_max_length), (target_batch_size, 1))
+    atten_mask = jnp.zeros([1, 1, source_max_length, cross_source_max_length])
+    key_segment_pos = np.tile(
+        np.arange(cross_source_max_length), (target_batch_size, 1)
+    )
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(
+          init_key,
+          fake_query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+          query_segment_pos=segment_pos,
+          key_segment_pos=key_segment_pos)
+      logging.info('initial_vars: %s', initial_vars)
+      _, attention_states = layer.apply(
+          initial_vars,
+          fake_query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+          query_segment_pos=segment_pos,
+          key_segment_pos=key_segment_pos,
+          method=layer.__call__,
+          mutable=[base_layer.DECODE_CACHE])
+      fprop_out, _ = layer.apply(
+          initial_vars,
+          query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+          query_segment_pos=segment_pos,
+          key_segment_pos=key_segment_pos,
+          method=layer.__call__)
+
+      decoder_output = jnp.zeros(
+          shape=[target_max_length, target_batch_size, mdl_dim])
+
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+      for t in range(target_max_length):
+        encoded, attention_states = layer.apply(
+            updated_vars,
+            query_vec=query_vec[:, t, :],
+            atten_mask=atten_mask[:, :, t, :],
+            time_step=t,
+            segment_pos=None,
+            is_cross_attention=True,
+            method=layer.extend_step,
+            mutable=[base_layer.DECODE_CACHE])
+        updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+        decoder_output = decoder_output.at[t].set(encoded)
+
+    decoder_out_transposed = jnp.transpose(decoder_output, [1, 0, 2])
 
     logging.info('fprop_out: %s', fprop_out)
     logging.info('decoder_out: %s', decoder_output)
