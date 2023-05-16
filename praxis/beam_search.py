@@ -345,6 +345,7 @@ def beam_search_after_prefix_fprop(
     return val
 
   # Beam search loop. Cache state is broacasted before the while loop.
+  result = val
   for i in range(len(max_decode_steps)):
     if i > 0:
       pad_size = max_decode_steps[i] - max_decode_steps[i - 1]
@@ -353,7 +354,7 @@ def beam_search_after_prefix_fprop(
         get_cond_func(max_decode_steps[i]),
         loop_body,
         model,
-        val,
+        result,
         split_rngs={base_layer.RANDOM: True},
         carry_variables=[base_layer.DECODE_CACHE],
     )
