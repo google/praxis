@@ -1801,7 +1801,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
   Inputs to this layer will have a 6x larger batch dimension.
 
   To use this layer, replace the Transformer layer's attention template:
-    lbp_tr_atten_tpl = attentions.DotProductAttentionWithLPB.HParams()
+    lbp_tr_atten_tpl = pax_fiddle.Config(attentions.DotProductAttentionWithLPB)
     if transformer_layer_p.tr_atten_tpl.cls == attentions.DotProductAttention:
       lbp_tr_atten_tpl.copy_fields_from(transformer_layer_p.tr_atten_tpl)
       transformer_layer_p.tr_atten_tpl = lbp_tr_atten_tpl
