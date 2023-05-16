@@ -30,7 +30,6 @@ from praxis import pytypes
 WeightHParams = base_layer.WeightHParams
 WeightInit = base_layer.WeightInit
 JTensor = pytypes.JTensor
-sub_config_field = base_layer.sub_config_field
 PARAMS = base_layer.PARAMS
 
 
