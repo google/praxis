@@ -245,12 +245,12 @@ def get_pruning_n_m_mask(inputs: jnp.ndarray, n: int, m: int) -> jnp.ndarray:
   inputs = jnp.abs(inputs)
   inputs_temp = inputs.reshape(group, m)
 
-  mask = jnp.zeros(inputs_temp.shape, dtype=bool)
   _, top_k_indices = jax.lax.top_k(inputs_temp, k=n)
   # extract largest n values to make them one in mask corresponding to non-zero
   # elements.
-  return jax.vmap(lambda x, i: x.at[i].set(True))(mask, top_k_indices).reshape(
-      inputs.shape
+  return (
+      jnp.any(jax.nn.one_hot(top_k_indices, m, dtype=jnp.bool_), axis=-2)
+      .reshape(inputs.shape)
   )
 
 
