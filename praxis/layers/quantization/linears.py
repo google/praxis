@@ -82,7 +82,6 @@ class Linear(linears.Linear):
         pc.shape = utils.get_packed_shape(
             pc.shape, self._PACK_4BIT_DIM, packing_factor=8
         )
-        pc.shape = [self.input_dims // 8, self.output_dims]
         dtype = jnp.int32  # It will be used for storing 8 4bit values.
       if self._do_static_activation_quantization():
         raise NotImplementedError(
