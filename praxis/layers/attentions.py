@@ -2940,13 +2940,22 @@ class LocalSelfAttention(DotProductAttention):
       Returns:
         Slice as a JTensor.
       """
-      paddings_shape = list(x.shape)
-      paddings_shape[axis] = slice_size
-      paddings = jnp.full(paddings_shape, padding_value, dtype=x.dtype)
 
-      long_x = jnp.concatenate([paddings, x], axis=axis)
-      return jax.lax.dynamic_slice_in_dim(
-          long_x, time_step + 1, slice_size, axis=axis
+      # The slice is incorrect if timestep + 1 - slice_size < 0. Fix down below.
+      x_slice = jax.lax.dynamic_slice_in_dim(
+          x, jnp.maximum(time_step + 1 - slice_size, 0), slice_size, axis=axis
+      )
+
+      def pad_left():
+        paddings = jnp.full_like(x_slice, padding_value)
+        x_padded = jnp.concatenate([paddings, x_slice], axis=axis)
+        return jax.lax.dynamic_slice_in_dim(
+            x_padded, time_step + 1, slice_size, axis=axis
+        )
+
+      # We want paddings on the left if time_step + 1 - slice_size < 0.
+      return jax.lax.cond(
+          time_step + 1 - slice_size < 0, pad_left, lambda: x_slice
       )
 
     key = context_slice(key, 1, 0.0, time_step, self.left_context)
