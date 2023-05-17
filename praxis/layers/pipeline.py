@@ -392,7 +392,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         body_fn,
         in_axes=0,
         out_axes=0,
-        spmd_axis_name=self.mesh_axis_names[0],
+        spmd_axis_name=self.weight_split_dims_mapping.stages[0],
         variable_axes={
             PARAMS: 0,
             AUX_LOSS: 0,
@@ -1017,7 +1017,7 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
           vmapped_fn,
           in_axes=0,
           out_axes=0,
-          spmd_axis_name=self.mesh_axis_names[0],
+          spmd_axis_name=self.weight_split_dims_mapping.stages[0],
           variable_axes={
               PARAMS: 0,
               NON_TRAINABLE: 0,
