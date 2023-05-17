@@ -80,25 +80,7 @@ class OneHeadedAttentionProjection(
     pc = WeightHParams(
         shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
     )
-    if self.quantization.mode == QuantizationMode.INFERENCE:
-      dtype = self.quantization.weight_params.dtype
-      if (
-          self.quantization.weight_params.precision == 4
-          and self.quantization.weight_params.use_int4_packed_weights
-      ):
-        dtype = jnp.int32
-        pc.shape = utils.get_packed_shape(
-            pc.shape, self._PACK_4BIT_DIM, packing_factor=8
-        )
-      self.create_quantized_variable(
-          'w',
-          pc,
-          [self.output_dim],
-          dtype=dtype,
-          use_symmetric=self.quantization.weight_params.use_symmetric,
-      )
-    else:
-      self.create_variable('w', pc)
+    quantizer.set_up_weights(self, 'w', pc, [self.output_dim], self._PACK_4BIT_DIM)
     if self.use_bias:
       if self.mesh_shape is not None:
         bias_split_dims_mapping = [wp.wt[1]]
@@ -111,9 +93,6 @@ class OneHeadedAttentionProjection(
           tensor_split_dims_mapping=bias_split_dims_mapping,
       )
       self.create_variable('b', pc_bias)
-
-    if self.quantization.quantization_type == QuantizationType.AQT:
-      self.create_tensor_quantizers()
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Computes the multi headed projection for inputs.

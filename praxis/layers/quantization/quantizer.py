@@ -26,12 +26,73 @@ from praxis import pax_fiddle
 from praxis import pytypes
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import utils
 
 
 WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
 ActQuantizationParams = quantization_hparams.ActQuantizationParams
+QuantizationMode = quantization_hparams.QuantizationMode
+QuantizationType = quantization_hparams.QuantizationType
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
+
+
+def set_up_weights(
+    layer: base_layer.BaseLayer,
+    weight_name: str,
+    weight_params: base_layer.WeightHParams,
+    scale_shape: list[int],
+    pack_dim: int,
+):
+  """Set up weights, quantizer, steps."""
+  dtype = layer.quantization.weight_params.dtype
+  if layer.quantization.mode == QuantizationMode.INFERENCE:
+    if (
+        layer.quantization.weight_params.precision == 4
+        and layer.quantization.weight_params.use_int4_packed_weights
+    ):
+      # For 4bit pack/unpack.
+      # TODO(jianlijianli): Replace this with proper 4bit type.
+      weight_params.shape = utils.get_packed_shape(
+          weight_params.shape, pack_dim, packing_factor=8
+      )
+      dtype = jnp.int32  # It will be used for storing 8 4bit values.
+    if do_static_activation_quantization(layer.quantization.act_params):
+      raise NotImplementedError(
+          'Static activation quantization is not supported yet.'
+      )
+    layer.create_quantized_variable(
+        weight_name,
+        weight_params,
+        scale_shape,
+        dtype=dtype,
+        use_symmetric=layer.quantization.weight_params.use_symmetric,
+    )
+  elif layer.quantization.mode == QuantizationMode.TRAINING:
+    if do_static_activation_quantization(layer.quantization.act_params):
+      raise NotImplementedError(
+          'Static activation quantization is not supported yet.'
+      )
+      # Additionally add mutable tensor to record activation range.
+    layer.create_variable(weight_name, weight_params)
+  else:
+    layer.create_variable(weight_name, weight_params)
+
+  # Optionally create stateful quantizer.
+  if layer.quantization.quantization_type == QuantizationType.AQT:
+    layer.create_tensor_quantizers()
+
+  # Optionally create step count.
+  if layer.quantization.weight_params.use_step_count:
+    step_count_pc = base_layer.WeightHParams(
+        shape=[],
+        init=base_layer.WeightInit.Constant(0),
+        dtype=jnp.int32,
+    )
+    layer.create_variable('step_count', step_count_pc, trainable=False)
+
+def do_static_activation_quantization(act_params) -> bool:
+  return act_params is not None and act_params.stats_config is not None
 
 
 def create_tensor_quantizer(

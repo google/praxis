@@ -95,26 +95,10 @@ class AttentionProjection(attentions.AttentionProjection):
     pc = WeightHParams(
         shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
     )
-    if self.quantization.mode == QuantizationMode.INFERENCE:
-      dtype = self.quantization.weight_params.dtype
-      if (
-          self.quantization.weight_params.precision == 4
-          and self.quantization.weight_params.use_int4_packed_weights
-      ):
-        dtype = jnp.int32
-        pc.shape = utils.get_packed_shape(
-            pc.shape, self._PACK_4BIT_DIM, packing_factor=8
-        )
-      scale_shape = [self.input_dim] if self.is_output_projection else hd_shape
-      self.create_quantized_variable(
-          'w',
-          pc,
-          scale_shape,
-          dtype=dtype,
-          use_symmetric=self.quantization.weight_params.use_symmetric,
-      )
-    else:
-      self.create_variable('w', pc)
+    scale_shape = [self.input_dim] if self.is_output_projection else hd_shape
+    quantizer.set_up_weights(
+        self, 'w', pc, scale_shape, self._PACK_4BIT_DIM
+    )
     if self.use_bias:
       if self.is_output_projection:
         if has_sharding:
@@ -139,17 +123,6 @@ class AttentionProjection(attentions.AttentionProjection):
             tensor_split_dims_mapping=bias_split_dims_mapping,
         )
       self.create_variable('b', pc_bias)
-
-    if self.quantization.quantization_type == QuantizationType.AQT:
-      self.create_tensor_quantizers()
-
-    if self.quantization.weight_params.use_step_count:
-      step_count_pc = WeightHParams(
-          shape=[],
-          init=WeightInit.Constant(0),
-          dtype=jnp.int32,
-      )
-      self.create_variable('step_count', step_count_pc, trainable=False)
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Computes the multi headed projection for inputs.
@@ -432,25 +405,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
         mesh_shape=self.mesh_shape,
         tensor_split_dims_mapping=weight_split_dims_mapping,
     )
-    if self.quantization.mode == QuantizationMode.INFERENCE:
-      dtype = self.quantization.weight_params.dtype
-      if (
-          self.quantization.weight_params.precision == 4
-          and self.quantization.weight_params.use_int4_packed_weights
-      ):
-        dtype = jnp.int32
-        pc.shape = utils.get_packed_shape(
-            pc.shape, self._PACK_4BIT_DIM, packing_factor=8
-        )
-      self.create_quantized_variable(
-          'w',
-          pc,
-          [3] + hd_shape,
-          dtype=dtype,
-          use_symmetric=self.quantization.weight_params.use_symmetric,
-      )
-    else:
-      self.create_variable('w', pc)
+    quantizer.set_up_weights(self, 'w', pc, [3]+hd_shape, self._PACK_4BIT_DIM)
     if self.use_bias:
       # Combined bias weight for q, k, v projections.
       pc_bias = WeightHParams(
@@ -461,16 +416,6 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       )
       self.create_variable('b', pc_bias)
 
-    if self.quantization.quantization_type == QuantizationType.AQT:
-      self.create_tensor_quantizers()
-
-    if self.quantization.weight_params.use_step_count:
-      step_count_pc = WeightHParams(
-          shape=[],
-          init=WeightInit.Constant(0),
-          dtype=jnp.int32,
-      )
-      self.create_variable('step_count', step_count_pc, trainable=False)
 
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
   # attentions.

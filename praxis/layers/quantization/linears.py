@@ -73,51 +73,9 @@ class Linear(linears.Linear):
         mesh_shape=self.mesh_shape,
         tensor_split_dims_mapping=wp.wt,
     )
-    dtype = self.quantization.weight_params.dtype
-    if self.quantization.mode == QuantizationMode.INFERENCE:
-      if (
-          self.quantization.weight_params.precision == 4
-          and self.quantization.weight_params.use_int4_packed_weights
-      ):
-        pc.shape = utils.get_packed_shape(
-            pc.shape, self._PACK_4BIT_DIM, packing_factor=8
-        )
-        dtype = jnp.int32  # It will be used for storing 8 4bit values.
-      if self._do_static_activation_quantization():
-        raise NotImplementedError(
-            'Static activation quantization is not supported yet.'
-        )
-        # Additionally add activation scale.
-      self.create_quantized_variable(
-          'w',
-          pc,
-          [self.output_dims],
-          dtype=dtype,
-          use_symmetric=self.quantization.weight_params.use_symmetric,
-      )
-    elif self.quantization.mode == QuantizationMode.TRAINING:
-      # TODO(jihwanlee): Now, having many different branches and non-unified
-      # quantization logic between PTQ, FQ, and AQT, the overall code is quite
-      # complex. DO simplify.
-      if self._do_static_activation_quantization():
-        raise NotImplementedError(
-            'Static activation quantization is not supported yet.'
-        )
-        # Additionally add mutable tensor to record activation range.
-      self.create_variable('w', pc)
-    else:
-      self.create_variable('w', pc)
-
-    if self.quantization.quantization_type == QuantizationType.AQT:
-      self.create_tensor_quantizers()
-
-    if self.quantization.weight_params.use_step_count:
-      step_count_pc = WeightHParams(
-          shape=[],
-          init=WeightInit.Constant(0),
-          dtype=jnp.int32,
-      )
-      self.create_variable('step_count', step_count_pc, trainable=False)
+    quantizer.set_up_weights(
+        self, 'w', pc, [self.output_dims], self._PACK_4BIT_DIM
+    )
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Apply projection to inputs.
