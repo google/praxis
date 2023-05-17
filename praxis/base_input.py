@@ -1010,7 +1010,13 @@ class BaseInputSpecsProvider(
 
   @abc.abstractmethod
   def get_input_specs(self) -> NestedShapeDtypeStruct:
-    """Returns example input specs for model initialization."""
+    """Returns example per-process/device input specs for model initialization.
+
+    Batch size is per-process for pjit, and per-device for pmap.
+
+    In the case of pjit models, it is an *unpadded* batch size. Padding is used
+    to ensure each device is fed identically-sized tensors within Pax.
+    """
 
 
 class DatasetInputSpecsProvider(BaseInputSpecsProvider):
