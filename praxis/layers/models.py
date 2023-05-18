@@ -98,10 +98,10 @@ def compute_xent_loss_helper(
       example weights from the input `eval_sample_weights` or not. When enabled,
       these per-example weights will be merged with the per token
       `input_batch.weights`.
-    report_strict_acc: Whether to report strict accuracy. In general, this requires 
-      the entire portion of the sequence with nonzero weight be predicted correctly.
-      Frequently used for eval on the Lambada dataset, in which case this metric is 
-      equivalent to full-word matching. 
+    report_strict_acc: Whether to report strict accuracy. In general,
+      this requires the entire portion of the sequence with nonzero weight
+      be predicted correctly. Frequently used for eval on the Lambada dataset,
+      in which case this metric is equivalent to full-word matching.
 
   Returns:
     - A dict or NestedMap containing str keys and (value, weight) pairs as
@@ -152,7 +152,7 @@ def compute_xent_loss_helper(
                        /jnp.maximum(num_nonpadding, 1))
     strict_weight = jnp.array(num_nonpadding, predictions.avg_xent.dtype)
 
-    metrics.acc_strict=(mean_acc_strict, strict_weight)
+    metrics.acc_strict = (mean_acc_strict, strict_weight)
 
   # The score for the sequence is the negative of the sum of per token cross
   # entropy, which is the (weighted) sum of log probs on the tokens.
@@ -764,7 +764,7 @@ class SequenceModel(base_model.BaseModel):
       predictions is more expensive, but may be useful for debugging.
     decoder_tpl: Parameterization of the decoder.
     label_smoothing_prob: If > 0.0, smooth out one-hot prob by spreading this
-      amount ofprob mass to all other tokens.
+      amount of prob mass to all other tokens.
   """
   model_tpl: LayerTpl = template_field(
       transformer_models.TransformerEncoderDecoder
