@@ -47,8 +47,8 @@ class OneHeadedAttentionProjection(
   """
 
   quantization: QuantizationParams = pax_fiddle.instance_field(
-        QuantizationParams
-    )
+      QuantizationParams
+  )
   _PACK_4BIT_DIM = 0
 
   def create_tensor_quantizers(self):
