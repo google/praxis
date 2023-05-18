@@ -80,7 +80,9 @@ class OneHeadedAttentionProjection(
     pc = WeightHParams(
         shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
     )
-    quantizer.set_up_weights(self, 'w', pc, [self.output_dim], self._PACK_4BIT_DIM)
+    quantizer.set_up_weights(
+        self, 'w', pc, [self.output_dim], self._PACK_4BIT_DIM
+    )
     if self.use_bias:
       if self.mesh_shape is not None:
         bias_split_dims_mapping = [wp.wt[1]]
