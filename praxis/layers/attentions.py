@@ -1393,6 +1393,10 @@ class DotProductAttention(base_layer.BaseLayer):
       asserts.in_set(relative_bias.shape[0], [b, 1])
       relative_bias = jnp.squeeze(relative_bias, axis=2)
       logits += relative_bias
+
+    if self.scale_logits_by_head_dims:
+      logits = jnp.multiply(logits, 1.0/np.sqrt(h))
+
     logits = self._cap_logits(logits)
     # Attention softmax is always carried out in fp32.
     logits = logits.astype(jnp.float32)

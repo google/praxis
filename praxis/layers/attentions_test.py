@@ -1914,7 +1914,7 @@ class AttentionsTest(test_utils.TestCase):
 
     key = np.reshape(np.identity(2), (1, 2, 2))
     query = np.reshape(np.identity(2), (1, 2, 2))
-    value = np.ones((1, 2, 2))
+    value = np.reshape(np.identity(2), (1, 2, 2))
     mask = np.reshape(np.zeros((2,)), (1, 1, 1, 2))
 
     params = py_utils.NestedMap.FromNestedDict(
@@ -1941,16 +1941,41 @@ class AttentionsTest(test_utils.TestCase):
         }
     )
 
-    _, probs = layer.apply(params, key, query, value, mask)
-
+    encoded, probs = layer.apply(params, query, key, value, mask)
     # Without scaling, result is:
     #   [[[[0.79244286, 0.20755713],
     #      [0.20755713, 0.79244286]]]]
-    expected = np.array(
+    expected_probs = np.array(
         [[[[0.72057605, 0.27942392], [0.27942392, 0.72057605]]]]
     )
+    self.assertAllClose(probs, expected_probs)
 
-    self.assertAllClose(probs, expected)
+    # Apply __call__ at the first time step to initialize the decoder state.
+    (encoded_0, probs_0), updated_vars = layer.apply(
+        params,
+        np.expand_dims(query[:, 0], axis=1),
+        key,
+        value,
+        mask,
+        mutable=[base_layer.DECODE_CACHE],
+    )
+    self.assertAllClose(encoded_0, np.expand_dims(encoded[:, 0], axis=1))
+    self.assertAllClose(
+        probs_0, np.expand_dims(expected_probs[:, :, 0], axis=2)
+    )
+    updated_vars = py_utils.merge_dict(updated_vars, params)
+    # Apply extend_step at the second time step.
+    encoded_1, _ = layer.apply(
+        updated_vars,
+        query[:, 1],
+        atten_mask=np.squeeze(mask, axis=2),
+        time_step=1,
+        segment_pos=None,
+        is_cross_attention=True,
+        method=layer.extend_step,
+        mutable=[base_layer.DECODE_CACHE],
+    )
+    self.assertAllClose(encoded_1, encoded[:, 1])
 
 
 if __name__ == '__main__':
