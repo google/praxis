@@ -91,6 +91,92 @@ def set_up_weights(
     )
     layer.create_variable('step_count', step_count_pc, trainable=False)
 
+
+def quantized_einsum(
+    layer: base_layer.BaseLayer,
+    eqn: str,
+    x: JTensor,
+    pack_dim: int,
+    reshape: list[int],
+    ) -> JTensor:
+  """Quantized Einsum for inference and training."""
+
+  # Optionally create step count.
+  step_count = None
+  if layer.quantization.weight_params.use_step_count:
+    step_count = layer.get_var('step_count')
+    if not layer.do_eval:
+      layer.update_var('step_count', step_count + 1)
+    layer.add_summary('step_count', step_count)
+
+  if layer.quantization.mode == QuantizationMode.INFERENCE:
+    # PTQ, QAT has the same inference graph, only difference is on activation.
+    # No matter which quantization type is used, the weight and scale
+    # dimensions are the same for all types.
+    # Note: lower-bit types are not reflected during inference for now due to
+    # b/259306620.
+    w, s, zp = layer.get_quantized_weight(
+        'w', use_symmetric=layer.quantization.weight_params.use_symmetric
+    )
+    if (
+        layer.quantization.weight_params.precision == 4
+        and layer.quantization.weight_params.use_int4_packed_weights
+    ):
+      w = utils.unpack_4bit(
+          w, pack_dim, layer.quantization.weight_params.dtype
+      )
+    if do_static_activation_quantization(layer.quantization.act_params):
+      raise NotImplementedError(
+          'Static activation quantization is not supported yet.'
+      )
+    elif layer.quantization.act_params is not None:
+      x, act_scale = operations.reduce_precision_activation(x)
+      s = jnp.multiply(jnp.squeeze(act_scale), s)
+    out = operations.einsum(eqn, x, w, s, zp)
+    return out
+  else:
+    w = layer.theta.w
+    if reshape:
+      w = jnp.reshape(w, reshape)
+
+    if layer.quantization.quantization_type == QuantizationType.AQT:
+      out = operations.aqt_einsum(
+          eqn,
+          x,
+          w,
+          lhs_quantizer=layer.act_quantizer,
+          rhs_quantizer=layer.weight_quantizer,
+      )
+      return out
+    elif layer.quantization.quantization_type == QuantizationType.FQ:
+      if layer.quantization.act_params is not None:
+        x = operations.fakequant_activation(x)
+      w = operations.fakequant_einsum(
+          eqn,
+          w,
+          bits=layer.quantization.weight_params.precision,
+          use_symmetric=layer.quantization.weight_params.use_symmetric,
+          calculation_type=layer.quantization.weight_params.calculation_dtype,
+      )
+      out = jnp.einsum(eqn, x, w)
+      return out
+    elif layer.quantization.quantization_type == QuantizationType.FQ_VN:
+      w = operations.fakequant_vn(
+          eqn,
+          w,
+          layer.next_prng_key(),
+          layer.quantization.weight_params,
+          step_count,
+          layer.do_eval,
+          bits=layer.quantization.weight_params.precision,
+          use_symmetric=layer.quantization.weight_params.use_symmetric,
+      )
+      out = jnp.einsum(eqn, x, w)
+      return out
+    # Fall back to regular einsum.
+    return jnp.einsum(eqn, x, w)
+
+
 def do_static_activation_quantization(act_params) -> bool:
   return act_params is not None and act_params.stats_config is not None
 

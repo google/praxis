@@ -137,11 +137,6 @@ class AttentionProjection(attentions.AttentionProjection):
       otherwise.
     """
     theta = self.theta
-    step_count = None
-    if self.quantization.weight_params.use_step_count:
-      step_count = self.get_var('step_count')
-      if not self.do_eval:
-        self.update_var('step_count', step_count + 1)
 
     # Because tf.einsum is not fully optimized unless all the dimensions are
     # fully specified, we have to avoid using '...' for batch dimensions in the
@@ -153,13 +148,11 @@ class AttentionProjection(attentions.AttentionProjection):
     rank = len(shape)
 
     inputs = self._cast_to_fprop_dtype(inputs)
+    pc_shape = []
     if self.attention_combine_dims:
       pc_shape = [self.input_dim, self.num_heads, self.dim_per_head]
       if self.is_output_projection and self.use_nhd_shape:
         pc_shape = [self.num_heads, self.dim_per_head, self.input_dim]
-      w = jnp.reshape(theta.w, pc_shape)
-    else:
-      w = theta.w
 
     if self.is_output_projection:
       assert shape[-2:] == (self.num_heads, self.dim_per_head)
@@ -172,78 +165,12 @@ class AttentionProjection(attentions.AttentionProjection):
       assert (
           shape[-1] == self.input_dim
       ), f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {self.input_dim}'
-      batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
+      batch_eqn = eqn_sym[: (rank - 1)] if rank else '...'
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
 
-    if self.quantization.mode == QuantizationMode.INFERENCE:
-      # PTQ, QAT has the same inference graph, only difference is on activation.
-      # No matter which quantization type is used, the weight and scale
-      # dimensions are the same for all types.
-      # Note: lower-bit types are not reflected during inference for now due to
-      # b/259306620.
-      w, s, zp = self.get_quantized_weight(
-          'w', use_symmetric=self.quantization.weight_params.use_symmetric
-      )
-      if (
-          self.quantization.weight_params.precision == 4
-          and self.quantization.weight_params.use_int4_packed_weights
-      ):
-        w = utils.unpack_4bit(
-            w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
-        )
-
-      if (
-          self.quantization.act_params is not None
-          and self.quantization.act_params.stats_config is not None
-      ):
-        raise NotImplementedError(
-            'Static activation quantization is not supported yet.'
-        )
-      elif (
-          self.quantization.act_params is not None
-          and self.quantization.act_params.stats_config is None
-      ):
-        inputs, act_scale = operations.reduce_precision_activation(inputs)
-        ret = operations.einsum(
-            eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
-        )
-      elif self.quantization.act_params is None:
-        ret = operations.einsum(eqn, inputs, w, s, zp)
-
-    else:
-      if self.quantization.quantization_type == QuantizationType.AQT:
-        ret = operations.aqt_einsum(
-            eqn=eqn,
-            lhs=inputs,
-            rhs=w,
-            lhs_quantizer=self.act_quantizer,
-            rhs_quantizer=self.weight_quantizer,
-        )
-      elif self.quantization.quantization_type == QuantizationType.FQ:
-        if self.quantization.act_params is not None:
-          inputs = operations.fakequant_activation(inputs)
-        w = operations.fakequant_einsum(
-            eqn,
-            w,
-            bits=self.quantization.weight_params.precision,
-            use_symmetric=self.quantization.weight_params.use_symmetric,
-            calculation_type=self.quantization.weight_params.calculation_dtype,
-        )
-        ret = jnp.einsum(eqn, inputs, w)
-      elif self.quantization.quantization_type == QuantizationType.FQ_VN:
-        w = operations.fakequant_vn(
-            eqn,
-            w,
-            self.next_prng_key(),
-            self.quantization.weight_params,
-            step_count,
-            self.do_eval,
-            bits=self.quantization.weight_params.precision,
-            use_symmetric=self.quantization.weight_params.use_symmetric,
-        )
-        ret = jnp.einsum(eqn, inputs, w)
-      elif self.quantization.quantization_type == QuantizationType.PTQ:
-        ret = jnp.einsum(eqn, inputs, w)
+    ret = quantizer.quantized_einsum(
+        self, eqn, inputs, self._PACK_4BIT_DIM, pc_shape
+    )
 
     if self.use_bias:
       ret += theta.b

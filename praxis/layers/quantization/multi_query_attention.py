@@ -114,36 +114,7 @@ class OneHeadedAttentionProjection(
         shape[-1] == self.input_dim
     ), f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {self.input_dim}'
     eqn = '...D,DH->...H'
-    if self.quantization.mode == QuantizationMode.INFERENCE:
-      w, s, zp = self.get_quantized_weight(
-          'w', use_symmetric=self.quantization.weight_params.use_symmetric
-      )
-      if (
-          self.quantization.weight_params.precision == 4
-          and self.quantization.weight_params.use_int4_packed_weights
-      ):
-        w = utils.unpack_4bit(
-            w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
-        )
-      ret = operations.einsum(eqn, inputs, w, s, zp)
-    else:
-      w = theta.w
-      if self.quantization.quantization_type == QuantizationType.AQT:
-        ret = operations.aqt_einsum(
-            eqn=eqn,
-            lhs=inputs,
-            rhs=w,
-            lhs_quantizer=self.act_quantizer,
-            rhs_quantizer=self.weight_quantizer,
-        )
-      elif self.quantization.quantization_type == QuantizationType.PTQ:
-        ret = jnp.einsum(eqn, inputs, w)
-      else:
-        raise ValueError(
-            'Unsupported quantization_type'
-            f' {self.quantization.quantization_type} in quantized'
-            ' multi_query_attention.'
-        )
+    ret = quantizer.quantized_einsum(self, eqn, inputs, self._PACK_4BIT_DIM, [])
     if self.use_bias:
       ret += theta.b
     return ret

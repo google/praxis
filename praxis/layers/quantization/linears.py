@@ -86,74 +86,10 @@ class Linear(linears.Linear):
     Returns:
       Projected inputs.
     """
-    step_count = None
-    if self.quantization.weight_params.use_step_count:
-      step_count = self.get_var('step_count')
-      if not self.do_eval:
-        self.update_var('step_count', step_count + 1)
-      self.add_summary('step_count', step_count)
 
     ap = self.activation_split_dims_mapping
     eqn = '...y,yz->...z'
-    if self.quantization.mode == QuantizationMode.INFERENCE:
-      # PTQ, QAT has the same inference graph, only difference is on activation.
-      # No matter which quantization type is used, the weight and scale
-      # dimensions are the same for all types.
-      # Note: lower-bit types are not reflected during inference for now due to
-      # b/259306620.
-      w, s, zp = self.get_quantized_weight(
-          'w', use_symmetric=self.quantization.weight_params.use_symmetric
-      )
-      if (
-          self.quantization.weight_params.precision == 4
-          and self.quantization.weight_params.use_int4_packed_weights
-      ):
-        w = utils.unpack_4bit(
-            w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
-        )
-      if self._do_static_activation_quantization():
-        raise NotImplementedError(
-            'Static activation quantization is not supported yet.'
-        )
-      elif self.quantization.act_params is not None:
-        inputs, act_scale = operations.reduce_precision_activation(inputs)
-        s = jnp.multiply(jnp.squeeze(act_scale), s)
-      out = operations.einsum(eqn, inputs, w, s, zp)
-    else:
-      w = self.theta.w
-      if self.quantization.quantization_type == QuantizationType.AQT:
-        out = operations.aqt_einsum(
-            eqn,
-            inputs,
-            w,
-            lhs_quantizer=self.act_quantizer,
-            rhs_quantizer=self.weight_quantizer,
-        )
-      elif self.quantization.quantization_type == QuantizationType.FQ:
-        if self.quantization.act_params is not None:
-          inputs = operations.fakequant_activation(inputs)
-        w = operations.fakequant_einsum(
-            eqn,
-            w,
-            bits=self.quantization.weight_params.precision,
-            use_symmetric=self.quantization.weight_params.use_symmetric,
-            calculation_type=self.quantization.weight_params.calculation_dtype,
-        )
-        out = linears.project_last_dim(inputs, w)
-      elif self.quantization.quantization_type == QuantizationType.FQ_VN:
-        w = operations.fakequant_vn(
-            eqn,
-            w,
-            self.next_prng_key(),
-            self.quantization.weight_params,
-            step_count,
-            self.do_eval,
-            bits=self.quantization.weight_params.precision,
-            use_symmetric=self.quantization.weight_params.use_symmetric,
-        )
-        out = linears.project_last_dim(inputs, w)
-      else:
-        out = linears.project_last_dim(inputs, w)
+    out = quantizer.quantized_einsum(self, eqn, inputs, self._PACK_4BIT_DIM, [])
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
     ap_out = ap.out
