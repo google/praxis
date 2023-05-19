@@ -1752,9 +1752,8 @@ class StackedTransformer(base_layer.BaseLayer):
     if self.use_cross_attention:
       assert cross_paddings is not None
 
+    max_t = self.x_layers[0].decoding_sequence_length()
     if atten_mask is None:
-      max_t = self.x_layers[0].decoding_sequence_length()
-
       if segment_pos is None:
         segment_mask = None
       else:
@@ -1776,18 +1775,21 @@ class StackedTransformer(base_layer.BaseLayer):
         )
         # [B, 1, T]
         segment_mask = jnp.squeeze(segment_mask, 1)
-
       attention_mask, cross_attention_mask = (
           compute_attention_masks_for_extend_step(time_step, max_t,
                                                   segment_mask, cross_paddings,
                                                   cross_segment_mask))
-    else:
-      if self.use_cross_attention:
-        raise NotImplementedError('cross attention does not support customized '
-                                  'attention_mask passed in yet.')
 
+    else:
+      # Custom attention is assumed to have handled all padding, causality,
+      # and segment masking already and can be used as is.
       attention_mask = atten_mask
-      cross_attention_mask = None
+      _, cross_attention_mask = compute_attention_masks_for_extend_step(
+          jnp.asarray(0, dtype=jnp.uint32),
+          max_t,
+          None,
+          cross_paddings,
+          cross_segment_mask)
 
     decoder_input = inputs
     for layer in self.x_layers:

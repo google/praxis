@@ -993,12 +993,15 @@ class TransformersTest(test_utils.TestCase):
 
     self.assertAllClose(outputs_1, outputs_2, atol=1e-5)
 
-  @parameterized.parameters(*list(itertools.product([True, False], repeat=5)))
+  @parameterized.parameters(*list(itertools.product([True, False], repeat=6)))
   def test_stacked_transformer_layer_extendstep(self, packed_input,
                                                 cross_attention, combine_qkv,
                                                 dconv_qkv,
-                                                use_rotary_position_emb):
+                                                use_rotary_position_emb,
+                                                use_custom_attention):
     if cross_attention and combine_qkv:
+      self.skipTest('combine_qkv optimization only works for self-attention.')
+    if use_custom_attention and combine_qkv:
       self.skipTest('combine_qkv optimization only works for self-attention.')
     layer_params = pax_fiddle.Config(transformers.StackedTransformer)
 
@@ -1009,14 +1012,17 @@ class TransformersTest(test_utils.TestCase):
         model_dims=model_dims,
         hidden_dims=32,
         num_heads=2,
-        mask_self_attention=True,
+        mask_self_attention=not use_custom_attention,
         packed_input=packed_input,
         use_cross_attention=cross_attention,
-        num_layers=num_layers)
+        num_layers=num_layers,
+        fold_padding_with_segment_mask=use_custom_attention)
     p.transformer_layer_params_tpl.tr_atten_tpl.combine_qkv = combine_qkv
     p.transformer_layer_params_tpl.tr_atten_tpl.dconv_qkv = dconv_qkv
     p.transformer_layer_params_tpl.tr_atten_tpl.use_rotary_position_emb = (
         use_rotary_position_emb)
+    p.transformer_layer_params_tpl.tr_atten_tpl.zero_fully_masked = (
+        use_custom_attention)
     if cross_attention:
       p.transformer_layer_params_tpl.cross_atten_tpl = copy.deepcopy(
           p.transformer_layer_params_tpl.tr_atten_tpl)
@@ -1073,32 +1079,53 @@ class TransformersTest(test_utils.TestCase):
         cross_segment_mask = attentions.segment_mask(
             segment_ids, source_segment_ids, dtype=np.float32)
 
+    if use_custom_attention:
+      custom_attention_mask = jnp.asarray(
+          np.random.randint(0, 2, [batch_size, 1, seq_len, seq_len]).astype(
+              'float32'
+          )
+      ) * py_utils.get_large_negative_number('float32')
+      custom_attention_mask = jnp.minimum(
+          custom_attention_mask, attentions.convert_paddings_to_mask(paddings)
+      )
+      fprop_paddings = jnp.zeros_like(paddings, dtype=jnp.float32)
+      custom_attention_mask = jnp.minimum(
+          custom_attention_mask, attentions.causal_mask(inputs)
+      )
+      if segment_mask is not None:
+        custom_attention_mask = jnp.minimum(segment_mask, custom_attention_mask)
+      fprop_segment_mask = custom_attention_mask
+    else:
+      fprop_paddings = paddings
+      fprop_segment_mask = segment_mask
+      custom_attention_mask = None
+
     prng_key = jax.random.PRNGKey(seed=123)
     with base_layer.JaxContext.new_context():
       repeat_transformer_layer = instantiate(p)
       initial_vars = repeat_transformer_layer.init(
           prng_key,
           inputs,
-          paddings,
+          fprop_paddings,
           segment_pos=segment_pos,
-          segment_mask=segment_mask,
+          segment_mask=fprop_segment_mask,
           cross_inputs=cross_inputs,
           cross_paddings=cross_paddings,
           cross_segment_mask=cross_segment_mask)
       fprop_outputs = repeat_transformer_layer.apply(
           initial_vars,
           inputs,
-          paddings,
+          fprop_paddings,
           segment_pos=segment_pos,
-          segment_mask=segment_mask,
+          segment_mask=fprop_segment_mask,
           cross_inputs=cross_inputs,
           cross_paddings=cross_paddings,
           cross_segment_mask=cross_segment_mask)
       _, decoder_state = repeat_transformer_layer.apply(
           initial_vars,
           jnp.zeros_like(inputs),
-          jnp.ones_like(paddings),
-          segment_mask=segment_mask,
+          jnp.ones_like(fprop_paddings),
+          segment_mask=fprop_segment_mask,
           cross_inputs=cross_inputs,
           cross_paddings=cross_paddings,
           cross_segment_mask=cross_segment_mask,
@@ -1113,11 +1140,16 @@ class TransformersTest(test_utils.TestCase):
           segment_pos_t = segment_pos[:, t]
         if cross_segment_mask is not None:
           cross_segment_mask_t = cross_segment_mask[:, :, t, :]
+        if custom_attention_mask is not None:
+          custom_attention_mask_t = custom_attention_mask[:, :, t, :]
+        else:
+          custom_attention_mask_t = None
         encoded, decoder_state = repeat_transformer_layer.apply(
             updated_vars,
             inputs=inputs[:, t, :],
             time_step=t,
             segment_pos=segment_pos_t,
+            atten_mask=custom_attention_mask_t,
             cross_paddings=cross_paddings,
             cross_segment_mask=cross_segment_mask_t,
             method=repeat_transformer_layer.extend_step,
