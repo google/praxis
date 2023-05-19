@@ -34,6 +34,16 @@ GlobalBeam = Tuple[
     JTensor,  # float[batch_size, beam_size] Complete sequence scores
     JTensor,  # float[batch_size, beam_size, seq_len] Per-step log-probs
 ]
+ComputeLogprobsFn = Callable[
+    [
+        JTensor,  # float[batch_size * beam_size, vocab_size] logits
+        base_layer.BaseLayerApi,  # model
+        JTensor,  # int[batch_size * beam_size] extend_ids
+        JTensor,  # int[batch_size * beam_size] segment_pos
+        NestedMap,  # decode_loop_state
+    ],
+    JTensor,  # float[batch_size * beam_size, vocab_size] logprobs
+]
 
 
 def update_global_beam(
@@ -105,6 +115,18 @@ def broadcast_beam_dim(x: JTensor, beam_dim: int, beam_size: int) -> JTensor:
       jnp.expand_dims(x, beam_dim), repeats=beam_size, axis=beam_dim)
 
 
+def default_compute_logprobs_fn(
+    logits: JTensor,
+    model: base_layer.BaseLayerApi,
+    extend_ids: JTensor,
+    segment_pos: JTensor,
+    decode_loop_state: NestedMap,
+) -> JTensor:
+  """Default `ComputeLogprobsFn` that calls log_softmax()."""
+  del model, extend_ids, segment_pos, decode_loop_state
+  return jax.nn.log_softmax(logits)
+
+
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def beam_search(
     model: base_layer.BaseLayerApi,
@@ -116,6 +138,7 @@ def beam_search(
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
     beam_search_hparams: BeamSearchHParams,
+    compute_logprobs_fn: ComputeLogprobsFn = default_compute_logprobs_fn,
     decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
     model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
     process_result_fn: Optional[decoder_utils.ProcessResultFn] = None,
@@ -138,6 +161,7 @@ def beam_search(
     prefix_paddings: The token paddings that correspond to the prefix sequence,
       with shape [batch_size, prefix_sequence_length].
     beam_search_hparams: Beam search hyper parameters.
+    compute_logprobs_fn: Computes log-probabilities from logits.
     decode_loop_mesh_axes_transpose: Optional mesh transpose for decoding loop.
     model_var_pspecs: needed if decode_loop_mesh_axes_transpose is provided.
     process_result_fn: Optional function that further processes the results,
@@ -171,6 +195,7 @@ def beam_search(
         prefix_ids,
         prefix_paddings,
         beam_search_hparams,
+        compute_logprobs_fn,
     )
     if process_result_fn is not None:
       result = process_result_fn(model, result)
@@ -187,6 +212,7 @@ def beam_search_after_prefix_fprop(
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
     beam_search_hparams: BeamSearchHParams,
+    compute_logprobs_fn: ComputeLogprobsFn = default_compute_logprobs_fn,
 ) -> NestedMap:
   """Same as beam_search but this is after prefix fprop."""
   # TODO(b/229679837): Move right align prefix ids and paddings logic inside
@@ -274,8 +300,10 @@ def beam_search_after_prefix_fprop(
     step = val.step
     extend_ids = jnp.reshape(val.output_ids[:, :, step], (-1,))
     logits = expanded_extend_step_fn(model, extend_ids, val.segment_pos, val)
-    logits = jnp.reshape(logits, (batch_size, beam_size, -1))
-    logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
+    logprobs = compute_logprobs_fn(
+        logits.astype(jnp.float32), model, extend_ids, val.segment_pos, val
+    )
+    logprobs = jnp.reshape(logprobs, (batch_size, beam_size, -1))
     # Select the best ids with terminal tokens.
     eos_scores = jnp.ones_like(val.hyp_scores) * -1e9
     new_end_ids = val.output_ids

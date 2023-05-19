@@ -33,7 +33,7 @@ ExtendStepFn = Callable[[base_layer.BaseLayerApi, JTensor, JTensor], JTensor]
 ExpandedExtendStepFn = Callable[
     [
         base_layer.BaseLayerApi,  # model
-        JTensor,  # int[batch_size] or int[batch_size, beam_size] extend_ids
+        JTensor,  # int[batch_size] or int[batch_size * beam_size] extend_ids
         JTensor,  # int[batch_size] or int[batch_size * beam_size] segment_pos
         NestedMap,  # decode_loop_state
     ],
