@@ -64,6 +64,11 @@ class Linear(linears.Linear):
           or self.sparsity.mode == SparsityMode.FEWSHOT
       ):
         self.create_variable('mask_update_count', count_pc, trainable=False)
+        # A counter that gets incremented on every fprop.
+        global_step_count_pc = WeightHParams(
+            shape=[], init=WeightInit.Constant(0), dtype=jnp.int32)
+        self.create_variable(
+            'global_step_count', global_step_count_pc, trainable=False)
 
   def _update_mask(self, weight):
     return sparsity.get_sparsity_mask(
@@ -72,7 +77,7 @@ class Linear(linears.Linear):
         m_sparsity=self.sparsity.weight_params.prune_rate[1],
     )
 
-  def _maybe_update_mask(self, update_count, weight, mask):
+  def _maybe_update_mask(self, update_count, weight, mask, global_step_count):
     def _true_fn():
       return self._update_mask(weight), update_count + 1
 
@@ -80,7 +85,12 @@ class Linear(linears.Linear):
       return mask, update_count
 
     return jax.lax.cond(
-        update_count < self.sparsity.num_shots, _true_fn, _false_fn
+        jnp.logical_and(
+            update_count < self.sparsity.num_shots,
+            jnp.mod(global_step_count, self.sparsity.mask_update_interval) == 0,
+        ),
+        _true_fn,
+        _false_fn,
     )
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -106,8 +116,11 @@ class Linear(linears.Linear):
             self.sparsity.mode == SparsityMode.ONESHOT
             or self.sparsity.mode == SparsityMode.FEWSHOT
         ):
+          # Update global step
+          global_step_count = self.get_var('global_step_count')
+          self.update_var('global_step_count', global_step_count + 1)
           up_cnt = self.get_var('mask_update_count')
-          m, up_cnt = self._maybe_update_mask(up_cnt, w, m)
+          m, up_cnt = self._maybe_update_mask(up_cnt, w, m, global_step_count)
           self.update_var('mask_update_count', up_cnt)
         else:
           m = self._update_mask(w)

@@ -114,6 +114,12 @@ class AttentionProjection(attentions.AttentionProjection):
           or self.sparsity.mode == SparsityMode.FEWSHOT
       ):
         self.create_variable('mask_update_count', count_pc, trainable=False)
+        # A counter that gets incremented on every fprop.
+        global_step_count_pc = WeightHParams(
+            shape=[], init=WeightInit.Constant(0), dtype=jnp.int32)
+        self.create_variable(
+            'global_step_count', global_step_count_pc, trainable=False)
+
     if self.use_bias:
       if self.is_output_projection:
         if has_sharding:
@@ -146,7 +152,7 @@ class AttentionProjection(attentions.AttentionProjection):
         m_sparsity=self.sparsity.weight_params.prune_rate[1],  # pytype: disable=attribute-error
     )
 
-  def _maybe_update_mask(self, update_count, weight, mask):
+  def _maybe_update_mask(self, update_count, weight, mask, global_step_count):
     def _true_fn():
       return self._update_mask(weight), update_count + 1
 
@@ -154,7 +160,12 @@ class AttentionProjection(attentions.AttentionProjection):
       return mask, update_count
 
     return jax.lax.cond(
-        update_count < self.sparsity.num_shots, _true_fn, _false_fn
+        jnp.logical_and(
+            update_count < self.sparsity.num_shots,
+            jnp.mod(global_step_count, self.sparsity.mask_update_interval) == 0,
+        ),
+        _true_fn,
+        _false_fn,
     )
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -214,8 +225,11 @@ class AttentionProjection(attentions.AttentionProjection):
             self.sparsity.mode == SparsityMode.ONESHOT
             or self.sparsity.mode == SparsityMode.FEWSHOT
         ):
+          # Update global step
+          global_step_count = self.get_var('global_step_count')
+          self.update_var('global_step_count', global_step_count + 1)
           up_cnt = self.get_var('mask_update_count')
-          m, up_cnt = self._maybe_update_mask(up_cnt, w, m)
+          m, up_cnt = self._maybe_update_mask(up_cnt, w, m, global_step_count)
           self.update_var('mask_update_count', up_cnt)
         else:
           m = self._update_mask(w)
@@ -306,6 +320,12 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
           or self.sparsity.mode == SparsityMode.FEWSHOT
       ):
         self.create_variable('mask_update_count', count_pc, trainable=False)
+        # A counter that gets incremented on every fprop.
+        global_step_count_pc = WeightHParams(
+            shape=[], init=WeightInit.Constant(0), dtype=jnp.int32)
+        self.create_variable(
+            'global_step_count', global_step_count_pc, trainable=False)
+
     if self.use_bias:
       # Combined bias weight for q, k, v projections.
       pc_bias = WeightHParams(
@@ -323,7 +343,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
         m_sparsity=self.sparsity.weight_params.prune_rate[1],  # pytype: disable=attribute-error
     )
 
-  def _maybe_update_mask(self, update_count, weight, mask):
+  def _maybe_update_mask(self, update_count, weight, mask, global_step_count):
     def _true_fn():
       return self._update_mask(weight), update_count + 1
 
@@ -331,7 +351,12 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       return mask, update_count
 
     return jax.lax.cond(
-        update_count < self.sparsity.num_shots, _true_fn, _false_fn
+        jnp.logical_and(
+            update_count < self.sparsity.num_shots,
+            jnp.mod(global_step_count, self.sparsity.mask_update_interval) == 0,
+        ),
+        _true_fn,
+        _false_fn,
     )
 
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
@@ -387,8 +412,11 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             self.sparsity.mode == SparsityMode.ONESHOT
             or self.sparsity.mode == SparsityMode.FEWSHOT
         ):
+          # Update global step
+          global_step_count = self.get_var('global_step_count')
+          self.update_var('global_step_count', global_step_count + 1)
           up_cnt = self.get_var('mask_update_count')
-          m, up_cnt = self._maybe_update_mask(up_cnt, w, m)
+          m, up_cnt = self._maybe_update_mask(up_cnt, w, m, global_step_count)
           self.update_var('mask_update_count', up_cnt)
         else:
           m = self._update_mask(w)

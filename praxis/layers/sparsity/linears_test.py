@@ -108,6 +108,79 @@ class SparseLinearTest(test_utils.TestCase):
           outputs, jnp.array([[-8.0, 1.0, 1.0, -2.0], [-18.0, 1.0, 11.0, 18.0]])
       )
 
+  def test_few_shot_with_mask_update_interval(self):
+    p = pax_fiddle.Config(
+        slinears.Linear,
+        name='_linear',
+        input_dims=4,
+        output_dims=4,
+        sparsity=SparsityHParams(
+            sparsity_type=SparsityType.STRUCTURED_NM,
+            weight_params=WeightSparsityParams(prune_rate=(2, 4)),
+            mode=SparsityMode.FEWSHOT,
+            num_shots=2,
+            mask_update_interval=2,  # Update mask every 2 steps
+        ),
+    )
+    linear = instantiate(p)
+    inputs = jnp.array([[1, 2, 3, 4], [6, 7, 8, 9]], dtype=p.dtype)
+    weights = jnp.array([
+        [1, 2, 3, 4],
+        [-3, -4, 1, 2],
+        [3, 1, -4, 2],
+        [-3, 1, 2, -4],
+    ])
+    # Init and Step 0
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = linear.init(prng_key, inputs)
+      initial_vars['params']['w'] = weights
+      self.assertEqual(initial_vars['non_trainable']['global_step_count'], 0)
+      outputs, state = linear.apply(initial_vars, inputs, mutable=True)
+    self.assertEqual(outputs.shape, (2, 4))
+    self.assertArraysEqual(
+        state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        jnp.array([
+            [False, False, True, True],
+            [True, True, False, False],
+            [True, False, True, False],
+            [True, False, False, True],
+        ]),
+    )
+    # Step 1, mask remains unchanged, even if we update weight matrix
+    weights = jnp.array([
+        [1, 2, 3, 4],
+        [1, 2, 3, 4],
+        [3, 1, -4, 2],
+        [-3, 1, 2, -4],
+    ])
+    with base_layer.JaxContext.new_context():
+      state['params']['w'] = weights
+      self.assertEqual(state['non_trainable']['global_step_count'], 1)
+      outputs, state = linear.apply(state, inputs, mutable=True)
+    self.assertArraysEqual(
+        state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        jnp.array([
+            [False, False, True, True],
+            [True, True, False, False],
+            [True, False, True, False],
+            [True, False, False, True],
+        ]),
+    )
+    # Step 2, mask changes
+    with base_layer.JaxContext.new_context():
+      self.assertEqual(state['non_trainable']['global_step_count'], 2)
+      outputs, state = linear.apply(state, inputs, mutable=True)
+    self.assertArraysEqual(
+        state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        jnp.array([
+            [False, False, True, True],
+            [False, False, True, True],
+            [True, False, True, False],
+            [True, False, False, True],
+        ]),
+    )
+
   def test_sparsity_hparams_asserts(self):
     with self.assertRaises(AssertionError):
       SparsityHParams(

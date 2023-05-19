@@ -114,12 +114,19 @@ class SparsityHParams:
 
   Attributes:
     sparsity_type: Defines sparsity types.
+    weight_params: WeightSparsityParams object.
+    mode: Defines sparsity mode.
+    num_shots: Number of shots during pruning. This needs to be set
+      correspondingly to ONESHOT and FEWSHOT mode.
+    mask_update_interval: The step invertal between two mask updates. This is
+      only valide under FEWSHOT mode.
   """
 
   sparsity_type: SparsityType = SparsityType.STRUCTURED_NM
   weight_params: Optional[WeightSparsityParams] = None
   mode: SparsityMode = SparsityMode.INFERENCE
   num_shots: int = 0
+  mask_update_interval: int = 1
 
   def __post_init__(self):
     if (
@@ -153,3 +160,9 @@ class SparsityHParams:
         assert (
             self.num_shots > 1
         ), '`num_shots should be set for FEWSHOT sparse.`'
+
+      # Check mask_update_interval is only set when the mode is FEWSHOT
+      if self.mask_update_interval != 1:
+        assert (
+            self.mode == SparsityMode.FEWSHOT
+        ), 'mask_update_interval only be set for FEWSHOT mode.'
