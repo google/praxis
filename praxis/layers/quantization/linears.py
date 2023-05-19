@@ -52,7 +52,7 @@ class Linear(linears.Linear):
     self.create_child(
         'act_quantizer',
         quantizer.create_tensor_quantizer(
-            'quantizer_quantizer', self.quantization.act_params
+            'act_quantizer', self.quantization.act_params
         ),
     )
     self.create_child(
