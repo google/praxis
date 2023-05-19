@@ -284,7 +284,7 @@ class QuantizationVNTest(test_utils.TestCase):
 
     wp = quantization_hparams.WeightQuantizationParams
     wp.precision = 4
-    wp.use_symmetric = False
+    wp.use_symmetric = True
     wp.vn_scale = 1. / 7
     wp.vn_start_step = 3
     wp.vn_noise_type = 'uniform'

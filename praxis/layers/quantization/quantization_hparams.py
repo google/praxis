@@ -133,9 +133,10 @@ class WeightQuantizationParams:
   use_step_count: bool = False
   use_int4_packed_weights: bool = True
   vn_scale: Optional[float] = None
-  vn_start_step: Optional[int] = None
+  vn_start_step: int = 0
   vn_noise_type: str = 'uniform'
   vn_weight_norm_type: str = 'PerChannelLinf'
+
 
 @dataclasses.dataclass
 class QuantizationParams:

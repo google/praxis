@@ -591,8 +591,8 @@ def fakequant_vn(
     w: JTensor,
     next_prng_key: PRNGKey,
     wp: WeightQuantizationParams,
-    step: JTensor,
-    do_eval: bool,
+    step: Optional[JTensor] = None,
+    do_eval: bool = False,
     bits: int = 8,
     calculation_type: jnp.dtype = jnp.bfloat16,
     use_symmetric: bool = True,
@@ -625,8 +625,12 @@ def fakequant_vn(
   ]:
     raise ValueError('VN parameter must be set.')
 
+  if not use_symmetric:
+    raise ValueError('Asymmetric quantization with VN is not supported yet.')
+
   if do_eval:
     # TODO(rybakov): replace fakequant by native quantization.
+    logging.info('Eval fakequant_vn with quantization')
     return fakequant_einsum(
         eqn,
         w,
@@ -635,6 +639,10 @@ def fakequant_vn(
         use_symmetric=use_symmetric,
     )
   else:
+    if wp.vn_start_step > 0:
+      if step is None:
+        raise ValueError('step can not be None if wp.vn_start_step > 0.')
+
     if wp.vn_noise_type == 'uniform':
       noises = jax.random.uniform(
           next_prng_key, shape=w.shape, minval=-0.5, maxval=0.5, dtype=w.dtype
@@ -645,7 +653,10 @@ def fakequant_vn(
       raise ValueError('Unsupported noise type.')
 
     # During warmup period (defined by vn_start_step) there is no noise addition
-    scale = jax.lax.select(step >= wp.vn_start_step, wp.vn_scale, 0.0)
+    if wp.vn_start_step > 0:
+      scale = jax.lax.select(step >= wp.vn_start_step, wp.vn_scale, 0.0)
+    else:
+      scale = wp.vn_scale
 
     if wp.vn_weight_norm_type == 'L2':
       raise ValueError('Not implemented.')
@@ -660,4 +671,4 @@ def fakequant_vn(
     if wp.stop_scale_gradient:
       scale = jax.lax.stop_gradient(scale)
 
-    return w + scale.astype(w.dtype) * noises
+    return w + scale.astype(w.dtype) * noises  # pytype: disable=attribute-error
