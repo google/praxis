@@ -15,8 +15,6 @@
 
 """Test for quantized Embedding and softmax layers."""
 
-import copy
-
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -37,6 +35,10 @@ QuantizationType = quantization_hparams.QuantizationType
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
 
 
+# TODO(b/283326926): add sync test for all three class of Embedding
+# quantizations.
+
+
 class EmbeddingTest(test_utils.TestCase):
   INPUT_DIMS = 2
   NUM_CLASSES = 3
@@ -51,11 +53,15 @@ class EmbeddingTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(123456)
 
-  @parameterized.named_parameters(('symmetric', True), ('asymmetric', False))
-  def test_quantize(self, use_symmetric):
+  @parameterized.product(
+      use_symmetric=[True, False],
+      quantization_type=[QuantizationType.PTQ, QuantizationType.FQ],
+      quant_mode=[QuantizationMode.MATERIALIZE, QuantizationMode.TRAINING],
+  )
+  def test_quantize(self, use_symmetric, quantization_type, quant_mode):
     quantization_option = QuantizationParams(
-        quantization_type=QuantizationType.PTQ,
-        mode=QuantizationMode.MATERIALIZE,
+        quantization_type=quantization_type,
+        mode=quant_mode,
         weight_params=WeightQuantizationParams(use_symmetric=use_symmetric),
     )
 
@@ -138,11 +144,19 @@ class EmbeddingTest(test_utils.TestCase):
       )
 
   @parameterized.product(
-      use_symmetric=[True, False], lookup_style=['index', 'matmul']
+      quantization_type=[
+          QuantizationType.PTQ,
+          QuantizationType.AQT,
+          QuantizationType.FQ,
+      ],
+      use_symmetric=[True, False],
+      lookup_style=['index', 'matmul'],
   )
-  def test_ptq_quantized(self, use_symmetric, lookup_style):
+  def test_quantized_inference(
+      self, quantization_type, use_symmetric, lookup_style
+  ):
     quantization_option = QuantizationParams(
-        quantization_type=QuantizationType.PTQ,
+        quantization_type=quantization_type,
         mode=QuantizationMode.INFERENCE,
         weight_params=WeightQuantizationParams(use_symmetric=use_symmetric),
     )
@@ -202,6 +216,42 @@ class EmbeddingTest(test_utils.TestCase):
       f_lookup = f_layer.apply(f_initial_vars, inputs)
       self.assertAllClose(q_lookup, f_lookup, rtol=1e-2, atol=1e-2)
 
+  @parameterized.product(
+      symmetric=[True, False],
+      quantization_mode=[
+          QuantizationMode.MATERIALIZE,
+          QuantizationMode.TRAINING,
+      ],
+      lookup_style=['index', 'matmul'],
+  )
+  def test_unsupported_aqt(self, symmetric, quantization_mode, lookup_style):
+    quantization_option = QuantizationParams(
+        quantization_type=QuantizationType.AQT,
+        mode=quantization_mode,
+        weight_params=WeightQuantizationParams(use_symmetric=symmetric),
+    )
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    q_p = pax_fiddle.Config(
+        quantization.Embedding,
+        name='_embedding_q',
+        mesh_axis_names=['replica', 'mdl', 'data'],
+        weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
+            wt=['mdl', 'data']
+        ),
+        quantization=quantization_option,
+        input_dims=self.INPUT_DIMS,
+        num_classes=self.NUM_CLASSES,
+        lookup_style=lookup_style,
+    )
+    q_layer = instantiate(q_p)
+    inputs = np.random.normal(1.5, 2.0, [2, q_p.input_dims]).astype(np.float32)
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        'AQT style quantization is yet not implemented for Embeddings.',
+    ):
+      q_layer.init(prng_key, inputs)
+
 
 class SharedEmbeddingSoftmaxTest(test_utils.TestCase):
   INPUT_DIMS = 2
@@ -218,9 +268,17 @@ class SharedEmbeddingSoftmaxTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.product(
-      use_symmetric=[True, False], lookup_style=['index', 'matmul']
+      quantization_type=[
+          QuantizationType.PTQ,
+          QuantizationType.AQT,
+          QuantizationType.FQ,
+      ],
+      use_symmetric=[True, False],
+      lookup_style=['index', 'matmul'],
   )
-  def test_ptq_quantized(self, use_symmetric, lookup_style):
+  def test_quantized_inference(
+      self, quantization_type, use_symmetric, lookup_style
+  ):
     quantization_option = QuantizationParams(
         quantization_type=QuantizationType.PTQ,
         mode=QuantizationMode.INFERENCE,
@@ -300,6 +358,49 @@ class SharedEmbeddingSoftmaxTest(test_utils.TestCase):
       self.assertAllClose(q_logits, f_logits, rtol=5e-1, atol=5e-2)
       self.assertAllClose(q_lookup, f_lookup, rtol=1e-2, atol=1e-2)
 
+  @parameterized.product(
+      symmetric=[True, False],
+      quantization_mode=[
+          QuantizationMode.MATERIALIZE,
+          QuantizationMode.TRAINING,
+      ],
+      lookup_style=['index', 'matmul'],
+  )
+  def test_unsupported_aqt(self, symmetric, quantization_mode, lookup_style):
+    quantization_option = QuantizationParams(
+        quantization_type=QuantizationType.AQT,
+        mode=quantization_mode,
+        weight_params=WeightQuantizationParams(use_symmetric=symmetric),
+    )
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    q_p = pax_fiddle.Config(
+        quantization.SharedEmbeddingSoftmax,
+        name='_shared_embedding_softmax_q',
+        mesh_axis_names=['replica', 'mdl', 'data'],
+        weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
+            wt=['mdl', 'data']
+        ),
+        quantization=quantization_option,
+        input_dims=self.INPUT_DIMS,
+        num_classes=self.NUM_CLASSES,
+    )
+    q_layer = instantiate(q_p)
+
+    inputs = np.random.normal(1.5, 2.0, [2, q_p.input_dims]).astype(np.float32)
+    class_weights = np.random.normal(1.5, 2.0, [2, 1])
+    class_ids = np.random.randint(1, q_p.num_classes, [2, 1])
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    q_initial_vars = q_layer.init(
+        prng_key, inputs, class_weights, class_ids=class_ids
+    )
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        'AQT style quantization is yet not implemented for embedding layers.',
+    ):
+      q_layer.apply(q_initial_vars, class_ids, method=q_layer.emb_lookup)
+
 
 class NClassMajorSharedEmbeddingSoftmaxTest(test_utils.TestCase):
   INPUT_DIMS = 2
@@ -315,10 +416,13 @@ class NClassMajorSharedEmbeddingSoftmaxTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(123456)
 
-  @parameterized.named_parameters(('symmetric', True), ('asymmetric', False))
-  def test_quantize(self, use_symmetric):
+  @parameterized.product(
+      use_symmetric=[True, False],
+      quantization_type=[QuantizationType.PTQ, QuantizationType.FQ],
+  )
+  def test_quantize(self, use_symmetric, quantization_type):
     quantization_option = QuantizationParams(
-        quantization_type=QuantizationType.PTQ,
+        quantization_type=quantization_type,
         mode=QuantizationMode.MATERIALIZE,
         weight_params=WeightQuantizationParams(use_symmetric=use_symmetric),
     )
@@ -408,12 +512,23 @@ class NClassMajorSharedEmbeddingSoftmaxTest(test_utils.TestCase):
           ),
       )
 
+  # TODO(b/283326926): raise training mode error for
+  # NClassMajorSharedEmbeddingSoftmax.
+
   @parameterized.product(
-      use_symmetric=[True, False], lookup_style=['index', 'matmul']
+      quantization_type=[
+          QuantizationType.PTQ,
+          QuantizationType.AQT,
+          QuantizationType.FQ,
+      ],
+      use_symmetric=[True, False],
+      lookup_style=['index', 'matmul'],
   )
-  def test_ptq_quantized(self, use_symmetric, lookup_style):
+  def test_quantized_inference(
+      self, quantization_type, use_symmetric, lookup_style
+  ):
     quantization_option = QuantizationParams(
-        quantization_type=QuantizationType.PTQ,
+        quantization_type=quantization_type,
         mode=QuantizationMode.INFERENCE,
         weight_params=WeightQuantizationParams(use_symmetric=use_symmetric),
     )

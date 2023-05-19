@@ -76,7 +76,25 @@ class Embedding(embedding_softmax.Embedding):
       )
     else:
       emb_var = self.theta.emb_var
-
+      if self.quantization.quantization_type == QuantizationType.FQ:
+        if self.quantization.act_params is not None:
+          raise NotImplementedError(
+              'Input quantization is not implemented for Embeddings.'
+          )
+        # We compute scale factor per input channel, in contrast to other
+        # places where we compute per output channel.
+        eqn = 'xy,zy->xz'
+        emb_var = quantized_operations.fakequant_einsum(
+            eqn,
+            emb_var,
+            bits=self.quantization.weight_params.precision,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
+            calculation_type=self.quantization.weight_params.calculation_dtype,
+        )
+      elif self.quantization.quantization_type == QuantizationType.AQT:
+        raise NotImplementedError(
+            'AQT style quantization is yet not implemented for Embeddings.'
+        )
     if self.lookup_style == 'index':
       embs = jnp.asarray(emb_var)[(ids,)]
     elif self.lookup_style == 'matmul':
@@ -144,8 +162,12 @@ class Embedding(embedding_softmax.Embedding):
     scale_name = 'emb_var' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     eqn = 'xy,zy->xz'
     bits = self.quantization.weight_params.precision
+    # TODO(b/283327445): raise an error for imcompatible weight_params set.
     percentile = self.quantization.weight_params.clipping_coeff
-
+    if self.quantization.quantization_type == QuantizationType.AQT:
+      raise NotImplementedError(
+          'AQT quantization is not yet supported for Embeddings.'
+      )
     q_w, q_s, zp = quantized_operations.reduce_einsum_weight_precision(
         eqn,
         self.theta.emb_var,
@@ -214,6 +236,31 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
       )
     else:
       emb_var = linear_layer.theta.w
+      if self.quantization.quantization_type == QuantizationType.AQT:
+        raise NotImplementedError(
+            'AQT style quantization is yet not implemented for embedding'
+            ' layers.'
+        )
+      elif self.quantization.quantization_type == QuantizationType.FQ:
+        if self.quantization.act_params is not None:
+          raise ValueError('Input quantization is not supported for Embedding.')
+        # TODO(b/283327622)  Note that we quantize embeddings during FF logit as
+        # well, could this be optimized by getting quantized embeddings from
+        # linear layers instead of recomputing?
+
+        # Note that we compute scale factor  per-row instead of per-column,
+        # in contrast to all other scale factor calculations. This is because
+        # the embedding matrix is shared with the output (logit) layer of the
+        # transformer, in which case the *transpose* of the embedding matrix
+        # is used as the weight matrix.
+        eqn = 'xy,zy->xz'
+        emb_var = quantized_operations.fakequant_einsum(
+            eqn,
+            emb_var,
+            bits=self.quantization.weight_params.precision,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
+            calculation_type=self.quantization.weight_params.calculation_dtype,
+        )
 
     emb_var = jnp.transpose(emb_var)
     if self.lookup_style == 'index':
