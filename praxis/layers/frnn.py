@@ -262,7 +262,8 @@ class LstmFrnn(FRnn):
       inputs: A NestedMap of inputs. 'inputs' must contain two elements, 'act'
         and 'padding', 'act' can be a single tensor, or a list/tuple of tensors,
         all of shape [b, t, dim], and 'padding' are of shape [b, t, 1]. 'inputs'
-        can optionally contain other tensors.
+        can optionally contain other tensors. For example, when 'inputs' is
+        packed, 'segment_ids' which has shape [b, t, 1] is expected.
       state0: If not None, the initial rnn state in a `.NestedMap`. Defaults to
         the cell's zero-state.
 
@@ -278,6 +279,7 @@ class LstmFrnn(FRnn):
       inputs.act = [inputs.act]
 
     if hasattr(inputs, 'segment_ids'):
+      assert self.cell_tpl.reset_cell_state
       batch_size = inputs.segment_ids.shape[0]
       left_padding = jnp.full(
           [batch_size, 1, 1], -1, dtype=inputs.segment_ids.dtype
@@ -348,3 +350,21 @@ class LstmFrnn(FRnn):
     if self.reverse:
       act = jnp.flip(act, axis=[1])
     return act, final_state
+
+  def extend_step(self, inputs: NestedMap,
+                  state0: NestedMap) -> Tuple[NestedMap, JTensor]:
+    """Extends LSTM for one step on 'inputs' from 'state0'.
+
+    Args:
+      inputs: A nestedMap of inputs for one time-step. Must contain two elements
+        'act' and 'padding'. 'act' can be a single tensor or a list of tensors,
+        all of shape [b, inner_dim], 'padding' is a tensor of shape [b, 1].
+      state0: The initial state to extend from.
+
+    Returns:
+      A pair (state1, act), where state1 is the new state, and act is the
+      output for the current time-step.
+    """
+    # Since state0 is explicitly provided, cell state should not be reset.
+    inputs.reset_mask = jnp.ones_like(inputs.padding)
+    return super().extend_step(inputs, state0)

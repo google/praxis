@@ -16,12 +16,12 @@
 """Tests for Praxis rnn_cell layers."""
 
 from absl.testing import absltest
-from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import frnn
@@ -112,7 +112,7 @@ class FRNNTest(test_utils.TestCase):
     frnn_model = instantiate(frnn_p)
 
     state0 = NestedMap(m=m0, c=c0)
-    inputs = py_utils.NestedMap(act=act_in, padding=padding)
+    inputs = NestedMap(act=act_in, padding=padding)
 
     with base_layer.JaxContext.new_context():
       theta = frnn_model.init(jax.random.PRNGKey(5678), inputs, state0=state0)
@@ -245,9 +245,7 @@ class FRNNTest(test_utils.TestCase):
     frnn_model = instantiate(lstm_p)
 
     state0 = NestedMap(m=m0, c=c0)
-    inputs = py_utils.NestedMap(
-        act=act_in, padding=padding, segment_ids=segment_ids
-    )
+    inputs = NestedMap(act=act_in, padding=padding, segment_ids=segment_ids)
 
     with base_layer.JaxContext.new_context():
       theta = frnn_model.init(jax.random.PRNGKey(5678), inputs, state0=state0)
@@ -267,6 +265,45 @@ class FRNNTest(test_utils.TestCase):
     np.testing.assert_allclose(frnn_state.m, cell_state.m, atol=1e-5, rtol=1e-5)
     np.testing.assert_allclose(frnn_state.c, cell_state.c, atol=1e-5, rtol=1e-5)
     np.testing.assert_allclose(frnn_act, jnp.stack(ys, 1), atol=1e-5, rtol=1e-5)
+
+  @parameterized.parameters(
+      (jax_rnn_cell.LstmCellSimple, False),
+      (jax_rnn_cell.LstmCellSimple, True),
+      (jax_rnn_cell.CifgLstmCellSimple, False),
+      (jax_rnn_cell.CifgLstmCellSimple, True),
+  )
+  def test_lstm_reset_cell_state_extend_step(
+      self, jax_cell_class, output_nonlinearity
+  ):
+    cell_p = self._get_cell_params(jax_cell_class, True, output_nonlinearity)
+    lstm_p = pax_fiddle.Config(frnn.LstmFrnn, cell_tpl=cell_p)
+
+    act_in, padding, _, m0, c0, _ = self._get_test_inputs(packed_input=False)
+    frnn_model = instantiate(lstm_p)
+
+    state0 = NestedMap(m=m0, c=c0)
+    inputs = NestedMap(act=act_in, padding=padding)
+    seq_len = inputs.act.shape[1]
+
+    # Verify the output of '__call__' is equivalent to the output of sequential
+    # calls of 'extend_step'.
+    with base_layer.JaxContext.new_context():
+      theta = frnn_model.init(jax.random.PRNGKey(5678), inputs, state0=state0)
+      # Outpuf of '__call__'.
+      frnn_act, frnn_state = frnn_model.apply(theta, inputs, state0=state0)
+      # Sequential calls of 'extend_step'.
+      state_i = state0
+      for i in range(seq_len):
+        inputs_i = NestedMap(act=inputs.act[:, i], padding=padding[:, i])
+        step_state, step_act = frnn_model.apply(
+            theta, inputs_i, state0=state_i, method=frnn_model.extend_step
+        )
+        state_i = step_state
+        np.testing.assert_allclose(
+            frnn_act[:, i], step_act, atol=1e-5, rtol=1e-5
+        )
+      np.testing.assert_allclose(frnn_state.m, state_i.m, atol=1e-5, rtol=1e-5)
+      np.testing.assert_allclose(frnn_state.c, state_i.c, atol=1e-5, rtol=1e-5)
 
 
 if __name__ == '__main__':
