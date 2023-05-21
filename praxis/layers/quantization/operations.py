@@ -199,7 +199,10 @@ def einsum(
       x.dtype in QUANTIZED_TYPES and w.dtype in QUANTIZED_TYPES
   )
 
-  if w.dtype == jnp.float8_e4m3fn or w.dtype == jnp.float8_e5m2:
+  if (
+      jax.dtypes.scalar_type_of(w.dtype) == float
+      and jnp.finfo(w.dtype).bits == 8
+  ):
     w = w.astype(jnp.bfloat16)
 
   if use_int_dot_general:
