@@ -327,7 +327,7 @@ def beam_search_after_prefix_fprop(
           )
       )
     decode_length = step + 2
-    new_decode_lengths = jnp.ones_like(prefix_lengths) * decode_length
+    new_decode_lengths = decode_length - max_prefix_len + prefix_lengths
     eos_scores_norm = eos_scores / decoder_utils.length_norm(
         decode_length - max_prefix_len, beam_search_hparams.length_norm_alpha)
     (val.end_ids, val.end_decode_lengths, val.end_scores_norm,

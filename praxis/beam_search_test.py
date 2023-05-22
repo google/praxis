@@ -275,7 +275,6 @@ class BeamSearchTest(test_utils.TestCase):
     scores = jax.nn.log_softmax(jnp.array(logits, dtype=jnp.float32))
     logging.info('scores:\n%s', scores[:, :vocab_size])
 
-
     # Perform brute-force inference to find the true top-k.  Since the logits
     # are non-contextual (i.e., they do not depend on the previously-decoded
     # tokens), beam_search() will also find the true top-k and we can compare
@@ -309,6 +308,8 @@ class BeamSearchTest(test_utils.TestCase):
           heapq.heappop(topk_heap)
 
     brute_force_topk = list(reversed(sorted(topk_heap)))
+    for score, ids in brute_force_topk:
+      ids.pop(0)  # treat the first prefix token as padding
 
     # Set length_norm_alpha to make length_norm = 1.0
     length_norm_alpha = 0.0
@@ -323,8 +324,11 @@ class BeamSearchTest(test_utils.TestCase):
     batch_size = 1
     input_batch = NestedMap(
         ids=jnp.zeros((batch_size, prefix_len), dtype=jnp.int32),
-        paddings=jnp.zeros((batch_size, prefix_len), dtype=jnp.int32),
-        prefix_lengths=jnp.full((batch_size,), prefix_len, dtype=jnp.int32),
+        # Treat the first prefix token as padding.
+        paddings=jnp.array(
+            [[1] + [0] * (prefix_len - 1)] * batch_size, dtype=jnp.int32
+        ),
+        prefix_lengths=jnp.full((batch_size,), prefix_len - 1, dtype=jnp.int32),
     )
     results = self._run_decode(p, logits, input_batch, stepwise_logits=True)
 
