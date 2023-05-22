@@ -29,6 +29,7 @@ from praxis.layers import linears
 from praxis.layers.quantization import linears as quantized_linears
 from praxis.layers.quantization import operations as quantized_operations
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import quantizer
 
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
@@ -67,6 +68,14 @@ class Embedding(embedding_softmax.Embedding):
     else:
       self.create_variable('emb_var', pc)
 
+    if self.quantization.quantization_type == QuantizationType.AQT:
+      self.create_child(
+          'weight_quantizer',
+          quantizer.create_tensor_quantizer(
+              'weight_quantizer', self.quantization.weight_params
+          ),
+      )
+
   def emb_lookup(self, ids: JTensor) -> JTensor:
     ap = self.activation_split_dims_mapping
 
@@ -76,6 +85,7 @@ class Embedding(embedding_softmax.Embedding):
       )
     else:
       emb_var = self.theta.emb_var
+      eqn = 'xy,zy->xz'
       if self.quantization.quantization_type == QuantizationType.FQ:
         if self.quantization.act_params is not None:
           raise NotImplementedError(
@@ -83,7 +93,6 @@ class Embedding(embedding_softmax.Embedding):
           )
         # We compute scale factor per input channel, in contrast to other
         # places where we compute per output channel.
-        eqn = 'xy,zy->xz'
         emb_var = quantized_operations.fakequant_einsum(
             eqn,
             emb_var,
@@ -91,10 +100,35 @@ class Embedding(embedding_softmax.Embedding):
             use_symmetric=self.quantization.weight_params.use_symmetric,
             calculation_type=self.quantization.weight_params.calculation_dtype,
         )
-      elif self.quantization.quantization_type == QuantizationType.AQT:
-        raise NotImplementedError(
-            'AQT style quantization is yet not implemented for Embeddings.'
+      elif self.quantization.quantization_type == QuantizationType.FQ_VN:
+        if self.quantization.weight_params.use_step_count:
+          raise NotImplementedError(
+              'use_step_count is not supported yet for Embedding.'
+          )
+        step_count = None
+        emb_var = quantized_operations.fakequant_vn(
+            eqn,
+            emb_var,
+            self.next_prng_key(),
+            self.quantization.weight_params,
+            step_count,
+            self.do_eval,
+            bits=self.quantization.weight_params.precision,
+            calculation_type=self.quantization.weight_params.calculation_dtype,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
         )
+      elif self.quantization.quantization_type == QuantizationType.AQT:
+        contract_dims = quantized_operations.eqn_to_weight_contract_dims(eqn)
+        emb_var, scale, zp = self.weight_quantizer.quantize(
+            emb_var,
+            contract_dims,
+            squeeze_scale=False,
+            quantized_dtype=emb_var.dtype)
+
+        emb_var = emb_var * scale
+        if zp is not None:
+          emb_var = jnp.subtract(emb_var, zp)
+
     if self.lookup_style == 'index':
       embs = jnp.asarray(emb_var)[(ids,)]
     elif self.lookup_style == 'matmul':
@@ -165,17 +199,21 @@ class Embedding(embedding_softmax.Embedding):
     # TODO(b/283327445): raise an error for imcompatible weight_params set.
     percentile = self.quantization.weight_params.clipping_coeff
     if self.quantization.quantization_type == QuantizationType.AQT:
-      raise NotImplementedError(
-          'AQT quantization is not yet supported for Embeddings.'
+      contract_dims = quantized_operations.eqn_to_weight_contract_dims(eqn)
+      q_w, q_s, zp = self.weight_quantizer.quantize(
+          self.theta.emb_var,
+          contract_dims,
+          squeeze_scale=True,
+          quantized_dtype=self.quantization.weight_params.dtype)
+    else:
+      q_w, q_s, zp = quantized_operations.reduce_einsum_weight_precision(
+          eqn,
+          self.theta.emb_var,
+          calculation_type=self.dtype,
+          bits=bits,
+          percentile=percentile,
+          use_symmetric=self.quantization.weight_params.use_symmetric,
       )
-    q_w, q_s, zp = quantized_operations.reduce_einsum_weight_precision(
-        eqn,
-        self.theta.emb_var,
-        calculation_type=self.dtype,
-        bits=bits,
-        percentile=percentile,
-        use_symmetric=self.quantization.weight_params.use_symmetric,
-    )
 
     if self.quantization.weight_params.use_symmetric:
       res = {base_layer.PARAMS: {'emb_var': q_w, scale_name: q_s}}
@@ -225,9 +263,20 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
     if self.bi_tempered_loss_tpl:
       self.create_child('bi_tempered_loss', self.bi_tempered_loss_tpl)
 
+    if self.quantization.quantization_type == QuantizationType.AQT:
+      self.create_child(
+          'weight_quantizer',
+          quantizer.create_tensor_quantizer(
+              'weight_quantizer', self.quantization.weight_params
+          ),
+      )
+
   def emb_lookup(self, ids: JTensor) -> JTensor:
     linear_layer = self.logits_ffn.linear
-
+    if self.quantization.act_params is not None:
+      raise NotImplementedError(
+          'Input quantization is not implemented for Embedding.'
+      )
     ap = self.activation_split_dims_mapping
 
     if self.quantization.mode == QuantizationMode.INFERENCE:
@@ -235,12 +284,21 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
     else:
+      eqn = 'xy,zy->xz'
       emb_var = linear_layer.theta.w
       if self.quantization.quantization_type == QuantizationType.AQT:
-        raise NotImplementedError(
-            'AQT style quantization is yet not implemented for embedding'
-            ' layers.'
-        )
+        contract_dims = quantized_operations.eqn_to_weight_contract_dims(eqn)
+        emb_var, scale, zp = self.weight_quantizer.quantize(
+            emb_var,
+            contract_dims,
+            squeeze_scale=False,
+            quantized_dtype=emb_var.dtype)
+        # TODO(rybakov) switch to AQT style.
+        emb_var = emb_var * scale
+
+        if zp is not None:
+          emb_var = jnp.subtract(emb_var, zp)
+
       elif self.quantization.quantization_type == QuantizationType.FQ:
         if self.quantization.act_params is not None:
           raise ValueError('Input quantization is not supported for Embedding.')
@@ -253,13 +311,29 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
         # the embedding matrix is shared with the output (logit) layer of the
         # transformer, in which case the *transpose* of the embedding matrix
         # is used as the weight matrix.
-        eqn = 'xy,zy->xz'
         emb_var = quantized_operations.fakequant_einsum(
             eqn,
             emb_var,
             bits=self.quantization.weight_params.precision,
             use_symmetric=self.quantization.weight_params.use_symmetric,
             calculation_type=self.quantization.weight_params.calculation_dtype,
+        )
+      elif self.quantization.quantization_type == QuantizationType.FQ_VN:
+        if self.quantization.weight_params.use_step_count:
+          raise NotImplementedError(
+              'use_step_count is not supported yet for Embedding.'
+          )
+        step_count = None
+        emb_var = quantized_operations.fakequant_vn(
+            eqn,
+            emb_var,
+            self.next_prng_key(),
+            self.quantization.weight_params,
+            step_count,
+            self.do_eval,
+            bits=self.quantization.weight_params.precision,
+            calculation_type=self.quantization.weight_params.calculation_dtype,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
         )
 
     emb_var = jnp.transpose(emb_var)
@@ -350,6 +424,14 @@ class NClassMajorSharedEmbeddingSoftmax(
     self.create_child('activation', self.activation_tpl.clone())
     if self.bi_tempered_loss_tpl:
       self.create_child('bi_tempered_loss', self.bi_tempered_loss_tpl)
+
+    if self.quantization.quantization_type == QuantizationType.AQT:
+      self.create_child(
+          'weight_quantizer',
+          quantizer.create_tensor_quantizer(
+              'weight_quantizer', self.quantization.weight_params
+          ),
+      )
 
   def get_logits(self, inputs: JTensor) -> JTensor:
     """Returns logits given the inputs with an option to soft cap it.
@@ -479,14 +561,23 @@ class NClassMajorSharedEmbeddingSoftmax(
     percentile = self.quantization.weight_params.clipping_coeff
 
     w = jnp.transpose(self.theta.w)
-    q_w, q_s, zp = quantized_operations.reduce_einsum_weight_precision(
-        eqn,
-        w,
-        calculation_type=self.dtype,
-        bits=bits,
-        percentile=percentile,
-        use_symmetric=self.quantization.weight_params.use_symmetric,
-    )
+
+    if self.quantization.quantization_type == QuantizationType.AQT:
+      contract_dims = quantized_operations.eqn_to_weight_contract_dims(eqn)
+      q_w, q_s, zp = self.weight_quantizer.quantize(
+          w,
+          contract_dims,
+          squeeze_scale=True,
+          quantized_dtype=self.quantization.weight_params.dtype)
+    else:
+      q_w, q_s, zp = quantized_operations.reduce_einsum_weight_precision(
+          eqn,
+          w,
+          calculation_type=self.dtype,
+          bits=bits,
+          percentile=percentile,
+          use_symmetric=self.quantization.weight_params.use_symmetric,
+      )
 
     if self.quantization.weight_params.use_symmetric:
       res = {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

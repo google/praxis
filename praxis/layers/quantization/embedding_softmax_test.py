@@ -43,11 +43,19 @@ class EmbeddingTest(test_utils.TestCase):
   INPUT_DIMS = 2
   NUM_CLASSES = 3
   WEIGHTS = [[-2, 1], [-1, 2], [0, 3]]
-  QUANTIZED_WEIGHTS_SYMMETRIC = [[-127, 64], [-64, 127], [0, 127]]
+  QUANTIZED_WEIGHTS_SYMMETRIC = {
+      QuantizationType.PTQ: [[-127, 64], [-64, 127], [0, 127]],
+      QuantizationType.FQ: [[-127, 64], [-64, 127], [0, 127]],
+      QuantizationType.AQT: [[-127, 63], [-63, 127], [0, 127]],
+      }
   SCALES_SYMMETRIC = [0.01574803, 0.01574803, 0.02362205]
   QUANTIZED_WEIGHTS_ASYMMETRIC = [[-128, 127], [-128, 127], [-128, 127]]
   SCALES_ASYMMETRIC = [0.01176471, 0.01176471, 0.01176471]
-  ZPS = [0.494118, -0.505882, -1.505882]
+  ZPS = {
+      QuantizationType.PTQ: [0.494118, -0.505882, -1.505882],
+      QuantizationType.FQ: [0.494118, -0.505882, -1.505882],
+      QuantizationType.AQT: [0.494102, -0.505898, -1.505898],
+      }
 
   def setUp(self):
     super().setUp()
@@ -55,7 +63,11 @@ class EmbeddingTest(test_utils.TestCase):
 
   @parameterized.product(
       use_symmetric=[True, False],
-      quantization_type=[QuantizationType.PTQ, QuantizationType.FQ],
+      quantization_type=[
+          QuantizationType.PTQ,
+          QuantizationType.FQ,
+          QuantizationType.AQT,
+      ],
       quant_mode=[QuantizationMode.MATERIALIZE, QuantizationMode.TRAINING],
   )
   def test_quantize(self, use_symmetric, quantization_type, quant_mode):
@@ -101,7 +113,9 @@ class EmbeddingTest(test_utils.TestCase):
     if use_symmetric:
       self.assertArraysEqual(
           weight,
-          np.array(self.QUANTIZED_WEIGHTS_SYMMETRIC, dtype=np.int8),
+          np.array(
+              self.QUANTIZED_WEIGHTS_SYMMETRIC[quantization_type], dtype=np.int8
+          ),
       )
       self.assertAllClose(
           weight_scale,
@@ -119,7 +133,7 @@ class EmbeddingTest(test_utils.TestCase):
       weight_zp = q_params_weights.get('emb_var_quantized_zp', None)
       self.assertAllClose(
           weight_zp,
-          np.array(self.ZPS, dtype=p.dtype),
+          np.array(self.ZPS[quantization_type], dtype=p.dtype),
       )
 
     # Test quantized pspec.
@@ -193,7 +207,7 @@ class EmbeddingTest(test_utils.TestCase):
       prng_key = jax.random.PRNGKey(seed=123)
       q_initial_vars = q_layer.init(prng_key, inputs)
       q_initial_vars[base_layer.PARAMS]['emb_var'] = np.array(
-          self.QUANTIZED_WEIGHTS_SYMMETRIC
+          self.QUANTIZED_WEIGHTS_SYMMETRIC[quantization_type]
           if use_symmetric
           else self.QUANTIZED_WEIGHTS_ASYMMETRIC,
           dtype=np.int8,
@@ -204,7 +218,7 @@ class EmbeddingTest(test_utils.TestCase):
       )
       if not use_symmetric:
         q_initial_vars[base_layer.PARAMS]['emb_var_quantized_zp'] = np.array(
-            self.ZPS,
+            self.ZPS[quantization_type],
             dtype=q_p.dtype,
         )
       q_lookup = q_layer.apply(q_initial_vars, inputs)
@@ -215,42 +229,6 @@ class EmbeddingTest(test_utils.TestCase):
       )
       f_lookup = f_layer.apply(f_initial_vars, inputs)
       self.assertAllClose(q_lookup, f_lookup, rtol=1e-2, atol=1e-2)
-
-  @parameterized.product(
-      symmetric=[True, False],
-      quantization_mode=[
-          QuantizationMode.MATERIALIZE,
-          QuantizationMode.TRAINING,
-      ],
-      lookup_style=['index', 'matmul'],
-  )
-  def test_unsupported_aqt(self, symmetric, quantization_mode, lookup_style):
-    quantization_option = QuantizationParams(
-        quantization_type=QuantizationType.AQT,
-        mode=quantization_mode,
-        weight_params=WeightQuantizationParams(use_symmetric=symmetric),
-    )
-
-    prng_key = jax.random.PRNGKey(seed=123)
-    q_p = pax_fiddle.Config(
-        quantization.Embedding,
-        name='_embedding_q',
-        mesh_axis_names=['replica', 'mdl', 'data'],
-        weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
-            wt=['mdl', 'data']
-        ),
-        quantization=quantization_option,
-        input_dims=self.INPUT_DIMS,
-        num_classes=self.NUM_CLASSES,
-        lookup_style=lookup_style,
-    )
-    q_layer = instantiate(q_p)
-    inputs = np.random.normal(1.5, 2.0, [2, q_p.input_dims]).astype(np.float32)
-    with self.assertRaisesRegex(
-        NotImplementedError,
-        'AQT style quantization is yet not implemented for Embeddings.',
-    ):
-      q_layer.init(prng_key, inputs)
 
 
 class SharedEmbeddingSoftmaxTest(test_utils.TestCase):
@@ -358,59 +336,24 @@ class SharedEmbeddingSoftmaxTest(test_utils.TestCase):
       self.assertAllClose(q_logits, f_logits, rtol=5e-1, atol=5e-2)
       self.assertAllClose(q_lookup, f_lookup, rtol=1e-2, atol=1e-2)
 
-  @parameterized.product(
-      symmetric=[True, False],
-      quantization_mode=[
-          QuantizationMode.MATERIALIZE,
-          QuantizationMode.TRAINING,
-      ],
-      lookup_style=['index', 'matmul'],
-  )
-  def test_unsupported_aqt(self, symmetric, quantization_mode, lookup_style):
-    quantization_option = QuantizationParams(
-        quantization_type=QuantizationType.AQT,
-        mode=quantization_mode,
-        weight_params=WeightQuantizationParams(use_symmetric=symmetric),
-    )
-
-    prng_key = jax.random.PRNGKey(seed=123)
-    q_p = pax_fiddle.Config(
-        quantization.SharedEmbeddingSoftmax,
-        name='_shared_embedding_softmax_q',
-        mesh_axis_names=['replica', 'mdl', 'data'],
-        weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
-            wt=['mdl', 'data']
-        ),
-        quantization=quantization_option,
-        input_dims=self.INPUT_DIMS,
-        num_classes=self.NUM_CLASSES,
-    )
-    q_layer = instantiate(q_p)
-
-    inputs = np.random.normal(1.5, 2.0, [2, q_p.input_dims]).astype(np.float32)
-    class_weights = np.random.normal(1.5, 2.0, [2, 1])
-    class_ids = np.random.randint(1, q_p.num_classes, [2, 1])
-
-    prng_key = jax.random.PRNGKey(seed=123)
-    q_initial_vars = q_layer.init(
-        prng_key, inputs, class_weights, class_ids=class_ids
-    )
-    with self.assertRaisesRegex(
-        NotImplementedError,
-        'AQT style quantization is yet not implemented for embedding layers.',
-    ):
-      q_layer.apply(q_initial_vars, class_ids, method=q_layer.emb_lookup)
-
 
 class NClassMajorSharedEmbeddingSoftmaxTest(test_utils.TestCase):
   INPUT_DIMS = 2
   NUM_CLASSES = 3
   WEIGHTS = [[-2, -1, 0], [1, 2, 3]]
-  QUANTIZED_WEIGHTS_SYMMETRIC = [[-127, 64], [-64, 127], [0, 127]]
+  QUANTIZED_WEIGHTS_SYMMETRIC = {
+      QuantizationType.PTQ: [[-127, 64], [-64, 127], [0, 127]],
+      QuantizationType.FQ: [[-127, 64], [-64, 127], [0, 127]],
+      QuantizationType.AQT: [[-127, 63], [-63, 127], [0, 127]],
+      }
   SCALES_SYMMETRIC = [0.01574803, 0.01574803, 0.02362205]
   QUANTIZED_WEIGHTS_ASYMMETRIC = [[-128, 127], [-128, 127], [-128, 127]]
   SCALES_ASYMMETRIC = [0.01176471, 0.01176471, 0.01176471]
-  ZPS = [0.494118, -0.505882, -1.505882]
+  ZPS = {
+      QuantizationType.PTQ: [0.494118, -0.505882, -1.505882],
+      QuantizationType.FQ: [0.494118, -0.505882, -1.505882],
+      QuantizationType.AQT: [0.494102, -0.505898, -1.505898],
+      }
 
   def setUp(self):
     super().setUp()
@@ -418,7 +361,11 @@ class NClassMajorSharedEmbeddingSoftmaxTest(test_utils.TestCase):
 
   @parameterized.product(
       use_symmetric=[True, False],
-      quantization_type=[QuantizationType.PTQ, QuantizationType.FQ],
+      quantization_type=[
+          QuantizationType.PTQ,
+          QuantizationType.FQ,
+          QuantizationType.AQT,
+      ],
   )
   def test_quantize(self, use_symmetric, quantization_type):
     quantization_option = QuantizationParams(
@@ -468,7 +415,9 @@ class NClassMajorSharedEmbeddingSoftmaxTest(test_utils.TestCase):
     if use_symmetric:
       self.assertArraysEqual(
           weight,
-          np.array(self.QUANTIZED_WEIGHTS_SYMMETRIC, dtype=np.int8),
+          np.array(
+              self.QUANTIZED_WEIGHTS_SYMMETRIC[quantization_type], dtype=np.int8
+          ),
       )
       self.assertAllClose(
           weight_scale,
@@ -486,7 +435,7 @@ class NClassMajorSharedEmbeddingSoftmaxTest(test_utils.TestCase):
       weight_zp = q_params_weights.get('w_quantized_zp', None)
       self.assertAllClose(
           weight_zp,
-          np.array(self.ZPS, dtype=p.dtype),
+          np.array(self.ZPS[quantization_type], dtype=p.dtype),
       )
 
     # Test quantized pspec.
@@ -569,7 +518,7 @@ class NClassMajorSharedEmbeddingSoftmaxTest(test_utils.TestCase):
           prng_key, inputs, class_weights, class_ids=class_ids
       )
       q_initial_vars[base_layer.PARAMS]['w'] = np.array(
-          self.QUANTIZED_WEIGHTS_SYMMETRIC
+          self.QUANTIZED_WEIGHTS_SYMMETRIC[quantization_type]
           if use_symmetric
           else self.QUANTIZED_WEIGHTS_ASYMMETRIC,
           dtype=np.int8,
@@ -580,7 +529,7 @@ class NClassMajorSharedEmbeddingSoftmaxTest(test_utils.TestCase):
       )
       if not use_symmetric:
         q_initial_vars[base_layer.PARAMS]['w_quantized_zp'] = np.array(
-            self.ZPS,
+            self.ZPS[quantization_type],
             dtype=q_p.dtype,
         )
       q_logits = q_layer.apply(

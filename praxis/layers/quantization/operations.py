@@ -583,7 +583,7 @@ def aqt_einsum(
             'Activation quantization with weight zero point '
             'is not supported yet.'
         )
-      offset = compute_offset(lhs, rhs_zp, eqn)
+      offset = compute_offset(lhs, jnp.squeeze(rhs_zp), eqn)
       ret = ret - offset
 
   return ret

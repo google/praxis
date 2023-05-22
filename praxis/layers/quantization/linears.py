@@ -165,6 +165,7 @@ class Linear(linears.Linear):
         q_w, q_s, zp = self.weight_quantizer.quantize(
             self.theta.w,
             [0],
+            squeeze_scale=True,
             quantized_dtype=self.quantization.weight_params.dtype,
         )
 

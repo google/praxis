@@ -243,6 +243,7 @@ class AttentionProjection(attentions.AttentionProjection):
       q_w, q_s, zp = self.weight_quantizer.quantize(
           self.theta.w,
           weight_contract_dims,
+          squeeze_scale=True,
           quantized_dtype=self.quantization.weight_params.dtype,
       )
     else:
@@ -342,7 +343,6 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
           tensor_split_dims_mapping=bias_split_dims_mapping,
       )
       self.create_variable('b', pc_bias)
-
 
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
   # attentions.
@@ -528,6 +528,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       q_w, q_s, zp = self.weight_quantizer.quantize(
           self.theta.w,
           weight_contract_dims,
+          squeeze_scale=True,
           quantized_dtype=self.quantization.weight_params.dtype,
       )
     else:

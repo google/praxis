@@ -490,7 +490,7 @@ class TensorQuantizer(base_layer.BaseLayer):
     if self.use_symmetric:
       deq_q_x = q_x * q_scale
     else:
-      deq_q_x = q_x * q_scale - jnp.expand_dims(zp_time_scale, contract_dims)
+      deq_q_x = q_x * q_scale - zp_time_scale
     return deq_q_x
 
   def _scale(
@@ -521,7 +521,7 @@ class TensorQuantizer(base_layer.BaseLayer):
         raise ValueError('x_min is required for asymmetric quantization.')
       zp = self._get_zero_point(x, x_min, q_scale)
       x_scaled = jnp.divide(x, q_scale) + zp
-      zp_time_scale = jnp.multiply(q_scale, zp).squeeze()
+      zp_time_scale = jnp.multiply(q_scale, zp)
 
     return x_scaled, zp_time_scale
 
@@ -563,6 +563,8 @@ class TensorQuantizer(base_layer.BaseLayer):
 
     if squeeze_scale:
       q_s = jnp.squeeze(q_s)
+      if zp_time_scale is not None:
+        zp_time_scale = jnp.squeeze(zp_time_scale)
 
     if quantized_dtype is not None:
       q_x = q_x.astype(quantized_dtype)
