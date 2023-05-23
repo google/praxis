@@ -179,16 +179,70 @@ class BeamSearchTest(test_utils.TestCase):
     return results
 
   @parameterized.parameters(
-      ([], [[[2, 3, 4, 0, 0], [2, 3, 3, 4, 0], [2, 3, 0, 3, 4], [2, 3, 1, 0, 4]
-            ]], [[3, 4, 5, 5]], [[[3, 4]], [[3, 3], [3, 4]],
-                                 [[3, 0], [0, 3], [3, 4]],
-                                 [[3, 1], [1, 0], [0, 4]]]),
-      ([3, 1], [[[2, 3, 4, 3, 0], [2, 3, 4, 0, 3], [2, 3, 4, 2, 3],
-                 [2, 3, 3, 0, 0]]
-               ], [[4, 5, 5, 3]], [[[3, 4], [4, 1]], [[3, 4], [4, 0], [0, 3]],
-                                   [[3, 4], [4, 1], [1, 1]], [[3, 3]]]))
-  def test_vanilla_beam_search_base(self, parse_tokens, target_output_ids,
-                                    target_decode_ids, target_logprob_indexes):
+      (
+          [],
+          False,
+          [[
+              [2, 3, 4, 0, 0],
+              [2, 3, 3, 4, 0],
+              [2, 3, 0, 3, 4],
+              [2, 3, 1, 0, 4],
+          ]],
+          [[3, 4, 5, 5]],
+          [
+              [[3, 4]],
+              [[3, 3], [3, 4]],
+              [[3, 0], [0, 3], [3, 4]],
+              [[3, 1], [1, 0], [0, 4]],
+          ],
+          [[False, False, False, False]],
+      ),
+      (
+          [3, 1],
+          False,
+          [[
+              [2, 3, 4, 3, 0],
+              [2, 3, 4, 0, 3],
+              [2, 3, 4, 2, 3],
+              [2, 3, 3, 0, 0],
+          ]],
+          [[4, 5, 5, 3]],
+          [
+              [[3, 4], [4, 3]],
+              [[3, 4], [4, 0], [0, 3]],
+              [[3, 4], [4, 2], [2, 3]],
+              [[3, 3]],
+          ],
+          [[False, False, False, False]],
+      ),
+      (
+          [],
+          True,
+          [[
+              [2, 3, 4, 0, 0],
+              [2, 3, 4, 4, 0],
+              [2, 3, 3, 4, 0],
+              [2, 3, 0, 4, 0],
+          ]],
+          [[3, 4, 4, 4]],
+          [
+              [[3, 4]],
+              [[3, 4], [4, 4]],
+              [[3, 3], [3, 4]],
+              [[3, 0], [0, 4]],
+          ],
+          [[True, True, True, True]],
+      ),
+  )
+  def test_vanilla_beam_search_base(
+      self,
+      parse_tokens,
+      early_exit,
+      target_output_ids,
+      target_decode_ids,
+      target_logprob_indexes,
+      target_done,
+  ):
     # Set length_norm_alpha to maket length_norm = 1.0
     length_norm_alpha = 0.0
     seq_len = 5
@@ -199,6 +253,7 @@ class BeamSearchTest(test_utils.TestCase):
         max_decode_steps=3,
         seqlen=seq_len,
         length_norm_alpha=length_norm_alpha,
+        early_exit=early_exit,
     )
     logits = [[1, 0, 0, 2, 0], [5, 1, 0, 0, 0], [5, 0, 0, 1, 0],
               [0, 1, 0, 2, 10], [0, 0, 0, 0, 0]]
@@ -213,6 +268,8 @@ class BeamSearchTest(test_utils.TestCase):
     # If no EOS in the sequence, add EOS to the last postion of the sequence.
     self.assertArraysEqual(results.output_ids,
                            np.array(target_output_ids, dtype=np.int32))
+
+    self.assertArraysEqual(results.done, target_done)
 
     self.assertArraysEqual(results.decode_lengths,
                            np.array(target_decode_ids, dtype=np.int32))

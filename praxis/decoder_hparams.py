@@ -81,9 +81,11 @@ class BeamSearchHParams(DecoderHParams):
   Attributes:
     beam_size: Beam size for decoding.
     length_norm_alpha: Length norm alpha for beam search.
+    early_exit: A bool, whether or not to allow early exit.
   """
   beam_size: int = 1
   length_norm_alpha: float = 0.8
+  early_exit: bool = False
 
 
 @dataclasses.dataclass

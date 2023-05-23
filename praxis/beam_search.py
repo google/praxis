@@ -260,7 +260,10 @@ def beam_search_after_prefix_fprop(
   val.logprobs = jnp.ones(
       shape=(batch_size, beam_size, seq_len), dtype=jnp.float32)
   val.end_logprobs = jnp.zeros(
-      shape=(batch_size, beam_size, seq_len), dtype=jnp.float32)
+      shape=(batch_size, beam_size, seq_len), dtype=jnp.float32
+  )
+  # Whether the hyp has terminated and should stop.
+  val.done = jnp.zeros(shape=loop_state_shape, dtype=jnp.bool_)
 
   # Gets prefix_lengths from prefix_paddings.
   prefix_lengths = jnp.sum(1 - prefix_paddings.astype(jnp.int32), axis=1)
@@ -285,13 +288,21 @@ def beam_search_after_prefix_fprop(
       extend_step_fn
   )
 
-  def get_cond_func(stop_decode_steps):
+  def get_cond_func(stop_decode_steps, early_exit):
     """Get condition function for given stop decode steps."""
 
     def cond_func(model, val):
       """Whether the while loop should continue."""
       del model
-      return val.step < min(seq_len - 1, max_prefix_len + stop_decode_steps - 1)
+      # We continue the decoding search iff both:
+      #   (1) We have yet to exceed the max steps.
+      #   (2) At least one row in the batch has not terminated.
+      max_steps = max_prefix_len + stop_decode_steps - 1
+      length_ok = val.step < min(seq_len - 1, max_steps)
+      if not early_exit:
+        return length_ok
+      all_hyps_done = jnp.all(val.done)
+      return jnp.logical_and(length_ok, jnp.logical_not(all_hyps_done))
 
     return cond_func
 
@@ -336,10 +347,15 @@ def beam_search_after_prefix_fprop(
          val.end_logprobs),
         (new_end_ids, new_decode_lengths, eos_scores_norm, new_end_logprobs))
 
+    # early_exit doesn't explore non-EOS hyps.
+    topk_terminal_ids = [] if beam_search_hparams.early_exit else terminal_ids
     # Choose the topk indices.
     _, topk_indices, final_topk_value, final_topk_indices = (
-        decoder_utils.two_stage_topk(logprobs, val.hyp_scores, terminal_ids))
-    # update scores without EOS.
+        decoder_utils.two_stage_topk(
+            logprobs, val.hyp_scores, topk_terminal_ids
+        )
+    )
+    # update scores with or without EOS depending on early_exit.
     val.hyp_scores = final_topk_value
     hyp_id = final_topk_indices // beam_size
     val.hyp_ids = hyp_id
@@ -360,14 +376,17 @@ def beam_search_after_prefix_fprop(
     # new_ids [batch_size, beam_size]
     new_ids = decoder_utils.gather_output_id(topk_indices, final_topk_indices)
     new_logprobs = decoder_utils.gather_logprobs(logprobs, hyp_id, new_ids)
-    # TODO(b/229679837): add logic to stop early.
 
     # Shuffle output ids at beam dimension using hyp_id.
     val.output_ids = shuffle_state(val.output_ids, hyp_id)
     val.logprobs = shuffle_state(val.logprobs, hyp_id)
+    val.done = shuffle_state(val.done, hyp_id)
     # Update output_ids.
     val.output_ids = val.output_ids.at[:, :, step + 1].set(new_ids)
     val.logprobs = val.logprobs.at[:, :, step + 1].set(new_logprobs)
+    for terminal_id in terminal_ids:
+      has_eos = decoder_utils.has_any_eos(new_ids, terminal_id)
+      val.done = jnp.logical_or(val.done, has_eos)
     val.step += 1
     val.segment_pos += 1
     return val
@@ -379,7 +398,7 @@ def beam_search_after_prefix_fprop(
       pad_size = max_decode_steps[i] - max_decode_steps[i - 1]
       transform_state_fn(model, decoder_utils.pad_state_fn(pad_size))
     result = nn.while_loop(
-        get_cond_func(max_decode_steps[i]),
+        get_cond_func(max_decode_steps[i], beam_search_hparams.early_exit),
         loop_body,
         model,
         result,
