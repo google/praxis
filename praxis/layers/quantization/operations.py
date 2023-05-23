@@ -62,16 +62,25 @@ def _get_expand_dims(eqn: str) -> List[int]:
   return filling_dims
 
 
-def get_min_max(bits: int, unsigned=False) -> Tuple[float, float]:
+def get_min_max(
+    bits: int = 8,
+    unsigned: bool = False,
+    use_fp: bool = False,
+) -> Tuple[float, float]:
   """Gets the min/max range for a given number of bits.
 
   Args:
     bits: Target number of bits for quantization.
     unsigned: If True compute min and max for unsigned number, else for signed.
+    use_fp: in floating point.
 
   Returns:
     min/max values for the provide number of bits.
   """
+  if use_fp:
+    # TODO(jianlijianli): support other fp types.
+    return -448.0, 448.0
+  # Calculation instead of jax.iinfo is used to support bits beside 4 and 8.
   if unsigned:
     # For unsigned 8 bits precision it is [0, 255]
     return 0, 2**bits - 1
@@ -253,6 +262,7 @@ def reduce_precision(
     optimization_on_bound: bool = False,
     percentile: float = 1.0,
     use_symmetric: bool = True,
+    use_fp: bool = False,
 ) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
   """Reduce the precision of a tensor.
 
@@ -267,12 +277,13 @@ def reduce_precision(
     percentile: percentile Factor to apply on the min/max range. Setting this to
       other than 1.0 disables optimization_on_bound.
     use_symmetric: If the input tensor is quantized symmetrically.
+    use_fp: use floating point.
 
   Returns:
     A tuple of quantized tensor, quantization scale
       and quantization zero point (optional).
   """
-  min_value, max_value = get_min_max(bits)
+  min_value, max_value = get_min_max(bits, use_fp=use_fp)
 
   if use_symmetric:
     bound = jnp.max(jnp.abs(t), axis=contract_dims, keepdims=True)
@@ -281,7 +292,8 @@ def reduce_precision(
     t_max = jnp.max(t, axis=contract_dims, keepdims=True)
     t_min = jnp.min(t, axis=contract_dims, keepdims=True)
     bound = t_max - t_min
-    scale_bound = 2**bits - 1.0
+    scale_bound = max_value - min_value
+
 
   if percentile < 1.0:
     bound = jnp.multiply(bound, percentile)
@@ -299,13 +311,19 @@ def reduce_precision(
     t = jnp.divide(t, scale) + zp
     zp = jnp.multiply(scale, zp)
 
-  if need_gradient:
-    t = pass_through(t, jnp.round)
-    t = jnp.clip(t, min_value, max_value)
+  if use_fp:
+    # No need to round.
+    t = jnp.clip(t, min_value, max_value).astype(jnp.float8_e4m3fn)
+    # TODO(jianlijianli): refactor to remove this logic.
+    t = jax.lax.bitcast_convert_type(t, new_dtype=jnp.int8)
   else:
-    t = jnp.round(t)
-    # Use int8 as container.
-    t = jnp.clip(t, min_value, max_value).astype(jnp.int8)
+    if need_gradient:
+      t = pass_through(t, jnp.round)
+      t = jnp.clip(t, min_value, max_value)
+    else:
+      t = jnp.round(t)
+      # Use int8 as container.
+      t = jnp.clip(t, min_value, max_value).astype(jnp.int8)
 
   return t, scale, zp
 

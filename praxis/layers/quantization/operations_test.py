@@ -106,6 +106,30 @@ class QuantizationUtilsTest(test_utils.TestCase):
   def test_min_max(self):
     self.assertEqual(operations.get_min_max(8), (-128, 127))
     self.assertEqual(operations.get_min_max(8, True), (0, 255))
+    self.assertEqual(operations.get_min_max(8, True, True), (-448.0, 448.0))
+
+
+class ReducePrecisionTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(1234567)
+
+  def test_precision_fp8(self):
+
+    inputs = np.array([[1.0, 2.0, 5.5, 2.9], [0.02, -0.01, 3.3, 4.0]])
+    qx, scale, zp = operations.reduce_precision(
+        inputs, contract_dims=[1], use_fp=True
+    )
+
+    self.assertAllClose(
+        qx,
+        np.array([[106, 114, 126, 119], [65, -71, 124, 126]], dtype=np.int8),
+    )
+    self.assertAllClose(
+        scale, np.array([[0.012277], [0.008929]], dtype=np.float32)
+    )
+    self.assertIsNone(zp)
 
 
 class ReducePrecisionEinsumTest(test_utils.TestCase):
