@@ -61,6 +61,11 @@ def set_up_weights(
       raise NotImplementedError(
           'Static activation quantization is not supported yet.'
       )
+    if (
+        jax.dtypes.scalar_type_of(dtype) == float
+        and jnp.finfo(dtype).bits == 8
+    ):
+      dtype = jnp.int8
     layer.create_quantized_variable(
         weight_name,
         weight_params,
@@ -132,6 +137,14 @@ def quantized_einsum(
     elif layer.quantization.act_params is not None:
       x, act_scale = operations.reduce_precision_activation(x)
       s = jnp.multiply(jnp.squeeze(act_scale), s)
+    dtype = layer.quantization.weight_params.dtype
+    if (
+        jax.dtypes.scalar_type_of(dtype) == float
+        and jnp.finfo(dtype).bits == 8
+    ):
+      w = jax.lax.bitcast_convert_type(w, dtype)
+      # cast to bf16 since bf16 x fp8 is not supported.
+      w = w.astype(jnp.bfloat16)
     out = operations.einsum(eqn, x, w, s, zp)
     return out
   else:
