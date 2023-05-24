@@ -25,7 +25,6 @@ package(default_visibility = JAX_VISIBILITY)
 pytype_strict_library(
     name = "layers",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":linears",
@@ -35,13 +34,11 @@ pytype_strict_library(
 pytype_strict_library(
     name = "sparsity_hparams",
     srcs = ["sparsity_hparams.py"],
-    srcs_version = "PY3",
 )
 
 pytype_strict_library(
     name = "linears",
     srcs = ["linears.py"],
-    srcs_version = "PY3",
     deps = [
         ":sparsity",
         ":sparsity_hparams",
@@ -66,8 +63,6 @@ pytype_strict_library(
 py_strict_test(
     name = "sparsity_test",
     srcs = ["sparsity_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":sparsity",
         ":sparsity_hparams",
@@ -82,8 +77,6 @@ py_strict_test(
 py_strict_test(
     name = "linears_test",
     srcs = ["linears_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":linears",
         ":sparsity_hparams",
@@ -101,7 +94,6 @@ py_strict_test(
 pytype_strict_library(
     name = "attentions",
     srcs = ["attentions.py"],
-    srcs_version = "PY3",
     deps = [
         ":sparsity",
         ":sparsity_hparams",
@@ -115,8 +107,6 @@ pytype_strict_library(
 py_strict_test(
     name = "attentions_test",
     srcs = ["attentions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":sparsity_hparams",

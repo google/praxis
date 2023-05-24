@@ -38,7 +38,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "base_hyperparams",
     srcs = ["base_hyperparams.py"],
-    srcs_version = "PY3",
     deps = [
         ":pax_fiddle",
         ":py_utils",
@@ -55,7 +54,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "base_input",
     srcs = ["base_input.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
         ":pax_fiddle",
@@ -73,7 +71,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "base_layer",
     srcs = ["base_layer.py"],
-    srcs_version = "PY3",
     deps = [
         ":asserts",
         ":base_hyperparams",
@@ -93,7 +90,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "base_model",
     srcs = ["base_model.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_input",
         ":base_layer",
@@ -106,7 +102,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "beam_search",
     srcs = ["beam_search.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_layer",
         ":decoder_hparams",
@@ -120,7 +115,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "decoder_hparams",
     srcs = ["decoder_hparams.py"],
-    srcs_version = "PY3",
     deps = [
         ":decoder_utils",
         ":pax_fiddle",
@@ -132,7 +126,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "decoder_utils",
     srcs = ["decoder_utils.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_layer",
         ":pytypes",
@@ -144,7 +137,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "flat_beam_search",
     srcs = ["flat_beam_search.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_layer",
         ":decoder_utils",
@@ -157,7 +149,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "flax_utils",
     srcs = ["flax_utils.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_layer",
         ":pytypes",
@@ -169,7 +160,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "gshard_utils",
     srcs = ["gshard_utils.py"],
-    srcs_version = "PY3",
     deps = [
         ":pytypes",
         # Implicit absl.logging dependency.
@@ -193,7 +183,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "metric_utils",
     srcs = ["metric_utils.py"],
-    srcs_version = "PY3",
     deps = [
         ":py_utils",
         ":pytypes",
@@ -204,7 +193,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "optimizer_prefix_vectorization",
     srcs = ["optimizer_prefix_vectorization.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_layer",
         ":optimizers",
@@ -218,7 +206,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "optimizers",
     srcs = ["optimizers.py"],
-    srcs_version = "PY3",
     deps = [
         ":asserts",
         ":base_hyperparams",
@@ -238,7 +225,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "py_utils",
     srcs = ["py_utils.py"],
-    srcs_version = "PY3",
     deps = [
         ":lingvo_lib",
         ":pytypes",
@@ -255,7 +241,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "pytypes",
     srcs = ["pytypes.py"],
-    srcs_version = "PY3",
     deps = [
         ":lingvo_lib",
         # Implicit clu.metrics dependency.
@@ -267,7 +252,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "sample_decode",
     srcs = ["sample_decode.py"],
-    srcs_version = "PY3",
     deps = [
         ":asserts",
         ":base_hyperparams",
@@ -284,7 +268,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "schedules",
     srcs = ["schedules.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
         ":pax_fiddle",
@@ -298,7 +281,6 @@ pytype_strict_library(
     name = "test_utils",
     testonly = True,
     srcs = ["test_utils.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_layer",
         ":py_utils",
@@ -352,8 +334,6 @@ py_strict_test(
 py_strict_test(
     name = "base_hyperparams_test",
     srcs = ["base_hyperparams_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = ["fast_and_reliable_fiddle_integration_test"],
     deps = [
         ":base_hyperparams",
@@ -373,8 +353,6 @@ py_strict_test(
 py_strict_test(
     name = "base_input_test",
     srcs = ["base_input_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
         ":base_input",
@@ -413,8 +391,6 @@ pytype_strict_contrib_test(
 py_strict_test(
     name = "beam_search_test",
     srcs = ["beam_search_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":base_layer",
         ":beam_search",
@@ -434,8 +410,6 @@ py_strict_test(
 py_strict_test(
     name = "decoder_utils_test",
     srcs = ["decoder_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":decoder_utils",
         ":pytypes",
@@ -450,8 +424,6 @@ py_strict_test(
 py_strict_test(
     name = "flat_beam_search_test",
     srcs = ["flat_beam_search_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":flat_beam_search",
         ":test_utils",
@@ -464,8 +436,6 @@ py_strict_test(
 py_strict_test(
     name = "optimizers_test",
     srcs = ["optimizers_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":optimizers",
         ":pax_fiddle",
@@ -480,8 +450,6 @@ py_strict_test(
 py_strict_test(
     name = "py_utils_test",
     srcs = ["py_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":base_layer",
         ":py_utils",
@@ -497,8 +465,6 @@ py_strict_test(
 py_strict_test(
     name = "sample_decode_test",
     srcs = ["sample_decode_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":base_layer",
         ":base_model",
@@ -517,8 +483,6 @@ py_strict_test(
 py_strict_test(
     name = "schedules_test",
     srcs = ["schedules_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":base_hyperparams",
         ":pax_fiddle",

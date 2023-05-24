@@ -27,7 +27,6 @@ package(default_visibility = JAX_VISIBILITY)
 pytype_strict_library(
     name = "layers",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":adapters",
@@ -66,7 +65,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "activations",
     srcs = ["activations.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -77,8 +75,6 @@ pytype_strict_library(
 py_strict_test(
     name = "activations_test",
     srcs = ["activations_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":activations",
         # Implicit absl.testing.absltest dependency.
@@ -92,7 +88,6 @@ py_strict_test(
 pytype_strict_library(
     name = "adapters",
     srcs = ["adapters.py"],
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":normalizations",
@@ -110,7 +105,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "gpu_fast_attention",
     srcs = ["gpu_fast_attention.py"],
-    srcs_version = "PY3",
     visibility = JAX_VISIBILITY,
     deps = [
         ":attentions",
@@ -128,7 +122,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "attentions",
     srcs = ["attentions.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_ops",
         ":embedding_softmax",
@@ -148,7 +141,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "augmentations",
     srcs = ["augmentations.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -160,7 +152,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "base_ops",
     srcs = ["base_ops.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -171,7 +162,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "bregman",
     srcs = ["bregman.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -182,7 +172,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "convolutions",
     srcs = ["convolutions.py"],
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":linears",
@@ -199,7 +188,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "embedding_softmax",
     srcs = ["embedding_softmax.py"],
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":base_ops",
@@ -216,7 +204,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "frnn",
     srcs = ["frnn.py"],
-    srcs_version = "PY3",
     deps = [
         ":rnn_cell",
         # Implicit flax.core dependency.
@@ -231,7 +218,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "glam",
     srcs = ["glam.py"],
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":attentions",
@@ -248,7 +234,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "linears",
     srcs = ["linears.py"],
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":base_ops",
@@ -263,7 +248,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "losses",
     srcs = ["losses.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax_bitempered_loss dependency.
         # Implicit jax dependency.
@@ -275,7 +259,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "models",
     srcs = ["models.py"],
-    srcs_version = "PY3",
     deps = [
         ":augmentations",
         ":embedding_softmax",
@@ -305,7 +288,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "ngrammer",
     srcs = ["ngrammer.py"],
-    srcs_version = "PY3",
     deps = [
         ":bregman",
         ":embedding_softmax",
@@ -323,7 +305,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "normalizations",
     srcs = ["normalizations.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         "//praxis:asserts",
@@ -339,7 +320,6 @@ pytype_strict_library(
         "ctc_objectives.py",
         "quantizer_objectives.py",
     ],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -351,7 +331,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "ssm",
     srcs = ["ssm.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit flax.core dependency.
         # Implicit jax dependency.
@@ -364,7 +343,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "ssm_transformers",
     srcs = ["ssm_transformers.py"],
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":checkpoint_policy",
@@ -387,9 +365,7 @@ py_strict_test(
     name = "ssm_transformers_test",
     size = "large",
     srcs = ["ssm_transformers_test.py"],
-    python_version = "PY3",
     shard_count = 20,
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":ssm_transformers",
@@ -410,7 +386,6 @@ py_strict_test(
 pytype_strict_library(
     name = "stats",
     srcs = ["stats.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         "//praxis:py_utils",
@@ -421,8 +396,6 @@ pytype_strict_library(
 py_strict_test(
     name = "stats_test",
     srcs = ["stats_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":stats",
         # Implicit absl.testing.absltest dependency.
@@ -435,7 +408,6 @@ py_strict_test(
 pytype_strict_library(
     name = "pipeline",
     srcs = ["pipeline.py"],
-    srcs_version = "PY3",
     deps = [
         ":checkpoint_policy",
         # Implicit flax.core dependency.
@@ -451,7 +423,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "poolings",
     srcs = ["poolings.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         "//praxis:asserts",
@@ -464,7 +435,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "quantizer",
     srcs = ["quantizer.py"],
-    srcs_version = "PY3",
     deps = [
         ":linears",
         ":objectives",
@@ -479,7 +449,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "repeats",
     srcs = ["repeats.py"],
-    srcs_version = "PY3",
     deps = [
         ":checkpoint_policy",
         # Implicit flax.core dependency.
@@ -496,8 +465,6 @@ pytype_strict_library(
 py_strict_test(
     name = "repeats_test",
     srcs = ["repeats_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":linears",
         ":repeats",
@@ -517,7 +484,6 @@ py_strict_test(
 pytype_strict_library(
     name = "resnets",
     srcs = ["resnets.py"],
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":convolutions",
@@ -534,7 +500,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "spectrum_augmenter",
     srcs = ["spectrum_augmenter.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -546,8 +511,6 @@ pytype_strict_library(
 py_strict_test(
     name = "spectrum_augmenter_test",
     srcs = ["spectrum_augmenter_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":spectrum_augmenter",
         # Implicit absl.testing.absltest dependency.
@@ -563,7 +526,6 @@ py_strict_test(
 pytype_strict_library(
     name = "rnn_cell",
     srcs = ["rnn_cell.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         "//praxis:asserts",
@@ -577,7 +539,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "vanillanets",
     srcs = ["vanillanets.py"],
-    srcs_version = "PY3",
     deps = [
         ":convolutions",
         ":poolings",
@@ -607,7 +568,6 @@ py_strict_test(
 pytype_strict_library(
     name = "stochastics",
     srcs = ["stochastics.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -619,7 +579,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "sequential",
     srcs = ["sequential.py"],
-    srcs_version = "PY3",
     deps = [
         "//praxis:base_layer",
     ],
@@ -629,7 +588,6 @@ pytype_strict_library(
     name = "test_layers",
     testonly = True,
     srcs = ["test_layers.py"],
-    srcs_version = "PY3",
     deps = [
         ":linears",
         ":normalizations",
@@ -646,8 +604,6 @@ pytype_strict_library(
 py_strict_test(
     name = "adapters_test",
     srcs = ["adapters_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":adapters",
         ":normalizations",
@@ -669,8 +625,6 @@ py_strict_test(
 py_strict_test(
     name = "conformers_test",
     srcs = ["conformers_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":conformers",
@@ -691,7 +645,6 @@ py_strict_test(
 pytype_strict_library(
     name = "conformers",
     srcs = ["conformers.py"],
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":attentions",
@@ -711,7 +664,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "checkpoint_policy",
     srcs = ["checkpoint_policy.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
     ],
@@ -720,7 +672,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "transformers",
     srcs = ["transformers.py"],
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":attentions",
@@ -784,9 +735,7 @@ py_strict_test(
 py_strict_test(
     name = "attentions_test",
     srcs = ["attentions_test.py"],
-    python_version = "PY3",
     shard_count = 2,
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         # Implicit absl.logging dependency.
@@ -807,8 +756,6 @@ py_strict_test(
 py_strict_test(
     name = "augmentations_test",
     srcs = ["augmentations_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":augmentations",
         # Implicit absl.logging dependency.
@@ -824,8 +771,6 @@ py_strict_test(
 py_strict_test(
     name = "bregman_test",
     srcs = ["bregman_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":bregman",
         # Implicit absl.testing.absltest dependency.
@@ -842,8 +787,6 @@ py_strict_test(
 py_strict_test(
     name = "ctc_objectives_test",
     srcs = ["ctc_objectives_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":objectives",
         # Implicit absl.testing.absltest dependency.
@@ -860,9 +803,7 @@ py_strict_test(
 py_strict_test(
     name = "embedding_softmax_test",
     srcs = ["embedding_softmax_test.py"],
-    python_version = "PY3",
     shard_count = 2,
-    srcs_version = "PY3",
     deps = [
         ":embedding_softmax",
         # Implicit absl.logging dependency.
@@ -882,8 +823,6 @@ py_strict_test(
 py_strict_test(
     name = "frnn_test",
     srcs = ["frnn_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":frnn",
         ":rnn_cell",
@@ -901,8 +840,6 @@ py_strict_test(
 py_strict_test(
     name = "linears_test",
     srcs = ["linears_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":linears",
@@ -924,8 +861,6 @@ py_strict_test(
 py_strict_test(
     name = "shared_layers_test",
     srcs = ["shared_layers_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = ["fast_and_reliable_fiddle_integration_test"],
     deps = [
         ":linears",
@@ -943,9 +878,7 @@ py_strict_test(
 py_strict_test(
     name = "models_test",
     srcs = ["models_test.py"],
-    python_version = "PY3",
     shard_count = 4,
-    srcs_version = "PY3",
     deps = [
         ":embedding_softmax",
         ":models",
@@ -968,8 +901,6 @@ py_strict_test(
 py_strict_test(
     name = "ngrammer_test",
     srcs = ["ngrammer_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":bregman",
         ":ngrammer",
@@ -989,8 +920,6 @@ py_strict_test(
 py_strict_test(
     name = "normalizations_test",
     srcs = ["normalizations_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":convolutions",
         ":normalizations",
@@ -1013,8 +942,6 @@ py_strict_test(
 py_strict_test(
     name = "poolings_test",
     srcs = ["poolings_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":poolings",
         # Implicit absl.testing.absltest dependency.
@@ -1033,8 +960,6 @@ py_strict_test(
 py_strict_test(
     name = "quantizer_test",
     srcs = ["quantizer_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":quantizer",
         # Implicit absl.testing.absltest dependency.
@@ -1050,8 +975,6 @@ py_strict_test(
 py_strict_test(
     name = "quantizer_objectives_test",
     srcs = ["quantizer_objectives_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":objectives",
         # Implicit absl.testing.absltest dependency.
@@ -1063,8 +986,6 @@ py_strict_test(
 py_strict_test(
     name = "rnn_cell_test",
     srcs = ["rnn_cell_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":rnn_cell",
         # Implicit absl.testing.absltest dependency.
@@ -1083,8 +1004,6 @@ py_strict_test(
 py_strict_test(
     name = "ssm_test",
     srcs = ["ssm_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":ssm",
         # Implicit absl.logging dependency.
@@ -1105,8 +1024,6 @@ py_strict_test(
 py_strict_test(
     name = "stochastics_test",
     srcs = ["stochastics_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":stochastics",
         # Implicit absl.logging dependency.
@@ -1121,8 +1038,6 @@ py_strict_test(
 py_strict_test(
     name = "sequential_test",
     srcs = ["sequential_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":sequential",
         # Implicit absl.logging dependency.
@@ -1140,9 +1055,7 @@ py_strict_test(
     name = "transformers_test",
     size = "large",
     srcs = ["transformers_test.py"],
-    python_version = "PY3",
     shard_count = 20,
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":attentions",
@@ -1167,9 +1080,7 @@ py_strict_test(
     name = "transformer_models_test",
     size = "large",
     srcs = ["transformer_models_test.py"],
-    python_version = "PY3",
     shard_count = 8,
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":embedding_softmax",
@@ -1197,9 +1108,7 @@ py_strict_test(
     name = "transformer_models_encoder_decoder_test",
     size = "large",
     srcs = ["transformer_models_encoder_decoder_test.py"],
-    python_version = "PY3",
     shard_count = 48,
-    srcs_version = "PY3",
     deps = [
         ":embedding_softmax",
         ":ngrammer",
@@ -1221,7 +1130,6 @@ py_strict_test(
 pytype_strict_library(
     name = "flax_adapter",
     srcs = ["flax_adapter.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit flax.core dependency.
         "//praxis:base_layer",
@@ -1234,8 +1142,6 @@ pytype_strict_library(
 py_strict_test(
     name = "flax_adapter_test",
     srcs = ["flax_adapter_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":flax_adapter",
         ":normalizations",
@@ -1313,9 +1219,7 @@ py_strict_test(
 py_strict_test(
     name = "convolutions_test",
     srcs = ["convolutions_test.py"],
-    python_version = "PY3",
     shard_count = 10,
-    srcs_version = "PY3",
     deps = [
         ":activations",
         ":convolutions",

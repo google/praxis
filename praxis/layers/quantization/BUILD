@@ -27,7 +27,6 @@ package(default_visibility = JAX_VISIBILITY)
 pytype_strict_library(
     name = "layers",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":conformers",
@@ -43,7 +42,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "quantize",
     srcs = ["quantize.py"],
-    srcs_version = "PY3",
     deps = [
         ":layers",
         ":quantization_hparams",
@@ -58,8 +56,6 @@ pytype_strict_library(
 py_strict_test(
     name = "quantize_test",
     srcs = ["quantize_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":layers",
         ":quantization_hparams",
@@ -76,7 +72,6 @@ py_strict_test(
 pytype_strict_library(
     name = "attentions",
     srcs = ["attentions.py"],
-    srcs_version = "PY3",
     deps = [
         ":operations",
         ":quantization_hparams",
@@ -93,8 +88,6 @@ pytype_strict_library(
 py_strict_test(
     name = "attentions_test",
     srcs = ["attentions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":quantization_hparams",
@@ -115,7 +108,6 @@ pytype_strict_library(
     name = "quantization_test_utils",
     testonly = 1,
     srcs = ["tests/test_util.py"],
-    srcs_version = "PY3",
     deps = [
         "//praxis:test_utils",
     ],
@@ -124,8 +116,6 @@ pytype_strict_library(
 py_strict_test(
     name = "attention_projection_ptq_test",
     srcs = ["tests/attention_projection_ptq_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":quantization_hparams",
@@ -145,8 +135,6 @@ py_strict_test(
 py_strict_test(
     name = "attention_projection_fq_test",
     srcs = ["tests/attention_projection_fq_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":quantization_hparams",
@@ -167,8 +155,6 @@ py_strict_test(
 py_strict_test(
     name = "attention_projection_aqt_test",
     srcs = ["tests/attention_projection_aqt_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":quantization_hparams",
@@ -189,8 +175,6 @@ py_strict_test(
 py_strict_test(
     name = "combined_qkv_projection_ptq_test",
     srcs = ["tests/combined_qkv_projection_ptq_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":quantization_hparams",
@@ -210,8 +194,6 @@ py_strict_test(
 py_strict_test(
     name = "combined_qkv_projection_fq_test",
     srcs = ["tests/combined_qkv_projection_fq_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":quantization_hparams",
@@ -231,8 +213,6 @@ py_strict_test(
 py_strict_test(
     name = "combined_qkv_projection_aqt_test",
     srcs = ["tests/combined_qkv_projection_aqt_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":quantization_hparams",
@@ -252,9 +232,7 @@ py_strict_test(
 py_strict_test(
     name = "dotproduct_attention_aqt_test",
     srcs = ["tests/dotproduct_attention_aqt_test.py"],
-    python_version = "PY3",
     shard_count = 30,
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         ":quantization_hparams",
@@ -274,8 +252,6 @@ py_strict_test(
 py_strict_test(
     name = "linear_ptq_test",
     srcs = ["tests/linear_ptq_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":linears",
         ":quantization_hparams",
@@ -295,7 +271,6 @@ py_strict_test(
 pytype_strict_library(
     name = "conformers",
     srcs = ["conformers.py"],
-    srcs_version = "PY3",
     deps = [
         ":attentions",
         # Implicit jax dependency.
@@ -308,8 +283,6 @@ pytype_strict_library(
 py_strict_test(
     name = "conformers_test",
     srcs = ["conformers_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":conformers",
         ":quantization_hparams",
@@ -330,7 +303,6 @@ py_strict_test(
 pytype_strict_library(
     name = "linears",
     srcs = ["linears.py"],
-    srcs_version = "PY3",
     deps = [
         ":operations",
         ":quantization_hparams",
@@ -346,8 +318,6 @@ pytype_strict_library(
 py_strict_test(
     name = "linears_test",
     srcs = ["linears_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":linears",
         ":quantization_hparams",
@@ -366,7 +336,6 @@ py_strict_test(
 pytype_strict_library(
     name = "multi_query_attention",
     srcs = ["multi_query_attention.py"],
-    srcs_version = "PY3",
     deps = [
         ":operations",
         ":quantization_hparams",
@@ -383,8 +352,6 @@ pytype_strict_library(
 py_strict_test(
     name = "multi_query_attention_test",
     srcs = ["multi_query_attention_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":multi_query_attention",
         ":quantization_hparams",
@@ -404,8 +371,6 @@ py_strict_test(
 py_strict_test(
     name = "one_headed_attention_projection_aqt_test",
     srcs = ["tests/one_headed_attention_projection_aqt_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":multi_query_attention",
         ":quantization_hparams",
@@ -426,7 +391,6 @@ py_strict_test(
 pytype_strict_library(
     name = "embedding_softmax",
     srcs = ["embedding_softmax.py"],
-    srcs_version = "PY3",
     deps = [
         ":linears",
         ":operations",
@@ -445,8 +409,6 @@ pytype_strict_library(
 py_strict_test(
     name = "embedding_softmax_test",
     srcs = ["embedding_softmax_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":layers",
         ":quantization_hparams",
@@ -464,7 +426,6 @@ py_strict_test(
 pytype_strict_library(
     name = "ngrammer",
     srcs = ["ngrammer.py"],
-    srcs_version = "PY3",
     deps = [
         ":embedding_softmax",
         ":quantization_hparams",
@@ -479,8 +440,6 @@ pytype_strict_library(
 py_strict_test(
     name = "ngrammer_test",
     srcs = ["ngrammer_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":layers",
         ":quantization_hparams",
@@ -499,7 +458,6 @@ py_strict_test(
 pytype_strict_library(
     name = "operations",
     srcs = ["operations.py"],
-    srcs_version = "PY3",
     deps = [
         ":optimization",
         ":quantization_hparams",
@@ -513,8 +471,6 @@ pytype_strict_library(
 py_strict_test(
     name = "operations_test",
     srcs = ["operations_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":operations",
         ":quantization_hparams",
@@ -532,8 +488,6 @@ py_strict_test(
 py_strict_test(
     name = "quantization_test",
     srcs = ["quantization_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":linears",
         ":operations",
@@ -551,7 +505,6 @@ py_strict_test(
 pytype_strict_library(
     name = "optimization",
     srcs = ["optimization.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -562,8 +515,6 @@ pytype_strict_library(
 py_strict_test(
     name = "optimization_test",
     srcs = ["optimization_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":optimization",
         # Implicit absl.testing.absltest dependency.
@@ -576,7 +527,6 @@ py_strict_test(
 pytype_strict_library(
     name = "quantizer",
     srcs = ["quantizer.py"],
-    srcs_version = "PY3",
     deps = [
         ":operations",
         ":quantization_hparams",
@@ -591,8 +541,6 @@ pytype_strict_library(
 py_strict_test(
     name = "quantizer_test",
     srcs = ["quantizer_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":quantizer",
         # Implicit absl.testing.absltest dependency.
@@ -609,7 +557,6 @@ py_strict_test(
 pytype_strict_library(
     name = "quantization_hparams",
     srcs = ["quantization_hparams.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
     ],
@@ -618,7 +565,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "utils",
     srcs = ["utils.py"],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
     ],
@@ -653,8 +599,6 @@ pytype_strict_library(
 py_strict_test(
     name = "utils_test",
     srcs = ["utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":utils",
         # Implicit absl.testing.absltest dependency.

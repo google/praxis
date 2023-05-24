@@ -25,7 +25,6 @@ package(default_visibility = JAX_VISIBILITY)
 pytype_strict_library(
     name = "chain",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     deps = [
         ":chain_extensions",
         ":chain_lib",
@@ -35,7 +34,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "chain_lib",
     srcs = ["chain.py"],
-    srcs_version = "PY3",
     deps = ["//praxis:base_layer"],
 )
 
