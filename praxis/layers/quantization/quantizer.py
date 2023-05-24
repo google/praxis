@@ -568,7 +568,8 @@ class TensorQuantizer(base_layer.BaseLayer):
     ):
       q_deq_x = self.dequantize(q_x, q_s, contract_dims, zp_time_scale)
       quant_loss = (
-          jnp.sum(jnp.square(jnp.subtract(x, q_deq_x))) * self.quant_loss_weight
+          jnp.mean(jnp.square(jnp.subtract(x, q_deq_x)))
+          * self.quant_loss_weight
       )
 
       self.add_summary('quant_loss', quant_loss)
