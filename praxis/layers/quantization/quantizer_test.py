@@ -549,17 +549,25 @@ class QuantizerTest(test_utils.TestCase):
 
     self.assertLessEqual(quant_error_asymmetric, quant_error_symmetric)
 
-  def test_aux_quantization_loss(self):
+  @parameterized.named_parameters(
+      dict(testcase_name='quantization loss', loss_type=True),
+      dict(testcase_name='kurtosis loss', loss_type=False),
+  )
+  def test_aux_quantization_loss(self, loss_type):
     p_quant = pax_fiddle.Config(
         quantizer.TensorQuantizer,
         name='quant',
         precision=4,
-        quant_loss_weight=1,
     )
+
+    if loss_type:
+      p_quant.quant_loss_weight = 1.0
+    else:
+      p_quant.kurt_loss_weight = 1.0
 
     axis = None
     x = jax.random.uniform(
-        jax.random.PRNGKey(0), shape=(4, 5), dtype=jnp.float32
+        jax.random.PRNGKey(0), shape=(4, 128), dtype=jnp.float32
     )
 
     context_p = base_layer.JaxContext.HParams(do_eval=True)
@@ -603,6 +611,49 @@ class QuantizerTest(test_utils.TestCase):
           mutable=True,
       )
       self.assertNotIn(base_layer.AUX_LOSS, states)
+
+  def test_kurt_loss(self):
+    p_quant = pax_fiddle.Config(
+        quantizer.TensorQuantizer,
+        name='quant',
+        precision=4,
+        kurt_loss_weight=1.0
+    )
+
+    axis = None
+    x_uniform = jax.random.uniform(
+        jax.random.PRNGKey(0), shape=(4, 128), dtype=jnp.float32
+    )
+    x_normal = jax.random.normal(
+        jax.random.PRNGKey(0), shape=(4, 128), dtype=jnp.float32
+    )
+
+    context_p = base_layer.JaxContext.HParams(do_eval=False)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+      quant = p_quant.Instantiate()
+      state = quant.init(jax.random.PRNGKey(0))
+      _, states_uniform = quant.apply(
+          state,
+          x_uniform,
+          axis,
+          False,
+          quantized_dtype=None,
+          method=quant.quantize,
+          mutable=True,
+      )
+      self.assertLessEqual(states_uniform['aux_loss']['kurt_loss'].value, 0.009)
+      _, states_normal = quant.apply(
+          state,
+          x_normal,
+          axis,
+          False,
+          quantized_dtype=None,
+          method=quant.quantize,
+          mutable=True,
+      )
+      self.assertGreaterEqual(
+          states_normal['aux_loss']['kurt_loss'].value, 1.374
+      )
 
   def test_clipping_per_channel(self):
     np.random.seed(0)

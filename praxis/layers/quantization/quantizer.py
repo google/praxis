@@ -221,6 +221,8 @@ def create_tensor_quantizer(
     tq_params.add_scale_eps = quant_params.add_scale_eps
     tq_params.use_symmetric = quant_params.use_symmetric
     tq_params.quant_loss_weight = quant_params.quant_loss_weight
+    tq_params.kurt_loss_weight = quant_params.kurt_loss_weight
+    tq_params.kurt = quant_params.kurt
     tq_params.optimize_clipping_per_channel = (
         quant_params.optimize_clipping_per_channel
     )
@@ -255,6 +257,9 @@ class TensorQuantizer(base_layer.BaseLayer):
       distribution (e.g., ReLU).
     use_symmetric: Do symmetric quantization for weights.
     quant_loss_weight: Weight for quantization loss.
+    kurt_loss_weight: Weight for Kurtosis loss.
+    kurt: Kurtosis target. By default it is 1.8 (uniform distribution).
+      It is based on paper: "Robust Quantization: One Model to Rule Them All".
     optimize_clipping_per_channel: If True choose the best clipping value
       per channel, else per-tensor.
     sub_channels: Number of sub channels for splitting channelwise quantization.
@@ -268,6 +273,8 @@ class TensorQuantizer(base_layer.BaseLayer):
   unsigned_int_bounds: bool = False
   use_symmetric: bool = True
   quant_loss_weight: Optional[float] = None
+  kurt_loss_weight: Optional[float] = None
+  kurt: float = 1.8
   optimize_clipping_per_channel: bool = False
   sub_channels: Optional[int] = None
 
@@ -574,6 +581,31 @@ class TensorQuantizer(base_layer.BaseLayer):
 
       self.add_summary('quant_loss', quant_loss)
       self.add_aux_loss('quant_loss', quant_loss)
+
+    if (
+        quantized_dtype != jnp.int8  # it is used for materialization
+        and self.kurt_loss_weight is not None
+        and not self.do_eval
+    ):
+      # Per-channel mean.
+      x_mean = jnp.mean(x, axis=contract_dims, keepdims=True)
+
+      # Per channel std.
+      x_std = jnp.std(x, axis=contract_dims, keepdims=True)
+      x_std = jnp.where(x_std == 0, jnp.ones_like(x_std), x_std)
+
+      # Per channel Kurtosis is the fourth standardized moment:
+      x_norm4 = jnp.mean(
+          jnp.power((x - x_mean) / x_std, 4.0), axis=contract_dims
+      )
+
+      # Kurtosis loss.
+      kurt_loss = (
+          jnp.mean(jnp.square(x_norm4 - self.kurt)) * self.kurt_loss_weight
+      )
+
+      self.add_summary('kurt_loss', kurt_loss)
+      self.add_aux_loss('kurt_loss', kurt_loss)
 
     if squeeze_scale:
       q_s = jnp.squeeze(q_s)

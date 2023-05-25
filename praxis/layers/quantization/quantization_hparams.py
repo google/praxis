@@ -115,6 +115,9 @@ class WeightQuantizationParams:
   vn_weight_norm_type: Type of weight normalization: 'L2', 'Linf',
     'PerChannelLinf'. Default value is 'PerChannelLinf' it is a
       standard scale normalization used by QAT.
+  kurt_loss_weight: Weight for Kurtosis loss.
+  kurt: Kurtosis target. By default it is 1.8 (uniform distribution).
+    It is based on paper: "Robust Quantization: One Model to Rule Them All".
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -136,6 +139,8 @@ class WeightQuantizationParams:
   vn_start_step: int = 0
   vn_noise_type: str = 'uniform'
   vn_weight_norm_type: str = 'PerChannelLinf'
+  kurt_loss_weight: Optional[float] = None
+  kurt: float = 1.8
 
 
 @dataclasses.dataclass
