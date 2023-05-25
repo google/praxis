@@ -16,12 +16,64 @@
 """Unit tests for optimizers."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
 from jax import numpy as jnp
 import optax
+from praxis import base_layer
 from praxis import optimizers
 from praxis import pax_fiddle
 from praxis import schedules
 from praxis import test_utils
+
+
+def _run_transformation(num_steps=1,
+                        initial_value=2.0,
+                        l2_regularizer_weight=0.0,
+                        l1_regularizer_weight=0.0,
+                        decoupled_weight_decay=0.0,
+                        create_regularizer_mask=False):
+  """Applies a gradient transformation with Adam for some steps.
+
+  Args:
+    num_steps: Number of steps to apply transformation for.
+    initial_value: Initial value of the model parameter.
+    l2_regularizer_weight: Optional L2 regularization weight.
+    l1_regularizer_weight: Optional L2 regularization weight.
+    decoupled_weight_decay: Optional decoupled weight decay.
+    create_regularizer_mask: Whether to create mask for regularization.
+  Returns:
+    The updated states and the final update.
+  """
+  param_name = 'var'
+  mdl_vars = {param_name: jnp.array(initial_value, dtype=jnp.float32)}
+  opt_tpl = pax_fiddle.Config(
+      optimizers.ShardedSgd,
+      lr_schedule=pax_fiddle.Config(schedules.Constant, value=1.0),
+      learning_rate=1.0,
+      l2_regularizer_weight=l2_regularizer_weight,
+      l1_regularizer_weight=l1_regularizer_weight,
+      decoupled_weight_decay=decoupled_weight_decay,
+  )
+  sgd = optimizers.instantiate(opt_tpl)
+  var_weight_hparams = None
+  if create_regularizer_mask:
+    var_weight_hparams = {
+        param_name: base_layer.WeightHParams(
+            shape=[1],
+            collections=[
+                base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
+            ]
+        )
+    }
+  tx = sgd.get_grad_transformation(var_weight_hparams)
+  opt_state = tx.init(mdl_vars)
+  for t in range(num_steps):
+    fake_update = float(t + 1)
+    updates, opt_state = tx.update(
+        {param_name: jnp.array(fake_update)}, opt_state, mdl_vars
+    )
+    mdl_vars = optax.apply_updates(mdl_vars, updates)
+  return mdl_vars[param_name]
 
 
 class OptimizersTest(test_utils.TestCase):
@@ -76,6 +128,27 @@ class OptimizersTest(test_utils.TestCase):
     expected_var_value = -4.25
     self.assertEqual(
         mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32))
+
+
+class OptimizersRegularizationTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('l2_regularizer', 2.0, 0.0, 0.0, False, -3.0),
+      ('l2_regularizer_mask', 2.0, 0.0, 0.0, True, 1.0),
+      ('l1_regularizer', 0.0, 2.0, 0.0, False, -1.0),
+      ('l1_regularizer_mask', 0.0, 2.0, 0.0, True, 1.0),
+      ('decoupled_weight_decay', 0.0, 0.0, 2.0, False, -3.0),
+      ('decoupled_weight_decay_mask', 0.0, 0.0, 2.0, True, 1.0))
+  def test_regularizer(
+      self, l2_regularizer_weight, l1_regularizer_weight,
+      decoupled_weight_decay, create_regularizer_mask, expected_value):
+    output = _run_transformation(
+        l2_regularizer_weight=l2_regularizer_weight,
+        l1_regularizer_weight=l1_regularizer_weight,
+        decoupled_weight_decay=decoupled_weight_decay,
+        create_regularizer_mask=create_regularizer_mask)
+    self.assertEqual(output, jnp.array(expected_value, dtype=jnp.float32))
+
 
 if __name__ == '__main__':
   absltest.main()

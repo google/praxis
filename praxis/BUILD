@@ -437,11 +437,13 @@ py_strict_test(
     name = "optimizers_test",
     srcs = ["optimizers_test.py"],
     deps = [
+        ":base_layer",
         ":optimizers",
         ":pax_fiddle",
         ":schedules",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit optax dependency.
     ],

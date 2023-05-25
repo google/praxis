@@ -474,16 +474,16 @@ def apply_lp_regularizer(
         raise ValueError('Params must not be empty when applying weight decay.')
 
       if p == 1.0:
-        fn = lambda g, p, m: g + regularizer_weight * jnp.sign(p) * skip_mask(
-            p) * m if not py_utils.is_optax_masked_node(
+        fn = lambda g, p, m=1.0: g + regularizer_weight * jnp.sign(
+            p) * skip_mask(p) * m if not py_utils.is_optax_masked_node(
                 g) else optax.MaskedNode()
       elif p == 2.0:
-        fn = lambda g, p, m: g + regularizer_weight * p * skip_mask(
+        fn = lambda g, p, m=1.0: g + regularizer_weight * p * skip_mask(
             p) * m if not py_utils.is_optax_masked_node(
                 g) else optax.MaskedNode()
 
       if var_lp_mask is None:
-        updates = jax.tree_map(fn, updates, params, 1.0)
+        updates = jax.tree_map(fn, updates, params)
       else:
         updates = jax.tree_map(
             fn,
@@ -529,10 +529,10 @@ def apply_decoupled_weight_decay(
       if params is None:
         raise ValueError('Params must not be empty when applying weight decay.')
 
-      fn = lambda g, p, m: g - lr * regularizer_weight * p * m
+      fn = lambda g, p, m=1.0: g - lr * regularizer_weight * p * m
 
       if var_wd_mask is None:
-        updates = jax.tree_map(fn, updates, params, 1.0)
+        updates = jax.tree_map(fn, updates, params)
       else:
         updates = jax.tree_map(fn, updates, params, var_wd_mask)
     updated_state = NestedMap(count=count + 1)
