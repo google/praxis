@@ -18,6 +18,7 @@
 import contextlib
 import dataclasses
 import functools
+import inspect
 import re
 import threading
 import time
@@ -974,6 +975,69 @@ def timeit(min_elapsed: float = 1e-6) -> Iterator[RunningPeriod]:
     yield period
   finally:
     period.end = time.time()
+
+
+def _contract_path(s: str):
+  """Contract a slash-deliminted path to just the last two parts."""
+  parts = s.split('/')
+  if len(parts) <= 2:
+    return s
+  return f'.../{"/".join(s.split("/")[-2:])}'
+
+
+def benchmark(prefix: str = '', first_n: Optional[int] = None):
+  """Log walltime elapsed around the decorated function.
+
+  Args:
+    prefix: Optional. If provided, prefixes the standard message with the
+      supplied string.
+    first_n: Optional. If provided and positive, only meausre and print timings
+      for the first n invocations of the wrapped function.
+
+  Returns:
+    The decorator.
+  """
+
+  def decorator(func: Callable[..., Any]):
+    call_count = 0
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+      nonlocal call_count
+      call_count += 1
+
+      if first_n is not None and call_count > first_n:
+        return func(*args, **kwargs)
+
+      # Get stack frame information about the wrapped function for reporting.
+      child_frame = inspect.currentframe()
+      frame = child_frame.f_back if child_frame else None
+      filename = _contract_path(frame.f_code.co_filename) if frame else ''
+      lineno = frame.f_lineno if frame else -1
+
+      logging.info(
+          '%sStarting timer for <%s> @ <%s:%d>',
+          prefix,
+          func.__name__,
+          filename,
+          lineno,
+      )
+      start = time.time()
+      result = func(*args, **kwargs)
+      end = time.time()
+      logging.info(
+          '%sElapsed time for <%s>: %.02f seconds  (@ <%s:%d>)',
+          prefix,
+          func.__name__,
+          end - start,
+          filename,
+          lineno,
+      )
+      return result
+
+    return wrapper
+
+  return decorator
 
 
 def filter_by_matching_keys(

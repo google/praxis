@@ -204,6 +204,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   def get_child(self, input_name: str) -> NestedJTensor:
     raise NotImplementedError
 
+  @py_utils.benchmark('[PAX STATUS]: ', first_n=2)
   def get_next_padded(self) -> NestedJTensor:
     """Gets next padded example from the input pipeline.
 
