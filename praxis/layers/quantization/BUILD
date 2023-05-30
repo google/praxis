@@ -30,6 +30,7 @@ pytype_strict_library(
     deps = [
         ":attentions",
         ":conformers",
+        ":convolutions",
         ":embedding_softmax",
         ":linears",
         ":multi_query_attention",
@@ -226,6 +227,42 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis/layers:attentions",
+    ],
+)
+
+pytype_strict_library(
+    name = "convolutions",
+    srcs = ["convolutions.py"],
+    deps = [
+        ":quantization_hparams",
+        ":quantizer",
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
+        "//praxis/layers",
+        "//praxis/layers:convolutions",
+        "//praxis/layers:normalizations",
+    ],
+)
+
+py_strict_test(
+    name = "convolutions_test",
+    srcs = ["convolutions_test.py"],
+    deps = [
+        ":convolutions",
+        ":operations",
+        ":quantization_hparams",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+        "//praxis/layers:convolutions",
     ],
 )
 

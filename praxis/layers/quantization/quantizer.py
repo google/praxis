@@ -190,6 +190,73 @@ def quantized_einsum(
     return jnp.einsum(eqn, x, w)
 
 
+def quantized_conv(
+    layer: base_layer.BaseLayer,
+    x: JTensor,
+    padding: str,
+    dimension_numbers: Tuple[str, ...],
+    feature_group_count: int,
+    pack_dim: int,
+) -> JTensor:
+  """Quantized Conv for inference and training.
+
+  Static activation quantization is to be added.
+
+  Args:
+    layer: the layer that calls this function.
+    x: input tensor.
+    padding: the padding dims on input.
+    dimension_numbers: the dimension numbers
+    feature_group_count: feature groups
+    pack_dim: pack dimension for int4 packing.
+
+  Returns:
+    the convolution output.
+  """
+  if not layer.quantization.weight_params.use_symmetric:
+    raise ValueError('Conv supports only symmetric weight quantization.')
+  if layer.quantization.mode == QuantizationMode.INFERENCE:
+    w, s, _ = layer.get_quantized_weight('w')
+    if (
+        layer.quantization.weight_params.precision == 4
+        and layer.quantization.weight_params.use_int4_packed_weights
+    ):
+      w = utils.unpack_4bit(
+          w, pack_dim, layer.quantization.weight_params.dtype
+      )
+    if do_static_activation_quantization(layer.quantization.act_params):
+      raise NotImplementedError(
+          'Static activation quantization is not supported yet.'
+      )
+    elif layer.quantization.act_params is not None:
+      x, act_scale = operations.reduce_precision_activation(x)
+      s = jnp.multiply(jnp.squeeze(act_scale), s)
+    dtype = layer.quantization.weight_params.dtype
+    if (
+        jax.dtypes.scalar_type_of(dtype) == float
+        and jnp.finfo(dtype).bits == 8
+    ):
+      w = jax.lax.bitcast_convert_type(w, dtype)
+      # cast to bf16 since bf16 x fp8 is not supported.
+      w = w.astype(jnp.bfloat16)
+
+    # lax.conv_general_dilated needs same type on x and w.
+    w = w.astype(x.dtype)
+    outputs = jax.lax.conv_general_dilated(
+        lhs=x,
+        rhs=w,
+        window_strides=layer.filter_stride,
+        padding=padding,
+        rhs_dilation=layer.dilations,
+        dimension_numbers=dimension_numbers,
+        feature_group_count=feature_group_count,
+    )
+    outputs = jnp.multiply(outputs, s)
+    return outputs
+  else:
+    raise NotImplementedError('QAT not supported for conv.')
+
+
 def do_static_activation_quantization(act_params) -> bool:
   return act_params is not None and act_params.stats_config is not None
 
