@@ -55,7 +55,6 @@ def _causal_padding(size: int, filter_shape: int, filter_stride: int) -> int:
   else:
     return max(filter_shape - (size % filter_stride), 0)
 
-
 class Conv2D(base_layer.BaseLayer):
   """Conv2D with support of SAME/VALID paddings.
 
@@ -112,7 +111,8 @@ class Conv2D(base_layer.BaseLayer):
     filter_shape = tuple(kernel_shape) + (1, in_channels * channel_multipliers)
     return pax_fiddle.Config(cls, filter_shape=filter_shape, **hparams)
 
-  def setup(self) -> None:
+  def check_dimensions(self) -> None:
+    """Check dimensions for conv."""
     if not self.name:
       raise ValueError('self.name needs to be set.')
     if self.padding not in ['SAME', 'VALID']:
@@ -144,6 +144,8 @@ class Conv2D(base_layer.BaseLayer):
           "Causal convolution doesn't support valid padding"
       )
 
+  def setup(self) -> None:
+    self.check_dimensions()
     wp = self.weight_split_dims_mapping
     self.create_variable(
         'w',
