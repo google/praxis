@@ -153,7 +153,7 @@ def dot_general_int(lhs, rhs, dimension_numbers):
   if lhs.dtype not in INT_TYPES:
     raise ValueError(f'lhs.dtype: {lhs.dtype} is not int type: {INT_TYPES} ')
   if rhs.dtype not in INT_TYPES:
-    raise ValueError(f'lhs.dtype: {rhs.dtype} is not int type: {INT_TYPES} ')
+    raise ValueError(f'rhs.dtype: {rhs.dtype} is not int type: {INT_TYPES} ')
   return _dot_general_int((lhs, rhs))
 
 
