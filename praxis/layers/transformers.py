@@ -490,8 +490,10 @@ class TransformerFeedForward(base_layer.BaseLayer):
     if self.norm_policy == 'post_skip':
       outputs = self.layer_norm(outputs)
 
-    # Cosine similarity between inputs (residual) and outputs.
-    self.add_summary('output_rel_cos', _rel_cos(residual, outputs), verbosity=4)
+    if self.input_dims == self.output_dims:
+      # Cosine similarity between inputs (residual) and outputs.
+      self.add_summary(
+          'output_rel_cos', _rel_cos(residual, outputs), verbosity=4)
 
     return outputs
 
