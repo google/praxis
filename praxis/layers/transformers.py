@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any, Optional, Sequence, Tuple, Union
 
 from absl import logging
+from flax import linen as nn
 import jax
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
@@ -1546,6 +1547,7 @@ class StackedTransformer(base_layer.BaseLayer):
       length of the sequence must match the number of attention layers. If an
       entry in the sequence is None, then there is no NGrammer layer present in
       that corresponding layer.
+    remat: Boolean, whether to remat each layer to save memory.
   """
   use_cross_attention: bool = False
   mask_self_attention: bool = False
@@ -1573,6 +1575,7 @@ class StackedTransformer(base_layer.BaseLayer):
   min_group_size: Optional[int] = None
   moe_layers: Optional[Sequence[int]] = ()
   ngrammer_tpls: Optional[Sequence[LayerTpl]] = template_field(None)
+  remat: bool = False
 
   def _clone_layer_params(self, layer_tpl: LayerTpl) -> LayerTpl:
     """Useful to let sublasses switch the class (e.g. Streaming version)."""
@@ -1708,15 +1711,40 @@ class StackedTransformer(base_layer.BaseLayer):
     if self.input_dropout_prob > 0.0:
       x_out = self.input_dropout(x_out)
 
-    for i in range(self.num_layers):
-      x_in = x_out
-      x_out, _ = self.x_layers[i](
+    def _fprop(
+        transformer,
+        x_in,
+        paddings,
+        attention_mask,
+        cross_inputs,
+        cross_attention_mask,
+        segment_pos,
+    ):
+      x_out, _ = transformer(
           x_in,
           paddings,
           attention_mask,
           cross_inputs,
           cross_attention_mask,
-          segment_pos=segment_pos)
+          segment_pos=segment_pos,
+      )
+      return x_out
+
+    fprop = _fprop
+    if self.remat:
+      fprop = nn.remat(_fprop, policy=jax.checkpoint_policies.nothing_saveable)
+
+    for i in range(self.num_layers):
+      x_in = x_out
+      x_out = fprop(
+          self.x_layers[i],
+          x_in,
+          paddings,
+          attention_mask,
+          cross_inputs,
+          cross_attention_mask,
+          segment_pos,
+      )
       x_out = checkpoint_name(x_out, 'transformer_layer_out')
     return x_out
 

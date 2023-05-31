@@ -683,6 +683,7 @@ pytype_strict_library(
         ":stats",
         ":stochastics",
         # Implicit absl.logging dependency.
+        # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",

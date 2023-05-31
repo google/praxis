@@ -410,7 +410,6 @@ class TransformersTest(test_utils.TestCase):
         np.var(atten_output_normalized),
         atol=5e-3)
 
-
   # TODO(lingvo-team): Figure out a solution to use identical Flax prng stream
   # for the two configurations considered. At the moment, the
   # StackedTransformerRepeated and StackedTransformer implementations do not
@@ -810,6 +809,96 @@ class TransformersTest(test_utils.TestCase):
     np_outputs = test_utils.to_np(outputs)
     tf_np_outputs = test_utils.to_np(tf_output)
     self.assertAllClose(tf_np_outputs, np_outputs, atol=1e-5)
+
+  @parameterized.parameters(*list(itertools.product([True, False], repeat=3)))
+  def test_stacked_transformer_remat(
+      self, mask_self_attention, packed_input, use_cross_attention
+  ):
+    model_dims = 16
+    ref_p = pax_fiddle.Config(
+        transformers.StackedTransformer,
+        name='stacked_transformer_layer',
+        model_dims=model_dims,
+        hidden_dims=64,
+        num_heads=8,
+        mask_self_attention=mask_self_attention,
+        num_layers=4,
+        packed_input=packed_input,
+        use_cross_attention=use_cross_attention,
+        remat=False,
+    )
+    remat_p = ref_p.clone()
+    remat_p.remat = True
+    ref_layer = instantiate(ref_p)
+    remat_layer = instantiate(remat_p)
+
+    seq_len = np.random.randint(10, 32)
+    batch_size = 10
+    npy_inputs = np.random.normal(
+        1.0, 0.5, [batch_size, seq_len, model_dims]
+    ).astype('float32')
+    inputs = jnp.asarray(npy_inputs)
+    npy_paddings = np.random.randint(0, 1, [batch_size, seq_len]).astype(
+        'float32'
+    )
+    paddings = jnp.asarray(npy_paddings)
+    segment_ids = None
+    segment_mask = None
+    if packed_input:
+      segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
+      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+
+    cross_inputs = None
+    cross_paddings = None
+    cross_segment_mask = None
+    if use_cross_attention:
+      cross_seq_len = np.random.randint(10, 64)
+      npy_cross_inputs = np.random.normal(
+          1.0, 0.5, [batch_size, cross_seq_len, model_dims]
+      ).astype('float32')
+      cross_inputs = jnp.asarray(npy_cross_inputs)
+      npy_cross_paddings = np.random.randint(
+          0, 1, [batch_size, cross_seq_len]
+      ).astype('float32')
+      cross_paddings = jnp.asarray(npy_cross_paddings)
+      if packed_input:
+        source_segment_ids = np.random.randint(
+            0, 3, [batch_size, cross_seq_len]
+        )
+        cross_segment_mask = attentions.segment_mask(
+            segment_ids, source_segment_ids, dtype=np.float32
+        )
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = ref_layer.init(
+          prng_key,
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask,
+      )
+      ref_outputs = ref_layer.apply(
+          initial_vars,
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask,
+      )
+      remat_outputs = remat_layer.apply(
+          initial_vars,
+          inputs,
+          paddings,
+          segment_mask=segment_mask,
+          cross_inputs=cross_inputs,
+          cross_paddings=cross_paddings,
+          cross_segment_mask=cross_segment_mask,
+      )
+      self.assertAllClose(ref_outputs, remat_outputs)
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=3)))
   def test_repeated_stacked_xformer_layer(self, mask_self_attention,
