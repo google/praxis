@@ -18,7 +18,8 @@
 import abc
 import functools
 import typing
-from typing import Any, Callable, Optional
+from dataclasses import field
+from typing import Any, Callable, Dict, List, Optional
 
 import flax.linen as nn
 from flax.linen import partitioning as flax_partitioning
@@ -40,9 +41,13 @@ class _InternalBaseFlaxAdapter(base_layer.BaseLayer):
   Attributes:
     logical_axes_rules: Optional logical axes rules, e.g., [('input', 'mdl'),
       ('output', 'data')]
+    var_collection_map: Optional collection map for specific variables. Key is collection's name
+      and value is a list of base_layer.WeightHParamsCollection. e.g {"my_variables": [
+      WeightHParamsCollection.NON_TRAINABLE, WeightHParamsCollection.DISALLOW_BFLOAT16_CONVERSION]}.
   """
 
   logical_axes_rules: Optional[LogicalAxisRules] = None
+  var_collection_map: Dict[str, List[base_layer.WeightHParamsCollection]] = field(default_factory=dict) 
 
   if typing.TYPE_CHECKING:
 
@@ -86,6 +91,7 @@ class _InternalBaseFlaxAdapter(base_layer.BaseLayer):
             flax_utils.convert_to_boxed_params,
             logical_axes_rules=self.logical_axes_rules,
             mesh_shape=self.mesh_shape,
+            var_collection_map=self.var_collection_map,
         ),
     )
 

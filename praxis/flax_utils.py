@@ -15,7 +15,8 @@
 
 """Flax-related utils."""
 
-from typing import Optional
+import copy
+from typing import Optional, Dict, List
 
 from flax import traverse_util
 from flax.core import frozen_dict
@@ -63,6 +64,7 @@ def convert_to_boxed_params(
     var_tree: pytypes.PyTree,
     logical_axes_rules: Optional[pytypes.LogicalAxisRules] = None,
     mesh_shape=None,
+    var_collection_map: Dict[str, List[base_layer.WeightHParamsCollection]] = {},
 ) -> pytypes.PyTree:
   """Converts raw params into BoxedParams."""
   if logical_axes_rules is not None:
@@ -93,6 +95,8 @@ def convert_to_boxed_params(
               tuple(logical_axes), logical_axes_rules))
     if var_collection == base_layer.PARAMS:
       collections = []
+    elif var_collection in var_collection_map:
+      collections = copy.copy(var_collection_map[var_collection])
     else:
       # Here, we simply assume those vars are non-learnable and require mean
       # sync during training.

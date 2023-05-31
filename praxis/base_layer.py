@@ -1777,11 +1777,13 @@ class BaseLayer(nn.Module):
     else:
       return result
 
+
   def _abstract_init(
       self,
       *args,
       do_eval=False,
       method=None,
+      mutable=None,
       self_reflect_configs=False,
       **kwargs,
   ) -> Dict[str, NestedWeightHParams]:
@@ -1789,12 +1791,14 @@ class BaseLayer(nn.Module):
     k = jax.random.PRNGKey(1)
     rngs = {PARAMS: k, RANDOM: k, NON_PAX_RNG_KEY: k}
     # Only PARAMS and NON_TRAINABLE have BoxedParam.
-    mutable = (
+    mutable_list = (
         DEFAULT_INIT_MUTABLE_LIST + [HYPER_PARAMS]
         if self_reflect_configs
         else DEFAULT_INIT_MUTABLE_LIST
     )
-    init_fn = functools.partial(super().init, mutable=mutable, method=method)
+    if mutable is not None:
+      mutable_list = [*mutable_list, *mutable]
+    init_fn = functools.partial(super().init, mutable=mutable_list, method=method)
     # Disable logging to reduce logspam.
     with py_utils.logging_verbosity_level('FATAL'):
       context_p = JaxContext.HParams(
@@ -1816,10 +1820,10 @@ class BaseLayer(nn.Module):
   # the unpadded variable shapes and SPMD annotations for
   # PARAMS and NON_TRAINABLE collections.
   def abstract_init_with_metadata(
-      self, *args, do_eval=False, method=None, **kwargs
+      self, *args, do_eval=False, method=None, mutable=None, **kwargs
   ) -> NestedWeightHParams:
     variables_abstract = self._abstract_init(
-        *args, do_eval=do_eval, method=method, **kwargs
+        *args, do_eval=do_eval, method=method, mutable=mutable, **kwargs
     )
     # If model contains FlaxAdapter, we may see 'params_axes' collections, but
     # they do not contain WeightHParams, so we remove them from returned values.
@@ -1830,12 +1834,13 @@ class BaseLayer(nn.Module):
   # A systematic self-reflection of the model structure, with configs for the
   # nested tree of BaseLayers.
   def abstract_init_with_mdl_config(
-      self, *args, do_eval=False, method=None, **kwargs
+      self, *args, do_eval=False, method=None, mutable=None, **kwargs
   ) -> Nested[pax_fiddle.Config[BaseLayer]]:
     variables_abstract = self._abstract_init(
         *args,
         do_eval=do_eval,
         method=method,
+        mutable=mutable,
         self_reflect_configs=True,
         **kwargs,
     )
