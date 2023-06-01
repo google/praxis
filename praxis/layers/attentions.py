@@ -2440,37 +2440,36 @@ class DotProductAttentionWithLPB(DotProductAttention):
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def create_relative_positional_embedding(
     layer: base_layer.BaseLayerApi) -> None:
-  params = layer.hparams
-  wp = params.weight_split_dims_mapping
+  wp = layer.weight_split_dims_mapping
 
-  if params.rel_pos_emb_dim <= 0:
-    raise ValueError('Invalid rel_pos_emb_dim: %s' % params.rel_pos_emb_dim)
+  if layer.rel_pos_emb_dim <= 0:
+    raise ValueError('Invalid rel_pos_emb_dim: %s' % layer.rel_pos_emb_dim)
 
   emb_params = pax_fiddle.Config(
       embedding_softmax.PositionalEmbedding,
-      embedding_dims=params.rel_pos_emb_dim,
+      embedding_dims=layer.rel_pos_emb_dim,
   )
   layer.create_child('pos_emb', emb_params)
 
   # Projection layer for relative position encoding
-  dim_per_head = params.dim_per_head
+  dim_per_head = layer.dim_per_head
   if dim_per_head is None:
-    dim_per_head = params.hidden_dim // params.num_heads
-    assert dim_per_head * params.num_heads == params.hidden_dim, (
-        f'{dim_per_head} * {params.num_heads} != {params.hidden_dim}')
+    dim_per_head = layer.hidden_dim // layer.num_heads
+    assert dim_per_head * layer.num_heads == layer.hidden_dim, (
+        f'{dim_per_head} * {layer.num_heads} != {layer.hidden_dim}')
 
-  pos_proj_tpl = params.proj_tpl.clone().set(
-      input_dim=params.rel_pos_emb_dim,
-      num_heads=params.num_heads,
+  pos_proj_tpl = layer.proj_tpl.clone().set(
+      input_dim=layer.rel_pos_emb_dim,
+      num_heads=layer.num_heads,
       dim_per_head=dim_per_head,
       use_bias=False)
   pos_proj_tpl.weight_split_dims_mapping.wt = wp.proj
   layer.create_child('pos_proj', pos_proj_tpl)
 
   u_pc = WeightHParams(
-      shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
+      shape=[layer.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
   v_pc = WeightHParams(
-      shape=[params.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
+      shape=[layer.num_heads, dim_per_head], init=WeightInit.Constant(0.0))
 
   layer.create_variable('u', u_pc)
   layer.create_variable('v', v_pc)
