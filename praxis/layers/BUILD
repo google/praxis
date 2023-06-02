@@ -1239,3 +1239,30 @@ py_strict_test(
         # Implicit tensorflow_no_contrib dependency.
     ],
 )
+
+pytype_strict_library(
+    name = "searchable",
+    srcs = ["searchable.py"],
+    deps = [
+        # Implicit flax.core dependency.
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:pytypes",
+    ],
+)
+
+py_strict_test(
+    name = "searchable_test",
+    srcs = ["searchable_test.py"],
+    deps = [
+        ":linears",
+        ":searchable",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        "//praxis:base_hyperparams",
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:test_utils",
+    ],
+)
