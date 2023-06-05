@@ -17,7 +17,7 @@
 
 import dataclasses
 import enum
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 
 @enum.unique
@@ -120,6 +120,8 @@ class SparsityHParams:
       correspondingly to ONESHOT and FEWSHOT mode.
     mask_update_interval: The step invertal between two mask updates. This is
       only valide under FEWSHOT mode.
+    target_step: target step to start sparsity pruning.
+    sparsified_layers: List of indices of layer to sparisify.
   """
 
   sparsity_type: SparsityType = SparsityType.STRUCTURED_NM
@@ -127,6 +129,19 @@ class SparsityHParams:
   mode: SparsityMode = SparsityMode.INFERENCE
   num_shots: int = 0
   mask_update_interval: int = 1
+  target_step: int = 0
+  sparsified_layers: Optional[List[int]] = None
+
+  def get_num_shots(self):
+    if (
+        self.mode == SparsityMode.INFERENCE
+        or self.mode == SparsityMode.MATERIALIZE
+    ):
+      return 0
+    elif self.mode == SparsityMode.TRAINING:
+      return -1
+    else:
+      return self.num_shots
 
   def __post_init__(self):
     if (

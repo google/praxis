@@ -417,7 +417,12 @@ class RepeatsSparsityTest(test_utils.TestCase):
     expected_shapes = {
         'non_trainable': {
             'sub': {
-                'linear': {'w' + base_layer.SPARSITY_NAME_POSTFIX: (2, 4, 4)}
+                'linear': {
+                    'mask_update_count': (2,),
+                    'num_shots': (2,),
+                    'step': (2,),
+                    'w' + base_layer.SPARSITY_NAME_POSTFIX: (2, 4, 4)
+                }
             }
         },
         'params': {'sub': {'linear': {'w': (2, 4, 4)}, 'bias': {'b': (2, 4)}}},

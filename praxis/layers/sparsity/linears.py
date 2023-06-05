@@ -15,13 +15,10 @@
 
 """Sparse Linear Layers."""
 
-import jax
-import jax.numpy as jnp
-
 from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import linears
-from praxis.layers.sparsity import sparsity
+from praxis.layers.sparsity import sparse_base_layer
 from praxis.layers.sparsity import sparsity_hparams
 
 SparsityMode = sparsity_hparams.SparsityMode
@@ -35,7 +32,7 @@ JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 
 
-class Linear(linears.Linear):
+class Linear(sparse_base_layer.SparsityBaseLayer, linears.Linear):  # pytype: disable=signature-mismatch
   """Sparsed Linear layer without bias.
 
   Attributes:
@@ -43,55 +40,18 @@ class Linear(linears.Linear):
       applied to this layer.
   """
 
-  sparsity: SparsityHParams = instance_field(SparsityHParams)
-
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
-    pc = WeightHParams(
+    weight_hp = WeightHParams(
         shape=[self.input_dims, self.output_dims],
+        init=self.weight_init,
         mesh_shape=self.mesh_shape,
         tensor_split_dims_mapping=wp.wt,
     )
-    if self.sparsity.mode == SparsityMode.INFERENCE:
-      self.create_variable('w', pc)
-    else:
-      self.create_sparse_variable('w', pc)
-      count_pc = WeightHParams(
-          shape=[], init=WeightInit.Constant(0), dtype=jnp.int32
-      )
-      if (
-          self.sparsity.mode == SparsityMode.ONESHOT
-          or self.sparsity.mode == SparsityMode.FEWSHOT
-      ):
-        self.create_variable('mask_update_count', count_pc, trainable=False)
-        # A counter that gets incremented on every fprop.
-        global_step_count_pc = WeightHParams(
-            shape=[], init=WeightInit.Constant(0), dtype=jnp.int32)
-        self.create_variable(
-            'global_step_count', global_step_count_pc, trainable=False)
-
-  def _update_mask(self, weight):
-    return sparsity.get_sparsity_mask(
-        weight,
-        n_sparsity=self.sparsity.weight_params.prune_rate[0],
-        m_sparsity=self.sparsity.weight_params.prune_rate[1],
-    )
-
-  def _maybe_update_mask(self, update_count, weight, mask, global_step_count):
-    def _true_fn():
-      return self._update_mask(weight), update_count + 1
-
-    def _false_fn():
-      return mask, update_count
-
-    return jax.lax.cond(
-        jnp.logical_and(
-            update_count < self.sparsity.num_shots,
-            jnp.mod(global_step_count, self.sparsity.mask_update_interval) == 0,
-        ),
-        _true_fn,
-        _false_fn,
-    )
+    name = 'w'
+    self.create_variable(name, weight_hp)
+    self.create_child('einsum', self.einsum_tpl.clone())
+    self.create_aux_variables(name, weight_hp)
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Apply projection to inputs.
@@ -103,37 +63,9 @@ class Linear(linears.Linear):
       Projected inputs.
     """
     ap = self.activation_split_dims_mapping
-    if self.sparsity.mode == SparsityMode.INFERENCE:
-      out = linears.project_last_dim(inputs, self.theta.w)
-    else:
-      w, m = self.get_sparse_weight('w')
-      if self.sparsity.sparsity_type == SparsityType.UNSTRUCTURED:
-        raise NotImplementedError(
-            'Unstructured sparsity is not currently supported.'
-        )
-      elif self.sparsity.sparsity_type == SparsityType.STRUCTURED_NM:
-        if (
-            self.sparsity.mode == SparsityMode.ONESHOT
-            or self.sparsity.mode == SparsityMode.FEWSHOT
-        ):
-          # Update global step
-          global_step_count = self.get_var('global_step_count')
-          self.update_var('global_step_count', global_step_count + 1)
-          up_cnt = self.get_var('mask_update_count')
-          m, up_cnt = self._maybe_update_mask(up_cnt, w, m, global_step_count)
-          self.update_var('mask_update_count', up_cnt)
-        else:
-          m = self._update_mask(w)
+    w = self.sparsifiy(self.theta.w, name='w')  # sparsify weight.
+    out = self.einsum('...y,yz->...z', inputs, w)
 
-        # update_var function needs to be out of jax.lax.cond, due to
-        # flax.errors.JaxTransformError: Jax transforms and Flax models cannot
-        # be mixed.
-        self.update_var('w' + base_layer.SPARSITY_NAME_POSTFIX, m)
-        w = sparsity.apply_sparsity(w, m)
-        out = linears.project_last_dim(inputs, w)
-      else:
-        raise ValueError('Unknown sparsity_type. It should be UNSTRUCTURED or'
-                         'STRUCTURED_NM.')
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
     ap_out = ap.out

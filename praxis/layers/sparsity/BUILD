@@ -40,6 +40,7 @@ pytype_strict_library(
     name = "linears",
     srcs = ["linears.py"],
     deps = [
+        ":sparse_base_layer",
         ":sparsity",
         ":sparsity_hparams",
         # Implicit jax dependency.
@@ -118,6 +119,19 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
+        "//praxis/layers:attentions",
+    ],
+)
+
+pytype_strict_library(
+    name = "sparse_base_layer",
+    srcs = ["sparse_base_layer.py"],
+    deps = [
+        ":sparsity",
+        ":sparsity_hparams",
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pytypes",
         "//praxis/layers:attentions",
     ],
 )
