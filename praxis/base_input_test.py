@@ -25,6 +25,7 @@ from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
 import fiddle as fdl
+import jax
 from lingvo.core import base_input_generator
 from lingvo.core import generic_input
 from lingvo.core import py_utils as tf_py_utils
@@ -41,14 +42,13 @@ instantiate = base_hyperparams.instantiate
 
 
 class TestInput(base_input.BaseInput):
-  _dataset: Any = dataclasses.field(init=False, repr=False)
   _iter: Any = dataclasses.field(init=False, repr=False)
   shuffle: bool = True
 
   def __post_init__(self):
     super().__post_init__()
-    self._dataset = self._get_dataset()
-    self._iter = iter(self._dataset)
+    self.dataset = self._get_dataset()  # Updates BaseInput.dataset.
+    self._iter = iter(self.dataset)
 
   def get_next(self) -> py_utils.NestedMap:
     assert tf.compat.v1.executing_eagerly()
@@ -57,7 +57,7 @@ class TestInput(base_input.BaseInput):
 
   def reset(self):
     if self.reset_for_eval:
-      self._iter = iter(self._dataset)
+      self._iter = iter(self.dataset)
 
   def _to_nested_map(self, x) -> py_utils.NestedMap:
     t = tf.ones(shape=[4], dtype=tf.int32) * tf.cast(x, dtype=tf.int32)
@@ -71,7 +71,11 @@ class TestInput(base_input.BaseInput):
     if self.reset_for_eval:
       d = d.take(self.batch_size * 2)
     d = d.map(self._to_nested_map)
-    d = d.batch(self.batch_size)
+
+    # Sets drop_remainder=True to fix the batch dimension size, to be used in
+    # the shape validation test. Otherwise the batch dimension will be non-fixed
+    # because the last batch could have a smaller size.
+    d = d.batch(self.batch_size, drop_remainder=True)
     return d
 
 
@@ -95,7 +99,7 @@ class TestInputCheckpointable(TestInput):
 
   def _set_state_internal(self, state: bytes):
     self._state = int(state.decode())
-    self._iter = iter(self._dataset)
+    self._iter = iter(self.dataset)
     for _ in range(self._state):
       next(self._iter)
 
@@ -835,6 +839,29 @@ class InputTest(test_utils.TestCase):
     multi_bs = base_input.MultiInput.get_batch_size(multi_p)
     # Batch size should be greatest common factor of children batch sizes.
     self.assertEqual(multi_bs, 2)
+
+
+class InputSpecsProviderTest(test_utils.TestCase):
+
+  def test_tf_dataset_input_specs_provider(self):
+    input_p = pax_fiddle.Config(
+        TestInput,
+        num_infeed_hosts=1,
+        infeed_host_index=0,
+        batch_size=2,
+    )
+    spec_provider_p = pax_fiddle.Config(
+        base_input.DatasetInputSpecsProvider,
+        input_p=input_p.clone()
+    )
+    input_pipeline = instantiate(input_p)
+    spec_provider = instantiate(spec_provider_p)
+    spec_from_data = jax.tree_map(
+        lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
+        input_pipeline.get_next_padded())
+    spec_from_provider = spec_provider.get_input_specs()
+    self.assertEqual(spec_from_data, spec_from_provider)
+
 
 if __name__ == '__main__':
   absltest.main()

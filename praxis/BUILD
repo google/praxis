@@ -363,6 +363,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit fiddle dependency.
+        # Implicit jax dependency.
         # Implicit lingvo.core.base_input_generator dependency.
         # Implicit lingvo.core.generic_input dependency.
         # Implicit lingvo.core.py_utils dependency.

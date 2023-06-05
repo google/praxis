@@ -115,6 +115,8 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
       dispatcher. This is usually set automatically by the trainer (not by the
       user). tf.data based input pipelines can use this to distribute input
       processing across many worker jobs.
+    dataset: May be set to the underlying tf.data.Dataset, if exists. This is
+      used by DatasetInputSpecsProvider to create input specs.
   """
 
   _VALIDATE_BATCH_SIZE_NOT_NONE = True
@@ -134,6 +136,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   custom_device_order: Optional[Sequence[int]] = None
   input_checkpointing_enabled: bool = False
   tf_data_service_address: Optional[str] = None
+  dataset: Optional[tf.data.Dataset] = None
   _peek: Any = dataclasses.field(init=False, repr=False)
   _state_before_peek: Any = dataclasses.field(init=False, repr=False)
 
@@ -1029,7 +1032,12 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
     # Note that this re-instantiate the input pipeline every time
     # `.get_input_specs()` is called. In practice, we typically call this
     # method only once at model initialization time.
-    input_pipeline = instantiate(self.input_p)
+    input_pipeline: BaseInput = instantiate(self.input_p)
+    if isinstance(input_pipeline.dataset, tf.data.Dataset):
+      def tf_spec_to_jax(spec: tf.TensorSpec) -> jax.ShapeDtypeStruct:
+        return jax.ShapeDtypeStruct(shape=spec.shape,
+                                    dtype=spec.dtype.as_numpy_dtype())
+      return jax.tree_map(tf_spec_to_jax, input_pipeline.dataset.element_spec)
     return jax.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
                         input_pipeline.get_next_padded())
 
