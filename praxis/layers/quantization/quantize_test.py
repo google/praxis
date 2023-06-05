@@ -17,6 +17,7 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from praxis import base_layer
 from praxis import layers
 from praxis import pax_fiddle
 from praxis import test_utils
@@ -197,6 +198,22 @@ class QuantizationTest(test_utils.TestCase):
       )
     else:
       self.assertEqual(lm_p.softmax_tpl.cls, qlayer.SharedEmbeddingSoftmax)
+
+  def test_diffusion(self):
+    class DummyDiffusion(base_layer.BaseLayer):
+      conv_tpl: base_layer.BaseLayer = base_layer.template_field(layers.Conv2D)
+
+    class DummyModel(base_layer.BaseLayer):
+      diffusion_tpl: base_layer.BaseLayer = base_layer.template_field(
+          DummyDiffusion
+      )
+
+    model_p = pax_fiddle.Config(DummyModel)
+
+    quantize.set_diffusion_quantization(model_p, DummyDiffusion)
+
+    # Expect conv2d quantized.
+    self.assertEqual(model_p.diffusion_tpl.conv_tpl.cls, qlayer.Conv2D)
 
 
 if __name__ == '__main__':

@@ -345,6 +345,82 @@ def for_transformer(
   return decorator
 
 
+# Ready-to-use quantization decorators for quantizing diffusion.
+def for_diffusion(
+    target: Type[base_layer.BaseLayer],
+    num_bits: int = 8,
+    quantization_type: QuantizationType = QuantizationType.FQ,
+    mode: QuantizationMode = QuantizationMode.TRAINING,
+    use_symmetric: bool = True,
+    dtype: jnp.dtype = jnp.int8,
+    weight_quant_only: bool = True,
+    quantize_init_from_checkpoint_rules_task: bool = False,
+):
+  """Find and quantize Unet.
+
+  If there are diffusion that shouldn't be quantized, use lowers level APIs
+  and manually/selectively quantize the model.
+
+  If there are no diffusion in the model, it's a no-op.
+
+  TODO(jianlijianli): pass in additional parameters.
+
+  Args:
+    target: Target tpl,
+    num_bits: Number of bits for quantized weight. Currently supports 8 and 4
+      but any integer [1, 8] works.
+    quantization_type: Indicates the quantization type among PTQ, FQ, and AQT.
+    mode: Indicates the quantization mode. Only TRAINING and INFERENCE
+      (excluding MATERIALIZE) are valid for non-servable models.
+    use_symmetric: If true, do symmetric quantization for weights, otherwise
+      asymmetric quantization.
+    dtype: Dtype of the quantized variables.
+    weight_quant_only: If true, quantize weight only, otherweise quantize both
+      weight and activation.
+    quantize_init_from_checkpoint_rules_task: Apply quantization to the tasks
+      that are defined in task_p.train.init_from_checkpoint_rules.values()
+
+  Returns:
+    A modifier that quantizes diffusion when applied to a config.
+  """
+
+  def decorator(cls):
+    """decorator that quantize diffusions."""
+
+    @functools.wraps(cls, updated=())  # to keep original class name.
+    class Wrapper(cls):
+      """Wrapper class for cls with Quantization enabled."""
+
+      def task(self):
+        config = super(Wrapper, self)
+        task_p = config.task()
+        assert num_bits in [2, 4, 8]
+        models = [task_p.model]
+        if (
+            quantize_init_from_checkpoint_rules_task
+            and hasattr(task_p, 'train')
+            and hasattr(task_p.train, 'init_from_checkpoint_rules')
+        ):
+          for _, ckpt_rules in task_p.train.init_from_checkpoint_rules.items():
+            models.append(ckpt_rules.task_p.model)
+        for model in models:
+          set_diffusion_quantization(
+              model,
+              target,
+              quantization_type=quantization_type,
+              mode=mode,
+              num_bits=num_bits,
+              use_symmetric=use_symmetric,
+              weight_quant_only=weight_quant_only,
+              dtype=dtype,
+          )
+        return task_p
+
+    return Wrapper
+
+  return decorator
+
+
 def set_quantization(
     config: LayerTpl,
     quantization_type: QuantizationType = QuantizationType.PTQ,
@@ -417,6 +493,52 @@ def set_quantization(
             mode,
             weight_quantization_params,
         )  # pytype: disable=wrong-arg-types  # py310-upgrade
+
+
+def set_diffusion_quantization(
+    config: LayerTpl,
+    target: Type[base_layer.BaseLayer],
+    quantization_type: QuantizationType = QuantizationType.PTQ,
+    mode: QuantizationMode = QuantizationMode.INFERENCE,
+    num_bits: int = 8,
+    use_symmetric: bool = True,
+    weight_quant_only: bool = True,
+    dtype: jnp.dtype = jnp.int8,
+):
+  """Sets quantization parameters for Diffusion in 'config'.
+
+  Args:
+    config: The config to apply quantization on.
+    target: The target tpl.
+    quantization_type: The quantization types (PTQ, FQ, AQT etc)
+    mode: The quantization modes (INFERENCE, TRAINING, MATERIALIZE etc)
+    num_bits: The number of bits used for quantization.
+    use_symmetric: Use symmetric weight quantization.
+    weight_quant_only: If true, quantize weight only, otherweise quantize both
+      weight and activation.
+    dtype: Dtype of the quantized variables.
+  """
+  weight_quantization_params = WeightQuantizationParams(
+      precision=num_bits,
+      use_symmetric=use_symmetric,
+      dtype=dtype,
+  )
+  act_quantization_params = (
+      None if weight_quant_only else ActQuantizationParams(precision=num_bits)
+  )
+
+  diffusion_tpls = find_target_tpl(config, target)
+  for diffusion_tpl in diffusion_tpls:
+    if hasattr(diffusion_tpl, 'conv_tpl'):
+      diffusion_tpl.conv_tpl = pax_fiddle.Config(
+          quantization.Conv2D,
+          quantization=QuantizationParams(
+              quantization_type=quantization_type,
+              mode=mode,
+              act_params=act_quantization_params,
+              weight_params=weight_quantization_params,
+          ),
+      )
 
 
 def set_inference_mode(
