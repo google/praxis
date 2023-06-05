@@ -1335,6 +1335,7 @@ def sample_decode_after_fprop(
             jnp.minimum(_get_slice(val.logprobs), 0.0),
             axis=-1,
         )
+        outfeed_tensors.done = val.done
         outfeed_tensors = jax.tree_map(
             lambda x: split_batch_dim(x, 0, num_samples), outfeed_tensors
         )
