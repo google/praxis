@@ -1055,6 +1055,10 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
     if position is None:
       assert seq_length is not None
       position = jnp.arange(seq_length, dtype=jnp.float32)[jnp.newaxis, :]
+    if seq_length is None:
+      assert position is not None
+      assert position.ndim == 2
+      seq_length = position.shape[1]
 
     pos_emb_var = self.theta.emb_var
     pos_emb_var = jax.lax.slice_in_dim(pos_emb_var, 0, seq_length, axis=0)
@@ -1062,7 +1066,6 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
       embs = self.array_lookup(jnp.asarray(pos_emb_var), (position,))
     elif self.lookup_style == 'matmul':
       one_hot_ids = jax.nn.one_hot(position, seq_length, dtype=self.fprop_dtype)
-      embs = jnp.matmul(one_hot_ids, pos_emb_var)
       embs = self.einsum('...y,yz->...z', one_hot_ids, pos_emb_var)
     else:
       raise ValueError('Unknown lookup style.')

@@ -828,6 +828,9 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     np_outputs = to_np(outputs)
     tf_np_outputs = to_np(tf_output)
     self.assertAllClose(tf_np_outputs, np_outputs)
+    # Test the case when we pass only the position argument.
+    outputs = emb_layer.apply(initial_vars, position=inputs)
+    self.assertAllClose(tf_np_outputs, to_np(outputs))
 
 
 if __name__ == '__main__':
