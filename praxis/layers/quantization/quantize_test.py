@@ -174,7 +174,7 @@ class QuantizationTest(test_utils.TestCase):
       new_embedding_softmax_p.copy_fields_from(embedding_softmax_p)
       lm_p.softmax_tpl = new_embedding_softmax_p
 
-    quantize.set_quantization(
+    quantize.set_transformer_quantization(
         lm_p,
         quantize_embedding_softmax=True,
         transposed_embedding_softmax=transposed_embedding_softmax,

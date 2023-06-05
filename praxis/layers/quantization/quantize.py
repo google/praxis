@@ -325,7 +325,7 @@ def for_transformer(
           for _, ckpt_rules in task_p.train.init_from_checkpoint_rules.items():
             models.append(ckpt_rules.task_p.model)
         for model in models:
-          set_quantization(
+          set_transformer_quantization(
               model,
               quantization_type=quantization_type,
               mode=mode,
@@ -421,7 +421,7 @@ def for_diffusion(
   return decorator
 
 
-def set_quantization(
+def set_transformer_quantization(
     config: LayerTpl,
     quantization_type: QuantizationType = QuantizationType.PTQ,
     mode: QuantizationMode = QuantizationMode.INFERENCE,
