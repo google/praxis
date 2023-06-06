@@ -22,6 +22,7 @@ import copy
 import dataclasses
 import inspect
 import math
+import os
 import re
 from typing import Any, Dict, Optional, Sequence, Union
 
@@ -175,6 +176,8 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
 
   def save(self, checkpoint_path: epath.PathLike):
     state = self.get_state() if self._peek is None else self._state_before_peek
+    dirname = os.path.dirname(checkpoint_path)
+    epath.Path(dirname).mkdir(parents=True, exist_ok=True)
     epath.Path(checkpoint_path).write_bytes(state)
 
   def restore(self, checkpoint_path: epath.PathLike):
