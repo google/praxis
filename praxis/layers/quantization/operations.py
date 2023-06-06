@@ -294,7 +294,6 @@ def reduce_precision(
     bound = t_max - t_min
     scale_bound = max_value - min_value
 
-
   if percentile < 1.0:
     bound = jnp.multiply(bound, percentile)
   elif optimization_on_bound:
