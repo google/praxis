@@ -487,7 +487,7 @@ class FiddleBaseParameterizableTest(absltest.TestCase):
     self.assertEqual(instance.some_other_param, 'goodbye')
 
   def test_can_construct_class_via_hparams_and_instantiate(self):
-    hparams = FiddlifiedTestClass.HParams()
+    hparams = pax_fiddle.Config(FiddlifiedTestClass)
     self.assertIsInstance(hparams, pax_fiddle.Config)
     hparams.some_param = -1
     hparams.some_other_param = 'goodbye'
@@ -520,26 +520,7 @@ class FiddleBaseParameterizableTest(absltest.TestCase):
     instance = pax_fiddle.instantiate(cfg)
     self.assertEqual(instance.some_param, 3)
 
-  def test_hparams_class_stubs_forwards_cls(self):
-    self.assertIs(FiddlifiedTestClass.HParams.cls, FiddlifiedTestClass)
 
-  def test_hparams_class_stub_is_serializable(self):
-    hparams_cfg = pax_fiddle.Config(FiddlifiedTestClass.HParams, some_param=3)
-
-    # Ensure we can serialize and deserialize an HParams config.
-    json = fdl_serialization.dump_json(hparams_cfg)
-    deserialized_hparams_cfg = fdl_serialization.load_json(json)
-    self.assertEqual(deserialized_hparams_cfg.some_param, 3)
-
-    # Check that instantiating the HParams stub gives us a pax_fiddle.Config.
-    cfg_instance = pax_fiddle.instantiate(deserialized_hparams_cfg)
-    self.assertIsInstance(cfg_instance, pax_fiddle.Config)
-    self.assertEqual(cfg_instance.some_param, 3)
-
-    # And finally we can actually get an instance of FiddlifiedTestClass.
-    instance = pax_fiddle.instantiate(cfg_instance)
-    self.assertIsInstance(instance, FiddlifiedTestClass)
-    self.assertEqual(instance.some_param, 3)
 
   def test_missing_type_annotation(self):
     with self.assertRaisesRegex(TypeError, 'some_param.*int'):
