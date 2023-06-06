@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import enum
-from typing import Any, Optional, Sequence
+from typing import Any, Dict, Optional, NamedTuple, Sequence
 
 import fiddle as fdl
 import jax
@@ -923,6 +923,134 @@ class TransformerLm(base_layer.BaseLayer):
     """Right aligns decode state with prefix decode states."""
     self.transformer.right_align_decode_state_with_prefix(
         max_prefix_size, right_align_fn)
+
+
+class TransformerLmInput(NamedTuple):
+  inputs: JTensor
+  paddings: JTensor
+  labels: Dict[str, JTensor]
+  segment_ids: JTensor
+  segment_pos: JTensor
+  causal_attention_mask: Optional[JTensor]
+  segment_mask: Optional[JTensor]
+
+
+class TransformerLmDPO(base_layer.BaseLayer):
+  """Contains a pair of TransformerLM for direct preference optimization.
+
+  reference: https://arxiv.org/abs/2305.18290
+
+  This model implicitly optimizes this standard rlhf objective.
+    max_{pi} = E_{x ~ D, y ~ pi(x)}(r(y, x) - beta * kl(pi(y|x) | ref(y|x)
+  """
+
+  # The reference model. Not back-proped into.
+  ref_mdl_tpl: LayerTpl = template_field(TransformerLm)
+  # The model to be optimized.
+  mdl_tpl: LayerTpl = template_field(TransformerLm)
+  # kl divergence regularization weight.
+  beta: float = 0.1
+
+  def setup(self):
+    self.create_child('ref_mdl', self.ref_mdl_tpl)
+    self.create_child('mdl', self.mdl_tpl)
+
+  # Each batch of input contains two examples: (x, y_l) and (x, y_w) where
+  # y_w is preferred over y_l per pairwise preference rating.
+  #
+  # Since this is a decoder only language model, (x, y_l) and (x, y_w) are both
+  # concatenated as one single sequence.
+  #
+  # Note(yonghui): this implementation doesn't support packing. It is assumed
+  # that one sequence (batch element) contains one single example.
+  def __call__(self, y_l: TransformerLmInput,
+               y_w: TransformerLmInput):
+    # output under the reference policy.
+    y_l_ref = self.ref_mdl(
+        y_l.inputs,
+        y_l.paddings,
+        y_l.labels,
+        y_l.segment_ids,
+        y_l.segment_pos,
+        y_l.causal_attention_mask,
+        y_l.segment_mask,
+    )
+
+    # output under the current policy.
+    y_l_pi = self.mdl(
+        y_l.inputs,
+        y_l.paddings,
+        y_l.labels,
+        y_l.segment_ids,
+        y_l.segment_pos,
+        y_l.causal_attention_mask,
+        y_l.segment_mask,
+    )
+
+    # output under the reference policy.
+    y_w_ref = self.ref_mdl(
+        y_w.inputs,
+        y_w.paddings,
+        y_w.labels,
+        y_w.segment_ids,
+        y_w.segment_pos,
+        y_w.causal_attention_mask,
+        y_w.segment_mask,
+    )
+
+    # output under the current policy.
+    y_w_pi = self.mdl(
+        y_w.inputs,
+        y_w.paddings,
+        y_w.labels,
+        y_w.segment_ids,
+        y_w.segment_pos,
+        y_w.causal_attention_mask,
+        y_w.segment_mask,
+    )
+
+    def per_seq_log_p(softmax_out):
+      # assert per_example_xent is float32, learning might be unstable in
+      # bfloat16.
+      assert softmax_out.per_example_xent.dtype == jnp.float32
+      assert softmax_out.per_sequence_xent.dtype == jnp.float32
+      assert len(softmax_out.per_sequence_xent.shape) == 1
+      return -1.0 * softmax_out.per_sequence_xent
+
+    y_l_ref_log_p = per_seq_log_p(y_l_ref)
+    y_l_pi_log_p = per_seq_log_p(y_l_pi)
+    y_w_ref_log_p = per_seq_log_p(y_w_ref)
+    y_w_pi_log_p = per_seq_log_p(y_w_pi)
+
+    r_hat_y_l = jax.lax.stop_gradient(
+        self.beta * (y_l_pi_log_p - y_l_ref_log_p)
+    )
+    r_hat_y_w = jax.lax.stop_gradient(
+        self.beta * (y_w_pi_log_p - y_w_ref_log_p)
+    )
+
+    # This is first equation on page #5 in the DPO paper.
+    per_example_loss = (
+        self.beta
+        * jax.nn.sigmoid(r_hat_y_l - r_hat_y_w)
+        * (y_l_pi_log_p - y_w_pi_log_p)
+    )
+    loss = jnp.mean(per_example_loss)
+    # This is the dpo_loss, same as what equation 7 in the paper computes.
+    dpo_loss = jnp.mean(
+        -1.0 * jnp.log(jax.nn.sigmoid(r_hat_y_w - r_hat_y_l))
+    )
+
+    self.add_summary('r_hat_y_w', jnp.mean(r_hat_y_w))
+    self.add_summary('r_hat_y_l', jnp.mean(r_hat_y_l))
+    self.add_summary('delta_r_hat', jnp.mean(r_hat_y_w - r_hat_y_l))
+    self.add_summary('dpo_loss', dpo_loss)
+    self.add_summary('p_correct_ranking',
+                     jnp.mean(jax.nn.sigmoid(r_hat_y_w - r_hat_y_l)))
+
+    # TODO(yonghui): Add diagnostic summaries.
+    # pair_loss is what learning back-props into.
+    return NestedMap(total_loss=loss, dpo_loss=dpo_loss)
 
 
 class TransformerEncoderDecoder(base_layer.BaseLayer):

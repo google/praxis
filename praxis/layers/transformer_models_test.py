@@ -79,12 +79,14 @@ class TransformerModelsTest(test_utils.TestCase):
     batch_size = 8
     bert_lm = instantiate(p)
     input_ids = jax.random.randint(
-        jax.random.PRNGKey(1234), [batch_size, seq_len], 0, 51)
+        jax.random.PRNGKey(1234), [batch_size, seq_len], 0, 51
+    )
     input_paddings = jnp.zeros([batch_size, seq_len])
     input_weights = jnp.ones([batch_size, seq_len])
     input_segment_ids = jnp.ones([batch_size, seq_len])
     input_segment_pos = jnp.tile(
-        jnp.arange(0, seq_len)[jnp.newaxis, :], [batch_size, 1])
+        jnp.arange(0, seq_len)[jnp.newaxis, :], [batch_size, 1]
+    )
 
     labels = py_utils.NestedMap()
     labels.class_ids = input_ids
@@ -98,14 +100,16 @@ class TransformerModelsTest(test_utils.TestCase):
           input_paddings,
           labels=labels,
           segment_ids=input_segment_ids,
-          segment_pos=input_segment_pos)
+          segment_pos=input_segment_pos,
+      )
       outputs = bert_lm.apply(
           initial_vars,
           input_ids,
           input_paddings,
           labels=labels,
           segment_ids=input_segment_ids,
-          segment_pos=input_segment_pos)
+          segment_pos=input_segment_pos,
+      )
       logging.info('outputs: %s', outputs)
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
@@ -186,10 +190,14 @@ class TransformerModelsTest(test_utils.TestCase):
         self.assertNotAllClose(logits[:, i], new_logits[:, i])
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=5)))
-  def test_ngrammer_lm_extendstep(self, use_vq_ngrams, use_rotary_position_emb,
-                                  use_post_attention_ngrammer,
-                                  ngram_using_attention_scores,
-                                  share_embedding_and_softmax):
+  def test_ngrammer_lm_extendstep(
+      self,
+      use_vq_ngrams,
+      use_rotary_position_emb,
+      use_post_attention_ngrammer,
+      ngram_using_attention_scores,
+      share_embedding_and_softmax,
+  ):
     vocab_size = 8
     num_layers = 2
     num_heads = 2
@@ -254,7 +262,8 @@ class TransformerModelsTest(test_utils.TestCase):
     batch_size = 2
     transformer_lm = instantiate(p)
     npy_inputs = np.random.randint(
-        vocab_size, size=(batch_size, seq_len)).astype('int32')
+        vocab_size, size=(batch_size, seq_len)
+    ).astype('int32')
     inputs = jnp.asarray(npy_inputs)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
@@ -268,33 +277,37 @@ class TransformerModelsTest(test_utils.TestCase):
           initial_vars,
           inputs,
           jnp.zeros_like(inputs),
-          method=transformer_lm.__call__)
+          method=transformer_lm.__call__,
+      )
       _, decoder_state = transformer_lm.apply(
           initial_vars,
           jnp.zeros_like(inputs),
           jnp.ones_like(inputs),
           method=transformer_lm.__call__,
-          mutable=[DECODE_CACHE])
+          mutable=[DECODE_CACHE],
+      )
 
       logits = fprop_outputs.logits
 
       updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
         if t > 0:
-          inputs_prefix = inputs[:, t - 1:t + 1]
+          inputs_prefix = inputs[:, t - 1 : t + 1]
         else:
           inputs_prefix = inputs[:, t]
         xent_output, decoder_state = transformer_lm.apply(
             updated_vars,
             inputs_prefix,
             method=transformer_lm.extend_step,
-            mutable=[DECODE_CACHE])
+            mutable=[DECODE_CACHE],
+        )
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits)
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
-  def test_primer_lm_extendstep(self, use_rotary_position_emb,
-                                share_embedding_and_softmax):
+  def test_primer_lm_extendstep(
+      self, use_rotary_position_emb, share_embedding_and_softmax
+  ):
     vocab_size = 8
     num_layers = 2
     num_heads = 2
@@ -327,7 +340,8 @@ class TransformerModelsTest(test_utils.TestCase):
     params.tr_atten_tpl.use_rotary_position_emb = use_rotary_position_emb
     transformer_lm = instantiate(p)
     npy_inputs = np.random.randint(
-        vocab_size, size=(batch_size, seq_len)).astype('int32')
+        vocab_size, size=(batch_size, seq_len)
+    ).astype('int32')
     inputs = jnp.asarray(npy_inputs)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
@@ -341,13 +355,15 @@ class TransformerModelsTest(test_utils.TestCase):
           initial_vars,
           inputs,
           jnp.zeros_like(inputs),
-          method=transformer_lm.__call__)
+          method=transformer_lm.__call__,
+      )
       _, decoder_state = transformer_lm.apply(
           initial_vars,
           jnp.zeros_like(inputs),
           jnp.ones_like(inputs),
           method=transformer_lm.__call__,
-          mutable=[DECODE_CACHE])
+          mutable=[DECODE_CACHE],
+      )
       logits = fprop_outputs.logits
       updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
@@ -355,13 +371,15 @@ class TransformerModelsTest(test_utils.TestCase):
             updated_vars,
             inputs[:, t],
             method=transformer_lm.extend_step,
-            mutable=[DECODE_CACHE])
+            mutable=[DECODE_CACHE],
+        )
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits)
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
-  def test_lm_extend_n_step(self, use_rotary_position_emb,
-                            share_embedding_and_softmax):
+  def test_lm_extend_n_step(
+      self, use_rotary_position_emb, share_embedding_and_softmax
+  ):
     vocab_size = 8
     num_layers = 2
     num_heads = 2
@@ -402,14 +420,24 @@ class TransformerModelsTest(test_utils.TestCase):
     )
     transformer_lm = instantiate(p)
     npy_inputs = np.random.randint(
-        vocab_size, size=(batch_size, seq_len)).astype('int32')
+        vocab_size, size=(batch_size, seq_len)
+    ).astype('int32')
     inputs = jnp.asarray(npy_inputs)
     ninf = py_utils.get_large_negative_number(jnp.float32)
-    segment_mask = jnp.stack([
-        jnp.array([[0, ninf, ninf, ninf], [0, 0, ninf, ninf], [0, 0, 0, ninf],
-                   [0, 0, 0, 0]],
-                  dtype=jnp.float32)
-    ] * batch_size)
+    segment_mask = jnp.stack(
+        [
+            jnp.array(
+                [
+                    [0, ninf, ninf, ninf],
+                    [0, 0, ninf, ninf],
+                    [0, 0, 0, ninf],
+                    [0, 0, 0, 0],
+                ],
+                dtype=jnp.float32,
+            )
+        ]
+        * batch_size
+    )
     segment_mask = segment_mask[:, jnp.newaxis, :, :]
     segment_pos = jnp.stack([jnp.arange(seq_len)] * batch_size)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
@@ -424,13 +452,15 @@ class TransformerModelsTest(test_utils.TestCase):
           initial_vars,
           inputs,
           jnp.zeros_like(inputs),
-          method=transformer_lm.__call__)
+          method=transformer_lm.__call__,
+      )
       _, decoder_state = transformer_lm.apply(
           initial_vars,
           jnp.zeros_like(inputs),
           jnp.ones_like(inputs),
           method=transformer_lm.__call__,
-          mutable=[DECODE_CACHE])
+          mutable=[DECODE_CACHE],
+      )
       logits = fprop_outputs.logits
       updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       xent_output, _ = transformer_lm.apply(
@@ -439,7 +469,8 @@ class TransformerModelsTest(test_utils.TestCase):
           method=transformer_lm.extend_step,
           segment_pos=segment_pos,
           atten_mask=segment_mask,
-          mutable=[DECODE_CACHE])
+          mutable=[DECODE_CACHE],
+      )
       self.assertAllClose(logits, xent_output.logits)
 
       # Ensure that calling extend_step 1 step at a time matches fprop.
@@ -450,7 +481,8 @@ class TransformerModelsTest(test_utils.TestCase):
             method=transformer_lm.extend_step,
             segment_pos=segment_pos[:, step_i],
             atten_mask=segment_mask[..., step_i, :],
-            mutable=[DECODE_CACHE])
+            mutable=[DECODE_CACHE],
+        )
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, step_i, :], xent_output.logits)
 
@@ -471,11 +503,14 @@ class TransformerModelsTest(test_utils.TestCase):
         )
 
   @parameterized.parameters(*list(itertools.product([True, False], repeat=5)))
-  def test_ngrammer_primer_lm_extendstep(self, use_vq_ngrams,
-                                         use_rotary_position_emb,
-                                         use_post_attention_ngrammer,
-                                         ngram_using_attention_scores,
-                                         share_embedding_and_softmax):
+  def test_ngrammer_primer_lm_extendstep(
+      self,
+      use_vq_ngrams,
+      use_rotary_position_emb,
+      use_post_attention_ngrammer,
+      ngram_using_attention_scores,
+      share_embedding_and_softmax,
+  ):
     vocab_size = 8
     num_layers = 2
     num_heads = 2
@@ -546,45 +581,53 @@ class TransformerModelsTest(test_utils.TestCase):
     params.tr_atten_tpl.use_rotary_position_emb = use_rotary_position_emb
     transformer_lm = instantiate(p)
     npy_inputs = np.random.randint(
-        vocab_size, size=(batch_size, seq_len)).astype('int32')
+        vocab_size, size=(batch_size, seq_len)
+    ).astype('int32')
     inputs = jnp.asarray(npy_inputs)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
       prng_key = jax.random.PRNGKey(seed=123)
-      initial_vars = transformer_lm.init(prng_key, inputs,
-                                         jnp.zeros_like(inputs))
+      initial_vars = transformer_lm.init(
+          prng_key, inputs, jnp.zeros_like(inputs)
+      )
       fprop_outputs = transformer_lm.apply(
           initial_vars,
           inputs,
           jnp.zeros_like(inputs),
-          method=transformer_lm.__call__)
+          method=transformer_lm.__call__,
+      )
       _, decoder_state = transformer_lm.apply(
           initial_vars,
           jnp.zeros_like(inputs),
           jnp.ones_like(inputs),
           method=transformer_lm.__call__,
-          mutable=[DECODE_CACHE])
+          mutable=[DECODE_CACHE],
+      )
       logits = fprop_outputs.logits
 
       updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
         if t > 0:
-          inputs_prefix = inputs[:, t - 1:t + 1]
+          inputs_prefix = inputs[:, t - 1 : t + 1]
         else:
           inputs_prefix = inputs[:, t]
         xent_output, decoder_state = transformer_lm.apply(
             updated_vars,
             inputs_prefix,
             method=transformer_lm.extend_step,
-            mutable=[DECODE_CACHE])
+            mutable=[DECODE_CACHE],
+        )
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits)
 
   @parameterized.parameters(
-      itertools.product(['top2', 'dense_top2', 'expert_choice'],
-                        ['token', 'sentence']))
-  def test_glam_unitransformer_fprop(self, gating_func,
-                                     moe_gating_embedding_level):
+      itertools.product(
+          ['top2', 'dense_top2', 'expert_choice'], ['token', 'sentence']
+      )
+  )
+  def test_glam_unitransformer_fprop(
+      self, gating_func, moe_gating_embedding_level
+  ):
     batch = 2
     length = 3
     d_model = 6
@@ -612,7 +655,8 @@ class TransformerModelsTest(test_utils.TestCase):
         moe_gating_func=gating_func,
         moe_gating_embedding_level=moe_gating_embedding_level,
         c_dim=c_dim,
-        e_dim=e_dim)
+        e_dim=e_dim,
+    )
     jax_layer = instantiate(jax_p)
     # Build Jax Inputs
     np.random.seed(42)
@@ -634,10 +678,7 @@ class TransformerModelsTest(test_utils.TestCase):
       prng_key, init_key = jax.random.split(prng_key)
       prng_key, random_key = jax.random.split(prng_key)
       jax_vars = jax_layer.init(
-          {
-              PARAMS: init_key,
-              RANDOM: random_key
-          },
+          {PARAMS: init_key, RANDOM: random_key},
           jax_ids,
           jax_paddings,
           labels=py_utils.NestedMap(
@@ -658,7 +699,8 @@ class TransformerModelsTest(test_utils.TestCase):
           segment_ids=jax_seg_ids,
           segment_pos=jax_seg_pos,
           rngs={RANDOM: random_key},
-          mutable=[base_layer.AUX_LOSS])
+          mutable=[base_layer.AUX_LOSS],
+      )
       # There are two MOE load balancing loss + z-loss, for a total aux-loss
       # weight of 3.0
       print(jax_outputs)
@@ -691,7 +733,8 @@ class TransformerModelsTest(test_utils.TestCase):
         moe_load_balance_loss_weight=0.01,
         z_loss_weight=1e-4,
         c_dim=c_dim,
-        e_dim=e_dim)
+        e_dim=e_dim,
+    )
     assert jax_p.packed_input
     jax_layer = instantiate(jax_p)
 
@@ -708,20 +751,26 @@ class TransformerModelsTest(test_utils.TestCase):
         attention_extra_logit=0.0,
         e_dim=e_dim,
         moe_hidden_dim=ff_dim,
-        ff_dim=ff_dim)
-    tf_layer = gshard_builder.UniTransformer.Params().Set(
-        name='model',
-        num_transformer_layers=num_layers,
-        builder=builder_p,
-        vocab_size=vocab_size,
-        sequence_length=length,
-        label_smoothing=0,
-        aux_loss_coef=0.01,
-        z_loss=1e-4,
-        use_tgt_labels_size_as_loss_denominator=True,
-        positional_embedding=False,
-        gated_gelu=True,
-        moe=True).Instantiate()
+        ff_dim=ff_dim,
+    )
+    tf_layer = (
+        gshard_builder.UniTransformer.Params()
+        .Set(
+            name='model',
+            num_transformer_layers=num_layers,
+            builder=builder_p,
+            vocab_size=vocab_size,
+            sequence_length=length,
+            label_smoothing=0,
+            aux_loss_coef=0.01,
+            z_loss=1e-4,
+            use_tgt_labels_size_as_loss_denominator=True,
+            positional_embedding=False,
+            gated_gelu=True,
+            moe=True,
+        )
+        .Instantiate()
+    )
 
     # Build Jax Inputs
     np.random.seed(42)
@@ -743,7 +792,8 @@ class TransformerModelsTest(test_utils.TestCase):
         ids=tf.convert_to_tensor(npy_ids, dtype=tf.int32),
         labels=tf.convert_to_tensor(npy_labels, dtype=tf.int32),
         segment_ids=tf.convert_to_tensor(npy_segment_ids, dtype=tf.int32),
-        segment_pos=tf.convert_to_tensor(npy_segment_pos, dtype=tf.int32))
+        segment_pos=tf.convert_to_tensor(npy_segment_pos, dtype=tf.int32),
+    )
     tf_inputs = py_utils.NestedMap(tgt=tf_tgt_inputs)
 
     # Compute jax outputs
@@ -751,18 +801,17 @@ class TransformerModelsTest(test_utils.TestCase):
       prng_key = jax.random.PRNGKey(seed=42)
       prng_key, init_key = jax.random.split(prng_key)
       prng_key, random_key = jax.random.split(prng_key)
-      jax_vars = jax_layer.init({
-          PARAMS: init_key,
-          RANDOM: random_key
-      },
-                                jax_ids,
-                                jax_paddings,
-                                labels=py_utils.NestedMap(
-                                    class_ids=jax_labels,
-                                    class_weights=jax_label_weighs,
-                                ),
-                                segment_ids=jax_seg_ids,
-                                segment_pos=jax_seg_pos)
+      jax_vars = jax_layer.init(
+          {PARAMS: init_key, RANDOM: random_key},
+          jax_ids,
+          jax_paddings,
+          labels=py_utils.NestedMap(
+              class_ids=jax_labels,
+              class_weights=jax_label_weighs,
+          ),
+          segment_ids=jax_seg_ids,
+          segment_pos=jax_seg_pos,
+      )
       jax_outputs, _ = jax_layer.apply(
           jax_vars,
           jax_ids,
@@ -774,7 +823,8 @@ class TransformerModelsTest(test_utils.TestCase):
           segment_ids=jax_seg_ids,
           segment_pos=jax_seg_pos,
           rngs={RANDOM: random_key},
-          mutable=[base_layer.AUX_LOSS])
+          mutable=[base_layer.AUX_LOSS],
+      )
 
     # Copy jax vars to tf ones.
     tf_theta = tf_layer.theta.DeepCopy()
@@ -786,7 +836,8 @@ class TransformerModelsTest(test_utils.TestCase):
     tf_theta.dec.final_layer_norm.w.scale = jax_vars_nmap.final_ln.scale
     jax_layer_0_var = tf.nest.map_structure(
         lambda v: jnp.squeeze(jnp.split(v, 2)[0], axis=0),
-        jax_vars_nmap.transformer.repeat.sub.x_layers_0)
+        jax_vars_nmap.transformer.repeat.sub.x_layers_0,
+    )
     tf_theta.dec.layer_000.ln.w.scale = jax_layer_0_var.layer_norm.scale
     jax_atten_var = jax_layer_0_var.self_attention
     tf_atten_var = tf_theta.dec.layer_000.dec_self_attention
@@ -804,7 +855,8 @@ class TransformerModelsTest(test_utils.TestCase):
 
     jax_layer_1_var = tf.nest.map_structure(
         lambda v: jnp.squeeze(jnp.split(v, 2)[0], axis=0),
-        jax_vars_nmap.transformer.repeat.sub.x_layers_1)
+        jax_vars_nmap.transformer.repeat.sub.x_layers_1,
+    )
     tf_theta.dec.layer_002.ln.w.scale = jax_layer_1_var.layer_norm.scale
     jax_atten_var = jax_layer_1_var.self_attention
     tf_atten_var = tf_theta.dec.layer_002.dec_self_attention
@@ -823,7 +875,8 @@ class TransformerModelsTest(test_utils.TestCase):
 
     jax_layer_2_var = tf.nest.map_structure(
         lambda v: jnp.squeeze(jnp.split(v, 2)[1], axis=0),
-        jax_vars_nmap.transformer.repeat.sub.x_layers_0)
+        jax_vars_nmap.transformer.repeat.sub.x_layers_0,
+    )
     tf_theta.dec.layer_004.ln.w.scale = jax_layer_2_var.layer_norm.scale
     jax_atten_var = jax_layer_2_var.self_attention
     tf_atten_var = tf_theta.dec.layer_004.dec_self_attention
@@ -841,7 +894,8 @@ class TransformerModelsTest(test_utils.TestCase):
 
     jax_layer_3_var = tf.nest.map_structure(
         lambda v: jnp.squeeze(jnp.split(v, 2)[1], axis=0),
-        jax_vars_nmap.transformer.repeat.sub.x_layers_1)
+        jax_vars_nmap.transformer.repeat.sub.x_layers_1,
+    )
     tf_theta.dec.layer_006.ln.w.scale = jax_layer_3_var.layer_norm.scale
     jax_atten_var = jax_layer_3_var.self_attention
     tf_atten_var = tf_theta.dec.layer_006.dec_self_attention
@@ -864,7 +918,8 @@ class TransformerModelsTest(test_utils.TestCase):
     tf_out, _ = tf_layer.FProp(tf_theta, tf_inputs)
     self.assertAllClose(
         test_utils.to_np(jax_outputs.total_loss),
-        test_utils.to_np(tf_out['loss'][0]))
+        test_utils.to_np(tf_out['loss'][0]),
+    )
 
   @parameterized.parameters([True, False])
   def test_glam_unitransformer_extendstep(self, moe):
@@ -895,9 +950,12 @@ class TransformerModelsTest(test_utils.TestCase):
             num_groups=1,
             z_loss_weight=1e-4,
             c_dim=c_dim,
-            e_dim=e_dim))
-    npy_inputs = np.random.randint(
-        vocab_size, size=(batch, length)).astype('int32')
+            e_dim=e_dim,
+        )
+    )
+    npy_inputs = np.random.randint(vocab_size, size=(batch, length)).astype(
+        'int32'
+    )
     inputs = jnp.asarray(npy_inputs)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
@@ -905,10 +963,7 @@ class TransformerModelsTest(test_utils.TestCase):
       prng_key, init_key = jax.random.split(prng_key)
       prng_key, random_key = jax.random.split(prng_key)
       initial_vars = transformer_lm.init(
-          {
-              PARAMS: init_key,
-              RANDOM: random_key
-          },
+          {PARAMS: init_key, RANDOM: random_key},
           inputs,
           jnp.zeros_like(inputs),
       )
@@ -917,14 +972,16 @@ class TransformerModelsTest(test_utils.TestCase):
           inputs,
           jnp.zeros_like(inputs),
           rngs={RANDOM: random_key},
-          method=transformer_lm.__call__)
+          method=transformer_lm.__call__,
+      )
       _, decoder_state = transformer_lm.apply(
           initial_vars,
           jnp.zeros_like(inputs),
           jnp.ones_like(inputs),
           rngs={RANDOM: random_key},
           method=transformer_lm.__call__,
-          mutable=[DECODE_CACHE])
+          mutable=[DECODE_CACHE],
+      )
       logits = fprop_outputs.logits
       updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(length):
@@ -933,10 +990,12 @@ class TransformerModelsTest(test_utils.TestCase):
             inputs[:, t],
             rngs={RANDOM: random_key},
             mutable=[DECODE_CACHE],
-            method=transformer_lm.extend_step)
+            method=transformer_lm.extend_step,
+        )
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(
-            logits[:, t, :], xent_output.logits, rtol=1e-5, atol=1e-5)
+            logits[:, t, :], xent_output.logits, rtol=1e-5, atol=1e-5
+        )
 
   # TODO(wangtao): Fix this test for moe models.
   @parameterized.parameters([False])
@@ -969,29 +1028,33 @@ class TransformerModelsTest(test_utils.TestCase):
             num_groups=1,
             z_loss_weight=1e-4,
             c_dim=c_dim,
-            e_dim=e_dim))
-    npy_inputs = np.random.randint(
-        vocab_size, size=(batch, length)).astype('int32')
+            e_dim=e_dim,
+        )
+    )
+    npy_inputs = np.random.randint(vocab_size, size=(batch, length)).astype(
+        'int32'
+    )
     inputs = jnp.asarray(npy_inputs)
     prefix = jnp.zeros_like(inputs)
-    prefix = jax.lax.dynamic_update_slice(prefix, inputs[:, 0:prefix_len],
-                                          [0, 0])
+    prefix = jax.lax.dynamic_update_slice(
+        prefix, inputs[:, 0:prefix_len], [0, 0]
+    )
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
       prng_key = jax.random.PRNGKey(seed=123)
       prng_key, init_key = jax.random.split(prng_key)
       prng_key, random_key = jax.random.split(prng_key)
-      initial_vars = transformer_lm.init({
-          PARAMS: init_key,
-          RANDOM: random_key
-      }, inputs, jnp.zeros_like(inputs))
+      initial_vars = transformer_lm.init(
+          {PARAMS: init_key, RANDOM: random_key}, inputs, jnp.zeros_like(inputs)
+      )
       # Run fprop without decode state on all the inputs.
       fprop_outputs = transformer_lm.apply(
           initial_vars,
           inputs,
           jnp.zeros_like(inputs),
           rngs={RANDOM: random_key},
-          method=transformer_lm.__call__)
+          method=transformer_lm.__call__,
+      )
       logits = fprop_outputs.logits
       # Init states.
       _, decoder_state = transformer_lm.apply(
@@ -1001,7 +1064,8 @@ class TransformerModelsTest(test_utils.TestCase):
           start_time_step=prefix_len,
           rngs={RANDOM: random_key},
           method=transformer_lm.__call__,
-          mutable=[DECODE_CACHE])
+          mutable=[DECODE_CACHE],
+      )
 
       # Run fprop on prefix only and update the decode states.
       updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
@@ -1013,15 +1077,24 @@ class TransformerModelsTest(test_utils.TestCase):
             inputs[:, t],
             rngs={RANDOM: random_key},
             mutable=[DECODE_CACHE],
-            method=transformer_lm.extend_step)
+            method=transformer_lm.extend_step,
+        )
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(
-            logits[:, t, :], xent_output.logits, rtol=1e-5, atol=1e-5)
+            logits[:, t, :], xent_output.logits, rtol=1e-5, atol=1e-5
+        )
 
-  def _set_transformer_lm_sharding_params_legacy(self, lm_p, *, replica_axis,
-                                                 data_axis, mdl_axis,
-                                                 ici_mesh_shape, dcn_mesh_shape,
-                                                 mesh_axis_names):
+  def _set_transformer_lm_sharding_params_legacy(
+      self,
+      lm_p,
+      *,
+      replica_axis,
+      data_axis,
+      mdl_axis,
+      ici_mesh_shape,
+      dcn_mesh_shape,
+      mesh_axis_names,
+  ):
     # In the following, model weights are layed out on the [data_axis, mdl_axis]
     # 2d mesh. Model weights are always replicated over the replica_axis mesh
     # axis.
@@ -1040,12 +1113,18 @@ class TransformerModelsTest(test_utils.TestCase):
     # We assume activation batch is split on both replica_axis and data_axis.
     batch_split = (replica_axis, data_axis)
 
-    if (lm_p.position_emb_tpl is not None and lm_p.position_emb_tpl.cls
-        == embedding_softmax.TrainablePositionalEmbedding):
+    if (
+        lm_p.position_emb_tpl is not None
+        and lm_p.position_emb_tpl.cls
+        == embedding_softmax.TrainablePositionalEmbedding
+    ):
       pos_emb_p = lm_p.position_emb_tpl
       pos_emb_p.weight_split_dims_mapping.wt = [data_axis, mdl_axis]
       pos_emb_p.activation_split_dims_mapping.emb_out_split_dims_mapping = [
-          batch_split, None, mdl_axis]
+          batch_split,
+          None,
+          mdl_axis,
+      ]
 
     # NGrammer embedding table is currently replicated.
     # TODO(aurkor): Explore different sharding configs for the table.
@@ -1069,7 +1148,9 @@ class TransformerModelsTest(test_utils.TestCase):
     softmax_p.activation_split_dims_mapping.out = [batch_split, None, mdl_axis]
 
     softmax_p.activation_split_dims_mapping.emb_out_split_dims_mapping = [
-        batch_split, None, mdl_axis
+        batch_split,
+        None,
+        mdl_axis,
     ]
 
     if lm_p.stacked_transformer_tpl.cls == transformers.PipelinedTransformer:
@@ -1093,15 +1174,22 @@ class TransformerModelsTest(test_utils.TestCase):
       ), f'{fdl.get_callable(stacked_transformer_tpl)} not supported.'
 
     xformer_p.tr_atten_tpl.activation_split_dims_mapping.blnh = [
-        batch_split, None, mdl_axis, None
+        batch_split,
+        None,
+        mdl_axis,
+        None,
     ]
     xformer_p.tr_atten_tpl.activation_split_dims_mapping.bld = [
-        batch_split, None, mdl_axis
+        batch_split,
+        None,
+        mdl_axis,
     ]
     # Attention project weight matrix is of shape [data_dim, num_heads,
     # dim_per_head].
     xformer_p.tr_atten_tpl.weight_split_dims_mapping.proj = [
-        data_axis, mdl_axis, None
+        data_axis,
+        mdl_axis,
+        None,
     ]
     # Sharding for depth-wise conv weights. Depth-wise conv weights are of shape
     # [num_heads, dim_per_head].
@@ -1180,8 +1268,8 @@ class TransformerModelsTest(test_utils.TestCase):
     ]
 
     for emb_cls, ngram_cls, tfm_cls, softmax_cls in itertools.product(
-        embedding_options, ngrammer_options, tfm_options, softmax_options):
-
+        embedding_options, ngrammer_options, tfm_options, softmax_options
+    ):
       if emb_cls is not None:
         position_emb_tpl = pax_fiddle.Config(emb_cls)
         if emb_cls == embedding_softmax.TrainablePositionalEmbedding:
@@ -1224,7 +1312,8 @@ class TransformerModelsTest(test_utils.TestCase):
           ici_mesh_shape=None,
           dcn_mesh_shape=None,
           mesh_axis_names=None,
-          training_optimized=True)
+          training_optimized=True,
+      )
 
       lm_p_2 = self._set_transformer_lm_sharding_params_legacy(
           lm_p.clone(),
@@ -1233,7 +1322,8 @@ class TransformerModelsTest(test_utils.TestCase):
           mdl_axis=model_axis,
           ici_mesh_shape=None,
           dcn_mesh_shape=None,
-          mesh_axis_names=None)
+          mesh_axis_names=None,
+      )
 
       lm_p_1_txt = base_hyperparams.nested_struct_to_text(lm_p_1)
       lm_p_2_txt = base_hyperparams.nested_struct_to_text(lm_p_2)
@@ -1293,6 +1383,66 @@ class TransformerModelsTest(test_utils.TestCase):
       )
       # Activations is [batch, seq_len, hidden_dims].
       self.assertSequenceEqual(outputs.activations.shape, [8, 64, 32])
+
+
+class TransformerLmDpoTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+    tf.random.set_seed(123)
+
+  def test_transformer_lm_dpo(self):
+    seq_len = 512
+    position_emb_tpl = pax_fiddle.Config(embedding_softmax.PositionalEmbedding)
+    stacked_transformer_tpl = pax_fiddle.Config(
+        transformers.StackedTransformer,
+        model_dims=32,
+        hidden_dims=4 * 32,
+        num_heads=4,
+        num_layers=1,
+    )
+    p_ref = pax_fiddle.Config(
+        transformer_models.TransformerLm,
+        model_dims=32,
+        vocab_size=52,
+        position_emb_tpl=position_emb_tpl,
+        stacked_transformer_tpl=stacked_transformer_tpl,
+    )
+    p_ref.softmax_tpl.scale_sqrt_depth = True
+    p_mdl = p_ref.clone()
+    p = pax_fiddle.Config(
+        transformer_models.TransformerLmDPO, ref_mdl_tpl=p_ref, mdl_tpl=p_mdl
+    )
+
+    batch_size = 8
+    dpo_lm = instantiate(p)
+
+    input_ids = jax.random.randint(
+        jax.random.PRNGKey(1234), [batch_size, seq_len], 0, 51
+    )
+    weights = jnp.ones([batch_size, seq_len])
+    lm_input = transformer_models.TransformerLmInput(
+        inputs=input_ids,
+        paddings=jnp.zeros([batch_size, seq_len]),
+        labels=py_utils.NestedMap(
+            class_ids=input_ids, class_weights=weights
+        ),
+        segment_ids=jnp.ones([batch_size, seq_len]),
+        segment_pos=jnp.tile(
+            jnp.arange(0, seq_len), [batch_size, 1]
+        ),
+        causal_attention_mask=None,
+        segment_mask=None,
+    )
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = dpo_lm.init(prng_key, y_l=lm_input, y_w=lm_input)
+      outputs = dpo_lm.apply(initial_vars, y_l=lm_input, y_w=lm_input)
+      logging.info('outputs: %s', outputs)
+      self.assertEqual(0.0, outputs.total_loss)
+      self.assertEqual(0.6931472, outputs.dpo_loss)
 
 
 if __name__ == '__main__':
