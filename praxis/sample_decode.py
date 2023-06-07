@@ -535,6 +535,7 @@ class BaseNextTokenSampler(
   def init_decode_loop_state(
       self,
       decode_loop_state: NestedMap,
+      model: Optional[base_layer.BaseLayerApi] = None,
       batch_size: Optional[int] = None,
       eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
   ) -> NestedMap:
@@ -1153,7 +1154,9 @@ def sample_decode_after_fprop(
   val.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
   if return_entropy_score:
     val.entropy = jnp.zeros_like(output_ids, dtype=jnp.float32)
-  val = next_token_sampler.init_decode_loop_state(val, batch_size, eos_id)
+  val = next_token_sampler.init_decode_loop_state(
+      val, model, batch_size, eos_id
+  )
 
   if result_callback is not None and result_callback.init_fn is not None:
     result_callback.init_fn((original_batch_size, num_samples))
@@ -1330,11 +1333,14 @@ def sample_decode_after_fprop(
         outfeed_tensors.decode_lengths = (
             jnp.ones_like(val.decode_lengths) * result_callback.interval_steps
         )
-        outfeed_tensors.scores = jnp.sum(
-            # Padded logprobs can have values of 1.0, so we cap it to 0.0.
-            jnp.minimum(_get_slice(val.logprobs), 0.0),
-            axis=-1,
-        )
+        if hasattr(val, 'prefix_scores'):
+          outfeed_tensors.scores = val.prefix_scores
+        else:
+          outfeed_tensors.scores = jnp.sum(
+              # Padded logprobs can have values of 1.0, so we cap it to 0.0.
+              jnp.minimum(_get_slice(val.logprobs), 0.0),
+              axis=-1,
+          )
         outfeed_tensors.done = val.done
         outfeed_tensors = jax.tree_map(
             lambda x: split_batch_dim(x, 0, num_samples), outfeed_tensors
