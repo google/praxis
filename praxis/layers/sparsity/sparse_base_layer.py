@@ -56,8 +56,6 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     self._create_masks_variables(name, weight_hparams)
     self._create_counter_variables()
 
-    # if self.sparsity.sparse_layer_indices:
-
   def _create_masks_variables(self, name: str, weight_hp: WeightHParams):
     """Creates mask tensors for sparse variables.
 
@@ -137,6 +135,13 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     # Get variables
     mask_var_name = name + SPARSITY_NAME_POSTFIX
     mask = self.get_var(mask_var_name)
+    # Reshape if mask and weight have shape mismatch.
+    # E.g., this happens in attentions.AttentionProjection when setting
+    # attention_combine_dims=True.
+    # TODO(shaojinding): Move this reshape to attentions.py if it blocks
+    # future refactors on sparse_base_layer.py.
+    if mask.shape != inputs.shape:
+      mask = jnp.reshape(mask, inputs.shape)
     update_cnt = self.get_var('mask_update_count')
     step = self.get_var('step')
 

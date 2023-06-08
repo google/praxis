@@ -96,7 +96,7 @@ pytype_strict_library(
     name = "attentions",
     srcs = ["attentions.py"],
     deps = [
-        ":sparsity",
+        ":sparse_base_layer",
         ":sparsity_hparams",
         # Implicit jax dependency.
         "//praxis:base_layer",

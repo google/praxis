@@ -151,7 +151,7 @@ class SparseAttentionTest(test_utils.TestCase):
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = attn.init(prng_key, inputs)
       initial_vars['params']['w'] = weights
-      self.assertEqual(initial_vars['non_trainable']['global_step_count'], 0)
+      self.assertEqual(initial_vars['non_trainable']['step'], 0)
       outputs, state = attn.apply(initial_vars, inputs, mutable=True)
     self.assertEqual(outputs.shape, (1, 1, 2, 4))
     self.assertArraysEqual(
@@ -180,7 +180,7 @@ class SparseAttentionTest(test_utils.TestCase):
     ])
     with base_layer.JaxContext.new_context():
       state['params']['w'] = weights
-      self.assertEqual(state['non_trainable']['global_step_count'], 1)
+      self.assertEqual(state['non_trainable']['step'], 1)
       outputs, state = attn.apply(state, inputs, mutable=True)
     self.assertArraysEqual(
         state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
@@ -197,7 +197,7 @@ class SparseAttentionTest(test_utils.TestCase):
     )
     # Step 2, mask changes
     with base_layer.JaxContext.new_context():
-      self.assertEqual(state['non_trainable']['global_step_count'], 2)
+      self.assertEqual(state['non_trainable']['step'], 2)
       outputs, state = attn.apply(state, inputs, mutable=True)
     self.assertArraysEqual(
         state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
