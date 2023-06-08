@@ -1535,7 +1535,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     Args:
       inputs: Input ids. An int32 JTensor of shape [B, S].
       input_paddings: A 0/1 JTensor of shape [B, S] with 1 denoting padding
-        correspdonding to the input sequence.
+        corresponding to the input sequence.
       input_segment_ids: A JTensor of shape [B,S]. The segment that each input
         token belongs to.
       input_segment_pos: A JTensor of shape [B, S]. The position of each input
@@ -1688,7 +1688,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     Args:
       inputs: Input ids. An int32 JTensor of shape [B, S].
       input_paddings: A 0/1 JTensor of shape [B, S] with 1 denoting padding
-        correspdonding to the input sequence.
+        corresponding to the input sequence.
       targets: Target ids. An int32 JTensor of shape [B, T].
       target_paddings: A 0/1 JTensor of shape [B, T] with 1 denoting padding
         corresponding to the target sequence.
@@ -1801,7 +1801,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     Args:
       inputs: Input ids. An int32 JTensor of shape [B, S].
       input_paddings: A 0/1 JTensor of shape [B, S] with 1 denoting padding
-        correspdonding to the input sequence.
+        corresponding to the input sequence.
       *args: Other arguments.
       **kwargs: Other keyword arguments.
 
