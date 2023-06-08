@@ -886,6 +886,18 @@ class FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
     return cls(**kwargs)
 
 
+class _FiddleHParamsClassStubDescriptor:
+  """Descriptor used to implement BaseParameterizable.HParams stub."""
+
+  def __init__(self):
+    self._cached_values = {}
+
+  def __get__(self, obj, objtype):
+    if objtype not in self._cached_values:
+      self._cached_values[objtype] = FiddleHParamsClassStub(objtype)
+    return self._cached_values[objtype]
+
+
 class _FiddleHParamsInstanceStub:
   """Stub for `hparams` attribute in `BaseParameterizable`.
 
@@ -976,6 +988,7 @@ class FiddleBaseParameterizable:
   #   `fdl.Config`; or can be used with `base_hyperparams.sub_config_field`.
   hparams = property(_FiddleHParamsInstanceStub)
   _hparams = property(_FiddleHParamsInstanceStub)
+  HParams = _FiddleHParamsClassStubDescriptor()  # pylint: disable=invalid-name
 
   name: str = kw_only_dataclasses.field(default='', kw_only=True)
 
