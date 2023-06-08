@@ -172,6 +172,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
   optimizer_dims_mapping: SplitDimsMapping = None
   collect_intermediate_outputs: bool = False
   bf16_accum_in_fp32: bool = False
+  global_batch_nan_check_only: bool = False
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -318,17 +319,20 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         # Assume there is no AUX_LOSS and SUMMARIES before function call.
         assert AUX_LOSS not in var_tree
         assert SUMMARIES not in var_tree
-        # Use stop_gradient in invalid iterations so that potential NaN
-        # gradients will not be propagated to the weights. This jnp.where will
-        # be optimized away by XLA, but in the backward pass it will be masking
-        # with zeros.
-        mapped_vars = xform_collections(
-            var_tree, [base_layer.PARAMS],
-            lambda x: jnp.where(is_valid_mb, x, jax.lax.stop_gradient(x)))
-        if NON_TRAINABLE in var_tree:
-          backups = jax.tree_map(lambda x: x, var_tree[NON_TRAINABLE])
-          mapped_vars[NON_TRAINABLE][non_trainable_backup_dict_key] = backups
-        return mapped_vars
+        if self.global_batch_nan_check_only:
+          return var_tree
+        else:
+          # Use stop_gradient in invalid iterations so that potential NaN
+          # gradients will not be propagated to the weights. This jnp.where will
+          # be optimized away by XLA, but in the backward pass it will be masking
+          # with zeros.
+          mapped_vars = xform_collections(
+              var_tree, [base_layer.PARAMS],
+              lambda x: jnp.where(is_valid_mb, x, jax.lax.stop_gradient(x)))
+          if NON_TRAINABLE in var_tree:
+            backups = jax.tree_map(lambda x: x, var_tree[NON_TRAINABLE])
+            mapped_vars[NON_TRAINABLE][non_trainable_backup_dict_key] = backups
+          return mapped_vars
 
       def trans_out(var_tree: pytypes.PyTree) -> pytypes.PyTree:
         mapped_vars = xform_collections(
