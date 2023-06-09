@@ -175,7 +175,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     return cls.get_batch_size(params) * params.num_infeed_hosts
 
   def save(self, checkpoint_path: epath.PathLike):
-    state = self.get_state() if self._peek is None else self._state_before_peek
+    state = self.get_state()
     dirname = os.path.dirname(checkpoint_path)
     epath.Path(dirname).mkdir(parents=True, exist_ok=True)
     epath.Path(checkpoint_path).write_bytes(state)
@@ -218,43 +218,45 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     actually calling into data pipeline so that we maintain the correct data
     iteration.
 
-    Note that, if method is overriden in subclasses, it is user's duty to ensure
-    peek behavior, or `peek_padded()` will lead to inconsistent states/results.
+    Note that, if method is overridden in subclasses, it is user's duty to
+    ensure peek behavior, or `peek_padded()` will lead to inconsistent
+    states/results.
 
     Returns:
       The padded example from the data pipeline.
     """
-    if self._peek is None:
-      unpadded = self.get_next()
-      pad_size = self.batch_padding_size
-      if pad_size == 0:
-        return unpadded
-      return jax.tree_util.tree_map(
-          lambda x: np.pad(x, [[0, pad_size]] + [[0, 0]] * (x.ndim - 1)),
-          unpadded,
-      )
-    peek = self._peek
-    self._peek = None
-    self._state_before_peek = None
-    return peek
+    if self._peek is not None:
+      output = self._peek
+      self._peek = None
+      self._state_before_peek = None
+      return output
+    unpadded = self.get_next()
+    pad_size = self.batch_padding_size
+    if pad_size == 0:
+      return unpadded
+    return jax.tree_util.tree_map(
+        lambda x: np.pad(x, [[0, pad_size]] + [[0, 0]] * (x.ndim - 1)),
+        unpadded,
+    )
 
   def peek_padded(self) -> Optional[NestedJTensor]:
     """Peeks into the current input data pipeline."""
-    if self._peek is None:
+    if self._peek is not None:
+      return self._peek
+    assert (
+        self._state_before_peek is None
+    ), "_peek was None, but _state_before_peek wasn't None"
+    try:
+      # Not all subclasses support _get_state_internal().
       try:
-        # Not all subclasses support get_state().
-        try:
-          assert (
-              self._state_before_peek is None
-          ), "_peek was None, but _state_before_peek wasn't None"
-          self._state_before_peek = self._get_state_internal()
-        except NotImplementedError:
-          pass
-        self._peek = self.get_next_padded()
-      except (tf.errors.OutOfRangeError, StopIteration):
-        logging.warning('Peek failed: input %s out of range.', self.name)
-        self._peek = None
-        self._state_before_peek = None
+        self._state_before_peek = self._get_state_internal()
+      except NotImplementedError:
+        pass
+      self._peek = self.get_next_padded()
+    except (tf.errors.OutOfRangeError, StopIteration):
+      logging.warning('Peek failed: input %s out of range.', self.name)
+      self._peek = None
+      self._state_before_peek = None
     return self._peek
 
   def reset(self) -> None:
