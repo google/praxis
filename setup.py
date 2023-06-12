@@ -22,7 +22,7 @@ from setuptools import setup
 
 def _get_requirements():
   """Parses requirements.txt file."""
-  install_requires_tmp = []
+  install_requires_tmp, dev_requires_tmp = [], []
   with open(os.path.join(os.path.dirname(__file__), './requirements.in'),
             'r') as f:
     for line in f:
@@ -30,12 +30,15 @@ def _get_requirements():
       # Skip empty line or comments starting with "#".
       if not package_name or package_name[0] == '#':
         continue
+      elif ' @ ' in package_name:
+        dev_requires_tmp.append(package_name)
+        install_requires_tmp.append(package_name.partition(' @ ')[0])
       else:
         install_requires_tmp.append(package_name)
-  return install_requires_tmp
+  return install_requires_tmp, dev_requires_tmp
 
 
-install_requires = _get_requirements()
+install_requires, dev_requires = _get_requirements()
 
 setup(
     name='praxis',
@@ -48,6 +51,9 @@ setup(
     packages=find_packages(),
     python_requires='>=3.8',
     install_requires=install_requires,
+    extras_require={
+        'dev': dev_requires,
+    },
     url='https://github.com/google/praxis',
     license='Apache-2.0',
     classifiers=[
