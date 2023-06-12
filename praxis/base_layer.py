@@ -1005,10 +1005,14 @@ class JaxContext:
         is a dict of {new_axis_name: old_axis_name}. Within this context,
         new_axis_name in all shardings will be translated to old_axis_name in
         the original device mesh.
+      self_reflect_configs: bool, whether to self reflect its configs as a
+         variable in a special collection.
     """
     do_eval: Optional[bool] = None
     summary_verbosity: int = 3
     mesh_axes_transpose: Optional[Dict[str, str]] = None
+
+    self_reflect_configs: bool = False
 
     def clone(self) -> JaxContext.HParams:
       return copy.deepcopy(self)
@@ -1041,6 +1045,10 @@ class JaxContext:
   @property
   def summary_verbosity(self) -> int:
     return self.hparams.summary_verbosity
+
+  @property
+  def self_reflect_configs(self) -> bool:
+    return self.hparams.self_reflect_configs
 
   def __enter__(self) -> JaxContext:
     _JaxContextStack.stack.append(self)
@@ -1359,6 +1367,26 @@ class _FiddleHParamsClassStub(
     return cls(**kwargs)
 
 
+def is_sublayer_template_or_instance(val):
+  if isinstance(val, BaseLayer):
+    return True
+
+  if isinstance(val, pax_fiddle.Config) and issubclass(val.cls, BaseLayer):
+    return True
+
+  # Check if val is a container of sub-layer templates.
+  if isinstance(val, Mapping) and all(isinstance(key, str) for key in val):
+    return is_sublayer_template_or_instance(list(val.values()))
+  if isinstance(val, (list, tuple)):
+    if any(is_sublayer_template_or_instance(child) for child in val):
+      if all(
+          is_sublayer_template_or_instance(child) or child is None
+          for child in val
+      ):
+        return True
+  return False
+
+
 class BaseLayer(nn.Module):
   """Base class for layers that are configured using Fiddle.
 
@@ -1549,6 +1577,8 @@ class BaseLayer(nn.Module):
       # WeightInit, copy.deepcopy(source.params_init) works in both cases.
       target.params_init = copy.deepcopy(source.params_init)
 
+  # TODO(yonghui): deprecate this method, replace it with
+  # abstract_init_with_mdl_config.
   def post_init_hparams(self, *args):
     """Recursively populates the HYPER_PARAMS collection with hyper-params ...
 
@@ -1560,26 +1590,6 @@ class BaseLayer(nn.Module):
     Args:
       *args: used for scan's rigid signature requirements.
     """
-
-    def is_sublayer_template_or_instance(val):
-      if isinstance(val, BaseLayer):
-        return True
-
-      if isinstance(val, pax_fiddle.Config) and issubclass(val.cls, BaseLayer):
-        return True
-
-      # Check if val is a container of sub-layer templates.
-      if isinstance(val, Mapping) and all(isinstance(key, str) for key in val):
-        return is_sublayer_template_or_instance(list(val.values()))
-      if isinstance(val, (list, tuple)):
-        if any(is_sublayer_template_or_instance(child) for child in val):
-          if all(
-              is_sublayer_template_or_instance(child) or child is None
-              for child in val
-          ):
-            return True
-      return False
-
     hparam_kwargs = {}
     for field in self._hparam_fields:
       value = getattr(self, field)
@@ -1709,6 +1719,18 @@ class BaseLayer(nn.Module):
         else:
           pass
 
+      if self.reflect_configs and self.is_initializing():
+        hparam_kwargs = {}
+        for field in self._hparam_fields:
+          value = getattr(self, field)
+          if is_sublayer_template_or_instance(value):
+            value = None
+          hparam_kwargs[field] = value
+        hparams = pax_fiddle.Config(type(self), **hparam_kwargs)
+        self.put_variable(HYPER_PARAMS, '_hparams',
+                          WrappedHParams(hparams))
+
+
   # Similar to Flax nn.Module.init, except that BaseLayer param and variables
   # are created with WeightHParams as their metadata (e.g. SPMD annotations).
   # We store the variables with their metadata as a BoxedParams object inside
@@ -1800,6 +1822,36 @@ class BaseLayer(nn.Module):
     if 'params_axes' in variables_abstract:
       del variables_abstract['params_axes']
     return flax_core.unfreeze(unbox_meta(variables_abstract))
+
+  # A systematic self-reflection of the model structure, with configs for the
+  # nested tree of BaseLayers.
+  def abstract_init_with_mdl_config(self,
+                                    *args,
+                                    do_eval=False,
+                                    method=None,
+                                    **kwargs) -> NestedWeightHParams:
+    # Dummy key is enough because we eval_shape only.
+    k = jax.random.PRNGKey(1)
+    rngs = {PARAMS: k, RANDOM: k, NON_PAX_RNG_KEY: k}
+    # Only PARAMS and NON_TRAINABLE have BoxedParam.
+    init_fn = functools.partial(
+        super().init,
+        mutable=DEFAULT_INIT_MUTABLE_LIST + [HYPER_PARAMS],
+        method=method)
+    # Disable logging to reduce logspam.
+    with py_utils.logging_verbosity_level('FATAL'):
+      context_p = JaxContext.HParams(do_eval=do_eval,
+                                     self_reflect_configs=True)
+      with JaxContext.new_context(hparams=context_p):
+        if self.fprop_dtype == jnp.bfloat16:
+          converted_args = jax.tree_map(_maybe_to_bfloat16_dtype, args)
+          converted_kwargs = jax.tree_map(_maybe_to_bfloat16_dtype, kwargs)
+        else:
+          converted_args = args
+          converted_kwargs = kwargs
+        variables_abstract = jax.eval_shape(
+            init_fn, rngs, *converted_args, **converted_kwargs)
+    return variables_abstract[HYPER_PARAMS]
 
   # Notes on Flax interoperability:
   #
@@ -1920,6 +1972,13 @@ class BaseLayer(nn.Module):
   @property
   def do_eval(self) -> bool:
     return self.jax_context.do_eval
+
+  @property
+  def reflect_configs(self) -> bool:
+    if not JaxContext.top():
+      return False
+    else:
+      return self.jax_context.self_reflect_configs
 
   @nn.nowrap
   def get_var(self, name: str) -> Any:

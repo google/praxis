@@ -41,9 +41,11 @@ SplitDimsMapping = pytypes.SplitDimsMapping
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 PARAMS = base_layer.PARAMS
+
 AUX_LOSS = base_layer.AUX_LOSS
 SUMMARIES = base_layer.SUMMARIES
 NON_TRAINABLE = base_layer.NON_TRAINABLE
+HYPER_PARAMS = base_layer.HYPER_PARAMS
 RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
 PREFIX_DECODE_CACHE = base_layer.PREFIX_DECODE_CACHE
@@ -58,6 +60,8 @@ SCAN_VARIABLE_AXES = {
     DECODE_CACHE: 0,
     PREFIX_DECODE_CACHE: 0,
     INTERMEDIATES: 0,
+    # For transforming children created within a scan loop.
+    HYPER_PARAMS: 0
 }
 
 

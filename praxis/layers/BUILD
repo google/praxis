@@ -847,6 +847,7 @@ py_strict_test(
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit flax dependency.
         # Implicit jax dependency.
         # Implicit lingvo.core.layers dependency.
         # Implicit numpy dependency.
@@ -854,6 +855,7 @@ py_strict_test(
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
+        "//praxis:pytypes",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
     ],

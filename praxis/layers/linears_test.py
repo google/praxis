@@ -15,6 +15,8 @@
 
 """Tests for Praxis linear layers."""
 
+from typing import Optional
+
 from absl import logging
 from praxis import pax_fiddle
 from absl.testing import absltest
@@ -23,9 +25,11 @@ import jax
 from jax import numpy as jnp
 from lingvo.core import layers as lingvo_layers
 import numpy as np
+from flax import linen as nn
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import py_utils
+from praxis import pytypes
 from praxis import test_utils
 from praxis.layers import activations
 from praxis.layers import linears
@@ -35,6 +39,7 @@ to_np = test_utils.to_np
 to_tf_nmap = test_utils.to_tf_nmap
 instantiate = base_layer.instantiate
 
+JTensor = pytypes.JTensor
 
 class LinearsTest(test_utils.TestCase):
 
@@ -654,6 +659,67 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
     self._testUnstack(inputs, left_context=2, stride=3)
     self._testUnstack(inputs, stride=4, right_context=3)
     self._testUnstack(inputs, stride=4, left_context=1, right_context=2)
+
+
+class Linear(base_layer.BaseLayer):
+  output_dims: int = 0
+
+  @nn.compact
+  def __call__(self, inputs: JTensor) -> JTensor:
+    self.create_variable(
+        'w',
+        base_layer.WeightHParams(
+            shape=[inputs.shape[-1], self.output_dims],
+            init=self.params_init
+        ),
+    )
+    return jnp.einsum('...y,yz->...z', inputs, self.theta.w)
+
+
+class Bias(base_layer.BaseLayer):
+  bias_init: Optional[float] = 0.0
+
+  @nn.compact
+  def __call__(self, inputs: JTensor) -> JTensor:
+    self.create_variable(
+        'b',
+        base_layer.WeightHParams(
+            shape=[inputs.shape[-1]],
+            init=base_layer.WeightInit.Constant(self.bias_init),
+        ),
+    )
+    return inputs + self.theta.b
+
+
+class FeedForward(base_layer.BaseLayer):
+  output_dims: int = 0
+  has_bias: bool = True
+  activation: activations.BaseActivation = activations.ReLU()
+  bias_init: Optional[float] = 0.0
+
+  @nn.compact
+  def __call__(self, inputs: JTensor) -> JTensor:
+    linear = Linear(name='linear', output_dims=self.output_dims)
+    projected_inputs = linear(inputs)
+    if self.has_bias:
+      bias = Bias(name='bias', bias_init=self.bias_init)
+      projected_inputs += bias(projected_inputs)
+    output = self.activation(projected_inputs)
+    return output
+
+
+class PostInitParamsTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
+  def test_fetch_post_init_params(self):
+    batch, time, dim = 1, 2, 3
+    x = jnp.ones((batch, time, dim))
+    ffwd = FeedForward(name='ffw', output_dims=4 * dim)
+    v = ffwd.abstract_init_with_mdl_config(x)
+    print(v)
 
 
 if __name__ == '__main__':
