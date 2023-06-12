@@ -173,7 +173,7 @@ def _get_argmax_ids(top_k_argmax_ids: JTensor, top_k_items: JTensor) -> JTensor:
 def get_top_k(
     logits: JTensor,
     top_k: int,
-    per_example_top_k: JTensor,
+    per_example_top_k: Optional[JTensor],
     top_k_recall_target: float = 1.0,
 ) -> Sequence[JTensor]:
   """Gets top k logits and indices from given top K.
