@@ -131,9 +131,9 @@ def quantized_einsum(
           w, pack_dim, layer.quantization.weight_params.dtype
       )
     if do_static_activation_quantization(layer.quantization.act_params):
-      raise NotImplementedError(
-          'Static activation quantization is not supported yet.'
-      )
+      # This is for benchmarking only, to get the headroom.
+      # TODO(jianlijianli): implement this properly.
+      x = x.astype(jnp.int8)
     elif layer.quantization.act_params is not None:
       x, act_scale = operations.reduce_precision_activation(x)
       s = jnp.multiply(jnp.squeeze(act_scale), s)
