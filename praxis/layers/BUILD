@@ -886,6 +886,7 @@ py_strict_test(
         ":resnets",
         ":transformer_models",
         ":transformers",
+        # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
@@ -896,6 +897,7 @@ py_strict_test(
         "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis:test_utils",
+        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 
