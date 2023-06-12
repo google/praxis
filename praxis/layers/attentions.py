@@ -2651,6 +2651,65 @@ class DotProductAttentionXL(DotProductAttention):
                               self.__name__)
 
 
+def _padded_slice(
+    x: JTensor,
+    start_index: JTensor,
+    slice_size: int,
+    axis: int,
+    padding_value: Any,
+) -> JTensor:
+  """Returns a slice of x.
+
+  If not enough elements, padding_value will be returned when out of bounds.
+
+  Args:
+    x: Tensor to slice
+    start_index: Start index of the slice.
+    slice_size: Size of the slice (concrete value).
+    axis: Axis to slice
+    padding_value: Value to use as paddings for out of bounds.
+
+  Returns:
+    Slice as a JTensor.
+  """
+  len_x = x.shape[axis]
+
+  # The slice has to be rolled if start_index < 0 or
+  # start_index + slice_size > len_x
+  clipped_start_index = jnp.clip(
+      start_index,
+      0,
+      len_x - slice_size,
+  )
+  shift = clipped_start_index - start_index
+  x_slice = jax.lax.dynamic_slice_in_dim(
+      x,
+      clipped_start_index,
+      slice_size,
+      axis=axis,
+  )
+
+  def _fix_slice(
+      x_slice: JTensor,
+      axis: int,
+  ):
+    x_slice = jnp.roll(x_slice, shift, axis=axis)
+    indices = jnp.arange(slice_size)
+    axis = axis % x.ndim
+    indices = jnp.reshape(indices, ((slice_size,) + (1,) * (x.ndim - 1 - axis)))
+    return jnp.where(
+        (indices < shift) + (indices >= slice_size + shift),
+        jnp.array(padding_value),
+        x_slice,
+    )
+
+  return jax.lax.cond(
+      shift,
+      lambda: _fix_slice(x_slice, axis),
+      lambda: x_slice,
+  )
+
+
 class LocalSelfAttention(DotProductAttention):
   """Local Attention with given left and right context.
 
@@ -2897,10 +2956,6 @@ class LocalSelfAttention(DotProductAttention):
       relative_bias: Optional[JTensor] = None,
       time_step: Optional[JTensor] = None,
   ) -> Tuple[JTensor, JTensor]:
-    assert self.right_context is not None
-    if self.right_context > 0:
-      raise ValueError('Local attention must be causal to extend step.')
-
     key = self._shard_blnh(self.get_decode_state(key_state_name))
     value = self._shard_blnh(self.get_decode_state(value_state_name))
     k_b = key.shape[0]
@@ -2917,68 +2972,40 @@ class LocalSelfAttention(DotProductAttention):
     # query is 3d.
     query = self._shard_bnh(query)
 
-    def context_slice(
-        x: JTensor,
-        axis: int,
-        padding_value: Any,
-        time_step: JTensor,
-        slice_size: int,
-    ) -> JTensor:
-      """Returns a slice of x on the left of index `timestep` (inclusive).
+    s = key.shape[1]
+    asserts.eq(value.shape[1], s)
+    asserts.eq(atten_mask.shape[-1], s)
+    l = self.left_context
+    f = self.left_context + self.right_context
 
-      If not enough elements, paddings will complete the slice.
-
-      Args:
-        x: Tensor to slice
-        axis: Axis to slice
-        padding_value: If the slice goes further left than x index 0, this value
-          will be used.
-        time_step: Index (inclusive) that finishes the slice.
-        slice_size: Size of the slice.
-
-      Returns:
-        Slice as a JTensor.
-      """
-
-      # The slice is incorrect if timestep + 1 - slice_size < 0. Fix down below.
-      x_slice = jax.lax.dynamic_slice_in_dim(
-          x, jnp.maximum(time_step + 1 - slice_size, 0), slice_size, axis=axis
-      )
-
-      def pad_left():
-        paddings = jnp.full_like(x_slice, padding_value)
-        x_padded = jnp.concatenate([paddings, x_slice], axis=axis)
-        return jax.lax.dynamic_slice_in_dim(
-            x_padded, time_step + 1, slice_size, axis=axis
-        )
-
-      # We want paddings on the left if time_step + 1 - slice_size < 0.
-      return jax.lax.cond(
-          time_step + 1 - slice_size < 0, pad_left, lambda: x_slice
-      )
-
-    key = context_slice(key, 1, 0.0, time_step, self.left_context)
-    value = context_slice(value, 1, 0.0, time_step, self.left_context)
-    atten_mask = context_slice(
+    key = _padded_slice(key, time_step + 1 - l, f, 1, 0.0)
+    value = _padded_slice(value, time_step + 1 - l, f, 1, 0.0)
+    atten_mask = _padded_slice(
         atten_mask,
+        time_step + 1 - l,
+        f,
         -1,
         py_utils.get_large_negative_number(jnp.float32),
-        time_step,
-        self.left_context,
     )
 
-    b, l, n, h = key.shape
-    base_layer.assert_has_shape(value, [b, l, n, h])
+    b, f, n, h = key.shape
+    asserts.eq(f, self.left_context + self.right_context)
+    base_layer.assert_has_shape(value, [b, f, n, h])
     base_layer.assert_has_shape(query, [b, n, h])
-    base_layer.assert_has_shape(atten_mask, [-1, 1, l])
+    base_layer.assert_has_shape(atten_mask, [-1, 1, f])
     asserts.in_set(atten_mask.shape[0], [b, 1])
     query = self._scale_query(query)
-    logits = self.qk_einsum('BNH,BLNH->BNL', query, key)
+    logits = self.qk_einsum('BNH,BFNH->BNF', query, key)
     if relative_bias is not None:
-      relative_bias = context_slice(
-          relative_bias, -1, 0.0, time_step, self.left_context
+      asserts.eq(relative_bias.shape[-1], s)
+      relative_bias = _padded_slice(
+          relative_bias,
+          time_step + 1 - l,
+          f,
+          -1,
+          0.0,
       )
-      base_layer.assert_has_shape(relative_bias, [-1, n, 1, l])
+      base_layer.assert_has_shape(relative_bias, [-1, n, 1, f])
       asserts.in_set(relative_bias.shape[0], [b, 1])
       relative_bias = jnp.squeeze(relative_bias, axis=2)
       logits += relative_bias
@@ -2994,7 +3021,7 @@ class LocalSelfAttention(DotProductAttention):
       probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
           key.dtype)
     # Compute the attention context.
-    encoded = self.pv_einsum('BNL,BLNH->BNH', probs, value)
+    encoded = self.pv_einsum('BNF,BFNH->BNH', probs, value)
 
     if self.zero_fully_masked:
       # Return zeros for tokens which don't attend anything.
