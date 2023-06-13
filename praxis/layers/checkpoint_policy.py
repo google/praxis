@@ -22,6 +22,7 @@ import jax
 @enum.unique
 class AutodiffCheckpointType(str, enum.Enum):
   """jax.checkpoint policy types."""
+
   SAVE_NOTHING = 'save_nothing'
   SAVE_EVERYTHING = 'save_everything'
   SAVE_QKV_OUT_PROJ = 'save_qkv_out_proj'
@@ -50,7 +51,8 @@ def custom_policy(checkpoint_policy: AutodiffCheckpointType):
     return jax.checkpoint_policies.checkpoint_dots_with_no_batch_dims
   if checkpoint_policy == AutodiffCheckpointType.SAVE_QKV_OUT_PROJ:
     return jax.checkpoint_policies.save_only_these_names(
-        'combined_qkv_proj', 'out_proj')
+        'combined_qkv_proj', 'out_proj'
+    )
   if checkpoint_policy == AutodiffCheckpointType.SAVE_QKV_OUT_PROJ_SEPARATE:
     return jax.checkpoint_policies.save_only_these_names(
         'query_proj', 'value_proj', 'key_proj', 'out_proj'
@@ -63,8 +65,13 @@ def custom_policy(checkpoint_policy: AutodiffCheckpointType):
     return jax.checkpoint_policies.save_only_these_names('context', 'out_proj')
   if checkpoint_policy == AutodiffCheckpointType.SAVE_DOT_FOR_MLPERF_200B:
     return jax.checkpoint_policies.save_only_these_names(
-        'combined_qkv_proj', 'query_proj', 'value_proj', 'key_proj', 'context',
-        'out_proj')
+        'combined_qkv_proj',
+        'query_proj',
+        'value_proj',
+        'key_proj',
+        'context',
+        'out_proj',
+    )
   if checkpoint_policy == AutodiffCheckpointType.SAVE_QUANTIZED:
     return jax.checkpoint_policies.save_only_these_names(
         'context',
@@ -79,7 +86,8 @@ def custom_policy(checkpoint_policy: AutodiffCheckpointType):
     return jax.checkpoint_policies.save_only_these_names('iteration_input')
   if checkpoint_policy == AutodiffCheckpointType.SAVE_TRANSFORMER_LAYER_OUTPUT:
     return jax.checkpoint_policies.save_only_these_names(
-        'transformer_layer_out')
+        'transformer_layer_out'
+    )
   if checkpoint_policy == AutodiffCheckpointType.SAVE_DOT_EXCEPT_LOGITS_FFN1:
     return jax.checkpoint_policies.save_only_these_names(
         'combined_qkv_proj',

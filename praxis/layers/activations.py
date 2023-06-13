@@ -30,7 +30,8 @@ class BaseActivation(base_layer.BaseLayer):
   def __call__(self, inputs: JTensor) -> JTensor:
     """Applies the activation function."""
     raise NotImplementedError(
-        'Activation layers are expected to implement __call__().')
+        'Activation layers are expected to implement __call__().'
+    )
 
   @classmethod
   def get_subclass_by_name(cls, name: str) -> Type[BaseActivation]:
@@ -101,6 +102,7 @@ class LeakyReLU(BaseActivation):
   Attributes:
     negative_slope: Negative slope of LEAKY_RELU.
   """
+
   negative_slope: float = 0.01
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -138,6 +140,7 @@ class GELU(BaseActivation):
   Attributes:
     approximate: Whether to use the approximate or exact formulation.
   """
+
   # By default, use approximate.
   approximate: bool = True
 

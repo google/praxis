@@ -105,7 +105,9 @@ class ConvolutionsTest(test_utils.TestCase):
     initial_vars = jax.tree_map(jnp.ones_like, initial_vars)
 
     output = conv_layer.apply(initial_vars, inputs)
-    np_output = np.array([[2., 6., 6.], [24., 42., 32.], [66., 108., 78.]])
+    np_output = np.array(
+        [[2.0, 6.0, 6.0], [24.0, 42.0, 32.0], [66.0, 108.0, 78.0]]
+    )
     self.assertAllClose(to_np(output[0, :, :, 0]), np_output)
 
   @parameterized.parameters(
@@ -113,8 +115,9 @@ class ConvolutionsTest(test_utils.TestCase):
       ((2, 2, 4, 16, 8), (2, 2, 2), [2, 8, 16, 32, 128]),
       ((2, 4, 8, 16, 32), (1, 1, 1), [2, 8, 16, 32, 64]),
   )
-  def test_conv3d_layer_same_padding(self, filter_shape, filter_stride,
-                                     input_shape):
+  def test_conv3d_layer_same_padding(
+      self, filter_shape, filter_stride, input_shape
+  ):
     p = pax_fiddle.Config(
         convolutions.Conv3D,
         name='jax_conv3d',
@@ -143,8 +146,15 @@ class ConvolutionsTest(test_utils.TestCase):
       (2, 10, 3, 10, 2, True),
       (3, 12, 5, 11, 2, False),
   )
-  def test_depthwise_conv1d_layer(self, batch_size, seq_len, kernel_size,
-                                  input_dims, rhs_dilation_rate, bias):
+  def test_depthwise_conv1d_layer(
+      self,
+      batch_size,
+      seq_len,
+      kernel_size,
+      input_dims,
+      rhs_dilation_rate,
+      bias,
+  ):
     p = pax_fiddle.Config(
         convolutions.DepthwiseConv1D,
         name='jax_depthwise_conv1d',
@@ -154,12 +164,14 @@ class ConvolutionsTest(test_utils.TestCase):
     )
     depthwiseconv1d = instantiate(p)
     npy_inputs = np.random.normal(
-        1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
+        1.0, 0.5, [batch_size, seq_len, input_dims]
+    ).astype('float32')
     npy_inputs[:, -1, :] = np.nan
     inputs = jnp.asarray(npy_inputs)
-    npy_paddings = np.random.randint(0, 2,
-                                     [batch_size, seq_len]).astype('float32')
-    npy_paddings[0, -1] = 1.
+    npy_paddings = np.random.randint(0, 2, [batch_size, seq_len]).astype(
+        'float32'
+    )
+    npy_paddings[0, -1] = 1.0
     paddings = jnp.asarray(npy_paddings)
 
     prng_key = jax.random.PRNGKey(seed=123)
@@ -175,12 +187,14 @@ class ConvolutionsTest(test_utils.TestCase):
         name='tf_depthwise_conv_layer',
         filter_shape=(kernel_size, 1, input_dims, 1),
         dilation_rate=(rhs_dilation_rate, 1),
-        bias=bias)
+        bias=bias,
+    )
     tf_depthwiseconv1d = tf_l.Instantiate()
     tf_output = tf_depthwiseconv1d.FProp(
         tf_initial_vars,
         tf.constant(jnp.expand_dims(inputs, axis=2), dtype=tf.float32),
-        tf.constant(paddings, dtype=tf.float32))
+        tf.constant(paddings, dtype=tf.float32),
+    )
     np_output = to_np(output)
 
     # TF implementation returns both output and padding
@@ -193,15 +207,25 @@ class ConvolutionsTest(test_utils.TestCase):
       kernel_size=[2, 3, 5],
       input_dims=[5, 11],
       dilations=[(1, 1), (1, 2), (2, 1)],
-      channel_multipliers=[1, 3])
-  def test_depthwise_conv2d_layer(self, batch_size, seq_len, kernel_size,
-                                  input_dims, dilations, channel_multipliers):
+      channel_multipliers=[1, 3],
+  )
+  def test_depthwise_conv2d_layer(
+      self,
+      batch_size,
+      seq_len,
+      kernel_size,
+      input_dims,
+      dilations,
+      channel_multipliers,
+  ):
     # Create fake inputs.
     npy_inputs = np.random.normal(
-        1.0, 0.5, [batch_size, seq_len, seq_len, input_dims]).astype('float32')
+        1.0, 0.5, [batch_size, seq_len, seq_len, input_dims]
+    ).astype('float32')
     inputs = jnp.asarray(npy_inputs)
-    npy_paddings = np.random.randint(0, 2,
-                                     [batch_size, seq_len]).astype('float32')
+    npy_paddings = np.random.randint(0, 2, [batch_size, seq_len]).astype(
+        'float32'
+    )
     paddings = jnp.asarray(npy_paddings)
 
     # Use ConvBNActWithPadding to test paddings.
@@ -234,10 +258,12 @@ class ConvolutionsTest(test_utils.TestCase):
         filter_shape=tf_filter_shape,
         filter_stride=(1, 1),
         dilation_rate=dilations,
-        bias=True)
+        bias=True,
+    )
     tf_depthwiseconv2d = tf_l.Instantiate()
     tf_output, tf_out_paddings = tf_depthwiseconv2d.FProp(
-        tf_initial_vars, tf.constant(inputs), tf.constant(paddings))
+        tf_initial_vars, tf.constant(inputs), tf.constant(paddings)
+    )
 
     self.assertAllClose(to_np(tf_out_paddings), to_np(out_paddings))
     self.assertAllClose(to_np(tf_output), to_np(output))
@@ -247,14 +273,15 @@ class ConvolutionsTest(test_utils.TestCase):
       seq_len=[7, 12],
       kernel_size=[2, 3, 5],
       input_dims=[5, 11],
-      channel_multipliers=[1, 3])
-  def test_depthwise_conv3d_layer(self, batch_size, seq_len, kernel_size,
-                                  input_dims, channel_multipliers):
+      channel_multipliers=[1, 3],
+  )
+  def test_depthwise_conv3d_layer(
+      self, batch_size, seq_len, kernel_size, input_dims, channel_multipliers
+  ):
     # Create fake inputs.
     npy_inputs = np.random.normal(
-        1.0,
-        0.5,
-        [batch_size, seq_len, seq_len, seq_len, input_dims]).astype('float32')
+        1.0, 0.5, [batch_size, seq_len, seq_len, seq_len, input_dims]
+    ).astype('float32')
     inputs = jnp.asarray(npy_inputs)
     kernel_shape = (kernel_size, kernel_size, kernel_size)
     p = convolutions.Conv3D.HParamsDepthwise(
@@ -264,7 +291,8 @@ class ConvolutionsTest(test_utils.TestCase):
         channel_multipliers=channel_multipliers,
         filter_stride=(1, 1, 1),
         bias=True,
-        tf_equivalent_padding=True)
+        tf_equivalent_padding=True,
+    )
     depthwiseconv3d = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
     initial_vars = depthwiseconv3d.init(prng_key, inputs)
@@ -273,7 +301,7 @@ class ConvolutionsTest(test_utils.TestCase):
     for i in [1, 2, 3]:
       self.assertEqual(output.shape[i], inputs.shape[i])
     # Check channels shape.
-    self.assertEqual(output.shape[-1], input_dims*channel_multipliers)
+    self.assertEqual(output.shape[-1], input_dims * channel_multipliers)
 
   @parameterized.parameters(
       (2, 10, 3, 10, 0.0, True),
@@ -281,8 +309,15 @@ class ConvolutionsTest(test_utils.TestCase):
       (5, 7, 2, 8, 0.25, True),
       (7, 8, 4, 5, 0.5, False),
   )
-  def test_light_conv1d_layer(self, batch_size, seq_len, kernel_size,
-                              input_dims, dropout_prob, is_causal):
+  def test_light_conv1d_layer(
+      self,
+      batch_size,
+      seq_len,
+      kernel_size,
+      input_dims,
+      dropout_prob,
+      is_causal,
+  ):
     p = pax_fiddle.Config(
         convolutions.LightConv1D,
         name='jax_light_conv1d_layer',
@@ -293,10 +328,12 @@ class ConvolutionsTest(test_utils.TestCase):
     )
     lconv = instantiate(p)
     npy_inputs = np.random.normal(
-        1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
+        1.0, 0.5, [batch_size, seq_len, input_dims]
+    ).astype('float32')
     inputs = jnp.asarray(npy_inputs)
-    npy_paddings = np.random.randint(0, 2,
-                                     [batch_size, seq_len]).astype('float32')
+    npy_paddings = np.random.randint(0, 2, [batch_size, seq_len]).astype(
+        'float32'
+    )
     paddings = jnp.asarray(npy_paddings)
 
     context_p = base_layer.JaxContext.HParams(do_eval=True)
@@ -308,21 +345,25 @@ class ConvolutionsTest(test_utils.TestCase):
     # Modify initial_vars to use TF compatible params
     tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars[PARAMS])
     tf_initial_non_trainable_vars = py_utils.NestedMap.FromNestedDict(
-        initial_vars[NON_TRAINABLE])
+        initial_vars[NON_TRAINABLE]
+    )
     tf_initial_vars = test_utils.replace_jax_light_conv_vars_to_tf(
-        tf_initial_vars, tf_initial_non_trainable_vars)
+        tf_initial_vars, tf_initial_non_trainable_vars
+    )
     tf_l = conformer_layer.LConvLayer.Params().Set(
         name='tf_light_conv1d_block',
         input_dim=input_dims,
         kernel_size=kernel_size,
         dropout_prob=dropout_prob,
-        is_causal=is_causal)
+        is_causal=is_causal,
+    )
     tf_lconv = tf_l.Instantiate()
     with cluster_factory.SetEval(True):
       tf_output = tf_lconv.FProp(
           tf_initial_vars,
           tf.constant(inputs, dtype=tf.float32),
-          paddings=tf.constant(npy_paddings, dtype=tf.float32))
+          paddings=tf.constant(npy_paddings, dtype=tf.float32),
+      )
     np_output = to_np(output)
 
     # TF implementation returns both output and padding
@@ -363,14 +404,18 @@ class ConvolutionsTest(test_utils.TestCase):
       idx = np.tile(np.arange(max_t), [batch_size, 1])
       return (idx < np.expand_dims(length, -1)).astype('float32')
 
-    length = np.random.randint(max_t // 2, max_t, [
-        batch_size,
-    ])
+    length = np.random.randint(
+        max_t // 2,
+        max_t,
+        [
+            batch_size,
+        ],
+    )
     logging.info('length:%s', str(length))
     npy_features = np.random.uniform(size=[batch_size, max_t, 80, 1])
     npy_paddings = get_padding_from_length(length)
     npy_features[0, -1, :] = np.nan
-    npy_paddings[0, -1] = 1.
+    npy_paddings[0, -1] = 1.0
 
     features = jnp.asarray(npy_features)
     paddings = jnp.asarray(npy_paddings)

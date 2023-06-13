@@ -41,10 +41,9 @@ class CNN(flax_nn.Module):
   """A simple CNN model."""
 
   @flax_nn.compact
-  def __call__(self,
-               x: JTensor,
-               *,
-               use_running_average: bool = True) -> JTensor:
+  def __call__(
+      self, x: JTensor, *, use_running_average: bool = True
+  ) -> JTensor:
     x = flax_nn.Conv(features=32, kernel_size=(3, 3))(x)
     x = flax_nn.BatchNorm(use_running_average=use_running_average)(x)
     x = flax_nn.relu(x)
@@ -68,6 +67,7 @@ class MixLayer(base_layer.BaseLayer):
   Attributes:
     use_running_average: bool as if BN layers are using running average or not.
   """
+
   use_running_average: bool = False
 
   def setup(self) -> None:
@@ -154,7 +154,8 @@ class FlaxWrapperTest(test_utils.TestCase):
   def test_literal_init_args(self):
     """Tests construction with literal (non-callable) init args."""
     test_layer_p = flax_adapter.FlaxModuleAdapter.config(
-        name='test_layer', module_factory_method=CNN)
+        name='test_layer', module_factory_method=CNN
+    )
     test_layer = instantiate(test_layer_p)
 
     input_x = jnp.zeros((256, 256, 3))
@@ -180,15 +181,16 @@ class FlaxWrapperTest(test_utils.TestCase):
       self.assertAllClose(old, new)
 
   def test_wrap_sharding_spec(self):
-
     class SimpleLinear(flax_nn.Module):
 
       def setup(self):
         self.w = flax_partitioning.param_with_axes(
             'w',
-            jax.nn.initializers.ones, (3, 4),
+            jax.nn.initializers.ones,
+            (3, 4),
             jnp.float32,
-            axes=('input', 'output'))
+            axes=('input', 'output'),
+        )
         # Do not annotate with param_axes on purpose since users may mix
         # Flax modules which do not have sharding annotations with Flaxformer
         # models which do.
@@ -282,10 +284,12 @@ class PaxWrapperTest(test_utils.TestCase):
     with base_layer.JaxContext.new_context():
       init_vars = test_layer.init(jax.random.PRNGKey(seed=123), inputs)
       leaves = jax.tree_util.tree_leaves(
-          init_vars, is_leaf=lambda x: isinstance(x, base_layer.BoxedParam))
+          init_vars, is_leaf=lambda x: isinstance(x, base_layer.BoxedParam)
+      )
       # Check that init variables are unboxed.
       self.assertFalse(
-          any(isinstance(x, base_layer.BoxedParam) for x in leaves))
+          any(isinstance(x, base_layer.BoxedParam) for x in leaves)
+      )
       test_layer.apply(init_vars, inputs)
 
   def test_wrap_pax_layer(self):

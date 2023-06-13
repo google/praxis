@@ -287,7 +287,8 @@ def GlamUniTransformerLmHParams(
       z_loss_weight=z_loss_weight,
   )
   p.softmax_tpl.use_tgt_labels_size_as_loss_denominator = (
-      use_tgt_labels_size_as_loss_denominator)
+      use_tgt_labels_size_as_loss_denominator
+  )
   glam_p = GlamStackedTransformerHParams(
       model_dim=model_dim,
       ff_dim=ff_dim,

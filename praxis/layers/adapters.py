@@ -17,7 +17,6 @@
 
 from typing import Optional
 import fiddle as fdl
-
 import jax
 import jax.numpy as jnp
 from praxis import asserts
@@ -56,13 +55,14 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
     norm_tpl: normalization used in the beginning
     activation_tpl: activation template to use.
   """
+
   input_dims: int = 0
   bottleneck_dims: int = 0
   num_tasks: int = 1
   norm_tpl: Optional[LayerTpl] = template_field(normalizations.LayerNorm)
-  activation_tpl: pax_fiddle.Config[
-      activations.BaseActivation
-  ] = template_field(activations.ReLU)
+  activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
+      template_field(activations.ReLU)
+  )
 
   def setup(self) -> None:
     if self.norm_tpl:
@@ -98,11 +98,13 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
 
     self.create_child('activation', self.activation_tpl)
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: Optional[JTensor] = None,
-               tasks: Optional[JTensor] = None,
-               add_residual: bool = True) -> JTensor:
+  def __call__(
+      self,
+      inputs: JTensor,
+      paddings: Optional[JTensor] = None,
+      tasks: Optional[JTensor] = None,
+      add_residual: bool = True,
+  ) -> JTensor:
     """Fprop for multitask adapter.
 
     Args:
@@ -127,7 +129,7 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
       )
       tasks = jnp.zeros(shape=inputs.shape[:-1])
 
-    asserts.eq(tasks.shape, inputs.shape[:len(tasks.shape)])
+    asserts.eq(tasks.shape, inputs.shape[: len(tasks.shape)])
     asserts.gt(len(inputs.shape) - len(tasks.shape), 0)
     asserts.le(len(inputs.shape) - len(tasks.shape), 2)
     tasks_onehot = jax.nn.one_hot(
@@ -165,8 +167,9 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
     else:
       norm_inputs = inputs
 
-    down_projected = jnp.einsum('...i,...in->...n', norm_inputs,
-                                down_w) + down_b
+    down_projected = (
+        jnp.einsum('...i,...in->...n', norm_inputs, down_w) + down_b
+    )
     down_projected = self.activation(down_projected)
     up_projected = jnp.einsum('...n,...ni->...i', down_projected, up_w) + up_b
     if add_residual:
@@ -194,6 +197,7 @@ class AdaptedTransformerFeedForward(transformers.TransformerFeedForward):
     adapter_tpl: Parameterization of adapter layer added after each block.
     mode: sequential or parallel.
   """
+
   adapter_tpl: LayerTpl = template_field(None)
   mode: str = 'sequential'
 
@@ -204,16 +208,19 @@ class AdaptedTransformerFeedForward(transformers.TransformerFeedForward):
 
     if self.residual_droppath_prob:
       raise NotImplementedError(
-          'residual droppath prob is not supported by adapter')
+          'residual droppath prob is not supported by adapter'
+      )
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: Optional[JTensor] = None,
-               segment_ids: Optional[JTensor] = None,
-               tasks: Optional[JTensor] = None) -> JTensor:
-
+  def __call__(
+      self,
+      inputs: JTensor,
+      paddings: Optional[JTensor] = None,
+      segment_ids: Optional[JTensor] = None,
+      tasks: Optional[JTensor] = None,
+  ) -> JTensor:
     x = super(AdaptedTransformerFeedForward, self).__call__(
-        inputs, paddings, segment_ids=segment_ids)
+        inputs, paddings, segment_ids=segment_ids
+    )
 
     # Revert residual connection
     if self.add_skip_connection:

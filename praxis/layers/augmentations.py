@@ -15,7 +15,7 @@
 
 """Data augmentation layers."""
 
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import jax
 from jax import lax
@@ -41,14 +41,16 @@ class MaskedLmDataAugmenter(base_layer.BaseLayer):
     same_prob: Probability at which a token is replaced by itself.
     mask_token_id: Id of the special <MASK> token.
   """
+
   vocab_size: int = 0
   mask_prob: float = 0.12
   random_prob: float = 0.015
   same_prob: float = 0.015
   mask_token_id: int = -1
 
-  def __call__(self, inputs: JTensor,
-               paddings: JTensor) -> Tuple[JTensor, JTensor]:
+  def __call__(
+      self, inputs: JTensor, paddings: JTensor
+  ) -> Tuple[JTensor, JTensor]:
     """Applies data augmentation by randomly masking/replacing tokens in inputs.
 
     Args:
@@ -106,10 +108,11 @@ class MaskedLmDataAugmenter(base_layer.BaseLayer):
 
     input_dtype = inputs.dtype
     augmented = (
-        inputs * no_replacement.astype(input_dtype) +
-        mask_tokens * mask_pos.astype(input_dtype) +
-        random_tokens * random_pos.astype(input_dtype) +
-        inputs * self_pos.astype(input_dtype))
+        inputs * no_replacement.astype(input_dtype)
+        + mask_tokens * mask_pos.astype(input_dtype)
+        + random_tokens * random_pos.astype(input_dtype)
+        + inputs * self_pos.astype(input_dtype)
+    )
 
     return augmented, replacement_pos
 
@@ -124,6 +127,7 @@ class TemporalShifting(base_layer.BaseLayer):
     sample_rate: The sample rate of the input signal.
     axis: The axis to treat and the time axis. Must be greater than 0.
   """
+
   shift_range_ms: float = 0.0
   sample_rate: float = 16000.0
   axis: int = 1
@@ -142,10 +146,12 @@ class TemporalShifting(base_layer.BaseLayer):
         x_padded,
         start_index=shift_range + shift_size,
         slice_size=x.shape[axis],
-        axis=axis)
+        axis=axis,
+    )
 
-  def _shift(self, features: JTensor, paddings: Optional[JTensor],
-             shift_range: int) -> Tuple[JTensor, Optional[JTensor]]:
+  def _shift(
+      self, features: JTensor, paddings: Optional[JTensor], shift_range: int
+  ) -> Tuple[JTensor, Optional[JTensor]]:
     """Randomly shifts features and paddings by as much as shift_range.
 
     For example, if features is [1 2 3 4] and shift_range is 2, then the
@@ -158,21 +164,22 @@ class TemporalShifting(base_layer.BaseLayer):
       features = self._shift_tensor(features, axis, shift_range, shift_size)
       if paddings is not None:
         paddings = self._shift_tensor(
-            paddings, axis, shift_range, shift_size, pad_value=1.0)
+            paddings, axis, shift_range, shift_size, pad_value=1.0
+        )
       return features, paddings
 
     # Generate a random amount to shift each example by. A negative shift_size
     # corresponds to shifting the signal to the left and then right-padding it
     # with zeros.
-    shift_sizes = jax.random.randint(self.next_prng_key(), [features.shape[0]],
-                                     -shift_range, shift_range + 1)
+    shift_sizes = jax.random.randint(
+        self.next_prng_key(), [features.shape[0]], -shift_range, shift_range + 1
+    )
     # Use jax.vmap to independently shift each example without using gather.
     return jax.vmap(shift_example)(features, paddings, shift_sizes)
 
   def __call__(
-      self,
-      features: JTensor,
-      paddings: Optional[JTensor] = None) -> Tuple[JTensor, Optional[JTensor]]:
+      self, features: JTensor, paddings: Optional[JTensor] = None
+  ) -> Tuple[JTensor, Optional[JTensor]]:
     if self.do_eval or self.shift_range_ms == 0.0:
       return features, paddings
 
