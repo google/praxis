@@ -379,6 +379,9 @@ class BaseLayerTest(test_utils.TestCase):
     class FiddleChild(base_layer.BaseLayer):
       x: int = 0
 
+      def __call__(self):
+        return 0.0
+
     class FiddleParent(base_layer.BaseLayer):
 
       child_tpl: pax_fiddle.Config = base_layer.template_field(FiddleChild)
@@ -395,7 +398,9 @@ class BaseLayerTest(test_utils.TestCase):
         self.create_child('child', child_tpl)
 
       def __call__(self):
-        return 0
+        # Really trigger child to be setup.
+        self.child()
+        return 0.0
 
     p = pax_fiddle.Config(FiddleParent, name='test')
     p.child_tpl = pax_fiddle.Config(FiddleChild, x=5)
@@ -408,23 +413,20 @@ class BaseLayerTest(test_utils.TestCase):
     p.child_instance_dict = p.child_tpl_dict
     layer = p.Instantiate()
 
-    model = layer.bind(
-        layer.init(jax.random.PRNGKey(0)),
-        mutable=[base_layer.HYPER_PARAMS])
-    model.post_init_hparams()
+    hyper_params = layer.abstract_init_with_mdl_config()
     hyper_params = jax.tree_map(
         lambda x: x.meta,
-        model.variables[base_layer.HYPER_PARAMS],
+        hyper_params,
         is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
 
     self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
-    self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
-    self.assertEqual(hyper_params['child']['_hparams'].x, 7)
     self.assertIsNone(hyper_params['_hparams'].child_tpl)
     self.assertIsNone(hyper_params['_hparams'].child_tpl_list)
     self.assertIsNone(hyper_params['_hparams'].child_tpl_dict)
     self.assertIsNone(hyper_params['_hparams'].child_instance_list)
     self.assertIsNone(hyper_params['_hparams'].child_instance_dict)
+    self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
+    self.assertEqual(hyper_params['child']['_hparams'].x, 7)
 
   @parameterized.parameters([
       (pax_fiddle.Config(SimpleBaseLayer),
@@ -683,6 +685,9 @@ class BaseLayerTest(test_utils.TestCase):
       params_init: base_layer.WeightInit = (
           base_layer.WeightInit.UniformUnitScaling(scale=0.5))
 
+      def __call__(self):
+        return 0.0
+
     class Parent(base_layer.BaseLayer):
 
       child_tpl: pax_fiddle.Config = base_layer.template_field(Child)
@@ -691,24 +696,17 @@ class BaseLayerTest(test_utils.TestCase):
         self.create_child('child', self.child_tpl)
 
       def __call__(self):
+        self.child()
         return None
 
     cfg = pax_fiddle.Config(Parent)
     layer = pax_fiddle.build(cfg)
     layer.init(jax.random.PRNGKey(0))
-    prng_key = jax.random.PRNGKey(seed=123)
 
-    def gen_post_init_hparams(prng_key):
-      return layer.apply({},
-                         rngs={base_layer.PARAMS: prng_key},
-                         method=layer.post_init_hparams,
-                         mutable=True)[1]
-
-    variables_abstract = jax.eval_shape(gen_post_init_hparams, prng_key)
-    assert base_layer.HYPER_PARAMS in variables_abstract
+    hyper_params = layer.abstract_init_with_mdl_config()
     hyper_params = jax.tree_map(
         lambda x: x.meta,
-        variables_abstract[base_layer.HYPER_PARAMS],
+        hyper_params,
         is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
 
     self.assertEqual(0.5, hyper_params['child']['_hparams'].params_init.scale)

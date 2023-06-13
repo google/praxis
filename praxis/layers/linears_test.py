@@ -41,6 +41,7 @@ instantiate = base_layer.instantiate
 
 JTensor = pytypes.JTensor
 
+
 class LinearsTest(test_utils.TestCase):
 
   def setUp(self):
@@ -318,20 +319,12 @@ class LinearsTest(test_utils.TestCase):
         activation_tpl=pax_fiddle.Config(activations.ReLU),
     )
     ffn = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
 
-    def gen_post_init_hparams(prng_key):
-      return ffn.apply({},
-                       rngs={base_layer.PARAMS: prng_key},
-                       method=ffn.post_init_hparams,
-                       mutable=True)[1]
-
-    variables_abstract = jax.eval_shape(gen_post_init_hparams, prng_key)
-    assert base_layer.HYPER_PARAMS in variables_abstract
+    hyper_params = ffn.abstract_init_with_mdl_config(jnp.zeros((1, 3)))
 
     hyper_params = jax.tree_map(
         lambda x: x.meta,
-        variables_abstract[base_layer.HYPER_PARAMS],
+        hyper_params,
         is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
 
     # This is the actual value of input_dims and output_dims, not the default
