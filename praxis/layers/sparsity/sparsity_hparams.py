@@ -133,12 +133,12 @@ class SparsityHParams:
   sparsified_layers: Optional[List[int]] = None
 
   def get_num_shots(self):
-    if (
-        self.mode == SparsityMode.INFERENCE
+    if self.mode == SparsityMode.INFERENCE:
+      return 0
+    elif (
+        self.mode == SparsityMode.TRAINING
         or self.mode == SparsityMode.MATERIALIZE
     ):
-      return 0
-    elif self.mode == SparsityMode.TRAINING:
       return -1
     else:
       return self.num_shots

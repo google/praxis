@@ -102,7 +102,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       A tuple of current mask, and updated count.
     """
     should_do_pruning = jnp.logical_or(
-        jnp.equal(num_shots, -1),  # SparsityMode.Training
+        jnp.equal(num_shots, -1),  # SparsityMode.Training/MATERIALIZE
         jnp.less_equal(mask_update_times, num_shots),  # OneShot/FewShot
     )
     should_pruning_step = jnp.equal(step, target_step)
@@ -177,9 +177,15 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     self.update_var('step', step + 1)
     self.update_var(mask_var_name, new_mask)
 
+    if num_shots > 0:
+      self.add_summary('mask_update_count', update_cnt, verbosity=4)
+
     no_op = lambda inputs, new_mask: inputs
     inputs = jax.lax.cond(
-        self._layer_cond(layer_idx, sparsified_layers),
+        jnp.logical_and(
+            self._schedule_cond(step, target_step, update_cnt, num_shots),
+            self._layer_cond(layer_idx, sparsified_layers),
+        ),
         sparsity.apply_sparsity,
         no_op,
         inputs,

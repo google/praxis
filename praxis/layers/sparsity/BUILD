@@ -81,6 +81,7 @@ py_strict_test(
     deps = [
         ":linears",
         ":sparsity_hparams",
+        # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
@@ -132,6 +133,5 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pytypes",
-        "//praxis/layers:attentions",
     ],
 )
