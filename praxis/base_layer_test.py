@@ -414,11 +414,6 @@ class BaseLayerTest(test_utils.TestCase):
     layer = p.Instantiate()
 
     hyper_params = layer.abstract_init_with_mdl_config()
-    hyper_params = jax.tree_map(
-        lambda x: x.meta,
-        hyper_params,
-        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
-
     self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
     self.assertIsNone(hyper_params['_hparams'].child_tpl)
     self.assertIsNone(hyper_params['_hparams'].child_tpl_list)
@@ -704,11 +699,6 @@ class BaseLayerTest(test_utils.TestCase):
     layer.init(jax.random.PRNGKey(0))
 
     hyper_params = layer.abstract_init_with_mdl_config()
-    hyper_params = jax.tree_map(
-        lambda x: x.meta,
-        hyper_params,
-        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
-
     self.assertEqual(0.5, hyper_params['child']['_hparams'].params_init.scale)
     self.assertEqual('uniform_unit_scaling',
                      hyper_params['child']['_hparams'].params_init.method)

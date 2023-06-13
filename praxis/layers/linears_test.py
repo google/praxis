@@ -321,12 +321,6 @@ class LinearsTest(test_utils.TestCase):
     ffn = instantiate(p)
 
     hyper_params = ffn.abstract_init_with_mdl_config(jnp.zeros((1, 3)))
-
-    hyper_params = jax.tree_map(
-        lambda x: x.meta,
-        hyper_params,
-        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
-
     # This is the actual value of input_dims and output_dims, not the default
     # values.
     self.assertEqual(3, hyper_params['linear']['_hparams'].input_dims)
@@ -408,7 +402,7 @@ class LinearsTest(test_utils.TestCase):
     output1a, output1b = run(None, expected_shapes_original)
     einsum_tpl = pax_fiddle.Config(CustomEinsum)
     output2a, output2b = run(einsum_tpl, expected_shapes_new)
-    # We can use exact equality beacuse in floats division by 2.0 does not
+    # We can use exact equality because in floats division by 2.0 does not
     # have a rounding error.
     self.assertAllClose(output1a, output1b, atol=0.0)
     self.assertAllClose(output1a, output2a / 2.0, atol=0.0)

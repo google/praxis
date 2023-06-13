@@ -113,11 +113,6 @@ class SharedLayersTest(test_utils.TestCase):
     self.assertAllClose(output, expected_output)
 
     hyper_params = foo_shared.abstract_init_with_mdl_config(inputs)
-    hyper_params = jax.tree_map(
-        lambda x: x.meta,
-        hyper_params,
-        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
-
     # This is the actual value of input_dims and output_dims, not the default
     # values.
     self.assertEqual(2, hyper_params['linear1']['_hparams'].input_dims)

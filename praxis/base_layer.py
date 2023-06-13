@@ -1730,7 +1730,6 @@ class BaseLayer(nn.Module):
         self.put_variable(HYPER_PARAMS, '_hparams',
                           WrappedHParams(hparams))
 
-
   # Similar to Flax nn.Module.init, except that BaseLayer param and variables
   # are created with WeightHParams as their metadata (e.g. SPMD annotations).
   # We store the variables with their metadata as a BoxedParams object inside
@@ -1789,25 +1788,29 @@ class BaseLayer(nn.Module):
     else:
       return result
 
-  # In its essence, this is jax.eval_shape(model.init) except that we return
-  # the WeightHParams objects to callers. This is typically used to retrieve
-  # the unpadded variable shapes and SPMD annotations for
-  # PARAMS and NON_TRAINABLE collections.
-  def abstract_init_with_metadata(self,
-                                  *args,
-                                  do_eval=False,
-                                  method=None,
-                                  **kwargs) -> NestedWeightHParams:
+  def _abstract_init(
+      self,
+      *args,
+      do_eval=False,
+      method=None,
+      self_reflect_configs=False,
+      **kwargs,
+  ) -> Dict[str, NestedWeightHParams]:
     # Dummy key is enough because we eval_shape only.
     k = jax.random.PRNGKey(1)
     rngs = {PARAMS: k, RANDOM: k, NON_PAX_RNG_KEY: k}
     # Only PARAMS and NON_TRAINABLE have BoxedParam.
-    init_fn = functools.partial(super().init,
-                                mutable=DEFAULT_INIT_MUTABLE_LIST,
-                                method=method)
+    mutable = (
+        DEFAULT_INIT_MUTABLE_LIST + [HYPER_PARAMS]
+        if self_reflect_configs
+        else DEFAULT_INIT_MUTABLE_LIST
+    )
+    init_fn = functools.partial(super().init, mutable=mutable, method=method)
     # Disable logging to reduce logspam.
     with py_utils.logging_verbosity_level('FATAL'):
-      context_p = JaxContext.HParams(do_eval=do_eval)
+      context_p = JaxContext.HParams(
+          do_eval=do_eval, self_reflect_configs=self_reflect_configs
+      )
       with JaxContext.new_context(hparams=context_p):
         if self.fprop_dtype == jnp.bfloat16:
           converted_args = jax.tree_map(_maybe_to_bfloat16_dtype, args)
@@ -1817,6 +1820,18 @@ class BaseLayer(nn.Module):
           converted_kwargs = kwargs
         variables_abstract = jax.eval_shape(
             init_fn, rngs, *converted_args, **converted_kwargs)
+    return variables_abstract
+
+  # In its essence, this is jax.eval_shape(model.init) except that we return
+  # the WeightHParams objects to callers. This is typically used to retrieve
+  # the unpadded variable shapes and SPMD annotations for
+  # PARAMS and NON_TRAINABLE collections.
+  def abstract_init_with_metadata(
+      self, *args, do_eval=False, method=None, **kwargs
+  ) -> NestedWeightHParams:
+    variables_abstract = self._abstract_init(
+        *args, do_eval=do_eval, method=method, **kwargs
+    )
     # If model contains FlaxAdapter, we may see 'params_axes' collections, but
     # they do not contain WeightHParams, so we remove them from returned values.
     if 'params_axes' in variables_abstract:
@@ -1825,33 +1840,22 @@ class BaseLayer(nn.Module):
 
   # A systematic self-reflection of the model structure, with configs for the
   # nested tree of BaseLayers.
-  def abstract_init_with_mdl_config(self,
-                                    *args,
-                                    do_eval=False,
-                                    method=None,
-                                    **kwargs) -> NestedWeightHParams:
-    # Dummy key is enough because we eval_shape only.
-    k = jax.random.PRNGKey(1)
-    rngs = {PARAMS: k, RANDOM: k, NON_PAX_RNG_KEY: k}
-    # Only PARAMS and NON_TRAINABLE have BoxedParam.
-    init_fn = functools.partial(
-        super().init,
-        mutable=DEFAULT_INIT_MUTABLE_LIST + [HYPER_PARAMS],
-        method=method)
-    # Disable logging to reduce logspam.
-    with py_utils.logging_verbosity_level('FATAL'):
-      context_p = JaxContext.HParams(do_eval=do_eval,
-                                     self_reflect_configs=True)
-      with JaxContext.new_context(hparams=context_p):
-        if self.fprop_dtype == jnp.bfloat16:
-          converted_args = jax.tree_map(_maybe_to_bfloat16_dtype, args)
-          converted_kwargs = jax.tree_map(_maybe_to_bfloat16_dtype, kwargs)
-        else:
-          converted_args = args
-          converted_kwargs = kwargs
-        variables_abstract = jax.eval_shape(
-            init_fn, rngs, *converted_args, **converted_kwargs)
-    return variables_abstract[HYPER_PARAMS]
+  def abstract_init_with_mdl_config(
+      self, *args, do_eval=False, method=None, **kwargs
+  ) -> Nested[pax_fiddle.Config[BaseLayer]]:
+    variables_abstract = self._abstract_init(
+        *args,
+        do_eval=do_eval,
+        method=method,
+        self_reflect_configs=True,
+        **kwargs,
+    )
+    hyper_params = jax.tree_map(
+        lambda x: x.meta,
+        variables_abstract[HYPER_PARAMS],
+        is_leaf=lambda x: isinstance(x, WrappedHParams),
+    )
+    return hyper_params
 
   # Notes on Flax interoperability:
   #
