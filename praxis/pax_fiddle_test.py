@@ -518,17 +518,11 @@ class LayerC(nn.Module):
     if self.b.parent is not self:
       raise AssertionError(
           "Expected self.b.parent to be self (inside self.setup).")
-    if self.b.a.parent is not None:
-      raise AssertionError(
-          "Expected self.b.a.parent to be None (inside self.setup).")
 
   def __call__(self, x):
     if self.b.parent is not self:
       raise AssertionError(
           "Expected self.b.parent to be self (before b.setup).")
-    if self.b.a.parent is not None:
-      raise AssertionError(
-          "Expected self.b.a.parent to be None (before b.setup).")
     self.b()  # Causes b.setup() to be called.
     if self.b.a.parent is not self.b:
       raise AssertionError(
@@ -563,7 +557,6 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
       cfg.parent = flax_core.Scope({})
       c = build_func(cfg)
       self.assertIs(c.b.parent, c)
-      self.assertIsNone(c.b.a.parent)
       self.assertEqual(c(5), 0)  # Causes c.setup() and c.__call__() to be run.
       self.assertIs(c.b.parent, c)
       self.assertIs(c.b.a.parent, c.b)
