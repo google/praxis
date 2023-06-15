@@ -2388,7 +2388,26 @@ class BaseLayer(nn.Module):
     res = {}
     # collections to quantize.
     targets = [PARAMS, NON_TRAINABLE]
-    for name, child in self._private_children.items():
+    # instance_fields are also child layers, but they won't be updated into
+    # self._private_children, neither self._weight_hparams
+    instance_fields = {
+        f.name: getattr(self, f.name)
+        for f in dataclasses.fields(self)
+        if isinstance(getattr(self, f.name), BaseLayer) and f.name != 'parent'
+    }
+    instance_fields_weight_hparams = {
+        f: getattr(self, f)._weight_hparams  # pylint: disable=protected-access
+        for f in instance_fields.keys()
+    }
+    child_layers = {
+        **self._private_children,
+        **instance_fields,
+    }
+    child_layer_weight_hparams = {
+        **self._weight_hparams,
+        **instance_fields_weight_hparams,
+    }
+    for name, child in child_layers.items():
       # example child_res {'params': {a:{}, b:{}}, 'non-trainable':{a:{}}}
       if return_pspec:
         child_res = child.quantized_partition_specs()
@@ -2402,13 +2421,14 @@ class BaseLayer(nn.Module):
       if target not in self.variables:
         continue
       for var_name, var_val in self.variables[target].items():
-        if var_name in self._private_children:
+        if var_name in child_layers:
           continue
         if target not in res:
           res[target] = {}
         if return_pspec:
-          var_val = _weight_hparam_to_pspec(self._weight_hparams[var_name],
-                                            self.mesh_axis_names)
+          var_val = _weight_hparam_to_pspec(
+              child_layer_weight_hparams[var_name], self.mesh_axis_names
+          )
         res[target][var_name] = var_val
     return res
 

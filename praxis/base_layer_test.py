@@ -62,6 +62,41 @@ class AddBias(base_layer.BaseLayer):
     return x + b
 
 
+class Linear(base_layer.BaseLayer):
+  input_dims: int = 2
+  output_dims: int = 2
+
+  def setup(self):
+    self.create_variable(
+        'w',
+        base_layer.WeightHParams(
+            shape=[self.input_dims, self.output_dims],
+            init=self.params_init,
+            dtype=self.dtype,
+        ),
+    )
+
+  def __call__(self, inputs):
+    return jnp.matmul(inputs, self.theta.w)
+
+  def quantized_partition_specs(self) -> Any:
+    return {base_layer.PARAMS: {'w': base_layer.BoxedPartitionSpec(meta=None)}}
+
+  def quantize_weight(self) -> base_layer.NestedJTensor:
+    return {base_layer.PARAMS: {'w': self.theta.w.astype(jnp.int8)}}
+
+
+class MultipleLinearLayer(base_layer.BaseLayer):
+  linear1: Optional[AddBias] = pax_fiddle.instance_field(Linear)
+  linear2_tpl: pax_fiddle.Config[Linear] = pax_fiddle.template_field(Linear)
+
+  def setup(self):
+    self.create_child('linear2', self.linear2_tpl)
+
+  def __call__(self, x: base_layer.JTensor) -> base_layer.JTensor:
+    return self.linear2(self.linear1(x))
+
+
 class MultipleBiasLayer(base_layer.BaseLayer):
   """A dummy layer that adds multiple biases to an input tensor.
 
@@ -206,9 +241,42 @@ class BaseLayerTest(test_utils.TestCase):
     )
     self.assertEqual(pspec, {})
 
+  def test_quantize_children(self):
+    layer_p = pax_fiddle.Config(
+        MultipleLinearLayer, name='test_multiple_linear'
+    )
+    layer = base_layer.instantiate(layer_p)
+
+    x = jnp.array([1.0, 2.0], dtype=jnp.float32)
+    init_vars = layer.init(jax.random.PRNGKey(0), x)
+    qw, _ = layer.apply(init_vars, mutable=[], method=layer.quantize_weight)
+    self.assertEqual(
+        jax.tree_map(lambda x: x.dtype, qw),
+        {
+            'params': {
+                'linear1': {'w': jnp.int8},
+                'linear2': {'w': jnp.int8},
+            }
+        },
+    )
+
+    pspec, _ = layer.apply(
+        init_vars, mutable=[], method=layer.quantized_partition_specs
+    )
+    dummy_pspec = base_layer.BoxedPartitionSpec(meta=None)
+    self.assertEqual(
+        pspec,
+        {
+            'params': {
+                'linear1': {'w': dummy_pspec},
+                'linear2': {'w': dummy_pspec},
+            }
+        },
+    )
+
   @parameterized.parameters((0, 2), (3, 0), (1, 4))
   def test_layer_building_nn_compact(self, num_child: int, num_children: int):
-    x = jnp.array([[0., 1.], [2., 3.]], dtype=jnp.float32)
+    x = jnp.array([[0.0, 1.0], [2.0, 3.0]], dtype=jnp.float32)
 
     p = pax_fiddle.Config(
         MultipleBiasLayer,
