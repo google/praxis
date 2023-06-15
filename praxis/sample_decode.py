@@ -692,6 +692,7 @@ def sample_decode(
     ] = None,
     return_entropy_score: bool = False,
     process_result_fn: Optional[decoder_utils.ProcessResultFn] = None,
+    optimize_eos: bool = False,
 ) -> NestedMap:
   """Sampling decode the input batch.
 
@@ -777,6 +778,8 @@ def sample_decode(
     return_entropy_score: Whether to return entropy score for every token.
     process_result_fn: Optional function that further processes the results,
       such as performing suffix scoring.
+    optimize_eos: Record the probability with eos ending at every step then pick
+      the best one.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -839,6 +842,7 @@ def sample_decode(
         use_top_k_for_logprobs,
         controlled_decoding,
         return_entropy_score,
+        optimize_eos
     )
     if process_result_fn is not None:
       result = process_result_fn(model, result)
@@ -878,6 +882,7 @@ def sample_decode_after_fprop(
         decoder_utils.ControlledDecodingHParams
     ] = None,
     return_entropy_score: bool = False,
+    optimize_eos: bool = False,
 ) -> NestedMap:
   """Sampling decode after init decode state the input batch.
 
@@ -960,6 +965,8 @@ def sample_decode_after_fprop(
       instead of all logits.
     controlled_decoding: Params to configure blockwise controlled decoding.
     return_entropy_score: Whether to return entropy score for every token.
+    optimize_eos: Record the probability with eos ending at every step then pick
+      the best one.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -1152,6 +1159,15 @@ def sample_decode_after_fprop(
   val.decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
   # We use a positive value of 1.0 to indicate blank or padded positions.
   val.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
+  if optimize_eos:
+    assert not isinstance(
+        eos_id, JTensor
+    ), 'only a list of eos ids are supported when optimize_eos=True'
+    assert (
+        not use_top_k_for_logprobs
+    ), 'use_top_k_for_logprobs is not supported when optimize_eos=True'
+    val.eos_logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
+    val.eos_ids = jnp.zeros_like(output_ids, dtype=jnp.float32)
   if return_entropy_score:
     val.entropy = jnp.zeros_like(output_ids, dtype=jnp.float32)
   val = next_token_sampler.init_decode_loop_state(
@@ -1216,9 +1232,15 @@ def sample_decode_after_fprop(
       )
     else:
       split_gumbel_prng_key = None
+    if optimize_eos:
+      assert eos_id
+      next_token_logits = logits.at[:, eos_id].set(
+          py_utils.get_large_negative_number(jnp.float32))
+    else:
+      next_token_logits = logits
     sampler_output = next_token_sampler(
         model,
-        logits,
+        next_token_logits,
         temperature,
         val,
         per_example_top_p=per_example_top_p,
@@ -1282,15 +1304,21 @@ def sample_decode_after_fprop(
         done_at_this_step, decode_lengths, val.decode_lengths
     )
 
+    logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
     if use_top_k_for_logprobs and sampler_output.Has('logprobs_at_new_ids'):
       logprobs_at_new_ids = sampler_output.logprobs_at_new_ids
     else:
-      logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
       logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size), new_ids].get()
     logprobs_at_new_ids = jnp.where(
         prev_done, jnp.ones_like(logprobs_at_new_ids), logprobs_at_new_ids
     )
     val.logprobs = val.logprobs.at[:, step + 1].set(logprobs_at_new_ids)
+    if optimize_eos:
+      eos_logits = logits.at[:, eos_id].add(1e6)
+      best_eos_id = jnp.argmax(eos_logits, axis=-1)
+      val.eos_ids = val.eos_ids.at[:, step + 1].set(best_eos_id)
+      val.eos_logprobs = val.eos_logprobs.at[:, step + 1].set(
+          logprobs[jnp.arange(batch_size), best_eos_id])
     if hasattr(val, 'entropy'):
       val.entropy = val.entropy.at[:, step + 1].set(
           -jnp.sum(logprobs * jnp.exp(logprobs), axis=-1))
@@ -1483,6 +1511,14 @@ def sample_decode_after_fprop(
 
   if result_callback is not None and result_callback.done_fn is not None:
     result_callback.done_fn()
+
+  if optimize_eos:
+    if fprop_for_prefix:
+      decode_length_shift = max_prefix_len
+    else:
+      decode_length_shift = 0
+    result = decoder_utils.collect_results_to_optimize_eos(
+        result, decode_length_shift=max_prefix_len)
 
   if return_result_for_suffix_score:
     return result

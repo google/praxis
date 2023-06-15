@@ -240,6 +240,32 @@ class DecoderUtilsTest(test_utils.TestCase):
         jnp.array([[0.5, 1.0]]),
     )
 
+  def test_collect_results_to_optimize_eos(self):
+    result = pytypes.NestedMap(
+        logprobs=jnp.array(
+            [[-0.2, -0.3, -0.4, -0.1], [-0.2, 0.1, -0.3, -0.2]]),
+        eos_logprobs=jnp.array(
+            [[-10, -10, -0.1, -0.1], [-10, -10, -1, -0.1]]),
+        output_ids=jnp.array([[4, 3, 3, 0], [3, 1, 4, 5]]),
+        eos_ids=jnp.array([[1, 1, 1, 2], [2, 2, 1, 2]]),
+        done=jnp.array([False, False]),
+        has_eos=jnp.array([False, False]),
+        start_step=0
+    )
+    new_result = decoder_utils.collect_results_to_optimize_eos(result)
+    self.assertArraysEqual(
+        new_result.logprobs,
+        jnp.array([[-0.2, -0.3, -0.1, 1], [-0.2, 0.1, -0.3, -0.1]]))
+    self.assertArraysEqual(
+        new_result.output_ids,
+        jnp.array([[4, 3, 1, 0], [3, 1, 4, 2]]))
+    self.assertArraysEqual(
+        new_result.done,
+        jnp.array([True, True]))
+    self.assertArraysEqual(
+        new_result.has_eos,
+        jnp.array([True, True]))
+
 
 if __name__ == '__main__':
   absltest.main()

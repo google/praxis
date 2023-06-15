@@ -625,6 +625,7 @@ class LanguageModel(base_model.BaseModel):
           use_top_k_for_logprobs=decoder_params.use_top_k_for_logprobs,
           return_entropy_score=return_entropy_score,
           process_result_fn=decoder_params.process_result_fn,
+          optimize_eos=decoder_params.optimize_eos,
       )
 
     elif template_has_type(decoder_params, GreedyDecoderHParams):
