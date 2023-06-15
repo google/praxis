@@ -608,7 +608,7 @@ class AttentionProjection(base_layer.BaseLayer):
   attention_combine_dims: bool = False
   use_nhd_shape: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
-  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -768,7 +768,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
   use_bias: bool = True
   attention_combine_dims: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
-  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   def setup(self) -> None:
     # Sharding has the same convention of AttentionProjection, which doesn't
@@ -1007,8 +1007,8 @@ class DotProductAttention(base_layer.BaseLayer):
   decode_cache: bool = True
   attention_mask_summary: bool = False
   zero_fully_masked: bool = False
-  qk_einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
-  pv_einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  qk_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   # SPMD partition related params.
   #

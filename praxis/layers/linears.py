@@ -71,7 +71,7 @@ class Linear(base_layer.BaseLayer):
   input_dims: int = 0
   output_dims: int = 0
   weight_init: Optional[WeightInit] = None
-  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping

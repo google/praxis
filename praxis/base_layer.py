@@ -805,6 +805,14 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
     new_meta.repeat_prefix = repeat_prefix
     new_meta.repeat_prefix_split_dims_mapping = repeat_prefix_split_dims_mapping
     new_meta.repeat_optimizer_dims_mapping = repeat_optimizer_dims_mapping
+    if self.meta.fan_in_axes:
+      new_meta.fan_in_axes = [
+          i if i < 0 else i + 1 for i in self.meta.fan_in_axes
+      ]
+    if self.meta.fan_out_axes:
+      new_meta.fan_out_axes = [
+          i if i < 0 else i + 1 for i in self.meta.fan_out_axes
+      ]
     return self.replace(meta=new_meta)
 
   def remove_axis(
@@ -853,6 +861,14 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
       assert (removed,) == tuple(optimizer_dims_mapping)
       new_meta.repeat_optimizer_dims_mapping = updated_dims_mapping
 
+    if self.meta.fan_in_axes:
+      new_meta.fan_in_axes = [
+          i if i < 0 else i - 1 for i in self.meta.fan_in_axes
+      ]
+    if self.meta.fan_out_axes:
+      new_meta.fan_out_axes = [
+          i if i < 0 else i - 1 for i in self.meta.fan_out_axes
+      ]
     return self.replace(meta=new_meta)
 
 

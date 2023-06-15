@@ -36,7 +36,7 @@ JTensor = pytypes.JTensor
 # to use random numbers e.g.: for stochastic rounding.
 
 
-class Einsum(base_layer.BaseLayer):
+class EinsumOp(base_layer.BaseLayer):
   """Wrapper around jnp.einsum used in standard Pax layers."""
 
   def __call__(self, equation: str, lhs: JTensor, rhs: JTensor) -> JTensor:

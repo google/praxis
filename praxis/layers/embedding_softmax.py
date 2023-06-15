@@ -113,7 +113,7 @@ class Embedding(base_layer.BaseLayer):
   scale_sqrt_depth: bool = False
   set_nan_for_oob_id: bool = False
   array_lookup_tpl: LayerTpl = template_field(base_ops.ArrayLookup)
-  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
@@ -359,7 +359,7 @@ class SharedEmbeddingSoftmax(FullSoftmax):
   lookup_style: str = 'index'
   scale_sqrt_depth: bool = False
   array_lookup_tpl: LayerTpl = template_field(base_ops.ArrayLookup)
-  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   def setup(self) -> None:
     super().setup()
@@ -1056,7 +1056,7 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
   max_seq_length: int = 10_240
   lookup_style: str = 'matmul'
   array_lookup_tpl: LayerTpl = template_field(base_ops.ArrayLookup)
-  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.

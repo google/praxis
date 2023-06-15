@@ -37,6 +37,7 @@ pytype_strict_library(
         ":checkpoint_policy",
         ":conformers",
         ":convolutions",
+        ":einsum",
         ":embedding_softmax",
         ":frnn",
         ":linears",
@@ -182,6 +183,33 @@ pytype_strict_library(
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
+    ],
+)
+
+pytype_strict_library(
+    name = "einsum",
+    srcs = ["einsum.py"],
+    deps = [
+        ":base_ops",
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:pytypes",
+    ],
+)
+
+py_strict_test(
+    name = "einsum_test",
+    size = "large",
+    srcs = ["einsum_test.py"],
+    deps = [
+        ":einsum",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:test_utils",
     ],
 )
 

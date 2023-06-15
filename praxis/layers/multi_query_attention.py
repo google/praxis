@@ -58,7 +58,7 @@ class OneHeadedAttentionProjection(base_layer.BaseLayer):
   input_dim: int = 0
   output_dim: int = 0
   use_bias: bool = True
-  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -190,8 +190,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   attention_extra_logit: Optional[float] = None
   dconv_qkv: bool = False
   combine_qkv: bool = False
-  qk_einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
-  pv_einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  qk_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   # SPMD partition related params.
   #
