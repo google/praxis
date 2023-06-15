@@ -558,7 +558,6 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
-        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],

@@ -19,7 +19,6 @@ import jax
 from jax import numpy as jnp
 from praxis import asserts
 from praxis import base_layer
-from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 
@@ -210,8 +209,8 @@ class LstmCellSimple(BaseRnnCell):
     self.create_variable('b', bias_pc)
 
   def init_states(self, batch_size: int) -> NestedMap:
-    zero_m = jnp.zeros((batch_size, self.output_size))
-    zero_c = jnp.zeros((batch_size, self.hidden_size))
+    zero_m = jnp.zeros((batch_size, self.output_size), dtype=self.fprop_dtype)
+    zero_c = jnp.zeros((batch_size, self.hidden_size), dtype=self.fprop_dtype)
     return NestedMap(m=zero_m, c=zero_c)
 
   def _reset_state(self, state: NestedMap, inputs: NestedMap) -> NestedMap:
@@ -475,7 +474,6 @@ class CifgLstmCellSimple(LstmCellSimple):
     Returns:
       state1: The next recurrent state.
     """
-    p: pax_fiddle.Config[CifgLstmCellSimple]
 
     inputs = jax.tree_map(lambda x: x, inputs)
     if not isinstance(inputs.act, (list, tuple)):
