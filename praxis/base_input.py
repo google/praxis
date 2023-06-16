@@ -176,8 +176,6 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
 
   def save(self, checkpoint_path: epath.PathLike):
     state = self.get_state()
-    dirname = os.path.dirname(checkpoint_path)
-    epath.Path(dirname).mkdir(parents=True, exist_ok=True)
     epath.Path(checkpoint_path).write_bytes(state)
 
   def restore(self, checkpoint_path: epath.PathLike):
