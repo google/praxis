@@ -331,6 +331,9 @@ class BaseLayerTest(test_utils.TestCase):
     class ChildLayer(base_layer.BaseLayer):
       pass
 
+      def __call__(self):
+        return 0.0
+
     class ParentLayer(base_layer.BaseLayer):
       # instance fields:
       a: base_layer.BaseLayer = base_layer.instance_field(ChildLayer)
@@ -344,7 +347,12 @@ class BaseLayerTest(test_utils.TestCase):
         self.create_children('ys', self.y_tpls)
 
       def __call__(self):
-        validate(self)  # Defined below.
+        self.a()
+        for x in self.bs:
+          x()
+        self.x()
+        for y in self.ys:
+          y()
         return 0
 
     @pax_fiddle.auto_config
@@ -375,72 +383,87 @@ class BaseLayerTest(test_utils.TestCase):
           ],
       )
 
-    model = make_model.as_buildable().Instantiate()
-
     def validate(model):
       # model
-      self.assertIsInstance(model, ParentLayer)
-      self.assertEqual(model.dtype, jnp.int64)
-      self.assertEqual(model.ici_mesh_shape, (1,))
-      self.assertEqual(model.params_init.scale, 2.0)
-      # model.a
-      self.assertIsInstance(model.a, ParentLayer)
-      self.assertIsInstance(model.a.a, ChildLayer)
-      self.assertLen(model.a.bs, 1)
-      self.assertIsInstance(model.a.bs[0], ChildLayer)
-      self.assertEqual(model.a.dtype, jnp.int64)
-      self.assertEqual(model.a.ici_mesh_shape, (3,))
-      self.assertEqual(model.a.dcn_mesh_shape, (2,))
-      self.assertEqual(model.a.params_init.scale, 4.0)
-      self.assertEqual(model.a.a.dtype, jnp.int64)
-      self.assertEqual(model.a.a.ici_mesh_shape, (3,))
-      self.assertEqual(model.a.a.dcn_mesh_shape, (2,))
-      self.assertEqual(model.a.bs[0].dtype, jnp.int64)
-      self.assertEqual(model.a.bs[0].ici_mesh_shape, (3,))
-      self.assertEqual(model.a.bs[0].dcn_mesh_shape, (4,))
-      self.assertEqual(model.a.bs[0].params_init.scale, 4.0)
-      self.assertEqual(model.a.x.dtype, jnp.int64)
-      self.assertEqual(model.a.x.ici_mesh_shape, (3,))
-      self.assertEqual(model.a.x.dcn_mesh_shape, (2,))
-      # model.bs
-      self.assertLen(model.bs, 1)
-      self.assertIsInstance(model.bs[0], ChildLayer)
-      self.assertEqual(model.bs[0].dtype, jnp.int64)
-      self.assertEqual(model.bs[0].ici_mesh_shape, (5,))
-      self.assertEqual(model.bs[0].dcn_mesh_shape, (2,))
-      self.assertEqual(model.bs[0].params_init.scale, 2.0)
-      # model.x
-      self.assertIsInstance(model.x, ChildLayer)
-      self.assertEqual(model.x.dtype, jnp.int32)
-      self.assertEqual(model.x.ici_mesh_shape, (1,))
-      self.assertEqual(model.x.dcn_mesh_shape, (2,))
-      self.assertEqual(model.x.params_init.scale, 2.0)
-      # model.ys
-      self.assertLen(model.ys, 1)
-      self.assertIsInstance(model.ys[0], ParentLayer)
-      self.assertIsInstance(model.ys[0].a, ChildLayer)
-      self.assertLen(model.ys[0].bs, 0)
-      self.assertIsInstance(model.ys[0].x, ChildLayer)
-      self.assertLen(model.ys[0].ys, 1)
-      self.assertIsInstance(model.ys[0].ys[0], ChildLayer)
-      self.assertEqual(model.ys[0].dtype, jnp.int64)
-      self.assertEqual(model.ys[0].ici_mesh_shape, (1,))
-      self.assertEqual(model.ys[0].dcn_mesh_shape, (6,))
-      self.assertEqual(model.ys[0].params_init.scale, 2.0)
-      self.assertEqual(model.ys[0].a.dtype, jnp.float16)
-      self.assertEqual(model.ys[0].a.ici_mesh_shape, (1,))
-      self.assertEqual(model.ys[0].a.dcn_mesh_shape, (6,))
-      self.assertEqual(model.ys[0].x.dtype, jnp.int64)
-      self.assertEqual(model.ys[0].x.ici_mesh_shape, (1,))
-      self.assertEqual(model.ys[0].x.dcn_mesh_shape, (6,))
-      self.assertEqual(model.ys[0].ys[0].dtype, jnp.float16)
-      self.assertEqual(model.ys[0].ys[0].ici_mesh_shape, (1,))
-      self.assertEqual(model.ys[0].ys[0].dcn_mesh_shape, (7,))
-      self.assertEqual(model.ys[0].ys[0].params_init.scale, 2.0)
+      hparams = model['_hparams']
+      self.assertEqual(hparams.cls, ParentLayer)
+      self.assertEqual(hparams.dtype, jnp.int64)
+      self.assertEqual(hparams.ici_mesh_shape, (1,))
+      self.assertEqual(hparams.params_init.scale, 2.0)
 
-    # Note: this invokes model.setup() and then model.__call__(), which calls
-    # the `validate` function.
-    model.init(jax.random.PRNGKey(0))
+      # model.a
+      a_hparams = model['a']['_hparams']
+      self.assertEqual(a_hparams.cls, ParentLayer)
+      self.assertEqual(a_hparams.dtype, jnp.int64)
+      self.assertEqual(a_hparams.ici_mesh_shape, (3,))
+      self.assertEqual(a_hparams.dcn_mesh_shape, (2,))
+      self.assertEqual(a_hparams.params_init.scale, 4.0)
+
+      aa_hparams = model['a']['a']['_hparams']
+      self.assertEqual(aa_hparams.cls, ChildLayer)
+      self.assertEqual(aa_hparams.dtype, jnp.int64)
+      self.assertEqual(aa_hparams.ici_mesh_shape, (3,))
+      self.assertEqual(aa_hparams.dcn_mesh_shape, (2,))
+
+      a_bs_0 = model['a']['bs_0']['_hparams']
+      self.assertEqual(a_bs_0.cls, ChildLayer)
+      self.assertEqual(a_bs_0.dtype, jnp.int64)
+      self.assertEqual(a_bs_0.ici_mesh_shape, (3,))
+      self.assertEqual(a_bs_0.dcn_mesh_shape, (4,))
+      self.assertEqual(a_bs_0.params_init.scale, 4.0)
+
+      a_x = model['a']['x']['_hparams']
+      self.assertEqual(a_x.dtype, jnp.int64)
+      self.assertEqual(a_x.ici_mesh_shape, (3,))
+      self.assertEqual(a_x.dcn_mesh_shape, (2,))
+
+      # model.bs
+      bs_0 = model['bs_0']['_hparams']
+      self.assertEqual(bs_0.cls, ChildLayer)
+      self.assertEqual(bs_0.dtype, jnp.int64)
+      self.assertEqual(bs_0.ici_mesh_shape, (5,))
+      self.assertEqual(bs_0.dcn_mesh_shape, (2,))
+      self.assertEqual(bs_0.params_init.scale, 2.0)
+      # model.x
+
+      x = model['x']['_hparams']
+      self.assertEqual(x.cls, ChildLayer)
+      self.assertEqual(x.dtype, jnp.int32)
+      self.assertEqual(x.ici_mesh_shape, (1,))
+      self.assertEqual(x.dcn_mesh_shape, (2,))
+      self.assertEqual(x.params_init.scale, 2.0)
+
+      # model.ys
+      ys_0 = model['ys_0']['_hparams']
+      self.assertEqual(ys_0.cls, ParentLayer)
+      self.assertEqual(ys_0.dtype, jnp.int64)
+      self.assertEqual(ys_0.ici_mesh_shape, (1,))
+      self.assertEqual(ys_0.dcn_mesh_shape, (6,))
+      self.assertEqual(ys_0.params_init.scale, 2.0)
+
+      ys_0_a = model['ys_0']['a']['_hparams']
+      self.assertEqual(ys_0_a.cls, ChildLayer)
+      self.assertEqual(ys_0_a.dtype, jnp.float16)
+      self.assertEqual(ys_0_a.ici_mesh_shape, (1,))
+      self.assertEqual(ys_0_a.dcn_mesh_shape, (6,))
+
+      ys_0_x = model['ys_0']['x']['_hparams']
+      self.assertEqual(ys_0_x.cls, ChildLayer)
+      self.assertEqual(ys_0_x.dtype, jnp.int64)
+      self.assertEqual(ys_0_x.ici_mesh_shape, (1,))
+      self.assertEqual(ys_0_x.dcn_mesh_shape, (6,))
+
+      ys_0_ys_0 = model['ys_0']['ys_0']['_hparams']
+      self.assertEqual(ys_0_ys_0.cls, ChildLayer)
+      self.assertEqual(ys_0_ys_0.dtype, jnp.float16)
+      self.assertEqual(ys_0_ys_0.ici_mesh_shape, (1,))
+      self.assertEqual(ys_0_ys_0.dcn_mesh_shape, (7,))
+      self.assertEqual(ys_0_ys_0.params_init.scale, 2.0)
+
+    model = make_model.as_buildable().Instantiate()
+    configs = model.abstract_init_with_mdl_config()
+    print(configs)
+    validate(configs)
 
   def test_post_init_hparams(self):
 
