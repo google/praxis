@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """Tests for Praxis rnn_cell layers."""
+import itertools
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -97,6 +98,89 @@ class FRNNTest(test_utils.TestCase):
     c = jnp.array(np.random.rand(batch, output_dim).astype(np.float32))
 
     return inputs, padding, segment_ids, m, c, reset_mask
+
+  @parameterized.parameters(
+      *list(itertools.product((jnp.int32, jnp.float32, jnp.bfloat16), repeat=2))
+  )
+  def test_reset_mask_without_padding(
+      self, segment_ids_dtype, reset_mask_dtype
+  ):
+    segment_ids = jnp.array(
+        [
+            [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0],
+            [1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 0, 0, 0, 0],
+            [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4],
+        ],
+        dtype=segment_ids_dtype,
+    )
+
+    expected_value = jnp.array(
+        [
+            [0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1],
+            [0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1],
+            [0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0],
+        ],
+        dtype=reset_mask_dtype,
+    )
+    with self.subTest(name='2D_input'):
+      reset_mask = frnn.reset_mask(segment_ids, dtype=reset_mask_dtype)
+      self.assertAllClose(reset_mask, expected_value, check_dtypes=True)
+    with self.subTest(name='3D_input'):
+      reset_mask = frnn.reset_mask(
+          jnp.expand_dims(segment_ids, axis=-1), dtype=reset_mask_dtype
+      )
+      self.assertAllClose(
+          reset_mask,
+          jnp.expand_dims(expected_value, axis=-1),
+          check_dtypes=True,
+      )
+
+  @parameterized.parameters(
+      *list(itertools.product((jnp.int32, jnp.float32, jnp.bfloat16), repeat=3))
+  )
+  def test_reset_mask_with_padding(
+      self, segment_ids_dtype, paddings_dtype, reset_mask_dtype
+  ):
+    segment_ids = jnp.array(
+        [
+            [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0],
+            [1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 0, 0, 0, 0],
+            [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4],
+        ],
+        dtype=segment_ids_dtype,
+    )
+    paddings = jnp.array(
+        [
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ],
+        dtype=paddings_dtype,
+    )
+    expected_value = jnp.array(
+        [
+            [0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+            [0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0],
+        ],
+        dtype=reset_mask_dtype,
+    )
+    with self.subTest(name='2D_input'):
+      reset_mask = frnn.reset_mask(
+          segment_ids, paddings, dtype=reset_mask_dtype
+      )
+      self.assertAllClose(reset_mask, expected_value, check_dtypes=True)
+    with self.subTest(name='3D_input'):
+      reset_mask = frnn.reset_mask(
+          jnp.expand_dims(segment_ids, axis=-1),
+          jnp.expand_dims(paddings, axis=-1),
+          dtype=reset_mask_dtype,
+      )
+      self.assertAllClose(
+          reset_mask,
+          jnp.expand_dims(expected_value, axis=-1),
+          check_dtypes=True,
+      )
 
   @parameterized.parameters(
       (jax_rnn_cell.LstmCellSimple, False),
