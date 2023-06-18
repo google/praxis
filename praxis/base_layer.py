@@ -1552,7 +1552,7 @@ class BaseLayer(nn.Module):
   @staticmethod
   def copy_base_hparams(
       source: Union[pax_fiddle.Config, BaseLayer],
-      target: pax_fiddle.Config,
+      target: Union[pax_fiddle.Config, BaseLayer],
   ):
     """Copies BaseLayer configuration parameters from `source` to `target`.
 
@@ -1566,32 +1566,41 @@ class BaseLayer(nn.Module):
       source: The configuration object to copy parameters from.
       target: The configuration object to copy parameters to.  Mutated in-place.
     """
+
     assert isinstance(source, (pax_fiddle.Config, BaseLayer)), source
-    assert isinstance(target, pax_fiddle.Config), target
+    assert isinstance(target, (pax_fiddle.Config, BaseLayer)), target
     if isinstance(source, pax_fiddle.Config):
       assert issubclass(fdl.get_callable(source), BaseLayer), source
-    assert issubclass(fdl.get_callable(target), BaseLayer), target
+    if isinstance(target, pax_fiddle.Config):
+      assert issubclass(fdl.get_callable(target), BaseLayer), target
+
+    def _setattr(attr_name, value):
+      if isinstance(target, BaseLayer):
+        object.__setattr__(target, attr_name, value)
+      else:
+        setattr(target, attr_name, value)
+
     if target.dtype == jnp.float32:
-      target.dtype = source.dtype
+      _setattr('dtype', source.dtype)
     if target.fprop_dtype is None:
-      target.fprop_dtype = source.fprop_dtype
+      _setattr('fprop_dtype', source.fprop_dtype)
     if target.skip_lp_regularization is None:
-      target.skip_lp_regularization = source.skip_lp_regularization
+      _setattr('skip_lp_regularization', source.skip_lp_regularization)
     if target.ici_mesh_shape is None:
-      target.ici_mesh_shape = copy.deepcopy(source.ici_mesh_shape)
+      _setattr('ici_mesh_shape', copy.deepcopy(source.ici_mesh_shape))
     if target.dcn_mesh_shape is None:
-      target.dcn_mesh_shape = copy.deepcopy(source.dcn_mesh_shape)
+      _setattr('dcn_mesh_shape', copy.deepcopy(source.dcn_mesh_shape))
     if target.mesh_axis_names is None:
-      target.mesh_axis_names = copy.deepcopy(source.mesh_axis_names)
+      _setattr('mesh_axis_names', copy.deepcopy(source.mesh_axis_names))
     if target.contiguous_submeshes is None:
-      target.contiguous_submeshes = source.contiguous_submeshes
+      _setattr('contiguous_submeshes', source.contiguous_submeshes)
     if is_default_param_init(target.params_init):
       # Copy params_init as well. Both target.params_init and
       # source.params_init are hyperparams.HParams.
       # The only exception is when layer.setup override params_init with
       # Params().Set syntax in which case, source.params_init is a
       # WeightInit, copy.deepcopy(source.params_init) works in both cases.
-      target.params_init = copy.deepcopy(source.params_init)
+      _setattr('params_init', copy.deepcopy(source.params_init))
 
   # TODO(yonghui): deprecate this method, replace it with
   # abstract_init_with_mdl_config.
@@ -1711,21 +1720,25 @@ class BaseLayer(nn.Module):
           'Fiddle-configured layers.  Please use `layer_p.Instantiate()` '
           'instead.'
       )
-    # Note: we need to set fprop_dtype before we call super().__post_init__(),
-    # because super().__post_init__() can mark `self` as frozen in some
-    # contexts.
-    if self.fprop_dtype is None:
-      self.fprop_dtype = self.dtype
     object.__setattr__(self, '_theta', set())
     object.__setattr__(self, '_weight_hparams', {})
     object.__setattr__(self, '_private_children', {})
     super().__post_init__()
+
+    if self.parent is not None and isinstance(self.parent, BaseLayer):
+      # Automatically propagate some configs from parent to self.
+      # This allows setting configs on the root-node only and have them
+      BaseLayer.copy_base_hparams(self.parent, self)
+
+    if self.fprop_dtype is None:
+      object.__setattr__(self, 'fprop_dtype', self.dtype)
 
   @nn.nowrap
   def _try_setup(self, shallow=False):
     setup_status_before = self._state.setup_called
     super()._try_setup(shallow=shallow)
     setup_status_after = self._state.setup_called
+
     if setup_status_before != setup_status_after:
       # setup() is being called. Let's perform some sanity checks.
       for k, v in self._state.children.items():

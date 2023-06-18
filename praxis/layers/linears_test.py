@@ -706,7 +706,129 @@ class PostInitParamsTest(test_utils.TestCase):
     x = jnp.ones((batch, time, dim))
     ffwd = FeedForward(name='ffw', output_dims=4 * dim)
     v = ffwd.abstract_init_with_mdl_config(x)
-    print(v)
+    self.assertEqual(Bias, v['bias']['_hparams'].cls)
+
+  def test_auto_param_inheritance(self):
+    batch, time, dim = 1, 2, 3
+    x = jnp.ones((batch, time, dim))
+    ffwd = FeedForward(
+        name='ffw',
+        output_dims=4 * dim,
+        dtype=jnp.float64,
+        fprop_dtype=jnp.float64,
+        dcn_mesh_shape=(2,),
+        ici_mesh_shape=(1,),
+        mesh_axis_names=('name',),
+        params_init=base_layer.WeightInit.Gaussian(2.0),
+    )
+    v = ffwd.abstract_init_with_mdl_config(x)
+    # default initialization is properly propagated through to the children
+    # layers.
+    self.assertEqual(2.0, v['linear']['_hparams'].params_init.scale)
+    self.assertEqual(2.0, v['bias']['_hparams'].params_init.scale)
+    self.assertEqual(jnp.float64, v['linear']['_hparams'].dtype)
+    self.assertEqual(jnp.float64, v['linear']['_hparams'].fprop_dtype)
+
+  def test_instance_field(self):
+    class ChildLayer(base_layer.BaseLayer):
+      pass
+
+      def __call__(self):
+        return 0.0
+
+    class ParentLayer(base_layer.BaseLayer):
+      # instance fields:
+      a: base_layer.BaseLayer = base_layer.instance_field(ChildLayer)
+
+      def __call__(self):
+        self.a()
+        return 0
+
+    @pax_fiddle.auto_config
+    def make_model():
+      return ParentLayer(
+          dtype=jnp.int64,
+          fprop_dtype=jnp.bfloat16,
+          ici_mesh_shape=(1,),
+          dcn_mesh_shape=(2,),
+          params_init=base_layer.WeightInit.Gaussian(2.0),
+          a=ParentLayer(
+              ici_mesh_shape=(3,),
+          ),
+      )
+
+    mdl_config = make_model.as_buildable()
+    print('mdl_config', mdl_config)
+    model = mdl_config.Instantiate()
+    configs = model.abstract_init_with_mdl_config()
+    print('post_init_config', configs)
+
+    self.assertEqual(2.0, configs['a']['a']['_hparams'].params_init.scale)
+    self.assertEqual(jnp.int64, configs['a']['a']['_hparams'].dtype)
+    self.assertEqual(jnp.bfloat16, configs['a']['a']['_hparams'].fprop_dtype)
+
+  def test_inline_instantiation(self):
+    class L0(base_layer.BaseLayer):
+
+      def setup(self):
+        self.create_variable('x', base_layer.WeightHParams(shape=[128, 1280]))
+
+      def __call__(self):
+        return (
+            jnp.zeros([1]).astype(self.dtype),
+            jnp.zeros([1]).astype(self.fprop_dtype),
+            self.theta.x,
+        )
+
+    class L1(base_layer.BaseLayer):
+
+      def setup(self):
+        self.a = L0()
+
+      @nn.compact
+      def __call__(self):
+        b = L0(name='b')
+        b_o = b()
+        a_o = self.a()
+        return [
+            a_o[0] + b_o[0],
+            a_o[1] + b_o[1],
+            a_o[2] + b_o[2],
+        ]
+
+    class L2(base_layer.BaseLayer):
+
+      def setup(self):
+        self.c = L1()
+
+      def __call__(self):
+        return self.c()
+
+    l2 = L2(
+        dtype=jnp.bfloat16,
+        fprop_dtype=jnp.float16,
+        params_init=base_layer.WeightInit.Gaussian(3.0),
+    )
+
+    configs = l2.abstract_init_with_mdl_config()
+    print('post_init_config', configs)
+
+    # configs are properly propagated down.
+    self.assertEqual(3.0, configs['c']['a']['_hparams'].params_init.scale)
+    self.assertEqual(3.0, configs['c']['b']['_hparams'].params_init.scale)
+    self.assertEqual(jnp.bfloat16, configs['c']['a']['_hparams'].dtype)
+    self.assertEqual(jnp.float16, configs['c']['a']['_hparams'].fprop_dtype)
+    self.assertEqual(jnp.bfloat16, configs['c']['b']['_hparams'].dtype)
+    self.assertEqual(jnp.float16, configs['c']['b']['_hparams'].fprop_dtype)
+
+    l2_init_vars = l2.init({'params': jax.random.PRNGKey(123456)})
+    out = l2.apply(l2_init_vars)
+    self.assertEqual(jnp.bfloat16, l2_init_vars['params']['c']['a']['x'].dtype)
+    self.assertLess(
+        abs(np.std(l2_init_vars['params']['c']['a']['x']) - 3.0), 0.01
+    )
+    self.assertEqual(jnp.bfloat16, out[0].dtype)
+    self.assertEqual(jnp.float16, out[1].dtype)
 
 
 if __name__ == '__main__':
