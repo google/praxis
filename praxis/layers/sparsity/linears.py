@@ -21,7 +21,9 @@ from praxis.layers import linears
 from praxis.layers.sparsity import sparse_base_layer
 from praxis.layers.sparsity import sparsity_hparams
 
+
 SparsityMode = sparsity_hparams.SparsityMode
+SparsityScore = sparsity_hparams.SparsityScore
 SparsityType = sparsity_hparams.SparsityType
 SparsityHParams = sparsity_hparams.SparsityHParams
 WeightInit = base_layer.WeightInit
@@ -63,7 +65,10 @@ class Linear(sparse_base_layer.SparsityBaseLayer, linears.Linear):  # pytype: di
       Projected inputs.
     """
     ap = self.activation_split_dims_mapping
-    w = self.sparsifiy(self.theta.w, name='w')  # sparsify weight.
+
+    w = self.sparsifiy(
+        self.theta.w, inputs=inputs, name='w'
+    )  # sparsify weight.
     out = self.einsum('...y,yz->...z', inputs, w)
 
     # Adjust sharding annotation during decoding.

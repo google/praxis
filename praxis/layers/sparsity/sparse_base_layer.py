@@ -122,15 +122,19 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     """
     return jnp.any(sparsified_layers == layer_idx)
 
-  def _get_sparsity_mask(self, inputs):
+  def _get_sparsity_mask(self, score):
     return sparsity.get_sparsity_mask(
-        inputs,
+        score,
         n_sparsity=self.sparsity.weight_params.prune_rate[0],  # pytype: disable=attribute-error
         m_sparsity=self.sparsity.weight_params.prune_rate[1],  # pytype: disable=attribute-error
     )
 
   def _maybe_sparsify(
-      self, inputs: JTensor, name: str, layer_idx: int
+      self,
+      weight: JTensor,
+      inputs: JTensor,
+      name: str,
+      layer_idx: int,
   ):
     # Get variables
     mask_var_name = name + SPARSITY_NAME_POSTFIX
@@ -140,8 +144,8 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     # attention_combine_dims=True.
     # TODO(shaojinding): Move this reshape to attentions.py if it blocks
     # future refactors on sparse_base_layer.py.
-    if mask.shape != inputs.shape:
-      mask = jnp.reshape(mask, inputs.shape)
+    if mask.shape != weight.shape:
+      mask = jnp.reshape(mask, weight.shape)
     update_cnt = self.get_var('mask_update_count')
     step = self.get_var('step')
 
@@ -156,10 +160,13 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       self.sparsity.sparsified_layers = [-1]
     sparsified_layers = jnp.asarray(self.sparsity.sparsified_layers)
 
-    def mask_update(x, mask, update_cnt):  # pylint: disable=unused-argument
-      return self._get_sparsity_mask(x), update_cnt + 1
+    def mask_update(w, inputs, mask, update_cnt):  # pylint: disable=unused-argument
+      score = sparsity.compute_score(
+          w, score_func=self.sparsity.score, inputs=inputs
+      )
+      return self._get_sparsity_mask(score), update_cnt + 1
 
-    def no_mask_update(x, mask, update_cnt):  # pylint: disable=unused-argument
+    def no_mask_update(w, inputs, mask, update_cnt):  # pylint: disable=unused-argument
       return mask, update_cnt
 
     new_mask, update_cnt = jax.lax.cond(
@@ -169,6 +176,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
         ),
         mask_update,
         no_mask_update,
+        weight,
         inputs,
         mask,
         update_cnt,
@@ -181,27 +189,31 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       self.add_summary('mask_update_count', update_cnt, verbosity=4)
 
     no_op = lambda inputs, new_mask: inputs
-    inputs = jax.lax.cond(
+    weight = jax.lax.cond(
         jnp.logical_and(
             self._schedule_cond(step, target_step, update_cnt, num_shots),
             self._layer_cond(layer_idx, sparsified_layers),
         ),
         sparsity.apply_sparsity,
         no_op,
-        inputs,
+        weight,
         new_mask,
     )
-    return inputs
+    return weight
 
   def sparsifiy(
-      self, inputs: JTensor, name: str, layer_idx: Optional[int] = -1
+      self,
+      weight: JTensor,
+      name: str,
+      inputs: Optional[JTensor] = None,
+      layer_idx: Optional[int] = -1,
   ) -> JTensor:
     """Get weight of this layer based on mode and other conditions.
 
     Args:
-      inputs: input tensor to be sparsified, it can be a weight variable or
-        activation output.
+      weight: tensor to be sparsified, it can be a weight variable.
       name: name of inputs to be sparsified, this is to get corresponding mask.
+      inputs: input tensor, i.e., activation of the given weight.
       layer_idx: Layer index.
 
     Returns:
@@ -209,10 +221,12 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     """
 
     if self.sparsity.mode == SparsityMode.INFERENCE:
-      return inputs
+      return weight
     else:
       if self.sparsity.sparsity_type != SparsityType.STRUCTURED_NM:
         raise NotImplementedError(
             'Only structured sparsity is currently supported.'
         )
-      return self._maybe_sparsify(inputs=inputs, name=name, layer_idx=layer_idx)
+      return self._maybe_sparsify(
+          weight=weight, inputs=inputs, name=name, layer_idx=layer_idx
+      )

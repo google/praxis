@@ -21,6 +21,18 @@ from typing import List, Optional, Tuple, Union
 
 
 @enum.unique
+class SparsityScore(str, enum.Enum):
+  """The different score function for sparsity.
+
+  `MAGNITUDE` implements weight magnitude scoring.
+  `ACTIVATION_WEIGHTED` implements activation weighted scoring.
+  """
+
+  MAGNITUDE = 'magnitude'
+  ACTIVATION_WEIGHTED = 'activation_weighted'
+
+
+@enum.unique
 class SparsityType(str, enum.Enum):
   """The different types for sparsity.
 
@@ -116,6 +128,7 @@ class SparsityHParams:
     sparsity_type: Defines sparsity types.
     weight_params: WeightSparsityParams object.
     mode: Defines sparsity mode.
+    score: Defines sparsity score function.
     num_shots: Number of shots during pruning. This needs to be set
       correspondingly to ONESHOT and FEWSHOT mode.
     mask_update_interval: The step invertal between two mask updates. This is
@@ -127,6 +140,7 @@ class SparsityHParams:
   sparsity_type: SparsityType = SparsityType.STRUCTURED_NM
   weight_params: Optional[WeightSparsityParams] = None
   mode: SparsityMode = SparsityMode.INFERENCE
+  score: SparsityScore = SparsityScore.MAGNITUDE
   num_shots: int = 0
   mask_update_interval: int = 1
   target_step: int = 0

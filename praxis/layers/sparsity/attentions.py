@@ -173,7 +173,8 @@ class AttentionProjection(sparse_base_layer.SparsityBaseLayer,
       ), f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {self.input_dim}'
       batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
-    w = self.sparsifiy(w, name='w')  # sparsify weight.
+
+    w = self.sparsifiy(w, inputs=inputs, name='w')  # sparsify weight.
     ret = self.einsum(eqn, inputs, w)
     if self.use_bias:
       ret += theta.b
@@ -293,7 +294,7 @@ class CombinedQKVProjectionLayer(sparse_base_layer.SparsityBaseLayer,
 
     # K indexes qkv.
     eqn = f'{batch_eqn}D,KDNH->K{batch_eqn}NH'
-    w = self.sparsifiy(w, name='w')  # sparsify weight.
+    w = self.sparsifiy(w, inputs=inputs, name='w')  # sparsify weight.
     ret = self.einsum(eqn, inputs, w)
     if self.use_bias:
       # Add newaxis to bias weight for each batch dim since ret is K...NH
