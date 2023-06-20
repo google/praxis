@@ -38,6 +38,7 @@ NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
 StreamingResultCallback = decoder_utils.StreamingResultCallback
 
+HYPER_PARAMS = base_layer.HYPER_PARAMS
 RANDOM = base_layer.RANDOM
 PARAMS = base_layer.PARAMS
 NON_TRAINABLE = base_layer.NON_TRAINABLE
@@ -1458,7 +1459,7 @@ def sample_decode_after_fprop(
 
     scan_fn = nn.scan(
         scan_body,
-        variable_axes={AUX_LOSS: 0, SUMMARIES: 0},
+        variable_axes={AUX_LOSS: 0, SUMMARIES: 0, HYPER_PARAMS: 0},
         variable_broadcast=[PARAMS, NON_TRAINABLE],
         variable_carry=[DECODE_CACHE, PREFIX_DECODE_CACHE],
         split_rngs={RANDOM: True},

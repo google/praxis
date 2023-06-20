@@ -33,6 +33,7 @@ LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 PARAMS = base_layer.PARAMS
 AUX_LOSS = base_layer.AUX_LOSS
+HYPER_PARAMS = base_layer.HYPER_PARAMS
 SUMMARIES = base_layer.SUMMARIES
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 RANDOM = base_layer.RANDOM
@@ -168,10 +169,7 @@ class FRnn(base_layer.BaseLayer):
     # variables from frnn iteration n. AUX_LOSS and SUMMARIES are scanned over.
     scan_fn = nn.scan(
         body_fn,
-        variable_axes={
-            AUX_LOSS: 0,
-            SUMMARIES: 0
-        },
+        variable_axes={AUX_LOSS: 0, SUMMARIES: 0, HYPER_PARAMS: 0},
         variable_broadcast=[PARAMS],
         variable_carry=[NON_TRAINABLE],
         split_rngs=SCAN_SPLIT_RNGS,
@@ -355,15 +353,13 @@ class LstmFrnn(FRnn):
     # variables from frnn iteration n.
     scan_fn = nn.scan(
         body_fn,
-        variable_axes={
-            AUX_LOSS: 0,
-            SUMMARIES: 0
-        },
+        variable_axes={AUX_LOSS: 0, SUMMARIES: 0, HYPER_PARAMS: 0},
         in_axes=1,
         out_axes=1,
         variable_broadcast=[PARAMS],
         variable_carry=[NON_TRAINABLE],
-        split_rngs=SCAN_SPLIT_RNGS)
+        split_rngs=SCAN_SPLIT_RNGS,
+    )
     # Sum-up aux losses.
     mapped_scan_fn = nn.map_variables(
         scan_fn,

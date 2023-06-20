@@ -1602,46 +1602,6 @@ class BaseLayer(nn.Module):
       # WeightInit, copy.deepcopy(source.params_init) works in both cases.
       _setattr('params_init', copy.deepcopy(source.params_init))
 
-  # TODO(yonghui): deprecate this method, replace it with
-  # abstract_init_with_mdl_config.
-  def post_init_hparams(self, *args):
-    """Recursively populates the HYPER_PARAMS collection with hyper-params ...
-
-    of self and all its children.
-
-    The difference from self.hparams is that params here are post initialization
-    tweaks and reflect the actual sub-layers being created.
-
-    Args:
-      *args: used for scan's rigid signature requirements.
-    """
-    hparam_kwargs = {}
-    for field in self._hparam_fields:
-      value = getattr(self, field)
-      if is_sublayer_template_or_instance(value):
-        # No need to include sub-layer template params (or direct-instantiated
-        # children), since the instantiated sub-layer will show up in its own
-        # collection anyways.  Use an explicit `None` value to prevent `fiddle`
-        # from auto-populating fields with default factories.
-        value = None
-      hparam_kwargs[field] = value
-    hparams = pax_fiddle.Config(type(self), **hparam_kwargs)
-
-    self.put_variable(HYPER_PARAMS, '_hparams', WrappedHParams(hparams))
-    # walk through all the attributes on self and recursively apply
-    # post_init_hparams on submodules:
-    for key, val in self.__dict__.items():
-      if key in _BaseLayerRecursionDictKeysToIgnore:
-        continue  # don't create recursion loop!
-
-      def force(v):
-        if isinstance(v, BaseLayer):
-          # pass dummy args through - again only needed for scan.
-          v.post_init_hparams(*args)
-
-      jax.tree_map(force, val)
-    return None
-
   @functools.cached_property
   def _hparam_fields(self) -> Set[str]:
     """Returns a list of hyperparameter field names for `self`."""
