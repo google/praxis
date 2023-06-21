@@ -336,7 +336,8 @@ class LinearsTest(test_utils.TestCase):
   def test_einsum_injection(self):
     class CustomEinsum(base_layer.BaseLayer):
 
-      def setup(self):
+      @nn.compact
+      def __call__(self, equation, lhs, rhs):
         self.create_variable(
             'mult',
             base_layer.WeightHParams(
@@ -345,15 +346,22 @@ class LinearsTest(test_utils.TestCase):
             ),
             trainable=False,
         )
-
-      def __call__(self, equation, lhs, rhs):
         mult = self.get_var('mult')
         self.update_var('mult', mult * 2.0)
+
+        lhs_stats = self.create_variable(
+            'lhs_stats',
+            var_hparams=base_layer.WeightHParams(
+                shape=(lhs.shape),
+                init=base_layer.WeightInit.Constant(0.0),
+            ),
+            trainable=False,
+        )
 
         def dg(*args, **kwargs):
           return jax.lax.dot_general(*args, **kwargs) * mult
 
-        return jnp.einsum(equation, lhs, rhs, _dot_general=dg)
+        return jnp.einsum(equation, lhs + lhs_stats, rhs, _dot_general=dg)
 
     def run(custom_einsum_tpl, expected_shapes):
       p = pax_fiddle.Config(
@@ -395,7 +403,12 @@ class LinearsTest(test_utils.TestCase):
     }
 
     expected_shapes_new = {
-        'non_trainable': {'einsum': {'mult': (1,)}},
+        'non_trainable': {
+            'einsum': {
+                'mult': (1,),
+                'lhs_stats': (4, 10),
+            }
+        },
         'params': {'w': (10, 20)},
     }
 
