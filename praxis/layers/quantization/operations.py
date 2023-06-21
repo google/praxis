@@ -391,6 +391,7 @@ def fakequant_einsum(
     bits: int = 8,
     calculation_type: jnp.dtype = jnp.float32,
     use_symmetric: bool = True,
+    block_size: int = 0,
 ) -> JTensor:
   """Nudges weight of einsum with FakeQuant.
 
@@ -400,10 +401,17 @@ def fakequant_einsum(
     bits: Target number of bits.
     calculation_type: The type for calculation.
     use_symmetric: Use symmetric quantization for weights.
+    block_size: block wise quantization size. 0 to turn if off.
 
   Returns:
     The nudged weight tensor.
   """
+  orignal_shape = t.shape
+  if block_size > 0:
+    # TODO(jianlijianli): Make this more general.
+    assert orignal_shape[0] % block_size == 0
+    assert orignal_shape[0] >= block_size
+    t.reshape(block_size, orignal_shape[0] * orignal_shape[1] // block_size)
   q, scale, zp = reduce_einsum_weight_precision(
       eqn,
       t,
@@ -417,6 +425,8 @@ def fakequant_einsum(
   res = jnp.multiply(q, scale)
   if zp is not None:
     res = jnp.subtract(res, zp)
+  if block_size > 0:
+    t.reshape(orignal_shape)
   return res.astype(t.dtype)
 
 

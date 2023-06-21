@@ -170,6 +170,7 @@ def quantized_einsum(
           bits=layer.quantization.weight_params.precision,
           use_symmetric=layer.quantization.weight_params.use_symmetric,
           calculation_type=layer.quantization.weight_params.calculation_dtype,
+          block_size=layer.quantization.weight_params.block_size,
       )
       out = jnp.einsum(eqn, x, w)
       return out

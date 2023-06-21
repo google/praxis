@@ -270,6 +270,7 @@ def for_transformer(
     linear_only: bool = False,
     dtype: jnp.dtype = jnp.int8,
     quantize_init_from_checkpoint_rules_task: bool = False,
+    block_size: int = 0,
 ):
   """Find and quantize transformer.
 
@@ -300,6 +301,8 @@ def for_transformer(
     dtype: Dtype of the quantized variables.
     quantize_init_from_checkpoint_rules_task: Apply quantization to the tasks
       that are defined in task_p.train.init_from_checkpoint_rules.values()
+    block_size: block size for sub-channel quantization. Defaults to 0, which
+      means off.
 
   Returns:
     A modifier that quantizes transformers when applied to a config.
@@ -337,6 +340,7 @@ def for_transformer(
               transposed_embedding_softmax=transposed_embedding_softmax,
               quantize_ngrammer_embedding=quantize_ngrammer_embedding,
               dtype=dtype,
+              block_size=block_size,
           )
         return task_p
 
@@ -434,6 +438,7 @@ def set_transformer_quantization(
     transposed_embedding_softmax: bool = False,
     quantize_ngrammer_embedding: bool = False,
     dtype: jnp.dtype = jnp.int8,
+    block_size: int = 0,
 ):
   """Sets quantization parameters for TransformerLm in 'config'.
 
@@ -454,11 +459,13 @@ def set_transformer_quantization(
       embedding in Ngrammer/VQNgrammer layer. This rewrites
       TransformerLm.ngrammer_tpl in `config`.
     dtype: Dtype of the quantized variables.
+    block_size: Block size for sub-channel quantization. Defaults to 0.
   """
   weight_quantization_params = WeightQuantizationParams(
       precision=num_bits,
       use_symmetric=use_symmetric,
       dtype=dtype,
+      block_size=block_size,
   )
   act_quantization_params = (
       None if weight_quant_only else ActQuantizationParams(precision=num_bits)

@@ -164,6 +164,16 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
       )
       self.assertAllClose(weight, weight_nudged, rtol=0.02, atol=0.02)
 
+  def test_fakequant_with_block_size(self):
+    """Test fakequant with block size."""
+    weight = np.random.normal(-0.5, 1.0, (12, 16)).astype(np.float32)
+    eqn = '...y,yz->...z'
+    for use_symmetric in [True, False]:
+      weight_nudged = operations.fakequant_einsum(
+          eqn, weight, use_symmetric=use_symmetric, block_size=6
+      )
+      self.assertAllClose(weight, weight_nudged, rtol=0.01, atol=0.01)
+
   def test_percentile(self):
     weight = np.random.normal(-2.0, 2.0, (4, 3)).astype(np.float32)
     reduced_weight, scale, _ = operations.reduce_einsum_weight_precision(
