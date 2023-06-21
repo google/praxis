@@ -1026,12 +1026,15 @@ def sample_decode_after_fprop(
     # broadcast it to shape [batch_size * num_samples].
     # If temperature is of 2D shape [batch_size, num_samples] simply flatten it.
     if isinstance(temperature, JTensor):
-      if temperature.ndim == 2:  # pytype: disable=attribute-error
-        if temperature.shape != (original_batch_size, num_samples):  # pytype: disable=attribute-error
+      if temperature.ndim == 2:
+        if cf_guidance_scale is not None:
+          expected_shape = (original_batch_size // 2, num_samples)
+        else:
+          expected_shape = (original_batch_size, num_samples)
+        if temperature.shape != expected_shape:
           raise ValueError(
               '2D Dynamic temperature should have shape: '
-              f'({original_batch_size}, {num_samples}), but it has shape: '
-              f'{temperature.shape}.'  # pytype: disable=attribute-error
+              f'{expected_shape}, but it has shape: {temperature.shape}.'
           )
         temperature = jnp.reshape(temperature, (-1,))
       else:
@@ -1089,9 +1092,16 @@ def sample_decode_after_fprop(
     cf_guidance_scale = jnp.array(cf_guidance_scale)
     cf_guidance_scale = cf_guidance_scale[jnp.newaxis, :, jnp.newaxis]
   elif isinstance(cf_guidance_scale, JTensor):
-    assert cf_guidance_scale.ndim == 2
-    assert cf_guidance_scale.shape[-1] == num_samples
-    cf_guidance_scale = cf_guidance_scale[:, :, jnp.newaxis]
+    if cf_guidance_scale.ndim == 2:
+      assert cf_guidance_scale.shape[-1] == num_samples
+      cf_guidance_scale = cf_guidance_scale[:, :, jnp.newaxis]
+    elif cf_guidance_scale.ndim == 1:
+      cf_guidance_scale = cf_guidance_scale[:, jnp.newaxis, jnp.newaxis]
+    else:
+      raise ValueError(
+          'cf_guidance_scale must be of rank 1 or 2, get'
+          ' {cf_guidance_scale.shape} instead'
+      )
 
   if isinstance(temperature, JTensor):
     temperature = temperature[:, jnp.newaxis]
