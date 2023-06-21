@@ -800,6 +800,9 @@ class AttentionProjectionAQTTest(quantization_test_util.QuantizationTestCase):
     self.assertNestedListClose(to_list(weight_scale), expected_scale)
     self.assertNestedListClose(to_list(weight_zp), expected_zp)
 
+    if use_bias:
+      self.assertIn('b', res[base_layer.PARAMS])
+
   # Check Q specification.
   @parameterized.parameters(generate_quantization_test_config())
   def test_quantization_partition_spec(
@@ -872,6 +875,10 @@ class AttentionProjectionAQTTest(quantization_test_util.QuantizationTestCase):
                 meta=jax.sharding.PartitionSpec('mdl')
             )
         )
+      if use_bias:
+        expected_pspec['params']['b'] = base_layer.BoxedPartitionSpec(
+            meta=jax.sharding.PartitionSpec(None)
+        )
     else:
       expected_pspec = {
           'params': {
@@ -888,6 +895,10 @@ class AttentionProjectionAQTTest(quantization_test_util.QuantizationTestCase):
             base_layer.BoxedPartitionSpec(
                 meta=jax.sharding.PartitionSpec('mdl', 'data')
             )
+        )
+      if use_bias:
+        expected_pspec['params']['b'] = base_layer.BoxedPartitionSpec(
+            meta=jax.sharding.PartitionSpec(None, None)
         )
 
     self.assertEqual(pspec, expected_pspec)

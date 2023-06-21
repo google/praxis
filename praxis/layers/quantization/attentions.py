@@ -203,6 +203,11 @@ class AttentionProjection(attentions.AttentionProjection):
       zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
       partitionspec[zp_name] = copy.deepcopy(scale_pspec)
 
+    if self.use_bias:
+      partitionspec['b'] = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
+          self._weight_hparams['b'], self.mesh_axis_names
+      )
+
     return {base_layer.PARAMS: partitionspec}
 
   def quantize_weight(self) -> NestedJTensor:
@@ -258,11 +263,13 @@ class AttentionProjection(attentions.AttentionProjection):
       q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
 
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
-    if self.quantization.weight_params.use_symmetric:
-      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
-    else:
+    ret_params = {'w': q_w, scale_name: q_s}
+    if not self.quantization.weight_params.use_symmetric:
       zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
-      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}
+      ret_params[zp_name] = zp
+    if self.use_bias:
+      ret_params['b'] = self.theta.b
+    return {base_layer.PARAMS: ret_params}
 
 
 class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
@@ -497,6 +504,11 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
       partitionspec[zp_name] = copy.deepcopy(scale_pspec)
 
+    if self.use_bias:
+      partitionspec['b'] = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
+          self._weight_hparams['b'], self.mesh_axis_names
+      )
+
     return {base_layer.PARAMS: partitionspec}
 
   def quantize_weight(self) -> NestedJTensor:
@@ -543,11 +555,13 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
 
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
-    if self.quantization.weight_params.use_symmetric:
-      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
-    else:
+    ret_params = {'w': q_w, scale_name: q_s}
+    if not self.quantization.weight_params.use_symmetric:
       zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
-      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}
+      ret_params[zp_name] = zp
+    if self.use_bias:
+      ret_params['b'] = self.theta.b
+    return {base_layer.PARAMS: ret_params}
 
 
 class DotProductAttention(attentions.DotProductAttention):
