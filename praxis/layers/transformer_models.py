@@ -649,7 +649,14 @@ class TransformerLm(base_layer.BaseLayer):
       if self.separate_embedding_tpl is not None:
         emb_var = self.embedding_lookup.theta.emb_var
       else:
-        emb_var = jnp.transpose(self.softmax.logits_ffn.linear.theta.w)
+        if hasattr(self.softmax, 'logits_ffn'):
+          emb_var = jnp.transpose(self.softmax.logits_ffn.linear.theta.w)
+        else:
+          # For the class where its difference from original
+          # SharedEmbeddingSoftmax is that
+          # - has its own weight ('w'), not through logits_ffn.
+          # - 'w' already has num_class as first dimensions so don't transpose.
+          emb_var = self.softmax.theta.w
       input_emb = self.ngrammer(
           input_ids=inputs,
           input_embs=input_emb,
