@@ -27,11 +27,12 @@ import re
 import sys
 import types
 import typing
-from typing import Any, Callable, cast, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Optional, Sequence, Set, Tuple, Type, TypeVar, Union, cast
 
 from absl import logging
 import fiddle as fdl
 from flax.core import frozen_dict
+import flax.linen as nn
 from flax.linen import kw_only_dataclasses
 # Internal config_dict import from ml_collections
 import numpy as np
@@ -171,7 +172,10 @@ def visit_nested_struct(obj_to_visit: Any,
     # Internal handle of type config_dict.ConfigDict in visit_nested_struct
     elif dataclasses.is_dataclass(val):
       if enter_fn(key, val):
-        for f in dataclasses.fields(val):
+        fields = dataclasses.fields(val)
+        if isinstance(val, nn.Module):
+          fields = [f for f in fields if f.name != 'parent']
+        for f in fields:
           _visit(_sub_key(key, f.name), getattr(val, f.name))
         exit_fn(key, val)
       else:
