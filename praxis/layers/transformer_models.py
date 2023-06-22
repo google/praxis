@@ -82,8 +82,10 @@ def _set_embedding_softmax_sharding_params_for_transformers(
     # Softmax weight is of shape [vocab_size, input_dim].
     embedding_softmax_p.weight_split_dims_mapping.wt = w_vd
   elif (
-      fdl.get_callable(embedding_softmax_p)
-      == embedding_softmax.SharedEmbeddingSoftmax
+      issubclass(
+          fdl.get_callable(embedding_softmax_p),
+          embedding_softmax.SharedEmbeddingSoftmax,
+      )
       or 'RecordingSharedEmbeddingSoftmax'
       in str(fdl.get_callable(embedding_softmax_p))
       or fdl.get_callable(embedding_softmax_p) == embedding_softmax.FullSoftmax
@@ -102,8 +104,10 @@ def _set_embedding_softmax_sharding_params_for_transformers(
   if (
       fdl.get_callable(embedding_softmax_p)
       == embedding_softmax.GShardSharedEmbeddingSoftmax
-      or fdl.get_callable(embedding_softmax_p)
-      == embedding_softmax.SharedEmbeddingSoftmax
+      or issubclass(
+          fdl.get_callable(embedding_softmax_p),
+          embedding_softmax.SharedEmbeddingSoftmax,
+      )
       or fdl.get_callable(embedding_softmax_p) == embedding_softmax.Embedding
   ):
     embedding_softmax_p.activation_split_dims_mapping.out = a_blv
