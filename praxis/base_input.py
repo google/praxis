@@ -31,6 +31,7 @@ from etils import epath
 import fiddle as fdl
 import jax
 from jax.lib import xla_client as xc
+import jax.tree_util
 import numpy as np
 from praxis import base_hyperparams
 from praxis import pax_fiddle
@@ -1036,11 +1037,26 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
     # `.get_input_specs()` is called. In practice, we typically call this
     # method only once at model initialization time.
     input_pipeline: BaseInput = instantiate(self.input_p)
-    if isinstance(input_pipeline.dataset, tf.data.Dataset):
+    if (
+        isinstance(input_pipeline.dataset, tf.data.Dataset)
+        and
+        # Only use dataset.element_spec to compute the input spec when all
+        # non-batch dimensions are defined.
+        # NOTE this is based on the assumption that the batch dimensions don't
+        # affect the variable shapes, so they can be ignored during model
+        # initialization. Currently paxml workflow uses this assumption during
+        # model initialization and input spec validation.
+        jax.tree_util.tree_reduce(
+            lambda c, x: c and x.shape[1:].is_fully_defined(),
+            input_pipeline.dataset.element_spec,
+            True,  # Initial value.
+        )
+    ):
       def tf_spec_to_jax(spec: tf.TensorSpec) -> jax.ShapeDtypeStruct:
         return jax.ShapeDtypeStruct(shape=spec.shape,
                                     dtype=spec.dtype.as_numpy_dtype())
       return jax.tree_map(tf_spec_to_jax, input_pipeline.dataset.element_spec)
+
     return jax.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
                         input_pipeline.get_next_padded())
 

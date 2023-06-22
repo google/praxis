@@ -44,6 +44,7 @@ instantiate = base_hyperparams.instantiate
 class TestInput(base_input.BaseInput):
   _iter: Any = dataclasses.field(init=False, repr=False)
   shuffle: bool = True
+  dataset_with_undef_dimension: bool = False
 
   def __post_init__(self):
     super().__post_init__()
@@ -64,6 +65,17 @@ class TestInput(base_input.BaseInput):
     return py_utils.NestedMap(data=t)
 
   def _get_dataset(self):
+    if self.dataset_with_undef_dimension:
+      # Creates a TF dataset with undefined (None) dimensions.
+      def data_generator():
+        for i in range(10):
+          yield [[i]]
+
+      return tf.data.Dataset.from_generator(
+          data_generator,
+          output_signature=tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+      )
+
     d = tf.data.Dataset.range(10)
     d = d.shard(self.num_infeed_hosts, self.infeed_host_index)
     if self.shuffle:
@@ -861,6 +873,20 @@ class InputSpecsProviderTest(test_utils.TestCase):
         input_pipeline.get_next_padded())
     spec_from_provider = spec_provider.get_input_specs()
     self.assertEqual(spec_from_data, spec_from_provider)
+
+  def test_dataset_input_specs_with_undef_dimension(self):
+    input_p = pax_fiddle.Config(
+        TestInput,
+        num_infeed_hosts=1,
+        infeed_host_index=0,
+        batch_size=2,
+        dataset_with_undef_dimension=True,
+    )
+    spec_provider_p = pax_fiddle.Config(
+        base_input.DatasetInputSpecsProvider, input_p=input_p
+    )
+    spec_provider = instantiate(spec_provider_p)
+    input_specs = spec_provider.get_input_specs()
 
 
 if __name__ == '__main__':
