@@ -1259,6 +1259,10 @@ def sample_decode_after_fprop(
         gumbel_prng_key=split_gumbel_prng_key,
     )
     new_ids, sample_logits = sampler_output.new_ids, sampler_output.logits
+    # Update additional decoder states that are in both sampler_output and val.
+    for k in sampler_output.keys() & val.keys():
+      val[k] = sampler_output[k]
+
     assert new_ids.shape == (sample_logits.shape[0],)
     assert new_ids.dtype == jnp.int32
 
