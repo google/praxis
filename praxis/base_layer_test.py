@@ -92,6 +92,9 @@ class MultipleLinearLayer(base_layer.BaseLayer):
 
   def setup(self):
     self.create_child('linear2', self.linear2_tpl)
+    # A dangling layer that is not passed through in __call__, won't have any
+    # variables.
+    self.create_child('linear_dangling', self.linear2_tpl)
 
   def __call__(self, x: base_layer.JTensor) -> base_layer.JTensor:
     return self.linear2(self.linear1(x))

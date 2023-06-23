@@ -2397,6 +2397,11 @@ class BaseLayer(nn.Module):
         **instance_fields_weight_hparams,
     }
     for name, child in child_layers.items():
+      # Some dangling child layers are created in setup() but fprop never pass
+      # through them, they wont't have any variables, and should not be
+      # quantized.
+      if not child.variables:
+        continue
       # example child_res {'params': {a:{}, b:{}}, 'non-trainable':{a:{}}}
       if return_pspec:
         child_res = child.quantized_partition_specs()
