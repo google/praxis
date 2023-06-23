@@ -376,20 +376,32 @@ class TransformerModelsTest(test_utils.TestCase):
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits)
 
-  @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
+  @parameterized.parameters(*list(itertools.product([True, False], repeat=3)))
   def test_lm_extend_n_step(
-      self, use_rotary_position_emb, share_embedding_and_softmax
+      self, use_rotary_position_emb, share_embedding_and_softmax, use_ngrammer
   ):
     vocab_size = 8
     num_layers = 2
     num_heads = 2
     dim_per_head = 4
+    ngrammer_params = None
+    if use_ngrammer:
+      ngrammer_params = pax_fiddle.Config(
+          ngrammer.VQNgrammer,
+          ngram_vocab_size=vocab_size**2,
+          ngram_emb_dim=2,
+          num_heads=num_heads,
+          concat_ngrams=True,
+          num_clusters=2,
+          dim_per_head=dim_per_head,
+      )
     p = pax_fiddle.Config(
         transformer_models.TransformerLm,
         name='jax_lm_layer',
         model_dims=num_heads * dim_per_head,
         model_type=transformer_models.LanguageModelType.CAUSAL,
         packed_input=False,
+        ngrammer_tpl=ngrammer_params,
         vocab_size=vocab_size,
     )
     stacked_transformer_tpl = p.stacked_transformer_tpl
@@ -400,7 +412,7 @@ class TransformerModelsTest(test_utils.TestCase):
     if not share_embedding_and_softmax:
       p.separate_embedding_tpl = pax_fiddle.Config(embedding_softmax.Embedding)
       p.softmax_tpl = pax_fiddle.Config(embedding_softmax.FullSoftmax)
-    seq_len = 4
+    seq_len = 6
     batch_size = 3
     # Turn on dconv as in Primer.
     params = p.stacked_transformer_tpl.transformer_layer_params_tpl
@@ -423,22 +435,11 @@ class TransformerModelsTest(test_utils.TestCase):
         vocab_size, size=(batch_size, seq_len)
     ).astype('int32')
     inputs = jnp.asarray(npy_inputs)
-    ninf = py_utils.get_large_negative_number(jnp.float32)
-    segment_mask = jnp.stack(
-        [
-            jnp.array(
-                [
-                    [0, ninf, ninf, ninf],
-                    [0, 0, ninf, ninf],
-                    [0, 0, 0, ninf],
-                    [0, 0, 0, 0],
-                ],
-                dtype=jnp.float32,
-            )
-        ]
-        * batch_size
-    )
-    segment_mask = segment_mask[:, jnp.newaxis, :, :]
+    input_emb = np.random.uniform(
+        size=(batch_size, seq_len, num_heads * dim_per_head)
+    ).astype(np.float32)
+    segment_mask = attentions.causal_mask(input_emb)
+    segment_mask = jnp.tile(segment_mask, (batch_size, 1, 1, 1))
     segment_pos = jnp.stack([jnp.arange(seq_len)] * batch_size)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
     with base_layer.JaxContext.new_context(hparams=context_params):
@@ -475,26 +476,46 @@ class TransformerModelsTest(test_utils.TestCase):
 
       # Ensure that calling extend_step 1 step at a time matches fprop.
       for step_i in range(seq_len):
+        inputs_prefix = inputs[:, step_i]
+        if step_i > 0 and use_ngrammer:
+          inputs_prefix = inputs[:, step_i - 1 : step_i + 1]
         xent_output, decoder_state = transformer_lm.apply(
             updated_vars,
-            inputs[:, step_i],
+            inputs_prefix,
             method=transformer_lm.extend_step,
-            segment_pos=segment_pos[:, step_i],
-            atten_mask=segment_mask[..., step_i, :],
             mutable=[DECODE_CACHE],
         )
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, step_i, :], xent_output.logits)
 
+      _, decoder_state = transformer_lm.apply(
+          initial_vars,
+          jnp.zeros_like(inputs),
+          jnp.ones_like(inputs),
+          method=transformer_lm.__call__,
+          mutable=[DECODE_CACHE],
+      )
+      logits = fprop_outputs.logits
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+
       # Ensure that calling extend_step k steps at a time matches fprop.
       k = 2
       for step_i in range(seq_len // k):
+        inputs_prefix = inputs[:, step_i * k : (step_i + 1) * k]
+        segment_pos_prefix = segment_pos[:, step_i * k : (step_i + 1) * k]
+        atten_mask_prefix = segment_mask[..., step_i * k : (step_i + 1) * k, :]
+        if step_i > 0 and use_ngrammer:
+          inputs_prefix = inputs[:, step_i * k - 1 : (step_i + 1) * k]
+          segment_pos_prefix = segment_pos[:, step_i * k - 1 : (step_i + 1) * k]
+          atten_mask_prefix = segment_mask[
+              ..., step_i * k : (step_i + 1) * k, :
+          ]
         xent_output, decoder_state = transformer_lm.apply(
             updated_vars,
-            inputs[:, step_i * k : (step_i + 1) * k],
+            inputs_prefix,
             method=transformer_lm.extend_step,
-            segment_pos=segment_pos[:, step_i * k : (step_i + 1) * k],
-            atten_mask=segment_mask[..., step_i * k : (step_i + 1) * k, :],
+            segment_pos=segment_pos_prefix,
+            atten_mask=atten_mask_prefix,
             mutable=[DECODE_CACHE],
         )
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)

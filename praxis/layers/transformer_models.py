@@ -836,13 +836,16 @@ class TransformerLm(base_layer.BaseLayer):
 
     # [B, T, D]
     input_emb = self.ngrammer(input_ids, input_emb, segment_pos=segment_pos)
-    # [B, 1, D]
-    input_emb = input_emb[:, -1:, :]
-    # [B, 1]
-    input_ids = input_ids[:, -1:]
-    if segment_pos is not None:
-      segment_pos = segment_pos[:, -1:]
 
+    time_step = self.get_decode_state('time_step')
+    if time_step > 0:
+      # During decoding for NGrammer, an extra prefix token is prepended to
+      # compute the bi-gram representation for the token at time step t
+      # when time_step > 1.
+      input_emb = input_emb[:, 1:, :]
+      input_ids = input_ids[:, 1:]
+      if segment_pos is not None:
+        segment_pos = segment_pos[:, 1:]
     return input_ids, input_emb, segment_pos
 
   def _softmax_xent(self, activations, segment_pos):
@@ -908,17 +911,30 @@ class TransformerLm(base_layer.BaseLayer):
       )
 
     is_single_token = inputs.ndim == 1
-
+    time_step = self.get_decode_state('time_step')
     if atten_mask is not None:
       prefix_len = 1 if is_single_token else inputs.shape[1]
       # TODO(pax): consider to consolidate the atten_mask shape to [B, L, S]
       # regardless of extending one or more steps.
-      if is_single_token:
-        assert atten_mask.ndim == 3, atten_mask.shape
-        assert atten_mask.shape[:2] == (b, 1), atten_mask.shape
+      if self.ngrammer_tpl is not None:
+        if is_single_token:
+          assert atten_mask.ndim == 3, atten_mask.shape
+          assert atten_mask.shape[:2] == (b, 1), atten_mask.shape
+        else:
+          assert atten_mask.ndim == 4, atten_mask.shape
+          mask_len = prefix_len
+          if time_step > 0:
+            # The mask doesn't include the extra prepended token to compute
+            # bi-gram representations.
+            mask_len = prefix_len - 1
+          assert atten_mask.shape[:3] == (b, 1, mask_len), atten_mask.shape
       else:
-        assert atten_mask.ndim == 4, atten_mask.shape
-        assert atten_mask.shape[:3] == (b, 1, prefix_len), atten_mask.shape
+        if is_single_token:
+          assert atten_mask.ndim == 3, atten_mask.shape
+          assert atten_mask.shape[:2] == (b, 1), atten_mask.shape
+        else:
+          assert atten_mask.ndim == 4, atten_mask.shape
+          assert atten_mask.shape[:3] == (b, 1, prefix_len), atten_mask.shape
 
     # Makes ids rank=2 for uniformity.
     # [B, T]
@@ -937,22 +953,24 @@ class TransformerLm(base_layer.BaseLayer):
 
     # Add Ngrammer layer if applicable.
     # [B, ?], [B, ?, D], [B, ?]
-    input_ids, input_emb, segment_pos = self._emb_ngrammer(
+    _, input_emb, segment_pos = self._emb_ngrammer(
         input_ids, input_emb, segment_pos
     )
 
     # [B, ?, D]
     transformer_inputs = self._add_pos_emb(input_emb, segment_pos)
 
-    if is_single_token or self.ngrammer_tpl is not None:
-      # Ngrammer always collapses output.
+    # Collapse NGrammer output only if we are decoding 1 token at a time.
+    collapse_ngrammer_output = False
+    if self.ngrammer_tpl is not None and transformer_inputs.shape[1] == 1:
+      collapse_ngrammer_output = True
+    if is_single_token or collapse_ngrammer_output:
       # [B, D]
       transformer_inputs = jnp.squeeze(transformer_inputs, 1)
       # [B]
       if segment_pos is not None:
         segment_pos = jnp.squeeze(segment_pos, 1)
 
-    time_step = self.get_decode_state('time_step')
     outputs = self.transformer.extend_step(
         transformer_inputs,
         time_step=time_step,
@@ -960,8 +978,18 @@ class TransformerLm(base_layer.BaseLayer):
         atten_mask=atten_mask,
     )
 
-    if inputs.ndim == 1 or self.ngrammer_tpl is not None:
+    if is_single_token:
       self.update_decode_state('time_step', time_step + 1)
+    elif self.ngrammer_tpl is not None:
+      # NGrammer decoding prepends an extra token at the front for every time
+      # step > 0, this is to ensure we can compute bi-gram representations for
+      # the first token in the chunk being decoded.
+      decode_length = inputs.shape[1]
+      if time_step > 0:
+        # Due to the addition of the extra token at the front, the real decode
+        # length is the input shape - 1.
+        decode_length = inputs.shape[1] - 1
+      self.update_decode_state('time_step', time_step + decode_length)
     else:
       self.update_decode_state('time_step', time_step + inputs.shape[1])
     if self.final_ln_tpl is not None:
