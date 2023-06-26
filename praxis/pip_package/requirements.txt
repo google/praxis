@@ -68,7 +68,7 @@ comm==0.1.3
     # via ipykernel
 contextlib2==21.6.0
     # via ml-collections
-contourpy==1.0.7
+contourpy==1.1.0
     # via matplotlib
 cycler==0.11.0
     # via matplotlib
@@ -107,13 +107,13 @@ flax==0.6.10
     # via
     #   -r praxis-requirements.in
     #   clu
-fonttools==4.39.4
+fonttools==4.40.0
     # via matplotlib
 fqdn==1.5.1
     # via jsonschema
 gast==0.4.0
     # via tensorflow
-google-auth==2.19.1
+google-auth==2.20.0
     # via
     #   google-auth-oauthlib
     #   tensorboard
@@ -121,7 +121,7 @@ google-auth-oauthlib==0.4.6
     # via tensorboard
 google-pasta==0.2.0
     # via tensorflow
-googleapis-common-protos==1.59.0
+googleapis-common-protos==1.59.1
     # via tensorflow-metadata
 graph-compression-google-research==0.0.4
     # via lingvo
@@ -131,7 +131,7 @@ grpcio==1.54.2
     # via
     #   tensorboard
     #   tensorflow
-h5py==3.8.0
+h5py==3.9.0
     # via tensorflow
 idna==3.4
     # via
@@ -142,7 +142,7 @@ importlib-resources==5.12.0
     # via
     #   etils
     #   orbax-checkpoint
-ipykernel==6.23.1
+ipykernel==6.23.2
     # via
     #   ipywidgets
     #   jupyter
@@ -151,7 +151,7 @@ ipykernel==6.23.1
     #   nbclassic
     #   notebook
     #   qtconsole
-ipython==8.13.2
+ipython==8.14.0
     # via
     #   ipykernel
     #   ipywidgets
@@ -175,7 +175,7 @@ jax @ git+https://github.com/google/jax
     #   orbax-checkpoint
 jax-bitempered-loss==0.0.2
     # via -r praxis-requirements.in
-jaxlib==0.4.11
+jaxlib==0.4.12
     # via
     #   chex
     #   clu
@@ -191,7 +191,7 @@ jinja2==3.1.2
     #   notebook
 joblib==1.2.0
     # via scikit-learn
-jsonpointer==2.3
+jsonpointer==2.4
     # via jsonschema
 jsonschema[format-nongpl]==4.17.3
     # via
@@ -210,7 +210,7 @@ jupyter-client==8.2.0
     #   qtconsole
 jupyter-console==6.6.3
     # via jupyter
-jupyter-core==5.3.0
+jupyter-core==5.3.1
     # via
     #   ipykernel
     #   jupyter-client
@@ -244,15 +244,15 @@ kiwisolver==1.4.4
     # via matplotlib
 libclang==16.0.0
     # via tensorflow
-libcst==1.0.0
+libcst==1.0.1
     # via fiddle
 lingvo==0.12.6
     # via -r praxis-requirements.in
 markdown==3.4.3
     # via tensorboard
-markdown-it-py==2.2.0
+markdown-it-py==3.0.0
     # via rich
-markupsafe==2.1.2
+markupsafe==2.1.3
     # via
     #   jinja2
     #   nbconvert
@@ -265,11 +265,11 @@ matplotlib-inline==0.1.6
     #   ipython
 mdurl==0.1.2
     # via markdown-it-py
-mistune==2.0.5
+mistune==3.0.1
     # via nbconvert
 ml-collections==0.1.1
     # via clu
-ml-dtypes==0.1.0
+ml-dtypes==0.2.0
     # via
     #   jax
     #   jaxlib
@@ -287,7 +287,7 @@ nbclassic==1.0.0
     # via notebook
 nbclient==0.8.0
     # via nbconvert
-nbconvert==7.4.0
+nbconvert==7.6.0
     # via
     #   jupyter
     #   jupyter-server
@@ -312,7 +312,7 @@ notebook==6.5.4
     #   jupyter-http-over-ws
 notebook-shim==0.2.3
     # via nbclassic
-numpy==1.24.3
+numpy==1.25.0
     # via
     #   -r praxis-requirements.in
     #   chex
@@ -349,7 +349,7 @@ optax==0.1.5
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax-checkpoint==0.2.4
+orbax-checkpoint==0.2.6
     # via flax
 overrides==7.3.1
     # via jupyter-server
@@ -375,7 +375,7 @@ pillow==9.5.0
     # via
     #   lingvo
     #   matplotlib
-platformdirs==3.5.1
+platformdirs==3.7.0
     # via jupyter-core
 prometheus-client==0.17.0
     # via
@@ -426,7 +426,7 @@ pygments==2.15.1
     #   nbconvert
     #   qtconsole
     #   rich
-pyparsing==3.0.9
+pyparsing==3.1.0
     # via matplotlib
 pyrsistent==0.19.3
     # via jsonschema
@@ -472,7 +472,7 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rich==13.4.1
+rich==13.4.2
     # via flax
 rsa==4.9
     # via google-auth
@@ -544,7 +544,7 @@ tensorflow-text==2.9.0
     # via
     #   -r praxis-requirements.in
     #   lingvo
-tensorstore==0.1.37
+tensorstore==0.1.38
     # via
     #   flax
     #   orbax-checkpoint
@@ -602,7 +602,7 @@ traitlets==5.9.0
     #   nbformat
     #   notebook
     #   qtconsole
-typing-extensions==4.6.2
+typing-extensions==4.6.3
     # via
     #   chex
     #   clu
@@ -615,7 +615,7 @@ typing-extensions==4.6.2
     #   typing-inspect
 typing-inspect==0.9.0
     # via libcst
-uri-template==1.2.0
+uri-template==1.3.0
     # via jsonschema
 urllib3==1.26.16
     # via
@@ -629,9 +629,9 @@ webencodings==0.5.1
     # via
     #   bleach
     #   tinycss2
-websocket-client==1.5.2
+websocket-client==1.6.0
     # via jupyter-server
-werkzeug==2.3.4
+werkzeug==2.3.6
     # via tensorboard
 wheel==0.40.0
     # via

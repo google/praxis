@@ -38,6 +38,7 @@ LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 PARAMS = base_layer.PARAMS
 AUX_LOSS = base_layer.AUX_LOSS
+HYPER_PARAMS = base_layer.HYPER_PARAMS
 SUMMARIES = base_layer.SUMMARIES
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 RANDOM = base_layer.RANDOM
@@ -399,6 +400,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
             SUMMARIES: 0,
             NON_TRAINABLE: 0,
             INTERMEDIATES: 0,
+            HYPER_PARAMS: 0,
         },
         split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
         metadata_params={
@@ -782,7 +784,12 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       variable_broadcast.append(NON_TRAINABLE)
     scan_fn = nn.scan(
         rematted_scan_fn,
-        variable_axes={SUMMARIES: 0, AUX_LOSS: 0, INTERMEDIATES: 0},
+        variable_axes={
+            SUMMARIES: 0,
+            AUX_LOSS: 0,
+            INTERMEDIATES: 0,
+            HYPER_PARAMS: 0,
+        },
         variable_carry=variable_carry,
         variable_broadcast=variable_broadcast,
         # Dropout keys will be split for each iteration.
@@ -1021,6 +1028,7 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
           variable_axes={
               PARAMS: 0,
               NON_TRAINABLE: 0,
+              HYPER_PARAMS: 0,
           },
           split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
           metadata_params={

@@ -20,11 +20,10 @@ import functools
 import inspect
 import pickle
 import textwrap
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from absl.testing import absltest
 import fiddle as fdl
-from fiddle.experimental import serialization as fdl_serialization
 from flax.core import frozen_dict
 from jax import numpy as jnp
 # Internal config_dict import from ml_collections
@@ -783,6 +782,40 @@ class NestedStructToTextTestCase(absltest.TestCase):
             "name : 'my_checkpoint_rules'",
         ],
     )
+
+  def test_ignore_flax_module_parent(self):
+    # The following setup leads to a situation where, during hyper-param
+    # collection in abstract_init_with_mdl_config, the parent attribute for
+    # `sub_layer` below is non-None. This was causing infinite recursion inside
+    # nested_struct_to_text, so this test ensures that the 'parent' field is
+    # ignored when traversing Flax modules.
+    class LayerWithSublayer(base_layer.BaseLayer):
+      sub_layer: base_layer.BaseLayer = pax_fiddle.instance_field(
+          FiddleToTextTestClass
+      )
+
+    class WeightedLoss(NamedTuple):
+      loss: Callable[..., Any]
+      weight: float = 1.0
+
+    class Model(base_layer.BaseLayer):
+      weighted_loss: WeightedLoss = None
+
+      def __call__(self, x):
+        return x
+
+    layer_cfg = pax_fiddle.Config(
+        Model,
+        weighted_loss=WeightedLoss(
+            loss=pax_fiddle.Config(LayerWithSublayer),
+            weight=10.0,
+        ),
+    )
+    model = pax_fiddle.build(layer_cfg)
+    hyper_params = model.abstract_init_with_mdl_config(1.0)
+    text_lines = nested_struct_to_text(hyper_params).splitlines()
+    self.assertIn('_hparams.weighted_loss[loss].sub_layer.a : 4', text_lines)
+    self.assertIn('_hparams.weighted_loss[weight] : 10.0', text_lines)
 
   def test_circular_reference_chain(self):
     p = SimpleTestChild.config(a=40, c=-1.3)

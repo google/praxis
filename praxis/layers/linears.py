@@ -71,7 +71,7 @@ class Linear(base_layer.BaseLayer):
   input_dims: int = 0
   output_dims: int = 0
   weight_init: Optional[WeightInit] = None
-  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -156,6 +156,7 @@ class FeedForward(base_layer.BaseLayer):
   output_dims: int = 0
   has_bias: bool = True
   linear_tpl: LayerTpl = template_field(Linear)
+  bias_tpl: LayerTpl = template_field(Bias)
   activation_tpl: pax_fiddle.Config[
       activations.BaseActivation
   ] = template_field(activations.ReLU)
@@ -177,9 +178,9 @@ class FeedForward(base_layer.BaseLayer):
     self.linear: Linear
     self.create_child('linear', linear_layer_p)
     if self.has_bias:
-      bias_layer_p = pax_fiddle.Config(
-          Bias, dims=self.output_dims, bias_init=self.bias_init
-      )
+      bias_layer_p = self.bias_tpl.clone()
+      bias_layer_p.set(dims=self.output_dims, bias_init=self.bias_init
+                       )
       if self.mesh_shape is not None and ap.out is not None:
         wp_bias = [ap.out[-1]]
         bias_layer_p.weight_split_dims_mapping.wt = wp_bias

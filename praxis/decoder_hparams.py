@@ -119,6 +119,8 @@ class SampleDecoderHParams(DecoderHParams):
     override_next_token_sampler_params: Whether to override, the next token
       sampler params from the decoder ones. Ideally, this should not be
       performed, but it is currently enabled for back-compatibility reasons.
+    optimize_eos: Whether to optimize the eos prediction by recording eos
+      probability at each step.
   """
   num_samples: int = 1
   # TODO(wangtao): supports per-example temperature.
@@ -135,3 +137,4 @@ class SampleDecoderHParams(DecoderHParams):
   controlled_decoding: Optional[decoder_utils.ControlledDecodingHParams] = None
   sort_samples: Optional[bool] = True
   override_next_token_sampler_params: bool = True
+  optimize_eos: bool = False

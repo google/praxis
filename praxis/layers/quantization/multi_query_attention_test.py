@@ -35,6 +35,8 @@ QuantizationType = quantization_hparams.QuantizationType
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
 
 
+# TODO(b/277357920): add mutiqueryattention quantization sync test.
+
 class MultiQueryAttentionTest(test_utils.TestCase):
 
   def setUp(self):

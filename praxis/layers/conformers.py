@@ -47,6 +47,7 @@ class DotProductAttentionWithContext(attentions.DotProductAttention):
   For use cases (2,3) it will use emulated local self attention.
   For use case (2) it is more efficient to use LocalSelfAttention.
   """
+
   left_context: Optional[int] = None
   right_context: Optional[int] = None
 
@@ -56,7 +57,8 @@ class DotProductAttentionWithContext(attentions.DotProductAttention):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+      relative_bias: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
     """Main attention function.
 
     Args:
@@ -96,6 +98,7 @@ class DotProductAttentionWithContextXL(attentions.DotProductAttentionXL):
   For use cases (2,3) it will use emulated local self attention.
   For use case (2) it is more efficient to use LocalSelfAttentionXL.
   """
+
   left_context: Optional[int] = None
   right_context: Optional[int] = None
 
@@ -105,7 +108,8 @@ class DotProductAttentionWithContextXL(attentions.DotProductAttentionXL):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+      relative_bias: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
     """Main attention function.
 
     Args:
@@ -152,11 +156,12 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     self_atten_tpl: Parameterization of the self attention layer.
     norm_tpl: Parameterization of the normalization layer.
     pre_layer_norm: Whether to apply norm before or after the layer.
-    residual_dropout_prob: Probability at which we apply dropout to the
-      residual layers, such that, residual(x, y) = (x + dropout(y)).
-    residual_dropout_tpl: Parameterization of residual dropout layer.
-      keep_prop will be reset to (1.0 - residual_dropout_prob).
+    residual_dropout_prob: Probability at which we apply dropout to the residual
+      layers, such that, residual(x, y) = (x + dropout(y)).
+    residual_dropout_tpl: Parameterization of residual dropout layer. keep_prop
+      will be reset to (1.0 - residual_dropout_prob).
   """
+
   residual_weight: float = 1.0
   input_weight: float = 1.0
   self_atten_tpl: LayerTpl = template_field(DotProductAttentionWithContext)
@@ -179,11 +184,12 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     params.keep_prob = 1.0 - self.residual_dropout_prob
     self.create_child('residual_dropout', params)
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: JTensor,
-               atten_mask: Optional[JTensor] = None) -> JTensor:
-
+  def __call__(
+      self,
+      inputs: JTensor,
+      paddings: JTensor,
+      atten_mask: Optional[JTensor] = None,
+  ) -> JTensor:
     unnormalized_inputs = inputs
 
     if self.pre_layer_norm:
@@ -220,7 +226,8 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
         query_vec=inputs,
         key_vec=inputs,
         value_vec=inputs,
-        atten_mask=atten_mask)[0]
+        atten_mask=atten_mask,
+    )[0]
 
     result = (
         self.residual_dropout(result) * self.residual_weight
@@ -251,8 +258,8 @@ class Conformer(base_layer.BaseLayer):
     kernel_size: Conv kernel size.
     ff_activation_tpl: Activation function used in the feedforward network.
     ff_residual_weight: Residual weight used in the fflayer.
-    ffn_dim_multiplier: Feed forward hidden dimension will be
-      ffn_dim_multiplier * model_dims.
+    ffn_dim_multiplier: Feed forward hidden dimension will be ffn_dim_multiplier
+      * model_dims.
     atten_num_heads: Number of attention heads.
     layer_order: Only mhsa, conv, mhsa_before_conv or conv_before_mhsa are
       supported
@@ -271,10 +278,10 @@ class Conformer(base_layer.BaseLayer):
     fflayer_start_tpl: Parameterization for the Feed forward layer at the
       beginning. If set to None, this layer is excluded.
     trans_atten_tpl: Parameterization of self-attention layer.
-    lconv_tpl: Parameterization of convolution layer. If set to None, this
-      layer is excluded.
-    fflayer_end_tpl: Parameterization for Feed forward layer at the end. If
-      set to None, this layer is excluded.
+    lconv_tpl: Parameterization of convolution layer. If set to None, this layer
+      is excluded.
+    fflayer_end_tpl: Parameterization for Feed forward layer at the end. If set
+      to None, this layer is excluded.
     fflayer_weight_sharing: If True, will ignore `fflayer_end_tpl`, and will
       make the fflayer_end layer as a weight-shared copy of the fflayer_start
       layer.
@@ -286,9 +293,9 @@ class Conformer(base_layer.BaseLayer):
   input_dims: Optional[int] = None
   model_dims: int = 512
   kernel_size: int = 32
-  ff_activation_tpl: pax_fiddle.Config[
-      activations.BaseActivation
-  ] = template_field(activations.Swish)
+  ff_activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
+      template_field(activations.Swish)
+  )
   ff_residual_weight: float = 0.5
   ffn_dim_multiplier: int = 4
   atten_num_heads: int = 8
@@ -420,10 +427,12 @@ class Conformer(base_layer.BaseLayer):
   def has_final_ln(self) -> bool:
     return hasattr(self, 'final_ln')
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: JTensor,
-               atten_mask: Optional[JTensor] = None) -> JTensor:
+  def __call__(
+      self,
+      inputs: JTensor,
+      paddings: JTensor,
+      atten_mask: Optional[JTensor] = None,
+  ) -> JTensor:
     """Conformer layer.
 
     Args:
@@ -442,18 +451,21 @@ class Conformer(base_layer.BaseLayer):
 
     if self.layer_order == 'mhsa':
       inputs = self.trans_atten(
-          inputs=inputs, paddings=paddings, atten_mask=atten_mask)
+          inputs=inputs, paddings=paddings, atten_mask=atten_mask
+      )
     elif self.layer_order == 'conv':
       inputs = self.lconv(inputs, paddings)
     elif self.layer_order == 'mhsa_before_conv':
       inputs = self.trans_atten(
-          inputs=inputs, paddings=paddings, atten_mask=atten_mask)
+          inputs=inputs, paddings=paddings, atten_mask=atten_mask
+      )
       inputs = self.lconv(inputs, paddings)
     else:
       assert self.layer_order == 'conv_before_mhsa'
       inputs = self.lconv(inputs, paddings)
       inputs = self.trans_atten(
-          inputs=inputs, paddings=paddings, atten_mask=atten_mask)
+          inputs=inputs, paddings=paddings, atten_mask=atten_mask
+      )
 
     if self.has_fflayer_end:
       inputs = self.fflayer_end(inputs, paddings)

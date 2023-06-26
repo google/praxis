@@ -44,7 +44,7 @@ from praxis.layers.attentions import RelativeBias
 from praxis.layers.attentions import segment_mask
 from praxis.layers.augmentations import MaskedLmDataAugmenter
 from praxis.layers.augmentations import TemporalShifting
-from praxis.layers.base_ops import Einsum
+from praxis.layers.base_ops import EinsumOp
 from praxis.layers.bregman import BregmanPCA
 from praxis.layers.checkpoint_policy import AutodiffCheckpointType
 from praxis.layers.conformers import Conformer
@@ -56,6 +56,7 @@ from praxis.layers.convolutions import ConvBNAct
 from praxis.layers.convolutions import ConvBNActWithPadding
 from praxis.layers.convolutions import DepthwiseConv1D
 from praxis.layers.convolutions import LightConv1D
+from praxis.layers.einsum import Einsum
 from praxis.layers.embedding_softmax import Embedding
 from praxis.layers.embedding_softmax import FullSoftmax
 from praxis.layers.embedding_softmax import GShardSharedEmbeddingSoftmax
@@ -78,6 +79,7 @@ from praxis.layers.models import BertModel
 from praxis.layers.models import ClassificationMLPModel
 from praxis.layers.models import ClassificationModel
 from praxis.layers.models import LanguageModel
+from praxis.layers.models import LanguageModelDPO
 from praxis.layers.models import SequenceModel
 from praxis.layers.ngrammer import get_bigram_ids
 from praxis.layers.ngrammer import Ngrammer

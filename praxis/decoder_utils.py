@@ -16,14 +16,17 @@
 """Util functions for decoder."""
 
 import dataclasses
+import functools
 import inspect
-from typing import Callable, cast, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union, cast
 
 from flax import core as flax_core
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
+from praxis import py_utils
 from praxis import pytypes
+
 
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 JTensor = pytypes.JTensor
@@ -553,3 +556,50 @@ def coerce_to_expanded_extend_step_fn(
     return extend_step_fn(model, extend_ids, segment_pos)
 
   return _expanded_extend_step_fn
+
+
+def collect_results_to_optimize_eos(result: NestedMap,
+                                    decode_length_shift: int = 0) -> NestedMap:
+  """Collects decoding results when optimize_eos=True."""
+  new_result = result.DeepCopy()
+  cumulative_logprobs = jnp.cumsum(new_result.logprobs, -1)
+  valid_logprobs = jnp.where(
+      jnp.arange(new_result.logprobs.shape[1]) <= result.start_step,
+      jnp.zeros_like(new_result.logprobs),
+      cumulative_logprobs,
+  )
+  eos_logprobs = jnp.where(
+      jnp.arange(new_result.eos_logprobs.shape[1]) <= result.start_step,
+      jnp.ones_like(new_result.eos_logprobs)
+      * py_utils.get_large_negative_number(jnp.float32),
+      new_result.eos_logprobs,
+  )
+  end_logprobs = (
+      jnp.pad(valid_logprobs, [[0, 0], [1, 0]])[:, :-1] + eos_logprobs
+  )
+  best_pos = jnp.argmax(end_logprobs, -1)
+  batch_dim = jnp.arange(new_result.output_ids.shape[0])
+  new_result.output_ids = new_result.output_ids.at[batch_dim, best_pos].set(
+      new_result.eos_ids[batch_dim, best_pos]
+  )
+  new_result.output_ids = jnp.where(
+      jnp.arange(new_result.output_ids.shape[1])[jnp.newaxis, :]
+      > best_pos[:, jnp.newaxis],
+      jnp.zeros_like(new_result.output_ids),
+      new_result.output_ids,
+  )
+  new_result.logprobs = new_result.logprobs.at[batch_dim, best_pos].set(
+      new_result.eos_logprobs[batch_dim, best_pos]
+  )
+  new_result.logprobs = jnp.where(
+      jnp.arange(new_result.logprobs.shape[1])[jnp.newaxis, :]
+      > best_pos[:, jnp.newaxis],
+      jnp.ones_like(new_result.logprobs),
+      new_result.logprobs,
+  )
+  new_result.decode_lengths = best_pos + 1 - decode_length_shift
+  new_result.done = jnp.ones_like(new_result.done)
+  new_result.has_eos = jnp.ones_like(new_result.has_eos)
+  del new_result.eos_logprobs
+  del new_result.eos_ids
+  return new_result

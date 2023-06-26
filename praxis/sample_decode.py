@@ -38,6 +38,7 @@ NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
 StreamingResultCallback = decoder_utils.StreamingResultCallback
 
+HYPER_PARAMS = base_layer.HYPER_PARAMS
 RANDOM = base_layer.RANDOM
 PARAMS = base_layer.PARAMS
 NON_TRAINABLE = base_layer.NON_TRAINABLE
@@ -173,7 +174,7 @@ def _get_argmax_ids(top_k_argmax_ids: JTensor, top_k_items: JTensor) -> JTensor:
 def get_top_k(
     logits: JTensor,
     top_k: int,
-    per_example_top_k: JTensor,
+    per_example_top_k: Optional[JTensor],
     top_k_recall_target: float = 1.0,
 ) -> Sequence[JTensor]:
   """Gets top k logits and indices from given top K.
@@ -535,6 +536,7 @@ class BaseNextTokenSampler(
   def init_decode_loop_state(
       self,
       decode_loop_state: NestedMap,
+      model: Optional[base_layer.BaseLayerApi] = None,
       batch_size: Optional[int] = None,
       eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
   ) -> NestedMap:
@@ -691,6 +693,7 @@ def sample_decode(
     ] = None,
     return_entropy_score: bool = False,
     process_result_fn: Optional[decoder_utils.ProcessResultFn] = None,
+    optimize_eos: bool = False,
 ) -> NestedMap:
   """Sampling decode the input batch.
 
@@ -776,6 +779,8 @@ def sample_decode(
     return_entropy_score: Whether to return entropy score for every token.
     process_result_fn: Optional function that further processes the results,
       such as performing suffix scoring.
+    optimize_eos: Record the probability with eos ending at every step then pick
+      the best one.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -838,6 +843,7 @@ def sample_decode(
         use_top_k_for_logprobs,
         controlled_decoding,
         return_entropy_score,
+        optimize_eos
     )
     if process_result_fn is not None:
       result = process_result_fn(model, result)
@@ -877,6 +883,7 @@ def sample_decode_after_fprop(
         decoder_utils.ControlledDecodingHParams
     ] = None,
     return_entropy_score: bool = False,
+    optimize_eos: bool = False,
 ) -> NestedMap:
   """Sampling decode after init decode state the input batch.
 
@@ -959,6 +966,8 @@ def sample_decode_after_fprop(
       instead of all logits.
     controlled_decoding: Params to configure blockwise controlled decoding.
     return_entropy_score: Whether to return entropy score for every token.
+    optimize_eos: Record the probability with eos ending at every step then pick
+      the best one.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -1017,12 +1026,15 @@ def sample_decode_after_fprop(
     # broadcast it to shape [batch_size * num_samples].
     # If temperature is of 2D shape [batch_size, num_samples] simply flatten it.
     if isinstance(temperature, JTensor):
-      if temperature.ndim == 2:  # pytype: disable=attribute-error
-        if temperature.shape != (original_batch_size, num_samples):  # pytype: disable=attribute-error
+      if temperature.ndim == 2:
+        if cf_guidance_scale is not None:
+          expected_shape = (original_batch_size // 2, num_samples)
+        else:
+          expected_shape = (original_batch_size, num_samples)
+        if temperature.shape != expected_shape:
           raise ValueError(
               '2D Dynamic temperature should have shape: '
-              f'({original_batch_size}, {num_samples}), but it has shape: '
-              f'{temperature.shape}.'  # pytype: disable=attribute-error
+              f'{expected_shape}, but it has shape: {temperature.shape}.'
           )
         temperature = jnp.reshape(temperature, (-1,))
       else:
@@ -1080,9 +1092,16 @@ def sample_decode_after_fprop(
     cf_guidance_scale = jnp.array(cf_guidance_scale)
     cf_guidance_scale = cf_guidance_scale[jnp.newaxis, :, jnp.newaxis]
   elif isinstance(cf_guidance_scale, JTensor):
-    assert cf_guidance_scale.ndim == 2
-    assert cf_guidance_scale.shape[-1] == num_samples
-    cf_guidance_scale = cf_guidance_scale[:, :, jnp.newaxis]
+    if cf_guidance_scale.ndim == 2:
+      assert cf_guidance_scale.shape[-1] == num_samples
+      cf_guidance_scale = cf_guidance_scale[:, :, jnp.newaxis]
+    elif cf_guidance_scale.ndim == 1:
+      cf_guidance_scale = cf_guidance_scale[:, jnp.newaxis, jnp.newaxis]
+    else:
+      raise ValueError(
+          'cf_guidance_scale must be of rank 1 or 2, get'
+          ' {cf_guidance_scale.shape} instead'
+      )
 
   if isinstance(temperature, JTensor):
     temperature = temperature[:, jnp.newaxis]
@@ -1151,9 +1170,20 @@ def sample_decode_after_fprop(
   val.decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
   # We use a positive value of 1.0 to indicate blank or padded positions.
   val.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
+  if optimize_eos:
+    assert not isinstance(
+        eos_id, JTensor
+    ), 'only a list of eos ids are supported when optimize_eos=True'
+    assert (
+        not use_top_k_for_logprobs
+    ), 'use_top_k_for_logprobs is not supported when optimize_eos=True'
+    val.eos_logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
+    val.eos_ids = jnp.zeros_like(output_ids, dtype=jnp.float32)
   if return_entropy_score:
     val.entropy = jnp.zeros_like(output_ids, dtype=jnp.float32)
-  val = next_token_sampler.init_decode_loop_state(val, batch_size, eos_id)
+  val = next_token_sampler.init_decode_loop_state(
+      val, model, batch_size, eos_id
+  )
 
   if result_callback is not None and result_callback.init_fn is not None:
     result_callback.init_fn((original_batch_size, num_samples))
@@ -1213,9 +1243,15 @@ def sample_decode_after_fprop(
       )
     else:
       split_gumbel_prng_key = None
+    if optimize_eos:
+      assert eos_id
+      next_token_logits = logits.at[:, eos_id].set(
+          py_utils.get_large_negative_number(jnp.float32))
+    else:
+      next_token_logits = logits
     sampler_output = next_token_sampler(
         model,
-        logits,
+        next_token_logits,
         temperature,
         val,
         per_example_top_p=per_example_top_p,
@@ -1223,6 +1259,10 @@ def sample_decode_after_fprop(
         gumbel_prng_key=split_gumbel_prng_key,
     )
     new_ids, sample_logits = sampler_output.new_ids, sampler_output.logits
+    # Update additional decoder states that are in both sampler_output and val.
+    for k in sampler_output.keys() & val.keys():
+      val[k] = sampler_output[k]
+
     assert new_ids.shape == (sample_logits.shape[0],)
     assert new_ids.dtype == jnp.int32
 
@@ -1279,15 +1319,21 @@ def sample_decode_after_fprop(
         done_at_this_step, decode_lengths, val.decode_lengths
     )
 
+    logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
     if use_top_k_for_logprobs and sampler_output.Has('logprobs_at_new_ids'):
       logprobs_at_new_ids = sampler_output.logprobs_at_new_ids
     else:
-      logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
       logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size), new_ids].get()
     logprobs_at_new_ids = jnp.where(
         prev_done, jnp.ones_like(logprobs_at_new_ids), logprobs_at_new_ids
     )
     val.logprobs = val.logprobs.at[:, step + 1].set(logprobs_at_new_ids)
+    if optimize_eos:
+      eos_logits = logits.at[:, eos_id].add(1e6)
+      best_eos_id = jnp.argmax(eos_logits, axis=-1)
+      val.eos_ids = val.eos_ids.at[:, step + 1].set(best_eos_id)
+      val.eos_logprobs = val.eos_logprobs.at[:, step + 1].set(
+          logprobs[jnp.arange(batch_size), best_eos_id])
     if hasattr(val, 'entropy'):
       val.entropy = val.entropy.at[:, step + 1].set(
           -jnp.sum(logprobs * jnp.exp(logprobs), axis=-1))
@@ -1330,11 +1376,14 @@ def sample_decode_after_fprop(
         outfeed_tensors.decode_lengths = (
             jnp.ones_like(val.decode_lengths) * result_callback.interval_steps
         )
-        outfeed_tensors.scores = jnp.sum(
-            # Padded logprobs can have values of 1.0, so we cap it to 0.0.
-            jnp.minimum(_get_slice(val.logprobs), 0.0),
-            axis=-1,
-        )
+        if hasattr(val, 'prefix_scores'):
+          outfeed_tensors.scores = val.prefix_scores
+        else:
+          outfeed_tensors.scores = jnp.sum(
+              # Padded logprobs can have values of 1.0, so we cap it to 0.0.
+              jnp.minimum(_get_slice(val.logprobs), 0.0),
+              axis=-1,
+          )
         outfeed_tensors.done = val.done
         outfeed_tensors = jax.tree_map(
             lambda x: split_batch_dim(x, 0, num_samples), outfeed_tensors
@@ -1424,7 +1473,7 @@ def sample_decode_after_fprop(
 
     scan_fn = nn.scan(
         scan_body,
-        variable_axes={AUX_LOSS: 0, SUMMARIES: 0},
+        variable_axes={AUX_LOSS: 0, SUMMARIES: 0, HYPER_PARAMS: 0},
         variable_broadcast=[PARAMS, NON_TRAINABLE],
         variable_carry=[DECODE_CACHE, PREFIX_DECODE_CACHE],
         split_rngs={RANDOM: True},
@@ -1477,6 +1526,14 @@ def sample_decode_after_fprop(
 
   if result_callback is not None and result_callback.done_fn is not None:
     result_callback.done_fn()
+
+  if optimize_eos:
+    if fprop_for_prefix:
+      decode_length_shift = max_prefix_len
+    else:
+      decode_length_shift = 0
+    result = decoder_utils.collect_results_to_optimize_eos(
+        result, decode_length_shift=max_prefix_len)
 
   if return_result_for_suffix_score:
     return result

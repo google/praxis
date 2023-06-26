@@ -197,13 +197,16 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     outputs_q = attn_q.apply(initial_vars_q, inputs)
     self.assertAllClose(outputs_f, outputs_q)
 
+  @parameterized.parameters(
+      QuantizationParams(mode=QuantizationMode.TRAINING), None
+  )
   # test case copied from test_mhd_projection_01.
-  def test_mhd_projection_01_quantized(self):
+  def test_mhd_projection_01_quantized(self, quantization):
     p_f = pax_fiddle.Config(attentions.AttentionProjection, name='_attn_proj_f')
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
+        quantization=quantization,
     )
     for p in [p_f, p_q]:
       p.input_dim = 16
@@ -215,13 +218,16 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     self.run_and_compare(p_f, p_q, inputs)
 
   # test case copied from test_mhd_projection_02.
-  @parameterized.parameters([False, True])
-  def test_mhd_projection_02_quantized(self, use_nhd_shape):
+  @parameterized.product(
+      use_nhd_shape=[False, True],
+      quantization=[QuantizationParams(mode=QuantizationMode.TRAINING), None],
+  )
+  def test_mhd_projection_02_quantized(self, use_nhd_shape, quantization):
     p_f = pax_fiddle.Config(attentions.AttentionProjection, name='_attn_proj_f')
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
+        quantization=quantization,
     )
     for p in [p_f, p_q]:
       p.input_dim = 16
@@ -234,12 +240,15 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     self.run_and_compare(p_f, p_q, inputs)
 
   # test case copied from test_mhd_projection_var_stats.
-  def test_mhd_projection_var_stats_quantized(self):
+  @parameterized.parameters(
+      QuantizationParams(mode=QuantizationMode.TRAINING), None
+  )
+  def test_mhd_projection_var_stats_quantized(self, quantization):
     p_f = pax_fiddle.Config(attentions.AttentionProjection, name='_attn_proj_f')
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
+        quantization=quantization,
     )
     for p in [p_f, p_q]:
       p.input_dim = 256
@@ -259,14 +268,19 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
         py_utils.NestedMap.FromNestedDict(initial_vars_q['params']), self)
 
   # test case copied from test_combine_qkv_with_attention_combine_dims.
-  def test_combine_qkv_with_attention_combine_dims_quantized(self):
+  @parameterized.parameters(
+      QuantizationParams(mode=QuantizationMode.TRAINING), None
+  )
+  def test_combine_qkv_with_attention_combine_dims_quantized(
+      self, quantization
+  ):
     p_f = pax_fiddle.Config(
         attentions.CombinedQKVProjectionLayer, name='_attn_qkv_f'
     )
     p_q = pax_fiddle.Config(
         qattentions.CombinedQKVProjectionLayer,
         name='_attn_qkv_q',
-        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
+        quantization=quantization,
     )
     for p in [p_f, p_q]:
       p.input_dim = 64
@@ -431,11 +445,11 @@ class QuantizeAttentionTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(123456)
 
-  @parameterized.named_parameters(
-      ('PTQ', QuantizationType.PTQ),
-      ('AQT', QuantizationType.AQT),
+  @parameterized.product(
+      quantization_type=[QuantizationType.PTQ, QuantizationType.AQT],
+      use_bias=[True, False],
   )
-  def test_quantize_attention_projection(self, quantization_type):
+  def test_quantize_attention_projection(self, quantization_type, use_bias):
     p = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
@@ -447,6 +461,7 @@ class QuantizeAttentionTest(test_utils.TestCase):
             quantization_type=quantization_type,
             mode=QuantizationMode.TRAINING,
         ),
+        use_bias=use_bias,
     )
     p.input_dim = 16
     p.num_heads = 2
@@ -463,32 +478,40 @@ class QuantizeAttentionTest(test_utils.TestCase):
           initial_vars, mutable=[], method=layer.quantize_weight)
 
     self.assertEqual(len(res), 1)
-    self.assertEqual(len(res[base_layer.PARAMS]), 2)
+    self.assertEqual(len(res[base_layer.PARAMS]), 3 if use_bias else 2)
     self.assertEqual(res[base_layer.PARAMS]['w'].shape, (2, 5, 16))
     self.assertEqual(res[base_layer.PARAMS]['w_quantized_scale'].shape, (16,))
+    if use_bias:
+      self.assertEqual(res[base_layer.PARAMS]['b'].shape, (16,))
 
     pspec, _ = layer.apply(
         initial_vars, mutable=[], method=layer.quantized_partition_specs
     )
+    expected_pspec_params = {
+        'w': base_layer.BoxedPartitionSpec(
+            meta=jax.sharding.PartitionSpec('mdl', 'data')
+        ),
+        'w_quantized_scale': base_layer.BoxedPartitionSpec(
+            meta=jax.sharding.PartitionSpec('mdl')
+        ),
+    }
+    if use_bias:
+      expected_pspec_params['b'] = base_layer.BoxedPartitionSpec(
+          meta=jax.sharding.PartitionSpec(None)
+      )
     expected_pspec = {
-        'params': {
-            'w': base_layer.BoxedPartitionSpec(
-                meta=jax.sharding.PartitionSpec('mdl', 'data')
-            ),
-            'w_quantized_scale': base_layer.BoxedPartitionSpec(
-                meta=jax.sharding.PartitionSpec('mdl')
-            ),
-        }
+        'params': expected_pspec_params,
     }
     self.assertEqual(pspec, expected_pspec)
 
-  @parameterized.named_parameters(
-      ('PTQ_symmetric', QuantizationType.PTQ, True),
-      ('AQT_symmetric', QuantizationType.AQT, True),
-      ('PTQ_asymmetric', QuantizationType.PTQ, False),
-      ('AQT_asymmetric', QuantizationType.AQT, False),
+  @parameterized.product(
+      quantization_type=[QuantizationType.PTQ, QuantizationType.AQT],
+      use_symmetric=[True, False],
+      use_bias=[True, False],
   )
-  def test_quantize_attention_qkv(self, quantization_type, use_symmetric):
+  def test_quantize_attention_qkv(
+      self, quantization_type, use_symmetric, use_bias
+  ):
     p = pax_fiddle.Config(
         qattentions.CombinedQKVProjectionLayer,
         name='_combined_qkv',
@@ -507,6 +530,7 @@ class QuantizeAttentionTest(test_utils.TestCase):
                 use_symmetric=use_symmetric
             ),
         ),
+        use_bias=use_bias,
     )
     layer = instantiate(p)
     inputs = jnp.ones((4, 5), dtype=p.dtype)
@@ -549,6 +573,13 @@ class QuantizeAttentionTest(test_utils.TestCase):
           base_layer.BoxedPartitionSpec(
               meta=jax.sharding.PartitionSpec(None, 'mdl', 'data')
           )
+      )
+
+    if use_bias:
+      expected_shape[base_layer.PARAMS]['b'] = (3, 6, 2)
+      expected_types[base_layer.PARAMS]['b'] = p.dtype
+      expected_pspec['params']['b'] = base_layer.BoxedPartitionSpec(
+          meta=jax.sharding.PartitionSpec(None, 'mdl', 'data')
       )
 
     self.assertEqual(shapes, expected_shape)

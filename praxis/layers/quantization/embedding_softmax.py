@@ -119,15 +119,11 @@ class Embedding(embedding_softmax.Embedding):
         )
       elif self.quantization.quantization_type == QuantizationType.AQT:
         contract_dims = quantized_operations.eqn_to_weight_contract_dims(eqn)
-        emb_var, scale, zp = self.weight_quantizer.quantize(
+        emb_var, scale_var, zp_var = self.weight_quantizer.quantize(
             emb_var,
             contract_dims,
-            squeeze_scale=False,
+            squeeze_scale=True,
             quantized_dtype=emb_var.dtype)
-
-        emb_var = emb_var * scale
-        if zp is not None:
-          emb_var = jnp.subtract(emb_var, zp)
 
     if self.lookup_style == 'index':
       embs = jnp.asarray(emb_var)[(ids,)]
@@ -140,7 +136,10 @@ class Embedding(embedding_softmax.Embedding):
     else:
       raise ValueError('Unknown lookup style.')
 
-    if self.quantization.mode == QuantizationMode.INFERENCE:
+    if (
+        self.quantization.mode == QuantizationMode.INFERENCE
+        or self.quantization.quantization_type == QuantizationType.AQT
+    ):
       scale = jnp.expand_dims(scale_var[(ids,)], axis=2)
       embs = jnp.multiply(embs, scale)
       if not self.quantization.weight_params.use_symmetric:
@@ -288,16 +287,11 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
       emb_var = linear_layer.theta.w
       if self.quantization.quantization_type == QuantizationType.AQT:
         contract_dims = quantized_operations.eqn_to_weight_contract_dims(eqn)
-        emb_var, scale, zp = self.weight_quantizer.quantize(
+        emb_var, scale_var, zp_var = self.weight_quantizer.quantize(
             emb_var,
             contract_dims,
-            squeeze_scale=False,
+            squeeze_scale=True,
             quantized_dtype=emb_var.dtype)
-        # TODO(rybakov) switch to AQT style.
-        emb_var = emb_var * scale
-
-        if zp is not None:
-          emb_var = jnp.subtract(emb_var, zp)
 
       elif self.quantization.quantization_type == QuantizationType.FQ:
         if self.quantization.act_params is not None:
@@ -349,7 +343,10 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
     else:
       raise ValueError('Unknown lookup style.')
 
-    if self.quantization.mode == QuantizationMode.INFERENCE:
+    if (
+        self.quantization.mode == QuantizationMode.INFERENCE
+        or self.quantization.quantization_type == QuantizationType.AQT
+    ):
       scale = jnp.expand_dims(scale_var[(ids,)], axis=2)
       embs = jnp.multiply(embs, scale)
       if not self.quantization.weight_params.use_symmetric:

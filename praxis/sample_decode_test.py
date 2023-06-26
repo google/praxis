@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """Unit tests for sample_decode."""
+from typing import Optional, Sequence, Union
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -31,6 +32,7 @@ from praxis import test_utils
 NestedMap = py_utils.NestedMap
 WeightHPrams = base_layer.WeightHParams
 instantiate = base_layer.instantiate
+JTensor = base_layer.JTensor
 
 RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
@@ -57,6 +59,84 @@ class TestNextTokenSampler(sample_decode.BaseNextTokenSampler):
         gumbel_prng_key,
     )
     return NestedMap(new_ids=jnp.array([1234, 2345]), logits=logits)
+
+
+class TestNextTokenSamplerWithAdditionalState(
+    sample_decode.BaseNextTokenSampler
+):
+
+  def init_decode_loop_state(
+      self,
+      decode_loop_state: NestedMap,
+      model: Optional[base_layer.BaseLayerApi] = None,
+      batch_size: Optional[int] = None,
+      eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
+  ) -> NestedMap:
+    """Initialize addition decode loop state."""
+    decode_loop_state.mock_state = jnp.zeros(shape=batch_size, dtype=jnp.bool_)
+    return decode_loop_state
+
+  def __call__(
+      self,
+      mdl,
+      logits,
+      temperature,
+      decode_loop_state,
+      per_example_top_p,
+      per_example_top_k,
+      gumbel_prng_key,
+  ):
+    del (
+        mdl,
+        temperature,
+        per_example_top_p,
+        per_example_top_k,
+        gumbel_prng_key,
+    )
+    # Update additional states (Change additional states here).
+    return NestedMap(
+        new_ids=jnp.array([1234, 2345]),
+        logits=logits,
+        mock_state=jnp.ones_like(decode_loop_state.mock_state, dtype=jnp.bool_),
+    )
+
+
+class TestModelWithLogits(base_model.BaseModel):
+  use_dummy_next_token_sampler: bool = True
+  vocab_size: int = 0
+  num_samples: int = 0
+  seq_len: int = 0
+  batch_size: int = 0
+  logits: jnp.array = None
+
+  def setup(self) -> None:
+    super().setup()
+    assert self.logits is not None
+    expected_shape = (self.seq_len,
+                      self.batch_size * self.num_samples, self.vocab_size)
+    assert self.logits.shape == expected_shape, (
+        self.logits.shape,
+        expected_shape,
+    )
+    self.next_token_sampler = base_layer.instantiate(
+        pax_fiddle.Config(
+            sample_decode.DefaultNextTokenSampler, top_k=0, top_p=1.0
+        )
+    )
+
+  def __call__(self, *args, **kwargs):
+    del args, kwargs
+
+  def extend_step(self, ids, segment_pos):
+    assert segment_pos.shape == (self.batch_size * self.num_samples,), (
+        segment_pos.shape,
+        (self.batch_size * self.num_samples,),
+    )
+    time_step = segment_pos[0] + 1
+    logits_at_t = self.logits[time_step, :, :]
+    self.add_summary('logits', logits_at_t)
+    self.add_summary('time_step', time_step)
+    return logits_at_t
 
 
 class TestModel(base_model.BaseModel):
@@ -101,6 +181,41 @@ class TestModel(base_model.BaseModel):
     logits_at_t = self.theta.logits[time_step, :, :]
     self.add_summary('logits', logits_at_t)
     self.add_summary('time_step', time_step)
+    return logits_at_t
+
+
+class TestModelWithAdditionalState(base_model.BaseModel):
+  vocab_size: int = 0
+  num_samples: int = 0
+  seq_len: int = 0
+  batch_size: int = 0
+
+  def setup(self) -> None:
+    super().setup()
+    logits_wp = base_layer.WeightHParams(
+        shape=[
+            self.seq_len,
+            self.batch_size * self.num_samples,
+            self.vocab_size,
+        ]
+    )
+    self.create_variable('logits', logits_wp)
+    self.next_token_sampler = base_layer.instantiate(
+        pax_fiddle.Config(TestNextTokenSamplerWithAdditionalState)
+    )
+
+  def __call__(self, *args, **kwargs):
+    # A dummy __call__ function
+    del args, kwargs
+
+  # do something here
+  def extend_step(self, ids, segment_pos):
+    assert segment_pos.shape == (self.batch_size * self.num_samples,), (
+        segment_pos.shape,
+        (self.batch_size * self.num_samples,),
+    )
+    time_step = segment_pos[0] + 1
+    logits_at_t = self.theta.logits[time_step, :, :]
     return logits_at_t
 
 
@@ -578,7 +693,6 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     print('logits_summary', logits_summary)
     print('time_step_summary', time_step_summary)
     self.assertAllClose(logits_var, logits_summary)
-    # from IPython import embed; embed()
     if use_dummy_next_token_sampler:
       self.assertAllClose(
           new_ids_summary, jnp.tile(jnp.array([1234, 2345]), [3, 1])
@@ -596,6 +710,221 @@ class SampleDecodeHelperTest(test_utils.TestCase):
           entropy, result['entropy'][0], decimal=5)
     else:
       self.assertNotIn('entropy', result)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='cf_guidance_scale_1d',
+          cf_guidance_scale_1d=True,
+      ),
+      dict(
+          testcase_name='cf_guidance_scale_2d',
+          cf_guidance_scale_1d=False,
+      ),
+  )
+  def test_sample_decode_cf_guidance(self, cf_guidance_scale_1d):
+    batch_size = 1
+    num_samples = 2
+    seq_len = 3
+    vocab_size = 4
+    model_p = pax_fiddle.Config(
+        TestModel,
+        name='test_model',
+        batch_size=batch_size * 2,
+        num_samples=num_samples,
+        seq_len=seq_len,
+        vocab_size=vocab_size,
+        use_dummy_next_token_sampler=False,
+    )
+
+    def extend_step_fn(mdl, ids, segment_pos):
+      logits = mdl.extend_step(ids, segment_pos=segment_pos)
+      return logits
+
+    def transform_decode_state_fn(mdl, transform_fn):
+      del mdl
+      del transform_fn
+
+    model = instantiate(model_p)
+    init_vars = model.init(rngs=jax.random.PRNGKey(1234))
+    logits_var = init_vars['params']['logits']
+    # One can override logits to inject logits to be used during decoding.
+
+    input_ids = jnp.zeros([batch_size * 2, seq_len], dtype=jnp.int32)
+    input_paddings = jnp.zeros([batch_size * 2, seq_len], dtype=jnp.float32)
+    if cf_guidance_scale_1d:
+      cf_guidance_scale = jnp.ones([batch_size], dtype=jnp.float32) * 1.75
+    else:
+      cf_guidance_scale = (
+          jnp.ones([batch_size, num_samples], dtype=jnp.float32) * 1.75
+      )
+
+    def decode_fn(model, input_ids, input_paddings):
+      return sample_decode.sample_decode(
+          model,
+          extend_step_fn,
+          transform_decode_state_fn,
+          None,
+          model.next_token_sampler,
+          input_ids,
+          input_paddings,
+          prefix_lengths=jnp.zeros([batch_size * 2], dtype=jnp.int32),
+          seq_len=seq_len,
+          num_samples=num_samples,
+          max_prefix_len=0,
+          max_decode_steps=seq_len,
+          cf_guidance_scale=cf_guidance_scale,
+          fprop_for_prefix=True,
+          # Call the scan loop.
+          early_exit=False,
+      )
+
+    mutables = [SUMMARIES, DECODE_CACHE]
+    rngs = {'random': jax.random.PRNGKey(9382)}
+
+    # test that we can fetch arbitrary summary out.
+    _, updated_vars = nn.apply(decode_fn, model, mutable=mutables)(
+        init_vars, input_ids, input_paddings, rngs=rngs
+    )
+    logits_summary = updated_vars['summaries']['logits_scalar']
+    new_ids_summary = updated_vars['summaries']['new_ids_scalar']
+    time_step_summary = updated_vars['summaries']['time_step_scalar']
+    print('logits_var', logits_var)
+    print('logits_summary', logits_summary)
+    print('time_step_summary', time_step_summary)
+    self.assertAllClose(logits_var, logits_summary)
+    self.assertAllClose(new_ids_summary, jnp.array([[3, 3], [2, 1], [1, 1]]))
+
+  def test_sample_decode_with_optimize_eos(self):
+    batch_size = 1
+    num_samples = 2
+    seq_len = 4
+    vocab_size = 4
+    model_p = pax_fiddle.Config(
+        TestModelWithLogits,
+        name='test_model',
+        batch_size=batch_size,
+        num_samples=num_samples,
+        seq_len=seq_len,
+        vocab_size=vocab_size,
+        use_dummy_next_token_sampler=False,
+        logits=jnp.array([[[1, -1e4, 0, 1], [1, -1e4, -1e4, 1]],
+                          [[1, -1e4, 1, 2], [1, -1e4, -1e4, 2]],
+                          [[-1e4, 1, -1e4, -1e4], [1, -1e4, -1e4, 3]],
+                          [[1, 2, 1, 2], [-1e4, 1, 3, -1e4]]])
+    )
+
+    def extend_step_fn(mdl, ids, segment_pos):
+      return mdl.extend_step(ids, segment_pos=segment_pos)
+
+    def transform_decode_state_fn(mdl, transform_fn):
+      del mdl
+      del transform_fn
+
+    model = instantiate(model_p)
+    init_vars = model.init(rngs=jax.random.PRNGKey(1234))
+    # One can override logits to inject logits to be used during decoding.
+
+    input_ids = jnp.zeros([batch_size, seq_len], dtype=jnp.int32)
+    input_paddings = jnp.zeros([batch_size, seq_len], dtype=jnp.float32)
+
+    def decode_fn(model, input_ids, input_paddings):
+      return sample_decode.sample_decode(
+          model,
+          extend_step_fn,
+          transform_decode_state_fn,
+          None,
+          model.next_token_sampler,
+          input_ids,
+          input_paddings,
+          seq_len=seq_len,
+          num_samples=num_samples,
+          prefix_lengths=jnp.zeros([batch_size], dtype=jnp.int32),
+          gumbel_prng_key=None,
+          max_prefix_len=0,
+          eos_id=[1, 2],
+          max_decode_steps=seq_len,
+          fprop_for_prefix=True,
+          # Call the scan loop.
+          early_exit=False,
+          return_entropy_score=True,
+          optimize_eos=True,
+      )
+
+    mutables = [SUMMARIES, DECODE_CACHE]
+    rngs = {'random': jax.random.PRNGKey(9382)}
+
+    # test that we can fetch arbitrary summary out.
+    result, updated_vars = nn.apply(decode_fn, model, mutable=mutables)(
+        init_vars, input_ids, input_paddings, rngs=rngs
+    )
+    new_ids_summary = updated_vars['summaries']['new_ids_scalar']
+    time_step_summary = updated_vars['summaries']['time_step_scalar']
+    print('new_ids_summary', new_ids_summary)
+    print('time_step_summary', time_step_summary)
+    self.assertAllClose(
+        new_ids_summary, jnp.array([[3, 3], [3, 3], [0, 3], [0, 3]]))
+    self.assertAllClose(result.output_ids,
+                        jnp.array([[[3, 3, 3, 2], [3, 3, 1, 0]]]))
+
+  def test_sample_decode_with_additional_states(self):
+    batch_size = 1
+    num_samples = 2
+    seq_len = 3
+    vocab_size = 4
+    model_p = pax_fiddle.Config(
+        TestModelWithAdditionalState,
+        batch_size=batch_size,
+        num_samples=num_samples,
+        seq_len=seq_len,
+        vocab_size=vocab_size,
+        name='test_model_additional_states',
+    )
+
+    def extend_step_fn(mdl, ids, segment_pos):
+      logits = mdl.extend_step(ids, segment_pos=segment_pos)
+      return logits
+
+    def transform_decode_state_fn(mdl, transform_fn):
+      del mdl
+      del transform_fn
+
+    model = instantiate(model_p)
+    init_vars = model.init(rngs=jax.random.PRNGKey(1234))
+
+    input_ids = jnp.zeros([batch_size, seq_len], dtype=jnp.int32)
+    input_paddings = jnp.zeros([batch_size, seq_len], dtype=jnp.float32)
+
+    def decode_fn(model, input_ids, input_paddings):
+      return sample_decode.sample_decode(
+          model,
+          extend_step_fn,
+          transform_decode_state_fn,
+          None,
+          model.next_token_sampler,
+          input_ids,
+          input_paddings,
+          prefix_lengths=jnp.zeros([batch_size], dtype=jnp.int32),
+          seq_len=seq_len,
+          num_samples=num_samples,
+          gumbel_prng_key=None,
+          max_prefix_len=0,
+          max_decode_steps=seq_len,
+          fprop_for_prefix=True,
+          # Call the scan loop.
+          early_exit=False,
+      )
+
+    mutables = [DECODE_CACHE]
+    rngs = {'random': jax.random.PRNGKey(9382)}
+
+    result, _ = nn.apply(decode_fn, model, mutable=mutables)(
+        init_vars, input_ids, input_paddings, rngs=rngs
+    )
+    # Check updated states.
+    self.assertArraysEqual(
+        result.mock_state,
+        np.ones_like(result.mock_state, dtype=np.bool_),
+    )
 
 
 if __name__ == '__main__':

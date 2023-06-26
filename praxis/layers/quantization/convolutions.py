@@ -31,10 +31,10 @@ instance_field = base_layer.instance_field
 JTensor = pytypes.JTensor
 
 
-class Conv2D(convolutions.Conv2D):
+class Conv2D(convolutions.Conv2D, quantizer.QuantizationLayer):  # pytype: disable=signature-mismatch
   """Conv2D with support of SAME/VALID paddings."""
 
-  quantization: QuantizationParams = instance_field(QuantizationParams)
+  _PACK_4BIT_DIM = 0
 
   def setup(self) -> None:
     self.check_dimensions()
@@ -46,7 +46,12 @@ class Conv2D(convolutions.Conv2D):
         dtype=self.dtype,
         init=self.kernel_init,
     )
-    quantizer.set_up_weights(self, 'w', pc, [self.filter_shape[-1]], 0)
+    self.set_up_weights(
+        weight_name='w',
+        weight_params=pc,
+        scale_shape=[self.filter_shape[-1]],
+        pack_dim=self._PACK_4BIT_DIM,
+    )
 
     if self.bias:
       self.create_variable(

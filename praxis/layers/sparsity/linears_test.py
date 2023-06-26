@@ -18,6 +18,7 @@
 import itertools
 from typing import Any, Dict, Sequence
 
+from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -31,6 +32,9 @@ from praxis.layers.sparsity import linears as slinears
 from praxis.layers.sparsity import sparsity_hparams
 
 instantiate = base_layer.instantiate
+NON_TRAINABLE = base_layer.NON_TRAINABLE
+PARAMS = base_layer.PARAMS
+SUMMARIES = base_layer.SUMMARIES
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 SparsityHParams = sparsity_hparams.SparsityHParams
@@ -86,12 +90,12 @@ class SparseLinearTest(test_utils.TestCase):
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = linear.init(prng_key, inputs)
-      initial_vars['params']['w'] = weights
+      initial_vars[PARAMS]['w'] = weights
       outputs, state = linear.apply(initial_vars, inputs, mutable=True)
     self.assertEqual(outputs.shape, (2, 4))
     if mode != SparsityMode.INFERENCE:
       self.assertArraysEqual(
-          state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
+          state[NON_TRAINABLE]['w' + base_layer.SPARSITY_NAME_POSTFIX],
           jnp.array([
               [False, False, True, True],
               [True, True, False, False],
@@ -118,6 +122,7 @@ class SparseLinearTest(test_utils.TestCase):
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
             mode=SparsityMode.FEWSHOT,
+            target_step=0,
             num_shots=2,
             mask_update_interval=2,  # Update mask every 2 steps
         ),
@@ -130,16 +135,18 @@ class SparseLinearTest(test_utils.TestCase):
         [3, 1, -4, 2],
         [-3, 1, 2, -4],
     ])
+
+    context_p = base_layer.JaxContext.HParams(summary_verbosity=4)
     # Init and Step 0
-    with base_layer.JaxContext.new_context():
+    with base_layer.JaxContext.new_context(hparams=context_p):
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = linear.init(prng_key, inputs)
-      initial_vars['params']['w'] = weights
-      self.assertEqual(initial_vars['non_trainable']['step'], 0)
+      initial_vars[PARAMS]['w'] = weights
+      self.assertEqual(initial_vars[NON_TRAINABLE]['step'], 0)
       outputs, state = linear.apply(initial_vars, inputs, mutable=True)
     self.assertEqual(outputs.shape, (2, 4))
     self.assertArraysEqual(
-        state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        state[NON_TRAINABLE]['w' + base_layer.SPARSITY_NAME_POSTFIX],
         jnp.array([
             [False, False, True, True],
             [True, True, False, False],
@@ -147,6 +154,10 @@ class SparseLinearTest(test_utils.TestCase):
             [True, False, False, True],
         ]),
     )
+    self.assertArraysEqual(
+        state[SUMMARIES]['mask_update_count_scalar'],
+        jnp.array(1, jnp.int32))
+
     # Step 1, mask remains unchanged, even if we update weight matrix
     weights = jnp.array([
         [1, 2, 3, 4],
@@ -154,12 +165,12 @@ class SparseLinearTest(test_utils.TestCase):
         [3, 1, -4, 2],
         [-3, 1, 2, -4],
     ])
-    with base_layer.JaxContext.new_context():
-      state['params']['w'] = weights
-      self.assertEqual(state['non_trainable']['step'], 1)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+      state[PARAMS]['w'] = weights
+      self.assertEqual(state[NON_TRAINABLE]['step'], 1)
       outputs, state = linear.apply(state, inputs, mutable=True)
     self.assertArraysEqual(
-        state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        state[NON_TRAINABLE]['w' + base_layer.SPARSITY_NAME_POSTFIX],
         jnp.array([
             [False, False, True, True],
             [True, True, False, False],
@@ -167,12 +178,16 @@ class SparseLinearTest(test_utils.TestCase):
             [True, False, False, True],
         ]),
     )
+    self.assertArraysEqual(
+        state[SUMMARIES]['mask_update_count_scalar'],
+        jnp.array(1, jnp.int32))
+
     # Step 2, mask changes
-    with base_layer.JaxContext.new_context():
-      self.assertEqual(state['non_trainable']['step'], 2)
+    with base_layer.JaxContext.new_context(hparams=context_p):
+      self.assertEqual(state[NON_TRAINABLE]['step'], 2)
       outputs, state = linear.apply(state, inputs, mutable=True)
     self.assertArraysEqual(
-        state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        state[NON_TRAINABLE]['w' + base_layer.SPARSITY_NAME_POSTFIX],
         jnp.array([
             [False, False, True, True],
             [False, False, True, True],
@@ -180,6 +195,9 @@ class SparseLinearTest(test_utils.TestCase):
             [True, False, False, True],
         ]),
     )
+    self.assertArraysEqual(
+        state[SUMMARIES]['mask_update_count_scalar'],
+        jnp.array(2, jnp.int32))
 
   def test_sparsity_hparams_asserts(self):
     with self.assertRaises(AssertionError):
@@ -221,8 +239,8 @@ class LinearLayersConsistencyTest(test_utils.TestCase):
     prng_key = jax.random.PRNGKey(seed=123)
     initial_vars_f = linear_f.init(prng_key, inputs)
     initial_vars_s = linear_s.init(prng_key, inputs)
-    initial_vars_f['params']['w'] = weights
-    initial_vars_s['params']['w'] = weights
+    initial_vars_f[PARAMS]['w'] = weights
+    initial_vars_s[PARAMS]['w'] = weights
 
     outputs_f = linear_f.apply(initial_vars_f, inputs)
     outputs_s = linear_s.apply(initial_vars_s, inputs)

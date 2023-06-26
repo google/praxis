@@ -805,6 +805,14 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
     new_meta.repeat_prefix = repeat_prefix
     new_meta.repeat_prefix_split_dims_mapping = repeat_prefix_split_dims_mapping
     new_meta.repeat_optimizer_dims_mapping = repeat_optimizer_dims_mapping
+    if self.meta.fan_in_axes:
+      new_meta.fan_in_axes = [
+          i if i < 0 else i + 1 for i in self.meta.fan_in_axes
+      ]
+    if self.meta.fan_out_axes:
+      new_meta.fan_out_axes = [
+          i if i < 0 else i + 1 for i in self.meta.fan_out_axes
+      ]
     return self.replace(meta=new_meta)
 
   def remove_axis(
@@ -853,6 +861,14 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
       assert (removed,) == tuple(optimizer_dims_mapping)
       new_meta.repeat_optimizer_dims_mapping = updated_dims_mapping
 
+    if self.meta.fan_in_axes:
+      new_meta.fan_in_axes = [
+          i if i < 0 else i - 1 for i in self.meta.fan_in_axes
+      ]
+    if self.meta.fan_out_axes:
+      new_meta.fan_out_axes = [
+          i if i < 0 else i - 1 for i in self.meta.fan_out_axes
+      ]
     return self.replace(meta=new_meta)
 
 
@@ -1005,10 +1021,14 @@ class JaxContext:
         is a dict of {new_axis_name: old_axis_name}. Within this context,
         new_axis_name in all shardings will be translated to old_axis_name in
         the original device mesh.
+      self_reflect_configs: bool, whether to self reflect its configs as a
+         variable in a special collection.
     """
     do_eval: Optional[bool] = None
     summary_verbosity: int = 3
     mesh_axes_transpose: Optional[Dict[str, str]] = None
+
+    self_reflect_configs: bool = False
 
     def clone(self) -> JaxContext.HParams:
       return copy.deepcopy(self)
@@ -1041,6 +1061,10 @@ class JaxContext:
   @property
   def summary_verbosity(self) -> int:
     return self.hparams.summary_verbosity
+
+  @property
+  def self_reflect_configs(self) -> bool:
+    return self.hparams.self_reflect_configs
 
   def __enter__(self) -> JaxContext:
     _JaxContextStack.stack.append(self)
@@ -1359,6 +1383,26 @@ class _FiddleHParamsClassStub(
     return cls(**kwargs)
 
 
+def is_sublayer_template_or_instance(val):
+  if isinstance(val, BaseLayer):
+    return True
+
+  if isinstance(val, pax_fiddle.Config) and issubclass(val.cls, BaseLayer):
+    return True
+
+  # Check if val is a container of sub-layer templates.
+  if isinstance(val, Mapping) and all(isinstance(key, str) for key in val):
+    return is_sublayer_template_or_instance(list(val.values()))
+  if isinstance(val, (list, tuple)):
+    if any(is_sublayer_template_or_instance(child) for child in val):
+      if all(
+          is_sublayer_template_or_instance(child) or child is None
+          for child in val
+      ):
+        return True
+  return False
+
+
 class BaseLayer(nn.Module):
   """Base class for layers that are configured using Fiddle.
 
@@ -1508,7 +1552,7 @@ class BaseLayer(nn.Module):
   @staticmethod
   def copy_base_hparams(
       source: Union[pax_fiddle.Config, BaseLayer],
-      target: pax_fiddle.Config,
+      target: Union[pax_fiddle.Config, BaseLayer],
   ):
     """Copies BaseLayer configuration parameters from `source` to `target`.
 
@@ -1522,90 +1566,41 @@ class BaseLayer(nn.Module):
       source: The configuration object to copy parameters from.
       target: The configuration object to copy parameters to.  Mutated in-place.
     """
+
     assert isinstance(source, (pax_fiddle.Config, BaseLayer)), source
-    assert isinstance(target, pax_fiddle.Config), target
+    assert isinstance(target, (pax_fiddle.Config, BaseLayer)), target
     if isinstance(source, pax_fiddle.Config):
       assert issubclass(fdl.get_callable(source), BaseLayer), source
-    assert issubclass(fdl.get_callable(target), BaseLayer), target
+    if isinstance(target, pax_fiddle.Config):
+      assert issubclass(fdl.get_callable(target), BaseLayer), target
+
+    def _setattr(attr_name, value):
+      if isinstance(target, BaseLayer):
+        object.__setattr__(target, attr_name, value)
+      else:
+        setattr(target, attr_name, value)
+
     if target.dtype == jnp.float32:
-      target.dtype = source.dtype
+      _setattr('dtype', source.dtype)
     if target.fprop_dtype is None:
-      target.fprop_dtype = source.fprop_dtype
+      _setattr('fprop_dtype', source.fprop_dtype)
     if target.skip_lp_regularization is None:
-      target.skip_lp_regularization = source.skip_lp_regularization
+      _setattr('skip_lp_regularization', source.skip_lp_regularization)
     if target.ici_mesh_shape is None:
-      target.ici_mesh_shape = copy.deepcopy(source.ici_mesh_shape)
+      _setattr('ici_mesh_shape', copy.deepcopy(source.ici_mesh_shape))
     if target.dcn_mesh_shape is None:
-      target.dcn_mesh_shape = copy.deepcopy(source.dcn_mesh_shape)
+      _setattr('dcn_mesh_shape', copy.deepcopy(source.dcn_mesh_shape))
     if target.mesh_axis_names is None:
-      target.mesh_axis_names = copy.deepcopy(source.mesh_axis_names)
+      _setattr('mesh_axis_names', copy.deepcopy(source.mesh_axis_names))
     if target.contiguous_submeshes is None:
-      target.contiguous_submeshes = source.contiguous_submeshes
+      _setattr('contiguous_submeshes', source.contiguous_submeshes)
     if is_default_param_init(target.params_init):
       # Copy params_init as well. Both target.params_init and
       # source.params_init are hyperparams.HParams.
       # The only exception is when layer.setup override params_init with
       # Params().Set syntax in which case, source.params_init is a
       # WeightInit, copy.deepcopy(source.params_init) works in both cases.
-      target.params_init = copy.deepcopy(source.params_init)
-
-  def post_init_hparams(self, *args):
-    """Recursively populates the HYPER_PARAMS collection with hyper-params ...
-
-    of self and all its children.
-
-    The difference from self.hparams is that params here are post initialization
-    tweaks and reflect the actual sub-layers being created.
-
-    Args:
-      *args: used for scan's rigid signature requirements.
-    """
-
-    def is_sublayer_template_or_instance(val):
-      if isinstance(val, BaseLayer):
-        return True
-
-      if isinstance(val, pax_fiddle.Config) and issubclass(val.cls, BaseLayer):
-        return True
-
-      # Check if val is a container of sub-layer templates.
-      if isinstance(val, Mapping) and all(isinstance(key, str) for key in val):
-        return is_sublayer_template_or_instance(list(val.values()))
-      if isinstance(val, (list, tuple)):
-        if any(is_sublayer_template_or_instance(child) for child in val):
-          if all(
-              is_sublayer_template_or_instance(child) or child is None
-              for child in val
-          ):
-            return True
-      return False
-
-    hparam_kwargs = {}
-    for field in self._hparam_fields:
-      value = getattr(self, field)
-      if is_sublayer_template_or_instance(value):
-        # No need to include sub-layer template params (or direct-instantiated
-        # children), since the instantiated sub-layer will show up in its own
-        # collection anyways.  Use an explicit `None` value to prevent `fiddle`
-        # from auto-populating fields with default factories.
-        value = None
-      hparam_kwargs[field] = value
-    hparams = pax_fiddle.Config(type(self), **hparam_kwargs)
-
-    self.put_variable(HYPER_PARAMS, '_hparams', WrappedHParams(hparams))
-    # walk through all the attributes on self and recursively apply
-    # post_init_hparams on submodules:
-    for key, val in self.__dict__.items():
-      if key in _BaseLayerRecursionDictKeysToIgnore:
-        continue  # don't create recursion loop!
-
-      def force(v):
-        if isinstance(v, BaseLayer):
-          # pass dummy args through - again only needed for scan.
-          v.post_init_hparams(*args)
-
-      jax.tree_map(force, val)
-    return None
+      _setattr('params_init', copy.deepcopy(source.params_init))
 
   @functools.cached_property
   def _hparam_fields(self) -> Set[str]:
@@ -1685,21 +1680,25 @@ class BaseLayer(nn.Module):
           'Fiddle-configured layers.  Please use `layer_p.Instantiate()` '
           'instead.'
       )
-    # Note: we need to set fprop_dtype before we call super().__post_init__(),
-    # because super().__post_init__() can mark `self` as frozen in some
-    # contexts.
-    if self.fprop_dtype is None:
-      self.fprop_dtype = self.dtype
     object.__setattr__(self, '_theta', set())
     object.__setattr__(self, '_weight_hparams', {})
     object.__setattr__(self, '_private_children', {})
     super().__post_init__()
+
+    if self.parent is not None and isinstance(self.parent, BaseLayer):
+      # Automatically propagate some configs from parent to self.
+      # This allows setting configs on the root-node only and have them
+      BaseLayer.copy_base_hparams(self.parent, self)
+
+    if self.fprop_dtype is None:
+      object.__setattr__(self, 'fprop_dtype', self.dtype)
 
   @nn.nowrap
   def _try_setup(self, shallow=False):
     setup_status_before = self._state.setup_called
     super()._try_setup(shallow=shallow)
     setup_status_after = self._state.setup_called
+
     if setup_status_before != setup_status_after:
       # setup() is being called. Let's perform some sanity checks.
       for k, v in self._state.children.items():
@@ -1708,6 +1707,17 @@ class BaseLayer(nn.Module):
               f'Learnable param {k} is not created via create_variable helper.')
         else:
           pass
+
+      if self.reflect_configs and self.is_initializing():
+        hparam_kwargs = {}
+        for field in self._hparam_fields:
+          value = getattr(self, field)
+          if is_sublayer_template_or_instance(value):
+            value = None
+          hparam_kwargs[field] = value
+        hparams = pax_fiddle.Config(type(self), **hparam_kwargs)
+        self.put_variable(HYPER_PARAMS, '_hparams',
+                          WrappedHParams(hparams))
 
   # Similar to Flax nn.Module.init, except that BaseLayer param and variables
   # are created with WeightHParams as their metadata (e.g. SPMD annotations).
@@ -1767,25 +1777,29 @@ class BaseLayer(nn.Module):
     else:
       return result
 
-  # In its essence, this is jax.eval_shape(model.init) except that we return
-  # the WeightHParams objects to callers. This is typically used to retrieve
-  # the unpadded variable shapes and SPMD annotations for
-  # PARAMS and NON_TRAINABLE collections.
-  def abstract_init_with_metadata(self,
-                                  *args,
-                                  do_eval=False,
-                                  method=None,
-                                  **kwargs) -> NestedWeightHParams:
+  def _abstract_init(
+      self,
+      *args,
+      do_eval=False,
+      method=None,
+      self_reflect_configs=False,
+      **kwargs,
+  ) -> Dict[str, NestedWeightHParams]:
     # Dummy key is enough because we eval_shape only.
     k = jax.random.PRNGKey(1)
     rngs = {PARAMS: k, RANDOM: k, NON_PAX_RNG_KEY: k}
     # Only PARAMS and NON_TRAINABLE have BoxedParam.
-    init_fn = functools.partial(super().init,
-                                mutable=DEFAULT_INIT_MUTABLE_LIST,
-                                method=method)
+    mutable = (
+        DEFAULT_INIT_MUTABLE_LIST + [HYPER_PARAMS]
+        if self_reflect_configs
+        else DEFAULT_INIT_MUTABLE_LIST
+    )
+    init_fn = functools.partial(super().init, mutable=mutable, method=method)
     # Disable logging to reduce logspam.
     with py_utils.logging_verbosity_level('FATAL'):
-      context_p = JaxContext.HParams(do_eval=do_eval)
+      context_p = JaxContext.HParams(
+          do_eval=do_eval, self_reflect_configs=self_reflect_configs
+      )
       with JaxContext.new_context(hparams=context_p):
         if self.fprop_dtype == jnp.bfloat16:
           converted_args = jax.tree_map(_maybe_to_bfloat16_dtype, args)
@@ -1795,11 +1809,42 @@ class BaseLayer(nn.Module):
           converted_kwargs = kwargs
         variables_abstract = jax.eval_shape(
             init_fn, rngs, *converted_args, **converted_kwargs)
+    return variables_abstract
+
+  # In its essence, this is jax.eval_shape(model.init) except that we return
+  # the WeightHParams objects to callers. This is typically used to retrieve
+  # the unpadded variable shapes and SPMD annotations for
+  # PARAMS and NON_TRAINABLE collections.
+  def abstract_init_with_metadata(
+      self, *args, do_eval=False, method=None, **kwargs
+  ) -> NestedWeightHParams:
+    variables_abstract = self._abstract_init(
+        *args, do_eval=do_eval, method=method, **kwargs
+    )
     # If model contains FlaxAdapter, we may see 'params_axes' collections, but
     # they do not contain WeightHParams, so we remove them from returned values.
     if 'params_axes' in variables_abstract:
       del variables_abstract['params_axes']
     return flax_core.unfreeze(unbox_meta(variables_abstract))
+
+  # A systematic self-reflection of the model structure, with configs for the
+  # nested tree of BaseLayers.
+  def abstract_init_with_mdl_config(
+      self, *args, do_eval=False, method=None, **kwargs
+  ) -> Nested[pax_fiddle.Config[BaseLayer]]:
+    variables_abstract = self._abstract_init(
+        *args,
+        do_eval=do_eval,
+        method=method,
+        self_reflect_configs=True,
+        **kwargs,
+    )
+    hyper_params = jax.tree_map(
+        lambda x: x.meta,
+        variables_abstract[HYPER_PARAMS],
+        is_leaf=lambda x: isinstance(x, WrappedHParams),
+    )
+    return hyper_params
 
   # Notes on Flax interoperability:
   #
@@ -1920,6 +1965,13 @@ class BaseLayer(nn.Module):
   @property
   def do_eval(self) -> bool:
     return self.jax_context.do_eval
+
+  @property
+  def reflect_configs(self) -> bool:
+    if not JaxContext.top():
+      return False
+    else:
+      return self.jax_context.self_reflect_configs
 
   @nn.nowrap
   def get_var(self, name: str) -> Any:
@@ -2325,7 +2377,31 @@ class BaseLayer(nn.Module):
     res = {}
     # collections to quantize.
     targets = [PARAMS, NON_TRAINABLE]
-    for name, child in self._private_children.items():
+    # instance_fields are also child layers, but they won't be updated into
+    # self._private_children, neither self._weight_hparams
+    instance_fields = {
+        f.name: getattr(self, f.name)
+        for f in dataclasses.fields(self)
+        if isinstance(getattr(self, f.name), BaseLayer) and f.name != 'parent'
+    }
+    instance_fields_weight_hparams = {
+        f: getattr(self, f)._weight_hparams  # pylint: disable=protected-access
+        for f in instance_fields.keys()
+    }
+    child_layers = {
+        **self._private_children,
+        **instance_fields,
+    }
+    child_layer_weight_hparams = {
+        **self._weight_hparams,
+        **instance_fields_weight_hparams,
+    }
+    for name, child in child_layers.items():
+      # Some dangling child layers are created in setup() but fprop never pass
+      # through them, they wont't have any variables, and should not be
+      # quantized.
+      if not child.variables:
+        continue
       # example child_res {'params': {a:{}, b:{}}, 'non-trainable':{a:{}}}
       if return_pspec:
         child_res = child.quantized_partition_specs()
@@ -2339,13 +2415,14 @@ class BaseLayer(nn.Module):
       if target not in self.variables:
         continue
       for var_name, var_val in self.variables[target].items():
-        if var_name in self._private_children:
+        if var_name in child_layers:
           continue
         if target not in res:
           res[target] = {}
         if return_pspec:
-          var_val = _weight_hparam_to_pspec(self._weight_hparams[var_name],
-                                            self.mesh_axis_names)
+          var_val = _weight_hparam_to_pspec(
+              child_layer_weight_hparams[var_name], self.mesh_axis_names
+          )
         res[target][var_name] = var_val
     return res
 

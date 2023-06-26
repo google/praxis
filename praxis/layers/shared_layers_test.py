@@ -112,21 +112,7 @@ class SharedLayersTest(test_utils.TestCase):
                                          expected_output)
     self.assertAllClose(output, expected_output)
 
-    # Dump post_init_hparams
-    def gen_post_init_hparams(prng_key):
-      return foo_shared.apply({},
-                              rngs={base_layer.PARAMS: prng_key},
-                              method=foo_shared.post_init_hparams,
-                              mutable=True)[1]
-
-    variables_abstract = jax.eval_shape(gen_post_init_hparams, prng_key)
-    assert base_layer.HYPER_PARAMS in variables_abstract
-
-    hyper_params = jax.tree_map(
-        lambda x: x.meta,
-        variables_abstract[base_layer.HYPER_PARAMS],
-        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
-
+    hyper_params = foo_shared.abstract_init_with_mdl_config(inputs)
     # This is the actual value of input_dims and output_dims, not the default
     # values.
     self.assertEqual(2, hyper_params['linear1']['_hparams'].input_dims)

@@ -29,34 +29,45 @@ import tensorflow as tf
 JTensor = pytypes.JTensor
 
 
-def tf_ctc_loss(logits: np.ndarray,
-                logits_paddings: np.ndarray,
-                labels: np.ndarray,
-                labels_paddings: np.ndarray,
-                blank_id: int = 0):
+def tf_ctc_loss(
+    logits: np.ndarray,
+    logits_paddings: np.ndarray,
+    labels: np.ndarray,
+    labels_paddings: np.ndarray,
+    blank_id: int = 0,
+):
   assert blank_id == 0
 
   def tf_ctc_loss_wrapper(logits, logits_paddings, labels, labels_paddings):
     labels = tf.cast(labels, tf.int32)
     logit_length = tf.cast(
-        tf.reduce_sum(1.0 - logits_paddings, axis=-1), tf.int32)
+        tf.reduce_sum(1.0 - logits_paddings, axis=-1), tf.int32
+    )
     label_length = tf.cast(
-        tf.reduce_sum(1.0 - labels_paddings, axis=-1), tf.int32)
+        tf.reduce_sum(1.0 - labels_paddings, axis=-1), tf.int32
+    )
     return tf.nn.ctc_loss(
         labels=labels,
         logits=logits,
         label_length=label_length,
         logit_length=logit_length,
-        logits_time_major=False)
+        logits_time_major=False,
+    )
 
-  return jax2tf.call_tf(tf_ctc_loss_wrapper)(logits, logits_paddings, labels,
-                                             labels_paddings)
+  return jax2tf.call_tf(tf_ctc_loss_wrapper)(
+      logits, logits_paddings, labels, labels_paddings
+  )
 
 
-def average_ctc_loss(logprobs: JTensor, logprob_paddings: JTensor,
-                     labels: JTensor, label_paddings: JTensor) -> JTensor:
+def average_ctc_loss(
+    logprobs: JTensor,
+    logprob_paddings: JTensor,
+    labels: JTensor,
+    label_paddings: JTensor,
+) -> JTensor:
   return jnp.average(
-      optax.ctc_loss(logprobs, logprob_paddings, labels, label_paddings))
+      optax.ctc_loss(logprobs, logprob_paddings, labels, label_paddings)
+  )
 
 
 def lengths_to_paddings(lengths: JTensor, maxlength: int) -> JTensor:
@@ -86,7 +97,8 @@ class CtcTest(test_utils.TestCase):
     logprobs = jax.nn.log_softmax(logits)
     logprob_paddings = np.zeros((batchsize, timesteps))
     labels = np.random.randint(
-        1, nclasses, size=(batchsize, labelsteps)).astype(np.int32)
+        1, nclasses, size=(batchsize, labelsteps)
+    ).astype(np.int32)
     label_paddings = np.zeros((batchsize, labelsteps))
 
     inputs = [logprobs, logprob_paddings, labels, label_paddings]
@@ -117,7 +129,8 @@ class CtcTest(test_utils.TestCase):
     logprob_paddings = lengths_to_paddings(logprob_lens, timesteps)
 
     labels = np.random.randint(
-        1, nclasses, size=(batchsize, labelsteps)).astype(np.int32)
+        1, nclasses, size=(batchsize, labelsteps)
+    ).astype(np.int32)
     label_lens = np.random.randint(10, labelsteps, size=(batchsize,))
     label_paddings = lengths_to_paddings(label_lens, labelsteps)
 
@@ -132,11 +145,55 @@ class CtcAlignmentsTest(test_utils.TestCase):
 
   def test_ctc_loss_with_alignments(self):
     label_sequence = [
-        0, 0, 0, 0, 5, 0, 0, 7, 0, 8, 0, 0, 9, 9, 0, 14, 0, 0, 12, 0, 0, 0
+        0,
+        0,
+        0,
+        0,
+        5,
+        0,
+        0,
+        7,
+        0,
+        8,
+        0,
+        0,
+        9,
+        9,
+        0,
+        14,
+        0,
+        0,
+        12,
+        0,
+        0,
+        0,
     ]
     expected_aligment = [
-        0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 6, 6, 6,
-        6
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        2,
+        2,
+        3,
+        3,
+        3,
+        4,
+        4,
+        4,
+        5,
+        5,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
     ]
     num_classes = 15
     sequence_len = len(label_sequence) + 3
@@ -146,10 +203,8 @@ class CtcAlignmentsTest(test_utils.TestCase):
     for i in range(len(label_sequence)):
       logits[0, i, label_sequence[i]] = 0
       logitpaddings[0, i] = 0.0
-    labels = np.array([[5, 7, 8, 9, 14, 12, 0]],
-                      dtype=np.intp)
-    labelpaddings = np.array([[0, 0, 0, 0, 0, 0, 1]],
-                             dtype=float)
+    labels = np.array([[5, 7, 8, 9, 14, 12, 0]], dtype=np.intp)
+    labelpaddings = np.array([[0, 0, 0, 0, 0, 0, 1]], dtype=float)
 
     # Double everything to test with batch > 1.
     logits = np.tile(logits, [2, 1, 1])
@@ -158,7 +213,8 @@ class CtcAlignmentsTest(test_utils.TestCase):
     labelpaddings = np.tile(labelpaddings, [2, 1])
 
     per_seq_loss, aux = ctc_objectives.ctc_loss_with_alignments(
-        logits, logitpaddings, labels, labelpaddings)
+        logits, logitpaddings, labels, labelpaddings
+    )
     self.assertAllClose([expected_aligment, expected_aligment], aux.alignment)
     self.assertAllClose(per_seq_loss, [0.0, 0.0])
 
@@ -173,8 +229,9 @@ class CtcAlignmentsTest(test_utils.TestCase):
       logitpaddings = np.zeros((1, sequence_len), dtype=float)
       labels = np.array([[2, 5, 3, 1, 4, 0]], dtype=np.intp)
       labelpaddings = np.array([[0, 0, 0, 0, 0, 1]], dtype=float)
-      _, aux = ctc_objectives.ctc_loss_with_alignments(logits, logitpaddings,
-                                                       labels, labelpaddings)
+      _, aux = ctc_objectives.ctc_loss_with_alignments(
+          logits, logitpaddings, labels, labelpaddings
+      )
 
       last_output = 0
       for output in aux.alignment[i].tolist():
@@ -183,6 +240,7 @@ class CtcAlignmentsTest(test_utils.TestCase):
         # You can't skip tokens in the alignment.
         self.assertLessEqual(output, last_output + 1)
         last_output = output
+
 
 if __name__ == '__main__':
   absltest.main()

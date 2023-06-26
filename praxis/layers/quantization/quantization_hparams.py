@@ -118,6 +118,8 @@ class WeightQuantizationParams:
   kurt_loss_weight: Weight for Kurtosis loss.
   kurt: Kurtosis target. By default it is 1.8 (uniform distribution).
     It is based on paper: "Robust Quantization: One Model to Rule Them All".
+  block_size: block size for sub channel quantization. 0 to set it off. Defaults
+    to off.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -141,6 +143,7 @@ class WeightQuantizationParams:
   vn_weight_norm_type: str = 'PerChannelLinf'
   kurt_loss_weight: Optional[float] = None
   kurt: float = 1.8
+  block_size: int = 0
 
 
 @dataclasses.dataclass

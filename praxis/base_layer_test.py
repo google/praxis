@@ -62,6 +62,44 @@ class AddBias(base_layer.BaseLayer):
     return x + b
 
 
+class Linear(base_layer.BaseLayer):
+  input_dims: int = 2
+  output_dims: int = 2
+
+  def setup(self):
+    self.create_variable(
+        'w',
+        base_layer.WeightHParams(
+            shape=[self.input_dims, self.output_dims],
+            init=self.params_init,
+            dtype=self.dtype,
+        ),
+    )
+
+  def __call__(self, inputs):
+    return jnp.matmul(inputs, self.theta.w)
+
+  def quantized_partition_specs(self) -> Any:
+    return {base_layer.PARAMS: {'w': base_layer.BoxedPartitionSpec(meta=None)}}
+
+  def quantize_weight(self) -> base_layer.NestedJTensor:
+    return {base_layer.PARAMS: {'w': self.theta.w.astype(jnp.int8)}}
+
+
+class MultipleLinearLayer(base_layer.BaseLayer):
+  linear1: Optional[AddBias] = pax_fiddle.instance_field(Linear)
+  linear2_tpl: pax_fiddle.Config[Linear] = pax_fiddle.template_field(Linear)
+
+  def setup(self):
+    self.create_child('linear2', self.linear2_tpl)
+    # A dangling layer that is not passed through in __call__, won't have any
+    # variables.
+    self.create_child('linear_dangling', self.linear2_tpl)
+
+  def __call__(self, x: base_layer.JTensor) -> base_layer.JTensor:
+    return self.linear2(self.linear1(x))
+
+
 class MultipleBiasLayer(base_layer.BaseLayer):
   """A dummy layer that adds multiple biases to an input tensor.
 
@@ -206,9 +244,42 @@ class BaseLayerTest(test_utils.TestCase):
     )
     self.assertEqual(pspec, {})
 
+  def test_quantize_children(self):
+    layer_p = pax_fiddle.Config(
+        MultipleLinearLayer, name='test_multiple_linear'
+    )
+    layer = base_layer.instantiate(layer_p)
+
+    x = jnp.array([1.0, 2.0], dtype=jnp.float32)
+    init_vars = layer.init(jax.random.PRNGKey(0), x)
+    qw, _ = layer.apply(init_vars, mutable=[], method=layer.quantize_weight)
+    self.assertEqual(
+        jax.tree_map(lambda x: x.dtype, qw),
+        {
+            'params': {
+                'linear1': {'w': jnp.int8},
+                'linear2': {'w': jnp.int8},
+            }
+        },
+    )
+
+    pspec, _ = layer.apply(
+        init_vars, mutable=[], method=layer.quantized_partition_specs
+    )
+    dummy_pspec = base_layer.BoxedPartitionSpec(meta=None)
+    self.assertEqual(
+        pspec,
+        {
+            'params': {
+                'linear1': {'w': dummy_pspec},
+                'linear2': {'w': dummy_pspec},
+            }
+        },
+    )
+
   @parameterized.parameters((0, 2), (3, 0), (1, 4))
   def test_layer_building_nn_compact(self, num_child: int, num_children: int):
-    x = jnp.array([[0., 1.], [2., 3.]], dtype=jnp.float32)
+    x = jnp.array([[0.0, 1.0], [2.0, 3.0]], dtype=jnp.float32)
 
     p = pax_fiddle.Config(
         MultipleBiasLayer,
@@ -263,6 +334,9 @@ class BaseLayerTest(test_utils.TestCase):
     class ChildLayer(base_layer.BaseLayer):
       pass
 
+      def __call__(self):
+        return 0.0
+
     class ParentLayer(base_layer.BaseLayer):
       # instance fields:
       a: base_layer.BaseLayer = base_layer.instance_field(ChildLayer)
@@ -276,7 +350,12 @@ class BaseLayerTest(test_utils.TestCase):
         self.create_children('ys', self.y_tpls)
 
       def __call__(self):
-        validate(self)  # Defined below.
+        self.a()
+        for x in self.bs:
+          x()
+        self.x()
+        for y in self.ys:
+          y()
         return 0
 
     @pax_fiddle.auto_config
@@ -307,77 +386,95 @@ class BaseLayerTest(test_utils.TestCase):
           ],
       )
 
-    model = make_model.as_buildable().Instantiate()
-
     def validate(model):
       # model
-      self.assertIsInstance(model, ParentLayer)
-      self.assertEqual(model.dtype, jnp.int64)
-      self.assertEqual(model.ici_mesh_shape, (1,))
-      self.assertEqual(model.params_init.scale, 2.0)
-      # model.a
-      self.assertIsInstance(model.a, ParentLayer)
-      self.assertIsInstance(model.a.a, ChildLayer)
-      self.assertLen(model.a.bs, 1)
-      self.assertIsInstance(model.a.bs[0], ChildLayer)
-      self.assertEqual(model.a.dtype, jnp.int64)
-      self.assertEqual(model.a.ici_mesh_shape, (3,))
-      self.assertEqual(model.a.dcn_mesh_shape, (2,))
-      self.assertEqual(model.a.params_init.scale, 4.0)
-      self.assertEqual(model.a.a.dtype, jnp.int64)
-      self.assertEqual(model.a.a.ici_mesh_shape, (3,))
-      self.assertEqual(model.a.a.dcn_mesh_shape, (2,))
-      self.assertEqual(model.a.bs[0].dtype, jnp.int64)
-      self.assertEqual(model.a.bs[0].ici_mesh_shape, (3,))
-      self.assertEqual(model.a.bs[0].dcn_mesh_shape, (4,))
-      self.assertEqual(model.a.bs[0].params_init.scale, 4.0)
-      self.assertEqual(model.a.x.dtype, jnp.int64)
-      self.assertEqual(model.a.x.ici_mesh_shape, (3,))
-      self.assertEqual(model.a.x.dcn_mesh_shape, (2,))
-      # model.bs
-      self.assertLen(model.bs, 1)
-      self.assertIsInstance(model.bs[0], ChildLayer)
-      self.assertEqual(model.bs[0].dtype, jnp.int64)
-      self.assertEqual(model.bs[0].ici_mesh_shape, (5,))
-      self.assertEqual(model.bs[0].dcn_mesh_shape, (2,))
-      self.assertEqual(model.bs[0].params_init.scale, 2.0)
-      # model.x
-      self.assertIsInstance(model.x, ChildLayer)
-      self.assertEqual(model.x.dtype, jnp.int32)
-      self.assertEqual(model.x.ici_mesh_shape, (1,))
-      self.assertEqual(model.x.dcn_mesh_shape, (2,))
-      self.assertEqual(model.x.params_init.scale, 2.0)
-      # model.ys
-      self.assertLen(model.ys, 1)
-      self.assertIsInstance(model.ys[0], ParentLayer)
-      self.assertIsInstance(model.ys[0].a, ChildLayer)
-      self.assertLen(model.ys[0].bs, 0)
-      self.assertIsInstance(model.ys[0].x, ChildLayer)
-      self.assertLen(model.ys[0].ys, 1)
-      self.assertIsInstance(model.ys[0].ys[0], ChildLayer)
-      self.assertEqual(model.ys[0].dtype, jnp.int64)
-      self.assertEqual(model.ys[0].ici_mesh_shape, (1,))
-      self.assertEqual(model.ys[0].dcn_mesh_shape, (6,))
-      self.assertEqual(model.ys[0].params_init.scale, 2.0)
-      self.assertEqual(model.ys[0].a.dtype, jnp.float16)
-      self.assertEqual(model.ys[0].a.ici_mesh_shape, (1,))
-      self.assertEqual(model.ys[0].a.dcn_mesh_shape, (6,))
-      self.assertEqual(model.ys[0].x.dtype, jnp.int64)
-      self.assertEqual(model.ys[0].x.ici_mesh_shape, (1,))
-      self.assertEqual(model.ys[0].x.dcn_mesh_shape, (6,))
-      self.assertEqual(model.ys[0].ys[0].dtype, jnp.float16)
-      self.assertEqual(model.ys[0].ys[0].ici_mesh_shape, (1,))
-      self.assertEqual(model.ys[0].ys[0].dcn_mesh_shape, (7,))
-      self.assertEqual(model.ys[0].ys[0].params_init.scale, 2.0)
+      hparams = model['_hparams']
+      self.assertEqual(hparams.cls, ParentLayer)
+      self.assertEqual(hparams.dtype, jnp.int64)
+      self.assertEqual(hparams.ici_mesh_shape, (1,))
+      self.assertEqual(hparams.params_init.scale, 2.0)
 
-    # Note: this invokes model.setup() and then model.__call__(), which calls
-    # the `validate` function.
-    model.init(jax.random.PRNGKey(0))
+      # model.a
+      a_hparams = model['a']['_hparams']
+      self.assertEqual(a_hparams.cls, ParentLayer)
+      self.assertEqual(a_hparams.dtype, jnp.int64)
+      self.assertEqual(a_hparams.ici_mesh_shape, (3,))
+      self.assertEqual(a_hparams.dcn_mesh_shape, (2,))
+      self.assertEqual(a_hparams.params_init.scale, 4.0)
+
+      aa_hparams = model['a']['a']['_hparams']
+      self.assertEqual(aa_hparams.cls, ChildLayer)
+      self.assertEqual(aa_hparams.dtype, jnp.int64)
+      self.assertEqual(aa_hparams.ici_mesh_shape, (3,))
+      self.assertEqual(aa_hparams.dcn_mesh_shape, (2,))
+
+      a_bs_0 = model['a']['bs_0']['_hparams']
+      self.assertEqual(a_bs_0.cls, ChildLayer)
+      self.assertEqual(a_bs_0.dtype, jnp.int64)
+      self.assertEqual(a_bs_0.ici_mesh_shape, (3,))
+      self.assertEqual(a_bs_0.dcn_mesh_shape, (4,))
+      self.assertEqual(a_bs_0.params_init.scale, 4.0)
+
+      a_x = model['a']['x']['_hparams']
+      self.assertEqual(a_x.dtype, jnp.int64)
+      self.assertEqual(a_x.ici_mesh_shape, (3,))
+      self.assertEqual(a_x.dcn_mesh_shape, (2,))
+
+      # model.bs
+      bs_0 = model['bs_0']['_hparams']
+      self.assertEqual(bs_0.cls, ChildLayer)
+      self.assertEqual(bs_0.dtype, jnp.int64)
+      self.assertEqual(bs_0.ici_mesh_shape, (5,))
+      self.assertEqual(bs_0.dcn_mesh_shape, (2,))
+      self.assertEqual(bs_0.params_init.scale, 2.0)
+      # model.x
+
+      x = model['x']['_hparams']
+      self.assertEqual(x.cls, ChildLayer)
+      self.assertEqual(x.dtype, jnp.int32)
+      self.assertEqual(x.ici_mesh_shape, (1,))
+      self.assertEqual(x.dcn_mesh_shape, (2,))
+      self.assertEqual(x.params_init.scale, 2.0)
+
+      # model.ys
+      ys_0 = model['ys_0']['_hparams']
+      self.assertEqual(ys_0.cls, ParentLayer)
+      self.assertEqual(ys_0.dtype, jnp.int64)
+      self.assertEqual(ys_0.ici_mesh_shape, (1,))
+      self.assertEqual(ys_0.dcn_mesh_shape, (6,))
+      self.assertEqual(ys_0.params_init.scale, 2.0)
+
+      ys_0_a = model['ys_0']['a']['_hparams']
+      self.assertEqual(ys_0_a.cls, ChildLayer)
+      self.assertEqual(ys_0_a.dtype, jnp.float16)
+      self.assertEqual(ys_0_a.ici_mesh_shape, (1,))
+      self.assertEqual(ys_0_a.dcn_mesh_shape, (6,))
+
+      ys_0_x = model['ys_0']['x']['_hparams']
+      self.assertEqual(ys_0_x.cls, ChildLayer)
+      self.assertEqual(ys_0_x.dtype, jnp.int64)
+      self.assertEqual(ys_0_x.ici_mesh_shape, (1,))
+      self.assertEqual(ys_0_x.dcn_mesh_shape, (6,))
+
+      ys_0_ys_0 = model['ys_0']['ys_0']['_hparams']
+      self.assertEqual(ys_0_ys_0.cls, ChildLayer)
+      self.assertEqual(ys_0_ys_0.dtype, jnp.float16)
+      self.assertEqual(ys_0_ys_0.ici_mesh_shape, (1,))
+      self.assertEqual(ys_0_ys_0.dcn_mesh_shape, (7,))
+      self.assertEqual(ys_0_ys_0.params_init.scale, 2.0)
+
+    model = make_model.as_buildable().Instantiate()
+    configs = model.abstract_init_with_mdl_config()
+    print(configs)
+    validate(configs)
 
   def test_post_init_hparams(self):
 
     class FiddleChild(base_layer.BaseLayer):
       x: int = 0
+
+      def __call__(self):
+        return 0.0
 
     class FiddleParent(base_layer.BaseLayer):
 
@@ -395,7 +492,9 @@ class BaseLayerTest(test_utils.TestCase):
         self.create_child('child', child_tpl)
 
       def __call__(self):
-        return 0
+        # Really trigger child to be setup.
+        self.child()
+        return 0.0
 
     p = pax_fiddle.Config(FiddleParent, name='test')
     p.child_tpl = pax_fiddle.Config(FiddleChild, x=5)
@@ -408,23 +507,15 @@ class BaseLayerTest(test_utils.TestCase):
     p.child_instance_dict = p.child_tpl_dict
     layer = p.Instantiate()
 
-    model = layer.bind(
-        layer.init(jax.random.PRNGKey(0)),
-        mutable=[base_layer.HYPER_PARAMS])
-    model.post_init_hparams()
-    hyper_params = jax.tree_map(
-        lambda x: x.meta,
-        model.variables[base_layer.HYPER_PARAMS],
-        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
-
+    hyper_params = layer.abstract_init_with_mdl_config()
     self.assertEqual(hyper_params['_hparams'].dtype, jnp.float32)
-    self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
-    self.assertEqual(hyper_params['child']['_hparams'].x, 7)
     self.assertIsNone(hyper_params['_hparams'].child_tpl)
     self.assertIsNone(hyper_params['_hparams'].child_tpl_list)
     self.assertIsNone(hyper_params['_hparams'].child_tpl_dict)
     self.assertIsNone(hyper_params['_hparams'].child_instance_list)
     self.assertIsNone(hyper_params['_hparams'].child_instance_dict)
+    self.assertEqual(hyper_params['child']['_hparams'].dtype, jnp.float32)
+    self.assertEqual(hyper_params['child']['_hparams'].x, 7)
 
   @parameterized.parameters([
       (pax_fiddle.Config(SimpleBaseLayer),
@@ -520,28 +611,32 @@ class BaseLayerTest(test_utils.TestCase):
       self.assertNotIn('parent', cloned.__arguments__)
 
     with self.subTest('to_text'):
-      expected_to_text = (
-          '\n'.join([
-              'activation_split_dims_mapping.out : NoneType',
-              f'cls : type/__main__/{Layer.__qualname__}',
-              'contiguous_submeshes : NoneType',
-              'dcn_mesh_shape : [3, 4]',
-              'dtype : type/jax.numpy/float32',
-              'fprop_dtype : type/jax.numpy/float16',
-              'ici_mesh_shape : [1, 2]',
-              "mesh_axis_names : ['a', 'b']",
-              "name : 'my_layer'",
-              "params_init.method : 'xavier'",
-              'params_init.scale : 1.000001',
-              'shared_weight_layer_id : NoneType',
-              'skip_lp_regularization : NoneType',
-              'weight_split_dims_mapping.wt : NoneType',
-              'x : 3',
-          ])
-          + '\n'
-      )
+      # TODO(pax-team): Preserve only tuple option, once Flax 0.6.11 is
+      # released.
+      expected_to_text_options = []
+      for t in (tuple, list):
+        expected_to_text_options.append(
+            '\n'.join([
+                'activation_split_dims_mapping.out : NoneType',
+                f'cls : type/__main__/{Layer.__qualname__}',
+                'contiguous_submeshes : NoneType',
+                f'dcn_mesh_shape : {t((3, 4))}',
+                'dtype : type/jax.numpy/float32',
+                'fprop_dtype : type/jax.numpy/float16',
+                f'ici_mesh_shape : {t((1, 2))}',
+                f"mesh_axis_names : {t(('a', 'b'))}",
+                "name : 'my_layer'",
+                "params_init.method : 'xavier'",
+                'params_init.scale : 1.000001',
+                'shared_weight_layer_id : NoneType',
+                'skip_lp_regularization : NoneType',
+                'weight_split_dims_mapping.wt : NoneType',
+                'x : 3',
+            ])
+            + '\n'
+        )
       actual_to_text = base_hyperparams.nested_struct_to_text(hparams_stub)
-      self.assertEqual(actual_to_text, expected_to_text)
+      self.assertIn(actual_to_text, expected_to_text_options)
 
     with self.subTest('can_deepcopy'):
       copy.deepcopy(hparams_stub)
@@ -683,6 +778,9 @@ class BaseLayerTest(test_utils.TestCase):
       params_init: base_layer.WeightInit = (
           base_layer.WeightInit.UniformUnitScaling(scale=0.5))
 
+      def __call__(self):
+        return 0.0
+
     class Parent(base_layer.BaseLayer):
 
       child_tpl: pax_fiddle.Config = base_layer.template_field(Child)
@@ -691,26 +789,14 @@ class BaseLayerTest(test_utils.TestCase):
         self.create_child('child', self.child_tpl)
 
       def __call__(self):
+        self.child()
         return None
 
     cfg = pax_fiddle.Config(Parent)
     layer = pax_fiddle.build(cfg)
     layer.init(jax.random.PRNGKey(0))
-    prng_key = jax.random.PRNGKey(seed=123)
 
-    def gen_post_init_hparams(prng_key):
-      return layer.apply({},
-                         rngs={base_layer.PARAMS: prng_key},
-                         method=layer.post_init_hparams,
-                         mutable=True)[1]
-
-    variables_abstract = jax.eval_shape(gen_post_init_hparams, prng_key)
-    assert base_layer.HYPER_PARAMS in variables_abstract
-    hyper_params = jax.tree_map(
-        lambda x: x.meta,
-        variables_abstract[base_layer.HYPER_PARAMS],
-        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
-
+    hyper_params = layer.abstract_init_with_mdl_config()
     self.assertEqual(0.5, hyper_params['child']['_hparams'].params_init.scale)
     self.assertEqual('uniform_unit_scaling',
                      hyper_params['child']['_hparams'].params_init.method)

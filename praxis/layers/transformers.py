@@ -1548,6 +1548,8 @@ class StackedTransformer(base_layer.BaseLayer):
       entry in the sequence is None, then there is no NGrammer layer present in
       that corresponding layer.
     remat: Boolean, whether to remat each layer to save memory.
+    checkpoint_policy: How to checkpoint residuals for BProp: save nothing, dot
+      only or dot with no batch dimensions.
   """
   use_cross_attention: bool = False
   mask_self_attention: bool = False
@@ -1576,6 +1578,9 @@ class StackedTransformer(base_layer.BaseLayer):
   moe_layers: Optional[Sequence[int]] = ()
   ngrammer_tpls: Optional[Sequence[LayerTpl]] = template_field(None)
   remat: bool = False
+  checkpoint_policy: AutodiffCheckpointType = (
+      AutodiffCheckpointType.SAVE_DOT_EXCEPT_LOGITS_FFN1
+  )
 
   def _clone_layer_params(self, layer_tpl: LayerTpl) -> LayerTpl:
     """Useful to let sublasses switch the class (e.g. Streaming version)."""
@@ -1732,7 +1737,9 @@ class StackedTransformer(base_layer.BaseLayer):
 
     fprop = _fprop
     if self.remat:
-      fprop = nn.remat(_fprop, policy=jax.checkpoint_policies.nothing_saveable)
+      fprop = nn.remat(
+          _fprop, policy=checkpoint_policy.custom_policy(self.checkpoint_policy)
+      )
 
     for i in range(self.num_layers):
       x_in = x_out

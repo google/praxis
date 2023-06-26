@@ -15,6 +15,8 @@
 
 """Tests for Praxis linear layers."""
 
+from typing import Optional
+
 from absl import logging
 from praxis import pax_fiddle
 from absl.testing import absltest
@@ -23,9 +25,11 @@ import jax
 from jax import numpy as jnp
 from lingvo.core import layers as lingvo_layers
 import numpy as np
+from flax import linen as nn
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import py_utils
+from praxis import pytypes
 from praxis import test_utils
 from praxis.layers import activations
 from praxis.layers import linears
@@ -34,6 +38,8 @@ import tensorflow.compat.v2 as tf
 to_np = test_utils.to_np
 to_tf_nmap = test_utils.to_tf_nmap
 instantiate = base_layer.instantiate
+
+JTensor = pytypes.JTensor
 
 
 class LinearsTest(test_utils.TestCase):
@@ -181,6 +187,65 @@ class LinearsTest(test_utils.TestCase):
 
   @parameterized.named_parameters(
       {
+          'testcase_name': 'BiasZero',
+          'activation_tpl': pax_fiddle.Config(activations.Identity),
+          'lingvo_activation_name': 'NONE',
+          'bias_init': 0.,
+      },
+      {
+          'testcase_name': 'BiasOne',
+          'activation_tpl': pax_fiddle.Config(activations.Identity),
+          'lingvo_activation_name': 'NONE',
+          'bias_init': 1.,
+      },
+  )
+  def test_feedforward_layer_bias_init(
+      self, activation_tpl, lingvo_activation_name, bias_init
+  ):
+    p = pax_fiddle.Config(
+        linears.FeedForward,
+        name='jax_ffn',
+        input_dims=3,
+        output_dims=20,
+        linear_tpl=pax_fiddle.Config(
+            linears.Linear, weight_init=base_layer.WeightInit.Xavier(scale=1.0)
+        ),
+        bias_tpl=pax_fiddle.Config(
+            linears.Bias, bias_init=bias_init,
+        ),
+        activation_tpl=activation_tpl.clone(),
+    )
+    ffn = instantiate(p)
+    npy_input = np.random.normal(1.0, 0.5,
+                                 [10, 10, p.input_dims]).astype('float32')
+    inputs = jnp.asarray(npy_input)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = ffn.init(prng_key, inputs)
+    outputs = ffn.apply(initial_vars, inputs)
+    logging.info('initial_vars in ffn = %s', initial_vars)
+    # Test whether tf projection layer returns same output
+    # Modify initial_vars to use TF compatible params
+    initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars['params'])
+    tf_initial_vars = py_utils.NestedMap()
+    tf_initial_vars.w = initial_vars.linear.w
+    tf_initial_vars.b = initial_vars.bias.b
+    tf_initial_vars = to_tf_nmap(tf_initial_vars)
+    tf_p = lingvo_layers.ProjectionLayer.Params().Set(
+        name='tf_ffn',
+        input_dim=p.input_dims,
+        output_dim=p.output_dims,
+        batch_norm=False,
+        has_bias=True,
+        activation=lingvo_activation_name)
+    tf_ffn = tf_p.Instantiate()
+    tf_output = tf_ffn.FProp(tf_initial_vars,
+                             tf.constant(inputs, dtype=tf.float32))
+    np_outputs = to_np(outputs)
+    tf_np_outputs = to_np(tf_output)
+    self.assertAllClose(tf_np_outputs, np_outputs, atol=1e-6)
+
+  @parameterized.named_parameters(
+      {
           'testcase_name': 'ReLU',
           'activation_tpl': pax_fiddle.Config(activations.ReLU),
           'lingvo_activation_name': 'RELU',
@@ -254,22 +319,8 @@ class LinearsTest(test_utils.TestCase):
         activation_tpl=pax_fiddle.Config(activations.ReLU),
     )
     ffn = instantiate(p)
-    prng_key = jax.random.PRNGKey(seed=123)
 
-    def gen_post_init_hparams(prng_key):
-      return ffn.apply({},
-                       rngs={base_layer.PARAMS: prng_key},
-                       method=ffn.post_init_hparams,
-                       mutable=True)[1]
-
-    variables_abstract = jax.eval_shape(gen_post_init_hparams, prng_key)
-    assert base_layer.HYPER_PARAMS in variables_abstract
-
-    hyper_params = jax.tree_map(
-        lambda x: x.meta,
-        variables_abstract[base_layer.HYPER_PARAMS],
-        is_leaf=lambda x: isinstance(x, base_layer.WrappedHParams))
-
+    hyper_params = ffn.abstract_init_with_mdl_config(jnp.zeros((1, 3)))
     # This is the actual value of input_dims and output_dims, not the default
     # values.
     self.assertEqual(3, hyper_params['linear']['_hparams'].input_dims)
@@ -285,7 +336,8 @@ class LinearsTest(test_utils.TestCase):
   def test_einsum_injection(self):
     class CustomEinsum(base_layer.BaseLayer):
 
-      def setup(self):
+      @nn.compact
+      def __call__(self, equation, lhs, rhs):
         self.create_variable(
             'mult',
             base_layer.WeightHParams(
@@ -294,15 +346,22 @@ class LinearsTest(test_utils.TestCase):
             ),
             trainable=False,
         )
-
-      def __call__(self, equation, lhs, rhs):
         mult = self.get_var('mult')
         self.update_var('mult', mult * 2.0)
+
+        lhs_stats = self.create_variable(
+            'lhs_stats',
+            var_hparams=base_layer.WeightHParams(
+                shape=(lhs.shape),
+                init=base_layer.WeightInit.Constant(0.0),
+            ),
+            trainable=False,
+        )
 
         def dg(*args, **kwargs):
           return jax.lax.dot_general(*args, **kwargs) * mult
 
-        return jnp.einsum(equation, lhs, rhs, _dot_general=dg)
+        return jnp.einsum(equation, lhs + lhs_stats, rhs, _dot_general=dg)
 
     def run(custom_einsum_tpl, expected_shapes):
       p = pax_fiddle.Config(
@@ -344,14 +403,19 @@ class LinearsTest(test_utils.TestCase):
     }
 
     expected_shapes_new = {
-        'non_trainable': {'einsum': {'mult': (1,)}},
+        'non_trainable': {
+            'einsum': {
+                'mult': (1,),
+                'lhs_stats': (4, 10),
+            }
+        },
         'params': {'w': (10, 20)},
     }
 
     output1a, output1b = run(None, expected_shapes_original)
     einsum_tpl = pax_fiddle.Config(CustomEinsum)
     output2a, output2b = run(einsum_tpl, expected_shapes_new)
-    # We can use exact equality beacuse in floats division by 2.0 does not
+    # We can use exact equality because in floats division by 2.0 does not
     # have a rounding error.
     self.assertAllClose(output1a, output1b, atol=0.0)
     self.assertAllClose(output1a, output2a / 2.0, atol=0.0)
@@ -595,6 +659,189 @@ class StackingOverTimeLayerTest(test_utils.TestCase):
     self._testUnstack(inputs, left_context=2, stride=3)
     self._testUnstack(inputs, stride=4, right_context=3)
     self._testUnstack(inputs, stride=4, left_context=1, right_context=2)
+
+
+class Linear(base_layer.BaseLayer):
+  output_dims: int = 0
+
+  @nn.compact
+  def __call__(self, inputs: JTensor) -> JTensor:
+    self.create_variable(
+        'w',
+        base_layer.WeightHParams(
+            shape=[inputs.shape[-1], self.output_dims],
+            init=self.params_init
+        ),
+    )
+    return jnp.einsum('...y,yz->...z', inputs, self.theta.w)
+
+
+class Bias(base_layer.BaseLayer):
+  bias_init: Optional[float] = 0.0
+
+  @nn.compact
+  def __call__(self, inputs: JTensor) -> JTensor:
+    self.create_variable(
+        'b',
+        base_layer.WeightHParams(
+            shape=[inputs.shape[-1]],
+            init=base_layer.WeightInit.Constant(self.bias_init),
+        ),
+    )
+    return inputs + self.theta.b
+
+
+class FeedForward(base_layer.BaseLayer):
+  output_dims: int = 0
+  has_bias: bool = True
+  activation: activations.BaseActivation = activations.ReLU()
+  bias_init: Optional[float] = 0.0
+
+  @nn.compact
+  def __call__(self, inputs: JTensor) -> JTensor:
+    linear = Linear(name='linear', output_dims=self.output_dims)
+    projected_inputs = linear(inputs)
+    if self.has_bias:
+      bias = Bias(name='bias', bias_init=self.bias_init)
+      projected_inputs += bias(projected_inputs)
+    output = self.activation(projected_inputs)
+    return output
+
+
+class PostInitParamsTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
+  def test_fetch_post_init_params(self):
+    batch, time, dim = 1, 2, 3
+    x = jnp.ones((batch, time, dim))
+    ffwd = FeedForward(name='ffw', output_dims=4 * dim)
+    v = ffwd.abstract_init_with_mdl_config(x)
+    self.assertEqual(Bias, v['bias']['_hparams'].cls)
+
+  def test_auto_param_inheritance(self):
+    batch, time, dim = 1, 2, 3
+    x = jnp.ones((batch, time, dim))
+    ffwd = FeedForward(
+        name='ffw',
+        output_dims=4 * dim,
+        dtype=jnp.float64,
+        fprop_dtype=jnp.float64,
+        dcn_mesh_shape=(2,),
+        ici_mesh_shape=(1,),
+        mesh_axis_names=('name',),
+        params_init=base_layer.WeightInit.Gaussian(2.0),
+    )
+    v = ffwd.abstract_init_with_mdl_config(x)
+    # default initialization is properly propagated through to the children
+    # layers.
+    self.assertEqual(2.0, v['linear']['_hparams'].params_init.scale)
+    self.assertEqual(2.0, v['bias']['_hparams'].params_init.scale)
+    self.assertEqual(jnp.float64, v['linear']['_hparams'].dtype)
+    self.assertEqual(jnp.float64, v['linear']['_hparams'].fprop_dtype)
+
+  def test_instance_field(self):
+    class ChildLayer(base_layer.BaseLayer):
+      pass
+
+      def __call__(self):
+        return 0.0
+
+    class ParentLayer(base_layer.BaseLayer):
+      # instance fields:
+      a: base_layer.BaseLayer = base_layer.instance_field(ChildLayer)
+
+      def __call__(self):
+        self.a()
+        return 0
+
+    @pax_fiddle.auto_config
+    def make_model():
+      return ParentLayer(
+          dtype=jnp.int64,
+          fprop_dtype=jnp.bfloat16,
+          ici_mesh_shape=(1,),
+          dcn_mesh_shape=(2,),
+          params_init=base_layer.WeightInit.Gaussian(2.0),
+          a=ParentLayer(
+              ici_mesh_shape=(3,),
+          ),
+      )
+
+    mdl_config = make_model.as_buildable()
+    print('mdl_config', mdl_config)
+    model = mdl_config.Instantiate()
+    configs = model.abstract_init_with_mdl_config()
+    print('post_init_config', configs)
+
+    self.assertEqual(2.0, configs['a']['a']['_hparams'].params_init.scale)
+    self.assertEqual(jnp.int64, configs['a']['a']['_hparams'].dtype)
+    self.assertEqual(jnp.bfloat16, configs['a']['a']['_hparams'].fprop_dtype)
+
+  def test_inline_instantiation(self):
+    class L0(base_layer.BaseLayer):
+
+      def setup(self):
+        self.create_variable('x', base_layer.WeightHParams(shape=[128, 1280]))
+
+      def __call__(self):
+        return (
+            jnp.zeros([1]).astype(self.dtype),
+            jnp.zeros([1]).astype(self.fprop_dtype),
+            self.theta.x,
+        )
+
+    class L1(base_layer.BaseLayer):
+
+      def setup(self):
+        self.a = L0()
+
+      @nn.compact
+      def __call__(self):
+        b = L0(name='b')
+        b_o = b()
+        a_o = self.a()
+        return [
+            a_o[0] + b_o[0],
+            a_o[1] + b_o[1],
+            a_o[2] + b_o[2],
+        ]
+
+    class L2(base_layer.BaseLayer):
+
+      def setup(self):
+        self.c = L1()
+
+      def __call__(self):
+        return self.c()
+
+    l2 = L2(
+        dtype=jnp.bfloat16,
+        fprop_dtype=jnp.float16,
+        params_init=base_layer.WeightInit.Gaussian(3.0),
+    )
+
+    configs = l2.abstract_init_with_mdl_config()
+    print('post_init_config', configs)
+
+    # configs are properly propagated down.
+    self.assertEqual(3.0, configs['c']['a']['_hparams'].params_init.scale)
+    self.assertEqual(3.0, configs['c']['b']['_hparams'].params_init.scale)
+    self.assertEqual(jnp.bfloat16, configs['c']['a']['_hparams'].dtype)
+    self.assertEqual(jnp.float16, configs['c']['a']['_hparams'].fprop_dtype)
+    self.assertEqual(jnp.bfloat16, configs['c']['b']['_hparams'].dtype)
+    self.assertEqual(jnp.float16, configs['c']['b']['_hparams'].fprop_dtype)
+
+    l2_init_vars = l2.init({'params': jax.random.PRNGKey(123456)})
+    out = l2.apply(l2_init_vars)
+    self.assertEqual(jnp.bfloat16, l2_init_vars['params']['c']['a']['x'].dtype)
+    self.assertLess(
+        abs(np.std(l2_init_vars['params']['c']['a']['x']) - 3.0), 0.01
+    )
+    self.assertEqual(jnp.bfloat16, out[0].dtype)
+    self.assertEqual(jnp.float16, out[1].dtype)
 
 
 if __name__ == '__main__':

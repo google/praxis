@@ -42,7 +42,7 @@ JTensor = pytypes.JTensor
 
 def _extract_pad_beg_end(size: int) -> Tuple[int, int]:
   """Gets the beginning and ending padding for a dimension."""
-  pad_total = size -  1
+  pad_total = size - 1
   pad_beg = pad_total // 2
   pad_end = pad_total - pad_beg
   return pad_beg, pad_end
@@ -54,6 +54,7 @@ def _causal_padding(size: int, filter_shape: int, filter_stride: int) -> int:
     return max(filter_shape - filter_stride, 0)
   else:
     return max(filter_shape - (size % filter_stride), 0)
+
 
 class Conv2D(base_layer.BaseLayer):
   """Conv2D with support of SAME/VALID paddings.
@@ -71,8 +72,8 @@ class Conv2D(base_layer.BaseLayer):
     bias: Whether or not to apply a bias before activation.
     bias_init: Bias initializer to use if bias is to be applied.
     kernel_init: Optional kernel initializer to use.
-    padding: The type of padding to use. It can be 'SAME' or 'VALID'.
-      Note that only 'SAME' padding can be combined with is_causal=True.
+    padding: The type of padding to use. It can be 'SAME' or 'VALID'. Note that
+      only 'SAME' padding can be combined with is_causal=True.
     tf_equivalent_padding: Whether to make it equivalent to tf. By default we
       apply extra padding that is different than tf conv when stride > 1. This
       is mainly used for multimodal which leads to better accuracy.
@@ -82,6 +83,7 @@ class Conv2D(base_layer.BaseLayer):
       padding in the left to shift the whole convolution.
     weight_norm_tpl: Template to apply weight normalization to self.theta.w.
   """
+
   filter_shape: Sequence[int] = (0, 0, 0, 0)
   filter_stride: Sequence[int] = (0, 0)
   dilations: Sequence[int] = (1, 1)
@@ -96,16 +98,19 @@ class Conv2D(base_layer.BaseLayer):
   )
 
   @classmethod
-  def HParamsDepthwise(cls,
-                       *,
-                       kernel_shape: Sequence[int],
-                       in_channels: int,
-                       channel_multipliers: int = 1,
-                       **hparams):
+  def HParamsDepthwise(
+      cls,
+      *,
+      kernel_shape: Sequence[int],
+      in_channels: int,
+      channel_multipliers: int = 1,
+      **hparams,
+  ):
     """DepthwiseConv2D configuration for Conv2D and its subclasses."""
     if len(kernel_shape) != 2:
       raise ValueError(
-          f'kernel_shape must have two elements, got {len(kernel_shape)}')
+          f'kernel_shape must have two elements, got {len(kernel_shape)}'
+      )
     if 'filter_shape' in hparams:
       raise ValueError('filter_shape cannot be specified in HParamsDepthwise')
     filter_shape = tuple(kernel_shape) + (1, in_channels * channel_multipliers)
@@ -176,20 +181,18 @@ class Conv2D(base_layer.BaseLayer):
     filter_width = (self.filter_shape[1] - 1) * self.dilations[1] + 1
     if not self.tf_equivalent_padding:
       if self.padding == 'SAME':
-        pad_height_beg, pad_height_end = _extract_pad_beg_end(
-            filter_height
-        )
-        pad_width_beg, pad_width_end = _extract_pad_beg_end(
-            filter_width
-        )
+        pad_height_beg, pad_height_end = _extract_pad_beg_end(filter_height)
+        pad_width_beg, pad_width_end = _extract_pad_beg_end(filter_width)
       else:
         assert self.padding == 'VALID', self.padding
         pad_height_beg = 0
         pad_height_end = 0
         pad_width_beg = 0
         pad_width_end = 0
-      padding = [(pad_height_beg, pad_height_end),
-                 (pad_width_beg, pad_width_end)]
+      padding = [
+          (pad_height_beg, pad_height_end),
+          (pad_width_beg, pad_width_end),
+      ]
     else:
       if not self.is_causal:
         padding = self.padding
@@ -210,8 +213,10 @@ class Conv2D(base_layer.BaseLayer):
         pad_width_beg = pad_width_total // 2
         pad_width_end = pad_width_total - pad_width_beg
 
-        padding = [(pad_height_beg, pad_height_end),
-                   (pad_width_beg, pad_width_end)]
+        padding = [
+            (pad_height_beg, pad_height_end),
+            (pad_width_beg, pad_width_end),
+        ]
     return padding
 
   def _shard_bhwc(self, x: JTensor) -> JTensor:
@@ -277,8 +282,8 @@ class Conv3D(base_layer.BaseLayer):
   """Conv3D with support of SAME/VALID paddings.
 
   Attributes:
-    filter_shape: Must be a sequence of length 5. Elements are ordered:
-      time, height, width, in_channel, out_channel.
+    filter_shape: Must be a sequence of length 5. Elements are ordered: time,
+      height, width, in_channel, out_channel.
     filter_stride: Filter stride to use. Must be a three ints. The first int
       specifies the stride on the time, then height, then width.
     dilations: An optional list of ints. Defaults to (1, 1, 1). 1-D tensor of
@@ -293,10 +298,11 @@ class Conv3D(base_layer.BaseLayer):
       apply extra padding that is different than tf conv when stride > 1. This
       is mainly used for multimodal which leads to better accuracy.
     is_causal: Whether this is a causal convolution. This assumes the first
-      dimension of filter is time and if is_causal=True, each position would
-      not observe any positions in the right. This is achieved by adding
-      extra padding in the left to shift the whole convolution.
+      dimension of filter is time and if is_causal=True, each position would not
+      observe any positions in the right. This is achieved by adding extra
+      padding in the left to shift the whole convolution.
   """
+
   filter_shape: Sequence[int] = (0, 0, 0, 0, 0)
   filter_stride: Sequence[int] = (0, 0, 0)
   dilations: Sequence[int] = (1, 1, 1)
@@ -308,16 +314,19 @@ class Conv3D(base_layer.BaseLayer):
   is_causal: bool = False
 
   @classmethod
-  def HParamsDepthwise(cls,
-                       *,
-                       kernel_shape: Sequence[int],
-                       in_channels: int,
-                       channel_multipliers: int = 1,
-                       **hparams):
+  def HParamsDepthwise(
+      cls,
+      *,
+      kernel_shape: Sequence[int],
+      in_channels: int,
+      channel_multipliers: int = 1,
+      **hparams,
+  ):
     """DepthwiseConv3D configuration for Conv3D and its subclasses."""
     if len(kernel_shape) != 3:
       raise ValueError(
-          f'kernel_shape must have three elements, got {len(kernel_shape)}')
+          f'kernel_shape must have three elements, got {len(kernel_shape)}'
+      )
     if 'filter_shape' in hparams:
       raise ValueError('filter_shape cannot be specified in HParamsDepthwise')
     filter_shape = tuple(kernel_shape) + (1, in_channels * channel_multipliers)
@@ -344,12 +353,14 @@ class Conv3D(base_layer.BaseLayer):
     # error if is_causal but not tf_equivalent_padding
     if self.is_causal and (not self.tf_equivalent_padding):
       raise ValueError(
-          'Causal convolution is only supported for tf equivalent padding')
+          'Causal convolution is only supported for tf equivalent padding'
+      )
 
     # error if is_causal but padding == 'valid'
     if self.is_causal and self.padding == 'VALID':
       raise NotImplementedError(
-          'Causal convolution doesn\'t support valid padding')
+          "Causal convolution doesn't support valid padding"
+      )
 
     wp = self.weight_split_dims_mapping
     self.create_variable(
@@ -384,9 +395,11 @@ class Conv3D(base_layer.BaseLayer):
         pad_height_end = 0
         pad_width_beg = 0
         pad_width_end = 0
-      padding = [(pad_time_beg, pad_time_end),
-                 (pad_height_beg, pad_height_end),
-                 (pad_width_beg, pad_width_end)]
+      padding = [
+          (pad_time_beg, pad_time_end),
+          (pad_height_beg, pad_height_end),
+          (pad_width_beg, pad_width_end),
+      ]
     else:
       if not self.is_causal:
         padding = self.padding
@@ -415,9 +428,11 @@ class Conv3D(base_layer.BaseLayer):
         pad_width_beg = pad_width_total // 2
         pad_width_end = pad_width_total - pad_width_beg
 
-        padding = [(pad_time_beg, pad_time_end),
-                   (pad_height_beg, pad_height_end),
-                   (pad_width_beg, pad_width_end)]
+        padding = [
+            (pad_time_beg, pad_time_end),
+            (pad_height_beg, pad_height_end),
+            (pad_width_beg, pad_width_end),
+        ]
     return padding
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -477,10 +492,11 @@ class ConvBNAct(Conv2D):
     batch_norm_tpl: The batchnorm layer template.
     activation_tpl: Activation function to use.
   """
+
   batch_norm_tpl: Optional[LayerTpl] = template_field(normalizations.BatchNorm)
-  activation_tpl: pax_fiddle.Config[
-      activations.BaseActivation
-  ] = template_field(activations.ReLU)
+  activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
+      template_field(activations.ReLU)
+  )
 
   def setup(self) -> None:
     super().setup()
@@ -517,6 +533,7 @@ class ConvBNActWithPadding(ConvBNAct):
   Attributes:
     compat_with_lingvo: If use lingvo-compatible logic.
   """
+
   compat_with_lingvo: bool = False
 
   def setup(self) -> None:
@@ -556,10 +573,12 @@ class ConvBNActWithPadding(ConvBNAct):
       stride = self.filter_stride[0]
 
       if self.compat_with_lingvo:
-        out_padding = paddings[:, stride - 1::stride]
+        out_padding = paddings[:, stride - 1 :: stride]
         out_padding = jnp.pad(
-            out_padding, [[0, 0], [0, outputs.shape[1] - out_padding.shape[1]]],
-            constant_values=1)
+            out_padding,
+            [[0, 0], [0, outputs.shape[1] - out_padding.shape[1]]],
+            constant_values=1,
+        )
       else:
         pad_len = (input_length + stride - 1) // stride * stride - input_length
         out_padding = jax.lax.conv_general_dilated(
@@ -572,17 +591,21 @@ class ConvBNActWithPadding(ConvBNAct):
         )
         out_padding = jnp.squeeze(out_padding, axis=-1)
     else:
+
       def rolling_window(arr: JTensor, window: int, stride: int):
-        idx = jnp.arange(0, arr.shape[1] - window + 1,
-                         stride)[:, None] + jnp.arange(window)[None, :]
+        idx = (
+            jnp.arange(0, arr.shape[1] - window + 1, stride)[:, None]
+            + jnp.arange(window)[None, :]
+        )
         return arr[:, idx]
 
       window = self.filter_shape[0]
       stride = self.filter_stride[0]
       out_padding = rolling_window(paddings, window, stride)
       out_padding = out_padding.min(axis=-1, keepdims=False)
-    outputs = outputs * (1.0 -
-                         jnp.expand_dims(jnp.expand_dims(out_padding, -1), -1))
+    outputs = outputs * (
+        1.0 - jnp.expand_dims(jnp.expand_dims(out_padding, -1), -1)
+    )
     return outputs, out_padding
 
 
@@ -599,6 +622,7 @@ class BaseDepthwiseConv1D(base_layer.BaseLayer):
       checkpoint backwards-compatibility.
     rhs_dilation_rate: The dilation rate in atrous convolution.
   """
+
   filter_shape: Sequence[int] = (0, 0, 0)
   bias: bool = False
   bias_init: WeightInit = WeightInit.Constant(0.0)
@@ -606,9 +630,9 @@ class BaseDepthwiseConv1D(base_layer.BaseLayer):
   use_2d_conv_weight_shape: bool = False
   rhs_dilation_rate: int = 1
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(
+      self, inputs: JTensor, paddings: Optional[JTensor] = None
+  ) -> JTensor:
     """Depthwise convolution.
 
     Args:
@@ -637,6 +661,7 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
       him:  Mesh split for weight. If use_2d_conv_weight_shape is set, the
         weight shape is actually him, and w dim is not sharded.
     """
+
     him: SplitDimsMapping = None
 
   def _input_channels(self) -> int:
@@ -688,9 +713,9 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
     else:
       return self.theta.w
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(
+      self, inputs: JTensor, paddings: Optional[JTensor] = None
+  ) -> JTensor:
     """Depthwise convolution layer.
 
     Args:
@@ -705,9 +730,9 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
     if paddings is not None:
       inputs = py_utils.apply_padding(inputs, paddings[:, :, None])
 
-    dn = jax.lax.conv_dimension_numbers(inputs.shape,
-                                        self.get_w().shape,
-                                        ('NHC', 'HIO', 'NHC'))
+    dn = jax.lax.conv_dimension_numbers(
+        inputs.shape, self.get_w().shape, ('NHC', 'HIO', 'NHC')
+    )
 
     if self.is_causal:
       causal_pad_size = self.rhs_dilation_rate * (self.filter_shape[0] - 1)
@@ -759,9 +784,9 @@ class LightConv1D(base_layer.BaseLayer):
 
   input_dims: Optional[int] = None
   kernel_size: Optional[int] = None
-  conv_activation_tpl: pax_fiddle.Config[
-      activations.BaseActivation
-  ] = template_field(activations.Swish)
+  conv_activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
+      template_field(activations.Swish)
+  )
   dropout_prob: float = 0.0
   ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
 
@@ -789,6 +814,7 @@ class LightConv1D(base_layer.BaseLayer):
       df:    Mesh split for lconv linear start weight.
       him:  Mesh split for lconv depthwise conv weight.
     """
+
     df: SplitDimsMapping = None
     him: SplitDimsMapping = None
 
@@ -800,6 +826,7 @@ class LightConv1D(base_layer.BaseLayer):
         normalization.
       bld: Mesh split for lconv linear end act.
     """
+
     blf: SplitDimsMapping = None
     bld: SplitDimsMapping = None
 

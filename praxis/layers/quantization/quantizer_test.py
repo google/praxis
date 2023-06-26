@@ -31,6 +31,8 @@ from praxis.layers.quantization import quantizer
 JTensor = pytypes.JTensor
 
 
+# TODO(b/277357920) Add tests for quantized einsum and setup weights.
+
 class QuantizerTest(test_utils.TestCase):
 
   def get_quantize_dequantized_and_scale(

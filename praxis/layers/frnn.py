@@ -33,12 +33,50 @@ LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 PARAMS = base_layer.PARAMS
 AUX_LOSS = base_layer.AUX_LOSS
+HYPER_PARAMS = base_layer.HYPER_PARAMS
 SUMMARIES = base_layer.SUMMARIES
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 RANDOM = base_layer.RANDOM
 
 # RNN share weights across time dimension, so PARAMS are never split.
 SCAN_SPLIT_RNGS = {PARAMS: False, RANDOM: True}
+
+
+def reset_mask(
+    segment_ids: JTensor,
+    paddings: Optional[JTensor] = None,
+    dtype: jnp.dtype = jnp.float32,
+) -> JTensor:
+  """Computes reset mask.
+
+  Reset mask is a 0/1 tensor where 0 indicating the position to reset rnn
+  cell state. When padding is provided, reset_mask at padding positions are
+  all 1, otherwise, reset_mask at the start of padding positions takes 0 values.
+  The shape of segment_ids, paddings and return value must all match.
+
+  Args:
+    segment_ids: A JTensor of shape [B, S] or [B, S, 1], the segment that each
+      token belongs to.
+    paddings: A 0/1 JTensor of shape [B, S] or [B, S, 1], value 1 indicates the
+      current position is padding.
+    dtype: data type of the output.
+
+  Returns:
+    A JTensor of shape [B, S] or [B, S, 1]
+  """
+  batch_size = segment_ids.shape[0]
+  left_padding_shape = [1] * segment_ids.ndim
+  left_padding_shape[0] = batch_size
+  left_padding = jnp.full(left_padding_shape, -1, dtype=segment_ids.dtype)
+  # Segment ids of previous step. Using -1 for the first step.
+  segment_ids_of_previous_step = jnp.concatenate(
+      [left_padding, segment_ids[:, :-1]], axis=1
+  )
+  # Boolean valued mask where False indicating the position to reset.
+  mask = jnp.equal(segment_ids_of_previous_step, segment_ids)
+  if paddings is None:
+    return mask.astype(dtype)
+  return jnp.logical_or(mask, paddings).astype(dtype)
 
 
 def _sum_aux_loss(tree):
@@ -131,10 +169,7 @@ class FRnn(base_layer.BaseLayer):
     # variables from frnn iteration n. AUX_LOSS and SUMMARIES are scanned over.
     scan_fn = nn.scan(
         body_fn,
-        variable_axes={
-            AUX_LOSS: 0,
-            SUMMARIES: 0
-        },
+        variable_axes={AUX_LOSS: 0, SUMMARIES: 0, HYPER_PARAMS: 0},
         variable_broadcast=[PARAMS],
         variable_carry=[NON_TRAINABLE],
         split_rngs=SCAN_SPLIT_RNGS,
@@ -280,22 +315,11 @@ class LstmFrnn(FRnn):
 
     if hasattr(inputs, 'segment_ids'):
       assert self.cell_tpl.reset_cell_state
-      batch_size = inputs.segment_ids.shape[0]
-      left_padding = jnp.full(
-          [batch_size, 1, 1], -1, dtype=inputs.segment_ids.dtype
+      inputs.reset_mask = reset_mask(
+          inputs.segment_ids, inputs.padding, dtype=self.fprop_dtype
       )
-      # Segment ids of previous step. Using -1 for the first step.
-      segment_ids_of_previous_step = jnp.concatenate(
-          [left_padding, inputs.segment_ids[:, :-1]], axis=1
-      )
-      # 0/1 array with 1 indicating the start position of a segment.
-      segment_start_indicator = (
-          jnp.not_equal(segment_ids_of_previous_step, inputs.segment_ids)
-          * (1.0 - inputs.padding)
-      ).astype(jnp.int32)
-      inputs.reset_mask = 1 - segment_start_indicator
     else:
-      inputs.reset_mask = jnp.ones_like(inputs.padding)
+      inputs.reset_mask = jnp.ones_like(inputs.padding, dtype=self.fprop_dtype)
 
     if self.reverse:
       inputs = jax.tree_map(lambda x: jnp.flip(x, axis=[1]), inputs)
@@ -329,15 +353,13 @@ class LstmFrnn(FRnn):
     # variables from frnn iteration n.
     scan_fn = nn.scan(
         body_fn,
-        variable_axes={
-            AUX_LOSS: 0,
-            SUMMARIES: 0
-        },
+        variable_axes={AUX_LOSS: 0, SUMMARIES: 0, HYPER_PARAMS: 0},
         in_axes=1,
         out_axes=1,
         variable_broadcast=[PARAMS],
         variable_carry=[NON_TRAINABLE],
-        split_rngs=SCAN_SPLIT_RNGS)
+        split_rngs=SCAN_SPLIT_RNGS,
+    )
     # Sum-up aux losses.
     mapped_scan_fn = nn.map_variables(
         scan_fn,

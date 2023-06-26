@@ -128,6 +128,7 @@ pytype_strict_library(
     srcs = ["decoder_utils.py"],
     deps = [
         ":base_layer",
+        ":py_utils",
         ":pytypes",
         # Implicit flax.core dependency.
         # Implicit jax dependency.

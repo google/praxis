@@ -493,6 +493,10 @@ class AttentionProjectionFQTest(quantization_test_util.QuantizationTestCase):
                 meta=jax.sharding.PartitionSpec('mdl')
             )
         )
+      if use_bias:
+        expected_pspec['params']['b'] = base_layer.BoxedPartitionSpec(
+            meta=jax.sharding.PartitionSpec(None)
+        )
     else:
       expected_pspec = {
           'params': {
@@ -509,6 +513,10 @@ class AttentionProjectionFQTest(quantization_test_util.QuantizationTestCase):
             base_layer.BoxedPartitionSpec(
                 meta=jax.sharding.PartitionSpec('mdl', 'data')
             )
+        )
+      if use_bias:
+        expected_pspec['params']['b'] = base_layer.BoxedPartitionSpec(
+            meta=jax.sharding.PartitionSpec(None, None)
         )
 
     self.assertEqual(pspec, expected_pspec)

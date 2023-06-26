@@ -16,7 +16,6 @@
 """Tests for adapters."""
 
 from absl.testing import absltest
-from praxis import pax_fiddle
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
@@ -24,6 +23,7 @@ from lingvo.core import cluster_factory
 from lingvo.core import layers
 import numpy as np
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import adapters
@@ -59,12 +59,14 @@ class AdaptersTest(test_utils.TestCase):
     layer = instantiate(layer)
 
     npy_inputs = np.random.normal(
-        1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
+        1.0, 0.5, [batch_size, seq_len, input_dims]
+    ).astype('float32')
     inputs = jnp.asarray(npy_inputs)
     tasks = np.random.randint(
-        0, num_tasks, size=[
-            batch_size,
-        ])
+        0,
+        num_tasks,
+        size=[batch_size],
+    )
 
     context_p = base_layer.JaxContext.HParams(do_eval=True)
 
@@ -77,7 +79,8 @@ class AdaptersTest(test_utils.TestCase):
         name='tf_adapter',
         input_dim=input_dims,
         bottleneck_dim=bottleneck_dim,
-        num_tasks=num_tasks)
+        num_tasks=num_tasks,
+    )
 
     tf_adapter = tf_p.Instantiate()
 
@@ -112,7 +115,8 @@ class AdaptersTest(test_utils.TestCase):
     layer = instantiate(layer)
 
     npy_inputs = np.random.normal(
-        1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
+        1.0, 0.5, [batch_size, seq_len, input_dims]
+    ).astype('float32')
     inputs = jnp.asarray(npy_inputs)
     tasks = np.random.randint(0, num_tasks, size=[batch_size, seq_len])
     paddings = np.random.randint(0, 2, size=[batch_size, seq_len])
@@ -122,7 +126,8 @@ class AdaptersTest(test_utils.TestCase):
     with base_layer.JaxContext.new_context(hparams=context_p):
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = layer.init(
-          prng_key, inputs, paddings=paddings, tasks=tasks)
+          prng_key, inputs, paddings=paddings, tasks=tasks
+      )
       output = layer.apply(initial_vars, inputs, paddings=paddings, tasks=tasks)
     self.assertEqual(output.shape, inputs.shape)
 
@@ -145,7 +150,8 @@ class AdaptersTest(test_utils.TestCase):
     layer = instantiate(layer)
 
     npy_inputs = np.random.normal(
-        1.0, 0.5, [batch_size, seq_len, input_dims]).astype('float32')
+        1.0, 0.5, [batch_size, seq_len, input_dims]
+    ).astype('float32')
     inputs = jnp.asarray(npy_inputs)
     paddings = np.random.randint(0, 2, size=[batch_size, seq_len])
 
@@ -186,7 +192,8 @@ class AdaptersTest(test_utils.TestCase):
     seq_len = 512
 
     npy_inputs = np.random.normal(
-        1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
+        1.0, 0.5, [batch_size, seq_len, p.input_dims]
+    ).astype('float32')
     inputs = jnp.asarray(npy_inputs)
     npy_paddings = np.zeros([batch_size, seq_len], dtype=np.float32)
     input_paddings = jnp.asarray(npy_paddings)
@@ -200,7 +207,8 @@ class AdaptersTest(test_utils.TestCase):
       ffwd = instantiate(p2)
       outputs = ffwd.apply(initial_vars, inputs, input_paddings)
     self.assertAllClose(
-        test_utils.to_np(outputs_adapted), test_utils.to_np(outputs))
+        test_utils.to_np(outputs_adapted), test_utils.to_np(outputs)
+    )
 
 
 if __name__ == '__main__':

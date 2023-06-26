@@ -16,8 +16,8 @@
 """Unit tests for model."""
 
 from typing import Any
-from praxis import pax_fiddle
 
+from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -25,14 +25,17 @@ from jax import numpy as jnp
 import numpy as np
 from praxis import base_layer
 from praxis import decoder_utils
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis import test_utils
+from praxis.layers import embedding_softmax
 from praxis.layers import models
 from praxis.layers import resnets
-from praxis.layers import transformers
 from praxis.layers import transformer_models
-from praxis.layers import embedding_softmax
+from praxis.layers import transformers
+import tensorflow.compat.v2 as tf
+
 
 NestedMap = py_utils.NestedMap
 instantiate = base_layer.instantiate
@@ -1128,6 +1131,66 @@ class SequenceModelTest(test_utils.TestCase):
 
     self.assertIn('embeddings', results)
     self.assertSequenceEqual(results.embeddings.shape, (1, 5, 8))
+
+
+class TransformerLmDpoTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+    tf.random.set_seed(123)
+
+  def test_transformer_lm_dpo(self):
+    seq_len = 512
+    position_emb_tpl = pax_fiddle.Config(embedding_softmax.PositionalEmbedding)
+    stacked_transformer_tpl = pax_fiddle.Config(
+        transformers.StackedTransformer,
+        model_dims=32,
+        hidden_dims=4 * 32,
+        num_heads=4,
+        num_layers=1,
+    )
+    p_ref = pax_fiddle.Config(
+        transformer_models.TransformerLm,
+        model_dims=32,
+        vocab_size=52,
+        position_emb_tpl=position_emb_tpl,
+        stacked_transformer_tpl=stacked_transformer_tpl,
+    )
+    p_ref.softmax_tpl.scale_sqrt_depth = True
+    p_mdl = p_ref.clone()
+    p = pax_fiddle.Config(
+        models.LanguageModelDPO, ref_mdl_tpl=p_ref, mdl_tpl=p_mdl
+    )
+
+    batch_size = 8
+    dpo_lm = instantiate(p)
+
+    input_ids = jax.random.randint(
+        jax.random.PRNGKey(1234), [batch_size, seq_len], 0, 51
+    )
+    labels = jnp.concatenate((input_ids[:, 1:], input_ids[:, :1]), axis=1)
+    weights = jnp.ones([batch_size, seq_len])
+    lm_input = NestedMap(
+        ids=input_ids,
+        labels=labels,
+        paddings=jnp.zeros([batch_size, seq_len]),
+        segment_ids=jnp.ones([batch_size, seq_len]),
+        segment_pos=jnp.tile(
+            jnp.arange(0, seq_len), [batch_size, 1]
+        ),
+        weights=weights,
+        eval_sample_weights=jnp.ones([batch_size])
+    )
+    input_batch = NestedMap(y_l=lm_input, y_w=lm_input)
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = dpo_lm.init(prng_key, input_batch)
+      outputs = dpo_lm.apply(initial_vars, input_batch)
+      logging.info('outputs: %s', outputs)
+      self.assertEqual(0.0, outputs.total_loss)
+      self.assertEqual(0.6931472, outputs.dpo_loss)
 
 
 if __name__ == '__main__':

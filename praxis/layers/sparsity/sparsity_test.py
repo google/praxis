@@ -161,5 +161,19 @@ class PruningFunctionalityTest(parameterized.TestCase):
     )
 
 
+class PruningScoreTest(parameterized.TestCase):
+
+  def test_score_activation_weighted(self):
+    weight = jnp.array([[1.0, 2.0, 3.0, 4.0], [-4.0, -3.0, -2.0, -1.0]])
+    activation = jnp.array([[1.0, 0.0], [1.0, 0.0], [-1.0, 0.0], [-1.0, 0.0]])
+    expected_score = jnp.array([[4.0, 8.0, 12.0, 16.0], [0.0, 0.0, 0.0, 0.0]])
+    score = sparsity.compute_score(
+        weight,
+        inputs=activation,
+        score_func=sparsity_hparams.SparsityScore.ACTIVATION_WEIGHTED,
+    )
+    self.assertTrue((score == expected_score).all())
+
+
 if __name__ == '__main__':
   absltest.main()

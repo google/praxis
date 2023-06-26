@@ -15,7 +15,6 @@
 
 """A generic flax.nn.Module adapter layers."""
 
-from praxis import pax_fiddle
 import abc
 import functools
 import typing
@@ -25,6 +24,7 @@ import flax.linen as nn
 from flax.linen import partitioning as flax_partitioning
 from praxis import base_layer
 from praxis import flax_utils
+from praxis import pax_fiddle
 from praxis import pytypes
 
 JTensor = pytypes.JTensor
@@ -60,7 +60,6 @@ class _InternalBaseFlaxAdapter(base_layer.BaseLayer):
       )
 
   def _call_with_boxed_params_init(self, unbound_method, *args, **kwargs):
-
     def call_fn(module, *args, **kwargs):
       # axis_rules context manager is used to map activation sharding logical
       # axes to mesh axes names that pjit expects.
@@ -146,11 +145,12 @@ class FlaxModuleAdapter(FlaxModuleAdapterBase):
   Attributes:
     module_factory_method: A callable that constructs an instance of a module.
   """
+
   module_factory_method: Optional[Callable[[], nn.Module]] = None
 
   def _build_wrapped_module(self) -> nn.Module:
     if self.module_factory_method is None:
-      raise ValueError('module_factory_method must be set.')
+      raise ValueError("module_factory_method must be set.")
     return self.module_factory_method()
 
 

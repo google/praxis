@@ -58,7 +58,7 @@ class OneHeadedAttentionProjection(base_layer.BaseLayer):
   input_dim: int = 0
   output_dim: int = 0
   use_bias: bool = True
-  einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -190,8 +190,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   attention_extra_logit: Optional[float] = None
   dconv_qkv: bool = False
   combine_qkv: bool = False
-  qk_einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
-  pv_einsum_tpl: LayerTpl = template_field(base_ops.Einsum)
+  qk_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   # SPMD partition related params.
   #
@@ -1010,14 +1010,13 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
               base_layer.PARAMS: None,
               base_layer.DECODE_CACHE: None,
               base_layer.PREFIX_DECODE_CACHE: None,
+              base_layer.HYPER_PARAMS: None,
           },
           in_axes=tuple(in_axes),
           out_axes=i + 1,
-          split_rngs={
-              base_layer.PARAMS: True,
-              base_layer.RANDOM: True
-          },
-          axis_size=broadcast_dim_sizes[i])
+          split_rngs={base_layer.PARAMS: True, base_layer.RANDOM: True},
+          axis_size=broadcast_dim_sizes[i],
+      )
       vfns.append(vmapped_fn)
     return vfns[-1]
 
@@ -1191,14 +1190,13 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
                 base_layer.PARAMS: None,
                 base_layer.DECODE_CACHE: None,
                 base_layer.PREFIX_DECODE_CACHE: None,
+                base_layer.HYPER_PARAMS: None,
             },
             in_axes=i + 1,
             out_axes=i + 1,
-            split_rngs={
-                base_layer.PARAMS: True,
-                base_layer.RANDOM: True
-            },
-            axis_size=batch_dims[1 + i])
+            split_rngs={base_layer.PARAMS: True, base_layer.RANDOM: True},
+            axis_size=batch_dims[1 + i],
+        )
         vfns.append(vmapped_fn)
       return vfns[-1]
 

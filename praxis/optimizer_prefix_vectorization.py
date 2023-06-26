@@ -33,7 +33,7 @@ NestedMap with fields like ('#' being the repeat prefix separator):
 }
 The 'i' prefix of each sharding dim indicates it's an integer.
 
-If the sharding prefix dims are strings are tuples of strings, the prefix keys
+If the sharding prefix dims are strings or tuples of strings, the prefix keys
 are encoded as:
 {
   'p#2.3#sdata.smdl': sharding prefix ['data','mdl'],

@@ -30,11 +30,11 @@ class ActivationsTest(test_utils.TestCase):
     self.assertEqual(outputs, base_layer.instantiate(p.set(name='n'))(inputs))
 
   def test_Exp(self):
-    inputs = jnp.array([1.])
+    inputs = jnp.array([1.0])
     self._run(pax_fiddle.Config(activations.Exp), inputs, jnp.exp(inputs))
 
   def test_Softplus(self):
-    inputs = jnp.array([1.])
+    inputs = jnp.array([1.0])
     self._run(
         pax_fiddle.Config(activations.Softplus), inputs, jax.nn.softplus(inputs)
     )

@@ -37,6 +37,7 @@ pytype_strict_library(
         ":checkpoint_policy",
         ":conformers",
         ":convolutions",
+        ":einsum",
         ":embedding_softmax",
         ":frnn",
         ":linears",
@@ -182,6 +183,33 @@ pytype_strict_library(
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
+    ],
+)
+
+pytype_strict_library(
+    name = "einsum",
+    srcs = ["einsum.py"],
+    deps = [
+        ":base_ops",
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:pytypes",
+    ],
+)
+
+py_strict_test(
+    name = "einsum_test",
+    size = "large",
+    srcs = ["einsum_test.py"],
+    deps = [
+        ":einsum",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:test_utils",
     ],
 )
 
@@ -530,7 +558,6 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
-        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
     ],
@@ -847,6 +874,7 @@ py_strict_test(
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit flax dependency.
         # Implicit jax dependency.
         # Implicit lingvo.core.layers dependency.
         # Implicit numpy dependency.
@@ -854,6 +882,7 @@ py_strict_test(
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
+        "//praxis:pytypes",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
     ],
@@ -886,6 +915,7 @@ py_strict_test(
         ":resnets",
         ":transformer_models",
         ":transformers",
+        # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
@@ -896,6 +926,7 @@ py_strict_test(
         "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis:test_utils",
+        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 

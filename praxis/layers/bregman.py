@@ -33,8 +33,13 @@ JTensor = pytypes.JTensor
 PARAMS = base_layer.PARAMS
 
 
-def _leaky_relu_loss(coefficients: JTensor, components: JTensor, mean: JTensor,
-                     labels: JTensor, negative_slope: float) -> JTensor:
+def _leaky_relu_loss(
+    coefficients: JTensor,
+    components: JTensor,
+    mean: JTensor,
+    labels: JTensor,
+    negative_slope: float,
+) -> JTensor:
   """Calculates the leaky ReLU loss between the labels and reconstructions.
 
   Args:
@@ -48,18 +53,20 @@ def _leaky_relu_loss(coefficients: JTensor, components: JTensor, mean: JTensor,
     Average loss.
   """
   labels = lax.stop_gradient(jnp.reshape(labels, [labels.shape[0], -1]))
-  labels_pre = nn.leaky_relu(labels, negative_slope=1. / negative_slope)
+  labels_pre = nn.leaky_relu(labels, negative_slope=1.0 / negative_slope)
   preds_pre = jnp.tensordot(coefficients, components, 1) + mean
   preds_pre = jnp.reshape(preds_pre, [preds_pre.shape[0], -1])
   preds = nn.leaky_relu(preds_pre, negative_slope=negative_slope)
   loss = 0.5 * (preds_pre * preds - labels_pre * labels) - labels * (
-      preds_pre - labels_pre)
+      preds_pre - labels_pre
+  )
   loss = jnp.mean(jnp.sum(loss, axis=1))
   return loss
 
 
-def _squared_loss(coefficients: JTensor, components: JTensor, mean: JTensor,
-                  labels: JTensor) -> JTensor:
+def _squared_loss(
+    coefficients: JTensor, components: JTensor, mean: JTensor, labels: JTensor
+) -> JTensor:
   """Calculates the squared loss between the labels and reconstructions.
 
   Args:
@@ -84,8 +91,9 @@ def _inverse_softmax(inputs: JTensor) -> JTensor:
   return outputs - jnp.mean(outputs, axis=-1, keepdims=True)
 
 
-def _softmax_loss(coefficients: JTensor, components: JTensor, mean: JTensor,
-                  labels: JTensor) -> JTensor:
+def _softmax_loss(
+    coefficients: JTensor, components: JTensor, mean: JTensor, labels: JTensor
+) -> JTensor:
   """Calculates the softmax loss between the labels and reconstructions.
 
   Args:
@@ -100,9 +108,9 @@ def _softmax_loss(coefficients: JTensor, components: JTensor, mean: JTensor,
   logits = jnp.tensordot(coefficients, components, 1) + mean
   labels = lax.stop_gradient(jnp.reshape(labels, [-1, labels.shape[-1]]))
   logits = jnp.reshape(logits, [-1, logits.shape[-1]])
-  loss = jsp.logsumexp(
-      logits, axis=1) + jnp.sum(
-          labels * (jnp.log(jnp.maximum(labels, 1e-6)) - logits), axis=1)
+  loss = jsp.logsumexp(logits, axis=1) + jnp.sum(
+      labels * (jnp.log(jnp.maximum(labels, 1e-6)) - logits), axis=1
+  )
   loss = jnp.mean(loss)
   return loss
 
@@ -110,6 +118,7 @@ def _softmax_loss(coefficients: JTensor, components: JTensor, mean: JTensor,
 @enum.unique
 class ActivationType(str, enum.Enum):
   """Enumeration with the activation function names supported by this module."""
+
   IDENTITY = 'IDENTITY'
   LEAKY_RELU = 'LEAKY_RELU'
   SOFTMAX = 'SOFTMAX'
@@ -150,6 +159,7 @@ class BregmanPCA(base_layer.BaseLayer):
     constant_lr_schedule: Whether to use a constant learning rate schedule for
       the components. Applies a linearly decaying schedule if False.
   """
+
   num_components: int = 0
   input_dims: Union[int, Sequence[int]] = 0
   activation_type: ActivationType = ActivationType.IDENTITY
@@ -180,11 +190,13 @@ class BregmanPCA(base_layer.BaseLayer):
         # TODO(eamid): switch to an int32 step counter.
         init=WeightInit.Constant(0.0),
         dtype=jnp.float32,
-        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
+    )
     mean = WeightHParams(
         shape=[1] + input_dims,
         init=WeightInit.Constant(0.0),
-        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
+    )
     components = WeightHParams(
         shape=[self.num_components] + input_dims,
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
@@ -222,7 +234,8 @@ class BregmanPCA(base_layer.BaseLayer):
     self.create_variable('mean', mean, trainable=False)
     self.create_variable('components', components, trainable=False)
     self.create_variable(
-        'components_momentum', components_momentum, trainable=False)
+        'components_momentum', components_momentum, trainable=False
+    )
 
   def base_learning_rate(self, step: JTensor) -> Tuple[JTensor, JTensor]:
     constant_lr_schedule = self.constant_lr_schedule
@@ -251,9 +264,9 @@ class BregmanPCA(base_layer.BaseLayer):
     representations = self.activation_fn(representations)
     return representations
 
-  def __call__(self,
-               inputs: JTensor,
-               mask: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+  def __call__(
+      self, inputs: JTensor, mask: Optional[JTensor] = None
+  ) -> Tuple[JTensor, JTensor]:
     """Updates the PCA parameters.
 
     Args:
@@ -280,8 +293,9 @@ class BregmanPCA(base_layer.BaseLayer):
       base_lr = 1.0 - count / self.coefficients_steps
       coeffs_grad = self.coefficients_grad_fn(coeffs, components, mean, inputs)
       coeffs_grad_norm = jnp.maximum(jnp.linalg.norm(coeffs_grad), 1e-6)
-      coeffs_grad = coeffs_grad / coeffs_grad_norm * jnp.sqrt(
-          jnp.size(coeffs_grad))
+      coeffs_grad = (
+          coeffs_grad / coeffs_grad_norm * jnp.sqrt(jnp.size(coeffs_grad))
+      )
       coeffs_mom = (
           self.coefficients_beta * coeffs_mom
           + (1.0 - self.coefficients_beta) * coeffs_grad
@@ -294,25 +308,32 @@ class BregmanPCA(base_layer.BaseLayer):
       base_lr, apply_update = self.base_learning_rate(step)
       self.update_var('step', self.get_var('step') + 1)
       mean_beta = 1.0 - apply_update * (1.0 - self.mean_beta)
-      mean = mean_beta * mean + (1. - mean_beta) * self.inv_activation_fn(
-          jnp.mean(inputs, axis=0, keepdims=True))
+      mean = mean_beta * mean + (1.0 - mean_beta) * self.inv_activation_fn(
+          jnp.mean(inputs, axis=0, keepdims=True)
+      )
     coefficients = jnp.zeros(
         (inputs.shape[0], self.num_components), dtype=inputs.dtype
     )
     coefficients_momentum = jnp.zeros_like(coefficients)
     _, coefficients, _, _, _ = lax.while_loop(
-        _iter_condition, _iter_body,
-        (0, coefficients, coefficients_momentum, components, mean))
+        _iter_condition,
+        _iter_body,
+        (0, coefficients, coefficients_momentum, components, mean),
+    )
     coefficients = lax.stop_gradient(coefficients)
     masked_coefficients = coefficients
     if mask is not None:
       masked_coefficients *= mask
     if not self.do_eval:
-      components_grad = self.components_grad_fn(masked_coefficients, components,
-                                                mean, inputs)
+      components_grad = self.components_grad_fn(
+          masked_coefficients, components, mean, inputs
+      )
       components_grad_norm = jnp.maximum(jnp.linalg.norm(components_grad), 1e-6)
-      components_grad = components_grad / components_grad_norm * jnp.sqrt(
-          jnp.size(components_grad))
+      components_grad = (
+          components_grad
+          / components_grad_norm
+          * jnp.sqrt(jnp.size(components_grad))
+      )
       components_momentum = (self.components_beta * components_momentum) + (
           1.0 - self.components_beta
       ) * components_grad * apply_update

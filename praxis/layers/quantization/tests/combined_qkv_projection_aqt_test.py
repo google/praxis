@@ -1153,6 +1153,10 @@ class CombinedQKVProjectionAQTTest(quantization_test_util.QuantizationTestCase):
               ),
           }
       }
+      if use_bias:
+        expected_pspec['params']['b'] = base_layer.BoxedPartitionSpec(
+            meta=jax.sharding.PartitionSpec(None, 'data')
+        )
     else:
       expected_pspec = {
           'params': {
@@ -1166,6 +1170,10 @@ class CombinedQKVProjectionAQTTest(quantization_test_util.QuantizationTestCase):
               ),
           }
       }
+      if use_bias:
+        expected_pspec['params']['b'] = base_layer.BoxedPartitionSpec(
+            meta=jax.sharding.PartitionSpec(None, 'mdl', 'data')
+        )
     if not is_weight_symmetric:
       expected_pspec['params']['w_quantized_zp'] = expected_pspec['params'][
           'w_quantized_scale'

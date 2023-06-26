@@ -23,8 +23,9 @@ from setuptools import setup
 def _get_requirements():
   """Parses requirements.txt file."""
   install_requires_tmp = []
-  with open(os.path.join(os.path.dirname(__file__), './requirements.in'),
-            'r') as f:
+  with open(
+      os.path.join(os.path.dirname(__file__), './requirements.in'), 'r'
+  ) as f:
     for line in f:
       package_name = line.strip()
       # Skip empty line or comments starting with "#".
@@ -46,14 +47,13 @@ setup(
     author='PAX team',
     author_email='pax-dev@google.com',
     packages=find_packages(),
-    python_requires='>=3.8',
+    python_requires='>=3.10',
     install_requires=install_requires,
     url='https://github.com/google/praxis',
     license='Apache-2.0',
     classifiers=[
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
     ],
     zip_safe=False,
 )

@@ -17,6 +17,7 @@
 
 import functools
 import math
+from typing import Optional
 from typing import Tuple
 
 from absl import logging
@@ -272,3 +273,57 @@ def prune_inputs_n_m(inputs: jnp.ndarray, *, n: int, m: int) -> jnp.ndarray:
   """
   mask = get_pruning_n_m_mask(inputs, n, m)
   return jnp.where(mask, inputs, jnp.zeros(inputs.shape, inputs.dtype))
+
+
+SparsityScore = sparsity_hparams.SparsityScore
+
+
+def compute_score(
+    weights: jnp.ndarray,
+    score_func: SparsityScore = SparsityScore.MAGNITUDE,
+    inputs: Optional[jnp.ndarray] = None,
+) -> jnp.ndarray:
+  """Compute importance score of weight before pruning."""
+  if score_func == SparsityScore.ACTIVATION_WEIGHTED:
+    if inputs is None:
+      raise ValueError('`inputs` must be given for `ACTIVATION_WEIGHTED`.')
+    else:
+      return score_activation_weighted(weights, inputs)
+  elif score_func == SparsityScore.MAGNITUDE:
+    return score_weight_magnitude(weights)
+  else:
+    raise ValueError('Unknown sparsity score function.')
+
+
+def score_weight_magnitude(weight: jnp.ndarray) -> jnp.ndarray:  # pylint: disable=unused-argument
+  """This function returns score based on the magnitude of weights."""
+
+  return jnp.abs(weight)
+
+
+def score_activation_weighted(
+    weight: jnp.ndarray, inputs: jnp.ndarray
+) -> jnp.ndarray:
+  """This function returns a weighted score of weights based on the average activation magnitude.
+
+  The score is calculated as the product of the weight magnitude and the mean
+  magnitude of the activation tensor.
+
+  Args:
+    weight: A 2-D weight matrix of shape (C_in, C_out).
+    inputs: A N-D tensor where the last channel is C_in.
+
+  Returns:
+    A score with the same shape as weight.
+  """
+
+  # TODO(wppark): Add support for attention layers as well.
+  if not (jnp.ndim(weight) == 2 and inputs.shape[-1] == weight.shape[0]):
+    raise ValueError(
+        'ACTIVATION_WEIGHTED score function only supports Linear layers for'
+        ' now. Weight must be 2-dimensional matrices, and the last channel of'
+        ' inputs must have the same number of dimension of the first channel of'
+        ' weight.'
+    )
+  score = jnp.einsum('...j,jk->jk', jnp.abs(inputs), jnp.abs(weight))
+  return score

@@ -31,6 +31,7 @@ from etils import epath
 import fiddle as fdl
 import jax
 from jax.lib import xla_client as xc
+import jax.tree_util
 import numpy as np
 from praxis import base_hyperparams
 from praxis import pax_fiddle
@@ -175,9 +176,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     return cls.get_batch_size(params) * params.num_infeed_hosts
 
   def save(self, checkpoint_path: epath.PathLike):
-    state = self.get_state() if self._peek is None else self._state_before_peek
-    dirname = os.path.dirname(checkpoint_path)
-    epath.Path(dirname).mkdir(parents=True, exist_ok=True)
+    state = self.get_state()
     epath.Path(checkpoint_path).write_bytes(state)
 
   def restore(self, checkpoint_path: epath.PathLike):
@@ -218,43 +217,45 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     actually calling into data pipeline so that we maintain the correct data
     iteration.
 
-    Note that, if method is overriden in subclasses, it is user's duty to ensure
-    peek behavior, or `peek_padded()` will lead to inconsistent states/results.
+    Note that, if method is overridden in subclasses, it is user's duty to
+    ensure peek behavior, or `peek_padded()` will lead to inconsistent
+    states/results.
 
     Returns:
       The padded example from the data pipeline.
     """
-    if self._peek is None:
-      unpadded = self.get_next()
-      pad_size = self.batch_padding_size
-      if pad_size == 0:
-        return unpadded
-      return jax.tree_util.tree_map(
-          lambda x: np.pad(x, [[0, pad_size]] + [[0, 0]] * (x.ndim - 1)),
-          unpadded,
-      )
-    peek = self._peek
-    self._peek = None
-    self._state_before_peek = None
-    return peek
+    if self._peek is not None:
+      output = self._peek
+      self._peek = None
+      self._state_before_peek = None
+      return output
+    unpadded = self.get_next()
+    pad_size = self.batch_padding_size
+    if pad_size == 0:
+      return unpadded
+    return jax.tree_util.tree_map(
+        lambda x: np.pad(x, [[0, pad_size]] + [[0, 0]] * (x.ndim - 1)),
+        unpadded,
+    )
 
   def peek_padded(self) -> Optional[NestedJTensor]:
     """Peeks into the current input data pipeline."""
-    if self._peek is None:
+    if self._peek is not None:
+      return self._peek
+    assert (
+        self._state_before_peek is None
+    ), "_peek was None, but _state_before_peek wasn't None"
+    try:
+      # Not all subclasses support _get_state_internal().
       try:
-        # Not all subclasses support get_state().
-        try:
-          assert (
-              self._state_before_peek is None
-          ), "_peek was None, but _state_before_peek wasn't None"
-          self._state_before_peek = self._get_state_internal()
-        except NotImplementedError:
-          pass
-        self._peek = self.get_next_padded()
-      except (tf.errors.OutOfRangeError, StopIteration):
-        logging.warning('Peek failed: input %s out of range.', self.name)
-        self._peek = None
-        self._state_before_peek = None
+        self._state_before_peek = self._get_state_internal()
+      except NotImplementedError:
+        pass
+      self._peek = self.get_next_padded()
+    except (tf.errors.OutOfRangeError, StopIteration):
+      logging.warning('Peek failed: input %s out of range.', self.name)
+      self._peek = None
+      self._state_before_peek = None
     return self._peek
 
   def reset(self) -> None:
@@ -1036,11 +1037,28 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
     # `.get_input_specs()` is called. In practice, we typically call this
     # method only once at model initialization time.
     input_pipeline: BaseInput = instantiate(self.input_p)
-    if isinstance(input_pipeline.dataset, tf.data.Dataset):
+    dataset = input_pipeline.dataset
+    if (
+        dataset
+        and isinstance(dataset, tf.data.Dataset)
+        and
+        # Only use dataset.element_spec to compute the input spec when all
+        # non-batch dimensions are defined.
+        # NOTE this is based on the assumption that the batch dimensions don't
+        # affect the variable shapes, so they can be ignored during model
+        # initialization. Currently paxml workflow uses this assumption during
+        # model initialization and input spec validation.
+        jax.tree_util.tree_reduce(
+            lambda c, x: c and x.shape[1:].is_fully_defined(),
+            dataset.element_spec,
+            True,  # Initial value.
+        )
+    ):
       def tf_spec_to_jax(spec: tf.TensorSpec) -> jax.ShapeDtypeStruct:
         return jax.ShapeDtypeStruct(shape=spec.shape,
                                     dtype=spec.dtype.as_numpy_dtype())
-      return jax.tree_map(tf_spec_to_jax, input_pipeline.dataset.element_spec)
+      return jax.tree_map(tf_spec_to_jax, dataset.element_spec)
+
     return jax.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
                         input_pipeline.get_next_padded())
 
