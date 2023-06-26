@@ -36,8 +36,9 @@ WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
 
 
-class OneHeadedAttentionProjection(
-    multi_query_attention.OneHeadedAttentionProjection
+class OneHeadedAttentionProjection(  # pytype: disable=signature-mismatch
+    multi_query_attention.OneHeadedAttentionProjection,
+    quantizer.QuantizationLayer,
 ):
   """Quantized OneHeadedAttentionProjection.
 
@@ -52,22 +53,22 @@ class OneHeadedAttentionProjection(
   _PACK_4BIT_DIM = 0
 
   def create_tensor_quantizers(self):
+    weight_params = (
+        self.quantization.weight_params if self.quantization else None
+    )
+    act_params = self.quantization.act_params if self.quantization else None
     self.create_child(
         'act_quantizer',
-        quantizer.create_tensor_quantizer(
-            'act_quantizer', self.quantization.act_params
-        ),
+        quantizer.create_tensor_quantizer('act_quantizer', act_params),
     )
     self.create_child(
         'weight_quantizer',
-        quantizer.create_tensor_quantizer(
-            'weight_quantizer', self.quantization.weight_params
-        ),
+        quantizer.create_tensor_quantizer('weight_quantizer', weight_params),
     )
 
   def _do_static_activation_quantization(self) -> bool:
     """If activation need to be quantized."""
-    act_params = self.quantization.act_params
+    act_params = self.quantization.act_params if self.quantization else None
     return act_params is not None and act_params.stats_config is not None
 
   def setup(self) -> None:
@@ -80,8 +81,11 @@ class OneHeadedAttentionProjection(
     pc = WeightHParams(
         shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
     )
-    quantizer.set_up_weights(
-        self, 'w', pc, [self.output_dim], self._PACK_4BIT_DIM
+    self.set_up_weights(
+        weight_name='w',
+        weight_params=pc,
+        scale_shape=[self.output_dim],
+        pack_dim=self._PACK_4BIT_DIM,
     )
     if self.use_bias:
       if self.mesh_shape is not None:
@@ -114,7 +118,13 @@ class OneHeadedAttentionProjection(
         shape[-1] == self.input_dim
     ), f'Expecting shape[-1] == p.input_dim, {shape[-1]} != {self.input_dim}'
     eqn = '...D,DH->...H'
-    ret = quantizer.quantized_einsum(self, eqn, inputs, self._PACK_4BIT_DIM, [])
+    ret = self.quantized_einsum(
+        eqn=eqn,
+        x=inputs,
+        w=self.theta.w,
+        pack_dim=self._PACK_4BIT_DIM,
+        reshape=[],
+    )
     if self.use_bias:
       ret += theta.b
     return ret
@@ -125,6 +135,10 @@ class OneHeadedAttentionProjection(
     Returns:
       a map from names to partition spec.
     """
+    assert self.quantization is not None, (
+        'quantized_partition_specs is called during serving for quantized'
+        ' model, please set quantized config for the model.'
+    )
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     weight_pspec = base_layer._weight_hparam_to_pspec(
         self._weight_hparams['w'], self.mesh_axis_names
@@ -158,6 +172,10 @@ class OneHeadedAttentionProjection(
     Returns:
       a map from names to quantized weights.
     """
+    assert self.quantization is not None, (
+        'quantize_weight is called during serving for quantized model, please'
+        ' set quantized config for the model.'
+    )
     theta = self.theta
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     eqn = 'xy,yz->xz'

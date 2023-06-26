@@ -41,31 +41,28 @@ JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 
 
-class AttentionProjection(attentions.AttentionProjection):
-  """Layer that computes quantized multi heads projection.
+class AttentionProjection(  # pytype: disable=signature-mismatch
+    attentions.AttentionProjection, quantizer.QuantizationLayer
+):
+  """Layer that optionally computes quantized multi heads projection.
 
   This layer is expected to be used within DotProductAttention.
-
-  Attributes:
-    quantization: Information related to the quantization applied to this
-      layer, such as dtype for the quantized weight.
   """
-  quantization: QuantizationParams = instance_field(QuantizationParams)
 
   _PACK_4BIT_DIM = 0
 
   def create_tensor_quantizers(self):
+    act_params = self.quantization.act_params if self.quantization else None
+    weight_params = (
+        self.quantization.weight_params if self.quantization else None
+    )
     self.create_child(
         'act_quantizer',
-        quantizer.create_tensor_quantizer(
-            'act_quantizer', self.quantization.act_params
-        ),
+        quantizer.create_tensor_quantizer('act_quantizer', act_params),
     )
     self.create_child(
         'weight_quantizer',
-        quantizer.create_tensor_quantizer(
-            'weight_quantizer', self.quantization.weight_params
-        ),
+        quantizer.create_tensor_quantizer('weight_quantizer', weight_params),
     )
 
   def setup(self) -> None:
@@ -96,8 +93,11 @@ class AttentionProjection(attentions.AttentionProjection):
         shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
     )
     scale_shape = [self.input_dim] if self.is_output_projection else hd_shape
-    quantizer.set_up_weights(
-        self, 'w', pc, scale_shape, self._PACK_4BIT_DIM
+    self.set_up_weights(
+        weight_name='w',
+        weight_params=pc,
+        scale_shape=scale_shape,
+        pack_dim=self._PACK_4BIT_DIM,
     )
     if self.use_bias:
       if self.is_output_projection:
@@ -168,8 +168,12 @@ class AttentionProjection(attentions.AttentionProjection):
       batch_eqn = eqn_sym[: (rank - 1)] if rank else '...'
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
 
-    ret = quantizer.quantized_einsum(
-        self, eqn, inputs, self._PACK_4BIT_DIM, pc_shape
+    ret = self.quantized_einsum(
+        eqn=eqn,
+        x=inputs,
+        w=theta.w,
+        pack_dim=self._PACK_4BIT_DIM,
+        reshape=pc_shape,
     )
 
     if self.use_bias:
@@ -182,6 +186,10 @@ class AttentionProjection(attentions.AttentionProjection):
     Returns:
       a map from names to partition spec.
     """
+    assert self.quantization is not None, (
+        'quantized_partition_specs is called during serving for quantized'
+        ' model, please set quantized config for the model.'
+    )
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     weight_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
         self._weight_hparams['w'], self.mesh_axis_names
@@ -216,6 +224,10 @@ class AttentionProjection(attentions.AttentionProjection):
     Returns:
       a map from names to quantized weights.
     """
+    assert self.quantization is not None, (
+        'quantize_weight is called during serving for quantized model, please'
+        ' set quantized config for the model.'
+    )
     eqn = ''
     # This matches the equation logic in __call__ for weights.
     if self.is_output_projection:
@@ -272,31 +284,28 @@ class AttentionProjection(attentions.AttentionProjection):
     return {base_layer.PARAMS: ret_params}
 
 
-class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
+class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
+    attentions.CombinedQKVProjectionLayer, quantizer.QuantizationLayer
+):
   """Layer that computes quantized QKV projection with a combined weight.
 
   This layer is expected to be used within DotProductAttention below.
-
-  Attributes:
-    quantization: Information related to the quantization applied to this
-      layer, such as dtype for the quantized weight.
   """
-  quantization: QuantizationParams = instance_field(QuantizationParams)
 
   _PACK_4BIT_DIM = 1
 
   def create_tensor_quantizers(self):
+    act_params = self.quantization.act_params if self.quantization else None
+    weight_params = (
+        self.quantization.weight_params if self.quantization else None
+    )
     self.create_child(
         'act_quantizer',
-        quantizer.create_tensor_quantizer(
-            'aqt_quantizer', self.quantization.act_params
-        ),
+        quantizer.create_tensor_quantizer('aqt_quantizer', act_params),
     )
     self.create_child(
         'weight_quantizer',
-        quantizer.create_tensor_quantizer(
-            'weight_quantizer', self.quantization.weight_params
-        ),
+        quantizer.create_tensor_quantizer('weight_quantizer', weight_params),
     )
 
   def setup(self) -> None:
@@ -340,7 +349,12 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
         mesh_shape=self.mesh_shape,
         tensor_split_dims_mapping=weight_split_dims_mapping,
     )
-    quantizer.set_up_weights(self, 'w', pc, [3]+hd_shape, self._PACK_4BIT_DIM)
+    self.set_up_weights(
+        weight_name='w',
+        weight_params=pc,
+        scale_shape=[3] + hd_shape,
+        pack_dim=self._PACK_4BIT_DIM,
+    )
     if self.use_bias:
       # Combined bias weight for q, k, v projections.
       pc_bias = WeightHParams(
@@ -365,7 +379,7 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     """
     theta = self.theta
     step_count = None
-    if self.quantization.weight_params.use_step_count:
+    if self.quantization and self.quantization.weight_params.use_step_count:
       step_count = self.get_var('step_count')
       if not self.do_eval:
         self.update_var('step_count', step_count + 1)
@@ -396,12 +410,15 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
 
     # K indexes qkv.
     eqn = f'{batch_eqn}D,KDNH->K{batch_eqn}NH'
-    if self.quantization.mode == QuantizationMode.INFERENCE:
-      # PTQ, QAT has the same inference graph, only difference is on activation.
-      # No matter which quantization type is used, the weight and scale
-      # dimensions are the same for all types.
-      # Note: lower-bit types are not reflected during inference for now due to
-      # b/259306620.
+    if (
+        self.quantization
+        and self.quantization.mode == QuantizationMode.INFERENCE
+    ):
+      # PTQ, QAT has the same inference graph, only difference is on
+      # activation. No matter which quantization type is used, the weight and
+      # scale dimensions are the same for all types.
+      # Note: lower-bit types are not reflected during inference for now due
+      # to b/259306620.
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
@@ -431,7 +448,12 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
       elif self.quantization.act_params is None:
         ret = operations.einsum(eqn, inputs, w, s, zp)
     else:
-      if self.quantization.quantization_type == QuantizationType.AQT:
+      if (
+          self.quantization is None
+          or self.quantization.quantization_type == QuantizationType.PTQ
+      ):
+        ret = jnp.einsum(eqn, inputs, w)
+      elif self.quantization.quantization_type == QuantizationType.AQT:
         ret = operations.aqt_einsum(
             eqn=eqn,
             lhs=inputs,
@@ -462,8 +484,8 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
             calculation_type=self.quantization.weight_params.calculation_dtype,
         )
         ret = jnp.einsum(eqn, inputs, w)
-      elif self.quantization.quantization_type == QuantizationType.PTQ:
-        ret = jnp.einsum(eqn, inputs, w)
+      else:
+        raise ValueError('invaid quantization type')
 
     ret = checkpoint_name(ret, 'combined_qkv_proj')
     if self.use_bias:
@@ -483,6 +505,11 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     Returns:
       a map from names to partition spec.
     """
+    assert self.quantization is not None, (
+        'quantized_partition_specs is called during serving for quantized'
+        ' model, please set quantized config for the model.'
+    )
+
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     weight_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
         self._weight_hparams['w'], self.mesh_axis_names
@@ -517,6 +544,10 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     Returns:
       a map from names to quantized weights.
     """
+    assert self.quantization is not None, (
+        'quantize_weight is called during serving for quantized model, please'
+        ' set quantized config for the model.'
+    )
     theta = self.theta
     eqn = 'AD,KDNH->KANH'
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
@@ -564,7 +595,9 @@ class CombinedQKVProjectionLayer(attentions.CombinedQKVProjectionLayer):
     return {base_layer.PARAMS: ret_params}
 
 
-class DotProductAttention(attentions.DotProductAttention):
+class DotProductAttention(  # pytype: disable=signature-mismatch
+    attentions.DotProductAttention, quantizer.QuantizationLayer
+):
   """Dot-product attention with multiple attention heads.
 
   This implementation heavily uses einsum to be efficient on TPUs.  We use the
@@ -602,23 +635,23 @@ class DotProductAttention(attentions.DotProductAttention):
       such as dtype for the quantized weight.
   """
 
-  quantization: QuantizationParams = instance_field(QuantizationParams)
-
   def create_tensor_quantizers(self):
+    act_params = self.quantization.act_params if self.quantization else None
     self.create_child(
         'act_quantizer',
-        quantizer.create_tensor_quantizer(
-            'aqt_quantizer', self.quantization.act_params
-        ),
+        quantizer.create_tensor_quantizer('aqt_quantizer', act_params),
     )
 
   def _do_static_activation_quantization(self) -> bool:
-    act_params = self.quantization.act_params
+    act_params = self.quantization.act_params if self.quantization else None
     return act_params is not None and act_params.stats_config is not None
 
   def setup(self) -> None:
     super().setup()
-    if self.quantization.quantization_type == QuantizationType.AQT:
+    if (
+        self.quantization
+        and self.quantization.quantization_type == QuantizationType.AQT
+    ):
       self.create_tensor_quantizers()
     else:
       raise NotImplementedError(
@@ -635,6 +668,10 @@ class DotProductAttention(attentions.DotProductAttention):
     Returns:
       A map from names to partition spec.
     """
+    assert self.quantization is not None, (
+        'quantized_partition_specs is called during serving for quantized'
+        ' model, please set quantized config for the model.'
+    )
     partitionspec = {}
     # Activation variable partitioning is only needed for static quantization.
     if self._do_static_activation_quantization():

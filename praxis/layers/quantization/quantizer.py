@@ -16,9 +16,11 @@
 """Quantization Aware Training ops."""
 
 from __future__ import annotations
+
 import itertools
 from typing import Optional, Sequence, Tuple, Union
 
+from absl import logging
 import jax
 import jax.numpy as jnp
 from praxis import base_layer
@@ -34,161 +36,189 @@ JTensor = pytypes.JTensor
 ActQuantizationParams = quantization_hparams.ActQuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
+QuantizationParams = quantization_hparams.QuantizationParams
+instance_field = base_layer.instance_field
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
 
 
-def set_up_weights(
-    layer: base_layer.BaseLayer,
-    weight_name: str,
-    weight_params: base_layer.WeightHParams,
-    scale_shape: list[int],
-    pack_dim: int,
-):
-  """Set up weights, quantizer, steps."""
-  dtype = layer.quantization.weight_params.dtype
-  if layer.quantization.mode == QuantizationMode.INFERENCE:
-    if (
-        layer.quantization.weight_params.precision == 4
-        and layer.quantization.weight_params.use_int4_packed_weights
-    ):
-      # For 4bit pack/unpack.
-      # TODO(jianlijianli): Replace this with proper 4bit type.
-      weight_params.shape = utils.get_packed_shape(
-          weight_params.shape, pack_dim, packing_factor=8
+class QuantizationLayer(base_layer.BaseLayer):
+  """QuantizationLayer which quantizes weights and activations.
+
+  QuantizationLayer sets up weights and optionally quantizes weights and
+  activations, this layer acts as non-quantized layer if quantization param is
+  set to None
+
+  Attributes:
+    quantization: QuantizationParams to specify quantization hyper params for a
+      given layer. Defaults to default QuantizationParams.
+  """
+
+  quantization: Optional[QuantizationParams] = instance_field(
+      QuantizationParams
+  )
+
+  def set_up_weights(
+      self,
+      *,
+      weight_name: str,
+      weight_params: base_layer.WeightHParams,
+      scale_shape: list[int],
+      pack_dim: int,
+  ):
+    """Set up weights, quantizer, steps."""
+    if not self.quantization:
+      self.create_variable(weight_name, weight_params)
+      return
+
+    dtype = self.quantization.weight_params.dtype
+    if self.quantization.mode == QuantizationMode.INFERENCE:
+      if (
+          self.quantization.weight_params.precision == 4
+          and self.quantization.weight_params.use_int4_packed_weights
+      ):
+        # For 4bit pack/unpack.
+        # TODO(jianlijianli): Replace this with proper 4bit type.
+        weight_params.shape = utils.get_packed_shape(
+            weight_params.shape, pack_dim, packing_factor=8
+        )
+        dtype = jnp.int32  # It will be used for storing 8 4bit values.
+      if do_static_activation_quantization(self.quantization.act_params):
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.'
+        )
+      if (
+          jax.dtypes.scalar_type_of(dtype) == float
+          and jnp.finfo(dtype).bits == 8
+      ):
+        dtype = jnp.int8
+      self.create_quantized_variable(
+          weight_name,
+          weight_params,
+          scale_shape,
+          dtype=dtype,
+          use_symmetric=self.quantization.weight_params.use_symmetric,
       )
-      dtype = jnp.int32  # It will be used for storing 8 4bit values.
-    if do_static_activation_quantization(layer.quantization.act_params):
-      raise NotImplementedError(
-          'Static activation quantization is not supported yet.'
+    else:
+      self.create_variable(weight_name, weight_params)
+
+    if self.quantization.quantization_type == QuantizationType.AQT:
+      self.create_tensor_quantizers()
+      # Optionally create stateful quantizer.
+
+    if self.quantization.mode == QuantizationMode.TRAINING:
+      if do_static_activation_quantization(self.quantization.act_params):
+        raise NotImplementedError(
+            'Static activation quantization is not supported yet.'
+        )
+
+    # Optionally create step count.
+    if self.quantization.weight_params.use_step_count:
+      step_count_pc = base_layer.WeightHParams(
+          shape=[],
+          init=base_layer.WeightInit.Constant(0),
+          dtype=jnp.int32,
       )
-    if (
-        jax.dtypes.scalar_type_of(dtype) == float
-        and jnp.finfo(dtype).bits == 8
-    ):
-      dtype = jnp.int8
-    layer.create_quantized_variable(
-        weight_name,
-        weight_params,
-        scale_shape,
-        dtype=dtype,
-        use_symmetric=layer.quantization.weight_params.use_symmetric,
-    )
-  elif layer.quantization.mode == QuantizationMode.TRAINING:
-    if do_static_activation_quantization(layer.quantization.act_params):
-      raise NotImplementedError(
-          'Static activation quantization is not supported yet.'
+      self.create_variable('step_count', step_count_pc, trainable=False)
+
+  def quantized_einsum(
+      self,
+      *,
+      eqn: str,
+      x: JTensor,
+      w: JTensor,
+      pack_dim: int,
+      reshape: list[int],
+  ) -> JTensor:
+    """Quantized Einsum for inference and training."""
+
+    if not self.quantization:
+      if reshape:
+        w = jnp.reshape(w, reshape)
+      return jnp.einsum(eqn, x, w)
+
+    # Optionally create step count.
+    step_count = None
+    if self.quantization.weight_params.use_step_count:
+      step_count = self.get_var('step_count')
+      if not self.do_eval:
+        self.update_var('step_count', step_count + 1)
+      self.add_summary('step_count', step_count)
+
+    if self.quantization.mode == QuantizationMode.INFERENCE:
+      # PTQ, QAT has the same inference graph, only difference is on activation.
+      # No matter which quantization type is used, the weight and scale
+      # dimensions are the same for all types.
+      # Note: lower-bit types are not reflected during inference for now due to
+      # b/259306620.
+      w, s, zp = self.get_quantized_weight(
+          'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
-      # Additionally add mutable tensor to record activation range.
-    layer.create_variable(weight_name, weight_params)
-  else:
-    layer.create_variable(weight_name, weight_params)
-
-  # Optionally create stateful quantizer.
-  if layer.quantization.quantization_type == QuantizationType.AQT:
-    layer.create_tensor_quantizers()
-
-  # Optionally create step count.
-  if layer.quantization.weight_params.use_step_count:
-    step_count_pc = base_layer.WeightHParams(
-        shape=[],
-        init=base_layer.WeightInit.Constant(0),
-        dtype=jnp.int32,
-    )
-    layer.create_variable('step_count', step_count_pc, trainable=False)
-
-
-def quantized_einsum(
-    layer: base_layer.BaseLayer,
-    eqn: str,
-    x: JTensor,
-    pack_dim: int,
-    reshape: list[int],
-    ) -> JTensor:
-  """Quantized Einsum for inference and training."""
-
-  # Optionally create step count.
-  step_count = None
-  if layer.quantization.weight_params.use_step_count:
-    step_count = layer.get_var('step_count')
-    if not layer.do_eval:
-      layer.update_var('step_count', step_count + 1)
-    layer.add_summary('step_count', step_count)
-
-  if layer.quantization.mode == QuantizationMode.INFERENCE:
-    # PTQ, QAT has the same inference graph, only difference is on activation.
-    # No matter which quantization type is used, the weight and scale
-    # dimensions are the same for all types.
-    # Note: lower-bit types are not reflected during inference for now due to
-    # b/259306620.
-    w, s, zp = layer.get_quantized_weight(
-        'w', use_symmetric=layer.quantization.weight_params.use_symmetric
-    )
-    if (
-        layer.quantization.weight_params.precision == 4
-        and layer.quantization.weight_params.use_int4_packed_weights
-    ):
-      w = utils.unpack_4bit(
-          w, pack_dim, layer.quantization.weight_params.dtype
-      )
-    if do_static_activation_quantization(layer.quantization.act_params):
-      # This is for benchmarking only, to get the headroom.
-      # TODO(jianlijianli): implement this properly.
-      x = x.astype(jnp.int8)
-    elif layer.quantization.act_params is not None:
-      x, act_scale = operations.reduce_precision_activation(x)
-      s = jnp.multiply(jnp.squeeze(act_scale), s)
-    dtype = layer.quantization.weight_params.dtype
-    if (
-        jax.dtypes.scalar_type_of(dtype) == float
-        and jnp.finfo(dtype).bits == 8
-    ):
-      w = jax.lax.bitcast_convert_type(w, dtype)
-      # cast to bf16 since bf16 x fp8 is not supported.
-      w = w.astype(jnp.bfloat16)
-    out = operations.einsum(eqn, x, w, s, zp)
-    return out
-  else:
-    w = layer.theta.w
-    if reshape:
-      w = jnp.reshape(w, reshape)
-
-    if layer.quantization.quantization_type == QuantizationType.AQT:
-      out = operations.aqt_einsum(
-          eqn,
-          x,
-          w,
-          lhs_quantizer=layer.act_quantizer,
-          rhs_quantizer=layer.weight_quantizer,
-      )
+      if (
+          self.quantization.weight_params.precision == 4
+          and self.quantization.weight_params.use_int4_packed_weights
+      ):
+        w = utils.unpack_4bit(
+            w, pack_dim, self.quantization.weight_params.dtype
+        )
+      if do_static_activation_quantization(self.quantization.act_params):
+        # This is for benchmarking only, to get the headroom.
+        # TODO(jianlijianli): implement this properly.
+        x = x.astype(jnp.int8)
+        logging.info('Static activation quantization is not supported yet.')
+      elif self.quantization.act_params is not None:
+        x, act_scale = operations.reduce_precision_activation(x)
+        s = jnp.multiply(jnp.squeeze(act_scale), s)
+      dtype = self.quantization.weight_params.dtype
+      if (
+          jax.dtypes.scalar_type_of(dtype) == float
+          and jnp.finfo(dtype).bits == 8
+      ):
+        w = jax.lax.bitcast_convert_type(w, dtype)
+        # cast to bf16 since bf16 x fp8 is not supported.
+        w = w.astype(jnp.bfloat16)
+      out = operations.einsum(eqn, x, w, s, zp)
       return out
-    elif layer.quantization.quantization_type == QuantizationType.FQ:
-      if layer.quantization.act_params is not None:
-        x = operations.fakequant_activation(x)
-      w = operations.fakequant_einsum(
-          eqn,
-          w,
-          bits=layer.quantization.weight_params.precision,
-          use_symmetric=layer.quantization.weight_params.use_symmetric,
-          calculation_type=layer.quantization.weight_params.calculation_dtype,
-          block_size=layer.quantization.weight_params.block_size,
-      )
-      out = jnp.einsum(eqn, x, w)
-      return out
-    elif layer.quantization.quantization_type == QuantizationType.FQ_VN:
-      w = operations.fakequant_vn(
-          eqn,
-          w,
-          layer.next_prng_key(),
-          layer.quantization.weight_params,
-          step_count,
-          layer.do_eval,
-          bits=layer.quantization.weight_params.precision,
-          use_symmetric=layer.quantization.weight_params.use_symmetric,
-      )
-      out = jnp.einsum(eqn, x, w)
-      return out
-    # Fall back to regular einsum.
-    return jnp.einsum(eqn, x, w)
+    else:
+      if reshape:
+        w = jnp.reshape(w, reshape)
+
+      if self.quantization.quantization_type == QuantizationType.AQT:
+        out = operations.aqt_einsum(
+            eqn,
+            x,
+            w,
+            lhs_quantizer=self.act_quantizer,
+            rhs_quantizer=self.weight_quantizer,
+        )
+        return out
+      elif self.quantization.quantization_type == QuantizationType.FQ:
+        if self.quantization.act_params is not None:
+          x = operations.fakequant_activation(x)
+        w = operations.fakequant_einsum(
+            eqn,
+            w,
+            bits=self.quantization.weight_params.precision,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
+            calculation_type=self.quantization.weight_params.calculation_dtype,
+            block_size=self.quantization.weight_params.block_size,
+        )
+        out = jnp.einsum(eqn, x, w)
+        return out
+      elif self.quantization.quantization_type == QuantizationType.FQ_VN:
+        w = operations.fakequant_vn(
+            eqn,
+            w,
+            self.next_prng_key(),
+            self.quantization.weight_params,
+            step_count,
+            self.do_eval,
+            bits=self.quantization.weight_params.precision,
+            use_symmetric=self.quantization.weight_params.use_symmetric,
+        )
+        out = jnp.einsum(eqn, x, w)
+        return out
+      # Fall back to regular einsum.
+      return jnp.einsum(eqn, x, w)
 
 
 def quantized_conv(

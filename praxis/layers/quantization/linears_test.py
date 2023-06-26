@@ -244,12 +244,15 @@ class QuantizedLinearsSyncTest(test_utils.TestCase):
       outputs_q = linear_q.apply(initial_vars_q, inputs)
     self.assertAllClose(outputs_f, outputs_q)
 
-  def test_linear_ptq_quantized(self):
+  @parameterized.parameters(
+      QuantizationParams(mode=QuantizationMode.TRAINING), None
+  )
+  def test_linear_ptq_quantized(self, quantization):
     p_f = pax_fiddle.Config(linears.Linear, name='_linear_f')
     p_q = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
-        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
+        quantization=quantization,
     )
     for p in [p_f, p_q]:
       p.input_dims = 16

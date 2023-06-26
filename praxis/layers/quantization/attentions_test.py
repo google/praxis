@@ -197,13 +197,16 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     outputs_q = attn_q.apply(initial_vars_q, inputs)
     self.assertAllClose(outputs_f, outputs_q)
 
+  @parameterized.parameters(
+      QuantizationParams(mode=QuantizationMode.TRAINING), None
+  )
   # test case copied from test_mhd_projection_01.
-  def test_mhd_projection_01_quantized(self):
+  def test_mhd_projection_01_quantized(self, quantization):
     p_f = pax_fiddle.Config(attentions.AttentionProjection, name='_attn_proj_f')
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
+        quantization=quantization,
     )
     for p in [p_f, p_q]:
       p.input_dim = 16
@@ -215,13 +218,16 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     self.run_and_compare(p_f, p_q, inputs)
 
   # test case copied from test_mhd_projection_02.
-  @parameterized.parameters([False, True])
-  def test_mhd_projection_02_quantized(self, use_nhd_shape):
+  @parameterized.product(
+      use_nhd_shape=[False, True],
+      quantization=[QuantizationParams(mode=QuantizationMode.TRAINING), None],
+  )
+  def test_mhd_projection_02_quantized(self, use_nhd_shape, quantization):
     p_f = pax_fiddle.Config(attentions.AttentionProjection, name='_attn_proj_f')
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
+        quantization=quantization,
     )
     for p in [p_f, p_q]:
       p.input_dim = 16
@@ -234,12 +240,15 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     self.run_and_compare(p_f, p_q, inputs)
 
   # test case copied from test_mhd_projection_var_stats.
-  def test_mhd_projection_var_stats_quantized(self):
+  @parameterized.parameters(
+      QuantizationParams(mode=QuantizationMode.TRAINING), None
+  )
+  def test_mhd_projection_var_stats_quantized(self, quantization):
     p_f = pax_fiddle.Config(attentions.AttentionProjection, name='_attn_proj_f')
     p_q = pax_fiddle.Config(
         qattentions.AttentionProjection,
         name='_attn_proj_q',
-        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
+        quantization=quantization,
     )
     for p in [p_f, p_q]:
       p.input_dim = 256
@@ -259,14 +268,19 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
         py_utils.NestedMap.FromNestedDict(initial_vars_q['params']), self)
 
   # test case copied from test_combine_qkv_with_attention_combine_dims.
-  def test_combine_qkv_with_attention_combine_dims_quantized(self):
+  @parameterized.parameters(
+      QuantizationParams(mode=QuantizationMode.TRAINING), None
+  )
+  def test_combine_qkv_with_attention_combine_dims_quantized(
+      self, quantization
+  ):
     p_f = pax_fiddle.Config(
         attentions.CombinedQKVProjectionLayer, name='_attn_qkv_f'
     )
     p_q = pax_fiddle.Config(
         qattentions.CombinedQKVProjectionLayer,
         name='_attn_qkv_q',
-        quantization=QuantizationParams(mode=QuantizationMode.TRAINING),
+        quantization=quantization,
     )
     for p in [p_f, p_q]:
       p.input_dim = 64

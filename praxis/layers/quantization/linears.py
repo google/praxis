@@ -37,33 +37,31 @@ NestedJTensor = pytypes.NestedJTensor
 WeightInit = base_layer.WeightInit
 
 
-class Linear(linears.Linear):
+class Linear(linears.Linear, quantizer.QuantizationLayer):  # pytype: disable=signature-mismatch
   """Quantized Linear layer without bias.
 
   Attributes:
     quantization: Information related to the quantization applied to this layer,
       such as the mode for the quantization.
   """
-  quantization: QuantizationParams = instance_field(QuantizationParams)
-
   _PACK_4BIT_DIM = 0
 
   def create_tensor_quantizers(self):
+    weight_params = (
+        self.quantization.weight_params if self.quantization else None
+    )
+    act_params = self.quantization.act_params if self.quantization else None
     self.create_child(
         'act_quantizer',
-        quantizer.create_tensor_quantizer(
-            'act_quantizer', self.quantization.act_params
-        ),
+        quantizer.create_tensor_quantizer('act_quantizer', act_params),
     )
     self.create_child(
         'weight_quantizer',
-        quantizer.create_tensor_quantizer(
-            'weight_quantizer', self.quantization.weight_params
-        ),
+        quantizer.create_tensor_quantizer('weight_quantizer', weight_params),
     )
 
   def _do_static_activation_quantization(self) -> bool:
-    act_params = self.quantization.act_params
+    act_params = self.quantization.act_params if self.quantization else None
     return act_params is not None and act_params.stats_config is not None
 
   def setup(self) -> None:
@@ -73,8 +71,11 @@ class Linear(linears.Linear):
         mesh_shape=self.mesh_shape,
         tensor_split_dims_mapping=wp.wt,
     )
-    quantizer.set_up_weights(
-        self, 'w', pc, [self.output_dims], self._PACK_4BIT_DIM
+    self.set_up_weights(
+        weight_name='w',
+        weight_params=pc,
+        scale_shape=[self.output_dims],
+        pack_dim=self._PACK_4BIT_DIM,
     )
 
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -89,7 +90,14 @@ class Linear(linears.Linear):
 
     ap = self.activation_split_dims_mapping
     eqn = '...y,yz->...z'
-    out = quantizer.quantized_einsum(self, eqn, inputs, self._PACK_4BIT_DIM, [])
+
+    out = self.quantized_einsum(
+        eqn=eqn,
+        x=inputs,
+        w=self.theta.w,
+        pack_dim=self._PACK_4BIT_DIM,
+        reshape=[],
+    )
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
     ap_out = ap.out
@@ -104,6 +112,10 @@ class Linear(linears.Linear):
     Returns:
       a map from names to partition spec.
     """
+    assert self.quantization is not None, (
+        'quantized_partition_specs is called during serving for quantized'
+        ' model, please set quantized config for the model.'
+    )
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     weight_pspec = base_layer._weight_hparam_to_pspec(  # pylint: disable=protected-access
         self._weight_hparams['w'], self.mesh_axis_names
@@ -135,6 +147,10 @@ class Linear(linears.Linear):
     Returns:
       a map from names to quantized weights.
     """
+    assert self.quantization is not None, (
+        'quantize_weight is called during serving for quantized model, please'
+        ' set quantized config for the model.'
+    )
     theta = self.theta
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     eqn = 'xy,yz->xz'

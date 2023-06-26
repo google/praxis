@@ -467,6 +467,7 @@ pytype_strict_library(
     deps = [
         ":embedding_softmax",
         ":quantization_hparams",
+        ":quantizer",
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
@@ -569,6 +570,7 @@ pytype_strict_library(
         ":operations",
         ":quantization_hparams",
         ":utils",
+        # Implicit absl.logging dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
