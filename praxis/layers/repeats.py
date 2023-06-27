@@ -19,7 +19,7 @@ This simply passes input through the layer stack.
 """
 
 import functools
-from typing import Any, Callable, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union
 
 from flax import linen as nn
 from flax.core import meta
@@ -88,6 +88,8 @@ class Repeat(base_layer.BaseLayer):
       state variables corresponding to the repeat prefix dims.
     collect_intermediate_outputs: If True, makes intermediate sublayers' outputs
       available for flax capture_intermediates.
+    return_intermediate_outputs: If True, returns the stacked intermediate per-
+      layer outputs instead of the final layer's output.
     nd_prefix_shape: If not None, there are multiple prefix dims of this shape
       and np.prod(nd_prefix_shape) == x_times. It enables circular
       pipeline-compatible repeat layer decoding.
@@ -102,6 +104,7 @@ class Repeat(base_layer.BaseLayer):
   sublayer_name: str = 'sub'
   optimizer_dims_mapping: SplitDimsMapping = None
   collect_intermediate_outputs: bool = False
+  return_intermediate_outputs: bool = False
   nd_prefix_shape: Optional[Sequence[int]] = None
   positional_args_as_scan_carry: bool = False
 
@@ -182,7 +185,14 @@ class Repeat(base_layer.BaseLayer):
       )
     return mapped_fn
 
-  def __call__(self, inputs: NestedJTensor, *args: Any, **kwargs: Any) -> Any:
+  def __call__(
+      self,
+      inputs: NestedJTensor,
+      *args: Any,
+      method_name: Optional[str] = None,
+      per_layer_kwargs: Optional[Dict[str, NestedJTensor]] = None,
+      **kwargs: Any,
+  ) -> Any:
     """FProp inputs through the sub layer stack.
 
     outputs are expected to be of the same structure as inputs. extra can be any
@@ -191,6 +201,9 @@ class Repeat(base_layer.BaseLayer):
     Args:
       inputs: A NestedMap of inputs that goes through the sub layer stack.
       *args: Positional args to be passed to sub.fprop method.
+      method_name: If not None, use a method with this name instead of __call__
+        in the sublayer.
+      per_layer_kwargs: Optional stacked kwargs for each sublayer.
       **kwargs: Keyward args to be passed to sub.fprop method.
 
     Returns:
@@ -198,14 +211,25 @@ class Repeat(base_layer.BaseLayer):
     """
 
     def body_fn(sub, layer_in):
-      if self.positional_args_as_scan_carry:
-        layer_out = _ensure_tuple(sub(*layer_in, **kwargs))
+      if per_layer_kwargs is not None:
+        layer_in, idx = layer_in
+        per_layer_kw = jax.tree_map(lambda x: x[idx], per_layer_kwargs)
       else:
-        layer_out = sub(layer_in, *args, **kwargs)
-
+        per_layer_kw = {}
+      if method_name is not None:
+        fn = getattr(sub, method_name)
+      else:
+        fn = sub
+      if self.positional_args_as_scan_carry:
+        layer_out = _ensure_tuple(fn(*layer_in, **kwargs, **per_layer_kw))
+      else:
+        layer_out = fn(layer_in, *args, **kwargs, **per_layer_kw)
       asserts.assert_same_structure(layer_in, layer_out)
-      if self.collect_intermediate_outputs:
-        return layer_out, layer_out
+      to_stack = layer_out
+      if per_layer_kwargs is not None:
+        layer_out = (layer_out, idx + 1)
+      if self.collect_intermediate_outputs or self.return_intermediate_outputs:
+        return layer_out, to_stack
       else:
         return layer_out, None
 
@@ -278,7 +302,15 @@ class Repeat(base_layer.BaseLayer):
       scan_inputs = (inputs,) + args
     else:
       scan_inputs = inputs
+    if per_layer_kwargs is not None:
+      # Add scan index.
+      scan_inputs = (scan_inputs, jnp.zeros((), jnp.int32))
     layer_out, intermediates = mapped_scan_fn(self.sublayer, scan_inputs)
+    if per_layer_kwargs is not None:
+      # Remove scan index.
+      layer_out, _ = layer_out
+    if self.return_intermediate_outputs:
+      return intermediates
     if self.collect_intermediate_outputs:
       self.sow(INTERMEDIATES, 'repeat_intermediates', intermediates)
     return layer_out
