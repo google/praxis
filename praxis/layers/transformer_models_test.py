@@ -15,6 +15,7 @@
 
 """Tests for Praxis transformer layers."""
 
+import functools
 import itertools
 
 from absl import logging
@@ -291,16 +292,93 @@ class TransformerModelsTest(test_utils.TestCase):
 
       updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
-        if t > 0:
-          inputs_prefix = inputs[:, t - 1 : t + 1]
-        else:
-          inputs_prefix = inputs[:, t]
         xent_output, decoder_state = transformer_lm.apply(
             updated_vars,
-            inputs_prefix,
+            inputs[:, t],
             method=transformer_lm.extend_step,
             mutable=[DECODE_CACHE],
         )
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+        self.assertAllClose(logits[:, t, :], xent_output.logits)
+
+  def test_ngrammer_lm_extendstep_jit(
+      self,
+  ):
+    vocab_size = 8
+    num_layers = 2
+    num_heads = 2
+    dim_per_head = 8
+    ngram_emb_dim = 4
+    post_attention_ngrammer_tpls = None
+    ngrammer_params = pax_fiddle.Config(
+        ngrammer.VQNgrammer,
+        ngram_vocab_size=64,
+        ngram_emb_dim=ngram_emb_dim,
+        num_heads=num_heads,
+        concat_ngrams=True,
+        num_clusters=2,
+        dim_per_head=dim_per_head,
+    )
+    p = pax_fiddle.Config(
+        transformer_models.TransformerLm,
+        name='jax_ngrammer_layer',
+        model_dims=num_heads * dim_per_head,
+        model_type=transformer_models.LanguageModelType.CAUSAL,
+        packed_input=False,
+        ngrammer_tpl=ngrammer_params,
+        post_attention_ngrammer_tpls=post_attention_ngrammer_tpls,
+        vocab_size=vocab_size,
+    )
+    stacked_transformer_tpl = p.stacked_transformer_tpl
+    stacked_transformer_tpl.model_dims = num_heads * dim_per_head
+    stacked_transformer_tpl.hidden_dims = 4 * num_heads * dim_per_head
+    stacked_transformer_tpl.num_heads = num_heads
+    stacked_transformer_tpl.num_layers = num_layers
+    # Rotary position embedding.
+    params = p.stacked_transformer_tpl.transformer_layer_params_tpl
+    params.tr_atten_tpl.use_rotary_position_emb = True
+    seq_len = 4
+    batch_size = 2
+    transformer_lm = instantiate(p)
+    npy_inputs = np.random.randint(
+        vocab_size, size=(batch_size, seq_len)
+    ).astype('int32')
+    inputs = jnp.asarray(npy_inputs)
+    context_params = base_layer.JaxContext.HParams(do_eval=True)
+    with base_layer.JaxContext.new_context(hparams=context_params):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_lm.init(
+          prng_key,
+          inputs,
+          jnp.zeros_like(inputs),
+      )
+      fprop_outputs = transformer_lm.apply(
+          initial_vars,
+          inputs,
+          jnp.zeros_like(inputs),
+          method=transformer_lm.__call__,
+      )
+      _, decoder_state = transformer_lm.apply(
+          initial_vars,
+          jnp.zeros_like(inputs),
+          jnp.ones_like(inputs),
+          method=transformer_lm.__call__,
+          mutable=[DECODE_CACHE],
+      )
+
+      logits = fprop_outputs.logits
+
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+      extend_step_jit = jax.jit(
+          functools.partial(
+              transformer_lm.apply,
+              method=transformer_lm.extend_step,
+              mutable=[DECODE_CACHE],
+          )
+      )
+
+      for t in range(seq_len):
+        xent_output, decoder_state = extend_step_jit(updated_vars, inputs[:, t])
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits)
 
@@ -329,6 +407,7 @@ class TransformerModelsTest(test_utils.TestCase):
     if not share_embedding_and_softmax:
       p.separate_embedding_tpl = pax_fiddle.Config(embedding_softmax.Embedding)
       p.softmax_tpl = pax_fiddle.Config(embedding_softmax.FullSoftmax)
+
     seq_len = 4
     batch_size = 3
     # Turn on dconv as in Primer.
@@ -365,6 +444,7 @@ class TransformerModelsTest(test_utils.TestCase):
           mutable=[DECODE_CACHE],
       )
       logits = fprop_outputs.logits
+
       updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
         xent_output, decoder_state = transformer_lm.apply(
@@ -476,12 +556,9 @@ class TransformerModelsTest(test_utils.TestCase):
 
       # Ensure that calling extend_step 1 step at a time matches fprop.
       for step_i in range(seq_len):
-        inputs_prefix = inputs[:, step_i]
-        if step_i > 0 and use_ngrammer:
-          inputs_prefix = inputs[:, step_i - 1 : step_i + 1]
         xent_output, decoder_state = transformer_lm.apply(
             updated_vars,
-            inputs_prefix,
+            inputs[:, step_i],
             method=transformer_lm.extend_step,
             mutable=[DECODE_CACHE],
         )
@@ -501,21 +578,12 @@ class TransformerModelsTest(test_utils.TestCase):
       # Ensure that calling extend_step k steps at a time matches fprop.
       k = 2
       for step_i in range(seq_len // k):
-        inputs_prefix = inputs[:, step_i * k : (step_i + 1) * k]
-        segment_pos_prefix = segment_pos[:, step_i * k : (step_i + 1) * k]
-        atten_mask_prefix = segment_mask[..., step_i * k : (step_i + 1) * k, :]
-        if step_i > 0 and use_ngrammer:
-          inputs_prefix = inputs[:, step_i * k - 1 : (step_i + 1) * k]
-          segment_pos_prefix = segment_pos[:, step_i * k - 1 : (step_i + 1) * k]
-          atten_mask_prefix = segment_mask[
-              ..., step_i * k : (step_i + 1) * k, :
-          ]
         xent_output, decoder_state = transformer_lm.apply(
             updated_vars,
-            inputs_prefix,
+            inputs[:, step_i * k : (step_i + 1) * k],
             method=transformer_lm.extend_step,
-            segment_pos=segment_pos_prefix,
-            atten_mask=atten_mask_prefix,
+            segment_pos=segment_pos[:, step_i * k : (step_i + 1) * k],
+            atten_mask=segment_mask[..., step_i * k : (step_i + 1) * k, :],
             mutable=[DECODE_CACHE],
         )
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
@@ -628,13 +696,9 @@ class TransformerModelsTest(test_utils.TestCase):
 
       updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
       for t in range(seq_len):
-        if t > 0:
-          inputs_prefix = inputs[:, t - 1 : t + 1]
-        else:
-          inputs_prefix = inputs[:, t]
         xent_output, decoder_state = transformer_lm.apply(
             updated_vars,
-            inputs_prefix,
+            inputs[:, t],
             method=transformer_lm.extend_step,
             mutable=[DECODE_CACHE],
         )
