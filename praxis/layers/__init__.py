@@ -96,6 +96,7 @@ from praxis.layers.normalizations import RmsNormNoScale
 from praxis.layers.pipeline import LayerwiseShardablePipelined
 from praxis.layers.poolings import GlobalPooling
 from praxis.layers.poolings import Pooling
+from praxis.layers.poolings import Pooling1D
 from praxis.layers.quantizer import quantize_vector
 from praxis.layers.quantizer import RandomVectorQuantizer
 from praxis.layers.quantizer import VectorQuantizer
