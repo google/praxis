@@ -22,9 +22,8 @@ import copy
 import dataclasses
 import inspect
 import math
-import os
 import re
-from typing import Any, Dict, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union
 
 from absl import logging
 from etils import epath
@@ -48,6 +47,12 @@ NestedPartitionSpec = pytypes.NestedPartitionSpec
 instantiate = base_hyperparams.instantiate
 
 _NAME_REGEX = r'[a-zA-Z0-9.:_+-]+'
+
+
+def _create_input(hparams: Any, state: bytes) -> Any:
+  inp = instantiate(hparams)
+  inp.set_state(state)
+  return inp
 
 
 class BaseInput(base_hyperparams.FiddleBaseParameterizable):
@@ -138,7 +143,9 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   custom_device_order: Optional[Sequence[int]] = None
   input_checkpointing_enabled: bool = False
   tf_data_service_address: Optional[str] = None
-  dataset: Optional[tf.data.Dataset] = None
+  dataset: Optional[tf.data.Dataset] = dataclasses.field(
+      default=None, init=False, repr=False
+  )
   _peek: Any = dataclasses.field(init=False, repr=False)
   _state_before_peek: Any = dataclasses.field(init=False, repr=False)
 
@@ -202,6 +209,15 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   def _set_state_internal(self, state: bytes) -> None:
     """Set the internal state from serialized bytes."""
     raise NotImplementedError
+
+  def __reduce__(self) -> Tuple[Callable[[Any, bytes], Any], Tuple[Any, bytes]]:
+    """Returns a callable to recreate the input object in its current state.
+
+    Adheres to the contract of object.__reduce__().
+    """
+    hparams = self.hparams.clone()
+    state = self.get_state()
+    return (_create_input, (hparams, state))
 
   def get_next(self) -> NestedJTensor:
     raise NotImplementedError

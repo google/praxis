@@ -18,6 +18,7 @@
 import dataclasses
 import itertools
 import os
+import pickle
 from typing import Any
 from unittest import mock
 
@@ -103,7 +104,7 @@ class TestInputCheckpointable(TestInput):
 
   def reset(self):
     if self.reset_for_eval:
-      self._iter = iter(self._dataset)
+      self._iter = iter(self.dataset)
       self._state = 0
 
   def _get_state_internal(self) -> bytes:
@@ -111,9 +112,7 @@ class TestInputCheckpointable(TestInput):
 
   def _set_state_internal(self, state: bytes):
     self._state = int(state.decode())
-    self._iter = iter(self.dataset)
-    for _ in range(self._state):
-      next(self._iter)
+    self._iter = iter(self.dataset.skip(self._state))
 
 
 class LingvoInput(base_input_generator.BaseInputGeneratorFromFiles):
@@ -359,11 +358,55 @@ class InputTest(test_utils.TestCase):
         self.assertTrue(np.all(batch.data % p.num_infeed_hosts == i))
     for i in range(p.num_infeed_hosts):
       with self.assertRaisesRegex(tf.errors.OutOfRangeError, 'End of sequence'):
-        batch = test[i].get_next()
+        unused_batch = test[i].get_next()
 
     # input works again after reset().
     for i in range(p.num_infeed_hosts):
       test[i].reset()
+      batch = test[i].get_next()
+      self.assertEqual(batch.data[0, 0] % p.num_infeed_hosts, i)
+
+  # A variant of test_tfdata_input() with pickling-unpickling cycles between
+  # operations to verify that restorable input objects can be saved & restored
+  # correctly.
+  def test_tfdata_input_save_restore(self):
+    p = pax_fiddle.Config(TestInputCheckpointable)
+    p.num_infeed_hosts = 3
+    p.input_random_seed = 345
+    p.batch_size = 2
+    train = [None] * p.num_infeed_hosts
+    test = [None] * p.num_infeed_hosts
+    for i in range(p.num_infeed_hosts):
+      train_p = p.clone().set(infeed_host_index=i)
+      test_p = train_p.clone().set(reset_for_eval=True)
+      train[i] = instantiate(train_p)
+      test[i] = instantiate(test_p)
+
+    for i in range(p.num_infeed_hosts):
+      train[i] = pickle.loads(pickle.dumps(train[i]))
+      test[i] = pickle.loads(pickle.dumps(test[i]))
+
+    num_train_batches = 10
+    for _ in range(num_train_batches):
+      for i in range(p.num_infeed_hosts):
+        train[i] = pickle.loads(pickle.dumps(train[i]))
+        batch = train[i].get_next()
+        self.assertTrue(np.all(batch.data % p.num_infeed_hosts == i))
+
+    num_test_batches = 2
+    for _ in range(num_test_batches):
+      for i in range(p.num_infeed_hosts):
+        test[i] = pickle.loads(pickle.dumps(test[i]))
+        batch = test[i].get_next()
+        self.assertTrue(np.all(batch.data % p.num_infeed_hosts == i))
+    for i in range(p.num_infeed_hosts):
+      with self.assertRaisesRegex(tf.errors.OutOfRangeError, 'End of sequence'):
+        unused_batch = test[i].get_next()
+
+    # input works again after reset().
+    for i in range(p.num_infeed_hosts):
+      test[i].reset()
+      test[i] = pickle.loads(pickle.dumps(test[i]))
       batch = test[i].get_next()
       self.assertEqual(batch.data[0, 0] % p.num_infeed_hosts, i)
 
@@ -886,7 +929,7 @@ class InputSpecsProviderTest(test_utils.TestCase):
         base_input.DatasetInputSpecsProvider, input_p=input_p
     )
     spec_provider = instantiate(spec_provider_p)
-    input_specs = spec_provider.get_input_specs()
+    unused_input_specs = spec_provider.get_input_specs()
 
 
 if __name__ == '__main__':
