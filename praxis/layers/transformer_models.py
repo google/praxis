@@ -1029,6 +1029,14 @@ class TransformerLm(base_layer.BaseLayer):
         decoding state.
       suffix_length: The length of the new suffix samples.
     """
+    for name, state in self.variables[base_layer.DECODE_CACHE].items():
+      if name.startswith('ngrammer'):
+        new_state = jax.lax.broadcast(state, (num_suffix_samples,))
+        new_state_shape = (num_suffix_samples * state.shape[0],) + state.shape[
+            1:
+        ]
+        new_state = jnp.reshape(new_state, new_state_shape)
+        self.update_decode_state(name, new_state)
     self.transformer.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
 
   def right_align_decode_state_with_prefix(
