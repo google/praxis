@@ -31,13 +31,16 @@ from praxis.layers import attentions
 from praxis.layers.sparsity import attentions as sattentions
 from praxis.layers.sparsity import sparsity_hparams
 
-instantiate = base_layer.instantiate
+NON_TRAINABLE = base_layer.NON_TRAINABLE
+SPARSITY_NAME_POSTFIX = base_layer.SPARSITY_NAME_POSTFIX
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 SparsityHParams = sparsity_hparams.SparsityHParams
 WeightSparsityParams = sparsity_hparams.WeightSparsityParams
 SparsityMode = sparsity_hparams.SparsityMode
 SparsityType = sparsity_hparams.SparsityType
+
+instantiate = base_layer.instantiate
 
 
 def _generate_sparsity_types_modes() -> Sequence[Dict[str, Any]]:
@@ -93,11 +96,23 @@ class SparseAttentionTest(test_utils.TestCase):
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = attn.init(prng_key, inputs)
       initial_vars['params']['w'] = weights
+      # Materialize mode do not making pruning or mask updating.
+      if mode == SparsityMode.MATERIALIZE:
+        initial_vars[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX] = jnp.array([
+            [
+                [False, False, True, True],
+                [True, True, False, False],
+            ],
+            [
+                [True, False, True, False],
+                [True, False, False, True],
+            ],
+        ])
       outputs, state = attn.apply(initial_vars, inputs, mutable=True)
     self.assertEqual(outputs.shape, (1, 1, 2, 4))
     if mode != SparsityMode.INFERENCE:
       self.assertArraysEqual(
-          state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
+          state[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
           jnp.array([
               [
                   [False, False, True, True],
@@ -151,11 +166,11 @@ class SparseAttentionTest(test_utils.TestCase):
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = attn.init(prng_key, inputs)
       initial_vars['params']['w'] = weights
-      self.assertEqual(initial_vars['non_trainable']['step'], 0)
+      self.assertEqual(initial_vars[NON_TRAINABLE]['step'], 0)
       outputs, state = attn.apply(initial_vars, inputs, mutable=True)
     self.assertEqual(outputs.shape, (1, 1, 2, 4))
     self.assertArraysEqual(
-        state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        state[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
         jnp.array([
             [
                 [False, False, True, True],
@@ -180,10 +195,10 @@ class SparseAttentionTest(test_utils.TestCase):
     ])
     with base_layer.JaxContext.new_context():
       state['params']['w'] = weights
-      self.assertEqual(state['non_trainable']['step'], 1)
+      self.assertEqual(state[NON_TRAINABLE]['step'], 1)
       outputs, state = attn.apply(state, inputs, mutable=True)
     self.assertArraysEqual(
-        state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        state[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
         jnp.array([
             [
                 [False, False, True, True],
@@ -197,10 +212,10 @@ class SparseAttentionTest(test_utils.TestCase):
     )
     # Step 2, mask changes
     with base_layer.JaxContext.new_context():
-      self.assertEqual(state['non_trainable']['step'], 2)
+      self.assertEqual(state[NON_TRAINABLE]['step'], 2)
       outputs, state = attn.apply(state, inputs, mutable=True)
     self.assertArraysEqual(
-        state['non_trainable']['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        state[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
         jnp.array([
             [
                 [False, False, True, True],
