@@ -580,6 +580,7 @@ class VQNgrammer(base_layer.BaseLayer):
   epsilon: float = 1e-6
   dim_per_head: int = 0
   use_cached_input_ids_to_cluster_ids: bool = False
+  enable_cache_updates: bool = True
 
   @classmethod
   def set_canonical_sharding_params(cls, vqngrammer_p, *, replica_axis,
@@ -763,7 +764,12 @@ class VQNgrammer(base_layer.BaseLayer):
         cluster_ids = jnp.where(replace_zero_id == 0, 0, cluster_ids)
 
       # Cache the cluster ids for future use.
-      if not self.do_eval and self.unigram_vocab_size and input_ids is not None:
+      if (
+          not self.do_eval
+          and self.unigram_vocab_size
+          and input_ids is not None
+          and self.enable_cache_updates
+      ):
         cache = self.get_var('input_id_to_cluster_id_cache')
         input_ids_flat = jnp.reshape(input_ids, [-1])
         cluster_ids_flat = jnp.reshape(cluster_ids, [-1, self.num_heads])
