@@ -416,6 +416,36 @@ class LayerNormalizedLstmCellSimple(LstmCellSimple):
         init=WeightInit.Constant(1.0))
     self.create_variable('ln_scale', ln_scale_pc)
 
+  def _apply_layer_norm(self, activation: JTensor) -> JTensor:
+    """Apply layer normalization on a tensor.
+
+    Args:
+      activation: Input tensor of shape [b, self.num_gates * self.hidden_size].
+
+    Returns:
+      Normalized activation. A tensor of shape
+        [b, self.num_gates * self.hidden_size].
+
+    Raises:
+      ValueError if dim is not equal to self.num_gates * self.hidden_size.
+    """
+    b, dim = activation.shape[:2]
+    if dim != self.num_gates * self.hidden_size:
+      raise ValueError(
+          f'dim is not equal to self.num_gates * self.hidden_size: {dim} vs'
+          f' {self.num_gates * self.hidden_size}'
+      )
+
+    activation_reshape = jnp.reshape(activation, [b, self.num_gates, -1])
+    activation_mean = jnp.mean(activation_reshape, axis=2, keepdims=True)
+    activation_variance = jnp.mean(
+        jnp.square(activation_reshape - activation_mean), axis=2, keepdims=True
+    )
+    activation_normed = (activation_reshape - activation_mean) * jax.lax.rsqrt(
+        activation_variance + self.layer_norm_epsilon
+    )
+    return jnp.reshape(activation_normed, [b, -1]) * self.theta.ln_scale
+
   def __call__(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
     """Forward function.
 
@@ -439,15 +469,38 @@ class LayerNormalizedLstmCellSimple(LstmCellSimple):
 
     concat = jnp.concatenate(inputs.act + [state0.m], 1)
     xmw = jnp.einsum('bd,dc->bc', concat, self.theta.wm)
-    b = xmw.shape[0]
-    xmw_reshape = jnp.reshape(xmw, [b, self.num_gates, -1])
-    xmw_mean = jnp.mean(xmw_reshape, axis=2, keepdims=True)
-    xmw_variance = jnp.mean(
-        jnp.square(xmw_reshape - xmw_mean), axis=2, keepdims=True)
-    xmw_normed = (xmw_reshape - xmw_mean) * jax.lax.rsqrt(
-        xmw_variance + self.layer_norm_epsilon
-    )
-    xmw = jnp.reshape(xmw_normed, [b, -1]) * self.theta.ln_scale
+    xmw = self._apply_layer_norm(xmw)
+    xmw += self._bias_adjustment()
+    i_i, i_g, f_g, o_g = jnp.split(xmw, self.num_gates, axis=1)
+    state1 = self._gates_internal(state0, i_i, i_g, f_g, o_g)
+    state1 = self._apply_zoneout(state0, inputs, state1)
+    return state1
+
+  def fprop_with_projected_inputs(
+      self, state0: NestedMap, inputs: NestedMap
+  ) -> NestedMap:
+    """FProp with inputs already projected.
+
+    Please see LstmCellSimple.fprop_with_projected_inputs for more details.
+
+    Args:
+      state0: A NestedMap with the same structure as return value of
+        `self.zero_state()`.
+      inputs: A NestedMap with the following fields: 1) proj_inputs: A single
+        Tensors of shape [batch, 4 * hidden_dim]. 2) padding: A Tensor of shape
+        [batch, 1]. 3) reset_mask: A Tensor of shape [batch, 1].
+
+    Returns:
+      state1: A NestedMap of the same structure as `state0`.
+    """
+    if self.reset_cell_state:
+      state0 = self._reset_state(state0, inputs)
+
+    num_input_nodes = self.num_input_nodes
+    wm_h = self.theta.wm[num_input_nodes:, :]
+    proj_m = jnp.einsum('bd,dc->bc', state0.m, wm_h)
+    xmw = inputs.proj_inputs + proj_m
+    xmw = self._apply_layer_norm(xmw)
     xmw += self._bias_adjustment()
     i_i, i_g, f_g, o_g = jnp.split(xmw, self.num_gates, axis=1)
     state1 = self._gates_internal(state0, i_i, i_g, f_g, o_g)
