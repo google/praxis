@@ -910,8 +910,10 @@ py_strict_test(
     srcs = ["models_test.py"],
     shard_count = 4,
     deps = [
+        ":attentions",
         ":embedding_softmax",
         ":models",
+        ":ngrammer",
         ":resnets",
         ":transformer_models",
         ":transformers",

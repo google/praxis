@@ -863,7 +863,10 @@ class TransformerLm(base_layer.BaseLayer):
       segment_pos = jnp.concatenate(
           [ngrammer_segment_pos_prefix, segment_pos], axis=1
       )
-    input_emb = self.ngrammer(input_ids, input_emb, segment_pos=segment_pos)
+    # If the prefix is all 0's it corresponds to time step 0.
+    input_emb = self.ngrammer(
+        input_ids, input_emb, segment_pos=segment_pos, check_time_step_zero=True
+    )
     input_emb = input_emb[:, 1:, :]
     return input_ids, input_emb, segment_pos
 
@@ -1013,6 +1016,13 @@ class TransformerLm(base_layer.BaseLayer):
       self, transform_fn: base_layer.DecodeStateTransformFn
   ) -> None:
     """Transforms all decode state variables based on transform_fn."""
+    for name, state in self.variables[base_layer.DECODE_CACHE].items():
+      if name.startswith('ngrammer'):
+        # We do not want any transformations on the sequence dimension for the
+        # NGrammer prefix as it only stores a prefix of length 1 corresponding
+        # to the previous time step.
+        new_state = transform_fn(state, 0, -1)
+        self.update_decode_state(name, new_state)
     self.transformer.transform_decode_state(transform_fn)
 
   def lazy_broadcast_prefix(

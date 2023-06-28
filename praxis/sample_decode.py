@@ -479,7 +479,8 @@ def _condense_state(block_num_samples) -> base_layer.DecodeStateTransformFn:
 
   def _condense_state_fn(x, batch_dim, time_dim):
     del batch_dim
-    assert time_dim >= 2
+    if time_dim < 2:
+      return x
     temp_shape = (-1, block_num_samples) + x.shape[time_dim:]
     reshaped_x = x.reshape(temp_shape)
     reshaped_condensed = jnp.squeeze(

@@ -414,20 +414,23 @@ class Ngrammer(base_layer.BaseLayer):
     self.create_children('ngram_layer_norm', ngram_emb_layer_norm_p)
     self.create_children('ngram_table', ngram_emb_table_p)
 
-  def __call__(self,
-               input_ids: JTensor,
-               input_embs: JTensor,
-               paddings: Optional[JTensor] = None,
-               segment_pos: Optional[JTensor] = None,
-               merge_heads: bool = True,
-               pair_ids: Optional[JTensor] = None,
-               emb_var: Optional[JTensor] = None) -> JTensor:
+  def __call__(
+      self,
+      input_ids: JTensor,
+      input_embs: JTensor,
+      paddings: Optional[JTensor] = None,
+      segment_pos: Optional[JTensor] = None,
+      merge_heads: bool = True,
+      pair_ids: Optional[JTensor] = None,
+      emb_var: Optional[JTensor] = None,
+      **kwargs,
+  ) -> JTensor:
     """Augments the input embeddings with VQ n-gram layer embeddings.
 
     Args:
       input_ids: Input unigram id tensor of shape [B, L] or [B, L, N].
-      input_embs: Input unigram embedding tensor of shape [B, L, D] or
-        [B, L, N, H] to which to add the ngram embedding.
+      input_embs: Input unigram embedding tensor of shape [B, L, D] or [B, L, N,
+        H] to which to add the ngram embedding.
       paddings: If not None, a tensor of shape [B, L] corresponding to padding.
       segment_pos: If not None, a tensor of shape [B, L] corresponding to the
         position of an id in a packed sequence.
@@ -440,8 +443,9 @@ class Ngrammer(base_layer.BaseLayer):
         Note that not supplying the `pair_ids` results in consecutive tokens
         getting paired together, which is equivalent to `pair_ids = [L, 0, 1, 2,
         ..., L - 2]`.
-      emb_var: Embedding table for calculating cluster centers for eval. This
-        is unused and is added here to be consistent with the N-grammer API.
+      emb_var: Embedding table for calculating cluster centers for eval. This is
+        unused and is added here to be consistent with the N-grammer API.
+      **kwargs: Other keyword args.
 
     Returns:
       outputs: Output with the ngram embeddings added of shape [B, L, D] if
@@ -637,14 +641,17 @@ class VQNgrammer(base_layer.BaseLayer):
     )
     self.create_child('ngram_layer', ngram_layer_p)
 
-  def __call__(self,
-               input_ids: JTensor,
-               input_embs: JTensor,
-               paddings: Optional[JTensor] = None,
-               segment_pos: Optional[JTensor] = None,
-               merge_heads: bool = True,
-               attention_scores: Optional[JTensor] = None,
-               emb_var: Optional[JTensor] = None) -> JTensor:
+  def __call__(
+      self,
+      input_ids: JTensor,
+      input_embs: JTensor,
+      paddings: Optional[JTensor] = None,
+      segment_pos: Optional[JTensor] = None,
+      merge_heads: bool = True,
+      attention_scores: Optional[JTensor] = None,
+      emb_var: Optional[JTensor] = None,
+      check_time_step_zero: bool = False,
+  ) -> JTensor:
     """Augments the input embeddings with VQ ngram layer embeddings.
 
     Args:
@@ -660,8 +667,11 @@ class VQNgrammer(base_layer.BaseLayer):
       attention_scores: Optional argument representing the attention matrix of
         shape [B, N, L, L] used to construct n-grams if the argument
         `ngrammer_using_attention_scores` is set.
-      emb_var: Embedding table for calculating cluster centers for eval. This
-        is unused and is added here to be consistent with the N-grammer API.
+      emb_var: Embedding table for calculating cluster centers for eval. This is
+        unused and is added here to be consistent with the N-grammer API.
+      check_time_step_zero: This will apply an additional check if the input ids
+        equals -1 and the input embeddings equals 0, which corresponds to the
+        t=0 case.
 
     Returns:
       outputs: Input embedding with the VQ ngram added of shape [B, L, D] if
@@ -711,6 +721,46 @@ class VQNgrammer(base_layer.BaseLayer):
 
       # [B, L, N].
       cluster_ids = jnp.argmin(distances, -1)
+
+      if check_time_step_zero:
+        # If input_ids is 0 and input_embedding is also all 0, set
+        # corresponding cluster_id = 0 as this represents the t=0 case.
+        if input_ids is not None:
+          if input_ids.ndim == 3:
+            # [B, L, N] -> [B, L].
+            input_ids_time_zero = jnp.not_equal(input_ids, 0).astype(jnp.int32)
+            input_ids_time_zero = jnp.max(input_ids_time_zero, axis=-1)
+            # If it equals -1 everywhere, we get a 0 else 1.
+          else:
+            # [B, L].
+            # If it equals -1, we get a 0 else 1.
+            input_ids_time_zero = jnp.not_equal(input_ids, 0).astype(jnp.int32)
+          # [B, L] -> [B, L, 1].
+          input_ids_time_zero = input_ids_time_zero[:, :, jnp.newaxis]
+        else:
+          # [B, L, 1].
+          # This is a pass through.
+          input_ids_time_zero = jnp.zeros(
+              [input_embs.shape[0], input_embs.shape[1], 1]
+          )
+
+        # [B, L, N, H] or [B, L, D]
+        if input_embs.ndim == 4:
+          # [B, L, N, H] -> [B, L, N]
+          input_embs_time_zero = jnp.not_equal(input_embs, 0).astype(jnp.int32)
+          input_embs_time_zero = jnp.max(input_embs_time_zero, axis=-1)
+          # If it equals 0 everywhere we get a 0 else a 1.
+        else:
+          assert input_embs.ndim == 3
+          # [B, L, D] -> [B, L]
+          input_embs_time_zero = jnp.not_equal(input_embs, 0).astype(jnp.int32)
+          input_embs_time_zero = jnp.max(input_embs_time_zero, axis=-1)
+          # If it equals 0 everywhere we get a 0 else a 1.
+          # [B, L, 1].
+          input_embs_time_zero = input_embs_time_zero[:, :, jnp.newaxis]
+
+        replace_zero_id = jnp.maximum(input_ids_time_zero, input_embs_time_zero)
+        cluster_ids = jnp.where(replace_zero_id == 0, 0, cluster_ids)
 
       # Cache the cluster ids for future use.
       if not self.do_eval and self.unigram_vocab_size and input_ids is not None:
