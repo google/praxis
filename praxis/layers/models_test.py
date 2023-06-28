@@ -29,8 +29,10 @@ from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis import test_utils
+from praxis.layers import attentions
 from praxis.layers import embedding_softmax
 from praxis.layers import models
+from praxis.layers import ngrammer
 from praxis.layers import resnets
 from praxis.layers import transformer_models
 from praxis.layers import transformers
@@ -44,6 +46,7 @@ JTensor = pytypes.JTensor
 
 RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
+PREFIX_DECODE_CACHE = base_layer.PREFIX_DECODE_CACHE
 
 
 class MockLM(base_layer.BaseLayer):
@@ -1047,6 +1050,153 @@ class LanguageModelTest(test_utils.TestCase):
     with self.assertRaisesRegex(NotImplementedError,
                                 'LanguageModel does not support guidance.'):
       self._run_decode(p, [], input_batch)
+
+  def test_ngrammer_multi_sample_lpb(self):
+    decode_max_len = 8
+    max_decode_steps = 4
+    num_layers = 2
+    batch_size = 2
+    num_heads = 2
+    dim_per_head = 2
+    vocab_size = 8
+    ngrammer_params = pax_fiddle.Config(
+        ngrammer.VQNgrammer,
+        ngram_vocab_size=vocab_size**2,
+        ngram_emb_dim=2,
+        num_heads=num_heads,
+        concat_ngrams=True,
+        num_clusters=2,
+        dim_per_head=dim_per_head,
+    )
+    lpb_lm_p = pax_fiddle.Config(
+        transformer_models.TransformerLm,
+        name='jax_lm_layer',
+        model_dims=num_heads * dim_per_head,
+        model_type=transformer_models.LanguageModelType.CAUSAL,
+        packed_input=False,
+        ngrammer_tpl=ngrammer_params,
+        vocab_size=vocab_size,
+    )
+    stacked_transformer_tpl = lpb_lm_p.stacked_transformer_tpl
+    stacked_transformer_tpl.model_dims = num_heads * dim_per_head
+    stacked_transformer_tpl.hidden_dims = 2 * num_heads * dim_per_head
+    stacked_transformer_tpl.num_heads = num_heads
+    stacked_transformer_tpl.num_layers = num_layers
+    params = stacked_transformer_tpl.transformer_layer_params_tpl
+    params.tr_atten_tpl = pax_fiddle.Config(
+        attentions.DotProductAttentionWithLPB
+    )
+
+    lm_p = pax_fiddle.Config(
+        transformer_models.TransformerLm,
+        name='jax_lm_layer',
+        model_dims=num_heads * dim_per_head,
+        model_type=transformer_models.LanguageModelType.CAUSAL,
+        packed_input=False,
+        ngrammer_tpl=ngrammer_params,
+        vocab_size=vocab_size,
+    )
+    stacked_transformer_tpl = lm_p.stacked_transformer_tpl
+    stacked_transformer_tpl.model_dims = num_heads * dim_per_head
+    stacked_transformer_tpl.hidden_dims = 2 * num_heads * dim_per_head
+    stacked_transformer_tpl.num_heads = num_heads
+    stacked_transformer_tpl.num_layers = num_layers
+    lpb_p = pax_fiddle.Config(
+        models.LanguageModel,
+        name='lpb_lm',
+        lm_tpl=lpb_lm_p,
+        model_type=LanguageModelType.CAUSAL,
+    )
+
+    lpb_p.decoder_tpl = models.SampleDecoderHParams(
+        seqlen=decode_max_len + max_decode_steps,
+        max_decode_steps=max_decode_steps,
+        min_prefix_len=decode_max_len,
+        fprop_for_prefix=True,
+        lazy_prefix_broadcast=True,
+        num_samples=2,
+        temperature=1,
+        k=8,
+        p=0,
+    )
+
+    non_lpb_p = pax_fiddle.Config(
+        models.LanguageModel,
+        name='non_lpb_lm',
+        lm_tpl=lm_p,
+        model_type=LanguageModelType.CAUSAL,
+    )
+
+    non_lpb_p.decoder_tpl = models.SampleDecoderHParams(
+        seqlen=decode_max_len + max_decode_steps,
+        max_decode_steps=max_decode_steps,
+        min_prefix_len=decode_max_len,
+        fprop_for_prefix=True,
+        lazy_prefix_broadcast=False,
+        num_samples=2,
+        temperature=1,
+        k=8,
+        p=0,
+    )
+
+    # EOS_ID is 1.
+    input_ids = jnp.arange(2, decode_max_len + 2, dtype=jnp.int32)
+    input_ids = jnp.expand_dims(input_ids, axis=0)
+    prefix_lengths = jnp.array([decode_max_len], dtype=jnp.int32)
+    labels = jnp.arange(start=1, stop=decode_max_len + 1, dtype=jnp.int32)
+    labels = jnp.expand_dims(labels, axis=0)
+    weights = jnp.ones_like(input_ids, dtype=jnp.bfloat16)
+    paddings = jnp.zeros_like(input_ids, dtype=jnp.bfloat16)
+    input_batch = NestedMap(
+        ids=input_ids,
+        prefix_lengths=prefix_lengths,
+        paddings=paddings,
+        weights=weights,
+        labels=labels,
+    )
+
+    segment_ids = np.maximum(
+        np.random.randint(0, 2, [batch_size, decode_max_len]),
+        paddings.astype('int32'),
+    )
+    segment_ids = np.cumsum(segment_ids, axis=1)
+    segment_pos = np.zeros_like(segment_ids)
+    for b in range(batch_size):
+      for t in range(1, decode_max_len):
+        if segment_ids[b, t] == segment_ids[b, t - 1]:
+          segment_pos[b, t] = segment_pos[b, t - 1] + 1
+    segment_pos = jnp.asarray(segment_pos)
+    input_batch['segment_pos'] = segment_pos
+    input_batch['segment_ids'] = segment_ids
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    with base_layer.JaxContext.new_context():
+      lpb_lm = instantiate(lpb_p)
+      non_lpb_lm = instantiate(non_lpb_p)
+      initial_vars = lpb_lm.init(prng_key, input_batch)
+
+      lpb_decodes, _ = lpb_lm.apply(
+          initial_vars,
+          input_batch,
+          rngs={RANDOM: prng_key},
+          method=lpb_lm.decode,
+          mutable=[DECODE_CACHE, PREFIX_DECODE_CACHE],
+      )
+
+      non_lpb_decodes, _ = non_lpb_lm.apply(
+          initial_vars,
+          input_batch,
+          rngs={RANDOM: prng_key},
+          method=non_lpb_lm.decode,
+          mutable=[DECODE_CACHE],
+      )
+      # Decode log probs and output ids must match.
+      self.assertAllClose(
+          lpb_decodes[1]['logprobs'], non_lpb_decodes[1]['logprobs']
+      )
+      self.assertAllClose(
+          lpb_decodes[1]['output_ids'], non_lpb_decodes[1]['output_ids']
+      )
 
 
 class ClassifierModelTest(test_utils.TestCase):

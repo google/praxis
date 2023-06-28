@@ -248,20 +248,24 @@ class GlobalPooling(base_layer.BaseLayer):
     return outputs
 
 
-class FunnelPooling(base_layer.BaseLayer):
-  """A layer that does pooling in Funnel-Transformer.
-
-  https://arxiv.org/pdf/2006.03236.pdf section 2.2. for query-only pooling.
+class Pooling1D(base_layer.BaseLayer):
+  """Pooling layer that operates over dimension 1 only; assume [B,T,...] inputs.
 
   Attributes:
     stride: int, to use every k-th token, set the stride to k.
-    pool_window: int, Size of the pooling window.
+    window: int, Size of the pooling window.
     pooling_type: Pooling type: MAX|AVG.
   """
 
   stride: int = 1
-  pool_window: int = 0
+  window: int = 0
   pooling_type: str = 'AVG'
+
+  def setup(self) -> None:
+    if not self.stride > 0:
+      raise ValueError('stride must be positive integer.')
+    if self.pooling_type not in ['MAX', 'AVG']:
+      raise ValueError('pooling_type must be one of AVG or MAX.')
 
   def __call__(
       self,
@@ -280,86 +284,73 @@ class FunnelPooling(base_layer.BaseLayer):
       An (output, paddings) tensor tuple if paddings is not None, else just
       output, with the pooling/striding applied to the time dimension.
     """
+    if jnp.issubdtype(inputs.dtype, jnp.inexact):
+      dtype_min = -jnp.inf
+    elif jnp.issubdtype(inputs.dtype, jnp.integer):
+      dtype_min = jnp.iinfo(inputs.dtype).min
+    else:
+      raise ValueError('Unsupported dtype for inputs.')
+
     asserts.ge(self.stride, 1, msg=f'Invaild stride:{self.stride}.')
-    if self.pool_window == 0:
-      self.pool_window = self.stride
+    if self.window == 0:
+      self.window = self.stride
 
-    if self.stride == 1:
+    if self.window == 1 and self.stride == 1:
       return inputs, paddings
+    pooled_paddings = None if paddings is None else paddings[:, :: self.stride]
+    if self.window == 1:  # stride > 1, strided reducer.
+      return inputs[:, :: self.stride], pooled_paddings
 
+    num_trailing_dims = len(inputs.shape) - 2
+    trailing_axes = [-1] * num_trailing_dims
     if self.pooling_type == 'MAX':
-      # Fill dtype.min in padded positions.
-      init_value = -jnp.inf
+      init_value = dtype_min
       computation = jax.lax.max
-      if paddings is not None:
-        inputs = py_utils.apply_padding(
-            inputs, paddings[..., jnp.newaxis], init_value
-        )
-    elif self.pooling_type == 'AVG':
-      # Fill 0 in padded positions.
+    else:
+      assert self.pooling_type == 'AVG'
       init_value = 0
       computation = jax.lax.add
-      if paddings is not None:
-        inputs = py_utils.apply_padding(inputs, paddings[..., jnp.newaxis])
+    if paddings is not None:
+      compatible_paddings = jnp.expand_dims(paddings, axis=trailing_axes)
+      inputs = jnp.where(compatible_paddings > 0, init_value, inputs)
 
     # seq2seq models should not cut paddings.
     padding = 'SAME'
+    # The vars `window` and `stride` are only for [T]; make them compatible
+    # with inputs with leading and trailing dimensions [B, T, ...]
     pooled_tensor = jax.lax.reduce_window(
         inputs,
         init_value=init_value,
         computation=computation,
-        window_dimensions=[1, self.pool_window, 1],
-        window_strides=[1, self.stride, 1],
+        window_dimensions=[1, self.window] + [1] * num_trailing_dims,
+        window_strides=[1, self.stride] + [1] * num_trailing_dims,
         padding=padding,
     )
 
     if self.pooling_type == 'AVG':
-      # Count the fraction of non-padding elements inside each pooling window.
-      if paddings is not None:
-        in_mask = (1.0 - paddings)[:, :, jnp.newaxis]
-      else:
-        in_mask = jnp.ones(inputs.shape[:2] + (1,), dtype=inputs.dtype)
-      non_padding_count = jax.lax.reduce_window(
-          in_mask,
-          init_value=0,
+      # Divide by the number of non-padding elements inside each pooling window.
+      valid = (
+          jnp.ones(inputs.shape[:2], dtype=inputs.dtype)
+          if paddings is None
+          else 1.0 - paddings
+      )
+      valid_count = jax.lax.reduce_window(
+          valid,
+          init_value=0.0,
           computation=jax.lax.add,
-          window_dimensions=[1, self.pool_window, 1],
-          window_strides=[1, self.stride, 1],
+          window_dimensions=[1, self.window],
+          window_strides=[1, self.stride],
           padding=padding,
       )
-      # Divide by non-padding ratios to eliminate the effect of padded values.
-      non_padding_count = jnp.maximum(non_padding_count, 1)
-      pooled_tensor = pooled_tensor / non_padding_count
+      reciprocal = jnp.where(valid_count, jnp.reciprocal(valid_count), 0.0)
+      pooled_tensor *= jnp.expand_dims(reciprocal, axis=trailing_axes)
+    elif pooled_paddings is not None:
+      # In the case of max pooling, set padded values to zero, otherwise padded
+      # values will be -jnp.inf, which can cause numerical instability.
+      pooled_tensor = jnp.where(
+          jnp.expand_dims(1.0 - pooled_paddings, axis=trailing_axes),
+          pooled_tensor,
+          0.0,
+      )
 
-    if paddings is None:
-      return pooled_tensor, None
-
-    pooled_paddings = paddings[:, :: self.stride]
-
-    # Set padding values to 0. If not set, in the case of max pooling, padded
-    # values will be -jnp.inf, which can cause numerical instability.
-    pooled_tensor = jnp.where(
-        jnp.expand_dims(1.0 - pooled_paddings, -1),
-        pooled_tensor,
-        jnp.zeros_like(pooled_tensor),
-    )
     return pooled_tensor, pooled_paddings
-
-  def extend_step(
-      self,
-      inputs: JTensor,
-  ) -> JTensor:
-    """Computes the pooled vector given the query of the current step.
-
-    This supports only the case query step is a multiple of stride.
-
-    Args:
-      inputs: A tensor of shape [B, T, D].
-
-    Returns:
-      output: The pooled input tensor with shape [B, T//P, D].
-    """
-    max_seqlen = inputs.shape[1]
-    # It's a strong restriction during streaming inference. b/202530591#comment4
-    asserts.eq(max_seqlen % self.stride, 0)
-    return self.__call__(inputs, None)[0]

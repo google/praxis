@@ -34,7 +34,10 @@ from praxis.layers.sparsity import sparsity_hparams
 instantiate = base_layer.instantiate
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 PARAMS = base_layer.PARAMS
+SPARSITY_NAME_POSTFIX = base_layer.SPARSITY_NAME_POSTFIX
 SUMMARIES = base_layer.SUMMARIES
+WeightInit = base_layer.WeightInit
+WeightHParams = base_layer.WeightHParams
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 SparsityHParams = sparsity_hparams.SparsityHParams
@@ -91,11 +94,20 @@ class SparseLinearTest(test_utils.TestCase):
       prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = linear.init(prng_key, inputs)
       initial_vars[PARAMS]['w'] = weights
+
+      # Materialize mode do not making pruning or mask updating.
+      if mode == SparsityMode.MATERIALIZE:
+        initial_vars[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX] = jnp.array([
+            [False, False, True, True],
+            [True, True, False, False],
+            [True, False, True, False],
+            [True, False, False, True],
+        ])
       outputs, state = linear.apply(initial_vars, inputs, mutable=True)
     self.assertEqual(outputs.shape, (2, 4))
     if mode != SparsityMode.INFERENCE:
       self.assertArraysEqual(
-          state[NON_TRAINABLE]['w' + base_layer.SPARSITY_NAME_POSTFIX],
+          state[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
           jnp.array([
               [False, False, True, True],
               [True, True, False, False],
@@ -146,7 +158,7 @@ class SparseLinearTest(test_utils.TestCase):
       outputs, state = linear.apply(initial_vars, inputs, mutable=True)
     self.assertEqual(outputs.shape, (2, 4))
     self.assertArraysEqual(
-        state[NON_TRAINABLE]['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        state[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
         jnp.array([
             [False, False, True, True],
             [True, True, False, False],
@@ -170,7 +182,7 @@ class SparseLinearTest(test_utils.TestCase):
       self.assertEqual(state[NON_TRAINABLE]['step'], 1)
       outputs, state = linear.apply(state, inputs, mutable=True)
     self.assertArraysEqual(
-        state[NON_TRAINABLE]['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        state[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
         jnp.array([
             [False, False, True, True],
             [True, True, False, False],
@@ -187,7 +199,7 @@ class SparseLinearTest(test_utils.TestCase):
       self.assertEqual(state[NON_TRAINABLE]['step'], 2)
       outputs, state = linear.apply(state, inputs, mutable=True)
     self.assertArraysEqual(
-        state[NON_TRAINABLE]['w' + base_layer.SPARSITY_NAME_POSTFIX],
+        state[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
         jnp.array([
             [False, False, True, True],
             [False, False, True, True],

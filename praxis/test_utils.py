@@ -17,12 +17,14 @@
 import math
 import os
 from typing import Any, List, Mapping, Optional
+import zlib
 
 from absl import flags
 from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
 import numpy as np
+import numpy.random as npr
 from praxis import base_layer
 from praxis import py_utils
 import tensorflow.compat.v2 as tf
@@ -37,6 +39,17 @@ _dtype = lambda x: getattr(x, 'dtype', None) or np.asarray(x).dtype
 
 class TestCase(parameterized.TestCase):
   """Test method for flax tests."""
+
+  def setUp(self):
+    super().setUp()
+
+    # We use the adler32 hash for two reasons.
+    # a) it is deterministic run to run, unlike hash() which is randomized.
+    # b) it returns values in int32 range, which RandomState requires.
+    self._rng = npr.RandomState(zlib.adler32(self._testMethodName.encode()))
+
+  def rng(self):
+    return self._rng
 
   def assertNear(self, f1, f2, err, msg=None):
     """Asserts that two floats are near each other.

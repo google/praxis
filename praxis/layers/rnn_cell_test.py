@@ -298,6 +298,79 @@ class RnnCellTest(test_utils.TestCase):
     self.assertAllClose(state0.c, expected_c)
     self.assertAllClose(state0.m, expected_m)
 
+  @parameterized.parameters(
+      *list(
+          itertools.product(
+              (
+                  jax_rnn_cell.LstmCellSimple,
+                  jax_rnn_cell.LayerNormalizedLstmCellSimple,
+                  jax_rnn_cell.CifgLstmCellSimple,
+              ),
+              (True, False),  # output_nonlinearity
+              (jnp.int32, jnp.float32),  # inputs_nonact_dtype
+              (jnp.float32, jnp.bfloat16),  # dtype
+              (jnp.float32, jnp.bfloat16, jnp.float16),  # fprop_dtype
+          )
+      )
+  )
+  def test_fprop_with_projected_inputs(
+      self,
+      rnn_cell_cls,
+      output_nonlinearity,
+      inputs_nonact_dtype,
+      dtype,
+      fprop_dtype,
+  ):
+    p = pax_fiddle.Config(
+        rnn_cell_cls,
+        num_input_nodes=2,
+        num_output_nodes=2,
+        name='lstm',
+        output_nonlinearity=output_nonlinearity,
+        dtype=dtype,
+        fprop_dtype=fprop_dtype,
+    )
+    model = instantiate(p)
+
+    act = np.random.uniform(size=(3, 2)).astype(fprop_dtype)
+    c = np.random.uniform(size=(3, 2)).astype(fprop_dtype)
+    m = np.random.uniform(size=(3, 2)).astype(fprop_dtype)
+    inputs = tf_py_utils.NestedMap(
+        act=[jnp.array(act, dtype=fprop_dtype)],
+        padding=jnp.zeros([3, 1], dtype=inputs_nonact_dtype),
+    )
+    state0 = tf_py_utils.NestedMap(
+        c=jnp.array(c, dtype=fprop_dtype), m=jnp.array(m, dtype=fprop_dtype)
+    )
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = model.init(jax.random.PRNGKey(5678), state0, inputs)
+      jax.tree_map(lambda x: self.assertDtypesMatch(x, dtype), initial_vars)
+      state1_fprop = model.apply(initial_vars, state0, inputs)
+
+      projected_inputs = model.apply(
+          initial_vars,
+          jax.tree_map(lambda x: jnp.expand_dims(x, axis=0), inputs),
+          method=model.project_input,
+      )
+      inputs_with_proj = jax.tree_map(lambda x: x, inputs)
+      inputs_with_proj.proj_inputs = jnp.squeeze(projected_inputs, axis=0)
+      state1_fprop_with_projected_inputs = model.apply(
+          initial_vars,
+          state0,
+          inputs_with_proj,
+          method=model.fprop_with_projected_inputs,
+      )
+      # With low precision (bfloat16 and float16), the results do not exactly
+      # match.
+      if fprop_dtype == jnp.float32:
+        self.assertAllClose(
+            state1_fprop.m, state1_fprop_with_projected_inputs.m
+        )
+        self.assertAllClose(
+            state1_fprop.c, state1_fprop_with_projected_inputs.c
+        )
+
 
 if __name__ == '__main__':
   absltest.main()

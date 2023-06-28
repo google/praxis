@@ -191,7 +191,7 @@ class PoolingsTest(test_utils.TestCase):
     self.assertAllClose(output, ground_truth)
 
 
-class FunnelPoolingsTest(test_utils.TestCase):
+class Pooling1DTest(test_utils.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -207,15 +207,15 @@ class FunnelPoolingsTest(test_utils.TestCase):
   def test_pooling_layer(
       self,
       stride,
-      pool_window,
+      window,
       pooling_type,
       has_paddings,
   ):
     p = pax_fiddle.Config(
-        poolings.FunnelPooling,
-        name='funnel_pooling',
+        poolings.Pooling1D,
+        name='pooling_1D',
         stride=stride,
-        pool_window=pool_window,
+        window=window,
         pooling_type=pooling_type,
     )
     pooling_layer = instantiate(p)
@@ -239,7 +239,7 @@ class FunnelPoolingsTest(test_utils.TestCase):
     tf_p = batch_major_attention.FunnelPoolingLayer.Params().Set(
         name='tf_pooling',
         stride=stride,
-        pool_window=pool_window,
+        pool_window=window,
         pooling_type=pooling_type,
     )
     tf_pooling_layer = tf_p.Instantiate()
