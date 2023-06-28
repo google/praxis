@@ -191,6 +191,7 @@ class Repeat(base_layer.BaseLayer):
       *args: Any,
       method_name: Optional[str] = None,
       per_layer_kwargs: Optional[Dict[str, NestedJTensor]] = None,
+      reversed_per_layer_kwargs: Optional[Dict[str, NestedJTensor]] = None,
       **kwargs: Any,
   ) -> Any:
     """FProp inputs through the sub layer stack.
@@ -204,6 +205,8 @@ class Repeat(base_layer.BaseLayer):
       method_name: If not None, use a method with this name instead of __call__
         in the sublayer.
       per_layer_kwargs: Optional stacked kwargs for each sublayer.
+      reversed_per_layer_kwargs: Similar to per_layer_kwargs, but the stacked
+        buffer has reversed layer order.
       **kwargs: Keyward args to be passed to sub.fprop method.
 
     Returns:
@@ -211,9 +214,15 @@ class Repeat(base_layer.BaseLayer):
     """
 
     def body_fn(sub, layer_in):
-      if per_layer_kwargs is not None:
+      if per_layer_kwargs is not None or reversed_per_layer_kwargs is not None:
         layer_in, idx = layer_in
-        per_layer_kw = jax.tree_map(lambda x: x[idx], per_layer_kwargs)
+        per_layer_kw = jax.tree_map(lambda x: x[idx], per_layer_kwargs or {})
+        per_layer_kw_rev = jax.tree_map(
+            lambda x: x[self.x_times - 1 - idx],
+            (reversed_per_layer_kwargs or {}),
+        )
+        for k, v in per_layer_kw_rev.items():
+          per_layer_kw[k] = v
       else:
         per_layer_kw = {}
       if method_name is not None:
@@ -226,7 +235,7 @@ class Repeat(base_layer.BaseLayer):
         layer_out = fn(layer_in, *args, **kwargs, **per_layer_kw)
       asserts.assert_same_structure(layer_in, layer_out)
       to_stack = layer_out
-      if per_layer_kwargs is not None:
+      if per_layer_kwargs is not None or reversed_per_layer_kwargs is not None:
         layer_out = (layer_out, idx + 1)
       if self.collect_intermediate_outputs or self.return_intermediate_outputs:
         return layer_out, to_stack
@@ -302,11 +311,11 @@ class Repeat(base_layer.BaseLayer):
       scan_inputs = (inputs,) + args
     else:
       scan_inputs = inputs
-    if per_layer_kwargs is not None:
+    if per_layer_kwargs is not None or reversed_per_layer_kwargs is not None:
       # Add scan index.
       scan_inputs = (scan_inputs, jnp.zeros((), jnp.int32))
     layer_out, intermediates = mapped_scan_fn(self.sublayer, scan_inputs)
-    if per_layer_kwargs is not None:
+    if per_layer_kwargs is not None or reversed_per_layer_kwargs is not None:
       # Remove scan index.
       layer_out, _ = layer_out
     if self.return_intermediate_outputs:
