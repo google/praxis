@@ -1964,6 +1964,8 @@ class BaseLayer(nn.Module):
 
   @property
   def do_eval(self) -> bool:
+    if not JaxContext.top():
+      return False
     return self.jax_context.do_eval
 
   @property
