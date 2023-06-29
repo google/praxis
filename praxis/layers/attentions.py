@@ -891,6 +891,131 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
     return self.__call__(inputs)  # pytype: disable=bad-return-type  # jax-ndarray
 
 
+class CausalDepthwiseConv1D(base_layer.BaseLayer):
+  """Causal depth-wise convolution applied to a 1-d sequence as in Primer.
+
+  See https://arxiv.org/abs/2109.08668 for more details.
+
+  Attributes:
+    kernel_size: Kernel size for the causal depth-wise convolution on the 1-D
+      sequence.
+    hidden_dims: Dimensions of the convolution filter. It can be a list to
+      signify if we convolve multiple dimensions from the end of the sequence.
+      Alternatively, if just convolving over the last dimension, it can be a
+      positive integer.
+  """
+
+  kernel_size: int = 3
+  hidden_dims: Union[int, Sequence[int]] = 0
+
+  def setup(self) -> None:
+    assert self.name
+    assert isinstance(self.hidden_dims, (list, tuple)) or isinstance(
+        self.hidden_dims, int
+    )
+    assert self.kernel_size > 0
+    if isinstance(self.hidden_dims, (list, tuple)):
+      for dim in self.hidden_dims:
+        assert dim > 0
+    else:
+      assert self.hidden_dims > 0
+
+    wp = self.weight_split_dims_mapping
+    for i in range(self.kernel_size):
+      if i == 0:
+        params_init = base_layer.WeightInit.Constant(0.5)
+      else:
+        params_init = base_layer.WeightInit.Constant(0.5 / self.kernel_size)
+      if isinstance(self.hidden_dims, (list, tuple)):
+        shape = self.hidden_dims
+      else:
+        shape = [self.hidden_dims]
+      self.create_variable(
+          f'dconv_{i}',
+          WeightHParams(
+              shape=shape,
+              init=params_init,
+              mesh_shape=self.mesh_shape,
+              tensor_split_dims_mapping=wp.wt,
+          ),
+      )
+
+  def __call__(
+      self, inputs: JTensor, axis: int, segment_pos: Optional[JTensor] = None
+  ) -> JTensor:
+    """FProp applying depth-wise convolution on 1D sequence.
+
+    Args:
+      inputs: Input sequence of possible shapes: [B, L, D], [B, L, N, H] or [L,
+        B, N, H] where the L represents the sequence length.
+      axis: The axis which corresponds to the sequence dimension, i.e. the
+        dimension corresponding to L. By default the axis is assumed to be 1.
+      segment_pos: JTensor of shape [B, L].
+
+    Returns:
+      Output sequence after applying the depth-wise convolution on the sequence.
+    """
+    outputs = inputs * self.theta.dconv_0
+    for i in range(1, self.kernel_size):
+      inputs = shift_1d(inputs, offset=1, axis=axis)
+      if segment_pos is None:
+        outputs += inputs * getattr(self.theta, f'dconv_{i}')
+      else:
+        mask = segment_pos >= i
+        while len(mask.shape) < len(inputs.shape):
+          mask = jnp.expand_dims(mask, axis=-1)
+        outputs += inputs * getattr(self.theta, f'dconv_{i}') * mask
+    return outputs
+
+  def extend_step(
+      self,
+      inputs: JTensor,
+      axis: int,
+      step: Union[int, JTensor],
+      segment_pos: Optional[JTensor],
+  ) -> JTensor:
+    """extend_step applying depth-wise convolution on 1D sequence at a step.
+
+    Args:
+      inputs: Input sequence of possible shapes: [B, L, D], [B, L, N, H] or [L,
+        B, N, H] where the L represents the sequence length.
+      axis: The axis which corresponds to the sequence dimension, i.e. the
+        dimension corresponding to L. By default the axis is assumed to be 1.
+      step: Which step to perform the convolution for. This must be a valid
+        non-negative index into the length dimension L.
+      segment_pos: JTensor of shape [B]. If not provided, it uses step as
+        segment_pos.
+
+    Returns:
+      Output sequence at the step after applying the depth-wise convolution
+      on the sequence.
+    """
+    get_single_slice_at_index = functools.partial(
+        jax.lax.dynamic_slice_in_dim, inputs, slice_size=1, axis=axis
+    )
+    outputs = get_single_slice_at_index(start_index=step)
+    outputs *= self.theta.dconv_0
+    if segment_pos is None:
+      segment_pos = step
+    else:
+      new_shape = [segment_pos.shape[0]] + [1] * (inputs.ndim - 1)
+      segment_pos = jnp.reshape(segment_pos, new_shape)
+    use_where = not isinstance(segment_pos, int)
+    for i in range(1, self.kernel_size):
+      if use_where:
+        prev_slice = jnp.where(
+            jnp.greater_equal(segment_pos - i, 0),
+            get_single_slice_at_index(step - i),
+            jnp.zeros_like(outputs),
+        )
+      elif segment_pos >= i:
+        prev_slice = get_single_slice_at_index(start_index=step - i)
+      else:
+        break
+      outputs += prev_slice * getattr(self.theta, f'dconv_{i}')
+    return jnp.squeeze(outputs, axis)
+
+
 class DotProductAttention(base_layer.BaseLayer):
   """Dot-product attention with multiple attention heads.
 
@@ -1009,6 +1134,8 @@ class DotProductAttention(base_layer.BaseLayer):
   zero_fully_masked: bool = False
   qk_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
   pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  per_dim_scale_tpl: LayerTpl = template_field(PerDimScale)
+  causal_depthwise_conv1d_tpl: LayerTpl = template_field(CausalDepthwiseConv1D)
 
   # SPMD partition related params.
   #
@@ -1136,8 +1263,7 @@ class DotProductAttention(base_layer.BaseLayer):
       self.create_child('relative_bias', relative_bias_p)
 
     if self.dconv_qkv:
-      causal_dconv_p = pax_fiddle.Config(
-          CausalDepthwiseConv1D,
+      causal_dconv_p = self.causal_depthwise_conv1d_tpl.clone().set(
           kernel_size=self.dconv_kernel_size,
           hidden_dims=[self.num_heads, dim_per_head],
       )
@@ -1151,9 +1277,10 @@ class DotProductAttention(base_layer.BaseLayer):
       self.create_child('ngrammer', self.ngrammer_tpl)
 
     if self.internal_enable_query_scale and self.internal_enable_per_dim_scale:
-      self.create_child(
-          'per_dim_scale', pax_fiddle.Config(PerDimScale, dim=dim_per_head)
+      per_dim_scale_p = self.per_dim_scale_tpl.clone().set(
+          dim=dim_per_head,
       )
+      self.create_child('per_dim_scale', per_dim_scale_p)
     self.create_child(
         'atten_dropout',
         self.dropout_tpl.clone().set(keep_prob=1.0 - self.atten_dropout_prob),
@@ -3251,128 +3378,3 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     raise NotImplementedError(
         'extend_step is not implemented for %s' % self.__name__
     )
-
-
-class CausalDepthwiseConv1D(base_layer.BaseLayer):
-  """Causal depth-wise convolution applied to a 1-d sequence as in Primer.
-
-  See https://arxiv.org/abs/2109.08668 for more details.
-
-  Attributes:
-    kernel_size: Kernel size for the causal depth-wise convolution on the 1-D
-      sequence.
-    hidden_dims: Dimensions of the convolution filter. It can be a list to
-      signify if we convolve multiple dimensions from the end of the sequence.
-      Alternatively, if just convolving over the last dimension, it can be a
-      positive integer.
-  """
-
-  kernel_size: int = 3
-  hidden_dims: Union[int, Sequence[int]] = 0
-
-  def setup(self) -> None:
-    assert self.name
-    assert isinstance(self.hidden_dims, (list, tuple)) or isinstance(
-        self.hidden_dims, int
-    )
-    assert self.kernel_size > 0
-    if isinstance(self.hidden_dims, (list, tuple)):
-      for dim in self.hidden_dims:
-        assert dim > 0
-    else:
-      assert self.hidden_dims > 0
-
-    wp = self.weight_split_dims_mapping
-    for i in range(self.kernel_size):
-      if i == 0:
-        params_init = base_layer.WeightInit.Constant(0.5)
-      else:
-        params_init = base_layer.WeightInit.Constant(0.5 / self.kernel_size)
-      if isinstance(self.hidden_dims, (list, tuple)):
-        shape = self.hidden_dims
-      else:
-        shape = [self.hidden_dims]
-      self.create_variable(
-          f'dconv_{i}',
-          WeightHParams(
-              shape=shape,
-              init=params_init,
-              mesh_shape=self.mesh_shape,
-              tensor_split_dims_mapping=wp.wt,
-          ),
-      )
-
-  def __call__(
-      self, inputs: JTensor, axis: int, segment_pos: Optional[JTensor] = None
-  ) -> JTensor:
-    """FProp applying depth-wise convolution on 1D sequence.
-
-    Args:
-      inputs: Input sequence of possible shapes: [B, L, D], [B, L, N, H] or [L,
-        B, N, H] where the L represents the sequence length.
-      axis: The axis which corresponds to the sequence dimension, i.e. the
-        dimension corresponding to L. By default the axis is assumed to be 1.
-      segment_pos: JTensor of shape [B, L].
-
-    Returns:
-      Output sequence after applying the depth-wise convolution on the sequence.
-    """
-    outputs = inputs * self.theta.dconv_0
-    for i in range(1, self.kernel_size):
-      inputs = shift_1d(inputs, offset=1, axis=axis)
-      if segment_pos is None:
-        outputs += inputs * getattr(self.theta, f'dconv_{i}')
-      else:
-        mask = segment_pos >= i
-        while len(mask.shape) < len(inputs.shape):
-          mask = jnp.expand_dims(mask, axis=-1)
-        outputs += inputs * getattr(self.theta, f'dconv_{i}') * mask
-    return outputs
-
-  def extend_step(
-      self,
-      inputs: JTensor,
-      axis: int,
-      step: Union[int, JTensor],
-      segment_pos: Optional[JTensor],
-  ) -> JTensor:
-    """extend_step applying depth-wise convolution on 1D sequence at a step.
-
-    Args:
-      inputs: Input sequence of possible shapes: [B, L, D], [B, L, N, H] or [L,
-        B, N, H] where the L represents the sequence length.
-      axis: The axis which corresponds to the sequence dimension, i.e. the
-        dimension corresponding to L. By default the axis is assumed to be 1.
-      step: Which step to perform the convolution for. This must be a valid
-        non-negative index into the length dimension L.
-      segment_pos: JTensor of shape [B]. If not provided, it uses step as
-        segment_pos.
-
-    Returns:
-      Output sequence at the step after applying the depth-wise convolution
-      on the sequence.
-    """
-    get_single_slice_at_index = functools.partial(
-        jax.lax.dynamic_slice_in_dim, inputs, slice_size=1, axis=axis
-    )
-    outputs = get_single_slice_at_index(start_index=step)
-    outputs *= self.theta.dconv_0
-    if segment_pos is None:
-      segment_pos = step
-    else:
-      new_shape = [segment_pos.shape[0]] + [1] * (inputs.ndim - 1)
-      segment_pos = jnp.reshape(segment_pos, new_shape)
-    use_where = not isinstance(segment_pos, int)
-    for i in range(1, self.kernel_size):
-      if use_where:
-        prev_slice = jnp.where(
-            jnp.greater_equal(segment_pos - i, 0),
-            get_single_slice_at_index(step - i),
-            jnp.zeros_like(outputs),
-        )
-      elif segment_pos >= i:
-        prev_slice = get_single_slice_at_index(start_index=step - i)
-      else:
-        break
-      outputs += prev_slice * getattr(self.theta, f'dconv_{i}')
-    return jnp.squeeze(outputs, axis)
