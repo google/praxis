@@ -203,6 +203,11 @@ class QuantizationLayer(base_layer.BaseLayer):
             block_size=self.quantization.weight_params.block_size,
         )
         out = jnp.einsum(eqn, x, w)
+        if (
+            self.quantization.act_params is not None
+            and self.quantization.act_params.fp16
+        ):
+          out = operations.clip_to_fp16(out)
         return out
       elif self.quantization.quantization_type == QuantizationType.FQ_VN:
         w = operations.fakequant_vn(

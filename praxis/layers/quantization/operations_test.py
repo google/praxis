@@ -424,5 +424,38 @@ class SubChannelTest(test_utils.TestCase):
     self.assertArraysEqual(new_shape, expected_shape)
 
 
+class ClipToFp16Test(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
+  def test_clip_no_effect(self):
+    x = jnp.array([[1.0, 2.0, 3.0], [4.0, 1.0, 2.0]], dtype=jnp.float32)
+    y = operations.clip_to_fp16(x)
+    self.assertArraysEqual(y, x)
+
+  def test_clip_with_fp16_max(self):
+    x = jnp.array(
+        [[1.0, 65505.0, 3.0], [40.0, 65510.0, 3000.0]], dtype=jnp.float32
+    )
+    y = operations.clip_to_fp16(x)
+    expected_y = jnp.array(
+        [[1.0, 6.4849949e04, 3.0], [40.0, 6.4854902e04, 3000.0]],
+        dtype=jnp.float32,
+    )
+    self.assertArraysEqual(y, expected_y)
+
+  def test_clip_with_fp16_min(self):
+    x = jnp.array(
+        [[-3.0, 2.0, -65530.0], [9.0, -5.0, 3000.0]], dtype=jnp.float32
+    )
+    y = operations.clip_to_fp16(x)
+    expected_y = jnp.array(
+        [[-3.0, 2.0, -65530.0 * 0.99], [9.0, -5.0, 3000.0]], dtype=jnp.float32
+    )
+    self.assertArraysEqual(y, expected_y)
+
+
 if __name__ == '__main__':
   absltest.main()

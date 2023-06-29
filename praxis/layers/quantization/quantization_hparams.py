@@ -65,6 +65,8 @@ class ActQuantizationParams:
     otherwise: static activation quantization
   stop_scale_gradient: Stop the gradient of the quantization scale for numerical
     stability. Note: this is numerically incorrect.
+  fp16: clip activation to fp16. This overrides the int8 activation quantization
+    for QAT.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -72,6 +74,7 @@ class ActQuantizationParams:
   # TODO(jihwanlee): Define stats config for static quantization
   stats_config = None
   stop_scale_gradient: bool = False
+  fp16: bool = False
 
 
 @dataclasses.dataclass

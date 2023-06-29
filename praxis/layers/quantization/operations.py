@@ -385,6 +385,22 @@ def reduce_einsum_weight_precision(
   return t, scale, zp
 
 
+def clip_to_fp16(t: JTensor) -> JTensor:
+  """Clip a tensor to fp16 gradually with f32 precision."""
+
+  def _skip(t):
+    return t
+
+  def _clip(t):
+    # TODO(jianlijianli): explore other ideas.
+    return t * 0.99
+
+  max_fp16 = jnp.finfo(jnp.float16).max  # min = -max for jnp.f16
+  should_clip = jnp.abs(t) > max_fp16
+  t = jax.lax.select(should_clip, _clip(t), _skip(t))
+  return t
+
+
 def fakequant_einsum(
     eqn: str,
     t: JTensor,
