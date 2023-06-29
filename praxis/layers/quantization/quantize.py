@@ -32,7 +32,8 @@ quantizing all transformer blocks.
 """
 
 import functools
-from typing import cast, Optional, Type, Sequence
+from typing import Optional, Sequence, Type, Union, cast
+
 import fiddle as fdl
 from jax import numpy as jnp
 from praxis import base_layer
@@ -82,6 +83,11 @@ def _quantize_embedding_softmax_layer_weights(
       )
     new_softmax_tpl.copy_fields_from(lm_tpl.softmax_tpl)
     lm_tpl.softmax_tpl = new_softmax_tpl
+  else:
+    raise ValueError(
+        f'lm_tpl.softmax_tpl.cls is : {lm_tpl.softmax_tpl.cls}'
+        'but has to be layers.SharedEmbeddingSoftmax'
+    )
 
 
 def _quantize_ngrammer_embedding_weights(
@@ -121,42 +127,16 @@ def quantize_transformer_layer_weights(
     act_quantization_params: Optional[ActQuantizationParams] = None,
     linear_only: bool = False,
 ) -> None:
-  """Rewrites Transformer HParam for weight only quantization."""
+  """Rewrites Transformer HParam for weight and act quantization."""
   if not linear_only:
     # If not linear only, quantize attentions (MHA / MQA) as well.
-    if issubclass(
-        tr_tpl.tr_atten_tpl.cls, layers.attentions.DotProductAttention
-    ):
-      tr_atten_tpl = cast(
-          pax_fiddle.Config[layers.attentions.DotProductAttention],
-          tr_tpl.tr_atten_tpl,
-      )
-      quantize_dot_product_attention_layer_weights(
-          tr_atten_tpl,
-          quantization_type,
-          mode,
-          weight_quantization_params,
-          act_quantization_params,
-      )
-
-    if issubclass(
-        tr_tpl.tr_atten_tpl.cls,
-        layers.multi_query_attention.MultiQueryDotProductAttention,
-    ):
-      tr_atten_tpl = cast(
-          pax_fiddle.Config[
-              layers.multi_query_attention.MultiQueryDotProductAttention
-          ],
-          tr_tpl.tr_atten_tpl,
-      )
-      quantize_mq_dot_product_attention_layer_weights(
-          tr_atten_tpl,
-          quantization_type,
-          mode,
-          weight_quantization_params,
-          act_quantization_params,
-      )
-
+    quantize_attention_layer_weights(
+        tr_tpl,
+        quantization_type,
+        mode,
+        weight_quantization_params,
+        act_quantization_params,
+    )
   # Always quantize linears layers.
   tr_fflayer_tpl = cast(
       pax_fiddle.Config[layers.transformers.TransformerFeedForward],
@@ -168,6 +148,53 @@ def quantize_transformer_layer_weights(
       mode,
       weight_quantization_params,
       act_quantization_params,
+  )
+
+
+def quantize_attention_layer_weights(
+    tr_tpl: pax_fiddle.Config[layers.transformers.Transformer],
+    quantization_type: QuantizationType,
+    mode: QuantizationMode,
+    weight_quantization_params: WeightQuantizationParams,
+    act_quantization_params: Optional[ActQuantizationParams] = None,
+) -> None:
+  """Rewrites Attention HParam for weight and act quantization."""
+  if issubclass(tr_tpl.tr_atten_tpl.cls, layers.attentions.DotProductAttention):
+    tr_atten_tpl = cast(
+        pax_fiddle.Config[layers.attentions.DotProductAttention],
+        tr_tpl.tr_atten_tpl,
+    )
+    quantize_dot_product_attention_layer_weights(
+        tr_atten_tpl,
+        quantization_type,
+        mode,
+        weight_quantization_params,
+        act_quantization_params,
+    )
+    return
+
+  if issubclass(
+      tr_tpl.tr_atten_tpl.cls,
+      layers.multi_query_attention.MultiQueryDotProductAttention,
+  ):
+    tr_atten_tpl = cast(
+        pax_fiddle.Config[
+            layers.multi_query_attention.MultiQueryDotProductAttention
+        ],
+        tr_tpl.tr_atten_tpl,
+    )
+    quantize_mq_dot_product_attention_layer_weights(
+        tr_atten_tpl,
+        quantization_type,
+        mode,
+        weight_quantization_params,
+        act_quantization_params,
+    )
+    return
+
+  raise ValueError(
+      f'tr_tpl.tr_atten_tpl.cls is : {tr_tpl.tr_atten_tpl.cls}'
+      'but has to be DotProductAttention or MultiQueryDotProductAttention'
   )
 
 
