@@ -65,6 +65,32 @@ class SparsityMode(str, enum.Enum):
   INFERENCE = 'inference'
 
 
+@dataclasses.dataclass
+class PolynomialDecayParams:
+  """Params for polynomial decay schedule.
+
+  The sparsity rate is calculated as
+
+  current_sparsity = final_sparsity + (initial_sparsity - final_sparsity)
+          * (1 - (step - begin_step)/(end_step - begin_step)) ^ exponent
+
+  which is a polynomial decay function. See
+  [paper](https://arxiv.org/abs/1710.01878).
+
+  initial_sparsity: Starting sparsity value.
+  final_sparsity: Target sparsity value.
+  begin_step: First step at which to start applying sparsity
+  end_step: Last sparsity update
+  exponent: Exponent to be used in the sparsity function.
+  """
+
+  initial_sparsity: float = 10.0
+  final_sparsity: float = 70.0
+  begin_step: int = 0
+  end_step: int = 50_000
+  exponent: float = 3.0
+
+
 # TODO(ayazdan): Define parameters for activation sparsity.
 @dataclasses.dataclass
 class WeightSparsityParams:
@@ -135,6 +161,8 @@ class SparsityHParams:
       only valide under FEWSHOT mode.
     target_step: target step to start sparsity pruning.
     sparsified_layers: List of indices of layer to sparisify.
+    polynomial_decay_schedule: polynomial decay schedule for unstructured
+      sparsity
   """
 
   sparsity_type: SparsityType = SparsityType.STRUCTURED_NM
@@ -145,6 +173,7 @@ class SparsityHParams:
   mask_update_interval: int = 1
   target_step: int = 0
   sparsified_layers: Optional[List[int]] = None
+  polynomial_decay_schedule: Optional[PolynomialDecayParams] = None
 
   def get_num_shots(self):
     if self.mode == SparsityMode.INFERENCE:

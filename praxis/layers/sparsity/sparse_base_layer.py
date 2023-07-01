@@ -152,25 +152,68 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     Returns:
       Weights maybe materialized by sparsity mask.
     """
-    return jnp.any(sparsified_layers == layer_idx)
-
-  def _get_sparsity_mask(self, score):
-    return sparsity.get_sparsity_mask(
-        score,
-        n_sparsity=self.sparsity.weight_params.prune_rate[0],  # pytype: disable=attribute-error
-        m_sparsity=self.sparsity.weight_params.prune_rate[1],  # pytype: disable=attribute-error
+    return jnp.logical_or(
+        jnp.any(sparsified_layers == layer_idx),
+        jnp.any(sparsified_layers == -1),
     )
 
-  def _maybe_sparsify(
+  def _get_sparsity_mask(self, score, mask, step):
+    if self.sparsity.sparsity_type == SparsityType.STRUCTURED_NM:
+      return sparsity.get_sparsity_mask(
+          score,
+          n_sparsity=self.sparsity.weight_params.prune_rate[0],  # pytype: disable=attribute-error
+          m_sparsity=self.sparsity.weight_params.prune_rate[1],  # pytype: disable=attribute-error
+      )
+
+    # self.sparsity.sparsity_type == SparsityType.UNSTRUCTURED
+
+    prune_rate = self._get_prune_rate_polynomial(step)
+
+    return sparsity.get_sparsity_mask_unstructured(score, mask, prune_rate)
+
+  def _get_prune_rate_polynomial(self, step):
+    final_sparsity = self.sparsity.polynomial_decay_schedule.final_sparsity  # pytype: disable=attribute-error
+    initial_sparsity = self.sparsity.polynomial_decay_schedule.initial_sparsity  # pytype: disable=attribute-error
+    begin_step = self.sparsity.polynomial_decay_schedule.begin_step  # pytype: disable=attribute-error
+    end_step = self.sparsity.polynomial_decay_schedule.end_step  # pytype: disable=attribute-error
+    exponent = self.sparsity.polynomial_decay_schedule.exponent  # pytype: disable=attribute-error
+
+    sparsity_active = jax.lax.cond(
+        jnp.greater_equal(step, begin_step),
+        lambda: 1.0,
+        lambda: 0.0,
+    )
+
+    return sparsity_active * (
+        final_sparsity
+        + (initial_sparsity - final_sparsity)
+        * (
+            1
+            - (jax.lax.min(step, end_step) - begin_step)
+            / (end_step - begin_step)
+        )
+        ** exponent
+    )
+
+  def _get_sparsified_layers(self):
+    # Sparsified layers could be set as [1, 2, 3 ...], or None, if None, then
+    # set sparsified_layers = [-1] to sparsified all layers.
+    if self.sparsity.sparsified_layers is None:
+      self.sparsity.sparsified_layers = [-1]
+    sparsified_layers = jnp.asarray(self.sparsity.sparsified_layers)
+    return sparsified_layers
+
+  def _maybe_update_mask(
       self,
       weight: JTensor,
       inputs: JTensor,
       name: str,
       layer_idx: int,
+      step: int,
   ):
-    # Get variables
     mask_var_name = name + SPARSITY_NAME_POSTFIX
     mask = self.get_var(mask_var_name)
+
     # Reshape if mask and weight have shape mismatch.
     # E.g., this happens in attentions.AttentionProjection when setting
     # attention_combine_dims=True.
@@ -178,27 +221,24 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     # future refactors on sparse_base_layer.py.
     if mask.shape != weight.shape:
       mask = jnp.reshape(mask, weight.shape)
+
     update_cnt = self.get_var('mask_update_count')
-    step = self.get_var('step')
 
     num_shots = self.sparsity.get_num_shots()
     target_step = (
         self.sparsity.target_step
         + self.sparsity.mask_update_interval * update_cnt
     )
-    # Sparsified layers could be set as [1, 2, 3 ...], or None, if None, then
-    # set sparsified_layers = [-1] to sparsified all layers.
-    if self.sparsity.sparsified_layers is None:
-      self.sparsity.sparsified_layers = [-1]
-    sparsified_layers = jnp.asarray(self.sparsity.sparsified_layers)
 
-    def mask_update(w, inputs, mask, update_cnt):  # pylint: disable=unused-argument
+    sparsified_layers = self._get_sparsified_layers()
+
+    def mask_update(w, inputs, mask, update_cnt, step):  # pylint: disable=unused-argument
       score = sparsity.compute_score(
           w, score_func=self.sparsity.score, inputs=inputs
       )
-      return self._get_sparsity_mask(score), update_cnt + 1
+      return self._get_sparsity_mask(score, mask, step), update_cnt + 1
 
-    def no_mask_update(w, inputs, mask, update_cnt):  # pylint: disable=unused-argument
+    def no_mask_update(w, inputs, mask, update_cnt, step):  # pylint: disable=unused-argument
       return mask, update_cnt
 
     new_mask, update_cnt = jax.lax.cond(
@@ -214,7 +254,29 @@ class SparsityBaseLayer(base_layer.BaseLayer):
         inputs,
         mask,
         update_cnt,
+        step,
     )
+    self.update_var('mask_update_count', update_cnt)
+    self.update_var(mask_var_name, new_mask)
+
+    if num_shots > 0:
+      self.add_summary('mask_update_count', update_cnt, verbosity=4)
+
+  def _maybe_sparsify(
+      self,
+      weight: JTensor,
+      inputs: JTensor,
+      name: str,
+      layer_idx: int,
+      step: int,
+  ):
+    mask_var_name = name + SPARSITY_NAME_POSTFIX
+    mask = self.get_var(mask_var_name)
+
+    if mask.shape != weight.shape:
+      mask = jnp.reshape(mask, weight.shape)
+
+    sparsified_layers = self._get_sparsified_layers()
 
     # Apply mask to weight.
     no_op = lambda inputs, mask: inputs
@@ -226,16 +288,8 @@ class SparsityBaseLayer(base_layer.BaseLayer):
         sparsity.apply_sparsity,
         no_op,
         weight,
-        new_mask,
+        mask,
     )
-
-    self.update_var('mask_update_count', update_cnt)
-    self.update_var('step', step + 1)
-    self.update_var(mask_var_name, new_mask)
-
-    if num_shots > 0:
-      self.add_summary('mask_update_count', update_cnt, verbosity=4)
-
     return weight
 
   def sparsifiy(
@@ -259,11 +313,21 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
     if self.sparsity.mode == SparsityMode.INFERENCE:
       return weight
-    else:
-      if self.sparsity.sparsity_type != SparsityType.STRUCTURED_NM:
-        raise NotImplementedError(
-            'Only structured sparsity is currently supported.'
-        )
-      return self._maybe_sparsify(
-          weight=weight, inputs=inputs, name=name, layer_idx=layer_idx
-      )
+
+    step = self.get_var('step')
+
+    self._maybe_update_mask(
+        weight=weight,
+        inputs=inputs,
+        name=name,
+        layer_idx=layer_idx,
+        step=step,
+    )
+
+    weight = self._maybe_sparsify(
+        weight=weight, inputs=inputs, name=name, layer_idx=layer_idx, step=step
+    )
+
+    self.update_var('step', step + 1)
+
+    return weight

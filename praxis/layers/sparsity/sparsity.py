@@ -18,7 +18,7 @@
 import functools
 import math
 from typing import Optional
-from typing import Tuple
+from typing import Tuple, Union
 
 from absl import logging
 from flax import linen as nn
@@ -66,7 +66,8 @@ def sr_ste(
       apply_mask=apply_mask,
       sparse_ste_weight=sparse_ste_weight,
       n_sparsity=n_sparsity,
-      m_sparsity=m_sparsity)[0]
+      m_sparsity=m_sparsity,
+  )[0]
 
 
 @functools.partial(jax.jit, static_argnums=(4, 5, 6))
@@ -93,9 +94,11 @@ def sr_ste_fwd(
       apply_mask, lambda: jnp.multiply(updated_mask, inputs), lambda: inputs
   )
   # pylint:enable=g-long-lambda
-  return (updated_inputs, updated_mask,
-          jnp.array(sparse_ste_weight)), (
-              inputs, updated_mask, jnp.array(sparse_ste_weight))
+  return (updated_inputs, updated_mask, jnp.array(sparse_ste_weight)), (
+      inputs,
+      updated_mask,
+      jnp.array(sparse_ste_weight),
+  )
 
 
 def sr_ste_bwd(sparsity_params, n_sparsity, m_sparsity, res, g):
@@ -133,13 +136,14 @@ class Sparsity(nn.Module):
   sparsity_hparams: sparsity_hparams.SparsityHParams
 
   @nn.compact
-  def __call__(self,
-               inputs: jnp.ndarray,
-               *,
-               update_mask: bool,
-               apply_mask: bool,
-               num_update_sparsity: int = 0) -> jnp.ndarray:
-
+  def __call__(
+      self,
+      inputs: jnp.ndarray,
+      *,
+      update_mask: bool,
+      apply_mask: bool,
+      num_update_sparsity: int = 0,
+  ) -> jnp.ndarray:
     # TODO(shivaniagrawal): make a decision on creating/not creating mask for
     # when sparsity hparams is None itself.
     if (
@@ -156,7 +160,8 @@ class Sparsity(nn.Module):
           n_sparsity = n_sparsity - 1
         else:
           n_sparsity = int(
-              math.ceil(n_sparsity / math.pow(2, num_update_sparsity)))
+              math.ceil(n_sparsity / math.pow(2, num_update_sparsity))
+          )
     else:
       logging.info('Unstructured sparsity does not support structure decaying.')
       n_sparsity = 0
@@ -171,9 +176,10 @@ class Sparsity(nn.Module):
     if weight_params.mask_decay_weight != 0.0:
       if num_update_sparsity < 16:
         mask_decay_value = max(
-            mask_decay_value -
-            (num_update_sparsity * weight_params.mask_decay_weight),
-            0.0)
+            mask_decay_value
+            - (num_update_sparsity * weight_params.mask_decay_weight),
+            0.0,
+        )
       else:
         mask_decay_value = 0.0
     mask = self.variable('sparsity', 'mask', jnp.ones, inputs.shape, jnp.bool_)
@@ -186,7 +192,8 @@ class Sparsity(nn.Module):
           apply_mask=apply_mask,
           sparse_ste_weight=weight_params.sparse_ste_weight,
           n_sparsity=n_sparsity,
-          m_sparsity=m_sparsity)
+          m_sparsity=m_sparsity,
+      )
       if update_mask and self.has_variable('sparsity', 'mask'):
         mask.value = updated_mask
       return updated_inputs
@@ -196,11 +203,13 @@ class Sparsity(nn.Module):
 
       if apply_mask and self.has_variable('sparsity', 'mask'):
         if weight_params.mask_decay_weight != 0.0:
-          return jnp.multiply(~mask.value * mask_decay_value + mask.value,
-                              inputs)
+          return jnp.multiply(
+              ~mask.value * mask_decay_value + mask.value, inputs
+          )
         else:
-          return jnp.where(mask.value, inputs,
-                           jnp.zeros(inputs.shape, inputs.dtype))
+          return jnp.where(
+              mask.value, inputs, jnp.zeros(inputs.shape, inputs.dtype)
+          )
       return inputs
 
 
@@ -241,7 +250,8 @@ def get_pruning_n_m_mask(inputs: jnp.ndarray, n: int, m: int) -> jnp.ndarray:
   length = jnp.size(inputs)
   if length % m != 0:
     raise ValueError(
-        f'inputs size must be divisible by m, provided {length} and {m}')
+        f'inputs size must be divisible by m, provided {length} and {m}'
+    )
   group = int(length / m)
   inputs = jnp.abs(inputs)
   inputs_temp = inputs.reshape(group, m)
@@ -249,10 +259,38 @@ def get_pruning_n_m_mask(inputs: jnp.ndarray, n: int, m: int) -> jnp.ndarray:
   _, top_k_indices = jax.lax.top_k(inputs_temp, k=n)
   # extract largest n values to make them one in mask corresponding to non-zero
   # elements.
-  return (
-      jnp.any(jax.nn.one_hot(top_k_indices, m, dtype=jnp.bool_), axis=-2)
-      .reshape(inputs.shape)
-  )
+  return jnp.any(
+      jax.nn.one_hot(top_k_indices, m, dtype=jnp.bool_), axis=-2
+  ).reshape(inputs.shape)
+
+
+def get_sparsity_mask_unstructured(
+    inputs: jnp.ndarray,
+    mask: Union[jnp.ndarray, None],
+    prune_rate: Union[jnp.ndarray, float],
+) -> jnp.ndarray:
+  """Computes a sparisty mask to prune the required percentage of weights.
+
+  The mask is calculated by thresholding the absolute values of inputs. The
+  threshold is the lowest value greater than prune_rate percent of weights, i.e.
+  the corresponding percentile.
+
+  The newly pruned weights form a superset of the currently pruned weights if
+  the current mask is provided.
+
+  Args:
+      inputs: Input tensor.
+      mask: Current mask.
+      prune_rate: Percentage of weights to prune, value between 0 and 100.
+
+  Returns:
+      Sparsity mask.
+  """
+  if mask is not None:
+    inputs = apply_sparsity(inputs, mask)
+  inputs_abs = jnp.abs(inputs)
+  threshold = jnp.percentile(inputs_abs, prune_rate)
+  return jnp.greater(inputs_abs, threshold)
 
 
 # TODO(shivaniagrawal): Only used for testing the functionality of
