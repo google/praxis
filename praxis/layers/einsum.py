@@ -50,19 +50,29 @@ class Einsum(base_layer.BaseLayer):
     assert '.' not in w
     fan_in = sorted([w.index(d) for d in (set(x) - set(out))])
     fan_out = sorted([w.index(d) for d in (set(out) - set(x))])
+    w_sharding = self.weight_split_dims_mapping.wt
     pc = base_layer.WeightHParams(
         shape=self.w_shape,
         fan_in_axes=fan_in,
-        fan_out_axes=fan_out)
+        fan_out_axes=fan_out,
+        mesh_shape=self.mesh_shape,
+        tensor_split_dims_mapping=w_sharding,
+    )
     self.create_variable('w', pc)
     if self.use_bias:
       out_bias_dims = sorted([out.index(d) for d in (set(out) - set(x))])
       # Fan-out dims must be at the end of `out`.
       assert all([d >= len(out) - len(out_bias_dims) for d in out_bias_dims])
       bias_shape = [self.w_shape[w.index(out[d])] for d in out_bias_dims]
+      if w_sharding is not None:
+        b_sharding = [w_sharding[w.index(out[d])] for d in out_bias_dims]
+      else:
+        b_sharding = None
       pc_bias = base_layer.WeightHParams(
           shape=bias_shape,
           init=base_layer.WeightInit.Constant(0.0),
+          mesh_shape=self.mesh_shape,
+          tensor_split_dims_mapping=b_sharding,
       )
       self.create_variable('b', pc_bias)
     self.create_child('einsum', self.einsum_op_tpl.clone())
@@ -80,4 +90,7 @@ class Einsum(base_layer.BaseLayer):
     ret = self.einsum(self.eqn, inputs, theta.w)
     if self.use_bias:
       ret += theta.b
+    ret = base_layer.maybe_shard(
+        ret, self.activation_split_dims_mapping.out, self.mesh_axis_names
+    )
     return ret
