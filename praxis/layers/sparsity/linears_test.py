@@ -95,6 +95,17 @@ class SparseLinearTest(test_utils.TestCase):
       initial_vars = linear.init(prng_key, inputs)
       initial_vars[PARAMS]['w'] = weights
 
+      if mode != SparsityMode.INFERENCE:
+        self.assertArraysEqual(
+            initial_vars[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
+            jnp.array([
+                [True, True, True, True],
+                [True, True, True, True],
+                [True, True, True, True],
+                [True, True, True, True],
+            ]),
+        )
+
       # Materialize mode do not making pruning or mask updating.
       if mode == SparsityMode.MATERIALIZE:
         initial_vars[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX] = jnp.array([

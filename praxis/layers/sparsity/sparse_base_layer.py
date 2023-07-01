@@ -64,7 +64,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       weight_hp: HParams for weight.
     """
     sparsity_weight_hp = copy.deepcopy(weight_hp)
-    sparsity_weight_hp.init = WeightInit.Constant(False)
+    sparsity_weight_hp.init = WeightInit.Constant(True)
     sparsity_weight_hp.dtype = jnp.bool_
     self.create_variable(
         name=name + SPARSITY_NAME_POSTFIX,
