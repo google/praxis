@@ -339,7 +339,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   def _shard_blh(self, x: JTensor) -> JTensor:
     """Adds sharding annotations to tensors of shape [b, l, h]."""
     ap = self.activation_split_dims_mapping
-    return base_layer.maybe_shard(x, ap.blh, self.mesh_axis_names)
+    shard = None
+    if ap.blh is not None:
+      shard = ap.blh
+    elif ap.blnh is not None:
+      shard = [ap.blnh[0], ap.blnh[1], ap.blnh[3]]
+    return base_layer.maybe_shard(x, shard, self.mesh_axis_names)
 
   def _shard_bld(self, x: JTensor) -> JTensor:
     """Adds sharding annotations to tensors of shape [b, l, d]."""
@@ -730,6 +735,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       if not isinstance(state, JTensor):
         continue
       new_state = transform_fn(state, batch_dim, time_dim)
+      new_state = self._shard_blh(new_state)
       self.update_decode_state(name, new_state)
 
   def lazy_broadcast_prefix(self, num_suffix_samples: int,
