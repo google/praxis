@@ -145,18 +145,17 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   Output y:[B, T, D] = einsum('BTNH,DNH>BTD', context, Wout)
 
   Attributes:
-    input_dim: An integer or a dict of integer values as number of input
-      nodes. If input_dim is a dict, keys must be key, value and query.
+    input_dim: An integer or a dict of integer values as number of input nodes.
+      If input_dim is a dict, keys must be key, value and query.
     hidden_dim: Number of hidden nodes.
     num_heads: Number of attention heads.
-    dim_per_head: Dimension of each attention head. If None then dim_per_head
-      == hidden_dim // num_heads.
+    dim_per_head: Dimension of each attention head. If None then dim_per_head ==
+      hidden_dim // num_heads.
     dropout_tpl: Parameterization for the dropout layer.
     atten_dropout_prob: Probability at which we apply dropout to the attention
       weights.
     proj_tpl: Parameterization for the query projection_tpl layer.
-    headless_proj_tpl: Parameterization for the key/value projection_tpl
-      layer.
+    headless_proj_tpl: Parameterization for the key/value projection_tpl layer.
     use_bias: Whether to use bias for projection_tpl layers.
     output_proj_use_nhd_shape: Whether to use NHD variable shape in output
       projection layer.
@@ -164,12 +163,14 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     atten_logit_cap: Cap the absolute values of logits by tanh. Enabled when a
       positive value is specified. May not be supported by a subclass.
     use_rotary_position_emb: Whether to add rotary position embedding to the
-      queries and keys before computing self attention scores. This was
-      proposed in https://arxiv.org/abs/2104.09864.
+      queries and keys before computing self attention scores. This was proposed
+      in https://arxiv.org/abs/2104.09864.
     relative_bias_tpl: Optional parameterization of relative bias.
     attention_extra_logit: Extra logit for attention softmax.
-    combine_qkv: Whether to combine qkv tensor for optimizing qkv input
-      gradient computation with SPMD. Only supports self-attention.
+    combine_qkv: Whether to combine qkv tensor for optimizing qkv input gradient
+      computation with SPMD. Only supports self-attention.
+    scale_query_by_dim_per_head: whether to scale the query by dim_per_head,
+      instead of default hidden_dim // num_heads.
     Note: dconv_qkv and ngrammer are not supported.
   """
   input_dim: Union[int, Dict[str, int]] = 0
@@ -192,6 +193,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   combine_qkv: bool = False
   qk_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
   pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  scale_query_by_dim_per_head: bool = False
 
   # SPMD partition related params.
   #
@@ -363,9 +365,14 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     return base_layer.maybe_shard(x, bd, self.mesh_axis_names)
 
   def _scale_query(self, query: JTensor) -> JTensor:
-    """Scales the query vector if enabled."""
-    if self.internal_enable_query_scale:
-      query *= (self.hidden_dim // self.num_heads) ** -0.5
+    """Scales the query vector."""
+    if self.scale_query_by_dim_per_head and self.dim_per_head is not None:
+      dim_per_head = self.dim_per_head
+    else:
+      dim_per_head = self.hidden_dim // self.num_heads
+
+    query *= dim_per_head**-0.5
+
     return query
 
   def _cap_logits(self, logits: JTensor) -> JTensor:

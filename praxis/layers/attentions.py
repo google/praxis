@@ -1080,6 +1080,9 @@ class DotProductAttention(base_layer.BaseLayer):
       (GShard, T5) use internal_enable_per_dim_scale=False and adjust
       initialization of the linear transformations(einsums), in conjunction with
       Adafactor optimizer.
+    scale_query_by_dim_per_head: whether to scale the query by dim_per_head,
+      instead of default hidden_dim // num_heads (only activated when
+      internal_enable_per_dim_scale = False).
     scale_logits_by_head_dims: Enables a 1/sqrt(head dim) scaling to the logits.
       This occurs prior to logit cap, if any.
     atten_logit_cap: Cap the absolute values of logits by tanh. Enabled when a
@@ -1117,6 +1120,7 @@ class DotProductAttention(base_layer.BaseLayer):
   output_proj_use_nhd_shape: bool = False
   internal_enable_query_scale: bool = True
   internal_enable_per_dim_scale: bool = True
+  scale_query_by_dim_per_head: bool = False
   scale_logits_by_head_dims: bool = False
   atten_logit_cap: float = 0.0
   # TODO(pax-dev): merge use_rotary_position_emb and rotary_position_emb_tpl
@@ -1356,11 +1360,17 @@ class DotProductAttention(base_layer.BaseLayer):
 
   def _scale_query(self, query: JTensor) -> JTensor:
     """Scales the query vector if enabled."""
-    if self.internal_enable_query_scale:
-      if self.internal_enable_per_dim_scale:
-        query = self.per_dim_scale(query)
+    if not self.internal_enable_query_scale:
+      return query
+    if self.internal_enable_per_dim_scale:
+      query = self.per_dim_scale(query)
+    else:
+      if self.scale_query_by_dim_per_head and self.dim_per_head is not None:
+        dim_per_head = self.dim_per_head
       else:
-        query *= (self.hidden_dim // self.num_heads) ** -0.5
+        dim_per_head = self.hidden_dim // self.num_heads
+
+      query *= dim_per_head**-0.5
     return query
 
   def _cap_logits(self, logits: JTensor) -> JTensor:
