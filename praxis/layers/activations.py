@@ -67,7 +67,7 @@ class ReLU(BaseActivation):
     """Applies the activation function."""
     return jax.nn.relu(inputs)
 
-class sineReLU(BaseActivation):
+class SINERELU(BaseActivation):
   """sineReLU activation layer."""
 
   def __call__(self, inputs: JTensor) -> JTensor:
