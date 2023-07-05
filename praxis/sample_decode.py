@@ -687,7 +687,7 @@ def sample_decode(
     model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
-    early_exit=True,
+    early_exit: bool = True,
     use_top_k_for_logprobs: bool = False,
     controlled_decoding: Optional[
         decoder_utils.ControlledDecodingHParams
@@ -878,7 +878,7 @@ def sample_decode_after_fprop(
     result_callback: Optional[StreamingResultCallback] = None,
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
-    early_exit=True,
+    early_exit: bool = True,
     use_top_k_for_logprobs: bool = False,
     controlled_decoding: Optional[
         decoder_utils.ControlledDecodingHParams
