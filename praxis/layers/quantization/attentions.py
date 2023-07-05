@@ -272,7 +272,11 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
         self.quantization.weight_params.precision == 4
         and self.quantization.weight_params.use_int4_packed_weights
     ):
-      q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
+      q_w = utils.pack_4bit(
+          q_w,
+          self._PACK_4BIT_DIM,
+          self.quantization.weight_params.int4_packed_weights_container_dtype,
+      )
 
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     ret_params = {'w': q_w, scale_name: q_s}
@@ -583,7 +587,11 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
         self.quantization.weight_params.precision == 4
         and self.quantization.weight_params.use_int4_packed_weights
     ):
-      q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
+      q_w = utils.pack_4bit(
+          q_w,
+          self._PACK_4BIT_DIM,
+          self.quantization.weight_params.int4_packed_weights_container_dtype,
+      )
 
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
     ret_params = {'w': q_w, scale_name: q_s}

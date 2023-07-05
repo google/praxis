@@ -96,18 +96,30 @@ def einsum_eqn_to_dimension_numbers(
   return dimension_numbers, perm
 
 
-def pack_4bit(x: JTensor, pack_dim: int) -> JTensor:
-  """Pack int8 or uint8 tensor where its values are actually int4 or uint4, to int32 nibble format along pack_dim.
+def pack_4bit(
+    x: JTensor, pack_dim: int, packed_dtype: jnp.dtype = jnp.int32
+) -> JTensor:
+  """Pack int8 or uint8 tensor where its values are actually int4 or uint4, to int32 or int8 nibble format along pack_dim.
 
   Args:
     x: Original int8 or uint8 tensor to pack.
     pack_dim: Dimension to pack along. x.shape[pack_dim] must be divisible by 8,
-      and pack_dim must be < x.ndim - 1.
+      when packed_dtype is int32 and divisible by 2 when target_type is int8.
+      Also pack_dim must be < x.ndim - 1.
+    packed_dtype: Target type to pack to, int32 or int8.
 
   Returns:
-    int32 packed tensor where the pack_dim size is dividened by 8 from the
-    original tensor x.
+    int32 or int8 packed tensor where the pack_dim size is dividened by 8
+    from the original tensor x.
   """
+  if packed_dtype == jnp.int8 and x.dtype == jnp.uint8:
+    # It doesn't make sense to pack uint8 numbers into int4 as we'll
+    # the range overlap between uint8 and int4 is [0..7].
+    raise ValueError(
+        'only int8 input dtype is supprted when packing into int8. '
+        f'Given {x.dtype}'
+    )
+
   if x.dtype != jnp.int8 and x.dtype != jnp.uint8:
     raise ValueError(
         f'input dtype must be either int8 or uint8. Given {x.dtype}'
@@ -117,21 +129,31 @@ def pack_4bit(x: JTensor, pack_dim: int) -> JTensor:
         f'pack_dim must be < input ndim - 1. input shape {x.shape} and pack_dim'
         f' {pack_dim}'
     )
-  if x.shape[pack_dim] % 8 != 0:
+  if packed_dtype != jnp.int32 and packed_dtype != jnp.int8:
     raise ValueError(
-        f'input shape[pack_dim] must be divisible by 8. Given shape {x.shape}'
+        f'packed_dtype must be either int32 or int8. Given {packed_dtype}'
+    )
+  if packed_dtype == jnp.int32 and x.shape[pack_dim] % 8 != 0:
+    raise ValueError(
+        'input shape[pack_dim] must be divisible by 8 when target_type '
+        f'is int32. Given shape {x.shape}'
+    )
+  if packed_dtype == jnp.int8 and x.shape[pack_dim] % 2 != 0:
+    raise ValueError(
+        'input shape[pack_dim] must be divisible by 2 when target_type '
+        f'is int8. Given shape {x.shape}'
     )
 
-  packed_dtype = jnp.int32
+  int4s_per_packed_type = 8 if packed_dtype == jnp.int32 else 2
 
   rep_shape = list(x.shape)
-  rep_shape.insert(pack_dim + 1, 8)
-  rep_shape[pack_dim] //= 8
+  rep_shape.insert(pack_dim + 1, int4s_per_packed_type)
+  rep_shape[pack_dim] //= int4s_per_packed_type
 
-  shifts = lax.broadcasted_iota(jnp.int32, rep_shape, pack_dim + 1)
-  shifts *= 4
+  shifts = lax.broadcasted_iota(packed_dtype, rep_shape, pack_dim + 1)
+  shifts <<= 2
 
-  # Promote x to int32
+  # Promote x to packed_dtype
   x = x & jnp.array(0x0F, packed_dtype)
   x = lax.reshape(x, rep_shape)
   x = x << shifts
@@ -142,25 +164,27 @@ def pack_4bit(x: JTensor, pack_dim: int) -> JTensor:
 def unpack_4bit(
     packed: JTensor, pack_dim: int, original_dtype: jnp.dtype
 ) -> JTensor:
-  """Unpack int32 tensor packed by pack_4bit() to int32 tensor.
+  """Unpack int32/int8 tensor packed by pack_4bit() to int32/int8 tensor.
 
   Args:
-    packed: int32 tensor that was packed by pack_4bit() function.
+    packed: int32 or int8 tensor that was packed by pack_4bit() function.
     pack_dim: Dimension that was used to pack along. pack_dim must be <
       packed.ndim - 1.
     original_dtype: dtype of the original tensor that was packed by pack_4bit()
       function. Must be either int8 or uint8.
 
   Returns:
-    int32 unpack tensor where the pack_dim size is multipled by 8 from the
-    packed tensor. Which means that the returned shape is identical to the
+    int32/int8 unpack tensor where the pack_dim size is multipled by 8/2 from
+    the packed tensor. Which means that the returned shape is identical to the
     original shape before pack_4bit().
     Note that original input to pack_4bit() is int8 or uint8, but the unpacked
-    tensor returned by unpack_4bit() is int32 with same values and shape of the
-    original tensor.
+    tensor returned by unpack_4bit() is int32/int8 with same values
+    and shape of the original tensor.
   """
-  if packed.dtype != jnp.int32:
-    raise ValueError(f'packed dtype must be either int32. Given {packed.dtype}')
+  if packed.dtype != jnp.int32 and packed.dtype != jnp.int8:
+    raise ValueError(
+        f'packed dtype must be either int32 or int8. Given {packed.dtype}'
+    )
   if original_dtype != jnp.int8 and original_dtype != jnp.uint8:
     raise ValueError(
         f'original_dtype must be either int8 or uint8. Given {original_dtype}'
@@ -171,20 +195,32 @@ def unpack_4bit(
         f' pack_dim {pack_dim}'
     )
 
+  packet_type_bits = 32 if packed.dtype == jnp.int32 else 8
+  int4s_per_packed_type = packet_type_bits // 4
+
   rep_shape = list(packed.shape)
-  rep_shape.insert(pack_dim + 1, 8)
+  rep_shape.insert(pack_dim + 1, int4s_per_packed_type)
   rep = jnp.broadcast_to(jnp.expand_dims(packed, pack_dim + 1), rep_shape)
-  shifts = lax.broadcasted_iota(jnp.int32, rep_shape, pack_dim + 1)
+  shifts = lax.broadcasted_iota(packed.dtype, rep_shape, pack_dim + 1)
 
   rep = lax.collapse(rep, pack_dim, pack_dim + 2)
   shifts = lax.collapse(shifts, pack_dim, pack_dim + 2)
-  shifts = 7 - shifts
-  shifts *= 4
+  # Invert shifts table:
+  # 0,1 -> 1,0 for int8
+  # 0..7 -> 7..0 for int32
+  shifts = int4s_per_packed_type - 1 - shifts
+  # Multiply shifts table by 4
+  shifts <<= 2
   rep <<= shifts
   if original_dtype == jnp.int8:
-    return lax.shift_right_arithmetic(rep, 28)
+    # Arithmetic shift is required to repsect negative numbers
+    return lax.shift_right_arithmetic(
+        rep, jnp.array(packet_type_bits - 4, packed.dtype)
+    )
   else:
-    return lax.shift_right_logical(rep, 28)
+    return lax.shift_right_logical(
+        rep, jnp.array(packet_type_bits - 4, packed.dtype)
+    )
 
 
 def get_packed_shape(shape: Sequence[int], pack_dim: int, packing_factor: int):

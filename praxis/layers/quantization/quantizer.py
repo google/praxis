@@ -78,10 +78,14 @@ class QuantizationLayer(base_layer.BaseLayer):
       ):
         # For 4bit pack/unpack.
         # TODO(jianlijianli): Replace this with proper 4bit type.
-        weight_params.shape = utils.get_packed_shape(
-            weight_params.shape, pack_dim, packing_factor=8
+        # Type to store int4 values, int32 or int8 are supported.
+        dtype = (
+            self.quantization.weight_params.int4_packed_weights_container_dtype
         )
-        dtype = jnp.int32  # It will be used for storing 8 4bit values.
+        packing_factor = 2 if dtype == jnp.int8 else 8
+        weight_params.shape = utils.get_packed_shape(
+            weight_params.shape, pack_dim, packing_factor=packing_factor
+        )
       if do_static_activation_quantization(self.quantization.act_params):
         raise NotImplementedError(
             'Static activation quantization is not supported yet.'

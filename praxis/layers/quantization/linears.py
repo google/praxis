@@ -189,7 +189,11 @@ class Linear(linears.Linear, quantizer.QuantizationLayer):  # pytype: disable=si
         self.quantization.weight_params.precision == 4
         and self.quantization.weight_params.use_int4_packed_weights
     ):
-      q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
+      q_w = utils.pack_4bit(
+          q_w,
+          self._PACK_4BIT_DIM,
+          self.quantization.weight_params.int4_packed_weights_container_dtype,
+      )
 
     if self.quantization.weight_params.use_symmetric:
       return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}

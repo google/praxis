@@ -66,35 +66,91 @@ class UtilsTest(test_utils.TestCase):
       utils.einsum_eqn_to_dimension_numbers(eqn)
 
   @parameterized.parameters(
-      dict(vals=[range(-8, 8)], shape=(8, 2), dtype=jnp.int8, pack_dim=0),
+      # Tests for packing/unpacking to/from int32
       dict(
-          vals=[range(-8, 8)] * 2, shape=(8, 2, 2), dtype=jnp.int8, pack_dim=0
+          vals=[range(-8, 8)],
+          shape=(8, 2),
+          dtype=jnp.int8,
+          pack_dim=0,
+          packed_dtype=jnp.int32,
       ),
       dict(
-          vals=[range(-8, 8)] * 2, shape=(2, 8, 2), dtype=jnp.int8, pack_dim=1
+          vals=[range(-8, 8)] * 2,
+          shape=(8, 2, 2),
+          dtype=jnp.int8,
+          pack_dim=0,
+          packed_dtype=jnp.int32,
+      ),
+      dict(
+          vals=[range(-8, 8)] * 2,
+          shape=(2, 8, 2),
+          dtype=jnp.int8,
+          pack_dim=1,
+          packed_dtype=jnp.int32,
       ),
       dict(
           vals=[range(7, -9, -1)] * 2,
           shape=(2, 8, 2),
           dtype=jnp.int8,
           pack_dim=1,
+          packed_dtype=jnp.int32,
       ),
       dict(
-          vals=[range(0, 16)] * 2, shape=(8, 2, 2), dtype=jnp.uint8, pack_dim=0
+          vals=[range(0, 16)] * 2,
+          shape=(8, 2, 2),
+          dtype=jnp.uint8,
+          pack_dim=0,
+          packed_dtype=jnp.int32,
       ),
       dict(
-          vals=[range(0, 16)] * 2, shape=(2, 8, 2), dtype=jnp.uint8, pack_dim=1
+          vals=[range(0, 16)] * 2,
+          shape=(2, 8, 2),
+          dtype=jnp.uint8,
+          pack_dim=1,
+          packed_dtype=jnp.int32,
+      ),
+      # Tests for packing/unpacking to/from int8
+      dict(
+          vals=[range(-8, 8)],
+          shape=(8, 2),
+          dtype=jnp.int8,
+          pack_dim=0,
+          packed_dtype=jnp.int8,
+      ),
+      dict(
+          vals=[range(-8, 8)] * 2,
+          shape=(8, 2, 2),
+          dtype=jnp.int8,
+          pack_dim=0,
+          packed_dtype=jnp.int8,
+      ),
+      dict(
+          vals=[range(-8, 8)] * 2,
+          shape=(2, 8, 2),
+          dtype=jnp.int8,
+          pack_dim=1,
+          packed_dtype=jnp.int8,
+      ),
+      dict(
+          vals=[range(7, -9, -1)] * 2,
+          shape=(2, 8, 2),
+          dtype=jnp.int8,
+          pack_dim=1,
+          packed_dtype=jnp.int8,
       ),
   )
-  def test_pack_4bit_unpack_4bit(self, vals, shape, dtype, pack_dim):
+  def test_pack_4bit_unpack_4bit(
+      self, vals, shape, dtype, pack_dim, packed_dtype
+  ):
     x = jnp.array(vals).reshape(shape).astype(dtype)
-    packed = utils.pack_4bit(x, pack_dim)
+    packed = utils.pack_4bit(x, pack_dim, packed_dtype)
     expected_packed_shape = list(x.shape)
-    expected_packed_shape[pack_dim] //= 8
+    int4s_per_packed_type = 8 if packed_dtype == jnp.int32 else 2
+    expected_packed_shape[pack_dim] //= int4s_per_packed_type
     self.assertSequenceEqual(packed.shape, expected_packed_shape)
 
     unpacked = utils.unpack_4bit(packed, pack_dim, x.dtype)
-    self.assertArraysEqual(unpacked, x.astype(jnp.int32))
+    self.assertArraysEqual(unpacked, x.astype(packed_dtype))
 
   def test_get_packed_shape(self):
     self.assertSequenceEqual(utils.get_packed_shape((4, 8, 3), 1, 8), (4, 1, 3))
