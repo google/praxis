@@ -3255,6 +3255,7 @@ class LocalSelfAttention(DotProductAttention):
     asserts.eq(value.shape[1], s)
     asserts.eq(atten_mask.shape[-1], s)
     l = self.left_context
+    # right_context can be non-zero if is_cross_attention is True.
     f = self.left_context + self.right_context
 
     key = _padded_slice(key, time_step + 1 - l, f, 1, 0.0)
