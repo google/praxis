@@ -212,8 +212,32 @@ class Repeat(base_layer.BaseLayer):
     Returns:
       Output from the last sub layer.
     """
+    if method_name is None:
+      fn_fac = lambda sub: sub
+    else:
+      fn_fac = lambda sub: getattr(sub, method_name)
+    return self.call_with_custom_method(
+        inputs,
+        *args,
+        method_factory=fn_fac,
+        per_layer_kwargs=per_layer_kwargs,
+        reversed_per_layer_kwargs=reversed_per_layer_kwargs,
+        **kwargs,
+    )
+
+  def call_with_custom_method(
+      self,
+      inputs: NestedJTensor,
+      *args: Any,
+      method_factory: Callable[[base_layer.BaseLayer], Callable[..., Any]],
+      per_layer_kwargs: Optional[Dict[str, NestedJTensor]] = None,
+      reversed_per_layer_kwargs: Optional[Dict[str, NestedJTensor]] = None,
+      **kwargs: Any,
+  ) -> Any:
+    """Similar to __call__, but allows a custom way to create a layer method."""
 
     def body_fn(sub, layer_in):
+      fn = method_factory(sub)
       if per_layer_kwargs is not None or reversed_per_layer_kwargs is not None:
         layer_in, idx = layer_in
         per_layer_kw = jax.tree_map(lambda x: x[idx], per_layer_kwargs or {})
@@ -225,10 +249,6 @@ class Repeat(base_layer.BaseLayer):
           per_layer_kw[k] = v
       else:
         per_layer_kw = {}
-      if method_name is not None:
-        fn = getattr(sub, method_name)
-      else:
-        fn = sub
       if self.positional_args_as_scan_carry:
         layer_out = _ensure_tuple(fn(*layer_in, **kwargs, **per_layer_kw))
       else:
