@@ -87,7 +87,11 @@ def get_bigram_ids(ids: JTensor,
     ids_1 *= mask
 
   ngram_ids = ids_0 + ids_1 * vocab_size  # Bigram ids.
-  ngram_ids = ngram_ids[:, 0:-1]
+  use_dynamic_slice = not isinstance(ids.shape[1], int)
+  if use_dynamic_slice:
+    ngram_ids = jax.lax.dynamic_slice_in_dim(ngram_ids, 0, ids.shape[1], axis=1)
+  else:
+    ngram_ids = ngram_ids[:, 0:-1]
   return ngram_ids
 
 
