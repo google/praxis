@@ -172,7 +172,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
   optimizer_dims_mapping: SplitDimsMapping = None
   collect_intermediate_outputs: bool = False
   bf16_accum_in_fp32: bool = False
-  global_batch_nan_check_only: bool = True
+  global_batch_nan_check_only: bool = False
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
