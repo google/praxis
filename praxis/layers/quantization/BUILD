@@ -36,6 +36,7 @@ pytype_strict_library(
         ":multi_query_attention",
         ":ngrammer",
         ":operations",
+        ":overflow_check",
         ":searchable",
     ],
 )
@@ -633,6 +634,36 @@ pytype_strict_library(
         ":quantizer",
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
+    ],
+)
+
+pytype_strict_library(
+    name = "overflow_check",
+    srcs = ["overflow_check.py"],
+    deps = [
+        # Implicit absl.logging dependency.
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:pytypes",
+        "//praxis/layers:attentions",
+        "//praxis/layers:linears",
+    ],
+)
+
+py_strict_test(
+    name = "overflow_check_test",
+    srcs = ["overflow_check_test.py"],
+    deps = [
+        ":layers",
+        ":overflow_check",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:test_utils",
+        "//praxis/layers",
     ],
 )
 
