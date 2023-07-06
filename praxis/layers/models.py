@@ -59,7 +59,8 @@ template_field = base_layer.template_field
 
 
 def _merge_per_token_and_per_example_weights(
-    per_token_weights: JTensor, per_example_weights: JTensor) -> JTensor:
+    per_token_weights: JTensor, per_example_weights: JTensor
+) -> JTensor:
   """Merges the per token and per example weights into per token weights.
 
   Args:
@@ -72,7 +73,8 @@ def _merge_per_token_and_per_example_weights(
   seq_len = per_token_weights.shape[1]
   # Shape [B, T].
   per_example_weights_tiled = jnp.tile(
-      jnp.expand_dims(per_example_weights, axis=-1), (1, seq_len))
+      jnp.expand_dims(per_example_weights, axis=-1), (1, seq_len)
+  )
   return per_token_weights * per_example_weights_tiled
 
 
@@ -98,10 +100,10 @@ def compute_xent_loss_helper(
       example weights from the input `eval_sample_weights` or not. When enabled,
       these per-example weights will be merged with the per token
       `input_batch.weights`.
-    report_strict_acc: Whether to report strict accuracy. In general,
-      this requires the entire portion of the sequence with nonzero weight
-      be predicted correctly. Frequently used for eval on the Lambada dataset,
-      in which case this metric is equivalent to full-word matching.
+    report_strict_acc: Whether to report strict accuracy. In general, this
+      requires the entire portion of the sequence with nonzero weight be
+      predicted correctly. Frequently used for eval on the Lambada dataset, in
+      which case this metric is equivalent to full-word matching.
 
   Returns:
     - A dict or NestedMap containing str keys and (value, weight) pairs as
@@ -117,13 +119,16 @@ def compute_xent_loss_helper(
     if not hasattr(input_batch, 'eval_sample_weights'):
       logging.warning(
           '`apply_eval_sample_weights` enabled, but the input batch does not '
-          'provide the necessary `eval_sample_weights` field.')
+          'provide the necessary `eval_sample_weights` field.'
+      )
     weights = _merge_per_token_and_per_example_weights(
-        weights, input_batch.eval_sample_weights)
+        weights, input_batch.eval_sample_weights
+    )
   predicted_labels = predictions.per_example_argmax.astype(labels.dtype)
   num_preds = predictions.total_weight
-  mean_acc = jnp.sum(
-      (labels == predicted_labels) * weights) / jnp.maximum(num_preds, 1)
+  mean_acc = jnp.sum((labels == predicted_labels) * weights) / jnp.maximum(
+      num_preds, 1
+  )
   metric_weight = jnp.array(num_preds, predictions.avg_xent.dtype)
 
   if hasattr(predictions, 'avg_xent_weight'):
@@ -134,8 +139,10 @@ def compute_xent_loss_helper(
   metrics = NestedMap(
       total_loss=(predictions.total_loss, metric_weight),
       avg_xent=(predictions.avg_xent, avg_xent_weight),
-      aux_loss=(predictions.aux_loss, jnp.array(1.0,
-                                                predictions.aux_loss.dtype)),
+      aux_loss=(
+          predictions.aux_loss,
+          jnp.array(1.0, predictions.aux_loss.dtype),
+      ),
       log_pplx=(predictions.avg_xent, avg_xent_weight),
       fraction_of_correct_next_step_preds=(mean_acc, metric_weight),
       num_predictions=(num_preds, jnp.array(1.0, num_preds.dtype)),
@@ -143,13 +150,16 @@ def compute_xent_loss_helper(
   if report_strict_acc:
     num_acc = jnp.sum(weights, axis=-1, dtype=jnp.float32)
     ## mask out padding examples
-    num_acc = jax.lax.select(input_batch.eval_sample_weights.astype(jnp.int32),
-                             num_acc, jnp.inf*jnp.ones_like(num_acc))
+    num_acc = jax.lax.select(
+        input_batch.eval_sample_weights.astype(jnp.int32),
+        num_acc,
+        jnp.inf * jnp.ones_like(num_acc),
+    )
     num_nonpadding = jnp.sum(input_batch.eval_sample_weights)
 
-    mean_acc_strict = (jnp.sum(jnp.sum((labels == predicted_labels)
-                                       * weights, axis=-1) == num_acc)
-                       /jnp.maximum(num_nonpadding, 1))
+    mean_acc_strict = jnp.sum(
+        jnp.sum((labels == predicted_labels) * weights, axis=-1) == num_acc
+    ) / jnp.maximum(num_nonpadding, 1)
     strict_weight = jnp.array(num_nonpadding, predictions.avg_xent.dtype)
 
     metrics.acc_strict = (mean_acc_strict, strict_weight)
@@ -157,7 +167,8 @@ def compute_xent_loss_helper(
   # The score for the sequence is the negative of the sum of per token cross
   # entropy, which is the (weighted) sum of log probs on the tokens.
   per_example_output = NestedMap(
-      labels=labels, scores=-predictions.per_sequence_xent)
+      labels=labels, scores=-predictions.per_sequence_xent
+  )
   if apply_eval_sample_weights and hasattr(input_batch, 'eval_sample_weights'):
     per_example_output.eval_sample_weights = input_batch.eval_sample_weights
   if return_predictions:
@@ -177,9 +188,10 @@ class LanguageModel(base_model.BaseModel):
     count_tokens: Whether to track total tokens trained on in the checkpoint.
     apply_eval_sample_weights: Boolean indicating whether to apply the per
       example weights from the input `eval_sample_weights` or not.
-    report_strict_acc: Whether to report strict accuracy. Used for eval on 
+    report_strict_acc: Whether to report strict accuracy. Used for eval on
       Lambada dataset.
   """
+
   lm_tpl: LayerTpl = template_field(transformer_models.TransformerLm)
   return_predictions: bool = False
   decoder_tpl: DecoderHParams = base_layer.instance_field(GreedyDecoderHParams)
@@ -207,9 +219,11 @@ class LanguageModel(base_model.BaseModel):
       if not hasattr(input_batch, 'eval_sample_weights'):
         logging.warning(
             '`apply_eval_sample_weights` enabled, but the input batch does not '
-            'provide the necessary `eval_sample_weights` field.')
+            'provide the necessary `eval_sample_weights` field.'
+        )
       weights = _merge_per_token_and_per_example_weights(
-          weights, input_batch.eval_sample_weights)
+          weights, input_batch.eval_sample_weights
+      )
     inputs = input_batch.ids
     if self.count_tokens:
       self.token_counter(inputs, paddings)
@@ -233,9 +247,13 @@ class LanguageModel(base_model.BaseModel):
       causal_attention_mask = 1 - input_batch.inputs_indicator
     else:
       causal_attention_mask = None
-    return NestedMap(inputs=inputs, paddings=paddings, labels=labels,
-                     causal_attention_mask=causal_attention_mask,
-                     extra_input_kwargs=extra_input_kwargs)
+    return NestedMap(
+        inputs=inputs,
+        paddings=paddings,
+        labels=labels,
+        causal_attention_mask=causal_attention_mask,
+        extra_input_kwargs=extra_input_kwargs,
+    )
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
     """Computes predictions for `input_batch`."""
@@ -245,13 +263,14 @@ class LanguageModel(base_model.BaseModel):
         paddings=predict_data.paddings,
         labels=predict_data.labels,
         causal_attention_mask=predict_data.causal_attention_mask,
-        **predict_data.extra_input_kwargs)
+        **predict_data.extra_input_kwargs,
+    )
 
     return predictions
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
-      self, predictions: NestedMap,
-      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
+      self, predictions: NestedMap, input_batch: NestedMap
+  ) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -287,11 +306,14 @@ class LanguageModel(base_model.BaseModel):
     if 'prefix_lengths' in input_batch:
       prefix_lengths = input_batch.prefix_lengths
     elif self.model_type == transformer_models.LanguageModelType.PREFIX:
-      asserts.eq(('inputs_indicator' in input_batch),
-                 True,
-                 msg='inputs_indicator should be in input batch for prefix LM.')
+      asserts.eq(
+          ('inputs_indicator' in input_batch),
+          True,
+          msg='inputs_indicator should be in input batch for prefix LM.',
+      )
       prefix_lengths = jnp.sum(
-          input_batch.inputs_indicator.astype(jnp.int32), axis=1)
+          input_batch.inputs_indicator.astype(jnp.int32), axis=1
+      )
     else:
       # The max lengths of the prefix, which are the number of unpadded tokens.
       # Note that computing the sum with bf16 is not precise enough, so convert
@@ -306,8 +328,9 @@ class LanguageModel(base_model.BaseModel):
         causal_attention_mask = 1 - input_batch.inputs_indicator
       else:
         causal_attention_mask = (
-            jnp.arange(input_batch.ids.shape[-1])[jnp.newaxis, :] >=
-            prefix_lengths[:, jnp.newaxis])
+            jnp.arange(input_batch.ids.shape[-1])[jnp.newaxis, :]
+            >= prefix_lengths[:, jnp.newaxis]
+        )
     else:
       causal_attention_mask = None
 
@@ -329,16 +352,21 @@ class LanguageModel(base_model.BaseModel):
       start_time_step = max_prefix_len - 1
       # Change prefix to be right-aligned.
       fprop_input_ids, fprop_input_paddings = (
-          sample_decode.right_align_prefix_ids(input_batch.ids, prefix_lengths,
-                                               self.fprop_dtype))
+          sample_decode.right_align_prefix_ids(
+              input_batch.ids, prefix_lengths, self.fprop_dtype
+          )
+      )
       fprop_segment_pos = sample_decode.right_align_segment_position(
-          prefix_lengths, max_prefix_len)
+          prefix_lengths, max_prefix_len
+      )
       # Make the left-padding into a separate segment. Some models may use only
       # segment mask instead of paddings.
       fprop_segment_ids = jnp.where(
-          jnp.arange(max_prefix_len) <
-          (max_prefix_len - prefix_lengths)[:, jnp.newaxis],
-          jnp.zeros_like(fprop_segment_pos), jnp.ones_like(fprop_segment_pos))
+          jnp.arange(max_prefix_len)
+          < (max_prefix_len - prefix_lengths)[:, jnp.newaxis],
+          jnp.zeros_like(fprop_segment_pos),
+          jnp.ones_like(fprop_segment_pos),
+      )
       state_padding_size = first_max_decode_steps
       # Init input ids and paddings for extend_step.
       input_ids = jnp.pad(
@@ -353,7 +381,8 @@ class LanguageModel(base_model.BaseModel):
       if causal_attention_mask is not None:
         # Pad 1 to the left of causal_attention_mask.
         causal_attention_mask = decoder_utils.right_align_tensors(
-            causal_attention_mask, prefix_lengths)
+            causal_attention_mask, prefix_lengths
+        )
     else:
       seqlen = decoder_params.seqlen
       start_time_step = 0
@@ -380,8 +409,10 @@ class LanguageModel(base_model.BaseModel):
         extra_input_kwargs={},
     )
 
-    if (template_has_type(decoder_params, SampleDecoderHParams) and
-        decoder_params.cf_guidance_scale is not None):
+    if (
+        template_has_type(decoder_params, SampleDecoderHParams)
+        and decoder_params.cf_guidance_scale is not None
+    ):
       decode_data = self._prepare_guidance_decode_data(decode_data)
 
     return decode_data
@@ -490,7 +521,7 @@ class LanguageModel(base_model.BaseModel):
           segment_pos=decode_data.fprop_segment_pos,
           start_time_step=decode_data.start_time_step,
           causal_attention_mask=decode_data.causal_attention_mask,
-          **decode_data.extra_input_kwargs
+          **decode_data.extra_input_kwargs,
       )
       mdl_for_decode = decoder_utils.maybe_reshard_mdl_for_decode(
           self.lm,
@@ -531,8 +562,9 @@ class LanguageModel(base_model.BaseModel):
             segment_pos=decode_data.fprop_segment_pos,
             start_time_step=decode_data.start_time_step,
             causal_attention_mask=decode_data.causal_attention_mask,
-            **decode_data.extra_input_kwargs
+            **decode_data.extra_input_kwargs,
         )
+
       assert isinstance(decoder_params, BeamSearchHParams)
       result = beam_search.beam_search(
           self.lm,
@@ -548,6 +580,7 @@ class LanguageModel(base_model.BaseModel):
       )
     elif template_has_type(decoder_params, SampleDecoderHParams):
       assert isinstance(decoder_params, SampleDecoderHParams)
+
       def fprop_fn(mdl, ids, paddings):
         del ids, paddings
         mdl(
@@ -676,8 +709,9 @@ class LanguageModel(base_model.BaseModel):
     out_clu_metrics = NestedMap()
     return metrics, result, out_clu_metrics
 
-  def process_decode_out(self, input_obj: base_input.BaseInput,
-                         decode_out: NestedMap) -> ProcessDecodeOut:
+  def process_decode_out(
+      self, input_obj: base_input.BaseInput, decode_out: NestedMap
+  ) -> ProcessDecodeOut:
     """Processes one batch of decoded outputs.
 
     Args:
@@ -712,17 +746,22 @@ class LanguageModel(base_model.BaseModel):
     if decode_out.prefix_lengths.ndim == 2:
       decode_out.prefix_lengths = decode_out.prefix_lengths[:, 0]
 
-    decoded_strs = input_obj.ids_to_strings(decode_out.output_ids,
-                                            decode_out.decode_lengths)
-    original_strs = input_obj.ids_to_strings(decode_out.ids,
-                                             decode_out.original_lengths)
-    prefix_strs = input_obj.ids_to_strings(decode_out.prefix_ids,
-                                           decode_out.prefix_lengths)
+    decoded_strs = input_obj.ids_to_strings(
+        decode_out.output_ids, decode_out.decode_lengths
+    )
+    original_strs = input_obj.ids_to_strings(
+        decode_out.ids, decode_out.original_lengths
+    )
+    prefix_strs = input_obj.ids_to_strings(
+        decode_out.prefix_ids, decode_out.prefix_lengths
+    )
 
     ret = []
     for idx, decoded_str in enumerate(decoded_strs):
-      if ('eval_sample_weights' in decode_out and
-          not decode_out.eval_sample_weights[idx]):
+      if (
+          'eval_sample_weights' in decode_out
+          and not decode_out.eval_sample_weights[idx]
+      ):
         # skip padded examples
         continue
 
@@ -732,7 +771,8 @@ class LanguageModel(base_model.BaseModel):
       decoded_ids = decode_out.output_ids[idx][prefix_length:decode_length]
       decoded_substr = input_obj.ids_to_strings(
           decoded_ids[None, :],
-          np.array([decode_length - prefix_length], dtype=np.int32))[0]
+          np.array([decode_length - prefix_length], dtype=np.int32),
+      )[0]
 
       ret_dict = {
           'prefix': prefix_strs[idx],
@@ -751,7 +791,8 @@ class LanguageModel(base_model.BaseModel):
 
     decoded_lengths = np.average(decode_out.decode_lengths).astype(np.float32)
     metrics = NestedMap(
-        decoded_length=(decoded_lengths, np.array(1.0, np.float32)))
+        decoded_length=(decoded_lengths, np.array(1.0, np.float32))
+    )
     out_clu_metrics = NestedMap()
     return metrics, ret, out_clu_metrics
 
@@ -793,14 +834,16 @@ class LanguageModelDPO(base_model.BaseModel):
   apply_eval_sample_weights: bool = True
   model_type: LanguageModelType = LanguageModelType.CAUSAL
 
-  def _prepare_predict_data(self,
-                            input_batch: NestedMap) -> _TransformerLmInput:
+  def _prepare_predict_data(
+      self, input_batch: NestedMap
+  ) -> _TransformerLmInput:
     paddings = input_batch.paddings
     weights = input_batch.weights
     if self.apply_eval_sample_weights:
       assert hasattr(input_batch, 'eval_sample_weights'), (
           '`apply_eval_sample_weights` enabled, but the input batch does not '
-          'provide the necessary `eval_sample_weights` field.')
+          'provide the necessary `eval_sample_weights` field.'
+      )
       weights = _merge_per_token_and_per_example_weights(
           weights, input_batch.eval_sample_weights
       )
@@ -930,9 +973,17 @@ class LanguageModelDPO(base_model.BaseModel):
         'p_correct_ranking', jnp.mean(jax.nn.sigmoid(r_hat_y_w - r_hat_y_l))
     )
 
+    bs = y_w.inputs.shape[0]
+
     # TODO(yonghui): Add diagnostic summaries.
     # pair_loss is what learning back-props into.
-    return NestedMap(total_loss=loss, dpo_loss=dpo_loss)
+    return (
+        NestedMap(
+            total_loss=(loss, jnp.array(bs, loss.dtype)),
+            dpo_loss=(dpo_loss, jnp.array(bs, dpo_loss.dtype)),
+        ),
+        {},
+    )
 
 
 class SequenceModel(base_model.BaseModel):
@@ -946,6 +997,7 @@ class SequenceModel(base_model.BaseModel):
     label_smoothing_prob: If > 0.0, smooth out one-hot prob by spreading this
       amount of prob mass to all other tokens.
   """
+
   model_tpl: LayerTpl = template_field(
       transformer_models.TransformerEncoderDecoder
   )
@@ -971,7 +1023,8 @@ class SequenceModel(base_model.BaseModel):
       packed_input_kwargs = {}
 
     labels = NestedMap(
-        class_ids=input_batch.tgt.labels, class_weights=input_batch.tgt.weights)
+        class_ids=input_batch.tgt.labels, class_weights=input_batch.tgt.weights
+    )
     if self.label_smoothing_prob > 0.0:
       vocab_size = self.model_tpl.softmax_tpl.num_classes
       class_probabilities = jax.nn.one_hot(labels.class_ids, vocab_size)
@@ -988,7 +1041,8 @@ class SequenceModel(base_model.BaseModel):
         targets=input_batch.tgt.ids,
         target_paddings=input_batch.tgt.paddings,
         labels=labels,
-        **packed_input_kwargs)
+        **packed_input_kwargs,
+    )
 
   def compute_loss(self, predictions, input_batch):
     """Computes the loss and other metrics for the given predictions.
@@ -1078,11 +1132,13 @@ class SequenceModel(base_model.BaseModel):
             input_paddings=input_batch.src.paddings,
             targets=ids,
             target_paddings=paddings,
-            start_time_step=start_time_step)
+            start_time_step=start_time_step,
+        )
 
       fprop_input_ids = input_batch.tgt.ids[:, :1]
-      fprop_input_paddings = jnp.ones((batch_size, 1),
-                                      input_batch.tgt.paddings.dtype)
+      fprop_input_paddings = jnp.ones(
+          (batch_size, 1), input_batch.tgt.paddings.dtype
+      )
       result = beam_search.beam_search(
           self,
           extend_step_fn,
@@ -1177,8 +1233,9 @@ class SequenceModel(base_model.BaseModel):
     out_clu_metrics = NestedMap()
     return metrics, result, out_clu_metrics
 
-  def process_decode_out(self, input_obj: base_input.BaseInput,
-                         decode_out: NestedMap) -> ProcessDecodeOut:
+  def process_decode_out(
+      self, input_obj: base_input.BaseInput, decode_out: NestedMap
+  ) -> ProcessDecodeOut:
     """Processes one batch of decoded outputs.
 
     Args:
@@ -1200,7 +1257,8 @@ class SequenceModel(base_model.BaseModel):
       sampled_ids = np.reshape(decode_out.output_ids, [-1, max_len])
       sampled_lengths = np.reshape(decode_out.decode_lengths, [-1])
       sampled_strs = input_obj.ids_to_strings(
-          sampled_ids, sampled_lengths, key='tgt')
+          sampled_ids, sampled_lengths, key='tgt'
+      )
       sampled_strs = np.reshape(sampled_strs, [batch_size, num_samples])
     else:
       sampled_strs = None
@@ -1211,19 +1269,26 @@ class SequenceModel(base_model.BaseModel):
     decode_out.original_lengths = decode_out.original_lengths[:, 0]
     decode_out.logprobs = decode_out.logprobs[:, :]
     decoded_strs = input_obj.ids_to_strings(
-        decode_out.output_ids, decode_out.decode_lengths, key='tgt')
-    source_lengths = np.sum(
-        1.0 - decode_out.src.paddings, axis=1).astype(np.int32)
+        decode_out.output_ids, decode_out.decode_lengths, key='tgt'
+    )
+    source_lengths = np.sum(1.0 - decode_out.src.paddings, axis=1).astype(
+        np.int32
+    )
     source_strs = input_obj.ids_to_strings(
-        decode_out.src.ids, source_lengths, key='src')
-    target_lengths = np.sum(
-        1.0 - decode_out.tgt.paddings, axis=1).astype(np.int32)
+        decode_out.src.ids, source_lengths, key='src'
+    )
+    target_lengths = np.sum(1.0 - decode_out.tgt.paddings, axis=1).astype(
+        np.int32
+    )
     target_strs = input_obj.ids_to_strings(
-        decode_out.tgt.ids, target_lengths, key='tgt')
+        decode_out.tgt.ids, target_lengths, key='tgt'
+    )
     ret = list()
     for idx, decoded_str in enumerate(decoded_strs):
-      if (hasattr(decode_out, 'eval_sample_weights') and
-          not decode_out.eval_sample_weights[idx]):
+      if (
+          hasattr(decode_out, 'eval_sample_weights')
+          and not decode_out.eval_sample_weights[idx]
+      ):
         continue
 
       logging.info('SRC: %s\n', source_strs[idx])
@@ -1246,7 +1311,8 @@ class SequenceModel(base_model.BaseModel):
       ret.append((source_strs[idx], ret_dict))
     decode_lengths = np.average(decode_out.decode_lengths).astype(np.float32)
     metrics = NestedMap(
-        decode_length=(decode_lengths, np.array(1.0, np.float32)))
+        decode_length=(decode_lengths, np.array(1.0, np.float32))
+    )
     out_clu_metrics = NestedMap()
     return metrics, ret, out_clu_metrics
 
@@ -1260,6 +1326,7 @@ class ClassificationModel(base_model.BaseModel):
     input_field: The input field which contains the image or video features to
       pass to the classification network.
   """
+
   network_tpl: LayerTpl = template_field(resnets.ResNet)
   softmax_tpl: LayerTpl = template_field(embedding_softmax.FullSoftmax)
   input_field: str = 'image'
@@ -1290,20 +1357,23 @@ class ClassificationModel(base_model.BaseModel):
       if example_weights.shape != (batch_size,):
         raise ValueError(
             f'Shape of example weights should be ({batch_size},), but instead'
-            f'is {example_weights.shape}')
+            f'is {example_weights.shape}'
+        )
     # Softmax expects weights to be of shape [..., 1].
     softmax_output = self.softmax(
         inputs=features,
         class_weights=example_weights[:, jnp.newaxis],
-        class_probabilities=label_probs)
+        class_probabilities=label_probs,
+    )
     return NestedMap(
         features=features,
         softmax_output=softmax_output,
-        example_weights=example_weights)
+        example_weights=example_weights,
+    )
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
-      self, predictions: NestedMap,
-      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
+      self, predictions: NestedMap, input_batch: NestedMap
+  ) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -1322,13 +1392,15 @@ class ClassificationModel(base_model.BaseModel):
     total_weight = predictions.softmax_output.total_weight
     metrics = NestedMap(
         avg_xent=(avg_xent, total_weight),
-        num_predictions=(total_weight, jnp.array(1.0, total_weight.dtype)))
+        num_predictions=(total_weight, jnp.array(1.0, total_weight.dtype)),
+    )
     # Compute top-1 and top-5 accuracy and add summary.
     acc1 = metric_utils.top_k_accuracy(
         1,
         predictions.softmax_output.logits,
         label_probs=label_probs,
-        weights=predictions.example_weights)
+        weights=predictions.example_weights,
+    )
     metrics.update(
         accuracy=(acc1, predictions.softmax_output.total_weight),
         error=(1.0 - acc1, predictions.softmax_output.total_weight),
@@ -1341,7 +1413,8 @@ class ClassificationModel(base_model.BaseModel):
           5,
           predictions.softmax_output.logits,
           label_probs=label_probs,
-          weights=predictions.example_weights)
+          weights=predictions.example_weights,
+      )
       metrics.update(
           acc5=(acc5, predictions.softmax_output.total_weight),
           error5=(1.0 - acc5, predictions.softmax_output.total_weight),
@@ -1350,7 +1423,7 @@ class ClassificationModel(base_model.BaseModel):
 
     per_example_out = NestedMap(
         labels=label_probs, scores=predictions.softmax_output.logits
-        )
+    )
     return metrics, per_example_out
 
   def predict(self, input_batch: NestedMap) -> Predictions:
@@ -1379,11 +1452,13 @@ class ClassificationModel(base_model.BaseModel):
 
     eval_metrics.accuracy = clu_metrics.Accuracy.from_model_output(
         logits=predictions.softmax_output.logits,  # pytype: disable=attribute-error  # jax-ndarray
-        labels=jnp.argmax(label_probs, axis=-1))
+        labels=jnp.argmax(label_probs, axis=-1),
+    )
     return losses, per_example_out, eval_metrics
 
-  def process_decode_out(self, input_obj: base_input.BaseInput,
-                         decode_out: NestedMap) -> ProcessDecodeOut:
+  def process_decode_out(
+      self, input_obj: base_input.BaseInput, decode_out: NestedMap
+  ) -> ProcessDecodeOut:
     return NestedMap(), [], NestedMap()
 
 
@@ -1395,10 +1470,10 @@ class BertModel(base_model.BaseModel):
     label_smoothing_prob: If > 0.0, smooth out one-hot prob by spreading this
       amount of prob mass to all other tokens.
     mask_token_id: Mask token id.
-    force_mask_generation: if True, always use runtime generated
-      random mask for training, even if pre-generated masks exist in the
-      training examples.
+    force_mask_generation: if True, always use runtime generated random mask for
+      training, even if pre-generated masks exist in the training examples.
   """
+
   lm_tpl: LayerTpl = template_field(transformer_models.TransformerLm)
   label_smoothing_prob: float = 0.0
   mask_token_id: int = 0
@@ -1441,7 +1516,8 @@ class BertModel(base_model.BaseModel):
 
       # Only compute loss on masked pos.
       labels = NestedMap(
-          class_probabilities=class_probabilities, class_weights=augmented_pos)
+          class_probabilities=class_probabilities, class_weights=augmented_pos
+      )
     else:
       # Only compute loss on masked pos.
       labels = NestedMap(class_ids=labels, class_weights=augmented_pos)
@@ -1451,14 +1527,15 @@ class BertModel(base_model.BaseModel):
         paddings=paddings,
         labels=labels,
         segment_ids=segment_ids,
-        segment_pos=segment_pos)
+        segment_pos=segment_pos,
+    )
     lm_out.augmented_labels = augmented_labels
     lm_out.augmented_pos = augmented_pos
     return lm_out
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
-      self, predictions: NestedMap,
-      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
+      self, predictions: NestedMap, input_batch: NestedMap
+  ) -> Tuple[WeightedScalars, Dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -1475,20 +1552,24 @@ class BertModel(base_model.BaseModel):
     labels = input_batch.labels
     num_tokens = jnp.sum(1.0 - input_batch.paddings.astype(jnp.float32))
     num_seqs = jnp.sum(
-        jnp.amax(input_batch.segment_ids.astype(jnp.float32), axis=1))
+        jnp.amax(input_batch.segment_ids.astype(jnp.float32), axis=1)
+    )
     weights = predictions.augmented_pos.astype(jnp.float32)
     predicted_labels = predictions.per_example_argmax.astype(labels.dtype)
     num_preds = predictions.total_weight.astype(jnp.float32)
-    mean_acc = jnp.sum(
-        (labels == predicted_labels) * weights) / jnp.maximum(num_preds, 1)
+    mean_acc = jnp.sum((labels == predicted_labels) * weights) / jnp.maximum(
+        num_preds, 1
+    )
     metric_weight = jnp.array(num_preds, predictions.avg_xent.dtype)
     metrics = py_utils.NestedMap(
         total_loss=(predictions.total_loss, metric_weight),
         avg_xent=(predictions.avg_xent, metric_weight),
         aux_loss=(predictions.aux_loss, metric_weight),
         log_pplx=(predictions.avg_xent, metric_weight),
-        fraction_of_correct_preds=(mean_acc, jnp.array(num_preds,
-                                                       mean_acc.dtype)),
+        fraction_of_correct_preds=(
+            mean_acc,
+            jnp.array(num_preds, mean_acc.dtype),
+        ),
         num_predictions=(num_preds, jnp.array(1.0, num_preds.dtype)),
         num_tokens=(num_tokens, jnp.array(1.0, num_tokens.dtype)),
         num_seqs=(num_seqs, jnp.array(1.0, num_seqs.dtype)),
@@ -1505,6 +1586,7 @@ class ClassificationMLPModel(base_model.BaseModel):
     mlp_tpl: MLP model parameters.
     softmax_tpl: Input softmax_tpl embedding lookup layer.
   """
+
   mlp_tpl: LayerTpl = template_field(linears.MLPBlock)
   softmax_tpl: LayerTpl = template_field(
       embedding_softmax.SharedEmbeddingSoftmax
@@ -1519,31 +1601,35 @@ class ClassificationMLPModel(base_model.BaseModel):
     self.create_child('softmax', self.softmax_tpl)
 
   def compute_predictions(self, input_batch: NestedMap) -> Predictions:
-
     input_emb = self.softmax.emb_lookup(input_batch.ids)
 
     output = self.mlp_layers_0(input_emb)
     predictions = self.softmax(
         inputs=output,
         class_weights=input_batch.weights[:, :, jnp.newaxis],
-        class_ids=input_batch.ids[:, :, jnp.newaxis])
+        class_ids=input_batch.ids[:, :, jnp.newaxis],
+    )
     return predictions
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
-      self, predictions: NestedMap,
-      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
+      self, predictions: NestedMap, input_batch: NestedMap
+  ) -> Tuple[WeightedScalars, Dict[str, Any]]:
     labels = input_batch.labels
     weights = input_batch.weights
     class_weights = weights[:, :, jnp.newaxis]
     num_preds = jnp.sum(class_weights)
     predicted_labels = predictions.per_example_argmax.astype(labels.dtype)
-    mean_acc = jnp.sum(
-        (labels == predicted_labels) * weights) / jnp.maximum(num_preds, 1)
-    metrics = NestedMap(total_loss=(mean_acc, mean_acc),)
+    mean_acc = jnp.sum((labels == predicted_labels) * weights) / jnp.maximum(
+        num_preds, 1
+    )
+    metrics = NestedMap(
+        total_loss=(mean_acc, mean_acc),
+    )
 
     return metrics, NestedMap()
 
 
 def template_has_type(template, cls):
-  return (isinstance(template, cls) or
-          (isinstance(template, pax_fiddle.Config) and template.cls == cls))
+  return isinstance(template, cls) or (
+      isinstance(template, pax_fiddle.Config) and template.cls == cls
+  )
