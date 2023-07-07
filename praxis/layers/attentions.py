@@ -1648,7 +1648,6 @@ class DotProductAttention(base_layer.BaseLayer):
       query_proj = self.dconv_q(
           query_proj, axis=1, segment_pos=query_segment_pos
       )
-      self._fprop_update_decode_state('query_post_dconv', query_proj)
       key_proj = self.dconv_k(key_proj, axis=1, segment_pos=key_segment_pos)
       self._fprop_update_decode_state('key_post_dconv', key_proj)
       value_proj = self.dconv_v(value_proj, axis=1, segment_pos=key_segment_pos)
@@ -1840,9 +1839,6 @@ class DotProductAttention(base_layer.BaseLayer):
       # Aggregate depth-wise convolution for keys and values at time step.
       query_proj = self.dconv_q.extend_step(
           query_state, axis=time_dim, step=time_step, segment_pos=segment_pos
-      )
-      query_state = _extend_decode_state_and_shard(
-          'query_post_dconv', query_proj
       )
       if not is_cross_attention:
         key_proj = self.dconv_k.extend_step(
@@ -2616,8 +2612,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
           segment_pos,
       )
 
-      # Update queries, keys and values post dconv in cache.
-      _extend_decode_state_and_shard('query_post_dconv', query_proj)
+      # Update keys and values post dconv in cache.
       key_state_name = 'key_post_dconv'
       _extend_decode_state_and_shard(key_state_name, key_proj)
       value_state_name = 'value_post_dconv'
