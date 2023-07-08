@@ -131,6 +131,25 @@ class ReducePrecisionTest(test_utils.TestCase):
     )
     self.assertIsNone(zp)
 
+  @parameterized.parameters(True, False)
+  def test_precsion_int8_add_scale_eps(self, add_scale_eps):
+    inputs = np.array([[1.0, 2.0, 5.5, 2.9], [0.0, 0.0, 0.0, 0.0]])
+    qx, scale, zp = operations.reduce_precision(
+        inputs, contract_dims=[1], add_scale_eps=add_scale_eps
+    )
+    self.assertAllClose(
+        qx, np.array([[23, 46, 127, 67], [0, 0, 0, 0]], dtype=np.int8)
+    )
+    if add_scale_eps:
+      self.assertAllClose(
+          scale, np.array([[0.04330709], [0.0]], dtype=np.float32)
+      )
+    else:
+      self.assertAllClose(
+          scale, np.array([[0.04330709], [1.0]], dtype=np.float32)
+      )
+    self.assertIsNone(zp)
+
 
 class ReducePrecisionEinsumTest(test_utils.TestCase):
 

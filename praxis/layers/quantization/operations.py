@@ -263,6 +263,7 @@ def reduce_precision(
     percentile: float = 1.0,
     use_symmetric: bool = True,
     use_fp: bool = False,
+    add_scale_eps: bool = False,
 ) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
   """Reduce the precision of a tensor.
 
@@ -300,7 +301,12 @@ def reduce_precision(
     bound = optimization.get_best_bound(t, bound, min_value, max_value)
 
   scale = bound / scale_bound
-  scale = jnp.where(scale == 0.0, 1.0, scale)
+
+  if add_scale_eps:
+    # Add epsilon to avoid divide-by-zero.
+    scale = scale + jnp.finfo(t.dtype).eps
+  else:
+    scale = jnp.where(scale == 0.0, 1.0, scale)
 
   if use_symmetric:
     zp = None
