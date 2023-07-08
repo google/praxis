@@ -325,20 +325,29 @@ class FRNNTest(test_utils.TestCase):
     self.assertAllClose(stack_frnn_act, stack_lstm_act)
 
   @parameterized.parameters(
-      (jax_rnn_cell.LstmCellSimple, False),
-      (jax_rnn_cell.LstmCellSimple, True),
-      (jax_rnn_cell.CifgLstmCellSimple, False),
-      (jax_rnn_cell.CifgLstmCellSimple, True),
+      *list(
+          itertools.product(
+              (
+                  jax_rnn_cell.LstmCellSimple,
+                  jax_rnn_cell.CifgLstmCellSimple,
+                  jax_rnn_cell.LayerNormalizedLstmCellSimple,
+              ),
+              (frnn.FRnn, frnn.LstmFrnn),
+              (True, False),
+          )
+      )
   )
-  def test_lstm_reset_cell_state(self, jax_cell_class, output_nonlinearity):
+  def test_frnn_reset_cell_state(
+      self, jax_cell_class, frnn_class, output_nonlinearity
+  ):
     cell_p = self._get_cell_params(jax_cell_class, True, output_nonlinearity)
-    lstm_p = pax_fiddle.Config(frnn.LstmFrnn, cell_tpl=cell_p)
+    frnn_p = pax_fiddle.Config(frnn_class, cell_tpl=cell_p)
 
     act_in, padding, segment_ids, m0, c0, reset_mask = self._get_test_inputs(
         packed_input=True
     )
     cell = instantiate(cell_p)
-    frnn_model = instantiate(lstm_p)
+    frnn_model = instantiate(frnn_p)
 
     state0 = NestedMap(m=m0, c=c0)
     inputs = NestedMap(act=act_in, padding=padding, segment_ids=segment_ids)
@@ -363,19 +372,26 @@ class FRNNTest(test_utils.TestCase):
     np.testing.assert_allclose(frnn_act, jnp.stack(ys, 1), atol=1e-5, rtol=1e-5)
 
   @parameterized.parameters(
-      (jax_rnn_cell.LstmCellSimple, False),
-      (jax_rnn_cell.LstmCellSimple, True),
-      (jax_rnn_cell.CifgLstmCellSimple, False),
-      (jax_rnn_cell.CifgLstmCellSimple, True),
+      *list(
+          itertools.product(
+              (
+                  jax_rnn_cell.LstmCellSimple,
+                  jax_rnn_cell.CifgLstmCellSimple,
+                  jax_rnn_cell.LayerNormalizedLstmCellSimple,
+              ),
+              (frnn.FRnn, frnn.LstmFrnn),
+              (True, False),
+          )
+      )
   )
   def test_lstm_reset_cell_state_extend_step(
-      self, jax_cell_class, output_nonlinearity
+      self, jax_cell_class, frnn_class, output_nonlinearity
   ):
     cell_p = self._get_cell_params(jax_cell_class, True, output_nonlinearity)
-    lstm_p = pax_fiddle.Config(frnn.LstmFrnn, cell_tpl=cell_p)
+    frnn_p = pax_fiddle.Config(frnn_class, cell_tpl=cell_p)
 
     act_in, padding, _, m0, c0, _ = self._get_test_inputs(packed_input=False)
-    frnn_model = instantiate(lstm_p)
+    frnn_model = instantiate(frnn_p)
 
     state0 = NestedMap(m=m0, c=c0)
     inputs = NestedMap(act=act_in, padding=padding)

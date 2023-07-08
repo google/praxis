@@ -113,6 +113,8 @@ class FRnn(base_layer.BaseLayer):
       A pair (state1, act), where state1 is the new state, and act is the
       output for the current time-step.
     """
+    # Reset cell state is not supported during decoding.
+    inputs.reset_mask = jnp.ones_like(inputs.padding)
     state1 = self.cell(state0, inputs)
     return state1, self.get_output(state1)
 
@@ -128,7 +130,8 @@ class FRnn(base_layer.BaseLayer):
       inputs: A NestedMap of inputs. 'inputs' must contain two elements, 'act'
         and 'padding'. 'act' can be a single tensor, or a list/tuple of tensors,
         all of shape [b, t, dim], and 'padding' is of shape [b, t, 1]. 'inputs'
-        can optionally contain other tensors too.
+        can optionally contain other tensors. For example, when 'inputs' is
+        packed, 'segment_ids' which has shape [b, t, 1] is expected.
       state0: If not None, the initial rnn state in a `NestedMap`. Defaults to
         the cell's zero-state.
 
@@ -138,10 +141,19 @@ class FRnn(base_layer.BaseLayer):
     """
     # Make a copy of the input structure to avoid side-effect.
     inputs = jax.tree_map(lambda x: x, inputs)
-    assert isinstance(inputs, NestedMap)
     assert hasattr(inputs, 'act')
     assert hasattr(inputs, 'padding')
     assert isinstance(self.cell, rnn_cell.BaseRnnCell)
+
+    if not isinstance(inputs.act, (list, tuple)):
+      inputs.act = [inputs.act]
+
+    if hasattr(inputs, 'segment_ids'):
+      inputs.reset_mask = reset_mask(
+          inputs.segment_ids, inputs.padding, dtype=self.fprop_dtype
+      )
+    else:
+      inputs.reset_mask = jnp.ones_like(inputs.padding, dtype=self.fprop_dtype)
 
     if self.reverse:
       inputs = jax.tree_map(lambda x: jnp.flip(x, axis=[1]), inputs)
@@ -306,15 +318,16 @@ class LstmFrnn(FRnn):
       act: A tensor of [batch, time, dims]. The output.
       state: Final state.
     """
-    # Make a copy of the inputs nested structure.
+    # Make a copy of the input structure to avoid side-effect.
     inputs = jax.tree_map(lambda x: x, inputs)
+    assert hasattr(inputs, 'act')
+    assert hasattr(inputs, 'padding')
     assert isinstance(self.cell, rnn_cell.BaseRnnCell)
 
     if not isinstance(inputs.act, (list, tuple)):
       inputs.act = [inputs.act]
 
     if hasattr(inputs, 'segment_ids'):
-      assert self.cell_tpl.reset_cell_state
       inputs.reset_mask = reset_mask(
           inputs.segment_ids, inputs.padding, dtype=self.fprop_dtype
       )
@@ -354,11 +367,11 @@ class LstmFrnn(FRnn):
     scan_fn = nn.scan(
         body_fn,
         variable_axes={AUX_LOSS: 0, SUMMARIES: 0, HYPER_PARAMS: 0},
-        in_axes=1,
-        out_axes=1,
         variable_broadcast=[PARAMS],
         variable_carry=[NON_TRAINABLE],
         split_rngs=SCAN_SPLIT_RNGS,
+        in_axes=1,
+        out_axes=1,
     )
     # Sum-up aux losses.
     mapped_scan_fn = nn.map_variables(
@@ -372,21 +385,3 @@ class LstmFrnn(FRnn):
     if self.reverse:
       act = jnp.flip(act, axis=[1])
     return act, final_state
-
-  def extend_step(self, inputs: NestedMap,
-                  state0: NestedMap) -> Tuple[NestedMap, JTensor]:
-    """Extends LSTM for one step on 'inputs' from 'state0'.
-
-    Args:
-      inputs: A nestedMap of inputs for one time-step. Must contain two elements
-        'act' and 'padding'. 'act' can be a single tensor or a list of tensors,
-        all of shape [b, inner_dim], 'padding' is a tensor of shape [b, 1].
-      state0: The initial state to extend from.
-
-    Returns:
-      A pair (state1, act), where state1 is the new state, and act is the
-      output for the current time-step.
-    """
-    # Since state0 is explicitly provided, cell state should not be reset.
-    inputs.reset_mask = jnp.ones_like(inputs.padding)
-    return super().extend_step(inputs, state0)
