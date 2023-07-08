@@ -765,7 +765,9 @@ class LanguageModelTest(test_utils.TestCase):
             [[11, 13, 15], [12, 14, 16], [20, 30, 40]], dtype=jnp.int32
         ),
         paddings=jnp.zeros(shape=(3, 3), dtype=jnp.float32),
-        gumbel_prng_key=jnp.array([0, 0, 0], dtype=jnp.uint32),
+        gumbel_prng_key=jnp.array(
+            [decoder_utils.DUMMY_PRNG_KEY] * 3, dtype=jnp.uint32
+        ),
         prefix_lengths=jnp.array([3, 3, 3], dtype=jnp.int32),
     )
     results_ac = self._run_decode(

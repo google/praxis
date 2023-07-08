@@ -50,7 +50,7 @@ TransformStateFn = Callable[
 LazyBroadcastPrefixFn = Callable[[base_layer.BaseLayerApi, int, int], None]
 ProcessResultFn = Callable[[base_layer.BaseLayerApi, NestedMap], NestedMap]
 # Dummy prng key to avoid deterministic random seed from sample decode input.
-DUMMY_PRNG_KEY = 0
+DUMMY_PRNG_KEY = 15753
 
 
 @dataclasses.dataclass(frozen=True)
