@@ -648,6 +648,7 @@ pytype_strict_library(
         "//praxis:pytypes",
         "//praxis/layers:attentions",
         "//praxis/layers:linears",
+        "//praxis/layers:multi_query_attention",
     ],
 )
 
@@ -658,12 +659,14 @@ py_strict_test(
         ":layers",
         ":overflow_check",
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers",
+        "//praxis/layers:multi_query_attention",
     ],
 )
 

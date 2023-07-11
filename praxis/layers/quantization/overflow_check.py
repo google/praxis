@@ -25,6 +25,7 @@ from praxis import pax_fiddle
 from praxis import pytypes
 from praxis.layers import attentions
 from praxis.layers import linears
+from praxis.layers import multi_query_attention
 
 instance_field = base_layer.instance_field
 JTensor = pytypes.JTensor
@@ -107,14 +108,28 @@ class CombinedQKVProjectionLayerOverflowCheck(
       inputs: JTensor,
   ) -> Tuple[JTensor, JTensor, JTensor]:
     q, k, v = super().__call__(inputs)
-    self.check_overflow(q, "CombinedQKVProjection, q", self.name)
-    self.check_overflow(k, "CombinedQKVProjection, k", self.name)
-    self.check_overflow(v, "CombinedQKVProjection, v", self.name)
+    self.check_overflow(q, "CombinedQKVProjection q", self.name)
+    self.check_overflow(k, "CombinedQKVProjection k", self.name)
+    self.check_overflow(v, "CombinedQKVProjection v", self.name)
     return q, k, v
 
   def extend_step(self, inputs: JTensor, *, time_step: JTensor) -> JTensor:
     del time_step  # Not used.
     return self.__call__(inputs)  # pytype: disable=bad-return-type  # jax-ndarray
+
+
+class OneHeadedAttentionProjectionOverflowCheck(
+    multi_query_attention.OneHeadedAttentionProjection, OverflowChecker
+):
+  """Attention projection layer with overflow checks."""
+
+  def __call__(
+      self,
+      inputs: JTensor,
+  ) -> JTensor:
+    out = super().__call__(inputs)
+    self.check_overflow(out, "OneHeadedAttentionProjection", self.name)
+    return out
 
 
 def add_overflow_checks(
@@ -141,11 +156,25 @@ def add_overflow_checks(
   )
   transformer_layer_p.tr_atten_tpl.proj_tpl = proj_tpl
 
-  # TODO(chinaev): support other types of attention
-  combined_qkv_proj_tpl = pax_fiddle.Config(
-      CombinedQKVProjectionLayerOverflowCheck,
-      overflow_limits=overflow_check_tpl,
-  )
-  transformer_layer_p.tr_atten_tpl.combined_qkv_proj_tpl = combined_qkv_proj_tpl
+  if issubclass(
+      transformer_layer_p.tr_atten_tpl.cls,
+      multi_query_attention.MultiQueryDotProductAttention,
+  ):
+    headless_proj_tpl = pax_fiddle.Config(
+        OneHeadedAttentionProjectionOverflowCheck,
+        overflow_limits=overflow_check_tpl,
+    )
+    transformer_layer_p.tr_atten_tpl.headless_proj_tpl = headless_proj_tpl
+
+  if issubclass(
+      transformer_layer_p.tr_atten_tpl.cls, attentions.DotProductAttention
+  ):
+    combined_qkv_proj_tpl = pax_fiddle.Config(
+        CombinedQKVProjectionLayerOverflowCheck,
+        overflow_limits=overflow_check_tpl,
+    )
+    transformer_layer_p.tr_atten_tpl.combined_qkv_proj_tpl = (
+        combined_qkv_proj_tpl
+    )
 
   return overwrite_task_p

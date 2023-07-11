@@ -16,6 +16,7 @@
 """Tests for overflow checking."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
 import numpy as np
@@ -23,6 +24,7 @@ from praxis import base_layer
 from praxis import layers
 from praxis import pax_fiddle
 from praxis import test_utils
+from praxis.layers import multi_query_attention
 from praxis.layers import quantization
 from praxis.layers.quantization import overflow_check
 
@@ -88,7 +90,11 @@ class CheckOverflowTest(test_utils.TestCase):
         log_output[0][1].msg, 'Overflow in: FeedForward, feed_forward_2'
     )
 
-  def test_transformer_overflow_check(self):
+  @parameterized.named_parameters(
+      ('MHA', False),
+      ('MQA', True),
+  )
+  def test_transformer_overflow_check(self, use_mqa):
     p = pax_fiddle.Config(
         layers.transformers.Transformer,
         name='jax_transformer_layer',
@@ -96,7 +102,11 @@ class CheckOverflowTest(test_utils.TestCase):
         hidden_dims=4,
         num_heads=8,
     )
-    p.tr_atten_tpl.combine_qkv = True
+    if use_mqa:
+      p.tr_atten_tpl = pax_fiddle.Config(
+          multi_query_attention.MultiQueryDotProductAttention
+      )
+    p.tr_atten_tpl.combine_qkv = not use_mqa
     p.tr_fflayer_tpl.use_gated_activation = True
 
     overflow_check_tpl = overflow_check.OverflowLimits(max_val=-1, min_val=1)
@@ -112,11 +122,18 @@ class CheckOverflowTest(test_utils.TestCase):
     )
     p.tr_atten_tpl.proj_tpl = proj_tpl
 
-    combined_qkv_proj_tpl = pax_fiddle.Config(
-        quantization.CombinedQKVProjectionLayerOverflowCheck,
-        overflow_limits=overflow_check_tpl,
-    )
-    p.tr_atten_tpl.combined_qkv_proj_tpl = combined_qkv_proj_tpl
+    if not use_mqa:
+      combined_qkv_proj_tpl = pax_fiddle.Config(
+          quantization.CombinedQKVProjectionLayerOverflowCheck,
+          overflow_limits=overflow_check_tpl,
+      )
+      p.tr_atten_tpl.combined_qkv_proj_tpl = combined_qkv_proj_tpl
+    else:
+      headless_proj_tpl = pax_fiddle.Config(
+          quantization.OneHeadedAttentionProjectionOverflowCheck,
+          overflow_limits=overflow_check_tpl,
+      )
+      p.tr_atten_tpl.headless_proj_tpl = headless_proj_tpl
 
     transformer = instantiate(p)
 
@@ -144,15 +161,21 @@ class CheckOverflowTest(test_utils.TestCase):
     self.assertLen(log_output[0], 7)
     self.assertStartsWith(
         log_output[0][0].msg,
-        'Overflow in: CombinedQKVProjection, q, combined_qkv',
+        'Overflow in: AttentionProjection, query'
+        if use_mqa
+        else 'Overflow in: CombinedQKVProjection q, combined_qkv',
     )
     self.assertStartsWith(
         log_output[0][1].msg,
-        'Overflow in: CombinedQKVProjection, k, combined_qkv',
+        'Overflow in: OneHeadedAttentionProjection, key'
+        if use_mqa
+        else 'Overflow in: CombinedQKVProjection k, combined_qkv',
     )
     self.assertStartsWith(
         log_output[0][2].msg,
-        'Overflow in: CombinedQKVProjection, v, combined_qkv',
+        'Overflow in: OneHeadedAttentionProjection, value'
+        if use_mqa
+        else 'Overflow in: CombinedQKVProjection v, combined_qkv',
     )
     self.assertStartsWith(
         log_output[0][3].msg, 'Overflow in: AttentionProjection, post'

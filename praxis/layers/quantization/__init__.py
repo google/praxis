@@ -28,7 +28,7 @@ from praxis.layers.quantization.multi_query_attention import OneHeadedAttentionP
 from praxis.layers.quantization.ngrammer import Ngrammer
 from praxis.layers.quantization.ngrammer import VQNgrammer
 from praxis.layers.quantization.operations import einsum
-from praxis.layers.quantization.overflow_check import AttentionProjectionOverflowCheck, CombinedQKVProjectionLayerOverflowCheck, FeedForwardOverflowCheck
+from praxis.layers.quantization.overflow_check import AttentionProjectionOverflowCheck, CombinedQKVProjectionLayerOverflowCheck, FeedForwardOverflowCheck, OneHeadedAttentionProjectionOverflowCheck
 from praxis.layers.quantization.searchable import SearchableAttentionProjection
 from praxis.layers.quantization.searchable import SearchableCombinedQKVProjectionLayer
 from praxis.layers.quantization.searchable import SearchableLinear
