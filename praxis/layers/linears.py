@@ -213,15 +213,11 @@ class MLPBlock(base_layer.BaseLayer):
 
   def setup(self) -> None:
 
+    if self.num_layers < 1:
+      raise ValueError('num_layers must be at least 1.')
+
     wp = self.weight_split_dims_mapping
     ap = self.activation_split_dims_mapping
-    input_layer_p = self.ff_tpl.clone()
-    input_layer_p.set(
-        input_dims=self.ff_tpl.input_dims,
-        output_dims=self.hidden_dims,
-        weight_split_dims_mapping=wp.clone(),
-        activation_split_dims_mapping=ap.clone(),
-    )
     hidden_layer_p = self.ff_tpl.clone()
     hidden_layer_p.set(
         input_dims=self.hidden_dims,
@@ -229,17 +225,9 @@ class MLPBlock(base_layer.BaseLayer):
         weight_split_dims_mapping=wp.clone(),
         activation_split_dims_mapping=ap.clone(),
     )
-    output_layer_p = self.ff_tpl.clone()
-    output_layer_p.set(
-        input_dims=self.hidden_dims,
-        output_dims=self.ff_tpl.output_dims,
-        weight_split_dims_mapping=wp.clone(),
-        activation_split_dims_mapping=ap.clone(),
-    )
-    mlp_layers = [input_layer_p]
-    for _ in range(self.num_layers - 2):
-      mlp_layers.append(hidden_layer_p)
-    mlp_layers.append(output_layer_p)
+    mlp_layers = [hidden_layer_p.clone() for _ in range(self.num_layers)]
+    mlp_layers[0].set(input_dims=self.ff_tpl.input_dims)
+    mlp_layers[-1].set(output_dims=self.ff_tpl.output_dims)
     self.create_children('mlp_layers', mlp_layers)
 
   def __call__(self, inputs: JTensor) -> JTensor:
