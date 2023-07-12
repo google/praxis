@@ -165,4 +165,6 @@ class QuantizationParams:
   quantization_type: QuantizationType = QuantizationType.PTQ
   mode: QuantizationMode = QuantizationMode.INFERENCE
   act_params: Optional[ActQuantizationParams] = None
-  weight_params: WeightQuantizationParams = WeightQuantizationParams()
+  weight_params: WeightQuantizationParams = dataclasses.field(
+      default_factory=WeightQuantizationParams
+  )
