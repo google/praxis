@@ -112,8 +112,11 @@ class TestModelWithLogits(base_model.BaseModel):
   def setup(self) -> None:
     super().setup()
     assert self.logits is not None
-    expected_shape = (self.seq_len,
-                      self.batch_size * self.num_samples, self.vocab_size)
+    expected_shape = (
+        self.seq_len,
+        self.batch_size * self.num_samples,
+        self.vocab_size,
+    )
     assert self.logits.shape == expected_shape, (
         self.logits.shape,
         expected_shape,
@@ -128,6 +131,7 @@ class TestModelWithLogits(base_model.BaseModel):
     del args, kwargs
 
   def extend_step(self, ids, segment_pos):
+    print(ids.shape, segment_pos.shape)
     assert segment_pos.shape == (self.batch_size * self.num_samples,), (
         segment_pos.shape,
         (self.batch_size * self.num_samples,),
@@ -254,13 +258,11 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         ],
         dtype=jnp.float32,
     )
-    new_ids, top_k_logprobs = (
-        sample_decode.sample_from_top_k_and_top_p(
-            logits,
-            jax.random.PRNGKey(seed=123),
-            temperature=1.0,
-            top_k=2,
-        )
+    new_ids, top_k_logprobs = sample_decode.sample_from_top_k_and_top_p(
+        logits,
+        jax.random.PRNGKey(seed=123),
+        temperature=1.0,
+        top_k=2,
     )
     expected_logprobs = jax.nn.log_softmax(jax.lax.top_k(logits, 2)[0])
     expected_logprobs = expected_logprobs[jnp.arange(4), 0]
@@ -620,8 +622,10 @@ class SampleDecodeHelperTest(test_utils.TestCase):
       ),
   )
   def test_sample_decode(
-      self, use_dummy_next_token_sampler, use_gumbel_prng_key,
-      return_entropy_score=False
+      self,
+      use_dummy_next_token_sampler,
+      use_gumbel_prng_key,
+      return_entropy_score=False,
   ):
     batch_size = 1
     num_samples = 2
@@ -707,7 +711,8 @@ class SampleDecodeHelperTest(test_utils.TestCase):
       entropy = jnp.transpose(-jnp.sum(prob * jnp.log(prob), axis=-1))
       self.assertEqual(entropy.shape, result['entropy'][0].shape)
       np.testing.assert_array_almost_equal(
-          entropy, result['entropy'][0], decimal=5)
+          entropy, result['entropy'][0], decimal=5
+      )
     else:
       self.assertNotIn('entropy', result)
 
@@ -807,10 +812,12 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         seq_len=seq_len,
         vocab_size=vocab_size,
         use_dummy_next_token_sampler=False,
-        logits=jnp.array([[[1, -1e4, 0, 1], [1, -1e4, -1e4, 1]],
-                          [[1, -1e4, 1, 2], [1, -1e4, -1e4, 2]],
-                          [[-1e4, 1, -1e4, -1e4], [1, -1e4, -1e4, 3]],
-                          [[1, 2, 1, 2], [-1e4, 1, 3, -1e4]]])
+        logits=jnp.array([
+            [[1, -1e4, 0, 1], [1, -1e4, -1e4, 1]],
+            [[1, -1e4, 1, 2], [1, -1e4, -1e4, 2]],
+            [[-1e4, 1, -1e4, -1e4], [1, -1e4, -1e4, 3]],
+            [[1, 2, 1, 2], [-1e4, 1, 3, -1e4]],
+        ]),
     )
 
     def extend_step_fn(mdl, ids, segment_pos):
@@ -862,9 +869,11 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     print('new_ids_summary', new_ids_summary)
     print('time_step_summary', time_step_summary)
     self.assertAllClose(
-        new_ids_summary, jnp.array([[3, 3], [3, 3], [0, 3], [0, 3]]))
-    self.assertAllClose(result.output_ids,
-                        jnp.array([[[3, 3, 3, 2], [3, 3, 1, 0]]]))
+        new_ids_summary, jnp.array([[3, 3], [3, 3], [0, 3], [0, 3]])
+    )
+    self.assertAllClose(
+        result.output_ids, jnp.array([[[3, 3, 3, 2], [3, 3, 1, 0]]])
+    )
 
   def test_sample_decode_with_additional_states(self):
     batch_size = 1
@@ -925,6 +934,75 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         result.mock_state,
         np.ones_like(result.mock_state, dtype=np.bool_),
     )
+
+  def test_vanilla_sample_decode(self):
+    batch_size = 6
+    prefix_len = 1
+    max_decoding_steps = 3
+    seq_len = prefix_len + max_decoding_steps
+    vocab_size = 5
+    np.random.seed(987656)
+    logits = jax.nn.log_softmax(
+        10.0 * jnp.array(np.random.rand(seq_len, batch_size, vocab_size))
+    )
+
+    model_p = pax_fiddle.Config(
+        TestModelWithLogits,
+        batch_size=batch_size,
+        num_samples=1,
+        seq_len=seq_len,
+        vocab_size=vocab_size,
+        name='test_model',
+        logits=logits,
+    )
+
+    def transform_decode_state_fn(mdl, transform_fn):
+      del mdl
+      del transform_fn
+
+    model = instantiate(model_p)
+    init_vars = model.init(rngs=jax.random.PRNGKey(1234))
+
+    input_ids = jnp.zeros([batch_size, prefix_len], dtype=jnp.int32) + 2
+    input_paddings = jnp.zeros([batch_size, prefix_len], dtype=jnp.float32)
+
+    def fprop_fn(*args, **kwargs):
+      pass
+
+    def extend_step_fn(mdl, ids, segment_pos):
+      logits = mdl.extend_step(ids, segment_pos=segment_pos)
+      return logits
+
+    def decode_fn(model, input_ids, input_paddings):
+      return sample_decode.vanilla_sample_decode(
+          model,
+          fprop_fn,
+          extend_step_fn,
+          transform_decode_state_fn,
+          model.next_token_sampler,
+          input_ids,
+          input_paddings,
+          max_decode_steps=max_decoding_steps,
+          gumbel_prng_key=None,
+          # Call the scan loop.
+          temperature=0.0001,
+      )
+
+    mutables = [DECODE_CACHE]
+    rngs = {'random': jax.random.PRNGKey(9382)}
+
+    result, _ = nn.apply(decode_fn, model, mutable=mutables)(
+        init_vars, input_ids, input_paddings, rngs=rngs
+    )
+    expected_out_ids = np.array([
+        [2, 2, 3, 3],
+        [2, 4, 1, 2],
+        [2, 4, 4, 1],
+        [2, 4, 3, 4],
+        [2, 4, 0, 1],
+        [2, 0, 3, 0],
+    ])
+    self.assertArraysEqual(expected_out_ids, result.output_ids)
 
 
 if __name__ == '__main__':

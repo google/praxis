@@ -708,8 +708,8 @@ def sample_decode(
       time step (with shape [B] or [B, P] where B corresponds to the batch size
       and P corresponds to a possible prefix) and returns `JTensor` corresponds
       to the logits of the next step.  The following signatures are allowed:
-      extend_step_fn(model, extend_ids, segment_pos)
-      extend_step_fn(model, extend_ids, segment_pos, decode_loop_state)
+      extend_step_fn(model, extend_ids, segment_pos) extend_step_fn(model,
+      extend_ids, segment_pos, decode_loop_state)
     transform_state_fn: A function that transforms the decode state.
     lazy_broadcast_prefix_fn: A function that lazily broadcasts decode prefix.
     next_token_sampler: Layer used to sample next token ids given the logits
@@ -844,7 +844,7 @@ def sample_decode(
         use_top_k_for_logprobs,
         controlled_decoding,
         return_entropy_score,
-        optimize_eos
+        optimize_eos,
     )
     if process_result_fn is not None:
       result = process_result_fn(model, result)
@@ -901,8 +901,8 @@ def sample_decode_after_fprop(
       time step (with shape [B] or [B, P] where B corresponds to the batch size
       and P corresponds to a possible prefix) and returns `JTensor` corresponds
       to the logits of the next step.  The following signatures are allowed:
-      extend_step_fn(model, extend_ids, segment_pos)
-      extend_step_fn(model, extend_ids, segment_pos, decode_loop_state)
+      extend_step_fn(model, extend_ids, segment_pos) extend_step_fn(model,
+      extend_ids, segment_pos, decode_loop_state)
     transform_state_fn: A function that transforms the decode state.
     lazy_broadcast_prefix_fn: A function that lazily broadcasts decode prefix.
     next_token_sampler: Layer used to sample next token ids given the logits
@@ -1130,9 +1130,11 @@ def sample_decode_after_fprop(
   per_example_max_decode_steps = jnp.minimum(
       per_example_max_decode_steps, last_decode_steps
   )
-  if cf_guidance_scale is not None and isinstance(
-      per_example_max_decode_steps, JTensor
-  ) and per_example_max_decode_steps.ndim == 1:
+  if (
+      cf_guidance_scale is not None
+      and isinstance(per_example_max_decode_steps, JTensor)
+      and per_example_max_decode_steps.ndim == 1
+  ):
     per_example_max_decode_steps = jnp.concatenate(
         [per_example_max_decode_steps[:, None]] * 2, axis=1
     )
@@ -1247,7 +1249,8 @@ def sample_decode_after_fprop(
     if optimize_eos:
       assert eos_id
       next_token_logits = logits.at[:, eos_id].set(
-          py_utils.get_large_negative_number(jnp.float32))
+          py_utils.get_large_negative_number(jnp.float32)
+      )
     else:
       next_token_logits = logits
     sampler_output = next_token_sampler(
@@ -1334,10 +1337,12 @@ def sample_decode_after_fprop(
       best_eos_id = jnp.argmax(eos_logits, axis=-1)
       val.eos_ids = val.eos_ids.at[:, step + 1].set(best_eos_id)
       val.eos_logprobs = val.eos_logprobs.at[:, step + 1].set(
-          logprobs[jnp.arange(batch_size), best_eos_id])
+          logprobs[jnp.arange(batch_size), best_eos_id]
+      )
     if hasattr(val, 'entropy'):
       val.entropy = val.entropy.at[:, step + 1].set(
-          -jnp.sum(logprobs * jnp.exp(logprobs), axis=-1))
+          -jnp.sum(logprobs * jnp.exp(logprobs), axis=-1)
+      )
 
     if result_callback is not None:
 
@@ -1534,7 +1539,8 @@ def sample_decode_after_fprop(
     else:
       decode_length_shift = 0
     result = decoder_utils.collect_results_to_optimize_eos(
-        result, decode_length_shift=max_prefix_len)
+        result, decode_length_shift=max_prefix_len
+    )
 
   if return_result_for_suffix_score:
     return result
@@ -1596,6 +1602,257 @@ def sample_decode_after_fprop(
 
 
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
+def vanilla_sample_decode(
+    model: base_layer.BaseLayerApi,
+    fprop_fn: decoder_utils.FPropFn,
+    extend_step_fn: Union[
+        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
+    ],
+    transform_state_fn: decoder_utils.TransformStateFn,
+    next_token_sampler: base_layer.BaseLayerApi,
+    prefix_ids: JTensor,
+    prefix_paddings: JTensor,
+    temperature: Union[float, JTensor] = 1.0,
+    gumbel_prng_key: Optional[JTensor] = None,
+    max_decode_steps: int = 0,
+    eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
+    decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
+    model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
+) -> NestedMap:
+  """Sampling decode the input batch.
+
+  This decoder assumes that prefix_ids and prefix_paddings are already right
+  aligned. For example, let's say we have a batch of 2 examples with length
+  3 and 4 respectively, and total length of prefix_ids is 6.
+  prefix_ids = [[0, 0, 0, a, b, c], [0, 0, d, e, f, g]]
+  prefix_paddings = [[1, 1, 1, 0, 0, 0], [1, 1, 0, 0, 0, 0]]
+
+  In the above case, first sequence is [a, b, c] and the second sequence is
+  [d, e, f, g]. It is the caller's responsibility to prepare the data in the
+  right right-aligned format.
+
+  Args:
+    model: The model object.
+    fprop_fn: A function that takes in the prefix information and initialize the
+      decode cache states.
+    extend_step_fn: A function that takes in the decoded sequence at the current
+      time step (with shape [B] or [B, P] where B corresponds to the batch size
+      and P corresponds to a possible prefix) and returns `JTensor` corresponds
+      to the logits of the next step.  The following signatures are allowed:
+      extend_step_fn(model, extend_ids, segment_pos) extend_step_fn(model,
+      extend_ids, segment_pos, decode_loop_state)
+    transform_state_fn: A function that transforms the decode state.
+    next_token_sampler: Layer used to sample next token ids given the logits
+      output. See DefaultNextTokenSampler for an example. This can be used to
+      implement decoding techniques such repetition penalty.
+    prefix_ids: The token ids that correspond to the prefix sequence. A JTensor
+      of shape [batch, target_sequence_length]. This should have an <SOS> token
+      if one is used. Also note, it is assumed tha prefix_ids has already been
+      right aligned.
+    prefix_paddings: The paddings corresponding to the prefix sequence, with a 1
+      denoting padding token and 0 denoting non-padding tokens. A JTensor of
+      shape [batch, target_sequence_length]. It is assumed that that
+      prefix_paddings has been already right aligned.
+    temperature: Temperature of sampling decoding. It could be a float or a
+      JTensor of shape [B].
+    gumbel_prng_key: PRNG key for generating gumbel random noise. If None,
+      model.next_prng_key() is used; if not None, must be of shape [B] or [B,
+      key_shape_dim], where key_shape_dim =
+      jax.random.default_prng_impl().key_shape[0]. Usually, key_shape_dim = 2 or
+      4. where B is the batch size before being duplicated wrt num_samples or
+      cfg. If all the values in gumbel_prng_key is set to DUMMY_PRNG_KEY,
+      gumbel_prng_key will be ignored and model.next_prng_key() is used.
+    max_decode_steps: Python int, the max decode step to run after the prefix
+      (if any).
+    eos_id: Optional EOS id which to terminate the decoding early. Could be a
+      sequence, an integer or a JTensor. When it is a JTensor, it is 2D tensor
+      of shape [batch, eos_len] with padded 0s on the left.
+    decode_loop_mesh_axes_transpose: Optional mesh transpose for decoding loop.
+    model_var_pspecs: Optional partition specs for model variables.
+
+  Returns:
+    A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
+    each target sequence), `.output_ids` (matrix of int ids with the
+    decoded output), `.decode_lengths` (vector of ints indicating the lengths
+    of non-padding tokens in `.output_ids`, which includes the prefix), and
+    `.logprobs` (the log probability of selected tokens, including the prefix,
+    where a positive value of 1.0 is used to indicate padded positions).
+    The outputs has shape [batch, num_samples, ...].
+  """
+  # Init decode state using fprop_fn, state seq size is max_prefix_len.
+  fprop_fn(model, prefix_ids, prefix_paddings)
+  prefix_lengths = jnp.sum(1 - prefix_paddings.astype(jnp.int32), axis=-1)
+  model = decoder_utils.maybe_reshard_mdl_for_decode(
+      model,
+      decode_loop_mesh_axes_transpose,
+      model_var_pspecs,
+      transform_state_fn,
+  )
+  with decoder_utils.maybe_decode_mesh_transpose(
+      model, decode_loop_mesh_axes_transpose
+  ):
+    # Pad to full-sequence length.
+    transform_state_fn(model, decoder_utils.pad_state_fn(max_decode_steps))
+
+    batch_size, max_prefix_len = prefix_ids.shape
+    assert max_decode_steps > 0
+    seq_len = max_prefix_len + max_decode_steps
+
+    if isinstance(eos_id, int):
+      eos_id = [eos_id]
+
+    if gumbel_prng_key is not None and isinstance(gumbel_prng_key, JTensor):
+      gumbel_prng_key = gumbel_prng_key.astype(jnp.uint32)
+      dup_len = jax.random.default_prng_impl().key_shape[0]
+      if len(gumbel_prng_key.shape) == 1:
+        gumbel_prng_key = jnp.stack([gumbel_prng_key] * dup_len, axis=-1)
+      assert gumbel_prng_key.shape == [batch_size, dup_len]
+
+    output_ids = jnp.zeros(shape=(batch_size, seq_len), dtype=jnp.int32)
+
+    # Set up the initial values.
+    val = NestedMap()
+
+    # Update output_ids with prefix_ids.
+    output_ids = jax.lax.dynamic_update_slice(
+        output_ids, prefix_ids, [0] * output_ids.ndim
+    )
+    # Update loop init states with prefix.
+    start_step = max_prefix_len - 1
+
+    val.segment_pos = prefix_lengths - 1
+    val.step = start_step
+    val.output_ids = output_ids
+    # Shape [batch_size], whether each row has terminated and should stop.
+    val.done = jnp.zeros(shape=batch_size, dtype=jnp.bool_)
+    val.has_eos = jnp.zeros(shape=batch_size, dtype=jnp.bool_)
+    val.decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
+    # We use a positive value of 1.0 to indicate blank or padded positions.
+    val.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
+
+    val = next_token_sampler.init_decode_loop_state(
+        val, model, batch_size, eos_id
+    )
+
+    # Get an `ExpandedExtendStepFn`, regardless of which variant was passed in.
+    expanded_extend_step_fn = decoder_utils.coerce_to_expanded_extend_step_fn(
+        extend_step_fn
+    )
+
+    def cond_func(model, val):
+      """Whether the while loop should continue."""
+      del model
+      # We continue the decoding search iff both:
+      #   (1) We have yet to exceed the max steps.
+      #   (2) At least one row in the batch has not terminated.
+      max_steps = start_step + max_decode_steps
+      length_ok = val.step < max_steps
+      all_rows_done = jnp.all(val.done)
+      return jnp.logical_and(length_ok, jnp.logical_not(all_rows_done))
+
+    def loop_body(model, val):
+      """From ids at `step`, update output ids at `step + 1`."""
+      step = val.step
+      logits = expanded_extend_step_fn(
+          model, val.output_ids[:, step], val.segment_pos, val
+      )
+      if gumbel_prng_key is not None:
+        # Folds split prng_key for step.
+        split_gumbel_prng_key = jax.vmap(lambda x: jax.random.fold_in(x, step))(
+            gumbel_prng_key
+        )
+        assert split_gumbel_prng_key.shape[0] == logits.shape[0]
+
+        split_gumbel_prng_key = jax.lax.cond(
+            jnp.all(gumbel_prng_key == DUMMY_PRNG_KEY),
+            lambda: jnp.ones_like(split_gumbel_prng_key) * DUMMY_PRNG_KEY,
+            lambda: split_gumbel_prng_key,
+        )
+      else:
+        split_gumbel_prng_key = None
+
+      sampler_output = next_token_sampler(
+          model,
+          logits,
+          temperature,
+          val,
+          gumbel_prng_key=split_gumbel_prng_key,
+      )
+      new_ids, sample_logits = sampler_output.new_ids, sampler_output.logits
+      # Update additional decoder states that are in both sampler_output and
+      # val.
+      for k in sampler_output.keys() & val.keys():
+        val[k] = sampler_output[k]
+
+      assert new_ids.shape == (sample_logits.shape[0],)
+      assert new_ids.dtype == jnp.int32
+
+      model.add_summary('new_ids', new_ids)
+      model.add_summary('sample_logits', sample_logits)
+
+      prev_done = val.done
+      new_ids = jnp.where(prev_done, jnp.zeros_like(new_ids), new_ids)
+      val.output_ids = val.output_ids.at[:, step + 1].set(new_ids)
+      if eos_id is not None:
+        if isinstance(eos_id, JTensor):
+          has_eos = decoder_utils.end_with_sequences(
+              eos_id, val.output_ids, val.step + 1
+          )
+        else:
+          has_eos = decoder_utils.has_any_eos(new_ids, eos_id)
+        val.done = jnp.logical_or(
+            prev_done,
+            has_eos,
+        )
+        val.has_eos = jnp.logical_or(val.has_eos, has_eos)
+
+      decode_lengths = prefix_lengths + (step - max_prefix_len + 2)
+      val.done = jnp.logical_or(val.done, step + 2 >= seq_len)
+      done_at_this_step = jnp.logical_and(jnp.logical_not(prev_done), val.done)
+      val.decode_lengths = jnp.where(
+          done_at_this_step, decode_lengths, val.decode_lengths
+      )
+
+      val.segment_pos += 1
+
+      logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
+      logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size), new_ids].get()
+      logprobs_at_new_ids = jnp.where(
+          prev_done, jnp.ones_like(logprobs_at_new_ids), logprobs_at_new_ids
+      )
+      val.logprobs = val.logprobs.at[:, step + 1].set(logprobs_at_new_ids)
+      val.step += 1
+      return val
+
+    result = nn.while_loop(
+        cond_func,
+        loop_body,
+        model,
+        val,
+        split_rngs={RANDOM: True},
+        carry_variables=[DECODE_CACHE],
+    )
+
+    result.prefix_lengths = prefix_lengths
+    result.prefix_ids = decoder_utils.left_align_tensor(
+        prefix_ids, prefix_lengths, max_prefix_len
+    )
+
+    # Change output_ids to left align.
+    result.output_ids = decoder_utils.left_align_tensor(
+        result.output_ids, prefix_lengths, max_prefix_len
+    )
+    result.logprobs = decoder_utils.left_align_tensor(
+        result.logprobs, prefix_lengths, max_prefix_len
+    )
+
+    del result.step, result.done, result.has_eos
+    result = next_token_sampler.post_process_decode_loop_state(result)
+
+    return result
+
+
+# TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def greedy_decode(
     model: base_layer.BaseLayerApi,
     extend_step_fn: Union[
@@ -1623,8 +1880,8 @@ def greedy_decode(
       time step (with shape [B] or [B, P] where B corresponds to the batch size
       and P corresponds to a possible prefix) and returns `JTensor` corresponds
       to the logits of the next step.  The following signatures are allowed:
-      extend_step_fn(model, extend_ids, segment_pos)
-      extend_step_fn(model, extend_ids, segment_pos, decode_loop_state)
+      extend_step_fn(model, extend_ids, segment_pos) extend_step_fn(model,
+      extend_ids, segment_pos, decode_loop_state)
     prefix_ids: The token ids that correspond to the prefix sequence. This
       should contain an <SOS> token if one is used.
     prefix_paddings: The paddings corresponding to the prefix sequence, with a 1
