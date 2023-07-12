@@ -18,7 +18,6 @@
 This is useful for quantization, sparsity and possibly other techniques.
 """
 
-from typing import Sequence
 import jax.numpy as jnp
 from praxis import base_layer
 from praxis import pytypes
@@ -39,8 +38,8 @@ JTensor = pytypes.JTensor
 class EinsumOp(base_layer.BaseLayer):
   """Wrapper around jnp.einsum used in standard Pax layers."""
 
-  def __call__(self, equation: str, lhs: JTensor, rhs: JTensor) -> JTensor:
-    return jnp.einsum(equation, lhs, rhs)
+  def __call__(self, equation: str, *args: JTensor) -> JTensor:
+    return jnp.einsum(equation, *args)
 
 
 class ArrayLookup(base_layer.BaseLayer):
