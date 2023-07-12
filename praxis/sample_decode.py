@@ -1105,7 +1105,7 @@ def sample_decode_after_fprop(
       )
 
   if isinstance(temperature, JTensor):
-    temperature = temperature[:, jnp.newaxis]
+    temperature = temperature.flatten()[:, jnp.newaxis]
 
   if isinstance(per_example_top_p, JTensor):
     per_example_top_p = per_example_top_p[:, jnp.newaxis]

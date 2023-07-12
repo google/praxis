@@ -935,6 +935,64 @@ class SampleDecodeHelperTest(test_utils.TestCase):
         np.ones_like(result.mock_state, dtype=np.bool_),
     )
 
+  def test_sample_decode_with_single_sample(self):
+    batch_size = 1
+    num_samples = 1
+    seq_len = 3
+    vocab_size = 4
+    model_p = pax_fiddle.Config(
+        TestModel,
+        batch_size=batch_size,
+        num_samples=num_samples,
+        seq_len=seq_len,
+        vocab_size=vocab_size,
+        use_dummy_next_token_sampler=False,
+        name='test_model_single_sample',
+    )
+
+    def extend_step_fn(mdl, ids, segment_pos):
+      logits = mdl.extend_step(ids, segment_pos=segment_pos)
+      return logits
+
+    def transform_decode_state_fn(mdl, transform_fn):
+      del mdl
+      del transform_fn
+
+    model = instantiate(model_p)
+    init_vars = model.init(rngs=jax.random.PRNGKey(1234))
+
+    input_ids = jnp.zeros([batch_size, seq_len], dtype=jnp.int32)
+    input_paddings = jnp.zeros([batch_size, seq_len], dtype=jnp.float32)
+
+    def decode_fn(model, input_ids, input_paddings):
+      return sample_decode.sample_decode(
+          model,
+          extend_step_fn,
+          transform_decode_state_fn,
+          None,
+          model.next_token_sampler,
+          input_ids,
+          input_paddings,
+          prefix_lengths=jnp.zeros([batch_size], dtype=jnp.int32),
+          seq_len=seq_len,
+          num_samples=num_samples,
+          gumbel_prng_key=None,
+          max_prefix_len=0,
+          max_decode_steps=seq_len,
+          fprop_for_prefix=True,
+          temperature=jnp.ones([batch_size, num_samples], dtype=jnp.float32),
+          per_example_top_p=jnp.ones([batch_size], dtype=jnp.float32),
+          # Call the scan loop.
+          early_exit=False,
+      )
+
+    mutables = [DECODE_CACHE]
+    rngs = {'random': jax.random.PRNGKey(9382)}
+
+    nn.apply(decode_fn, model, mutable=mutables)(
+        init_vars, input_ids, input_paddings, rngs=rngs
+    )
+
   def test_vanilla_sample_decode(self):
     batch_size = 6
     prefix_len = 1
