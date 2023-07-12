@@ -26,12 +26,15 @@ from praxis import schedules
 from praxis import test_utils
 
 
-def _run_transformation(num_steps=1,
-                        initial_value=2.0,
-                        l2_regularizer_weight=0.0,
-                        l1_regularizer_weight=0.0,
-                        decoupled_weight_decay=0.0,
-                        create_regularizer_mask=False):
+def _run_transformation(
+    num_steps=1,
+    initial_value=2.0,
+    l2_regularizer_weight=0.0,
+    l1_regularizer_weight=0.0,
+    decoupled_weight_decay=0.0,
+    create_regularizer_mask=False,
+    use_native_optax_gradient_transformations=False,
+):
   """Applies a gradient transformation with Adam for some steps.
 
   Args:
@@ -41,19 +44,32 @@ def _run_transformation(num_steps=1,
     l1_regularizer_weight: Optional L2 regularization weight.
     decoupled_weight_decay: Optional decoupled weight decay.
     create_regularizer_mask: Whether to create mask for regularization.
+    use_native_optax_gradient_transformations: Whether to use OptaxOptimizer.
+
   Returns:
     The updated states and the final update.
   """
   param_name = 'var'
   mdl_vars = {param_name: jnp.array(initial_value, dtype=jnp.float32)}
-  opt_tpl = pax_fiddle.Config(
-      optimizers.ShardedSgd,
-      lr_schedule=pax_fiddle.Config(schedules.Constant, value=1.0),
-      learning_rate=1.0,
-      l2_regularizer_weight=l2_regularizer_weight,
-      l1_regularizer_weight=l1_regularizer_weight,
-      decoupled_weight_decay=decoupled_weight_decay,
-  )
+  if use_native_optax_gradient_transformations:
+    opt_tpl = pax_fiddle.Config(
+        optimizers.OptaxOptimizer,
+        lr_schedule=pax_fiddle.Config(schedules.Constant, value=1.0),
+        learning_rate=1.0,
+        l2_regularizer_weight=l2_regularizer_weight,
+        l1_regularizer_weight=l1_regularizer_weight,
+        decoupled_weight_decay=decoupled_weight_decay,
+        grad_tx=optax.sgd(1.0),
+    )
+  else:
+    opt_tpl = pax_fiddle.Config(
+        optimizers.ShardedSgd,
+        lr_schedule=pax_fiddle.Config(schedules.Constant, value=1.0),
+        learning_rate=1.0,
+        l2_regularizer_weight=l2_regularizer_weight,
+        l1_regularizer_weight=l1_regularizer_weight,
+        decoupled_weight_decay=decoupled_weight_decay,
+    )
   sgd = optimizers.instantiate(opt_tpl)
   var_weight_hparams = None
   if create_regularizer_mask:
@@ -129,24 +145,83 @@ class OptimizersTest(test_utils.TestCase):
     self.assertEqual(
         mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32))
 
+  def test_ewc_regularization_extra_args(self):
+    opt_tpl = pax_fiddle.Config(
+        optimizers.OptaxOptimizer,
+        lr_schedule=pax_fiddle.Config(schedules.Constant, value=1.0),
+        learning_rate=1.0,
+        ewc_regularizer_weight=1.0,
+        ewc_weight_per_var={'var': 1.0},
+        grad_tx=optax.sgd(1.0),
+    )
+    acc_opt = optimizers.instantiate(opt_tpl)
+    tx = acc_opt.get_grad_transformation()
+    mdl_vars = {'var': jnp.array(0, dtype=jnp.float32)}
+    opt_state = tx.init(mdl_vars)
+    num_steps = 3
+    for t in range(num_steps):
+      # t=0: v=0, g=1, p=0 -> v = v - g - 0.5  * (v - p) = -1
+      # t=1: v=-1, g=2, p=0 -> v = v - g - 0.5  * (v - p) = -2.5
+      # t=2: v=-3.5, g=3, p=0 -> v = v - g - 0.5 * (v - p) = -4.25
+      fake_update = float(t + 1)
+      updates, opt_state = tx.update(
+          {'var': jnp.array(fake_update)}, opt_state, mdl_vars
+      )
+      mdl_vars = optax.apply_updates(mdl_vars, updates)
+    expected_var_value = -4.25
+    self.assertEqual(
+        mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32)
+    )
+
 
 class OptimizersRegularizationTest(parameterized.TestCase):
 
   @parameterized.named_parameters(
-      ('l2_regularizer', 2.0, 0.0, 0.0, False, -3.0),
-      ('l2_regularizer_mask', 2.0, 0.0, 0.0, True, 1.0),
-      ('l1_regularizer', 0.0, 2.0, 0.0, False, -1.0),
-      ('l1_regularizer_mask', 0.0, 2.0, 0.0, True, 1.0),
-      ('decoupled_weight_decay', 0.0, 0.0, 2.0, False, -3.0),
-      ('decoupled_weight_decay_mask', 0.0, 0.0, 2.0, True, 1.0))
+      ('l2_regularizer', 2.0, 0.0, 0.0, False, -3.0, False),
+      ('l2_regularizer_mask', 2.0, 0.0, 0.0, True, 1.0, False),
+      ('l1_regularizer', 0.0, 2.0, 0.0, False, -1.0, False),
+      ('l1_regularizer_mask', 0.0, 2.0, 0.0, True, 1.0, False),
+      ('decoupled_weight_decay', 0.0, 0.0, 2.0, False, -3.0, False),
+      ('decoupled_weight_decay_mask', 0.0, 0.0, 2.0, True, 1.0, False),
+      ('l2_regularizer_with_opt_wrapper', 2.0, 0.0, 0.0, False, -3.0, True),
+      ('l2_regularizer_mask_with_opt_wrapper', 2.0, 0.0, 0.0, True, 1.0, True),
+      ('l1_regularizer_with_opt_wrapper', 0.0, 2.0, 0.0, False, -1.0, True),
+      ('l1_regularizer_mask_with_opt_wrapper', 0.0, 2.0, 0.0, True, 1.0, True),
+      (
+          'decoupled_weight_decay_with_opt_wrapper',
+          0.0,
+          0.0,
+          2.0,
+          False,
+          -3.0,
+          True,
+      ),
+      (
+          'decoupled_weight_decay_mask_with_opt_wrapper',
+          0.0,
+          0.0,
+          2.0,
+          True,
+          1.0,
+          True,
+      ),
+  )
   def test_regularizer(
-      self, l2_regularizer_weight, l1_regularizer_weight,
-      decoupled_weight_decay, create_regularizer_mask, expected_value):
+      self,
+      l2_regularizer_weight,
+      l1_regularizer_weight,
+      decoupled_weight_decay,
+      create_regularizer_mask,
+      expected_value,
+      with_opt_wrapper,
+  ):
     output = _run_transformation(
         l2_regularizer_weight=l2_regularizer_weight,
         l1_regularizer_weight=l1_regularizer_weight,
         decoupled_weight_decay=decoupled_weight_decay,
-        create_regularizer_mask=create_regularizer_mask)
+        create_regularizer_mask=create_regularizer_mask,
+        use_native_optax_gradient_transformations=with_opt_wrapper,
+    )
     self.assertEqual(output, jnp.array(expected_value, dtype=jnp.float32))
 
 

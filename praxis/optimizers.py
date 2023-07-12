@@ -17,11 +17,12 @@
 
 from __future__ import annotations
 
+from abc import abstractmethod
 import copy
 import dataclasses
 import functools
 import re
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Protocol, Sequence, Tuple, Union, runtime_checkable
 
 from absl import logging
 import jax
@@ -114,7 +115,50 @@ def count_init_partition_spec_fn(
           init=None,
           dtype=jnp.int32,
           collections=None,
-          tensor_split_dims_mapping=[]))
+          tensor_split_dims_mapping=[],
+      )
+  )
+
+
+def partition_params(
+    grad_tx: optax.GradientTransformation,
+    var_weight_hparams: Optional[NestedWeightHParams],
+    opt_states: optax.OptState,
+) -> optax.OptState:
+  """Applies sharding for optimizer params with tree_map_params."""
+
+  def sharding_function(
+      params: Any, spec: base_layer.WeightHParams
+  ) -> base_layer.WeightHParams:
+    if len(params.shape) < 1:
+      return base_layer.WeightHParams(
+          shape=[],
+          init=None,
+          dtype=jnp.int32,
+          collections=None,
+          tensor_split_dims_mapping=[],
+      )
+    return spec
+
+  def sharding_for_non_parameter_fields(_: Any) -> base_layer.WeightHParams:
+    # Typically the non-parameter fields are 'count'.
+    return base_layer.WeightHParams(
+        shape=[],
+        init=None,
+        dtype=jnp.int32,
+        collections=None,
+        tensor_split_dims_mapping=[],
+    )
+
+  opt_states_pspec = optax.tree_map_params(
+      grad_tx,
+      sharding_function,
+      opt_states,
+      var_weight_hparams,
+      # Count is the only non-params in the current optimizers.
+      transform_non_params=sharding_for_non_parameter_fields,
+  )
+  return opt_states_pspec
 
 
 def sharded_sgd(learning_rate_fn: optax.Schedule, momentum: Optional[float],
@@ -441,7 +485,8 @@ def apply_lp_regularizer(
     regularizer_weight: Optional[float] = 0.0,
     p: Optional[float] = 2.0,
     skip_lp_1d_vectors: Optional[bool] = False,
-) -> ShardedGradientTransformation:
+    use_optax_gradient_transformations: bool = False,
+) -> GeneralGradientTransformation:
   """Applies Lp regularization by adjusting gradients.
 
   Note, lp regularizers add loss to final loss objective, while decoupled
@@ -455,9 +500,11 @@ def apply_lp_regularizer(
     regularizer_weight: Weight for L2 regularization.
     p: 1 or 2 as L1/L2 regularization.
     skip_lp_1d_vectors: If True, skip L1/L2 regularization for 1d vector vars.
+    use_optax_gradient_transformations: If True, returns an instance of
+      optax.GradientTransformationExtraArgs
 
   Returns:
-    A ShardedGradientTransformation applying Lp regularizers.
+    A GeneralGradientTransformation applying Lp regularizers.
   """
   asserts.in_set(p, [1.0, 2.0])
 
@@ -474,13 +521,18 @@ def apply_lp_regularizer(
         raise ValueError('Params must not be empty when applying weight decay.')
 
       if p == 1.0:
-        fn = lambda g, p, m=1.0: g + regularizer_weight * jnp.sign(
-            p) * skip_mask(p) * m if not py_utils.is_optax_masked_node(
-                g) else optax.MaskedNode()
+        fn = (
+            lambda g, p, m=1.0: g
+            + regularizer_weight * jnp.sign(p) * skip_mask(p) * m
+            if not py_utils.is_optax_masked_node(g)
+            else optax.MaskedNode()
+        )
       elif p == 2.0:
-        fn = lambda g, p, m=1.0: g + regularizer_weight * p * skip_mask(
-            p) * m if not py_utils.is_optax_masked_node(
-                g) else optax.MaskedNode()
+        fn = (
+            lambda g, p, m=1.0: g + regularizer_weight * p * skip_mask(p) * m
+            if not py_utils.is_optax_masked_node(g)
+            else optax.MaskedNode()
+        )
 
       if var_lp_mask is None:
         updates = jax.tree_map(fn, updates, params)
@@ -490,9 +542,15 @@ def apply_lp_regularizer(
             updates,
             params,
             var_lp_mask,
-            is_leaf=py_utils.is_optax_masked_node)
+            is_leaf=py_utils.is_optax_masked_node,
+        )
     updated_state = NestedMap(count=count + 1)
     return updates, updated_state
+
+  if use_optax_gradient_transformations:
+    return optax.GradientTransformationExtraArgs(
+        init=count_init_fn, update=update_fn
+    )
 
   return ShardedGradientTransformation(
       init=count_init_fn,
@@ -504,7 +562,8 @@ def apply_decoupled_weight_decay(
     learning_rate_fn: optax.Schedule,
     var_wd_mask: NestedHParams,
     regularizer_weight: Optional[float] = 0.0,
-) -> ShardedGradientTransformation:
+    use_optax_gradient_transformations: bool = False,
+) -> GeneralGradientTransformation:
   """Applies decoupled weight decay on weights.
 
   Note, lp regularizers add loss to final loss objective, while decoupled
@@ -517,9 +576,11 @@ def apply_decoupled_weight_decay(
     var_wd_mask: mask to apply weight decay based on SKIP_LP_REGULARIZATION. If
       it is 0, the weight decay is not applied.
     regularizer_weight: Weight for decoupled weight decay.
+    use_optax_gradient_transformations: If True, returns an instance of
+      optax.GradientTransformationExtraArgs
 
   Returns:
-    A ShardedGradientTransformation applying weight decay.
+    A GeneralGradientTransformation applying weight decay.
   """
 
   def update_fn(updates, state, params):
@@ -538,6 +599,10 @@ def apply_decoupled_weight_decay(
     updated_state = NestedMap(count=count + 1)
     return updates, updated_state
 
+  if use_optax_gradient_transformations:
+    return optax.GradientTransformationExtraArgs(
+        init=count_init_fn, update=update_fn
+    )
   return ShardedGradientTransformation(
       init=count_init_fn,
       update=update_fn,
@@ -708,16 +773,18 @@ def sharded_lion(learning_rate_fn: optax.Schedule, beta1: float,
 
     updated_states = NestedMap(
         count=count + 1,
-        m=jax.tree_map(lambda x: x.m.astype(m_dtype), updated_moments))
+        m=jax.tree_map(lambda x: x.m.astype(m_dtype), updated_moments),
+    )
     return updates, updated_states
 
   return ShardedGradientTransformation(
-      init=init_fn,
-      update=update_fn,
-      init_partition_spec=init_partition_spec_fn)
+      init=init_fn, update=update_fn, init_partition_spec=init_partition_spec_fn
+  )
 
 
-def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
+def apply_ema_weights(
+    decay: float, use_optax_gradient_transformations: bool = False
+) -> GeneralGradientTransformation:
   """Applies exponential moving average on weights.
 
   Note, this implementation averages the weight before optimization because
@@ -734,7 +801,7 @@ def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
     decay: A float number represents the weight on the moving average.
 
   Returns:
-    A GradientTransformation applying ema.
+    A GeneralGradientTransformation applying ema.
   """
 
   def init_fn(params):
@@ -781,17 +848,23 @@ def apply_ema_weights(decay: float) -> ShardedGradientTransformation:
             tensor_split_dims_mapping=[]),
         ema=jax.tree_map(_infer_ema_pspec, params))
 
+  if use_optax_gradient_transformations:
+    return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)
   return ShardedGradientTransformation(
       init=init_fn,
       update=update_fn,
       init_partition_spec=init_partition_spec_fn)
 
 
+# TODO(b/277132394): Update apply_ewc_regularization to be compatible with
+# tree_map_params by removing jax.tree_map from init to update method and add
+# a test case with partition spec.
 def apply_ewc_regularization(
     learning_rate_fn: optax.Schedule,
     ewc_regularizer_weight: float = 0.0,
-    ewc_weight_per_var: Optional[bool] = False
-    ) -> ShardedGradientTransformation:
+    ewc_weight_per_var: Optional[bool] = False,
+    use_optax_gradient_transformations: bool = False,
+) -> GeneralGradientTransformation:
   """Applies EWC regularization on weights.
 
   paper: https://arxiv.org/abs/1612.00796
@@ -888,14 +961,194 @@ def apply_ewc_regularization(
               init=None,
               dtype=jnp.int32,
               collections=None,
-              tensor_split_dims_mapping=[]))
+              tensor_split_dims_mapping=[],
+          )
+      )
 
+  if use_optax_gradient_transformations:
+    return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)
   return ShardedGradientTransformation(
-      init=init_fn,
-      update=update_fn,
-      init_partition_spec=init_partition_spec_fn)
+      init=init_fn, update=update_fn, init_partition_spec=init_partition_spec_fn
+  )
 
 
+@runtime_checkable
+class Optimizer(Protocol):
+  """A protocol for Optimizer to be used in Learner."""
+
+  @property
+  def clip_gradient_norm_to_value(self) -> float:
+    """Clips gradient by global norm to this value."""
+    pass
+
+  @property
+  def clip_gradient_single_norm_to_value(self) -> float:
+    """Clip gradient by single tensor norm to this value."""
+    pass
+
+  @property
+  def ema_decay(self) -> float:
+    """Exposed hparams for optimizer."""
+    pass
+
+  @abstractmethod
+  def get_grad_transformation(
+      self,
+      var_weight_hparams: Optional[NestedWeightHParams] = None,
+      include_ema: bool = True,
+  ) -> GeneralGradientTransformation:
+    pass
+
+  @abstractmethod
+  def get_learning_rate(self, step_count: JTensor) -> JTensor:
+    pass
+
+
+class OptaxOptimizer(base_hyperparams.FiddleBaseParameterizable):
+  """Class that encapsulates optax transformations with common regularizers.
+
+  Attributes:
+    l2_regularizer_weight: If not None, L2 regularization to apply to the model
+      weights. Otherwise, disable L2 regularization.
+    l1_regularizer_weight: If not None, L1 regularization to apply to the model
+      weights. Otherwise, disable L1 regularization.
+    skip_lp_1d_vectors: If True, skip L1/L2 regularization for 1d vector vars.
+    decoupled_weight_decay: If not None, (decoupled) weight decay to apply to
+      the model weights. Otherwise, disable weight decay. Note, lp regularizers
+      add loss to final loss objective, while decoupled weight decay adds decay
+      directly into weights. They are different especially when there are moment
+      statistics in optimizers. A good reference can be found in:
+      https://www.fast.ai/2018/07/02/adam-weight-decay/#adamw
+    clip_gradient_norm_to_value: Clip gradient by global norm to this value.
+      This is similar to the bahaviour of tf.clip_by_global_norm. If you are
+      looking for tf.clip_by_norm refer to clip_gradient_single_norm_to_value.
+      Note these are mutually exclusive.
+    clip_gradient_single_norm_to_value: Clip gradient by single tensor norm to
+      this value. This is similar to the bahaviour of tf.clip_by_norm. Note this
+      is mutually exclusive to using clip_gradient_norm_to_value.
+    learning_rate: learning rate to use.
+    lr_schedule: Learning rate decay schedule. The value returned by this
+      schedule is *multiplied* by your base learning rate.
+    ema_decay: If > 0, enable ExponentialMovingAverage during training with the
+      give decay. Must be < 1. Disabled if <= 0.
+    ewc_regularizer_weight: If > 0, EWC regularization is applied to the model
+      weights.
+    ewc_weight_per_var: If not None, set weight for each model weight, e.g.,
+      refer to https://arxiv.org/abs/1612.00796 by using a Fisher information
+      matrix.
+  """
+
+  l2_regularizer_weight: Optional[float] = None
+  l1_regularizer_weight: Optional[float] = None
+  skip_lp_1d_vectors: bool = False
+  decoupled_weight_decay: Optional[float] = None
+  clip_gradient_norm_to_value: float = 0.0
+  clip_gradient_single_norm_to_value: float = 0.0
+  learning_rate: float = 0.0
+  lr_schedule: Optional[pax_fiddle.Config[schedules.BaseSchedule]] = None
+  ema_decay: float = 0.0
+  ewc_regularizer_weight: float = 0.0
+  ewc_weight_per_var: Optional[NestedMap] = None
+  _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
+  learning_rate: float = 0.0
+  lr_schedule: Optional[pax_fiddle.Config[schedules.BaseSchedule]] = None
+  _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
+  grad_tx: Optional[optax.GradientTransformation] = None
+
+  def __post_init__(self):
+    self._lr_schedule_inst = instantiate(self.lr_schedule)
+    # Should not mix L1, L2 regularizer and weight decay together.
+    if self.l2_regularizer_weight and self.l1_regularizer_weight:
+      raise ValueError('Should not mix L1 and L2 regularization.')
+    if self.decoupled_weight_decay and (
+        self.l2_regularizer_weight or self.l1_regularizer_weight
+    ):
+      raise ValueError(
+          'Should not mix decoupled weight decay with L1 or L2 regularization.'
+      )
+
+  def get_grad_transformation(
+      self,
+      var_weight_hparams: Optional[NestedWeightHParams] = None,
+      include_ema: bool = True,
+  ) -> optax.GradientTransformation:
+    """Get the grad transformation corresponds to this optimizer config.
+
+    This is the final gradient transformation that incorporates all
+    transformations.
+
+    Args:
+      var_weight_hparams: Weight params of the vars. If provided, apply lp
+        regularization and weight decay based on variable collections.
+      include_ema: whether to include ema. For multi optimizer case, we disable
+        it here and instead add ema in the beginning.
+
+    Returns:
+      Chained optax.GradientTransformation.
+    """
+
+    # Compute the mask for lp regularization
+    if var_weight_hparams:
+      var_lp_mask = jax.tree_map(
+          lambda x: not base_layer.var_skip_lp_regularization(x),
+          var_weight_hparams,
+      )
+    else:
+      var_lp_mask = None
+
+    transformations = [
+        apply_lp_regularizer(
+            var_lp_mask=var_lp_mask,
+            regularizer_weight=self.l1_regularizer_weight,
+            p=1.0,
+            skip_lp_1d_vectors=self.skip_lp_1d_vectors,
+            use_optax_gradient_transformations=True,
+        ),
+        apply_lp_regularizer(
+            var_lp_mask=var_lp_mask,
+            regularizer_weight=self.l2_regularizer_weight,
+            p=2.0,
+            skip_lp_1d_vectors=self.skip_lp_1d_vectors,
+            use_optax_gradient_transformations=True,
+        ),
+        self.grad_tx,
+        apply_decoupled_weight_decay(
+            self.get_learning_rate,
+            var_wd_mask=var_lp_mask,
+            regularizer_weight=self.decoupled_weight_decay,
+            use_optax_gradient_transformations=True,
+        ),
+    ]
+    if self.ewc_regularizer_weight > 0.0:
+      transformations.append(
+          apply_ewc_regularization(
+              self.get_learning_rate,
+              ewc_regularizer_weight=self.ewc_regularizer_weight,
+              ewc_weight_per_var=self.ewc_weight_per_var,
+              use_optax_gradient_transformations=True,
+          )
+      )
+    if self.ema_decay > 0.0 and include_ema:
+      # EMA adds extra optimizer states making checkpoints not backward
+      # compatible
+      asserts.lt(self.ema_decay, 1.0)
+      transformations.append(
+          apply_ema_weights(
+              decay=self.ema_decay, use_optax_gradient_transformations=True
+          )
+      )
+    return optax.chain(*transformations)
+
+  def get_learning_rate(self, step_count: JTensor) -> JTensor:
+    """Get the learning rate of this optimizer at a particular step."""
+    return self._lr_schedule_inst.value_at(step_count) * self.learning_rate
+
+
+# TODO(b/277132394): OptaxOptimizer is introduced to use standard optax
+# transforms with common regularizers. Learners can use OptaxOptimizer with
+# optax gradient transforms directly. Custom optimizers won't need to depend on
+# BaseOptimizer in the future, but will be implemented as standard optax
+# transforms. Thus, BaseOptimizer class can, be removed.
 class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
   """Base class for all optimizers.
 
