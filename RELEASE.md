@@ -1,5 +1,9 @@
 # Version: 1.1.0
 ## Major Features and Improvements
+* Move to python 3.10 as the minimal python requirement (previously on python 3.8).
+* Add various quantization support.
+* Add support for fine-grained weight sparsity in praxis layers.
+* Add support for Direct Preference Optimization (DPO).
 ## Note
 *   Version: 1.1.0
 *   Build Date: 20230712
