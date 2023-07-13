@@ -60,6 +60,10 @@ class CNN(flax_nn.Module):
     x = flax_nn.log_softmax(x)
     return x
 
+  def classify(self, x: JTensor) -> JTensor:
+    log_softmax = self.__call__(x, use_running_average=True)
+    return log_softmax.argmax(axis=-1)
+
 
 class MixLayer(base_layer.BaseLayer):
   """A layer that mixes Pax native layer with nn.Module wrapper layer.
@@ -90,6 +94,11 @@ class MixLayer(base_layer.BaseLayer):
     out2 = self.cnn_p2(x, use_running_average=self.use_running_average)
     out = self.bn(out1 + out2)
     return out1, out2, out
+
+  def classify(self, x: JTensor) -> JTensor:
+    out1 = self.cnn_p1.call_method('classify', x)
+    out2 = self.cnn_p2.call_method('classify', x)
+    return out1, out2
 
 
 class DirectMixLayer(base_layer.BaseLayer):
@@ -150,6 +159,9 @@ class FlaxWrapperTest(test_utils.TestCase):
       jax.tree_map(assert_non_learnable, init_var_meta['non_trainable'])
       init_vars = test_layer.init(prng_key, input_x)
       _ = test_layer.apply(init_vars, input_x, mutable=True)
+      _ = test_layer.apply(
+          init_vars, input_x, mutable=True, method=test_layer.classify
+      )
 
   def test_literal_init_args(self):
     """Tests construction with literal (non-callable) init args."""

@@ -99,6 +99,14 @@ class _InternalBaseFlaxAdapter(base_layer.BaseLayer):
         self.cld.__call__.__func__, *args, **kwargs  # pytype: disable=attribute-error
     )
 
+  def call_method(self, method_name: str, *args, **kwargs):
+    # Note that `__func__` retrieves the unbound method that takes module as
+    # the first argument.
+    func = getattr(self.cld, method_name)
+    return self._call_with_boxed_params_init(
+        func.__func__, *args, **kwargs  # pytype: disable=attribute-error
+    )
+
 
 class DirectFlaxModuleAdapter(_InternalBaseFlaxAdapter):
   """The preferred way of wrapping Flax modules for Praxis.
