@@ -1,3 +1,9 @@
+# Version: 1.1.0
+## Major Features and Improvements
+## Note
+*   Version: 1.1.0
+*   Build Date: 20230712
+*   Praxis commit: f457672aa6193621a4ebf2f7d9c9acf62e0513f6
 # Version: 1.0.0
 ## Major Features and Improvements
 * **Fiddle** - Praxis layers and BaseParameterizable are now configured with [Fiddle](https://github.com/google/fiddle), a Python-first configuration library. Fiddle reduces boilerplate, and adds productivity features including history tracking, graphviz visualization, support for aliasing objects, and more.
