@@ -351,11 +351,14 @@ class Conformer(base_layer.BaseLayer):
       )
       self.create_child('lconv', lconv_p)
 
-  def setup(self) -> None:
+  def _assert_layer_order(self):
     asserts.in_set(
         self.layer_order,
         ['mhsa', 'conv', 'mhsa_before_conv', 'conv_before_mhsa'],
     )
+
+  def setup(self) -> None:
+    self._assert_layer_order()
 
     if self.dropout_prob is not None:
       all_dropouts = [
