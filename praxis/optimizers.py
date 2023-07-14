@@ -856,9 +856,6 @@ def apply_ema_weights(
       init_partition_spec=init_partition_spec_fn)
 
 
-# TODO(b/277132394): Update apply_ewc_regularization to be compatible with
-# tree_map_params by removing jax.tree_map from init to update method and add
-# a test case with partition spec.
 def apply_ewc_regularization(
     learning_rate_fn: optax.Schedule,
     ewc_regularizer_weight: float = 0.0,
@@ -873,23 +870,20 @@ def apply_ewc_regularization(
 
   Args:
     learning_rate_fn: Learning rate function.
-    ewc_regularizer_weight: A float number as the EWC regularization weight.
-      if ewc_regularizer_weight <= 0, EWC is disabled.
+    ewc_regularizer_weight: A float number as the EWC regularization weight. if
+      ewc_regularizer_weight <= 0, EWC is disabled.
     ewc_weight_per_var: EWC weight for each variable.
+    use_optax_gradient_transformations: Whether to use Optax based gradient
+      transformation.
 
   Returns:
-    A GradientTransformation applying EWC regularizers.
+    A GeneralGradientTransformation applying EWC regularizers.
   """
   def init_fn(params):
     if ewc_regularizer_weight > 0.0:
-      if ewc_weight_per_var:
-        var_weights = jax.tree_map(
-            lambda p, v: jnp.array(ewc_regularizer_weight * 1./ 2 * v, p.dtype),
-            params, ewc_weight_per_var)
-      else:
-        var_weights = jax.tree_map(
-            lambda v: jnp.array(ewc_regularizer_weight * 1./ 2, v.dtype),
-            params)
+      var_weights = jax.tree_map(
+          lambda v: jnp.array(ewc_regularizer_weight * 1.0 / 2, v.dtype), params
+      )
       return NestedMap(count=jnp.array(0, dtype=jnp.int32),
                        pretrain_vars=jax.tree_map(jnp.copy, params),
                        var_weights=var_weights)
@@ -909,6 +903,15 @@ def apply_ewc_regularization(
 
       def pretrain_fn(p, v):
         return jnp.where(jnp.equal(state.count, 0), p, v)
+
+      if ewc_weight_per_var:
+        if jnp.equal(state.count, 0):
+          state.var_weights = jax.tree_map(
+              lambda v, p, ewc_w: jnp.array(v * ewc_w, p.dtype),
+              state.var_weights,
+              params,
+              ewc_weight_per_var,
+          )
 
       updates = jax.tree_map(
           fn,

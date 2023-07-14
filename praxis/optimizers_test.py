@@ -17,11 +17,14 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import jax
 from jax import numpy as jnp
+import numpy as np
 import optax
 from praxis import base_layer
 from praxis import optimizers
 from praxis import pax_fiddle
+from praxis import py_utils
 from praxis import schedules
 from praxis import test_utils
 
@@ -92,7 +95,7 @@ def _run_transformation(
   return mdl_vars[param_name]
 
 
-class OptimizersTest(test_utils.TestCase):
+class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
 
   def test_static_accumulator(self):
     base_opt_tpl = pax_fiddle.Config(optimizers.ShardedSgd)
@@ -172,6 +175,87 @@ class OptimizersTest(test_utils.TestCase):
     self.assertEqual(
         mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32)
     )
+
+  @parameterized.named_parameters(
+      ('ewc_regularization_with_per_var_weight', True),
+      ('ewc_regularization_without_per_var_weight', False),
+  )
+  def test_ewc_regularization_with_partitioning(
+      self, ewc_regularization_with_per_var_weight
+  ):
+    mesh_shape = [1, 2, 1]
+    num_devices = np.prod(mesh_shape)
+    mesh_shape = np.arange(num_devices).reshape(mesh_shape)
+
+    mdl_vars = py_utils.NestedMap()
+    mdl_vars.lm = py_utils.NestedMap(w=jnp.array([[0, 0]]).astype('float32'))
+    mdl_vars.ffn = jnp.array([[0, 0]]).astype('float32')
+
+    opt_tpl = pax_fiddle.Config(
+        optimizers.OptaxOptimizer,
+        lr_schedule=pax_fiddle.Config(schedules.Constant, value=1.0),
+        learning_rate=1.0,
+        ewc_regularizer_weight=1.0,
+        grad_tx=optax.sgd(1.0),
+    )
+    if ewc_regularization_with_per_var_weight:
+      ewc_weight_per_var = py_utils.NestedMap()
+      ewc_weight_per_var.lm = py_utils.NestedMap(
+          w=jnp.array([[2.0, 2.0]]).astype('float32')
+      )
+      ewc_weight_per_var.ffn = jnp.array([[2.0, 2.0]]).astype('float32')
+
+      opt_tpl.ewc_weight_per_var = ewc_weight_per_var
+    else:
+      opt_tpl.ewc_weight_per_var = None
+    acc_opt = optimizers.instantiate(opt_tpl)
+    tx = acc_opt.get_grad_transformation()
+
+    var_weight_hparams = jax.tree_map(
+        lambda v: base_layer.WeightHParams(
+            v.shape, mesh_shape=mesh_shape, tensor_split_dims_mapping=[-1, 1]
+        ),
+        mdl_vars,
+    )
+
+    opt_state = tx.init(mdl_vars)
+    opt_states_pspec = optimizers.partition_params(
+        tx, var_weight_hparams, opt_state
+    )
+    jax.tree_map(
+        lambda x, y: True,
+        opt_states_pspec,
+        opt_state,
+        is_leaf=lambda x: isinstance(x, base_layer.WeightHParams),
+    )
+    num_steps = 3
+    for t in range(num_steps):
+      update_val = float(t + 1)
+      fake_update = jax.tree_map(
+          lambda x: jnp.array([[update_val, update_val]]), mdl_vars
+      )
+      updates, opt_state = tx.update(
+          fake_update,
+          opt_state,
+          mdl_vars,
+      )
+      mdl_vars = optax.apply_updates(mdl_vars, updates)
+
+    if ewc_regularization_with_per_var_weight:
+      # with ewc_weight_per_var=2.0 for each var and ewc_regularizer_weight=1.0:
+      # t=0: v=0, g=1, p=0 -> v = v - g - 1  * (v - p) = -2
+      # t=1: v=-2, g=2, p=0 -> v = v - g - 1  * (v - p) = -2 -2 + 2 = -2
+      # t=2: v=-2, g=3, p=0 -> v = v - g - 1 * (v - p) = -2 -3 +2 = -3
+      expected_var_value = -3.0
+    else:
+      # with no ewc_weight_per_var and ewc_regularizer_weight= 1.0:
+      # t=0: v=0, g=1, p=0 -> v = v - g - 0.5  * (v - p) = -1
+      # t=1: v=-1, g=2, p=0 -> v = v - g - 0.5  * (v - p) = -2.5
+      # t=2: v=-3.5, g=3, p=0 -> v = v - g - 0.5 * (v - p) = -4.25
+      expected_var_value = -4.25
+
+    self.assertAllClose(mdl_vars['lm']['w'], expected_var_value)
+    self.assertAllClose(mdl_vars['ffn'], expected_var_value)
 
 
 class OptimizersRegularizationTest(parameterized.TestCase):

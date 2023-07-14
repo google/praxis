@@ -442,11 +442,13 @@ py_strict_test(
         ":base_layer",
         ":optimizers",
         ":pax_fiddle",
+        ":py_utils",
         ":schedules",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
+        # Implicit numpy dependency.
         # Implicit optax dependency.
     ],
 )
