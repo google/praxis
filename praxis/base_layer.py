@@ -84,6 +84,7 @@ PARAMS = 'params'
 AUX_LOSS = 'aux_loss'
 SUMMARIES = 'summaries'
 NON_TRAINABLE = 'non_trainable'
+FP8_PARAMS = 'fp8_params'
 DECODE_CACHE = 'decoder_cache'
 PREFIX_DECODE_CACHE = 'prefix_decoder_cache'
 INTERMEDIATES = 'intermediates'
@@ -167,6 +168,9 @@ def var_not_trainable(var_hparams: ParamsT) -> bool:
   """Returns True if var_hparams is not a trainable variable."""
   return WeightHParamsCollection.NON_TRAINABLE in var_hparams.collections
 
+def var_fp8(var_hparams: ParamsT) -> bool:
+  """Returns True if var_hparams is not a trainable variable."""
+  return FP8_PARAMS in var_hparams.collections
 
 def var_requires_mean_sync(var_hparams: ParamsT) -> bool:
   """Returns True if var_hparams requires synchronization across replicas."""
