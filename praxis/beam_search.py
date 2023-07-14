@@ -315,6 +315,22 @@ def beam_search_after_prefix_fprop(
         logits.astype(jnp.float32), model, extend_ids, val.segment_pos, val
     )
     logprobs = jnp.reshape(logprobs, (batch_size, beam_size, -1))
+
+    # Before reaching the minimum number of decode steps required (default: 0),
+    # prevent EOS from getting selected by setting its logprobs to a very
+    # negative value.
+    def prevent_terminal_ids(x):
+      for terminal_id in terminal_ids:
+        x = x.at[:, :, terminal_id].set(-1e20)
+      return x
+
+    logprobs = jax.lax.cond(
+        step >= max_prefix_len - 1 + beam_search_hparams.min_decode_steps,
+        lambda x: x,
+        prevent_terminal_ids,
+        logprobs,
+    )
+
     # Select the best ids with terminal tokens.
     eos_scores = jnp.ones_like(val.hyp_scores) * -1e9
     new_end_ids = val.output_ids
@@ -398,7 +414,10 @@ def beam_search_after_prefix_fprop(
       pad_size = max_decode_steps[i] - max_decode_steps[i - 1]
       transform_state_fn(model, decoder_utils.pad_state_fn(pad_size))
     result = nn.while_loop(
-        get_cond_func(max_decode_steps[i], beam_search_hparams.early_exit),
+        get_cond_func(
+            max_decode_steps[i],
+            beam_search_hparams.early_exit,
+        ),
         loop_body,
         model,
         result,

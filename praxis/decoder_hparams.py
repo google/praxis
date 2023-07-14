@@ -39,7 +39,9 @@ class DecoderHParams:
       prefix.
     eos_id: The id of EOS token indicating the termination decoding. Could be
       either a sequence or an integer.
-    max_decode_steps: If not None, the max decode steps for each example. If
+    min_decode_steps: If not 0, the minimum decode steps for each example.
+      eos_id does not get generated until these many steps have been decoded.
+    max_decode_steps: If not None, the maximum decode steps for each example. If
       None, this is set to `seqlen`, which contains prefix. If it is a list,
       decoding state will be padded at each given steps.
     fprop_for_prefix: Whether or not uses fprop instead of extend_step for the
@@ -58,6 +60,7 @@ class DecoderHParams:
   seqlen: int = 0
   min_prefix_len: int = 5
   eos_id: Union[int, Sequence[int]] = 2
+  min_decode_steps: int = 0
   max_decode_steps: Optional[Union[int, Sequence[int]]] = None
   fprop_for_prefix: bool = False
   lazy_prefix_broadcast: bool = False

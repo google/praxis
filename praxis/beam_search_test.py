@@ -181,6 +181,7 @@ class BeamSearchTest(test_utils.TestCase):
   @parameterized.parameters(
       (
           [],
+          0,
           False,
           [[
               [2, 3, 4, 0, 0],
@@ -198,7 +199,27 @@ class BeamSearchTest(test_utils.TestCase):
           [[False, False, False, False]],
       ),
       (
+          [],
+          1,
+          False,
+          [[
+              [2, 3, 3, 4, 0],
+              [2, 3, 0, 3, 4],
+              [2, 3, 1, 0, 4],
+              [2, 3, 0, 4, 0],
+          ]],
+          [[4, 5, 5, 4]],
+          [
+              [[3, 3], [3, 4]],
+              [[3, 0], [0, 3], [3, 4]],
+              [[3, 1], [1, 0], [0, 4]],
+              [[3, 0], [0, 4]],
+          ],
+          [[False, False, False, False]],
+      ),
+      (
           [3, 1],
+          0,
           False,
           [[
               [2, 3, 4, 3, 0],
@@ -217,6 +238,7 @@ class BeamSearchTest(test_utils.TestCase):
       ),
       (
           [],
+          0,
           True,
           [[
               [2, 3, 4, 0, 0],
@@ -233,23 +255,44 @@ class BeamSearchTest(test_utils.TestCase):
           ],
           [[True, True, True, True]],
       ),
+      (
+          [],
+          1,
+          True,
+          [[
+              [2, 3, 3, 4, 0],
+              [2, 3, 3, 4, 4],
+              [2, 3, 0, 3, 4],
+              [2, 3, 1, 0, 4],
+          ]],
+          [[4, 5, 5, 5]],
+          [
+              [[3, 3], [3, 4]],
+              [[3, 3], [3, 4], [4, 4]],
+              [[3, 0], [0, 3], [3, 4]],
+              [[3, 1], [1, 0], [0, 4]],
+          ],
+          [[True, True, True, True]],
+      ),
   )
   def test_vanilla_beam_search_base(
       self,
       parse_tokens,
+      min_decode_steps,
       early_exit,
       target_output_ids,
       target_decode_ids,
       target_logprob_indexes,
       target_done,
   ):
-    # Set length_norm_alpha to maket length_norm = 1.0
+    # Set length_norm_alpha to make length_norm = 1.0
     length_norm_alpha = 0.0
     seq_len = 5
     p = models.BeamSearchHParams(
         beam_size=4,
         eos_id=parse_tokens if parse_tokens else 4,
         fprop_for_prefix=True,
+        min_decode_steps=min_decode_steps,
         max_decode_steps=3,
         seqlen=seq_len,
         length_norm_alpha=length_norm_alpha,
