@@ -9,12 +9,13 @@ fiddle @ git+https://github.com/google/fiddle
 flax
 jax @ git+https://github.com/google/jax
 jax-bitempered-loss
+jaxtyping
 lingvo
 numpy
 optax
 optax-shampoo
-tensorflow~=2.9.2
-tensorflow-text~=2.9.0
 tensorflow-datasets==4.8.3
-tfds-nightly==4.8.3.dev202303280045
 tensorflow-metadata==1.12.0
+tensorflow-text~=2.9.0
+tensorflow~=2.9.2
+tfds-nightly==4.8.3.dev202303280045

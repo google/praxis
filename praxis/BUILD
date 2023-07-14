@@ -246,6 +246,7 @@ pytype_strict_library(
         ":lingvo_lib",
         # Implicit clu.metrics dependency.
         # Implicit jax dependency.
+        # Implicit jaxtyping dependency.
         # Implicit numpy dependency.
     ],
 )

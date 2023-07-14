@@ -20,6 +20,7 @@ import clu.metrics as clu_metrics
 import jax
 from jax import core
 from jax import numpy as jnp
+from jaxtyping import AbstractDtype, Bool, Float, Int, Float32, Int32, PyTree, Shaped, jaxtyped  # pylint: disable=g-multiple-import, g-importing-member, unused-import
 import numpy as np
 from praxis import lingvo_lib
 
@@ -69,3 +70,19 @@ Metrics = Union[NestedMap, Dict[str, clu_metrics.Metric]]
 LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]
 
 DotGeneralT = Callable[..., jnp.ndarray]
+
+
+# jaxtyping utils.
+class _MetaArrayT(type):
+  types = ()
+
+  def __instancecheck__(cls, obj):
+    return isinstance(obj, cls.types)
+
+
+class JaxArrayT(metaclass=_MetaArrayT):
+  types = (jax.Array, jax.ShapeDtypeStruct)
+
+
+class ArrayT(metaclass=_MetaArrayT):
+  types = (JaxArrayT, np.ndarray)
