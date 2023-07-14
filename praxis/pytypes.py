@@ -54,8 +54,8 @@ NestedShapeDtypeLike = Union[
 ]
 
 # Sharding annotation for a dim can be a single int, or a str, or a sequence of
-# (int, str), or None. For example "1", "-1", "None", "data", "(data, replia)"
-# are all valid sharding annoations for a particular tensor axis.
+# (int, str), or None. For example "1", "-1", "None", "data", "(data, replica)"
+# are all valid sharding annotations for a particular tensor axis.
 DimShardingAnnotation = Optional[Union[Sequence[Union[int, str]], int, str]]
 SplitDimsMapping = Optional[Sequence[DimShardingAnnotation]]
 
