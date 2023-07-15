@@ -2303,7 +2303,7 @@ class BaseLayer(nn.Module):
             'field that contains a Fiddle Config.'
         )
       raise ValueError(msg + f'\nparams={params}')
-    if name is self._private_children:
+    if name in self._private_children:
       raise ValueError(
           f'Child `{name}` already exists: make sure to use unique child names.'
       )
