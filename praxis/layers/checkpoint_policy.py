@@ -37,6 +37,7 @@ class AutodiffCheckpointType(str, enum.Enum):
   SAVE_QUANTIZED = 'save_quantized'
   SAVE_QKV_OUT_PROJ_SEPARATE = 'save_qkv_out_proj_separate'
   SAVE_DOT_EXCEPT_LOGITS_FFN1 = 'save_dot_except_logits_ffn1'
+  SAVE_DOT_EXCEPT_LOGITS = 'save_dot_except_logits'
 
 
 def custom_policy(checkpoint_policy: AutodiffCheckpointType):
@@ -96,6 +97,17 @@ def custom_policy(checkpoint_policy: AutodiffCheckpointType):
         'key_proj',
         'context',
         'out_proj',
+        'ffn2',
+    )
+  if checkpoint_policy == AutodiffCheckpointType.SAVE_DOT_EXCEPT_LOGITS:
+    return jax.checkpoint_policies.save_only_these_names(
+        'combined_qkv_proj',
+        'query_proj',
+        'value_proj',
+        'key_proj',
+        'context',
+        'out_proj',
+        'ffn1',
         'ffn2',
     )
   assert checkpoint_policy == AutodiffCheckpointType.SAVE_NOTHING

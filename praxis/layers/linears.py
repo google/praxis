@@ -19,12 +19,14 @@ from typing import Optional
 
 from jax import numpy as jnp
 from jax import vmap
+from jax.ad_checkpoint import checkpoint_name
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
 from praxis.layers import base_ops
+
 
 NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
@@ -151,6 +153,7 @@ class FeedForward(base_layer.BaseLayer):
     linear_tpl: Linear layer params.
     activation_tpl: Activation layer params.
     bias_init: Init scale (constant) of bias terms.
+    checkpoint_str: name to checkpoint the tensor output from nn.linear.
   """
   input_dims: int = 0
   output_dims: int = 0
@@ -162,6 +165,7 @@ class FeedForward(base_layer.BaseLayer):
   ] = template_field(activations.ReLU)
   weight_init: Optional[WeightInit] = None
   bias_init: Optional[float] = 0.0
+  checkpoint_str: str | None = None
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -193,6 +197,8 @@ class FeedForward(base_layer.BaseLayer):
 
   def __call__(self, inputs: JTensor) -> JTensor:
     projected_inputs = self.linear(inputs)
+    if self.checkpoint_str is not None:
+      projected_inputs = checkpoint_name(projected_inputs, self.checkpoint_str)
     if self.has_bias:
       projected_inputs = self.bias(projected_inputs)
     output = self.activation(projected_inputs)

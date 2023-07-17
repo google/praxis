@@ -365,6 +365,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
     ffn1_p.output_dims = self.hidden_dims
     ffn1_p.weight_split_dims_mapping.wt = wp.ffn0
     ffn1_p.activation_split_dims_mapping.out = ap.ffn0
+    ffn1_p.checkpoint_str = 'ffn1'
     if self.internal_gshard_variance_scaling_fan_in_init:
       scale = (1.0 / self.input_dims) ** 0.5 * (3.0**0.5)
       ffn1_p.linear_tpl.params_init = WeightInit.Uniform(scale)
@@ -448,7 +449,6 @@ class TransformerFeedForward(base_layer.BaseLayer):
       activations = gate_value * self.ffn_layer1(inputs)
     else:
       activations = self.ffn_layer1(inputs)
-      activations = checkpoint_name(activations, 'ffn1')
 
     # Apply paddings if not None
     if not self.apply_padding_first and paddings is not None:
