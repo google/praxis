@@ -211,10 +211,13 @@ class MLPBlock(base_layer.BaseLayer):
   Attributes:
     num_layers: Number of FeedForward layers.
     hidden_dims: Dimension of hidden layers.
+    activate_final: If False, the activation layer is not applied after the last
+      layer.
     ff_tpl: Feedforward layer params.
   """
   num_layers: int = 3
   hidden_dims: int = 128
+  activate_final: bool = True
   ff_tpl: LayerTpl = template_field(FeedForward)
 
   def setup(self) -> None:
@@ -234,6 +237,8 @@ class MLPBlock(base_layer.BaseLayer):
     mlp_layers = [hidden_layer_p.clone() for _ in range(self.num_layers)]
     mlp_layers[0].set(input_dims=self.ff_tpl.input_dims)
     mlp_layers[-1].set(output_dims=self.ff_tpl.output_dims)
+    if not self.activate_final:
+      mlp_layers[-1].set(activation_tpl=pax_fiddle.Config(activations.Identity))
     self.create_children('mlp_layers', mlp_layers)
 
   def __call__(self, inputs: JTensor) -> JTensor:

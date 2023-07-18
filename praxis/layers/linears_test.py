@@ -116,6 +116,31 @@ class LinearsTest(test_utils.TestCase):
     tf_np_outputs = to_np(tf_output)
     self.assertAllClose(tf_np_outputs, np_outputs, atol=1e-6)
 
+  def test_mlp_block_activate_final(self):
+    ffn_p = pax_fiddle.Config(
+        linears.FeedForward,
+        name='jax_ffn',
+        input_dims=3,
+        output_dims=20,
+        activation_tpl=pax_fiddle.Config(activations.Tanh),
+    )
+    mlp_p_activate = pax_fiddle.Config(
+        linears.MLPBlock, name='jax_mlp', activate_final=True, ff_tpl=ffn_p
+    )
+    mlp_activate = instantiate(mlp_p_activate)
+    mlp_p_no_activate = mlp_p_activate.clone().set(activate_final=False)
+    mlp_no_activate = instantiate(mlp_p_no_activate)
+
+    npy_input = np.random.normal(1.0, 0.5, [10, 10, ffn_p.input_dims]).astype(
+        'float32'
+    )
+    inputs = jnp.asarray(npy_input)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = mlp_activate.init(prng_key, inputs)
+    outputs_activate = mlp_activate.apply(initial_vars, inputs)
+    outputs_no_activate = mlp_no_activate.apply(initial_vars, inputs)
+    self.assertAllClose(outputs_activate, np.tanh(outputs_no_activate))
+
   @parameterized.named_parameters(
       {
           'testcase_name': 'ReLU',
