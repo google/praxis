@@ -1574,8 +1574,11 @@ class BertModel(base_model.BaseModel):
         num_tokens=(num_tokens, jnp.array(1.0, num_tokens.dtype)),
         num_seqs=(num_seqs, jnp.array(1.0, num_seqs.dtype)),
     )
-
-    per_example_output = py_utils.NestedMap()
+    per_example_output = py_utils.NestedMap(
+        per_sequence_xent=predictions.per_sequence_xent,
+        predicted_labels=predicted_labels,
+        augmented_labels=predictions.augmented_labels,
+    )
     return metrics, per_example_output
 
 
