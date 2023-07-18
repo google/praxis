@@ -15,6 +15,7 @@
 
 """Convolutional layers."""
 
+import dataclasses
 import math
 from typing import Optional, Sequence, Tuple
 
@@ -88,7 +89,9 @@ class Conv2D(base_layer.BaseLayer):
   filter_stride: Sequence[int] = (0, 0)
   dilations: Sequence[int] = (1, 1)
   bias: bool = False
-  bias_init: WeightInit = WeightInit.Constant(0.0)
+  bias_init: WeightInit = dataclasses.field(
+      default_factory=lambda: WeightInit.Constant(0.0)
+  )
   kernel_init: Optional[WeightInit] = None
   padding: str = 'SAME'
   tf_equivalent_padding: bool = False
@@ -307,7 +310,9 @@ class Conv3D(base_layer.BaseLayer):
   filter_stride: Sequence[int] = (0, 0, 0)
   dilations: Sequence[int] = (1, 1, 1)
   bias: bool = False
-  bias_init: WeightInit = WeightInit.Constant(0.0)
+  bias_init: WeightInit = dataclasses.field(
+      default_factory=lambda: WeightInit.Constant(0.0)
+  )
   kernel_init: Optional[WeightInit] = None
   padding: str = 'SAME'
   tf_equivalent_padding: bool = False
@@ -625,7 +630,9 @@ class BaseDepthwiseConv1D(base_layer.BaseLayer):
 
   filter_shape: Sequence[int] = (0, 0, 0)
   bias: bool = False
-  bias_init: WeightInit = WeightInit.Constant(0.0)
+  bias_init: WeightInit = dataclasses.field(
+      default_factory=lambda: WeightInit.Constant(0.0)
+  )
   is_causal: bool = False
   use_2d_conv_weight_shape: bool = False
   rhs_dilation_rate: int = 1

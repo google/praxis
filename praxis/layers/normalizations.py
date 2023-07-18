@@ -15,6 +15,7 @@
 
 """Normalization layers."""
 
+import dataclasses
 from typing import List, Optional, Tuple
 
 import jax
@@ -156,7 +157,9 @@ class BatchNorm(BaseNormalization):
   use_moving_avg_in_training: bool = False
   set_padded_output_to_zero: bool = True
   force_eval_mode: bool = False
-  gamma_init: WeightInit = WeightInit.Constant(0.0)
+  gamma_init: WeightInit = dataclasses.field(
+      default_factory=lambda: WeightInit.Constant(0.0)
+  )
 
   def _get_weight_shape(self) -> List[int]:
     return [self.dim]

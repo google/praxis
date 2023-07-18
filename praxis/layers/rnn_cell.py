@@ -15,6 +15,7 @@
 
 """RNN-related layers."""
 
+import dataclasses
 import jax
 from jax import numpy as jnp
 from praxis import asserts
@@ -171,7 +172,9 @@ class LstmCellSimple(BaseRnnCell):
   forget_gate_bias: float = 0.0
   output_nonlinearity: bool = True
   zo_prob: float = 0.0
-  bias_init: WeightInit = WeightInit.Constant(0.0)
+  bias_init: WeightInit = dataclasses.field(
+      default_factory=lambda: WeightInit.Constant(0.0)
+  )
 
   @property
   def num_gates(self) -> int:
