@@ -625,41 +625,58 @@ class LanguageModel(base_model.BaseModel):
         )
       next_token_sampler = base_layer.instantiate(next_token_sampler_p)
 
-      result = sample_decode.sample_decode(
-          self.lm,
-          extend_step_fn,
-          transform_decode_state_fn,
-          lazy_broadcast_prefix_fn
-          if decoder_params.lazy_prefix_broadcast
-          else None,
-          next_token_sampler,
-          decode_data.input_ids,
-          decode_data.input_paddings,
-          decode_data.seqlen,
-          fprop_fn=fprop_fn,
-          num_samples=decoder_params.num_samples,
-          fprop_for_prefix=decoder_params.fprop_for_prefix,
-          temperature=temperature,
-          per_example_top_p=per_example_top_p,
-          per_example_top_k=per_example_top_k,
-          max_prefix_len=max_prefix_len,
-          max_decode_steps=decoder_params.max_decode_steps,
-          per_example_max_decode_steps=per_example_max_decode_steps,
-          prefix_lengths=decode_data.prefix_lengths,
-          eos_id=eos_id,
-          return_result_for_suffix_score=return_result_for_suffix_score,
-          result_callback=result_callback,
-          cf_guidance_scale=decoder_params.cf_guidance_scale,
-          gumbel_prng_key=gumbel_prng_key,
-          controlled_decoding=decoder_params.controlled_decoding,
-          decode_loop_mesh_axes_transpose=decode_mesh_transpose,
-          model_var_pspecs=lm_var_pspecs,
-          sort_samples=decoder_params.sort_samples,
-          use_top_k_for_logprobs=decoder_params.use_top_k_for_logprobs,
-          return_entropy_score=return_entropy_score,
-          process_result_fn=decoder_params.process_result_fn,
-          optimize_eos=decoder_params.optimize_eos,
-      )
+      if decoder_params.vanilla_sample_decode:
+        result = sample_decode.vanilla_sample_decode(
+            model=self.lm,
+            fprop_fn=fprop_fn,
+            extend_step_fn=extend_step_fn,
+            transform_state_fn=transform_decode_state_fn,
+            next_token_sampler=next_token_sampler,
+            prefix_ids=decode_data.fprop_input_ids,
+            prefix_paddings=decode_data.fprop_input_paddings,
+            temperature=temperature,
+            gumbel_prng_key=gumbel_prng_key,
+            max_decode_steps=decoder_params.max_decode_steps,
+            eos_id=eos_id,
+            decode_loop_mesh_axes_transpose=decode_mesh_transpose,
+            model_var_pspecs=lm_var_pspecs,
+        )
+      else:
+        result = sample_decode.sample_decode(
+            self.lm,
+            extend_step_fn,
+            transform_decode_state_fn,
+            lazy_broadcast_prefix_fn
+            if decoder_params.lazy_prefix_broadcast
+            else None,
+            next_token_sampler,
+            decode_data.input_ids,
+            decode_data.input_paddings,
+            decode_data.seqlen,
+            fprop_fn=fprop_fn,
+            num_samples=decoder_params.num_samples,
+            fprop_for_prefix=decoder_params.fprop_for_prefix,
+            temperature=temperature,
+            per_example_top_p=per_example_top_p,
+            per_example_top_k=per_example_top_k,
+            max_prefix_len=max_prefix_len,
+            max_decode_steps=decoder_params.max_decode_steps,
+            per_example_max_decode_steps=per_example_max_decode_steps,
+            prefix_lengths=decode_data.prefix_lengths,
+            eos_id=eos_id,
+            return_result_for_suffix_score=return_result_for_suffix_score,
+            result_callback=result_callback,
+            cf_guidance_scale=decoder_params.cf_guidance_scale,
+            gumbel_prng_key=gumbel_prng_key,
+            controlled_decoding=decoder_params.controlled_decoding,
+            decode_loop_mesh_axes_transpose=decode_mesh_transpose,
+            model_var_pspecs=lm_var_pspecs,
+            sort_samples=decoder_params.sort_samples,
+            use_top_k_for_logprobs=decoder_params.use_top_k_for_logprobs,
+            return_entropy_score=return_entropy_score,
+            process_result_fn=decoder_params.process_result_fn,
+            optimize_eos=decoder_params.optimize_eos,
+        )
 
     elif template_has_type(decoder_params, GreedyDecoderHParams):
       assert isinstance(decoder_params, GreedyDecoderHParams)
@@ -727,8 +744,17 @@ class LanguageModel(base_model.BaseModel):
       - out_clu_metrics, a NestedMap containing str keys and clu_metrics.Metric
         objects. This is currently unused.
     """
-    # Optionally get all samples output in text format.
-    batch_size, num_samples, max_len = decode_out.output_ids.shape
+    # In vanilla_sample_decode, num_samples = 1.
+    if len(decode_out.output_ids.shape) == 2:
+      batch_size, max_len = decode_out.output_ids.shape
+      num_samples = 1
+    elif len(decode_out.output_ids.shape) == 3:
+      batch_size, num_samples, max_len = decode_out.output_ids.shape
+    else:
+      raise ValueError(
+          'output shape is incorrect, expected a 2 or 3 tuple'
+          f' but got {len(decode_out.output_ids.shape)}'
+      )
     if num_samples > 1:
       sampled_ids = np.reshape(decode_out.output_ids, [-1, max_len])
       sampled_lengths = np.reshape(decode_out.decode_lengths, [-1])
@@ -738,14 +764,18 @@ class LanguageModel(base_model.BaseModel):
       sampled_strs = None
 
     # Get the first output within a batch.
-    decode_out.output_ids = decode_out.output_ids[:, 0, :]
-    decode_out.decode_lengths = decode_out.decode_lengths[:, 0]
-    decode_out.original_lengths = decode_out.original_lengths[:, 0]
-    decode_out.prefix_ids = decode_out.prefix_ids[:, 0, :]
-    decode_out.logprobs = decode_out.logprobs[:, 0, :]
+    if len(decode_out.output_ids.shape) == 3:
+      decode_out.output_ids = decode_out.output_ids[:, 0, :]
+      decode_out.decode_lengths = decode_out.decode_lengths[:, 0]
+      decode_out.original_lengths = decode_out.original_lengths[:, 0]
+      decode_out.prefix_ids = decode_out.prefix_ids[:, 0, :]
+      decode_out.logprobs = decode_out.logprobs[:, 0, :]
     if decode_out.prefix_lengths.ndim == 2:
       decode_out.prefix_lengths = decode_out.prefix_lengths[:, 0]
 
+    # for vanilla_sample_decode
+    if 'original_lengths' not in decode_out:
+      decode_out.original_lengths = decode_out.prefix_lengths
     decoded_strs = input_obj.ids_to_strings(
         decode_out.output_ids, decode_out.decode_lengths
     )

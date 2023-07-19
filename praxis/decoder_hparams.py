@@ -124,6 +124,7 @@ class SampleDecoderHParams(DecoderHParams):
       performed, but it is currently enabled for back-compatibility reasons.
     optimize_eos: Whether to optimize the eos prediction by recording eos
       probability at each step.
+    vanilla_sample_decode: Switch to vanilla sample decode.
   """
   num_samples: int = 1
   # TODO(wangtao): supports per-example temperature.
@@ -141,3 +142,4 @@ class SampleDecoderHParams(DecoderHParams):
   sort_samples: Optional[bool] = True
   override_next_token_sampler_params: bool = True
   optimize_eos: bool = False
+  vanilla_sample_decode: bool = False
