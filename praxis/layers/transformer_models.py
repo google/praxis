@@ -535,8 +535,12 @@ class TransformerLm(base_layer.BaseLayer):
 
     # Final softmax
     softmax_params = self.softmax_tpl.clone()
-    softmax_params.input_dims = self.model_dims
-    softmax_params.num_classes = self.vocab_size
+    if hasattr(self.softmax_tpl.cls, 'input_dims'):
+      softmax_params.input_dims = self.model_dims
+    if hasattr(self.softmax_tpl.cls, 'num_classes') and not isinstance(
+        self.softmax_tpl.cls.num_classes, property
+    ):
+      softmax_params.num_classes = self.vocab_size
     self.create_child('softmax', softmax_params)
 
   def init_states(self, *args: Any, **kwargs: Any) -> None:
@@ -549,7 +553,10 @@ class TransformerLm(base_layer.BaseLayer):
     raise NotImplementedError(type(self))
 
   def compute_loss(
-      self, activations: JTensor, labels: Optional[NestedMap] = None
+      self,
+      activations: JTensor,
+      labels: Optional[NestedMap] = None,
+      input_ids: Optional[JTensor] = None,
   ) -> NestedMap:
     """Computes cross entropy loss.
 
@@ -560,6 +567,7 @@ class TransformerLm(base_layer.BaseLayer):
         class_ids, a JTensor with shape [B, T] of int32 dtype containing the
         target class labels. class_probabilities, a JTensor with shape [B, T, V]
         of float values indicating class-membership probabilities.
+      input_ids: The input ids to the model of shape [B, T].
 
     Returns:
       Returns xent_output, where `xent_output` is a `.NestedMap` as defined by
@@ -567,7 +575,8 @@ class TransformerLm(base_layer.BaseLayer):
       equal to the sum of xent loss for tokens in a sequence.
     """
     if labels is None:
-      logits = self.softmax.get_logits(inputs=activations)
+      extra_kw_args = {'input_ids': input_ids} if input_ids is not None else {}
+      logits = self.softmax.get_logits(inputs=activations, **extra_kw_args)
       xent_output = NestedMap(logits=logits)
       # For numerical stability, use fp32 for softmax and log_softmax.
       logits_dtype = logits.dtype
@@ -584,11 +593,17 @@ class TransformerLm(base_layer.BaseLayer):
       if 'class_probabilities' in labels:
         class_probabilities = labels.class_probabilities
       class_weights = labels.class_weights[:, :, jnp.newaxis]
+      extra_kw_args = (
+          {'input_ids': input_ids[..., jnp.newaxis]}
+          if input_ids is not None
+          else {}
+      )
       xent_output = self.softmax(
           activations,
           class_weights,
           class_ids=class_ids,
           class_probabilities=class_probabilities,
+          **extra_kw_args,
       )
       per_token_xent = xent_output.per_example_xent * labels.class_weights
       xent_output.per_token_xent = per_token_xent
@@ -737,7 +752,7 @@ class TransformerLm(base_layer.BaseLayer):
       segment_pos = jnp.tile(
           jnp.arange(seq_length, dtype=jnp.int32)[None, :], [batch, 1]
       )
-
+    input_ids = inputs
     inputs = self._prepare_input(
         inputs, paddings, segment_pos=segment_pos, **input_kwargs
     )
@@ -778,7 +793,7 @@ class TransformerLm(base_layer.BaseLayer):
     if self.skip_compute_loss:
       return output
     else:
-      return self.compute_loss(output, labels)
+      return self.compute_loss(output, labels, input_ids=input_ids)
 
   def _emb_lookup(self, input_ids):
     """Token emb lookup.

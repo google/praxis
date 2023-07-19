@@ -221,15 +221,19 @@ class FullSoftmax(base_layer.BaseLayer):
     if self.bi_tempered_loss_tpl:
       self.create_child('bi_tempered_loss', self.bi_tempered_loss_tpl)
 
-  def get_logits(self, inputs: JTensor) -> JTensor:
+  def get_logits(
+      self, inputs: JTensor, input_ids: Optional[JTensor] = None
+  ) -> JTensor:
     """Returns logits given the inputs with an option to soft cap it.
 
     Args:
       inputs: a single JTensor with shape [..., input_dim].
+      input_ids: Unused. Needed for API compatibility with downstream usage.
 
     Returns:
       logits: with shape [..., num_classes]. Unnormalized softmax's logits.
     """
+    del input_ids
     if self.feed_forward_tpl is not None:
       # Compute logits.
       logits = self.logits_ffn(inputs)
@@ -251,6 +255,7 @@ class FullSoftmax(base_layer.BaseLayer):
       class_weights: JTensor,
       class_ids: Optional[JTensor] = None,
       class_probabilities: Optional[JTensor] = None,
+      input_ids: Optional[JTensor] = None,
   ) -> NestedMap:
     # pyformat:disable
     """Computes logits, softmax cross entropy etc.
@@ -260,7 +265,8 @@ class FullSoftmax(base_layer.BaseLayer):
       class_weights: [..., 1], weights for each target word.
       class_ids:     [..., 1], int32 type, target labels.
       class_probabilities: [..., num_classes].
-
+      input_ids: Unused but passed into get_logits. Needed for API compatibility
+        with downstream usage.
     Returns:
       A `.NestedMap` containing the following fields
 
@@ -631,15 +637,21 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
     )
     return embs
 
-  def get_logits(self, inputs: JTensor) -> JTensor:
+  def get_logits(
+      self,
+      inputs: JTensor,
+      input_ids: Optional[JTensor] = None,
+  ) -> JTensor:
     """Returns logits given the inputs with an option to cap it.
 
     Args:
       inputs: a single JTensor with shape [..., input_dim].
+      input_ids: Unused. Needed for API compatibility with downstream usage.
 
     Returns:
       logits: with shape [..., num_classes]. Unnormalized softmax's logits.
     """
+    del input_ids
     ap = self.activation_split_dims_mapping
     # activations are scaled with 1/sqrt(input_dims)
     inputs *= self.input_dims**-0.5
@@ -668,6 +680,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
       class_weights: JTensor,
       class_ids: Optional[JTensor] = None,
       class_probabilities: Optional[JTensor] = None,
+      input_ids: Optional[JTensor] = None,
   ) -> NestedMap:
     """Computes logits, cross entropy etc.
 
@@ -679,6 +692,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
         target class labels.
       class_probabilities: a JTensor with shape [..., num_classes] of float
         values indicating class-membership probabilities.
+      input_ids: Unused. Needed for API compatibility with downstream usage.
 
     Returns:
       A `.NestedMap` containing the following fields
@@ -693,6 +707,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
       - total_weight: A scalar. The sum of per_example_weight.
       - avg_xent: A scalar. total_loss / total_weight.
     """
+    del input_ids
     # Assert one of class_ids or class_probabilities is not None
     if class_ids is None and class_probabilities is None:
       raise ValueError('One of class_ids or class_probabilities must be given.')
