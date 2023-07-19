@@ -69,6 +69,14 @@ class ReLU(BaseActivation):
     return jax.nn.relu(inputs)
 
 
+class SineReLU(BaseActivation):
+  """sineReLU activation layer."""
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Applies the activation function."""
+    return jnp.sin(jax.nn.relu(inputs))
+
+
 class ReLU6(BaseActivation):
   """ReLU6 activation layer."""
 
