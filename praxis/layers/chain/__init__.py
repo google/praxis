@@ -15,6 +15,7 @@
 
 """Expose public api of Chain and utilities."""
 
+from praxis.layers.chain.chain import call_chain
 from praxis.layers.chain.chain import Chain
 from praxis.layers.chain.chain_extensions import add_residual
 from praxis.layers.chain.chain_extensions import apply_padding
