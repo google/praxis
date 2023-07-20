@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar
 
 import clu.metrics as clu_metrics
 import jax
+import jaxtyping
 from jax import core
 from jax import numpy as jnp
 from jaxtyping import AbstractDtype, Bool, Float, Int, Float32, Int32, PyTree, Shaped, jaxtyped  # pylint: disable=g-multiple-import, g-importing-member, unused-import
@@ -86,3 +87,13 @@ class JaxArrayT(metaclass=_MetaArrayT):
 
 class ArrayT(metaclass=_MetaArrayT):
   types = (JaxArrayT, np.ndarray)
+
+
+AnyJaxArray = Shaped[ArrayT, '...']
+AnyNPArray = Shaped[np.ndarray, '...']
+AnyArray = Shaped[ArrayT, '...']
+AnyPyTreeArray = jaxtyping.PyTree[AnyArray]
+FloatArray = Float[ArrayT, '...']
+Scalar = Shaped[ArrayT, ''] | Shaped[np.generic, ''] | Shaped[jnp.generic, '']
+ScalarInt = Int[ArrayT, ''] | Int[np.generic, ''] | Int[jnp.generic, '']
+ScalarFloat = Float[ArrayT, ''] | Float[np.generic, ''] | Float[jnp.generic, '']
