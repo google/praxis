@@ -249,6 +249,7 @@ class TransformerLm(base_layer.BaseLayer):
       (defaults to False)
     record_activations_in_xent_output: If true, record activations in the
       compute_loss output, so we have both the activations and logits available.
+    entropy_loss_weight: If not None, an entropy loss is added to training.
   """
 
   position_emb_tpl: LayerTpl = template_field(
@@ -273,6 +274,7 @@ class TransformerLm(base_layer.BaseLayer):
   skip_compute_loss: bool = False
   skip_aux_loss: bool = False
   record_activations_in_xent_output: bool = False
+  entropy_loss_weight: Optional[float] = None
 
   @classmethod
   def set_sharding_params_v1(
@@ -611,6 +613,29 @@ class TransformerLm(base_layer.BaseLayer):
 
       # Sum aux_loss and add to avg_xent.
       xent_output.total_loss = xent_output.avg_xent
+
+      # Add entropy loss if entropy_loss_weight is not None
+      if self.entropy_loss_weight is not None:
+        per_token_entropy_loss = jnp.sum(
+            jax.nn.softmax(xent_output.logits)
+            * jax.nn.log_softmax(xent_output.logits),
+            axis=-1,
+        )
+        avg_entropy_loss = jnp.sum(
+            per_token_entropy_loss * labels.class_weights
+        ) / jnp.sum(labels.class_weights)
+        self.add_summary(
+            'per_token_logits',
+            jnp.mean(xent_output.logits, -1)
+            * labels.class_weights
+            / jnp.sum(labels.class_weights),
+        )
+        xent_output.avg_entropy_loss = avg_entropy_loss
+        self.add_summary('avg_entropy_loss', avg_entropy_loss)
+        xent_output.total_loss += (
+            xent_output.avg_entropy_loss * self.entropy_loss_weight
+        )
+
       if not self.skip_aux_loss:
         aux_loss = 0.0
         aux_loss_weight = 0.0
