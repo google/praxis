@@ -428,12 +428,12 @@ def fakequant_einsum(
   Returns:
     The nudged weight tensor.
   """
-  orignal_shape = t.shape
+  original_shape = t.shape
   if block_size > 0:
     # TODO(jianlijianli): Make this more general.
-    assert orignal_shape[0] % block_size == 0
-    assert orignal_shape[0] >= block_size
-    t.reshape(block_size, orignal_shape[0] * orignal_shape[1] // block_size)
+    assert original_shape[0] % block_size == 0
+    assert original_shape[0] >= block_size
+    t.reshape(block_size, original_shape[0] * original_shape[1] // block_size)
   q, scale, zp = reduce_einsum_weight_precision(
       eqn,
       t,
@@ -448,7 +448,7 @@ def fakequant_einsum(
   if zp is not None:
     res = jnp.subtract(res, zp)
   if block_size > 0:
-    t.reshape(orignal_shape)
+    t.reshape(original_shape)
   return res.astype(t.dtype)
 
 
