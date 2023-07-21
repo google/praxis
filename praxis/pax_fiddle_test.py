@@ -17,8 +17,9 @@
 
 import copy
 import dataclasses
-from lingvo.core import nested_map
-from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Union
+import functools
+import types
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Union
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -26,10 +27,12 @@ import fiddle as fdl
 from fiddle import daglish
 from fiddle import testing
 from fiddle.experimental import serialization
+from fiddle.experimental import visualize
 from flax import core as flax_core
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
+from lingvo.core import nested_map
 from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import pax_fiddle
@@ -66,7 +69,7 @@ class Vehicle:
   def setup(self):
     assert self.wheels is None
     self.wheels = [
-        pax_fiddle.build(self.wheel_tpl).setup() for i in range(self.num_wheels)
+        pax_fiddle.build(self.wheel_tpl).setup() for _ in range(self.num_wheels)
     ]
     return self
 
@@ -90,7 +93,7 @@ class Fleet:
     assert self.vehicles is None
     self.vehicles = [
         pax_fiddle.build(self.vehicle_tpl).setup()
-        for i in range(self.num_vehicles)
+        for _ in range(self.num_vehicles)
     ]
     return self
 
@@ -98,12 +101,12 @@ class Fleet:
 @dataclasses.dataclass
 class BusStop:
   location: str  # required arg.
-  times: list = dataclasses.field(default_factory=list)
+  times: List[int] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass
 class HourlyBusStop(BusStop):
-  times: list = dataclasses.field(default_factory=lambda: list(range(24)))
+  times: List[int] = dataclasses.field(default_factory=lambda: list(range(24)))
 
 
 @dataclasses.dataclass
@@ -318,9 +321,389 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     self.assertIsNot(v1.items, v2.items)
     self.assertIsNot(v1.tags, v2.tags)
 
-    cfg.items.append(fdl.Config(Wheel))
+    cfg.items.append(pax_fiddle.Config(Wheel))
     v3 = cfg.Instantiate()
     self.assertEqual(v3, TestCls(items=[Wheel()]))
+
+
+class SampleTag(fdl.Tag):
+  """A tag used in testing."""
+
+
+class AdditionalTag(fdl.Tag):
+  """A second tag to test multiple tags."""
+
+
+@dataclasses.dataclass
+class ATaggedType:
+  untagged: str
+  tagged: str = pax_fiddle.field(tags=SampleTag, default="tagged")
+  double_tagged: str = pax_fiddle.field(
+      tags=(AdditionalTag, SampleTag), default_factory=lambda: "other_field"
+  )
+
+  @pax_fiddle.auto_config
+  @classmethod
+  def default(cls):
+    return cls(untagged="untagged_default")
+
+
+@dataclasses.dataclass
+class AnotherTaggedType:
+  tagged: str = pax_fiddle.field(tags=AdditionalTag, default="tagged")
+
+
+def sample_fn():
+  return 1
+
+
+@pax_fiddle.auto_config
+def nested_structure():
+  return {"foo": [sample_fn(), (2, 3)]}
+
+
+@dataclasses.dataclass
+class AnAutoconfigType:
+  tagged_type: ATaggedType = pax_fiddle.field(
+      default_factory=ATaggedType.default
+  )
+  another_default: Dict[str, Any] = pax_fiddle.field(
+      default_factory=nested_structure
+  )
+
+  # We need this for `AncestorType` below, but we might be able to make
+  # `pax_fiddle.auto_config(AnAutoconfigType)` work in the future.
+  @pax_fiddle.auto_config
+  @classmethod
+  def default(cls):
+    return cls()
+
+
+@dataclasses.dataclass
+class AncestorType:
+  # We might want to make this more compact.
+  child: AnAutoconfigType = pax_fiddle.field(
+      default_factory=AnAutoconfigType.default
+  )
+
+
+@dataclasses.dataclass
+class Parent:
+  """A class w/ a field that uses configurable_factory=True."""
+
+  child: AnAutoconfigType = pax_fiddle.field(
+      default_factory=AnAutoconfigType, configurable_factory=True
+  )
+  y: int = 0
+
+
+@dataclasses.dataclass
+class ParentPair:
+  first: Parent = pax_fiddle.field(
+      default_factory=Parent, configurable_factory=True
+  )
+  second: Parent = pax_fiddle.field(
+      default_factory=Parent, configurable_factory=True
+  )
+
+
+@dataclasses.dataclass
+class ParentWithOptionalChild:
+  child: Any = None
+
+
+@dataclasses.dataclass
+class ParentWithATaggedTypeChild:
+  child: Any = pax_fiddle.field(
+      default_factory=ATaggedType, configurable_factory=True
+  )
+
+
+@dataclasses.dataclass
+class A:
+  x: int = 0
+
+
+@dataclasses.dataclass
+class B:
+  a: A = pax_fiddle.field(default_factory=A, configurable_factory=True)
+
+
+@dataclasses.dataclass
+class C:
+  b: B = pax_fiddle.field(default_factory=B, configurable_factory=True)
+
+  @pax_fiddle.auto_config
+  @classmethod
+  def factory(cls):
+    return functools.partial(cls)
+
+  @pax_fiddle.auto_config
+  @classmethod
+  def factory2(cls):
+    return functools.partial(cls, b=B())
+
+
+@dataclasses.dataclass
+class D:
+  c_factory: Callable[..., C] = pax_fiddle.field(default_factory=C.factory)
+
+  @pax_fiddle.auto_config
+  @classmethod
+  def factory(cls):
+    return functools.partial(cls)
+
+
+@dataclasses.dataclass
+class D2:
+  c_factory: Callable[..., C] = pax_fiddle.field(default_factory=C.factory2)
+
+  @pax_fiddle.auto_config
+  @classmethod
+  def factory(cls):
+    return functools.partial(cls)
+
+
+@dataclasses.dataclass
+class E:
+  d_factory: Callable[..., D2] = pax_fiddle.field(default_factory=D2.factory)
+
+
+class DataclassFieldExpansionTest(testing.TestCase):
+
+  def test_dataclass_tagging(self):
+    config = pax_fiddle.Config(ATaggedType)
+
+    self.assertEqual({SampleTag}, fdl.get_tags(config, "tagged"))
+    self.assertEqual(
+        {SampleTag, AdditionalTag}, fdl.get_tags(config, "double_tagged")
+    )
+
+    fdl.set_tagged(config, tag=AdditionalTag, value="set_correctly")
+
+    self.assertEqual(config.double_tagged, "set_correctly")
+
+  def test_metadata_passthrough(self):
+    other_metadata = types.MappingProxyType({"something": 4})
+    constructed_field = pax_fiddle.field(metadata=other_metadata)
+
+    self.assertIn("something", constructed_field.metadata)
+    self.assertEqual(4, constructed_field.metadata["something"])
+
+  def test_auto_config_basic_equality(self):
+    self.assertEqual(
+        pax_fiddle.build(pax_fiddle.Config(AnAutoconfigType)),
+        AnAutoconfigType(),
+    )
+    self.assertEqual(
+        pax_fiddle.build(pax_fiddle.Config(AncestorType)), AncestorType()
+    )
+
+  def test_name_set_in_both_cases(self):
+    # A slightly more concrete test of the above.
+    self.assertEqual(
+        pax_fiddle.build(
+            pax_fiddle.Config(AnAutoconfigType)
+        ).tagged_type.untagged,
+        "untagged_default",
+    )
+    self.assertEqual(
+        AnAutoconfigType().tagged_type.untagged, "untagged_default"
+    )
+
+  def test_auto_config_override_equality(self):
+    self.assertEqual(
+        AnAutoconfigType(another_default={"3": 4}).another_default, {"3": 4}
+    )
+    self.assertEqual(
+        pax_fiddle.build(
+            pax_fiddle.Config(AnAutoconfigType, another_default={"3": 4})
+        ),
+        AnAutoconfigType(another_default={"3": 4}),
+    )
+
+  def test_auto_config_field_init(self):
+    config = pax_fiddle.Config(AnAutoconfigType)
+    config.another_default["foo"][1] += (4,)
+    obj = pax_fiddle.build(config)
+    self.assertEqual(obj.another_default, {"foo": [1, (2, 3, 4)]})
+
+  def test_mandatory_fields(self):
+    @dataclasses.dataclass
+    class TwoMandatoryFieldsDataclass:
+      foo: int = pax_fiddle.field(tags=SampleTag)
+      bar: int
+
+    instance = TwoMandatoryFieldsDataclass(3, 4)
+    self.assertEqual(instance.foo, 3)
+    self.assertEqual(instance.bar, 4)
+
+  def test_invalid_definition_with_defaults(self):
+    with self.assertRaisesRegex(
+        ValueError, "cannot specify both default and default_factory"
+    ):
+      pax_fiddle.field(default_factory=nested_structure, default=4)
+
+  def test_configurable_factory(self):
+    config = pax_fiddle.Config(ParentPair)
+    expected_config = pax_fiddle.Config(
+        ParentPair,
+        pax_fiddle.Config(Parent, child=pax_fiddle.Config(AnAutoconfigType)),
+        pax_fiddle.Config(Parent, child=pax_fiddle.Config(AnAutoconfigType)),
+    )
+    self.assertDagEqual(config, expected_config)
+    self.assertEqual(pax_fiddle.build(config), ParentPair())
+
+  def test_configurable_factory_can_be_configured(self):
+    # Create a config and make some changes to it.
+    config = pax_fiddle.Config(ParentPair)
+    config.first.y = 100
+    config.second.child.another_default = {"x": 1}
+    fdl.set_tagged(config, tag=SampleTag, value="changed")
+
+    # Create a ParentPair object and make the same changes.
+    expected_result = ParentPair()
+    expected_result.first.y = 100
+    expected_result.second.child.another_default = {"x": 1}
+    expected_result.first.child.tagged_type.tagged = "changed"
+    expected_result.first.child.tagged_type.double_tagged = "changed"
+    expected_result.second.child.tagged_type.tagged = "changed"
+    expected_result.second.child.tagged_type.double_tagged = "changed"
+
+    self.assertEqual(pax_fiddle.build(config), expected_result)
+
+  def test_configurable_factory_no_unintentional_aliasing(self):
+    config = pax_fiddle.Config(ParentPair)
+    self.assertIsNot(config.first, config.second)
+    self.assertIsNot(config.first.child, config.second.child)
+    self.assertIsNot(
+        config.first.child.tagged_type, config.second.child.tagged_type
+    )
+    self.assertIsNot(
+        config.first.child.another_default, config.second.child.another_default
+    )
+
+    val = pax_fiddle.build(config)
+    self.assertIsNot(val.first, val.second)
+    self.assertIsNot(val.first.child, val.second.child)
+    self.assertIsNot(val.first.child.tagged_type, val.second.child.tagged_type)
+    self.assertIsNot(
+        val.first.child.another_default, val.second.child.another_default
+    )
+
+  def test_configurable_factory_autoconfig_error(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "configurable_factory should not be used with auto_config'ed functions",
+    ):
+      pax_fiddle.field(
+          default_factory=AnAutoconfigType.default, configurable_factory=True
+      )
+
+  def test_nested_dataclass_default_factories(self):
+    with self.subTest("config_value"):
+      cfg = pax_fiddle.Config(D)
+      expected = pax_fiddle.Config(
+          D,
+          c_factory=pax_fiddle.Partial(
+              C, pax_fiddle.ArgFactory(B, pax_fiddle.ArgFactory(A))
+          ),
+      )
+      self.assertDagEqual(cfg, expected)
+
+    with self.subTest("built_value_identity"):
+      for d in [D(), pax_fiddle.build(pax_fiddle.Config(D))]:
+        c1 = d.c_factory()
+        c2 = d.c_factory()
+        self.assertIsNot(c1, c2)
+        self.assertIsNot(c1.b, c2.b)
+        self.assertIsNot(c1.b.a, c2.b.a)
+
+    with self.subTest("change_arg_factory_to_config"):
+      cfg = pax_fiddle.Config(D)
+      cfg.c_factory.b = pax_fiddle.Config(B)  # Now this will be shared.
+      d = pax_fiddle.build(cfg)
+      c1 = d.c_factory()
+      c2 = d.c_factory()
+      self.assertIsNot(c1, c2)
+      self.assertIs(c1.b, c2.b)
+      self.assertIs(c1.b.a, c2.b.a)
+
+    with self.subTest("double_partial"):
+      with self.assertRaisesRegex(ValueError, "Unable to safely replace"):
+        pax_fiddle.Config(E)
+
+    with self.subTest("expand_dataclass_default_factories_docstring"):
+      f = lambda x: x
+      g = lambda v=0: [v]
+      make_fn = pax_fiddle.auto_config(lambda: functools.partial(f, x=g()))
+
+      @dataclasses.dataclass
+      class Test:
+        fn: Callable[[], object] = pax_fiddle.field(default_factory=make_fn)
+
+      with self.assertRaisesRegex(ValueError, "Unable to safely replace"):
+        pax_fiddle.Partial(Test)
+
+  def test_field_has_tag(self):
+    self.assertTrue(
+        pax_fiddle.field_has_tag(pax_fiddle.field(tags=SampleTag), SampleTag)
+    )
+    self.assertTrue(
+        pax_fiddle.field_has_tag(
+            pax_fiddle.field(tags=(SampleTag, AdditionalTag)), SampleTag
+        )
+    )
+    self.assertFalse(
+        pax_fiddle.field_has_tag(
+            pax_fiddle.field(tags=AdditionalTag), SampleTag
+        )
+    )
+    self.assertFalse(pax_fiddle.field_has_tag(pax_fiddle.field(), SampleTag))
+    self.assertFalse(pax_fiddle.field_has_tag(dataclasses.field(), SampleTag))
+
+  def test_update_callable_for_tagged_fields(self):
+    cfg = pax_fiddle.Config(ATaggedType)
+    self.assertEqual(fdl.get_tags(cfg, "tagged"), {SampleTag})
+
+    # When we switch to a new dataclass callable, any tags associated with
+    # fields get added.
+    pax_fiddle.update_callable(cfg, AnotherTaggedType)
+    self.assertEqual(fdl.get_tags(cfg, "tagged"), {SampleTag, AdditionalTag})
+
+    # Even if we've manually adjusted the tags, they will get added.
+    fdl.clear_tags(cfg, "tagged")
+    pax_fiddle.update_callable(cfg, ATaggedType)
+    self.assertEqual(fdl.get_tags(cfg, "tagged"), {SampleTag})
+
+  def test_update_callable_for_configurable_factories(self):
+    with self.subTest("add_configurable_factory"):
+      # update_callable will add configurable factories for any fields that
+      # do not have any (explicit) value.
+      cfg = pax_fiddle.Config(ParentWithOptionalChild)
+      self.assertIsNone(cfg.child)
+      pax_fiddle.update_callable(cfg, Parent)
+      self.assertEqual(fdl.get_callable(cfg.child), AnAutoconfigType)
+
+    with self.subTest("do_not_overwrite_explicit_value"):
+      # This example differs from the one above in that child is *explicitly*
+      # set to `None`, so it won't get overwritten.
+      cfg = pax_fiddle.Config(ParentWithOptionalChild, child=None)
+      pax_fiddle.update_callable(cfg, Parent)
+      self.assertIsNone(cfg.child)
+
+    with self.subTest("do_not_overwrite_previous_configurable_factory"):
+      cfg = pax_fiddle.Config(ParentWithATaggedTypeChild)
+      self.assertEqual(fdl.get_callable(cfg.child), ATaggedType)
+      pax_fiddle.update_callable(cfg, Parent)
+      self.assertEqual(fdl.get_callable(cfg.child), ATaggedType)
+
+    with self.subTest("do_not_delete_configurable_factory"):
+      # In this test, we change to a class whose default value for `child` is
+      # None; but we leave the Config built with the configurable factory.
+      cfg = pax_fiddle.Config(ParentWithATaggedTypeChild)
+      pax_fiddle.update_callable(cfg, ParentWithOptionalChild)
+      self.assertEqual(fdl.get_callable(cfg.child), ATaggedType)
 
 
 class PaxConfigTest(testing.TestCase, parameterized.TestCase):
@@ -660,9 +1043,13 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
             ".params_init.method": "xavier",
             ".params_init.scale": 1.000001,
             ".tpl": config.tpl,
-            ".tpl.activation_split_dims_mapping": config.tpl.activation_split_dims_mapping,
+            ".tpl.activation_split_dims_mapping": (
+                config.tpl.activation_split_dims_mapping
+            ),
             ".tpl.params_init": config.tpl.params_init,
-            ".tpl.weight_split_dims_mapping": config.tpl.weight_split_dims_mapping,
+            ".tpl.weight_split_dims_mapping": (
+                config.tpl.weight_split_dims_mapping
+            ),
             ".weight_split_dims_mapping": pax_fiddle.Config(
                 base_layer.BaseLayer.WeightSharding, wt=None
             ),
@@ -674,7 +1061,7 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
     fdl.materialize_defaults(config)
     paths = [
         daglish.path_str(path)
-        for value, path in pax_fiddle.iterate(config, memoized=False)
+        for _, path in pax_fiddle.iterate(config, memoized=False)
     ]
 
     # These were absent above because their values were memoized.
@@ -705,6 +1092,155 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
 
     replaced_config = traversal_cls.run(traverse, config)
     self.assertEqual(replaced_config.dtype, jnp.bfloat16)
+
+
+@dataclasses.dataclass
+class SubclassWithDefaultFactory:
+  w: Any = pax_fiddle.field(default_factory=nested_structure)
+
+
+@pax_fiddle.auto_config
+def subclass_fn():
+  return SubclassWithDefaultFactory()
+
+
+@dataclasses.dataclass
+class ClassWithDefaultFactory:
+  x: Any = pax_fiddle.field(default_factory=subclass_fn)
+  z: int = 4
+
+
+@dataclasses.dataclass(frozen=True)
+class FakeLayer:
+  name: str
+
+
+@dataclasses.dataclass(frozen=True)
+class FakeEncoderDecoder:
+  encoder: FakeLayer
+  decoder: FakeLayer
+
+
+@pax_fiddle.auto_config
+def fake_encoder_decoder_fixture():
+  return FakeEncoderDecoder(FakeLayer("encoder"), FakeLayer("decoder"))
+
+
+@dataclasses.dataclass
+class ClassWithEncoderDecoder:
+  other: Any
+  encoder_decoder: FakeEncoderDecoder = pax_fiddle.field(
+      default_factory=fake_encoder_decoder_fixture
+  )
+
+
+@dataclasses.dataclass
+class ClassWithTwoEncoderDecoders:
+  encoder_decoder_a: FakeEncoderDecoder = pax_fiddle.field(
+      default_factory=fake_encoder_decoder_fixture
+  )
+  encoder_decoder_b: FakeEncoderDecoder = pax_fiddle.field(
+      default_factory=fake_encoder_decoder_fixture
+  )
+
+
+class TrimDefaultsTest(testing.TestCase):
+
+  def test_trim_deep_defaults(self):
+    config = pax_fiddle.Config(ClassWithDefaultFactory)
+    config.z = 10
+    self.assertIn("x", config.__arguments__)
+    self.assertIn("z", config.__arguments__)
+
+    trimmed_without_removing_deep_defaults = visualize.with_defaults_trimmed(
+        config
+    )
+    self.assertIn("x", trimmed_without_removing_deep_defaults.__arguments__)
+    self.assertIn("z", trimmed_without_removing_deep_defaults.__arguments__)
+
+    trimmed_removing_deep_defaults = visualize.with_defaults_trimmed(
+        config, remove_deep_defaults=True
+    )
+    self.assertNotIn("x", trimmed_removing_deep_defaults.__arguments__)
+    self.assertIn("z", trimmed_removing_deep_defaults.__arguments__)
+
+  def test_trim_deep_defaults_complex_sub_configs(self):
+    config = pax_fiddle.Config(ClassWithEncoderDecoder)
+    self.assertIn("encoder_decoder", config.__arguments__)
+    trimmed_removing_deep_defaults = visualize.with_defaults_trimmed(
+        config, remove_deep_defaults=True
+    )
+    self.assertNotIn(
+        "encoder_decoder", trimmed_removing_deep_defaults.__arguments__
+    )
+
+  def test_trim_deep_defaults_doesnt_trim_shared(self):
+    config = pax_fiddle.Config(ClassWithEncoderDecoder)
+    self.assertIn("encoder_decoder", config.__arguments__)
+    config.other = config.encoder_decoder.encoder
+
+    trimmed_removing_deep_defaults = visualize.with_defaults_trimmed(
+        config, remove_deep_defaults=True
+    )
+    self.assertIn(
+        "encoder_decoder", trimmed_removing_deep_defaults.__arguments__
+    )
+
+  def test_trim_deep_defaults_doesnt_trim_shared_2(self):
+    """Another shared example, double-referencing the default attr."""
+    config = pax_fiddle.Config(ClassWithEncoderDecoder)
+    self.assertIn("encoder_decoder", config.__arguments__)
+    config.other = config.encoder_decoder
+
+    trimmed_removing_deep_defaults = visualize.with_defaults_trimmed(
+        config, remove_deep_defaults=True
+    )
+    self.assertIn(
+        "encoder_decoder", trimmed_removing_deep_defaults.__arguments__
+    )
+
+  def test_trim_deep_defaults_doesnt_trim_shared_3(self):
+    """Another shared example, with default attrs force-shared."""
+    config = pax_fiddle.Config(ClassWithTwoEncoderDecoders)
+    self.assertIn("encoder_decoder_a", config.__arguments__)
+    self.assertIn("encoder_decoder_b", config.__arguments__)
+    config.encoder_decoder_b = config.encoder_decoder_a
+
+    trimmed_removing_deep_defaults = visualize.with_defaults_trimmed(
+        config, remove_deep_defaults=True
+    )
+    self.assertIn(
+        "encoder_decoder_a", trimmed_removing_deep_defaults.__arguments__
+    )
+    self.assertIn(
+        "encoder_decoder_b", trimmed_removing_deep_defaults.__arguments__
+    )
+
+  def test_trim_deep_defaults_trims_two_encoder_decoders(self):
+    """Mostly a check that we set up the above test correctly."""
+    config = pax_fiddle.Config(ClassWithTwoEncoderDecoders)
+    self.assertIn("encoder_decoder_a", config.__arguments__)
+    self.assertIn("encoder_decoder_b", config.__arguments__)
+
+    trimmed_removing_deep_defaults = visualize.with_defaults_trimmed(
+        config, remove_deep_defaults=True
+    )
+    self.assertNotIn(
+        "encoder_decoder_a", trimmed_removing_deep_defaults.__arguments__
+    )
+    self.assertNotIn(
+        "encoder_decoder_b", trimmed_removing_deep_defaults.__arguments__
+    )
+
+  def test_trim_deep_defaults_ok_with_immutable(self):
+    config = pax_fiddle.Config(ClassWithDefaultFactory)
+    # References the (2, 3) tuple in `nested_structure()`.
+    config.z = fdl.Config(lambda item: item[0], config.x.w["foo"][1])
+    self.assertIn("x", config.__arguments__)
+    trimmed_removing_deep_defaults = visualize.with_defaults_trimmed(
+        config, remove_deep_defaults=True
+    )
+    self.assertNotIn("x", trimmed_removing_deep_defaults.__arguments__)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,8 @@ import contextlib
 import copy
 import dataclasses
 import functools
-from typing import Any, Callable, Collection, Container, Dict, Generic, List, Mapping, Optional, Sequence, Set, Tuple, TypeVar, Union, overload
+import types
+from typing import Any, Callable, Collection, Container, Dict, Generic, List, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar, Union, overload
 import weakref
 
 import fiddle as fdl
@@ -30,8 +31,6 @@ from fiddle import daglish
 from fiddle import history
 from fiddle import signatures
 from fiddle.experimental import auto_config as fdl_auto_config
-from fiddle.experimental import dataclasses as fdl_dataclasses
-from fiddle.experimental.dataclasses import field as fdl_field
 import fiddle.extensions.jax
 from flax.linen import module as flax_module
 from lingvo.core import nested_map
@@ -41,7 +40,6 @@ import typing_extensions
 # Import standard Fiddle APIs that we don't modify into this namespace.
 # (So users can use e.g. `pax_fiddle.set_tags` instead of `fdl.set_tags`.)
 add_tag = fdl.add_tag
-ArgFactory = fdl.ArgFactory
 assign = fdl.assign
 Buildable = fdl.Buildable
 cast = fdl.cast
@@ -52,22 +50,23 @@ get_callable = fdl.get_callable
 get_tags = fdl.get_tags
 NO_VALUE = fdl.NO_VALUE
 ordered_arguments = fdl.ordered_arguments
-Partial = fdl.Partial
 remove_tag = fdl.remove_tag
 set_tags = fdl.set_tags
-update_callable = fdl.update_callable
 materialize_defaults = fdl.materialize_defaults
 set_tagged = fdl.set_tagged
 Tag = fdl.Tag
 TaggedValue = fdl.TaggedValue
 
 
-fdl_field = fdl_dataclasses.field
 TagOrTags = Union[type(fdl.Tag), Collection[type(fdl.Tag)]]
 _T = TypeVar('_T')
+TypeOrCallableProducingT = Union[Callable[..., _T], Type[_T]]
 
 fiddle.extensions.jax.enable()
 history.add_exclude_location('praxis/pax_fiddle.py')
+
+
+_FIDDLE_DATACLASS_METADATA_KEY = object()
 
 
 class CloneAndSetMixin:
@@ -88,8 +87,282 @@ class CloneAndSetMixin:
   Set = set  # pylint: disable=invalid-name
 
 
+def field(
+    *,
+    default_factory: Any = dataclasses.MISSING,
+    tags: TagOrTags = (),
+    metadata: Optional[Mapping[Any, Any]] = None,
+    configurable_factory: bool = False,
+    **kwargs,
+) -> Union[dataclasses.Field, Any]:  # pylint: disable=g-bare-generic
+  """A wrapper around dataclasses.field to add optional Fiddle metadata.
+
+  Args:
+    default_factory: This has the same meaning as
+      `dataclasses.fields.default_factory`, with the addition that if it's an
+      `@auto_config`'d function, then the `as_buildable` will be used to
+      initialize this field when creating a `fdl.Buildable` for the enclosing
+      type.
+    tags: One or more tags to attach to the `fdl.Buildable`'s argument
+      corresponding to the field.
+    metadata: Any additional metadata to include.
+    configurable_factory: If true, then set this field to
+      `Config(default_factory)` when creating a `fdl.Buildable` for the
+      enclosing type.  For example, if `default_factory` is a dataclass, then
+      this will make it possible to configure default values for the fields of
+      that dataclass.  This should not be set to True if `default_factory` is an
+      `auto_config`'ed function; see above for handling of `auto_config'ed
+      `default_factory`.
+    **kwargs: All other kwargs are passed to `dataclasses.field`; see the
+      documentation on `dataclasses.field` for valid arguments.
+
+  Returns:
+    The result of calling dataclasses.field. Note: the return type is marked as
+    a union with Any to pass static typechecking at usage sites.
+  """
+  # TODO(b/272374473): Make a function to return a metadata object to users to
+  # enable them to call `dataclasses.field` themselves.
+  if isinstance(tags, type(fdl.Tag)):
+    tags = (tags,)
+
+  if fdl_auto_config.is_auto_config(default_factory):
+    if configurable_factory:
+      raise ValueError(
+          'configurable_factory should not be used with '
+          "auto_config'ed functions."
+      )
+    buildable_initializer = default_factory.as_buildable
+  elif configurable_factory:
+    if not (default_factory and signatures.has_signature(default_factory)):
+      raise ValueError(
+          'configurable_factory requires that default_factory '
+          'be set to a function or class with a signature.'
+      )
+    buildable_initializer = lambda: Config(default_factory)
+  else:
+    buildable_initializer = None
+
+  metadata: Mapping[Any, Any] = types.MappingProxyType(metadata or {})
+  metadata = {
+      **metadata,
+      _FIDDLE_DATACLASS_METADATA_KEY: FieldMetadata(
+          tags=tags, buildable_initializer=buildable_initializer
+      ),
+  }
+  return dataclasses.field(
+      default_factory=default_factory, metadata=metadata, **kwargs
+  )  # pytype: disable=wrong-keyword-args
+
+
+# Temporary alias for backwards compatibility:
+fdl_field = field
+
+
+def field_has_tag(
+    dc_field: dataclasses.Field,  # pylint: disable=g-bare-generic
+    tag: type(fdl.Tag),
+) -> bool:
+  """Returns True if buildables will attach `tag` to the corresponding arg.
+
+  In particular, `field_has_tag(field(..., tags=tags), tag)` is True if
+  `tag in tags`.
+
+  Args:
+    dc_field: A dataclass field, describing an argument for a dataclass.
+    tag: The tag that should be checked.
+  """
+  metadata = field_metadata(dc_field)
+  return metadata is not None and tag in metadata.tags
+
+
+def _add_dataclass_tags(buildable, fields):
+  """Adds tags to arguments as indicated by dataclass fields.
+
+  If any dataclass field in ``fields`` has metadata indicating that the field
+  should be given one or more tags, then add those tags to the argument
+  corresponding to the field.
+
+  Args:
+    buildable: The buildable that should be updated.
+    fields: The dataclass fields for buildable.__fn_or_cls__.
+  """
+  for dc_field in fields:
+    metadata = field_metadata(dc_field)
+    if metadata:
+      for tag in metadata.tags:
+        add_tag(buildable, dc_field.name, tag)
+
+
+def _expand_dataclass_default_factories(buildable, fields, arguments):
+  """Expand default-valued args for dataclass fields with default-factories.
+
+  If an argument has no value supplied when initializing a dataclass, but the
+  corresponding field has a default factory, then that factory will be used to
+  construct the argument's value. Thus, when creating a ``fdl.Buildable`` for
+  the dataclass, it may be possible to fill in the value for the argument with
+  ``Config(factory)``, without changing the value that will be built by
+  ``buildable`` when calling ``build``.  This is useful because it makes the
+  argument "deeply configurable" -- i.e., if the factory has any optional
+  arguments, then this makes it possible to configure those objects. And in the
+  special case where ``factory`` is an ``@auto_config``'d function, we can make
+  the argument even more deeply configurable by inlining the factory.
+
+  However, expanding default-valued args into `Buildable`s should only be
+  performed when it can be done safely -- i.e., without changing the value
+  that will be built by ``buildable``. In particular, we need to be careful
+  not to create any "unintentional sharing," where the value built by the
+  default factory is used by multiple instances of the dataclass.
+
+  If we are not able to do the expansion safely, then we raise an exception.
+  Note that it would be "safe" to leave the argument empty, in so far as the
+  original semantics would be preserved.  But having the argument be
+  unexpectedly unconfigurable could lead to difficult-to-diagnose issues.
+  E.g., any nested dataclasses with `fdl.Tag`s associated with fields will
+  not be accessible.
+
+  One case where it *is* safe to expand default factories is when
+  ``type(buildable)`` is ``Config``.  In that case, we know that a
+  single dataclass object will be built from `buildable`, so we are guaranteed
+  that the value built by the default factory will only be used by that one
+  object.
+
+  However, if ``type(buildable)`` is ``Partial``, then the function built
+  from ``buildable`` can be used to generate multiple dataclass instances; and
+  we need to ensure that the default factory is called for each instance.  For
+  this case, we use ``ArgFactory(factory)`` rather than ``Config(factory)`` to
+  expand the argument.  This ensures that the factory is called each time the
+  partial is called.  We also need to replace any nested ``Config``'s with
+  ``ArgFactory``'s, to ensure that the nested values are created each time as
+  well.
+
+  Similarly, if ``type(buildable) is ArgFactory``, then the factory function
+  built from ``buildable`` can be used to generate multiple dataclass instances,
+  so we use ``ArgFactory(factory)`` to expand arguments.
+
+  In the case where ``type(buildable)`` is ``Partial`` or
+  ``ArgFactory``, there is one additional corner case to consider, which
+  occurs when multiple nested partials makes it impossible for Fiddle to
+  describe the correct instance sharing pattern with its current ``Buildable``
+  subclasses.  This corner case is demonstrated by the following example:
+
+  ```
+  def f(x):
+    return x
+  def g():
+    return object()
+  @auto_config.auto_config
+  def make_fn():
+    return functools.partial(f, x=g())
+  @dataclasses.dataclass
+  class A:
+    fn: Callable[[], object] = field(default_factory=make_fn)
+  p = functools.partial(A)
+  ```
+
+  Here, if we write ``a1 = p()`` to create an instance of ``A``, then calling
+  ``a1.fn()`` multiple times will always return the same object, while another
+  instance ``a2 = p()`` will return a different object when calling ``a2.fn()``:
+
+  ```
+  a1, a2 = p(), p()              # call the partial function twice.
+  assert a1.fn() is a1.fn()      # a1.fn always returns the same object.
+  assert a1.fn() is not a2.fn()  # a1 and a2 return different objects.
+  ```
+
+  However, if we construct ``Partial(A)``, and try to make ``f`` and ``g``
+  deeply configurable, then there's no way to generate the same behavior
+  using Fiddle ``Buildable``'s:
+
+  * If we use ``Partial(A, Partial(f, Config(g)))``, then all
+    instances of ``A`` generated by ``p`` will return the same instance
+    (namely, the instance constructed by ``fdl.build(Config(g))``).
+  * If we use ``Partial(A, Partial(f, ArgFactory(g)))``, then every call to
+    ``A.fn`` will return a new object.
+
+  Therefore, since is not possible to make the field ``A.fn`` deeply
+  configurable while preserving the original semantics, we instead raise
+  an exception.  If you believe you have a valid use-case for this, please
+  contact the Pax-Fiddle team.
+
+  The precise circumstances that cause this problem are: when we are building
+  a ``Partial`` (or ``ArgFactory``), and the default factory expands into an
+  expression containing a ``Partial`` (or ``ArgFactory``) that contains a
+  ``Config`` -- in that case, the object built for the `Config` should be shared
+  for each call to the inner partial; but should *not* be shared for each call
+  to the outer partial.
+
+  Args:
+    buildable: The buildable that should be updated.
+    fields: The dataclass fields for ``buildable.__fn_or_cls__``.
+    arguments: The arguments that are being used to construct this
+      ``Buildable``. If any argument has no value, and the corresponding field
+      has a default factory, then the argument will be expanded into an
+      equivalent ``Buildable`` if it's possible to do so without changing the
+      semantics of ``fdl.build(buildable)``.
+  """
+
+  def convert_to_arg_factory(value, state):
+    """Converts `cfg` and any nested `Config` objects to ArgFactory."""
+    if not isinstance(value, PaxPartial):  # Don't recurse into partials.
+      value = state.map_children(value)
+    if isinstance(value, PaxConfig):
+      value = cast(PaxArgFactory, value)
+    return value
+
+  def contains_partial_that_contains_config(value, state):
+    """True if value contains a Partial/ArgFactory that contains a Config."""
+    if isinstance(value, (PaxPartial, PaxArgFactory)):
+      return any(isinstance(v, PaxConfig) for v, _ in daglish.iterate(value))
+    elif state.is_traversable(value):
+      return any(state.flattened_map_children(value).values)
+    else:
+      return False
+
+  for dc_field in fields:
+    if dc_field.name in arguments:
+      continue  # We have an explicit value for this argument.
+    metadata = field_metadata(dc_field)
+    if not (metadata and metadata.buildable_initializer):
+      continue
+    field_config = metadata.buildable_initializer()
+    if daglish.MemoizedTraversal.run(
+        contains_partial_that_contains_config, field_config
+    ):
+      cls_name = getattr(
+          buildable.__fn_or_cls__, '__qualname__', repr(buildable.__fn_or_cls__)
+      )
+      raise ValueError(
+          f'Unable to safely replace {cls_name}.{dc_field.name} with '
+          'a Pax ``Buildable` type, because its default factory contains a '
+          '`Partial` that contains a `Config`.  This makes it difficult for '
+          'Pax-Fiddle to describe the correct instance-sharing pattern. If you '
+          'believe that you have a valid use-case for this, please contact the '
+          'Pax-Fiddle team.'
+      )
+    if isinstance(field_config, PaxConfig) and isinstance(
+        buildable, (PaxPartial, PaxArgFactory)
+    ):
+      field_config = daglish.MemoizedTraversal.run(
+          convert_to_arg_factory, field_config
+      )
+    arguments[dc_field.name] = field_config
+
+
+def _add_tags_and_defaults_from_dataclass_fields(self):
+  if dataclasses.is_dataclass(self.__fn_or_cls__):
+    fields = dataclasses.fields(self.__fn_or_cls__)
+    _add_dataclass_tags(self, fields)
+    arguments = self.__arguments__.copy()
+    _expand_dataclass_default_factories(self, fields, arguments)
+    fdl.assign(self, **arguments)
+
+
 class PaxConfig(Generic[_T], fdl.Config[_T], CloneAndSetMixin):
-  """Subclasses `fdl.Config` to make it more compatible with HParams."""
+  """Subclasses `fdl.Config` to add Pax-specific functionality."""
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    _add_tags_and_defaults_from_dataclass_fields(self)
 
   @property
   def cls(self):
@@ -97,7 +370,7 @@ class PaxConfig(Generic[_T], fdl.Config[_T], CloneAndSetMixin):
 
   def __setattr__(self, name: str, value: Any):
     if name == 'cls':
-      fdl.update_callable(self, value)
+      update_callable(self, value)
     else:
       super().__setattr__(name, value)
 
@@ -187,7 +460,26 @@ class PaxConfig(Generic[_T], fdl.Config[_T], CloneAndSetMixin):
                          f'{source.__fn_or_cls__.__qualname__}.{name}')
 
 
-Config = PaxConfig  # Alias pax_fiddle.Config -> PaxConfig.
+class PaxPartial(Generic[_T], fdl.Partial[_T], CloneAndSetMixin):
+  """Subclasses `fdl.Partial` to add Pax-specific functionality."""
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    _add_tags_and_defaults_from_dataclass_fields(self)
+
+
+class PaxArgFactory(Generic[_T], fdl.ArgFactory[_T], CloneAndSetMixin):
+  """Subclasses `fdl.ArgFactory` to add Pax-specific functionality."""
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    _add_tags_and_defaults_from_dataclass_fields(self)
+
+
+# Aliases to make them usable like regular Fiddle types.
+Config = PaxConfig
+Partial = PaxPartial
+ArgFactory = PaxArgFactory
 
 
 def instantiate(config: fdl.Buildable, **kwargs):
@@ -201,6 +493,40 @@ def instantiate(config: fdl.Buildable, **kwargs):
 # TODO(b/249483164): Remove this once all references have been deleted.
 class DoNotBuild(fdl.Tag):
   """Deprecated -- do not use this tag."""
+
+
+# TODO(b/285387519): Add kw_only=True when available.
+@dataclasses.dataclass(frozen=True)
+class FieldMetadata:
+  """Fiddle-specific metadata that can be attached to each dataclasses.Field.
+
+  Attributes:
+    tags: A collection of tags to attach to the field.
+    buildable_initializer: An optional callable to initialize the field's value
+      when creating a `fdl.Buildable` of the enclosing type.
+  """
+
+  tags: Collection[type(fdl.Tag)]
+  buildable_initializer: Optional[Callable[[], Any]]
+
+
+def field_metadata(dc_field: dataclasses.Field) -> Optional[FieldMetadata]:  # pylint: disable=g-bare-generic
+  """Retrieves the Fiddle-specific metadata (if present) on `field`."""
+  return dc_field.metadata.get(_FIDDLE_DATACLASS_METADATA_KEY)
+
+
+def update_callable(
+    buildable: Buildable,
+    new_callable: TypeOrCallableProducingT,
+    drop_invalid_args: bool = False,
+):
+  fdl.update_callable(buildable, new_callable, drop_invalid_args)
+  if dataclasses.is_dataclass(buildable.__fn_or_cls__):
+    fields = dataclasses.fields(buildable.__fn_or_cls__)
+    _add_dataclass_tags(buildable, fields)
+    _expand_dataclass_default_factories(
+        buildable, fields, buildable.__arguments__
+    )
 
 
 def auto_config(
@@ -220,7 +546,11 @@ def auto_config(
 
   auto_config_kwargs['experimental_exemption_policy'] = exemption_policy
   auto_config_kwargs['experimental_allow_control_flow'] = True
-  auto_config_kwargs['experimental_config_cls'] = PaxConfig
+  auto_config_kwargs['experimental_config_types'] = fdl_auto_config.ConfigTypes(
+      config_cls=PaxConfig,
+      partial_cls=PaxPartial,
+      arg_factory_cls=PaxArgFactory,
+  )  # pytype: disable=wrong-arg-types
   auto_config_kwargs['experimental_result_must_contain_buildable'] = False
 
   def make_auto_config(fn):
@@ -256,7 +586,7 @@ def instance_field(
 
   This can be used to specify that a dataclass should have a default value of
   `default_factory`; and that when Fiddle builds a `fdl.Buildable` for the
-  dataclass, it should be initialized with `fdl.Config(default_factory)`.
+  dataclass, it should be initialized with `Config(default_factory)`.
 
   Example usage:
 
@@ -273,12 +603,12 @@ def instance_field(
     A `dataclasses.Field` specification for the field.
   """
   if default_factory is None:
-    return fdl_field(default=None, tags=tags)
+    return field(default=None, tags=tags)
 
   # `factory` will return a PaxConfig object in the Fiddle.as_buildable path,
   # but will be `default_factory()` in the Python path.
   factory = auto_config(default_factory)
-  return fdl_field(default_factory=factory, tags=tags)
+  return field(default_factory=factory, tags=tags)
 
 
 def template_field(
@@ -288,13 +618,13 @@ def template_field(
   """Dataclass field specification for a Fiddle-configurable template field.
 
   This can be used to specify that a dataclass should have a default value of
-  `fdl.Config(template)`; and that when Fiddle builds the dataclass,
-  this field should *not* be built, but should be left as a `fdl.Config`.
+  `Config(template)`; and that when Fiddle builds the dataclass,
+  this field should *not* be built, but should be left as a `Config`.
 
   Example usage:
 
   >>> class Parent(base_layer.BaseLayer):
-  ...   child_tpl: fdl.Config[Child] = template_field(Child)
+  ...   child_tpl: Config[Child] = template_field(Child)
 
   Args:
     template: The template type (or factory function).  If `None`, then the
@@ -307,13 +637,13 @@ def template_field(
     A `dataclasses.Field` specification for the field.
   """
   if template is None or template is dataclasses.MISSING:
-    return fdl_field(default=template, tags=tags)
+    return field(default=template, tags=tags)
 
   # `factory` will return a PaxConfig object in both the Fiddle.as_buildable
   # path and the Python path.
   factory = auto_config(template)
   factory = dataclasses.replace(factory, func=factory.as_buildable)
-  return fdl_field(default_factory=factory, tags=tags)
+  return field(default_factory=factory, tags=tags)
 
 
 # Typing overloads for pax_build
@@ -374,7 +704,7 @@ class TemplateWrapper:
   I.e., `TemplateWrapper(tpl)` is equivalent to `lambda: tpl`, with the added
   benefit that we can use `isinstance` to identify template wrappers.
 
-  Replacing a template `tpl` with `fdl.Config(TemplateWrapper(tpl))` prevents
+  Replacing a template `tpl` with `Config(TemplateWrapper(tpl))` prevents
   `fdl.build` from building the template, making it possible to use the
   template for deferred subtree building.
   """
@@ -389,7 +719,7 @@ def wrap_templates(buildable: Any) -> Any:
   """Returns copy of `buildable` with templates wrapped in `TemplateWrapper`s.
 
   In particular, any template `tpl` in `buildable` will be replaced by
-  `fdl.Config(TemplateWrapper(tpl))`.  This ensures that the built value for
+  `Config(TemplateWrapper(tpl))`.  This ensures that the built value for
   `tpl` will be `TemplateWrapper(tpl)()`, which returns `tpl` -- i.e., the
   template is not built.
 
@@ -418,8 +748,6 @@ def wrap_templates(buildable: Any) -> Any:
       return Config(TemplateWrapper(value))
 
     template_args = _get_template_arguments(value.__fn_or_cls__)
-    fn_or_cls = value.__fn_or_cls__
-
     new_arguments = {}
     for arg_name, arg_value in value.__arguments__.items():
       in_template_field = arg_name in template_args
@@ -644,6 +972,7 @@ def empty_flax_module_stack():
 
 _hparams_node_traverser_registry = daglish.NodeTraverserRegistry(
     use_fallback=True)
+
 
 def _register_traversers_for_subclass(subclass):
   """Registers traversal routines for an HParams subclass."""
