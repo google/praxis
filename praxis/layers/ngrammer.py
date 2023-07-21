@@ -141,15 +141,20 @@ class VectorQuantization(base_layer.BaseLayer):
     )
     self.create_variable('means', means, trainable=False)
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+  def __call__(
+      self,
+      inputs: JTensor,
+      paddings: Optional[JTensor] = None,
+      summarize_and_update: bool = True,
+  ) -> Tuple[JTensor, JTensor]:
     """Computes distances of the given input 'x' to all centroids.
 
     Args:
       inputs: Input tensor of shape [B, L, N, H] or [B, L, D].
       paddings: If not None, a tensor of shape [B, L]. The padding tensor is
         supplied when we want certain tokens to not affect the centroids.
+      summarize_and_update: Add summaries about input quantization and apply
+        updates to means.
 
     Returns:
       dists: "distances" of the given input 'x' to all centroids.
@@ -189,10 +194,12 @@ class VectorQuantization(base_layer.BaseLayer):
     # Renormalize between [0, 1] and scale to 256.
     nearest_ids /= self.num_clusters
     nearest_ids *= 256
-    self.add_summary(
-        'k_means/centroid/cluster_ids',
-        nearest_ids[:, :, :, jnp.newaxis],
-        summary_type=base_layer.SummaryType.IMAGE)
+    if summarize_and_update:
+      self.add_summary(
+          'k_means/centroid/cluster_ids',
+          nearest_ids[:, :, :, jnp.newaxis],
+          summary_type=base_layer.SummaryType.IMAGE,
+      )
 
     # Apply paddings.
     if paddings is not None:
@@ -202,9 +209,10 @@ class VectorQuantization(base_layer.BaseLayer):
     nearest_centroid = jnp.einsum('BLNK, NKH -> BLNH', nearest_one_hot, means)
 
     means_norm = jnp.linalg.norm(means, ord=2, axis=-1)
-    self.add_summary('k_means/centroid/l2_norm_avg', jnp.mean(means_norm))
-    self.add_summary('k_means/centroid/l2_norm_min', jnp.min(means_norm))
-    self.add_summary('k_means/centroid/l2_norm_max', jnp.max(means_norm))
+    if summarize_and_update:
+      self.add_summary('k_means/centroid/l2_norm_avg', jnp.mean(means_norm))
+      self.add_summary('k_means/centroid/l2_norm_min', jnp.min(means_norm))
+      self.add_summary('k_means/centroid/l2_norm_max', jnp.max(means_norm))
 
     if not self.do_eval:
       # To update the centroids (self.vars.means), we apply gradient descent on
@@ -216,8 +224,36 @@ class VectorQuantization(base_layer.BaseLayer):
       # Sum away batch and sequence length dimensions to get per cluster count.
       # Shape: [N, K]
       per_cluster_count = jnp.sum(nearest_one_hot, axis=[0, 1])
-      self.add_summary('k_means/centroid/avg_cluster_count',
-                       jnp.mean(per_cluster_count))
+      if summarize_and_update:
+        self.add_summary(
+            'k_means/centroid/avg_cluster_count', jnp.mean(per_cluster_count)
+        )
+      assert per_cluster_count.shape == (self.num_heads, self.num_clusters)
+      for i in range(self.num_heads):
+        head = per_cluster_count[i]
+        total = jnp.sum(head)
+        if summarize_and_update:
+          self.add_summary(
+              f'k_means/centroid/inactive_clusters_proportion/head{i}',
+              jnp.mean(head == 0),
+          )
+          self.add_summary(
+              f'k_means/centroid/max_cluster_proportion/head{i}',
+              jnp.max(head) / total,
+          )
+          self.add_summary(
+              f'k_means/centroid/min_cluster_proportion/head{i}',
+              jnp.min(head) / total,
+          )
+        mask = head > 0
+        logavg = jnp.log(jnp.where(mask, head / total, 1.0)) / jnp.maximum(
+            1.0, jnp.sum(mask)
+        )
+        if summarize_and_update:
+          self.add_summary(
+              f'k_means/centroid/geomean_cluster_proportion/head{i}',
+              jnp.exp(logavg.sum()),
+          )
 
       # Sum of the input per each closest centroid.
       sum_x = jnp.einsum('BLNK, BLNH -> NKH', nearest_one_hot, inputs)
@@ -232,7 +268,8 @@ class VectorQuantization(base_layer.BaseLayer):
       )
       updated_means = (1.0 - self.decay) * new_means + self.decay * means
       updated_means = jnp.array(updated_means, means.dtype)
-      self.update_var('means', updated_means)
+      if summarize_and_update:
+        self.update_var('means', updated_means)
     return dists, nearest_centroid
 
 
@@ -552,16 +589,15 @@ class VQNgrammer(base_layer.BaseLayer):
 
   Attributes:
     ngram_vocab_size: Size of the ngram vocabulary.
-
     ngram_emb_dim: Size of the ngram dimension per head.
     unigram_vocab_size: Size of the unigram vocabulary.
     ngram_using_attention_scores: Whether to compute n-grams using attention
       scores. If True, then consecutive tokens are not used to compute n-grams
       rather it is computed by taking the maximum over the attention scores.
-    causal_attention: This argument is only relevant when using attention
-      scores to compute n-grams. If this is True, then the causal order is
-      respected while taking n-grams, so that a token at position i can only
-      form bi-grams with tokens at position < i.
+    causal_attention: This argument is only relevant when using attention scores
+      to compute n-grams. If this is True, then the causal order is respected
+      while taking n-grams, so that a token at position i can only form bi-grams
+      with tokens at position < i.
     concat_ngrams: If True, then concat ngrams.
     num_clusters: Number of clusters.
     num_heads: Number of attention heads.
@@ -571,6 +607,13 @@ class VQNgrammer(base_layer.BaseLayer):
       Quantization.
     use_cached_input_ids_to_cluster_ids: Whether to use cached input ids to
       cluster ids.
+    enable_cache_updates: Whether to update the cache at all (slows down
+      training) using the most recent mini-batch's
+    full_update_cache_frequency: If enabled, updates cache every n steps
+      (disable with default value of zero). This performs an update for every
+      unigram.
+    full_update_cache_steps: Update cache at these step counts, in addition to
+      the update frequency for `full-update_cache_frequency`.
   """
   ngram_vocab_size: int = 768 * 256
   unigram_vocab_size: int = 0
@@ -585,6 +628,8 @@ class VQNgrammer(base_layer.BaseLayer):
   dim_per_head: int = 0
   use_cached_input_ids_to_cluster_ids: bool = False
   enable_cache_updates: bool = True
+  full_update_cache_frequency: int = 0
+  full_update_cache_steps: tuple[int, ...] = ()
 
   @classmethod
   def set_canonical_sharding_params(cls, vqngrammer_p, *, replica_axis,
@@ -645,6 +690,11 @@ class VQNgrammer(base_layer.BaseLayer):
         weight_split_dims_mapping=self.weight_split_dims_mapping,
     )
     self.create_child('ngram_layer', ngram_layer_p)
+    count_pc = WeightHParams(
+        shape=[], init=base_layer.WeightInit.Constant(0), dtype=jnp.int32
+    )
+    if self._should_full_update_cache():
+      self.create_variable('count', count_pc, trainable=False)
 
   def __call__(
       self,
@@ -672,8 +722,8 @@ class VQNgrammer(base_layer.BaseLayer):
       attention_scores: Optional argument representing the attention matrix of
         shape [B, N, L, L] used to construct n-grams if the argument
         `ngrammer_using_attention_scores` is set.
-      emb_var: Embedding table for calculating cluster centers for eval. This is
-        unused and is added here to be consistent with the N-grammer API.
+      emb_var: Embedding table for calculating cluster ID cache, if doing full
+        cache updates.
       check_time_step_zero: This will apply an additional check if the input ids
         equals -1 and the input embeddings equals 0, which corresponds to the
         t=0 case.
@@ -682,9 +732,9 @@ class VQNgrammer(base_layer.BaseLayer):
       outputs: Input embedding with the VQ ngram added of shape [B, L, D] if
         `merge_heads` is True, and shape [B, L, N, H] otherwise.
     """
-    del emb_var  # Unused.
     pair_ids = None
     if self.use_cached_input_ids_to_cluster_ids:
+      assert self.do_eval, 'caching while training prevents n-gram updates'
       assert self.unigram_vocab_size > 0
       if not self.unigram_vocab_size:
         raise ValueError('unigram_vocab_size must be set if using VQ NGrammer'
@@ -781,6 +831,21 @@ class VQNgrammer(base_layer.BaseLayer):
           cache = cache.at[input_ids_flat, i].set(cluster_ids_flat[:, i])
         self.update_var('input_id_to_cluster_id_cache', cache)
 
+      if self._should_full_update_cache():
+        assert emb_var is not None
+        count = self.get_var('count')
+        should_update = jnp.zeros([], dtype=bool)
+        if self.full_update_cache_frequency:
+          should_update |= (count % self.full_update_cache_frequency) == 0
+        for step in self.full_update_cache_steps:
+          should_update |= count == step
+        cache = self.get_var('input_id_to_cluster_id_cache')
+        cache = jax.lax.cond(
+            should_update, self._full_update_cache, lambda _: cache, emb_var
+        )
+        self.update_var('input_id_to_cluster_id_cache', cache)
+        self.update_var('count', count + 1)
+
     # [B, L, D] or [B, L, N, H].
     output_embs = self.ngram_layer(
         cluster_ids,
@@ -790,6 +855,31 @@ class VQNgrammer(base_layer.BaseLayer):
         merge_heads=merge_heads,
         pair_ids=pair_ids)
     return output_embs
+
+  def _full_update_cache(self, emb_var):
+    """Update the cache for every unigram id."""
+    assert self.unigram_vocab_size > 0
+    cache = self.get_var('input_id_to_cluster_id_cache')
+    assert cache.shape == (self.unigram_vocab_size, self.num_heads)
+    assert emb_var.shape == (
+        self.unigram_vocab_size,
+        self.num_heads * self.dim_per_head,
+    )
+    block = 8192  # Block ids to avoid increasing memory usage from this.
+    for start in range(0, self.unigram_vocab_size, block):
+      stop = min(start + block, self.unigram_vocab_size)
+      embs = emb_var[start:stop].reshape(1, stop - start, -1)
+      dists_blnk, _ = self.vq_layer(embs, summarize_and_update=False)
+      dists_lnk = jnp.squeeze(dists_blnk, axis=0)
+      ids_ln = jnp.argmin(dists_lnk, -1)
+      cache = cache.at[start:stop].set(ids_ln)
+    return cache
+
+  def _should_full_update_cache(self):
+    """Whether we will do a full cache update at all during training."""
+    return not self.do_eval and (
+        self.full_update_cache_frequency or self.full_update_cache_steps
+    )
 
   def extend_step(self,
                   input_embs: JTensor,
