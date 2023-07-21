@@ -14,8 +14,8 @@
 # limitations under the License.
 
 """RNN-related layers."""
-
 import dataclasses
+from typing import Sequence
 import jax
 from jax import numpy as jnp
 from praxis import asserts
@@ -31,9 +31,14 @@ Params = py_utils.HParams
 JTensor = pytypes.JTensor
 
 
-def _zoneout_helper(prev_v: JTensor, cur_v: JTensor, padding_v: JTensor,
-                    zo_prob: float, is_eval: bool,
-                    random_uniform: JTensor) -> JTensor:
+def _zoneout_helper(
+    prev_v: JTensor,
+    cur_v: JTensor,
+    padding_v: JTensor,
+    zo_prob: float,
+    is_eval: bool,
+    random_uniform: JTensor,
+) -> JTensor:
   """A helper function to apply ZoneOut regularlization to cur_v.
 
   Implements ZoneOut regularization as described in
@@ -163,6 +168,7 @@ class LstmCellSimple(BaseRnnCell):
     zo_prob: If > 0, applies ZoneOut regularization with the given prob.
     bias_init: Initialization parameters for bias.
   """
+
   inputs_arity: int = 1
   num_input_nodes: int = 0
   num_output_nodes: int = 0
@@ -257,26 +263,60 @@ class LstmCellSimple(BaseRnnCell):
 
     concat = jnp.concatenate(inputs.act + [state0.m], 1)
     xmw = jnp.einsum('bd,dc->bc', concat, self.theta.wm)
-    xmw += self._bias_adjustment()
-    i_i, i_g, f_g, o_g = jnp.split(xmw, self.num_gates, axis=1)
-    state1 = self._gates_internal(state0, i_i, i_g, f_g, o_g)
+    gates = self._gates_preprocess(xmw)
+    state1 = self._gates_internal(state0, *gates)
     state1 = self._apply_zoneout(state0, inputs, state1)
     return state1
 
-  def _bias_adjustment(self) -> JTensor:
-    bias = self.theta.b
-    if self.forget_gate_bias != 0.0:
-      adjustment = jnp.ones(
-          [self.num_gates, self.hidden_size]
-      ) * jnp.expand_dims(
-          jnp.array([0.0, 0.0, self.forget_gate_bias, 0.0]), axis=1
-      )
-      adjustment = jnp.reshape(adjustment, [self.num_gates * self.hidden_size])
-      bias += adjustment
-    return bias
+  def _gates_preprocess(self, x: JTensor) -> Sequence[JTensor]:
+    """Unpack gates and apply any necessary preprocessing.
 
-  def _gates_internal(self, state0: NestedMap, i_i: JTensor, i_g: JTensor,
-                      f_g: JTensor, o_g: JTensor) -> NestedMap:
+    Args:
+      x: A tensor of shape [batch_size, num_gates * hidden_size].
+
+    Returns:
+      A Tuple of tensors.
+    """
+    if self.forget_gate_bias == 0.0:
+      # Faster execution path to avoid unpack gates twices.
+      return self._gates_unpack(x + self.theta.b, axis=1)
+    gates = self._gates_unpack(x, axis=1)
+    biases = self._bias_unpack()
+    return [gate + bias for gate, bias in zip(gates, biases)]
+
+  def _gates_unpack(self, x: JTensor, axis: int = -1) -> Sequence[JTensor]:
+    """Split input tensor by num_gates at given axis.
+
+    Args:
+      x: Input tensor of with shape at given axis equal to num_gates *
+        hidden_dize.
+      axis: Axis number to split input.
+
+    Returns:
+      A tensor split at given axis by num_gates.
+    """
+    if x.shape[axis] != self.num_gates * self.hidden_size:
+      raise ValueError(
+          f'Input shape {x.shape} at axis={axis} is not equal to '
+          'self.num_gates * self.hidden_size='
+          f'{self.num_gates * self.hidden_size}'
+      )
+    return jnp.split(x, self.num_gates, axis=axis)
+
+  def _bias_unpack(self) -> Sequence[JTensor]:
+    bias_i_i, bias_i_g, bias_f_g, bias_o_g = self._gates_unpack(self.theta.b)
+    if self.forget_gate_bias != 0.0:
+      bias_f_g += self.forget_gate_bias
+    return bias_i_i, bias_i_g, bias_f_g, bias_o_g
+
+  def _gates_internal(
+      self,
+      state0: NestedMap,
+      i_i: JTensor,
+      i_g: JTensor,
+      f_g: JTensor,
+      o_g: JTensor,
+  ) -> NestedMap:
     forget_gate = jax.nn.sigmoid(f_g) * state0.c
     input_gate = jax.nn.sigmoid(i_g) * jnp.tanh(i_i)
     new_c = forget_gate + input_gate
@@ -293,15 +333,18 @@ class LstmCellSimple(BaseRnnCell):
 
     return NestedMap(c=new_c, m=new_m)
 
-  def _apply_zoneout(self, state0: NestedMap, inputs: NestedMap,
-                     state1: NestedMap) -> NestedMap:
+  def _apply_zoneout(
+      self, state0: NestedMap, inputs: NestedMap, state1: NestedMap
+  ) -> NestedMap:
     """Apply Zoneout and returns the updated states."""
 
     if self.zo_prob > 0.0:
-      c_random_uniform = jax.random.uniform(self.next_prng_key(),
-                                            state0.c.shape)
-      m_random_uniform = jax.random.uniform(self.next_prng_key(),
-                                            state0.m.shape)
+      c_random_uniform = jax.random.uniform(
+          self.next_prng_key(), state0.c.shape
+      )
+      m_random_uniform = jax.random.uniform(
+          self.next_prng_key(), state0.m.shape
+      )
     else:
       c_random_uniform = None
       m_random_uniform = None
@@ -350,8 +393,9 @@ class LstmCellSimple(BaseRnnCell):
     proj_inputs = jnp.einsum('TBD,DH->TBH', x, wm_i)
     return proj_inputs
 
-  def fprop_with_projected_inputs(self, state0: NestedMap,
-                                  inputs: NestedMap) -> NestedMap:
+  def fprop_with_projected_inputs(
+      self, state0: NestedMap, inputs: NestedMap
+  ) -> NestedMap:
     """FProp with inputs already projected.
 
     This method is for parallelizing the input projection across time steps to
@@ -391,11 +435,8 @@ class LstmCellSimple(BaseRnnCell):
     wm_h = self.theta.wm[num_input_nodes:, :]
     proj_m = jnp.einsum('bd,dc->bc', state0.m, wm_h)
     xmw = inputs.proj_inputs + proj_m
-
-    xmw += self._bias_adjustment()
-    i_i, i_g, f_g, o_g = jnp.split(xmw, self.num_gates, axis=1)
-
-    state1 = self._gates_internal(state0, i_i, i_g, f_g, o_g)
+    gates = self._gates_preprocess(xmw)
+    state1 = self._gates_internal(state0, *gates)
     state1 = self._apply_zoneout(state0, inputs, state1)
     return state1
 
@@ -409,106 +450,44 @@ class LayerNormalizedLstmCellSimple(LstmCellSimple):
   Attributes:
     layer_norm_epsilon: A small float added to variance.
   """
+
   layer_norm_epsilon: float = 1e-8
 
   def setup(self) -> None:
     """Initializes LayerNormalizedLstmCellSimple."""
     super().setup()
     ln_scale_pc = WeightHParams(
-        shape=[self.num_gates * self.hidden_size],
-        init=WeightInit.Constant(1.0))
+        shape=[self.num_gates * self.hidden_size], init=WeightInit.Constant(1.0)
+    )
     self.create_variable('ln_scale', ln_scale_pc)
 
-  def _apply_layer_norm(self, activation: JTensor) -> JTensor:
-    """Apply layer normalization on a tensor.
+  def _apply_layer_norm(self, x: JTensor) -> JTensor:
+    """Apply layer normalization on the last dim of the input tensor.
 
     Args:
-      activation: Input tensor of shape [b, self.num_gates * self.hidden_size].
+      x: Input tensor of shape [..., d].
 
     Returns:
-      Normalized activation. A tensor of shape
-        [b, self.num_gates * self.hidden_size].
-
-    Raises:
-      ValueError if dim is not equal to self.num_gates * self.hidden_size.
+      Normalized tensor of shape [..., d].
     """
-    b, dim = activation.shape[:2]
-    if dim != self.num_gates * self.hidden_size:
-      raise ValueError(
-          f'dim is not equal to self.num_gates * self.hidden_size: {dim} vs'
-          f' {self.num_gates * self.hidden_size}'
-      )
-
-    activation_reshape = jnp.reshape(activation, [b, self.num_gates, -1])
-    activation_mean = jnp.mean(activation_reshape, axis=2, keepdims=True)
-    activation_variance = jnp.mean(
-        jnp.square(activation_reshape - activation_mean), axis=2, keepdims=True
+    x_mean = jnp.mean(x, axis=-1, keepdims=True)
+    x_variance = jnp.mean(jnp.square(x - x_mean), axis=-1, keepdims=True)
+    x_normed = (x - x_mean) * jax.lax.rsqrt(
+        x_variance + self.layer_norm_epsilon
     )
-    activation_normed = (activation_reshape - activation_mean) * jax.lax.rsqrt(
-        activation_variance + self.layer_norm_epsilon
+    return x_normed
+
+  def _gates_preprocess(self, x: JTensor) -> Sequence[JTensor]:
+    i_i, i_g, f_g, o_g = self._gates_unpack(x, axis=1)
+    ln_scale_i_i, ln_scale_i_g, ln_scale_f_g, ln_scale_o_g = self._gates_unpack(
+        self.theta.ln_scale
     )
-    return jnp.reshape(activation_normed, [b, -1]) * self.theta.ln_scale
-
-  def __call__(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
-    """Forward function.
-
-    The only difference to base class is a LayerNorm applied before gating. Also
-    see base class docstrings.
-
-    Args:
-      state0: The previous recurrent state.
-      inputs: The inputs to the cell.
-
-    Returns:
-      state1: The next recurrent state.
-    """
-    inputs = jax.tree_map(lambda x: x, inputs)
-    if not isinstance(inputs.act, (list, tuple)):
-      inputs.act = [inputs.act]
-    asserts.eq(self.inputs_arity, len(inputs.act))
-
-    if self.reset_cell_state:
-      state0 = self._reset_state(state0, inputs)
-
-    concat = jnp.concatenate(inputs.act + [state0.m], 1)
-    xmw = jnp.einsum('bd,dc->bc', concat, self.theta.wm)
-    xmw = self._apply_layer_norm(xmw)
-    xmw += self._bias_adjustment()
-    i_i, i_g, f_g, o_g = jnp.split(xmw, self.num_gates, axis=1)
-    state1 = self._gates_internal(state0, i_i, i_g, f_g, o_g)
-    state1 = self._apply_zoneout(state0, inputs, state1)
-    return state1
-
-  def fprop_with_projected_inputs(
-      self, state0: NestedMap, inputs: NestedMap
-  ) -> NestedMap:
-    """FProp with inputs already projected.
-
-    Please see LstmCellSimple.fprop_with_projected_inputs for more details.
-
-    Args:
-      state0: A NestedMap with the same structure as return value of
-        `self.zero_state()`.
-      inputs: A NestedMap with the following fields: 1) proj_inputs: A single
-        Tensors of shape [batch, 4 * hidden_dim]. 2) padding: A Tensor of shape
-        [batch, 1]. 3) reset_mask: A Tensor of shape [batch, 1].
-
-    Returns:
-      state1: A NestedMap of the same structure as `state0`.
-    """
-    if self.reset_cell_state:
-      state0 = self._reset_state(state0, inputs)
-
-    num_input_nodes = self.num_input_nodes
-    wm_h = self.theta.wm[num_input_nodes:, :]
-    proj_m = jnp.einsum('bd,dc->bc', state0.m, wm_h)
-    xmw = inputs.proj_inputs + proj_m
-    xmw = self._apply_layer_norm(xmw)
-    xmw += self._bias_adjustment()
-    i_i, i_g, f_g, o_g = jnp.split(xmw, self.num_gates, axis=1)
-    state1 = self._gates_internal(state0, i_i, i_g, f_g, o_g)
-    state1 = self._apply_zoneout(state0, inputs, state1)
-    return state1
+    bias_i_i, bias_i_g, bias_f_g, bias_o_g = self._bias_unpack()
+    i_i = self._apply_layer_norm(i_i) * ln_scale_i_i + bias_i_i
+    i_g = self._apply_layer_norm(i_g) * ln_scale_i_g + bias_i_g
+    f_g = self._apply_layer_norm(f_g) * ln_scale_f_g + bias_f_g
+    o_g = self._apply_layer_norm(o_g) * ln_scale_o_g + bias_o_g
+    return i_i, i_g, f_g, o_g
 
 
 class CifgLstmCellSimple(LstmCellSimple):
@@ -518,40 +497,14 @@ class CifgLstmCellSimple(LstmCellSimple):
   def num_gates(self) -> int:
     return 3
 
-  def __call__(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
-    """Forward function.
-
-    Please see LstmCellSimple.fprop for more details.
-
-    Args:
-      state0: The previous recurrent state.
-      inputs: The inputs to the cell.
-
-    Returns:
-      state1: The next recurrent state.
-    """
-
-    inputs = jax.tree_map(lambda x: x, inputs)
-    if not isinstance(inputs.act, (list, tuple)):
-      inputs.act = [inputs.act]
-
-    asserts.eq(self.inputs_arity, len(inputs.act))
-
-    if self.reset_cell_state:
-      state0 = self._reset_state(state0, inputs)
-
-    concat = jnp.concatenate(inputs.act + [state0.m], 1)
-    xmw = jnp.einsum('bd,dc->bc', concat, self.theta.wm)
+  def _bias_unpack(self) -> Sequence[JTensor]:
     # CifgLstmCellSimple doesn't support forget gate bias.
     assert self.forget_gate_bias == 0.0
-    xmw += self.theta.b
-    i_i, f_g, o_g = jnp.split(xmw, self.num_gates, axis=1)
-    state1 = self._gates_internal(state0, i_i, f_g, o_g)
-    state1 = self._apply_zoneout(state0, inputs, state1)
-    return state1
+    return self._gates_unpack(self.theta.b)
 
-  def _gates_internal(self, state0: NestedMap, i_i: JTensor, f_g: JTensor,
-                      o_g: JTensor) -> NestedMap:
+  def _gates_internal(
+      self, state0: NestedMap, i_i: JTensor, f_g: JTensor, o_g: JTensor
+  ) -> NestedMap:
     forget_gate = jax.nn.sigmoid(f_g) * state0.c
     # Coupled input and forget gate.
     input_gate = (1.0 - jax.nn.sigmoid(f_g)) * jnp.tanh(i_i)
@@ -568,38 +521,3 @@ class CifgLstmCellSimple(LstmCellSimple):
       new_m = jnp.einsum('bd,dc->bc', new_m, self.theta.w_proj)
 
     return NestedMap(c=new_c, m=new_m)
-
-  def fprop_with_projected_inputs(self, state0: NestedMap,
-                                  inputs: NestedMap) -> NestedMap:
-    """FProp with inputs already projected.
-
-    Please see LstmCellSimple.fprop_with_projected_inputs for more details.
-
-    Args:
-      state0: A NestedMap with the same structure as return value of
-        `self.zero_state()`.
-      inputs: A NestedMap with the following fields:
-        - proj_inputs: A single Tensors of shape [batch, 4 * hidden_dim].
-        - padding: A Tensor of shape [batch, 1].
-        - reset_mask: A Tensor of shape [batch, 1].
-
-    Returns:
-      state1: A NestedMap of the same structure as `state0`.
-    """
-    if self.reset_cell_state:
-      state0 = self._reset_state(state0, inputs)
-
-    num_input_nodes = self.num_input_nodes
-    wm_h = self.theta.wm[num_input_nodes:, :]
-    proj_m = jnp.einsum('bd,dc->bc', state0.m, wm_h)
-    xmw = inputs.proj_inputs + proj_m
-
-    # CifgLstmCellSimple doesn't support forget gate bias.
-    assert self.forget_gate_bias == 0.0
-
-    xmw += self.theta.b
-    i_i, f_g, o_g = jnp.split(xmw, self.num_gates, axis=1)
-
-    state1 = self._gates_internal(state0, i_i, f_g, o_g)
-    state1 = self._apply_zoneout(state0, inputs, state1)
-    return state1
