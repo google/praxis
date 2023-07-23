@@ -950,9 +950,20 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
 
     if self.gating_func == 'top2':
       aux_loss, combine_tensor, dispatch_tensor, summary = gating
-      over_capacity_1_ratio, over_capacity_2_ratio = summary
-      self.add_summary('over_capacity_1_ratio', over_capacity_1_ratio)
-      self.add_summary('over_capacity_2_ratio', over_capacity_2_ratio)
+      (
+          over_capacity_1,
+          over_capacity_2,
+          # Counting tokens routed to 0, 1 and 2 experts.
+          dispatch_0,
+          dispatch_1,
+          dispatch_2,
+      ) = summary
+      denom = (dispatch_0 + dispatch_1 + dispatch_2).astype(jnp.float32)
+      self.add_summary('dispatch_0', dispatch_0 / denom)
+      self.add_summary('dispatch_1', dispatch_1 / denom)
+      self.add_summary('dispatch_2', dispatch_2 / denom)
+      self.add_summary('over_capacity_1_ratio', over_capacity_1)
+      self.add_summary('over_capacity_2_ratio', over_capacity_2)
     else:
       aux_loss, combine_tensor, dispatch_tensor = gating
     if fprop_dtype != np.float32:

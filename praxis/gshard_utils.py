@@ -366,15 +366,36 @@ def top2_gating_on_logits(paddings,
   # GSEC tensor
   combine_tensor = first_part_of_combine_tensor + second_part_of_combine_tensor
 
+  dispatch_count_tensor = jnp.sum(
+      combine_tensor.astype(bool).astype(jnp.int32), [-2, -1]
+  )
+  # Counts for 0, 1 and 2 (returning as array somehow has artefacts when
+  # summaries are being reported in training)
+  dispatch_0 = jnp.sum(dispatch_count_tensor == 0)
+  dispatch_1 = jnp.sum(dispatch_count_tensor == 1)
+  dispatch_2 = jnp.sum(dispatch_count_tensor == 2)
+  if paddings is not None:
+    paddings_count = jnp.sum(paddings.astype(jnp.int32))
+    dispatch_0 -= paddings_count
+
   # GSEC tensor
   dispatch_tensor = combine_tensor.astype(bool).astype(fprop_dtype)
 
-  aux_loss = aux_loss.astype(fprop_dtype)
   combine_tensor = combine_tensor.astype(fprop_dtype)
-  dispatch_tensor = dispatch_tensor.astype(fprop_dtype)
 
-  return aux_loss, combine_tensor, dispatch_tensor, (over_capacity_1,
-                                                     over_capacity_2)
+  return (
+      aux_loss,
+      combine_tensor,
+      dispatch_tensor,
+      (
+          over_capacity_1,
+          over_capacity_2,
+          # Counting tokens routed to 0, 1 and 2 experts.
+          dispatch_0,
+          dispatch_1,
+          dispatch_2,
+      ),
+  )
 
 
 def topk_gating_on_logits(paddings,
