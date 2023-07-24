@@ -206,7 +206,7 @@ class FeedForward(base_layer.BaseLayer):
 
 
 class MLPBlock(base_layer.BaseLayer):
-  """Feedforward layer with activation.
+  """Multilayer perceptron block composed of multiple FeedForward layers.
 
   Attributes:
     num_layers: Number of FeedForward layers.
