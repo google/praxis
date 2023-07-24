@@ -483,6 +483,56 @@ class PyUtilsTest(test_utils.TestCase):
     output = output[0] * jnp.expand_dims(1 - output[1], -1)
     self.assertAllClose(output, expected_output)
 
+  def test_concat_nested_maps(self):
+    map_0 = {
+        'A': jnp.zeros((8, 1, 4)),
+        'B': jnp.zeros((1, 2)),
+        'C': {
+            'D': jnp.zeros((4, 1)),
+            'E': 5,
+            'F': jnp.zeros((5)),
+        },
+    }
+
+    map_1 = {
+        'A': jnp.zeros((8, 2, 4)),
+        'B': jnp.zeros((1, 3)),
+        'C': {
+            'D': jnp.zeros((4, 1)),
+            'F': jnp.zeros(5),
+        },
+    }
+
+    map_2 = {
+        'A': jnp.zeros((8, 3, 4)),
+        'B': jnp.zeros((1, 1)),
+        'C': {
+            'D': jnp.zeros((4, 1)),
+            'E': 5,
+            'F': jnp.zeros((5)),
+        },
+    }
+
+    expected = {
+        'A': jnp.zeros((8, 6, 4)),
+        'B': jnp.zeros((1, 6)),
+        'C': {
+            'D': jnp.zeros((4, 3)),
+            'E': 5,
+            'F': jnp.zeros((5)),
+        },
+    }
+
+    actual = py_utils.concat_nested_maps([map_0, map_1, map_2], axis=1)
+
+    for el, al in zip(
+        jax.tree_util.tree_leaves(expected), jax.tree_util.tree_leaves(actual)
+    ):
+      if isinstance(el, jnp.ndarray):
+        self.assertArraysEqual(el, al)
+      else:
+        self.assertEqual(el, al)
+
 
 if __name__ == '__main__':
   absltest.main()

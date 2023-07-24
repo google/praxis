@@ -1175,3 +1175,35 @@ class BpropMaskedNode(NamedTuple):
 def is_bprop_masked_node(x: Any) -> bool:
   """Returns if x is an instance of BpropMaskedNode."""
   return isinstance(x, BpropMaskedNode)
+
+
+def concat_nested_maps(map_list: List[NestedMap], axis: int) -> NestedMap:
+  """Recursively concat tensors in a list of NestMaps.
+
+  If a key exists in map_list[0] and in map_list[1] then it assumed to exist in
+  all map_list[:]. Keys in map_list[0] that aren't JTensors, Maps, don't
+  exist in map_list[1], or have a ndims <= axis will be copied directly.
+
+  Args:
+    map_list: A list of NestedMaps.
+    axis: The axis to concat tensors along.
+
+  Returns:
+    A single NestedMap with all JTensors in all maps concatenated along axis.
+  """
+  if len(map_list) < 2:
+    return map_list[0]
+  results = NestedMap()
+  for k in map_list[0].keys():
+    results[k] = map_list[0][k]
+    if (
+        isinstance(map_list[0][k], JTensor)
+        and k in map_list[1]
+        and len(map_list[0][k].shape) > axis
+    ):
+      tensor_list = [output[k] for output in map_list]
+      results[k] = jnp.concatenate(tensor_list, axis=axis)
+    elif isinstance(map_list[0][k], Dict) and k in map_list[1]:
+      next_map_list = [output[k] for output in map_list]
+      results[k] = concat_nested_maps(next_map_list, axis=axis)
+  return results
