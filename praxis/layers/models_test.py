@@ -1285,6 +1285,25 @@ class SequenceModelTest(test_utils.TestCase):
     self.assertSequenceEqual(results.embeddings.shape, (1, 5, 8))
 
 
+def _flatten_input_data(lm_input):
+  return {
+      'y_w/inputs': lm_input.inputs,
+      'y_w/paddings': lm_input.paddings,
+      'y_w/labels/ids': lm_input.labels.class_ids,
+      'y_w/labels/weights': lm_input.labels.class_weights,
+      'y_w/segment_ids': lm_input.segment_ids,
+      'y_w/segment_pos': lm_input.segment_pos,
+      'y_w/inputs_indicator': lm_input.inputs_indicator,
+      'y_l/inputs': lm_input.inputs,
+      'y_l/paddings': lm_input.paddings,
+      'y_l/labels/ids': lm_input.labels.class_ids,
+      'y_l/labels/weights': lm_input.labels.class_weights,
+      'y_l/segment_ids': lm_input.segment_ids,
+      'y_l/segment_pos': lm_input.segment_pos,
+      'y_l/inputs_indicator': lm_input.inputs_indicator,
+  }
+
+
 class TransformerLmDpoTest(test_utils.TestCase):
 
   def setUp(self):
@@ -1294,26 +1313,19 @@ class TransformerLmDpoTest(test_utils.TestCase):
 
   def test_transformer_lm_dpo(self):
     seq_len = 512
-    position_emb_tpl = pax_fiddle.Config(embedding_softmax.PositionalEmbedding)
-    stacked_transformer_tpl = pax_fiddle.Config(
-        transformers.StackedTransformer,
-        model_dims=32,
-        hidden_dims=4 * 32,
-        num_heads=4,
-        num_layers=1,
-    )
-    p_ref = pax_fiddle.Config(
-        transformer_models.TransformerLm,
+    model_config = transformer_models.TransformerLm.config(
         model_dims=32,
         vocab_size=52,
-        position_emb_tpl=position_emb_tpl,
-        stacked_transformer_tpl=stacked_transformer_tpl,
+        position_emb_tpl=embedding_softmax.PositionalEmbedding.config(),
+        stacked_transformer_tpl=transformers.StackedTransformer.config(
+            model_dims=32,
+            hidden_dims=4 * 32,
+            num_heads=4,
+            num_layers=1,
+        ),
     )
-    p_ref.softmax_tpl.scale_sqrt_depth = True
-    p_mdl = p_ref.clone()
-    p = pax_fiddle.Config(
-        models.LanguageModelDPO, ref_mdl_tpl=p_ref, mdl_tpl=p_mdl
-    )
+    model_config.softmax_tpl.scale_sqrt_depth = True
+    p = models.LanguageModelDPO.config(ref_mdl=model_config, mdl=model_config)
 
     batch_size = 8
     dpo_lm = instantiate(p)
@@ -1323,18 +1335,16 @@ class TransformerLmDpoTest(test_utils.TestCase):
     )
     labels = jnp.concatenate((input_ids[:, 1:], input_ids[:, :1]), axis=1)
     weights = jnp.ones([batch_size, seq_len])
-    lm_input = NestedMap(
-        ids=input_ids,
-        labels=labels,
+    lm_input = models.DPOExampleHalf(
+        inputs=input_ids,
+        inputs_indicator=jnp.ones([batch_size, seq_len]),
+        labels=models.Labels(class_ids=labels, class_weights=weights),
         paddings=jnp.zeros([batch_size, seq_len]),
         segment_ids=jnp.ones([batch_size, seq_len]),
-        segment_pos=jnp.tile(
-            jnp.arange(0, seq_len), [batch_size, 1]
-        ),
-        weights=weights,
-        eval_sample_weights=jnp.ones([batch_size])
+        segment_pos=jnp.tile(jnp.arange(0, seq_len), [batch_size, 1]),
     )
-    input_batch = NestedMap(y_l=lm_input, y_w=lm_input)
+
+    input_batch = _flatten_input_data(lm_input)
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)

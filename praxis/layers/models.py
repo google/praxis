@@ -15,7 +15,8 @@
 
 """Definition of specific models."""
 
-from typing import Any, Dict, NamedTuple, Optional, Sequence, Tuple
+import dataclasses
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 from absl import logging
 import clu.metrics as clu_metrics
@@ -40,6 +41,7 @@ from praxis.layers import embedding_softmax
 from praxis.layers import linears
 from praxis.layers import resnets
 from praxis.layers import transformer_models
+from praxis.pytypes import ArrayT, Float32, Int32  # pylint: disable=g-importing-member,g-multiple-import,line-too-long
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
@@ -55,7 +57,7 @@ SampleDecoderHParams = decoder_hparams.SampleDecoderHParams
 GreedyDecoderHParams = decoder_hparams.GreedyDecoderHParams
 LanguageModelType = transformer_models.LanguageModelType
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
-template_field = base_layer.template_field
+template_field = pax_fiddle.template_field
 
 
 def _merge_per_token_and_per_example_weights(
@@ -827,90 +829,129 @@ class LanguageModel(base_model.BaseModel):
     return metrics, ret, out_clu_metrics
 
 
-class _TransformerLmInput(NamedTuple):
-  inputs: JTensor
-  paddings: JTensor
-  labels: Dict[str, JTensor]
-  segment_ids: JTensor
-  segment_pos: JTensor
-  causal_attention_mask: Optional[JTensor]
+@dataclasses.dataclass(kw_only=True, slots=True)
+class Labels:
+  class_ids: Int32[ArrayT, '*B T']
+  class_weights: Float32[ArrayT, '*B T']
+
+
+@dataclasses.dataclass(kw_only=True, slots=True)
+class DPOExampleHalf:
+  """Represents a rated DPO example."""
+
+  inputs: Int32[ArrayT, '*B T']
+  labels: Labels
+  paddings: Int32[ArrayT, '*B T']
+  segment_ids: Int32[ArrayT, '*B T']  # Packing is as yet unsupported.
+  segment_pos: Int32[ArrayT, '*B T']  # Packing is as yet unsupported.
+  inputs_indicator: Int32[ArrayT, '*B T'] = None
+  causal_attention_mask: Int32[ArrayT, '*B T'] | None = None
+
+  def as_xformer_lm_input(self) -> dict[str, ArrayT | NestedMap]:
+    nestedmap = NestedMap.FromNestedDataclass(self)
+    del nestedmap['inputs_indicator']
+    return nestedmap
+
+
+@dataclasses.dataclass(kw_only=True, slots=True)
+class DPOExample:
+  """The structure of an example batch fed to a LanguageModelDPO instance.
+
+  Different from the RM data structure, we separate out exactly two generations
+  into y_w and y_l, where the former is the 'winner' in the pairwise matchup.
+  """
+
+  y_w: DPOExampleHalf
+  y_l: DPOExampleHalf
+
+  @classmethod
+  def from_feature_converter(cls, example: Mapping[str, JTensor]):
+    return cls(
+        y_w=DPOExampleHalf(
+            inputs=example['y_w/inputs'],
+            inputs_indicator=example['y_w/inputs_indicator'],
+            labels=Labels(
+                class_ids=example['y_w/labels/ids'],
+                class_weights=example['y_w/labels/weights'],
+            ),
+            paddings=example['y_w/paddings'],
+            segment_ids=example['y_w/segment_ids'],
+            segment_pos=example['y_w/segment_pos'],
+        ),
+        y_l=DPOExampleHalf(
+            inputs=example['y_l/inputs'],
+            inputs_indicator=example['y_l/inputs_indicator'],
+            labels=Labels(
+                class_ids=example['y_l/labels/ids'],
+                class_weights=example['y_l/labels/weights'],
+            ),
+            paddings=example['y_l/paddings'],
+            segment_ids=example['y_l/segment_ids'],
+            segment_pos=example['y_l/segment_pos'],
+        ),
+    )
 
 
 class LanguageModelDPO(base_model.BaseModel):
   """Contains a pair of TransformerLM for direct preference optimization.
 
-  reference: https://arxiv.org/abs/2305.18290
+  Reference: https://arxiv.org/abs/2305.18290
 
   This model implicitly optimizes this standard rlhf objective.
     max_{pi} = E_{x ~ D, y ~ pi(x)}(r(y, x) - beta * kl(pi(y|x) | ref(y|x)
 
 
   Attributes:
-    ref_lm_tpl: the reference model.
-    mdl_tpl: the mdl to be optimized.
+    ref_mdl: the reference model.
+    mdl: the mdl to be optimized.
     beta: kl regularization weight.
     apply_eval_sample_weights: Boolean indicating whether to apply the per
       example weights from the input `eval_sample_weights` or not.
     model_type: The type of language model based on the tokens visibility.
   """
 
-  # The reference model. Not back-proped into.
-  ref_mdl_tpl: LayerTpl = template_field(transformer_models.TransformerLm)
-  # The model to be optimized.
-  mdl_tpl: LayerTpl = template_field(transformer_models.TransformerLm)
-  # kl divergence regularization weight.
-  beta: float = 0.1
+  ref_mdl: transformer_models.TransformerLm = pax_fiddle.instance_field(
+      transformer_models.TransformerLm
+  )
+  """The reference model. Not back-proped into."""
 
-  apply_eval_sample_weights: bool = True
+  mdl: transformer_models.TransformerLm = pax_fiddle.instance_field(
+      transformer_models.TransformerLm
+  )
+  """The model to be optimized."""
+
+  beta: float = 0.1
+  """kl divergence regularization weight."""
+
+  token_counter: embedding_softmax.TokenCounter = pax_fiddle.instance_field(
+      embedding_softmax.TokenCounter
+  )
+  """Simple counter for tracking the number of tokens; used for fine-tuning."""
+
+  apply_eval_sample_weights: bool = False
   model_type: LanguageModelType = LanguageModelType.CAUSAL
 
-  def _prepare_predict_data(
-      self, input_batch: NestedMap
-  ) -> _TransformerLmInput:
-    paddings = input_batch.paddings
-    weights = input_batch.weights
+  def _prepare_predict_data(self, batch: DPOExampleHalf) -> DPOExampleHalf:
     if self.apply_eval_sample_weights:
-      assert hasattr(input_batch, 'eval_sample_weights'), (
+      assert hasattr(batch, 'eval_sample_weights'), (
           '`apply_eval_sample_weights` enabled, but the input batch does not '
           'provide the necessary `eval_sample_weights` field.'
       )
-      weights = _merge_per_token_and_per_example_weights(
-          weights, input_batch.eval_sample_weights
+      batch.weights = _merge_per_token_and_per_example_weights(
+          batch.weights, batch.eval_sample_weights
       )
 
-    inputs = input_batch.ids
+    self.token_counter(batch.inputs, batch.paddings)
 
-    # Keep track of num of tokens used for model finetuning.
-    self.token_counter(inputs, paddings)
+    match self.model_type:
+      case LanguageModelType.BIDIRECTIONAL:
+        batch.causal_attention_mask = jnp.zeros_like(batch.inputs)
+      case LanguageModelType.PREFIX:
+        batch.causal_attention_mask = 1 - batch.inputs_indicator
+      case LanguageModelType.CAUSAL:
+        batch.causal_attention_mask = None
 
-    labels = NestedMap(class_ids=input_batch.labels, class_weights=weights)
-
-    # For future proof, let's assume segment_ids and segment_pos always exist.
-    assert hasattr(input_batch, 'segment_ids')
-    assert hasattr(input_batch, 'segment_pos')
-
-    if self.model_type == LanguageModelType.BIDIRECTIONAL:
-      causal_attention_mask = jnp.zeros_like(inputs)
-    elif self.model_type == LanguageModelType.PREFIX:
-      causal_attention_mask = 1 - input_batch.inputs_indicator
-    else:
-      causal_attention_mask = None
-
-    return _TransformerLmInput(
-        inputs=inputs,
-        paddings=paddings,
-        labels=labels,
-        segment_ids=input_batch.segment_ids,
-        segment_pos=input_batch.segment_pos,
-        causal_attention_mask=causal_attention_mask,
-    )
-
-  def setup(self):
-    self.create_child('ref_mdl', self.ref_mdl_tpl)
-    self.create_child('mdl', self.mdl_tpl)
-
-    tc_p = pax_fiddle.Config(embedding_softmax.TokenCounter)
-    self.create_child('token_counter', tc_p)
+    return batch
 
   # Each batch of input contains two examples: (x, y_l) and (x, y_w) where
   # y_w is preferred over y_l per pairwise preference rating.
@@ -920,52 +961,23 @@ class LanguageModelDPO(base_model.BaseModel):
   #
   # Note(yonghui): this implementation doesn't support packing. It is assumed
   # that one sequence (batch element) contains one single example.
-  def __call__(self, input_batch: NestedMap):
-    #
-    y_l = self._prepare_predict_data(input_batch['y_l'])
-    y_w = self._prepare_predict_data(input_batch['y_w'])
+  def compute_predictions(self, input_batch: NestedMap) -> Predictions:
+    batch = DPOExample.from_feature_converter(input_batch)
+    y_l = self._prepare_predict_data(batch.y_l)
+    y_w = self._prepare_predict_data(batch.y_w)
 
-    # output under the reference policy.
-    y_l_ref = self.ref_mdl(
-        y_l.inputs,
-        y_l.paddings,
-        y_l.labels,
-        y_l.segment_ids,
-        y_l.segment_pos,
-        y_l.causal_attention_mask,
+    # Ref = reference policy; pi = current policy.
+    return NestedMap(
+        y_l_ref=self.ref_mdl(**y_l.as_xformer_lm_input()),
+        y_l_pi=self.mdl(**y_l.as_xformer_lm_input()),
+        y_w_ref=self.ref_mdl(**y_w.as_xformer_lm_input()),
+        y_w_pi=self.mdl(**y_w.as_xformer_lm_input()),
     )
 
-    # output under the current policy.
-    y_l_pi = self.mdl(
-        y_l.inputs,
-        y_l.paddings,
-        y_l.labels,
-        y_l.segment_ids,
-        y_l.segment_pos,
-        y_l.causal_attention_mask,
-    )
-
-    # output under the reference policy.
-    y_w_ref = self.ref_mdl(
-        y_w.inputs,
-        y_w.paddings,
-        y_w.labels,
-        y_w.segment_ids,
-        y_w.segment_pos,
-        y_w.causal_attention_mask,
-    )
-
-    # output under the current policy.
-    y_w_pi = self.mdl(
-        y_w.inputs,
-        y_w.paddings,
-        y_w.labels,
-        y_w.segment_ids,
-        y_w.segment_pos,
-        y_w.causal_attention_mask,
-    )
-
-    def per_seq_log_p(softmax_out):
+  def compute_loss(
+      self, predictions, input_batch: NestedMap
+  ) -> Tuple[WeightedScalars, Dict[str, Any]]:
+    def per_seq_log_p(softmax_out: NestedMap):
       # assert per_example_xent is float32, learning might be unstable in
       # bfloat16.
       assert softmax_out.per_example_xent.dtype == jnp.float32
@@ -973,10 +985,10 @@ class LanguageModelDPO(base_model.BaseModel):
       assert len(softmax_out.per_sequence_xent.shape) == 1
       return -1.0 * softmax_out.per_sequence_xent
 
-    y_l_ref_log_p = per_seq_log_p(y_l_ref)
-    y_l_pi_log_p = per_seq_log_p(y_l_pi)
-    y_w_ref_log_p = per_seq_log_p(y_w_ref)
-    y_w_pi_log_p = per_seq_log_p(y_w_pi)
+    y_l_ref_log_p = per_seq_log_p(predictions.y_l_ref)
+    y_l_pi_log_p = per_seq_log_p(predictions.y_l_pi)
+    y_w_ref_log_p = per_seq_log_p(predictions.y_w_ref)
+    y_w_pi_log_p = per_seq_log_p(predictions.y_w_pi)
 
     r_hat_y_l = jax.lax.stop_gradient(
         self.beta * (y_l_pi_log_p - y_l_ref_log_p)
@@ -1003,14 +1015,14 @@ class LanguageModelDPO(base_model.BaseModel):
         'p_correct_ranking', jnp.mean(jax.nn.sigmoid(r_hat_y_w - r_hat_y_l))
     )
 
-    bs = y_w.inputs.shape[0]
+    batch_size = predictions.y_l_ref.per_example_xent.shape[0]
 
     # TODO(yonghui): Add diagnostic summaries.
     # pair_loss is what learning back-props into.
     return (
         NestedMap(
-            total_loss=(loss, jnp.array(bs, loss.dtype)),
-            dpo_loss=(dpo_loss, jnp.array(bs, dpo_loss.dtype)),
+            total_loss=(loss, jnp.array(batch_size, loss.dtype)),
+            dpo_loss=(dpo_loss, jnp.array(batch_size, dpo_loss.dtype)),
         ),
         {},
     )
@@ -1516,7 +1528,7 @@ class BertModel(base_model.BaseModel):
 
     self.create_child('lm', self.lm_tpl)
 
-    mlm_augment_p = pax_fiddle.Config(augmentations.MaskedLmDataAugmenter)
+    mlm_augment_p = augmentations.MaskedLmDataAugmenter.config()
     mlm_augment_p.vocab_size = self.lm_tpl.vocab_size
     mlm_augment_p.mask_token_id = self.mask_token_id
     self.create_child('mlm_augmenter', mlm_augment_p)
