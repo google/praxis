@@ -94,6 +94,14 @@ AnyNPArray = Shaped[np.ndarray, '...']
 AnyArray = Shaped[ArrayT, '...']
 AnyPyTreeArray = jaxtyping.PyTree[AnyArray]
 FloatArray = Float[ArrayT, '...']
-Scalar = Shaped[ArrayT, ''] | Shaped[np.generic, ''] | Shaped[jnp.generic, '']
-ScalarInt = Int[ArrayT, ''] | Int[np.generic, ''] | Int[jnp.generic, '']
-ScalarFloat = Float[ArrayT, ''] | Float[np.generic, ''] | Float[jnp.generic, '']
+Scalar = (
+    Shaped[ArrayT, '']
+    | Shaped[np.generic, '']
+    | Shaped[jnp.generic, '']
+    | int
+    | float
+)
+ScalarInt = Int[ArrayT, ''] | Int[np.generic, ''] | Int[jnp.generic, ''] | int
+ScalarFloat = (
+    Float[ArrayT, ''] | Float[np.generic, ''] | Float[jnp.generic, ''] | float
+)
