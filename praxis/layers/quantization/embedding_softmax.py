@@ -16,7 +16,7 @@
 """Quantized Embedding and softmax layers."""
 
 import copy
-from typing import Any
+from typing import Any, Optional
 
 import jax
 from jax import numpy as jnp
@@ -430,15 +430,19 @@ class NClassMajorSharedEmbeddingSoftmax(
           ),
       )
 
-  def get_logits(self, inputs: JTensor) -> JTensor:
+  def get_logits(
+      self, inputs: JTensor, input_ids: Optional[JTensor] = None
+  ) -> JTensor:
     """Returns logits given the inputs with an option to soft cap it.
 
     Args:
       inputs: a single JTensor with shape [..., input_dim].
+      input_ids: Unused. Needed for API compatibility with downstream usage.
 
     Returns:
       logits: with shape [..., num_classes]. Unnormalized softmax's logits.
     """
+    del input_ids
     ap = self.activation_split_dims_mapping
     if self.quantization.mode == QuantizationMode.INFERENCE:
       w, s, zp = self.get_quantized_weight(
