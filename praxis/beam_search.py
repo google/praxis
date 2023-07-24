@@ -368,7 +368,10 @@ def beam_search_after_prefix_fprop(
     # Choose the topk indices.
     _, topk_indices, final_topk_value, final_topk_indices = (
         decoder_utils.two_stage_topk(
-            logprobs, val.hyp_scores, topk_terminal_ids
+            logprobs,
+            val.hyp_scores,
+            topk_terminal_ids,
+            beam_search_hparams.tokens_per_beam,
         )
     )
     # update scores with or without EOS depending on early_exit.

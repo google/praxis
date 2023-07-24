@@ -133,7 +133,10 @@ def gather_logprobs(
 
 
 def two_stage_topk(
-    logits: jnp.ndarray, hyp_scores: jnp.ndarray, terminal_ids: List[int]
+    logits: jnp.ndarray,
+    hyp_scores: jnp.ndarray,
+    terminal_ids: List[int],
+    tokens_per_beam: Optional[int] = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
   """Two stage TopK to choose TopK values and indices from each beam.
 
@@ -153,15 +156,16 @@ def two_stage_topk(
   vocab_size = logits.shape[-1]
   batch_size = hyp_scores.shape[0]
   beam_size = hyp_scores.shape[1]
+  tokens_per_beam = beam_size if tokens_per_beam is None else tokens_per_beam
   logits_reshape = jnp.reshape(
       logits, newshape=(batch_size * beam_size, vocab_size)
   )
-  topk_value, topk_indices = jax.lax.top_k(logits_reshape, beam_size)
+  topk_value, topk_indices = jax.lax.top_k(logits_reshape, tokens_per_beam)
   topk_value = jnp.reshape(
-      topk_value, newshape=(batch_size, beam_size, beam_size)
+      topk_value, newshape=(batch_size, beam_size, tokens_per_beam)
   )
   topk_indices = jnp.reshape(
-      topk_indices, newshape=(batch_size, beam_size, beam_size)
+      topk_indices, newshape=(batch_size, beam_size, tokens_per_beam)
   )
   topk_value += jnp.expand_dims(hyp_scores, -1)
   for terminal_id in terminal_ids:
@@ -170,10 +174,10 @@ def two_stage_topk(
     )
 
   topk_value = jnp.reshape(
-      topk_value, newshape=(batch_size, beam_size * beam_size)
+      topk_value, newshape=(batch_size, beam_size * tokens_per_beam)
   )
   topk_indices = jnp.reshape(
-      topk_indices, newshape=(batch_size, beam_size * beam_size)
+      topk_indices, newshape=(batch_size, beam_size * tokens_per_beam)
   )
 
   final_topk_value, final_topk_indices = jax.lax.top_k(topk_value, beam_size)

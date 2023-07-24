@@ -83,10 +83,13 @@ class BeamSearchHParams(DecoderHParams):
 
   Attributes:
     beam_size: Beam size for decoding.
+    tokens_per_beam: Number of tokens to explore per beam, defaulting to
+      beam_size if None.
     length_norm_alpha: Length norm alpha for beam search.
     early_exit: A bool, whether or not to allow early exit.
   """
   beam_size: int = 1
+  tokens_per_beam: Optional[int] = None
   length_norm_alpha: float = 0.8
   early_exit: bool = False
 
