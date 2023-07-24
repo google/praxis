@@ -1820,8 +1820,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       addition, per_sequence_xent is added which equal to the sum of xent loss
       for tokens in a sequence.
     """
-    batch, seq_length = inputs.shape[:2]
-    target_seq_length = targets.shape[1]
+    batch, target_seq_length = targets.shape[:2]
 
     encoder_output = self.encode(
         inputs,
@@ -1861,9 +1860,6 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       assert input_segment_pos is None
       # Fold the paddings with the segment mask.
       input_segment_ids = jnp.asarray(1 - input_paddings, jnp.int32)
-      input_segment_pos = jnp.tile(
-          jnp.arange(seq_length, dtype=jnp.int32)[None, :], [batch, 1]
-      )
 
     if target_segment_ids is None:
       assert target_segment_pos is None
