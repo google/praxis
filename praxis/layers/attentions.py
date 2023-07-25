@@ -3358,18 +3358,14 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     term_bd = jnp.einsum('BUWNH,FNH->BNUWF', query + self.theta.v, sin_emb)
 
     # Perform relative shift in order to get [B, N, U, W, C]
-    # Pads the input to [B, N, U, C, C+1]
-    term_bd = jnp.pad(
-        term_bd, ((0, 0), (0, 0), (0, 0), (0, c - w), (0, c + 1 - f))
-    )
-
-    # Reshapes to [B, N, U, C+1, C]. Note the output last dim is 1-smaller
-    # than the input, which "pushses" one element off to the next row for each
-    # row. The accumulated effect is row_i is right-shifted i steps (i>=0).
-    term_bd = jnp.reshape(term_bd, [b, n, u, c + 1, c])
-
-    # Keeps useful slices. [B, N, U, W, C]
-    term_bd = term_bd[:, :, :, :w, :]
+    # Pads the input to [B, N, U, W, C + 1]
+    term_bd = jnp.pad(term_bd, ((0, 0), (0, 0), (0, 0), (0, 0), (0, c - f + 1)))
+    term_bd = jnp.reshape(term_bd, [b, n, u, w * (c + 1)])
+    term_bd = term_bd[:, :, :, : w * c]
+    # # Reshapes to [B, N, U, W, C]. Note the output last dim is 1-smaller
+    # # than the input, which "pushses" one element off to the next row for each
+    # # row. The accumulated effect is row_i is right-shifted i steps (i>=0).
+    term_bd = jnp.reshape(term_bd, [b, n, u, w, c])
     return term_ac + term_bd
 
   def extend_step(
