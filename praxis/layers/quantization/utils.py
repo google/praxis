@@ -212,7 +212,7 @@ def unpack_4bit(
   # Multiply shifts table by 4
   shifts <<= 2
   rep <<= shifts
-  if original_dtype == jnp.int8:
+  if jnp.issubdtype(original_dtype, jnp.signedinteger):
     # Arithmetic shift is required to repsect negative numbers
     return lax.shift_right_arithmetic(
         rep, jnp.array(packet_type_bits - 4, packed.dtype)

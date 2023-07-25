@@ -28,7 +28,10 @@ from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import linears
 from praxis.layers.quantization import linears as qlinears
+from praxis.layers.quantization import operations as qoperations
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import utils as qutils
+
 
 instantiate = base_layer.instantiate
 WeightInit = base_layer.WeightInit
@@ -220,6 +223,106 @@ class QuantizedLinearTest(test_utils.TestCase):
     self.assertArraysEqual(
         updated_vars[SUMMARIES]['step_count_scalar'], np.array([1])
     )
+
+  @parameterized.product(
+      input_dim=[64, 256, 1024],
+      apply_jit=[False, True],
+      jit_backend=['cpu', None],
+  )
+  def test_int4_packed_weight_equality(self, input_dim, apply_jit, jit_backend):
+    p_int32_packed = pax_fiddle.Config(
+        qlinears.Linear,
+        name='_linear',
+        input_dims=input_dim,
+        output_dims=128 * 8,
+        quantization=QuantizationParams(
+            quantization_type=QuantizationType.PTQ,
+            mode=QuantizationMode.INFERENCE,
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                precision=4, use_int4_packed_weights=True
+            ),
+        ),
+    )
+    p_unpacked = p_int32_packed.clone()
+    p_unpacked.quantization.weight_params.use_int4_packed_weights = False
+    p_int8_packed = p_int32_packed.clone()
+    p_int8_packed.quantization.weight_params.int4_packed_weights_container_dtype = (
+        jnp.int8
+    )
+    linear_int32_packed = instantiate(p_int32_packed)
+    linear_int8_packed = instantiate(p_int8_packed)
+    linear_unpacked = instantiate(p_unpacked)
+    inputs = np.random.normal(size=[1, 1, p_int32_packed.input_dims]).astype(
+        np.float32
+    )
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      w = jax.random.randint(
+          prng_key,
+          shape=[p_int32_packed.input_dims, p_int32_packed.output_dims],
+          minval=qoperations.get_min_max(4)[0],
+          maxval=qoperations.get_min_max(4)[1] + 1,
+          dtype=jnp.int8,
+      )
+      s = jax.random.uniform(
+          prng_key, shape=[p_int32_packed.output_dims], dtype=jnp.float32
+      )
+      packed_4bit_in_int32 = qutils.pack_4bit(w, 0, packed_dtype=jnp.int32)
+      packed_4bit_in_int8 = qutils.pack_4bit(w, 0, packed_dtype=jnp.int8)
+      self.assertArraysEqual(
+          w.astype(jnp.int32),
+          qutils.unpack_4bit(packed_4bit_in_int32, 0, jnp.int8),
+      )
+      self.assertArraysEqual(
+          w, qutils.unpack_4bit(packed_4bit_in_int8, 0, jnp.int8)
+      )
+
+      # Same weights packed in different format
+      packed_int32_vars = {
+          'params': {
+              'w': packed_4bit_in_int32,
+              'w_quantized_scale': s,
+          }
+      }
+      packed_int8_vars = {
+          'params': {
+              'w': packed_4bit_in_int8,
+              'w_quantized_scale': s,
+          }
+      }
+      unpacked_vars = {'params': {'w': w, 'w_quantized_scale': s}}
+      packed_int32_apply = (
+          jax.jit(linear_int32_packed.apply, backend=jit_backend)
+          if apply_jit
+          else linear_int32_packed.apply
+      )
+      packed_int8_apply = (
+          jax.jit(linear_int8_packed.apply, backend=jit_backend)
+          if apply_jit
+          else linear_int8_packed.apply
+      )
+      unpacked_apply = (
+          jax.jit(linear_unpacked.apply, backend=jit_backend)
+          if apply_jit
+          else linear_unpacked.apply
+      )
+      packed_int32_otuput = packed_int32_apply(packed_int32_vars, inputs)
+      packed_int8_otuput = packed_int8_apply(packed_int8_vars, inputs)
+      unpakced_output = unpacked_apply(unpacked_vars, inputs)
+      bf16_epsilon = float(jnp.finfo(jnp.bfloat16).eps)
+      self.assertAllClose(
+          unpakced_output,
+          packed_int32_otuput,
+          rtol=bf16_epsilon,
+          atol=bf16_epsilon,
+      )
+      self.assertAllClose(
+          unpakced_output,
+          packed_int8_otuput,
+          rtol=bf16_epsilon,
+          atol=bf16_epsilon,
+      )
 
 
 class QuantizedLinearsSyncTest(test_utils.TestCase):

@@ -359,7 +359,9 @@ py_strict_test(
     srcs = ["linears_test.py"],
     deps = [
         ":linears",
+        ":operations",
         ":quantization_hparams",
+        ":utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
