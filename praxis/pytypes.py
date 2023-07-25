@@ -14,13 +14,15 @@
 # limitations under the License.
 
 """Common pytype definitions."""
+
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
 
 import clu.metrics as clu_metrics
 import jax
-import jaxtyping
 from jax import core
 from jax import numpy as jnp
+import jaxtyping
+
 from jaxtyping import AbstractDtype, Bool, Float, Int, Float32, Int32, PyTree, Shaped, jaxtyped  # pylint: disable=g-multiple-import, g-importing-member, unused-import
 import numpy as np
 from praxis import lingvo_lib
@@ -93,15 +95,15 @@ AnyJaxArray = Shaped[ArrayT, '...']
 AnyNPArray = Shaped[np.ndarray, '...']
 AnyArray = Shaped[ArrayT, '...']
 AnyPyTreeArray = jaxtyping.PyTree[AnyArray]
-FloatArray = Float[ArrayT, '...']
-Scalar = (
-    Shaped[ArrayT, '']
-    | Shaped[np.generic, '']
-    | Shaped[jnp.generic, '']
-    | int
-    | float
-)
-ScalarInt = Int[ArrayT, ''] | Int[np.generic, ''] | Int[jnp.generic, ''] | int
-ScalarFloat = (
-    Float[ArrayT, ''] | Float[np.generic, ''] | Float[jnp.generic, ''] | float
-)
+
+AnyFloatArray = Float[ArrayT, '...']
+"""Float Jax array of any shape and precision."""
+AnyIntArray = Int[ArrayT, '...']
+"""Integer Jax array of any shape and precision."""
+
+Scalar = Shaped[ArrayT, ''] | Shaped[np.generic, ''] | Shaped[jnp.generic, '']
+"""A Jax scalar type. Note this does not include the Python `int` or `float` types."""
+ScalarInt = Int[ArrayT, ''] | Int[np.generic, ''] | Int[jnp.generic, '']
+"""A Jax int scalar type. Note this does not include the Python `int` type."""
+ScalarFloat = Float[ArrayT, ''] | Float[np.generic, ''] | Float[jnp.generic, '']
+"""A Jax float scalar type. Note this does not include the Python `float` type."""
