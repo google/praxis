@@ -142,6 +142,9 @@ def beam_search(
     decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
     model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
     process_result_fn: Optional[decoder_utils.ProcessResultFn] = None,
+    lazy_broadcast_prefix_fn: Optional[
+        decoder_utils.LazyBroadcastPrefixFn
+    ] = None,
 ) -> NestedMap:
   """Vanilla beam search decode the input batch.
 
@@ -196,6 +199,7 @@ def beam_search(
         prefix_paddings,
         beam_search_hparams,
         compute_logprobs_fn,
+        lazy_broadcast_prefix_fn,
     )
     if process_result_fn is not None:
       result = process_result_fn(model, result)
@@ -213,6 +217,9 @@ def beam_search_after_prefix_fprop(
     prefix_paddings: JTensor,
     beam_search_hparams: BeamSearchHParams,
     compute_logprobs_fn: ComputeLogprobsFn = default_compute_logprobs_fn,
+    lazy_broadcast_prefix_fn: Optional[
+        decoder_utils.LazyBroadcastPrefixFn
+    ] = None,
 ) -> NestedMap:
   """Same as beam_search but this is after prefix fprop."""
   # TODO(b/229679837): Move right align prefix ids and paddings logic inside
@@ -237,14 +244,25 @@ def beam_search_after_prefix_fprop(
       else [beam_search_hparams.eos_id]
   )
   seq_len = max(max_decode_steps) + max_prefix_len
-  # Pad max_decode_steps to the state.
-  transform_state_fn(model, decoder_utils.pad_state_fn(min(max_decode_steps)))
+  if lazy_broadcast_prefix_fn is not None:
+    # We need to exclude the last token from prefix, and instead move it to
+    # the multi-sample suffix. This is because the last token only as an Input
+    # ID, but not an output ID (label), and we need to start decoding from it.
+    transform_state_fn(model, decoder_utils.slice_state_fn(0, -1))
+    first_decode_steps = min(max_decode_steps)
+    # max_decode_steps + 1 to include last token from prefix.
+    lazy_broadcast_prefix_fn(model, beam_size, first_decode_steps + 1)
 
-  # Broadcast cache states before the while loop.
-  def _broadcast_state_fn(x, batch_dim, time_dim):
-    del time_dim
-    return jnp.repeat(x, repeats=beam_size, axis=batch_dim)
-  transform_state_fn(model, _broadcast_state_fn)
+  else:
+    # Pad max_decode_steps to the state.
+    transform_state_fn(model, decoder_utils.pad_state_fn(min(max_decode_steps)))
+
+    # Broadcast cache states before the while loop.
+    def _broadcast_state_fn(x, batch_dim, time_dim):
+      del time_dim
+      return jnp.repeat(x, repeats=beam_size, axis=batch_dim)
+
+    transform_state_fn(model, _broadcast_state_fn)
 
   # Set up init loop variables.
   val = NestedMap()
@@ -382,12 +400,16 @@ def beam_search_after_prefix_fprop(
     # Shuffle at beam dimension for the cache states using hyp_id.
     def _shuffle_state_fn(x, batch_dim, time_dim):
       del time_dim
-      x_shape = x.shape
-      new_shape = list(x_shape)
-      new_shape.insert(batch_dim + 1, beam_size)
-      new_shape[batch_dim] = x_shape[batch_dim] // beam_size
-      new_state = shuffle_state(jnp.reshape(x, new_shape), hyp_id)
-      return jnp.reshape(new_state, x_shape)
+      if lazy_broadcast_prefix_fn is not None:
+        new_state = shuffle_state(x, hyp_id)
+        return new_state
+      else:
+        x_shape = x.shape
+        new_shape = list(x_shape)
+        new_shape.insert(batch_dim + 1, beam_size)
+        new_shape[batch_dim] = x.shape[batch_dim] // beam_size
+        new_state = shuffle_state(jnp.reshape(x, new_shape), hyp_id)
+        return jnp.reshape(new_state, x_shape)
 
     transform_state_fn(model, _shuffle_state_fn)
 

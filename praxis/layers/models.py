@@ -579,6 +579,9 @@ class LanguageModel(base_model.BaseModel):
           decode_loop_mesh_axes_transpose=decode_mesh_transpose,
           model_var_pspecs=lm_var_pspecs,
           process_result_fn=decoder_params.process_result_fn,
+          lazy_broadcast_prefix_fn=lazy_broadcast_prefix_fn
+          if decoder_params.lazy_prefix_broadcast
+          else None,
       )
     elif template_has_type(decoder_params, SampleDecoderHParams):
       assert isinstance(decoder_params, SampleDecoderHParams)
