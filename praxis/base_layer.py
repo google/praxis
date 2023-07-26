@@ -1783,7 +1783,7 @@ class BaseLayer(nn.Module):
       *args,
       do_eval=False,
       method=None,
-      mutable=None,
+      extra_mutable_list=None,
       self_reflect_configs=False,
       **kwargs,
   ) -> Dict[str, NestedWeightHParams]:
@@ -1796,8 +1796,8 @@ class BaseLayer(nn.Module):
         if self_reflect_configs
         else DEFAULT_INIT_MUTABLE_LIST
     )
-    if mutable is not None:
-      mutable_list = [*mutable_list, *mutable]
+    if extra_mutable_list is not None:
+      mutable_list = [*mutable_list, *extra_mutable_list]
     init_fn = functools.partial(super().init, mutable=mutable_list, method=method)
     # Disable logging to reduce logspam.
     with py_utils.logging_verbosity_level('FATAL'):
@@ -1820,10 +1820,10 @@ class BaseLayer(nn.Module):
   # the unpadded variable shapes and SPMD annotations for
   # PARAMS and NON_TRAINABLE collections.
   def abstract_init_with_metadata(
-      self, *args, do_eval=False, method=None, mutable=None, **kwargs
+      self, *args, do_eval=False, method=None, extra_mutable_list=None, **kwargs
   ) -> NestedWeightHParams:
     variables_abstract = self._abstract_init(
-        *args, do_eval=do_eval, method=method, mutable=mutable, **kwargs
+        *args, do_eval=do_eval, method=method, extra_mutable_list=extra_mutable_list, **kwargs
     )
     # If model contains FlaxAdapter, we may see 'params_axes' collections, but
     # they do not contain WeightHParams, so we remove them from returned values.
@@ -1834,13 +1834,13 @@ class BaseLayer(nn.Module):
   # A systematic self-reflection of the model structure, with configs for the
   # nested tree of BaseLayers.
   def abstract_init_with_mdl_config(
-      self, *args, do_eval=False, method=None, mutable=None, **kwargs
+      self, *args, do_eval=False, method=None, extra_mutable_list=None, **kwargs
   ) -> Nested[pax_fiddle.Config[BaseLayer]]:
     variables_abstract = self._abstract_init(
         *args,
         do_eval=do_eval,
         method=method,
-        mutable=mutable,
+        extra_mutable_list=extra_mutable_list,
         self_reflect_configs=True,
         **kwargs,
     )
