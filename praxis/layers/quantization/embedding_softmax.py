@@ -140,10 +140,10 @@ class Embedding(embedding_softmax.Embedding):
         self.quantization.mode == QuantizationMode.INFERENCE
         or self.quantization.quantization_type == QuantizationType.AQT
     ):
-      scale = jnp.expand_dims(scale_var[(ids,)], axis=2)
+      scale = jnp.expand_dims(scale_var[(ids,)], axis=-1)
       embs = jnp.multiply(embs, scale)
       if not self.quantization.weight_params.use_symmetric:
-        zp = jnp.expand_dims(zp_var[(ids,)], axis=2)
+        zp = jnp.expand_dims(zp_var[(ids,)], axis=-1)
         embs = embs - zp
 
     # map out-of-boundary ids to nan for easier debug
@@ -347,10 +347,10 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
         self.quantization.mode == QuantizationMode.INFERENCE
         or self.quantization.quantization_type == QuantizationType.AQT
     ):
-      scale = jnp.expand_dims(scale_var[(ids,)], axis=2)
+      scale = jnp.expand_dims(scale_var[(ids,)], axis=-1)
       embs = jnp.multiply(embs, scale)
       if not self.quantization.weight_params.use_symmetric:
-        zp = jnp.expand_dims(zp_var[(ids,)], axis=2)
+        zp = jnp.expand_dims(zp_var[(ids,)], axis=-1)
         embs = embs - zp
 
     # Scale with sqrt(embedding dims)
@@ -500,10 +500,10 @@ class NClassMajorSharedEmbeddingSoftmax(
       raise ValueError('Unknown lookup style.')
 
     if self.quantization.mode == QuantizationMode.INFERENCE:
-      scale = jnp.expand_dims(scale_var[(ids,)], axis=2)
+      scale = jnp.expand_dims(scale_var[(ids,)], axis=-1)
       embs = jnp.multiply(embs, scale)
       if not self.quantization.weight_params.use_symmetric:
-        zp = jnp.expand_dims(zp_var[(ids,)], axis=2)
+        zp = jnp.expand_dims(zp_var[(ids,)], axis=-1)
         embs = embs - zp
 
     # Scale with sqrt(embedding dims)
