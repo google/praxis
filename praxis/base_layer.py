@@ -726,6 +726,39 @@ def init_var(
     assert False, 'init_type %s not supported.' % method
 
 
+def var_init_scale(var_p: WeightHParams) -> float:
+  """Returns var init_scale.
+
+  Implementation of this function has to be in sync with init_var above. This
+  function is expected to be called in optimizer to adaptively decide the var
+  update scale.
+
+  Note(yonghui): currently, this function only supports gaussian init method.
+
+  Args:
+    var_p: meta info about this var.
+
+  Returns:
+    the init std scale of this var.
+  """
+  assert var_p is not None and var_p.init is not None
+  method = var_p.init.method
+  scale = var_p.init.scale
+  assert isinstance(scale, (int, float))
+
+  # For now, only supports 'gaussian_sqrt_fanin' and 'gaussian'.
+  assert method in ['gaussian_sqrt_fanin', 'gaussian']
+  if method == 'gaussian':
+    return scale
+  elif method == 'gaussian_sqrt_fanin':
+    fan_in_axes = var_p.fan_in_axes
+    fan_out_axes = var_p.fan_out_axes
+    fan_in, _ = get_fan_in_fan_out(var_p.shape, fan_in_axes, fan_out_axes)
+    return 1.0 / math.sqrt(fan_in)
+  else:
+    raise NotImplementedError('init method not supported')
+
+
 @struct.dataclass
 class BoxedParam(struct.PyTreeNode, AxisMetadata):
   """Boxed param with WeightHParam metadata.
