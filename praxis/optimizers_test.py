@@ -309,5 +309,65 @@ class OptimizersRegularizationTest(parameterized.TestCase):
     self.assertEqual(output, jnp.array(expected_value, dtype=jnp.float32))
 
 
+class CustomMaskedTest(test_utils.TestCase, parameterized.TestCase):
+  """Tests for the masked wrapper."""
+
+  def test_masked(self):
+    mask = {'a': True, 'b': False, 'c': {'d': False, 'e': True}}
+    params = {
+        'a': 1.0,
+        'b': {'f': 2.0},
+        'c': {'d': 3.0, 'e': ([4.0, 5.0], 6.0)},
+    }
+    params = jax.tree_util.tree_map(jnp.asarray, params)
+
+    opt_tpl = pax_fiddle.Config(
+        optimizers.OptaxOptimizer,
+        lr_schedule=pax_fiddle.Config(schedules.Constant, value=1.0),
+        learning_rate=1.0,
+        grad_tx=optax.sgd(1.0),
+    )
+    var_weight_hparams = jax.tree_map(
+        lambda x: base_layer.WeightHParams(x.shape), params
+    )
+
+    sgd = optimizers.instantiate(opt_tpl)
+    masked_opt = optimizers.sharded_masked(
+        sgd.get_grad_transformation(var_weight_hparams, include_ema=False),
+        mask,
+        use_custom_masked=True,
+    )
+
+    opt_state = masked_opt.init(var_weight_hparams)
+    # Should succeed
+    _ = optimizers.partition_params(masked_opt, var_weight_hparams, opt_state)
+
+    num_steps = 3
+    for t in range(num_steps):
+      update_val = float(t + 1)
+      fake_update = jax.tree_map(lambda x: jnp.array(update_val), params)
+      updates, opt_state = masked_opt.update(
+          fake_update,
+          opt_state,
+          params,
+      )
+
+      def _negate_updates_for_masked(m, upd):
+        return jax.tree_map(lambda x: -x, upd) if m else upd
+
+      expected_updates = jax.tree_map(
+          _negate_updates_for_masked,
+          mask,
+          fake_update,
+      )
+
+      jax.tree_map(self.assertAllClose, updates, expected_updates)
+      expected_params = jax.tree_util.tree_map(
+          lambda p, u: p + u, params, expected_updates
+      )
+      params = optax.apply_updates(params, updates)
+      jax.tree_map(self.assertAllClose, params, expected_params)
+
+
 if __name__ == '__main__':
   absltest.main()
