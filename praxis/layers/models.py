@@ -1624,6 +1624,8 @@ class BertModel(base_model.BaseModel):
         predicted_labels=predicted_labels,
         augmented_labels=predictions.augmented_labels,
     )
+    if 'activations' in predictions:
+      per_example_output.activations = predictions.activations
     return metrics, per_example_output
 
 
