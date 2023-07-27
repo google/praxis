@@ -24,6 +24,8 @@ class AutodiffCheckpointType(str, enum.Enum):
   """jax.checkpoint policy types."""
 
   SAVE_NOTHING = 'save_nothing'
+  SAVE_UNET_ALL_CONV = 'save_unet_all_conv'
+  SAVE_UNET_CONV = 'save_unet_conv'
   SAVE_EVERYTHING = 'save_everything'
   SAVE_QKV_OUT_PROJ = 'save_qkv_out_proj'
   SAVE_OUT_PROJ = 'save_out_proj'
@@ -109,6 +111,12 @@ def custom_policy(checkpoint_policy: AutodiffCheckpointType):
         'out_proj',
         'ffn1',
         'ffn2',
+    )
+  if checkpoint_policy == AutodiffCheckpointType.SAVE_UNET_CONV:
+    return jax.checkpoint_policies.save_only_these_names('conv_out')
+  if checkpoint_policy == AutodiffCheckpointType.SAVE_UNET_ALL_CONV:
+    return jax.checkpoint_policies.save_only_these_names(
+        'conv_0', 'conv_1', 'conv_out'
     )
   assert checkpoint_policy == AutodiffCheckpointType.SAVE_NOTHING
   return jax.checkpoint_policies.nothing_saveable
