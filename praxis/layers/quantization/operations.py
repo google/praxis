@@ -62,6 +62,28 @@ def _get_expand_dims(eqn: str) -> List[int]:
   return filling_dims
 
 
+def _get_offset_eqn(eqn: str) -> str:
+  """Get the einsum equantion for zero point calculation."""
+  has_eplison = False
+  if eqn.count('...') > 0:
+    has_eplison = True
+  segs = eqn.split('->')
+  ins = segs[0].split(',')
+  left = ins[0]
+  right = ins[1]
+  if has_eplison:
+    left = left.replace('...', '')
+  reduce_dim = set(left).intersection(set(right))
+  new_left = [c for c in left if c not in reduce_dim]
+  new_right = [c for c in right if c not in reduce_dim]
+  new_left = ''.join(new_left)
+  new_right = ''.join(new_right)
+  if has_eplison:
+    new_left = '...' + new_left
+  res = new_left + ',' + new_right + '->' + segs[1]
+  return res
+
+
 def get_min_max(
     bits: int = 8,
     unsigned: bool = False,
@@ -107,29 +129,6 @@ def compute_offset(x: JTensor, zp: JTensor, eqn: str):
       return [x_dims - 2, x_dims - 1]
     else:
       return [x_dims-1]
-
-  def _get_offset_eqn(eqn: str) -> str:
-    """Gets the offset equation dimensions."""
-    if eqn == 'AD,KDNH->KANH':
-      return 'A,KNH->KANH'
-    if eqn == 'ANH,DNH->AD':
-      return 'A,D->AD'
-    if eqn == '...y,yz->...z':
-      return '...y,z->...yz'
-    if eqn == 'ABD,KDNH->KABNH':
-      return 'AB,KNH->KABNH'
-    if eqn == 'ABNH,DNH->ABD':
-      return 'AB,D->ABD'
-    if eqn == 'ABD,DNH->ABNH':
-      return 'AB,NH->ABNH'
-    if eqn == 'AD,DNH->ANH':
-      return 'A,NH->ANH'
-    if eqn == '...D,DH->...H':
-      return '...D,H->...DH'
-    if eqn == '...y,zy->...z':
-      return '...y,z->...yz'
-    # Add new equations as needed.
-    raise NotImplementedError(f'eqn {eqn} not supported for asymmetric weight.')
 
   reduce_axis = _get_x_reduce_axis(eqn, len(x.shape))
   x_reduce = jnp.sum(x, axis=reduce_axis, keepdims=False)

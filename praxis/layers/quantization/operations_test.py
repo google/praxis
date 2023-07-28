@@ -108,6 +108,21 @@ class QuantizationUtilsTest(test_utils.TestCase):
     self.assertEqual(operations.get_min_max(8, True), (0, 255))
     self.assertEqual(operations.get_min_max(8, True, True), (-448.0, 448.0))
 
+  @parameterized.named_parameters(
+      ('eqn1', 'AD,KDNH->KANH', 'A,KNH->KANH'),
+      ('eqn2', 'ANH,DNH->AD', 'A,D->AD'),
+      ('eqn3', '...y,yz->...z', '...,z->...z'),
+      ('eqn4', 'ABD,KDNH->KABNH', 'AB,KNH->KABNH'),
+      ('eqn5', 'ABNH,DNH->ABD', 'AB,D->ABD'),
+      ('eqn6', 'ABD,DNH->ABNH', 'AB,NH->ABNH'),
+      ('eqn7', 'AD,DNH->ANH', 'A,NH->ANH'),
+      ('eqn8', '...D,DH->...H', '...,H->...H'),
+      ('eqn9', '...y,zy->...z', '...,z->...z'),
+  )
+  def test_offset_einsum(self, eqn, expected_offset_eqn):
+    offset_eqn = operations._get_offset_eqn(eqn)
+    self.assertEqual(offset_eqn, expected_offset_eqn)
+
 
 class ReducePrecisionTest(test_utils.TestCase):
 
