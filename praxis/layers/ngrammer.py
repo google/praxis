@@ -122,12 +122,15 @@ class VectorQuantization(base_layer.BaseLayer):
     epsilon: Tiny value to guard against divide by 0.
     dim_per_head: The last dimension of the inputs on which to apply Vector
       Quantization.
+    prenormalize: Before computing centroids or VQ indices, pre-normalize input
+      vectors. This encourages more even cluster assignment.
   """
   num_clusters: int = 0
   num_heads: int = 0
   decay: float = 0.999
   epsilon: float = 1e-6
   dim_per_head: int = 0
+  prenormalize: bool = False
 
   def setup(self) -> None:
     """Constructs an instance which tracks its own set of centroids."""
@@ -171,6 +174,10 @@ class VectorQuantization(base_layer.BaseLayer):
           inputs,
           [inputs_shape[0], inputs_shape[1], self.num_heads, self.dim_per_head],
       )
+
+    if self.prenormalize:
+      norms = jnp.linalg.norm(inputs, ord=2, axis=-1, keepdims=True)
+      inputs /= jnp.where(norms > 0, norms, 1.0)
 
     if paddings is not None:
       # Shape [B, L, 1, 1]
@@ -630,6 +637,7 @@ class VQNgrammer(base_layer.BaseLayer):
   enable_cache_updates: bool = True
   full_update_cache_frequency: int = 0
   full_update_cache_steps: tuple[int, ...] = ()
+  prenormalize: bool = False
 
   @classmethod
   def set_canonical_sharding_params(cls, vqngrammer_p, *, replica_axis,
@@ -663,6 +671,7 @@ class VQNgrammer(base_layer.BaseLayer):
         decay=self.decay,
         epsilon=self.epsilon,
         params_init=self.params_init,
+        prenormalize=self.prenormalize,
     )
     self.create_child('vq_layer', vq_layer_p)
 
