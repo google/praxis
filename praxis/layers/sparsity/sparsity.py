@@ -219,49 +219,61 @@ def apply_sparsity(inputs: jnp.ndarray, mask: jnp.ndarray) -> jnp.ndarray:
 
 
 def get_sparsity_mask(
-    inputs: jnp.ndarray, n_sparsity: int = 0, m_sparsity: int = 0
+    inputs: jnp.ndarray,
+    n_sparsity: int = 0,
+    m_sparsity: int = 0,
+    order: str = 'R',
 ) -> jnp.ndarray:
-  """Returns sparsified inputs based on sparsity hparams."""
-  assert (
-      n_sparsity <= m_sparsity
-  ), f'N must be lower than M for N:M ({n_sparsity}:{m_sparsity}) sparsity.'
-  return get_pruning_n_m_mask(inputs, n=n_sparsity, m=m_sparsity)
-
-
-# TODO(ayazdan): Add support for fast top-k.
-
-
-def get_pruning_n_m_mask(inputs: jnp.ndarray, n: int, m: int) -> jnp.ndarray:
-  """Returns a mask for N:M (structured) pruning.
-
-  N:M pruning makes at most N values non-zero in each block of M consecutive
-  values.
+  """Returns sparsified inputs for n:m structured pruning.
 
   Args:
     inputs: Input array for which N:M pruning mask is computed.
-    n: Maximum number of non-zero values in each block.
-    m: Number of values in each block.
+    n_sparsity: Maximum number of non-zero values in each block.
+    m_sparsity: Number of values in each block.
+    order: Apply pruning using this index order. Supported values are `C`, `R`.
+      `C` and `R` indicate column-wise and row-wise masking, respectively.
+      Default is `R` indicating to applying N:M sparsity across rows of the
+      input matrix.
 
   Returns:
     A mask that indicates the pruning locations (`0`: no pruning, `1`: pruned).
   """
-  if n > m:
-    raise ValueError(f'N must be lower than M for N:M ({n}:{m}) sparsity.')
+  assert (
+      n_sparsity <= m_sparsity
+  ), f'N must be lower than M for N:M ({n_sparsity}:{m_sparsity}) sparsity.'
   length = jnp.size(inputs)
-  if length % m != 0:
+  if length % m_sparsity != 0:
     raise ValueError(
-        f'inputs size must be divisible by m, provided {length} and {m}'
+        f'inputs size must be divisible by m, provided {length} and'
+        f' {m_sparsity}'
     )
-  group = int(length / m)
-  inputs = jnp.abs(inputs)
-  inputs_temp = inputs.reshape(group, m)
+  if order not in ['C', 'R']:
+    raise ValueError(f'Index order {order} not supported.')
 
-  _, top_k_indices = jax.lax.top_k(inputs_temp, k=n)
-  # extract largest n values to make them one in mask corresponding to non-zero
-  # elements.
-  return jnp.any(
-      jax.nn.one_hot(top_k_indices, m, dtype=jnp.bool_), axis=-2
-  ).reshape(inputs.shape)
+  group = int(length / m_sparsity)
+  inputs = jnp.abs(inputs)
+  if order == 'R':
+    inputs_temp = inputs.reshape(group, m_sparsity, order='C')
+  else:
+    inputs_temp = jnp.einsum('...ij->...ji', inputs).reshape(
+        group, m_sparsity, order='C'
+    )
+  # Extract the smallest elements and forcefully make them zero.
+  _, top_k_indices = jax.lax.top_k(inputs_temp, k=n_sparsity)
+  mask = jnp.any(
+      jax.nn.one_hot(top_k_indices, m_sparsity, dtype=jnp.bool_), axis=-2
+  )
+
+  if order == 'R':
+    return mask.reshape(inputs.shape, order='C')
+  else:
+    if len(inputs.shape) > 2:
+      return jnp.einsum('...ij->...ji', mask.reshape(inputs.shape, order='F'))
+    else:
+      return jnp.einsum('ij->ji', mask).reshape(inputs.shape, order='F')
+
+
+# TODO(ayazdan): Add support for fast top-k.
 
 
 def get_sparsity_mask_unstructured(
@@ -295,7 +307,9 @@ def get_sparsity_mask_unstructured(
 
 # TODO(shivaniagrawal): Only used for testing the functionality of
 # get_prune_mask; update the test to call get_pruning_n_m_mask instead.
-def prune_inputs_n_m(inputs: jnp.ndarray, *, n: int, m: int) -> jnp.ndarray:
+def prune_inputs_n_m(
+    inputs: jnp.ndarray, *, n: int, m: int, order: str = 'R'
+) -> jnp.ndarray:
   """Returns pruned array with N:M (structured) pruning.
 
   N:M pruning makes at most N values non-zero in each block of M consecutive
@@ -305,11 +319,15 @@ def prune_inputs_n_m(inputs: jnp.ndarray, *, n: int, m: int) -> jnp.ndarray:
     inputs: Input array for which N:M pruning mask is computed.
     n: Maximum number of non-zero values in each block.
     m: Number of values in each block.
+    order: Apply pruning using this index order. Supported values are `C`, `R`.
+      `C` and `R` indicate column-wise and row-wise masking, respectively.
+      Default is `R` indicating to applying N:M sparsity across rows of the
+      input matrix.
 
   Returns:
     An array with the same shape as inputs pruned with N:M strategy.
   """
-  mask = get_pruning_n_m_mask(inputs, n, m)
+  mask = get_sparsity_mask(inputs, n, m, order=order)
   return jnp.where(mask, inputs, jnp.zeros(inputs.shape, inputs.dtype))
 
 

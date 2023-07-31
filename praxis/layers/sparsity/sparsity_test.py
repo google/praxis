@@ -152,13 +152,57 @@ class PruningFunctionalityTest(parameterized.TestCase):
   def test_n_m_pruning_mask(self):
     inputs = jnp.array(np.random.rand(10, 2, 4))
     prune_rate = (1, 4)
-    mask = sparsity.get_pruning_n_m_mask(
-        inputs, n=prune_rate[0], m=prune_rate[1]
+    mask = sparsity.get_sparsity_mask(
+        inputs, n_sparsity=prune_rate[0], m_sparsity=prune_rate[1]
     )
     self.assertEqual(
         list(np.argmax(inputs, axis=2).flatten()),
         list(np.argmax(mask == 1, axis=2).flatten()),
     )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='row_wise_pruning',
+          order='R',
+          exp_output=[
+              [0, 0, 3, 4, 0, 0, 7, 8],
+              [0, 0, 11, 12, 0, 0, 15, 16],
+              [0, 0, 19, 20, 0, 0, 23, 24],
+              [0, 0, 27, 28, 0, 0, 31, 32],
+          ],
+      ),
+      dict(
+          testcase_name='column_wise_pruning',
+          order='C',
+          exp_output=[
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [17, 18, 19, 20, 21, 22, 23, 24],
+              [25, 26, 27, 28, 29, 30, 31, 32],
+          ],
+      ),
+  )
+  def test_column_row_pruning(self, order, exp_output):
+    inputs = jnp.reshape(jnp.arange(1, 33), (4, 8))
+    output = sparsity.prune_inputs_n_m(inputs, n=2, m=4, order=order)
+    np.testing.assert_array_equal(output, exp_output)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='column_wise_pruning',
+          order='C',
+          exp_output=[
+              [[0, 0, 0, 0], [0, 0, 0, 0], [9, 10, 11, 12], [13, 14, 15, 16]],
+              [[0, 0, 0, 0], [0, 0, 0, 0], [25, 26, 27, 28], [29, 30, 31, 32]],
+              [[0, 0, 0, 0], [0, 0, 0, 0], [41, 42, 43, 44], [45, 46, 47, 48]],
+              [[0, 0, 0, 0], [0, 0, 0, 0], [57, 58, 59, 60], [61, 62, 63, 64]],
+          ],
+      )
+  )
+  def test_3d_column_pruning(self, order, exp_output):
+    inputs = jnp.reshape(jnp.arange(1, 65), (4, 4, 4))
+    output = sparsity.prune_inputs_n_m(inputs, n=2, m=4, order=order)
+    np.testing.assert_array_equal(output, exp_output)
 
 
 class PruningScoreTest(parameterized.TestCase):
