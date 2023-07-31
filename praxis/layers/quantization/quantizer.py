@@ -132,6 +132,7 @@ class QuantizationLayer(base_layer.BaseLayer):
       w: JTensor,
       pack_dim: int,
       reshape: list[int],
+      weight_name: str = 'w',
   ) -> JTensor:
     """Quantized Einsum for inference and training."""
 
@@ -155,7 +156,8 @@ class QuantizationLayer(base_layer.BaseLayer):
       # Note: lower-bit types are not reflected during inference for now due to
       # b/259306620.
       w, s, zp = self.get_quantized_weight(
-          'w', use_symmetric=self.quantization.weight_params.use_symmetric
+          weight_name,
+          use_symmetric=self.quantization.weight_params.use_symmetric,
       )
       if (
           self.quantization.weight_params.precision == 4
@@ -207,11 +209,6 @@ class QuantizationLayer(base_layer.BaseLayer):
             block_size=self.quantization.weight_params.block_size,
         )
         out = jnp.einsum(eqn, x, w)
-        if (
-            self.quantization.act_params is not None
-            and self.quantization.act_params.fp16
-        ):
-          out = operations.clip_to_fp16(out)
         return out
       elif self.quantization.quantization_type == QuantizationType.FQ_VN:
         w = operations.fakequant_vn(

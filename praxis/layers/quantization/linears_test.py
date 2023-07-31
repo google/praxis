@@ -520,5 +520,35 @@ class QuantizeLinearTest(test_utils.TestCase):
     )
 
 
+class FactorizedLinearTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
+  @parameterized.named_parameters(
+      ('1', 1),
+      ('2', 2),
+  )
+  def test_linear_factorized(self, rank):
+    p = pax_fiddle.Config(
+        qlinears.Linear,
+        name='_linear',
+        input_dims=8,
+        output_dims=4,
+        rank=rank,
+    )
+    linear = instantiate(p)
+    inputs = jnp.array(
+        [[1, 2, 3, 4, 5, 6, 7, 8], [9, 10, 11, 12, 13, 14, 15, 16]],
+        dtype=p.dtype,
+    )
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = linear.init(prng_key, inputs)
+      outputs = linear.apply(initial_vars, inputs)
+    self.assertEqual(outputs.shape, (2, 4))
+
+
 if __name__ == '__main__':
   absltest.main()

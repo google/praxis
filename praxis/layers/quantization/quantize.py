@@ -126,6 +126,7 @@ def quantize_transformer_layer_weights(
     weight_quantization_params: WeightQuantizationParams,
     act_quantization_params: Optional[ActQuantizationParams] = None,
     linear_only: bool = False,
+    rank: int = -1,
 ) -> None:
   """Rewrites Transformer HParam for weight and act quantization."""
   if not linear_only:
@@ -148,6 +149,7 @@ def quantize_transformer_layer_weights(
       mode,
       weight_quantization_params,
       act_quantization_params,
+      rank,
   )
 
 
@@ -268,6 +270,7 @@ def quantize_transformer_feed_forward_layer_weights(
     mode: QuantizationMode,
     weight_quantization_params: WeightQuantizationParams,
     act_quantization_params: Optional[ActQuantizationParams] = None,
+    rank: int = -1,
 ) -> None:
   """Rewrites TransformerFeedForward HParam for weight only quantization."""
 
@@ -279,6 +282,7 @@ def quantize_transformer_feed_forward_layer_weights(
           act_params=act_quantization_params,
           weight_params=weight_quantization_params,
       ),
+      rank=rank,
   )
 
 
@@ -289,6 +293,7 @@ def for_transformer(
     quantization_type: QuantizationType = QuantizationType.FQ,
     mode: QuantizationMode = QuantizationMode.TRAINING,
     use_symmetric: bool = True,
+    rank: int = -1,
     *,
     weight_quant_only: bool = True,
     quantize_embedding_softmax: bool = False,
@@ -316,6 +321,8 @@ def for_transformer(
       (excluding MATERIALIZE) are valid for non-servable models.
     use_symmetric: If true, do symmetric quantization for weights, otherwise
       asymmetric quantization.
+    rank: If positive, factorize weight matrix for linear layers to two [in_dim,
+      rank], [rank, out_dim] matrices.
     weight_quant_only: If true, quantize weight only, otherweise quantize both
       weight and activation.
     quantize_embedding_softmax: Quantize embedding table of embedding softmax
@@ -362,6 +369,7 @@ def for_transformer(
               num_bits=num_bits,
               linear_only=linear_only,
               use_symmetric=use_symmetric,
+              rank=rank,
               weight_quant_only=weight_quant_only,
               quantize_embedding_softmax=quantize_embedding_softmax,
               transposed_embedding_softmax=transposed_embedding_softmax,
@@ -459,6 +467,7 @@ def set_transformer_quantization(
     num_bits: int = 8,
     linear_only: bool = False,
     use_symmetric: bool = True,
+    rank: int = -1,
     *,
     weight_quant_only: bool = True,
     quantize_embedding_softmax: bool = False,
@@ -476,6 +485,8 @@ def set_transformer_quantization(
     num_bits: The number of bits used for quantization.
     linear_only: Quantize only the linear layers.
     use_symmetric: Use symmetric weight quantization.
+    rank: If positive, factorize weight matrix for linear layers to two [in_dim,
+      rank], [rank, out_dim] matrices.
     weight_quant_only: If true, quantize weight only, otherweise quantize both
       weight and activation.
     quantize_embedding_softmax: If true, Quantize embedding table of embedding
@@ -507,6 +518,7 @@ def set_transformer_quantization(
         weight_quantization_params,
         act_quantization_params,
         linear_only,
+        rank,
     )  # pytype: disable=wrong-arg-types  # py310-upgrade
 
   if quantize_embedding_softmax or quantize_ngrammer_embedding:

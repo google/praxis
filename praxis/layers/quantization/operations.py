@@ -723,3 +723,25 @@ def fakequant_vn(
       scale = jax.lax.stop_gradient(scale)
 
     return w + scale.astype(w.dtype) * noises  # pytype: disable=attribute-error
+
+
+def factorize_weight(var: JTensor, rank: int) -> tuple[JTensor, JTensor]:
+  """Apply SVD to variable and return two matrices.
+
+  Args:
+    var: JTensor to be factorized.
+    rank: Inner rank of the factorized output. In terms of SVD, keeps top "rank"
+
+  singular values and zeros out the rest.
+
+  Returns:
+    Two JTensors representing the truncated SVD version of var with rank "rank".
+  The singular values are folded into the second matrix.
+  """
+  u, s, vh = jnp.linalg.svd(var, full_matrices=False)
+  u_truncated, s_truncated, vh_truncated = (
+      u[..., :, :rank],
+      s[..., :rank],
+      vh[..., :rank, :],
+  )
+  return u_truncated, jnp.einsum('...i,...ij->...ij', s_truncated, vh_truncated)

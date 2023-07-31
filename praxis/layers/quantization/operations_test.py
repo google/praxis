@@ -491,5 +491,27 @@ class ClipToFp16Test(test_utils.TestCase):
     self.assertArraysEqual(y, expected_y)
 
 
+class LowRankOperationsTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
+  @parameterized.named_parameters(
+      ('1', 1),
+      ('2', 2),
+      ('3', 3),
+      ('4', 4),
+  )
+  def test_factorize_weight(self, rank):
+    x = jnp.array([[3, 2], [2, 3], [2, -2]], dtype=jnp.float32)
+    u, sv = operations.factorize_weight(x, rank=rank)
+    inner_dim = min(rank, 2)
+    self.assertArraysEqual(u.shape, [3, inner_dim])
+    self.assertArraysEqual(sv.shape, [inner_dim, 2])
+    if rank > 3:
+      self.assertAllClose(x, jnp.einsum('ij,jk->ik', u, sv))
+
+
 if __name__ == '__main__':
   absltest.main()

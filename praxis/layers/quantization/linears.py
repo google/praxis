@@ -38,13 +38,16 @@ WeightInit = base_layer.WeightInit
 
 
 class Linear(linears.Linear, quantizer.QuantizationLayer):  # pytype: disable=signature-mismatch
-  """Quantized Linear layer without bias.
+  """Quantized and low-rank Linear layer without bias.
 
   Attributes:
     quantization: Information related to the quantization applied to this layer,
       such as the mode for the quantization.
+    rank: Rank to factorize to low-weights. Set to -1 to disable low-rank
+      factorization.
   """
   _PACK_4BIT_DIM = 0
+  rank: int = -1
 
   def create_tensor_quantizers(self):
     weight_params = (
@@ -66,17 +69,43 @@ class Linear(linears.Linear, quantizer.QuantizationLayer):  # pytype: disable=si
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
-    pc = WeightHParams(
-        shape=[self.input_dims, self.output_dims],
-        mesh_shape=self.mesh_shape,
-        tensor_split_dims_mapping=wp.wt,
-    )
-    self.set_up_weights(
-        weight_name='w',
-        weight_params=pc,
-        scale_shape=[self.output_dims],
-        pack_dim=self._PACK_4BIT_DIM,
-    )
+    if self.rank > 0:
+      shape_a, shape_b = (
+          [self.input_dims, self.rank],
+          [self.rank, self.output_dims],
+      )
+      self.set_up_weights(
+          weight_name='w_a',
+          weight_params=WeightHParams(
+              shape=shape_a,
+              mesh_shape=self.mesh_shape,
+              tensor_split_dims_mapping=wp.wt,
+          ),
+          scale_shape=[self.rank],
+          pack_dim=self._PACK_4BIT_DIM,
+      )
+      self.set_up_weights(
+          weight_name='w_b',
+          weight_params=WeightHParams(
+              shape=shape_b,
+              mesh_shape=self.mesh_shape,
+              tensor_split_dims_mapping=wp.wt,
+          ),
+          scale_shape=[self.output_dims],
+          pack_dim=self._PACK_4BIT_DIM,
+      )
+    else:
+      pc = WeightHParams(
+          shape=[self.input_dims, self.output_dims],
+          mesh_shape=self.mesh_shape,
+          tensor_split_dims_mapping=wp.wt,
+      )
+      self.set_up_weights(
+          weight_name='w',
+          weight_params=pc,
+          scale_shape=[self.output_dims],
+          pack_dim=self._PACK_4BIT_DIM,
+      )
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Apply projection to inputs.
@@ -91,13 +120,31 @@ class Linear(linears.Linear, quantizer.QuantizationLayer):  # pytype: disable=si
     ap = self.activation_split_dims_mapping
     eqn = '...y,yz->...z'
 
-    out = self.quantized_einsum(
-        eqn=eqn,
-        x=inputs,
-        w=self.theta.w,
-        pack_dim=self._PACK_4BIT_DIM,
-        reshape=[],
-    )
+    if self.rank > 0:
+      intermediate = self.quantized_einsum(
+          eqn=eqn,
+          x=inputs,
+          w=self.theta.w_a,
+          pack_dim=self._PACK_4BIT_DIM,
+          reshape=[],
+          weight_name='w_a',
+      )
+      out = self.quantized_einsum(
+          eqn=eqn,
+          x=intermediate,
+          w=self.theta.w_b,
+          pack_dim=self._PACK_4BIT_DIM,
+          reshape=[],
+          weight_name='w_b',
+      )
+    else:
+      out = self.quantized_einsum(
+          eqn=eqn,
+          x=inputs,
+          w=self.theta.w,
+          pack_dim=self._PACK_4BIT_DIM,
+          reshape=[],
+      )
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
     ap_out = ap.out

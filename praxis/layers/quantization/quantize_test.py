@@ -85,6 +85,34 @@ class QuantizationTest(test_utils.TestCase):
         p.tr_atten_tpl.proj_tpl.quantization.weight_params.precision, num_bits
     )
 
+  @parameterized.named_parameters(
+      ('64int4', 64, 4),
+      ('128int8', 128, 8),
+  )
+  def test_low_rank_factorize(self, rank, num_bits):
+    p = pax_fiddle.Config(
+        layers.transformers.Transformer,
+        name='jax_transformer_layer',
+        input_dims=12,
+        hidden_dims=4,
+        num_heads=8,
+    )
+    quantize.quantize_transformer_layer_weights(
+        p,
+        quantization_hparams.QuantizationType.PTQ,
+        quantization_hparams.QuantizationMode.TRAINING,
+        quantization_hparams.WeightQuantizationParams(precision=num_bits),
+        rank=rank,
+    )
+    self.assertEqual(
+        p.tr_fflayer_tpl.fflayer_tpl.linear_tpl.quantization.weight_params.precision,
+        num_bits,
+    )
+    self.assertEqual(
+        p.tr_atten_tpl.proj_tpl.quantization.weight_params.precision, num_bits
+    )
+    self.assertEqual(p.tr_fflayer_tpl.fflayer_tpl.linear_tpl.rank, rank)
+
   def test_update_transformer_mq(self):
     p = pax_fiddle.Config(
         layers.transformers.Transformer,
