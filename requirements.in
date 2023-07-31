@@ -5,6 +5,7 @@ absl-py==1.4.0
 clu==0.0.8
 einops==0.6.0
 fiddle==0.2.6
+orbax==0.1.7
 flax==0.6.8
 jax==0.4.7
 jax-bitempered-loss==0.0.2
