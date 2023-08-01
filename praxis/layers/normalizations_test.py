@@ -161,14 +161,30 @@ class NormalizationsTest(test_utils.TestCase):
     logging.info('tf_output: %s', tf_output)
     self.assertAllClose(to_np(jax_output), to_np(tf_output))
 
-  @parameterized.parameters((0.0, 0.0), (0.5, 0.), (0.0, 0.5), (0.5, 0.5),
-                            (0.5, 1.0))
-  def test_layer_norm(self, scale, bias):
+  @parameterized.parameters(
+      (0.0, 0.0, False),
+      (0.5, 0.0, False),
+      (0.0, 0.5, False),
+      (0.5, 0.5, False),
+      (0.5, 1.0, False),
+      (0.0, 0.0, True),
+      (0.5, 0.0, True),
+      (0.0, 0.5, True),
+      (0.5, 0.5, True),
+      (0.5, 1.0, True),
+  )
+  def test_layer_norm(self, scale, bias, direct_scale):
     dim = 3
-    p = pax_fiddle.Config(normalizations.LayerNorm, name='jax_ln', dim=dim)
+    p = pax_fiddle.Config(
+        normalizations.LayerNorm,
+        name='jax_ln',
+        dim=dim,
+        direct_scale=direct_scale,
+    )
     layer_norm = instantiate(p)
-    npy_input = np.random.normal(1.0, 0.5,
-                                 [10, 10, 10, p.dim]).astype('float32')
+    npy_input = np.random.normal(1.0, 0.5, [10, 10, 10, p.dim]).astype(
+        'float32'
+    )
     inputs = jnp.asarray(npy_input)
     prng_key = jax.random.PRNGKey(seed=123456)
     prng_key, init_key = jax.random.split(prng_key)
@@ -180,14 +196,18 @@ class NormalizationsTest(test_utils.TestCase):
     # Now test whether tf layer norm returns same output
     tf_initial_vars = py_utils.NestedMap.FromNestedDict(initial_vars[PARAMS])
     tf_initial_vars = tf_initial_vars.Transform(to_np)
-    tf_p = lingvo_layers.LayerNorm.Params().Set(name='tf_ln', input_dim=p.dim)
+    tf_p = lingvo_layers.LayerNorm.Params().Set(
+        name='tf_ln', input_dim=p.dim, direct_scale=direct_scale
+    )
     tf_layer_norm = tf_p.Instantiate()
-    tf_output = tf_layer_norm.FProp(tf_initial_vars,
-                                    tf.constant(inputs, dtype=tf.float32))
+    tf_output = tf_layer_norm.FProp(
+        tf_initial_vars, tf.constant(inputs, dtype=tf.float32)
+    )
     np_outputs = to_np(outputs)
     tf_np_outputs = to_np(tf_output)
     self.assertAllClose(bias, np_outputs.mean(), atol=1e-3)
-    self.assertAllClose((1.0 + scale)**2, np.var(np_outputs), atol=5e-3)
+    scale = scale if direct_scale else (1.0 + scale)
+    self.assertAllClose(scale**2, np.var(np_outputs), atol=5e-3)
     self.assertAllClose(tf_np_outputs, np_outputs, atol=6e-5)
 
   @parameterized.parameters((0.0,), (0.5,))

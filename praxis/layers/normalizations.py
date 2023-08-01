@@ -304,12 +304,15 @@ class LayerNorm(BaseNormalization):
   """Layer normalization.
 
   Attributes:
+    direct_scale: Whether to apply scale directly without a +1.0. Var is
+      initialized to 1.0 instead when true.
     epsilon: Tiny value to guard rsqrt.
     use_scale: Whether to use a learned scaling.
     use_bias: Whether to use bias.
-    reductions_in_fp32: Whether to compute mean and variance 
-      in fp32. Recommended for stable training on GPUs.
+    reductions_in_fp32: Whether to compute mean and variance in fp32.
+      Recommended for stable training on GPUs.
   """
+  direct_scale: bool = False
   epsilon: float = 1e-6
   use_scale: bool = True
   use_bias: bool = True
@@ -323,11 +326,12 @@ class LayerNorm(BaseNormalization):
       # Simply replicate the weights.
       wp_scale = [-1]
     if self.use_scale:
+      init_value = 1.0 if self.direct_scale else 0.0
       self.create_variable(
           'scale',
           WeightHParams(
               shape=[self.dim],
-              init=WeightInit.Constant(0.0),
+              init=WeightInit.Constant(init_value),
               mesh_shape=self.mesh_shape,
               tensor_split_dims_mapping=wp_scale,
               collections=[
@@ -373,7 +377,8 @@ class LayerNorm(BaseNormalization):
     if self.reductions_in_fp32:
       normed_inputs = normed_inputs.astype(inputs_dtype)
     if self.use_scale:
-      normed_inputs *= (1 + self.theta.scale)
+      scale = self.theta.scale if self.direct_scale else (1 + self.theta.scale)
+      normed_inputs *= scale
     if self.use_bias:
       normed_inputs += self.theta.bias
     return normed_inputs
