@@ -34,6 +34,7 @@ QuantizationType = quantization_hparams.QuantizationType
 QuantizationParams = quantization_hparams.QuantizationParams
 WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
+NestedJTensor = pytypes.NestedJTensor
 
 
 class OneHeadedAttentionProjection(  # pytype: disable=signature-mismatch
@@ -166,7 +167,7 @@ class OneHeadedAttentionProjection(  # pytype: disable=signature-mismatch
 
     return {base_layer.PARAMS: partitionspec}
 
-  def quantize_weight(self) -> JTensor:
+  def quantize_weight(self) -> NestedJTensor:
     """Get quantized weight.
 
     Returns:
