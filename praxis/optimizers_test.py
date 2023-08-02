@@ -335,7 +335,6 @@ class CustomMaskedTest(test_utils.TestCase, parameterized.TestCase):
     masked_opt = optimizers.sharded_masked(
         sgd.get_grad_transformation(var_weight_hparams, include_ema=False),
         mask,
-        use_custom_masked=True,
     )
 
     opt_state = masked_opt.init(var_weight_hparams)

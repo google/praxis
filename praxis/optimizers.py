@@ -129,7 +129,9 @@ def partition_params(
 
   def sharding_function(
       params: Any, spec: base_layer.WeightHParams
-  ) -> base_layer.WeightHParams:
+  ) -> Optional[base_layer.WeightHParams]:
+    if isinstance(params, optax.MaskedNode):
+      return None
     if len(params.shape) < 1:
       return base_layer.WeightHParams(
           shape=[],
@@ -157,6 +159,7 @@ def partition_params(
       var_weight_hparams,
       # Count is the only non-params in the current optimizers.
       transform_non_params=sharding_for_non_parameter_fields,
+      is_leaf=lambda v: isinstance(v, optax.MaskedNode),
   )
   return opt_states_pspec
 
@@ -460,48 +463,13 @@ def sharded_masked(
       a Callable that returns such a pytree given the params/updates. The leaves
       should be booleans, ``True`` for leaves/subtrees you want to apply the
       transformation to, and ``False`` for those you want to skip.
-    use_custom_masked: Whether to use custom masked implementation. Since Optax
-      masked does not work with tree_map_params.
+    use_custom_masked:  Whether to use custom masked implementation. Since Optax
+      masked does not work with tree_map_params. This is unused presently.
 
   Returns:
     New ShardedGradientTransformation wrapping ``inner``.
   """
-
-  # TODO(b/291956426): This is a workaround to handle masked to work with
-  # optax.tree_map_params. It is a known issue that masked does not work with
-  # tree_map_params as it does not work with arbitrary parameter trees.
-  # In this workaround, we initialize the optimizer state with params without
-  # replacing the masked params with MaskedNodes. Instead, during the update_fn
-  # for this transformation, the mask entries are replaced with zero-like
-  # scalar state. i.e. the masked entries in params are not updated and all the
-  # other params are updated as usual.
-
-  def init_fn(params):
-    return optax.MaskedState(inner_state=inner.init(params))
-
-  def update_fn(updates, state, params=None, **extra_args):
-    mask_tree = mask(updates) if callable(mask) else mask
-
-    def make_masked_elements_zero(mask, subtree):
-      if mask:
-        return subtree
-      else:
-        return jax.tree_map(lambda x: jnp.array(0, dtype=x.dtype), subtree)
-
-    masked_updates = jax.tree_map(make_masked_elements_zero, mask_tree, updates)
-
-    new_masked_updates, new_inner_state = inner.update(
-        masked_updates, state.inner_state, params=params, **extra_args
-    )
-
-    new_updates = jax.tree_map(
-        lambda m, new_u, old_u: new_u if m else old_u,
-        mask_tree,
-        new_masked_updates,
-        updates,
-    )
-    return new_updates, optax.MaskedState(inner_state=new_inner_state)
-
+  del use_custom_masked
   def init_partition_spec_fn(mdl_vars):
     init_partition_spec = getattr(inner, 'init_partition_spec', None)
     if callable(init_partition_spec):
@@ -509,10 +477,6 @@ def sharded_masked(
 
   grad_tx = optax.masked(inner, mask)
   if not hasattr(inner, 'init_partition_spec'):
-    if use_custom_masked:
-      return optax.GradientTransformationExtraArgs(
-          init=init_fn, update=update_fn
-      )
     return grad_tx
   else:
     return ShardedGradientTransformation(
