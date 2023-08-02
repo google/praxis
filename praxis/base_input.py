@@ -1069,8 +1069,15 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
       def tf_spec_to_jax(spec: tf.TensorSpec) -> jax.ShapeDtypeStruct:
         return jax.ShapeDtypeStruct(shape=spec.shape,
                                     dtype=spec.dtype.as_numpy_dtype())
+
       return jax.tree_map(tf_spec_to_jax, dataset.element_spec)
 
+    logging.warning(
+        'b/292156360: The input specs is generated based on the first data '
+        'batch. It is recommended to define an explicit input spec provider '
+        'param in BaseExperiment.get_input_specs_provider_params(), which is '
+        'more determinisitc and efficient.'
+    )
     return jax.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
                         input_pipeline.get_next_padded())
 
