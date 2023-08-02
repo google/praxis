@@ -31,7 +31,6 @@ import jax
 from jax.experimental import mesh_utils
 from jax.experimental import multihost_utils
 from jax.experimental import pjit
-from jax.interpreters import pxla
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -412,17 +411,9 @@ def convert_fully_replicated_array_to_pmap_array(arr):
     device_buffers = arr.device_buffers  # pytype: disable=attribute-error
     devices = np.array([d.device() for d in device_buffers])
 
-    # TODO(pax-dev): Remove the branching when jax 0.4.9 is a minimum
-    # requirement version of praxis.
-    if jax.__version_info__ >= (0, 4, 9):
-      s = jax.sharding.PmapSharding.default(local_shape, sharded_dim=0,
-                                            devices=devices)
-    else:
-      sharded_aval = jax.core.ShapedArray(local_shape[1:], arr.dtype)
-      sharding_spec = pxla._pmap_sharding_spec(  # pylint: disable=protected-access
-          local_shape[0], local_shape[0], 1, None, sharded_aval, 0)
-      s = jax.sharding.PmapSharding(devices, sharding_spec)
-
+    s = jax.sharding.PmapSharding.default(
+        local_shape, sharded_dim=0, devices=devices
+    )
     return jax.make_array_from_single_device_arrays(local_shape, s,
                                                     device_buffers)
 
