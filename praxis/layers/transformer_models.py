@@ -910,7 +910,7 @@ class TransformerLm(base_layer.BaseLayer):
     input_emb = input_emb[:, 1:, :]
     return input_ids, input_emb, segment_pos
 
-  def _softmax_xent(self, activations, segment_pos):
+  def _softmax_xent(self, activations, segment_pos, input_ids=None):
     """Applies softmax xent layer.
 
     Args:
@@ -924,7 +924,7 @@ class TransformerLm(base_layer.BaseLayer):
       - probs: [B, T, D]
     """
     del segment_pos
-    logits = self.softmax.get_logits(inputs=activations)
+    logits = self.softmax.get_logits(inputs=activations, input_ids=input_ids)
     xent_output = NestedMap(logits=logits)
     # For numerical stability, use fp32 for softmax and log_softmax.
     logits_dtype = logits.dtype
@@ -1032,6 +1032,7 @@ class TransformerLm(base_layer.BaseLayer):
     if is_single_token:
       # [B, D]
       transformer_inputs = jnp.squeeze(transformer_inputs, 1)
+      input_ids = jnp.squeeze(input_ids, 1)
       # [B]
       if segment_pos is not None:
         segment_pos = jnp.squeeze(segment_pos, 1)
@@ -1049,7 +1050,7 @@ class TransformerLm(base_layer.BaseLayer):
       self.update_decode_state('time_step', time_step + inputs.shape[1])
     if self.final_ln_tpl is not None:
       outputs = self.final_ln(outputs)
-    xent_output = self._softmax_xent(outputs, segment_pos)
+    xent_output = self._softmax_xent(outputs, segment_pos, input_ids)
     return xent_output
 
   def transform_decode_state(
