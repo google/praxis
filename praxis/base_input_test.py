@@ -67,14 +67,14 @@ class TestInput(base_input.BaseInput):
 
   def _get_dataset(self):
     if self.dataset_with_undef_dimension:
-      # Creates a TF dataset with undefined (None) dimensions.
+      # Creates a TF dataset with undefined (None) dimension.
       def data_generator():
         for i in range(10):
           yield [[i]]
 
       return tf.data.Dataset.from_generator(
           data_generator,
-          output_signature=tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+          output_signature=tf.TensorSpec(shape=(None, 1), dtype=tf.int32),
       )
 
     d = tf.data.Dataset.range(10)
@@ -926,11 +926,17 @@ class InputSpecsProviderTest(test_utils.TestCase):
         dataset_with_undef_dimension=True,
     )
     spec_provider_p = pax_fiddle.Config(
-        base_input.DatasetInputSpecsProvider, input_p=input_p
+        base_input.DatasetInputSpecsProvider, input_p=input_p.clone()
     )
-    spec_provider = instantiate(spec_provider_p)
-    unused_input_specs = spec_provider.get_input_specs()
+    input_pipeline = instantiate(input_p)
+    spec_from_data = jax.tree_map(
+        lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
+        input_pipeline.get_next(),
+    )
 
+    spec_provider = instantiate(spec_provider_p)
+    spec_from_provider = spec_provider.get_input_specs()
+    self.assertEqual(spec_from_data, spec_from_provider)
 
 if __name__ == '__main__':
   absltest.main()

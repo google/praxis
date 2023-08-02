@@ -1059,13 +1059,9 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
         and isinstance(dataset, tf.data.Dataset)
         and
         # Only use dataset.element_spec to compute the input spec when all
-        # non-batch dimensions are defined.
-        # NOTE this is based on the assumption that the batch dimensions don't
-        # affect the variable shapes, so they can be ignored during model
-        # initialization. Currently paxml workflow uses this assumption during
-        # model initialization and input spec validation.
+        # dimensions are defined.
         jax.tree_util.tree_reduce(
-            lambda c, x: c and x.shape[1:].is_fully_defined(),
+            lambda c, x: c and x.shape.is_fully_defined(),
             dataset.element_spec,
             True,  # Initial value.
         )
