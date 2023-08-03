@@ -92,6 +92,7 @@ class BeamSearchHParams(DecoderHParams):
   tokens_per_beam: Optional[int] = None
   length_norm_alpha: float = 0.8
   early_exit: bool = False
+  use_matmul_beam_shuffle: bool = False
 
 
 @dataclasses.dataclass

@@ -399,18 +399,21 @@ def beam_search_after_prefix_fprop(
     hyp_id = final_topk_indices // tokens_per_beam
     val.hyp_ids = hyp_id
 
+    use_one_hot_matmul = beam_search_hparams.use_matmul_beam_shuffle
     # Shuffle at beam dimension for the cache states using hyp_id.
     def _shuffle_state_fn(x, batch_dim, time_dim):
       del time_dim
       if lazy_broadcast_prefix_fn is not None:
-        new_state = shuffle_state(x, hyp_id)
+        new_state = shuffle_state(x, hyp_id, use_one_hot_matmul)
         return new_state
       else:
         x_shape = x.shape
         new_shape = list(x_shape)
         new_shape.insert(batch_dim + 1, beam_size)
         new_shape[batch_dim] = x.shape[batch_dim] // beam_size
-        new_state = shuffle_state(jnp.reshape(x, new_shape), hyp_id)
+        new_state = shuffle_state(
+            jnp.reshape(x, new_shape), hyp_id, use_one_hot_matmul
+        )
         return jnp.reshape(new_state, x_shape)
 
     transform_state_fn(model, _shuffle_state_fn)
@@ -421,9 +424,9 @@ def beam_search_after_prefix_fprop(
     new_logprobs = decoder_utils.gather_logprobs(logprobs, hyp_id, new_ids)
 
     # Shuffle output ids at beam dimension using hyp_id.
-    val.output_ids = shuffle_state(val.output_ids, hyp_id)
-    val.logprobs = shuffle_state(val.logprobs, hyp_id)
-    val.done = shuffle_state(val.done, hyp_id)
+    val.output_ids = shuffle_state(val.output_ids, hyp_id, use_one_hot_matmul)
+    val.logprobs = shuffle_state(val.logprobs, hyp_id, use_one_hot_matmul)
+    val.done = shuffle_state(val.done, hyp_id, use_one_hot_matmul)
     # Update output_ids.
     val.output_ids = val.output_ids.at[:, :, step + 1].set(new_ids)
     val.logprobs = val.logprobs.at[:, :, step + 1].set(new_logprobs)
