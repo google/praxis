@@ -55,7 +55,7 @@ AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 
 def _rms(x):
   # Note: under pmap .mean() will produce a local mean, not across all hosts.
-  return (x**2.).mean().astype(jnp.float32)**.5
+  return (x**2.0).mean().astype(jnp.float32) ** 0.5
 
 
 def _rel_cos(x, y):
@@ -134,12 +134,14 @@ def compute_attention_masks_for_fprop(
 
     # Compute paddings
     cross_attention_mask = attentions.convert_paddings_to_mask(
-        cross_paddings, dtype=cross_inputs.dtype)
+        cross_paddings, dtype=cross_inputs.dtype
+    )
 
     # Packed inputs
     if cross_segment_mask is not None:
-      cross_attention_mask = jnp.minimum(cross_attention_mask,
-                                         cross_segment_mask)
+      cross_attention_mask = jnp.minimum(
+          cross_attention_mask, cross_segment_mask
+      )
   return attention_mask, cross_attention_mask
 
 
@@ -148,7 +150,7 @@ def compute_attention_masks_for_extend_step(
     seq_len: int,
     segment_mask: Optional[JTensor] = None,
     cross_paddings: Optional[JTensor] = None,
-    cross_segment_mask: Optional[JTensor] = None
+    cross_segment_mask: Optional[JTensor] = None,
 ) -> Tuple[JTensor, Union[JTensor, None]]:
   """Computes attention mask from paddings, segment masks etc for extend_step.
 
@@ -175,11 +177,13 @@ def compute_attention_masks_for_extend_step(
   # Create causal padding by masking out any index > time_step.
   # [1, T], 0 for non-pad and 1 for pad.
   causal_padding = jnp.greater(
-      jnp.expand_dims(jnp.arange(seq_len), 0), batch_time_step)
+      jnp.expand_dims(jnp.arange(seq_len), 0), batch_time_step
+  )
 
   # Create attention mask from padding of shape [1|B, 1, T]
   attention_mask = jnp.squeeze(
-      attentions.convert_paddings_to_mask(causal_padding), axis=1)
+      attentions.convert_paddings_to_mask(causal_padding), axis=1
+  )
 
   # Include segment mask, has shape [B, 1, T]
   if segment_mask is not None:
@@ -190,14 +194,16 @@ def compute_attention_masks_for_extend_step(
   if cross_paddings is not None:
     # Compute paddings mask [B, 1, 1, S]
     cross_attention_mask = attentions.convert_paddings_to_mask(
-        cross_paddings, dtype=attention_mask.dtype)
+        cross_paddings, dtype=attention_mask.dtype
+    )
 
     # Cross segment mask may be overloaded
     if cross_segment_mask is not None:
       # [B, 1, S] -> [B, 1, 1, S]
       cross_segment_mask = jnp.expand_dims(cross_segment_mask, axis=1)
-      cross_attention_mask = jnp.minimum(cross_attention_mask,
-                                         cross_segment_mask)
+      cross_attention_mask = jnp.minimum(
+          cross_attention_mask, cross_segment_mask
+      )
   return attention_mask, cross_attention_mask
 
 
@@ -220,7 +226,8 @@ def _get_sentence_embeddings(inputs: JTensor, segment_ids: JTensor) -> JTensor:
   # Compute the sum within segments(specified by segment_ids) of the input.
   # segment_sum shape: [max_segments, D]
   segment_sum = jax.ops.segment_sum(
-      inputs, segment_ids, num_segments=max_segments)
+      inputs, segment_ids, num_segments=max_segments
+  )
 
   # Zero out the segment_sum belonging to segment_ids=0, which corresponds to
   # padding.
@@ -230,11 +237,13 @@ def _get_sentence_embeddings(inputs: JTensor, segment_ids: JTensor) -> JTensor:
   # mean.
   # num_elements_per_segment shape: [max_segments, D]
   num_elements_per_segment = jax.ops.segment_sum(
-      jnp.ones_like(segment_ids), segment_ids, num_segments=max_segments)
+      jnp.ones_like(segment_ids), segment_ids, num_segments=max_segments
+  )
 
   # segment_mean shape: [max_segments, D]
   segment_mean = segment_sum / jnp.maximum(
-      num_elements_per_segment[:, jnp.newaxis], 1)
+      num_elements_per_segment[:, jnp.newaxis], 1
+  )
   # Sentence embedding contains the average of the input tensor per segment.
   # The sentence embeddings will contain the same averaged vector for a
   # particular segment_id.
@@ -273,19 +282,20 @@ class TransformerFeedForward(base_layer.BaseLayer):
       path.
     norm_policy: Policy for applying normaliztion wrt. transformations. Options
       are: (1) "pre", applied before transformation. (2) "primer_hybrid",
-      applied before and after transformation. (3) "post", applied after
-      transformation, (4) "post_skip", applied after the skip connection.
+        applied before and after transformation. (3) "post", applied after
+        transformation, (4) "post_skip", applied after the skip connection.
     internal_gshard_variance_scaling_fan_in_init: Feedforward weight init
       follows uniform distribution withbound = 1.0 / sqrt(3 / dim_0).
   """
+
   input_dims: int = 0
   output_dims: int = 0
   hidden_dims: int = 0
   has_bias: bool = True
   apply_padding_first: bool = False
-  activation_tpl: pax_fiddle.Config[
-      activations_lib.BaseActivation
-  ] = template_field(activations_lib.ReLU)
+  activation_tpl: pax_fiddle.Config[activations_lib.BaseActivation] = (
+      template_field(activations_lib.ReLU)
+  )
   use_gated_activation: bool = False
   fflayer_tpl: LayerTpl = template_field(linears.FeedForward)
   ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
@@ -306,6 +316,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
       ffn0: Weight-split dims mapping for the first ffw network.
       ffn1: Weight-split dims mapping for the second ffw network.
     """
+
     ffn0: SplitDimsMapping = None
     ffn1: SplitDimsMapping = None
 
@@ -316,11 +327,11 @@ class TransformerFeedForward(base_layer.BaseLayer):
       ffn0: Activation-split dims mapping for the first ffw network.
       ffn1: Activation-split dims mapping for the second ffw network.
     """
+
     ffn0: SplitDimsMapping = None
     ffn1: SplitDimsMapping = None
 
   def setup(self) -> None:
-
     output_dims = self.output_dims
     if output_dims == 0:
       # Make it compatible with previous implementation
@@ -419,16 +430,18 @@ class TransformerFeedForward(base_layer.BaseLayer):
       )
       self.create_child('residual_droppath', droppath_p)
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: Optional[JTensor] = None,
-               segment_ids: Optional[JTensor] = None) -> JTensor:
+  def __call__(
+      self,
+      inputs: JTensor,
+      paddings: Optional[JTensor] = None,
+      segment_ids: Optional[JTensor] = None,
+  ) -> JTensor:
     # Expand paddings to last dim if not None to have shape [batch, time, 1]
     if paddings is not None:
       paddings = jnp.expand_dims(paddings, axis=-1)
 
     if self.apply_padding_first and paddings is not None:
-      inputs *= (1.0 - paddings)
+      inputs *= 1.0 - paddings
 
     self.add_summary('input_rms', _rms(inputs), verbosity=4)
     residual = inputs
@@ -452,7 +465,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
 
     # Apply paddings if not None
     if not self.apply_padding_first and paddings is not None:
-      activations *= (1.0 - paddings)
+      activations *= 1.0 - paddings
 
     self.add_summary('activation_rms', _rms(activations), verbosity=4)
 
@@ -465,7 +478,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
 
     # Apply paddings if not None
     if not self.apply_padding_first and paddings is not None:
-      outputs *= (1.0 - paddings)
+      outputs *= 1.0 - paddings
 
     self.add_summary('output_rms', _rms(outputs), verbosity=4)
 
@@ -494,14 +507,12 @@ class TransformerFeedForward(base_layer.BaseLayer):
     if self.input_dims == self.output_dims:
       # Cosine similarity between inputs (residual) and outputs.
       self.add_summary(
-          'output_rel_cos', _rel_cos(residual, outputs), verbosity=4)
+          'output_rel_cos', _rel_cos(residual, outputs), verbosity=4
+      )
 
     return outputs
 
-  def extend_step(self,
-                  inputs: JTensor,
-                  *,
-                  time_step: JTensor) -> JTensor:
+  def extend_step(self, inputs: JTensor, *, time_step: JTensor) -> JTensor:
     """Fprop FFN extend step layer."""
     del time_step  # Not used.
     return self.__call__(inputs)
@@ -521,79 +532,78 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
   Attributes:
     input_dims: Dimension of the layer input.
     hidden_dims: Dimension of the hidden layer.
-    apply_padding_first: Apply padding to inputs before everything else or
-      not. For example, it is better to apply padding before batch norm.
+    apply_padding_first: Apply padding to inputs before everything else or not.
+      For example, it is better to apply padding before batch norm.
     ln_tpl: Parameterization of the layer normalization layer.
     activation_tpl: Activation function to use.
-    relu_dropout_tpl: Parameterization of the relu dropout layer. keep_prop
-      will be reset to (1.0 - relu_dropout_prob).
-    relu_dropout_prob: Probability at which we apply dropout to the hidden
-      layer of feedforward network..
+    relu_dropout_tpl: Parameterization of the relu dropout layer. keep_prop will
+      be reset to (1.0 - relu_dropout_prob).
+    relu_dropout_prob: Probability at which we apply dropout to the hidden layer
+      of feedforward network..
     residual_dropout_tpl: Parameterization of the residual dropout params
       template. keep_prop will be reset to (1.0 - residual_dropout_prob).
-    residual_dropout_prob: Probability at which we apply dropout to the
-      residual layers, such that, residual(x, y) = (x + dropout(y)).
+    residual_dropout_prob: Probability at which we apply dropout to the residual
+      layers, such that, residual(x, y) = (x + dropout(y)).
     add_skip_connection: If True, add skip_connection from input to output.
     residual_weight: Weight applied on residual connection. Final output is
       residual_weight * residual_fn(x) + x. Only in effect when
       add_skip_connection is True.
-    norm_policy: Policy for applying normaliztion wrt. transformations.
-      Options are: (1) "pre", applied before transformation. (2)
-      "primer_hybrid", applied before and after transformation. (3) "post",
-      applied after transformation.
+    norm_policy: Policy for applying normaliztion wrt. transformations. Options
+      are: (1) "pre", applied before transformation. (2) "primer_hybrid",
+        applied before and after transformation. (3) "post", applied after
+        transformation.
     residual_droppath_prob: Probability at which we drop the entire residual
       path.
     gating_func: Gating function type--can be one of the following options:
       'top2', based on the GShard paper: https://arxiv.org/abs/2006.16668,
-      'expert_choice', based on https://arxiv.org/abs/2202.09368,
-      'dense_top2': experimental gating function for decodiing. Similar to
-      'top2' gating, but no capacity constrainst for each expert.
+      'expert_choice', based on https://arxiv.org/abs/2202.09368, 'dense_top2':
+      experimental gating function for decodiing. Similar to 'top2' gating, but
+      no capacity constrainst for each expert.
     num_experts: Total number of experts in this layer.
     num_groups: Total number of groups for dispatching. num_groups typically
       should be the same as num devices.
-    min_group_size: If not None, num_groups will be adjusted so that there
-      will be at least min_group_size tokens in each group.
+    min_group_size: If not None, num_groups will be adjusted so that there will
+      be at least min_group_size tokens in each group.
     expert_capacity_dim: Internal. Exact expert capacity. Setting non-zero
       unadjusted_expert_capacity_factor is a preferred way.
-    unadjusted_expert_capacity_factor: Expert capacity factor. This is the
-      ratio between global batch size and total capacity across all experts
-      and all routing groups. If the global batch size is G*S (num_groups*
-      group_size) or B*L(batch*length) and the total expert capacity across
-      all routing groups is E*G*C (num_experts*num_groups*expert_capacity),
-      then unadjusted_expert_capacity_factor == (E*G*C)/(G*S)
+    unadjusted_expert_capacity_factor: Expert capacity factor. This is the ratio
+      between global batch size and total capacity across all experts and all
+      routing groups. If the global batch size is G*S (num_groups* group_size)
+      or B*L(batch*length) and the total expert capacity across all routing
+      groups is E*G*C (num_experts*num_groups*expert_capacity), then
+      unadjusted_expert_capacity_factor == (E*G*C)/(G*S)
       unadjusted_expert_capacity_factor is set to 2 by default for top-2
       routing.
     expert_weight_shards: Shard each expert params into this many number of
       shards to reduce the size of individual weight params.
     second_expert_policy: How to pick second expert: all, sampling or random.
-    internal_gshard_variance_scaling_fan_in_init: Internal. Do not use. To
-      study MoE layer init.
+    internal_gshard_variance_scaling_fan_in_init: Internal. Do not use. To study
+      MoE layer init.
     explicit_fan_in_fan_out_axes: Set to True except for backward compatibility.
       Current Transformer implementation typically does weight stacking and
       reshapes to improve efficiency, to preserve correct init scale one needs
       to specify fan_in and fan_out dimensions explicitly. When such dimensions
       are explicitly specified, receptive_field multiplier is set to 1.
-    moe_load_balance_loss_weight: Weight for the load balancing loss of the
-      MoE layer.
+    moe_load_balance_loss_weight: Weight for the load balancing loss of the MoE
+      layer.
     gating_logit_cap:  Cap the absolute values of MoE gating logits by tanh.
       Enabled when a positive value is specified.
-    moe_gating_embedding_level: Specifies the type of MOE gating embedding
-    used.
-    See Section 3.1 https://arxiv.org/pdf/2110.03742.pdf.
-    Options are:
-      (1) "token" -> The gating function uses tokens to route.
-      (2) "sentence" -> The gating function uses the sentence embeddings,
-          calculated by taking the average token representation, to route.
+    moe_gating_embedding_level: Specifies the type of MOE gating embedding used.
+      See Section 3.1 https://arxiv.org/pdf/2110.03742.pdf. Options are: (1)
+      "token" -> The gating function uses tokens to route. (2) "sentence" -> The
+      gating function uses the sentence embeddings, calculated by taking the
+      average token representation, to route.
     use_gated_activation: Boolean indicating whether to use a gated activation
       function for the input projection layer or not.
   """
+
   input_dims: int = 0
   hidden_dims: int = 0
   apply_padding_first: bool = False
   ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
-  activation_tpl: pax_fiddle.Config[
-      activations_lib.BaseActivation
-  ] = template_field(activations_lib.ReLU)
+  activation_tpl: pax_fiddle.Config[activations_lib.BaseActivation] = (
+      template_field(activations_lib.ReLU)
+  )
   relu_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   relu_dropout_prob: float = 0.0
   residual_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
@@ -636,6 +646,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
       ehm: Sharding of the second projection matrix that maps from hidden to
         output dim, of shape [num_experts, hidden_dims, output_dims].
     """
+
     me: SplitDimsMapping = None
     emh: SplitDimsMapping = None
     ehm: SplitDimsMapping = None
@@ -653,6 +664,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
       egch: Sharding of the egch tensors.
       gecm: Sharding of the gecm tensors.
     """
+
     gsm: SplitDimsMapping = None
     gs: SplitDimsMapping = None
     gsec: SplitDimsMapping = None
@@ -820,7 +832,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     if self.moe_gating_embedding_level == 'sentence':
       if segment_ids is None and paddings is None:
         sentence_embeddings = jnp.tile(
-            jnp.average(inputs, axis=1, keepdims=True), [1, inputs.shape[1], 1])
+            jnp.average(inputs, axis=1, keepdims=True), [1, inputs.shape[1], 1]
+        )
       else:
         if segment_ids is None:
           segment_ids = jnp.asarray(1 - paddings, jnp.int32)
@@ -839,10 +852,12 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     raw_gates_thr = jnp.max(
         raw_gates * jnp.less(raw_gates, raw_gates_max).astype(fprop_dtype),
         axis=-1,
-        keepdims=True)
+        keepdims=True,
+    )
 
-    gates = raw_gates * jnp.greater_equal(raw_gates,
-                                          raw_gates_thr).astype(fprop_dtype)
+    gates = raw_gates * jnp.greater_equal(raw_gates, raw_gates_thr).astype(
+        fprop_dtype
+    )
 
     gates_denom = jnp.sum(gates, axis=-1, keepdims=True) + 1e-12
     gates /= gates_denom
@@ -885,8 +900,10 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
       num_groups = (num_tokens + self.min_group_size - 1) // self.min_group_size
       logging.info('num_groups adjusted to %s.', num_groups)
     if num_tokens % num_groups != 0:
-      raise ValueError(f'The value of num_groups {num_groups} does not '
-                       f'evenly divide the value of num_tokens {num_tokens}')
+      raise ValueError(
+          f'The value of num_groups {num_groups} does not '
+          f'evenly divide the value of num_tokens {num_tokens}'
+      )
     g_len = num_tokens // num_groups
 
     reshaped_inputs = inputs.reshape([num_groups, g_len, m_dim])
@@ -900,7 +917,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     if self.moe_gating_embedding_level == 'sentence':
       if segment_ids is None and paddings is None:
         sentence_embeddings = jnp.tile(
-            jnp.average(inputs, axis=1, keepdims=True), [1, inputs.shape[1], 1])
+            jnp.average(inputs, axis=1, keepdims=True), [1, inputs.shape[1], 1]
+        )
       else:
         if segment_ids is None:
           segment_ids = jnp.asarray(1 - paddings, jnp.int32)
@@ -912,11 +930,14 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
       # Reshape the sentence embeddings, so that it corresponds to sharding
       # groups.
       reshaped_sentence_embeddings = sentence_embeddings.reshape(
-          [num_groups, g_len, m_dim])
-      reshaped_sentence_embeddings = self._split(reshaped_sentence_embeddings,
-                                                 ap.gsm)
-      logits = jnp.einsum('gsm,me->gse', reshaped_sentence_embeddings,
-                          self.theta.gate)
+          [num_groups, g_len, m_dim]
+      )
+      reshaped_sentence_embeddings = self._split(
+          reshaped_sentence_embeddings, ap.gsm
+      )
+      logits = jnp.einsum(
+          'gsm,me->gse', reshaped_sentence_embeddings, self.theta.gate
+      )
     else:
       logits = jnp.einsum('gsm,me->gse', reshaped_inputs, self.theta.gate)
 
@@ -974,13 +995,15 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     if self.gating_func in ['top2', 'expert_choice_v2']:
       combine_tensor = self._split(combine_tensor, ap.gsec)
       dispatch_tensor = self._split(dispatch_tensor, ap.gsec)
-      expert_inputs = jnp.einsum('gsec,gsm->egcm', dispatch_tensor,
-                                 reshaped_inputs)
+      expert_inputs = jnp.einsum(
+          'gsec,gsm->egcm', dispatch_tensor, reshaped_inputs
+      )
     elif self.gating_func == 'expert_choice':
       combine_tensor = self._split(combine_tensor, ap.gec)
       dispatch_tensor = self._split(dispatch_tensor, ap.gecs)
-      expert_inputs = jnp.einsum('gecs,gsm->egcm', dispatch_tensor,
-                                 reshaped_inputs)
+      expert_inputs = jnp.einsum(
+          'gecs,gsm->egcm', dispatch_tensor, reshaped_inputs
+      )
     else:
       raise ValueError('Unsupported gating function: %s ' % self.gating_func)
     expert_inputs = self._split(expert_inputs, ap.egcm)
@@ -1008,12 +1031,16 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     transposed_expert_output = jnp.einsum('egcm->gecm', expert_output)
     transposed_expert_output = self._split(transposed_expert_output, ap.gecm)
     if self.gating_func in ['top2', 'expert_choice_v2']:
-      combined_output = jnp.einsum('gecm,gsec->gsm', transposed_expert_output,
-                                   combine_tensor)
+      combined_output = jnp.einsum(
+          'gecm,gsec->gsm', transposed_expert_output, combine_tensor
+      )
     elif self.gating_func == 'expert_choice':
-      combined_output = jnp.einsum('gecm,gecs,gec->gsm',
-                                   transposed_expert_output, dispatch_tensor,
-                                   combine_tensor)
+      combined_output = jnp.einsum(
+          'gecm,gecs,gec->gsm',
+          transposed_expert_output,
+          dispatch_tensor,
+          combine_tensor,
+      )
     else:
       raise ValueError('Unsupported gating function: %s ' % self.gating_func)
     combined_output = self._split(combined_output, ap.gsm)
@@ -1021,10 +1048,12 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     combined_output = combined_output.reshape(token_shape + (output_dims,))
     return combined_output, aux_loss
 
-  def __call__(self,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
-               inputs: JTensor,
-               paddings: JTensor = None,
-               segment_ids: JTensor = None) -> JTensor:
+  def __call__(
+      self,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
+      inputs: JTensor,
+      paddings: JTensor = None,
+      segment_ids: JTensor = None,
+  ) -> JTensor:
     """Layer-norm, route, feed-forward, combine, residual.
 
     Args:
@@ -1041,7 +1070,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
 
     # Consistent with gshard implementation.
     if self.apply_padding_first and paddings is not None:
-      inputs *= (1.0 - jnp.expand_dims(paddings, axis=-1))
+      inputs *= 1.0 - jnp.expand_dims(paddings, axis=-1)
 
     self.add_summary('input_rms', _rms(inputs), verbosity=4)
     residual = inputs
@@ -1059,10 +1088,12 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
 
     if self.gating_func == 'dense_top2':
       outputs, aux_loss = self._combine_top2_expert_outputs(
-          inputs, paddings, segment_ids)
+          inputs, paddings, segment_ids
+      )
     else:
       outputs, aux_loss = self._dispatch_and_combine_expert_outputs(
-          inputs, paddings, segment_ids)
+          inputs, paddings, segment_ids
+      )
 
     # Apply padding.
     if paddings is not None:
@@ -1102,10 +1133,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
 
     return outputs
 
-  def extend_step(self,
-                  inputs: JTensor,
-                  *,
-                  time_step: JTensor) -> JTensor:
+  def extend_step(self, inputs: JTensor, *, time_step: JTensor) -> JTensor:
     """Fprop FFN extend step layer."""
     del time_step  # Not used.
     return self.__call__(inputs)
@@ -1142,8 +1170,8 @@ class Transformer(base_layer.BaseLayer):
     ln_tpl: Parameterization of the layer normalization layer.
     norm_policy: Policy for applying normaliztion wrt. transformations. Options
       are: (1) "pre", applied before transformation. (2) "primer_hybrid",
-      applied before and after transformation. (3) "post", applied after
-      transformation. (4) "post_skip", applied after the skip connection.
+        applied before and after transformation. (3) "post", applied after
+        transformation. (4) "post_skip", applied after the skip connection.
     tr_atten_tpl: Parameterization of the DotProductAttention layer.
     packed_input: If True, each training example may pack multiple sequences.
     tr_fflayer_tpl: Parameterization of the transformer Feed-Forward Layer.
@@ -1151,6 +1179,7 @@ class Transformer(base_layer.BaseLayer):
       the VQNgrammer layer. If this is None, then there is no NGrammer layer
       present in this layer.
   """
+
   input_dims: int = 0
   hidden_dims: int = 0
   num_heads: Optional[int] = None
@@ -1171,7 +1200,7 @@ class Transformer(base_layer.BaseLayer):
   ngrammer_tpl: Optional[LayerTpl] = template_field(None)
 
   # This function can be overridden by subclasses.
-  def _setup_attention(self, atten_tpl: LayerTpl, name: str)-> None:
+  def _setup_attention(self, atten_tpl: LayerTpl, name: str) -> None:
     atten_tpl = atten_tpl.clone()
     if name == 'self_attention':
       atten_tpl.name = 'multihead_self_atten'
@@ -1189,7 +1218,6 @@ class Transformer(base_layer.BaseLayer):
     self.create_child(name, atten_tpl)
 
   def setup(self) -> None:
-
     # Initialize Layer Norm
     if self.norm_policy == 'primer_hybrid':
       params = self.ln_tpl.clone()
@@ -1278,7 +1306,8 @@ class Transformer(base_layer.BaseLayer):
       cross_inputs: Optional[JTensor] = None,
       cross_attention_mask: Optional[JTensor] = None,
       segment_pos: Optional[JTensor] = None,
-      segment_ids: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+      segment_ids: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
     """Transformer decoder layer.
 
     Args:
@@ -1325,7 +1354,8 @@ class Transformer(base_layer.BaseLayer):
         inputs_normalized,
         atten_mask=attention_mask,
         query_segment_pos=segment_pos,
-        key_segment_pos=segment_pos)
+        key_segment_pos=segment_pos,
+    )
     atten_probs = NestedMap(self_atten=self_atten_probs)
 
     self.add_summary('attention_output_rms', _rms(atten_output), verbosity=4)
@@ -1335,8 +1365,9 @@ class Transformer(base_layer.BaseLayer):
     elif self.norm_policy == 'post':
       atten_output = self.layer_norm(atten_output)
 
-    self.add_summary('attention_output_norm_rms', _rms(atten_output),
-                     verbosity=4)
+    self.add_summary(
+        'attention_output_norm_rms', _rms(atten_output), verbosity=4
+    )
 
     # Residual dropout and connection
     atten_output = self.residual_dropout(atten_output)
@@ -1350,8 +1381,9 @@ class Transformer(base_layer.BaseLayer):
     if self.norm_policy == 'post_skip':
       atten_output = self.layer_norm(atten_output)
 
-    self.add_summary('attention_output_rel_cos', _rel_cos(inputs, atten_output),
-                     verbosity=4)
+    self.add_summary(
+        'attention_output_rel_cos', _rel_cos(inputs, atten_output), verbosity=4
+    )
 
     # Apply cross attention if applicable
     if self.use_cross_attention and (
@@ -1370,7 +1402,8 @@ class Transformer(base_layer.BaseLayer):
           atten_output_normalized,
           cross_inputs,
           cross_inputs,
-          atten_mask=cross_attention_mask)
+          atten_mask=cross_attention_mask,
+      )
       atten_probs.cross_atten = cross_atten_probs
 
       if self.norm_policy == 'post':
@@ -1393,13 +1426,15 @@ class Transformer(base_layer.BaseLayer):
     output = self.ff_layer(atten_output, paddings=paddings)
     return output, atten_probs  # pytype: disable=bad-return-type  # jax-ndarray
 
-  def extend_step(self,
-                  inputs: JTensor,
-                  *,
-                  time_step: JTensor,
-                  segment_pos: Optional[JTensor] = None,
-                  attention_mask: JTensor,
-                  cross_attention_mask: Optional[JTensor] = None) -> JTensor:
+  def extend_step(
+      self,
+      inputs: JTensor,
+      *,
+      time_step: JTensor,
+      segment_pos: Optional[JTensor] = None,
+      attention_mask: JTensor,
+      cross_attention_mask: Optional[JTensor] = None,
+  ) -> JTensor:
     # pyformat:disabled
     """Transformer decoder layer, autoregressive cached decoding.
 
@@ -1421,13 +1456,12 @@ class Transformer(base_layer.BaseLayer):
       time_step:      a 0-based scalar, the current decode step.
       segment_pos:    [B] or [B, L], the current position in the same segment.
         If unspecified, time_step will be used.
-
       attention_mask: [B, 1, L, S] if extends multiple steps (i.e. `inputs` is
         of shape [B, L, D]) or [B, 1, T] if extends one step (i.e. `inputs` is
         of shape [B, D]), optional attention mask for this time step. This
         combines causal mask with any segment mask if applicable.
-      cross_attention_mask: [b|B, 1, 1 S], optional, cross_segment_mask for
-        this time step. This combines padding mask with any segment mask if
+      cross_attention_mask: [b|B, 1, 1 S], optional, cross_segment_mask for this
+        time step. This combines padding mask with any segment mask if
         applicable.
 
     Returns:
@@ -1444,7 +1478,8 @@ class Transformer(base_layer.BaseLayer):
         inputs_normalized,
         atten_mask=attention_mask,
         time_step=time_step,
-        segment_pos=segment_pos)
+        segment_pos=segment_pos,
+    )
     if self.norm_policy == 'primer_hybrid':
       atten_output = self.post_layer_norm(atten_output)
     elif self.norm_policy == 'post':
@@ -1471,7 +1506,8 @@ class Transformer(base_layer.BaseLayer):
           atten_mask=jnp.squeeze(cross_attention_mask, 2),
           time_step=time_step,
           segment_pos=segment_pos,
-          is_cross_attention=True)
+          is_cross_attention=True,
+      )
 
       if self.norm_policy == 'post':
         cross_atten_output = self.cross_layer_norm(cross_atten_output)
@@ -1487,12 +1523,14 @@ class Transformer(base_layer.BaseLayer):
     return output
 
   def transform_decode_state(
-      self, transform_fn: base_layer.DecodeStateTransformFn) -> None:
+      self, transform_fn: base_layer.DecodeStateTransformFn
+  ) -> None:
     """Transforms all decode state variables based on transform_fn."""
     self.self_attention.transform_decode_state(transform_fn)
 
-  def lazy_broadcast_prefix(self, num_suffix_samples: int,
-                            suffix_length: int) -> None:
+  def lazy_broadcast_prefix(
+      self, num_suffix_samples: int, suffix_length: int
+  ) -> None:
     """Performs lazy prefix broadcast on the decoding states.
 
     Current decoding states will be moved to PREFIX_DECODE_CACHE. New decoding
@@ -1507,11 +1545,14 @@ class Transformer(base_layer.BaseLayer):
     self.self_attention.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
 
   def right_align_decode_state_with_prefix(
-      self, max_prefix_size: int,
-      right_align_fn: base_layer.DecodeStateTransformFn) -> None:
+      self,
+      max_prefix_size: int,
+      right_align_fn: base_layer.DecodeStateTransformFn,
+  ) -> None:
     """Right aligns decode state with prefix decode states."""
     self.self_attention.right_align_decode_state_with_prefix(
-        max_prefix_size, right_align_fn)
+        max_prefix_size, right_align_fn
+    )
 
 
 class StackedTransformer(base_layer.BaseLayer):
@@ -1562,6 +1603,7 @@ class StackedTransformer(base_layer.BaseLayer):
     checkpoint_policy: How to checkpoint residuals for BProp: save nothing, dot
       only or dot with no batch dimensions.
   """
+
   use_cross_attention: bool = False
   mask_self_attention: bool = False
   num_layers: int = 0
@@ -1598,7 +1640,6 @@ class StackedTransformer(base_layer.BaseLayer):
     return layer_tpl.clone()
 
   def setup(self) -> None:
-
     assert self.num_layers > 0
     assert self.model_dims > 0
     assert self.hidden_dims > 0
@@ -1652,8 +1693,9 @@ class StackedTransformer(base_layer.BaseLayer):
 
     if isinstance(self.transformer_layer_params_tpl, (list, tuple)):
       if self.num_layers % len(self.transformer_layer_params_tpl):
-        raise ValueError('num_layers should be divisible by '
-                         'transformer_layer_params_tpl')
+        raise ValueError(
+            'num_layers should be divisible by transformer_layer_params_tpl'
+        )
 
     layer_params = [_layer_params(i) for i in range(self.num_layers)]
     self.create_children('x_layers', layer_params)
@@ -1678,14 +1720,16 @@ class StackedTransformer(base_layer.BaseLayer):
     """
     raise NotImplementedError(type(self))
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: JTensor,
-               segment_mask: Optional[JTensor] = None,
-               cross_inputs: Optional[JTensor] = None,
-               cross_paddings: Optional[JTensor] = None,
-               cross_segment_mask: Optional[JTensor] = None,
-               segment_pos: Optional[JTensor] = None) -> JTensor:
+  def __call__(
+      self,
+      inputs: JTensor,
+      paddings: JTensor,
+      segment_mask: Optional[JTensor] = None,
+      cross_inputs: Optional[JTensor] = None,
+      cross_paddings: Optional[JTensor] = None,
+      cross_segment_mask: Optional[JTensor] = None,
+      segment_pos: Optional[JTensor] = None,
+  ) -> JTensor:
     """Stacked Transformer layer.
 
     Args:
@@ -1766,14 +1810,16 @@ class StackedTransformer(base_layer.BaseLayer):
       x_out = checkpoint_name(x_out, 'transformer_layer_out')
     return x_out
 
-  def extend_step(self,
-                  inputs: JTensor,
-                  *,
-                  time_step: JTensor,
-                  segment_pos: Optional[JTensor] = None,
-                  atten_mask: Optional[JTensor] = None,
-                  cross_paddings: Optional[JTensor] = None,
-                  cross_segment_mask: Optional[JTensor] = None) -> JTensor:
+  def extend_step(
+      self,
+      inputs: JTensor,
+      *,
+      time_step: JTensor,
+      segment_pos: Optional[JTensor] = None,
+      atten_mask: Optional[JTensor] = None,
+      cross_paddings: Optional[JTensor] = None,
+      cross_segment_mask: Optional[JTensor] = None,
+  ) -> JTensor:
     """Transformer stacked decoder layers, autoregressive cached decoding.
 
     When `inputs` has shape [B, L, D], it will do extend_step on N tokenks per
@@ -1824,9 +1870,10 @@ class StackedTransformer(base_layer.BaseLayer):
         # [B, 1, T]
         segment_mask = jnp.squeeze(segment_mask, 1)
       attention_mask, cross_attention_mask = (
-          compute_attention_masks_for_extend_step(time_step, max_t,
-                                                  segment_mask, cross_paddings,
-                                                  cross_segment_mask))
+          compute_attention_masks_for_extend_step(
+              time_step, max_t, segment_mask, cross_paddings, cross_segment_mask
+          )
+      )
 
     else:
       # Custom attention is assumed to have handled all padding, causality,
@@ -1837,7 +1884,8 @@ class StackedTransformer(base_layer.BaseLayer):
           max_t,
           None,
           cross_paddings,
-          cross_segment_mask)
+          cross_segment_mask,
+      )
 
     decoder_input = inputs
     for layer in self.x_layers:
@@ -1846,18 +1894,21 @@ class StackedTransformer(base_layer.BaseLayer):
           time_step=time_step,
           attention_mask=attention_mask,
           segment_pos=segment_pos,
-          cross_attention_mask=cross_attention_mask)
+          cross_attention_mask=cross_attention_mask,
+      )
       decoder_input = decoder_output
     return decoder_output
 
   def transform_decode_state(
-      self, transform_fn: base_layer.DecodeStateTransformFn) -> None:
+      self, transform_fn: base_layer.DecodeStateTransformFn
+  ) -> None:
     """Transforms all decode state variables based on transform_fn."""
     for layer in self.x_layers:
       layer.transform_decode_state(transform_fn)
 
-  def lazy_broadcast_prefix(self, num_suffix_samples: int,
-                            suffix_length: int) -> None:
+  def lazy_broadcast_prefix(
+      self, num_suffix_samples: int, suffix_length: int
+  ) -> None:
     """Performs lazy prefix broadcast on the decoding states.
 
     Current decoding states will be moved to PREFIX_DECODE_CACHE. New decoding
@@ -1873,12 +1924,15 @@ class StackedTransformer(base_layer.BaseLayer):
       layer.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
 
   def right_align_decode_state_with_prefix(
-      self, max_prefix_size: int,
-      right_align_fn: base_layer.DecodeStateTransformFn) -> None:
+      self,
+      max_prefix_size: int,
+      right_align_fn: base_layer.DecodeStateTransformFn,
+  ) -> None:
     """Right aligns decode state with prefix decode states."""
     for layer in self.x_layers:
-      layer.right_align_decode_state_with_prefix(max_prefix_size,
-                                                 right_align_fn)
+      layer.right_align_decode_state_with_prefix(
+          max_prefix_size, right_align_fn
+      )
 
 
 class StackedTransformerRepeated(base_layer.BaseLayer):
@@ -1897,9 +1951,12 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     nd_prefix_shape: If not None, there are multiple prefix dims of this shape
       and np.prod(nd_prefix_shape) == x_times.
   """
+
   block: LayerTpl = template_field(StackedTransformer)
   x_times: int = 0
-  checkpoint_policy: repeats.AutodiffCheckpointType = repeats.AutodiffCheckpointType.SAVE_NOTHING
+  checkpoint_policy: repeats.AutodiffCheckpointType = (
+      repeats.AutodiffCheckpointType.SAVE_NOTHING
+  )
   unroll_in_decode: bool = True
   repeat_layer_name: str = 'repeat'
   sublayer_name: str = 'sub'
@@ -1912,6 +1969,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     Attributes:
       stages: How the list of blocks should be sharded.
     """
+
     block: SplitDimsMapping = None
 
   def setup(self) -> None:
@@ -1936,14 +1994,16 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
   def repeat_layer(self) -> repeats.Repeat:
     return getattr(self, self.repeat_layer_name)
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: JTensor,
-               segment_mask: Optional[JTensor] = None,
-               cross_inputs: Optional[JTensor] = None,
-               cross_paddings: Optional[JTensor] = None,
-               cross_segment_mask: Optional[JTensor] = None,
-               segment_pos: Optional[JTensor] = None) -> JTensor:
+  def __call__(
+      self,
+      inputs: JTensor,
+      paddings: JTensor,
+      segment_mask: Optional[JTensor] = None,
+      cross_inputs: Optional[JTensor] = None,
+      cross_paddings: Optional[JTensor] = None,
+      cross_segment_mask: Optional[JTensor] = None,
+      segment_pos: Optional[JTensor] = None,
+  ) -> JTensor:
     """Stacked Transformer layer.
 
     Args:
@@ -1963,8 +2023,15 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     """
 
     # TODO(zhangqiaorjc): Use positional args until nn.scan supports kwargs.
-    out = self.repeat_layer(inputs, paddings, segment_mask, cross_inputs,
-                            cross_paddings, cross_segment_mask, segment_pos)
+    out = self.repeat_layer(
+        inputs,
+        paddings,
+        segment_mask,
+        cross_inputs,
+        cross_paddings,
+        cross_segment_mask,
+        segment_pos,
+    )
 
     return out
 
@@ -1974,18 +2041,21 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     Args:
       *args: Other arguments.
       **kwargs: Other keyword arguments.
+
     Return: None.
     """
     raise NotImplementedError(type(self))
 
-  def extend_step(self,
-                  inputs: JTensor,
-                  *,
-                  time_step: JTensor,
-                  segment_pos: Optional[JTensor] = None,
-                  atten_mask: Optional[JTensor] = None,
-                  cross_paddings: Optional[JTensor] = None,
-                  cross_segment_mask: Optional[JTensor] = None) -> JTensor:
+  def extend_step(
+      self,
+      inputs: JTensor,
+      *,
+      time_step: JTensor,
+      segment_pos: Optional[JTensor] = None,
+      atten_mask: Optional[JTensor] = None,
+      cross_paddings: Optional[JTensor] = None,
+      cross_segment_mask: Optional[JTensor] = None,
+  ) -> JTensor:
     """Transformer stacked decoder layers, autoregressive cached decoding.
 
     When `inputs` has shape [B, L, D], it will do extend_step on N tokenks per
@@ -2018,15 +2088,18 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         segment_pos=segment_pos,
         atten_mask=atten_mask,
         cross_paddings=cross_paddings,
-        cross_segment_mask=cross_segment_mask)
+        cross_segment_mask=cross_segment_mask,
+    )
 
   def transform_decode_state(
-      self, transform_fn: base_layer.DecodeStateTransformFn) -> None:
+      self, transform_fn: base_layer.DecodeStateTransformFn
+  ) -> None:
     """Transforms all decode state variables based on transform_fn."""
     self.repeat_layer.transform_decode_state(transform_fn)
 
-  def lazy_broadcast_prefix(self, num_suffix_samples: int,
-                            suffix_length: int) -> None:
+  def lazy_broadcast_prefix(
+      self, num_suffix_samples: int, suffix_length: int
+  ) -> None:
     """Performs lazy prefix broadcast on the decoding states.
 
     Current decoding states will be moved to PREFIX_DECODE_CACHE. New decoding
@@ -2041,11 +2114,14 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     self.repeat_layer.lazy_broadcast_prefix(num_suffix_samples, suffix_length)
 
   def right_align_decode_state_with_prefix(
-      self, max_prefix_size: int,
-      right_align_fn: base_layer.DecodeStateTransformFn) -> None:
+      self,
+      max_prefix_size: int,
+      right_align_fn: base_layer.DecodeStateTransformFn,
+  ) -> None:
     """Right aligns decode state with prefix decode states."""
     self.repeat_layer.right_align_decode_state_with_prefix(
-        max_prefix_size, right_align_fn)
+        max_prefix_size, right_align_fn
+    )
 
 
 class PipelinedTransformer(base_layer.BaseLayer):
@@ -2070,6 +2146,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
     bf16_accum_in_fp32: If True, use casts to make bf16 gradient accumulate in
       f32 precision.
   """
+
   pipeline_stage: LayerTpl = template_field(StackedTransformer)
   circular_repeat: int = 1
   num_pipeline_stages: Optional[int] = None
@@ -2077,7 +2154,9 @@ class PipelinedTransformer(base_layer.BaseLayer):
   pipeline_microbatch_size: Optional[int] = None
   stream_io: bool = False
   pipeline_broadcast_inputs: bool = False
-  checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_ITERATION_INPUT
+  checkpoint_policy: AutodiffCheckpointType = (
+      AutodiffCheckpointType.SAVE_ITERATION_INPUT
+  )
   enable_async_circular_transfer: bool = True
   bf16_accum_in_fp32: bool = False
 
@@ -2087,6 +2166,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
     Attributes:
       stages: How the num_stages dimension should be sharded.
     """
+
     stages: SplitDimsMapping = (None,)
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
@@ -2095,6 +2175,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
     Attributes:
       final_out: How the final output should be sharded.
     """
+
     final_out: SplitDimsMapping = None
 
   def setup(self) -> None:
@@ -2137,14 +2218,16 @@ class PipelinedTransformer(base_layer.BaseLayer):
     )
     self.create_child('pipeline', pipeline_params)
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: JTensor,
-               segment_mask: Optional[JTensor] = None,
-               cross_inputs: Optional[JTensor] = None,
-               cross_paddings: Optional[JTensor] = None,
-               cross_segment_mask: Optional[JTensor] = None,
-               segment_pos: Optional[JTensor] = None) -> JTensor:
+  def __call__(
+      self,
+      inputs: JTensor,
+      paddings: JTensor,
+      segment_mask: Optional[JTensor] = None,
+      cross_inputs: Optional[JTensor] = None,
+      cross_paddings: Optional[JTensor] = None,
+      cross_segment_mask: Optional[JTensor] = None,
+      segment_pos: Optional[JTensor] = None,
+  ) -> JTensor:
     """Pipelined Transformer layer.
 
     Args:
@@ -2207,7 +2290,8 @@ class PipelinedTransformer(base_layer.BaseLayer):
         cross_inputs=cross_inputs,
         cross_paddings=cross_paddings,
         cross_segment_mask=cross_segment_mask,
-        segment_pos=segment_pos)
+        segment_pos=segment_pos,
+    )
 
     # For non-streaming cases, we need to annotate the `outputs` twice below
     # because the first one makes sure output has the same sharding as input so
@@ -2238,7 +2322,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
       time_step: JTensor,
       segment_pos: Optional[JTensor] = None,
       cross_paddings: Optional[JTensor] = None,
-      cross_segment_mask: Optional[JTensor] = None
+      cross_segment_mask: Optional[JTensor] = None,
   ) -> Tuple[JTensor, NestedMap]:
     raise NotImplementedError(type(self))
 
