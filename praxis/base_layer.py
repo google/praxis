@@ -268,7 +268,7 @@ def maybe_shard(x: JTensor,
                 unconstrained_dims: Optional[Sequence[int]] = None) -> JTensor:
   """Adds explicit xla sharding constraints.
 
-  This is a wrap around jax.with_sharding_constraint to allow for adding
+  This is a wrapper around jax.lax.with_sharding_constraint to allow for adding
   explicit sharding annotations to an intermediate node in a jax function.
 
   No sharding annotation is added if either split_dims_mapping is None or
@@ -779,7 +779,7 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
                           BoxedParam), 'Cannot double-box a parameter!'
 
   def unbox(self, apply_constraint=True) -> Any:
-    # Do not locally apply pjit.with_sharding_constraint.
+    # Do not locally apply lax.with_sharding_constraint.
     del apply_constraint
     return self.value
 

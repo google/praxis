@@ -28,9 +28,9 @@ from absl import flags
 from absl import logging
 import flax
 import jax
+from jax import lax
 from jax.experimental import mesh_utils
 from jax.experimental import multihost_utils
-from jax.experimental import pjit
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -470,11 +470,11 @@ def global_mesh_defined() -> bool:
 def with_sharding_constraint(
     x: JTensor, axis_resources: Optional[jax.sharding.PartitionSpec]
 ) -> JTensor:
-  """Wrapper for pjit with_sharding_constraint, no-op on cpu or outside pjit."""
+  """Wrapper for lax.with_sharding_constraint, no-op on cpu or outside pjit."""
   if jax.devices()[0].platform == 'cpu' or not global_mesh_defined():
     return x
   else:
-    return pjit.with_sharding_constraint(x, axis_resources)
+    return lax.with_sharding_constraint(x, axis_resources)
 
 
 def get_uneven_sharding_paddings(
