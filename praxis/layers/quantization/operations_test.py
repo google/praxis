@@ -230,6 +230,15 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
     act_nudged = operations.fakequant_activation(act)
     self.assertAllClose(act, act_nudged, rtol=0.02, atol=0.02)
 
+  @parameterized.named_parameters(
+      ('eqn1', 'ab,bc->ac'),
+      ('eqn2', '...y,yz->...z'),
+  )
+  def test_reduce_activation_precision_per_channel(self, eqn):
+    act = np.random.normal(-1.0, 1.0, [10, 100]).astype(np.float32)
+    act_nudged = operations.fakequant_activation(act, eqn=eqn)
+    self.assertAllClose(act, act_nudged, rtol=0.02, atol=0.02)
+
 
 def _generate_einsum_eqn() -> Sequence[Dict[str, str]]:
   """Generates arbitrary dimension numbers for a tensor of shape (2, 2, 2)."""

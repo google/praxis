@@ -339,6 +339,13 @@ def eqn_to_weight_contract_dims(eqn: str):
   return [i for i, val in enumerate(w) if val not in out]
 
 
+def eqn_to_activation_contract_dims(eqn: str):
+  segs = eqn.split('->')
+  ins = segs[0].split(',')
+  act, out = ins[0].replace('.', ''), segs[1].replace('.', '')
+  return [-(i + 1) for i, val in enumerate(reversed(act)) if val not in out]
+
+
 def reduce_einsum_weight_precision(
     eqn: str,
     t: JTensor,
@@ -455,6 +462,7 @@ def reduce_precision_activation(
     t: JTensor,
     need_gradient: bool = False,
     bits: int = 8,
+    contract_dims: Optional[Sequence[int]] = None,
 ) -> Tuple[JTensor, JTensor]:
   """Reduce the precision of activation.
 
@@ -462,26 +470,35 @@ def reduce_precision_activation(
     t: Input tensor.
     need_gradient: If gradient is needed out of this function.
     bits: Target number of bits.
+    contract_dims: contract dimension.
 
   Returns:
     A tuple of JTensors. The first one is the quantized activation and the
     second one is the scaling factor.
   """
-  qt, scale, _ = reduce_precision(t, None, need_gradient, bits, False)
+  qt, scale, _ = reduce_precision(t, contract_dims, need_gradient, bits, False)
   return qt, scale
 
 
-def fakequant_activation(t: JTensor, bits: int = 8) -> JTensor:
+def fakequant_activation(
+    t: JTensor, bits: int = 8, eqn: Optional[str] = None
+) -> JTensor:
   """FakeQuant activation.
 
   Args:
-    t: Activation tensor
+    t: Activation tensor.
     bits: Target number of bits.
+    eqn: einsum equation. If None, do per-tensor quantization.
 
   Returns:
     Nudged activation.
   """
-  qt, scale = reduce_precision_activation(t, need_gradient=True, bits=bits)
+  contract_dims = None
+  if eqn:
+    contract_dims = eqn_to_activation_contract_dims(eqn)
+  qt, scale = reduce_precision_activation(
+      t, need_gradient=True, bits=bits, contract_dims=contract_dims
+  )
   return jnp.multiply(qt, scale).astype(t.dtype)
 
 
