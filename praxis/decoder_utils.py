@@ -145,11 +145,13 @@ def two_stage_topk(
       vocab_size].
     hyp_scores: The topK scores of [batch_size, beam_size].
     terminal_ids: terminal ids. In most cases this is simply eos_id.
+    tokens_per_beam: Number of tokens to explore per beam, defaulting to
+      beam_size if None.
 
   Returns:
-    topk_value, topk_indices of shape [batch_size, beam_size * beam_size], they
-      are the topk of `logits` on the last dimenension and merged on the last
-      two dimensions.
+    topk_value, topk_indices of shape [batch_size, beam_size * tokens_per_beam],
+      they are the topk of `logits` on the last dimenension and merged on the
+      last two dimensions.
     final_topk_value, final_topk_indices of shape [batch_size, beam_size],
       they are the topk value and inidices of `topk_value`.
   """

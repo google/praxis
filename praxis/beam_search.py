@@ -384,17 +384,19 @@ def beam_search_after_prefix_fprop(
     # early_exit doesn't explore non-EOS hyps.
     topk_terminal_ids = [] if beam_search_hparams.early_exit else terminal_ids
     # Choose the topk indices.
+    tokens_per_beam = (
+        beam_size
+        if beam_search_hparams.tokens_per_beam is None
+        else beam_search_hparams.tokens_per_beam
+    )
     _, topk_indices, final_topk_value, final_topk_indices = (
         decoder_utils.two_stage_topk(
-            logprobs,
-            val.hyp_scores,
-            topk_terminal_ids,
-            beam_search_hparams.tokens_per_beam,
+            logprobs, val.hyp_scores, topk_terminal_ids, tokens_per_beam
         )
     )
     # update scores with or without EOS depending on early_exit.
     val.hyp_scores = final_topk_value
-    hyp_id = final_topk_indices // beam_size
+    hyp_id = final_topk_indices // tokens_per_beam
     val.hyp_ids = hyp_id
 
     # Shuffle at beam dimension for the cache states using hyp_id.
