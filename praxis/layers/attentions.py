@@ -3144,13 +3144,13 @@ class LocalSelfAttention(DotProductAttention):
     else:
       # Full attention mask
 
-      # -> [B, U, W, T]
+      # -> [B, U, W, S]
       mask_block_context = convert_to_block(  # pytype: disable=wrong-arg-types  # jax-ndarray
           atten_mask[:, 0].astype(jnp.float32),
           block_size=block_size,
           padding_val=minus_inf,
       )
-      mask_block_context = jnp.reshape(mask_block_context, [b * u * w, t])
+      mask_block_context = jnp.reshape(mask_block_context, [b * u * w, s])
       # -> [B, U, W, U, C]
       mask_block_context = extract_block_context(  # pytype: disable=wrong-arg-types  # jax-ndarray
           mask_block_context,
@@ -3169,7 +3169,7 @@ class LocalSelfAttention(DotProductAttention):
     # Make local causal mask.
     # -> [U, W, C]
     local_causal_mask = _make_local_mask(
-        seq_len=t,
+        seq_len=s,
         block_size=block_size,
         left_context=self.left_context,
         right_context=self.right_context,
