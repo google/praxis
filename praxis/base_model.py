@@ -19,12 +19,10 @@ The model solely consists of the network, while the task combines one or several
 models with one or several learners/optimizers.
 """
 
-import dataclasses
-from typing import Any, Dict, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Sequence, Tuple, Union
 
 from praxis import base_input
 from praxis import base_layer
-from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 
@@ -33,7 +31,6 @@ JTensor = pytypes.JTensor
 Metrics = pytypes.Metrics
 WeightedScalars = pytypes.WeightedScalars
 Predictions = Union[JTensor, NestedMap, Dict[str, Any], Dict[int, Any]]
-LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 DecodeOut = Tuple[WeightedScalars, NestedMap, Metrics]
 ProcessDecodeOut = Tuple[WeightedScalars, Sequence[Tuple[str, Any]], Metrics]
@@ -140,23 +137,4 @@ class BaseModel(base_layer.BaseLayer):
       - metrics, a NestedMap containing str keys and clu_metrics.Metric
         objects. These will run outside of pmap/pjit.
     """
-    raise NotImplementedError('Abstract method')
-
-
-class LegosModel(BaseModel):
-  """Legos - A set of components that can be co-trained or trained in parts.
-
-  Attributes:
-    components: List of model components aggregated into a single legos model.
-  """
-  components: Optional[LayerTpl] = base_layer.template_field(None)
-
-  def setup(self) -> None:
-    """Build the mixer from the collection of components."""
-    # TODO(b/227407216): Check that this is robust enough and/or fix if needed.
-    for f in dataclasses.fields(self.components):  # pytype: disable=wrong-arg-types
-      if hasattr(self.components, f.name):
-        self.create_child(f.name, getattr(self.components, f.name))
-
-  def get_model_params(self, name: str) -> pax_fiddle.Config[BaseModel]:
     raise NotImplementedError('Abstract method')
