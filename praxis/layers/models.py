@@ -615,6 +615,9 @@ class LanguageModel(base_model.BaseModel):
       eos_id = getattr(input_batch, 'eos_id', decoder_params.eos_id)
       gumbel_prng_key = getattr(input_batch, 'gumbel_prng_key', None)
       return_entropy_score = hasattr(input_batch, 'return_entropy_score')
+      cf_guidance_scale = getattr(
+          input_batch, 'cf_guidance_scale', decoder_params.cf_guidance_scale
+      )
 
       next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
       # TODO(b/260646361): Avoid this param propagation.
@@ -671,7 +674,7 @@ class LanguageModel(base_model.BaseModel):
             eos_id=eos_id,
             return_result_for_suffix_score=return_result_for_suffix_score,
             result_callback=result_callback,
-            cf_guidance_scale=decoder_params.cf_guidance_scale,
+            cf_guidance_scale=cf_guidance_scale,
             gumbel_prng_key=gumbel_prng_key,
             controlled_decoding=decoder_params.controlled_decoding,
             decode_loop_mesh_axes_transpose=decode_mesh_transpose,
