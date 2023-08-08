@@ -15,7 +15,7 @@
 
 """Common pytype definitions."""
 
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Any, Callable, Sequence, TypeVar
 
 import clu.metrics as clu_metrics
 import jax
@@ -35,15 +35,15 @@ HParamsT = HParams
 
 JTensor = jnp.ndarray
 PRNGKey = JTensor
-JTensorOrPartitionSpec = Union[JTensor, jax.sharding.PartitionSpec]
+JTensorOrPartitionSpec = JTensor | jax.sharding.PartitionSpec
 NpTensor = np.ndarray
-SummaryDict = Union[NestedMap, Dict[str, JTensor]]
+SummaryDict = NestedMap | dict[str, JTensor]
 PyTree = Any
 PyTreeDef = jax.tree_util.PyTreeDef
 
 
 T = TypeVar('T')
-Nested = Union[T, Tuple[Any, ...], List[Any], Dict[str, Any], NestedMap]
+Nested = T | tuple[Any, ...] | list[Any] | dict[str, Any] | NestedMap
 NestedJTensor = Nested[JTensor]
 NestedNpTensor = Nested[NpTensor]
 NestedBool = Nested[bool]
@@ -53,24 +53,25 @@ NestedPartitionSpec = Nested[jax.sharding.PartitionSpec]
 NestedJTensorOrPartitionSpec = Nested[JTensorOrPartitionSpec]
 NestedShapeDtypeStruct = Nested[jax.ShapeDtypeStruct]
 NestedShapedArray = Nested[core.ShapedArray]
-NestedShapeDtypeLike = Union[
-    NestedJTensor, NestedNpTensor, NestedShapeDtypeStruct, NestedShapedArray
-]
+NestedShapeDtypeLike = (
+    NestedJTensor | NestedNpTensor | NestedShapeDtypeStruct | NestedShapedArray
+)
+
 
 # Sharding annotation for a dim can be a single int, or a str, or a sequence of
 # (int, str), or None. For example "1", "-1", "None", "data", "(data, replica)"
 # are all valid sharding annotations for a particular tensor axis.
-DimShardingAnnotation = Optional[Union[Sequence[Union[int, str]], int, str]]
-SplitDimsMapping = Optional[Sequence[DimShardingAnnotation]]
+DimShardingAnnotation = Sequence[int | str] | int | str | None
+SplitDimsMapping = Sequence[DimShardingAnnotation] | None
 
 # Note(b/238657605): pytypes Metrics were renamed to WeightedScalars
 # and Metrics are now true metric objects using clu.metrics
-WeightedScalar = Tuple[JTensor, JTensor]
-WeightedScalars = Union[Dict[str, WeightedScalar], NestedMap]
-WeightedScalarsList = Union[Dict[str, Sequence[WeightedScalar]], NestedMap]
-Metrics = Union[NestedMap, Dict[str, clu_metrics.Metric]]
+WeightedScalar = tuple[JTensor, JTensor]
+WeightedScalars = dict[str, WeightedScalar] | NestedMap
+WeightedScalarsList = dict[str, Sequence[WeightedScalar]] | NestedMap
+Metrics = NestedMap | dict[str, clu_metrics.Metric]
 
-LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]
+LogicalAxisRules = Sequence[tuple[str, str | None]]
 
 DotGeneralT = Callable[..., jnp.ndarray]
 
