@@ -329,6 +329,7 @@ py_strict_test(
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax.experimental.jax2tf dependency.
         # Implicit numpy dependency.
+        # Implicit tensorflow_no_contrib dependency.
     ],
 )
 

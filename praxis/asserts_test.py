@@ -21,6 +21,7 @@ from jax.experimental import jax2tf
 import numpy as np
 from praxis import asserts
 from praxis import py_utils
+import tensorflow.compat.v2 as tf
 
 
 class AssertsTest(parameterized.TestCase):
@@ -193,6 +194,9 @@ class AssertsTest(parameterized.TestCase):
       asserts.in_set(value, elements)
 
   def test_in_set_jax2tf_context(self):
+    tf_version = tuple(int(v) for v in tf.__version__.split('.')[:2])
+    if tf_version <= (2, 9):
+      self.skipTest('Requires TF 2.10 for call_module() call.')
     jax2tf.convert(
         lambda x: asserts.in_set(x.shape[0], [1, x.shape[0]]),
         polymorphic_shapes='b',
@@ -208,6 +212,9 @@ class AssertsTest(parameterized.TestCase):
     )(np.zeros((1,)))
 
   def test_in_set_jax2tf_context_raises(self):
+    tf_version = tuple(int(v) for v in tf.__version__.split('.')[:2])
+    if tf_version <= (2, 9):
+      self.skipTest('Requires TF 2.10 for call_module() call.')
     with self.assertRaisesRegex(ValueError, '`.*` must be within `.*`.$'):
       jax2tf.convert(
           lambda x: asserts.in_set(x.shape[0], [1, 4]), polymorphic_shapes='b'
