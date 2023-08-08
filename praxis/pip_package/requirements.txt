@@ -64,7 +64,7 @@ click==8.1.6
     #   tfds-nightly
 clu==0.0.9
     # via -r praxis-requirements.in
-comm==0.1.3
+comm==0.1.4
     # via
     #   ipykernel
     #   ipywidgets
@@ -109,7 +109,7 @@ flax==0.7.1
     # via
     #   -r praxis-requirements.in
     #   clu
-fonttools==4.41.1
+fonttools==4.42.0
     # via matplotlib
 fqdn==1.5.1
     # via jsonschema
@@ -140,9 +140,9 @@ idna==3.4
     #   anyio
     #   jsonschema
     #   requests
-importlib-resources==6.0.0
+importlib-resources==6.0.1
     # via etils
-ipykernel==6.25.0
+ipykernel==6.25.1
     # via
     #   jupyter
     #   jupyter-console
@@ -192,7 +192,7 @@ json5==0.9.14
     # via jupyterlab-server
 jsonpointer==2.4
     # via jsonschema
-jsonschema[format-nongpl]==4.18.4
+jsonschema[format-nongpl]==4.19.0
     # via
     #   jupyter-events
     #   jupyterlab-server
@@ -236,7 +236,7 @@ jupyter-server==2.7.0
     #   notebook-shim
 jupyter-server-terminals==0.4.4
     # via jupyter-server
-jupyterlab==4.0.3
+jupyterlab==4.0.4
     # via notebook
 jupyterlab-pygments==0.2.2
     # via nbconvert
@@ -308,7 +308,7 @@ nest-asyncio==1.5.7
     # via
     #   ipykernel
     #   orbax-checkpoint
-notebook==7.0.1
+notebook==7.0.2
     # via
     #   jupyter
     #   jupyter-http-over-ws
@@ -354,9 +354,9 @@ optax==0.1.7
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax-checkpoint==0.3.1
+orbax-checkpoint==0.3.2
     # via flax
-overrides==7.3.1
+overrides==7.4.0
     # via jupyter-server
 packaging==23.1
     # via
@@ -424,7 +424,7 @@ pyasn1-modules==0.3.0
     # via google-auth
 pycparser==2.21
     # via cffi
-pygments==2.15.1
+pygments==2.16.1
     # via
     #   ipython
     #   jupyter-console
@@ -458,7 +458,7 @@ qtconsole==5.4.3
     # via jupyter
 qtpy==2.3.1
     # via qtconsole
-referencing==0.30.0
+referencing==0.30.2
     # via
     #   jsonschema
     #   jsonschema-specifications
@@ -542,7 +542,7 @@ tensorflow-hub==0.14.0
     # via
     #   lingvo
     #   tensorflow-text
-tensorflow-io-gcs-filesystem==0.32.0
+tensorflow-io-gcs-filesystem==0.33.0
     # via tensorflow
 tensorflow-metadata==1.12.0
     # via
@@ -646,7 +646,7 @@ websocket-client==1.6.1
     # via jupyter-server
 werkzeug==2.3.6
     # via tensorboard
-wheel==0.41.0
+wheel==0.41.1
     # via
     #   astunparse
     #   tensorboard
