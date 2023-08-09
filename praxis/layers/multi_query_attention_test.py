@@ -126,6 +126,83 @@ class MultiQueryAttentionTest(test_utils.TestCase):
           segment_pos=None)
     self.assertSequenceEqual(encoded.shape, [5, 16])
 
+  @parameterized.parameters([(1,), (2,)])
+  def test_multi_query_attention_consistent(self, kv_heads):
+    test_layer_p = pax_fiddle.Config(
+        multi_query_attention.MultiQueryDotProductAttention,
+        name='mqa',
+        input_dim=16,
+        hidden_dim=32,
+        num_heads=4,
+        num_kv_heads=kv_heads,
+        decoding_window_alignment=2,
+        relative_bias_tpl=pax_fiddle.Config(
+            attentions.RelativeBias,
+            relative_attention_num_buckets=2,
+            relative_attention_max_distance=8,
+            num_heads=2,
+            use_length_as_position=False,
+        ),
+    )
+    layer = instantiate(test_layer_p)
+
+    inputs = np.random.normal(1.5, 2.0, [2, 8, 16]).astype(np.float32)
+    mask = attentions.causal_mask(inputs)
+    query_segment_pos = jax.lax.broadcast(jnp.arange(8), [2])
+    key_segment_pos = jax.lax.broadcast(jnp.arange(8), [2])
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(
+          init_key,
+          inputs,
+          inputs,
+          inputs,
+          mask,
+          query_segment_pos=query_segment_pos,
+          key_segment_pos=key_segment_pos,
+      )
+      logging.info('initial_vars: %s', initial_vars)
+      encoded, _ = layer.apply(
+          initial_vars,
+          inputs,
+          inputs,
+          inputs,
+          mask,
+          query_segment_pos=query_segment_pos,
+          key_segment_pos=key_segment_pos,
+      )
+
+    with base_layer.JaxContext.new_context():
+      zero_vec = jnp.zeros_like(inputs)
+      _, attention_states = layer.apply(
+          initial_vars,
+          zero_vec,
+          zero_vec,
+          zero_vec,
+          attentions.causal_mask(zero_vec),
+          query_segment_pos,
+          key_segment_pos,
+          method=layer.__call__,
+          mutable=[base_layer.DECODE_CACHE],
+      )
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+      output = jnp.zeros_like(encoded)
+      for t in range(inputs.shape[1]):
+        e, a = layer.apply(
+            updated_vars,
+            method=layer.extend_step,
+            query_vec=inputs[:, t, :],
+            atten_mask=mask[:, :, t],
+            time_step=t,
+            segment_pos=None,
+            mutable=[base_layer.DECODE_CACHE],
+        )
+        updated_vars = py_utils.merge_dict(a, initial_vars)
+        output = output.at[:, t, :].set(e)
+    self.assertAllClose(encoded, output)
+
   @parameterized.parameters([True, False])
   def test_mqa_extend_n_steps_with_lazy_broadcast_state(
       self, use_rotary_position_emb):

@@ -149,6 +149,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       If input_dim is a dict, keys must be key, value and query.
     hidden_dim: Number of hidden nodes.
     num_heads: Number of attention heads.
+    num_kv_heads: Number of kv heads. num_heads % num_kv_heads = 0.
     dim_per_head: Dimension of each attention head. If None then dim_per_head ==
       hidden_dim // num_heads.
     dropout_tpl: Parameterization for the dropout layer.
@@ -176,6 +177,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   input_dim: Union[int, Dict[str, int]] = 0
   hidden_dim: int = 0
   num_heads: int = 1
+  num_kv_heads: int = 1
   dim_per_head: Optional[int] = None
   dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   atten_dropout_prob: float = 0.0
@@ -261,26 +263,39 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       value_input_dim = self.input_dim
       query_input_dim = self.input_dim
 
-    def project_input(input_dim):
+    def project_input(input_dim, dim_per_head, num_heads):
       proj_p = self.proj_tpl.clone().set(
           input_dim=input_dim,
-          num_heads=self.num_heads,
+          num_heads=num_heads,
           dim_per_head=dim_per_head,
           use_bias=self.use_bias,
       )
       proj_p.weight_split_dims_mapping.wt = wp.proj
       return proj_p
 
-    def project_input_no_heads(input_dim):
-      proj_p = self.headless_proj_tpl.clone().set(
-          input_dim=input_dim, output_dim=dim_per_head, use_bias=self.use_bias
-      )
-      proj_p.weight_split_dims_mapping.wt = wp.proj_headless
-      return proj_p
+    def project_input_kv(input_dim, dim_per_head):
+      if self.num_kv_heads == 1:
+        proj_p = self.headless_proj_tpl.clone().set(
+            input_dim=input_dim, output_dim=dim_per_head, use_bias=self.use_bias
+        )
+        proj_p.weight_split_dims_mapping.wt = wp.proj_headless
+        return proj_p
+      else:
+        assert self.num_heads % self.num_kv_heads == 0
+        return project_input(input_dim, dim_per_head, self.num_kv_heads)
 
-    self.create_child('key', project_input_no_heads(key_input_dim))
-    self.create_child('query', project_input(query_input_dim))
-    self.create_child('value', project_input_no_heads(value_input_dim))
+    dim_per_head = self.dim_per_head
+    if dim_per_head is None:
+      dim_per_head = self.hidden_dim // self.num_heads
+      assert (
+          dim_per_head * self.num_heads == self.hidden_dim
+      ), f'{dim_per_head} * {self.num_heads} != {self.hidden_dim}'
+    self.create_child('value', project_input_kv(value_input_dim, dim_per_head))
+
+    self.create_child('key', project_input_kv(key_input_dim, dim_per_head))
+    self.create_child(
+        'query', project_input(query_input_dim, dim_per_head, self.num_heads)
+    )
 
     if self.use_rotary_position_emb:
       pos_emb_p = pax_fiddle.Config(embedding_softmax.RotaryPositionalEmbedding)
@@ -440,15 +455,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       encoded: JTensor of shape [B, T, N, H].
       atten_probs: JTensor of shape [B, N, T, S].
     """
-    query = self._shard_blnh(query)
-    key = self._shard_blh(key)
-    value = self._shard_blh(value)
-
     b, t, n, h = query.shape
-    s = key.shape[1]
+    _, s, _ = key.shape
     base_layer.assert_has_shape(key, [b, s, h])
-    base_layer.assert_has_shape(value, [b, s, h])
-    base_layer.assert_has_shape(query, [b, -1, n, h])
+    base_layer.assert_has_shape(value, [b, s, -1])
     # If only padding bias is supplied, then atten_mask can be [B, 1, 1, S]
     # since each target token is prohibited from attending to the same set of
     # source tokens. In this case tiling is inefficient and unnecessary.
@@ -487,12 +497,14 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     """Returns the length of full decoding sequences."""
     return self.get_decode_state('key_state').shape[1]
 
-  def _dot_atten_one_step(self,
-                          query: JTensor,
-                          key_state_name: str,
-                          value_state_name: str,
-                          atten_mask: JTensor,
-                          relative_bias: Optional[JTensor] = None) -> JTensor:
+  def _dot_atten_one_step(
+      self,
+      query: JTensor,
+      key_state_name: str,
+      value_state_name: str,
+      atten_mask: JTensor,
+      relative_bias: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
     Args:
@@ -510,11 +522,47 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       encoded: JTensor of shape [B, N, H].
       probs: JTensor of shape [B, N, S].
     """
-    key = self._shard_blh(self.get_decode_state(key_state_name))
-    value = self._shard_blh(self.get_decode_state(value_state_name))
-    # query is 3d.
+    key = self.get_decode_state(key_state_name)
+    value = self.get_decode_state(value_state_name)
     query = self._shard_bnh(query)
+    if self.num_kv_heads == 1:
+      key = self._shard_blh(key)
+      value = self._shard_blh(value)
+      encoded, probs = self._dot_atten_one_step_from_qkv(
+          query, key, value, atten_mask, relative_bias
+      )
+      return self._shard_bnh(encoded), probs
+    else:
+      b, n, h = query.shape
+      _, _, nk, _ = key.shape
+      key = self._shard_blnh(key)
+      value = self._shard_blnh(value)
+      v_q = jnp.reshape(query, (b, nk, n // nk, h))
+      if relative_bias is not None:
+        v_rb = jnp.reshape(
+            relative_bias,
+            relative_bias.shape[:1] + (nk, n // nk) + relative_bias.shape[2:],
+        )
+      with self._context_for_kv_vmap():
+        encoded, probs = jax.vmap(
+            self._dot_atten_one_step_from_qkv,
+            in_axes=(1, 2, 2, None, None, 1),
+            out_axes=(1, 1),
+        )(v_q, key, value, atten_mask, v_rb)
+        encoded = self._shard_bnh(jnp.reshape(encoded, (b, n, h)))
+        probs = jnp.reshape(probs, (b, n, -1))
+        return encoded, probs
 
+  def _dot_atten_one_step_from_qkv(
+      self,
+      query: JTensor,
+      key: JTensor,
+      value: JTensor,
+      atten_mask: JTensor,
+      relative_bias: Optional[JTensor],
+  ) -> Tuple[JTensor, JTensor]:
+    """_dot_atten_one_step with tensors instead of state names."""
+    # query is 3d.
     b, s, h = key.shape
     base_layer.assert_has_shape(value, [b, s, h])
     base_layer.assert_has_shape(query, [b, -1, h])
@@ -540,8 +588,24 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
           key.dtype)
     # Compute the attention context.
     encoded = self.pv_einsum('BNS,BSH->BNH', probs, value)
-    encoded = self._shard_bnh(encoded)
     return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
+
+  def _context_for_kv_vmap(self):
+    # Transpose the sharding on num_heads to None, so that the inner n // nk dim
+    # is not sharded. The out nk dim is sharded on the vmap dim, which is not
+    # visible by the layer code.
+    if self.activation_split_dims_mapping.blnh:
+      n_sharding = self.activation_split_dims_mapping.blnh[2]
+    else:
+      n_sharding = None
+    assert n_sharding is None or isinstance(n_sharding, str)
+    if base_layer.JaxContext.has_context():
+      new_context_params = base_layer.cur_jax_context().hparams.clone()
+    else:
+      new_context_params = base_layer.JaxContext.HParams()
+    if not self.is_initializing() and n_sharding is not None:
+      new_context_params.mesh_axes_transpose = {n_sharding: None}
+    return base_layer.JaxContext.new_context(hparams=new_context_params)
 
   def __call__(
       self,
@@ -569,6 +633,21 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       encoded: JTensor of shape [B, T, D].
       atten_probs: JTensor of shape [B, N, T, S].
     """
+    # Make sure the weight gradient matmul computes with D replicated, which
+    # will be a regular reduce-scatter pattern on the result. This helps
+    # scheduling MegaScale ops.
+    def _rep_d(x):
+      return base_layer.maybe_shard(
+          x,
+          [None] * x.ndim,
+          self.mesh_axis_names,
+          unconstrained_dims=range(x.ndim - 1),
+      )
+
+    query_vec, key_vec, value_vec = [
+        _rep_d(x) for x in [query_vec, key_vec, value_vec]
+    ]
+
     # Project inputs to key, value and query, respectively has shape
     # [B, S, N, H], [B, S, H], and [B, T, H].
     query_proj = self.query(query_vec)
@@ -584,9 +663,11 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       query_proj = self.rotary_position_emb(query_proj, query_segment_pos)
       key_shape = key_proj.shape
       # [B, S, H] -> [B, S, N(1), H]
-      key_proj = jnp.expand_dims(key_proj, axis=-2)
+      if self.num_kv_heads == 1:
+        key_proj = jnp.expand_dims(key_proj, axis=-2)
       key_proj = self.rotary_position_emb(key_proj, key_segment_pos)
-      key_proj = jnp.reshape(key_proj, key_shape)
+      if self.num_kv_heads == 1:
+        key_proj = jnp.reshape(key_proj, key_shape)
       self._fprop_update_decode_state('key_post_rotary_pos_emb', key_proj)
 
     # Apply relative bias.
@@ -596,8 +677,43 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     else:
       relative_bias = None
 
-    encoded, atten_probs = self._dot_atten(query_proj, key_proj, value_proj,
-                                           atten_mask, relative_bias)
+    query_proj = self._shard_blnh(query_proj)
+    if self.num_kv_heads == 1:
+      key_proj = self._shard_blh(key_proj)
+      value_proj = self._shard_blh(value_proj)
+      encoded, atten_probs = self._dot_atten(
+          query_proj,
+          key_proj,
+          value_proj,
+          atten_mask,
+          relative_bias,
+      )
+    else:
+      key_proj = self._shard_blnh(key_proj)
+      value_proj = self._shard_blnh(value_proj)
+      b, t, n, h = query_proj.shape
+      _, s, nk, _ = key_proj.shape
+      assert n % nk == 0
+      v_q = jnp.reshape(query_proj, (b, t, nk, n // nk, h))
+      if relative_bias is not None:
+        v_rb = jnp.reshape(relative_bias, (b, nk, n // nk, t, s))
+      else:
+        v_rb = None
+      with self._context_for_kv_vmap():
+        encoded, atten_probs = jax.vmap(
+            self._dot_atten,
+            in_axes=(2, 2, 2, None, 1, None),
+            out_axes=(2, 1),
+        )(
+            v_q,
+            key_proj,
+            value_proj,
+            atten_mask,
+            v_rb,
+        )
+      encoded = self._shard_blnh(jnp.reshape(encoded, (b, t, n, h)))
+      if atten_probs is not None:
+        atten_probs = jnp.reshape(atten_probs, (b, t, n, s))
 
     # Post projection
     encoded = self.post(encoded)
@@ -691,7 +807,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
                                            extend_value: JTensor) -> JTensor:
       extended_state = self.extend_decode_state(
           name, extend_value, time_step, time_dim=time_dim)
-      return self._shard_blh(extended_state)
+      if self.num_kv_heads == 1:
+        return self._shard_blh(extended_state)
+      else:
+        return self._shard_blnh(extended_state)
 
     # Update value state.
     value_state_name = 'value_state'
@@ -708,10 +827,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       query_proj = self.rotary_position_emb.extend_step(
           query_proj, position)
       key_shape = key_proj.shape
-      key_proj = jnp.expand_dims(key_proj, axis=-2)
+      if self.num_kv_heads == 1:
+        key_proj = jnp.expand_dims(key_proj, axis=-2)
       key_proj = self.rotary_position_emb.extend_step(
           key_proj, position)
-      key_proj = jnp.reshape(key_proj, key_shape)
+      if self.num_kv_heads == 1:
+        key_proj = jnp.reshape(key_proj, key_shape)
       key_state_name = 'key_post_rotary_pos_emb'
       _extend_decode_state_and_shard_blh(key_state_name, key_proj)
 
@@ -789,13 +910,15 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
       new_state = self._shard_blh(new_state)
       self.update_decode_state(name, new_state)
 
-  def _dot_atten_one_step(self,
-                          query: JTensor,
-                          key_state_name: str,
-                          value_state_name: str,
-                          atten_mask: JTensor,
-                          relative_bias: Optional[JTensor] = None,
-                          time_step: Optional[JTensor] = None) -> JTensor:
+  def _dot_atten_one_step(
+      self,
+      query: JTensor,
+      key_state_name: str,
+      value_state_name: str,
+      atten_mask: JTensor,
+      relative_bias: Optional[JTensor] = None,
+      time_step: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step with LPB.
 
     In the shapes listed below, `...` means potential sample dims added for lazy
@@ -815,6 +938,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
 
     Returns:
       encoded: JTensor of shape [B, ..., N, H] or [B, ..., T, N, H]
+      atten_probs: JTensor of shape [B, N, T, S].
     """
     del time_step
     pfx_count = self._broadcast_prefixes_count
