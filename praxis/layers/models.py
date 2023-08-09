@@ -1051,11 +1051,13 @@ class SequenceModel(base_model.BaseModel):
   )
   return_predictions: bool = False
   decoder_tpl: DecoderHParams = base_layer.instance_field(GreedyDecoderHParams)
-  label_smoothing_prob: float = 0.0
+  label_smoothing_prob: float | None = None
 
   def setup(self) -> None:
     # Construct the model.
     model_p = self.model_tpl.clone()
+    if self.label_smoothing_prob is not None:
+      model_p.softmax_tpl.label_smoothing_prob = self.label_smoothing_prob
     self.create_child('model', model_p)
 
   def compute_predictions(self, input_batch):
@@ -1073,15 +1075,6 @@ class SequenceModel(base_model.BaseModel):
     labels = NestedMap(
         class_ids=input_batch.tgt.labels, class_weights=input_batch.tgt.weights
     )
-    if self.label_smoothing_prob > 0.0:
-      vocab_size = self.model_tpl.softmax_tpl.num_classes
-      class_probabilities = jax.nn.one_hot(labels.class_ids, vocab_size)
-      fill_prob = self.label_smoothing_prob / (vocab_size - 1)
-      class_probabilities = (
-          (1.0 - self.label_smoothing_prob) * class_probabilities
-          + fill_prob * (1.0 - class_probabilities)
-      ).astype(self.fprop_dtype)
-      labels.class_probabilities = class_probabilities
 
     return self.model(
         inputs=input_batch.src.ids,
@@ -1523,7 +1516,7 @@ class BertModel(base_model.BaseModel):
   """
 
   lm_tpl: LayerTpl = template_field(transformer_models.TransformerLm)
-  label_smoothing_prob: float = 0.0
+  label_smoothing_prob: float | None = None
   mask_token_id: int = 0
   force_mask_generation: bool = False
 
@@ -1532,7 +1525,11 @@ class BertModel(base_model.BaseModel):
     assert self.lm_tpl.model_type == LanguageModelType.BIDIRECTIONAL
     assert self.lm_tpl.packed_input
 
-    self.create_child('lm', self.lm_tpl)
+    lm_tpl = self.lm_tpl.clone()
+    if self.label_smoothing_prob is not None:
+      lm_tpl.softmax_tpl.label_smoothing_prob = self.label_smoothing_prob
+
+    self.create_child('lm', lm_tpl)
 
     mlm_augment_p = augmentations.MaskedLmDataAugmenter.config()
     mlm_augment_p.vocab_size = self.lm_tpl.vocab_size
@@ -1554,21 +1551,7 @@ class BertModel(base_model.BaseModel):
     else:
       augmented_labels, augmented_pos = self.mlm_augmenter(labels, paddings)
 
-    if self.label_smoothing_prob > 0.0:
-      class_probabilities = jax.nn.one_hot(labels, self.lm.vocab_size)
-      fill_prob = self.label_smoothing_prob / (self.lm.vocab_size - 1)
-      class_probabilities = (
-          (1.0 - self.label_smoothing_prob) * class_probabilities
-          + fill_prob * (1.0 - class_probabilities)
-      ).astype(self.fprop_dtype)
-
-      # Only compute loss on masked pos.
-      labels = NestedMap(
-          class_probabilities=class_probabilities, class_weights=augmented_pos
-      )
-    else:
-      # Only compute loss on masked pos.
-      labels = NestedMap(class_ids=labels, class_weights=augmented_pos)
+    labels = NestedMap(class_ids=labels, class_weights=augmented_pos)
 
     lm_out = self.lm(
         inputs=augmented_labels,
