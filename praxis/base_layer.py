@@ -726,7 +726,9 @@ def init_var(
     assert False, 'init_type %s not supported.' % method
 
 
-def var_init_scale(var_p: WeightHParams) -> float:
+def var_init_scale(
+    var_p: WeightHParams, var_key: Optional[str] = None
+) -> float:
   """Returns var init_scale.
 
   Implementation of this function has to be in sync with init_var above. This
@@ -737,6 +739,7 @@ def var_init_scale(var_p: WeightHParams) -> float:
 
   Args:
     var_p: meta info about this var.
+    var_key: name of variable.
 
   Returns:
     the init std scale of this var.
@@ -746,17 +749,25 @@ def var_init_scale(var_p: WeightHParams) -> float:
   scale = var_p.init.scale
   assert isinstance(scale, (int, float))
 
-  # For now, only supports 'gaussian_sqrt_fanin' and 'gaussian'.
-  assert method in ['gaussian_sqrt_fanin', 'gaussian']
+  # For now, only supports 'gaussian_sqrt_fanin', 'gaussian', 'xavier'.
+  logging.info('var_init_scale called with: %s scale %f', method, scale)
   if method == 'gaussian':
     return scale
-  elif method == 'gaussian_sqrt_fanin':
+  elif method in ['gaussian_sqrt_fanin', 'xavier']:
     fan_in_axes = var_p.fan_in_axes
     fan_out_axes = var_p.fan_out_axes
-    fan_in, _ = get_fan_in_fan_out(var_p.shape, fan_in_axes, fan_out_axes)
-    return 1.0 / math.sqrt(fan_in)
+    fan_in, fan_out = get_fan_in_fan_out(var_p.shape, fan_in_axes, fan_out_axes)
+    scale = 1.0 / math.sqrt(fan_in)
+    logging.info(
+        '%s sqrt_fanin/xavier fan_in: %d fan_out %d scale %f',
+        var_key if var_key else 'unset_var_key',
+        fan_in,
+        fan_out,
+        scale,
+    )
+    return scale
   else:
-    raise NotImplementedError('init method not supported')
+    raise NotImplementedError(f'init method {method} not supported')
 
 
 @struct.dataclass
@@ -2443,7 +2454,7 @@ class BaseLayer(nn.Module):
     }
     for name, child in child_layers.items():
       # Some dangling child layers are created in setup() but fprop never pass
-      # through them, they wont't have any variables, and should not be
+      # through them, they won't have any variables, and should not be
       # quantized.
       if not child.variables:
         continue
