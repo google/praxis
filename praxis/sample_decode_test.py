@@ -107,7 +107,7 @@ class TestModelWithLogits(base_model.BaseModel):
   num_samples: int = 0
   seq_len: int = 0
   batch_size: int = 0
-  logits: jnp.array = None
+  logits: jnp.ndarray = None
 
   def setup(self) -> None:
     super().setup()
