@@ -39,6 +39,7 @@ pytype_strict_library(
     name = "base_hyperparams",
     srcs = ["base_hyperparams.py"],
     deps = [
+        ":lazy_loader",
         ":pax_fiddle",
         ":py_utils",
         # Implicit python proto dependency.
@@ -56,6 +57,8 @@ pytype_strict_library(
     srcs = ["base_input.py"],
     deps = [
         ":base_hyperparams",
+        ":lazy_loader",
+        ":lingvo_lib",
         ":pax_fiddle",
         ":py_utils",
         ":pytypes",
@@ -169,15 +172,24 @@ pytype_strict_library(
     ],
 )
 
+py_library(
+    name = "lazy_loader",
+    srcs = ["lazy_loader.py"],
+    deps = [
+        # Implicit absl.logging dependency.
+    ],
+)
+
 pytype_strict_library(
     name = "lingvo_lib",
     srcs = ["lingvo_lib.py"],
     deps = [
+        ":lazy_loader",
         # Implicit lingvo.core.cluster dependency.
         # Implicit lingvo.core.cluster_factory dependency.
         # Implicit lingvo.core.datasource dependency.
         # Implicit lingvo.core.hyperparams dependency.
-        # Implicit lingvo.core.py_utils dependency.
+        # Implicit lingvo.core.nested_map dependency.
     ],
 )
 

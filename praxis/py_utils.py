@@ -57,7 +57,6 @@ def pmap_use_tensorstore():
 # No other imports from lingvo should be accessed by core JAX library.
 current_cluster = lingvo_lib.current_cluster
 infeed_context_scope = lingvo_lib.infeed_context_scope
-TFDatasetSource = lingvo_lib.TFDatasetSource
 InstantiableParams = pytypes.InstantiableParams
 NestedMap = pytypes.NestedMap
 HParams = pytypes.HParams

@@ -21,18 +21,22 @@ in test-related modules).
 
 from lingvo.core import cluster
 from lingvo.core import cluster_factory
-from lingvo.core import datasource
 from lingvo.core import hyperparams
-from lingvo.core import py_utils
+from lingvo.core import nested_map
+from praxis import lazy_loader
+
+# datasource is slow to import (because it imports TF), so we do it lazily.
+datasource = lazy_loader.LazyLoader(
+    'datasource', globals(), 'lingvo.core.datasource'
+)
 
 # Note: These are only used by LingvoInputAdaptor, and may possibly be moved
 # outside of Praxis in the future.
 current_cluster = cluster_factory.Current
 infeed_context_scope = cluster.InfeedContextScope
-TFDatasetSource = datasource.TFDatasetSource
 
 # Core data-structure for aggregating tensors.
-NestedMap = py_utils.NestedMap
+NestedMap = nested_map.NestedMap
 
 # Note: HParams-related classes. This may possibly be removed post-Fiddle
 # migration.

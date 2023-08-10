@@ -36,12 +36,15 @@ import flax.linen as nn
 from flax.linen import kw_only_dataclasses
 # Internal config_dict import from ml_collections
 import numpy as np
+from praxis import lazy_loader
 from praxis import pax_fiddle
 from praxis import py_utils
-import tensorflow.compat.v2 as tf
 
 from google.protobuf import message
 from google.protobuf import text_format
+
+# TF is slow to import, so we do it lazily.
+tf = lazy_loader.LazyLoader('tf', globals(), 'tensorflow.compat.v2')
 
 HParams = py_utils.HParams
 

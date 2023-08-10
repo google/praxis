@@ -33,11 +33,15 @@ from jax.lib import xla_client as xc
 import jax.tree_util
 import numpy as np
 from praxis import base_hyperparams
+from praxis import lazy_loader
+from praxis import lingvo_lib
 from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
-import tensorflow.compat.v1 as tf_v1
-import tensorflow.compat.v2 as tf
+
+# TF is slow to import, so we do it lazily.
+tf_v1 = lazy_loader.LazyLoader('tf_v1', globals(), 'tensorflow.compat.v1')
+tf = lazy_loader.LazyLoader('tf', globals(), 'tensorflow.compat.v2')
 
 NestedMap = py_utils.NestedMap
 NestedJTensor = pytypes.NestedJTensor
@@ -508,7 +512,7 @@ class LingvoInputAdaptor(BaseInput):
       self.input_inst = self.input.Instantiate()
 
     if hasattr(self.input_inst, 'datasource') and isinstance(
-        self.input_inst.datasource, py_utils.TFDatasetSource
+        self.input_inst.datasource, lingvo_lib.datasource.TFDatasetSource
     ):
       # For the special case when the input is implemented by a tf.data.Dataset,
       # call eagerly. Using tf.function may result in returning duplicate
@@ -553,7 +557,7 @@ class LingvoInputAdaptor(BaseInput):
 
   def reset(self) -> None:
     if hasattr(self.input_inst, 'datasource') and isinstance(
-        self.input_inst.datasource, py_utils.TFDatasetSource
+        self.input_inst.datasource, lingvo_lib.datasource.TFDatasetSource
     ):
       self.input_inst.datasource.Reset()
       # reset counter to 0.
