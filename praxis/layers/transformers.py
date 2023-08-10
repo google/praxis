@@ -1157,7 +1157,7 @@ class Transformer(base_layer.BaseLayer):
     relu_dropout_prob: Probability at which we apply dropout to the FFN layers.
     residual_droppath_prob: Probability at which we drop the entire residual
       path.
-    cross_attention: If True, perform cross encoder-decoder attention.
+    use_cross_attention: If True, perform cross encoder-decoder attention.
     allow_skip_cross_attention: If True, allow skipping cross attention during
       forward pass and decoding. This allows to skip cross attention when cross
       inputs are not available. For example, if we want to train the model with
