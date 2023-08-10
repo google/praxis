@@ -499,12 +499,13 @@ def is_optax_masked_node(x: Any) -> bool:
   return isinstance(x, optax.MaskedNode)
 
 
-def maybe_pad_uneven_sharding(xs: JTensor,
-                              partition_specs: Union[jax.sharding.PartitionSpec,
-                                                     flax.struct.PyTreeNode],
-                              unpadded_shapes: Sequence[int],
-                              mesh_shape: Sequence[int],
-                              mesh_axis_names: Sequence[str]) -> JTensor:
+def maybe_pad_uneven_sharding(
+    xs: JTensor,
+    partition_specs: Union[jax.sharding.PartitionSpec, flax.struct.PyTreeNode],
+    unpadded_shapes: Sequence[int],
+    mesh_shape: Sequence[int],
+    mesh_axis_names: Sequence[str],
+) -> JTensor:
   """Pads xs to make them evenly shardable, if needed."""
 
   def _maybe_pad(x, pspec, shape):
@@ -524,13 +525,14 @@ def maybe_pad_uneven_sharding(xs: JTensor,
       xs,
       partition_specs,
       unpadded_shapes,
-      is_leaf=is_optax_masked_node)
+      is_leaf=is_optax_masked_node,
+  )
 
 
 def maybe_slice_uneven_sharding(
     xs: JTensor,
     partition_spec: jax.sharding.PartitionSpec,
-    padded_shapes: Sequence[int],
+    unpadded_shapes: Sequence[int],
     is_leaf: Any = None,
 ) -> JTensor:
   """Slices xs to remove padding due to uneven sharding, if needed."""
@@ -548,7 +550,7 @@ def maybe_slice_uneven_sharding(
     return with_sharding_constraint(x, pspec)
 
   return jax.tree_map(
-      _maybe_slice, xs, partition_spec, padded_shapes, is_leaf=is_leaf
+      _maybe_slice, xs, partition_spec, unpadded_shapes, is_leaf=is_leaf
   )
 
 
