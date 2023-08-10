@@ -55,6 +55,29 @@ def _create_input(hparams: Any, state: bytes) -> Any:
   return inp
 
 
+def _to_numpy(x: tf.Tensor) -> np.ndarray:
+  """Creates a Numpy array from an EagerTensor whithout copying.
+
+  If the batch Tensors are extremely large, `.numpy()` (which creates
+  a copy) will be too slow.
+
+  Args:
+    x: An EagerTensor.
+
+  Returns:
+    An immutable np.ndarray.
+  """
+  if hasattr(x, '_numpy'):
+    numpy = x._numpy()  # pylint: disable=protected-access
+  else:
+    numpy = x.numpy()
+  if isinstance(numpy, np.ndarray):
+    # `numpy` shares the same underlying buffer as the `x` Tensor.
+    # Tensors are expected to be immutable, so we disable writes.
+    numpy.setflags(write=False)
+  return numpy
+
+
 class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   """Base class for Praxis input pipelines.
 
@@ -520,7 +543,7 @@ class LingvoInputAdaptor(BaseInput):
       self._num_batches_produced += 1
     ret = self._get_next_fn()
     if tf.executing_eagerly():
-      ret = jax.tree_util.tree_map(lambda x: x.numpy(), ret)
+      ret = jax.tree_util.tree_map(_to_numpy, ret)
     else:
       with tf_v1.Session() as sess:
         ret = sess.run(ret)
