@@ -1201,3 +1201,124 @@ class BregmanNgrammer(base_layer.BaseLayer):
       input_embs = jnp.reshape(input_embs, [batch_size, seq_length, -1])
 
     return input_embs
+
+
+class NgrammerStub(base_layer.BaseLayer):
+  """Replaces N-grammer with just the group layer norm it performs.
+
+  Args:
+    dim_per_head: The dimension per each head of the input.
+    num_heads: The number of heads for each input.
+  """
+
+  dim_per_head: int = 0
+  num_heads: int = 0
+
+  def setup(self) -> None:
+    """Constructs a group layer norm instance."""
+
+    # Create a separate layer norm per head for embedding normalization.
+    emb_layer_norm_p = []
+    for i in range(self.num_heads):
+      layer_norm_p = pax_fiddle.Config(normalizations.LayerNorm).clone()
+      layer_norm_p.dim = self.dim_per_head
+      layer_norm_p.name = f'layer_norm_{i}'
+      emb_layer_norm_p.append(layer_norm_p)
+
+    self.create_children('emb_layer_norm', emb_layer_norm_p)
+
+  def __call__(
+      self,
+      input_ids: JTensor,
+      input_embs: JTensor,
+      paddings: Optional[JTensor] = None,
+      segment_pos: Optional[JTensor] = None,
+      merge_heads: bool = True,
+      attention_scores: Optional[JTensor] = None,
+      emb_var: Optional[JTensor] = None,
+      check_time_step_zero: bool = False,
+  ) -> JTensor:
+    """Apply group layer norms.
+
+    Just like N-grammer, we also perform a group layer norm on the input
+    embeds. We keep arguments identical for API consistency.
+
+    Below, we use the same single-letter axis designations as in the
+    Ngrammer layer docs.
+
+    Args:
+      input_ids: Ignored.
+      input_embs: Input unigram embedding tensor of shape [B, L, D] or [B, L, N,
+        H] which we LayerNorm per-head.
+      paddings: If not None, a tensor of shape [B, L]. The padding tensor is
+        supplied when we want certain tokens to not affect the components.
+      segment_pos: Ignored.
+      merge_heads: Optional argument determining whether to merge the heads in
+        the output sequence.
+      attention_scores: Ignored.
+      emb_var: Ignored.
+      check_time_step_zero: Ignored.
+
+    Returns:
+      outputs: Input embedding with the VQ ngram added of shape [B, L, D] if
+        `merge_heads` is True, and shape [B, L, N, H] otherwise.
+    """
+    del input_ids, segment_pos, attention_scores, emb_var, check_time_step_zero
+    # Cast input embeddings to fprop dtype.
+    input_embs = self._cast_to_fprop_dtype(input_embs)
+
+    # Reshape to [B, L, N, H] if of shape [B, L, D].
+    if len(input_embs.shape) == 3:
+      b, l, d = input_embs.shape
+      assert d % self.dim_per_head == 0
+      input_embs = jnp.reshape(
+          input_embs, [b, l, d // self.dim_per_head, self.dim_per_head]
+      )
+
+    input_embs_per_head = jnp.split(input_embs, self.num_heads, 2)
+    for i in range(self.num_heads):
+      input_embs_per_head[i] = self.emb_layer_norm[i](input_embs_per_head[i])
+    input_embs = jnp.concatenate(input_embs_per_head, 2)
+
+    if paddings is not None:
+      # Shape [B, L, 1]
+      paddings_4d = paddings[:, :, jnp.newaxis, jnp.newaxis]
+      input_embs *= 1 - paddings_4d
+    if merge_heads:
+      b, l, n, h = input_embs.shape
+      d = n * h
+      return input_embs.reshape(b, l, d)
+    return input_embs
+
+  def extend_step(
+      self,
+      input_embs: JTensor,
+      step: Union[int, JTensor],
+      merge_heads: Optional[bool] = True,
+      attention_score: Optional[JTensor] = None,
+  ) -> JTensor:
+    """Augments the input embeddings constant suffix at a step.
+
+    Args:
+      input_embs: Input unigram embedding tensor of shape [B, L, D] or [B, L, N,
+        H] to which to add the ngram embedding.
+      step: Time step for which to compute the VQ ngram embedding.
+      merge_heads: Optional argument determining whether to merge the heads in
+        the output sequence.
+      attention_score: Ignored.
+
+    Returns:
+      outputs: Input embedding with the VQ ngram added of shape [B, D] or
+      [B, N, H] corresponding to output of NGrammer at the time step.
+    """
+    del attention_score
+    desired_step = jax.lax.dynamic_slice_in_dim(
+        input_embs, slice_size=1, start_index=step, axis=1
+    )
+    output_embs = self(
+        input_ids=jnp.array(),  # unused
+        input_embs=desired_step,
+        merge_heads=merge_heads,
+    )
+    # Get output at step of shape [B, D] or [B, N, H].
+    return jnp.squeeze(output_embs, axis=1)
