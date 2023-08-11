@@ -82,10 +82,10 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     self.assertSequenceEqual(encoded.shape, [5, 12, 16])
     self.assertSequenceEqual(attens.shape, [5, 10, 12, 12])
 
-  @parameterized.parameters(*list(itertools.product([True, False], repeat=2)))
-  def test_multi_query_attention_decoding_shape(self,
-                                                use_rotary_position_emb,
-                                                lpb):
+  @parameterized.parameters(*list(itertools.product([True, False], repeat=3)))
+  def test_multi_query_attention_decoding_shape(
+      self, use_rotary_position_emb, lpb, n_step
+  ):
     if lpb:
       mqa = multi_query_attention.MultiQueryDotProductAttentionLPB
     else:
@@ -101,12 +101,21 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     layer = instantiate(test_layer_p)
     prng_key = jax.random.PRNGKey(seed=123)
     prng_key, init_key = jax.random.split(prng_key)
+    if n_step:
+      step_size = 2
+    else:
+      step_size = None
 
     query_vec = jnp.zeros([5, 10, 16])
 
     with base_layer.JaxContext.new_context():
-      initial_vars = layer.init(init_key, query_vec, query_vec, query_vec,
-                                attentions.causal_mask(query_vec))
+      initial_vars = layer.init(
+          init_key,
+          query_vec,
+          query_vec,
+          query_vec,
+          attentions.causal_mask(query_vec),
+      )
       logging.info('initial_vars: %s', initial_vars)
       _, attention_states = layer.apply(
           initial_vars,
@@ -114,17 +123,29 @@ class MultiQueryAttentionTest(test_utils.TestCase):
           query_vec,
           query_vec,
           attentions.causal_mask(query_vec),
-          mutable=[base_layer.DECODE_CACHE])
+          mutable=[base_layer.DECODE_CACHE],
+      )
       updated_vars = py_utils.merge_dict(attention_states, initial_vars)
-      atten_mask = attentions.causal_mask(query_vec)[:, :, 0, :]
+      atten_mask = attentions.causal_mask(query_vec)
+      if n_step:
+        atten_mask = atten_mask[:, :, 0:step_size, :]
+        query_vec = query_vec[:, 0:step_size, :]
+        expected_shape = [5, step_size, 16]
+        segment_pos = jnp.stack([jnp.arange(step_size)] * 5)
+      else:
+        atten_mask = atten_mask[:, :, 0, :]
+        query_vec = query_vec[:, 0, :]
+        expected_shape = [5, 16]
+        segment_pos = None
       encoded = layer.apply(
           updated_vars,
           method=layer.extend_step,
-          query_vec=query_vec[:, 0, :],
+          query_vec=query_vec,
           atten_mask=atten_mask,
           time_step=1,
-          segment_pos=None)
-    self.assertSequenceEqual(encoded.shape, [5, 16])
+          segment_pos=segment_pos,
+      )
+    self.assertSequenceEqual(encoded.shape, expected_shape)
 
   @parameterized.parameters([(1,), (2,)])
   def test_multi_query_attention_consistent(self, kv_heads):
