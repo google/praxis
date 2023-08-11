@@ -22,10 +22,10 @@ import jax
 from jax import core
 from jax import numpy as jnp
 import jaxtyping
-
-from jaxtyping import AbstractDtype, Bool, Float, Int, Float32, Int32, PyTree, Shaped, jaxtyped  # pylint: disable=g-multiple-import, g-importing-member, unused-import
+from jaxtyping import AbstractDtype, Bool, Float, Int, Float32, Int32, PyTree, Shaped  # pylint: disable=g-multiple-import, g-importing-member, unused-import
 import numpy as np
 from praxis import lingvo_lib
+import typeguard
 
 # No other imports from lingvo should be accessed by core JAX library.
 InstantiableParams = lingvo_lib.InstantiableParams
@@ -108,3 +108,5 @@ ScalarInt = Int[ArrayT, ''] | Int[np.generic, ''] | Int[jnp.generic, '']
 """A Jax int scalar type. Note this does not include the Python `int` type."""
 ScalarFloat = Float[ArrayT, ''] | Float[np.generic, ''] | Float[jnp.generic, '']
 """A Jax float scalar type. Note this does not include the Python `float` type."""
+
+typed = lambda fn: jaxtyping.jaxtyped(typeguard.typechecked(fn))

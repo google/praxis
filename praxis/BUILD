@@ -260,6 +260,7 @@ pytype_strict_library(
         # Implicit jax dependency.
         # Implicit jaxtyping dependency.
         # Implicit numpy dependency.
+        # Implicit typeguard dependency.
     ],
 )
 
