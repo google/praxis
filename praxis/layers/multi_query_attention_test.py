@@ -224,6 +224,41 @@ class MultiQueryAttentionTest(test_utils.TestCase):
         output = output.at[:, t, :].set(e)
     self.assertAllClose(encoded, output)
 
+  @parameterized.parameters([[1], [4]])
+  def test_multi_query_chunked_attn(self, seq_split):
+    inputs = np.random.normal(1.5, 2.0, [5, 8, 16]).astype(np.float32)
+    mask = attentions.causal_mask(inputs)
+
+    test_layer_p = pax_fiddle.Config(
+        multi_query_attention.MultiQueryDotProductAttention,
+        name='mqa',
+        input_dim=16,
+        hidden_dim=5 * 16,
+        num_heads=16,
+        chunked_attn_num_seq_split=seq_split,
+    )
+    layer = instantiate(test_layer_p)
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(init_key, inputs, inputs, inputs, mask)
+      logging.info('initial_vars: %s', initial_vars)
+
+    encoded, _ = layer.apply(initial_vars, inputs, inputs, inputs, mask)
+
+    test_layer_p = pax_fiddle.Config(
+        multi_query_attention.MultiQueryDotProductAttention,
+        name='mqa',
+        input_dim=16,
+        hidden_dim=5 * 16,
+        num_heads=16,
+    )
+    layer = instantiate(test_layer_p)
+    encoded2, _ = layer.apply(initial_vars, inputs, inputs, inputs, mask)
+
+    self.assertAllClose(encoded, encoded2)
+
   @parameterized.parameters([True, False])
   def test_mqa_extend_n_steps_with_lazy_broadcast_state(
       self, use_rotary_position_emb):

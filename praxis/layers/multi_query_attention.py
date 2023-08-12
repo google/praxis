@@ -172,7 +172,11 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       computation with SPMD. Only supports self-attention.
     scale_query_by_dim_per_head: whether to scale the query by dim_per_head,
       instead of default hidden_dim // num_heads.
-    Note: dconv_qkv and ngrammer are not supported.
+    chunked_attn_num_seq_split: Whether to compute the attention context as a
+      loop over the context sequence, avoiding the full attention matrix
+      computation. Default value of 1 implies no loop.
+
+  Note: dconv_qkv and ngrammer are not supported.
   """
   input_dim: Union[int, Dict[str, int]] = 0
   hidden_dim: int = 0
@@ -196,6 +200,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   qk_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
   pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
   scale_query_by_dim_per_head: bool = False
+  chunked_attn_num_seq_split: int = 1
 
   # SPMD partition related params.
   #
@@ -431,6 +436,97 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     logits = self.qk_einsum('BNTH,BSH->BNTS', query, key)
     return logits
 
+  def _atten_context(
+      self,
+      query: JTensor,
+      key: JTensor,
+      value: JTensor,
+      atten_mask: JTensor,
+      relative_bias: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
+    """Computes attention context."""
+    _, t, n, _ = query.shape
+    _, s, _ = key.shape
+    logits = self._atten_logits(query, key)
+    if relative_bias is not None:
+      # The relative_bias has shape [1, n, t, s] or [b, n, t, s].
+      base_layer.assert_has_shape(relative_bias, [-1, n, t, s])
+      logits += relative_bias
+    logits = checkpoint_name(logits, 'logits')
+    logits = self._cap_logits(logits)
+    # Attention softmax is always carried out in fp32.
+    logits = logits.astype(jnp.float32)
+    # Apply attention masking
+    padded_logits = py_utils.apply_mask_to_logits(logits, atten_mask)
+    if self.attention_extra_logit is None:
+      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
+    else:
+      probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
+          key.dtype
+      )
+    # Apply attention dropout.
+    probs = self.atten_dropout(probs)
+    # Compute the attention context.
+    encoded = self.pv_einsum('BNTS,BSH->BNTH', probs, value)
+    encoded = encoded.transpose(0, 2, 1, 3)
+    encoded = checkpoint_name(encoded, 'context')
+    encoded = self._shard_blnh(encoded)
+    return encoded, probs
+
+  def _atten_context_chunked_attn_seq_split(
+      self,
+      query: JTensor,
+      key: JTensor,
+      value: JTensor,
+      atten_mask: JTensor,
+      relative_bias: Optional[JTensor] = None,
+  ) -> Tuple[JTensor, JTensor]:
+    """Computes chunked attention context."""
+    b, t, n, _ = query.shape
+    _, s, h = value.shape
+    assert (
+        s % self.chunked_attn_num_seq_split == 0
+    ), 'The number of attn splits must divide the sequence length'
+    w = s // self.chunked_attn_num_seq_split
+    query = query.transpose(0, 2, 1, 3)
+    full_encoded = jnp.zeros((b, n, t, h), dtype=value.dtype)
+    for i in range(self.chunked_attn_num_seq_split):
+      logits = jnp.einsum(
+          'BNTH,BSH->BNTS',
+          query[:, :, i * w : (i + 1) * w, :],  # current query chunk
+          key[:, : (i + 1) * w, :],  # keys context up to current chunk
+      )
+      if relative_bias is not None:
+        # The relative_bias has shape [1, n, t, s] or [b, n, t, s].
+        base_layer.assert_has_shape(relative_bias, [-1, n, t, s])
+        bias_slice = relative_bias[:, :, i * w : (i + 1) * w, : (i + 1) * w]
+        logits += bias_slice
+      logits = checkpoint_name(logits, 'logits')
+      logits = self._cap_logits(logits)
+      # Attention softmax is always carried out in fp32.
+      logits = logits.astype(jnp.float32)
+      mask_slice = atten_mask[:, :, i * w : (i + 1) * w, : (i + 1) * w]
+      # Consider supporting a boolean attention mask a la
+      # attention_mask_use_where
+      padded_logits = logits + mask_slice.astype(jnp.float32)
+      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
+      # Apply attention dropout.
+      probs = self.atten_dropout(probs)
+      # Compute the attention context slice.
+      encoded = jnp.einsum(
+          'BNTS,BSH->BNTH',
+          probs,
+          value[:, : (i + 1) * w, :],
+      )
+      encoded = checkpoint_name(encoded, 'context')
+      full_encoded = full_encoded.at[:, :, i * w : (i + 1) * w, :].set(encoded)
+
+    full_encoded = full_encoded.transpose(0, 2, 1, 3)
+    full_encoded = checkpoint_name(full_encoded, 'context')
+    full_encoded = self._shard_blnh(full_encoded)
+    full_probs = None
+    return full_encoded, full_probs  # pytype: disable=bad-return-type  # jax-ndarray
+
   def _dot_atten(
       self,
       query: JTensor,
@@ -456,9 +552,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       atten_probs: JTensor of shape [B, N, T, S].
     """
     b, t, n, h = query.shape
+    base_layer.assert_has_shape(query, [b, -1, n, h])
     _, s, _ = key.shape
-    base_layer.assert_has_shape(key, [b, s, h])
     base_layer.assert_has_shape(value, [b, s, -1])
+    t = query.shape[1]
     # If only padding bias is supplied, then atten_mask can be [B, 1, 1, S]
     # since each target token is prohibited from attending to the same set of
     # source tokens. In this case tiling is inefficient and unnecessary.
@@ -468,30 +565,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     asserts.in_set(atten_mask.shape[2], [1, t])
     asserts.in_set(atten_mask.shape[0], [1, b])
     query = self._scale_query(query)
-    logits = self._atten_logits(query, key)
-    if relative_bias is not None:
-      # The relative_bias has shape [1, n, t, s] or [b, n, t, s].
-      base_layer.assert_has_shape(relative_bias, [-1, n, t, s])
-      logits += relative_bias
-    logits = checkpoint_name(logits, 'logits')
-    logits = self._cap_logits(logits)
-    # Attention softmax is always carried out in fp32.
-    logits = logits.astype(jnp.float32)
-    # Apply attention masking
-    padded_logits = py_utils.apply_mask_to_logits(logits, atten_mask)
-    if self.attention_extra_logit is None:
-      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
+    if self.chunked_attn_num_seq_split > 1:
+      return self._atten_context_chunked_attn_seq_split(
+          query, key, value, atten_mask, relative_bias
+      )
     else:
-      probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
-          key.dtype)
-    # Apply attention dropout.
-    probs = self.atten_dropout(probs)
-    # Compute the attention context.
-    encoded = self.pv_einsum('BNTS,BSH->BNTH', probs, value)
-    encoded = encoded.transpose(0, 2, 1, 3)
-    encoded = checkpoint_name(encoded, 'context')
-    encoded = self._shard_blnh(encoded)
-    return encoded, probs
+      return self._atten_context(query, key, value, atten_mask, relative_bias)
 
   def decoding_state_sequence_length(self):
     """Returns the length of full decoding sequences."""
