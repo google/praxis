@@ -67,6 +67,7 @@ class ActQuantizationParams:
     stability. Note: this is numerically incorrect.
   fp16: clip activation to fp16. This overrides the int8 activation quantization
     for QAT.
+  per_channel: Whether or not to quantize activation channel-wisely.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -75,6 +76,7 @@ class ActQuantizationParams:
   stats_config = None
   stop_scale_gradient: bool = False
   fp16: bool = False
+  per_channel: bool = True
 
 
 @dataclasses.dataclass

@@ -103,6 +103,51 @@ class QuantizationUtilsTest(test_utils.TestCase):
     )
     self.assertAllClose(ret, expected, rtol=0.02, atol=0.02)
 
+  @parameterized.parameters(
+      ('ab,bc->ac', (10, 4), (4, 5)),
+      ('...y,yz->...z', (10, 8, 4), (4, 5)),
+      ('ABD,KDNH->KABNH', (10, 10, 4), (5, 4, 6, 7)),
+      ('ANH,NHD->AD', (2, 3, 4), (3, 4, 2)),
+      ('ANH,DNH->AD', (8, 6, 4), (2, 6, 4)),
+      ('AD,DNH->ANH', (2, 3), (3, 4, 2)),
+      ('AD,KDNH->KANH', (2, 3), (2, 3, 4, 2)),
+  )
+  def test_quantized_einsum_per_channel_activation_has_less_error(
+      self, eqn, x_shape, w_shape
+  ):
+    w = jax.random.uniform(jax.random.PRNGKey(0), w_shape)
+    x = jax.random.uniform(jax.random.PRNGKey(0), x_shape)
+    qw, sw, _ = operations.reduce_einsum_weight_precision(
+        eqn, w, use_symmetric=True
+    )
+    qx, sx = operations.reduce_einsum_activation_precision(
+        eqn, x, per_channel=False
+    )
+    qx_channel_wise, sx_channel_wise = (
+        operations.reduce_einsum_activation_precision(eqn, x, per_channel=True)
+    )
+    o = jnp.einsum(eqn, x, w)
+
+    q_o = operations.einsum(
+        eqn,
+        qx,
+        qw,
+        scale=sw,
+        scale_act=sx,
+    )
+    q_o_channel_wise = operations.einsum(
+        eqn,
+        qx_channel_wise,
+        qw,
+        scale=sw,
+        scale_act=sx_channel_wise,
+    )
+    error_per_tensor = jnp.abs(o - q_o).mean()
+    error_per_token = jnp.abs(o - q_o_channel_wise).mean()
+    self.assertLess(error_per_tensor, 0.01)
+    self.assertLess(error_per_token, 0.01)
+    self.assertLess(error_per_token, error_per_tensor)
+
   def test_min_max(self):
     self.assertEqual(operations.get_min_max(8), (-128, 127))
     self.assertEqual(operations.get_min_max(8, True), (0, 255))
@@ -197,6 +242,119 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
           eqn, weight, use_symmetric=use_symmetric
       )
       self.assertAllClose(weight, weight_nudged, rtol=0.02, atol=0.02)
+
+  @parameterized.parameters(
+      dict(
+          eqn='ab,bc->ac',
+          x_shape=(4, 3),
+          squeeze=True,
+          expected_scale_shape=(4,),
+          expand_dims=(-1),
+      ),
+      dict(
+          eqn='ab,bc->ac',
+          x_shape=(4, 3),
+          squeeze=False,
+          expected_scale_shape=(4, 1),
+          expand_dims=False,
+      ),
+      dict(
+          eqn='ab,bc->ac',
+          x_shape=(4, 3),
+          squeeze=False,
+          expected_scale_shape=(1, 1),
+          expand_dims=False,
+          per_channel=False,
+      ),
+      dict(
+          eqn='...y,yz->...z',
+          x_shape=(6, 5),
+          squeeze=True,
+          expected_scale_shape=(6,),
+          expand_dims=(-1),
+      ),
+      dict(
+          eqn='...y,yz->...z',
+          x_shape=(6, 5),
+          squeeze=False,
+          expected_scale_shape=(6, 1),
+          expand_dims=False,
+      ),
+      dict(
+          eqn='...y,yz->...z',
+          x_shape=(6, 5),
+          squeeze=False,
+          expected_scale_shape=(1, 1),
+          expand_dims=False,
+          per_channel=False,
+      ),
+      dict(
+          eqn='ABD,KDNH->KABNH',
+          x_shape=(2, 3, 5),
+          squeeze=True,
+          expected_scale_shape=(2, 3),
+          expand_dims=(-1),
+      ),
+      dict(
+          eqn='ABD,KDNH->KABNH',
+          x_shape=(2, 3, 5),
+          squeeze=False,
+          expected_scale_shape=(2, 3, 1),
+          expand_dims=False,
+      ),
+      dict(
+          eqn='ABD,KDNH->KABNH',
+          x_shape=(2, 3, 5),
+          squeeze=False,
+          expected_scale_shape=(1, 1, 1),
+          expand_dims=False,
+          per_channel=False,
+      ),
+      dict(
+          eqn='ADB,KDNH->KABNH',
+          x_shape=(2, 3, 5),
+          squeeze=True,
+          expected_scale_shape=(2, 5),
+          expand_dims=(1),
+      ),
+      dict(
+          eqn='ADB,KDNH->KABNH',
+          x_shape=(2, 3, 5),
+          squeeze=False,
+          expected_scale_shape=(2, 1, 5),
+          expand_dims=False,
+      ),
+      dict(
+          eqn='ADB,KDNH->KABNH',
+          x_shape=(2, 3, 5),
+          squeeze=False,
+          expected_scale_shape=(1, 1, 1),
+          expand_dims=False,
+          per_channel=False,
+      ),
+  )
+  def test_reduce_einsum_activation_precision(
+      self,
+      eqn,
+      x_shape,
+      squeeze,
+      expected_scale_shape,
+      expand_dims,
+      per_channel=True,
+  ):
+    activation = np.random.normal(1.5, 2.0, x_shape).astype(np.float32)
+    reduced_activation, scale = operations.reduce_einsum_activation_precision(
+        eqn, activation, per_channel=per_channel, squeeze=squeeze
+    )
+    self.assertEqual(scale.shape, expected_scale_shape)
+    if expand_dims:
+      scale = jnp.expand_dims(scale, expand_dims)
+    self.assertAllClose(
+        activation,
+        jnp.multiply(reduced_activation, scale).astype(jnp.float32),
+        rtol=0.02,
+        atol=0.02,
+    )
 
   def test_fakequant_with_block_size(self):
     """Test fakequant with block size."""

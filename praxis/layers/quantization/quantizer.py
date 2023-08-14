@@ -159,6 +159,7 @@ class QuantizationLayer(base_layer.BaseLayer):
           weight_name,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
+      scale_act = None
       if (
           self.quantization.weight_params.precision == 4
           and self.quantization.weight_params.use_int4_packed_weights
@@ -172,8 +173,13 @@ class QuantizationLayer(base_layer.BaseLayer):
         x = x.astype(jnp.int8)
         logging.info('Static activation quantization is not supported yet.')
       elif self.quantization.act_params is not None:
-        x, act_scale = operations.reduce_precision_activation(x)
-        s = jnp.multiply(jnp.squeeze(act_scale), s)
+        act_params = self.quantization.act_params
+        x, scale_act = operations.reduce_einsum_activation_precision(
+            eqn,
+            x,
+            bits=act_params.precision,
+            per_channel=act_params.per_channel,
+        )
       dtype = self.quantization.weight_params.dtype
       if (
           jax.dtypes.scalar_type_of(dtype) == float
@@ -182,7 +188,8 @@ class QuantizationLayer(base_layer.BaseLayer):
         w = jax.lax.bitcast_convert_type(w, dtype)
         # cast to bf16 since bf16 x fp8 is not supported.
         w = w.astype(jnp.bfloat16)
-      out = operations.einsum(eqn, x, w, s, zp)
+      out = operations.einsum(eqn, x, w, s, zp=zp, scale_act=scale_act)
+
       return out
     else:
       if reshape:

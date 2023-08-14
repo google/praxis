@@ -36,8 +36,8 @@ QUANTIZED_TYPES = [jnp.int8, jnp.uint8]
 INT_TYPES = [jnp.int8, jnp.uint8, jnp.int16, jnp.uint16, jnp.int32, jnp.uint32]
 
 
-def _get_expand_dims(eqn: str) -> List[int]:
-  """Potentially expand dimensions for scale.
+def _get_expand_dims_rhs(eqn: str) -> List[int]:
+  """Potentially expand dimensions for scale of right-hand-side tensor.
 
   It handles cases such as ABD,KDNH->KABNH and AD,KDNH->KANH, where weight is
   quantized to KNH and need to expand to K11NH and K1NH.
@@ -59,6 +59,30 @@ def _get_expand_dims(eqn: str) -> List[int]:
   # expanded to (1,c) to be applied on ac.
   if filling_dims and filling_dims[-1] == len(filling_dims) - 1:
     filling_dims = []
+  return filling_dims
+
+
+def _get_expand_dims_lhs(eqn: str) -> List[int]:
+  """Potentially expand dimensions for scale of left-hand-side tensor.
+
+  It handles cases such as ABD,KDNH->KABNH and ABD,DKNH->ABKNH, where activation
+  is quantized to AB and need to expand to 1AB11 and AB111.
+
+  Args:
+    eqn: The equation for einsum.
+
+  Returns:
+    The expansion dimensions. Can be empty if no expansion is needed.
+  """
+  # TODO(wppark): this is sufficient now but might improve to cover more
+  # corner cases.
+  segs = eqn.split('->')
+  ins = segs[0].split(',')
+  act, out = ins[0].replace('.', ''), segs[1].replace('.', '')
+
+  filling_dims = [
+      -(i + 1) for i, val in enumerate(reversed(out)) if val not in act
+  ]
   return filling_dims
 
 
@@ -185,6 +209,8 @@ def einsum(
     w: JTensor,
     scale: JTensor,
     zp: Optional[JTensor] = None,
+    scale_act: Optional[JTensor] = None,
+    zp_act: Optional[JTensor] = None,
 ) -> JTensor:
   """Performs quantized einsum.
 
@@ -197,7 +223,13 @@ def einsum(
     w: The weight to the einsum; usually in quantized format.
     scale: The rescaling factor for the einsum. After applying this, the result
       is brought back to true value (no longer associated with scaling factors).
+      It is the scale factor of the weights in most of cases.
     zp: Optional zero point tensor.
+    scale_act: Optional rescaling factor for the einsum on the left-hand-side
+      tensor which is activation in most of cases. After applying this, the
+      result is brought back to true value.
+    zp_act: Optional zero point for the einsum on the right-hand-side  tensor
+      which is activation in most cases.
 
   Returns:
     A JTensor.
@@ -234,16 +266,28 @@ def einsum(
   else:
     ret = jnp.einsum(eqn, x, w)
 
+  if scale_act is not None:
+    if scale_act.ndim == 0:
+      scale *= scale_act
+    else:
+      filling_dims_lhs = _get_expand_dims_lhs(eqn)
+      if filling_dims_lhs:
+        scale_act = jnp.expand_dims(scale_act, filling_dims_lhs)
+      ret = jnp.multiply(ret, scale_act)
+
   # Potentially expand dimensions of scale to match einsum output.
-  filling_dims = _get_expand_dims(eqn)
-  if filling_dims:
-    scale = jnp.expand_dims(scale, filling_dims)
+  filling_dims_rhs = _get_expand_dims_rhs(eqn)
+  if filling_dims_rhs:
+    scale = jnp.expand_dims(scale, filling_dims_rhs)
 
   ret = jnp.multiply(ret, scale)
 
   if zp is not None:
     offset = compute_offset(x, zp, eqn)
     ret = ret - offset
+
+  if zp_act is not None:
+    raise ValueError('Zero-point for activaiton is not yet supported.')
   return ret
 
 
@@ -478,6 +522,44 @@ def reduce_precision_activation(
   """
   qt, scale, _ = reduce_precision(t, contract_dims, need_gradient, bits, False)
   return qt, scale
+
+
+# TODO(wppark): support clipping for activation, e.g, using standard deviation.
+def reduce_einsum_activation_precision(
+    eqn: str,
+    t: JTensor,
+    bits: int = 8,
+    squeeze: bool = True,
+    per_channel: bool = False,
+) -> Tuple[JTensor, JTensor]:
+  """Reduce the precision of the activation of einsum.
+
+  It uses per-tensor or per-toeken quantization so einsum equation is passed in
+  as well.
+
+  Args:
+    eqn: The equation for the einsum.
+    t: The activation tensor for the einsum.
+    bits: Target number of bits.
+    squeeze: If the output scale is squeezed.
+    per_channel: Whether or not to quantize activation channel-wisely.
+
+  Returns:
+    A tuple of JTensors. The first one is the quantized activation and the
+    second one is the scaling factor.
+  """
+  if per_channel:
+    contract_dims = eqn_to_activation_contract_dims(eqn)
+  else:
+    contract_dims = None
+
+  t, scale, _ = reduce_precision(
+      t, contract_dims, bits=bits, use_symmetric=True
+  )
+
+  if squeeze:
+    scale = jnp.squeeze(scale, axis=contract_dims)
+  return t, scale
 
 
 def fakequant_activation(
