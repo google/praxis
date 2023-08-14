@@ -396,6 +396,10 @@ class LanguageModel(base_model.BaseModel):
       fprop_segment_ids = None
       state_padding_size = seqlen - 1
 
+    extra_input_kwargs = {}
+    if decoder_params.use_extra_input_kwargs:
+      extra_input_kwargs = input_batch.get('extra_input_kwargs', {})
+
     decode_data = NestedMap(
         seqlen=seqlen,
         start_time_step=start_time_step,
@@ -408,7 +412,7 @@ class LanguageModel(base_model.BaseModel):
         causal_attention_mask=causal_attention_mask,
         state_padding_size=state_padding_size,
         prefix_lengths=prefix_lengths,
-        extra_input_kwargs={},
+        extra_input_kwargs=extra_input_kwargs,
     )
 
     if (

@@ -55,6 +55,8 @@ class DecoderHParams:
     process_result_fn: Optional function that further processes the results,
       such as performing suffix scoring.
     emb_lookup_style: lookup style for the softmax embedding layer.
+    use_extra_input_kwargs: if True, pass through any extra_input_kwargs from
+      the input batch to the decode data.
   """
   # TODO(b/229679837): remove seqlen and uses max_decode_steps.
   seqlen: int = 0
@@ -67,6 +69,7 @@ class DecoderHParams:
   decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None
   process_result_fn: Optional[decoder_utils.ProcessResultFn] = None
   emb_lookup_style: str = 'matmul'
+  use_extra_input_kwargs: bool = False
 
   def clone(self: _TDecoderHParams) -> _TDecoderHParams:
     return copy.deepcopy(self)
