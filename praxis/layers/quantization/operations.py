@@ -264,6 +264,10 @@ def einsum(
     if perm is not None:
       ret = lax.transpose(ret, perm)
   else:
+    # TODO(b/283692107): jnp.einsum of int4 is currently not supported.
+    # Remove the following dtype casting of w once it's resolved.
+    if w.dtype == jnp.int4:
+      w = w.astype(jnp.int8)
     ret = jnp.einsum(eqn, x, w)
 
   if scale_act is not None:
