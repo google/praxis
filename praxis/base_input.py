@@ -1080,11 +1080,10 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
   """Class to provide input specs from a dataset for model initialization."""
   input_p: pax_fiddle.Config[BaseInput] | None = None
 
-  def get_input_specs(self) -> NestedShapeDtypeStruct:
-    """Returns example input specs from the input pipeline for model init."""
-    # Note that this re-instantiate the input pipeline every time
-    # `.get_input_specs()` is called. In practice, we typically call this
-    # method only once at model initialization time.
+  def __post_init__(self):
+    # Instantiate the input pipeline and get the specs.
+    # In practice, we typically use it only once at model
+    # initialization time.
     input_pipeline: BaseInput = instantiate(self.input_p)
     dataset = input_pipeline.dataset
     if (
@@ -1103,7 +1102,8 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
         return jax.ShapeDtypeStruct(shape=spec.shape,
                                     dtype=spec.dtype.as_numpy_dtype())
 
-      return jax.tree_map(tf_spec_to_jax, dataset.element_spec)
+      self._input_specs = jax.tree_map(tf_spec_to_jax, dataset.element_spec)
+      return
 
     logging.warning(
         'b/292156360: The input specs is generated based on the first data '
@@ -1111,8 +1111,14 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
         'param in BaseExperiment.get_input_specs_provider_params(), which is '
         'more determinisitc and efficient.'
     )
-    return jax.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
-                        input_pipeline.get_next_padded())
+    self._input_specs = jax.tree_map(
+        lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
+        input_pipeline.get_next_padded(),
+    )
+
+  def get_input_specs(self) -> NestedShapeDtypeStruct:
+    """Returns example input specs from the input pipeline for model init."""
+    return self._input_specs
 
 
 def distributed_builder(fn: Any) -> Any:  # Any to avoid user PyType errors.
