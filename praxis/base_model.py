@@ -19,7 +19,7 @@ The model solely consists of the network, while the task combines one or several
 models with one or several learners/optimizers.
 """
 
-from typing import Any, Dict, Sequence, Tuple, Union
+from typing import Any, Sequence
 
 from praxis import base_input
 from praxis import base_layer
@@ -30,10 +30,10 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 Metrics = pytypes.Metrics
 WeightedScalars = pytypes.WeightedScalars
-Predictions = Union[JTensor, NestedMap, Dict[str, Any], Dict[int, Any]]
+Predictions = JTensor | NestedMap | dict[str, Any] | dict[int, Any]
 
-DecodeOut = Tuple[WeightedScalars, NestedMap, Metrics]
-ProcessDecodeOut = Tuple[WeightedScalars, Sequence[Tuple[str, Any]], Metrics]
+DecodeOut = tuple[WeightedScalars, NestedMap, Metrics]
+ProcessDecodeOut = tuple[WeightedScalars, Sequence[tuple[str, Any]], Metrics]
 
 
 class BaseModel(base_layer.BaseLayer):
@@ -62,8 +62,8 @@ class BaseModel(base_layer.BaseLayer):
     raise NotImplementedError('Abstract method')
 
   def compute_loss(
-      self, predictions: Predictions,
-      input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
+      self, predictions: Predictions, input_batch: NestedMap
+  ) -> tuple[WeightedScalars, dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     This method must be defined in a concrete derived class.
@@ -84,7 +84,8 @@ class BaseModel(base_layer.BaseLayer):
     raise NotImplementedError('Abstract method')
 
   def __call__(
-      self, input_batch: NestedMap) -> Tuple[WeightedScalars, Dict[str, Any]]:
+      self, input_batch: NestedMap
+  ) -> tuple[WeightedScalars, dict[str, Any]]:
     """Forward propagation through one tower of the model.
 
     Args:

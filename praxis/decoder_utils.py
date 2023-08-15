@@ -18,7 +18,7 @@
 import dataclasses
 import functools
 import inspect
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union, cast
+from typing import Callable, Sequence, cast
 
 from flax import core as flax_core
 import jax
@@ -66,10 +66,10 @@ class StreamingResultCallback:
 
   # Optional callable to be called at the beginning of decoding. Accepts batch
   # size (`batch` or `[batch, num_samples]`) as the argument.
-  init_fn: Optional[Callable[[Union[int, Sequence[int]]], None]] = None
+  init_fn: Callable[[int | Sequence[int]], None] | None = None
 
   # Optional callable to be called at the end of decoding.
-  done_fn: Optional[Callable[[], None]] = None
+  done_fn: Callable[[], None] | None = None
 
 
 @dataclasses.dataclass
@@ -135,9 +135,9 @@ def gather_logprobs(
 def two_stage_topk(
     logits: jnp.ndarray,
     hyp_scores: jnp.ndarray,
-    terminal_ids: List[int],
-    tokens_per_beam: Optional[int] = None,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    terminal_ids: list[int],
+    tokens_per_beam: int | None = None,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
   """Two stage TopK to choose TopK values and indices from each beam.
 
   Args:
@@ -436,8 +436,8 @@ def concat_suffix_and_left_align(
 
 def maybe_reshard_mdl_for_decode(
     model: base_layer.BaseLayer,
-    mesh_transpose: Optional[Dict[str, str]],
-    model_var_pspecs: Optional[base_layer.NestedPartitionSpec],
+    mesh_transpose: dict[str, str] | None,
+    model_var_pspecs: base_layer.NestedPartitionSpec | None,
     transform_decode_state_fn: TransformStateFn,
 ) -> base_layer.BaseLayer:
   """Reshards model variables if mesh_transpose is given."""
@@ -487,7 +487,7 @@ def maybe_reshard_mdl_for_decode(
 
 
 def maybe_decode_mesh_transpose(
-    model: base_layer.BaseLayer, mesh_transpose: Optional[Dict[str, str]]
+    model: base_layer.BaseLayer, mesh_transpose: dict[str, str] | None
 ) -> base_layer.JaxContext:
   """Creates a new JaxContext with mesh_transpose."""
   if base_layer.JaxContext.has_context():
@@ -502,7 +502,7 @@ def maybe_decode_mesh_transpose(
 def end_with_sequences(
     end_sequences: JTensor,
     output_ids: JTensor,
-    decode_step: Union[int, JTensor],
+    decode_step: int | JTensor,
 ) -> JTensor:
   """Check if the output_ids ended with given sequences.
 
@@ -537,14 +537,14 @@ def end_with_sequences(
   return jnp.all(tokens_equal, axis=-1)
 
 
-def has_any_eos(arr: JTensor, eos_ids: Union[int, Sequence[int]]):
+def has_any_eos(arr: JTensor, eos_ids: int | Sequence[int]):
   """Check if the given array contains any of the eos_ids."""
   eos = jnp.array(eos_ids, dtype=jnp.int32).reshape([1] * arr.ndim + [-1])
   return jnp.any(jnp.equal(arr[..., jnp.newaxis], eos), axis=-1)
 
 
 def coerce_to_expanded_extend_step_fn(
-    extend_step_fn: Union[ExtendStepFn, ExpandedExtendStepFn]
+    extend_step_fn: ExtendStepFn | ExpandedExtendStepFn,
 ) -> ExpandedExtendStepFn:
   """Wraps or casts the `extend_step_fn` into an `ExpandedExtendStepFn`."""
   if len(inspect.signature(extend_step_fn).parameters) == 4:

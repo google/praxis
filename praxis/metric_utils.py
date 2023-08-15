@@ -15,8 +15,6 @@
 
 """Utility functions for computing metrics."""
 
-from typing import Optional
-
 import jax
 from jax import numpy as jnp
 from praxis import py_utils
@@ -26,11 +24,13 @@ NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
 
 
-def top_k_accuracy(top_k: int,
-                   logits: JTensor,
-                   label_ids: Optional[JTensor] = None,
-                   label_probs: Optional[JTensor] = None,
-                   weights: Optional[JTensor] = None) -> JTensor:
+def top_k_accuracy(
+    top_k: int,
+    logits: JTensor,
+    label_ids: JTensor | None = None,
+    label_probs: JTensor | None = None,
+    weights: JTensor | None = None,
+) -> JTensor:
   """Computes the top-k accuracy given the logits and labels.
 
   Args:

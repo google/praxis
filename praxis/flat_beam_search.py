@@ -15,7 +15,7 @@
 
 """Flat beam search algorithm."""
 
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from flax import linen as nn
 import jax
@@ -86,8 +86,9 @@ def init_loop_var(target_prefix_ids: JTensor, beam_size: int, seq_len: int,
   return val
 
 
-def update_beam_mask(beam_mask: jnp.ndarray, hyp_id: jnp.ndarray,
-                     time_step: Optional[int]) -> jnp.ndarray:
+def update_beam_mask(
+    beam_mask: jnp.ndarray, hyp_id: jnp.ndarray, time_step: int | None
+) -> jnp.ndarray:
   """Update beam search output id mask.
 
   Args:
@@ -155,10 +156,9 @@ def get_final_output_ids(beam_mask: jnp.ndarray,
 
 
 def update_topk_scores_with_eos(
-    end_hyps: Tuple[jnp.ndarray, jnp.ndarray,
-                    jnp.ndarray], cur_hyps: Tuple[jnp.ndarray, jnp.ndarray,
-                                                  jnp.ndarray]
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    end_hyps: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    cur_hyps: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
   """Updates topk scores with eos.
 
   Args:
@@ -209,16 +209,18 @@ def post_process(result: NestedMap, eos_id: int,
 
 
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
-def flat_beam_search(model: base_layer.BaseLayerApi,
-                     extend_step_fn: decoder_utils.ExtendStepFn,
-                     prefix_ids: JTensor,
-                     prefix_paddings: JTensor,
-                     seq_len: int,
-                     beam_size: int,
-                     fprop_dtype: Any,
-                     max_decode_steps: Optional[int] = None,
-                     eos_id: Optional[int] = None,
-                     length_norm_alpha: float = 0.8) -> NestedMap:
+def flat_beam_search(
+    model: base_layer.BaseLayerApi,
+    extend_step_fn: decoder_utils.ExtendStepFn,
+    prefix_ids: JTensor,
+    prefix_paddings: JTensor,
+    seq_len: int,
+    beam_size: int,
+    fprop_dtype: Any,
+    max_decode_steps: int | None = None,
+    eos_id: int | None = None,
+    length_norm_alpha: float = 0.8,
+) -> NestedMap:
   """Beam search decode the input batch.
 
   Args:

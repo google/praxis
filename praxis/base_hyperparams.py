@@ -27,7 +27,7 @@ import re
 import sys
 import types
 import typing
-from typing import Any, Callable, Optional, Sequence, Set, Tuple, Type, TypeVar, Union, cast
+from typing import Any, Callable, Sequence, Type, TypeVar, cast
 
 from absl import logging
 import fiddle as fdl
@@ -102,10 +102,12 @@ def _is_str_param_pairs(val):
       isinstance(x[1], HParams) for x in val))
 
 
-def visit_nested_struct(obj_to_visit: Any,
-                        visit_fn: Callable[[str, Any], None],
-                        enter_fn: Optional[Callable[[str, Any], bool]] = None,
-                        exit_fn: Optional[Callable[[str, Any], None]] = None):
+def visit_nested_struct(
+    obj_to_visit: Any,
+    visit_fn: Callable[[str, Any], None],
+    enter_fn: Callable[[str, Any], bool] | None = None,
+    exit_fn: Callable[[str, Any], None] | None = None,
+):
   """Recursively visits objects within a nested pytree structure.
 
   Visit can traverse HParams, BaseHyperParams, lists, tuples, dataclasses,
@@ -354,7 +356,7 @@ def nested_struct_to_text(obj_to_visit: Any,
 BaseHyperParamsSelf = TypeVar('BaseHyperParamsSelf', bound='BaseHyperParams')
 
 
-def _get_sub_config(field: dataclasses.Field) -> Optional[fdl.Buildable]:
+def _get_sub_config(field: dataclasses.Field) -> fdl.Buildable | None:
   """Returns a sub-configuration for a dataclass field."""
   if isinstance(field.default_factory, SubConfigFactory):
     return field.default_factory.get_class().config()
@@ -364,7 +366,7 @@ def _get_sub_config(field: dataclasses.Field) -> Optional[fdl.Buildable]:
 
 def _fill_sub_config_fields(
     cfg: pax_fiddle.Config,
-    fields: Tuple[dataclasses.Field, ...],
+    fields: tuple[dataclasses.Field, ...],
 ) -> None:
   """Fills sub-config fields based on their dataclass annotations.
 
@@ -400,7 +402,7 @@ class BaseHyperParams:
   # An exception will be thrown if an attribute is overridden but it is not
   # explicitly listed in the tuple below. This is in order to avoid accidental
   # redefinition of attributes.
-  _attribute_overrides: Tuple[str, ...] = ()
+  _attribute_overrides: tuple[str, ...] = ()
 
   if typing.TYPE_CHECKING:
 
@@ -566,7 +568,8 @@ class BaseHyperParams:
   def copy_fields_from(
       self,
       source: 'BaseHyperParams',
-      missing_fields_in_self: Optional[Sequence[str]] = None) -> None:
+      missing_fields_in_self: Sequence[str] | None = None,
+  ) -> None:
     """Copies fields from source.
 
     Args:
@@ -660,10 +663,11 @@ class OverrideSubConfigFieldProtocol:
 
 
 def sub_config_field(
-    sub_config_cls: Optional[Union[Type[BaseHyperParams],
-                                   OverrideSubConfigFieldProtocol]] = None,
+    sub_config_cls: Type[BaseHyperParams]
+    | OverrideSubConfigFieldProtocol
+    | None = None,
     *,
-    lazy_ref: Optional[Callable[[], Type[BaseHyperParams]]] = None,
+    lazy_ref: Callable[[], Type[BaseHyperParams]] | None = None,
 ):
   """Returns an instance of the sub-config factory.
 
@@ -720,7 +724,7 @@ class BaseParameterizable:
 
   # This allows child classes to configure which arguments to `__init__` should
   # not be considered configurable.
-  _nonconfigurable_init_args: Tuple[str, ...] = ()
+  _nonconfigurable_init_args: tuple[str, ...] = ()
 
   def __init__(self, hparams: BaseParameterizable.HParams) -> None:
     """Constructor.
@@ -787,11 +791,12 @@ class BaseParameterizable:
     return fdl.cast(fdl.Partial, cls.config(**kwargs))
 
   @classmethod
-  def __init_subclass__(cls,
-                        init_params_arg_name: Optional[str] = None,
-                        nonconfigurable_init_arg_names: Optional[Tuple[
-                            str, ...]] = None,
-                        **kwargs: Any) -> None:
+  def __init_subclass__(
+      cls,
+      init_params_arg_name: str | None = None,
+      nonconfigurable_init_arg_names: tuple[str, ...] | None = None,
+      **kwargs: Any,
+  ) -> None:
     """Automatically initializes all subclasses as custom dataclasses."""
     if not (
         hasattr(cls, '_USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE')
@@ -992,7 +997,7 @@ class FiddleBaseParameterizable:
     return pax_fiddle.Config(cls, **kwargs)
 
   @functools.cached_property
-  def _fields(self) -> Set[str]:
+  def _fields(self) -> set[str]:
     """Returns a list of hyperparameter field names for `self`."""
     return set(field.name for field in dataclasses.fields(self) if field.init)  # pytype: disable=wrong-arg-types  # re-none
 
@@ -1031,7 +1036,7 @@ def _bind_cls_to_nested_params_class(cls: Type[Any]):
   """
   # Update the HParams to dynamically bind a few fields.
   fields = [
-      ('_attribute_overrides', Tuple[str, ...], ('cls',)),
+      ('_attribute_overrides', tuple[str, ...], ('cls',)),
       ('cls', Type[Any], cls),
   ]
   new_hparams = dataclasses.make_dataclass(
@@ -1045,8 +1050,10 @@ def _bind_cls_to_nested_params_class(cls: Type[Any]):
 
 
 def _add_precise_signature_to_make(
-    cls: Type[BaseParameterizableSelf], init_params_arg_name: Optional[str],
-    nonconfigurable_init_arg_names: Optional[Tuple[str, ...]]):
+    cls: Type[BaseParameterizableSelf],
+    init_params_arg_name: str | None,
+    nonconfigurable_init_arg_names: tuple[str, ...] | None,
+):
   """Gives `cls.make` a helpful type signature.
 
   `BaseParameterizable.make`'s signature is `**kwargs`. While this is
@@ -1142,8 +1149,9 @@ def _add_precise_signature_to_make(
   cls.make.__func__.__doc__ = cls.__doc__  # pytype: disable=attribute-error
 
 
-def instantiate(config: Union[BaseParameterizable.HParams, fdl.Buildable],
-                **kwargs) -> Any:
+def instantiate(
+    config: BaseParameterizable.HParams | fdl.Buildable, **kwargs
+) -> Any:
   """Converts a config into an instance of the configured type.
 
   This function is an extra layer of indirection to facilitate migrations

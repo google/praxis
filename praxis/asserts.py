@@ -58,10 +58,9 @@ causing assertion failures.  AssertsContext works as follows:
 
 import dataclasses
 import inspect
-from typing import Any, List, Optional, Sequence, Type
+from typing import Any, Sequence, Type
 
 import jax
-from jax.core import InconclusiveDimensionOperation
 from praxis import py_utils
 
 _AssertsContextStack = py_utils.ThreadLocalStack()
@@ -108,7 +107,7 @@ class AssertsContext:
     return _AssertsContextStack.stack[-1].enabled
 
 
-def _retrieve_argnames(assert_name: str) -> Optional[List[str]]:
+def _retrieve_argnames(assert_name: str) -> list[str] | None:
   """Retrieves the argnames of the upper level caller function.
 
   The expected usage is within an assert-like function from this module:
@@ -180,8 +179,8 @@ def _get_value_str(value: Any, arguments: Sequence[str], index: int = 0) -> str:
 def none(
     value: Any,
     *,
-    value_str: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `value` is None and raises an exception otherwise.
@@ -210,8 +209,8 @@ def none(
 def not_none(
     value: Any,
     *,
-    value_str: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `value` is not None and raises an exception otherwise.
@@ -241,9 +240,9 @@ def eq(
     value1: Any,
     value2: Any,
     *,
-    value_str1: Optional[str] = None,
-    value_str2: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str1: str | None = None,
+    value_str2: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `value1` and `value2` are equal.
@@ -281,9 +280,9 @@ def ne(
     value1: Any,
     value2: Any,
     *,
-    value_str1: Optional[str] = None,
-    value_str2: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str1: str | None = None,
+    value_str2: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `value1` and `value2` are not equal.
@@ -321,8 +320,8 @@ def instance(
     value: Any,
     instances: Any,
     *,
-    value_str: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `value` is of `instance` type.
@@ -355,8 +354,8 @@ def subclass(
     value: Any,
     subclasses: Any,
     *,
-    value_str: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `value` is a subclass of one of the provided `subclasses`.
@@ -389,9 +388,9 @@ def le(
     value1: Any,
     value2: Any,
     *,
-    value_str1: Optional[str] = None,
-    value_str2: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str1: str | None = None,
+    value_str2: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `value1 <= value2`.
@@ -429,9 +428,9 @@ def lt(
     value1: Any,
     value2: Any,
     *,
-    value_str1: Optional[str] = None,
-    value_str2: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str1: str | None = None,
+    value_str2: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `value1 < value2`.
@@ -469,9 +468,9 @@ def ge(
     value1: Any,
     value2: Any,
     *,
-    value_str1: Optional[str] = None,
-    value_str2: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str1: str | None = None,
+    value_str2: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `value1 >= value2`.
@@ -511,9 +510,9 @@ def gt(
     value1: Any,
     value2: Any,
     *,
-    value_str1: Optional[str] = None,
-    value_str2: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str1: str | None = None,
+    value_str2: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `value1 > value2`.
@@ -551,8 +550,8 @@ def in_set(
     value: Any,
     elements: Sequence[Any],
     *,
-    value_str: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `value` is within the valid `elements`.
@@ -572,14 +571,14 @@ def in_set(
   try:
     if value in elements:
       return
-  except InconclusiveDimensionOperation:
+  except jax.core.InconclusiveDimensionOperation:
     # In jax2tf context, comparisons like `b == 1` will raise an
     # InconclusiveDimensionOperation which we should regard as False.
     for e in elements:
       try:
         if value == e:
           return
-      except InconclusiveDimensionOperation:
+      except jax.core.InconclusiveDimensionOperation:
         pass
 
   if msg:
@@ -599,8 +598,8 @@ def between(
     *,
     left_strict: bool = False,
     right_strict: bool = False,
-    value_str: Optional[str] = None,
-    msg: Optional[str] = None,
+    value_str: str | None = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   """Checks that `min_value </= value </= max_value`.
@@ -649,7 +648,7 @@ def between(
 def assert_same_structure(
     x: Any,
     y: Any,
-    msg: Optional[str] = None,
+    msg: str | None = None,
     exception_type: Type[Exception] = ValueError,
 ) -> None:
   if not AssertsContext.assertions_enabled():

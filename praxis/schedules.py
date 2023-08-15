@@ -20,7 +20,7 @@ from __future__ import annotations
 import abc
 import dataclasses
 import math
-from typing import Any, Optional, Sequence, Tuple
+from typing import Any, Sequence
 
 import jax
 from jax import numpy as jnp
@@ -75,8 +75,8 @@ class Polynomial(BaseSchedule):
     origin: Origin of the polynomial. Can be "start" or "limit".
   """
   power: int = 1
-  start: Tuple[int, float] = (0, 1.0)
-  limit: Tuple[int, float] = (1, 1.0)
+  start: tuple[int, float] = (0, 1.0)
+  limit: tuple[int, float] = (1, 1.0)
   origin: str = 'start'
 
   def __post_init__(self):
@@ -124,8 +124,8 @@ class Exponential(BaseSchedule):
     start: (x0, y0)
     limit: (x1, y1)
   """
-  start: Tuple[int, float] = (0, 1.0)
-  limit: Tuple[int, float] = (1, 0.5)
+  start: tuple[int, float] = (0, 1.0)
+  limit: tuple[int, float] = (1, 0.5)
   linear: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
@@ -177,8 +177,8 @@ class DelayedCosine(BaseSchedule):
     start: (x0, y0)
     limit: (x1, y1)
   """
-  start: Tuple[int, float] = (0, 1.0)
-  limit: Tuple[int, float] = (1, 0.5)
+  start: tuple[int, float] = (0, 1.0)
+  limit: tuple[int, float] = (1, 0.5)
   max: Any = dataclasses.field(init=False, repr=False)
   min: Any = dataclasses.field(init=False, repr=False)
   linear: Any = dataclasses.field(init=False, repr=False)
@@ -363,8 +363,8 @@ class PiecewiseConstant(BaseSchedule):
     values: Values in each interval. The number of values must be equal to the
       the number of boundaries plus 1.
   """
-  boundaries: Optional[Sequence[int]] = None
-  values: Optional[Sequence[int]] = None
+  boundaries: Sequence[int] | None = None
+  values: Sequence[int] | None = None
 
   def __post_init__(self):
     super().__post_init__()
@@ -411,7 +411,7 @@ class Transformer(BaseSchedule):
   warmup_steps: int = 4000
   model_dim: int = 512
   worker_replicas: int = 1
-  decay_end: Optional[int] = None
+  decay_end: int | None = None
 
   def value_at(self, step: JTensor) -> JTensor:
     """Returns the current learning rate decay."""
@@ -570,8 +570,8 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
       the step is between boundaries[i] and boundaries[i + 1] then values[i] is
       returned, except when it is linearly ramping up from to values[0].
   """
-  boundaries: Optional[Sequence[int]] = None
-  values: Optional[Sequence[float]] = None
+  boundaries: Sequence[int] | None = None
+  values: Sequence[float] | None = None
   p0: Any = dataclasses.field(init=False, repr=False)
   p1: Any = dataclasses.field(init=False, repr=False)
 
@@ -614,8 +614,8 @@ class PiecewiseSchedule(BaseSchedule):
       boundaries[i] (exclusive). The *relative* step in each interval will be
       passed to the sub-schedule for Value.
   """
-  boundaries: Optional[Sequence[int]] = None
-  schedules: Optional[Sequence[BaseSchedule]] = None
+  boundaries: Sequence[int] | None = None
+  schedules: Sequence[BaseSchedule] | None = None
 
   def __post_init__(self):
     super().__post_init__()
@@ -645,8 +645,8 @@ class CycleSchedule(BaseSchedule):
       step is passed to the sub-schedule.
     steps: The number of steps to run each sub-schedule.
   """
-  schedules: Optional[Sequence[BaseSchedule]] = None
-  steps: Optional[Sequence[int]] = None
+  schedules: Sequence[BaseSchedule] | None = None
+  steps: Sequence[int] | None = None
   _period: Any = dataclasses.field(init=False, repr=False)
   _boundaries: Any = dataclasses.field(init=False, repr=False)
 

@@ -49,7 +49,7 @@ beneficial for compilation time and the current GDA-based checkpointing.
 
 import copy
 import functools
-from typing import Callable, Optional, Sequence, Tuple, Union
+from typing import Callable, Sequence
 
 import jax
 import optax
@@ -99,8 +99,9 @@ def _vectorize_on_prefix_dims(
   return v_fns[-1]
 
 
-def _encode_sharding_dim(d: Optional[Union[str, Sequence[str], int]],
-                         repeat_prefix_sep: str) -> str:
+def _encode_sharding_dim(
+    d: str | Sequence[str] | int | None, repeat_prefix_sep: str
+) -> str:
   """Encodes the sharding annotation into a string for one dimension."""
   if d is None:
     return ''
@@ -117,7 +118,7 @@ def _encode_sharding_dim(d: Optional[Union[str, Sequence[str], int]],
   return 's' + d
 
 
-def _decode_sharding_dim(d: str) -> Optional[Union[str, Sequence[str], int]]:
+def _decode_sharding_dim(d: str) -> str | Sequence[str] | int | None:
   """Decodes the sharding annotation from a string for one dimension."""
   if not d:
     return None
@@ -166,7 +167,7 @@ def _get_var_param_repeat_prefix_key(var_param: base_layer.WeightHParams,
 
 def _parse_var_param_repeat_prefix_key(
     prefix: str, repeat_prefix_sep: str
-) -> Tuple[SplitDimsMapping, SplitDimsMapping, SplitDimsMapping]:
+) -> tuple[SplitDimsMapping, SplitDimsMapping, SplitDimsMapping]:
   """Parses shape and sharding prefixes from string keys."""
   if prefix == NO_PREFIX_KEY:
     return [], [], []
@@ -257,11 +258,14 @@ def _init_with_vectorized_repeat_prefix(
 
 
 def _update_with_vectorized_repeat_prefix(
-    tx: GeneralGradientTransformation, updates: NestedJTensor,
-    state: optax.OptState, old_vars: NestedJTensor, var_hparams: NestedHParams,
+    tx: GeneralGradientTransformation,
+    updates: NestedJTensor,
+    state: optax.OptState,
+    old_vars: NestedJTensor,
+    var_hparams: NestedHParams,
     repeat_prefix_sep: str,
-    force_prefix_structure: bool = False
-    ) -> Tuple[NestedJTensor, optax.OptState]:
+    force_prefix_structure: bool = False,
+) -> tuple[NestedJTensor, optax.OptState]:
   """update function for vectorized optimizers based on var_hparams."""
   grouped_updates = _group_by_repeat_prefix(updates, var_hparams,
                                             repeat_prefix_sep)

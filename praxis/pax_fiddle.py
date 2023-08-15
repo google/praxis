@@ -950,7 +950,8 @@ def _is_supported_buildable_type(typ):
     )
   elif origin in _MAPPING_ORIGINS:
     return _is_supported_buildable_type(args[1])
-  elif origin is Union:
+  # `Union[A, B]` and `A | B` rely on slightly distinct implementations.
+  elif origin is Union or origin is types.UnionType:
     return all(_is_supported_buildable_type(arg) or arg is None for arg in args)
   elif origin is Optional:
     return all(_is_supported_buildable_type(arg) for arg in args)

@@ -17,7 +17,7 @@
 
 import copy
 import dataclasses
-from typing import Dict, List, Optional, Sequence, TypeVar, Union
+from typing import Optional, Sequence, TypeVar
 
 from praxis import decoder_utils
 from praxis import pax_fiddle
@@ -61,13 +61,13 @@ class DecoderHParams:
   # TODO(b/229679837): remove seqlen and uses max_decode_steps.
   seqlen: int = 0
   min_prefix_len: int = 5
-  eos_id: Union[int, Sequence[int]] = 2
+  eos_id: int | Sequence[int] = 2
   min_decode_steps: int = 0
-  max_decode_steps: Optional[Union[int, Sequence[int]]] = None
+  max_decode_steps: int | Sequence[int] | None = None
   fprop_for_prefix: bool = False
   lazy_prefix_broadcast: bool = False
-  decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None
-  process_result_fn: Optional[decoder_utils.ProcessResultFn] = None
+  decode_loop_mesh_axes_transpose: dict[str, str] | None = None
+  process_result_fn: decoder_utils.ProcessResultFn | None = None
   emb_lookup_style: str = 'matmul'
   use_extra_input_kwargs: bool = False
 
@@ -139,12 +139,12 @@ class SampleDecoderHParams(DecoderHParams):
   k: int = 40
   top_k_recall_target: float = 1.0
   use_top_k_for_logprobs: bool = False
-  p: Optional[Union[float, JTensor]] = None
+  p: float | JTensor | None = None
   next_token_sampler_tpl: pax_fiddle.Config[
       sample_decode.BaseNextTokenSampler] = (
           pax_fiddle.template_field(sample_decode.DefaultNextTokenSampler))
   global_normalize: bool = False
-  cf_guidance_scale: Optional[Union[List[float], float]] = None
+  cf_guidance_scale: list[float] | float | None = None
   controlled_decoding: Optional[decoder_utils.ControlledDecodingHParams] = None
   sort_samples: Optional[bool] = True
   override_next_token_sampler_params: bool = True

@@ -23,7 +23,7 @@ import dataclasses
 import inspect
 import math
 import re
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Sequence
 
 from absl import logging
 from etils import epath
@@ -154,23 +154,23 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   """
 
   _VALIDATE_BATCH_SIZE_NOT_NONE = True
-  batch_size: Optional[int] = None
+  batch_size: int | None = None
   # Sharding behavior. If num_infeed_hosts is 0, it will be given a default
   # value by PAX trainer; if it is still not set during __init__, 1 will be
   # used.
   num_infeed_hosts: int = 0
   infeed_host_index: int = 0
   # Deterministic randomness.
-  input_random_seed: Optional[int] = None
+  input_random_seed: int | None = None
   reset_for_eval: bool = False
   eval_loop_num_batches: int = 1
   is_training: bool = False
   experimental_remote_input: bool = False
   batch_padding_size: int = 0
-  custom_device_order: Optional[Sequence[int]] = None
+  custom_device_order: Sequence[int] | None = None
   input_checkpointing_enabled: bool = False
-  tf_data_service_address: Optional[str] = None
-  dataset: Optional[tf.data.Dataset] = dataclasses.field(
+  tf_data_service_address: str | None = None
+  dataset: tf.data.Dataset | None = dataclasses.field(
       default=None, init=False, repr=False
   )
   _peek: Any = dataclasses.field(init=False, repr=False)
@@ -199,7 +199,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
 
   @classmethod
   def get_batch_size(
-      cls, params: Union[pax_fiddle.Config[BaseInput], BaseInput]
+      cls, params: pax_fiddle.Config[BaseInput] | BaseInput
   ) -> int:
     assert params.batch_size is not None
     return params.batch_size
@@ -237,7 +237,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     """Set the internal state from serialized bytes."""
     raise NotImplementedError
 
-  def __reduce__(self) -> Tuple[Callable[[Any, bytes], Any], Tuple[Any, bytes]]:
+  def __reduce__(self) -> tuple[Callable[[Any, bytes], Any], tuple[Any, bytes]]:
     """Returns a callable to recreate the input object in its current state.
 
     Adheres to the contract of object.__reduce__().
@@ -281,7 +281,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
         unpadded,
     )
 
-  def peek_padded(self) -> Optional[NestedJTensor]:
+  def peek_padded(self) -> NestedJTensor | None:
     """Peeks into the current input data pipeline."""
     if self._peek is not None:
       return self._peek
@@ -305,10 +305,12 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     self._peek = None
     self._state_before_peek = None
 
-  def ids_to_strings(self,
-                     ids: pytypes.NpTensor,
-                     lengths: pytypes.NpTensor,
-                     key: Optional[str] = None) -> Sequence[str]:
+  def ids_to_strings(
+      self,
+      ids: pytypes.NpTensor,
+      lengths: pytypes.NpTensor,
+      key: str | None = None,
+  ) -> Sequence[str]:
     """Converts int ids into strings.
 
     Args:
@@ -428,8 +430,8 @@ class LingvoInputAdaptor(BaseInput):
   """
   _VALIDATE_BATCH_SIZE_NOT_NONE = False
   _VALIDATE_BATCH_SIZE_NONE = True
-  input: Optional[py_utils.InstantiableParams] = None
-  num_batches: Optional[int] = None
+  input: py_utils.InstantiableParams | None = None
+  num_batches: int | None = None
   allow_fixed_file_random_seed: bool = False
   cluster_do_eval: bool = False
   _cluster: Any = dataclasses.field(init=False, repr=False)
@@ -481,7 +483,7 @@ class LingvoInputAdaptor(BaseInput):
   @classmethod
   def get_batch_size(
       cls,
-      params: Union[pax_fiddle.Config[LingvoInputAdaptor], LingvoInputAdaptor],
+      params: pax_fiddle.Config[LingvoInputAdaptor] | LingvoInputAdaptor,
   ) -> int:
     assert params.input is not None
     if hasattr(params.input, 'bucket_batch_limit'):
@@ -566,10 +568,12 @@ class LingvoInputAdaptor(BaseInput):
     # reinstantiate the input and retrace self._get_batch.
     self._initialize()
 
-  def ids_to_strings(self,
-                     ids: pytypes.NpTensor,
-                     lengths: pytypes.NpTensor,
-                     key: Optional[str] = None) -> Sequence[str]:
+  def ids_to_strings(
+      self,
+      ids: pytypes.NpTensor,
+      lengths: pytypes.NpTensor,
+      key: str | None = None,
+  ) -> Sequence[str]:
     """Converts int ids into strings."""
     bytes_list = self.input_inst.IdsToStrings(ids, lengths, key=key)
     if isinstance(bytes_list, tf.Tensor):
@@ -631,7 +635,7 @@ class LingvoInputAdaptorNewBatchSize(LingvoInputAdaptor):
 
   @classmethod
   def get_batch_size(
-      cls, params: Union[pax_fiddle.Config[BaseInput], BaseInput]
+      cls, params: pax_fiddle.Config[BaseInput] | BaseInput
   ) -> int:
     assert params.batch_size is not None
     return params.batch_size
@@ -696,7 +700,7 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
   @classmethod
   def get_batch_size(
       cls,
-      params: Union[pax_fiddle.Config[LingvoInputAdaptor], LingvoInputAdaptor],
+      params: pax_fiddle.Config[LingvoInputAdaptor] | LingvoInputAdaptor,
   ) -> int:
     assert params.batch_size is not None
     return params.batch_size
@@ -947,8 +951,8 @@ class MultiInput(BaseInput):
   _VALIDATE_BATCH_SIZE_NOT_NONE = False  # Validated separately for children.
   _VALIDATE_BATCH_SIZE_NONE = True  # Can't set batch size for wrapper.
 
-  input_to_params: Optional[Dict[str, pax_fiddle.Config[BaseInput]]] = None
-  default_input: Optional[str] = None
+  input_to_params: dict[str, pax_fiddle.Config[BaseInput]] | None = None
+  default_input: str | None = None
   _inputs: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
@@ -989,7 +993,7 @@ class MultiInput(BaseInput):
 
   @classmethod
   def get_batch_size(
-      cls, params: Union[pax_fiddle.Config[MultiInput], MultiInput]
+      cls, params: pax_fiddle.Config[MultiInput] | MultiInput
   ) -> int:
     assert params.input_to_params
     logging.warning(
@@ -1022,11 +1026,13 @@ class MultiInput(BaseInput):
     for _, input_gen in self._inputs.items():
       input_gen.reset()
 
-  def ids_to_strings(self,
-                     ids: pytypes.NpTensor,
-                     lengths: pytypes.NpTensor,
-                     key: Optional[str] = None,
-                     input_name: Optional[str] = None) -> Sequence[str]:
+  def ids_to_strings(
+      self,
+      ids: pytypes.NpTensor,
+      lengths: pytypes.NpTensor,
+      key: str | None = None,
+      input_name: str | None = None,
+  ) -> Sequence[str]:
     """Converts int ids into strings using a particular input.
 
     Args:
@@ -1072,7 +1078,7 @@ class BaseInputSpecsProvider(
 
 class DatasetInputSpecsProvider(BaseInputSpecsProvider):
   """Class to provide input specs from a dataset for model initialization."""
-  input_p: Optional[pax_fiddle.Config[BaseInput]] = None
+  input_p: pax_fiddle.Config[BaseInput] | None = None
 
   def get_input_specs(self) -> NestedShapeDtypeStruct:
     """Returns example input specs from the input pipeline for model init."""

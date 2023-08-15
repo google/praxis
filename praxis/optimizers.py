@@ -22,7 +22,7 @@ import copy
 import dataclasses
 import functools
 import re
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Protocol, Sequence, Tuple, Union, runtime_checkable
+from typing import Any, Callable, NamedTuple, Protocol, Sequence, runtime_checkable
 
 from absl import logging
 import jax
@@ -59,9 +59,9 @@ NestedJTensor = pytypes.NestedJTensor
 NestedHParams = pytypes.NestedHParams
 
 # Initializes sharding spec for the optimizer state variables.
-TransformInitPartitionSpecFn = Callable[[NestedHParams],
-                                        Union[NestedHParams,
-                                              Sequence[NestedHParams]]]
+TransformInitPartitionSpecFn = Callable[
+    [NestedHParams], NestedHParams | Sequence[NestedHParams]
+]
 
 instantiate = base_hyperparams.instantiate
 
@@ -96,8 +96,9 @@ class ShardedGradientTransformation:
   init_partition_spec: TransformInitPartitionSpecFn
 
 
-GeneralGradientTransformation = Union[optax.GradientTransformation,
-                                      ShardedGradientTransformation]
+GeneralGradientTransformation = (
+    optax.GradientTransformation | ShardedGradientTransformation
+)
 
 
 def count_init_fn(_):
@@ -122,14 +123,14 @@ def count_init_partition_spec_fn(
 
 def partition_params(
     grad_tx: optax.GradientTransformation,
-    var_weight_hparams: Optional[NestedWeightHParams],
+    var_weight_hparams: NestedWeightHParams | None,
     opt_states: optax.OptState,
 ) -> optax.OptState:
   """Applies sharding for optimizer params with tree_map_params."""
 
   def sharding_function(
       params: Any, spec: base_layer.WeightHParams
-  ) -> Optional[base_layer.WeightHParams]:
+  ) -> base_layer.WeightHParams | None:
     if isinstance(params, optax.MaskedNode):
       return None
     if len(params.shape) < 1:
@@ -164,8 +165,9 @@ def partition_params(
   return opt_states_pspec
 
 
-def sharded_sgd(learning_rate_fn: optax.Schedule, momentum: Optional[float],
-                nesterov: bool) -> ShardedGradientTransformation:
+def sharded_sgd(
+    learning_rate_fn: optax.Schedule, momentum: float | None, nesterov: bool
+) -> ShardedGradientTransformation:
   """A Stochastic Gradient Descent optimiser that supports spmd sharding.
 
   This implements stochastic gradient descent. It also includes support for
@@ -450,7 +452,7 @@ def sharded_chain(
 
 def sharded_masked(
     inner: GeneralGradientTransformation,
-    mask: Union[NestedHParams, Callable[[NestedHParams], NestedHParams]],
+    mask: NestedHParams | Callable[[NestedHParams], NestedHParams],
     use_custom_masked: bool = False,
 ) -> GeneralGradientTransformation:
   """Mask updates so only some are transformed, the rest are passed through.
@@ -487,9 +489,9 @@ def sharded_masked(
 
 def apply_lp_regularizer(
     var_lp_mask: NestedHParams,
-    regularizer_weight: Optional[float] = 0.0,
-    p: Optional[float] = 2.0,
-    skip_lp_1d_vectors: Optional[bool] = False,
+    regularizer_weight: float | None = 0.0,
+    p: float | None = 2.0,
+    skip_lp_1d_vectors: bool | None = False,
     use_optax_gradient_transformations: bool = False,
 ) -> GeneralGradientTransformation:
   """Applies Lp regularization by adjusting gradients.
@@ -566,7 +568,7 @@ def apply_lp_regularizer(
 def apply_decoupled_weight_decay(
     learning_rate_fn: optax.Schedule,
     var_wd_mask: NestedHParams,
-    regularizer_weight: Optional[float] = 0.0,
+    regularizer_weight: float | None = 0.0,
     use_optax_gradient_transformations: bool = False,
 ) -> GeneralGradientTransformation:
   """Applies decoupled weight decay on weights.
@@ -864,7 +866,7 @@ def apply_ema_weights(
 def apply_ewc_regularization(
     learning_rate_fn: optax.Schedule,
     ewc_regularizer_weight: float = 0.0,
-    ewc_weight_per_var: Optional[bool] = False,
+    ewc_weight_per_var: bool | None = False,
     use_optax_gradient_transformations: bool = False,
 ) -> GeneralGradientTransformation:
   """Applies EWC regularization on weights.
@@ -1002,7 +1004,7 @@ class Optimizer(Protocol):
   @abstractmethod
   def get_grad_transformation(
       self,
-      var_weight_hparams: Optional[NestedWeightHParams] = None,
+      var_weight_hparams: NestedWeightHParams | None = None,
       include_ema: bool = True,
   ) -> GeneralGradientTransformation:
     pass
@@ -1046,22 +1048,22 @@ class OptaxOptimizer(base_hyperparams.FiddleBaseParameterizable):
       matrix.
   """
 
-  l2_regularizer_weight: Optional[float] = None
-  l1_regularizer_weight: Optional[float] = None
+  l2_regularizer_weight: float | None = None
+  l1_regularizer_weight: float | None = None
   skip_lp_1d_vectors: bool = False
-  decoupled_weight_decay: Optional[float] = None
+  decoupled_weight_decay: float | None = None
   clip_gradient_norm_to_value: float = 0.0
   clip_gradient_single_norm_to_value: float = 0.0
   learning_rate: float = 0.0
-  lr_schedule: Optional[pax_fiddle.Config[schedules.BaseSchedule]] = None
+  lr_schedule: pax_fiddle.Config[schedules.BaseSchedule] | None = None
   ema_decay: float = 0.0
   ewc_regularizer_weight: float = 0.0
-  ewc_weight_per_var: Optional[NestedMap] = None
+  ewc_weight_per_var: NestedMap | None = None
   _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
   learning_rate: float = 0.0
-  lr_schedule: Optional[pax_fiddle.Config[schedules.BaseSchedule]] = None
+  lr_schedule: pax_fiddle.Config[schedules.BaseSchedule] | None = None
   _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
-  grad_tx: Optional[optax.GradientTransformation] = None
+  grad_tx: optax.GradientTransformation | None = None
 
   def __post_init__(self):
     self._lr_schedule_inst = instantiate(self.lr_schedule)
@@ -1077,7 +1079,7 @@ class OptaxOptimizer(base_hyperparams.FiddleBaseParameterizable):
 
   def get_grad_transformation(
       self,
-      var_weight_hparams: Optional[NestedWeightHParams] = None,
+      var_weight_hparams: NestedWeightHParams | None = None,
       include_ema: bool = True,
   ) -> optax.GradientTransformation:
     """Get the grad transformation corresponds to this optimizer config.
@@ -1191,17 +1193,17 @@ class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
       matrix.
   """
 
-  l2_regularizer_weight: Optional[float] = None
-  l1_regularizer_weight: Optional[float] = None
+  l2_regularizer_weight: float | None = None
+  l1_regularizer_weight: float | None = None
   skip_lp_1d_vectors: bool = False
-  decoupled_weight_decay: Optional[float] = None
+  decoupled_weight_decay: float | None = None
   clip_gradient_norm_to_value: float = 0.0
   clip_gradient_single_norm_to_value: float = 0.0
   learning_rate: float = 0.0
-  lr_schedule: Optional[pax_fiddle.Config[schedules.BaseSchedule]] = None
+  lr_schedule: pax_fiddle.Config[schedules.BaseSchedule] | None = None
   ema_decay: float = 0.0
   ewc_regularizer_weight: float = 0.0
-  ewc_weight_per_var: Optional[NestedMap] = None
+  ewc_weight_per_var: NestedMap | None = None
   _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
@@ -1221,8 +1223,9 @@ class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
 
   def get_grad_transformation(
       self,
-      var_weight_hparams: Optional[NestedWeightHParams] = None,
-      include_ema: bool = True) -> GeneralGradientTransformation:
+      var_weight_hparams: NestedWeightHParams | None = None,
+      include_ema: bool = True,
+  ) -> GeneralGradientTransformation:
     """Get the grad transformation corresponds to this optimizer config.
 
     This is the final gradient transformation that incorporates all
@@ -1303,7 +1306,7 @@ class Sgd(BaseOptimizer):
       not used.
     nesterov: Whether Nesterov momentum is used or not.
   """
-  momentum: Optional[float] = None
+  momentum: float | None = None
   nesterov: bool = False
 
   def _get_raw_grad_transformation(
@@ -1337,7 +1340,7 @@ class Lamb(BaseOptimizer):
   eps: float = 1e-6
   eps_root: float = 0.0
   weight_decay: float = 0.0
-  mask: Optional[Any] = None
+  mask: Any | None = None
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule
@@ -1361,7 +1364,7 @@ class ShardedSgd(BaseOptimizer):
       not used.
     nesterov: Whether Nesterov momentum is used or not.
   """
-  momentum: Optional[float] = None
+  momentum: float | None = None
   nesterov: bool = False
 
   def _get_raw_grad_transformation(
@@ -1506,10 +1509,10 @@ class Adafactor(BaseOptimizer):
   decay_rate: float = 0.8
   decay_offset: int = 0
   multiply_by_parameter_scale: bool = True
-  clip_threshold: Optional[float] = 1.0
-  momentum: Optional[float] = None
+  clip_threshold: float | None = 1.0
+  momentum: float | None = None
   dtype_momentum: str = 'float32'
-  weight_decay_rate: Optional[float] = None
+  weight_decay_rate: float | None = None
   eps: float = 1e-30
   factored: bool = True
 
@@ -1596,14 +1599,14 @@ class DistributedShampoo(BaseOptimizer):
   statistics_compute_steps: int = 1
   graft_type: Any = GraftingType.ADAGRAD
   batch_axis_name: str = 'batch'
-  mesh_axis_names: Optional[Sequence[str]] = None
-  num_devices_for_pjit: Optional[int] = None
+  mesh_axis_names: Sequence[str] | None = None
+  num_devices_for_pjit: int | None = None
   nesterov: bool = True
   exponent_override: int = 0
   inverse_failure_threshold: float = 0.1
   moving_average_for_momentum: bool = False
   skip_preconditioning_dim_size_gt: int = 4096
-  clip_by_scaled_gradient_norm: Optional[float] = None
+  clip_by_scaled_gradient_norm: float | None = None
   best_effort_shape_interpretation: bool = True
   tensor_split_dims_mapping: Sequence[int] = pax_fiddle.instance_field(
       default_factory=lambda: [-1, 1, -1]
@@ -1940,8 +1943,9 @@ class Adagrad(BaseOptimizer):
     )
 
 
-def to_quantized(fvalue: JTensor,
-                 quantized_dtype: jnp.dtype) -> Tuple[JTensor, JTensor]:
+def to_quantized(
+    fvalue: JTensor, quantized_dtype: jnp.dtype
+) -> tuple[JTensor, JTensor]:
   """Converts floating point values `fvalues` to quantized values.
 
   We use a very simple quantization scheme where the range is symmetric around
@@ -2088,22 +2092,22 @@ def reduce_rms(array: JTensor) -> JTensor:
 @dataclasses.dataclass(frozen=True)
 class _ShardedAdafactorUpdateResult:
   """Structure containing per-variable info for Adafactor."""
-  update: Optional[Any]
-  m: Optional[Any]
-  m_scale: Optional[Any]
-  vr: Optional[Any]
-  vc: Optional[Any]
-  v: Optional[Any]
+  update: Any | None
+  m: Any | None
+  m_scale: Any | None
+  vr: Any | None
+  vc: Any | None
+  v: Any | None
 
 
 class ShardedAdafactorState(NamedTuple):
   """Overall state of the ShardedAdafactor optimizer."""
   count: JTensor
-  m: Optional[NestedJTensor]
-  m_scale: Optional[NestedJTensor]
-  vr: Optional[NestedJTensor]
-  vc: Optional[NestedJTensor]
-  v: Optional[NestedJTensor]
+  m: NestedJTensor | None
+  m_scale: NestedJTensor | None
+  vr: NestedJTensor | None
+  vc: NestedJTensor | None
+  v: NestedJTensor | None
 
 
 class _ShardedAdafactorHelper:
@@ -2112,19 +2116,19 @@ class _ShardedAdafactorHelper:
   def __init__(
       self,
       learning_rate_fn: optax.Schedule,
-      weight_decay: Optional[float],
+      weight_decay: float | None,
       layerwise_adaptation: bool,
       decay_method: str,
       decay_adam: float,
       decay_pow: float,
       beta1: float,
-      clip_threshold: Optional[float],
+      clip_threshold: float | None,
       factored: bool,
       epsilon1_grad_sq_reg: float,
       quantized_dtype: jnp.dtype,
       # TODO(bf-jax) Update default value to True, once this is supported.
       respect_skip_lp_regularization: bool,
-      exclude_from_layerwise_adaptation: Optional[List[str]],
+      exclude_from_layerwise_adaptation: list[str] | None,
       per_var_learning_summary: bool,
       sort_factored_second_moment_dims: bool,
       min_dim_size_to_factor: int,
@@ -2572,19 +2576,19 @@ class _ShardedAdafactorHelper:
 
 def sharded_adafactor(
     learning_rate_fn: optax.Schedule,
-    weight_decay: Optional[Union[float, Dict[str, float]]] = None,
+    weight_decay: float | dict[str, float] | None = None,
     layerwise_adaptation: bool = False,
     decay_method: str = '',
     decay_adam: float = 0.0,
     decay_pow: float = 0.0,
     beta1: float = 0.0,
-    clip_threshold: Optional[float] = 1.0,
+    clip_threshold: float | None = 1.0,
     factored: bool = True,
     epsilon1_grad_sq_reg: float = 1e-30,
     quantized_dtype: jnp.dtype = jnp.int8,
     # TODO(bf-jax) Update default value to True, once this is supported.
     respect_skip_lp_regularization: bool = False,
-    exclude_from_layerwise_adaptation: Optional[List[str]] = None,
+    exclude_from_layerwise_adaptation: list[str] | None = None,
     per_var_learning_summary=False,
     sort_factored_second_moment_dims=False,
     # min_dim_size_to_factor is only used when
@@ -2770,14 +2774,14 @@ class ShardedAdafactor(BaseOptimizer):
     epsilon2_param_scale_reg: Regularization constant for parameter scale.
     maybe_inf_to_nan: Will use jax.nan_to_num during update when True.
   """
-  weight_decay: Optional[Union[float, Dict[str, float]]] = None
+  weight_decay: float | dict[str, float] | None = None
   layerwise_adaptation: bool = False
-  exclude_from_layerwise_adaptation: Optional[List[str]] = None
+  exclude_from_layerwise_adaptation: list[str] | None = None
   decay_method: str = ''
   decay_adam: float = 0.0
   decay_pow: float = 0.0
   beta1: float = 0.0
-  clip_threshold: Optional[float] = 1.0
+  clip_threshold: float | None = 1.0
   factored: bool = True
   epsilon1_grad_sq_reg: float = 1e-30
   quantized_dtype: str = 'int8'
@@ -2872,9 +2876,11 @@ def sharded_static_accumulation(
         accumulated_update=accumulated_update,
         count=count)
 
-  def update_fn(updates: NestedJTensor,
-                state: NestedJTensor,
-                params: Optional[NestedJTensor] = None):
+  def update_fn(
+      updates: NestedJTensor,
+      state: NestedJTensor,
+      params: NestedJTensor | None = None,
+  ):
     new_accumulated_update = jax.tree_map(lambda acc, x: acc + x,
                                           state.accumulated_update, updates)  # pytype: disable=attribute-error  # jax-ndarray
 
@@ -2972,7 +2978,7 @@ class ShardedStaticAccumulator(BaseOptimizer):
       accumulation, using lax.cond may have memory benefits, but saw some cases
       where it can have perf regression.
   """
-  optimizer_tpl: Optional[pax_fiddle.Config[BaseOptimizer]] = None
+  optimizer_tpl: pax_fiddle.Config[BaseOptimizer] | None = None
   num_sub_batches: int = 1
   base_optimizer: Any = dataclasses.field(init=False, repr=False)
   accumulation_use_cond_op: bool = False

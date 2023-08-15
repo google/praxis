@@ -16,7 +16,6 @@
 """Flax-related utils."""
 
 import copy
-from typing import Dict, List, Optional
 
 from flax import traverse_util
 from flax.core import frozen_dict
@@ -62,10 +61,10 @@ def maybe_repack_summary(tree: pytypes.PyTree, unpack_summaries: bool,
 
 def convert_to_boxed_params(
     var_tree: pytypes.PyTree,
-    logical_axes_rules: Optional[pytypes.LogicalAxisRules] = None,
+    logical_axes_rules: pytypes.LogicalAxisRules | None = None,
     mesh_shape=None,
-    var_collection_map: Dict[
-        str, List[base_layer.WeightHParamsCollection]
+    var_collection_map: dict[
+        str, list[base_layer.WeightHParamsCollection]
     ] = {},
 ) -> pytypes.PyTree:
   """Converts raw params into BoxedParams."""
@@ -83,8 +82,11 @@ def convert_to_boxed_params(
       if key.endswith('_axes')
   }
 
-  def to_boxed(x_param, var_collection: str,
-               logical_axes: Optional[jax.sharding.PartitionSpec]):
+  def to_boxed(
+      x_param,
+      var_collection: str,
+      logical_axes: jax.sharding.PartitionSpec | None,
+  ):
     if isinstance(x_param, base_layer.BoxedParam):
       # The param might already be boxed (if the flax module contain praxis
       # submodules). We should not box it again.

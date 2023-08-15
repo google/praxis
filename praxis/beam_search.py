@@ -15,7 +15,7 @@
 
 """Vanilla Beam search algorithm."""
 
-from typing import Callable, Dict, Optional, Sequence, Tuple, Union
+from typing import Callable, Sequence
 
 from flax import linen as nn
 import jax
@@ -28,7 +28,7 @@ from praxis import py_utils
 NestedMap = py_utils.NestedMap
 JTensor = base_layer.JTensor
 BeamSearchHParams = decoder_hparams.BeamSearchHParams
-GlobalBeam = Tuple[
+GlobalBeam = tuple[
     JTensor,  # int[batch_size, beam_size, seq_len] Decoded IDs including </s>
     JTensor,  # int[batch_size, beam_size] Complete sequence lengths
     JTensor,  # float[batch_size, beam_size] Complete sequence scores
@@ -130,21 +130,18 @@ def default_compute_logprobs_fn(
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def beam_search(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: Union[
-        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
-    ],
+    extend_step_fn: decoder_utils.ExtendStepFn
+    | decoder_utils.ExpandedExtendStepFn,
     fprop_fn: decoder_utils.FPropFn,
     transform_state_fn: decoder_utils.TransformStateFn,
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
     beam_search_hparams: BeamSearchHParams,
     compute_logprobs_fn: ComputeLogprobsFn = default_compute_logprobs_fn,
-    decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
-    model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
-    process_result_fn: Optional[decoder_utils.ProcessResultFn] = None,
-    lazy_broadcast_prefix_fn: Optional[
-        decoder_utils.LazyBroadcastPrefixFn
-    ] = None,
+    decode_loop_mesh_axes_transpose: dict[str, str] | None = None,
+    model_var_pspecs: base_layer.NestedPartitionSpec | None = None,
+    process_result_fn: decoder_utils.ProcessResultFn | None = None,
+    lazy_broadcast_prefix_fn: decoder_utils.LazyBroadcastPrefixFn | None = None,
 ) -> NestedMap:
   """Vanilla beam search decode the input batch.
 
@@ -209,17 +206,14 @@ def beam_search(
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def beam_search_after_prefix_fprop(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: Union[
-        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
-    ],
+    extend_step_fn: decoder_utils.ExtendStepFn
+    | decoder_utils.ExpandedExtendStepFn,
     transform_state_fn: decoder_utils.TransformStateFn,
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
     beam_search_hparams: BeamSearchHParams,
     compute_logprobs_fn: ComputeLogprobsFn = default_compute_logprobs_fn,
-    lazy_broadcast_prefix_fn: Optional[
-        decoder_utils.LazyBroadcastPrefixFn
-    ] = None,
+    lazy_broadcast_prefix_fn: decoder_utils.LazyBroadcastPrefixFn | None = None,
 ) -> NestedMap:
   """Same as beam_search but this is after prefix fprop."""
   # TODO(b/229679837): Move right align prefix ids and paddings logic inside

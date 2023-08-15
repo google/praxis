@@ -25,7 +25,7 @@ import functools
 import itertools
 import math
 import typing
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Mapping, Sequence, Type, TypeVar
 
 from absl import flags
 from absl import logging
@@ -123,7 +123,7 @@ instantiate = base_hyperparams.instantiate
 # The transformation is done on the batch and/or time dimension; if a required
 # dimension is missing (represented as -1), the function should not change the
 # state.
-DecodeStateTransformFn = Callable[[JTensor, int, Optional[int]], JTensor]
+DecodeStateTransformFn = Callable[[JTensor, int, int | None], JTensor]
 
 # The axis name that is pmmaped over.
 PMAP_PARALLEL_AXIS_NAME = 'batch'
@@ -262,10 +262,12 @@ def var_partition_specs(
   return jax.tree_map(_get_spec, var_specs)
 
 
-def maybe_shard(x: JTensor,
-                split_dims_mapping: SplitDimsMapping = None,
-                mesh_axis_names: Optional[Sequence[str]] = None,
-                unconstrained_dims: Optional[Sequence[int]] = None) -> JTensor:
+def maybe_shard(
+    x: JTensor,
+    split_dims_mapping: SplitDimsMapping = None,
+    mesh_axis_names: Sequence[str] | None = None,
+    unconstrained_dims: Sequence[int] | None = None,
+) -> JTensor:
   """Adds explicit xla sharding constraints.
 
   This is a wrapper around jax.lax.with_sharding_constraint to allow for adding
@@ -345,19 +347,19 @@ class WeightInit:
 
   @pax_fiddle.auto_config
   @staticmethod
-  def Gaussian(scale: float = 1.0):
+  def Gaussian(scale: float = 1.0) -> WeightInit:
     """scale * jax.random.normal(0, 1.0)."""
     return WeightInit('gaussian', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def Uniform(scale: float = 1.0):
+  def Uniform(scale: float = 1.0) -> WeightInit:
     """scale * jax.random.uniform(-1.0, 1.0)."""
     return WeightInit('uniform', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def Xavier(scale: float = 1.0):
+  def Xavier(scale: float = 1.0) -> WeightInit:
     """Xavier initialization (x = sqrt(6. / (in + out)); [-x, x])."""
     return WeightInit('xavier', scale)
 
@@ -367,86 +369,86 @@ class WeightInit:
       scale: float = 1.0,
       depth: float = 1.0,
       layers_per_residual_block: float = 1.0,
-  ):
+  ) -> WeightInit:
     """Xavier initialization with Fixup."""
     scale = scale * math.pow(depth, (-1.0 / (2 * layers_per_residual_block)))
     return WeightInit('xavier', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def Constant(scale: Union[float, bool] = 1.0):
+  def Constant(scale: float | bool = 1.0) -> WeightInit:
     """scale."""
     return WeightInit('constant', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def TruncatedGaussian(scale: float = 1.0):
+  def TruncatedGaussian(scale: float = 1.0) -> WeightInit:
     """scale * jax.random.truncated_normal(-2.0, 2.0)."""
     return WeightInit('truncated_gaussian', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def GaussianSqrtDim(scale: float = 1.0):
+  def GaussianSqrtDim(scale: float = 1.0) -> WeightInit:
     """scale * jax.random.normal(0, 1 / sqrt(dim0))."""
     return WeightInit('gaussian_sqrt_dim', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def GaussianSqrtFanIn(scale: float = 1.0):
+  def GaussianSqrtFanIn(scale: float = 1.0) -> WeightInit:
     """scale * jax.random.normal(0, 1 / sqrt(fan_in))."""
     return WeightInit('gaussian_sqrt_fanin', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def GaussianSqrtFanOut(scale: float = 1.0):
+  def GaussianSqrtFanOut(scale: float = 1.0) -> WeightInit:
     """scale * jax.random.normal(0, 1 / sqrt(fan_out))."""
     return WeightInit('gaussian_sqrt_fanout', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def GaussianSqrtFanAvg(scale: float = 1.0):
+  def GaussianSqrtFanAvg(scale: float = 1.0) -> WeightInit:
     """jax.random.normal(0, sqrt(2.0 / (in + out)))."""
     return WeightInit('gaussian_sqrt_fanavg', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def UniformSqrtDim(scale: float = 1.0):
+  def UniformSqrtDim(scale: float = 1.0) -> WeightInit:
     """scale * jax.random.uniform(-1 / sqrt(dim0), 1 / sqrt(dim0))."""
     return WeightInit('uniform_sqrt_dim', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def UniformSqrtFanAvg(scale: float = 1.0):
+  def UniformSqrtFanAvg(scale: float = 1.0) -> WeightInit:
     """sqrt(6 * scale / (in + out)) * jax.random.uniform(-1, 1)."""
     return WeightInit('uniform_sqrt_fanavg', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def UniformUnitScaling(scale: float = 1.0):
+  def UniformUnitScaling(scale: float = 1.0) -> WeightInit:
     """scale * sqrt(3) / sqrt(dim0) * jax.random.uniform(-1, 1)."""
     return WeightInit('uniform_unit_scaling', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def TruncatedGaussianSqrtDim(scale: float = 1.0):
+  def TruncatedGaussianSqrtDim(scale: float = 1.0) -> WeightInit:
     """scale * jax.random.truncated_normal(0, 1 / sqrt(dim0))."""
     return WeightInit('truncated_gaussian_sqrt_dim', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def TruncatedGaussianSqrtFanIn(scale: float = 1.0):
+  def TruncatedGaussianSqrtFanIn(scale: float = 1.0) -> WeightInit:
     """scale * jax.random.truncated_normal(0, 1 / sqrt(fan_in))."""
     return WeightInit('truncated_gaussian_sqrt_fanin', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def TruncatedGaussianSqrtFanOut(scale: float = 1.0):
+  def TruncatedGaussianSqrtFanOut(scale: float = 1.0) -> WeightInit:
     """scale * jax.random.truncated_normal(0, 1 / sqrt(fan_out))."""
     return WeightInit('truncated_gaussian_sqrt_fanout', scale)
 
   @pax_fiddle.auto_config
   @staticmethod
-  def ScaledDeltaOrthogonal(scale: float = 1.0):
+  def ScaledDeltaOrthogonal(scale: float = 1.0) -> WeightInit:
     return WeightInit('delta_orthogonal', scale)
 
 
@@ -454,13 +456,15 @@ _DEFAULT_XAVIER_INIT = 1.000001
 
 
 @pax_fiddle.auto_config
-def default_param_init():
+def default_param_init() -> WeightInit:
   # Here we use 1.000001 as a signature for user picking up the
   # default param initializer.
   return WeightInit.Xavier(_DEFAULT_XAVIER_INIT)
 
 
-def is_default_param_init(p: Union[WeightInit, pax_fiddle.Config[WeightInit]]):
+def is_default_param_init(
+    p: WeightInit | pax_fiddle.Config[WeightInit],
+) -> bool:
   return p.method == 'xavier' and abs(p.scale - _DEFAULT_XAVIER_INIT) < 1e-7
 
 
@@ -505,16 +509,16 @@ class WeightHParams:
       gaussian_sqrt_(fanin|fanout) init variants.
   """
   shape: Sequence[int]
-  init: Optional[WeightInit] = None
-  dtype: Optional[jnp.dtype] = None
-  collections: Optional[Sequence[str]] = None
-  mesh_shape: Optional[Sequence[int]] = None
-  tensor_split_dims_mapping: Optional[SplitDimsMapping] = None
-  repeat_prefix: Optional[Sequence[int]] = None
+  init: WeightInit | None = None
+  dtype: jnp.dtype | None = None
+  collections: Sequence[str] | None = None
+  mesh_shape: Sequence[int] | None = None
+  tensor_split_dims_mapping: SplitDimsMapping | None = None
+  repeat_prefix: Sequence[int] | None = None
   repeat_prefix_split_dims_mapping: SplitDimsMapping = None
   repeat_optimizer_dims_mapping: SplitDimsMapping = None
-  fan_in_axes: Optional[Sequence[int]] = None
-  fan_out_axes: Optional[Sequence[int]] = None
+  fan_in_axes: Sequence[int] | None = None
+  fan_out_axes: Sequence[int] | None = None
 
   # If any kwargs are None, they are given defaults from the parent BaseLayer
   # in self.create_variable.
@@ -550,9 +554,9 @@ NestedWeightHParams = Nested[WeightHParams]
 
 def get_fan_in_fan_out(
     shape: Sequence[int],
-    fan_in_axes: Optional[Sequence[int]] = None,
-    fan_out_axes: Optional[Sequence[int]] = None
-) -> Tuple[Optional[int], Optional[int]]:
+    fan_in_axes: Sequence[int] | None = None,
+    fan_out_axes: Sequence[int] | None = None,
+) -> tuple[int | None, int | None]:
   """Returns (fan_in, fan_out) of a weight variable of the given shape."""
   if not shape:
     return None, None
@@ -726,9 +730,7 @@ def init_var(
     assert False, 'init_type %s not supported.' % method
 
 
-def var_init_scale(
-    var_p: WeightHParams, var_key: Optional[str] = None
-) -> float:
+def var_init_scale(var_p: WeightHParams, var_key: str | None = None) -> float:
   """Returns var init_scale.
 
   Implementation of this function has to be in sync with init_var above. This
@@ -798,7 +800,7 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
     return self.replace(value=val)
 
   def add_axis(
-      self, index: int, metadata_params: Dict[Any, Any]
+      self, index: int, metadata_params: dict[Any, Any]
   ) -> TAxisMetadata:
     if index != 0:
       raise ValueError('Only index==0 is implemented; given index=', index)
@@ -860,7 +862,7 @@ class BoxedParam(struct.PyTreeNode, AxisMetadata):
     return self.replace(meta=new_meta)
 
   def remove_axis(
-      self, index: int, metadata_params: Dict[Any, Any]
+      self, index: int, metadata_params: dict[Any, Any]
   ) -> TAxisMetadata:
     if index != 0:
       raise ValueError('Only index==0 is implemented; given index=', index)
@@ -1068,9 +1070,9 @@ class JaxContext:
       self_reflect_configs: bool, whether to self reflect its configs as a
          variable in a special collection.
     """
-    do_eval: Optional[bool] = None
+    do_eval: bool | None = None
     summary_verbosity: int = 3
-    mesh_axes_transpose: Optional[Dict[str, str]] = None
+    mesh_axes_transpose: dict[str, str] | None = None
 
     self_reflect_configs: bool = False
 
@@ -1085,10 +1087,9 @@ class JaxContext:
     # of this is for passing shared layers. A special shared_layer_id identifier
     # is used to indicate that multiple modules should share the same underlying
     # model weights.
-    self._root_scope_to_shared_layers_map: Dict[Any, Dict[
-        str, _SharedLayerCacheEntry]] = (
-            collections.defaultdict(
-                lambda: collections.defaultdict(lambda: None)))
+    self._root_scope_to_shared_layers_map: dict[
+        Any, dict[str, _SharedLayerCacheEntry]
+    ] = collections.defaultdict(lambda: collections.defaultdict(lambda: None))
 
   @property
   def summary_dict(self) -> _SummaryDict:
@@ -1120,7 +1121,7 @@ class JaxContext:
     _JaxContextStack.stack.pop()
 
   @staticmethod
-  def top() -> Optional[JaxContext]:
+  def top() -> JaxContext | None:
     return _JaxContextStack.stack[-1] if _JaxContextStack.stack else None
 
   @staticmethod
@@ -1129,8 +1130,7 @@ class JaxContext:
     return len(_JaxContextStack.stack) > 0  # pylint: disable=g-explicit-length-test
 
   @staticmethod
-  def new_context(*,
-                  hparams: Optional[JaxContext.HParams] = None) -> JaxContext:
+  def new_context(*, hparams: JaxContext.HParams | None = None) -> JaxContext:
     """Returns a new empty JaxContext.
 
     Args:
@@ -1153,8 +1153,8 @@ class JaxContext:
     return context
 
   def lookup_shared_layer(
-      self, root_scope: flax_core.Scope,
-      shared_layer_id: str) -> Optional[_SharedLayerCacheEntry]:
+      self, root_scope: flax_core.Scope, shared_layer_id: str
+  ) -> _SharedLayerCacheEntry | None:
     logging.info('lookup_shared_layer called with id: %s in the scope of %s',
                  shared_layer_id, root_scope)
     return self._root_scope_to_shared_layers_map[root_scope][shared_layer_id]
@@ -1260,9 +1260,15 @@ class ThetaDescriptor:
     return Theta(obj)
 
 
-_BaseLayerRecursionDictKeysToIgnore = [
-    'parent', '_theta', '_weight_hparams', '_state', 'scope',
-    '_private_hparams', 'hparams', '_private_children'
+_BaseLayerRecursiondictKeysToIgnore = [
+    'parent',
+    '_theta',
+    '_weight_hparams',
+    '_state',
+    'scope',
+    '_private_hparams',
+    'hparams',
+    '_private_children',
 ]
 
 
@@ -1530,14 +1536,14 @@ class BaseLayer(nn.Module):
     out: SplitDimsMapping = None
 
   dtype: jnp.dtype = jnp.float32
-  fprop_dtype: Optional[Any] = None
+  fprop_dtype: Any | None = None
   params_init: WeightInit = instance_field(default_param_init)
-  skip_lp_regularization: Optional[bool] = None
-  ici_mesh_shape: Optional[Sequence[int]] = None
-  dcn_mesh_shape: Optional[Sequence[int]] = None
-  contiguous_submeshes: Optional[bool] = None
-  mesh_axis_names: Optional[Sequence[str]] = None
-  shared_weight_layer_id: Optional[str] = None
+  skip_lp_regularization: bool | None = None
+  ici_mesh_shape: Sequence[int] | None = None
+  dcn_mesh_shape: Sequence[int] | None = None
+  contiguous_submeshes: bool | None = None
+  mesh_axis_names: Sequence[str] | None = None
+  shared_weight_layer_id: str | None = None
   # TODO(b/249483164): Change these to use instance_field rather than
   # template_field after the Fiddle migration.
   weight_split_dims_mapping: pax_fiddle.Config[BaseLayer.WeightSharding] = template_field(
@@ -1558,7 +1564,7 @@ class BaseLayer(nn.Module):
       return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
 
   def get_shard_count_on_dim(
-      self, dim_sharding: Optional[Union[str, Sequence[str]]]
+      self, dim_sharding: str | Sequence[str] | None
   ) -> int:
     """Returns the number of shards on a tensor dim given its sharding."""
     if dim_sharding is None or self.mesh_axis_names is None:
@@ -1595,8 +1601,8 @@ class BaseLayer(nn.Module):
 
   @staticmethod
   def copy_base_hparams(
-      source: Union[pax_fiddle.Config, BaseLayer],
-      target: Union[pax_fiddle.Config, BaseLayer],
+      source: pax_fiddle.Config | BaseLayer,
+      target: pax_fiddle.Config | BaseLayer,
   ):
     """Copies BaseLayer configuration parameters from `source` to `target`.
 
@@ -1647,7 +1653,7 @@ class BaseLayer(nn.Module):
       _setattr('params_init', copy.deepcopy(source.params_init))
 
   @functools.cached_property
-  def _hparam_fields(self) -> Set[str]:
+  def _hparam_fields(self) -> set[str]:
     """Returns a list of hyperparameter field names for `self`."""
     return set(field.name for field in dataclasses.fields(self)
                if field.init and field.name != 'parent')
@@ -1829,7 +1835,7 @@ class BaseLayer(nn.Module):
       extra_mutable_list=None,
       self_reflect_configs=False,
       **kwargs,
-  ) -> Dict[str, NestedWeightHParams]:
+  ) -> dict[str, NestedWeightHParams]:
     # Dummy key is enough because we eval_shape only.
     k = jax.random.PRNGKey(1)
     rngs = {PARAMS: k, RANDOM: k, NON_PAX_RNG_KEY: k}
@@ -1941,11 +1947,13 @@ class BaseLayer(nn.Module):
     return maybe_unbox_value(retval)
 
   @nn.nowrap
-  def add_summary(self,
-                  name: str,
-                  tensor: Union[JTensor, Callable[[], JTensor]],
-                  summary_type: SummaryType = SummaryType.SCALAR,
-                  verbosity: int = 2) -> None:
+  def add_summary(
+      self,
+      name: str,
+      tensor: JTensor | Callable[[], JTensor],
+      summary_type: SummaryType = SummaryType.SCALAR,
+      verbosity: int = 2,
+  ) -> None:
     """Add a tensor to the SUMMARIES collection.
 
     Args:
@@ -2117,7 +2125,7 @@ class BaseLayer(nn.Module):
   @nn.nowrap
   def get_quantized_weight(
       self, name: str, use_symmetric: bool = True
-  ) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
+  ) -> tuple[JTensor, JTensor, JTensor | None]:
     """Gets quantized variables.
 
     Gets a tuple of weight, scale, and possibly zero point tensors. To be used
@@ -2166,7 +2174,7 @@ class BaseLayer(nn.Module):
     )
 
   @nn.nowrap
-  def get_sparse_weight(self, name: str) -> Tuple[JTensor, JTensor]:
+  def get_sparse_weight(self, name: str) -> tuple[JTensor, JTensor]:
     """Gets sparsity variables.
 
     Gets a pair of weight and mask tensors. To be used together with
@@ -2410,7 +2418,7 @@ class BaseLayer(nn.Module):
     """
     return self._quantize_fn(return_pspec=True)
 
-  def _quantize_fn(self, return_pspec: bool) -> Union[NestedJTensor, Any]:
+  def _quantize_fn(self, return_pspec: bool) -> NestedJTensor | Any:
     """quantize_weight() quantize the current layer and its children layer(s).
 
     Quantization applies to only PARAMS and NON_TRAINABLE collection.
@@ -2520,8 +2528,9 @@ def assert_has_shape(t: JTensor, shape: Sequence[int]) -> None:
 
 
 def compatible_hparams(
-    hparams1: Union[base_hyperparams.HParams, pax_fiddle.Config],
-    hparams2: Union[base_hyperparams.HParams, pax_fiddle.Config]) -> bool:
+    hparams1: base_hyperparams.HParams | pax_fiddle.Config,
+    hparams2: base_hyperparams.HParams | pax_fiddle.Config,
+) -> bool:
   """Returns True if hparams1 and hparams2 are compatible to each other.
 
   The current definition of "compatible" are two params are identical except
@@ -2553,7 +2562,7 @@ def compatible_hparams(
 class _WrapperLayer(BaseLayer):
   """A simple wrapper layer."""
 
-  cld_tpl: Optional[pax_fiddle.Config[BaseLayer]] = template_field(None)
+  cld_tpl: pax_fiddle.Config[BaseLayer] | None = template_field(None)
 
   def setup(self) -> None:
     # create child under the name space of 'name'.
@@ -2562,7 +2571,7 @@ class _WrapperLayer(BaseLayer):
     self.cld = getattr(self, self.name)
 
 
-def get_template_fields(template: pax_fiddle.Config) -> List[str]:
+def get_template_fields(template: pax_fiddle.Config) -> list[str]:
   """Returns the names of the configurable fields for `template`.
 
   Does not include `"cls"`.
