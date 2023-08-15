@@ -88,7 +88,12 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     self.create_variable('step', copy.deepcopy(count_hp), trainable=False)
 
   def _update_schedule_cond(
-      self, step: int, target_step: int, mask_update_times: int, num_shots: int
+      self,
+      step: int,
+      target_step: int,
+      mask_update_times: int,
+      num_shots: int,
+      is_update_mode: bool = False,
   ) -> JTensor:
     """Sparse mask update schedule.
 
@@ -102,24 +107,22 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       target_step: step to do pruner.
       mask_update_times: number of times sparse masks has been updated.
       num_shots: the target number of times to prune.
+      is_update_mode: If this mode to update mask, for inference and
+        materialization this should be false.
 
     Returns:
       A boolean condition results.
     """
-    should_do_mode = self.sparsity.mode not in [
-        SparsityMode.MATERIALIZE,
-        SparsityMode.INFERENCE,
-    ]
     should_do_pruning = jnp.logical_or(
         jnp.equal(num_shots, -1),  # SparsityMode.Training/MATERIALIZE
         jnp.less_equal(mask_update_times, num_shots),  # OneShot/FewShot
     )
     should_pruning_step = jnp.equal(step, target_step)
     return jnp.logical_and(
-        jnp.logical_and(should_pruning_step, should_do_pruning), should_do_mode
+        jnp.logical_and(should_pruning_step, should_do_pruning), is_update_mode
     )
 
-  def _apply_schedule_cond(self, step):
+  def _apply_schedule_cond(self, step, is_always_apply=False):
     """Sparse mask apply schedule.
 
     Apply mask to tensor when one of following condition is satisfied 1) for
@@ -129,16 +132,14 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
     Args:
       step: current step.
+      is_always_apply: If mask is always applied, for materiaization and
+        training this is true.
 
     Returns:
       A boolean condition results
     """
-    mode_always_apply = self.sparsity.mode in [
-        SparsityMode.MATERIALIZE,
-        SparsityMode.TRAINING,
-    ]
     should_do_step = jnp.greater_equal(step, self.sparsity.target_step)
-    return jnp.logical_or(mode_always_apply, should_do_step)
+    return jnp.logical_or(is_always_apply, should_do_step)
 
   def _layer_cond(
       self, layer_idx: int, sparsified_layers: jax.Array
@@ -241,10 +242,14 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     def no_mask_update(w, inputs, mask, update_cnt, step):  # pylint: disable=unused-argument
       return mask, update_cnt
 
+    is_update_mode = self.sparsity.mode not in [
+        SparsityMode.MATERIALIZE,
+        SparsityMode.INFERENCE,
+    ]
     new_mask, update_cnt = jax.lax.cond(
         jnp.logical_and(
             self._update_schedule_cond(
-                step, target_step, update_cnt, num_shots
+                step, target_step, update_cnt, num_shots, is_update_mode
             ),
             self._layer_cond(layer_idx, sparsified_layers),
         ),
@@ -280,9 +285,13 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
     # Apply mask to weight.
     no_op = lambda inputs, mask: inputs
+    is_always_apply = self.sparsity.mode in [
+        SparsityMode.MATERIALIZE,
+        SparsityMode.TRAINING,
+    ]
     weight = jax.lax.cond(
         jnp.logical_and(
-            self._apply_schedule_cond(step),
+            self._apply_schedule_cond(step, is_always_apply),
             self._layer_cond(layer_idx, sparsified_layers),
         ),
         sparsity.apply_sparsity,
