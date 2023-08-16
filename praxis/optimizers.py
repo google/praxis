@@ -17,12 +17,12 @@
 
 from __future__ import annotations
 
-from abc import abstractmethod
+import abc
 import copy
 import dataclasses
 import functools
 import re
-from typing import Any, Callable, NamedTuple, Protocol, Sequence, runtime_checkable
+from typing import Any, Callable, Literal, NamedTuple, Protocol, Sequence, runtime_checkable
 
 from absl import logging
 import jax
@@ -1001,7 +1001,7 @@ class Optimizer(Protocol):
     """Exposed hparams for optimizer."""
     pass
 
-  @abstractmethod
+  @abc.abstractmethod
   def get_grad_transformation(
       self,
       var_weight_hparams: NestedWeightHParams | None = None,
@@ -1009,7 +1009,7 @@ class Optimizer(Protocol):
   ) -> GeneralGradientTransformation:
     pass
 
-  @abstractmethod
+  @abc.abstractmethod
   def get_learning_rate(self, step_count: JTensor) -> JTensor:
     pass
 
@@ -1175,11 +1175,11 @@ class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
       statistics in optimizers. A good reference can be found in:
       https://www.fast.ai/2018/07/02/adam-weight-decay/#adamw
     clip_gradient_norm_to_value: Clip gradient by global norm to this value.
-      This is similar to the bahaviour of tf.clip_by_global_norm. If you are
+      This is similar to the behaviour of tf.clip_by_global_norm. If you are
       looking for tf.clip_by_norm refer to clip_gradient_single_norm_to_value.
       Note these are mutually exclusive.
     clip_gradient_single_norm_to_value: Clip gradient by single tensor norm to
-      this value. This is similar to the bahaviour of tf.clip_by_norm. Note this
+      this value. This is similar to the behaviour of tf.clip_by_norm. Note this
       is mutually exclusive to using clip_gradient_norm_to_value.
     learning_rate: learning rate to use.
     lr_schedule: Learning rate decay schedule. The value returned by this
@@ -2559,7 +2559,6 @@ class _ShardedAdafactorHelper:
       if include:
         w_norm = reduce_rms(old_val)
         g_norm = reduce_rms(subtrahend / update_scale) + self._epsilon1
-        ratio = w_norm / g_norm
         ratio = jnp.where(
             jnp.greater(w_norm, 0),
             jnp.where(jnp.greater(g_norm, 0), (w_norm / g_norm), 1.0), 1.0)
@@ -2777,7 +2776,7 @@ class ShardedAdafactor(BaseOptimizer):
   weight_decay: float | dict[str, float] | None = None
   layerwise_adaptation: bool = False
   exclude_from_layerwise_adaptation: list[str] | None = None
-  decay_method: str = ''
+  decay_method: Literal['adam', 'pow', ''] = ''
   decay_adam: float = 0.0
   decay_pow: float = 0.0
   beta1: float = 0.0
