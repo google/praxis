@@ -905,11 +905,12 @@ class DPOExample:
 class LanguageModelDPO(base_model.BaseModel):
   """Contains a pair of TransformerLM for direct preference optimization.
 
-  Reference: https://arxiv.org/abs/2305.18290
+  This model implicitly optimizes this standard RLHF objective.
 
-  This model implicitly optimizes this standard rlhf objective.
+  .. math::
     max_{pi} = E_{x ~ D, y ~ pi(x)}(r(y, x) - beta * kl(pi(y|x) | ref(y|x)
 
+  Reference: https://arxiv.org/abs/2305.18290
 
   Attributes:
     ref_mdl: the reference model.
