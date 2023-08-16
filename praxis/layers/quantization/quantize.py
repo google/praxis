@@ -175,10 +175,7 @@ def quantize_attention_layer_weights(
     )
     return
 
-  if issubclass(
-      tr_tpl.tr_atten_tpl.cls,
-      layers.multi_query_attention.MultiQueryDotProductAttention,
-  ):
+  if 'MultiQueryDotProductAttention' in tr_tpl.tr_atten_tpl.cls.__name__:
     tr_atten_tpl = cast(
         pax_fiddle.Config[
             layers.multi_query_attention.MultiQueryDotProductAttention
