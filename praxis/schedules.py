@@ -27,9 +27,7 @@ from jax import numpy as jnp
 import optax
 from praxis import base_hyperparams
 from praxis import pax_fiddle
-from praxis import pytypes
 
-JTensor = pytypes.JTensor
 instantiate = base_hyperparams.instantiate
 
 
@@ -37,7 +35,7 @@ class BaseSchedule(base_hyperparams.FiddleBaseParameterizable, abc.ABC):
   """Base class for all schedules."""
 
   @abc.abstractmethod
-  def value_at(self, step: JTensor) -> JTensor:  # pylint:disable=invalid-name
+  def value_at(self, step: jax.Array) -> jax.Array:  # pylint:disable=invalid-name
     """Returns the value of schedule at step 'step'.
 
     Args:
@@ -55,9 +53,10 @@ class Constant(BaseSchedule):
   Attributes:
     value: The constant value.
   """
+
   value: float = 1.0
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     del step
     return jnp.array(self.value, dtype=jnp.float32)
 
@@ -74,6 +73,7 @@ class Polynomial(BaseSchedule):
     limit: (x1, y1)
     origin: Origin of the polynomial. Can be "start" or "limit".
   """
+
   power: int = 1
   start: tuple[int, float] = (0, 1.0)
   limit: tuple[int, float] = (1, 1.0)
@@ -92,7 +92,7 @@ class Polynomial(BaseSchedule):
     if self.origin not in {'start', 'limit'}:
       raise ValueError('Invalid parameter origin: %s' % self.origin)
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     x = jnp.array(step).astype(jnp.float32)
     x0, y0 = self.start
     x1, y1 = self.limit
@@ -114,6 +114,7 @@ class Linear(Polynomial):
   Attributes:
     value: The constant value.
   """
+
   power: int = 1
 
 
@@ -124,6 +125,7 @@ class Exponential(BaseSchedule):
     start: (x0, y0)
     limit: (x1, y1)
   """
+
   start: tuple[int, float] = (0, 1.0)
   limit: tuple[int, float] = (1, 0.5)
   linear: Any = dataclasses.field(init=False, repr=False)
@@ -135,13 +137,11 @@ class Exponential(BaseSchedule):
     assert x0 < x1, '%s must be < %s' % (x0, x1)
     assert y0 > 0, '%s must be > 0' % y0
     assert y1 > 0, '%s must be > 0' % y1
-    self.linear = instantiate(
-        pax_fiddle.Config(
-            Linear, start=(x0, math.log(y0)), limit=(x1, math.log(y1))
-        )
-    )
+    self.linear = Linear.config(
+        start=(x0, math.log(y0)), limit=(x1, math.log(y1))
+    ).Instantiate()
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     return jnp.exp(self.linear.value_at(step))
 
 
@@ -153,11 +153,12 @@ class Cosine(BaseSchedule):
     final_value: Final decay value.
     total_steps: Number of steps to reach full decay.
   """
+
   initial_value: float = 1.0
   final_value: float = 0.0
   total_steps: int = 0
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     decay_gap = self.initial_value - self.final_value
     return self.final_value + 0.5 * decay_gap * (
         1
@@ -177,6 +178,7 @@ class DelayedCosine(BaseSchedule):
     start: (x0, y0)
     limit: (x1, y1)
   """
+
   start: tuple[int, float] = (0, 1.0)
   limit: tuple[int, float] = (1, 0.5)
   max: Any = dataclasses.field(init=False, repr=False)
@@ -192,11 +194,11 @@ class DelayedCosine(BaseSchedule):
     assert y1 >= 0, '%s must be >= 0' % y1
     self.max = y0
     self.min = y1
-    self.linear = instantiate(
-        pax_fiddle.Config(Linear, start=(x0, 0), limit=(x1, math.pi))
-    )
+    self.linear = Linear.config(
+        start=(x0, 0), limit=(x1, math.pi)
+    ).Instantiate()
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     decay_gap = self.max - self.min
     return self.min + 0.5 * decay_gap * (
         1 + jnp.cos(jnp.array(self.linear.value_at(step), dtype=jnp.float32))
@@ -239,39 +241,32 @@ class LinearRampupPolynomialDecay(BaseSchedule):
     self._boundaries = []
     if self.warmup_steps > 0:
       self._schedules.append(
-          instantiate(
-              pax_fiddle.Config(
-                  Linear, start=(0, 0.0), limit=(self.warmup_steps, self.max)
-              )
-          )
+          Linear.config(
+              start=(0, 0.0), limit=(self.warmup_steps, self.max)
+          ).Instantiate()
       )
       self._boundaries.append(self.warmup_steps)
     if self.decay_start > self.warmup_steps:
       self._schedules.append(
-          instantiate(
-              pax_fiddle.Config(
-                  Linear,
-                  start=(0, self.max),
-                  limit=(self.decay_start - self.warmup_steps, self.max),
-              )
-          )
+          Linear.config(
+              start=(0, self.max),
+              limit=(self.decay_start - self.warmup_steps, self.max),
+          ).Instantiate()
       )
+
       self._boundaries.append(self.decay_start)
     self._schedules.append(
-        instantiate(
-            pax_fiddle.Config(
-                Polynomial,
-                start=(0, self.max),
-                limit=(
-                    self.decay_end - self.decay_start,
-                    self.max * self.min_ratio,
-                ),
-                power=self.power,
-            )
-        )
+        Polynomial.config(
+            start=(0, self.max),
+            limit=(
+                self.decay_end - self.decay_start,
+                self.max * self.min_ratio,
+            ),
+            power=self.power,
+        ).Instantiate()
     )
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     return jnp.array(
         optax.join_schedules(
             [s.value_at for s in self._schedules], self._boundaries
@@ -290,6 +285,7 @@ class LinearRampupCosineDecay(BaseSchedule):
     min_ratio: After decay_end, the multiplier stays at min.
     max: The schedule is never larger than this value.
   """
+
   warmup_steps: int = 0
   decay_start: int = 0
   decay_end: int = 0
@@ -315,38 +311,32 @@ class LinearRampupCosineDecay(BaseSchedule):
     self._boundaries = []
     if self.warmup_steps > 0:
       self._schedules.append(
-          instantiate(
-              pax_fiddle.Config(
-                  Linear, start=(0, 0.0), limit=(self.warmup_steps, self.max)
-              )
-          )
+          Linear.config(
+              start=(0, 0.0), limit=(self.warmup_steps, self.max)
+          ).Instantiate()
       )
+
       self._boundaries.append(self.warmup_steps)
     if self.decay_start > self.warmup_steps:
       self._schedules.append(
-          instantiate(
-              pax_fiddle.Config(
-                  Linear,
-                  start=(0, self.max),
-                  limit=(self.decay_start - self.warmup_steps, self.max),
-              )
-          )
+          Linear.config(
+              start=(0, self.max),
+              limit=(self.decay_start - self.warmup_steps, self.max),
+          ).Instantiate()
       )
+
       self._boundaries.append(self.decay_start)
     self._schedules.append(
-        instantiate(
-            pax_fiddle.Config(
-                DelayedCosine,
-                start=(0, self.max),
-                limit=(
-                    self.decay_end - self.decay_start,
-                    self.max * self.min_ratio,
-                ),
-            )
-        )
+        DelayedCosine.config(
+            start=(0, self.max),
+            limit=(
+                self.decay_end - self.decay_start,
+                self.max * self.min_ratio,
+            ),
+        ).Instantiate()
     )
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     return jnp.array(
         optax.join_schedules(
             [s.value_at for s in self._schedules], self._boundaries
@@ -363,6 +353,7 @@ class PiecewiseConstant(BaseSchedule):
     values: Values in each interval. The number of values must be equal to the
       the number of boundaries plus 1.
   """
+
   boundaries: Sequence[int] | None = None
   values: Sequence[int] | None = None
 
@@ -370,7 +361,8 @@ class PiecewiseConstant(BaseSchedule):
     super().__post_init__()
     if self.boundaries is None or self.values is None:
       raise ValueError(
-          'The parameters `boundaries` and `values` must not be None.')
+          'The parameters `boundaries` and `values` must not be None.'
+      )
     if len(self.values) != len(self.boundaries) + 1:
       raise ValueError(
           f'The number of values ({len(self.values)}) is expected to be equal '
@@ -379,7 +371,7 @@ class PiecewiseConstant(BaseSchedule):
     if sorted(self.boundaries) != list(self.boundaries):
       raise ValueError(f'The boundaries ({self.boundaries}) must be sorted.')
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     # Map the step/boundaries to jnp.float32.
     boundaries = [jnp.array(v, dtype=jnp.float32) for v in self.boundaries]
     values = [jnp.array(v, dtype=jnp.float32) for v in self.values]
@@ -408,12 +400,13 @@ class Transformer(BaseSchedule):
     worker_replicas: Number of worker replicas.
     decay_end: Ends the learning rate decay at decay_end-th step.
   """
+
   warmup_steps: int = 4000
   model_dim: int = 512
   worker_replicas: int = 1
   decay_end: int | None = None
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     """Returns the current learning rate decay."""
     current_step = step.astype(jnp.float32)
     model_dim = jnp.array(self.model_dim, dtype=jnp.float32)
@@ -422,10 +415,12 @@ class Transformer(BaseSchedule):
     )
     if self.decay_end is not None:
       decay_end = jnp.array(self.decay_end, dtype=jnp.float32)
-      current_step = jnp.where(current_step < decay_end, current_step,
-                               decay_end)
+      current_step = jnp.where(
+          current_step < decay_end, current_step, decay_end
+      )
     return model_dim**-0.5 * jnp.minimum(
-        (current_step + 1) * warmup_steps**-1.5, (current_step + 1)**-0.5)
+        (current_step + 1) * warmup_steps**-1.5, (current_step + 1) ** -0.5
+    )
 
 
 class SqrtDecay(BaseSchedule):
@@ -437,18 +432,21 @@ class SqrtDecay(BaseSchedule):
     multiplier: Multiplier for the loss.
     offset: Offset for computing when to start decaying the learning rate.
   """
+
   decay_start: int = 10000
   multiplier: float = 1.0
   offset: float = 0.0
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     """Returns the current learning rate decay."""
     current_step = step.astype(jnp.float32)
     offset = jnp.array(self.offset, dtype=jnp.float32)
     decay_start = jnp.array(self.decay_start, dtype=jnp.float32)
     multiplier = jnp.array(self.multiplier, dtype=jnp.float32)
-    return jax.lax.rsqrt(jnp.maximum(current_step - offset,
-                                     decay_start)) * multiplier
+    return (
+        jax.lax.rsqrt(jnp.maximum(current_step - offset, decay_start))
+        * multiplier
+    )
 
 
 class LinearRampupSqrtDecay(BaseSchedule):
@@ -466,10 +464,11 @@ class LinearRampupSqrtDecay(BaseSchedule):
     multiplier: Multiplier for the loss.
     offset: Offset for computing when to start decaying the learning rate.
   """
+
   peak: float = 1.0
   warmup_steps: int = 4000
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     """Returns the current schedule value."""
     current_step = jnp.maximum(step.astype(jnp.float32), 1)
     warmup_steps = jnp.array(self.warmup_steps, dtype=jnp.float32)
@@ -489,6 +488,7 @@ class LinearRampupExponentialDecay(BaseSchedule):
     min_ratio: After decay_end, the multiplier stays at min.
     max: The schedule is never larger than this value.
   """
+
   warmup_steps: int = 0
   decay_start: int = 0
   decay_end: int = 0
@@ -515,38 +515,30 @@ class LinearRampupExponentialDecay(BaseSchedule):
     self._boundaries = []
     if self.warmup_steps > 0:
       self._schedules.append(
-          instantiate(
-              pax_fiddle.Config(
-                  Linear, start=(0, 0.0), limit=(self.warmup_steps, self.max)
-              )
-          )
+          Linear.config(
+              start=(0, 0.0), limit=(self.warmup_steps, self.max)
+          ).Instantiate()
       )
       self._boundaries.append(self.warmup_steps)
     if self.decay_start > self.warmup_steps:
       self._schedules.append(
-          instantiate(
-              pax_fiddle.Config(
-                  Linear,
-                  start=(0, self.max),
-                  limit=(self.decay_start - self.warmup_steps, self.max),
-              )
-          )
+          Linear.config(
+              start=(0, self.max),
+              limit=(self.decay_start - self.warmup_steps, self.max),
+          ).Instantiate()
       )
       self._boundaries.append(self.decay_start)
     self._schedules.append(
-        instantiate(
-            pax_fiddle.Config(
-                Exponential,
-                start=(0, self.max),
-                limit=(
-                    self.decay_end - self.decay_start,
-                    self.max * self.min_ratio,
-                ),
-            )
-        )
+        Exponential.config(
+            start=(0, self.max),
+            limit=(
+                self.decay_end - self.decay_start,
+                self.max * self.min_ratio,
+            ),
+        ).Instantiate()
     )
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     return jnp.array(
         optax.join_schedules(
             [s.value_at for s in self._schedules], self._boundaries
@@ -570,6 +562,7 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
       the step is between boundaries[i] and boundaries[i + 1] then values[i] is
       returned, except when it is linearly ramping up from to values[0].
   """
+
   boundaries: Sequence[int] | None = None
   values: Sequence[float] | None = None
   p0: Any = dataclasses.field(init=False, repr=False)
@@ -582,7 +575,9 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
     )
     self.p0 = instantiate(
         pax_fiddle.Config(
-            Linear, start=(0, 0.0), limit=(self.boundaries[0], self.values[0])
+            Linear,
+            start=(0, 0.0),
+            limit=(self.boundaries[0], self.values[0]),
         )
     )
     # Offset the boundaries, since each schedule passed to
@@ -595,7 +590,7 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
         )
     )
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     return jnp.array(
         optax.join_schedules(
             [self.p0.value_at, self.p1.value_at], self.boundaries[:1]
@@ -614,6 +609,7 @@ class PiecewiseSchedule(BaseSchedule):
       boundaries[i] (exclusive). The *relative* step in each interval will be
       passed to the sub-schedule for Value.
   """
+
   boundaries: Sequence[int] | None = None
   schedules: Sequence[BaseSchedule] | None = None
 
@@ -625,10 +621,12 @@ class PiecewiseSchedule(BaseSchedule):
         raise ValueError('Invalid boundary %s < %s' % (boundary, prev_boundary))
       prev_boundary = boundary
     if len(self.schedules) != len(self.boundaries) + 1:
-      raise ValueError('len(schedules) != len(boundaries) + 1: %s vs %s' %
-                       (len(self.schedules), len(self.boundaries)))
+      raise ValueError(
+          'len(schedules) != len(boundaries) + 1: %s vs %s'
+          % (len(self.schedules), len(self.boundaries))
+      )
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     return jnp.array(
         optax.join_schedules(
             [s.value_at for s in self.schedules], self.boundaries
@@ -645,6 +643,7 @@ class CycleSchedule(BaseSchedule):
       step is passed to the sub-schedule.
     steps: The number of steps to run each sub-schedule.
   """
+
   schedules: Sequence[BaseSchedule] | None = None
   steps: Sequence[int] | None = None
   _period: Any = dataclasses.field(init=False, repr=False)
@@ -653,15 +652,17 @@ class CycleSchedule(BaseSchedule):
   def __post_init__(self):
     super().__post_init__()
     if len(self.schedules) != len(self.steps):
-      raise ValueError('len(schedules) != len(steps): %s vs %s' %
-                       (len(self.schedules), len(self.steps)))
+      raise ValueError(
+          'len(schedules) != len(steps): %s vs %s'
+          % (len(self.schedules), len(self.steps))
+      )
     boundaries = [0]
     for step in self.steps:
       boundaries.append(boundaries[-1] + step)
     self._period = boundaries[-1]
     self._boundaries = boundaries[1:-1]
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     relative_step = jnp.mod(step, self._period)
     output = self.schedules[0].value_at(step)
     for boundary, schedule in zip(self._boundaries, self.schedules[1:]):
@@ -681,6 +682,7 @@ class ContinuousSchedule(BaseSchedule):
       start_step.
     min: Minimum relative learning rate.
   """
+
   initial_value: float = 1.0
   start_step: int = 400_000
   half_life_steps: int = 100_000
@@ -692,11 +694,9 @@ class ContinuousSchedule(BaseSchedule):
     limit = self.start_step + self.half_life_steps * math.log(
         self.min
     ) / math.log(0.5)
-    self.exp: Exponential = instantiate(
-        pax_fiddle.Config(
-            Exponential, start=(self.start_step, 1.0), limit=(limit, self.min)
-        )
-    )
+    self.exp: Exponential = Exponential.config(
+        start=(self.start_step, 1.0), limit=(limit, self.min)
+    ).Instantiate()
 
-  def value_at(self, step: JTensor) -> JTensor:
+  def value_at(self, step: jax.Array) -> jax.Array:
     return self.initial_value * self.exp.value_at(step)

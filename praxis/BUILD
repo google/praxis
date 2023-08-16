@@ -197,8 +197,6 @@ pytype_strict_library(
     name = "metric_utils",
     srcs = ["metric_utils.py"],
     deps = [
-        ":py_utils",
-        ":pytypes",
         # Implicit jax dependency.
     ],
 )
@@ -286,7 +284,6 @@ pytype_strict_library(
     deps = [
         ":base_hyperparams",
         ":pax_fiddle",
-        ":pytypes",
         # Implicit jax dependency.
         # Implicit optax dependency.
     ],
@@ -299,6 +296,7 @@ pytype_strict_library(
     deps = [
         ":base_layer",
         ":py_utils",
+        ":pytypes",
         # Implicit absl.flags dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
@@ -504,8 +502,6 @@ py_strict_test(
     name = "schedules_test",
     srcs = ["schedules_test.py"],
     deps = [
-        ":base_hyperparams",
-        ":pax_fiddle",
         ":schedules",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.

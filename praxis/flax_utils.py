@@ -27,8 +27,9 @@ from praxis import pytypes
 
 
 # Internal unpacking comparison."],
-def maybe_unpack_summary(tree: pytypes.PyTree, unpack_summaries: bool,
-                         x_times: int) -> pytypes.PyTree:
+def maybe_unpack_summary(
+    tree: pytypes.PyTree, unpack_summaries: bool, x_times: int
+) -> pytypes.PyTree:
   """Unpacks the summary when `unpack_summaries` is set."""
   if not unpack_summaries:
     return tree
@@ -42,8 +43,9 @@ def maybe_unpack_summary(tree: pytypes.PyTree, unpack_summaries: bool,
   return jax.tree_map(unpack, tree)
 
 
-def maybe_repack_summary(tree: pytypes.PyTree, unpack_summaries: bool,
-                         x_times: int) -> pytypes.PyTree:
+def maybe_repack_summary(
+    tree: pytypes.PyTree, unpack_summaries: bool, x_times: int
+) -> pytypes.PyTree:
   """Repacks the summary when `unpack_summaries` is set."""
   if not unpack_summaries:
     return tree
@@ -96,7 +98,9 @@ def convert_to_boxed_params(
     else:
       tensor_split_dims_mapping = list(
           flax_partitioning.logical_to_mesh_axes(
-              tuple(logical_axes), logical_axes_rules))
+              tuple(logical_axes), logical_axes_rules
+          )
+      )
     if var_collection == base_layer.PARAMS:
       collections = []
     elif var_collection in var_collection_map:
@@ -106,7 +110,7 @@ def convert_to_boxed_params(
       # sync during training.
       collections = [
           base_layer.WeightHParamsCollection.NON_TRAINABLE,
-          base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC
+          base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC,
       ]
 
     x_meta = base_layer.WeightHParams(
@@ -115,7 +119,8 @@ def convert_to_boxed_params(
         x_param.dtype,
         collections=collections,
         mesh_shape=mesh_shape,
-        tensor_split_dims_mapping=tensor_split_dims_mapping)
+        tensor_split_dims_mapping=tensor_split_dims_mapping,
+    )
     return base_layer.BoxedParam(x_param, x_meta)
 
   boxed_params = {}
@@ -129,9 +134,11 @@ def convert_to_boxed_params(
       # Ensure logical_axes_tree has the same pytree structure as var_tree[key]
       # by filling missing annotations with PartitionSpec(None).
       flat_logical_axes_tree = traverse_util.flatten_dict(
-          logical_axes_tree, sep='/')
+          logical_axes_tree, sep='/'
+      )
       flat_full_logical_axes_tree = traverse_util.flatten_dict(
-          var_tree[key], sep='/')
+          var_tree[key], sep='/'
+      )
       flat_full_logical_axes_tree = {
           k: jax.sharding.PartitionSpec(None)
           for k in flat_full_logical_axes_tree
@@ -139,18 +146,21 @@ def convert_to_boxed_params(
       for k in flat_logical_axes_tree:
         flat_full_logical_axes_tree[k] = flat_logical_axes_tree[k]
       full_logical_axes_tree = traverse_util.unflatten_dict(
-          flat_full_logical_axes_tree, sep='/')
+          flat_full_logical_axes_tree, sep='/'
+      )
       boxed_params[key] = jax.tree_map(
           lambda x, y: to_boxed(x, var_collection=key, logical_axes=y),
           var_tree[key],
           full_logical_axes_tree,
           # Consider BoxedParam as leaf to prevent boxing it again.
-          is_leaf=lambda x: isinstance(x, base_layer.BoxedParam))
+          is_leaf=lambda x: isinstance(x, base_layer.BoxedParam),
+      )
     else:
       boxed_params[key] = jax.tree_map(
           lambda x: to_boxed(x, var_collection=key, logical_axes=None),
           var_tree[key],
-          is_leaf=lambda x: isinstance(x, base_layer.BoxedParam))
+          is_leaf=lambda x: isinstance(x, base_layer.BoxedParam),
+      )
     # pylint: enable=cell-var-from-loop
 
   return boxed_params

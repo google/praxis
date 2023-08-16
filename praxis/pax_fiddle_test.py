@@ -112,7 +112,8 @@ class HourlyBusStop(BusStop):
 @dataclasses.dataclass
 class WheelFactory:
   wheel_tpl: List[pax_fiddle.Config[Wheel]] = dataclasses.field(
-      default_factory=list)
+      default_factory=list
+  )
 
 
 class NonDataclassWheelFactory:
@@ -137,8 +138,11 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
               vehicle_tpl=pax_fiddle.Config(
                   Vehicle,
                   wheel_tpl=pax_fiddle.Config(Wheel),
-                  owner=pax_fiddle.Config(Person)),
-              manager=pax_fiddle.Config(Person)))
+                  owner=pax_fiddle.Config(Person),
+              ),
+              manager=pax_fiddle.Config(Person),
+          ),
+      )
 
     with self.subTest("with_materialized_defaults"):
       fdl.materialize_defaults(config)
@@ -151,10 +155,13 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
                   wheel_tpl=pax_fiddle.Config(Wheel, radius=5),
                   owner=pax_fiddle.Config(Person, name=None),
                   num_wheels=4,
-                  wheels=None),
+                  wheels=None,
+              ),
               num_vehicles=1,
               manager=pax_fiddle.Config(Person, name=None),
-              vehicles=None))
+              vehicles=None,
+          ),
+      )
 
   def test_build_default_fleet_config(self):
     config = pax_fiddle.Config(Fleet)
@@ -165,7 +172,9 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
         Fleet(
             vehicle_tpl=pax_fiddle.Config(Vehicle),
             num_vehicles=1,
-            manager=Person("Ben")))
+            manager=Person("Ben"),
+        ),
+    )
 
   def test_build_custom_fleet_config(self):
     config = pax_fiddle.Config(Fleet)
@@ -180,9 +189,12 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
             vehicle_tpl=pax_fiddle.Config(
                 Vehicle,
                 wheel_tpl=pax_fiddle.Config(Wheel, radius=10),
-                owner=pax_fiddle.Config(Person, name="Ben")),
+                owner=pax_fiddle.Config(Person, name="Ben"),
+            ),
             num_vehicles=3,
-            manager=Person("Ben")))
+            manager=Person("Ben"),
+        ),
+    )
 
   def test_build_and_setup_default_fleet_config(self):
     config = pax_fiddle.Config(Fleet)
@@ -193,17 +205,20 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
         fleet,
         Fleet(
             vehicle_tpl=pax_fiddle.Config(
-                Vehicle, owner=pax_fiddle.Config(Person, name="Joe")),
+                Vehicle, owner=pax_fiddle.Config(Person, name="Joe")
+            ),
             vehicles=[
                 Vehicle(
                     wheel_tpl=pax_fiddle.Config(Wheel),
-                    wheels=[Wheel(), Wheel(),
-                            Wheel(), Wheel()],
+                    wheels=[Wheel(), Wheel(), Wheel(), Wheel()],
                     num_wheels=4,
-                    owner=Person("Joe"))
+                    owner=Person("Joe"),
+                )
             ],
             num_vehicles=1,
-            manager=Person("Ben")))
+            manager=Person("Ben"),
+        ),
+    )
 
   def test_build_and_setup_custom_fleet_config(self):
     config = pax_fiddle.Config(Fleet)
@@ -221,16 +236,21 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
               vehicle_tpl=pax_fiddle.Config(
                   Vehicle,
                   owner=pax_fiddle.Config(Person, name="Joe"),
-                  wheel_tpl=pax_fiddle.Config(Wheel, radius=10)),
-              vehicles=3 * [
+                  wheel_tpl=pax_fiddle.Config(Wheel, radius=10),
+              ),
+              vehicles=3
+              * [
                   Vehicle(
                       wheel_tpl=pax_fiddle.Config(Wheel, radius=10),
                       wheels=4 * [Wheel(10)],
                       num_wheels=4,
-                      owner=Person("Joe"))
+                      owner=Person("Joe"),
+                  )
               ],
               num_vehicles=3,
-              manager=Person("Ben")))
+              manager=Person("Ben"),
+          ),
+      )
 
     # Check that no sub-objects are unintentionally shared.
     with self.subTest("no_accidental_sharing"):
@@ -253,16 +273,21 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
         fleet,
         Fleet(
             vehicle_tpl=pax_fiddle.Config(
-                Vehicle, owner=pax_fiddle.Config(Person, name="Ben")),
-            vehicles=3 * [
+                Vehicle, owner=pax_fiddle.Config(Person, name="Ben")
+            ),
+            vehicles=3
+            * [
                 Vehicle(
                     wheel_tpl=pax_fiddle.Config(Wheel),
                     wheels=4 * [Wheel()],
                     num_wheels=4,
-                    owner=Person("Ben"))
+                    owner=Person("Ben"),
+                )
             ],
             num_vehicles=3,
-            manager=Person("Ben")))
+            manager=Person("Ben"),
+        ),
+    )
 
     # Note: there is no object sharing between fleet.manager and
     # fleet.vehicle[i].owner, or between fleet.vehicle[i].owner and
@@ -281,8 +306,9 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
     config.vehicle_tpl.wheel_tpl = pax_fiddle.Config(ColoredWheel, color="red")
     fleet = pax_fiddle.build(config).setup()
     self.assertIsInstance(fleet.vehicles[0].wheels[0], ColoredWheel)
-    self.assertEqual(fleet.vehicles[0].wheels[0],
-                     ColoredWheel(radius=5, color="red"))
+    self.assertEqual(
+        fleet.vehicles[0].wheels[0], ColoredWheel(radius=5, color="red")
+    )
 
   def test_build_fleet_directly(self):
     fleet = Fleet()
@@ -296,17 +322,18 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
                 Vehicle(
                     wheel_tpl=pax_fiddle.Config(Wheel),
                     num_wheels=4,
-                    wheels=[Wheel(), Wheel(),
-                            Wheel(), Wheel()],
-                    owner=Person())
+                    wheels=[Wheel(), Wheel(), Wheel(), Wheel()],
+                    owner=Person(),
+                )
             ],
-            manager=Person()))
+            manager=Person(),
+        ),
+    )
 
     self.assertEqual(fleet.vehicle_tpl, pax_fiddle.Config(Vehicle))
     self.assertEqual(fleet.vehicles[0].wheel_tpl, pax_fiddle.Config(Wheel))
 
   def test_instance_field_empty_container_default_factory(self):
-
     @dataclasses.dataclass
     class TestCls:
       items: List[Any] = pax_fiddle.instance_field(list)
@@ -710,7 +737,8 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
 
   def test_cls_property(self):
     cfg = pax_fiddle.Config(
-        Vehicle, wheel_tpl=pax_fiddle.Config(Wheel), num_wheels=3)
+        Vehicle, wheel_tpl=pax_fiddle.Config(Wheel), num_wheels=3
+    )
     with self.subTest("read"):
       self.assertEqual(cfg.cls, Vehicle)
       self.assertEqual(cfg.wheel_tpl.cls, Wheel)
@@ -730,7 +758,8 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
 
   def test_clone(self):
     cfg = pax_fiddle.Config(
-        Vehicle, wheel_tpl=pax_fiddle.Config(Wheel), num_wheels=3)
+        Vehicle, wheel_tpl=pax_fiddle.Config(Wheel), num_wheels=3
+    )
     clone = cfg.clone()
     self.assertEqual(cfg, clone)
     self.assertIsNot(cfg, clone)
@@ -747,11 +776,15 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
             Vehicle,
             num_wheels=2,
             owner=pax_fiddle.Config(Person, "Grug"),
-            wheel_tpl=pax_fiddle.Config(Wheel, radius=20)))
+            wheel_tpl=pax_fiddle.Config(Wheel, radius=20),
+        ),
+    )
 
   @parameterized.parameters([
-      pax_fiddle.build, pax_fiddle.instantiate, base_hyperparams.instantiate,
-      pax_fiddle.PaxConfig.Instantiate
+      pax_fiddle.build,
+      pax_fiddle.instantiate,
+      base_hyperparams.instantiate,
+      pax_fiddle.PaxConfig.Instantiate,
   ])
   def test_instantiate(self, build_func):
     cfg = pax_fiddle.Config(Vehicle)
@@ -765,11 +798,14 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
             wheel_tpl=pax_fiddle.Config(Wheel, radius=20),
             num_wheels=2,
             wheels=[Wheel(20), Wheel(20)],
-            owner=Person()))
+            owner=Person(),
+        ),
+    )
 
   @parameterized.parameters([
-      pax_fiddle.instantiate, base_hyperparams.instantiate,
-      pax_fiddle.PaxConfig.Instantiate
+      pax_fiddle.instantiate,
+      base_hyperparams.instantiate,
+      pax_fiddle.PaxConfig.Instantiate,
   ])
   def test_instantiate_with_override(self, build_func):
     cfg = pax_fiddle.Config(Vehicle)
@@ -782,7 +818,9 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
             wheel_tpl=pax_fiddle.Config(Wheel, radius=20),
             num_wheels=3,
             wheels=[Wheel(20), Wheel(20), Wheel(20)],
-            owner=Person("Mo")))
+            owner=Person("Mo"),
+        ),
+    )
 
   def test_copy_fields_from(self):
     source = pax_fiddle.Config(Vehicle, num_wheels=2)
@@ -799,7 +837,6 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
     self.assertEqual(target, pax_fiddle.Config(Person, "A"))
 
   def test_copy_fields_from_does_not_copy_parent(self):
-
     @dataclasses.dataclass
     class TestCls:
       parent: str
@@ -813,15 +850,17 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
     source = pax_fiddle.Config(Wheel, radius=10)
     target = pax_fiddle.Config(ColoredWheel, radius=3, color="red")
     target.copy_fields_from(source)
-    self.assertEqual(target, pax_fiddle.Config(ColoredWheel,
-                                               radius=10, color="red"))
+    self.assertEqual(
+        target, pax_fiddle.Config(ColoredWheel, radius=10, color="red")
+    )
 
   def test_copy_fields_from_missing_fields_in_self(self):
     source = pax_fiddle.Config(ColoredWheel, radius=3, color="red")
     target = pax_fiddle.Config(Wheel, radius=10)
 
     with self.assertRaisesRegex(
-        ValueError, "Copying incompatible HParams: 'color' not in self"):
+        ValueError, "Copying incompatible HParams: 'color' not in self"
+    ):
       target.copy_fields_from(source)
 
     target.copy_fields_from(source, missing_fields_in_self=["color"])
@@ -831,7 +870,8 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
     source = pax_fiddle.Config(BusStop)
     target = pax_fiddle.Config(BusStop)
     with self.assertRaisesRegex(
-        ValueError, "Can't copy from missing required .*BusStop.location"):
+        ValueError, "Can't copy from missing required .*BusStop.location"
+    ):
       target.copy_fields_from(source)
 
   def test_copy_fields_from_compatible_default_factory(self):
@@ -852,7 +892,8 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
     source = pax_fiddle.Config(BusStop, "Oak Town")
     target = pax_fiddle.Config(HourlyBusStop)
     with self.assertRaisesRegex(
-        ValueError, "Can't copy from default_factory .*BusStop.times"):
+        ValueError, "Can't copy from default_factory .*BusStop.times"
+    ):
       target.copy_fields_from(source)
 
   def test_copy_fields_from_invalid_source(self):
@@ -860,7 +901,8 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
       source = pax_fiddle.Config(Wheel)
       target = pax_fiddle.Config(Vehicle)
       with self.assertRaisesRegex(
-          ValueError, "Copying incompatible HParams: 'radius' not in self"):
+          ValueError, "Copying incompatible HParams: 'radius' not in self"
+      ):
         target.copy_fields_from(source)
 
   def test_mesh_shape(self):
@@ -900,16 +942,19 @@ class LayerC(nn.Module):
     self.b = pax_fiddle.build(self.b_tpl)
     if self.b.parent is not self:
       raise AssertionError(
-          "Expected self.b.parent to be self (inside self.setup).")
+          "Expected self.b.parent to be self (inside self.setup)."
+      )
 
   def __call__(self, x):
     if self.b.parent is not self:
       raise AssertionError(
-          "Expected self.b.parent to be self (before b.setup).")
+          "Expected self.b.parent to be self (before b.setup)."
+      )
     self.b()  # Causes b.setup() to be called.
     if self.b.a.parent is not self.b:
       raise AssertionError(
-          "Expected self.b.a.parent to be self.b (after b.setup).")
+          "Expected self.b.a.parent to be self.b (after b.setup)."
+      )
     return 0
 
 
@@ -919,7 +964,9 @@ class LayerD(base_layer.BaseLayer):
     self.create_variable(
         "v",
         base_layer.WeightHParams(
-            shape=[], init=base_layer.WeightInit.Constant(3)))
+            shape=[], init=base_layer.WeightInit.Constant(3)
+        ),
+    )
 
   def __call__(self, x):
     return self.theta.v * x
@@ -929,8 +976,10 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
   """Tests for pax_fiddle.build."""
 
   @parameterized.parameters([
-      pax_fiddle.build, pax_fiddle.instantiate, base_hyperparams.instantiate,
-      pax_fiddle.PaxConfig.Instantiate
+      pax_fiddle.build,
+      pax_fiddle.instantiate,
+      base_hyperparams.instantiate,
+      pax_fiddle.PaxConfig.Instantiate,
   ])
   def test_parent_links_are_not_set_to_outer_scope(self, build_func):
     # This test checks that using the `empty_flax_module_stack` decorator is
@@ -945,7 +994,6 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
       self.assertIs(c.b.a.parent, c.b)
 
   def test_build_works_with_nn_compact(self):
-
     class SomeFlaxModel(nn.Module):
       tpl: pax_fiddle.Config
 
@@ -963,7 +1011,6 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
       m.init(jax.random.PRNGKey(1), inputs)
 
   def test_do_not_build_if_type_is_pax_config(self):
-
     def f1(x: pax_fiddle.Config):
       return x
 
@@ -1017,7 +1064,6 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
 
 
 class LayerE(base_layer.BaseLayer):
-
   tpl: pax_fiddle.Config[LayerD] = base_layer.template_field(LayerD)
 
 
@@ -1069,7 +1115,6 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
     self.assertIn(".tpl.params_init.scale", paths)
 
   def test_doesnt_recurse_generic_dataclass(self):
-
     @dataclasses.dataclass(frozen=True)
     class MyDataclass:
       a: int = 4
@@ -1078,8 +1123,9 @@ class DaglishTest(testing.TestCase, parameterized.TestCase):
     value = MyDataclass(6, 7)
     self.assertLen(list(pax_fiddle.iterate(value)), 1)
 
-  @parameterized.parameters(pax_fiddle.BasicTraversal,
-                            pax_fiddle.MemoizedTraversal)
+  @parameterized.parameters(
+      pax_fiddle.BasicTraversal, pax_fiddle.MemoizedTraversal
+  )
   def test_replacement(self, traversal_cls):
     config = pax_fiddle.Config(LayerE)
     fdl.materialize_defaults(config)

@@ -48,19 +48,22 @@ class PyUtilsTest(test_utils.TestCase):
     sharded_inputs = py_utils.reshard(empty_inputs)
     # Check the shape of returned inputs.
     num_devices = jax.local_device_count()
-    self.assertEqual(sharded_inputs.shape,
-                     (num_devices, batch_size // num_devices, 0))
+    self.assertEqual(
+        sharded_inputs.shape, (num_devices, batch_size // num_devices, 0)
+    )
 
   def test_extract_prefixed_keys_from_state_specs(self):
     w_sepc = base_layer.var_partition_specs(
         {'w': base_layer.WeightHParams(shape=(4, 8))},
         mesh_shape=[1, 1],
-        device_axis_names=['a', 'b'])
+        device_axis_names=['a', 'b'],
+    )
     train_state_partition_specs = TrainState(
         step=jax.sharding.PartitionSpec(), mdl_vars=w_sepc, opt_states=[]
     )
     nested_names = py_utils.extract_prefixed_keys_from_nested_map(
-        train_state_partition_specs)
+        train_state_partition_specs
+    )
     flattened_names, _ = jax.tree_util.tree_flatten(nested_names)
     self.assertListEqual(['step', 'mdl_vars/w'], flattened_names)
 
@@ -72,14 +75,17 @@ class PyUtilsTest(test_utils.TestCase):
     self.assertEqual(
         {
             'a': [
-                'a[0]', 'a[1]',
-                Point(x='a[2]/x', y='a[2]/y'), ('a[3][0]', 'a[3][1]')
+                'a[0]',
+                'a[1]',
+                Point(x='a[2]/x', y='a[2]/y'),
+                ('a[3][0]', 'a[3][1]'),
             ],
-            'b': ('b[0]', 'b[1]')
-        }, outputs)
+            'b': ('b[0]', 'b[1]'),
+        },
+        outputs,
+    )
 
   def test_extract_prefixed_keys_from_dataclass(self):
-
     @struct.dataclass
     class GlobalShardedParameterStats:
       statistics: np.ndarray  # Statistics
@@ -109,13 +115,19 @@ class PyUtilsTest(test_utils.TestCase):
     nested_names = py_utils.extract_prefixed_keys_from_nested_map(nested_data)
     flattened_nested_names, _ = jax.tree_util.tree_flatten(nested_names)
 
-    self.assertListEqual([
-        'stats0/statistics', 'stats0/preconditioners', 'stats0/exponents',
-        'stats1/statistics', 'stats1/preconditioners', 'stats1/exponents'
-    ], flattened_nested_names)
+    self.assertListEqual(
+        [
+            'stats0/statistics',
+            'stats0/preconditioners',
+            'stats0/exponents',
+            'stats1/statistics',
+            'stats1/preconditioners',
+            'stats1/exponents',
+        ],
+        flattened_nested_names,
+    )
 
   def test_extract_prefixed_keys_using_is_leaf(self):
-
     class Masked:
       """Test class."""
 
@@ -124,26 +136,32 @@ class PyUtilsTest(test_utils.TestCase):
     inputs = {
         'a': [1, 2, Point(x=3, y=4), (5, 6, Masked())],
         'b': ('c', 'd'),
-        'e': Masked()
+        'e': Masked(),
     }
     outputs = py_utils.extract_prefixed_keys_from_nested_map(
-        inputs, is_leaf=lambda x: isinstance(x, Masked))
+        inputs, is_leaf=lambda x: isinstance(x, Masked)
+    )
     self.assertEqual(
         {
             'a': [
-                'a[0]', 'a[1]',
-                Point(x='a[2]/x', y='a[2]/y'), ('a[3][0]', 'a[3][1]', None)
+                'a[0]',
+                'a[1]',
+                Point(x='a[2]/x', y='a[2]/y'),
+                ('a[3][0]', 'a[3][1]', None),
             ],
             'b': ('b[0]', 'b[1]'),
             'e': None,
-        }, outputs)
+        },
+        outputs,
+    )
 
   def test_sync_global_devices(self):
     py_utils.sync_global_devices('sync')
 
   def test_select_nodes_by_indices(self):
     result = py_utils.select_nodes_by_indices(
-        (0, 1, 2), ('a', 'b', 'c'), ('A', 'B', 'C'), ('alpha', 'beta', 'gamma'))
+        (0, 1, 2), ('a', 'b', 'c'), ('A', 'B', 'C'), ('alpha', 'beta', 'gamma')
+    )
     self.assertEqual(result, ('a', 'B', 'gamma'))
 
   def test_match_variable_names(self):
@@ -167,15 +185,17 @@ class PyUtilsTest(test_utils.TestCase):
         b=py_utils.NestedMap(z=0),
     )
     new_tree = jax.tree_map(lambda x: x + 1, old_tree)
-    result = py_utils.update_matched_variables(old_tree, new_tree,
-                                               re.compile('.*z'))
+    result = py_utils.update_matched_variables(
+        old_tree, new_tree, re.compile('.*z')
+    )
     expected = py_utils.NestedMap(
         a=py_utils.NestedMap(x=0, y=0, zz=1),
         b=py_utils.NestedMap(z=1),
     )
     self.assertEqual(result, expected)
     result = py_utils.update_matched_variables(
-        old_tree, new_tree, re.compile('.*z'), invert=True)
+        old_tree, new_tree, re.compile('.*z'), invert=True
+    )
     expected_inv = py_utils.NestedMap(
         a=py_utils.NestedMap(x=1, y=1, zz=0),
         b=py_utils.NestedMap(z=0),
@@ -204,7 +224,7 @@ class PyUtilsTest(test_utils.TestCase):
   def test_sequence_paddings_from_python_list(self):
     lengths = [0, 1, 2, 3]
     paddings = py_utils.sequence_paddings(lengths, maxlen=4)
-    expected = (1 - np.tri(4, k=-1))
+    expected = 1 - np.tri(4, k=-1)
     self.assertAllClose(paddings, expected)
 
   @parameterized.named_parameters(
@@ -217,55 +237,63 @@ class PyUtilsTest(test_utils.TestCase):
         a=np_module.reshape(np_module.arange(batch_size), (batch_size, 1)),
         b=py_utils.NestedMap(
             c=np_module.reshape(
-                np_module.arange(batch_size * 2 * 3), (batch_size, 2, 3)),),
+                np_module.arange(batch_size * 2 * 3), (batch_size, 2, 3)
+            ),
+        ),
     )
 
     flat_trees = py_utils.tree_unstack(tree, batch_axis)
     self.assertLen(flat_trees, batch_size)
 
     # Merge tree back
-    merged_tree = jax.tree_map(lambda x: np_module.expand_dims(x, batch_axis),
-                               flat_trees[0])
+    merged_tree = jax.tree_map(
+        lambda x: np_module.expand_dims(x, batch_axis), flat_trees[0]
+    )
 
     def _concat_tree_with_batch(x_batch, y):
       y_batch = np_module.expand_dims(y, batch_axis)
       return np_module.concatenate((x_batch, y_batch), axis=batch_axis)
 
     for other_tree in flat_trees[1:]:
-      merged_tree = jax.tree_map(_concat_tree_with_batch, merged_tree,
-                                 other_tree)
+      merged_tree = jax.tree_map(
+          _concat_tree_with_batch, merged_tree, other_tree
+      )
 
     # Check all leaves are element-wise equal
     for l1, l2 in zip(
-        jax.tree_util.tree_leaves(tree),
-        jax.tree_util.tree_leaves(merged_tree)):
+        jax.tree_util.tree_leaves(tree), jax.tree_util.tree_leaves(merged_tree)
+    ):
       self.assertArraysEqual(l1, l2)
 
   def test_apply_padding_zero(self):
     y = py_utils.apply_padding(
         inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
-        padding=np.array([[0.0], [1.0], [0.0]]))
+        padding=np.array([[0.0], [1.0], [0.0]]),
+    )
     self.assertAllClose(y, [[1.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
 
   def test_apply_padding_constant(self):
     y = py_utils.apply_padding(
         inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
         padding=np.array([[0.0], [1.0], [0.0]]),
-        pad_value=np.array([[1.0, 2.0], [9.0, 10.0], [5.0, 6.0]]))
+        pad_value=np.array([[1.0, 2.0], [9.0, 10.0], [5.0, 6.0]]),
+    )
     self.assertAllClose(y, [[1.0, 2.0], [9.0, 10.0], [5.0, 6.0]])
 
   def test_apply_padding_zero_arithmetic(self):
     y = py_utils.apply_padding(
         inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
         padding=np.array([[0.0], [1.0], [0.0]]),
-        use_select=False)
+        use_select=False,
+    )
     self.assertAllClose(y, [[1.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
 
   def test_apply_padding_with_axis_0(self):
     y = py_utils.apply_padding(
         inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
         padding=np.array([[0.0], [1.0], [0.0]]),
-        axis=0)
+        axis=0,
+    )
     self.assertAllClose(y, [[1.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
 
   def test_apply_padding_with_axis_0_and_one_more_dim(self):
@@ -273,8 +301,10 @@ class PyUtilsTest(test_utils.TestCase):
     y = py_utils.apply_padding(
         inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
         padding=np.expand_dims(
-            np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]), -1),
-        axis=0)
+            np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]), -1
+        ),
+        axis=0,
+    )
     self.assertAllClose(y, [[1.0, 2.0], [0.0, 4.0], [5.0, 0.0]])
 
   def test_pad_inputs_with_axis_0_and_one_less_dim(self):
@@ -282,7 +312,8 @@ class PyUtilsTest(test_utils.TestCase):
     y = py_utils.apply_padding(
         inputs=np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]]),
         padding=np.array([[1.0, 0.0]]),
-        axis=0)
+        axis=0,
+    )
     self.assertAllClose(y, [[[0.0, 0.0, 0.0], [4.0, 5.0, 6.0]]])
 
   def test_apply_padding_with_axis_1_and_one_more_dim(self):
@@ -290,8 +321,10 @@ class PyUtilsTest(test_utils.TestCase):
     y = py_utils.apply_padding(
         inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
         padding=np.expand_dims(
-            np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]), -1),
-        axis=1)
+            np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]), -1
+        ),
+        axis=1,
+    )
     self.assertAllClose(y, [[1.0, 2.0], [0.0, 4.0], [5.0, 0.0]])
 
   def test_pad_inputs_with_axis_1_and_same_rank(self):
@@ -300,7 +333,8 @@ class PyUtilsTest(test_utils.TestCase):
     y = py_utils.apply_padding(
         inputs=np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]] * batch),
         padding=np.expand_dims(np.array([[1.0, 0.0]]), -1),
-        axis=1)
+        axis=1,
+    )
     self.assertAllClose(y, [[[0.0, 0.0, 0.0], [4.0, 5.0, 6.0]]] * batch)
 
   def test_pad_inputs_with_axis_1_and_one_less_dim(self):
@@ -309,7 +343,8 @@ class PyUtilsTest(test_utils.TestCase):
     y = py_utils.apply_padding(
         inputs=np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]] * batch),
         padding=np.array([[1.0, 0.0]]),
-        axis=1)
+        axis=1,
+    )
     self.assertAllClose(y, [[[0.0, 0.0, 0.0], [4.0, 5.0, 6.0]]] * batch)
 
   def test_timeit(self):
@@ -321,37 +356,28 @@ class PyUtilsTest(test_utils.TestCase):
     self.assertLessEqual(period.end, end_time)
     self.assertGreater(period.elapsed, 0.9)
 
-    with py_utils.timeit(min_elapsed=1.) as period:
+    with py_utils.timeit(min_elapsed=1.0) as period:
       _ = 0
-    self.assertEqual(period.elapsed, 1.)
+    self.assertEqual(period.elapsed, 1.0)
 
   def test_nestedmap_serialization(self):
     # Note that NestedMap keys cannot start with a number.
     # See lingvo/core/nested_map.py for details.
     p1 = py_utils.NestedMap(
-        x=[1, {
-            2: '3'
-        }], y=(4, '5'), z=py_utils.NestedMap(a='6'))
+        x=[1, {2: '3'}], y=(4, '5'), z=py_utils.NestedMap(a='6')
+    )
     p2 = py_utils.NestedMap(
-        x=[0, {
-            2: '0'
-        }], y=(0, '0'), z=py_utils.NestedMap(a='0'))
+        x=[0, {2: '0'}], y=(0, '0'), z=py_utils.NestedMap(a='0')
+    )
     state_dict = flax.serialization.to_state_dict(p1)
-    self.assertEqual(state_dict, {
-        'x': {
-            '0': 1,
-            '1': {
-                '2': '3'
-            }
+    self.assertEqual(
+        state_dict,
+        {
+            'x': {'0': 1, '1': {'2': '3'}},
+            'y': {'0': 4, '1': '5'},
+            'z': {'a': '6'},
         },
-        'y': {
-            '0': 4,
-            '1': '5'
-        },
-        'z': {
-            'a': '6'
-        }
-    })
+    )
     restored_p1 = flax.serialization.from_state_dict(p2, state_dict)
     self.assertEqual(restored_p1, p1)
 
@@ -372,7 +398,8 @@ class PyUtilsTest(test_utils.TestCase):
   @parameterized.named_parameters(
       dict(testcase_name='_dim1', dst=(2, 2)),
       dict(testcase_name='_dim0', dst=(1, 3)),
-      dict(testcase_name='_dim01', dst=(1, 2)))
+      dict(testcase_name='_dim01', dst=(1, 2)),
+  )
   def test_pad_or_trim_to_trim(self, dst):
     src = (2, 3)
     x = np.random.uniform(0, 1, src).astype(np.float32)
@@ -383,7 +410,8 @@ class PyUtilsTest(test_utils.TestCase):
   @parameterized.named_parameters(
       dict(testcase_name='_dim1', dst=(2, 4)),
       dict(testcase_name='_dim0', dst=(3, 3)),
-      dict(testcase_name='_dim01', dst=(3, 4)))
+      dict(testcase_name='_dim01', dst=(3, 4)),
+  )
   def test_pad_or_trim_to(self, dst):
     src = (2, 3)
     pad_value = 42.0

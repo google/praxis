@@ -17,20 +17,15 @@
 
 import jax
 from jax import numpy as jnp
-from praxis import py_utils
-from praxis import pytypes
-
-NestedMap = py_utils.NestedMap
-JTensor = pytypes.JTensor
 
 
 def top_k_accuracy(
     top_k: int,
-    logits: JTensor,
-    label_ids: JTensor | None = None,
-    label_probs: JTensor | None = None,
-    weights: JTensor | None = None,
-) -> JTensor:
+    logits: jax.Array,
+    label_ids: jax.Array | None = None,
+    label_probs: jax.Array | None = None,
+    weights: jax.Array | None = None,
+) -> jax.Array:
   """Computes the top-k accuracy given the logits and labels.
 
   Args:
@@ -65,7 +60,8 @@ def top_k_accuracy(
   # Reshape label_ids to [-1, 1].
   label_ids_reshaped = jnp.reshape(label_ids, [-1, 1])
   logits_slice = jnp.take_along_axis(
-      logits_reshaped, label_ids_reshaped, axis=-1)[..., 0]
+      logits_reshaped, label_ids_reshaped, axis=-1
+  )[..., 0]
 
   # Reshape logits_slice back to original shape to be compatible with weights.
   logits_slice = jnp.reshape(logits_slice, label_ids.shape)

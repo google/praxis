@@ -21,21 +21,16 @@ import jax
 from jax import numpy as jnp
 from lingvo.core import py_utils as tf_py_utils
 from lingvo.core import schedule as tf_schedule
-from praxis import base_hyperparams
-from praxis import pax_fiddle
 from praxis import schedules
 from praxis import test_utils
-
-instantiate = base_hyperparams.instantiate
 
 
 class SchedulesTest(test_utils.TestCase):
 
   @parameterized.parameters((0,), (10,), (100,), (1000000,))
   def test_constant_schedule(self, count):
-    lr_value = 5.
-    p = schedules.Constant.config(value=lr_value)
-    lr_schedule = instantiate(p)
+    lr_value = 5.0
+    lr_schedule = schedules.Constant.config(value=lr_value).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     with self.subTest(name='reference_values'):
@@ -46,74 +41,104 @@ class SchedulesTest(test_utils.TestCase):
     with self.subTest(name='lingvo_values'):
       with tf_py_utils.GlobalStepContext(count):
         self.assertAllClose(
-            jit_value(jnp.array(count)),
-            tf_lr_schedule.Value().numpy())
+            jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+        )
 
-  @parameterized.parameters((29, 1.), (39, 0.1), (49, 0.01), (50, 0.001),
-                            (59, 0.001))
+  @parameterized.parameters(
+      (29, 1.0), (39, 0.1), (49, 0.01), (50, 0.001), (59, 0.001)
+  )
   def test_piecewise_constant_schedule(self, count, expected_value):
     boundaries = [30, 40, 50]
     values = [1.0, 0.1, 0.01, 0.001]
-    p = schedules.PiecewiseConstant.config(boundaries=boundaries, values=values)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.PiecewiseConstant.config(
+        boundaries=boundaries, values=values
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     with self.subTest(name='reference_values'):
       self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
     tf_p = tf_schedule.PiecewiseConstantSchedule.Params().Set(
-        boundaries=boundaries, values=values)
+        boundaries=boundaries, values=values
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       with tf_py_utils.GlobalStepContext(count):
         self.assertAllClose(
-            jit_value(jnp.array(count)),
-            tf_lr_schedule.Value().numpy())
+            jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+        )
 
   @parameterized.parameters(
-      (0, 1), (10, 1), (100, 1), (1000000, 1), (0, 2), (10, 2), (100, 2),
-      (1000000, 2), (0, 3), (10, 3), (100, 3), (1000000, 3), (0, 4), (10, 4),
-      (100, 4), (1000000, 4), (0, 5), (10, 5), (100, 5), (1000000, 5))
+      (0, 1),
+      (10, 1),
+      (100, 1),
+      (1000000, 1),
+      (0, 2),
+      (10, 2),
+      (100, 2),
+      (1000000, 2),
+      (0, 3),
+      (10, 3),
+      (100, 3),
+      (1000000, 3),
+      (0, 4),
+      (10, 4),
+      (100, 4),
+      (1000000, 4),
+      (0, 5),
+      (10, 5),
+      (100, 5),
+      (1000000, 5),
+  )
   def test_polynomial_schedule(self, count, power):
-    p = schedules.Polynomial.config(
-        start=(7, 0.9), limit=(370, 1.3), power=power)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.Polynomial.config(
+        start=(7, 0.9), limit=(370, 1.3), power=power
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     tf_p = tf_schedule.PolynomialSchedule.Params().Set(
-        start=(7, 0.9), limit=(370, 1.3), power=power)
+        start=(7, 0.9), limit=(370, 1.3), power=power
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       with tf_py_utils.GlobalStepContext(count):
         self.assertAllClose(
-            jit_value(jnp.array(count)),
-            tf_lr_schedule.Value().numpy())
+            jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+        )
 
-  @parameterized.parameters((0, 1.74693e-07), (1000, 0.000174867),
-                            (2000, 0.00034956), (3000, 0.000524253),
-                            (4000, 0.000698684), (4500, 0.000658735),
-                            (5000, 0.000624937))
+  @parameterized.parameters(
+      (0, 1.74693e-07),
+      (1000, 0.000174867),
+      (2000, 0.00034956),
+      (3000, 0.000524253),
+      (4000, 0.000698684),
+      (4500, 0.000658735),
+      (5000, 0.000624937),
+  )
   def test_transformer_schedule_values(self, count, expected_value):
     count = jnp.array(count)
-    p = schedules.Transformer.config(warmup_steps=4000, model_dim=512)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.Transformer.config(
+        warmup_steps=4000, model_dim=512
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     with self.subTest(name='reference_values'):
       self.assertAllClose(jit_value(count), expected_value)
 
     tf_p = tf_schedule.TransformerSchedule.Params().Set(
-        warmup_steps=4000, model_dim=512)
+        warmup_steps=4000, model_dim=512
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       with tf_py_utils.GlobalStepContext(count):
         self.assertAllClose(
-            jit_value(jnp.array(count)),
-            tf_lr_schedule.Value().numpy())
+            jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+        )
 
   def test_transformer_schedule_peak(self):
-    p = schedules.Transformer.config(warmup_steps=4000, model_dim=512)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.Transformer.config(
+        warmup_steps=4000, model_dim=512
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     # Tests that the schedule peaks at 4000 steps.
@@ -125,18 +150,20 @@ class SchedulesTest(test_utils.TestCase):
       self.assertGreater(v_4000, v_4010)
 
     tf_p = tf_schedule.TransformerSchedule.Params().Set(
-        warmup_steps=4000, model_dim=512)
+        warmup_steps=4000, model_dim=512
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       for count in {3990, 4000, 4010}:
         with tf_py_utils.GlobalStepContext(count):
           self.assertAllClose(
-              jit_value(jnp.array(count)),
-              tf_lr_schedule.Value().numpy())
+              jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+          )
 
   def test_transformer_schedule_linear(self):
-    p = schedules.Transformer.config(warmup_steps=4000, model_dim=512)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.Transformer.config(
+        warmup_steps=4000, model_dim=512
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     # Tests that the schedule increases linearly before 4000 steps.
@@ -145,45 +172,53 @@ class SchedulesTest(test_utils.TestCase):
         a = jit_value(jnp.array(step - 10))
         b = jit_value(jnp.array(step))
         c = jit_value(jnp.array(step + 10))
-        self.assertAllClose(b * 2., a + c)
+        self.assertAllClose(b * 2.0, a + c)
 
     tf_p = tf_schedule.TransformerSchedule.Params().Set(
-        warmup_steps=4000, model_dim=512)
+        warmup_steps=4000, model_dim=512
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       for count in range(300, 4000, 200):
         with tf_py_utils.GlobalStepContext(count):
           self.assertAllClose(
-              jit_value(jnp.array(count)),
-              tf_lr_schedule.Value().numpy())
+              jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+          )
 
-  @parameterized.parameters((0, 1.74693e-07), (1000, 0.000174867),
-                            (2000, 0.00034956), (3000, 0.000524253),
-                            (4000, 0.000698684), (4500, 0.000658735),
-                            (5000, 0.000624937))
-  def test_transformer_schedule_with_decay_end_values(self, count,
-                                                      expected_value):
-    p = schedules.Transformer.config(
-        warmup_steps=4000, model_dim=512, decay_end=5000)
-    lr_schedule = instantiate(p)
+  @parameterized.parameters(
+      (0, 1.74693e-07),
+      (1000, 0.000174867),
+      (2000, 0.00034956),
+      (3000, 0.000524253),
+      (4000, 0.000698684),
+      (4500, 0.000658735),
+      (5000, 0.000624937),
+  )
+  def test_transformer_schedule_with_decay_end_values(
+      self, count, expected_value
+  ):
+    lr_schedule = schedules.Transformer.config(
+        warmup_steps=4000, model_dim=512, decay_end=5000
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     with self.subTest(name='reference_values'):
       self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
     tf_p = tf_schedule.TransformerSchedule.Params().Set(
-        warmup_steps=4000, model_dim=512, decay_end=5000)
+        warmup_steps=4000, model_dim=512, decay_end=5000
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       with tf_py_utils.GlobalStepContext(count):
         self.assertAllClose(
-            jit_value(jnp.array(count)),
-            tf_lr_schedule.Value().numpy())
+            jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+        )
 
   def test_transformer_schedule_with_decay_end_peak(self):
-    p = schedules.Transformer.config(
-        warmup_steps=4000, model_dim=512, decay_end=5000)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.Transformer.config(
+        warmup_steps=4000, model_dim=512, decay_end=5000
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     with self.subTest(name='reference_values'):
@@ -195,19 +230,20 @@ class SchedulesTest(test_utils.TestCase):
       self.assertGreater(v_4000, v_4010)
 
     tf_p = tf_schedule.TransformerSchedule.Params().Set(
-        warmup_steps=4000, model_dim=512, decay_end=5000)
+        warmup_steps=4000, model_dim=512, decay_end=5000
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       for count in {3990, 4000, 4010}:
         with tf_py_utils.GlobalStepContext(count):
           self.assertAllClose(
-              jit_value(jnp.array(count)),
-              tf_lr_schedule.Value().numpy())
+              jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+          )
 
   def test_transformer_schedule_with_decay_end_linear(self):
-    p = schedules.Transformer.config(
-        warmup_steps=4000, model_dim=512, decay_end=5000)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.Transformer.config(
+        warmup_steps=4000, model_dim=512, decay_end=5000
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     # Tests that the schedule increases linearly before 4000 steps.
@@ -216,58 +252,69 @@ class SchedulesTest(test_utils.TestCase):
         a = jit_value(jnp.array(step - 10))
         b = jit_value(jnp.array(step))
         c = jit_value(jnp.array(step + 10))
-        self.assertAllClose(b * 2., a + c)
+        self.assertAllClose(b * 2.0, a + c)
 
     tf_p = tf_schedule.TransformerSchedule.Params().Set(
-        warmup_steps=4000, model_dim=512, decay_end=5000)
+        warmup_steps=4000, model_dim=512, decay_end=5000
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       for count in range(300, 4000, 200):
         with tf_py_utils.GlobalStepContext(count):
           self.assertAllClose(
-              jit_value(jnp.array(count)),
-              tf_lr_schedule.Value().numpy())
+              jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+          )
 
   def test_transformer_schedule_with_decay_end_fixed(self):
-    p = schedules.Transformer.config(
-        warmup_steps=4000, model_dim=512, decay_end=5000)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.Transformer.config(
+        warmup_steps=4000, model_dim=512, decay_end=5000
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     # Tests that the schedule is fixed after decay end steps.
-    v_decay_end = lr_schedule.value_at(jnp.array(p.decay_end))
+    v_decay_end = lr_schedule.value_at(jnp.array(lr_schedule.decay_end))
     with self.subTest(name='reference_values'):
-      self.assertGreater(jit_value(jnp.array(p.decay_end - 1)), v_decay_end)
-      self.assertAllClose(jit_value(jnp.array(p.decay_end + 1)), v_decay_end)
-      self.assertAllClose(jit_value(jnp.array(p.decay_end + 1000)), v_decay_end)
+      self.assertGreater(
+          jit_value(jnp.array(lr_schedule.decay_end - 1)), v_decay_end
+      )
+      self.assertAllClose(
+          jit_value(jnp.array(lr_schedule.decay_end + 1)), v_decay_end
+      )
+      self.assertAllClose(
+          jit_value(jnp.array(lr_schedule.decay_end + 1000)), v_decay_end
+      )
 
     tf_p = tf_schedule.TransformerSchedule.Params().Set(
-        warmup_steps=4000, model_dim=512, decay_end=5000)
+        warmup_steps=4000, model_dim=512, decay_end=5000
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
-      for count in range(p.decay_end - 1, p.decay_end + 20, 2):
+      for count in range(
+          lr_schedule.decay_end - 1, lr_schedule.decay_end + 20, 2
+      ):
         with tf_py_utils.GlobalStepContext(count):
           self.assertAllClose(
-              jit_value(jnp.array(count)),
-              tf_lr_schedule.Value().numpy())
+              jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+          )
 
-  @parameterized.parameters((0,), (1000,), (2000,), (3000,), (4000,), (4500,),
-                            (5000,))
+  @parameterized.parameters(
+      (0,), (1000,), (2000,), (3000,), (4000,), (4500,), (5000,)
+  )
   def test_sqrt_decay_schedule_values(self, count):
-    p = schedules.SqrtDecay.config(decay_start=4000)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.SqrtDecay.config(decay_start=4000).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     tf_p = tf_schedule.SqrtDecay.Params().Set(warmup_steps=4000)
     tf_lr_schedule = tf_p.Instantiate()
     with tf_py_utils.GlobalStepContext(count):
       self.assertAllClose(
-          jit_value(jnp.array(count)),
-          tf_lr_schedule.Value().numpy())
+          jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+      )
 
   def test_linear_rampup_sqrt_decay_schedule_values(self):
-    p = schedules.LinearRampupSqrtDecay.config(warmup_steps=100, peak=2.0)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.LinearRampupSqrtDecay.config(
+        warmup_steps=100, peak=2.0
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     expected_values = [
@@ -285,8 +332,9 @@ class SchedulesTest(test_utils.TestCase):
         self.assertAllClose(jit_value(jnp.array(step)), value, atol=1e-3)
 
   def test_linear_schedule_values(self):
-    p = schedules.Linear.config(start=(100, 0.1), limit=(200, 1.0))
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.Linear.config(
+        start=(100, 0.1), limit=(200, 1.0)
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     xs = [0, 10, 20, 100, 120, 150, 200, 250]
@@ -296,18 +344,21 @@ class SchedulesTest(test_utils.TestCase):
         self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
     tf_p = tf_schedule.LinearSchedule.Params().Set(
-        start=(100, 0.1), limit=(200, 1.0))
+        start=(100, 0.1), limit=(200, 1.0)
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       for count in xs:
         with tf_py_utils.GlobalStepContext(count):
           self.assertAllClose(
-              jit_value(jnp.array(count)),
-              tf_lr_schedule.Value().numpy())
+              jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+          )
 
   def test_exponential_schedule(self):
-    p = schedules.Exponential.config(start=(100, 1.0), limit=(200, 0.1))
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.Exponential.config(
+        start=(100, 1.0), limit=(200, 0.1)
+    ).Instantiate()
+
     jit_value = jax.jit(lr_schedule.value_at)
 
     xs = [0, 10, 20, 100, 120, 150, 200, 250]
@@ -317,23 +368,25 @@ class SchedulesTest(test_utils.TestCase):
         self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
     tf_p = tf_schedule.ExponentialSchedule.Params().Set(
-        start=(100, 1.0), limit=(200, 0.1))
+        start=(100, 1.0), limit=(200, 0.1)
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       for count in xs:
         with tf_py_utils.GlobalStepContext(count):
           self.assertAllClose(
-              jit_value(jnp.array(count)),
-              tf_lr_schedule.Value().numpy())
+              jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+          )
 
   def test_linear_rampup_exp_decay_schedule(self):
-    p = schedules.LinearRampupExponentialDecay.config(
+    lr_schedule = schedules.LinearRampupExponentialDecay.config(
         warmup_steps=100,
         decay_start=200,
         decay_end=300,
         max=1.0,
-        min_ratio=0.01)
-    lr_schedule = instantiate(p)
+        min_ratio=0.01,
+    ).Instantiate()
+
     jit_value = jax.jit(lr_schedule.value_at)
 
     xs = [0, 10, 20, 100, 120, 150, 200, 250, 300, 350]
@@ -343,33 +396,36 @@ class SchedulesTest(test_utils.TestCase):
         self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
     tf_p = tf_schedule.LinearRampupExponentialDecay.Params().Set(
-        warmup=100, decay_start=200, decay_end=300, max=1.0, min=0.01)
+        warmup=100, decay_start=200, decay_end=300, max=1.0, min=0.01
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       for count in xs:
         with tf_py_utils.GlobalStepContext(count):
           self.assertAllClose(
-              jit_value(jnp.array(count)),
-              tf_lr_schedule.Value().numpy())
+              jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+          )
 
   def test_linear_rampup_exp_decay_schedule_noconstant(self):
-    p = schedules.LinearRampupExponentialDecay.config(
+    lr_schedule = schedules.LinearRampupExponentialDecay.config(
         warmup_steps=150,
         decay_start=150,
         decay_end=250,
         max=1.0,
-        min_ratio=0.01)
-    lr_schedule = instantiate(p)
+        min_ratio=0.01,
+    ).Instantiate()
+
     jit_value = jax.jit(lr_schedule.value_at)
 
     xs = [0, 15, 30, 150, 200, 250, 300, 350]
-    expected_values = [0., 0.1, 0.2, 1.0, 0.1, 0.01, 0.01, 0.01]
+    expected_values = [0.0, 0.1, 0.2, 1.0, 0.1, 0.01, 0.01, 0.01]
     with self.subTest(name='reference_values'):
       for count, expected_value in zip(xs, expected_values):
         self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
     tf_p = tf_schedule.LinearRampupExponentialDecay.Params().Set(
-        warmup=150, decay_start=150, decay_end=250, max=1.0, min=0.01)
+        warmup=150, decay_start=150, decay_end=250, max=1.0, min=0.01
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       for count in xs:
@@ -379,23 +435,24 @@ class SchedulesTest(test_utils.TestCase):
           continue
         with tf_py_utils.GlobalStepContext(count):
           self.assertAllClose(
-              jit_value(jnp.array(count)),
-              tf_lr_schedule.Value().numpy())
+              jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+          )
 
   def test_linear_rampup_exp_decay_schedule_nowarmup(self):
-    p = schedules.LinearRampupExponentialDecay.config(
-        warmup_steps=0, decay_start=0, decay_end=100, max=1.0, min_ratio=0.01)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.LinearRampupExponentialDecay.config(
+        warmup_steps=0, decay_start=0, decay_end=100, max=1.0, min_ratio=0.01
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     xs = [0, 50, 100, 150, 200]
-    expected_values = [1., 0.1, 0.01, 0.01, 0.01]
+    expected_values = [1.0, 0.1, 0.01, 0.01, 0.01]
     with self.subTest(name='reference_values'):
       for count, expected_value in zip(xs, expected_values):
         self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
     tf_p = tf_schedule.LinearRampupExponentialDecay.Params().Set(
-        warmup=0, decay_start=0, decay_end=100, max=1.0, min=0.01)
+        warmup=0, decay_start=0, decay_end=100, max=1.0, min=0.01
+    )
     tf_lr_schedule = tf_p.Instantiate()
     with self.subTest(name='lingvo_values'):
       for count in xs:
@@ -405,17 +462,18 @@ class SchedulesTest(test_utils.TestCase):
           continue
         with tf_py_utils.GlobalStepContext(count):
           self.assertAllClose(
-              jit_value(jnp.array(count)),
-              tf_lr_schedule.Value().numpy())
+              jit_value(jnp.array(count)), tf_lr_schedule.Value().numpy()
+          )
 
   def test_linear_rampup_cos_decay_schedule(self):
-    p = schedules.LinearRampupCosineDecay.config(
+    lr_schedule = schedules.LinearRampupCosineDecay.config(
         warmup_steps=100,
         decay_start=200,
         decay_end=300,
         max=1.0,
-        min_ratio=0.01)
-    lr_schedule = instantiate(p)
+        min_ratio=0.01,
+    ).Instantiate()
+
     jit_value = jax.jit(lr_schedule.value_at)
 
     xs = [0, 10, 20, 100, 120, 150, 200, 250, 300, 350]
@@ -424,15 +482,15 @@ class SchedulesTest(test_utils.TestCase):
       self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
   def test_linear_rampup_poly_decay_schedule(self):
-    p = schedules.LinearRampupPolynomialDecay.config(
+    lr_schedule = schedules.LinearRampupPolynomialDecay.config(
         warmup_steps=100,
         decay_start=200,
         decay_end=300,
         max=1.0,
         power=1,
         min_ratio=0.0,
-    )
-    lr_schedule = instantiate(p)
+    ).Instantiate()
+
     jit_value = jax.jit(lr_schedule.value_at)
 
     xs = [0, 10, 20, 100, 120, 150, 200, 250, 300, 350]
@@ -441,28 +499,30 @@ class SchedulesTest(test_utils.TestCase):
       self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
   def test_linear_rampup_cos_decay_schedule_noconstant(self):
-    p = schedules.LinearRampupCosineDecay.config(
+    lr_schedule = schedules.LinearRampupCosineDecay.config(
         warmup_steps=150,
         decay_start=150,
         decay_end=250,
         max=1.0,
-        min_ratio=0.01)
-    lr_schedule = instantiate(p)
+        min_ratio=0.01,
+    ).Instantiate()
+
     jit_value = jax.jit(lr_schedule.value_at)
 
     xs = [0, 15, 30, 150, 200, 250, 300, 350]
-    expected_values = [0., 0.1, 0.2, 1.0, 0.505, 0.01, 0.01, 0.01]
+    expected_values = [0.0, 0.1, 0.2, 1.0, 0.505, 0.01, 0.01, 0.01]
     for count, expected_value in zip(xs, expected_values):
       self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
   def test_linear_rampup_cos_decay_schedule_nowarmup(self):
-    p = schedules.LinearRampupCosineDecay.config(
-        warmup_steps=0, decay_start=0, decay_end=100, max=1.0, min_ratio=0.01)
-    lr_schedule = instantiate(p)
+    lr_schedule = schedules.LinearRampupCosineDecay.config(
+        warmup_steps=0, decay_start=0, decay_end=100, max=1.0, min_ratio=0.01
+    ).Instantiate()
+
     jit_value = jax.jit(lr_schedule.value_at)
 
     xs = [0, 50, 100, 150, 200]
-    expected_values = [1., 0.505, 0.01, 0.01, 0.01]
+    expected_values = [1.0, 0.505, 0.01, 0.01, 0.01]
     for count, expected_value in zip(xs, expected_values):
       self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
@@ -471,66 +531,65 @@ class SchedulesTest(test_utils.TestCase):
     values = [1.0, 0.1, 0.01, 0.001]
     p = schedules.LinearRampupPiecewiseConstant.config(
         boundaries=boundaries, values=values)
-    lr_schedule = instantiate(p)
+    lr_schedule = p.Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     tf_p = tf_schedule.LinearRampupPiecewiseConstantSchedule.Params().Set(
-        boundaries=boundaries, lrs=values, num_splits=1)
+        boundaries=boundaries, lrs=values, num_splits=1
+    )
     tf_lr_schedule = tf_p.Instantiate()
     for step in range(100):
       with tf_py_utils.GlobalStepContext(step):
         self.assertAllClose(
-            jit_value(jnp.array(step)),
-            tf_lr_schedule.Value().numpy())
+            jit_value(jnp.array(step)), tf_lr_schedule.Value().numpy()
+        )
 
   def test_piecewise_schedule(self):
-    p1 = pax_fiddle.Config(
-        schedules.Exponential, start=(0, 1.0), limit=(50, 0.1)
-    )
-    p2 = pax_fiddle.Config(
-        schedules.Exponential, start=(0, 4.0), limit=(50, 1.0)
-    )
-    p = schedules.PiecewiseSchedule.config(boundaries=[50], schedules=[p1, p2])
-    lr_schedule = instantiate(p)
+    p1 = schedules.Exponential.config(start=(0, 1.0), limit=(50, 0.1))
+    p2 = schedules.Exponential.config(start=(0, 4.0), limit=(50, 1.0))
+    lr_schedule = schedules.PiecewiseSchedule.config(
+        boundaries=[50], schedules=[p1, p2]
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
-    p1_lr_schedule = instantiate(p1)
+    p1_lr_schedule = p1.Instantiate()
     p1_jit_value = jax.jit(p1_lr_schedule.value_at)
-    p2_lr_schedule = instantiate(p2)
+    p2_lr_schedule = p2.Instantiate()
     p2_jit_value = jax.jit(p2_lr_schedule.value_at)
 
     for step in range(50):
       self.assertAllClose(
-          jit_value(jnp.array(step)), p1_jit_value(jnp.array(step)))
+          jit_value(jnp.array(step)), p1_jit_value(jnp.array(step))
+      )
     for step in range(50):
       self.assertAllClose(
-          jit_value(jnp.array(step + 50)), p2_jit_value(jnp.array(step)))
+          jit_value(jnp.array(step + 50)), p2_jit_value(jnp.array(step))
+      )
 
   def test_cycle_schedule(self):
-    p1 = pax_fiddle.Config(
-        schedules.Exponential, start=(0, 1.0), limit=(50, 0.1)
-    )
-    p2 = pax_fiddle.Config(
-        schedules.Exponential, start=(0, 4.0), limit=(50, 1.0)
-    )
-    p = schedules.CycleSchedule.config(steps=[1, 2], schedules=[p1, p2])
-    lr_schedule = instantiate(p)
+    p1 = schedules.Exponential.config(start=(0, 1.0), limit=(50, 0.1))
+    p2 = schedules.Exponential.config(start=(0, 4.0), limit=(50, 1.0))
+    lr_schedule = schedules.CycleSchedule.config(
+        steps=[1, 2], schedules=[p1, p2]
+    ).Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
-    p1_lr_schedule = instantiate(p1)
+    p1_lr_schedule = p1.Instantiate()
     p1_jit_value = jax.jit(p1_lr_schedule.value_at)
-    p2_lr_schedule = instantiate(p2)
+    p2_lr_schedule = p2.Instantiate()
     p2_jit_value = jax.jit(p2_lr_schedule.value_at)
 
     for step in range(50):
       if step % 3 == 0:
         self.assertAllClose(
-            jit_value(jnp.array(step)), p1_jit_value(jnp.array(step)))
+            jit_value(jnp.array(step)), p1_jit_value(jnp.array(step))
+        )
       else:
         self.assertAllClose(
-            jit_value(jnp.array(step)), p2_jit_value(jnp.array(step)))
+            jit_value(jnp.array(step)), p2_jit_value(jnp.array(step))
+        )
 
   def test_continuous_schedule(self):
-    p = pax_fiddle.Config(schedules.ContinuousSchedule)
-    lr_schedule = instantiate(p)
+    p = schedules.ContinuousSchedule.config()
+    lr_schedule = p.Instantiate()
     jit_value = jax.jit(lr_schedule.value_at)
 
     tf_p = tf_schedule.ContinuousSchedule.Params()

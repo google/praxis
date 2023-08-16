@@ -452,12 +452,16 @@ class PaxConfig(Generic[_T], fdl.Config[_T], CloneAndSetMixin):
           # introduce unintentional sharing.)
           # TODO(edloper) Consider using fiddle.ArgFactory to handle this
           # case, if it turns out to be important to handle.
-          raise ValueError("Can't copy from default_factory "
-                           f'{source.__fn_or_cls__.__qualname__}.{name}')
+          raise ValueError(
+              "Can't copy from default_factory "
+              f'{source.__fn_or_cls__.__qualname__}.{name}'
+          )
 
       else:
-        raise ValueError("Can't copy from missing required value "
-                         f'{source.__fn_or_cls__.__qualname__}.{name}')
+        raise ValueError(
+            "Can't copy from missing required value "
+            f'{source.__fn_or_cls__.__qualname__}.{name}'
+        )
 
 
 class PaxPartial(Generic[_T], fdl.Partial[_T], CloneAndSetMixin):
@@ -535,14 +539,18 @@ def auto_config(
 ) -> Any:
   """Version of Fiddle's auto_config that generates PaxConfig objects."""
   user_exemption_policy = auto_config_kwargs.pop(
-      'experimental_exemption_policy',
-      fdl_auto_config.auto_config_policy.latest)
+      'experimental_exemption_policy', fdl_auto_config.auto_config_policy.latest
+  )
 
   def exemption_policy(fn_or_cls):
-    return (fn_or_cls is PaxConfig or
-            (getattr(fn_or_cls, '__func__', None) is
-             fdl_auto_config.AutoConfig.as_buildable) or
-            user_exemption_policy(fn_or_cls))
+    return (
+        fn_or_cls is PaxConfig
+        or (
+            getattr(fn_or_cls, '__func__', None)
+            is fdl_auto_config.AutoConfig.as_buildable
+        )
+        or user_exemption_policy(fn_or_cls)
+    )
 
   auto_config_kwargs['experimental_exemption_policy'] = exemption_policy
   auto_config_kwargs['experimental_allow_control_flow'] = True
@@ -554,7 +562,6 @@ def auto_config(
   auto_config_kwargs['experimental_result_must_contain_buildable'] = False
 
   def make_auto_config(fn):
-
     # If `pax_fiddle.auto_config` is applied to a class, then return the result
     # of applying it to the constructor.  This is helpful for the automatic
     # `auto_config` wrapping done by `instance_field` and `template_field`.
@@ -870,7 +877,8 @@ def build_with_empty_flax_module_stack(buildable: Any) -> Any:
         with empty_flax_module_stack():
           arguments[arg_name] = state.call(arg_value, daglish.Attr(arg_name))
       return building.call_buildable(
-          value, arguments, current_path=state.current_path)
+          value, arguments, current_path=state.current_path
+      )
     else:
       return state.map_children(value)
 
@@ -972,7 +980,8 @@ def empty_flax_module_stack():
 
 
 _hparams_node_traverser_registry = daglish.NodeTraverserRegistry(
-    use_fallback=True)
+    use_fallback=True
+)
 
 
 def _register_traversers_for_subclass(subclass):
@@ -1010,4 +1019,5 @@ class MemoizedTraversal(daglish.MemoizedTraversal):
 
 
 iterate = functools.partial(
-    daglish.iterate, registry=_hparams_node_traverser_registry)
+    daglish.iterate, registry=_hparams_node_traverser_registry
+)
