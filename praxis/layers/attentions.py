@@ -33,6 +33,7 @@ from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import base_ops
 from praxis.layers import embedding_softmax
+from praxis.layers import normalizations
 from praxis.layers import stochastics
 
 NestedMap = py_utils.NestedMap
@@ -1102,6 +1103,8 @@ class DotProductAttention(base_layer.BaseLayer):
     zero_fully_masked: if True, attention values for fully masked tokens will be
       forced to zero. This is particularily useful for cross attentions when
       keys are all padded.
+    ln_tpl: Parameterization of the layer normalization layer used in QK norm.
+      Other options include RmsNorm as well.
   """
 
   input_dim: Union[int, Dict[str, int]] = 0
@@ -1140,6 +1143,7 @@ class DotProductAttention(base_layer.BaseLayer):
   pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
   per_dim_scale_tpl: LayerTpl = template_field(PerDimScale)
   causal_depthwise_conv1d_tpl: LayerTpl = template_field(CausalDepthwiseConv1D)
+  ln_tpl: Optional[LayerTpl] = template_field(None)
 
   # SPMD partition related params.
   #
@@ -1275,6 +1279,12 @@ class DotProductAttention(base_layer.BaseLayer):
       self.create_child('dconv_q', causal_dconv_p)
       self.create_child('dconv_k', causal_dconv_p)
       self.create_child('dconv_v', causal_dconv_p)
+
+    if self.ln_tpl is not None:
+      ln = self.ln_tpl.clone()
+      ln.dim = dim_per_head
+      self.create_child('layer_norm_q', ln)
+      self.create_child('layer_norm_k', ln)
 
     # Initialize NGrammer layer if present
     if self.ngrammer_tpl is not None:
@@ -1666,6 +1676,10 @@ class DotProductAttention(base_layer.BaseLayer):
       relative_bias = self.relative_bias(query_segment_pos, key_segment_pos)
     else:
       relative_bias = None
+
+    if self.ln_tpl is not None:
+      query_proj = self.layer_norm_q(query_proj)
+      key_proj = self.layer_norm_k(key_proj)
 
     encoded, atten_probs = self._dot_atten(
         query_proj, key_proj, value_proj, atten_mask, relative_bias
