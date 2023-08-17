@@ -170,6 +170,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     attention_extra_logit: Extra logit for attention softmax.
     combine_qkv: Whether to combine qkv tensor for optimizing qkv input gradient
       computation with SPMD. Only supports self-attention.
+    decode_cache: if the attention layer needs decode cache.
     scale_query_by_dim_per_head: whether to scale the query by dim_per_head,
       instead of default hidden_dim // num_heads.
     chunked_attn_num_seq_split: Whether to compute the attention context as a
@@ -197,6 +198,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   attention_extra_logit: Optional[float] = None
   dconv_qkv: bool = False
   combine_qkv: bool = False
+  decode_cache: bool = True
   qk_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
   pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
   scale_query_by_dim_per_head: bool = False
@@ -843,7 +845,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       value: Value to extend at time step.
     """
     # Only update the state if it is decoding.
-    if not self.is_mutable_collection(base_layer.DECODE_CACHE):
+    if (
+        not self.is_mutable_collection(base_layer.DECODE_CACHE)
+        or not self.decode_cache
+    ):
       return
     self.update_decode_state(name, value)
 
@@ -876,9 +881,15 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     self.update_decode_state(name, new_state)
     return new_state
 
-  def extend_step(self, query_vec: JTensor, *, atten_mask: JTensor,
-                  time_step: JTensor,
-                  segment_pos: Optional[JTensor]) -> JTensor:
+  def extend_step(
+      self,
+      query_vec: JTensor,
+      *,
+      atten_mask: JTensor,
+      time_step: JTensor,
+      segment_pos: Optional[JTensor],
+      is_cross_attention: bool = False,
+  ) -> JTensor:
     """Computes the value vector given the query of the current step.
 
     This function is used by autoregressive decoding.
@@ -892,6 +903,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       time_step: A scalar or JTensor. Current time-step, 0-based.
       segment_pos: An optional JTensor of shape [B] or [B, T]. Current position
         in the same segment. If unspecified, time_step will be used.
+      is_cross_attention: Whether this is a cross-attention layer. Decoding
+        states will not be updated in this case.
 
     Returns:
       encoded: JTensor of shape [B, D] which returns the attention output at
@@ -904,9 +917,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     assert time_step.ndim == 0
     # Project inputs to key, value and query. Query has shape [B, N, H],
     # key/value shapes [B, H]
-    key_proj = self.key(query_vec)
-    value_proj = self.value(query_vec)
     query_proj = self.query(query_vec)
+    if not is_cross_attention:
+      key_proj = self.key(query_vec)
+      value_proj = self.value(query_vec)
 
     def _extend_decode_state_and_shard_blh(name: str,
                                            extend_value: JTensor) -> JTensor:
@@ -917,14 +931,15 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       else:
         return self._shard_blnh(extended_state)
 
-    # Update value state.
+    # Update key, value state.
     value_state_name = 'value_state'
-    _extend_decode_state_and_shard_blh(value_state_name, value_proj)
-    # Update key state.
     key_state_name = 'key_state'
-    _extend_decode_state_and_shard_blh(key_state_name, key_proj)
+    if not is_cross_attention:
+      _extend_decode_state_and_shard_blh(value_state_name, value_proj)
+      _extend_decode_state_and_shard_blh(key_state_name, key_proj)
 
     if self.use_rotary_position_emb:
+      key_state_name = 'key_post_rotary_pos_emb'
       if segment_pos is None:
         position = jnp.broadcast_to(time_step, [query_vec.shape[0]])
       else:
@@ -935,15 +950,14 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
           position = segment_pos[:, -1]
       query_proj = self.rotary_position_emb.extend_step(
           query_proj, position)
-      key_shape = key_proj.shape
-      if self.num_kv_heads == 1:
-        key_proj = jnp.expand_dims(key_proj, axis=-2)
-      key_proj = self.rotary_position_emb.extend_step(
-          key_proj, position)
-      if self.num_kv_heads == 1:
-        key_proj = jnp.reshape(key_proj, key_shape)
-      key_state_name = 'key_post_rotary_pos_emb'
-      _extend_decode_state_and_shard_blh(key_state_name, key_proj)
+      if not is_cross_attention:
+        key_shape = key_proj.shape
+        if self.num_kv_heads == 1:
+          key_proj = jnp.expand_dims(key_proj, axis=-2)
+        key_proj = self.rotary_position_emb.extend_step(key_proj, position)
+        if self.num_kv_heads == 1:
+          key_proj = jnp.reshape(key_proj, key_shape)
+        _extend_decode_state_and_shard_blh(key_state_name, key_proj)
 
     if self.relative_bias_tpl:
       # Relative bias uses time_step instead of segment_pos.
@@ -1387,9 +1401,15 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
                                         broadcast_args_to_slice, states))
     return combine_results(results)
 
-  def extend_step(self, query_vec: JTensor, *, atten_mask: JTensor,  # pytype: disable=signature-mismatch  # overriding-parameter-name-checks
-                  time_step: JTensor,
-                  segment_pos: Optional[JTensor]) -> JTensor:
+  def extend_step(
+      self,
+      query_vec: JTensor,
+      *,
+      atten_mask: JTensor,  # pytype: disable=signature-mismatch  # overriding-parameter-name-checks
+      time_step: JTensor,
+      segment_pos: Optional[JTensor],
+      is_cross_attention: bool = False,
+  ) -> JTensor:
     """Computes the value vector given the query of the current step using LPB.
 
     This function is used by autoregressive decoding.
@@ -1403,6 +1423,8 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
       time_step: A scalar or JTensor. Current time-step, 0-based.
       segment_pos: An optional JTensor of shape [B]. Current position in the
         same segment. If unspecified, time_step will be used.
+      is_cross_attention: Whether this is a cross-attention layer. Decoding
+        states will not be updated in this case.
 
     Returns:
       encoded: JTensor of shape [B, D] which returns the attention output at
@@ -1457,8 +1479,11 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
         query_proj, key_proj, value_proj = layer.combined_qkv(q)
       else:
         # Project inputs to key, value and query. Each has shape [B, N, H].
-        key_proj = layer.key(q)
-        value_proj = layer.value(q)
+        key_proj = None
+        value_proj = None
+        if not is_cross_attention:
+          key_proj = layer.key(q)
+          value_proj = layer.value(q)
         query_proj = layer.query(q)
       return query_proj, key_proj, value_proj
 
@@ -1472,13 +1497,13 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
           name, extend_value, time_step - prefix_length, time_dim=1 + pfx_count)
       return self._shard_blh(extended_state)
 
-    # Update key_state
     key_state_name = 'key_state'
-    _extend_decode_state_and_shard(key_state_name, key_proj)
-
-    # Update value state.
     value_state_name = 'value_state'
-    _extend_decode_state_and_shard(value_state_name, value_proj)
+    if not is_cross_attention:
+      # Update key_state
+      _extend_decode_state_and_shard(key_state_name, key_proj)
+      # Update value state.
+      _extend_decode_state_and_shard(value_state_name, value_proj)
 
     # Apply rotary position embeddings.
     # Paper: https://arxiv.org/abs/2104.09864.
@@ -1489,20 +1514,23 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
         position = segment_pos
 
       def _rotary(layer, q, k, pos):
-        k = jnp.expand_dims(k, axis=-2)
-
+        if not is_cross_attention:
+          k = jnp.expand_dims(k, axis=-2)
+        key_proj = None
         if len(query_vec.shape) == pfx_count + 2:
           query_proj = layer.rotary_position_emb.extend_step(q, pos)
-          key_proj = layer.rotary_position_emb.extend_step(k, pos)
+          if not is_cross_attention:
+            key_proj = layer.rotary_position_emb.extend_step(k, pos)
         else:
           # If it is extending n steps, uses a vmap to do the computation.
           def _get_rotary(q, pos):
             return layer.rotary_position_emb.extend_step(q, pos)
 
           query_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(q, pos)
-          key_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(k, pos)
-
-        key_proj = jnp.squeeze(key_proj, axis=-2)
+          if not is_cross_attention:
+            key_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(k, pos)
+        if not is_cross_attention:
+          key_proj = jnp.squeeze(key_proj, axis=-2)
         return query_proj, key_proj
 
       query_proj, key_proj = _vmap_no_state(_rotary)(self,
@@ -1512,7 +1540,8 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
 
       # Update key post rotary position embedding in the cache.
       key_state_name = 'key_post_rotary_pos_emb'
-      _extend_decode_state_and_shard(key_state_name, key_proj)
+      if not is_cross_attention:
+        _extend_decode_state_and_shard(key_state_name, key_proj)
 
     if self.relative_bias_tpl:
       # Relative bias uses time_step instead of segment_pos.

@@ -147,6 +147,77 @@ class MultiQueryAttentionTest(test_utils.TestCase):
       )
     self.assertSequenceEqual(encoded.shape, expected_shape)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_norotary_nolpb',
+          use_rotary_position_emb=False,
+          lpb=False,
+      ),
+      dict(
+          testcase_name='_norotary_lpb',
+          use_rotary_position_emb=False,
+          lpb=True,
+      ),
+      dict(
+          testcase_name='_rotary_nolpb',
+          use_rotary_position_emb=True,
+          lpb=False,
+      ),
+      dict(
+          testcase_name='_rotary_lpb',
+          use_rotary_position_emb=True,
+          lpb=True,
+      ),
+  )
+  def test_cross_mqa_decoding_shape(self, use_rotary_position_emb, lpb):
+    if lpb:
+      mqa = multi_query_attention.MultiQueryDotProductAttentionLPB
+    else:
+      mqa = multi_query_attention.MultiQueryDotProductAttention
+    test_layer_p = pax_fiddle.Config(
+        mqa,
+        name='mqa',
+        input_dim=16,
+        hidden_dim=60,
+        num_heads=10,
+        use_rotary_position_emb=use_rotary_position_emb,
+    )
+    layer = instantiate(test_layer_p)
+    prng_key = jax.random.PRNGKey(seed=123)
+    prng_key, init_key = jax.random.split(prng_key)
+
+    query_vec = jnp.zeros([5, 10, 16])
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(
+          init_key,
+          query_vec,
+          query_vec,
+          query_vec,
+          attentions.causal_mask(query_vec),
+      )
+      logging.info('initial_vars: %s', initial_vars)
+      _, attention_states = layer.apply(
+          initial_vars,
+          query_vec,
+          query_vec,
+          query_vec,
+          attentions.causal_mask(query_vec),
+          mutable=[base_layer.DECODE_CACHE],
+      )
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+      atten_mask = attentions.causal_mask(query_vec)[:, :, 0, :]
+      encoded = layer.apply(
+          updated_vars,
+          method=layer.extend_step,
+          query_vec=query_vec[:, 0, :],
+          atten_mask=atten_mask,
+          time_step=1,
+          segment_pos=None,
+          is_cross_attention=True,
+      )
+    self.assertSequenceEqual(encoded.shape, [5, 16])
+
   @parameterized.parameters([(1,), (2,)])
   def test_multi_query_attention_consistent(self, kv_heads):
     test_layer_p = pax_fiddle.Config(
@@ -447,8 +518,29 @@ class MultiQueryAttentionTest(test_utils.TestCase):
         for sample_id in range(6):
           self.assertAllClose(fprop_out[:, t, :], encoded[:, sample_id])
 
-  @parameterized.parameters([True, False])
-  def test_multi_query_attention_consistent(self, lpb):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_norotary_nolpb',
+          lpb=False,
+          use_rotary_position_emb=False,
+      ),
+      dict(
+          testcase_name='_norotary_lpb',
+          lpb=True,
+          use_rotary_position_emb=False,
+      ),
+      dict(
+          testcase_name='_rotary_nolpb',
+          lpb=False,
+          use_rotary_position_emb=True,
+      ),
+      dict(
+          testcase_name='_rotary_lpb',
+          lpb=True,
+          use_rotary_position_emb=True,
+      ),
+  )
+  def test_multi_query_attention_consistent(self, lpb, use_rotary_position_emb):
     if lpb:
       mqa = multi_query_attention.MultiQueryDotProductAttentionLPB
     else:
@@ -457,8 +549,10 @@ class MultiQueryAttentionTest(test_utils.TestCase):
         mqa,
         name='mqa',
         input_dim=16,
-        hidden_dim=50,
-        num_heads=10,
+        hidden_dim=32,
+        num_heads=4,
+        dim_per_head=16 if use_rotary_position_emb else None,
+        use_rotary_position_emb=use_rotary_position_emb,
     )
     layer = instantiate(test_layer_p)
 
@@ -496,6 +590,117 @@ class MultiQueryAttentionTest(test_utils.TestCase):
         updated_vars = py_utils.merge_dict(a, initial_vars)
         output = output.at[:, t, :].set(e)
     self.assertAllClose(encoded, output)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_norotary_nolpb',
+          lpb=False,
+          use_rotary_position_emb=False,
+      ),
+      dict(
+          testcase_name='_norotary_lpb',
+          lpb=True,
+          use_rotary_position_emb=False,
+      ),
+      dict(
+          testcase_name='_rotary_nolpb',
+          lpb=False,
+          use_rotary_position_emb=True,
+      ),
+      dict(
+          testcase_name='_rotary_lpb',
+          lpb=True,
+          use_rotary_position_emb=True,
+      ),
+  )
+  def test_cross_mqa(
+      self,
+      lpb,
+      use_rotary_position_emb,
+  ):
+    mdl_dim = 16
+    hidden_dim = 32
+    num_heads = 4
+
+    if lpb:
+      mqa = multi_query_attention.MultiQueryDotProductAttentionLPB
+    else:
+      mqa = multi_query_attention.MultiQueryDotProductAttention
+    test_layer_p = pax_fiddle.Config(
+        mqa,
+        name='mqa',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        dim_per_head=16 if use_rotary_position_emb else None,
+        use_rotary_position_emb=use_rotary_position_emb,
+    )
+
+    layer = instantiate(test_layer_p)
+    prng_key = jax.random.PRNGKey(seed=123)
+    prng_key, init_key = jax.random.split(prng_key)
+    target_batch_size = 3
+    source_max_length = 16
+    cross_source_max_length = 10
+    target_max_length = 16
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+    key_vec = np.random.normal(
+        size=[target_batch_size, cross_source_max_length, mdl_dim]
+    ).astype(np.float32)
+    value_vec = key_vec
+    fake_query_vec = jnp.zeros_like(query_vec)
+    atten_mask = jnp.zeros([1, 1, source_max_length, cross_source_max_length])
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(
+          init_key,
+          fake_query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+      )
+      logging.info('initial_vars: %s', initial_vars)
+      fprop_out, _ = layer.apply(
+          initial_vars,
+          query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+          method=layer.__call__,
+      )
+
+      _, attention_states = layer.apply(
+          initial_vars,
+          fake_query_vec,
+          key_vec,
+          value_vec,
+          atten_mask,
+          method=layer.__call__,
+          mutable=[base_layer.DECODE_CACHE],
+      )
+
+      decoder_output = jnp.zeros_like(fprop_out)
+
+      updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+      for t in range(target_max_length):
+        encoded, attention_states = layer.apply(
+            updated_vars,
+            query_vec=query_vec[:, t, :],
+            atten_mask=atten_mask[:, :, t, :],
+            time_step=t,
+            segment_pos=None,
+            is_cross_attention=True,
+            method=layer.extend_step,
+            mutable=[base_layer.DECODE_CACHE],
+        )
+        updated_vars = py_utils.merge_dict(attention_states, initial_vars)
+        decoder_output = decoder_output.at[:, t, :].set(encoded)
+
+    logging.info('fprop_out: %s', fprop_out)
+    logging.info('decoder_out: %s', decoder_output)
+    self.assertAllClose(fprop_out, decoder_output)
 
   # TODO(apassos) test the SPMD codepath for deriving sharding annotations.
 
