@@ -1440,6 +1440,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
                 base_layer.DECODE_CACHE: None,
                 base_layer.PREFIX_DECODE_CACHE: None,
                 base_layer.HYPER_PARAMS: None,
+                base_layer.NON_TRAINABLE: None,
             },
             in_axes=i + 1,
             out_axes=i + 1,
