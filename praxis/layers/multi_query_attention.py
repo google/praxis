@@ -921,6 +921,36 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     if not is_cross_attention:
       key_proj = self.key(query_vec)
       value_proj = self.value(query_vec)
+    # TODO(b/290067837): Workaround for problems when batch dim is sharded
+    # differently in bld and blnh.
+    ap = self.activation_split_dims_mapping
+    if ap.bld and ap.blnh:
+      query_proj = base_layer.maybe_shard(
+          query_proj,
+          [ap.bld[0], ap.blnh[2], ap.blnh[3]],
+          self.mesh_axis_names,
+      )
+      if not is_cross_attention:
+        value_proj = base_layer.maybe_shard(
+            value_proj,
+            [ap.bld[0], ap.blnh[3]],
+            self.mesh_axis_names,
+        )
+        key_proj = base_layer.maybe_shard(
+            key_proj,
+            [ap.bld[0], ap.blnh[3]],
+            self.mesh_axis_names,
+        )
+        value_proj = base_layer.maybe_shard(
+            value_proj,
+            [ap.blnh[0], ap.blnh[3]],
+            self.mesh_axis_names,
+        )
+        key_proj = base_layer.maybe_shard(
+            key_proj,
+            [ap.blnh[0], ap.blnh[3]],
+            self.mesh_axis_names,
+        )
 
     def _extend_decode_state_and_shard_blh(name: str,
                                            extend_value: JTensor) -> JTensor:
@@ -973,6 +1003,14 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # TODO(yonghui): return atten_probs back to the caller.
     del atten_prob
     # Post projection.
+    if ap.bld and ap.blnh:
+      # TODO(b/290067837): Workaround for problems when batch dim is sharded
+      # differently in bld and blnh.
+      encoded = base_layer.maybe_shard(
+          encoded,
+          [ap.bld[0], ap.blnh[2], ap.blnh[3]],
+          self.mesh_axis_names,
+      )
     encoded = self.post(encoded)
     if extend_one_step:
       encoded = self._shard_bd(encoded)
