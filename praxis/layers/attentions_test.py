@@ -1539,6 +1539,7 @@ class AttentionsTest(test_utils.TestCase):
       (True, False, 1, True, 6, 7),
       (False, False, 1, True, 7, 2),
       (True, False, 1, True, 8, 6),
+      (True, False, 1, True, 20, 6),
   ])
   def test_local_self_attention_extend_step(
       self,
@@ -1635,6 +1636,7 @@ class AttentionsTest(test_utils.TestCase):
       (False, 1, True, 6, 7),
       (False, 1, True, 7, 2),
       (False, 1, True, 8, 6),
+      (False, 1, True, 20, 6),
   ])
   def test_local_cross_attention_extend_step(
       self,

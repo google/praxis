@@ -2939,6 +2939,12 @@ def _padded_slice(
   Returns:
     Slice as a JTensor.
   """
+  axis = axis % x.ndim
+  if x.shape[axis] < slice_size:
+    pad_amount = [(0, 0)] * x.ndim
+    pad_amount[axis] = (0, slice_size - x.shape[axis])
+    x = jnp.pad(x, pad_amount, constant_values=padding_value)
+
   len_x = x.shape[axis]
 
   # The slice has to be rolled if start_index < 0 or
@@ -2962,7 +2968,6 @@ def _padded_slice(
   ):
     x_slice = jnp.roll(x_slice, shift, axis=axis)
     indices = jnp.arange(slice_size)
-    axis = axis % x.ndim
     indices = jnp.reshape(indices, ((slice_size,) + (1,) * (x.ndim - 1 - axis)))
     return jnp.where(
         (indices < shift) + (indices >= slice_size + shift),
