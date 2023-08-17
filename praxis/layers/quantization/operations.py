@@ -374,8 +374,10 @@ def reduce_precision(
       t = jnp.clip(t, min_value, max_value)
     else:
       t = jnp.round(t)
-      # Use int8 as container.
-      t = jnp.clip(t, min_value, max_value).astype(jnp.int8)
+      container_dtype = (
+          jnp.int8 if bits <= 8 else jnp.int16 if bits <= 16 else jnp.int32
+      )
+      t = jnp.clip(t, min_value, max_value).astype(container_dtype)
 
   return t, scale, zp
 

@@ -206,7 +206,8 @@ class QuantizationLayer(base_layer.BaseLayer):
         return out
       elif self.quantization.quantization_type == QuantizationType.FQ:
         if self.quantization.act_params is not None:
-          x = operations.fakequant_activation(x)
+          act_params = self.quantization.act_params
+          x = operations.fakequant_activation(x, bits=act_params.precision)
         w = operations.fakequant_einsum(
             eqn,
             w,
