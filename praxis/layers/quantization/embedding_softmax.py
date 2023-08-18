@@ -380,6 +380,7 @@ class NClassMajorSharedEmbeddingSoftmax(
       template_field(activations.Identity)
   )
   quantization: QuantizationParams = instance_field(QuantizationParams)
+  use_bias: bool = True
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -417,7 +418,8 @@ class NClassMajorSharedEmbeddingSoftmax(
     if self.mesh_shape is not None and ap.out is not None:
       wp_bias = [ap.out[-1]]
       bias_layer_p.weight_split_dims_mapping.wt = wp_bias
-    self.create_child('bias', bias_layer_p)
+    if self.use_bias:
+      self.create_child('bias', bias_layer_p)
     self.create_child('activation', self.activation_tpl.clone())
     if self.bi_tempered_loss_tpl:
       self.create_child('bi_tempered_loss', self.bi_tempered_loss_tpl)
@@ -465,7 +467,8 @@ class NClassMajorSharedEmbeddingSoftmax(
     projected_inputs = base_layer.maybe_shard(
         projected_inputs, ap_out, self.mesh_axis_names
     )
-    projected_inputs = self.bias(projected_inputs)
+    if self.use_bias:
+      projected_inputs = self.bias(projected_inputs)
     logits = self.activation(projected_inputs)
 
     # Soft cap logits if applicable.
