@@ -470,6 +470,12 @@ def beam_search_after_prefix_fprop(
   result.original_lengths = prefix_lengths
   result.prefix_lengths = prefix_lengths
   result.prefix_ids = prefix_ids
-  del (result.end_ids, result.end_decode_lengths, result.end_scores_norm,
-       result.hyp_scores)
+  del (
+      result.end_ids,
+      result.end_decode_lengths,
+      result.end_scores_norm,
+      result.hyp_scores,
+      result.step,
+      result.start_step,
+  )
   return result
