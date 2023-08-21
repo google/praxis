@@ -529,14 +529,14 @@ def apply_lp_regularizer(
 
       if p == 1.0:
         fn = (
-            lambda g, p, m=1.0: g
+            lambda g, p, m=1.0: g  # pylint: disable=g-long-lambda, g-long-ternary
             + regularizer_weight * jnp.sign(p) * skip_mask(p) * m
             if not py_utils.is_optax_masked_node(g)
             else optax.MaskedNode()
         )
       elif p == 2.0:
         fn = (
-            lambda g, p, m=1.0: g + regularizer_weight * p * skip_mask(p) * m
+            lambda g, p, m=1.0: g + regularizer_weight * p * skip_mask(p) * m  # pylint: disable=g-long-lambda
             if not py_utils.is_optax_masked_node(g)
             else optax.MaskedNode()
         )
@@ -806,6 +806,8 @@ def apply_ema_weights(
 
   Args:
     decay: A float number represents the weight on the moving average.
+    use_optax_gradient_transformations: Whether to use Optax based gradient
+      transformation.
 
   Returns:
     A GeneralGradientTransformation applying ema.
@@ -1695,8 +1697,9 @@ class DistributedShampoo(BaseOptimizer):
         # collates generated prefixes perfectly for any top-down flatten
         # ordering.
         is_metrics = lambda l: isinstance(l, TrainingMetrics)
-        flatten = lambda tree: jax.tree_util.tree_flatten(
-            tree, is_leaf=is_metrics)[0]
+        flatten = lambda tree: jax.tree_util.tree_flatten(  # pylint: disable=g-long-lambda
+            tree, is_leaf=is_metrics
+        )[0]
         training_metrics = [x for x in flatten(param_stats) if is_metrics(x)]
         training_metrics_keys = [x for x in flatten(keys) if is_metrics(x)]
 
@@ -1830,7 +1833,6 @@ class ShardedDistributedShampoo(DistributedShampoo):
   def init_partition_spec_fn(self, init_pspec, init_shapes_dtypes, axes_names,
                              params):
     """Annotates the PartitionSpec for optimizer states."""
-    p = self._hparams
     param_pspec_flattened, _ = jax.tree_util.tree_flatten(params)
     assert param_pspec_flattened
     first_param = param_pspec_flattened[0]
@@ -1859,7 +1861,6 @@ class ShardedDistributedShampoo(DistributedShampoo):
         else:
           tensor_split_dims_mapping = []
       else:
-        tensor_split_dims_mapping = []
         if len(pspec) == 1 and not pspec[0]:
           if len(shapes_and_dtypes[0]) == 1:
             tensor_split_dims_mapping = [-1]
@@ -2405,6 +2406,33 @@ class _ShardedAdafactorHelper:
     """
     return jnp.maximum(reduce_rms(var), jnp.asarray(self._epsilon2, var.dtype))
 
+  def compute_subtrahend(self, x, shape, update_scale, m, m_scale):
+    """Computes the subtrahend for a single variable."""
+    output_m = jnp.zeros((1,))
+    output_m_scale = jnp.zeros((1,))
+
+    subtrahend = update_scale * x
+    if self._beta1:
+      m_init_dtype = m.dtype
+      if jnp.issubdtype(self._quantized_dtype, jnp.floating):
+        m = m.astype(jnp.float32)
+      elif self.should_store_momentum_in_qint(shape):
+        m = to_float(m, m_scale)
+      subtrahend = self._beta1 * m + (1.0 - self._beta1) * subtrahend
+      subtrahend = self.inf_to_nan(subtrahend)
+      if self._quantized_dtype == jnp.bfloat16:
+        new_m = subtrahend.astype(jnp.bfloat16)
+        output_m = new_m
+      elif self.should_store_momentum_in_qint(shape):
+        # Update the momentum values.
+        new_m_val, new_m_scale = to_quantized(subtrahend, m_init_dtype)
+        output_m = new_m_val
+        output_m_scale = new_m_scale
+      else:
+        output_m = subtrahend
+
+    return subtrahend, output_m, output_m_scale
+
   def compute_var_and_slot_update(self, count, grad, m, m_scale, vr, vc, v,
                                   param, var_name):
     """Computes the var and optimizer slots updates for a single variable."""
@@ -2461,8 +2489,6 @@ class _ShardedAdafactorHelper:
     mixing_rate = 1. - decay_rate
     shape = param.shape
 
-    output_m = jnp.zeros((1,))
-    output_m_scale = jnp.zeros((1,))
     output_vr = jnp.zeros((1,))
     output_vc = jnp.zeros((1,))
     output_v = jnp.zeros((1,))
@@ -2513,25 +2539,9 @@ class _ShardedAdafactorHelper:
           f'sharded_adafactor_learning_after_clipping/{var_name}',
           x_l2_scale_after_clipping)
 
-    subtrahend = update_scale * x
-    if self._beta1:
-      if jnp.issubdtype(self._quantized_dtype, jnp.floating):
-        m = m.astype(jnp.float32)
-      elif self.should_store_momentum_in_qint(shape):
-        m_init_dtype = m.dtype
-        m = to_float(m, m_scale)
-      subtrahend = self._beta1 * m + (1. - self._beta1) * subtrahend
-      subtrahend = self.inf_to_nan(subtrahend)
-      if self._quantized_dtype == jnp.bfloat16:
-        new_m = subtrahend.astype(jnp.bfloat16)
-        output_m = new_m
-      elif self.should_store_momentum_in_qint(shape):
-        # Update the momentum values.
-        new_m_val, new_m_scale = to_quantized(subtrahend, m_init_dtype)
-        output_m = new_m_val
-        output_m_scale = new_m_scale
-      else:
-        output_m = subtrahend
+    subtrahend, output_m, output_m_scale = self.compute_subtrahend(
+        x, shape, update_scale, m, m_scale
+    )
 
     if self._weight_decay is not None:
       # Apply decoupled weight decay to be consistent with AdamW.
@@ -2575,28 +2585,69 @@ class _ShardedAdafactorHelper:
 
 def sharded_adafactor(
     learning_rate_fn: optax.Schedule,
-    weight_decay: float | dict[str, float] | None = None,
-    layerwise_adaptation: bool = False,
-    decay_method: str = '',
-    decay_adam: float = 0.0,
-    decay_pow: float = 0.0,
-    beta1: float = 0.0,
-    clip_threshold: float | None = 1.0,
-    factored: bool = True,
-    epsilon1_grad_sq_reg: float = 1e-30,
-    quantized_dtype: jnp.dtype = jnp.int8,
-    # TODO(bf-jax) Update default value to True, once this is supported.
-    respect_skip_lp_regularization: bool = False,
-    exclude_from_layerwise_adaptation: list[str] | None = None,
-    per_var_learning_summary=False,
-    sort_factored_second_moment_dims=False,
-    # min_dim_size_to_factor is only used when
-    # sort_factored_second_moment_dims=True.
-    min_dim_size_to_factor: int = 128,
-    multiply_by_parameter_scale: bool = False,
-    epsilon2_param_scale_reg: float = 1e-3,
-    maybe_inf_to_nan: bool = True,
+    sharded_adafactor_helper_fn: Any = _ShardedAdafactorHelper,
+    **kwargs,
 ) -> ShardedGradientTransformation:
+  """Sharded AdaFactor optimizer."""
+  sharded_adafactor_helper = sharded_adafactor_helper_fn(
+      learning_rate_fn=learning_rate_fn, **kwargs
+  )
+
+  def init_fn(params):
+    """Initializes the optimizer's state."""
+    return sharded_adafactor_helper.to_state(
+        jnp.zeros([], jnp.int32),
+        jax.tree_map(sharded_adafactor_helper.init, params),
+    )
+
+  def init_partition_spec_fn(
+      var_hparams: NestedWeightHParams,
+  ) -> NestedWeightHParams:
+    count = WeightHParams(
+        shape=[],
+        init=None,
+        dtype=jnp.int32,
+        collections=None,
+        tensor_split_dims_mapping=[],
+    )
+    return sharded_adafactor_helper.to_state(
+        count,
+        jax.tree_map(sharded_adafactor_helper.init_partition_spec, var_hparams),
+    )
+
+  def update_fn(updates, state, params=None):
+    if params is None:
+      raise ValueError(
+          'You are using a transformation that requires the current value of '
+          'parameters, but you are not passing `params` when calling `update`.'
+      )
+
+    compute_var_and_slot_update_fn = functools.partial(
+        sharded_adafactor_helper.compute_var_and_slot_update, state.count
+    )
+    var_names = py_utils.extract_prefixed_keys_from_nested_map(updates)
+    output = jax.tree_map(
+        compute_var_and_slot_update_fn,
+        updates,
+        state.m,
+        state.m_scale,
+        state.vr,
+        state.vc,
+        state.v,
+        params,
+        var_names,
+    )
+    updates = jax.tree_map(lambda o: o.update, output)
+    count_plus_one = state.count + jnp.array(1, jnp.int32)
+    updated_states = sharded_adafactor_helper.to_state(count_plus_one, output)
+    return updates, updated_states
+
+  return ShardedGradientTransformation(
+      init=init_fn, update=update_fn, init_partition_spec=init_partition_spec_fn
+  )
+
+
+class ShardedAdafactor(BaseOptimizer):
   """AdaFactor optimizer that supports SPMD sharding.
 
   Reference:
@@ -2621,7 +2672,7 @@ def sharded_adafactor(
      inverse-square-root learning-rate-decay in Adam.  We hope this works well
      for most applications.
 
-  Args:
+  Attributes:
     learning_rate_fn: a callable that given the current training step, returns
       the learning rate to apply.
     weight_decay: an optional float tensor as decoupled weight decay value, or a
@@ -2629,9 +2680,7 @@ def sharded_adafactor(
       weight decay float tensor. The value will apply to all variables under
       that scope name.
     layerwise_adaptation: a boolean, whether or not to use layer-wise adaptive
-      moments (LAMB): https://arxiv.org/abs/1904.00962.
-    exclude_from_layerwise_adaptation: A dictionary with key as regex scope
-      pattern for variables to be skipped.
+      moments (LAMB) - https://arxiv.org/abs/1904.00962.
     decay_method: a string, deciding how decay_rate should be computed.
       Permitted values are 'adam' and 'pow'.
     decay_adam: a float, decay if decay_method == 'adam'.
@@ -2646,6 +2695,8 @@ def sharded_adafactor(
       integers.
     respect_skip_lp_regularization: whether or not to respect lingvo
       SKIP_LP_REGULARIZATION var collection that skips decoupled weight decay.
+    exclude_from_layerwise_adaptation: A dictionary with key as regex scope
+      pattern for variables to be skipped.
     per_var_learning_summary: a bool, whether or not to export per-var learning
       summaries.
     sort_factored_second_moment_dims: a bool, whether to select dims to factor
@@ -2655,124 +2706,12 @@ def sharded_adafactor(
       used when sort_factored_second_moment_dims=True.
     multiply_by_parameter_scale: a boolean, if True, then scale learning_rate by
       parameter scale. if False provided learning_rate is absolute step size.
-      NOTE: False by default.
+      Set to False by default.
     epsilon2_param_scale_reg: Regularization constant for parameter scale. Only
       used when multiply_by_parameter_scale is True.
     maybe_inf_to_nan: Will use jax.nan_to_num during update when True.
-
-  Returns:
-    A `ShardedGradientTransformation`.
   """
-  if weight_decay:
-    logging.warning(_WEIGHT_DECAY_DEPRECATION)
 
-  # TODO(bf-jax):  skip regularization.
-  assert not respect_skip_lp_regularization
-  assert decay_adam >= 0
-  assert decay_pow >= 0
-  assert learning_rate_fn is not None
-  assert decay_method == 'adam' or decay_method == 'pow', (
-      f'decay_method: {decay_method} not supported. Supported methods are '
-      '"pow", or "adam".')
-
-  sharded_adafactor_helper = _ShardedAdafactorHelper(
-      learning_rate_fn=learning_rate_fn,
-      weight_decay=weight_decay,
-      layerwise_adaptation=layerwise_adaptation,
-      decay_method=decay_method,
-      decay_adam=decay_adam,
-      decay_pow=decay_pow,
-      beta1=beta1,
-      clip_threshold=clip_threshold,
-      factored=factored,
-      epsilon1_grad_sq_reg=epsilon1_grad_sq_reg,
-      quantized_dtype=quantized_dtype,
-      respect_skip_lp_regularization=respect_skip_lp_regularization,
-      exclude_from_layerwise_adaptation=exclude_from_layerwise_adaptation,
-      per_var_learning_summary=per_var_learning_summary,
-      sort_factored_second_moment_dims=sort_factored_second_moment_dims,
-      min_dim_size_to_factor=min_dim_size_to_factor,
-      multiply_by_parameter_scale=multiply_by_parameter_scale,
-      epsilon2_param_scale_reg=epsilon2_param_scale_reg,
-      maybe_inf_to_nan=maybe_inf_to_nan)
-
-  def init_fn(params):
-    """Initializes the optimizer's state."""
-    return sharded_adafactor_helper.to_state(
-        jnp.zeros([], jnp.int32),
-        jax.tree_map(sharded_adafactor_helper.init, params))
-
-  def init_partition_spec_fn(
-      var_hparams: NestedWeightHParams) -> NestedWeightHParams:
-    count = WeightHParams(
-        shape=[],
-        init=None,
-        dtype=jnp.int32,
-        collections=None,
-        tensor_split_dims_mapping=[])
-    return sharded_adafactor_helper.to_state(
-        count,
-        jax.tree_map(sharded_adafactor_helper.init_partition_spec, var_hparams))
-
-  def update_fn(updates, state, params=None):
-    if params is None:
-      raise ValueError(
-          'You are using a transformation that requires the current value of '
-          'parameters, but you are not passing `params` when calling `update`.')
-
-    compute_var_and_slot_update_fn = functools.partial(
-        sharded_adafactor_helper.compute_var_and_slot_update, state.count)
-    var_names = py_utils.extract_prefixed_keys_from_nested_map(updates)
-    output = jax.tree_map(compute_var_and_slot_update_fn, updates, state.m,
-                          state.m_scale, state.vr, state.vc, state.v, params,
-                          var_names)
-    updates = jax.tree_map(lambda o: o.update, output)
-    count_plus_one = state.count + jnp.array(1, jnp.int32)
-    updated_states = sharded_adafactor_helper.to_state(count_plus_one, output)
-    return updates, updated_states
-
-  return ShardedGradientTransformation(
-      init=init_fn,
-      update=update_fn,
-      init_partition_spec=init_partition_spec_fn)
-
-
-class ShardedAdafactor(BaseOptimizer):
-  """Sharded AdaFactor optimizer.
-
-  Attributes:
-    weight_decay: an optional float tensor as decoupled weight decay value, or a
-      dictionary with key as regex scope pattern and value as corresponding
-      weight decay float tensor. The value will apply to all variables under
-      that scope name.
-    layerwise_adaptation: A boolean, whether or not to use layer-wise adaptive
-      moments (LAMB): https://arxiv.org/abs/1904.00962.
-    exclude_from_layerwise_adaptation: A dictionary with key as regex scope
-      pattern for variables to be skipped.
-    decay_method: A string, deciding how decay_rate should be computed.
-      Permitted values are `adam` and `pow`.
-    decay_adam: A float, decay if decay_method == `adam`.
-    decay_pow: A float, decay if decay_method == `pow`.
-    beta1: A float value between 0 and 1 for the momentum.
-    clip_threshold: An optional float >= 1.
-    factored: A boolean, whether or not to use factored second order momentum.
-    epsilon1_grad_sq_reg: Regularization constant for squared gradient.
-    quantized_dtype: Type of the quantized input. Allowed options are jnp.int8,
-      jnp.int16, and jnp.bfloat16. If jnp.bfloat16 is specified, accumulators
-      are stored as bfloat16, instead of quantized integers.
-    respect_skip_lp_regularization: Whether or not to respect lingvo
-      SKIP_LP_REGULARIZATION var collection that skips decoupled weight decay.
-    per_var_learning_summary: If True, output per var learning summary.
-    sort_factored_second_moment_dims: If True, will select largest and second
-      largest dims as row and column dims for factored second moment.
-    min_dim_size_to_factor: Only factor the statistics if two array dimensions
-      have at least this size. NOTE: min_dim_size_to_factor threshold only
-      applies when
-    multiply_by_parameter_scale: If True, then scale learning_rate by parameter
-      norm. if False, provided learning_rate is absolute step size.
-    epsilon2_param_scale_reg: Regularization constant for parameter scale.
-    maybe_inf_to_nan: Will use jax.nan_to_num during update when True.
-  """
   weight_decay: float | dict[str, float] | None = None
   layerwise_adaptation: bool = False
   exclude_from_layerwise_adaptation: list[str] | None = None
@@ -2802,12 +2741,20 @@ class ShardedAdafactor(BaseOptimizer):
         decay_adam=0.98,
         quantized_dtype='int8')
 
-  def _get_raw_grad_transformation(
-      self, lr: optax.Schedule) -> ShardedGradientTransformation:
+  def _get_sharded_adafactor_kwargs(self, lr: optax.Schedule) -> dict[str, Any]:
     if self.weight_decay:
       logging.warning(_WEIGHT_DECAY_DEPRECATION)
+      # TODO(bf-jax):  skip regularization.
+      assert not self.respect_skip_lp_regularization
+      assert self.decay_adam >= 0
+      assert self.decay_pow >= 0
+      assert lr is not None
+      assert self.decay_method == 'adam' or self.decay_method == 'pow', (
+          f'decay_method: {self.decay_method} not supported. Supported methods '
+          'are "pow", or "adam".'
+      )
 
-    return sharded_adafactor(
+    return dict(
         learning_rate_fn=lr,
         weight_decay=self.weight_decay,
         layerwise_adaptation=self.layerwise_adaptation,
@@ -2828,6 +2775,11 @@ class ShardedAdafactor(BaseOptimizer):
         epsilon2_param_scale_reg=self.epsilon2_param_scale_reg,
         maybe_inf_to_nan=self.maybe_inf_to_nan,
     )
+
+  def _get_raw_grad_transformation(
+      self, lr: optax.Schedule
+  ) -> ShardedGradientTransformation:
+    return sharded_adafactor(**self._get_sharded_adafactor_kwargs(lr))
 
 
 def sharded_static_accumulation(
