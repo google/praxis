@@ -165,26 +165,30 @@ class PruningFunctionalityTest(parameterized.TestCase):
           testcase_name='row_wise_pruning',
           order='R',
           exp_output=[
-              [0, 0, 3, 4, 0, 0, 7, 8],
-              [0, 0, 11, 12, 0, 0, 15, 16],
-              [0, 0, 19, 20, 0, 0, 23, 24],
-              [0, 0, 27, 28, 0, 0, 31, 32],
+              [0, 2, 3, 0, 5, 6, 0, 8, 9, 0, 11, 12],
+              [0, 14, 15, 0, 17, 18, 0, 20, 21, 0, 23, 24],
+              [0, 26, 27, 0, 29, 30, 0, 32, 33, 0, 35, 36],
+              [0, 38, 39, 0, 41, 42, 0, 44, 45, 0, 47, 48],
+              [0, 50, 51, 0, 53, 54, 0, 56, 57, 0, 59, 60],
+              [0, 62, 63, 0, 65, 66, 0, 68, 69, 0, 71, 72],
           ],
       ),
       dict(
           testcase_name='column_wise_pruning',
           order='C',
           exp_output=[
-              [0, 0, 0, 0, 0, 0, 0, 0],
-              [0, 0, 0, 0, 0, 0, 0, 0],
-              [17, 18, 19, 20, 21, 22, 23, 24],
-              [25, 26, 27, 28, 29, 30, 31, 32],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+              [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60],
+              [61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72],
           ],
       ),
   )
   def test_column_row_pruning(self, order, exp_output):
-    inputs = jnp.reshape(jnp.arange(1, 33), (4, 8))
-    output = sparsity.prune_inputs_n_m(inputs, n=2, m=4, order=order)
+    inputs = jnp.reshape(jnp.arange(1, 73), (6, 12))
+    output = sparsity.prune_inputs_n_m(inputs, n=2, m=3, order=order)
     np.testing.assert_array_equal(output, exp_output)
 
   @parameterized.named_parameters(
