@@ -539,6 +539,7 @@ pytype_strict_library(
     deps = [
         ":pytypes",
         # Implicit jax dependency.
+        # Implicit jaxtyping dependency.
     ],
 )
 

@@ -23,6 +23,7 @@ Longer-term, we ought to aim to move all tree-related utility functions here.
 # have for all Nesteds in the Praxis context.
 
 import jax
+import jaxtyping as jt
 from praxis import pytypes
 
 Nested = pytypes.Nested
@@ -68,3 +69,17 @@ def get_shape_dtype(nested_obj: NestedShapeDtypeLike) -> NestedShapeDtypeStruct:
   """Returns the shape/dtype information for the given nested input."""
   fn = lambda x: jax.ShapeDtypeStruct(shape=x.shape, dtype=x.dtype)
   return jax.tree_map(fn, nested_obj)
+
+
+def copy(pytree: jt.PyTree) -> jt.PyTree:
+  """Produces a by-reference copy of the original nested object.
+
+  (Could this just be replaced by copy.deepcopy?)
+
+  Args:
+    pytree: the object to deepcopy.
+
+  Returns:
+    a copy of the original object.
+  """
+  return jax.tree_map(lambda x: x, pytree)

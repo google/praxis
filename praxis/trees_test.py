@@ -17,8 +17,8 @@
 from typing import NamedTuple
 from absl.testing import absltest
 from absl.testing import parameterized
-
 import jax
+from jax import numpy as jnp
 import numpy as np
 from praxis import py_utils
 from praxis import pytypes
@@ -193,6 +193,28 @@ class TreesTest(test_utils.TestCase):
     }
 
     self.assertTrue(trees.is_subset(subset, superset))
+
+  @parameterized.named_parameters(
+      ('trivial_int', 1, 1),
+      ('trivial_list', [1, 2, 3], [1, 2, 3]),
+      ('nestedmap', NestedMap(a=[1, 2, 3]), NestedMap(a=[1, 2, 3])),
+  )
+  def test_copy(self, orig, expected):
+    arrayify = lambda t: jax.tree_util.tree_map(jnp.array, t)
+    self.assertArraysEqual(trees.copy(arrayify(orig)), arrayify(expected))
+
+  def test_copy_complex(self):
+    original = NestedMap(
+        a=jnp.array([1, 2, 3]),
+        b=NestedMap(c=jnp.array([5, 5, 5])),
+    )
+    copy = trees.copy(original)
+
+    copy.b.c += 1  # Does not modify original's version of b.c.
+
+    self.assertArraysEqual(original.a, copy.a)
+    self.assertArraysEqual(original.b.c, jnp.array([5, 5, 5]))
+    self.assertArraysEqual(copy.b.c, jnp.array([6, 6, 6]))
 
 
 if __name__ == '__main__':
