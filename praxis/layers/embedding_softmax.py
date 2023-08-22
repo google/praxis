@@ -348,6 +348,14 @@ class FullSoftmax(base_layer.BaseLayer):
         total_weight=total_weight,
         avg_xent=(total_xent / (total_weight + 1e-6)).astype(jnp.float32),
     )
+    if class_ids is not None:
+      output_nmap.accuracy = (
+          jnp.sum(
+              (per_example_argmax[..., jnp.newaxis] == class_ids)
+              * class_weights
+          )
+          / total_weight
+      )
     if self.z_loss_weight > 0.0:
       output_nmap['z_loss'] = z_loss
     return output_nmap

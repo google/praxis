@@ -219,7 +219,7 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     tf_np_get_logits = to_np(tf_logits)
     self.assertAllClose(np_get_logits, tf_np_get_logits, atol=1e-6)
     # Note: The argmax-related values are very sensitive to numerical errors.
-    for k in outputs.keys():
+    for k in outputs.keys() & tf_output.keys():
       self.assertAllClose(to_np(outputs[k]), to_np(tf_output[k]), atol=1e-6)
     self.assertEqual(outputs.per_example_argmax.dtype, jnp.int32)
 
@@ -281,7 +281,7 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     np_get_logits = to_np(logits)
     tf_np_get_logits = to_np(tf_logits)
     self.assertAllClose(np_get_logits, tf_np_get_logits)
-    for k in outputs.keys():
+    for k in outputs.keys() & tf_output.keys():
       self.assertAllClose(to_np(outputs[k]), to_np(tf_output[k]))
 
   def test_simple_softmax_label_smoothing(self):
@@ -296,7 +296,6 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         label_smoothing_prob=0.5,
     )  # build softmax with label smoothing.
     # Boiler-plate stuff, initialize weights and inputs/ class ids.
-    softmax_layer = instantiate(p)
     npy_input = np.random.normal(1.5, 2.0, [batch_size, p.input_dims])
     inputs = jnp.asarray(npy_input)
     class_weights = np.random.normal(1.5, 2.0, [batch_size, 1])
@@ -510,7 +509,8 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     tf_np_logits = to_np(tf_output.logits)
     self.assertAllClose(np_logits, tf_np_logits, atol=1e-6)
     for k in outputs.keys():
-      self.assertAllClose(to_np(outputs[k]), to_np(tf_output[k]), atol=1e-6)
+      if k in tf_output:
+        self.assertAllClose(to_np(outputs[k]), to_np(tf_output[k]), atol=1e-6)
     np_emb_lookup_output = to_np(emb_lookup_outputs)
     tf_np_emb_lookup_output = to_np(tf_emb_lookup_output)
     self.assertAllClose(
