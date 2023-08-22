@@ -18,7 +18,6 @@
 
 import dataclasses
 import string
-from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -123,9 +122,9 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
       latent vector (the codebook is already done per-group). The only reason
       for setting this to False is backwards-compatibility.
   """
-  latent_dim: Optional[int] = None
+  latent_dim: int | None = None
   projection_dim: int = 16
-  num_latent_classes: Optional[int] = None
+  num_latent_classes: int | None = None
   num_groups: int = 1
   stack_ratio: int = 1
   codebook_init: WeightInit = dataclasses.field(
@@ -366,9 +365,9 @@ class VectorQuantizer(base_layer.BaseLayer):
       for setting this to False is backwards-compatibility.
   """
 
-  num_latent_classes: Optional[int] = None
-  latent_dim: Optional[int] = None
-  beta: Optional[float] = None
+  num_latent_classes: int | None = None
+  latent_dim: int | None = None
+  beta: float | None = None
   num_groups: int = 1
 
   normalize_latent_vector: bool = True

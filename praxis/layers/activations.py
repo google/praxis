@@ -14,8 +14,11 @@
 # limitations under the License.
 
 """Activation layers."""
+
 from __future__ import annotations
+
 from typing import Type
+
 import jax
 import jax.numpy as jnp
 from praxis import base_layer

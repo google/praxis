@@ -381,7 +381,6 @@ pytype_strict_library(
         ":transformers",
         # Implicit absl.logging dependency.
         # Implicit jax dependency.
-        # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
@@ -441,7 +440,6 @@ pytype_strict_library(
         # Implicit flax.core dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
-        "//praxis:flax_utils",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
@@ -874,7 +872,7 @@ py_strict_test(
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
-        # Implicit flax dependency.
+        # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit lingvo.core.layers dependency.
         # Implicit numpy dependency.

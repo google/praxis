@@ -15,7 +15,7 @@
 
 """Pooling layers."""
 
-from typing import Optional, Sequence, Tuple
+from typing import Sequence
 
 import jax
 from jax import numpy as jnp
@@ -63,8 +63,8 @@ class Pooling(base_layer.BaseLayer):
   def __call__(
       self,
       inputs: JTensor,
-      paddings: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, Optional[JTensor]]:
+      paddings: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor | None]:
     """Applies pooling to inputs.
 
     Args:
@@ -182,7 +182,7 @@ class GlobalPooling(base_layer.BaseLayer):
     keepdims: If True, keep dimension of inputs after pooling.
   """
   pooling_type: str = 'AVG'
-  pooling_dims: Optional[Sequence[int]] = None
+  pooling_dims: Sequence[int] | None = None
   keepdims: bool = False
 
   def setup(self) -> None:
@@ -194,10 +194,12 @@ class GlobalPooling(base_layer.BaseLayer):
       if not all([p_dims >= 0 for p_dims in self.pooling_dims]):
         raise ValueError('pooling_dims must be non-negative integers.')
 
-  def __call__(self,
-               inputs: JTensor,
-               epsilon: float = 1e-8,
-               compatible_paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(
+      self,
+      inputs: JTensor,
+      epsilon: float = 1e-8,
+      compatible_paddings: JTensor | None = None,
+  ) -> JTensor:
     """Applies global spatial pooling to inputs.
 
     Args:
@@ -270,8 +272,8 @@ class Pooling1D(base_layer.BaseLayer):
   def __call__(
       self,
       inputs: JTensor,
-      paddings: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, Optional[JTensor]]:
+      paddings: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor | None]:
     """Applies pooling to the inputs.
 
     Args:

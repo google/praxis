@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import enum
-from typing import Any, Optional, Sequence
+from typing import Any, Sequence
 
 import fiddle as fdl
 import jax
@@ -265,16 +265,14 @@ class TransformerLm(base_layer.BaseLayer):
   vocab_size: int = 0
   packed_input: bool = False
   model_type: LanguageModelType = LanguageModelType.CAUSAL
-  ngrammer_tpl: Optional[LayerTpl] = template_field(None)
-  post_attention_ngrammer_tpls: Optional[Sequence[LayerTpl]] = template_field(
-      None
-  )
-  separate_embedding_tpl: Optional[LayerTpl] = template_field(None)
+  ngrammer_tpl: LayerTpl | None = template_field(None)
+  post_attention_ngrammer_tpls: Sequence[LayerTpl] | None = template_field(None)
+  separate_embedding_tpl: LayerTpl | None = template_field(None)
   final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
   skip_compute_loss: bool = False
   skip_aux_loss: bool = False
   record_activations_in_xent_output: bool = False
-  entropy_loss_weight: Optional[float] = None
+  entropy_loss_weight: float | None = None
 
   @classmethod
   def set_sharding_params_v1(
@@ -557,8 +555,8 @@ class TransformerLm(base_layer.BaseLayer):
   def compute_loss(
       self,
       activations: JTensor,
-      labels: Optional[NestedMap] = None,
-      input_ids: Optional[JTensor] = None,
+      labels: NestedMap | None = None,
+      input_ids: JTensor | None = None,
   ) -> NestedMap:
     """Computes cross entropy loss.
 
@@ -676,7 +674,7 @@ class TransformerLm(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       paddings: JTensor,
-      segment_pos: Optional[JTensor] = None,
+      segment_pos: JTensor | None = None,
       **input_kwargs,
   ) -> JTensor:
     del input_kwargs
@@ -722,11 +720,11 @@ class TransformerLm(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       paddings: JTensor,
-      labels: Optional[NestedMap] = None,
-      segment_ids: Optional[JTensor] = None,
-      segment_pos: Optional[JTensor] = None,
-      causal_attention_mask: Optional[JTensor] = None,
-      segment_mask: Optional[JTensor] = None,
+      labels: NestedMap | None = None,
+      segment_ids: JTensor | None = None,
+      segment_pos: JTensor | None = None,
+      causal_attention_mask: JTensor | None = None,
+      segment_mask: JTensor | None = None,
       start_time_step: int = 0,
       **input_kwargs,
   ) -> NestedMap:
@@ -938,8 +936,8 @@ class TransformerLm(base_layer.BaseLayer):
   def extend_step(
       self,
       inputs: JTensor,
-      segment_pos: Optional[JTensor] = None,
-      atten_mask: Optional[JTensor] = None,
+      segment_pos: JTensor | None = None,
+      atten_mask: JTensor | None = None,
   ) -> NestedMap:
     """Autoregressive cached decoding of Transformer LM.
 
@@ -1153,23 +1151,23 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     decoder_ln_tpl: Parameterization of the decoder layer normalization layer.
   """
 
-  position_emb_tpl: Optional[LayerTpl] = template_field(
+  position_emb_tpl: LayerTpl | None = template_field(
       embedding_softmax.PositionalEmbedding
   )
-  encoder_position_emb_tpl: Optional[LayerTpl] = template_field(None)
-  encoder_stacked_transformer_tpl: Optional[LayerTpl] = template_field(None)
-  encoder_ngrammer_tpl: Optional[LayerTpl] = template_field(None)
-  encoder_post_attention_ngrammer_tpls: Optional[Sequence[LayerTpl]] = (
+  encoder_position_emb_tpl: LayerTpl | None = template_field(None)
+  encoder_stacked_transformer_tpl: LayerTpl | None = template_field(None)
+  encoder_ngrammer_tpl: LayerTpl | None = template_field(None)
+  encoder_post_attention_ngrammer_tpls: Sequence[LayerTpl] | None = (
       template_field(None)
   )
-  encoder_embedding_tpl: Optional[LayerTpl] = template_field(None)
-  decoder_position_emb_tpl: Optional[LayerTpl] = template_field(None)
-  decoder_stacked_transformer_tpl: Optional[LayerTpl] = template_field(None)
-  decoder_ngrammer_tpl: Optional[LayerTpl] = template_field(None)
-  decoder_post_attention_ngrammer_tpls: Optional[Sequence[LayerTpl]] = (
+  encoder_embedding_tpl: LayerTpl | None = template_field(None)
+  decoder_position_emb_tpl: LayerTpl | None = template_field(None)
+  decoder_stacked_transformer_tpl: LayerTpl | None = template_field(None)
+  decoder_ngrammer_tpl: LayerTpl | None = template_field(None)
+  decoder_post_attention_ngrammer_tpls: Sequence[LayerTpl] | None = (
       template_field(None)
   )
-  decoder_embedding_tpl: Optional[LayerTpl] = template_field(None)
+  decoder_embedding_tpl: LayerTpl | None = template_field(None)
   model_dims: int = 0
   softmax_tpl: LayerTpl = template_field(
       embedding_softmax.SharedEmbeddingSoftmax
@@ -1617,9 +1615,9 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       input_paddings: JTensor,
-      input_segment_ids: Optional[JTensor] = None,
-      input_segment_pos: Optional[JTensor] = None,
-      input_segment_mask: Optional[JTensor] = None,
+      input_segment_ids: JTensor | None = None,
+      input_segment_pos: JTensor | None = None,
+      input_segment_mask: JTensor | None = None,
   ) -> JTensor:
     """Apply the Transformer encoder to the source sequence.
 
@@ -1695,7 +1693,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     return encoder_output
 
   def compute_loss(
-      self, activations: JTensor, labels: Optional[NestedMap] = None
+      self, activations: JTensor, labels: NestedMap | None = None
   ) -> NestedMap:
     """Computes cross entropy loss.
 
@@ -1774,14 +1772,14 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       input_paddings: JTensor,
       targets: JTensor,
       target_paddings: JTensor,
-      labels: Optional[NestedMap] = None,
-      input_segment_ids: Optional[JTensor] = None,
-      input_segment_pos: Optional[JTensor] = None,
-      input_segment_mask: Optional[JTensor] = None,
-      target_segment_ids: Optional[JTensor] = None,
-      target_segment_pos: Optional[JTensor] = None,
-      target_segment_mask: Optional[JTensor] = None,
-      cross_segment_mask: Optional[JTensor] = None,
+      labels: NestedMap | None = None,
+      input_segment_ids: JTensor | None = None,
+      input_segment_pos: JTensor | None = None,
+      input_segment_mask: JTensor | None = None,
+      target_segment_ids: JTensor | None = None,
+      target_segment_pos: JTensor | None = None,
+      target_segment_mask: JTensor | None = None,
+      cross_segment_mask: JTensor | None = None,
       start_time_step: int = 0,
   ) -> NestedMap:
     """Computes xent loss given the sequence model inputs.

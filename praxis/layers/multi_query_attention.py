@@ -16,7 +16,7 @@
 """Multi-Query Attention layers."""
 
 import math
-from typing import Callable, Dict, Optional, Sequence, Tuple, Union
+from typing import Callable, Sequence
 
 from flax import linen as nn
 import jax
@@ -179,11 +179,11 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
 
   Note: dconv_qkv and ngrammer are not supported.
   """
-  input_dim: Union[int, Dict[str, int]] = 0
+  input_dim: int | dict[str, int] = 0
   hidden_dim: int = 0
   num_heads: int = 1
   num_kv_heads: int = 1
-  dim_per_head: Optional[int] = None
+  dim_per_head: int | None = None
   dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   atten_dropout_prob: float = 0.0
   proj_tpl: LayerTpl = template_field(attentions.AttentionProjection)
@@ -194,8 +194,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   internal_enable_query_scale: bool = True
   atten_logit_cap: float = 0.0
   use_rotary_position_emb: bool = False
-  relative_bias_tpl: Optional[LayerTpl] = template_field(None)
-  attention_extra_logit: Optional[float] = None
+  relative_bias_tpl: LayerTpl | None = template_field(None)
+  attention_extra_logit: float | None = None
   dconv_qkv: bool = False
   combine_qkv: bool = False
   decode_cache: bool = True
@@ -444,8 +444,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Computes attention context."""
     _, t, n, _ = query.shape
     _, s, _ = key.shape
@@ -481,8 +481,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Computes chunked attention context."""
     b, t, n, _ = query.shape
     _, s, h = value.shape
@@ -535,7 +535,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Main attention function.
 
     Args:
@@ -584,8 +585,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       key_state_name: str,
       value_state_name: str,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
     Args:
@@ -644,8 +645,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor],
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None,
+  ) -> tuple[JTensor, JTensor]:
     """_dot_atten_one_step with tensors instead of state names."""
     # query is 3d.
     extend_one_step = len(query.shape) == 3
@@ -716,8 +717,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       key_vec: JTensor,
       value_vec: JTensor,
       atten_mask: JTensor,
-      query_segment_pos: Optional[JTensor] = None,
-      key_segment_pos: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+      query_segment_pos: JTensor | None = None,
+      key_segment_pos: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Computes the value vector given the current query output.
 
     Args:
@@ -887,7 +889,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       *,
       atten_mask: JTensor,
       time_step: JTensor,
-      segment_pos: Optional[JTensor],
+      segment_pos: JTensor | None,
       is_cross_attention: bool = False,
   ) -> JTensor:
     """Computes the value vector given the query of the current step.
@@ -1080,9 +1082,9 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
       key_state_name: str,
       value_state_name: str,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-      time_step: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+      time_step: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step with LPB.
 
     In the shapes listed below, `...` means potential sample dims added for lazy
@@ -1445,7 +1447,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
       *,
       atten_mask: JTensor,  # pytype: disable=signature-mismatch  # overriding-parameter-name-checks
       time_step: JTensor,
-      segment_pos: Optional[JTensor],
+      segment_pos: JTensor | None,
       is_cross_attention: bool = False,
   ) -> JTensor:
     """Computes the value vector given the query of the current step using LPB.

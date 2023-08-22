@@ -15,8 +15,6 @@
 
 """A set of objective functions for building quantizers (e.g VQ-VAE)."""
 
-from typing import Optional
-
 import jax
 import jax.numpy as jnp
 from praxis import pytypes
@@ -30,11 +28,13 @@ def scatter_nd(indices, updates, shape):
   return zeros.at[key].add(updates)
 
 
-def batch_pplx_entropy_from_codes(codes: JTensor,
-                                  num_classes: int,
-                                  *,
-                                  paddings: Optional[JTensor] = None,
-                                  data_parallel_axis: Optional[str] = None):
+def batch_pplx_entropy_from_codes(
+    codes: JTensor,
+    num_classes: int,
+    *,
+    paddings: JTensor | None = None,
+    data_parallel_axis: str | None = None
+):
   """Calculates pplx and entropy from probs within batch.
 
   Args:
@@ -100,11 +100,13 @@ def batch_pplx_entropy_from_codes(codes: JTensor,
   return pplx, entropy, histogram
 
 
-def batch_codebook_coverage(codes: JTensor,
-                            num_classes: int,
-                            *,
-                            paddings: JTensor,
-                            data_parallel_axis: Optional[str] = None):
+def batch_codebook_coverage(
+    codes: JTensor,
+    num_classes: int,
+    *,
+    paddings: JTensor,
+    data_parallel_axis: str | None = None
+):
   """Computes codebook coverage within a batch.
 
   Args:

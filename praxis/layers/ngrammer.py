@@ -15,8 +15,6 @@
 
 """N-grammer layers from https://arxiv.org/abs/2207.06366."""
 
-from typing import Optional, Tuple, Union
-
 import jax
 from jax import numpy as jnp
 from praxis import asserts
@@ -34,10 +32,12 @@ WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
 
 
-def get_bigram_ids(ids: JTensor,
-                   vocab_size: int,
-                   segment_pos: Optional[JTensor] = None,
-                   pair_ids: Optional[JTensor] = None) -> JTensor:
+def get_bigram_ids(
+    ids: JTensor,
+    vocab_size: int,
+    segment_pos: JTensor | None = None,
+    pair_ids: JTensor | None = None,
+) -> JTensor:
   """Generate bi-gram ids from uni-gram ids.
 
   Args:
@@ -147,9 +147,9 @@ class VectorQuantization(base_layer.BaseLayer):
   def __call__(
       self,
       inputs: JTensor,
-      paddings: Optional[JTensor] = None,
+      paddings: JTensor | None = None,
       summarize_and_update: bool = True,
-  ) -> Tuple[JTensor, JTensor]:
+  ) -> tuple[JTensor, JTensor]:
     """Computes distances of the given input 'x' to all centroids.
 
     Args:
@@ -355,9 +355,9 @@ class BregmanCompression(base_layer.BaseLayer):
       )
     self.create_children('bregman_layers', bregman_layers)
 
-  def __call__(self,
-               inputs: JTensor,
-               paddings: Optional[JTensor] = None) -> JTensor:
+  def __call__(
+      self, inputs: JTensor, paddings: JTensor | None = None
+  ) -> JTensor:
     """Computes distances of the given input 'x' to all centroids.
 
     Args:
@@ -466,11 +466,11 @@ class Ngrammer(base_layer.BaseLayer):
       self,
       input_ids: JTensor,
       input_embs: JTensor,
-      paddings: Optional[JTensor] = None,
-      segment_pos: Optional[JTensor] = None,
+      paddings: JTensor | None = None,
+      segment_pos: JTensor | None = None,
       merge_heads: bool = True,
-      pair_ids: Optional[JTensor] = None,
-      emb_var: Optional[JTensor] = None,
+      pair_ids: JTensor | None = None,
+      emb_var: JTensor | None = None,
       **kwargs,
   ) -> JTensor:
     """Augments the input embeddings with VQ n-gram layer embeddings.
@@ -709,11 +709,11 @@ class VQNgrammer(base_layer.BaseLayer):
       self,
       input_ids: JTensor,
       input_embs: JTensor,
-      paddings: Optional[JTensor] = None,
-      segment_pos: Optional[JTensor] = None,
+      paddings: JTensor | None = None,
+      segment_pos: JTensor | None = None,
       merge_heads: bool = True,
-      attention_scores: Optional[JTensor] = None,
-      emb_var: Optional[JTensor] = None,
+      attention_scores: JTensor | None = None,
+      emb_var: JTensor | None = None,
       check_time_step_zero: bool = False,
   ) -> JTensor:
     """Augments the input embeddings with VQ ngram layer embeddings.
@@ -890,11 +890,13 @@ class VQNgrammer(base_layer.BaseLayer):
         self.full_update_cache_frequency or self.full_update_cache_steps
     )
 
-  def extend_step(self,
-                  input_embs: JTensor,
-                  step: Union[int, JTensor],
-                  merge_heads: Optional[bool] = True,
-                  attention_score: Optional[JTensor] = None) -> JTensor:
+  def extend_step(
+      self,
+      input_embs: JTensor,
+      step: int | JTensor,
+      merge_heads: bool | None = True,
+      attention_score: JTensor | None = None,
+  ) -> JTensor:
     """Augments the input embeddings with VQ ngram layer embeddings at a step.
 
     Args:
@@ -1081,12 +1083,14 @@ class BregmanNgrammer(base_layer.BaseLayer):
 
     self.create_child('bregman_compression_layer', bregman_compression_layer_p)
 
-  def __call__(self,
-               input_ids: JTensor,
-               input_embs: JTensor,
-               paddings: Optional[JTensor] = None,
-               merge_heads: bool = True,
-               **kwargs) -> JTensor:
+  def __call__(
+      self,
+      input_ids: JTensor,
+      input_embs: JTensor,
+      paddings: JTensor | None = None,
+      merge_heads: bool = True,
+      **kwargs,
+  ) -> JTensor:
     """Augments the input embeddings with Bregman n-gram layer embeddings.
 
     Args:
@@ -1231,11 +1235,11 @@ class NgrammerStub(base_layer.BaseLayer):
       self,
       input_ids: JTensor,
       input_embs: JTensor,
-      paddings: Optional[JTensor] = None,
-      segment_pos: Optional[JTensor] = None,
+      paddings: JTensor | None = None,
+      segment_pos: JTensor | None = None,
       merge_heads: bool = True,
-      attention_scores: Optional[JTensor] = None,
-      emb_var: Optional[JTensor] = None,
+      attention_scores: JTensor | None = None,
+      emb_var: JTensor | None = None,
       check_time_step_zero: bool = False,
   ) -> JTensor:
     """Apply group layer norms.
@@ -1293,9 +1297,9 @@ class NgrammerStub(base_layer.BaseLayer):
   def extend_step(
       self,
       input_embs: JTensor,
-      step: Union[int, JTensor],
-      merge_heads: Optional[bool] = True,
-      attention_score: Optional[JTensor] = None,
+      step: int | JTensor,
+      merge_heads: bool | None = True,
+      attention_score: JTensor | None = None,
   ) -> JTensor:
     """Augments the input embeddings constant suffix at a step.
 

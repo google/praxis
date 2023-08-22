@@ -17,7 +17,7 @@
 
 import dataclasses
 import math
-from typing import Optional, Sequence, Tuple
+from typing import Sequence
 
 import jax
 from jax import numpy as jnp
@@ -41,7 +41,7 @@ WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
 
 
-def _extract_pad_beg_end(size: int) -> Tuple[int, int]:
+def _extract_pad_beg_end(size: int) -> tuple[int, int]:
   """Gets the beginning and ending padding for a dimension."""
   pad_total = size - 1
   pad_beg = pad_total // 2
@@ -92,7 +92,7 @@ class Conv2D(base_layer.BaseLayer):
   bias_init: WeightInit = dataclasses.field(
       default_factory=lambda: WeightInit.Constant(0.0)
   )
-  kernel_init: Optional[WeightInit] = None
+  kernel_init: WeightInit | None = None
   padding: str = 'SAME'
   tf_equivalent_padding: bool = False
   is_causal: bool = False
@@ -313,7 +313,7 @@ class Conv3D(base_layer.BaseLayer):
   bias_init: WeightInit = dataclasses.field(
       default_factory=lambda: WeightInit.Constant(0.0)
   )
-  kernel_init: Optional[WeightInit] = None
+  kernel_init: WeightInit | None = None
   padding: str = 'SAME'
   tf_equivalent_padding: bool = False
   is_causal: bool = False
@@ -498,7 +498,7 @@ class ConvBNAct(Conv2D):
     activation_tpl: Activation function to use.
   """
 
-  batch_norm_tpl: Optional[LayerTpl] = template_field(normalizations.BatchNorm)
+  batch_norm_tpl: LayerTpl | None = template_field(normalizations.BatchNorm)
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
       template_field(activations.ReLU)
   )
@@ -551,7 +551,7 @@ class ConvBNActWithPadding(ConvBNAct):
 
   def __call__(
       self, inputs: JTensor, paddings: JTensor
-  ) -> Tuple[JTensor, JTensor]:  # pytype:disable=signature-mismatch
+  ) -> tuple[JTensor, JTensor]:  # pytype:disable=signature-mismatch
     """Forward prop which applies conv-bn-activation with time paddings.
 
     Args:
@@ -638,7 +638,7 @@ class BaseDepthwiseConv1D(base_layer.BaseLayer):
   rhs_dilation_rate: int = 1
 
   def __call__(
-      self, inputs: JTensor, paddings: Optional[JTensor] = None
+      self, inputs: JTensor, paddings: JTensor | None = None
   ) -> JTensor:
     """Depthwise convolution.
 
@@ -721,7 +721,7 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
       return self.theta.w
 
   def __call__(
-      self, inputs: JTensor, paddings: Optional[JTensor] = None
+      self, inputs: JTensor, paddings: JTensor | None = None
   ) -> JTensor:
     """Depthwise convolution layer.
 
@@ -789,8 +789,8 @@ class LightConv1D(base_layer.BaseLayer):
   # TODO(nanxinchen): add causal support
   # TODO(nanxinchen): add SPMD partitioning support
 
-  input_dims: Optional[int] = None
-  kernel_size: Optional[int] = None
+  input_dims: int | None = None
+  kernel_size: int | None = None
   conv_activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
       template_field(activations.Swish)
   )

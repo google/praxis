@@ -15,8 +15,6 @@
 
 """Compute stats of tensors mostly for monitoring purposes."""
 
-from typing import Optional
-
 from jax import numpy as jnp
 from praxis import py_utils
 from praxis import pytypes
@@ -25,8 +23,7 @@ JTensor = pytypes.JTensor
 NestedMap = py_utils.NestedMap
 
 
-def compute_stats(inputs: JTensor,
-                  padding: Optional[JTensor] = None) -> NestedMap:
+def compute_stats(inputs: JTensor, padding: JTensor | None = None) -> NestedMap:
   """Computes various stats over the valid data points in inputs."""
   # Let's compute stats in fp32
   inputs = inputs.astype(jnp.float32)

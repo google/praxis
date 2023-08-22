@@ -17,7 +17,7 @@
 
 import enum
 import functools
-from typing import Optional, Sequence, Tuple, Union
+from typing import Sequence
 
 import jax
 from jax import lax
@@ -161,7 +161,7 @@ class BregmanPCA(base_layer.BaseLayer):
   """
 
   num_components: int = 0
-  input_dims: Union[int, Sequence[int]] = 0
+  input_dims: int | Sequence[int] = 0
   activation_type: ActivationType = ActivationType.IDENTITY
   negative_slope: float = 0.0
   mean_beta: float = 0.99
@@ -237,7 +237,7 @@ class BregmanPCA(base_layer.BaseLayer):
         'components_momentum', components_momentum, trainable=False
     )
 
-  def base_learning_rate(self, step: JTensor) -> Tuple[JTensor, JTensor]:
+  def base_learning_rate(self, step: JTensor) -> tuple[JTensor, JTensor]:
     constant_lr_schedule = self.constant_lr_schedule
     apply_update = jnp.where(
         jnp.logical_and(step >= self.start_step, step < self.end_step), 1.0, 0.0
@@ -265,8 +265,8 @@ class BregmanPCA(base_layer.BaseLayer):
     return representations
 
   def __call__(
-      self, inputs: JTensor, mask: Optional[JTensor] = None
-  ) -> Tuple[JTensor, JTensor]:
+      self, inputs: JTensor, mask: JTensor | None = None
+  ) -> tuple[JTensor, JTensor]:
     """Updates the PCA parameters.
 
     Args:

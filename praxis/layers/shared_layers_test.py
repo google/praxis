@@ -15,8 +15,6 @@
 
 """Tests for layers with shared sub-layers."""
 
-from typing import Optional
-
 from absl import logging
 from absl.testing import absltest
 import jax

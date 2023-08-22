@@ -15,8 +15,6 @@
 
 """Conformer-related layers."""
 
-from typing import Optional, Tuple
-
 import fiddle as fdl
 import jax.numpy as jnp
 from praxis import asserts
@@ -48,8 +46,8 @@ class DotProductAttentionWithContext(attentions.DotProductAttention):
   For use case (2) it is more efficient to use LocalSelfAttention.
   """
 
-  left_context: Optional[int] = None
-  right_context: Optional[int] = None
+  left_context: int | None = None
+  right_context: int | None = None
 
   def _dot_atten(
       self,
@@ -57,8 +55,8 @@ class DotProductAttentionWithContext(attentions.DotProductAttention):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Main attention function.
 
     Args:
@@ -99,8 +97,8 @@ class DotProductAttentionWithContextXL(attentions.DotProductAttentionXL):
   For use case (2) it is more efficient to use LocalSelfAttentionXL.
   """
 
-  left_context: Optional[int] = None
-  right_context: Optional[int] = None
+  left_context: int | None = None
+  right_context: int | None = None
 
   def _dot_atten(
       self,
@@ -108,8 +106,8 @@ class DotProductAttentionWithContextXL(attentions.DotProductAttentionXL):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Main attention function.
 
     Args:
@@ -188,7 +186,7 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       paddings: JTensor,
-      atten_mask: Optional[JTensor] = None,
+      atten_mask: JTensor | None = None,
   ) -> JTensor:
     unnormalized_inputs = inputs
 
@@ -290,7 +288,7 @@ class Conformer(base_layer.BaseLayer):
 
   # TODO(nanxinchen): add causal support
 
-  input_dims: Optional[int] = None
+  input_dims: int | None = None
   model_dims: int = 512
   kernel_size: int = 32
   ff_activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
@@ -300,24 +298,24 @@ class Conformer(base_layer.BaseLayer):
   ffn_dim_multiplier: int = 4
   atten_num_heads: int = 8
   layer_order: str = 'mhsa_before_conv'
-  dropout_prob: Optional[float] = None
-  conv_residual_dropout: Optional[float] = None
-  atten_residual_dropout: Optional[float] = None
-  ffn_residual_dropout: Optional[float] = None
-  atten_dropout: Optional[float] = None
-  ffn_relu_dropout: Optional[float] = None
-  fflayer_start_tpl: Optional[LayerTpl] = template_field(
+  dropout_prob: float | None = None
+  conv_residual_dropout: float | None = None
+  atten_residual_dropout: float | None = None
+  ffn_residual_dropout: float | None = None
+  atten_dropout: float | None = None
+  ffn_relu_dropout: float | None = None
+  fflayer_start_tpl: LayerTpl | None = template_field(
       transformers.TransformerFeedForward
   )
   trans_atten_tpl: LayerTpl = template_field(SelfAttentionWithNormAndResidual)
-  lconv_tpl: Optional[LayerTpl] = template_field(convolutions.LightConv1D)
-  fflayer_end_tpl: Optional[LayerTpl] = template_field(
+  lconv_tpl: LayerTpl | None = template_field(convolutions.LightConv1D)
+  fflayer_end_tpl: LayerTpl | None = template_field(
       transformers.TransformerFeedForward
   )
   fflayer_weight_sharing: bool = False
   final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
 
-  def _dropout_prob(self, prob: Optional[float]) -> float:
+  def _dropout_prob(self, prob: float | None) -> float:
     if self.dropout_prob is not None:
       return self.dropout_prob
     elif prob is not None:
@@ -434,7 +432,7 @@ class Conformer(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       paddings: JTensor,
-      atten_mask: Optional[JTensor] = None,
+      atten_mask: JTensor | None = None,
   ) -> JTensor:
     """Conformer layer.
 

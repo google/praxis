@@ -16,7 +16,7 @@
 """GSPMD pipeline parallelism implementations."""
 
 import functools
-from typing import Callable, List, Optional
+from typing import Callable
 
 from flax import core as flax_core
 from flax import linen as nn
@@ -160,9 +160,9 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       f32 precision.
   """
   num_stages: int = 1
-  single_stage_body: Optional[LayerTpl] = base_layer.template_field(None)
-  num_microbatches: Optional[int] = None
-  microbatch_size: Optional[int] = None
+  single_stage_body: LayerTpl | None = base_layer.template_field(None)
+  num_microbatches: int | None = None
+  microbatch_size: int | None = None
   unpack_summaries: bool = True
   stream_io: bool = False
   polluting_bubbles_with_nan: bool = False
@@ -290,7 +290,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       self,
       loop_iteration: JTensor,
       num_microbatches: int,
-      bf16_vars_to_convert: Optional[pytypes.PyTree],
+      bf16_vars_to_convert: pytypes.PyTree | None,
   ) -> Callable[..., JTensor]:
     """Returns a function that runs the fprop function of the stages."""
     del loop_iteration, num_microbatches
@@ -304,8 +304,10 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
                 *per_stage_args):
 
       def xform_collections(
-          var_tree: pytypes.PyTree, collections: List[str],
-          fn: Callable[[JTensor], JTensor]) -> pytypes.PyTree:
+          var_tree: pytypes.PyTree,
+          collections: list[str],
+          fn: Callable[[JTensor], JTensor],
+      ) -> pytypes.PyTree:
         mapped_vars = {}
         for key in var_tree:
           if key in collections:
@@ -444,10 +446,15 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         stage_id <= loop_iteration,
         loop_iteration - stage_id < self.num_valid_iterations(num_microbatches))
 
-  def body_fprop(self, loop_iteration: JTensor, num_microbatches: int,
-                 bf16_vars_to_convert: Optional[pytypes.PyTree],
-                 per_stage_inputs: JTensor, *per_stage_args,
-                 **per_stage_kwargs) -> NestedJTensor:
+  def body_fprop(
+      self,
+      loop_iteration: JTensor,
+      num_microbatches: int,
+      bf16_vars_to_convert: pytypes.PyTree | None,
+      per_stage_inputs: JTensor,
+      *per_stage_args,
+      **per_stage_kwargs,
+  ) -> NestedJTensor:
     per_stage_is_valid_mb = self.get_valid_microbatch_mask(
         loop_iteration, num_microbatches)
     if self.mesh_axis_names is not None:
@@ -498,10 +505,13 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     # to avoid saving full buffers in each iteration.
     return self.stream_io
 
-  def _get_iteration_inputs(self, loop_iteration: JTensor,
-                            num_microbatches: int,
-                            per_stage_inputs: Optional[NestedJTensor],
-                            loop_state: NestedJTensor) -> NestedJTensor:
+  def _get_iteration_inputs(
+      self,
+      loop_iteration: JTensor,
+      num_microbatches: int,
+      per_stage_inputs: NestedJTensor | None,
+      loop_state: NestedJTensor,
+  ) -> NestedJTensor:
     if self.stream_io:
       stream_buf_idx = loop_iteration % (num_microbatches // self.num_stages)
       stream_slice = jax.tree_map(lambda x: x[:, stream_buf_idx],
@@ -1012,7 +1022,7 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
       self,
       loop_iteration: JTensor,
       num_microbatches: int,
-      bf16_vars_to_convert: Optional[pytypes.PyTree],
+      bf16_vars_to_convert: pytypes.PyTree | None,
   ) -> Callable[..., JTensor]:
     # TODO(chulayuth) Support intermediate outputs gathering in future.
     assert not self.collect_intermediate_outputs
@@ -1125,10 +1135,13 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
       )
     return state
 
-  def _get_iteration_inputs(self, loop_iteration: JTensor,
-                            num_microbatches: int,
-                            per_stage_inputs: Optional[NestedJTensor],
-                            loop_state: NestedJTensor) -> NestedJTensor:
+  def _get_iteration_inputs(
+      self,
+      loop_iteration: JTensor,
+      num_microbatches: int,
+      per_stage_inputs: NestedJTensor | None,
+      loop_state: NestedJTensor,
+  ) -> NestedJTensor:
     inputs = super()._get_iteration_inputs(loop_iteration, num_microbatches,
                                            per_stage_inputs, loop_state)
     if self._async_circular_transfer(num_microbatches):

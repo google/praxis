@@ -14,8 +14,10 @@
 # limitations under the License.
 
 """RNN-related layers."""
+
 import dataclasses
 from typing import Sequence
+
 import jax
 from jax import numpy as jnp
 from praxis import asserts

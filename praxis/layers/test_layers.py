@@ -15,8 +15,6 @@
 
 """A few utility layers to facilitate writing unit-tests."""
 
-from typing import Tuple
-
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import base_model
@@ -149,8 +147,11 @@ class TestModel01(base_model.BaseModel):
     in_normed = self.bn(input_batch.inputs)
     return jnp.einsum('bi,io->bo', in_normed, self.theta.var01)
 
-  def compute_loss(self, predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
-                   input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
+  def compute_loss(
+      self,
+      predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
+      input_batch: NestedMap,
+  ) -> tuple[NestedMap, NestedMap]:
     del input_batch
     loss = jnp.sum(predictions)
     loss02 = jnp.sum(predictions * predictions)
@@ -211,8 +212,11 @@ class TestBatchNormalizationModel(base_model.BaseModel):
     with base_layer.JaxContext.new_context(hparams=params):
       return self.bn(input_batch.inputs)
 
-  def compute_loss(self, predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
-                   input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
+  def compute_loss(
+      self,
+      predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
+      input_batch: NestedMap,
+  ) -> tuple[NestedMap, NestedMap]:
     targets = input_batch.targets
     error = predictions - targets
     loss = jnp.mean(jnp.square(error))
@@ -234,8 +238,11 @@ class TestSpmdModel(base_model.BaseModel):
   def compute_predictions(self, input_batch: NestedMap) -> JTensor:
     return self.ffwd(input_batch.inputs)
 
-  def compute_loss(self, predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
-                   input_batch: NestedMap) -> Tuple[NestedMap, NestedMap]:
+  def compute_loss(
+      self,
+      predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
+      input_batch: NestedMap,
+  ) -> tuple[NestedMap, NestedMap]:
     loss = jnp.mean(jnp.square(predictions))
     per_example_out = NestedMap(predictions=predictions)
     return NestedMap(loss=(loss, jnp.array(1.0, loss.dtype))), per_example_out

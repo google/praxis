@@ -18,7 +18,7 @@
 import functools
 import math
 import string
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Mapping, Sequence
 
 from absl import logging
 from flax import linen as nn
@@ -51,8 +51,8 @@ PREFIX_DECODE_CACHE = base_layer.PREFIX_DECODE_CACHE
 
 
 def limited_context_mask(
-    left_context: Union[int, None],
-    right_context: Union[int, None],
+    left_context: int | None,
+    right_context: int | None,
     time_size: int,
     dtype: jnp.dtype = jnp.float32,
 ) -> JTensor:
@@ -107,7 +107,7 @@ def causal_mask(input_t: JTensor) -> JTensor:
 
 def segment_mask(
     segment_ids: JTensor,
-    source_segment_ids: Optional[JTensor] = None,
+    source_segment_ids: JTensor | None = None,
     dtype: jnp.dtype = jnp.float32,
 ) -> JTensor:
   """Computes (non-causal) segment mask.
@@ -139,7 +139,7 @@ def segment_mask(
 def causal_segment_mask(
     segment_ids: JTensor,
     dtype: jnp.dtype = jnp.float32,
-    causal_attention_mask: Optional[JTensor] = None,
+    causal_attention_mask: JTensor | None = None,
 ) -> JTensor:
   """Computes the masks which combines causal masking and segment masks.
 
@@ -492,7 +492,7 @@ class RelativeBias(base_layer.BaseLayer):
   def __call__(
       self,
       query_segment_pos: JTensor,
-      key_segment_pos: Optional[JTensor] = None,
+      key_segment_pos: JTensor | None = None,
   ) -> JTensor:
     """Return relative bias for attention.
 
@@ -556,7 +556,7 @@ class RelativeBias(base_layer.BaseLayer):
     return relative_bias
 
   def extend_step(
-      self, seq_length: int, time_step: Optional[Union[int, JTensor]] = None
+      self, seq_length: int, time_step: int | JTensor | None = None
   ) -> JTensor:
     """Generates a JTensor for a step in greedy search.
 
@@ -839,7 +839,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
 
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
   # attentions.
-  def __call__(self, inputs: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
+  def __call__(self, inputs: JTensor) -> tuple[JTensor, JTensor, JTensor]:
     """Computes the QKV projection for inputs.
 
     Args:
@@ -907,7 +907,7 @@ class CausalDepthwiseConv1D(base_layer.BaseLayer):
   """
 
   kernel_size: int = 3
-  hidden_dims: Union[int, Sequence[int]] = 0
+  hidden_dims: int | Sequence[int] = 0
 
   def setup(self) -> None:
     assert self.name
@@ -942,7 +942,7 @@ class CausalDepthwiseConv1D(base_layer.BaseLayer):
       )
 
   def __call__(
-      self, inputs: JTensor, axis: int, segment_pos: Optional[JTensor] = None
+      self, inputs: JTensor, axis: int, segment_pos: JTensor | None = None
   ) -> JTensor:
     """FProp applying depth-wise convolution on 1D sequence.
 
@@ -972,8 +972,8 @@ class CausalDepthwiseConv1D(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       axis: int,
-      step: Union[int, JTensor],
-      segment_pos: Optional[JTensor],
+      step: int | JTensor,
+      segment_pos: JTensor | None,
   ) -> JTensor:
     """extend_step applying depth-wise convolution on 1D sequence at a step.
 
@@ -1107,10 +1107,10 @@ class DotProductAttention(base_layer.BaseLayer):
       Other options include RmsNorm as well.
   """
 
-  input_dim: Union[int, Dict[str, int]] = 0
+  input_dim: int | dict[str, int] = 0
   hidden_dim: int = 0
   num_heads: int = 1
-  dim_per_head: Optional[int] = None
+  dim_per_head: int | None = None
   dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   atten_dropout_prob: float = 0.0
   proj_tpl: LayerTpl = template_field(AttentionProjection)
@@ -1129,13 +1129,13 @@ class DotProductAttention(base_layer.BaseLayer):
   # TODO(pax-dev): merge use_rotary_position_emb and rotary_position_emb_tpl
   # by initializing rotary_position_emb_tpl = None.
   use_rotary_position_emb: bool = False
-  rotary_position_emb_tpl: Optional[LayerTpl] = template_field(
+  rotary_position_emb_tpl: LayerTpl | None = template_field(
       embedding_softmax.RotaryPositionalEmbedding
   )
   cast_rotary_position_emb: bool = True
-  relative_bias_tpl: Optional[LayerTpl] = template_field(None)
-  attention_extra_logit: Optional[float] = None
-  ngrammer_tpl: Optional[LayerTpl] = template_field(None)
+  relative_bias_tpl: LayerTpl | None = template_field(None)
+  attention_extra_logit: float | None = None
+  ngrammer_tpl: LayerTpl | None = template_field(None)
   decode_cache: bool = True
   attention_mask_summary: bool = False
   zero_fully_masked: bool = False
@@ -1143,7 +1143,7 @@ class DotProductAttention(base_layer.BaseLayer):
   pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
   per_dim_scale_tpl: LayerTpl = template_field(PerDimScale)
   causal_depthwise_conv1d_tpl: LayerTpl = template_field(CausalDepthwiseConv1D)
-  ln_tpl: Optional[LayerTpl] = template_field(None)
+  ln_tpl: LayerTpl | None = template_field(None)
 
   # SPMD partition related params.
   #
@@ -1429,8 +1429,8 @@ class DotProductAttention(base_layer.BaseLayer):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Main attention function.
 
     Args:
@@ -1526,9 +1526,9 @@ class DotProductAttention(base_layer.BaseLayer):
       key_state_name: str,
       value_state_name: str,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-      time_step: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+      time_step: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
     Args:
@@ -1613,9 +1613,9 @@ class DotProductAttention(base_layer.BaseLayer):
       key_vec: JTensor,
       value_vec: JTensor,
       atten_mask: JTensor,
-      query_segment_pos: Optional[JTensor] = None,
-      key_segment_pos: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      query_segment_pos: JTensor | None = None,
+      key_segment_pos: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Computes the value vector given the current query output.
 
     Args:
@@ -1773,7 +1773,7 @@ class DotProductAttention(base_layer.BaseLayer):
       *,
       atten_mask: JTensor,
       time_step: JTensor,
-      segment_pos: Optional[JTensor],
+      segment_pos: JTensor | None,
       is_cross_attention: bool = False,
   ) -> JTensor:
     """Computes the value vector given the query of the current step.
@@ -2305,9 +2305,9 @@ class DotProductAttentionWithLPB(DotProductAttention):
       key_state_name: str,
       value_state_name: str,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-      time_step: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+      time_step: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
     In the shapes listed below, `...` means potential sample dims added for lazy
@@ -2492,7 +2492,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
       *,
       atten_mask: JTensor,  # pytype: disable=signature-mismatch  # overriding-parameter-name-checks
       time_step: JTensor,
-      segment_pos: Optional[JTensor],
+      segment_pos: JTensor | None,
   ) -> JTensor:
     """Computes the value vector given the query of the current step.
 
@@ -2854,9 +2854,9 @@ class DotProductAttentionXL(DotProductAttention):
       key_state_name: str,
       value_state_name: str,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-      time_step: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+      time_step: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
     Args:
@@ -3059,9 +3059,9 @@ class LocalSelfAttention(DotProductAttention):
     right_context: Number of right positions to attend.
   """
 
-  block_size: Optional[int] = None
-  left_context: Optional[int] = None
-  right_context: Optional[int] = None
+  block_size: int | None = None
+  left_context: int | None = None
+  right_context: int | None = None
 
   def _atten_logits(self, query: JTensor, key: JTensor) -> JTensor:
     """Computes logits from query and key."""
@@ -3074,8 +3074,8 @@ class LocalSelfAttention(DotProductAttention):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Main attention function.
 
     Args:
@@ -3245,9 +3245,9 @@ class LocalSelfAttention(DotProductAttention):
       key_state_name: str,
       value_state_name: str,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-      time_step: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+      time_step: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     key = self._shard_blnh(self.get_decode_state(key_state_name))
     value = self._shard_blnh(self.get_decode_state(value_state_name))
     k_b = key.shape[0]
@@ -3393,7 +3393,7 @@ class LocalSelfAttentionXL(LocalSelfAttention):
       *,
       atten_mask: JTensor,
       time_step: JTensor,
-      segment_pos: Optional[JTensor],
+      segment_pos: JTensor | None,
       is_cross_attention: bool = False,
   ) -> JTensor:
     raise NotImplementedError(

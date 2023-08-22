@@ -15,8 +15,6 @@
 
 """Linear layers."""
 
-from typing import Optional
-
 from jax import numpy as jnp
 from jax import vmap
 from jax.ad_checkpoint import checkpoint_name
@@ -72,7 +70,7 @@ class Linear(base_layer.BaseLayer):
   """
   input_dims: int = 0
   output_dims: int = 0
-  weight_init: Optional[WeightInit] = None
+  weight_init: WeightInit | None = None
   einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
   def setup(self) -> None:
@@ -117,7 +115,7 @@ class Bias(base_layer.BaseLayer):
     bias_init: Init scale (constant) of bias terms.
   """
   dims: int = 0
-  bias_init: Optional[float] = 0.0
+  bias_init: float | None = 0.0
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -163,8 +161,8 @@ class FeedForward(base_layer.BaseLayer):
   activation_tpl: pax_fiddle.Config[
       activations.BaseActivation
   ] = template_field(activations.ReLU)
-  weight_init: Optional[WeightInit] = None
-  bias_init: Optional[float] = 0.0
+  weight_init: WeightInit | None = None
+  bias_init: float | None = 0.0
   checkpoint_str: str | None = None
 
   def setup(self) -> None:

@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """A layer that computes an Einsum with a weight, and optionally adds a bias."""
+
 from typing import Sequence
 
 from praxis import base_layer

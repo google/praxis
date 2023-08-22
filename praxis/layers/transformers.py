@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Sequence, Tuple, Union
+from typing import Any, Sequence
 
 from absl import logging
 from flax import linen as nn
@@ -74,14 +74,14 @@ def _rel_cos(x, y):
 
 def compute_attention_masks_for_fprop(
     inputs: JTensor,
-    paddings: Optional[JTensor] = None,
-    causal_attention: Optional[bool] = False,
-    segment_mask: Optional[JTensor] = None,
-    cross_inputs: Optional[JTensor] = None,
-    cross_paddings: Optional[JTensor] = None,
-    cross_segment_mask: Optional[JTensor] = None,
-    fold_padding_with_segment_mask: Optional[bool] = False,
-) -> Tuple[JTensor, Union[JTensor, None]]:
+    paddings: JTensor | None = None,
+    causal_attention: bool | None = False,
+    segment_mask: JTensor | None = None,
+    cross_inputs: JTensor | None = None,
+    cross_paddings: JTensor | None = None,
+    cross_segment_mask: JTensor | None = None,
+    fold_padding_with_segment_mask: bool | None = False,
+) -> tuple[JTensor, JTensor | None]:
   """Computes attention mask from paddings, segment masks etc for fprop.
 
   Args:
@@ -148,10 +148,10 @@ def compute_attention_masks_for_fprop(
 def compute_attention_masks_for_extend_step(
     time_step: JTensor,
     seq_len: int,
-    segment_mask: Optional[JTensor] = None,
-    cross_paddings: Optional[JTensor] = None,
-    cross_segment_mask: Optional[JTensor] = None,
-) -> Tuple[JTensor, Union[JTensor, None]]:
+    segment_mask: JTensor | None = None,
+    cross_paddings: JTensor | None = None,
+    cross_segment_mask: JTensor | None = None,
+) -> tuple[JTensor, JTensor | None]:
   """Computes attention mask from paddings, segment masks etc for extend_step.
 
   Args:
@@ -433,8 +433,8 @@ class TransformerFeedForward(base_layer.BaseLayer):
   def __call__(
       self,
       inputs: JTensor,
-      paddings: Optional[JTensor] = None,
-      segment_ids: Optional[JTensor] = None,
+      paddings: JTensor | None = None,
+      segment_ids: JTensor | None = None,
   ) -> JTensor:
     # Expand paddings to last dim if not None to have shape [batch, time, 1]
     if paddings is not None:
@@ -615,7 +615,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
   gating_func: str = 'top2'
   num_experts: int = 0
   num_groups: int = 0
-  min_group_size: Optional[int] = None
+  min_group_size: int | None = None
   expert_capacity_dim: int = 0
   unadjusted_expert_capacity_factor: float = 2.0
   expert_weight_shards: int = 1
@@ -1182,8 +1182,8 @@ class Transformer(base_layer.BaseLayer):
 
   input_dims: int = 0
   hidden_dims: int = 0
-  num_heads: Optional[int] = None
-  dim_per_head: Optional[int] = None
+  num_heads: int | None = None
+  dim_per_head: int | None = None
   dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
   atten_dropout_prob: float = 0.0
   residual_dropout_prob: float = 0.0
@@ -1191,13 +1191,13 @@ class Transformer(base_layer.BaseLayer):
   residual_droppath_prob: float = 0.0
   use_cross_attention: bool = False
   allow_skip_cross_attention: bool = False
-  cross_atten_tpl: Optional[LayerTpl] = template_field(None)
+  cross_atten_tpl: LayerTpl | None = template_field(None)
   ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
   norm_policy: str = 'pre'
   tr_atten_tpl: LayerTpl = template_field(attentions.DotProductAttention)
   packed_input: bool = False
   tr_fflayer_tpl: LayerTpl = template_field(TransformerFeedForward)
-  ngrammer_tpl: Optional[LayerTpl] = template_field(None)
+  ngrammer_tpl: LayerTpl | None = template_field(None)
 
   # This function can be overridden by subclasses.
   def _setup_attention(self, atten_tpl: LayerTpl, name: str) -> None:
@@ -1303,11 +1303,11 @@ class Transformer(base_layer.BaseLayer):
       inputs: JTensor,
       paddings: JTensor,
       attention_mask: JTensor,
-      cross_inputs: Optional[JTensor] = None,
-      cross_attention_mask: Optional[JTensor] = None,
-      segment_pos: Optional[JTensor] = None,
-      segment_ids: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      cross_inputs: JTensor | None = None,
+      cross_attention_mask: JTensor | None = None,
+      segment_pos: JTensor | None = None,
+      segment_ids: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Transformer decoder layer.
 
     Args:
@@ -1431,9 +1431,9 @@ class Transformer(base_layer.BaseLayer):
       inputs: JTensor,
       *,
       time_step: JTensor,
-      segment_pos: Optional[JTensor] = None,
+      segment_pos: JTensor | None = None,
       attention_mask: JTensor,
-      cross_attention_mask: Optional[JTensor] = None,
+      cross_attention_mask: JTensor | None = None,
   ) -> JTensor:
     # pyformat:disabled
     """Transformer decoder layer, autoregressive cached decoding.
@@ -1610,26 +1610,26 @@ class StackedTransformer(base_layer.BaseLayer):
   model_dims: int = 0
   hidden_dims: int = 0
   num_heads: int = 0
-  dim_per_head: Optional[int] = None
+  dim_per_head: int | None = None
   dropout_prob: float = 0.0
-  atten_dropout_prob: Optional[float] = None
-  residual_dropout_prob: Optional[float] = None
-  relu_dropout_prob: Optional[float] = None
+  atten_dropout_prob: float | None = None
+  residual_dropout_prob: float | None = None
+  relu_dropout_prob: float | None = None
   residual_droppath_prob: float = 0.0
   input_dropout_prob: float = 0.0
   gating_func: str = 'top2'
   unadjusted_expert_capacity_factor: float = 2.0
-  transformer_layer_params_tpl: Union[LayerTpl, Sequence[LayerTpl]] = (
-      template_field(Transformer)
+  transformer_layer_params_tpl: LayerTpl | Sequence[LayerTpl] = template_field(
+      Transformer
   )
   packed_input: bool = False
   fold_padding_with_segment_mask: bool = False
-  moe_layer_tpl: Optional[LayerTpl] = template_field(TransformerFeedForwardMoe)
+  moe_layer_tpl: LayerTpl | None = template_field(TransformerFeedForwardMoe)
   num_experts: int = 0
   num_groups: int = 1
-  min_group_size: Optional[int] = None
-  moe_layers: Optional[Sequence[int]] = ()
-  ngrammer_tpls: Optional[Sequence[LayerTpl]] = template_field(None)
+  min_group_size: int | None = None
+  moe_layers: Sequence[int] | None = ()
+  ngrammer_tpls: Sequence[LayerTpl] | None = template_field(None)
   remat: bool = False
   checkpoint_policy: AutodiffCheckpointType = (
       AutodiffCheckpointType.SAVE_DOT_EXCEPT_LOGITS_FFN1
@@ -1724,11 +1724,11 @@ class StackedTransformer(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       paddings: JTensor,
-      segment_mask: Optional[JTensor] = None,
-      cross_inputs: Optional[JTensor] = None,
-      cross_paddings: Optional[JTensor] = None,
-      cross_segment_mask: Optional[JTensor] = None,
-      segment_pos: Optional[JTensor] = None,
+      segment_mask: JTensor | None = None,
+      cross_inputs: JTensor | None = None,
+      cross_paddings: JTensor | None = None,
+      cross_segment_mask: JTensor | None = None,
+      segment_pos: JTensor | None = None,
   ) -> JTensor:
     """Stacked Transformer layer.
 
@@ -1815,10 +1815,10 @@ class StackedTransformer(base_layer.BaseLayer):
       inputs: JTensor,
       *,
       time_step: JTensor,
-      segment_pos: Optional[JTensor] = None,
-      atten_mask: Optional[JTensor] = None,
-      cross_paddings: Optional[JTensor] = None,
-      cross_segment_mask: Optional[JTensor] = None,
+      segment_pos: JTensor | None = None,
+      atten_mask: JTensor | None = None,
+      cross_paddings: JTensor | None = None,
+      cross_segment_mask: JTensor | None = None,
   ) -> JTensor:
     """Transformer stacked decoder layers, autoregressive cached decoding.
 
@@ -1961,7 +1961,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
   repeat_layer_name: str = 'repeat'
   sublayer_name: str = 'sub'
   repeat_optimizer_dims_mapping: SplitDimsMapping = None
-  nd_prefix_shape: Optional[Sequence[int]] = None
+  nd_prefix_shape: Sequence[int] | None = None
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -1998,11 +1998,11 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       paddings: JTensor,
-      segment_mask: Optional[JTensor] = None,
-      cross_inputs: Optional[JTensor] = None,
-      cross_paddings: Optional[JTensor] = None,
-      cross_segment_mask: Optional[JTensor] = None,
-      segment_pos: Optional[JTensor] = None,
+      segment_mask: JTensor | None = None,
+      cross_inputs: JTensor | None = None,
+      cross_paddings: JTensor | None = None,
+      cross_segment_mask: JTensor | None = None,
+      segment_pos: JTensor | None = None,
   ) -> JTensor:
     """Stacked Transformer layer.
 
@@ -2051,10 +2051,10 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
       inputs: JTensor,
       *,
       time_step: JTensor,
-      segment_pos: Optional[JTensor] = None,
-      atten_mask: Optional[JTensor] = None,
-      cross_paddings: Optional[JTensor] = None,
-      cross_segment_mask: Optional[JTensor] = None,
+      segment_pos: JTensor | None = None,
+      atten_mask: JTensor | None = None,
+      cross_paddings: JTensor | None = None,
+      cross_segment_mask: JTensor | None = None,
   ) -> JTensor:
     """Transformer stacked decoder layers, autoregressive cached decoding.
 
@@ -2149,9 +2149,9 @@ class PipelinedTransformer(base_layer.BaseLayer):
 
   pipeline_stage: LayerTpl = template_field(StackedTransformer)
   circular_repeat: int = 1
-  num_pipeline_stages: Optional[int] = None
-  num_pipeline_microbatches: Optional[int] = None
-  pipeline_microbatch_size: Optional[int] = None
+  num_pipeline_stages: int | None = None
+  num_pipeline_microbatches: int | None = None
+  pipeline_microbatch_size: int | None = None
   stream_io: bool = False
   pipeline_broadcast_inputs: bool = False
   checkpoint_policy: AutodiffCheckpointType = (
@@ -2222,11 +2222,11 @@ class PipelinedTransformer(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       paddings: JTensor,
-      segment_mask: Optional[JTensor] = None,
-      cross_inputs: Optional[JTensor] = None,
-      cross_paddings: Optional[JTensor] = None,
-      cross_segment_mask: Optional[JTensor] = None,
-      segment_pos: Optional[JTensor] = None,
+      segment_mask: JTensor | None = None,
+      cross_inputs: JTensor | None = None,
+      cross_paddings: JTensor | None = None,
+      cross_segment_mask: JTensor | None = None,
+      segment_pos: JTensor | None = None,
   ) -> JTensor:
     """Pipelined Transformer layer.
 
@@ -2320,10 +2320,10 @@ class PipelinedTransformer(base_layer.BaseLayer):
       inputs: JTensor,
       *,
       time_step: JTensor,
-      segment_pos: Optional[JTensor] = None,
-      cross_paddings: Optional[JTensor] = None,
-      cross_segment_mask: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, NestedMap]:
+      segment_pos: JTensor | None = None,
+      cross_paddings: JTensor | None = None,
+      cross_segment_mask: JTensor | None = None,
+  ) -> tuple[JTensor, NestedMap]:
     raise NotImplementedError(type(self))
 
 

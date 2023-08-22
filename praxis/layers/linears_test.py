@@ -15,8 +15,6 @@
 
 """Tests for Praxis linear layers."""
 
-from typing import Optional
-
 from absl import logging
 from praxis import pax_fiddle
 from absl.testing import absltest
@@ -702,7 +700,7 @@ class Linear(base_layer.BaseLayer):
 
 
 class Bias(base_layer.BaseLayer):
-  bias_init: Optional[float] = 0.0
+  bias_init: float | None = 0.0
 
   @nn.compact
   def __call__(self, inputs: JTensor) -> JTensor:
@@ -720,7 +718,7 @@ class FeedForward(base_layer.BaseLayer):
   output_dims: int = 0
   has_bias: bool = True
   activation: activations.BaseActivation = activations.ReLU()
-  bias_init: Optional[float] = 0.0
+  bias_init: float | None = 0.0
 
   @nn.compact
   def __call__(self, inputs: JTensor) -> JTensor:

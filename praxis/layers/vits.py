@@ -32,7 +32,7 @@ D = hidden dims
 
 from __future__ import annotations
 
-from typing import Optional, Sequence, Tuple
+from typing import Sequence
 
 import einops
 import jax
@@ -184,14 +184,14 @@ class VitEntryLayers(base_layer.BaseLayer):
   """
 
   # TODO(zhangzd): If needed, add support for non-square patches.
-  pos_emb_shapes: Tuple[int, int] = (0, 0)
+  pos_emb_shapes: tuple[int, int] = (0, 0)
   patch_size: int = 0
   input_dims: int = 0
   output_dims: int = 0
   pos_emb_dropout_prob: float = 0.0
   prepend_cls_tokens: int = 0
   append_cls_tokens: int = 0
-  pos_emb_tpl: Optional[LayerTpl] = template_field(
+  pos_emb_tpl: LayerTpl | None = template_field(
       embedding_softmax.TrainablePositionalEmbedding
   )
   input_fc_has_bias: bool = True
@@ -471,7 +471,7 @@ class VisionTransformer(base_layer.BaseLayer):
 
 
 def build_vision_transformer_hparams_for_test(
-    pos_emb_shapes: Tuple[int, int],
+    pos_emb_shapes: tuple[int, int],
     patch_size: int,
     image_channels: int,
     model_dims: int,

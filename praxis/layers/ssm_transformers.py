@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from absl import logging
 from jax import numpy as jnp
@@ -164,10 +164,11 @@ class SSMTransformer(transformers.Transformer):
       inputs: JTensor,
       paddings: JTensor,
       attention_mask: JTensor,
-      cross_inputs: Optional[JTensor] = None,
-      cross_attention_mask: Optional[JTensor] = None,
-      segment_pos: Optional[JTensor] = None,
-      segment_ids: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+      cross_inputs: JTensor | None = None,
+      cross_attention_mask: JTensor | None = None,
+      segment_pos: JTensor | None = None,
+      segment_ids: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Transformer decoder layer.
 
     Args:
@@ -256,13 +257,15 @@ class SSMTransformer(transformers.Transformer):
     output = self.ff_layer(atten_output, paddings=paddings)
     return output, None  # pytype: disable=bad-return-type  # jax-ndarray
 
-  def extend_step(self,
-                  inputs: JTensor,
-                  *,
-                  time_step: JTensor,
-                  segment_pos: Optional[JTensor] = None,
-                  attention_mask: JTensor,
-                  cross_attention_mask: Optional[JTensor] = None) -> JTensor:
+  def extend_step(
+      self,
+      inputs: JTensor,
+      *,
+      time_step: JTensor,
+      segment_pos: JTensor | None = None,
+      attention_mask: JTensor,
+      cross_attention_mask: JTensor | None = None,
+  ) -> JTensor:
     # pyformat:disabled
     """Transformer decoder layer, autoregressive cached decoding.
 
@@ -475,16 +478,16 @@ class SSMGated(SSMTransformer):
     gss_ffn_o.activation_tpl = pax_fiddle.Config(activations_lib.Identity)
     self.create_child('gss_ffn_o', gss_ffn_o)
 
-
   def __call__(
       self,
       inputs: JTensor,
       paddings: JTensor,
       attention_mask: JTensor,
-      cross_inputs: Optional[JTensor] = None,
-      cross_attention_mask: Optional[JTensor] = None,
-      segment_pos: Optional[JTensor] = None,
-      segment_ids: Optional[JTensor] = None) -> Tuple[JTensor, JTensor]:
+      cross_inputs: JTensor | None = None,
+      cross_attention_mask: JTensor | None = None,
+      segment_pos: JTensor | None = None,
+      segment_ids: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Transformer decoder layer.
 
     Args:
@@ -578,13 +581,15 @@ class SSMGated(SSMTransformer):
 
     return output, None  # pytype: disable=bad-return-type  # jax-ndarray
 
-  def extend_step(self,
-                  inputs: JTensor,
-                  *,
-                  time_step: JTensor,
-                  segment_pos: Optional[JTensor] = None,
-                  attention_mask: JTensor,
-                  cross_attention_mask: Optional[JTensor] = None) -> JTensor:
+  def extend_step(
+      self,
+      inputs: JTensor,
+      *,
+      time_step: JTensor,
+      segment_pos: JTensor | None = None,
+      attention_mask: JTensor,
+      cross_attention_mask: JTensor | None = None,
+  ) -> JTensor:
     # pyformat:disabled
     """Transformer decoder layer, autoregressive cached decoding.
 

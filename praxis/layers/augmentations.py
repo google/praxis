@@ -15,8 +15,6 @@
 
 """Data augmentation layers."""
 
-from typing import Optional, Tuple
-
 import jax
 from jax import lax
 from jax import numpy as jnp
@@ -50,7 +48,7 @@ class MaskedLmDataAugmenter(base_layer.BaseLayer):
 
   def __call__(
       self, inputs: JTensor, paddings: JTensor
-  ) -> Tuple[JTensor, JTensor]:
+  ) -> tuple[JTensor, JTensor]:
     """Applies data augmentation by randomly masking/replacing tokens in inputs.
 
     Args:
@@ -150,8 +148,8 @@ class TemporalShifting(base_layer.BaseLayer):
     )
 
   def _shift(
-      self, features: JTensor, paddings: Optional[JTensor], shift_range: int
-  ) -> Tuple[JTensor, Optional[JTensor]]:
+      self, features: JTensor, paddings: JTensor | None, shift_range: int
+  ) -> tuple[JTensor, JTensor | None]:
     """Randomly shifts features and paddings by as much as shift_range.
 
     For example, if features is [1 2 3 4] and shift_range is 2, then the
@@ -178,8 +176,8 @@ class TemporalShifting(base_layer.BaseLayer):
     return jax.vmap(shift_example)(features, paddings, shift_sizes)
 
   def __call__(
-      self, features: JTensor, paddings: Optional[JTensor] = None
-  ) -> Tuple[JTensor, Optional[JTensor]]:
+      self, features: JTensor, paddings: JTensor | None = None
+  ) -> tuple[JTensor, JTensor | None]:
     if self.do_eval or self.shift_range_ms == 0.0:
       return features, paddings
 

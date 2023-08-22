@@ -16,7 +16,7 @@
 """Stochastic layers."""
 
 import numbers
-from typing import List, Optional, Sequence
+from typing import Sequence
 
 import jax
 from jax import numpy as jnp
@@ -48,12 +48,12 @@ class Dropout(base_layer.BaseLayer):
       expensive copies.
   """
   keep_prob: float = 1.0
-  noise_shape: Optional[Sequence[int]] = None
-  noise_shape_broadcast_dims: Optional[Sequence[int]] = None
+  noise_shape: Sequence[int] | None = None
+  noise_shape_broadcast_dims: Sequence[int] | None = None
   dropout_at_eval: bool = False
-  transpose_qk: Optional[bool] = False
+  transpose_qk: bool | None = False
 
-  def _dropout(self, inputs: JTensor, noise_shape: List[int]) -> JTensor:
+  def _dropout(self, inputs: JTensor, noise_shape: list[int]) -> JTensor:
     if noise_shape is None:
       noise_shape = inputs.shape
     prng_key = self.next_prng_key()

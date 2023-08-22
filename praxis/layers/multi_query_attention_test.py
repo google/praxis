@@ -14,7 +14,9 @@
 # limitations under the License.
 
 """Tests for Praxis attention layers."""
+
 import itertools
+
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized

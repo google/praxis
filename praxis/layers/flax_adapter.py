@@ -19,7 +19,7 @@ import abc
 from dataclasses import field
 import functools
 import typing
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable
 
 import flax.linen as nn
 from flax.linen import partitioning as flax_partitioning
@@ -48,8 +48,8 @@ class _InternalBaseFlaxAdapter(base_layer.BaseLayer):
       WeightHParamsCollection.DISALLOW_BFLOAT16_CONVERSION]}.
   """
 
-  logical_axes_rules: Optional[LogicalAxisRules] = None
-  var_collection_map: Dict[str, List[base_layer.WeightHParamsCollection]] = (
+  logical_axes_rules: LogicalAxisRules | None = None
+  var_collection_map: dict[str, list[base_layer.WeightHParamsCollection]] = (
       field(default_factory=dict)
   )
 
@@ -129,7 +129,7 @@ class DirectFlaxModuleAdapter(_InternalBaseFlaxAdapter):
     cld: Child Flax module.
   """
 
-  cld: Optional[nn.Module] = pax_fiddle.instance_field(None)
+  cld: nn.Module | None = pax_fiddle.instance_field(None)
 
 
 class FlaxModuleAdapterBase(_InternalBaseFlaxAdapter, metaclass=abc.ABCMeta):
@@ -164,7 +164,7 @@ class FlaxModuleAdapter(FlaxModuleAdapterBase):
     module_factory_method: A callable that constructs an instance of a module.
   """
 
-  module_factory_method: Optional[Callable[[], nn.Module]] = None
+  module_factory_method: Callable[[], nn.Module] | None = None
 
   def _build_wrapped_module(self) -> nn.Module:
     if self.module_factory_method is None:

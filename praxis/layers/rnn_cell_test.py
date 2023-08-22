@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """Tests for Praxis rnn_cell layers."""
+
 import itertools
 
 from absl.testing import absltest

@@ -16,7 +16,6 @@
 """Objective function for Connectionist Temporal Classification (CTC)."""
 
 import dataclasses
-from typing import Tuple
 
 import jax
 import jax.numpy as jnp
@@ -102,7 +101,7 @@ def ctc_loss_with_alignments(
     labelpaddings: np.ndarray,
     blank_id: int = 0,
     logepsilon: float = -1e5,
-) -> Tuple[np.ndarray, CtcAlignments]:
+) -> tuple[np.ndarray, CtcAlignments]:
   """Forward and backward computation of CTC loss.
 
   This the same as ctc_loss above, but the loss is computed backward as well

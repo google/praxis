@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import math
-from typing import Optional, Sequence
+from typing import Sequence
 
 from jax import nn
 from praxis import base_layer
@@ -173,7 +173,7 @@ class VanillaNet(base_layer.BaseLayer):
   kernels: Sequence[int] = (3, 3, 3, 3)
   entryflow_conv_kernel: Sequence[int] = (7, 7)
   entryflow_conv_stride: Sequence[int] = (2, 2)
-  output_spatial_pooling_params: Optional[LayerTpl] = template_field(
+  output_spatial_pooling_params: LayerTpl | None = template_field(
       poolings.GlobalPooling
   )
   negative_slope: float = 0.4

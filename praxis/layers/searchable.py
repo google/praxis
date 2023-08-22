@@ -14,13 +14,14 @@
 # limitations under the License.
 
 """Layers for Platform-aware AutoML Search."""
-from typing import Any, Optional, Sequence
+
+from typing import Any, Sequence
 
 from flax import linen as nn
 import jax.numpy as jnp
-from praxis import pytypes
 from praxis import base_layer
 from praxis import pax_fiddle
+from praxis import pytypes
 
 JTensor = pytypes.JTensor
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
@@ -40,7 +41,7 @@ class AutoMLSelect(base_layer.BaseLayer):
       They layers must have the same shapes of input and output.
   """
 
-  search_options_tpl: Optional[Sequence[LayerTpl]] = template_field(None)
+  search_options_tpl: Sequence[LayerTpl] | None = template_field(None)
 
   def setup(self) -> None:
     if not self.search_options_tpl:

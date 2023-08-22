@@ -15,7 +15,7 @@
 
 """Tests for Flax adapter."""
 
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from absl.testing import absltest
 import fiddle as fdl
@@ -86,7 +86,7 @@ class MixLayer(base_layer.BaseLayer):
     bn_p = pax_fiddle.Config(normalizations.BatchNorm, dim=10)
     self.create_child('bn', bn_p)
 
-  def __call__(self, x: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
+  def __call__(self, x: JTensor) -> tuple[JTensor, JTensor, JTensor]:
     # Call cnn_p1 twice to verify this doesn't break initialization.
     out1 = self.cnn_p1(
         x, use_running_average=self.use_running_average
@@ -104,12 +104,12 @@ class MixLayer(base_layer.BaseLayer):
 class DirectMixLayer(base_layer.BaseLayer):
   """Direct instantiation version of the mix layer above."""
 
-  cnn_p1: Optional[flax_nn.Module] = None
-  cnn_p2: Optional[flax_nn.Module] = None
-  bn: Optional[flax_nn.Module] = None
+  cnn_p1: flax_nn.Module | None = None
+  cnn_p2: flax_nn.Module | None = None
+  bn: flax_nn.Module | None = None
   use_running_average: bool = False
 
-  def __call__(self, x: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
+  def __call__(self, x: JTensor) -> tuple[JTensor, JTensor, JTensor]:
     # Call cnn_p1 twice to verify this doesn't break initialization.
     # pylint: disable=not-callable
     out1 = self.cnn_p1(

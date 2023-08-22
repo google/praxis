@@ -22,7 +22,6 @@ import functools
 import logging
 import math
 import os
-from typing import Optional, Tuple
 
 import jax
 from jax.experimental.shard_map import shard_map
@@ -59,8 +58,8 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Main attention function.
 
     Args:
@@ -155,7 +154,7 @@ class GpuTritonFusedLayerNorm(normalizations.LayerNorm):
     return base_layer.to_partition_spec([None], self.mesh_axis_names)
 
   def __call__(
-      self, inputs: JTensor, paddings: Optional[JTensor] = None
+      self, inputs: JTensor, paddings: JTensor | None = None
   ) -> JTensor:
     """Applies layer norm to inputs.
 

@@ -16,7 +16,7 @@
 """Definition of specific models."""
 
 import dataclasses
-from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Any, Mapping, Sequence
 
 from absl import logging
 import clu.metrics as clu_metrics
@@ -86,7 +86,7 @@ def compute_xent_loss_helper(
     return_predictions: bool,
     apply_eval_sample_weights: bool = False,
     report_strict_acc: bool = False,
-) -> Tuple[WeightedScalars, Dict[str, Any]]:
+) -> tuple[WeightedScalars, dict[str, Any]]:
   """Helper for computing the xent loss for Language model and Sequence model.
 
   Args:
@@ -272,7 +272,7 @@ class LanguageModel(base_model.BaseModel):
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap, input_batch: NestedMap
-  ) -> Tuple[WeightedScalars, Dict[str, Any]]:
+  ) -> tuple[WeightedScalars, dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -426,7 +426,7 @@ class LanguageModel(base_model.BaseModel):
   def decode(
       self,
       input_batch: NestedMap,
-      result_callback: Optional[decoder_utils.StreamingResultCallback] = None,
+      result_callback: decoder_utils.StreamingResultCallback | None = None,
       return_result_for_suffix_score=False,
   ) -> DecodeOut:
     """Decodes the input_batch with specified decoder params.
@@ -475,7 +475,7 @@ class LanguageModel(base_model.BaseModel):
       self,
       decoder_params: DecoderHParams,
       input_batch: NestedMap,
-      result_callback: Optional[decoder_utils.StreamingResultCallback] = None,
+      result_callback: decoder_utils.StreamingResultCallback | None = None,
       return_result_for_suffix_score=False,
   ) -> DecodeOut:
     """Same as decode but with specified DecoderHParams."""
@@ -987,7 +987,7 @@ class LanguageModelDPO(base_model.BaseModel):
 
   def compute_loss(
       self, predictions, input_batch: NestedMap
-  ) -> Tuple[WeightedScalars, Dict[str, Any]]:
+  ) -> tuple[WeightedScalars, dict[str, Any]]:
     def per_seq_log_p(softmax_out: NestedMap):
       # assert per_example_xent is float32, learning might be unstable in
       # bfloat16.
@@ -1419,7 +1419,7 @@ class ClassificationModel(base_model.BaseModel):
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap, input_batch: NestedMap
-  ) -> Tuple[WeightedScalars, Dict[str, Any]]:
+  ) -> tuple[WeightedScalars, dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -1571,7 +1571,7 @@ class BertModel(base_model.BaseModel):
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap, input_batch: NestedMap
-  ) -> Tuple[WeightedScalars, Dict[str, Any]]:
+  ) -> tuple[WeightedScalars, dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -1654,7 +1654,7 @@ class ClassificationMLPModel(base_model.BaseModel):
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap, input_batch: NestedMap
-  ) -> Tuple[WeightedScalars, Dict[str, Any]]:
+  ) -> tuple[WeightedScalars, dict[str, Any]]:
     labels = input_batch.labels
     weights = input_batch.weights
     class_weights = weights[:, :, jnp.newaxis]

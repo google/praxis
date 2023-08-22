@@ -16,7 +16,6 @@
 """Embedding and softmax layers."""
 
 import math
-from typing import Optional, Union
 
 import jax
 from jax import numpy as jnp
@@ -197,12 +196,12 @@ class FullSoftmax(base_layer.BaseLayer):
 
   input_dims: int = 0
   num_classes: int = 0
-  soft_cap_logits: Optional[float] = 0.0
-  bi_tempered_loss_tpl: Optional[LayerTpl] = template_field(None)
+  soft_cap_logits: float | None = 0.0
+  bi_tempered_loss_tpl: LayerTpl | None = template_field(None)
   label_smoothing_prob: float = 0.0
   label_smoothing_apply_for_eval: bool = True
   z_loss_weight: float = 0.0
-  bias_init: Optional[float] = 0.0
+  bias_init: float | None = 0.0
   feed_forward_tpl: LayerTpl = template_field(linears.FeedForward)
 
   def setup(self) -> None:
@@ -222,7 +221,7 @@ class FullSoftmax(base_layer.BaseLayer):
       self.create_child('bi_tempered_loss', self.bi_tempered_loss_tpl)
 
   def get_logits(
-      self, inputs: JTensor, input_ids: Optional[JTensor] = None
+      self, inputs: JTensor, input_ids: JTensor | None = None
   ) -> JTensor:
     """Returns logits given the inputs with an option to soft cap it.
 
@@ -253,9 +252,9 @@ class FullSoftmax(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       class_weights: JTensor,
-      class_ids: Optional[JTensor] = None,
-      class_probabilities: Optional[JTensor] = None,
-      input_ids: Optional[JTensor] = None,
+      class_ids: JTensor | None = None,
+      class_probabilities: JTensor | None = None,
+      input_ids: JTensor | None = None,
   ) -> NestedMap:
     # pyformat:disable
     """Computes logits, softmax cross entropy etc.
@@ -432,8 +431,8 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
 
   input_dims: int = 0
   num_classes: int = 0
-  soft_cap_logits: Optional[float] = 0.0
-  bias_init: Optional[float] = 0.0
+  soft_cap_logits: float | None = 0.0
+  bias_init: float | None = 0.0
   feed_forward_tpl: LayerTpl = template_field(linears.FeedForward)
 
   def setup(self) -> None:
@@ -479,8 +478,8 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       class_weights: JTensor,
-      class_ids: Optional[JTensor] = None,
-      class_probabilities: Optional[JTensor] = None,
+      class_ids: JTensor | None = None,
+      class_probabilities: JTensor | None = None,
   ) -> NestedMap:
     """Computes logits, sigmoid cross entropy etc.
 
@@ -606,8 +605,8 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
   input_dims: int = 0
   num_classes: int = 0
   use_tgt_labels_size_as_loss_denominator: bool = True
-  soft_cap_logits: Optional[float] = 0.0
-  logits_abs_max: Optional[float] = 0.0
+  soft_cap_logits: float | None = 0.0
+  logits_abs_max: float | None = 0.0
   z_loss_weight: float = 0.0
   label_smoothing_prob: float = 0.0
 
@@ -648,7 +647,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
   def get_logits(
       self,
       inputs: JTensor,
-      input_ids: Optional[JTensor] = None,
+      input_ids: JTensor | None = None,
   ) -> JTensor:
     """Returns logits given the inputs with an option to cap it.
 
@@ -686,9 +685,9 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
       self,
       inputs: JTensor,
       class_weights: JTensor,
-      class_ids: Optional[JTensor] = None,
-      class_probabilities: Optional[JTensor] = None,
-      input_ids: Optional[JTensor] = None,
+      class_ids: JTensor | None = None,
+      class_probabilities: JTensor | None = None,
+      input_ids: JTensor | None = None,
   ) -> NestedMap:
     """Computes logits, cross entropy etc.
 
@@ -826,7 +825,7 @@ class PositionalEmbedding(base_layer.BaseLayer):
   embedding_dims: int = 0
 
   def __call__(
-      self, seq_length: Optional[int] = None, position: Optional[JTensor] = None
+      self, seq_length: int | None = None, position: JTensor | None = None
   ) -> JTensor:
     """Generates a JTensor of sinusoids with different frequencies.
 
@@ -922,7 +921,7 @@ class PositionalEmbedding2D(base_layer.BaseLayer):
     return pos_emb_2d
 
   def __call__(
-      self, seq_length: Optional[int] = None, position: Optional[JTensor] = None
+      self, seq_length: int | None = None, position: JTensor | None = None
   ) -> JTensor:
     """Generates a JTensor of sinusoids with different frequencies.
 
@@ -979,7 +978,7 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
   def __call__(
       self,  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
       inputs: JTensor,
-      position: Optional[JTensor] = None,
+      position: JTensor | None = None,
   ) -> JTensor:
     """Generates a JTensor of sinusoids with different frequencies.
 
@@ -1029,7 +1028,7 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     return jnp.concatenate([first_part, second_part], axis=-1)
 
   def extend_step(
-      self, inputs: JTensor, position: Optional[Union[int, JTensor]] = None
+      self, inputs: JTensor, position: int | JTensor | None = None
   ) -> JTensor:
     """Generates a JTensor of sinusoids with different frequencies for a step.
 
@@ -1105,7 +1104,7 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
     self.create_child('einsum', self.einsum_tpl.clone())
 
   def __call__(
-      self, seq_length: Optional[int] = None, position: Optional[JTensor] = None
+      self, seq_length: int | None = None, position: JTensor | None = None
   ) -> JTensor:
     """Generates a JTensor of embedding lookup result.
 

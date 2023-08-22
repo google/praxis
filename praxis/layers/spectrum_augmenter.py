@@ -15,8 +15,6 @@
 
 """Spectrum augmentation layers."""
 
-from typing import Optional, Tuple
-
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
@@ -60,14 +58,16 @@ class SpectrumAugmenter(base_layer.BaseLayer):
   time_masks_per_frame: float = 0.0
   augment_at_eval: bool = False
 
-  def _get_mask(self,
-                batch_size: int,
-                choose_range: JTensor,
-                mask_size: int,
-                max_length: Optional[int] = None,
-                masks_per_frame: float = 0.0,
-                multiplicity: int = 1,
-                max_ratio: float = 1.0) -> JTensor:
+  def _get_mask(
+      self,
+      batch_size: int,
+      choose_range: JTensor,
+      mask_size: int,
+      max_length: int | None = None,
+      masks_per_frame: float = 0.0,
+      multiplicity: int = 1,
+      max_ratio: float = 1.0,
+  ) -> JTensor:
     """Returns fixed size multi-masks starting from random positions.
 
     A multi-mask is a mask obtained by applying multiple masks.
@@ -243,8 +243,9 @@ class SpectrumAugmenter(base_layer.BaseLayer):
 
     return outputs
 
-  def __call__(self, inputs: JTensor,
-               paddings: JTensor) -> Tuple[JTensor, JTensor]:
+  def __call__(
+      self, inputs: JTensor, paddings: JTensor
+  ) -> tuple[JTensor, JTensor]:
     """Applies data augmentation by randomly masking values in the spectrum.
 
     Args:

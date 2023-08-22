@@ -15,7 +15,6 @@
 
 """Adapter layers."""
 
-from typing import Optional
 import fiddle as fdl
 import jax
 import jax.numpy as jnp
@@ -59,7 +58,7 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
   input_dims: int = 0
   bottleneck_dims: int = 0
   num_tasks: int = 1
-  norm_tpl: Optional[LayerTpl] = template_field(normalizations.LayerNorm)
+  norm_tpl: LayerTpl | None = template_field(normalizations.LayerNorm)
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
       template_field(activations.ReLU)
   )
@@ -101,8 +100,8 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
   def __call__(
       self,
       inputs: JTensor,
-      paddings: Optional[JTensor] = None,
-      tasks: Optional[JTensor] = None,
+      paddings: JTensor | None = None,
+      tasks: JTensor | None = None,
       add_residual: bool = True,
   ) -> JTensor:
     """Fprop for multitask adapter.
@@ -214,9 +213,9 @@ class AdaptedTransformerFeedForward(transformers.TransformerFeedForward):
   def __call__(
       self,
       inputs: JTensor,
-      paddings: Optional[JTensor] = None,
-      segment_ids: Optional[JTensor] = None,
-      tasks: Optional[JTensor] = None,
+      paddings: JTensor | None = None,
+      segment_ids: JTensor | None = None,
+      tasks: JTensor | None = None,
   ) -> JTensor:
     x = super(AdaptedTransformerFeedForward, self).__call__(
         inputs, paddings, segment_ids=segment_ids

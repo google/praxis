@@ -15,7 +15,6 @@
 
 """Tests for Praxis vit model."""
 
-from typing import Tuple
 from praxis import pax_fiddle
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -206,8 +205,13 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
       image_sizes=[(16, 16), (20, 24)],
       prepend_cls_tokens=[0, 1, 2],
       append_cls_tokens=[0, 1, 2])
-  def test_vit(self, pooled: bool, image_sizes: Tuple[int, int],
-               prepend_cls_tokens: int, append_cls_tokens: int):
+  def test_vit(
+      self,
+      pooled: bool,
+      image_sizes: tuple[int, int],
+      prepend_cls_tokens: int,
+      append_cls_tokens: int,
+  ):
     exp_params = self._exp_params()
     exp_params.pos_emb_shapes = (3, 5)
     exp_params.prepend_cls_tokens = prepend_cls_tokens

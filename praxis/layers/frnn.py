@@ -15,8 +15,6 @@
 
 """Functional RNN-related layers."""
 
-from typing import List, Optional, Tuple
-
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
@@ -44,7 +42,7 @@ SCAN_SPLIT_RNGS = {PARAMS: False, RANDOM: True}
 
 def reset_mask(
     segment_ids: JTensor,
-    paddings: Optional[JTensor] = None,
+    paddings: JTensor | None = None,
     dtype: jnp.dtype = jnp.float32,
 ) -> JTensor:
   """Computes reset mask.
@@ -90,7 +88,7 @@ class FRnn(base_layer.BaseLayer):
     cell_tpl: Configs for the RnnCell.
     reverse: Whether or not to unroll the sequence in reversed order.
   """
-  cell_tpl: Optional[LayerTpl] = base_layer.template_field(None)
+  cell_tpl: LayerTpl | None = base_layer.template_field(None)
   reverse: bool = False
 
   def setup(self) -> None:
@@ -99,8 +97,9 @@ class FRnn(base_layer.BaseLayer):
   def init_states(self, batch_size: int) -> NestedMap:
     return self.cell.init_states(batch_size)
 
-  def extend_step(self, inputs: NestedMap,
-                  state0: NestedMap) -> Tuple[NestedMap, JTensor]:
+  def extend_step(
+      self, inputs: NestedMap, state0: NestedMap
+  ) -> tuple[NestedMap, JTensor]:
     """Extends Rnn for one step on 'inputs' from 'state0'.
 
     Args:
@@ -121,9 +120,9 @@ class FRnn(base_layer.BaseLayer):
   def get_output(self, state: NestedMap) -> JTensor:
     return self.cell.get_output(state)
 
-  def __call__(self,
-               inputs: NestedMap,
-               state0: Optional[NestedMap] = None) -> Tuple[JTensor, NestedMap]:
+  def __call__(
+      self, inputs: NestedMap, state0: NestedMap | None = None
+  ) -> tuple[JTensor, NestedMap]:
     """Computes frnn forward pass.
 
     Args:
@@ -215,7 +214,7 @@ class StackFrnn(base_layer.BaseLayer):
     num_output_nodes: Number of output nodes. If num_hidden_nodes is 0, also
       used as cell size.
   """
-  frnn_tpl: Optional[LayerTpl] = base_layer.template_field(None)
+  frnn_tpl: LayerTpl | None = base_layer.template_field(None)
   num_layers: int = 1
   num_input_nodes: int = 0
   num_output_nodes: int = 0
@@ -236,13 +235,14 @@ class StackFrnn(base_layer.BaseLayer):
 
     self.create_children('frnn', frnns_p)
 
-  def init_states(self, batch_size: int) -> List[NestedMap]:
+  def init_states(self, batch_size: int) -> list[NestedMap]:
     return [
         self.frnn[i].init_states(batch_size) for i in range(self.num_layers)
     ]
 
-  def extend_step(self, inputs: NestedMap,
-                  state: List[NestedMap]) -> Tuple[List[NestedMap], JTensor]:
+  def extend_step(
+      self, inputs: NestedMap, state: list[NestedMap]
+  ) -> tuple[list[NestedMap], JTensor]:
     inputs = jax.tree_map(lambda x: x, inputs)
     new_states = []
     for i in range(self.num_layers):
@@ -251,13 +251,12 @@ class StackFrnn(base_layer.BaseLayer):
       new_states.append(new_state)
     return new_states, inputs.act
 
-  def get_output(self, state: List[NestedMap]) -> JTensor:
+  def get_output(self, state: list[NestedMap]) -> JTensor:
     return self.frnn[-1].get_output(state[-1])
 
-  def __call__(self,
-               inputs: NestedMap,
-               state0: Optional[List[NestedMap]] = None
-              ) -> Tuple[JTensor, List[NestedMap]]:
+  def __call__(
+      self, inputs: NestedMap, state0: list[NestedMap] | None = None
+  ) -> tuple[JTensor, list[NestedMap]]:
     """Computes Stacked LSTM forward pass.
 
     Args:
@@ -300,9 +299,9 @@ class LstmFrnn(FRnn):
   def num_output_nodes(self) -> int:
     return self.cell.num_output_nodes
 
-  def __call__(self,
-               inputs: NestedMap,
-               state0: Optional[NestedMap] = None) -> Tuple[JTensor, NestedMap]:
+  def __call__(
+      self, inputs: NestedMap, state0: NestedMap | None = None
+  ) -> tuple[JTensor, NestedMap]:
     """Computes LSTM forward pass.
 
     Args:

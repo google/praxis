@@ -14,14 +14,15 @@
 # limitations under the License.
 
 """A sequential stack of layers for Pax."""
-from typing import Any, Callable, Dict, Optional, Sequence
+
+from typing import Any, Callable, Sequence
 
 from praxis import base_layer
 
 
 class Sequential(base_layer.BaseLayer):
   """Applies a linear chain of Modules."""
-  layers: Optional[Sequence[Callable[..., Any]]] = None
+  layers: Sequence[Callable[..., Any]] | None = None
 
   def __call__(self, *args, **kwargs):
     if not self.layers:
@@ -31,9 +32,8 @@ class Sequential(base_layer.BaseLayer):
     for layer in self.layers[1:]:
       if isinstance(outputs, tuple):
         outputs = layer(*outputs)
-      elif isinstance(outputs, Dict):
+      elif isinstance(outputs, dict):
         outputs = layer(**outputs)
       else:
         outputs = layer(outputs)
     return outputs
-
