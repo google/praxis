@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """Unit tests for sample_decode."""
-from typing import Optional, Sequence, Union
+from typing import Sequence
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -26,13 +26,14 @@ from praxis import base_layer
 from praxis import base_model
 from praxis import pax_fiddle
 from praxis import py_utils
+from praxis import pytypes
 from praxis import sample_decode
 from praxis import test_utils
 
 NestedMap = py_utils.NestedMap
 WeightHPrams = base_layer.WeightHParams
 instantiate = base_layer.instantiate
-JTensor = base_layer.JTensor
+JTensor = pytypes.JTensor
 
 RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE
@@ -68,9 +69,9 @@ class TestNextTokenSamplerWithAdditionalState(
   def init_decode_loop_state(
       self,
       decode_loop_state: NestedMap,
-      model: Optional[base_layer.BaseLayerApi] = None,
-      batch_size: Optional[int] = None,
-      eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
+      model: base_layer.BaseLayerApi | None = None,
+      batch_size: int | None = None,
+      eos_id: int | Sequence[int] | JTensor | None = None,
   ) -> NestedMap:
     """Initialize addition decode loop state."""
     decode_loop_state.mock_state = jnp.zeros(shape=batch_size, dtype=jnp.bool_)

@@ -19,7 +19,7 @@ import copy
 import dataclasses
 import functools
 import types
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Union
+from typing import Any, Callable, NamedTuple, Sequence
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -53,7 +53,7 @@ class ColoredWheel(Wheel):
 
 @dataclasses.dataclass
 class Person:
-  name: Optional[str] = None
+  name: str | None = None
 
   def setup(self):
     return self
@@ -64,7 +64,7 @@ class Vehicle:
   wheel_tpl: pax_fiddle.Config[Wheel] = pax_fiddle.template_field(Wheel)
   num_wheels: int = 4
   owner: Person = pax_fiddle.instance_field(Person)
-  wheels: Optional[List[Wheel]] = None  # Initialized by setup.
+  wheels: list[Wheel] | None = None  # Initialized by setup.
 
   def setup(self):
     assert self.wheels is None
@@ -87,7 +87,7 @@ class Fleet:
   vehicle_tpl: pax_fiddle.Config[Vehicle] = pax_fiddle.template_field(Vehicle)
   num_vehicles: int = 1
   manager: Person = pax_fiddle.instance_field(Person)
-  vehicles: Optional[List[Vehicle]] = None  # Initialized by setup.
+  vehicles: list[Vehicle] | None = None  # Initialized by setup.
 
   def setup(self):
     assert self.vehicles is None
@@ -101,29 +101,29 @@ class Fleet:
 @dataclasses.dataclass
 class BusStop:
   location: str  # required arg.
-  times: List[int] = dataclasses.field(default_factory=list)
+  times: list[int] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass
 class HourlyBusStop(BusStop):
-  times: List[int] = dataclasses.field(default_factory=lambda: list(range(24)))
+  times: list[int] = dataclasses.field(default_factory=lambda: list(range(24)))
 
 
 @dataclasses.dataclass
 class WheelFactory:
-  wheel_tpl: List[pax_fiddle.Config[Wheel]] = dataclasses.field(
+  wheel_tpl: list[pax_fiddle.Config[Wheel]] = dataclasses.field(
       default_factory=list
   )
 
 
 class NonDataclassWheelFactory:
 
-  def __init__(self, wheel_tpl: List[pax_fiddle.Config]):
+  def __init__(self, wheel_tpl: list[pax_fiddle.Config]):
     self.wheel_tpl = wheel_tpl
 
 
 class NamedTupleWheelFactory(NamedTuple):
-  wheel_tpl: List[pax_fiddle.Config[Wheel]]
+  wheel_tpl: list[pax_fiddle.Config[Wheel]]
 
 
 class SubFieldAndTemplateFieldTest(testing.TestCase):
@@ -336,8 +336,8 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
   def test_instance_field_empty_container_default_factory(self):
     @dataclasses.dataclass
     class TestCls:
-      items: List[Any] = pax_fiddle.instance_field(list)
-      tags: Dict[str, Any] = pax_fiddle.instance_field(dict)
+      items: list[Any] = pax_fiddle.instance_field(list)
+      tags: dict[str, Any] = pax_fiddle.instance_field(dict)
 
     cfg = pax_fiddle.Config(TestCls)
     self.assertDagEqual(cfg, pax_fiddle.Config(TestCls, items=[], tags={}))
@@ -394,7 +394,7 @@ class AnAutoconfigType:
   tagged_type: ATaggedType = pax_fiddle.field(
       default_factory=ATaggedType.default
   )
-  another_default: Dict[str, Any] = pax_fiddle.field(
+  another_default: dict[str, Any] = pax_fiddle.field(
       default_factory=nested_structure
   )
 
@@ -1017,10 +1017,10 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
     def f2(x: pax_fiddle.Config[Wheel]):
       return x
 
-    def f3(x: Optional[pax_fiddle.Config[Wheel]]):
+    def f3(x: pax_fiddle.Config[Wheel] | None):
       return x
 
-    def f4(x: Union[pax_fiddle.Config, Sequence[pax_fiddle.Config]]):
+    def f4(x: pax_fiddle.Config | Sequence[pax_fiddle.Config] | None):
       return x
 
     for fn in [f1, f2, f3, f4]:
@@ -1029,16 +1029,17 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
       self.assertDagEqual(result, pax_fiddle.Config(Wheel))
 
   def test_do_not_build_function_args_if_arg_is_pax_config_container(self):
-    def f1(x: List[pax_fiddle.Config]):
+
+    def f1(x: list[pax_fiddle.Config]):
       return x
 
-    def f2(x: List[pax_fiddle.Config[Wheel]]):
+    def f2(x: list[pax_fiddle.Config[Wheel]]):
       return x
 
-    def f3(x: Optional[List[pax_fiddle.Config[Wheel]]]):
+    def f3(x: list[pax_fiddle.Config[Wheel]] | None):
       return x
 
-    def f4(x: Union[Sequence[pax_fiddle.Config[Wheel]], pax_fiddle.Config]):
+    def f4(x: Sequence[pax_fiddle.Config[Wheel]] | pax_fiddle.Config):
       return x
 
     for fn in [f1, f2, f3, f4]:

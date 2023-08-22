@@ -16,7 +16,7 @@
 """Utility functions for JAX tests."""
 import math
 import os
-from typing import Any, List, Mapping, Optional
+from typing import Any, Mapping
 import zlib
 
 from absl import flags
@@ -199,7 +199,7 @@ def replace_jax_transformer_ffwd_vars_to_tf(
 
 
 def replace_jax_attention_vars_to_tf(
-    jax_initial_vars: NestedMap, cross_attention: Optional[bool] = False
+    jax_initial_vars: NestedMap, cross_attention: bool | None = False
 ) -> NestedMap:
   """Replaces JAX attention vars to TF compatible vars.
 
@@ -518,7 +518,7 @@ def replace_jax_conformer_layer_vars_to_tf(
   return tf_initial_vars
 
 
-def get_tfevent_log_dirs(root: str) -> List[str]:
+def get_tfevent_log_dirs(root: str) -> list[str]:
   """Return list of log dirs relative to `root` that contain tfevent files."""
   log_dir_names = []
   for dirname, subdir, fnames in tf.io.gfile.walk(root):

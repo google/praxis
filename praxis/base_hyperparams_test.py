@@ -20,7 +20,7 @@ import functools
 import inspect
 import pickle
 import textwrap
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Callable, NamedTuple
 
 from absl.testing import absltest
 import fiddle as fdl
@@ -66,7 +66,7 @@ class NestedTestClass(base_hyperparams.BaseParameterizable):
   class HParams(base_hyperparams.BaseHyperParams):
     # Note: This is now no longer recommended; only Params should be fields of
     # Params.
-    d: Optional[SimpleTestChild] = None
+    d: SimpleTestChild | None = None
     e: float = 3.0
 
 
@@ -86,7 +86,7 @@ class NestedNestedTestClass(base_hyperparams.BaseParameterizable):
 
 class NestedNestedOverrideTestClass(NestedNestedTestClass):
   class HParams(NestedNestedTestClass.HParams):
-    _attribute_overrides: Tuple[str, ...] = ('tpl',)
+    _attribute_overrides: tuple[str, ...] = ('tpl',)
     tpl: base_hyperparams.HParams = base_hyperparams.sub_config_field(
         NestedTestBehaveClass.HParams)
 
@@ -120,7 +120,7 @@ class NestedStructToTextTestClass(base_hyperparams.BaseParameterizable):
 
   class HParams(base_hyperparams.BaseHyperParams):
     tpl: Any = base_hyperparams.sub_config_field(None)
-    a: Optional[frozen_dict.FrozenDict] = None
+    a: frozen_dict.FrozenDict | None = None
 
 
 class FiddlifiedTestClass(base_hyperparams.FiddleBaseParameterizable):
@@ -403,7 +403,7 @@ class HyperParamsTest(absltest.TestCase):
       _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
       class HParams(base_hyperparams.BaseHyperParams):
-        a: List[str] = dataclasses.field(default_factory=lambda: [1, 2, 3])
+        a: list[str] = dataclasses.field(default_factory=lambda: [1, 2, 3])
 
     instance_1 = DefaultFactoryTestClass.make()
     instance_2 = DefaultFactoryTestClass.make()
@@ -533,7 +533,7 @@ class CheckpointLoadingRules(NamedTuple):
 
 
 class CheckPointRuleTest(base_hyperparams.FiddleBaseParameterizable):
-  init_from_checkpoint_rules: Dict[str, CheckpointLoadingRules] = (
+  init_from_checkpoint_rules: dict[str, CheckpointLoadingRules] = (
       pax_fiddle.instance_field(default_factory=dict)
   )
 
@@ -542,9 +542,7 @@ class CheckPointRuleDataclassTest(base_hyperparams.FiddleBaseParameterizable):
 
   @dataclasses.dataclass
   class Train(base_hyperparams.FiddleBaseParameterizable):
-    init_from_checkpoint_rules: Optional[Dict[str, CheckpointLoadingRules]] = (
-        None
-    )
+    init_from_checkpoint_rules: dict[str, CheckpointLoadingRules] | None = None
 
 
 class NestedStructToTextTestCase(absltest.TestCase):

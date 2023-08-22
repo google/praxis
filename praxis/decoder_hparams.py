@@ -17,7 +17,7 @@
 
 import copy
 import dataclasses
-from typing import Optional, Sequence, TypeVar
+from typing import Sequence, TypeVar
 
 from praxis import decoder_utils
 from praxis import pax_fiddle
@@ -92,7 +92,7 @@ class BeamSearchHParams(DecoderHParams):
     early_exit: A bool, whether or not to allow early exit.
   """
   beam_size: int = 1
-  tokens_per_beam: Optional[int] = None
+  tokens_per_beam: int | None = None
   length_norm_alpha: float = 0.8
   early_exit: bool = False
   use_matmul_beam_shuffle: bool = False
@@ -125,6 +125,7 @@ class SampleDecoderHParams(DecoderHParams):
     global_normalize: Normalize the logits over top-k logits or globally in the
       whole vocabulary. It is used if k is nonzero and p is also not None.
     cf_guidance_scale: If not None, apply classifier-free guidance.
+    controlled_decoding: Parameters for controlled decoding if used.
     sort_samples:  Whether to sort the samples by logprobs.
     override_next_token_sampler_params: Whether to override, the next token
       sampler params from the decoder ones. Ideally, this should not be
@@ -145,8 +146,8 @@ class SampleDecoderHParams(DecoderHParams):
           pax_fiddle.template_field(sample_decode.DefaultNextTokenSampler))
   global_normalize: bool = False
   cf_guidance_scale: list[float] | float | None = None
-  controlled_decoding: Optional[decoder_utils.ControlledDecodingHParams] = None
-  sort_samples: Optional[bool] = True
+  controlled_decoding: decoder_utils.ControlledDecodingHParams | None = None
+  sort_samples: bool | None = True
   override_next_token_sampler_params: bool = True
   optimize_eos: bool = False
   vanilla_sample_decode: bool = False

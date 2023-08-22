@@ -19,7 +19,7 @@ import copy
 import dataclasses
 import sys
 import typing
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -87,7 +87,7 @@ class Linear(base_layer.BaseLayer):
 
 
 class MultipleLinearLayer(base_layer.BaseLayer):
-  linear1: Optional[AddBias] = pax_fiddle.instance_field(Linear)
+  linear1: AddBias | None = pax_fiddle.instance_field(Linear)
   linear2_tpl: pax_fiddle.Config[Linear] = pax_fiddle.template_field(Linear)
 
   def setup(self):
@@ -340,10 +340,10 @@ class BaseLayerTest(test_utils.TestCase):
     class ParentLayer(base_layer.BaseLayer):
       # instance fields:
       a: base_layer.BaseLayer = base_layer.instance_field(ChildLayer)
-      bs: List[base_layer.BaseLayer] = base_layer.instance_field(list)
+      bs: list[base_layer.BaseLayer] = base_layer.instance_field(list)
       # template fields:
       x_tpl: LayerTpl = base_layer.template_field(ChildLayer)
-      y_tpls: List[LayerTpl] = base_layer.template_field(list)
+      y_tpls: list[LayerTpl] = base_layer.template_field(list)
 
       def setup(self):
         self.create_child('x', self.x_tpl)
@@ -479,12 +479,12 @@ class BaseLayerTest(test_utils.TestCase):
     class FiddleParent(base_layer.BaseLayer):
 
       child_tpl: pax_fiddle.Config = base_layer.template_field(FiddleChild)
-      child_tpl_list: List[pax_fiddle.Config] = base_layer.template_field(None)
-      child_tpl_dict: Dict[str, pax_fiddle.Config] = base_layer.template_field(
+      child_tpl_list: list[pax_fiddle.Config] = base_layer.template_field(None)
+      child_tpl_dict: dict[str, pax_fiddle.Config] = base_layer.template_field(
           None
       )
-      child_instance_list: Optional[List[base_layer.BaseLayer]] = None
-      child_instance_dict: Optional[List[base_layer.BaseLayer]] = None
+      child_instance_list: list[base_layer.BaseLayer] | None = None
+      child_instance_dict: list[base_layer.BaseLayer] | None = None
 
       def setup(self):
         child_tpl = self.child_tpl.clone()

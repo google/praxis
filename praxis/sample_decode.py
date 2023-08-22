@@ -21,7 +21,7 @@ Greedy decode is a special case for sample decode.
 
 import abc
 import functools
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Sequence
 
 from flax import linen as nn
 import jax
@@ -174,7 +174,7 @@ def _get_argmax_ids(top_k_argmax_ids: JTensor, top_k_items: JTensor) -> JTensor:
 def get_top_k(
     logits: JTensor,
     top_k: int,
-    per_example_top_k: Optional[JTensor],
+    per_example_top_k: JTensor | None,
     top_k_recall_target: float = 1.0,
 ) -> Sequence[JTensor]:
   """Gets top k logits and indices from given top K.
@@ -273,9 +273,9 @@ def right_align_prefix_ids(
 
 def top_p_mask_logits(
     logits: JTensor,
-    p: Union[float, JTensor],
+    p: float | JTensor,
     logits_sorted_in_descending_order: bool = False,
-    logits_sum: Optional[JTensor] = None,
+    logits_sum: JTensor | None = None,
 ) -> JTensor:
   """Keep only logits in the top `p` percentile of the softmax distribution.
 
@@ -326,8 +326,8 @@ def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  
     top_k_logits: JTensor,
     top_k_indices: JTensor,
     prng_key: pytypes.PRNGKey,
-    temperature: Union[JTensor, float],
-    top_p: Optional[Union[float, JTensor]] = None,
+    temperature: JTensor | float,
+    top_p: float | JTensor | None = None,
     topk_is_sorted: bool = True,
     logits_sum: JTensor = None,
 ) -> Sequence[JTensor]:
@@ -397,10 +397,10 @@ def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  
 def sample_from_top_k_and_top_p(
     logits: JTensor,
     prng_key: pytypes.PRNGKey,
-    temperature: Union[JTensor, float],
+    temperature: JTensor | float,
     top_k: int,
-    top_p: Optional[Union[float, JTensor]] = None,
-    per_example_top_k: Optional[JTensor] = None,
+    top_p: float | JTensor | None = None,
+    per_example_top_k: JTensor | None = None,
     global_normalize: bool = False,
     top_k_recall_target: float = 1.0,
 ) -> Sequence[JTensor]:
@@ -507,7 +507,7 @@ class BaseNextTokenSampler(
       self,
       model: base_layer.BaseLayerApi,
       logits: JTensor,
-      temperature: Union[float, JTensor],
+      temperature: float | JTensor,
       decode_loop_state: NestedMap,
   ) -> NestedMap:
     """Samples the next token ids given the logits output.
@@ -537,9 +537,9 @@ class BaseNextTokenSampler(
   def init_decode_loop_state(
       self,
       decode_loop_state: NestedMap,
-      model: Optional[base_layer.BaseLayerApi] = None,
-      batch_size: Optional[int] = None,
-      eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
+      model: base_layer.BaseLayerApi | None = None,
+      batch_size: int | None = None,
+      eos_id: int | Sequence[int] | JTensor | None = None,
   ) -> NestedMap:
     """Initialize any addition decode loop state."""
     return decode_loop_state
@@ -576,7 +576,7 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
   """
 
   top_k: int = 40
-  top_p: Optional[Union[float, JTensor]] = None
+  top_p: float | JTensor | None = None
   epsilon_p: float = 0.0
   global_normalize: bool = False
   top_k_recall_target: float = 1.0
@@ -586,11 +586,11 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
       self,
       model: base_layer.BaseLayerApi,
       logits: JTensor,
-      temperature: Union[float, JTensor],
+      temperature: float | JTensor,
       decode_loop_state: NestedMap,
-      per_example_top_p: Optional[JTensor] = None,
-      per_example_top_k: Optional[JTensor] = None,
-      gumbel_prng_key: Optional[JTensor] = None,
+      per_example_top_p: JTensor | None = None,
+      per_example_top_k: JTensor | None = None,
+      gumbel_prng_key: JTensor | None = None,
   ) -> NestedMap:
     """The default sampling logic implementing top-K and top-P sampling."""
     del decode_loop_state
@@ -660,40 +660,37 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def sample_decode(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: Union[
-        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
-    ],
-    transform_state_fn: Optional[decoder_utils.TransformStateFn],
-    lazy_broadcast_prefix_fn: Optional[decoder_utils.LazyBroadcastPrefixFn],
+    extend_step_fn: decoder_utils.ExtendStepFn
+    | decoder_utils.ExpandedExtendStepFn,
+    transform_state_fn: decoder_utils.TransformStateFn | None,
+    lazy_broadcast_prefix_fn: decoder_utils.LazyBroadcastPrefixFn | None,
     next_token_sampler: base_layer.BaseLayerApi,
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
     seq_len: int,
     num_samples: int,
-    fprop_fn: Optional[decoder_utils.FPropFn] = None,
-    cf_guidance_scale: Optional[Union[List[float], float, JTensor]] = None,
+    fprop_fn: decoder_utils.FPropFn | None = None,
+    cf_guidance_scale: list[float] | float | JTensor | None = None,
     fprop_for_prefix: bool = False,
-    temperature: Union[float, JTensor] = 1.0,
-    gumbel_prng_key: Optional[JTensor] = None,
-    per_example_top_p: Optional[Union[JTensor, float]] = None,
-    per_example_top_k: Optional[Union[JTensor, int]] = None,
-    max_prefix_len: Optional[int] = None,
-    max_decode_steps: Optional[Union[int, Sequence[int]]] = None,
-    per_example_max_decode_steps: Optional[JTensor] = None,
-    prefix_lengths: Optional[JTensor] = None,
-    eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
-    result_callback: Optional[StreamingResultCallback] = None,
-    decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
-    model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
+    temperature: float | JTensor = 1.0,
+    gumbel_prng_key: JTensor | None = None,
+    per_example_top_p: JTensor | float | None = None,
+    per_example_top_k: JTensor | int | None = None,
+    max_prefix_len: int | None = None,
+    max_decode_steps: int | Sequence[int] | None = None,
+    per_example_max_decode_steps: JTensor | None = None,
+    prefix_lengths: JTensor | None = None,
+    eos_id: int | Sequence[int] | JTensor | None = None,
+    result_callback: StreamingResultCallback | None = None,
+    decode_loop_mesh_axes_transpose: dict[str, str] | None = None,
+    model_var_pspecs: base_layer.NestedPartitionSpec | None = None,
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
     early_exit: bool = True,
     use_top_k_for_logprobs: bool = False,
-    controlled_decoding: Optional[
-        decoder_utils.ControlledDecodingHParams
-    ] = None,
+    controlled_decoding: decoder_utils.ControlledDecodingHParams | None = None,
     return_entropy_score: bool = False,
-    process_result_fn: Optional[decoder_utils.ProcessResultFn] = None,
+    process_result_fn: decoder_utils.ProcessResultFn | None = None,
     optimize_eos: bool = False,
 ) -> NestedMap:
   """Sampling decode the input batch.
@@ -854,35 +851,32 @@ def sample_decode(
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def sample_decode_after_fprop(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: Union[
-        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
-    ],
-    transform_state_fn: Optional[decoder_utils.TransformStateFn],
-    lazy_broadcast_prefix_fn: Optional[decoder_utils.LazyBroadcastPrefixFn],
+    extend_step_fn: decoder_utils.ExtendStepFn
+    | decoder_utils.ExpandedExtendStepFn,
+    transform_state_fn: decoder_utils.TransformStateFn | None,
+    lazy_broadcast_prefix_fn: decoder_utils.LazyBroadcastPrefixFn | None,
     next_token_sampler: base_layer.BaseLayerApi,
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
     seq_len: int,
     num_samples: int,
-    cf_guidance_scale: Optional[Union[List[float], float, JTensor]] = None,
+    cf_guidance_scale: list[float] | float | JTensor | None = None,
     fprop_for_prefix: bool = False,
-    temperature: Union[float, JTensor] = 1.0,
-    gumbel_prng_key: Optional[JTensor] = None,
-    per_example_top_p: Optional[JTensor] = None,
-    per_example_top_k: Optional[JTensor] = None,
-    max_prefix_len: Optional[int] = None,
-    max_decode_steps: Optional[Union[int, Sequence[int]]] = None,
-    per_example_max_decode_steps: Optional[JTensor] = None,
-    prefix_lengths: Optional[JTensor] = None,
-    eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
-    result_callback: Optional[StreamingResultCallback] = None,
+    temperature: float | JTensor = 1.0,
+    gumbel_prng_key: JTensor | None = None,
+    per_example_top_p: JTensor | None = None,
+    per_example_top_k: JTensor | None = None,
+    max_prefix_len: int | None = None,
+    max_decode_steps: int | Sequence[int] | None = None,
+    per_example_max_decode_steps: JTensor | None = None,
+    prefix_lengths: JTensor | None = None,
+    eos_id: int | Sequence[int] | JTensor | None = None,
+    result_callback: StreamingResultCallback | None = None,
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
     early_exit: bool = True,
     use_top_k_for_logprobs: bool = False,
-    controlled_decoding: Optional[
-        decoder_utils.ControlledDecodingHParams
-    ] = None,
+    controlled_decoding: decoder_utils.ControlledDecodingHParams | None = None,
     return_entropy_score: bool = False,
     optimize_eos: bool = False,
 ) -> NestedMap:
@@ -1605,19 +1599,18 @@ def sample_decode_after_fprop(
 def vanilla_sample_decode(
     model: base_layer.BaseLayerApi,
     fprop_fn: decoder_utils.FPropFn,
-    extend_step_fn: Union[
-        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
-    ],
+    extend_step_fn: decoder_utils.ExtendStepFn
+    | decoder_utils.ExpandedExtendStepFn,
     transform_state_fn: decoder_utils.TransformStateFn,
     next_token_sampler: base_layer.BaseLayerApi,
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
-    temperature: Union[float, JTensor] = 1.0,
-    gumbel_prng_key: Optional[JTensor] = None,
+    temperature: float | JTensor = 1.0,
+    gumbel_prng_key: JTensor | None = None,
     max_decode_steps: int = 0,
-    eos_id: Optional[Union[int, Sequence[int], JTensor]] = None,
-    decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
-    model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
+    eos_id: int | Sequence[int] | JTensor | None = None,
+    decode_loop_mesh_axes_transpose: dict[str, str] | None = None,
+    model_var_pspecs: base_layer.NestedPartitionSpec | None = None,
 ) -> NestedMap:
   """Sampling decode the input batch.
 
@@ -1855,22 +1848,21 @@ def vanilla_sample_decode(
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def greedy_decode(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: Union[
-        decoder_utils.ExtendStepFn, decoder_utils.ExpandedExtendStepFn
-    ],
+    extend_step_fn: decoder_utils.ExtendStepFn
+    | decoder_utils.ExpandedExtendStepFn,
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
     seq_len: int,
     fprop_for_prefix: bool = False,
-    fprop_fn: Optional[decoder_utils.FPropFn] = None,
-    transform_state_fn: Optional[decoder_utils.TransformStateFn] = None,
-    max_prefix_len: Optional[int] = None,
-    max_decode_steps: Optional[Union[int, Sequence[int]]] = None,
-    prefix_lengths: Optional[JTensor] = None,
-    decode_loop_mesh_axes_transpose: Optional[Dict[str, str]] = None,
-    model_var_pspecs: Optional[base_layer.NestedPartitionSpec] = None,
-    eos_id: Optional[int] = None,
-    process_result_fn: Optional[decoder_utils.ProcessResultFn] = None,
+    fprop_fn: decoder_utils.FPropFn | None = None,
+    transform_state_fn: decoder_utils.TransformStateFn | None = None,
+    max_prefix_len: int | None = None,
+    max_decode_steps: int | Sequence[int] | None = None,
+    prefix_lengths: JTensor | None = None,
+    decode_loop_mesh_axes_transpose: dict[str, str] | None = None,
+    model_var_pspecs: base_layer.NestedPartitionSpec | None = None,
+    eos_id: int | None = None,
+    process_result_fn: decoder_utils.ProcessResultFn | None = None,
 ) -> NestedMap:
   """Greedy decode the input batch.
 
