@@ -33,7 +33,7 @@ NestedMap = lingvo_lib.NestedMap
 HParams = lingvo_lib.HParams
 HParamsT = HParams
 
-JTensor = jnp.ndarray
+JTensor = jax.Array
 PRNGKey = JTensor
 JTensorOrPartitionSpec = JTensor | jax.sharding.PartitionSpec
 NpTensor = np.ndarray
