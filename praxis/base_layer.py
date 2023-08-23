@@ -1428,6 +1428,7 @@ class _FiddleHParamsClassStub(
   def __call__(cls, *args, **kwargs):
     return pax_fiddle.Config(cls.fiddle_base_layer_cls, *args, **kwargs)
 
+  @typing.final
   def config(cls, **kwargs):
     return cls(**kwargs)
 
@@ -2489,6 +2490,7 @@ class BaseLayer(nn.Module):
         res[target][var_name] = var_val
     return res
 
+  @typing.final
   @classmethod
   def config(cls, **kwargs) -> pax_fiddle.Config:
     return pax_fiddle.Config(cls, **kwargs)
