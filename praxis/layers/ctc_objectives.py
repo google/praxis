@@ -257,7 +257,7 @@ def ctc_loss_with_alignments(
 
   return (
       per_seq_loss,
-      CtcAlignments(  # pytype: disable=bad-return-type  # numpy-scalars
+      CtcAlignments(  # type: ignore  # jnp-types
           alignment=alignment,
           logalpha_phi=logalpha_phi,
           logalpha_emit=logalpha_emit,
