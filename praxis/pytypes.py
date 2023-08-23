@@ -38,7 +38,6 @@ PRNGKey = JTensor
 JTensorOrPartitionSpec = JTensor | jax.sharding.PartitionSpec
 NpTensor = np.ndarray
 SummaryDict = NestedMap | dict[str, JTensor]
-PyTree = Any
 PyTreeDef = jax.tree_util.PyTreeDef
 
 
