@@ -17,8 +17,6 @@
 
 import functools
 import math
-from typing import Optional
-from typing import Tuple, Union
 
 from absl import logging
 from flax import linen as nn
@@ -79,9 +77,9 @@ def sr_ste_fwd(
     sparse_ste_weight: float,
     n_sparsity: int = 0,
     m_sparsity: int = 0,
-) -> Tuple[
-    Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
-    Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+) -> tuple[
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
 ]:
   """Custom forward pass for structured sparsity."""
   # pylint:disable=g-long-lambda
@@ -278,8 +276,8 @@ def get_sparsity_mask(
 
 def get_sparsity_mask_unstructured(
     inputs: jnp.ndarray,
-    mask: Union[jnp.ndarray, None],
-    prune_rate: Union[jnp.ndarray, float],
+    mask: jnp.ndarray | None,
+    prune_rate: jnp.ndarray | float,
 ) -> jnp.ndarray:
   """Computes a sparisty mask to prune the required percentage of weights.
 
@@ -337,7 +335,7 @@ SparsityScore = sparsity_hparams.SparsityScore
 def compute_score(
     weights: jnp.ndarray,
     score_func: SparsityScore = SparsityScore.MAGNITUDE,
-    inputs: Optional[jnp.ndarray] = None,
+    inputs: jnp.ndarray | None = None,
 ) -> jnp.ndarray:
   """Compute importance score of weight before pruning."""
   if score_func == SparsityScore.ACTIVATION_WEIGHTED:

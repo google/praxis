@@ -17,7 +17,7 @@
 
 import functools
 import string
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, Sequence
 
 from absl import logging
 import jax
@@ -36,7 +36,7 @@ QUANTIZED_TYPES = [jnp.int8, jnp.uint8]
 INT_TYPES = [jnp.int8, jnp.uint8, jnp.int16, jnp.uint16, jnp.int32, jnp.uint32]
 
 
-def _get_expand_dims_rhs(eqn: str) -> List[int]:
+def _get_expand_dims_rhs(eqn: str) -> list[int]:
   """Potentially expand dimensions for scale of right-hand-side tensor.
 
   It handles cases such as ABD,KDNH->KABNH and AD,KDNH->KANH, where weight is
@@ -62,7 +62,7 @@ def _get_expand_dims_rhs(eqn: str) -> List[int]:
   return filling_dims
 
 
-def _get_expand_dims_lhs(eqn: str) -> List[int]:
+def _get_expand_dims_lhs(eqn: str) -> list[int]:
   """Potentially expand dimensions for scale of left-hand-side tensor.
 
   It handles cases such as ABD,KDNH->KABNH and ABD,DKNH->ABKNH, where activation
@@ -112,7 +112,7 @@ def get_min_max(
     bits: int = 8,
     unsigned: bool = False,
     use_fp: bool = False,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
   """Gets the min/max range for a given number of bits.
 
   Args:
@@ -147,7 +147,7 @@ def compute_offset(x: JTensor, zp: JTensor, eqn: str):
     Offset tensor.
   """
 
-  def _get_x_reduce_axis(eqn: str, x_dims: int) -> List[int]:
+  def _get_x_reduce_axis(eqn: str, x_dims: int) -> list[int]:
     """Get reduction axis on activation."""
     if eqn == 'ANH,DNH->AD' or eqn == 'ABNH,DNH->ABD':
       return [x_dims - 2, x_dims - 1]
@@ -208,9 +208,9 @@ def einsum(
     x: JTensor,
     w: JTensor,
     scale: JTensor,
-    zp: Optional[JTensor] = None,
-    scale_act: Optional[JTensor] = None,
-    zp_act: Optional[JTensor] = None,
+    zp: JTensor | None = None,
+    scale_act: JTensor | None = None,
+    zp_act: JTensor | None = None,
 ) -> JTensor:
   """Performs quantized einsum.
 
@@ -303,7 +303,7 @@ def pass_through(x: JTensor, fn: Any) -> JTensor:
 
 def reduce_precision(
     t: JTensor,
-    contract_dims: Optional[Sequence[int]],
+    contract_dims: Sequence[int] | None,
     need_gradient: bool = False,
     bits: int = 8,
     optimization_on_bound: bool = False,
@@ -311,7 +311,7 @@ def reduce_precision(
     use_symmetric: bool = True,
     use_fp: bool = False,
     add_scale_eps: bool = False,
-) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
+) -> tuple[JTensor, JTensor, JTensor | None]:
   """Reduce the precision of a tensor.
 
   Generic for all tensors.
@@ -406,7 +406,7 @@ def reduce_einsum_weight_precision(
     optimization_on_bound: bool = False,
     percentile: float = 1.0,
     use_symmetric: bool = True,
-) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
+) -> tuple[JTensor, JTensor, JTensor | None]:
   """Reduce the precision of the weight of einsum.
 
   It uses per-channel quantization so einsum equation is passed in as well.
@@ -512,8 +512,8 @@ def reduce_precision_activation(
     t: JTensor,
     need_gradient: bool = False,
     bits: int = 8,
-    contract_dims: Optional[Sequence[int]] = None,
-) -> Tuple[JTensor, JTensor]:
+    contract_dims: Sequence[int] | None = None,
+) -> tuple[JTensor, JTensor]:
   """Reduce the precision of activation.
 
   Args:
@@ -537,7 +537,7 @@ def reduce_einsum_activation_precision(
     bits: int = 8,
     squeeze: bool = True,
     per_channel: bool = False,
-) -> Tuple[JTensor, JTensor]:
+) -> tuple[JTensor, JTensor]:
   """Reduce the precision of the activation of einsum.
 
   It uses per-tensor or per-toeken quantization so einsum equation is passed in
@@ -569,7 +569,7 @@ def reduce_einsum_activation_precision(
 
 
 def fakequant_activation(
-    t: JTensor, bits: int = 8, eqn: Optional[str] = None
+    t: JTensor, bits: int = 8, eqn: str | None = None
 ) -> JTensor:
   """FakeQuant activation.
 
@@ -595,7 +595,7 @@ def compute_shape_with_subchannels(
     inputs_shape: Sequence[int],
     contract_dims: Sequence[int],
     min_sub_channel_size: int = -1,
-) -> List[int]:
+) -> list[int]:
   """Computes new shape of input tensor for subchannel quantization.
 
   Args:
@@ -747,7 +747,7 @@ def fakequant_vn(
     w: JTensor,
     next_prng_key: PRNGKey,
     wp: WeightQuantizationParams,
-    step: Optional[JTensor] = None,
+    step: JTensor | None = None,
     do_eval: bool = False,
     bits: int = 8,
     calculation_type: jnp.dtype = jnp.bfloat16,

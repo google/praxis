@@ -16,7 +16,7 @@
 """Quantized Embedding and softmax layers."""
 
 import copy
-from typing import Any, Optional
+from typing import Any
 
 import jax
 from jax import numpy as jnp
@@ -433,7 +433,7 @@ class NClassMajorSharedEmbeddingSoftmax(
       )
 
   def get_logits(
-      self, inputs: JTensor, input_ids: Optional[JTensor] = None
+      self, inputs: JTensor, input_ids: JTensor | None = None
   ) -> JTensor:
     """Returns logits given the inputs with an option to soft cap it.
 

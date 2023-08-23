@@ -17,7 +17,6 @@
 # pytype: disable=signature-mismatch
 
 import string
-from typing import Tuple
 
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
@@ -259,7 +258,7 @@ class CombinedQKVProjectionLayer(sparse_base_layer.SparsityBaseLayer,
 
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
   # attentions.
-  def __call__(self, inputs: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
+  def __call__(self, inputs: JTensor) -> tuple[JTensor, JTensor, JTensor]:
     """Computes the QKV projection for inputs.
 
     Args:

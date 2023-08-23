@@ -32,7 +32,7 @@ quantizing all transformer blocks.
 """
 
 import functools
-from typing import Optional, Sequence, Type, Union, cast
+from typing import Sequence, Type, cast
 
 import fiddle as fdl
 from jax import numpy as jnp
@@ -124,7 +124,7 @@ def quantize_transformer_layer_weights(
     quantization_type: QuantizationType,
     mode: QuantizationMode,
     weight_quantization_params: WeightQuantizationParams,
-    act_quantization_params: Optional[ActQuantizationParams] = None,
+    act_quantization_params: ActQuantizationParams | None = None,
     linear_only: bool = False,
     rank: int = -1,
 ) -> None:
@@ -158,7 +158,7 @@ def quantize_attention_layer_weights(
     quantization_type: QuantizationType,
     mode: QuantizationMode,
     weight_quantization_params: WeightQuantizationParams,
-    act_quantization_params: Optional[ActQuantizationParams] = None,
+    act_quantization_params: ActQuantizationParams | None = None,
 ) -> None:
   """Rewrites Attention HParam for weight and act quantization."""
   if issubclass(tr_tpl.tr_atten_tpl.cls, layers.attentions.DotProductAttention):
@@ -202,7 +202,7 @@ def quantize_dot_product_attention_layer_weights(
     quantization_type: QuantizationType,
     mode: QuantizationMode,
     weight_quantization_params: WeightQuantizationParams,
-    act_quantization_params: Optional[ActQuantizationParams] = None,
+    act_quantization_params: ActQuantizationParams | None = None,
 ) -> None:
   """Rewrites DotProductAttention HParam for weight only quantization."""
 
@@ -234,7 +234,7 @@ def quantize_mq_dot_product_attention_layer_weights(
     quantization_type: QuantizationType,
     mode: QuantizationMode,
     weight_quantization_params: WeightQuantizationParams,
-    act_quantization_params: Optional[ActQuantizationParams] = None,
+    act_quantization_params: ActQuantizationParams | None = None,
 ) -> None:
   """Rewrites MultiQueryDotProductAttention HParam."""
 
@@ -266,7 +266,7 @@ def quantize_transformer_feed_forward_layer_weights(
     quantization_type: QuantizationType,
     mode: QuantizationMode,
     weight_quantization_params: WeightQuantizationParams,
-    act_quantization_params: Optional[ActQuantizationParams] = None,
+    act_quantization_params: ActQuantizationParams | None = None,
     rank: int = -1,
 ) -> None:
   """Rewrites TransformerFeedForward HParam for weight only quantization."""

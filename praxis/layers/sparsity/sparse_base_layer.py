@@ -16,7 +16,6 @@
 """Sparse base layer."""
 
 import copy
-from typing import Optional
 
 import jax
 from jax import numpy as jnp
@@ -305,8 +304,8 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       self,
       weight: JTensor,
       name: str,
-      inputs: Optional[JTensor] = None,
-      layer_idx: Optional[int] = -1,
+      inputs: JTensor | None = None,
+      layer_idx: int | None = -1,
   ) -> JTensor:
     """Get weight of this layer based on mode and other conditions.
 

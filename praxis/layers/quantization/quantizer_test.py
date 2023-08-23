@@ -15,8 +15,6 @@
 
 """Tests for TensorQuantizer in Quantization-aware Training."""
 
-from typing import Tuple
-
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -37,7 +35,7 @@ class QuantizerTest(test_utils.TestCase):
 
   def get_quantize_dequantized_and_scale(
       self, p_quant, sample, axis=None
-  ) -> Tuple[JTensor, JTensor]:
+  ) -> tuple[JTensor, JTensor]:
     # Computes quantized-dequantized and scale of input sample.
 
     quant = p_quant.Instantiate()

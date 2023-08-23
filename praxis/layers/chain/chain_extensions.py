@@ -45,7 +45,7 @@ chain = praxis.layers.chain
 """
 import collections
 import copy
-from typing import Any, Dict, Optional, Sequence, Tuple, List
+from typing import Any, Sequence
 
 from absl import logging
 from jax import numpy as jnp
@@ -121,7 +121,7 @@ def repeat(
   )
 
 
-def _name_layers_uniquely(layers_tpl: Sequence[LayerTpl]) -> List[LayerTpl]:
+def _name_layers_uniquely(layers_tpl: Sequence[LayerTpl]) -> list[LayerTpl]:
   """Returns layers with unique names assigned."""
   layers_tpl = [l for l in layers_tpl if l]
   if not layers_tpl:
@@ -196,7 +196,7 @@ class DictToArgs(BaseLayer):
 
   keys: Sequence[str] = ()
 
-  def __call__(self, input_batch: Dict[str, JTensor]) -> Tuple[JTensor, ...]:
+  def __call__(self, input_batch: dict[str, JTensor]) -> tuple[JTensor, ...]:
     """Looks up tensors."""
     outputs = []
     for k in self.keys:
@@ -225,7 +225,7 @@ class LogArgs(BaseLayer):
     log_values: If tensor values should be logged or only the shape.
   """
 
-  message: Optional[str] = None
+  message: str | None = None
   log_values: bool = False
 
   def __call__(self, *args: Any, **kwargs: Any) -> None:
@@ -251,7 +251,7 @@ class LogArgs(BaseLayer):
 
 
 def log_args(
-    message: Optional[str] = None, log_values: bool = False, **kwargs: Any
+    message: str | None = None, log_values: bool = False, **kwargs: Any
 ) -> Config[LogArgs]:
   """`Config(LogArgs)`; logs the arguments (for easy debugging)."""
   return Config(
@@ -287,7 +287,7 @@ def full_like(fill_value: float, **kwargs: Any) -> Config[FullLike]:
 def feed_forward(
     input_dims: int,
     output_dims: int,
-    activation_tpl: Optional[LayerTpl] = None,
+    activation_tpl: LayerTpl | None = None,
     **kwargs: Any,
 ) -> Config[linears.FeedForward]:
   """Wraps `Config(linears.FeedForward)`."""

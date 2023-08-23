@@ -20,8 +20,10 @@ input to the next. But `Chain` extends and generalizes combination of layers by
 treating `*args` as a stack; popping arguments and pushing outputs as it
 iterates through the layers.
 """
+
 import inspect
-from typing import Any, Callable, Optional, Sequence, Tuple
+from typing import Any, Callable, Sequence
+
 from praxis import base_layer
 
 
@@ -50,7 +52,7 @@ class Chain(base_layer.BaseLayer):
   """
 
   preserve_adopted_names: bool = True
-  layers: Optional[base_layer.BaseLayer] = None
+  layers: base_layer.BaseLayer | None = None
 
   def __call__(self, *args: Any, **kwargs: Any) -> Any:
     """Calls layers one-by-one and returns the last chain output."""
@@ -148,7 +150,7 @@ def call_chained_layer(
   return tuple(outputs) if len(outputs) > 1 else outputs[0]
 
 
-def ensure_tuple(x: Any) -> Tuple[Any, ...]:
+def ensure_tuple(x: Any) -> tuple[Any, ...]:
   """Ensures that `x` is a tuple."""
   return x if isinstance(x, tuple) else (x,)
 

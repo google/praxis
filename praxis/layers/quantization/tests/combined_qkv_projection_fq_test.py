@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """FQ Tests for quantized CombinedQKVProjection layer."""
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax

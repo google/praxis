@@ -16,7 +16,7 @@
 """Tests for quantized attentions."""
 
 import itertools
-from typing import Any, Dict, Sequence
+from typing import Any, Sequence
 
 from absl import logging
 from absl.testing import absltest
@@ -38,7 +38,7 @@ QuantizationType = quantization_hparams.QuantizationType
 instantiate = base_layer.instantiate
 
 
-def _generate_quantization_types_modes() -> Sequence[Dict[str, Any]]:
+def _generate_quantization_types_modes() -> Sequence[dict[str, Any]]:
   keys = ['testcase_name', 'quantization_type', 'mode', 'precision']
   types = [QuantizationType.PTQ, QuantizationType.AQT]
   modes = [QuantizationMode.INFERENCE, QuantizationMode.TRAINING]

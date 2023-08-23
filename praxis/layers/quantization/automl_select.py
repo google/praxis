@@ -15,7 +15,7 @@
 
 """Praxis AutoMLSelect layer to switch branches according to AutoML decisions."""
 
-from typing import Optional, Sequence, Union, Tuple
+from typing import Sequence
 
 from flax import linen as nn
 import jax.numpy as jnp
@@ -39,7 +39,7 @@ class BaseAutoMLSelect(base_layer.BaseLayer):
       They layers must have the same shapes of input and output.
   """
 
-  search_options_tpl: Optional[Sequence[LayerTpl]] = template_field(None)
+  search_options_tpl: Sequence[LayerTpl] | None = template_field(None)
 
   def setup(self) -> None:
     if not self.search_options_tpl:
@@ -67,10 +67,10 @@ class AutoMLSelect(BaseAutoMLSelect):
   def __call__(
       self,
       x: JTensor,
-      contract_dims: Union[int, Sequence[int]],
+      contract_dims: int | Sequence[int],
       squeeze_scale=True,
-      quantized_dtype: Union[jnp.dtype, None] = None,
-  ) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
+      quantized_dtype: jnp.dtype | None = None,
+  ) -> tuple[JTensor, JTensor, JTensor | None]:
     def branch_fn(i):
       def quantize_fn(mdl, inputs):
         return mdl.search_options[i].quantize(
@@ -85,8 +85,8 @@ class AutoMLSelect(BaseAutoMLSelect):
   def quantize(
       self,
       x: JTensor,
-      contract_dims: Union[int, Sequence[int]],
+      contract_dims: int | Sequence[int],
       squeeze_scale=True,
-      quantized_dtype: Union[jnp.dtype, None] = None,
-  ) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
+      quantized_dtype: jnp.dtype | None = None,
+  ) -> tuple[JTensor, JTensor, JTensor | None]:
     return self.__call__(x, contract_dims, squeeze_scale, quantized_dtype)

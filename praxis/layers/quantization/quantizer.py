@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import Optional, Sequence, Tuple, Union
+from typing import Sequence
 
 from absl import logging
 import jax
@@ -53,9 +53,7 @@ class QuantizationLayer(base_layer.BaseLayer):
       given layer. Defaults to default QuantizationParams.
   """
 
-  quantization: Optional[QuantizationParams] = instance_field(
-      QuantizationParams
-  )
+  quantization: QuantizationParams | None = instance_field(QuantizationParams)
 
   def set_up_weights(
       self,
@@ -239,7 +237,7 @@ def quantized_conv(
     layer: base_layer.BaseLayer,
     x: JTensor,
     padding: str,
-    dimension_numbers: Tuple[str, ...],
+    dimension_numbers: tuple[str, ...],
     feature_group_count: int,
     pack_dim: int,
 ) -> JTensor:
@@ -308,9 +306,7 @@ def do_static_activation_quantization(act_params) -> bool:
 
 def create_tensor_quantizer(
     name: str,
-    quant_params: Optional[
-        Union[ActQuantizationParams, WeightQuantizationParams]
-    ],
+    quant_params: ActQuantizationParams | WeightQuantizationParams | None,
 ) -> pax_fiddle.Config[TensorQuantizer]:
   """Creates tensor quantizer.
 
@@ -376,19 +372,19 @@ class TensorQuantizer(base_layer.BaseLayer):
       per channel, else per-tensor.
     sub_channels: Number of sub channels for splitting channelwise quantization.
   """
-  precision: Optional[int] = None
+  precision: int | None = None
   stop_scale_gradient: bool = False
-  min_clipping: Optional[float] = None
-  num_optimize_clipping: Optional[int] = None
-  clipping_coeff: Optional[float] = None
-  add_scale_eps: Optional[bool] = True
+  min_clipping: float | None = None
+  num_optimize_clipping: int | None = None
+  clipping_coeff: float | None = None
+  add_scale_eps: bool | None = True
   unsigned_int_bounds: bool = False
   use_symmetric: bool = True
-  quant_loss_weight: Optional[float] = None
-  kurt_loss_weight: Optional[float] = None
+  quant_loss_weight: float | None = None
+  kurt_loss_weight: float | None = None
   kurt: float = 1.8
   optimize_clipping_per_channel: bool = False
-  sub_channels: Optional[int] = None
+  sub_channels: int | None = None
 
   def setup(self):
     del self.dtype  # not used
@@ -431,9 +427,9 @@ class TensorQuantizer(base_layer.BaseLayer):
   def _get_scale_and_min(
       self,
       x: JTensor,
-      contract_dims: Union[int, Sequence[int]],
-      clipping_coeff: Optional[float] = None,
-  ) -> Tuple[JTensor, Optional[JTensor]]:
+      contract_dims: int | Sequence[int],
+      clipping_coeff: float | None = None,
+  ) -> tuple[JTensor, JTensor | None]:
     if self.precision is None:
       return jnp.ones(shape=(1,) * x.ndim, dtype=x.dtype), None
 
@@ -471,8 +467,8 @@ class TensorQuantizer(base_layer.BaseLayer):
   def _get_optimal_scale_and_min(
       self,
       x: JTensor,
-      contract_dims: Union[int, Sequence[int]],
-  ) -> Tuple[JTensor, Optional[JTensor]]:
+      contract_dims: int | Sequence[int],
+  ) -> tuple[JTensor, JTensor | None]:
     def quantization_error_and_scale(clipping):
       q_scale, x_min = self._get_scale_and_min(
           x, contract_dims, clipping_coeff=clipping
@@ -541,8 +537,8 @@ class TensorQuantizer(base_layer.BaseLayer):
   def get_quant_scale(
       self,
       x: JTensor,
-      contract_dims: Union[int, Sequence[int]],
-  ) -> Tuple[JTensor, Optional[JTensor]]:
+      contract_dims: int | Sequence[int],
+  ) -> tuple[JTensor, JTensor | None]:
     """Computes scale for quantization.
 
     It can compute standard scale or scale optimized over different
@@ -600,8 +596,9 @@ class TensorQuantizer(base_layer.BaseLayer):
       self,
       q_x: JTensor,
       q_scale: JTensor,
-      contract_dims: Union[int, Sequence[int]],
-      zp_time_scale: Optional[JTensor] = None) -> JTensor:
+      contract_dims: int | Sequence[int],
+      zp_time_scale: JTensor | None = None,
+  ) -> JTensor:
     """Dequantizes quantized q_x.
 
     Args:
@@ -629,8 +626,8 @@ class TensorQuantizer(base_layer.BaseLayer):
       self,
       x: JTensor,
       q_scale: JTensor,
-      x_min: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, Optional[JTensor]]:
+      x_min: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor | None]:
     """Rescales input x for quantization.
 
     Args:
@@ -660,10 +657,10 @@ class TensorQuantizer(base_layer.BaseLayer):
   def quantize(
       self,
       x: JTensor,
-      contract_dims: Union[int, Sequence[int]],
+      contract_dims: int | Sequence[int],
       squeeze_scale=True,
-      quantized_dtype: Union[jnp.dtype, None] = None,
-  ) -> Tuple[JTensor, JTensor, Optional[JTensor]]:
+      quantized_dtype: jnp.dtype | None = None,
+  ) -> tuple[JTensor, JTensor, JTensor | None]:
     """Quantizes input x.
 
     Args:

@@ -17,7 +17,7 @@
 
 import copy
 import string
-from typing import Any, Optional, Sequence, Tuple
+from typing import Any, Sequence
 
 import jax
 from jax import numpy as jnp
@@ -371,7 +371,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
 
   # TODO(zhangqiaorjc): Take query, key, value as inputs to support all
   # attentions.
-  def __call__(self, inputs: JTensor) -> Tuple[JTensor, JTensor, JTensor]:
+  def __call__(self, inputs: JTensor) -> tuple[JTensor, JTensor, JTensor]:
     """Computes the QKV projection for inputs.
 
     Args:
@@ -705,8 +705,8 @@ class DotProductAttention(  # pytype: disable=signature-mismatch
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Main attention function.
 
     Args:
@@ -794,9 +794,9 @@ class DotProductAttention(  # pytype: disable=signature-mismatch
       key_state_name: str,
       value_state_name: str,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-      time_step: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+      time_step: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
     Args:

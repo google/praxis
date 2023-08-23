@@ -15,7 +15,7 @@
 
 """Utilities for quantization."""
 
-from typing import Optional, Tuple, Sequence
+from typing import Sequence
 
 from jax import lax
 import jax.numpy as jnp
@@ -25,7 +25,7 @@ JTensor = jnp.ndarray
 
 def einsum_eqn_to_dimension_numbers(
     eqn: str,
-) -> Tuple[lax.DotDimensionNumbers, Optional[Tuple[int, ...]]]:
+) -> tuple[lax.DotDimensionNumbers, tuple[int, ...] | None]:
   """Convert einsum equation to dot_general dimension numbers and a permutation.
 
   Only supports equations meeting the following conditions:

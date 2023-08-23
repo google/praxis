@@ -15,7 +15,6 @@
 
 """Convolutional layers."""
 
-
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pytypes
@@ -23,7 +22,6 @@ from praxis.layers import convolutions
 from praxis.layers import normalizations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
-
 
 WeightHParams = base_layer.WeightHParams
 QuantizationParams = quantization_hparams.QuantizationParams

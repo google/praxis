@@ -15,8 +15,6 @@
 
 """Quantized Conformer Layers."""
 
-from typing import Optional, Tuple
-
 import jax.numpy as jnp
 from praxis import pytypes
 from praxis.layers import attentions
@@ -37,8 +35,8 @@ class DotProductAttentionWithContext(qattentions.DotProductAttention):
   For use case (2) it is more efficient to use LocalSelfAttention.
   """
 
-  left_context: Optional[int] = None
-  right_context: Optional[int] = None
+  left_context: int | None = None
+  right_context: int | None = None
 
   def _dot_atten(
       self,
@@ -46,8 +44,8 @@ class DotProductAttentionWithContext(qattentions.DotProductAttention):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-      relative_bias: Optional[JTensor] = None,
-  ) -> Tuple[JTensor, JTensor]:
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
     """Main attention function.
 
     Args:

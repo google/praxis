@@ -14,8 +14,9 @@
 # limitations under the License.
 
 """Layers for Mixed-Precision Quantization Search."""
+
 import dataclasses
-from typing import Any, Dict, Sequence
+from typing import Any, Sequence
 
 from praxis import base_layer
 from praxis import pax_fiddle
@@ -92,7 +93,7 @@ class SearchableQuantizedLayer(base_layer.BaseLayer):
     )
 
   # This is for fixing the return type mismatch during multiple inheritance.
-  def replace(self, **kwargs: Dict[Any, Any]):
+  def replace(self, **kwargs: dict[Any, Any]):
     return self.replace(**kwargs)
 
 

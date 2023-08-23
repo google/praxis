@@ -14,8 +14,9 @@
 # limitations under the License.
 
 """Test utils for quantization test."""
+
 import itertools
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Sequence
 
 from praxis import test_utils
 
@@ -44,8 +45,8 @@ def to_list(w):
 
 
 def generate_attention_projection_test_config(
-    additional_feature_funcs: Optional[List[Any]] = None
-) -> Sequence[Dict[str, Any]]:
+    additional_feature_funcs: list[Any] | None = None,
+) -> Sequence[dict[str, Any]]:
   """Function to generate test configurations for AttentionProjection layer.
 
   Args:
@@ -91,8 +92,8 @@ def generate_attention_projection_test_config(
 
 
 def generate_combined_qkv_projection_test_config(
-    additional_feature_funcs: Optional[List[Any]] = None
-) -> Sequence[Dict[str, Any]]:
+    additional_feature_funcs: list[Any] | None = None,
+) -> Sequence[dict[str, Any]]:
   """Function to generate test configurations for CombinedQKVProjection layer.
 
   Args:
@@ -128,8 +129,8 @@ def generate_combined_qkv_projection_test_config(
 
 
 def generate_linears_test_config(
-    additional_feature_funcs: Optional[List[Any]] = None,
-) -> Sequence[Dict[str, Any]]:
+    additional_feature_funcs: list[Any] | None = None,
+) -> Sequence[dict[str, Any]]:
   """Function to generate test configurations for Linears layer.
 
   Args:
@@ -153,8 +154,8 @@ def generate_linears_test_config(
 
 
 def generate_dotproduct_attention_test_config(
-    additional_feature_funcs: Optional[List[Any]] = None
-) -> Sequence[Dict[str, Any]]:
+    additional_feature_funcs: list[Any] | None = None,
+) -> Sequence[dict[str, Any]]:
   """Function to generate test configurations for DotProductAttention layer.
 
   Args:
@@ -188,8 +189,8 @@ def generate_dotproduct_attention_test_config(
 
 
 def generate_one_headed_attention_projection_test_config(
-    additional_feature_funcs: Optional[List[Any]] = None
-) -> Sequence[Dict[str, Any]]:
+    additional_feature_funcs: list[Any] | None = None,
+) -> Sequence[dict[str, Any]]:
   """Generate test configurations for OneHeadedAttentionProjection layer.
 
   Args:

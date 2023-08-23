@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """Quantized Ngrammer layers."""
+
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle
@@ -22,13 +23,8 @@ from praxis.layers import normalizations
 from praxis.layers.quantization import embedding_softmax as quantized_embedding_softmax
 from praxis.layers.quantization import quantization_hparams
 
-
 QuantizationParams = quantization_hparams.QuantizationParams
-
-
 WeightHParams = base_layer.WeightHParams
-
-
 instance_field = base_layer.instance_field
 
 

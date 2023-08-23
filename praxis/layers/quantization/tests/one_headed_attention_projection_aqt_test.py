@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """Tests for quantized OneHeadedAttentionProjection layer."""
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax

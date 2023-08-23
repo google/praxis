@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 from absl.testing import absltest
 from absl.testing import parameterized
 
@@ -189,7 +187,7 @@ class ChainTest(test_utils.TestCase):
   def test_chain_extensions(
       self,
       layer_tpl: Config[BaseLayer],
-      expected_factor: Optional[float] = None,
+      expected_factor: float | None = None,
   ) -> None:
     inputs = jnp.ones((2, 2, 2))
     paddings = jnp.zeros((2, 2))

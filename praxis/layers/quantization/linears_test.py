@@ -16,7 +16,7 @@
 """Tests for quantized linears."""
 
 import itertools
-from typing import Any, Dict, Sequence
+from typing import Any, Sequence
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -45,7 +45,7 @@ NON_TRAINABLE = base_layer.NON_TRAINABLE
 SUMMARIES = base_layer.SUMMARIES
 
 
-def _generate_quantization_types_modes() -> Sequence[Dict[str, Any]]:
+def _generate_quantization_types_modes() -> Sequence[dict[str, Any]]:
   keys = ['testcase_name', 'quantization_type', 'mode', 'dtype', 'precision']
   types = [QuantizationType.PTQ, QuantizationType.FQ, QuantizationType.AQT]
   modes = [QuantizationMode.INFERENCE, QuantizationMode.TRAINING]
@@ -68,7 +68,7 @@ def _generate_quantization_types_modes() -> Sequence[Dict[str, Any]]:
   return [dict(zip(keys, case)) for case in cases]
 
 
-def _generate_quantization_types_symmetric() -> Sequence[Dict[str, Any]]:
+def _generate_quantization_types_symmetric() -> Sequence[dict[str, Any]]:
   keys = ['testcase_name', 'quantization_type', 'use_symmetric']
   types = [QuantizationType.PTQ, QuantizationType.FQ, QuantizationType.AQT]
   use_symmetric = [True, False]

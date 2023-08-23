@@ -16,7 +16,7 @@
 """Tests for sparse linears."""
 
 import itertools
-from typing import Any, Dict, Sequence
+from typing import Any, Sequence
 
 from absl import logging
 from absl.testing import absltest
@@ -46,7 +46,7 @@ SparsityMode = sparsity_hparams.SparsityMode
 SparsityType = sparsity_hparams.SparsityType
 
 
-def _generate_sparsity_types_modes() -> Sequence[Dict[str, Any]]:
+def _generate_sparsity_types_modes() -> Sequence[dict[str, Any]]:
   keys = ['testcase_name', 'sparsity_type', 'mode']
   types = [SparsityType.STRUCTURED_NM]
   modes = [

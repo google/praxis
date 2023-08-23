@@ -15,7 +15,7 @@
 
 """Tests for quantized operations."""
 
-from typing import Dict, Sequence
+from typing import Sequence
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -398,7 +398,7 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
     self.assertAllClose(act, act_nudged, rtol=0.02, atol=0.02)
 
 
-def _generate_einsum_eqn() -> Sequence[Dict[str, str]]:
+def _generate_einsum_eqn() -> Sequence[dict[str, str]]:
   """Generates arbitrary dimension numbers for a tensor of shape (2, 2, 2)."""
   keys = ['testcase_name', 'eqn']
   # ((lhs_contracting_dims, rhs_contracting_dims), (lhs_batch_dims,

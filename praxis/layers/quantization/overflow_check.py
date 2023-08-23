@@ -16,7 +16,8 @@
 """Layers with overflow checks."""
 
 import dataclasses
-from typing import Any, Tuple
+from typing import Any
+
 from absl import logging
 import jax
 from jax import numpy as jnp
@@ -106,7 +107,7 @@ class CombinedQKVProjectionLayerOverflowCheck(
   def __call__(
       self,
       inputs: JTensor,
-  ) -> Tuple[JTensor, JTensor, JTensor]:
+  ) -> tuple[JTensor, JTensor, JTensor]:
     q, k, v = super().__call__(inputs)
     self.check_overflow(q, "CombinedQKVProjection q", self.name)
     self.check_overflow(k, "CombinedQKVProjection k", self.name)

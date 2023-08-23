@@ -17,7 +17,7 @@
 
 import dataclasses
 import enum
-from typing import Optional
+
 import jax.numpy as jnp
 
 
@@ -132,24 +132,24 @@ class WeightQuantizationParams:
   unsigned_int_bounds: bool = False
   clipping_coeff: float = 1.0
   stop_scale_gradient: bool = False
-  min_clipping: Optional[float] = None
-  num_optimize_clipping: Optional[int] = None
+  min_clipping: float | None = None
+  num_optimize_clipping: int | None = None
   use_symmetric: bool = True
-  add_scale_eps: Optional[bool] = True
+  add_scale_eps: bool | None = True
   dequant_upfront: bool = False
   dtype: jnp.dtype = jnp.int8
-  quant_loss_weight: Optional[float] = None
+  quant_loss_weight: float | None = None
   optimize_clipping_per_channel: bool = False
-  sub_channels: Optional[int] = None
+  sub_channels: int | None = None
   calculation_dtype: jnp.dtype = jnp.float32
   use_step_count: bool = False
   use_int4_packed_weights: bool = True
   int4_packed_weights_container_dtype: jnp.dtype = jnp.int32
-  vn_scale: Optional[float] = None
+  vn_scale: float | None = None
   vn_start_step: int = 0
   vn_noise_type: str = 'uniform'
   vn_weight_norm_type: str = 'PerChannelLinf'
-  kurt_loss_weight: Optional[float] = None
+  kurt_loss_weight: float | None = None
   kurt: float = 1.8
   block_size: int = 0
 
@@ -166,7 +166,7 @@ class QuantizationParams:
   """
   quantization_type: QuantizationType = QuantizationType.PTQ
   mode: QuantizationMode = QuantizationMode.INFERENCE
-  act_params: Optional[ActQuantizationParams] = None
+  act_params: ActQuantizationParams | None = None
   weight_params: WeightQuantizationParams = dataclasses.field(
       default_factory=WeightQuantizationParams
   )

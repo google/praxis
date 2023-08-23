@@ -17,7 +17,6 @@
 
 import dataclasses
 import enum
-from typing import List, Optional, Tuple, Union
 
 
 @enum.unique
@@ -118,7 +117,7 @@ class WeightSparsityParams:
   """
 
   # TODO(ayazdan): Add additional sparsity parameters (order, offset, etc.)
-  prune_rate: Union[None, float, Tuple[int, int]]
+  prune_rate: None | float | tuple[int, int]
   structure_decay: bool = False
   mask_decay_weight: float = 0.0
   sparse_ste: bool = False
@@ -166,14 +165,14 @@ class SparsityHParams:
   """
 
   sparsity_type: SparsityType = SparsityType.STRUCTURED_NM
-  weight_params: Optional[WeightSparsityParams] = None
+  weight_params: WeightSparsityParams | None = None
   mode: SparsityMode = SparsityMode.INFERENCE
   score: SparsityScore = SparsityScore.MAGNITUDE
   num_shots: int = 0
   mask_update_interval: int = 1
   target_step: int = 0
-  sparsified_layers: Optional[List[int]] = None
-  polynomial_decay_schedule: Optional[PolynomialDecayParams] = None
+  sparsified_layers: list[int] | None = None
+  polynomial_decay_schedule: PolynomialDecayParams | None = None
 
   def get_num_shots(self):
     if self.mode == SparsityMode.INFERENCE:
@@ -193,7 +192,7 @@ class SparsityHParams:
     ):
       # Check sparsity types.
       if self.sparsity_type == SparsityType.STRUCTURED_NM:
-        assert isinstance(self.weight_params.prune_rate, Tuple), (
+        assert isinstance(self.weight_params.prune_rate, tuple), (
             'Prune rate must be either None '
             'for no pruning or a Tuple[int, int] for '
             'N:M structured sparsity.'
