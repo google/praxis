@@ -234,8 +234,7 @@ def to_partition_spec(
 
     return tuple(split_dims)
 
-  partition_spec = _parse_split_dims(split_dims_mapping)
-  return jax.sharding.PartitionSpec(*partition_spec)
+  return jax.sharding.PartitionSpec(*_parse_split_dims(split_dims_mapping))
 
 
 def var_partition_specs(
