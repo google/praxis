@@ -214,6 +214,20 @@ pytype_strict_library(
     ],
 )
 
+py_strict_test(
+    name = "optimizer_prefix_vectorization_test",
+    srcs = ["optimizer_prefix_vectorization_test.py"],
+    deps = [
+        ":base_layer",
+        ":optimizer_prefix_vectorization",
+        ":test_utils",
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        # Implicit optax dependency.
+    ],
+)
+
 pytype_strict_library(
     name = "optimizers",
     srcs = ["optimizers.py"],
