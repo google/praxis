@@ -1109,7 +1109,7 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
         'b/292156360: The input specs is generated based on the first data '
         'batch. It is recommended to define an explicit input spec provider '
         'param in BaseExperiment.get_input_specs_provider_params(), which is '
-        'more determinisitc and efficient.'
+        'more deterministic and efficient.'
     )
     self._input_specs = jax.tree_map(
         lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
