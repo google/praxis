@@ -114,7 +114,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     """
     should_do_pruning = jnp.logical_or(
         jnp.equal(num_shots, -1),  # SparsityMode.Training/MATERIALIZE
-        jnp.less_equal(mask_update_times, num_shots),  # OneShot/FewShot
+        jnp.less(mask_update_times, num_shots),  # OneShot/FewShot
     )
     should_pruning_step = jnp.equal(step, target_step)
     return jnp.logical_and(

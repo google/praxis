@@ -131,3 +131,20 @@ pytype_strict_library(
         "//praxis:pytypes",
     ],
 )
+
+py_strict_test(
+    name = "sparse_base_layer_test",
+    srcs = ["sparse_base_layer_test.py"],
+    deps = [
+        ":sparse_base_layer",
+        ":sparsity_hparams",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:test_utils",
+        "//praxis/layers:linears",
+    ],
+)
