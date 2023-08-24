@@ -62,9 +62,7 @@ class OneHeadedAttentionProjection(base_layer.BaseLayer):
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
-    if self.mesh_shape is not None:
-      assert wp.wt is not None, ('Must provide sharding annotations for the '
-                                 'weights if mesh shape is provided')
+    has_sharding = self.mesh_shape is not None and wp.wt is not None
     wt = wp.wt
     pc_shape = [self.input_dim, self.output_dim]
     pc = WeightHParams(
@@ -72,7 +70,7 @@ class OneHeadedAttentionProjection(base_layer.BaseLayer):
     )
     self.create_variable('w', pc)
     if self.use_bias:
-      if self.mesh_shape is not None:
+      if has_sharding:
         bias_split_dims_mapping = [wp.wt[1]]
       else:
         bias_split_dims_mapping = None
