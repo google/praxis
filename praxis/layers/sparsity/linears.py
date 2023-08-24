@@ -19,13 +19,7 @@ from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import linears
 from praxis.layers.sparsity import sparse_base_layer
-from praxis.layers.sparsity import sparsity_hparams
 
-
-SparsityMode = sparsity_hparams.SparsityMode
-SparsityScore = sparsity_hparams.SparsityScore
-SparsityType = sparsity_hparams.SparsityType
-SparsityHParams = sparsity_hparams.SparsityHParams
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 

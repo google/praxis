@@ -24,11 +24,7 @@ from praxis import base_layer
 from praxis import pytypes
 from praxis.layers import attentions
 from praxis.layers.sparsity import sparse_base_layer
-from praxis.layers.sparsity import sparsity_hparams
 
-SparsityHParams = sparsity_hparams.SparsityHParams
-SparsityMode = sparsity_hparams.SparsityMode
-SparsityType = sparsity_hparams.SparsityType
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 instance_field = base_layer.instance_field
@@ -38,15 +34,10 @@ NestedJTensor = pytypes.NestedJTensor
 
 class AttentionProjection(sparse_base_layer.SparsityBaseLayer,
                           attentions.AttentionProjection):
-  """Layer that computes quantized multi heads projection.
+  """Optionally sparsified multi heads projection.
 
   This layer is expected to be used within DotProductAttention.
-
-  Attributes:
-    sparsity: Information related to the sparsity applied to this
-      layer.
   """
-  sparsity: SparsityHParams = instance_field(SparsityHParams)
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -182,15 +173,13 @@ class AttentionProjection(sparse_base_layer.SparsityBaseLayer,
 
 class CombinedQKVProjectionLayer(sparse_base_layer.SparsityBaseLayer,
                                  attentions.CombinedQKVProjectionLayer):
-  """Layer that computes quantized QKV projection with a combined weight.
+  """Optionally sparsified QKV projection with a combined weight.
 
   This layer is expected to be used within DotProductAttention below.
 
   Attributes:
-    sparsity: Information related to the sparsity applied to this
-      layer.
+    sparsity: Information related to the sparsity applied to this layer.
   """
-  sparsity: SparsityHParams = instance_field(SparsityHParams)
 
   def setup(self) -> None:
     # Sharding has the same convention of AttentionProjection, which doesn't
