@@ -1126,7 +1126,11 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
     if seq_length is None:
       assert position is not None
       assert position.ndim == 2
-      seq_length = position.shape[1]
+      # Only infer 'seq_length' from 'position' for 'matmul' lookup. For 'index'
+      # lookup, using full position embedding table to make sure the index is
+      # not missing by keeping the 'seq_length' value as None.
+      if self.lookup_style == 'matmul':
+        seq_length = position.shape[1]
 
     pos_emb_var = self.theta.emb_var
     pos_emb_var = jax.lax.slice_in_dim(pos_emb_var, 0, seq_length, axis=0)

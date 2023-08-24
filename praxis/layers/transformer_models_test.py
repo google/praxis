@@ -456,9 +456,13 @@ class TransformerModelsTest(test_utils.TestCase):
         updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
         self.assertAllClose(logits[:, t, :], xent_output.logits)
 
-  @parameterized.parameters(*list(itertools.product([True, False], repeat=3)))
+  @parameterized.parameters(*list(itertools.product([True, False], repeat=4)))
   def test_lm_extend_n_step(
-      self, use_rotary_position_emb, share_embedding_and_softmax, use_ngrammer
+      self,
+      use_rotary_position_emb,
+      share_embedding_and_softmax,
+      use_ngrammer,
+      use_trainable_position_emb_and_index_lookup,
   ):
     vocab_size = 8
     num_layers = 2
@@ -492,6 +496,12 @@ class TransformerModelsTest(test_utils.TestCase):
     if not share_embedding_and_softmax:
       p.separate_embedding_tpl = pax_fiddle.Config(embedding_softmax.Embedding)
       p.softmax_tpl = pax_fiddle.Config(embedding_softmax.FullSoftmax)
+    if use_trainable_position_emb_and_index_lookup:
+      p.position_emb_tpl = pax_fiddle.Config(
+          embedding_softmax.TrainablePositionalEmbedding,
+          max_seq_length=20,
+          lookup_style='index',
+      )
     seq_len = 6
     batch_size = 3
     # Turn on dconv as in Primer.
