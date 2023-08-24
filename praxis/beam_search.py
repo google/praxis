@@ -336,12 +336,13 @@ def beam_search_after_prefix_fprop(
         x = x.at[:, :, terminal_id].set(-1e20)
       return x
 
-    logprobs = jax.lax.cond(
-        step >= max_prefix_len - 1 + beam_search_hparams.min_decode_steps,
-        lambda x: x,
-        prevent_terminal_ids,
-        logprobs,
-    )
+    if beam_search_hparams.min_decode_steps > 0:
+      logprobs = jax.lax.cond(
+          step >= max_prefix_len - 1 + beam_search_hparams.min_decode_steps,
+          lambda x: x,
+          prevent_terminal_ids,
+          logprobs,
+      )
 
     # Select the best ids with terminal tokens.
     eos_scores = jnp.ones_like(val.hyp_scores) * -1e9
