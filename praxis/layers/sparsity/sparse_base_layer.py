@@ -157,43 +157,60 @@ class SparsityBaseLayer(base_layer.BaseLayer):
         jnp.any(sparsified_layers == -1),
     )
 
+  # TODO(shivaniagrawal): add base layer tests for boundary conditions.
   def _get_sparsity_mask(self, score, mask, step):
     if self.sparsity.sparsity_type == SparsityType.STRUCTURED_NM:
+      if (
+          self.sparsity.weight_params is None
+          or self.sparsity.weight_params.prune_rate is None
+      ):
+        return mask
       return sparsity.get_sparsity_mask(
           score,
-          n_sparsity=self.sparsity.weight_params.prune_rate[0],  # pytype: disable=attribute-error
-          m_sparsity=self.sparsity.weight_params.prune_rate[1],  # pytype: disable=attribute-error
+          n_sparsity=self.sparsity.weight_params.prune_rate[0],
+          m_sparsity=self.sparsity.weight_params.prune_rate[1],
       )
 
-    # self.sparsity.sparsity_type == SparsityType.UNSTRUCTURED
+    assert (
+        self.sparsity.sparsity_type == SparsityType.UNSTRUCTURED
+    ), f'invalid sparsity type {self.sparsity.sparsity_type}'
 
-    prune_rate = self._get_prune_rate_polynomial(step)
-
+    prune_rate = self._get_prune_rate_unstructured(step)
+    if prune_rate is None:
+      return mask
     return sparsity.get_sparsity_mask_unstructured(score, mask, prune_rate)
 
-  def _get_prune_rate_polynomial(self, step):
-    final_sparsity = self.sparsity.polynomial_decay_schedule.final_sparsity  # pytype: disable=attribute-error
-    initial_sparsity = self.sparsity.polynomial_decay_schedule.initial_sparsity  # pytype: disable=attribute-error
-    begin_step = self.sparsity.polynomial_decay_schedule.begin_step  # pytype: disable=attribute-error
-    end_step = self.sparsity.polynomial_decay_schedule.end_step  # pytype: disable=attribute-error
-    exponent = self.sparsity.polynomial_decay_schedule.exponent  # pytype: disable=attribute-error
-
-    sparsity_active = jax.lax.cond(
-        jnp.greater_equal(step, begin_step),
-        lambda: 1.0,
-        lambda: 0.0,
+  def _get_prune_rate_unstructured(self, step):
+    prune_rate = (
+        self.sparsity.weight_params.prune_rate
+        if self.sparsity.weight_params
+        else None
     )
+    if self.sparsity.polynomial_decay_schedule is None:
+      return prune_rate
+    else:
+      final_sparsity = self.sparsity.polynomial_decay_schedule.final_sparsity
+      init_sparsity = self.sparsity.polynomial_decay_schedule.initial_sparsity
+      begin_step = self.sparsity.polynomial_decay_schedule.begin_step
+      end_step = self.sparsity.polynomial_decay_schedule.end_step
+      exponent = self.sparsity.polynomial_decay_schedule.exponent
 
-    return sparsity_active * (
-        final_sparsity
-        + (initial_sparsity - final_sparsity)
-        * (
-            1
-            - (jax.lax.min(step, end_step) - begin_step)
-            / (end_step - begin_step)
-        )
-        ** exponent
-    )
+      sparsity_active = jax.lax.cond(
+          jnp.greater_equal(step, begin_step),
+          lambda: 1.0,
+          lambda: 0.0,
+      )
+
+      return sparsity_active * (
+          final_sparsity
+          + (init_sparsity - final_sparsity)
+          * (
+              1
+              - (jax.lax.min(step, end_step) - begin_step)
+              / (end_step - begin_step)
+          )
+          ** exponent
+      )
 
   def _get_sparsified_layers(self):
     # Sparsified layers could be set as [1, 2, 3 ...], or None, if None, then
@@ -319,7 +336,10 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       variables weights.
     """
 
-    if self.sparsity.mode == SparsityMode.INFERENCE:
+    if (
+        self.sparsity.mode == SparsityMode.INFERENCE
+        or self.sparsity.weight_params is None
+    ):
       return weight
 
     step = self.get_var('step')

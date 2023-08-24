@@ -97,7 +97,7 @@ class WeightSparsityParams:
 
   Attributes:
     prune_rate:  Defines the rate of pruning, either for unstructured sparsity
-      or N:M structured sparsity.
+      or N:M structured sparsity. None means no pruning will be applied.
     structure_decay: If True, a decaying schedule is applied for the structured
       sparsity, the algorithm is described in:
       https://arxiv.org/pdf/2209.07617.pdf.
