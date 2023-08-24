@@ -47,6 +47,7 @@ pytype_strict_library(
     deps = [
         ":layers",
         ":quantization_hparams",
+        ":utils",
         # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -609,7 +610,10 @@ pytype_strict_library(
     name = "utils",
     srcs = ["utils.py"],
     deps = [
+        # Implicit fiddle dependency.
         # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
     ],
 )
 

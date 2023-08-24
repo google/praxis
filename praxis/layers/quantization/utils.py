@@ -15,10 +15,14 @@
 
 """Utilities for quantization."""
 
-from typing import Sequence
+from typing import Sequence, Type
 
+import fiddle as fdl
 from jax import lax
 import jax.numpy as jnp
+from praxis import base_layer
+from praxis import pax_fiddle
+
 
 JTensor = jnp.ndarray
 
@@ -116,7 +120,7 @@ def pack_4bit(
     # It doesn't make sense to pack uint8 numbers into int4 as we'll
     # the range overlap between uint8 and int4 is [0..7].
     raise ValueError(
-        'only int8 input dtype is supprted when packing into int8. '
+        'only int8 input dtype is supported when packing into int8. '
         f'Given {x.dtype}'
     )
 
@@ -174,7 +178,7 @@ def unpack_4bit(
       function. Must be either int8 or uint8.
 
   Returns:
-    int32/int8 unpack tensor where the pack_dim size is multipled by 8/2 from
+    int32/int8 unpack tensor where the pack_dim size is multiplied by 8/2 from
     the packed tensor. Which means that the returned shape is identical to the
     original shape before pack_4bit().
     Note that original input to pack_4bit() is int8 or uint8, but the unpacked
@@ -233,3 +237,22 @@ def get_packed_shape(shape: Sequence[int], pack_dim: int, packing_factor: int):
   return [
       d // packing_factor if i == pack_dim else d for i, d in enumerate(shape)
   ]
+
+
+# Traverse entire config HParam and find the tpl of the target type.
+def find_target_tpl(
+    config: pax_fiddle.Config[base_layer.BaseLayer],
+    target: Type[base_layer.BaseLayer],
+):
+  """Find and return target tpl from the config."""
+  to_process = [config]
+  target_tpl = []
+  while to_process:
+    param = to_process.pop(0)
+    if isinstance(param, fdl.Config):
+      if issubclass(fdl.get_callable(param), target):
+        target_tpl.append(param)
+        continue
+      else:
+        to_process.extend(fdl.ordered_arguments(param).values())
+  return target_tpl

@@ -41,6 +41,7 @@ from praxis import layers
 from praxis import pax_fiddle
 from praxis.layers import quantization
 from praxis.layers.quantization import quantization_hparams
+from praxis.layers.quantization import utils
 
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 QuantizationParams = quantization_hparams.QuantizationParams
@@ -506,7 +507,9 @@ def set_transformer_quantization(
       None if weight_quant_only else ActQuantizationParams(precision=num_bits)
   )
 
-  transformer_tpls = find_target_tpl(config, layers.transformers.Transformer)
+  transformer_tpls = utils.find_target_tpl(
+      config, layers.transformers.Transformer
+  )
   for transformer_tpl in transformer_tpls:
     quantize_transformer_layer_weights(
         transformer_tpl,
@@ -519,7 +522,7 @@ def set_transformer_quantization(
     )  # pytype: disable=wrong-arg-types  # py310-upgrade
 
   if quantize_embedding_softmax or quantize_ngrammer_embedding:
-    lm_tpls = find_target_tpl(config, layers.TransformerLm)
+    lm_tpls = utils.find_target_tpl(config, layers.TransformerLm)
     for lm_tpl in lm_tpls:
       if quantize_embedding_softmax:
         _quantize_embedding_softmax_layer_weights(
@@ -570,7 +573,7 @@ def set_diffusion_quantization(
       None if weight_quant_only else ActQuantizationParams(precision=num_bits)
   )
 
-  diffusion_tpls = find_target_tpl(config, target)
+  diffusion_tpls = utils.find_target_tpl(config, target)
   for diffusion_tpl in diffusion_tpls:
     if hasattr(diffusion_tpl, 'conv_tpl'):
       diffusion_tpl.conv_tpl = pax_fiddle.Config(
@@ -604,19 +607,3 @@ def set_inference_mode(
       set_quantization_mode_inference(param_elem)
       if isinstance(param_elem, fdl.Config):
         to_process.extend(fdl.ordered_arguments(param_elem).values())
-
-
-# Traverse entire config HParam and find the tpl of the target type.
-def find_target_tpl(config: LayerTpl, target: Type[base_layer.BaseLayer]):
-  """Find and return target tpl from the config."""
-  to_process = [config]
-  target_tpl = []
-  while to_process:
-    param = to_process.pop(0)
-    if isinstance(param, fdl.Config):
-      if issubclass(fdl.get_callable(param), target):
-        target_tpl.append(param)
-        continue
-      else:
-        to_process.extend(fdl.ordered_arguments(param).values())
-  return target_tpl
