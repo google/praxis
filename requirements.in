@@ -1,22 +1,22 @@
 # To update requirements.txt for praxis and paxml, run:
 # cd ../../paxml/pip_package && bash ./compile_requirements.sh
 
-absl-py
-clu
-einops
-etils
-fiddle @ git+https://github.com/google/fiddle
-flax
-jax @ git+https://github.com/google/jax
-jax-bitempered-loss
-jaxtyping
-lingvo
-numpy
-optax
-optax-shampoo
+absl-py==1.4.0
+clu==0.0.9
+einops==0.6.1
+etils[enp,epath,epy]==1.4.1
+fiddle==0.2.10
+flax==0.7.2
+jax==0.4.14
+jax-bitempered-loss==0.0.2
+jaxtyping==0.2.21
+lingvo==0.12.7
+numpy==1.25.2
+optax==0.1.7
+optax-shampoo==0.0.6
 tensorflow-datasets==4.8.3
 tensorflow-metadata==1.12.0
 tensorflow-text~=2.9.0
 tensorflow~=2.9.2
 tfds-nightly==4.8.3.dev202303280045
-typeguard
+typeguard==4.1.2
