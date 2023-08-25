@@ -21,11 +21,11 @@ absl-py==1.4.0
     #   tfds-nightly
 anyio==3.7.1
     # via jupyter-server
-argon2-cffi==21.3.0
+argon2-cffi==23.1.0
     # via jupyter-server
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
-array-record==0.4.0
+array-record==0.4.1
     # via tfds-nightly
 arrow==1.2.3
     # via isoduration
@@ -58,7 +58,7 @@ charset-normalizer==3.2.0
     # via requests
 chex==0.1.82
     # via optax
-click==8.1.6
+click==8.1.7
     # via
     #   tensorflow-datasets
     #   tfds-nightly
@@ -74,7 +74,7 @@ contourpy==1.1.0
     # via matplotlib
 cycler==0.11.0
     # via matplotlib
-debugpy==1.6.7
+debugpy==1.6.7.post1
     # via ipykernel
 decorator==5.1.1
     # via ipython
@@ -95,7 +95,7 @@ etils[enp,epath,epy]==1.4.1
     #   orbax-checkpoint
     #   tensorflow-datasets
     #   tfds-nightly
-exceptiongroup==1.1.2
+exceptiongroup==1.1.3
     # via anyio
 executing==1.2.0
     # via stack-data
@@ -105,11 +105,11 @@ fiddle @ git+https://github.com/google/fiddle
     # via -r praxis-requirements.in
 flatbuffers==1.12
     # via tensorflow
-flax==0.7.1
+flax==0.7.2
     # via
     #   -r praxis-requirements.in
     #   clu
-fonttools==4.42.0
+fonttools==4.42.1
     # via matplotlib
 fqdn==1.5.1
     # via jsonschema
@@ -129,7 +129,7 @@ graph-compression-google-research==0.0.4
     # via lingvo
 graphviz==0.20.1
     # via fiddle
-grpcio==1.56.2
+grpcio==1.57.0
     # via
     #   tensorboard
     #   tensorflow
@@ -176,7 +176,7 @@ jaxlib==0.4.14
     #   clu
     #   optax
     #   orbax-checkpoint
-jaxtyping==0.2.20
+jaxtyping==0.2.21
     # via -r praxis-requirements.in
 jedi==0.19.0
     # via ipython
@@ -186,7 +186,7 @@ jinja2==3.1.2
     #   jupyterlab
     #   jupyterlab-server
     #   nbconvert
-joblib==1.3.1
+joblib==1.3.2
     # via scikit-learn
 json5==0.9.14
     # via jupyterlab-server
@@ -227,7 +227,7 @@ jupyter-http-over-ws==0.0.8
     # via lingvo
 jupyter-lsp==2.2.0
     # via jupyterlab
-jupyter-server==2.7.0
+jupyter-server==2.7.2
     # via
     #   jupyter-lsp
     #   jupyterlab
@@ -236,7 +236,7 @@ jupyter-server==2.7.0
     #   notebook-shim
 jupyter-server-terminals==0.4.4
     # via jupyter-server
-jupyterlab==4.0.4
+jupyterlab==4.0.5
     # via notebook
 jupyterlab-pygments==0.2.2
     # via nbconvert
@@ -250,7 +250,7 @@ keras==2.9.0
     # via tensorflow
 keras-preprocessing==1.1.2
     # via tensorflow
-kiwisolver==1.4.4
+kiwisolver==1.4.5
     # via matplotlib
 libclang==16.0.6
     # via tensorflow
@@ -295,7 +295,7 @@ mypy-extensions==1.0.0
     # via typing-inspect
 nbclient==0.8.0
     # via nbconvert
-nbconvert==7.7.3
+nbconvert==7.7.4
     # via
     #   jupyter
     #   jupyter-server
@@ -354,7 +354,7 @@ optax==0.1.7
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax-checkpoint==0.3.2
+orbax-checkpoint==0.3.5
     # via flax
 overrides==7.4.0
     # via jupyter-server
@@ -447,7 +447,7 @@ pyyaml==6.0.1
     #   libcst
     #   ml-collections
     #   orbax-checkpoint
-pyzmq==25.1.0
+pyzmq==25.1.1
     # via
     #   ipykernel
     #   jupyter-client
@@ -490,7 +490,7 @@ rsa==4.9
     # via google-auth
 scikit-learn==1.3.0
     # via lingvo
-scipy==1.11.1
+scipy==1.11.2
     # via
     #   jax
     #   jaxlib
@@ -553,7 +553,7 @@ tensorflow-text==2.9.0
     # via
     #   -r praxis-requirements.in
     #   lingvo
-tensorstore==0.1.40
+tensorstore==0.1.41
     # via
     #   flax
     #   orbax-checkpoint
@@ -580,7 +580,7 @@ tomli==2.0.1
     # via jupyterlab
 toolz==0.12.0
     # via chex
-tornado==6.3.2
+tornado==6.3.3
     # via
     #   ipykernel
     #   jupyter-client
@@ -589,7 +589,7 @@ tornado==6.3.2
     #   jupyterlab
     #   notebook
     #   terminado
-tqdm==4.65.0
+tqdm==4.66.1
     # via
     #   tensorflow-datasets
     #   tfds-nightly
@@ -610,8 +610,10 @@ traitlets==5.9.0
     #   nbconvert
     #   nbformat
     #   qtconsole
-typeguard==4.1.0
-    # via jaxtyping
+typeguard==4.1.2
+    # via
+    #   -r praxis-requirements.in
+    #   jaxtyping
 typing-extensions==4.7.1
     # via
     #   async-lru
@@ -642,11 +644,11 @@ webencodings==0.5.1
     # via
     #   bleach
     #   tinycss2
-websocket-client==1.6.1
+websocket-client==1.6.2
     # via jupyter-server
-werkzeug==2.3.6
+werkzeug==2.3.7
     # via tensorboard
-wheel==0.41.1
+wheel==0.41.2
     # via
     #   astunparse
     #   tensorboard
