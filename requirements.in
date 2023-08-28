@@ -5,7 +5,7 @@ absl-py==1.4.0
 clu==0.0.9
 einops==0.6.1
 etils[enp,epath,epy]==1.4.1
-fiddle==0.2.10
+fiddle==0.2.11
 flax==0.7.2
 jax==0.4.14
 jax-bitempered-loss==0.0.2
