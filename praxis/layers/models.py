@@ -589,19 +589,6 @@ class LanguageModel(base_model.BaseModel):
       )
     elif template_has_type(decoder_params, SampleDecoderHParams):
       assert isinstance(decoder_params, SampleDecoderHParams)
-
-      def fprop_fn(mdl, ids, paddings):
-        del ids, paddings
-        mdl(
-            decode_data.fprop_input_ids,
-            decode_data.fprop_input_paddings,
-            segment_ids=decode_data.fprop_segment_ids,
-            segment_pos=decode_data.fprop_segment_pos,
-            start_time_step=decode_data.start_time_step,
-            causal_attention_mask=decode_data.causal_attention_mask,
-            **decode_data.extra_input_kwargs,
-        )
-
       # Fetch dynamic temperature from input_batch if the input_batch has this
       # information.
       if hasattr(input_batch, 'temperature'):
@@ -638,6 +625,58 @@ class LanguageModel(base_model.BaseModel):
       next_token_sampler = base_layer.instantiate(next_token_sampler_p)
 
       if decoder_params.vanilla_sample_decode:
+        # TODO(b/289423925): All decoders should remove the last id. Currently,
+        # few sax unittests fail in non-trivial way.
+        # The last prefix token is the start id of decoding in fprop_for_prefix.
+        def _remove_last(ids, paddings, segment_pos, segment_ids, causal_mask):
+          if ids.shape[1] == 1:
+            # Prevent empty tensor.
+            ids = jnp.zeros_like(ids)
+            paddings = jnp.ones_like(paddings)
+          else:
+            # jax2tf disallow to slice by x[:-1] because the shape is not
+            # statically known.
+            def pad_last(x):
+              x = jnp.roll(x, 1, axis=1)
+              x = jax.lax.dynamic_slice_in_dim(
+                  x, 1, decode_data.start_time_step + 1, axis=1
+              )
+              return x
+
+            ids = pad_last(ids)
+            paddings = pad_last(paddings)
+            segment_pos = pad_last(segment_pos)
+            segment_ids = pad_last(segment_ids)
+            if causal_mask is not None:
+              causal_mask = pad_last(causal_mask)
+          return (ids, paddings, segment_pos, segment_ids, causal_mask)
+
+        (
+            fprop_input_ids,
+            fprop_input_paddings,
+            fprop_segment_pos,
+            fprop_segment_ids,
+            causal_attention_mask,
+        ) = _remove_last(
+            decode_data.fprop_input_ids,
+            decode_data.fprop_input_paddings,
+            decode_data.fprop_segment_pos,
+            decode_data.fprop_segment_ids,
+            decode_data.causal_attention_mask,
+        )
+
+        def fprop_fn(mdl, ids, paddings):
+          del ids, paddings
+          mdl(
+              fprop_input_ids,
+              fprop_input_paddings,
+              segment_ids=fprop_segment_ids,
+              segment_pos=fprop_segment_pos,
+              start_time_step=decode_data.start_time_step,
+              causal_attention_mask=causal_attention_mask,
+              **decode_data.extra_input_kwargs,
+          )
+
         result = sample_decode.vanilla_sample_decode(
             model=self.lm,
             fprop_fn=fprop_fn,
@@ -654,6 +693,19 @@ class LanguageModel(base_model.BaseModel):
             model_var_pspecs=lm_var_pspecs,
         )
       else:
+
+        def fprop_fn(mdl, ids, paddings):
+          del ids, paddings
+          mdl(
+              decode_data.fprop_input_ids,
+              decode_data.fprop_input_paddings,
+              segment_ids=decode_data.fprop_segment_ids,
+              segment_pos=decode_data.fprop_segment_pos,
+              start_time_step=decode_data.start_time_step,
+              causal_attention_mask=decode_data.causal_attention_mask,
+              **decode_data.extra_input_kwargs,
+          )
+
         result = sample_decode.sample_decode(
             self.lm,
             extend_step_fn,

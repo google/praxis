@@ -74,7 +74,13 @@ class MockLM(base_layer.BaseLayer):
     del inputs
     ret = NestedMap()
     time_step = self.get_variable(DECODE_CACHE, 'time_step')
-    ret.logits = self._logits.at[time_step].get()
+    if segment_pos is not None:
+      logits = jnp.take_along_axis(
+          self._logits, segment_pos[jnp.newaxis, :, jnp.newaxis], axis=0
+      )
+      ret.logits = jnp.squeeze(logits, axis=0)
+    else:
+      ret.logits = self._logits.at[time_step].get()
     self.put_variable(DECODE_CACHE, 'time_step', time_step + 1)
     return ret
 
@@ -332,6 +338,9 @@ class LanguageModelTest(test_utils.TestCase):
       p.max_decode_steps = 3
     logits = [
         [
+            [0, 0, 0, 0, 0, 1],  # argmax=5, prefix
+        ],
+        [
             [0, 1, 0, 0, 0, 0],  # argmax=1
         ],
         [
@@ -345,29 +354,31 @@ class LanguageModelTest(test_utils.TestCase):
         ],
     ]
     input_batch = NestedMap(
-        ids=jnp.array([[11, 12, 13, 14, 15]], dtype=jnp.int32),
-        paddings=jnp.array([[0., 0., 1., 1., 1.]], dtype=jnp.float32),
+        ids=jnp.array([[11, 5, 13, 14, 15]], dtype=jnp.int32),
+        paddings=jnp.array([[0.0, 0.0, 1.0, 1.0, 1.0]], dtype=jnp.float32),
     )
     results = self._run_decode(p, logits, input_batch)
-    self.assertArraysEqual(results.prefix_lengths,
-                           np.array([[2]], dtype=np.int32))
-    # We copy prefix of length 2 from input.ids, so the first argmax
-    # from logits is unused. Remaining 3 ids are from argmax.
-    if fprop_for_prefix:
-      self.assertArraysEqual(
-          results.output_ids,
-          np.array([[[11, 12, 1, 3, 4, 0, 0, 0]]], dtype=np.int32))
-      self.assertArraysEqual(
-          results.prefix_ids,
-          np.array([[[11, 12, 0, 0, 0, 0, 0, 0]]], dtype=np.int32))
-    else:
-      self.assertArraysEqual(results.output_ids,
-                             np.array([[[11, 12, 3, 4, 5]]], dtype=np.int32))
-      self.assertArraysEqual(results.prefix_ids,
-                             np.array([[[11, 12, 0, 0, 0]]], dtype=np.int32))
+    self.assertArraysEqual(
+        results.prefix_lengths, np.array([[2]], dtype=np.int32)
+    )
 
-    self.assertArraysEqual(results.decode_lengths,
-                           np.array([[5]], dtype=np.int32))
+    expected_output_ids = np.array([[[11, 5, 1, 3, 4]]], dtype=np.int32)
+    expected_prefix_ids = np.array([[[11, 5, 0, 0, 0]]], dtype=np.int32)
+
+    if fprop_for_prefix:
+      total_len = p.seqlen + p.max_decode_steps
+      expected_output_ids = py_utils.pad_or_trim_to(
+          expected_output_ids, [1, 1, total_len], pad_val=0
+      )
+      expected_prefix_ids = py_utils.pad_or_trim_to(
+          expected_prefix_ids, [1, 1, total_len], pad_val=0
+      )
+
+    self.assertArraysEqual(results.output_ids, expected_output_ids)
+    self.assertArraysEqual(results.prefix_ids, expected_prefix_ids)
+    self.assertArraysEqual(
+        results.decode_lengths, np.array([[5]], dtype=np.int32)
+    )
 
   @parameterized.parameters([True, False])
   def test_prefix_lm(self, fprop_for_prefix):
@@ -379,6 +390,9 @@ class LanguageModelTest(test_utils.TestCase):
       p.max_decode_steps = 3
     logits = [
         [
+            [0, 0, 0, 0, 0, 1],  # argmax=5, prefix
+        ],
+        [
             [0, 1, 0, 0, 0, 0],  # argmax=1
         ],
         [
@@ -392,31 +406,101 @@ class LanguageModelTest(test_utils.TestCase):
         ],
     ]
     input_batch = NestedMap(
-        ids=jnp.array([[11, 12, 13, 14, 15]], dtype=jnp.int32),
-        paddings=jnp.array([[0., 0., 1., 1., 1.]], dtype=jnp.float32),
+        ids=jnp.array([[11, 5, 13, 14, 15]], dtype=jnp.int32),
+        paddings=jnp.array([[0.0, 0.0, 1.0, 1.0, 1.0]], dtype=jnp.float32),
         inputs_indicator=jnp.array([[1, 1, 0, 0, 0]], dtype=jnp.float32),
     )
     results = self._run_decode(
         p, logits, input_batch, model_type=LanguageModelType.PREFIX)
     self.assertArraysEqual(results.prefix_lengths,
                            np.array([[2]], dtype=np.int32))
-    # We copy prefix of length 2 from input.ids, so the first argmax
-    # from logits is unused. Remaining 3 ids are from argmax.
-    if fprop_for_prefix:
-      self.assertArraysEqual(
-          results.output_ids,
-          np.array([[[11, 12, 1, 3, 4, 0, 0, 0]]], dtype=np.int32))
-      self.assertArraysEqual(
-          results.prefix_ids,
-          np.array([[[11, 12, 0, 0, 0, 0, 0, 0]]], dtype=np.int32))
-    else:
-      self.assertArraysEqual(results.output_ids,
-                             np.array([[[11, 12, 3, 4, 5]]], dtype=np.int32))
-      self.assertArraysEqual(results.prefix_ids,
-                             np.array([[[11, 12, 0, 0, 0]]], dtype=np.int32))
 
-    self.assertArraysEqual(results.decode_lengths,
-                           np.array([[5]], dtype=np.int32))
+    expected_output_ids = np.array([[[11, 5, 1, 3, 4]]], dtype=np.int32)
+    expected_prefix_ids = np.array([[[11, 5, 0, 0, 0]]], dtype=np.int32)
+
+    if fprop_for_prefix:
+      total_len = p.seqlen + p.max_decode_steps
+      expected_output_ids = py_utils.pad_or_trim_to(
+          expected_output_ids, [1, 1, total_len], pad_val=0
+      )
+      expected_prefix_ids = py_utils.pad_or_trim_to(
+          expected_prefix_ids, [1, 1, total_len], pad_val=0
+      )
+
+    self.assertArraysEqual(results.output_ids, expected_output_ids)
+    self.assertArraysEqual(results.prefix_ids, expected_prefix_ids)
+    self.assertArraysEqual(
+        results.decode_lengths, np.array([[5]], dtype=np.int32)
+    )
+
+  @parameterized.parameters([(True, True), (True, False), (False, False)])
+  def test_sample_decoding_prefix(
+      self, fprop_for_prefix, vanilla_sample_decode
+  ):
+    p = models.SampleDecoderHParams(
+        seqlen=5,
+        min_prefix_len=2,
+        eos_id=2,
+        k=1,  # greedy_decoding
+        fprop_for_prefix=fprop_for_prefix,
+        vanilla_sample_decode=vanilla_sample_decode,
+    )
+    p.max_decode_steps = 3 if fprop_for_prefix else p.seqlen
+    logits = [
+        [
+            [0, 0, 0, 0, 0, 1],  # argmax=5, prefix
+        ],
+        [
+            [0, 1, 0, 0, 0, 0],  # argmax=1
+        ],
+        [
+            [0, 0, 0, 1, 0, 0],  # argmax=3
+        ],
+        [
+            [0, 0, 0, 0, 1, 0],  # argmax=4
+        ],
+        [
+            [0, 0, 0, 0, 0, 1],  # argmax=5
+        ],
+    ]
+    # The test doesn't check (False, True) case, because vanilla_sample_decode
+    # doesn't forgive the case where input_batch has prefix but fprop_for_prefix
+    # is False.
+    input_batch = NestedMap(
+        ids=jnp.array([[11, 5, 13, 14, 15]], dtype=jnp.int32),
+        paddings=jnp.array([[0.0, 0.0, 1.0, 1.0, 1.0]], dtype=jnp.float32),
+    )
+    results = self._run_decode(p, logits, input_batch)
+
+    def to_expected(x):
+      if vanilla_sample_decode:
+        # Extend the sample axis, as vanilla doesn't have sample concept.
+        return x[:, jnp.newaxis]
+      return x
+
+    results = results.Transform(to_expected)
+    self.assertArraysEqual(
+        results.prefix_lengths, np.array([[2]], dtype=np.int32)
+    )
+
+    expected_output_ids = np.array([[[11, 5, 1, 3, 4]]], dtype=np.int32)
+    expected_prefix_ids = np.array([[[11, 5, 0, 0, 0]]], dtype=np.int32)
+
+    if fprop_for_prefix:
+      total_len = p.seqlen + p.max_decode_steps
+      expected_output_ids = py_utils.pad_or_trim_to(
+          expected_output_ids, [1, 1, total_len], pad_val=0
+      )
+      if not vanilla_sample_decode:
+        expected_prefix_ids = py_utils.pad_or_trim_to(
+            expected_prefix_ids, [1, 1, total_len], pad_val=0
+        )
+
+    self.assertArraysEqual(results.output_ids, expected_output_ids)
+    self.assertArraysEqual(results.prefix_ids, expected_prefix_ids)
+    self.assertArraysEqual(
+        results.decode_lengths, np.array([[5]], dtype=np.int32)
+    )
 
   def test_eos_terminate(self):
     p = pax_fiddle.Config(models.LanguageModel).decoder_tpl
@@ -558,10 +642,12 @@ class LanguageModelTest(test_utils.TestCase):
         ],
     ]
     input_batch = NestedMap(
-        ids=jnp.array([[11, 13, 15], [12, 14, 16], [20, 30, 40]],
-                      dtype=jnp.int32),
-        paddings=jnp.array([[0, 0, 1], [0, 1, 1], [0, 1, 1]],
-                           dtype=jnp.float32),
+        ids=jnp.array(
+            [[11, 4, 15], [12, 14, 16], [20, 30, 40]], dtype=jnp.int32
+        ),
+        paddings=jnp.array(
+            [[0, 0, 1], [0, 1, 1], [0, 1, 1]], dtype=jnp.float32
+        ),
         prefix_lengths=jnp.array([2, 1, 1], dtype=jnp.int32),
     )
     results = self._run_decode(p, logits, input_batch)
@@ -574,9 +660,15 @@ class LanguageModelTest(test_utils.TestCase):
     # The prefix is right aligned to the generated sequence.
     self.assertArraysEqual(
         results.output_ids,
-        np.array([[[11, 13, 4, 3, 3, 4, 0]], [[12, 3, 4, 2, 0, 0, 0]],
-                  [[20, 3, 2, 0, 0, 0, 0]]],
-                 dtype=np.int32))
+        np.array(
+            [
+                [[11, 4, 3, 3, 4, 0, 0]],
+                [[12, 3, 4, 2, 0, 0, 0]],
+                [[20, 3, 2, 0, 0, 0, 0]],
+            ],
+            dtype=np.int32,
+        ),
+    )
     self.assertArraysEqual(results.decode_lengths,
                            np.array([[6], [4], [3]], dtype=np.int32))
 
@@ -869,10 +961,15 @@ class LanguageModelTest(test_utils.TestCase):
     if k == 1:
       self.assertArraysEqual(
           results.output_ids,
-          np.array([[[11, 13, 4, 3, 3, 4, 0], [11, 13, 4, 3, 3, 4, 0]],
-                    [[12, 3, 4, 2, 0, 0, 0], [12, 3, 4, 2, 0, 0, 0]],
-                    [[20, 3, 2, 0, 0, 0, 0], [20, 3, 2, 0, 0, 0, 0]]],
-                   dtype=np.int32))
+          np.array(
+              [
+                  [[11, 13, 3, 3, 4, 0, 0], [11, 13, 3, 3, 4, 0, 0]],
+                  [[12, 3, 4, 2, 0, 0, 0], [12, 3, 4, 2, 0, 0, 0]],
+                  [[20, 3, 2, 0, 0, 0, 0], [20, 3, 2, 0, 0, 0, 0]],
+              ],
+              dtype=np.int32,
+          ),
+      )
       self.assertArraysEqual(
           results.decode_lengths,
           np.array([[6, 6], [4, 4], [3, 3]], dtype=np.int32),
@@ -881,10 +978,15 @@ class LanguageModelTest(test_utils.TestCase):
       # Gumbel noise will make some difference between samples.
       self.assertArraysEqual(
           results.output_ids,
-          np.array([[[11, 13, 4, 3, 3, 4, 0], [11, 13, 4, 0, 3, 4, 0]],
-                    [[12, 3, 4, 2, 0, 0, 0], [12, 3, 4, 0, 0, 0, 0]],
-                    [[20, 3, 2, 0, 0, 0, 0], [20, 3, 2, 0, 0, 0, 0]]],
-                   dtype=np.int32))
+          np.array(
+              [
+                  [[11, 13, 3, 3, 4, 0, 0], [11, 13, 3, 0, 4, 0, 0]],
+                  [[12, 3, 4, 2, 0, 0, 0], [12, 3, 4, 0, 0, 0, 0]],
+                  [[20, 3, 2, 0, 0, 0, 0], [20, 3, 2, 0, 0, 0, 0]],
+              ],
+              dtype=np.int32,
+          ),
+      )
       self.assertArraysEqual(
           results.decode_lengths,
           np.array([[6, 6], [4, 5], [3, 3]], dtype=np.int32),
@@ -961,7 +1063,7 @@ class LanguageModelTest(test_utils.TestCase):
         [
             [0, 1, 0, 0, 0],
             [0, 0, 0, 0, 1],
-            [0, 0, 1, 0, 0],  # argmax=[1, 4, 2]
+            [0, 0, 0, 1, 0],  # argmax=[1, 4, 3]
         ],
         [
             [0, 0, 0, 1, 0],
@@ -987,15 +1089,15 @@ class LanguageModelTest(test_utils.TestCase):
         results.output_ids,
         np.array(
             [
-                [[11, 13, 4, 0, 3, 0, 0]],
-                [[12, 14, 1, 0, 0, 0, 0]],
-                [[20, 3, 2, 0, 0, 0, 0]],
+                [[11, 13, 1, 0, 0, 0, 0]],
+                [[12, 14, 4, 2, 0, 0, 0]],
+                [[20, 3, 3, 3, 0, 0, 0]],
             ],
             dtype=np.int32,
         ),
     )
     self.assertArraysEqual(
-        results.decode_lengths, np.array([[6], [3], [3]], dtype=np.int32)
+        results.decode_lengths, np.array([[3], [4], [5]], dtype=np.int32)
     )
 
   def test_sample_decoding_with_entropy_score(self):
