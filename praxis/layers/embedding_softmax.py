@@ -192,6 +192,8 @@ class FullSoftmax(base_layer.BaseLayer):
     bias_init: Init scale (constant) of bias terms.
     feed_forward_tpl: Sub configurable field for the feed-forward layer. If
       None, skip feedforward layer and directly apply softmax to the input.
+    scale_before_logits: If set True, activations are scaled with 1/sqrt(M)
+      before computing the logits
   """
 
   input_dims: int = 0
@@ -203,6 +205,7 @@ class FullSoftmax(base_layer.BaseLayer):
   z_loss_weight: float = 0.0
   bias_init: float | None = 0.0
   feed_forward_tpl: LayerTpl = template_field(linears.FeedForward)
+  scale_before_logits: bool = False
 
   def setup(self) -> None:
     if self.feed_forward_tpl is not None:
@@ -233,6 +236,9 @@ class FullSoftmax(base_layer.BaseLayer):
       logits: with shape [..., num_classes]. Unnormalized softmax's logits.
     """
     del input_ids
+    if self.scale_before_logits:
+      # activations are scaled with 1/sqrt(input_dims)
+      inputs *= self.input_dims**-0.5
     if self.feed_forward_tpl is not None:
       # Compute logits.
       logits = self.logits_ffn(inputs)
