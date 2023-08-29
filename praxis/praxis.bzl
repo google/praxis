@@ -26,3 +26,7 @@ def py_strict_test(name, **kwargs):
 # Placeholder to use until bazel supports pytype_strict_contrib_test.
 def pytype_strict_contrib_test(name, **kwargs):
     native.py_test(name = name, **kwargs)
+
+# Placeholder until praxis uses rules_python
+def py_library(name, **kwargs):
+    native.py_library(name = name, **kwargs)

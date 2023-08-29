@@ -16,6 +16,7 @@
 # Description:
 #   Praxis: a set of modules for training machine learning models in Jax.
 
+load("//praxis:praxis.bzl", "py_library")
 load("//praxis:praxis.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 load("//praxis:praxis.bzl", "py_strict_test")
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
