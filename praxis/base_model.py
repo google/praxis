@@ -32,7 +32,7 @@ Metrics = pytypes.Metrics
 WeightedScalars = pytypes.WeightedScalars
 Predictions = JTensor | NestedMap | dict[str, Any] | dict[int, Any]
 
-DecodeOut = tuple[WeightedScalars, NestedMap, Metrics]
+DecodeOut = tuple[WeightedScalars | Metrics, NestedMap, Metrics]
 ProcessDecodeOut = tuple[WeightedScalars, Sequence[tuple[str, Any]], Metrics]
 
 
@@ -63,7 +63,7 @@ class BaseModel(base_layer.BaseLayer):
 
   def compute_loss(
       self, predictions: Predictions, input_batch: NestedMap
-  ) -> tuple[WeightedScalars, dict[str, Any]]:
+  ) -> tuple[WeightedScalars | Metrics, dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     This method must be defined in a concrete derived class.
@@ -73,10 +73,13 @@ class BaseModel(base_layer.BaseLayer):
       input_batch: A `.NestedMap` object containing input tensors to this tower.
 
     Returns:
-      - WeightedScalars - A dict or NestedMap containing str keys and
-        (value, weight) pairs as values, where one or more entries are
-        expected to correspond to the loss (or losses).  These values will be
-        aggregated upstream as: sum(weight * value) / sum(weight).
+      - Metrics data: This can be either:
+        1. WeightedScalars - A dict or NestedMap containing str keys and
+          (value, weight) pairs as values, where one or more entries are
+          expected to correspond to the loss (or losses).  These values will be
+          aggregated upstream as: sum(weight * value) / sum(weight).
+        2. clu_metrics - a NestedMap containing str keys and clu_metrics.Metric
+          objects.
       - A dict containing arbitrary tensors describing something about each
         training example, where the first dimension of each tensor is the batch
         index.
@@ -85,7 +88,7 @@ class BaseModel(base_layer.BaseLayer):
 
   def __call__(
       self, input_batch: NestedMap
-  ) -> tuple[WeightedScalars, dict[str, Any]]:
+  ) -> tuple[WeightedScalars | Metrics, dict[str, Any]]:
     """Forward propagation through one tower of the model.
 
     Args:
@@ -94,9 +97,13 @@ class BaseModel(base_layer.BaseLayer):
     Returns:
       (dict, dict):
 
-      - WeightedScalars - A dict or NestedMap containing str keys and
-        (value, weight) pairs as values, where one or more entries are
-        expected to correspond to the loss (or losses).
+      - Metrics data: This can be either:
+        1. WeightedScalars - A dict or NestedMap containing str keys and
+          (value, weight) pairs as values, where one or more entries are
+          expected to correspond to the loss (or losses).  These values will be
+          aggregated upstream as: sum(weight * value) / sum(weight).
+        2. clu_metrics - a NestedMap containing str keys and clu_metrics.Metric
+          objects.
       - A dict containing arbitrary tensors describing something about each
         training example, where the first dimension of each tensor is the batch
         index.

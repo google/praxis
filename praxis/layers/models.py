@@ -16,7 +16,7 @@
 """Definition of specific models."""
 
 import dataclasses
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, Union
 
 from absl import logging
 import clu.metrics as clu_metrics
@@ -272,7 +272,7 @@ class LanguageModel(base_model.BaseModel):
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap, input_batch: NestedMap
-  ) -> tuple[WeightedScalars, dict[str, Any]]:
+  ) -> tuple[Union[WeightedScalars, Metrics], dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -1039,7 +1039,7 @@ class LanguageModelDPO(base_model.BaseModel):
 
   def compute_loss(
       self, predictions, input_batch: NestedMap
-  ) -> tuple[WeightedScalars, dict[str, Any]]:
+  ) -> tuple[Union[WeightedScalars, Metrics], dict[str, Any]]:
     def per_seq_log_p(softmax_out: NestedMap):
       # assert per_example_xent is float32, learning might be unstable in
       # bfloat16.
@@ -1471,7 +1471,7 @@ class ClassificationModel(base_model.BaseModel):
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap, input_batch: NestedMap
-  ) -> tuple[WeightedScalars, dict[str, Any]]:
+  ) -> tuple[Union[WeightedScalars, Metrics], dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -1623,7 +1623,7 @@ class BertModel(base_model.BaseModel):
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap, input_batch: NestedMap
-  ) -> tuple[WeightedScalars, dict[str, Any]]:
+  ) -> tuple[Union[WeightedScalars, Metrics], dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
 
     Args:
@@ -1706,7 +1706,7 @@ class ClassificationMLPModel(base_model.BaseModel):
 
   def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
       self, predictions: NestedMap, input_batch: NestedMap
-  ) -> tuple[WeightedScalars, dict[str, Any]]:
+  ) -> tuple[Union[WeightedScalars, Metrics], dict[str, Any]]:
     labels = input_batch.labels
     weights = input_batch.weights
     class_weights = weights[:, :, jnp.newaxis]
