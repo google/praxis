@@ -473,6 +473,8 @@ def set_transformer_quantization(
     quantize_ngrammer_embedding: bool = False,
     dtype: jnp.dtype = jnp.int8,
     block_size: int = 0,
+    use_int4_packed_weights: bool = True,
+    int4_packed_weights_container_dtype: jnp.dtype = jnp.int32,
 ):
   """Sets quantization parameters for TransformerLm in 'config'.
 
@@ -496,12 +498,19 @@ def set_transformer_quantization(
       TransformerLm.ngrammer_tpl in `config`.
     dtype: Dtype of the quantized variables.
     block_size: Block size for sub-channel quantization. Defaults to 0.
+    use_int4_packed_weights: If True, pack/unpack int4 weights into int32 or
+      int8. It is for int4 weights only and has not effect on other type. If
+      False int4 weights will be kept in int8.
+    int4_packed_weights_container_dtype: Container type for int4 weights: int32
+      to pack 8 int4s, or int8 to pack 2 int4s.
   """
   weight_quantization_params = WeightQuantizationParams(
       precision=num_bits,
       use_symmetric=use_symmetric,
       dtype=dtype,
       block_size=block_size,
+      use_int4_packed_weights=use_int4_packed_weights,
+      int4_packed_weights_container_dtype=int4_packed_weights_container_dtype,
   )
   act_quantization_params = (
       None if weight_quant_only else ActQuantizationParams(precision=num_bits)
