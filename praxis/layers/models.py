@@ -634,21 +634,12 @@ class LanguageModel(base_model.BaseModel):
             ids = jnp.zeros_like(ids)
             paddings = jnp.ones_like(paddings)
           else:
-            # jax2tf disallow to slice by x[:-1] because the shape is not
-            # statically known.
-            def pad_last(x):
-              x = jnp.roll(x, 1, axis=1)
-              x = jax.lax.dynamic_slice_in_dim(
-                  x, 1, decode_data.start_time_step + 1, axis=1
-              )
-              return x
-
-            ids = pad_last(ids)
-            paddings = pad_last(paddings)
-            segment_pos = pad_last(segment_pos)
-            segment_ids = pad_last(segment_ids)
+            ids = ids[:, :-1]
+            paddings = paddings[:, :-1]
+            segment_pos = segment_pos[:, :-1]
+            segment_ids = segment_ids[:, :-1]
             if causal_mask is not None:
-              causal_mask = pad_last(causal_mask)
+              causal_mask = causal_mask[:, :-1]
           return (ids, paddings, segment_pos, segment_ids, causal_mask)
 
         (
