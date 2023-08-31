@@ -97,7 +97,9 @@ def reorder_with_indices(x: JTensor, indices: JTensor):
   return x[batch_indices, indices]
 
 
-def sort_samples_by_scores(result: NestedMap) -> NestedMap:
+def sort_samples_by_scores(
+    result: NestedMap, top_k_recall_target: float = 0.85
+) -> NestedMap:
   """Sorts samples by scores.
 
   Args:
@@ -108,6 +110,9 @@ def sort_samples_by_scores(result: NestedMap) -> NestedMap:
       prefix), and `.logprobs` (the log probability of selected tokens,
       including the prefix, where a positive value of 1.0 is used to indicate
       padded positions). The result has shape [batch, num_samples, ...].
+    top_k_recall_target: if less than 1.0, use TPU optimized approx_top_k with
+      specified recall target for the top_k sampling. See
+      https://arxiv.org/abs/2206.14286 for more details.
 
   Returns:
     Result sorted at num_samples dimension by scores.
@@ -122,7 +127,13 @@ def sort_samples_by_scores(result: NestedMap) -> NestedMap:
   scores = jnp.sum(logprobs, -1)
   num_samples = scores.shape[-1]
   # Uses top_k to get indices.
-  _, indices = jax.lax.approx_max_k(scores, num_samples, recall_target=0.85)
+  if top_k_recall_target < 1.0:
+    assert top_k_recall_target > 0.0
+    _, indices = jax.lax.approx_max_k(
+        scores, num_samples, recall_target=top_k_recall_target
+    )
+  else:
+    _, indices = jax.lax.top_k(scores, num_samples)
   return jax.tree_map(
       functools.partial(reorder_with_indices, indices=indices), result
   )
@@ -686,6 +697,7 @@ def sample_decode(
     model_var_pspecs: base_layer.NestedPartitionSpec | None = None,
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
+    top_k_recall_target: float = 0.85,
     early_exit: bool = True,
     use_top_k_for_logprobs: bool = False,
     controlled_decoding: decoder_utils.ControlledDecodingHParams | None = None,
@@ -770,6 +782,9 @@ def sample_decode(
     return_result_for_suffix_score: Whether or not to return result for suffix
       score.
     sort_samples: Whether to sort the samples by logprobs.
+    top_k_recall_target: if less than 1.0, use TPU optimized approx_top_k with
+      specified recall target for the top_k sampling. Used when sort_samples is
+      True. See https://arxiv.org/abs/2206.14286 for more details.
     early_exit: A bool, whether or not to allow early exit.
     use_top_k_for_logprobs: computes the log probability from the top k logits
       instead of all logits.
@@ -837,6 +852,7 @@ def sample_decode(
         result_callback,
         return_result_for_suffix_score,
         sort_samples,
+        top_k_recall_target,
         early_exit,
         use_top_k_for_logprobs,
         controlled_decoding,
@@ -874,6 +890,7 @@ def sample_decode_after_fprop(
     result_callback: StreamingResultCallback | None = None,
     return_result_for_suffix_score: bool = False,
     sort_samples: bool = True,
+    top_k_recall_target: float = 0.85,
     early_exit: bool = True,
     use_top_k_for_logprobs: bool = False,
     controlled_decoding: decoder_utils.ControlledDecodingHParams | None = None,
@@ -956,6 +973,9 @@ def sample_decode_after_fprop(
     return_result_for_suffix_score: Whether or not to return result for suffix
       score.
     sort_samples: Whether to sort the samples by logprobs.
+    top_k_recall_target: if less than 1.0, use TPU optimized approx_top_k with
+      specified recall target for the top_k sampling. Used when sort_samples is
+      True. See https://arxiv.org/abs/2206.14286 for more details.
     early_exit: A bool, whether or not to allow early exit.
     use_top_k_for_logprobs: computes the log probability from the top k logits
       instead of all logits.
@@ -1590,7 +1610,7 @@ def sample_decode_after_fprop(
   else:
     result = jax.tree_map(lambda x: split_batch_dim(x, 0, num_samples), result)
   if num_samples > 1 and sort_samples:
-    return sort_samples_by_scores(result)
+    return sort_samples_by_scores(result, top_k_recall_target)
 
   return result
 
