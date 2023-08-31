@@ -617,6 +617,7 @@ pytype_strict_library(
         ":linears",
         ":normalizations",
         ":transformers",
+        # Implicit clu.metrics dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:base_model",

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """A few utility layers to facilitate writing unit-tests."""
-
+from clu import metrics as clu_metrics
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import base_model
@@ -190,6 +190,38 @@ class TestLinearRegressionModel(base_model.BaseModel):
     loss = jnp.mean(jnp.square(error))
     per_example_out = NestedMap(predictions=predictions)
     return NestedMap(loss=(loss, jnp.array(1.0, loss.dtype))), per_example_out
+
+
+class TestLinearRegressionModelReturnsCluMetrics(base_model.BaseModel):
+  """Linear regression model that returns clu.Metrics instead of WeightedScalars.
+
+  Attributes:
+    input_dims: Depth of the input.
+    output_dims: Depth of the output.
+    linear_p: Params for the linear layer.
+  """
+
+  input_dims: int = 0
+  output_dims: int = 0
+  linear_p: LayerTpl = template_field(linears.Linear)
+
+  def setup(self) -> None:
+    params = self.linear_p.clone()
+    params.input_dims = self.input_dims
+    params.output_dims = self.output_dims
+    self.create_child('linear', params)
+
+  def compute_predictions(self, input_batch: NestedMap) -> JTensor:
+    return self.linear(input_batch.inputs)
+
+  def compute_loss(self, predictions, input_batch):
+    targets = input_batch.targets
+    error = predictions - targets
+    clu_loss = clu_metrics.Average.from_model_output(
+        jnp.mean(jnp.square(error))
+    )
+    per_example_out = NestedMap(predictions=predictions)
+    return NestedMap(loss=clu_loss), per_example_out
 
 
 class TestBatchNormalizationModel(base_model.BaseModel):
