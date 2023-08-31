@@ -318,7 +318,8 @@ def maybe_shard(
           return axes
         if isinstance(axes, str):
           return mapping.get(axes, axes)
-        return tuple([_transpose_one_dim(x) for x in axes])
+        mapped_axes = [_transpose_one_dim(x) for x in axes]
+        return tuple(x for x in mapped_axes if x)
 
       partition_spec = jax.sharding.PartitionSpec(
           *[_transpose_one_dim(x) for x in partition_spec]
