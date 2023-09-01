@@ -25,7 +25,7 @@ import functools
 import itertools
 import math
 import typing
-from typing import Any, Callable, Mapping, Sequence, Type, TypeVar
+from typing import Any, Callable, Mapping, Optional, Sequence, Type, TypeVar
 
 from absl import flags
 from absl import logging
@@ -2085,9 +2085,10 @@ class BaseLayer(nn.Module):
       self,
       name: str,
       weight_hparams: WeightHParams,
-      scale_shape: Sequence[int],
+      scale_shape: Sequence[int] = [],
       dtype: jnp.dtype = jnp.int8,
       use_symmetric: bool = True,
+      scale_hparams: WeightHParams | None = None,
   ):
     """Creates quantized variables, a pair of weight and scale tensors.
 
@@ -2095,10 +2096,12 @@ class BaseLayer(nn.Module):
     `name` + `_quantized_zp` will be the names of the scale tensor and the zero
     point tensor, respectively.
 
-    Only the shape and mesh for weight_hparams are used. The scale and the zero
-    point have the same shape, assuming per-channel quantization.
+    Only the shape and mesh for weight_hparams and scale_params are used.
 
-    Currently supports only int8 weight types.
+    When using per-channel quantization, user can either specify scale_shape
+    (simple setup with no sharding) or scale_hparams which contains both the
+    shape and sharding information. For sub-channel quantization, user should
+    use scale_hparams for the advanced settings.
 
     Args:
       name: Variable name for the weight tensor.
@@ -2107,20 +2110,27 @@ class BaseLayer(nn.Module):
       dtype: Data type of the quantized weight tensor.
       use_symmetric: If False, additionally create a variable for the zero point
         used for asymmetric weight quantization.
+      scale_hparams: Optional hparams for scale and zero-point. User should
+        speicfy one of scale_shape or scale_hparams, not both.
     """
 
     quantized_weight_hparams = copy.deepcopy(weight_hparams)
     quantized_weight_hparams.dtype = dtype
     quantized_weight_hparams.init = WeightInit.Constant(0)
+    if scale_hparams is None:
+      scale_hparams = WeightHParams(shape=scale_shape)
+    else:
+      if len(scale_shape) > 0:
+        raise ValueError('Should either scale_shape or scale_hparams, not both')
     self.create_variable(name=name, var_hparams=quantized_weight_hparams)
     self.create_variable(
         name=name + QUANTIZED_SCALE_NAME_POSTFIX,
-        var_hparams=WeightHParams(shape=scale_shape),
+        var_hparams=scale_hparams,
     )
     if not use_symmetric:
       self.create_variable(
           name=name + QUANTIZED_ZP_NAME_POSTFIX,
-          var_hparams=WeightHParams(shape=scale_shape),
+          var_hparams=scale_hparams,
       )
 
   @nn.nowrap

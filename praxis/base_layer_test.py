@@ -100,6 +100,46 @@ class MultipleLinearLayer(base_layer.BaseLayer):
     return self.linear2(self.linear1(x))
 
 
+class QuantizedSubChannelFFN(base_layer.BaseLayer):
+  # input_dim = sub_channels * block_size
+  sub_channels: int = 2
+  block_size: int = 2
+  output_dims: int = 3
+
+  def setup(self):
+    self.create_quantized_variable(
+        'w',
+        base_layer.WeightHParams(
+            shape=[self.sub_channels, self.block_size, self.output_dims],
+            init=self.params_init,
+        ),
+        use_symmetric=False,
+        scale_hparams=base_layer.WeightHParams(
+            shape=[self.sub_channels, self.output_dims]
+        ),
+    )
+
+  def __call__(self, inputs):
+    w, s, zp = self.get_quantized_weight('w', False)
+    inputs = jnp.reshape(
+        inputs, [inputs.shape[0], self.sub_channels, self.block_size]
+    )
+    out = jnp.einsum('...sc,scz,sz->...z', inputs, w, s)
+    return out - jnp.einsum('...sc,sz->...z', inputs, zp)
+
+  def quantized_partition_specs(self) -> Any:
+    scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
+    zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
+    pspec = base_layer.BoxedPartitionSpec(meta=None)
+    return {base_layer.PARAMS: {'w': pspec, scale_name: pspec, zp_name: pspec}}
+
+  def quantize_weight(self) -> base_layer.NestedJTensor:
+    w, s, zp = self.get_quantized_weight('w', False)
+    scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
+    zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
+    return {base_layer.PARAMS: {'w': w, scale_name: s, zp_name: zp}}
+
+
 class MultipleBiasLayer(base_layer.BaseLayer):
   """A dummy layer that adds multiple biases to an input tensor.
 
@@ -273,6 +313,38 @@ class BaseLayerTest(test_utils.TestCase):
             'params': {
                 'linear1': {'w': dummy_pspec},
                 'linear2': {'w': dummy_pspec},
+            }
+        },
+    )
+
+  def test_quantized_sub_channels(self):
+    layer_p = pax_fiddle.Config(QuantizedSubChannelFFN, name='test_sub_channel')
+    layer = base_layer.instantiate(layer_p)
+    x = jnp.arange(8).reshape(2, 4).astype(jnp.float32)
+    init_vars = layer.init(jax.random.PRNGKey(0), x)
+    quantized_types = {
+        'params': {
+            'w': jnp.int8,
+            'w_quantized_scale': jnp.float32,
+            'w_quantized_zp': jnp.float32,
+        }
+    }
+    dummy_pspec = base_layer.BoxedPartitionSpec(meta=None)
+    self.assertEqual(
+        jax.tree_map(lambda x: x.dtype, init_vars), quantized_types
+    )
+    qw, _ = layer.apply(init_vars, mutable=[], method=layer.quantize_weight)
+    self.assertEqual(jax.tree_map(lambda x: x.dtype, qw), quantized_types)
+    quantized_pspec, _ = layer.apply(
+        init_vars, mutable=[], method=layer.quantized_partition_specs
+    )
+    self.assertEqual(
+        quantized_pspec,
+        {
+            'params': {
+                'w': dummy_pspec,
+                'w_quantized_scale': dummy_pspec,
+                'w_quantized_zp': dummy_pspec,
             }
         },
     )
