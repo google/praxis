@@ -683,6 +683,7 @@ py_strict_test(
         ":utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit fiddle dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:test_utils",

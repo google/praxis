@@ -46,13 +46,16 @@ def einsum_eqn_to_dimension_numbers(
     jax.lax.transpose after jax.lax.dot_general.
   """
   if '.' in eqn:
-    raise NotImplementedError(f"Dynamic batch dims ('...') are not supported. "
-                              f'Input eqn: {eqn}. ')
+    raise NotImplementedError(
+        f"Dynamic batch dims ('...') are not supported. Input eqn: {eqn}. "
+    )
   inputs, out_names = eqn.split('->')
   num_commas = inputs.count(',')
   if num_commas != 1:
-    raise ValueError(f'einsum equation ({eqn}) expected two arguments, '
-                     f'but {num_commas+1} found.')
+    raise ValueError(
+        f'einsum equation ({eqn}) expected two arguments, '
+        f'but {num_commas+1} found.'
+    )
   lhs_names, rhs_names = inputs.split(',')
   if len(lhs_names) != len(set(lhs_names)):
     raise ValueError(f'Repeated dim names are not supported, got {lhs_names=}')
@@ -239,20 +242,15 @@ def get_packed_shape(shape: Sequence[int], pack_dim: int, packing_factor: int):
   ]
 
 
-# Traverse entire config HParam and find the tpl of the target type.
 def find_target_tpl(
-    config: pax_fiddle.Config[base_layer.BaseLayer],
+    config: fdl.Config[base_layer.BaseLayer],
     target: Type[base_layer.BaseLayer],
-):
-  """Find and return target tpl from the config."""
-  to_process = [config]
+) -> Sequence[fdl.Config]:
+  """Traverses the entire config tree to find Configs of the target type."""
   target_tpl = []
-  while to_process:
-    param = to_process.pop(0)
-    if isinstance(param, fdl.Config):
-      if issubclass(fdl.get_callable(param), target):
-        target_tpl.append(param)
-        continue
-      else:
-        to_process.extend(fdl.ordered_arguments(param).values())
+  for node, _ in fdl.daglish.iterate(config):
+    if isinstance(node, fdl.Config) and issubclass(
+        fdl.get_callable(node), target
+    ):
+      target_tpl.append(node)
   return target_tpl

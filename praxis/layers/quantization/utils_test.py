@@ -15,8 +15,11 @@
 
 """Tests for utilities."""
 
+import dataclasses
+
 from absl.testing import absltest
 from absl.testing import parameterized
+import fiddle as fdl
 import jax
 from jax import numpy as jnp
 import numpy as np
@@ -50,7 +53,8 @@ class UtilsTest(test_utils.TestCase):
     einsum_result = jnp.einsum(eqn, lhs, rhs)
     dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(eqn)
     dot_general_result = jax.lax.dot_general(
-        lhs, rhs, dimension_numbers=dimension_numbers)
+        lhs, rhs, dimension_numbers=dimension_numbers
+    )
     if perm is not None:
       dot_general_result = jax.lax.transpose(dot_general_result, perm)
     self.assertAllClose(einsum_result, dot_general_result)
@@ -155,6 +159,75 @@ class UtilsTest(test_utils.TestCase):
   def test_get_packed_shape(self):
     self.assertSequenceEqual(utils.get_packed_shape((4, 8, 3), 1, 8), (4, 1, 3))
     self.assertRaises(ValueError, utils.get_packed_shape, (4, 7, 3), 1, 8)
+
+  def test_find_target_tpl(self):
+    @dataclasses.dataclass(frozen=True)
+    class Target:
+      marker: str = 'default'
+
+    @dataclasses.dataclass()
+    class Inner:
+      irrelevant: int
+      target1: Target
+
+    @dataclasses.dataclass()
+    class Outer:
+      irrelevant: int
+      target2: Target
+      inner_direct: Inner
+      inner_list: list[Inner]
+      inner_dict: dict[str, Inner]
+
+    outer_p = (
+        fdl.Config(
+            Outer,
+            irrelevant=-1,
+            target2=fdl.Config(Target, marker='target2'),
+            inner_direct=fdl.Config(
+                Inner,
+                irrelevant=-2,
+                target1=fdl.Config(Target, marker='target1_1'),
+            ),
+            inner_list=[
+                fdl.Config(
+                    Inner,
+                    irrelevant=-3,
+                    target1=fdl.Config(Target, marker='target1_2'),
+                ),
+                fdl.Config(
+                    Inner,
+                    irrelevant=-4,
+                    target1=fdl.Config(Target, marker='target1_3'),
+                ),
+            ],
+            inner_dict={
+                'a': fdl.Config(
+                    Inner,
+                    irrelevant=-5,
+                    target1=fdl.Config(Target, marker='target1_4'),
+                ),
+                'b': fdl.Config(
+                    Inner,
+                    irrelevant=-5,
+                    target1=fdl.Config(Target, marker='target1_5'),
+                ),
+            },
+        ),
+    )
+    targets = utils.find_target_tpl(outer_p, Target)
+    # NOTE(yinzhong): fdl.Config is not hashable or sortable, so we have to
+    # build before comparing.
+    self.assertSameElements(
+        fdl.build(targets),
+        fdl.build([
+            fdl.Config(Target, marker='target2'),
+            fdl.Config(Target, marker='target1_1'),
+            fdl.Config(Target, marker='target1_2'),
+            fdl.Config(Target, marker='target1_3'),
+            fdl.Config(Target, marker='target1_4'),
+            fdl.Config(Target, marker='target1_5'),
+        ]),
+    )
 
 
 if __name__ == '__main__':
