@@ -120,6 +120,7 @@ pytype_strict_library(
     name = "decoder_hparams",
     srcs = ["decoder_hparams.py"],
     deps = [
+        ":base_hyperparams",
         ":decoder_utils",
         ":pax_fiddle",
         ":pytypes",

@@ -609,6 +609,9 @@ class LanguageModel(base_model.BaseModel):
       cf_guidance_scale = getattr(
           input_batch, 'cf_guidance_scale', decoder_params.cf_guidance_scale
       )
+      enforce_sample_constraints = getattr(
+          input_batch, 'enforce_sample_constraints', None
+      )
 
       next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
       # TODO(b/260646361): Avoid this param propagation.
@@ -732,6 +735,8 @@ class LanguageModel(base_model.BaseModel):
             return_entropy_score=return_entropy_score,
             process_result_fn=decoder_params.process_result_fn,
             optimize_eos=decoder_params.optimize_eos,
+            sample_constraint=decoder_params.sample_constraint,
+            enforce_sample_constraints=enforce_sample_constraints,
         )
 
     elif template_has_type(decoder_params, GreedyDecoderHParams):

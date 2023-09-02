@@ -668,6 +668,25 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
     return NestedMap(new_ids=new_ids, logits=input_logits)
 
 
+class BaseSampleTerminationConstraint(
+    base_hyperparams.FiddleBaseParameterizable, metaclass=abc.ABCMeta
+):
+  """Base class for sample termination constraint.
+
+  This is used to terminate certain samples early if they don't conform to some
+  specific criteria. It can be conditionally enforced at serving time via the
+  `enforce_sample_constraints` extra input field.
+  """
+
+  @abc.abstractmethod
+  def __call__(
+      self,
+      enforce_sample_constraints: JTensor | None,
+      decode_loop_state: NestedMap,
+  ) -> JTensor:
+    """Determines which samples to terminate early."""
+
+
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def sample_decode(
     model: base_layer.BaseLayerApi,
@@ -675,7 +694,7 @@ def sample_decode(
     | decoder_utils.ExpandedExtendStepFn,
     transform_state_fn: decoder_utils.TransformStateFn | None,
     lazy_broadcast_prefix_fn: decoder_utils.LazyBroadcastPrefixFn | None,
-    next_token_sampler: base_layer.BaseLayerApi,
+    next_token_sampler: BaseNextTokenSampler,
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
     seq_len: int,
@@ -704,6 +723,8 @@ def sample_decode(
     return_entropy_score: bool = False,
     process_result_fn: decoder_utils.ProcessResultFn | None = None,
     optimize_eos: bool = False,
+    sample_constraint: BaseSampleTerminationConstraint | None = None,
+    enforce_sample_constraints: JTensor | None = None,
 ) -> NestedMap:
   """Sampling decode the input batch.
 
@@ -794,6 +815,10 @@ def sample_decode(
       such as performing suffix scoring.
     optimize_eos: Record the probability with eos ending at every step then pick
       the best one.
+    sample_constraint: Layer used to terminate samples early if they don't
+      conform to specific constraints.
+    enforce_sample_constraints: A JTensor indicating which samples to enforce
+      sample constraints for.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -858,6 +883,8 @@ def sample_decode(
         controlled_decoding,
         return_entropy_score,
         optimize_eos,
+        sample_constraint,
+        enforce_sample_constraints,
     )
     if process_result_fn is not None:
       result = process_result_fn(model, result)
@@ -896,6 +923,8 @@ def sample_decode_after_fprop(
     controlled_decoding: decoder_utils.ControlledDecodingHParams | None = None,
     return_entropy_score: bool = False,
     optimize_eos: bool = False,
+    sample_constraint: BaseSampleTerminationConstraint | None = None,
+    enforce_sample_constraints: JTensor | None = None,
 ) -> NestedMap:
   """Sampling decode after init decode state the input batch.
 
@@ -983,6 +1012,10 @@ def sample_decode_after_fprop(
     return_entropy_score: Whether to return entropy score for every token.
     optimize_eos: Record the probability with eos ending at every step then pick
       the best one.
+    sample_constraint: Layer used to terminate samples early if they don't
+      conform to specific constraints.
+    enforce_sample_constraints: A JTensor indicating which samples to enforce
+      sample constraints for.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -1163,6 +1196,10 @@ def sample_decode_after_fprop(
 
   output_ids = jnp.zeros(shape=(batch_size, seq_len), dtype=jnp.int32)
 
+  assert (sample_constraint is None and enforce_sample_constraints is None) | (
+      sample_constraint is not None and enforce_sample_constraints is not None
+  )
+
   val = NestedMap()
   if fprop_for_prefix:
     # Update output_ids with prefix_ids.
@@ -1327,6 +1364,8 @@ def sample_decode_after_fprop(
       prefix_offset = prefix_lengths
       decode_lengths = jnp.ones_like(val.decode_lengths) * (step + 2)
     val.segment_pos += 1
+    if sample_constraint is not None:
+      val.done = sample_constraint(enforce_sample_constraints, val)
 
     max_decoding_steps_reached = (
         jnp.ones_like(prefix_lengths) * (step + 2) - prefix_offset

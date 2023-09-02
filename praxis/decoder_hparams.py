@@ -19,6 +19,7 @@ import copy
 import dataclasses
 from typing import Sequence, TypeVar
 
+from praxis import base_hyperparams
 from praxis import decoder_utils
 from praxis import pax_fiddle
 from praxis import pytypes
@@ -122,6 +123,8 @@ class SampleDecoderHParams(DecoderHParams):
       the same time.
     next_token_sampler_tpl: HParams for the layer used to sample next token ids
       given the logits output.
+    sample_constraint: HParams for the layer used to terminate samples early if
+      they don't conform to specific constraints.
     global_normalize: Normalize the logits over top-k logits or globally in the
       whole vocabulary. It is used if k is nonzero and p is also not None.
     cf_guidance_scale: If not None, apply classifier-free guidance.
@@ -144,6 +147,9 @@ class SampleDecoderHParams(DecoderHParams):
   next_token_sampler_tpl: pax_fiddle.Config[
       sample_decode.BaseNextTokenSampler] = (
           pax_fiddle.template_field(sample_decode.DefaultNextTokenSampler))
+  sample_constraint: pax_fiddle.Config[
+      sample_decode.BaseSampleTerminationConstraint
+  ] | None = None
   global_normalize: bool = False
   cf_guidance_scale: list[float] | float | None = None
   controlled_decoding: decoder_utils.ControlledDecodingHParams | None = None
