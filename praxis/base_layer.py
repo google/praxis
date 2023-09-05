@@ -942,7 +942,10 @@ def maybe_unbox_value(tree):
 def unbox_meta(tree):
   """Return the `meta` leaf component of the pytree of BoxedParam."""
   return jax.tree_map(
-      lambda bp: bp.meta, tree, is_leaf=lambda x: isinstance(x, BoxedParam))
+      lambda bp: bp.meta if isinstance(bp, BoxedParam) else bp,
+      tree,
+      is_leaf=lambda x: isinstance(x, BoxedParam),
+  )
 
 
 class SummaryType(enum.Enum):
