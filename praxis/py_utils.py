@@ -691,8 +691,10 @@ def create_device_mesh(
         device_mesh = mesh_utils.create_hybrid_device_mesh(
             ici_mesh_shape, dcn_mesh_shape, devices=devices)
       except AssertionError as e:
-        raise ValueError('Setting a nontrivial dcn_mesh_shape requires '
-                         'multiple slices') from e
+        raise ValueError(
+            'Setting a nontrivial dcn_mesh_shape requires multiple slices. '
+            f'[{ici_mesh_shape=}, {dcn_mesh_shape=}, {devices=}]'
+        ) from e
   else:
     device_mesh = mesh_utils.create_device_mesh(
         ici_mesh_shape, contiguous_submeshes=contiguous_submeshes
