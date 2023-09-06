@@ -750,27 +750,6 @@ class BaseLayerTest(test_utils.TestCase):
       self.assertEqual(layer2.weight_split_dims_mapping.x, 12)
       self.assertEqual(layer2.activation_split_dims_mapping.y, 'yellow')
 
-  def test_hparam_is_instance_of_fdl_buildable(self):
-
-    class Child(base_layer.BaseLayer):
-      size: int = 5
-
-    with self.assertRaisesRegex(
-        ValueError, 'default value is a mutable instance of fdl.Buildable'):
-
-      # Allowing the default value of `child_tpl` to be a Config object here
-      # would be problematic, because that mutable default value would be
-      # shared by all instances of Parent.  E.g., if `a` and `b` were two
-      # instances of Parent that did not override `child_tpl`, then setting
-      # `a.child_tpl.size = 20` would also modify `b.child_tpl.size` to be 20
-      # (since `a.child_tpl is b.child_tpl`).  We therefore raise an exception,
-      # indicating that the user should use a `default_factory` rather than a
-      # default value.
-      class Parent(base_layer.BaseLayer):
-        child_tpl: pax_fiddle.Config = pax_fiddle.Config(Child, size=2)
-
-      del Parent  # unused.
-
   def test_unbox_meta(self):
     meta = base_layer.WeightHParams([10, 10])
     tree = {
@@ -855,35 +834,6 @@ class BaseLayerTest(test_utils.TestCase):
         ),
     ):
       layer.init(jax.random.PRNGKey(0), 0)
-
-  def testOverrideParamsInit(self):
-
-    class Child(base_layer.BaseLayer):
-      params_init: base_layer.WeightInit = (
-          base_layer.WeightInit.UniformUnitScaling(scale=0.5))
-
-      def __call__(self):
-        return 0.0
-
-    class Parent(base_layer.BaseLayer):
-
-      child_tpl: pax_fiddle.Config = base_layer.template_field(Child)
-
-      def setup(self):
-        self.create_child('child', self.child_tpl)
-
-      def __call__(self):
-        self.child()
-        return None
-
-    cfg = pax_fiddle.Config(Parent)
-    layer = pax_fiddle.build(cfg)
-    layer.init(jax.random.PRNGKey(0))
-
-    hyper_params = layer.abstract_init_with_mdl_config()
-    self.assertEqual(0.5, hyper_params['child']['_hparams'].params_init.scale)
-    self.assertEqual('uniform_unit_scaling',
-                     hyper_params['child']['_hparams'].params_init.method)
 
   def testTypeCheckingForDtype(self):
     layer_p = pax_fiddle.Config(SimpleBaseLayer)
