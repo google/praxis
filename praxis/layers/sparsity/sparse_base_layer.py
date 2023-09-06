@@ -16,6 +16,7 @@
 """Sparse base layer."""
 
 import copy
+from typing import Optional
 
 import jax
 from jax import numpy as jnp
@@ -23,6 +24,7 @@ from praxis import base_layer
 from praxis import pytypes
 from praxis.layers.sparsity import sparsity
 from praxis.layers.sparsity import sparsity_hparams
+
 
 SparsityMode = sparsity_hparams.SparsityMode
 SparsityType = sparsity_hparams.SparsityType
@@ -45,12 +47,12 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       applied to this layer.
   """
 
-  sparsity: SparsityHParams = instance_field(SparsityHParams)
+  sparsity: Optional[SparsityHParams] = None
 
   def create_aux_variables(
       self, name: str, weight_hparams: WeightHParams
   ) -> None:
-    if self.sparsity.mode == SparsityMode.INFERENCE:
+    if self.sparsity is None or self.sparsity.mode == SparsityMode.INFERENCE:
       return
     self._create_masks_variables(name, weight_hparams)
     self._create_counter_variables()
@@ -62,6 +64,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       name: Variable name for the weight tensor.
       weight_hp: HParams for weight.
     """
+    assert self.sparsity is not None
     sparsity_weight_hp = copy.deepcopy(weight_hp)
     sparsity_weight_hp.init = WeightInit.Constant(True)
     sparsity_weight_hp.dtype = jnp.bool_
@@ -73,6 +76,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
   def _create_counter_variables(self):
     """Create variable of num_shot and mask update count."""
+    assert self.sparsity is not None
     num_shots = self.sparsity.get_num_shots()
     num_shots_hp = WeightHParams(
         shape=[], init=WeightInit.Constant(num_shots), dtype=jnp.int32
@@ -92,22 +96,19 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       target_step: int,
       mask_update_times: int,
       num_shots: int,
-      is_update_mode: bool = False,
   ) -> JTensor:
     """Sparse mask update schedule.
 
-    Make mask update when following conditions are all satisfied 1) mode is not
-    equal to materialize or inference and 2) mask_update_times <= num_shots for
-    one(few) shot, or num_shots == -1 for training mode and 3) current step is
-    the target step to do pruning.
+    Make mask update when following conditions are all satisfied
+    1) mask_update_times <= num_shots for one(few) shot or num_shots == -1 for
+      training mode and
+    2) current step is the target step to do pruning.
 
     Args:
       step: current step.
-      target_step: step to do pruner.
+      target_step: step to do pruning.
       mask_update_times: number of times sparse masks has been updated.
       num_shots: the target number of times to prune.
-      is_update_mode: If this mode to update mask, for inference and
-        materialization this should be false.
 
     Returns:
       A boolean condition results.
@@ -116,49 +117,13 @@ class SparsityBaseLayer(base_layer.BaseLayer):
         jnp.equal(num_shots, -1),  # SparsityMode.Training/MATERIALIZE
         jnp.less(mask_update_times, num_shots),  # OneShot/FewShot
     )
-    should_pruning_step = jnp.equal(step, target_step)
-    return jnp.logical_and(
-        jnp.logical_and(should_pruning_step, should_do_pruning), is_update_mode
-    )
-
-  def _apply_schedule_cond(self, step, is_always_apply=False):
-    """Sparse mask apply schedule.
-
-    Apply mask to tensor when one of following condition is satisfied 1) for
-    training or materialize mode; 2) for one(few) shot when current step is
-    greater or equal than sparsity.target_step, when is the starting step for
-    sparse training.
-
-    Args:
-      step: current step.
-      is_always_apply: If mask is always applied, for materiaization and
-        training this is true.
-
-    Returns:
-      A boolean condition results
-    """
-    should_do_step = jnp.greater_equal(step, self.sparsity.target_step)
-    return jnp.logical_or(is_always_apply, should_do_step)
-
-  def _layer_cond(
-      self, layer_idx: int, sparsified_layers: jax.Array
-  ) -> JTensor:
-    """Materialize sparsified weight by applying mask.
-
-    Args:
-      layer_idx: Layer index.
-      sparsified_layers: Layer indices of sparsified layers.
-
-    Returns:
-      Weights maybe materialized by sparsity mask.
-    """
-    return jnp.logical_or(
-        jnp.any(sparsified_layers == layer_idx),
-        jnp.any(sparsified_layers == -1),
-    )
+    mask_update_step = jnp.equal(step, target_step)
+    return jnp.logical_and(mask_update_step, should_do_pruning)
 
   # TODO(shivaniagrawal): add base layer tests for boundary conditions.
   def _get_sparsity_mask(self, score, mask, step):
+    assert self.sparsity is not None
+
     if self.sparsity.sparsity_type == SparsityType.STRUCTURED_NM:
       if (
           self.sparsity.weight_params is None
@@ -183,10 +148,10 @@ class SparsityBaseLayer(base_layer.BaseLayer):
   def _get_prune_rate_unstructured(self, step):
     prune_rate = (
         self.sparsity.weight_params.prune_rate
-        if self.sparsity.weight_params
+        if self.sparsity and self.sparsity.weight_params
         else None
     )
-    if self.sparsity.polynomial_decay_schedule is None:
+    if self.sparsity is None or self.sparsity.polynomial_decay_schedule is None:
       return prune_rate
     else:
       final_sparsity = self.sparsity.polynomial_decay_schedule.final_sparsity
@@ -212,22 +177,21 @@ class SparsityBaseLayer(base_layer.BaseLayer):
           ** exponent
       )
 
-  def _get_sparsified_layers(self):
-    # Sparsified layers could be set as [1, 2, 3 ...], or None, if None, then
-    # set sparsified_layers = [-1] to sparsified all layers.
-    if self.sparsity.sparsified_layers is None:
-      self.sparsity.sparsified_layers = [-1]
-    sparsified_layers = jnp.asarray(self.sparsity.sparsified_layers)
-    return sparsified_layers
-
   def _maybe_update_mask(
       self,
       weight: JTensor,
       inputs: JTensor,
       name: str,
-      layer_idx: int,
       step: int,
   ):
+    assert self.sparsity is not None
+
+    # Return without updating mask if in MATERIALIZE MODE
+    if self.sparsity.mode in [
+        SparsityMode.MATERIALIZE,
+    ]:
+      return
+
     mask_var_name = name + SPARSITY_NAME_POSTFIX
     mask = self.get_var(mask_var_name)
 
@@ -247,8 +211,6 @@ class SparsityBaseLayer(base_layer.BaseLayer):
         + self.sparsity.mask_update_interval * update_cnt
     )
 
-    sparsified_layers = self._get_sparsified_layers()
-
     def mask_update(w, inputs, mask, update_cnt, step):  # pylint: disable=unused-argument
       score = sparsity.compute_score(
           w, score_func=self.sparsity.score, inputs=inputs
@@ -258,17 +220,8 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     def no_mask_update(w, inputs, mask, update_cnt, step):  # pylint: disable=unused-argument
       return mask, update_cnt
 
-    is_update_mode = self.sparsity.mode not in [
-        SparsityMode.MATERIALIZE,
-        SparsityMode.INFERENCE,
-    ]
     new_mask, update_cnt = jax.lax.cond(
-        jnp.logical_and(
-            self._update_schedule_cond(
-                step, target_step, update_cnt, num_shots, is_update_mode
-            ),
-            self._layer_cond(layer_idx, sparsified_layers),
-        ),
+        self._update_schedule_cond(step, target_step, update_cnt, num_shots),
         mask_update,
         no_mask_update,
         weight,
@@ -277,52 +230,19 @@ class SparsityBaseLayer(base_layer.BaseLayer):
         update_cnt,
         step,
     )
+
     self.update_var('mask_update_count', update_cnt)
     self.update_var(mask_var_name, new_mask)
 
     if num_shots > 0:
       self.add_summary('mask_update_count', update_cnt, verbosity=4)
 
-  def _maybe_sparsify(
-      self,
-      weight: JTensor,
-      inputs: JTensor,
-      name: str,
-      layer_idx: int,
-      step: int,
-  ):
-    mask_var_name = name + SPARSITY_NAME_POSTFIX
-    mask = self.get_var(mask_var_name)
-
-    if mask.shape != weight.shape:
-      mask = jnp.reshape(mask, weight.shape)
-
-    sparsified_layers = self._get_sparsified_layers()
-
-    # Apply mask to weight.
-    no_op = lambda inputs, mask: inputs
-    is_always_apply = self.sparsity.mode in [
-        SparsityMode.MATERIALIZE,
-        SparsityMode.TRAINING,
-    ]
-    weight = jax.lax.cond(
-        jnp.logical_and(
-            self._apply_schedule_cond(step, is_always_apply),
-            self._layer_cond(layer_idx, sparsified_layers),
-        ),
-        sparsity.apply_sparsity,
-        no_op,
-        weight,
-        mask,
-    )
-    return weight
-
   def sparsifiy(
       self,
       weight: JTensor,
       name: str,
       inputs: JTensor | None = None,
-      layer_idx: int | None = -1,
+      layer_idx: int | None = None,
   ) -> JTensor:
     """Get weight of this layer based on mode and other conditions.
 
@@ -336,7 +256,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       variables weights.
     """
 
-    if (
+    if self.sparsity is None or (
         self.sparsity.mode == SparsityMode.INFERENCE
         or self.sparsity.weight_params is None
     ):
@@ -344,17 +264,30 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
     step = self.get_var('step')
 
+    # Return without updating mask if in we want to do mixed sparsity for
+    # layers and layer index is not in layers to be sparsified
+    if (
+        self.sparsity.sparsified_layers is not None and layer_idx is not None
+    ) and (layer_idx not in self.sparsity.sparsified_layers):
+      self.update_var('step', step + 1)
+      return weight
+
     self._maybe_update_mask(
         weight=weight,
         inputs=inputs,
         name=name,
-        layer_idx=layer_idx,
         step=step,
     )
 
-    weight = self._maybe_sparsify(
-        weight=weight, inputs=inputs, name=name, layer_idx=layer_idx, step=step
-    )
+    # NOTE: Mask will be all True (as initialized) for steps before target step
+    # [case of few shot/one shot]; and for layer we dont want to sparsify
+    # so we apply mask for all the cases.
+    mask_var_name = name + SPARSITY_NAME_POSTFIX
+    mask = self.get_var(mask_var_name)
+
+    if mask.shape != weight.shape:
+      mask = jnp.reshape(mask, weight.shape)
+    weight = sparsity.apply_sparsity(weight, mask)
 
     self.update_var('step', step + 1)
 

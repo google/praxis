@@ -159,7 +159,8 @@ class SparsityHParams:
     mask_update_interval: The step invertal between two mask updates. This is
       only valide under FEWSHOT mode.
     target_step: target step to start sparsity pruning.
-    sparsified_layers: List of indices of layer to sparisify.
+    sparsified_layers: List of indices of layer to sparisify. None means all the
+      layers to be sparsified.
     polynomial_decay_schedule: polynomial decay schedule for unstructured
       sparsity
   """
@@ -188,20 +189,21 @@ class SparsityHParams:
   def __post_init__(self):
     if (
         self.weight_params is not None
-        and self.weight_params.prune_rate is not None
     ):
       # Check sparsity types.
       if self.sparsity_type == SparsityType.STRUCTURED_NM:
-        assert isinstance(self.weight_params.prune_rate, tuple), (
-            'Prune rate must be either None '
-            'for no pruning or a Tuple[int, int] for '
-            'N:M structured sparsity.'
-        )
+        if self.weight_params.prune_rate is not None:
+          assert isinstance(self.weight_params.prune_rate, tuple), (
+              'Prune rate must be either None '
+              'for no pruning or a Tuple[int, int] for '
+              'N:M structured sparsity.'
+          )
       elif self.sparsity_type == SparsityType.UNSTRUCTURED:
-        assert isinstance(self.weight_params.prune_rate, float), (
-            'Prune rate must be either None for no pruning or float '
-            'for unstructured sparsity.'
-        )
+        if self.weight_params.prune_rate is not None:
+          assert isinstance(self.weight_params.prune_rate, float), (
+              'Prune rate must be either None or float '
+              'for unstructured sparsity.'
+          )
         if self.weight_params.sparse_ste:
           raise ValueError('SR-STE only works with structured sparsity.')
 
