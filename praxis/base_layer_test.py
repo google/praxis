@@ -771,6 +771,18 @@ class BaseLayerTest(test_utils.TestCase):
 
       del Parent  # unused.
 
+  def test_unbox_meta(self):
+    meta = base_layer.WeightHParams([10, 10])
+    tree = {
+        'params': {
+            'whp': base_layer.BoxedParam(value=jnp.zeros([10, 10]), meta=meta),
+            'jarr': jnp.zeros([1, 1, 1]),
+        }
+    }
+    unboxed = base_layer.unbox_meta(tree)
+    self.assertEqual(unboxed['params']['whp'], meta)
+    self.assertArraysEqual(unboxed['params']['jarr'], jnp.zeros([1, 1, 1]))
+
   def test_fprop_dtype(self):
     with self.subTest('default'):
       layer = base_layer.BaseLayer()
