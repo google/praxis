@@ -136,6 +136,40 @@ def segment_mask(
   return mask
 
 
+def merge_masks(a: JTensor, b: JTensor) -> JTensor:
+  """Merges 2 masks.
+
+  logscale mask is expected but 0/1 mask is also fine.
+
+  Args:
+    a: JTensor of shape [1|B, 1, 1|T, S].
+    b: JTensor of shape [1|B, 1, 1|T, S].
+
+  Returns:
+    JTensor of shape [1|B, 1, 1|T, S].
+  """
+
+  # Given [[1,1,0,0]],
+  # Return the following mask,
+  # 1 1 0 0
+  # 1 1 0 0
+  # 0 0 0 0
+  # 0 0 0 0
+  def expand_t(key_mask):
+    query_mask = jnp.transpose(key_mask, [0, 1, 3, 2])
+    return jnp.minimum(query_mask, key_mask)
+
+  if a.shape[2] != b.shape[2]:
+    if a.shape[2] == 1:
+      a = expand_t(a)
+    else:
+      assert b.shape[2] == 1
+      b = expand_t(b)
+
+  assert a.shape[1:] == b.shape[1:], f'a.shape={a.shape}, b.shape={b.shape}.'
+  return jnp.minimum(a, b)
+
+
 def causal_segment_mask(
     segment_ids: JTensor,
     dtype: jnp.dtype = jnp.float32,
@@ -163,7 +197,7 @@ def causal_segment_mask(
   causal_mask_t = causal_mask(jnp.zeros([b, t, 1], dtype=dtype))
   if causal_attention_mask is not None:
     causal_mask_t *= causal_attention_mask[:, jnp.newaxis, jnp.newaxis, :]
-  return jnp.minimum(segment_mask_t, causal_mask_t)
+  return merge_masks(segment_mask_t, causal_mask_t)
 
 
 def convert_paddings_to_mask(

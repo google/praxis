@@ -120,12 +120,12 @@ def compute_attention_masks_for_fprop(
 
     # Additional segment_mask may also be provided in this case
     if segment_mask is not None:
-      attention_mask = jnp.minimum(attention_mask, segment_mask)
+      attention_mask = attentions.merge_masks(attention_mask, segment_mask)
 
   # Causal mask of shape [1, 1, T, T]
   if causal_attention:
     causal_mask = attentions.causal_mask(inputs)
-    attention_mask = jnp.minimum(attention_mask, causal_mask)
+    attention_mask = attentions.merge_masks(attention_mask, causal_mask)
 
   # Compute cross attention mask if applicable
   cross_attention_mask = None
@@ -187,7 +187,7 @@ def compute_attention_masks_for_extend_step(
 
   # Include segment mask, has shape [B, 1, T]
   if segment_mask is not None:
-    attention_mask = jnp.minimum(attention_mask, segment_mask)
+    attention_mask = attentions.merge_masks(attention_mask, segment_mask)
 
   # Compute cross attention mask if applicable
   cross_attention_mask = None
