@@ -1230,7 +1230,9 @@ class SequenceModel(base_model.BaseModel):
             start_time_step=start_time_step,
         )
 
-      fprop_input_ids = input_batch.tgt.ids[:, :1]
+      fprop_input_ids = jax.lax.dynamic_slice_in_dim(
+          input_batch.tgt.ids, 0, 1, axis=1
+      )
       fprop_input_paddings = jnp.ones(
           (batch_size, 1), input_batch.tgt.paddings.dtype
       )
@@ -1251,8 +1253,12 @@ class SequenceModel(base_model.BaseModel):
         mdl.model(
             inputs=input_batch.src.ids,
             input_paddings=input_batch.src.paddings,
-            targets=input_batch.tgt.ids[:, :1],
-            target_paddings=input_batch.tgt.paddings[:, :1],
+            targets=jax.lax.dynamic_slice_in_dim(
+                input_batch.tgt.ids, 0, 1, axis=1
+            ),
+            target_paddings=jax.lax.dynamic_slice_in_dim(
+                input_batch.tgt.paddings, 0, 1, axis=1
+            ),
         )
 
       temperature = decoder_params.temperature
@@ -1300,8 +1306,12 @@ class SequenceModel(base_model.BaseModel):
         mdl.model(
             inputs=input_batch.src.ids,
             input_paddings=input_batch.src.paddings,
-            targets=input_batch.tgt.ids[:, :1],
-            target_paddings=input_batch.tgt.paddings[:, :1],
+            targets=jax.lax.dynamic_slice_in_dim(
+                input_batch.tgt.ids, 0, 1, axis=1
+            ),
+            target_paddings=jax.lax.dynamic_slice_in_dim(
+                input_batch.tgt.paddings, 0, 1, axis=1
+            ),
         )
 
       result = sample_decode.greedy_decode(
