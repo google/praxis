@@ -1386,6 +1386,113 @@ class SequenceModelTest(test_utils.TestCase):
     self.assertIn('embeddings', results)
     self.assertSequenceEqual(results.embeddings.shape, (1, 5, 8))
 
+  def _run_decode(self, decoder_p, input_batch):
+    model_dims = 8
+    model_p = pax_fiddle.Config(models.SequenceModel, name='test')
+    model_p.model_tpl = pax_fiddle.Config(
+        models.transformer_models.TransformerEncoderDecoder,
+        model_dims=model_dims,
+    )
+    encoder_stacked_transformer_tpl = pax_fiddle.Config(
+        transformers.StackedTransformer
+    )
+    encoder_stacked_transformer_tpl.num_layers = 2
+    encoder_stacked_transformer_tpl.num_heads = 4
+    encoder_stacked_transformer_tpl.model_dims = model_dims
+    encoder_stacked_transformer_tpl.hidden_dims = model_dims * 4
+    encoder_stacked_transformer_tpl.mask_self_attention = False
+    decoder_stacked_transformer_tpl = pax_fiddle.Config(
+        transformers.StackedTransformer
+    )
+    decoder_stacked_transformer_tpl.num_layers = 2
+    decoder_stacked_transformer_tpl.num_heads = 4
+    decoder_stacked_transformer_tpl.model_dims = model_dims
+    decoder_stacked_transformer_tpl.hidden_dims = model_dims * 4
+    decoder_stacked_transformer_tpl.mask_self_attention = True
+    model_p.model_tpl.encoder_stacked_transformer_tpl = (
+        encoder_stacked_transformer_tpl
+    )
+    model_p.model_tpl.decoder_stacked_transformer_tpl = (
+        decoder_stacked_transformer_tpl
+    )
+    model_p.model_tpl.softmax_tpl = pax_fiddle.Config(
+        embedding_softmax.SharedEmbeddingSoftmax,
+        input_dims=model_dims,
+        num_classes=16,
+    )
+    seq_model = instantiate(model_p)
+    prng_key = jax.random.PRNGKey(seed=9)
+    mdl_vars = seq_model.init(prng_key, input_batch)
+    results, _ = seq_model.apply(
+        mdl_vars,
+        mutable=[
+            DECODE_CACHE,
+        ],
+        rngs={RANDOM: prng_key},
+        method=seq_model.decode_with_params,
+        input_batch=input_batch,
+        decoder_params=decoder_p,
+    )
+    _, results, _ = results
+    return results
+
+  def test_greedy_decode(self):
+    data = NestedMap(
+        ids=jnp.array([[11, 12, 13, 14, 15]], dtype=jnp.int32),
+        paddings=jnp.array([[0, 1, 1, 1, 1]], dtype=jnp.float32),
+        labels=jnp.ones([1, 5], jnp.float32),
+        weights=jnp.ones([1, 5], jnp.float32),
+    )
+    input_batch = NestedMap(src=data, tgt=data)
+    decoder_p = models.GreedyDecoderHParams(seqlen=5, max_decode_steps=5)
+    results = self._run_decode(decoder_p, input_batch)
+    self.assertIn('output_ids', results)
+    self.assertSequenceEqual(results.output_ids.shape, (1, 1, 5))
+    self.assertArraysEqual(results.output_ids, [[[11, 10, 10, 10, 10]]])
+
+  def test_sample_decode(self):
+    data = NestedMap(
+        ids=jnp.array([[11, 12, 13, 14, 15]], dtype=jnp.int32),
+        paddings=jnp.array([[0, 1, 1, 1, 1]], dtype=jnp.float32),
+        labels=jnp.ones([1, 5], jnp.float32),
+        weights=jnp.ones([1, 5], jnp.float32),
+    )
+    input_batch = NestedMap(src=data, tgt=data)
+    decoder_p = models.SampleDecoderHParams(
+        num_samples=3, k=0, seqlen=5, max_decode_steps=5
+    )
+    results = self._run_decode(decoder_p, input_batch)
+    self.assertIn('output_ids', results)
+    self.assertSequenceEqual(results.output_ids.shape, (1, 3, 5))
+    self.assertArraysEqual(
+        results.output_ids,
+        [[[11, 10, 9, 1, 14], [11, 14, 14, 7, 14], [11, 11, 13, 3, 6]]],
+    )
+
+  def test_beam_search_decode(self):
+    data = NestedMap(
+        ids=jnp.array([[11, 12, 13, 14, 15]], dtype=jnp.int32),
+        paddings=jnp.array([[0, 1, 1, 1, 1]], dtype=jnp.float32),
+        labels=jnp.ones([1, 5], jnp.float32),
+        weights=jnp.ones([1, 5], jnp.float32),
+    )
+    input_batch = NestedMap(src=data, tgt=data)
+    decoder_p = models.BeamSearchHParams(
+        beam_size=4, seqlen=5, max_decode_steps=5
+    )
+    results = self._run_decode(decoder_p, input_batch)
+    self.assertIn('output_ids', results)
+    self.assertSequenceEqual(results.output_ids.shape, (1, 4, 6))
+    self.assertArraysEqual(
+        results.output_ids,
+        [[
+            [2, 0, 0, 0, 0, 0],
+            [11, 2, 0, 0, 0, 0],
+            [15, 2, 0, 0, 0, 0],
+            [15, 15, 2, 0, 0, 0],
+        ]],
+    )
+
 
 def _flatten_input_data(lm_input):
   return {
