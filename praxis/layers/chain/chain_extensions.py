@@ -200,9 +200,10 @@ class DictToArgs(BaseLayer):
     """Looks up tensors."""
     outputs = []
     for k in self.keys:
-      if k not in input_batch:
-        raise KeyError(f'key=`{k}` not in {input_batch.keys()}')
-      outputs.append(input_batch[k])
+      val = input_batch.get(k)
+      if val is None:
+        raise ValueError(f'Key not found {k}')
+      outputs.append(val)
     if len(outputs) > 1:
       return tuple(outputs)
     return outputs[0]  # pytype: disable=bad-return-type  # jax-ndarray
