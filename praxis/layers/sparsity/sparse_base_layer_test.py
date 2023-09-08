@@ -46,8 +46,6 @@ SparsityType = sparsity_hparams.SparsityType
 class SparseLinearTestLayer(
     sparse_base_layer.SparsityBaseLayer, linears.Linear
 ):
-  input_dims: int = 3
-  output_dims: int = 4
 
   def setup(self):
     weight_hp = base_layer.WeightHParams(
@@ -94,7 +92,9 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
         target_step=target_step,
     )
 
-    p = pax_fiddle.Config(SparseLinearTestLayer, sparsity=sparsity_p)
+    p = pax_fiddle.Config(
+        SparseLinearTestLayer, sparsity=sparsity_p, input_dims=3, output_dims=4
+    )
     test_layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
     inputs = jnp.array([[1, 2, 3], [4, 5, 6]], dtype=p.dtype)
@@ -116,7 +116,9 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
         weight_params=WeightSparsityParams(prune_rate=(2, 4)),
     )
 
-    p = pax_fiddle.Config(SparseLinearTestLayer, sparsity=sparsity_p)
+    p = pax_fiddle.Config(
+        SparseLinearTestLayer, sparsity=sparsity_p, input_dims=3, output_dims=4
+    )
 
     test_layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
@@ -176,7 +178,9 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
         target_step=2,
     )
 
-    p = pax_fiddle.Config(SparseLinearTestLayer, sparsity=sparsity_p)
+    p = pax_fiddle.Config(
+        SparseLinearTestLayer, sparsity=sparsity_p, input_dims=3, output_dims=4
+    )
 
     test_layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
@@ -336,7 +340,9 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
         target_step=target_step,
     )
 
-    p = pax_fiddle.Config(SparseLinearTestLayer, sparsity=sparsity_p)
+    p = pax_fiddle.Config(
+        SparseLinearTestLayer, sparsity=sparsity_p, input_dims=3, output_dims=4
+    )
 
     test_layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
@@ -412,7 +418,9 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
         target_step=target_step,
     )
 
-    p = pax_fiddle.Config(SparseLinearTestLayer, sparsity=sparsity_p)
+    p = pax_fiddle.Config(
+        SparseLinearTestLayer, sparsity=sparsity_p, input_dims=3, output_dims=4
+    )
 
     test_layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
@@ -450,7 +458,9 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
         target_step=2,
     )
 
-    p = pax_fiddle.Config(SparseLinearTestLayer, sparsity=sparsity_p)
+    p = pax_fiddle.Config(
+        SparseLinearTestLayer, sparsity=sparsity_p, input_dims=3, output_dims=4
+    )
 
     test_layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
@@ -638,7 +648,9 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
         target_step=2,
     )
 
-    p = pax_fiddle.Config(SparseLinearTestLayer, sparsity=sparsity_p)
+    p = pax_fiddle.Config(
+        SparseLinearTestLayer, sparsity=sparsity_p, input_dims=3, output_dims=4
+    )
 
     test_layer = instantiate(p)
     prng_key = jax.random.PRNGKey(seed=123)
@@ -905,6 +917,103 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
       )
 
       self.assertEqual(updated_params[NON_TRAINABLE]['mask_update_count'], 2)
+      self.assertArraysEqual(
+          outputs,
+          jnp.einsum(
+              '...y,yz->...z',
+              inputs,
+              jnp.multiply(
+                  params[PARAMS]['w'],
+                  updated_params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
+              ),
+          ),
+      )
+
+  @parameterized.named_parameters(
+      ('row_wise', 'R'),
+      ('column_wise', 'C'),
+  )
+  def test_sparsity_order(self, sparsity_order):
+    sparsity_p = sparsity_hparams.SparsityHParams(
+        sparsity_type=SparsityType.STRUCTURED_NM,
+        mode=SparsityMode.TRAINING,
+        weight_params=WeightSparsityParams(prune_rate=(2, 4)),
+        target_step=0,
+        order=sparsity_order,
+    )
+
+    p = pax_fiddle.Config(
+        SparseLinearTestLayer, sparsity=sparsity_p, input_dims=4, output_dims=4
+    )
+
+    test_layer = instantiate(p)
+    prng_key = jax.random.PRNGKey(seed=123)
+    inputs = jnp.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=p.dtype)
+    weights = jnp.array(
+        [
+            [10, 20, 3, 4],
+            [-3, 10, 4, 2],
+            [2, 4, -1, 30],
+            [40, -1, 2, -3],
+        ],
+        dtype=p.dtype,
+    )
+
+    def update(test_layer, params, inputs, updated_weights):
+      outputs, updated_params = test_layer.apply(params, inputs, mutable=True)
+      updated_params[PARAMS]['w'] = updated_weights
+
+      return outputs, updated_params
+
+    with base_layer.JaxContext.new_context():
+      params = test_layer.init(prng_key, inputs)
+      params[PARAMS]['w'] = weights
+
+      self.assertArraysEqual(
+          params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
+          jnp.array([
+              [True, True, True, True],
+              [True, True, True, True],
+              [True, True, True, True],
+              [True, True, True, True],
+          ]),
+      )
+
+      # step 0, update mask, apply mask
+      outputs, updated_params = update(
+          test_layer,
+          params,
+          inputs,
+          jnp.array(
+              [
+                  [10, 20, 3, 4],
+                  [-3, 1, 4, 2],
+                  [20, 4, -10, 3],
+                  [4, -1, 2, -30],
+              ],
+              dtype=p.dtype,
+          ),
+      )
+      if sparsity_order == 'C':
+        self.assertArraysEqual(
+            updated_params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
+            jnp.array([
+                [True, True, True, True],
+                [False, True, True, False],
+                [False, False, False, True],
+                [True, False, False, False],
+            ]),
+        )
+      else:
+        self.assertArraysEqual(
+            updated_params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
+            jnp.array([
+                [True, True, False, False],
+                [False, True, True, False],
+                [False, True, False, True],
+                [True, False, False, True],
+            ]),
+        )
       self.assertArraysEqual(
           outputs,
           jnp.einsum(

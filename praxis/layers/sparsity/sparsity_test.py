@@ -206,8 +206,11 @@ class PruningFunctionalityTest(parameterized.TestCase):
   )
   def test_3d_column_pruning(self, order, exp_output):
     inputs = jnp.reshape(jnp.arange(1, 65), (4, 4, 4))
-    output = sparsity.prune_inputs_n_m(inputs, n=2, m=4, order=order)
-    np.testing.assert_array_equal(output, exp_output)
+    self.assertRaises(
+        ValueError, sparsity.prune_inputs_n_m, inputs, n=2, m=4, order=order
+    )
+    # output = sparsity.prune_inputs_n_m(inputs, n=2, m=4, order=order)
+    # np.testing.assert_array_equal(output, exp_output)
 
 
 class PruningScoreTest(parameterized.TestCase):

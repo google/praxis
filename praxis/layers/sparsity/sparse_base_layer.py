@@ -134,6 +134,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
           score,
           n_sparsity=self.sparsity.weight_params.prune_rate[0],
           m_sparsity=self.sparsity.weight_params.prune_rate[1],
+          order=self.sparsity.order,
       )
 
     assert (

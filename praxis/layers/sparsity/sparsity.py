@@ -266,7 +266,8 @@ def get_sparsity_mask(
     return mask.reshape(inputs.shape, order='C')
   else:
     if len(inputs.shape) > 2:
-      return jnp.einsum('...ij->...ji', mask.reshape(inputs.shape, order='F'))
+      # TODO: b/299363175 - Fix the shaping issue.
+      raise ValueError('Current not supported')
     else:
       return jnp.einsum('ij->ji', mask).reshape(inputs.shape, order='F')
 

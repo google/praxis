@@ -163,6 +163,10 @@ class SparsityHParams:
       layers to be sparsified.
     polynomial_decay_schedule: polynomial decay schedule for unstructured
       sparsity
+    order: Apply pruning using this index order. Supported values are `C`, `R`.
+      `C` and `R` indicate column-wise and row-wise masking, respectively.
+      Default is `R` indicating to applying N:M sparsity across rows of the
+      input matrix.
   """
 
   sparsity_type: SparsityType = SparsityType.STRUCTURED_NM
@@ -174,6 +178,7 @@ class SparsityHParams:
   target_step: int = 0
   sparsified_layers: list[int] | None = None
   polynomial_decay_schedule: PolynomialDecayParams | None = None
+  order: str = 'R'
 
   def get_num_shots(self):
     if self.mode == SparsityMode.INFERENCE:
@@ -225,3 +230,6 @@ class SparsityHParams:
         assert (
             self.mode == SparsityMode.FEWSHOT
         ), 'mask_update_interval only be set for FEWSHOT mode.'
+
+      if self.order not in ['C', 'R']:
+        raise ValueError(f'Index order {self.order} not supported.')
