@@ -472,8 +472,8 @@ def global_mesh_defined() -> bool:
 def with_sharding_constraint(
     x: JTensor, axis_resources: jax.sharding.PartitionSpec | None
 ) -> JTensor:
-  """Wrapper for lax.with_sharding_constraint, no-op on cpu or outside pjit."""
-  if jax.devices()[0].platform == 'cpu' or not global_mesh_defined():
+  """Wrapper for lax.with_sharding_constraint, no-op outside pjit."""
+  if not global_mesh_defined():
     return x
   else:
     return lax.with_sharding_constraint(x, axis_resources)
