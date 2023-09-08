@@ -178,6 +178,20 @@ def compute_xent_loss_helper(
   return metrics, per_example_output
 
 
+def add_hist(
+    layer: base_layer.BaseLayer,
+    name: str,
+    expression: jax.Array,
+    verbosity: int = 2,
+) -> None:
+  layer.add_summary(
+      name,
+      expression,
+      summary_type=base_layer.SummaryType.HISTOGRAM,
+      verbosity=verbosity,
+  )
+
+
 class LanguageModel(base_model.BaseModel):
   """Language Model base task.
 
@@ -890,21 +904,21 @@ class LanguageModel(base_model.BaseModel):
 
 @dataclasses.dataclass(kw_only=True, slots=True)
 class Labels:
-  class_ids: Int32[ArrayT, '*B T']
-  class_weights: Float32[ArrayT, '*B T']
+  class_ids: Int32[ArrayT, 'B T']
+  class_weights: Float32[ArrayT, 'B T']
 
 
 @dataclasses.dataclass(kw_only=True, slots=True)
 class DPOExampleHalf:
   """Represents a rated DPO example."""
 
-  inputs: Int32[ArrayT, '*B T']
+  inputs: Int32[ArrayT, 'B T']
   labels: Labels
-  paddings: Int32[ArrayT, '*B T']
-  segment_ids: Int32[ArrayT, '*B T']  # Packing is as yet unsupported.
-  segment_pos: Int32[ArrayT, '*B T']  # Packing is as yet unsupported.
-  inputs_indicator: Int32[ArrayT, '*B T'] = None
-  causal_attention_mask: Int32[ArrayT, '*B T'] | None = None
+  paddings: Int32[ArrayT, 'B T']
+  segment_ids: Int32[ArrayT, 'B T']  # Packing is currently unsupported.
+  segment_pos: Int32[ArrayT, 'B T']  # Packing is currently unsupported.
+  inputs_indicator: Int32[ArrayT, 'B T'] = None
+  causal_attention_mask: Int32[ArrayT, 'B T'] | None = None
 
   def as_xformer_lm_input(self) -> dict[str, ArrayT | NestedMap]:
     nestedmap = NestedMap.FromNestedDataclass(self)
@@ -1045,16 +1059,25 @@ class LanguageModelDPO(base_model.BaseModel):
       assert len(softmax_out.per_sequence_xent.shape) == 1
       return -1.0 * softmax_out.per_sequence_xent
 
-    y_l_ref_log_p = per_seq_log_p(predictions.y_l_ref)
-    y_l_pi_log_p = per_seq_log_p(predictions.y_l_pi)
     y_w_ref_log_p = per_seq_log_p(predictions.y_w_ref)
     y_w_pi_log_p = per_seq_log_p(predictions.y_w_pi)
+    y_l_ref_log_p = per_seq_log_p(predictions.y_l_ref)
+    y_l_pi_log_p = per_seq_log_p(predictions.y_l_pi)
 
-    r_hat_y_l = jax.lax.stop_gradient(
-        self.beta * (y_l_pi_log_p - y_l_ref_log_p)
-    )
+    self.add_summary('dpo/y_w_ref_log_p', jnp.mean(y_w_ref_log_p))
+    self.add_summary('dpo/y_w_pi_log_p', jnp.mean(y_w_pi_log_p))
+    self.add_summary('dpo/y_l_ref_log_p', jnp.mean(y_l_ref_log_p))
+    self.add_summary('dpo/y_l_pi_log_p', jnp.mean(y_l_pi_log_p))
+    add_hist(self, 'dpo/y_w_ref_log_p', y_w_ref_log_p)
+    add_hist(self, 'dpo/y_w_pi_log_p', y_w_pi_log_p)
+    add_hist(self, 'dpo/y_l_ref_log_p', y_l_ref_log_p)
+    add_hist(self, 'dpo/y_l_pi_log_p', y_l_pi_log_p)
+
     r_hat_y_w = jax.lax.stop_gradient(
         self.beta * (y_w_pi_log_p - y_w_ref_log_p)
+    )
+    r_hat_y_l = jax.lax.stop_gradient(
+        self.beta * (y_l_pi_log_p - y_l_ref_log_p)
     )
 
     # This is first equation on page #5 in the DPO paper.
@@ -1067,13 +1090,20 @@ class LanguageModelDPO(base_model.BaseModel):
     # This is the dpo_loss, same as what equation 7 in the paper computes.
     dpo_loss = jnp.mean(-1.0 * jnp.log(jax.nn.sigmoid(r_hat_y_w - r_hat_y_l)))
 
-    self.add_summary('r_hat_y_w', jnp.mean(r_hat_y_w))
-    self.add_summary('r_hat_y_l', jnp.mean(r_hat_y_l))
-    self.add_summary('delta_r_hat', jnp.mean(r_hat_y_w - r_hat_y_l))
-    self.add_summary('dpo_loss', dpo_loss)
+    self.add_summary('dpo/r_hat_y_w', jnp.mean(r_hat_y_w))
+    self.add_summary('dpo/r_hat_y_w_std', jnp.std(r_hat_y_w))
+    self.add_summary('dpo/r_hat_y_l', jnp.mean(r_hat_y_l))
+    self.add_summary('dpo/r_hat_y_l_std', jnp.std(r_hat_y_l))
+    self.add_summary('dpo/delta_r_hat', jnp.mean(r_hat_y_w - r_hat_y_l))
+    self.add_summary('dpo/delta_r_hat_std', jnp.std(r_hat_y_w - r_hat_y_l))
+    self.add_summary('dpo/dpo_loss', dpo_loss)
     self.add_summary(
-        'p_correct_ranking', jnp.mean(jax.nn.sigmoid(r_hat_y_w - r_hat_y_l))
+        '_dpo_topline/p_correct_ranking',
+        jnp.mean(jax.nn.sigmoid(r_hat_y_w - r_hat_y_l)),
     )
+    add_hist(self, 'dpo/r_hat_y_w', r_hat_y_w)
+    add_hist(self, 'dpo/r_hat_y_l', r_hat_y_l)
+    add_hist(self, 'dpo/delta_r_hat', r_hat_y_w - r_hat_y_l)
 
     batch_size = predictions.y_l_ref.per_example_xent.shape[0]
 
