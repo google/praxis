@@ -24,7 +24,11 @@ JTensor = pytypes.JTensor
 
 
 def get_best_bound(
-    t: JTensor, bound: JTensor, min_value: float, max_value: float
+    t: JTensor,
+    bound: JTensor,
+    min_value: float,
+    max_value: float,
+    p_value: float = 1.0,
 ) -> JTensor:
   """Scan around [0.95, 1] * hard max value to get bound value.
 
@@ -39,9 +43,10 @@ def get_best_bound(
     bound: The hard max value for tensor 't'. It has the same length as shape.
     min_value: Minimal value for the quantization bound.
     max_value: Maximal value for the quantization bound.
+    p_value: Exponent of the p-mean error metric. Default to 1.0 which is MAE.
 
   Returns:
-    The best bound values for 't', that minimize average error (MAE).
+    The best bound values for 't', that minimize p-mean error.
   """
 
   def quantize(scaling_factor):
@@ -49,10 +54,10 @@ def get_best_bound(
     candidate = jnp.divide(t, scale)
     candidate = jnp.clip(jnp.round(candidate), min_value, max_value)
     candidate = jnp.multiply(candidate, scale)
-    mean_error = jnp.mean(jnp.abs(jnp.subtract(candidate, t)))
-    return mean_error, jnp.array(scaling_factor)
+    pmean_error = jnp.mean(jnp.abs(jnp.subtract(candidate, t)) ** p_value)
+    return pmean_error, jnp.array(scaling_factor)
 
-  scaling_factors = np.linspace(1.0, 0.95, num=11)
+  scaling_factors = np.linspace(1.0, 0.5, num=11)
   res = jax.vmap(quantize)(scaling_factors)
   best_scaling = res[1].at[jnp.argmin(res[0])].get().astype(bound.dtype)
   return jnp.multiply(bound, best_scaling)

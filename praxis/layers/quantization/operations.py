@@ -307,6 +307,7 @@ def reduce_precision(
     need_gradient: bool = False,
     bits: int = 8,
     optimization_on_bound: bool = False,
+    p_value: float = 1.0,
     percentile: float = 1.0,
     use_symmetric: bool = True,
     use_fp: bool = False,
@@ -321,7 +322,8 @@ def reduce_precision(
     contract_dims: Speficies contracting dimesnions of the input tensor.
     need_gradient: If gradient is needed out of this function.
     bits: target number of bits.
-    optimization_on_bound: If MAE bound optimizer is used.
+    optimization_on_bound: If p-mean bound optimizer is used.
+    p_value: Exponent of the p-mean error metric. Default to 1.0 which is MAE.
     percentile: percentile Factor to apply on the min/max range. Setting this to
       other than 1.0 disables optimization_on_bound.
     use_symmetric: If the input tensor is quantized symmetrically.
@@ -345,7 +347,7 @@ def reduce_precision(
   if percentile < 1.0:
     bound = jnp.multiply(bound, percentile)
   elif optimization_on_bound:
-    bound = optimization.get_best_bound(t, bound, min_value, max_value)
+    bound = optimization.get_best_bound(t, bound, min_value, max_value, p_value)
 
   scale = bound / scale_bound
 
