@@ -14,6 +14,7 @@ lingvo
 numpy
 optax
 optax-shampoo
+opt-einsum
 tensorflow-datasets==4.8.3
 tensorflow-metadata==1.12.0
 tensorflow-text~=2.9.0
