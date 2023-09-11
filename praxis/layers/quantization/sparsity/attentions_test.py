@@ -28,8 +28,8 @@ from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import attentions
-from praxis.layers.sparsity import attentions as sattentions
-from praxis.layers.sparsity import sparsity_hparams
+from praxis.layers.quantization import attentions as sattentions
+from praxis.layers.quantization.sparsity import sparsity_hparams
 
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 SPARSITY_NAME_POSTFIX = base_layer.SPARSITY_NAME_POSTFIX
@@ -74,6 +74,7 @@ class SparseAttentionTest(test_utils.TestCase):
         input_dim=2,
         num_heads=2,
         dim_per_head=4,
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=sparsity_type,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
@@ -141,6 +142,7 @@ class SparseAttentionTest(test_utils.TestCase):
         input_dim=2,
         num_heads=2,
         dim_per_head=4,
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
@@ -240,6 +242,7 @@ class SparseAttentionTest(test_utils.TestCase):
         input_dim=input_dim,
         dim_per_head=dim_per_head,
         num_heads=num_heads,
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=sparsity_type,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
@@ -256,6 +259,7 @@ class SparseAttentionTest(test_utils.TestCase):
         dim_per_head=dim_per_head,
         num_heads=num_heads,
         attention_combine_dims=True,
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=sparsity_type,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
@@ -339,6 +343,7 @@ class AttentionLayersConsistencyTest(test_utils.TestCase):
     p_s = pax_fiddle.Config(
         sattentions.AttentionProjection,
         name='_attn_proj_s',
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
@@ -361,6 +366,7 @@ class AttentionLayersConsistencyTest(test_utils.TestCase):
     p_s = pax_fiddle.Config(
         sattentions.AttentionProjection,
         name='_attn_proj_s',
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
@@ -383,6 +389,7 @@ class AttentionLayersConsistencyTest(test_utils.TestCase):
     p_s = pax_fiddle.Config(
         sattentions.AttentionProjection,
         name='_attn_proj_s',
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
@@ -414,6 +421,7 @@ class AttentionLayersConsistencyTest(test_utils.TestCase):
     p_s = pax_fiddle.Config(
         sattentions.CombinedQKVProjectionLayer,
         name='_attn_qkv_s',
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),

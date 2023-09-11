@@ -22,8 +22,8 @@ import jax
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pytypes
-from praxis.layers.sparsity import sparsity
-from praxis.layers.sparsity import sparsity_hparams
+from praxis.layers.quantization.sparsity import sparsity
+from praxis.layers.quantization.sparsity import sparsity_hparams
 
 
 SparsityMode = sparsity_hparams.SparsityMode

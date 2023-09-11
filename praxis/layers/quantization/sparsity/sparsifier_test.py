@@ -25,8 +25,8 @@ from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import linears
-from praxis.layers.sparsity import sparse_base_layer
-from praxis.layers.sparsity import sparsity_hparams
+from praxis.layers.quantization.sparsity import sparsifier
+from praxis.layers.quantization.sparsity import sparsity_hparams
 
 instantiate = base_layer.instantiate
 NON_TRAINABLE = base_layer.NON_TRAINABLE
@@ -43,9 +43,7 @@ SparsityMode = sparsity_hparams.SparsityMode
 SparsityType = sparsity_hparams.SparsityType
 
 
-class SparseLinearTestLayer(
-    sparse_base_layer.SparsityBaseLayer, linears.Linear
-):
+class SparseLinearTestLayer(sparsifier.SparsityBaseLayer, linears.Linear):
 
   def setup(self):
     weight_hp = base_layer.WeightHParams(

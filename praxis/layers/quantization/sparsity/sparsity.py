@@ -22,7 +22,7 @@ from absl import logging
 from flax import linen as nn
 import jax
 import jax.numpy as jnp
-from praxis.layers.sparsity import sparsity_hparams
+from praxis.layers.quantization.sparsity import sparsity_hparams
 
 
 @functools.partial(jax.custom_vjp, nondiff_argnums=(4, 5, 6))

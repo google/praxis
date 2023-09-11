@@ -28,8 +28,8 @@ from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import linears
-from praxis.layers.sparsity import linears as slinears
-from praxis.layers.sparsity import sparsity_hparams
+from praxis.layers.quantization import linears as slinears
+from praxis.layers.quantization.sparsity import sparsity_hparams
 
 instantiate = base_layer.instantiate
 NON_TRAINABLE = base_layer.NON_TRAINABLE
@@ -76,6 +76,7 @@ class SparseLinearTest(test_utils.TestCase):
         name='_linear',
         input_dims=4,
         output_dims=4,
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=sparsity_type,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
@@ -141,6 +142,7 @@ class SparseLinearTest(test_utils.TestCase):
         name='_linear',
         input_dims=4,
         output_dims=4,
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
@@ -274,6 +276,7 @@ class LinearLayersConsistencyTest(test_utils.TestCase):
     p_s = pax_fiddle.Config(
         slinears.Linear,
         name='_linear',
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),

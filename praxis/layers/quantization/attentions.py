@@ -30,6 +30,7 @@ from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import utils
+from praxis.layers.quantization.sparsity import sparsifier
 
 QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
@@ -42,7 +43,9 @@ NestedJTensor = pytypes.NestedJTensor
 
 
 class AttentionProjection(  # pytype: disable=signature-mismatch
-    attentions.AttentionProjection, quantizer.QuantizationLayer
+    attentions.AttentionProjection,
+    quantizer.QuantizationLayer,
+    sparsifier.SparsityBaseLayer,
 ):
   """Layer that optionally computes quantized multi heads projection.
 
@@ -99,6 +102,8 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
         scale_shape=scale_shape,
         pack_dim=self._PACK_4BIT_DIM,
     )
+    self.create_aux_variables('w', pc)
+
     if self.use_bias:
       if self.is_output_projection:
         if has_sharding:
@@ -168,10 +173,11 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
       batch_eqn = eqn_sym[: (rank - 1)] if rank else '...'
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
 
+    w = self.sparsifiy(theta.w, inputs=inputs, name='w')  # sparsify weight.
     ret = self.quantized_einsum(
         eqn=eqn,
         x=inputs,
-        w=theta.w,
+        w=w,
         pack_dim=self._PACK_4BIT_DIM,
         reshape=pc_shape,
     )
@@ -289,7 +295,9 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
 
 
 class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
-    attentions.CombinedQKVProjectionLayer, quantizer.QuantizationLayer
+    attentions.CombinedQKVProjectionLayer,
+    quantizer.QuantizationLayer,
+    sparsifier.SparsityBaseLayer,
 ):
   """Layer that computes quantized QKV projection with a combined weight.
 
@@ -359,6 +367,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
         scale_shape=[3] + hd_shape,
         pack_dim=self._PACK_4BIT_DIM,
     )
+    self.create_aux_variables('w', pc)
     if self.use_bias:
       # Combined bias weight for q, k, v projections.
       pc_bias = WeightHParams(
@@ -452,6 +461,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
       elif self.quantization.act_params is None:
         ret = operations.einsum(eqn, inputs, w, s, zp)
     else:
+      w = self.sparsifiy(w, inputs=inputs, name='w')  # sparsify weight.
       if (
           self.quantization is None
           or self.quantization.quantization_type == QuantizationType.PTQ

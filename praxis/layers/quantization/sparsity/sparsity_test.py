@@ -21,8 +21,8 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from jax import numpy as jnp
 import numpy as np
-from praxis.layers.sparsity import sparsity
-from praxis.layers.sparsity import sparsity_hparams
+from praxis.layers.quantization.sparsity import sparsity
+from praxis.layers.quantization.sparsity import sparsity_hparams
 
 
 dataclass = dataclasses.dataclass

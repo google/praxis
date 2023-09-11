@@ -26,25 +26,14 @@ pytype_strict_library(
     name = "layers",
     srcs = ["__init__.py"],
     deps = [
-        ":attentions",
-        ":linears",
+        "//praxis/layers/quantization:attentions",
+        "//praxis/layers/quantization:linears",
     ],
 )
 
 pytype_strict_library(
     name = "sparsity_hparams",
     srcs = ["sparsity_hparams.py"],
-)
-
-pytype_strict_library(
-    name = "linears",
-    srcs = ["linears.py"],
-    deps = [
-        ":sparse_base_layer",
-        "//praxis:base_layer",
-        "//praxis:pytypes",
-        "//praxis/layers:linears",
-    ],
 )
 
 pytype_strict_library(
@@ -75,7 +64,6 @@ py_strict_test(
     name = "linears_test",
     srcs = ["linears_test.py"],
     deps = [
-        ":linears",
         ":sparsity_hparams",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
@@ -86,18 +74,7 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers:linears",
-    ],
-)
-
-pytype_strict_library(
-    name = "attentions",
-    srcs = ["attentions.py"],
-    deps = [
-        ":sparse_base_layer",
-        # Implicit jax dependency.
-        "//praxis:base_layer",
-        "//praxis:pytypes",
-        "//praxis/layers:attentions",
+        "//praxis/layers/quantization:linears",
     ],
 )
 
@@ -105,7 +82,6 @@ py_strict_test(
     name = "attentions_test",
     srcs = ["attentions_test.py"],
     deps = [
-        ":attentions",
         ":sparsity_hparams",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
@@ -116,12 +92,13 @@ py_strict_test(
         "//praxis:py_utils",
         "//praxis:test_utils",
         "//praxis/layers:attentions",
+        "//praxis/layers/quantization:attentions",
     ],
 )
 
 pytype_strict_library(
-    name = "sparse_base_layer",
-    srcs = ["sparse_base_layer.py"],
+    name = "sparsifier",
+    srcs = ["sparsifier.py"],
     deps = [
         ":sparsity",
         ":sparsity_hparams",
@@ -132,10 +109,10 @@ pytype_strict_library(
 )
 
 py_strict_test(
-    name = "sparse_base_layer_test",
-    srcs = ["sparse_base_layer_test.py"],
+    name = "sparsifier_test",
+    srcs = ["sparsifier_test.py"],
     deps = [
-        ":sparse_base_layer",
+        ":sparsifier",
         ":sparsity_hparams",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.

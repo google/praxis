@@ -26,8 +26,8 @@ from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import repeats
 from praxis.layers.linears import FeedForward as ff
-from praxis.layers.sparsity import linears as slinears
-from praxis.layers.sparsity import sparsity_hparams
+from praxis.layers.quantization import linears as slinears
+from praxis.layers.quantization.sparsity import sparsity_hparams
 
 
 template_field = base_layer.template_field
@@ -360,6 +360,7 @@ class RepeatsSparsityTest(test_utils.TestCase):
     sparse_linear = pax_fiddle.Config(
         slinears.Linear,
         name='_sparse',
+        quantization=None,
         sparsity=SparsityHParams(
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),

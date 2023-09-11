@@ -26,6 +26,7 @@ from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import utils
+from praxis.layers.quantization.sparsity import sparsifier
 
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
@@ -37,7 +38,9 @@ NestedJTensor = pytypes.NestedJTensor
 WeightInit = base_layer.WeightInit
 
 
-class Linear(linears.Linear, quantizer.QuantizationLayer):  # pytype: disable=signature-mismatch
+class Linear(  # pytype: disable=signature-mismatch
+    linears.Linear, quantizer.QuantizationLayer, sparsifier.SparsityBaseLayer
+):
   """Quantized and low-rank Linear layer without bias.
 
   Attributes:
@@ -74,26 +77,32 @@ class Linear(linears.Linear, quantizer.QuantizationLayer):  # pytype: disable=si
           [self.input_dims, self.rank],
           [self.rank, self.output_dims],
       )
+      wp_a = WeightHParams(
+          shape=shape_a,
+          mesh_shape=self.mesh_shape,
+          tensor_split_dims_mapping=wp.wt,
+      )
+
       self.set_up_weights(
           weight_name='w_a',
-          weight_params=WeightHParams(
-              shape=shape_a,
-              mesh_shape=self.mesh_shape,
-              tensor_split_dims_mapping=wp.wt,
-          ),
+          weight_params=wp_a,
           scale_shape=[self.rank],
           pack_dim=self._PACK_4BIT_DIM,
       )
+      self.create_aux_variables('w_a', wp_a)
+      wp_b = WeightHParams(
+          shape=shape_b,
+          mesh_shape=self.mesh_shape,
+          tensor_split_dims_mapping=wp.wt,
+      )
       self.set_up_weights(
           weight_name='w_b',
-          weight_params=WeightHParams(
-              shape=shape_b,
-              mesh_shape=self.mesh_shape,
-              tensor_split_dims_mapping=wp.wt,
-          ),
+          weight_params=wp_b,
           scale_shape=[self.output_dims],
           pack_dim=self._PACK_4BIT_DIM,
       )
+      self.create_aux_variables('w_b', wp_b)
+
     else:
       pc = WeightHParams(
           shape=[self.input_dims, self.output_dims],
@@ -106,6 +115,7 @@ class Linear(linears.Linear, quantizer.QuantizationLayer):  # pytype: disable=si
           scale_shape=[self.output_dims],
           pack_dim=self._PACK_4BIT_DIM,
       )
+      self.create_aux_variables('w', pc)
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Apply projection to inputs.
@@ -121,27 +131,30 @@ class Linear(linears.Linear, quantizer.QuantizationLayer):  # pytype: disable=si
     eqn = '...y,yz->...z'
 
     if self.rank > 0:
+      w_a = self.sparsifiy(self.theta.w_a, inputs=inputs, name='w_a')
       intermediate = self.quantized_einsum(
           eqn=eqn,
           x=inputs,
-          w=self.theta.w_a,
+          w=w_a,
           pack_dim=self._PACK_4BIT_DIM,
           reshape=[],
           weight_name='w_a',
       )
+      w_b = self.sparsifiy(self.theta.w_b, inputs=inputs, name='w_b')
       out = self.quantized_einsum(
           eqn=eqn,
           x=intermediate,
-          w=self.theta.w_b,
+          w=w_b,
           pack_dim=self._PACK_4BIT_DIM,
           reshape=[],
           weight_name='w_b',
       )
     else:
+      w = self.sparsifiy(self.theta.w, inputs=inputs, name='w')
       out = self.quantized_einsum(
           eqn=eqn,
           x=inputs,
-          w=self.theta.w,
+          w=w,
           pack_dim=self._PACK_4BIT_DIM,
           reshape=[],
       )

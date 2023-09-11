@@ -16,8 +16,8 @@
 # Description:
 #   Praxis layers. The public API is defined in __init__.py.
 
-load("//praxis:praxis.bzl", "py_strict_test")
 load("//praxis:praxis.bzl", "pytype_strict_library")
+load("//praxis:praxis.bzl", "py_strict_test")
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
 
 licenses(["notice"])
@@ -502,8 +502,8 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:test_utils",
-        "//praxis/layers/sparsity:linears",
-        "//praxis/layers/sparsity:sparsity_hparams",
+        "//praxis/layers/quantization:linears",
+        "//praxis/layers/quantization/sparsity:sparsity_hparams",
     ],
 )
 

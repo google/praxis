@@ -16,8 +16,8 @@
 # Description:
 #   Quantization related layers. The public API is defined in __init__.py.
 
-load("//praxis:praxis.bzl", "py_strict_test")
 load("//praxis:praxis.bzl", "pytype_strict_library")
+load("//praxis:praxis.bzl", "py_strict_test")
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
 
 licenses(["notice"])
@@ -86,6 +86,7 @@ pytype_strict_library(
         "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis/layers:attentions",
+        "//praxis/layers/quantization/sparsity:sparsifier",
     ],
 )
 
@@ -352,6 +353,7 @@ pytype_strict_library(
         "//praxis:base_layer",
         "//praxis:pytypes",
         "//praxis/layers:linears",
+        "//praxis/layers/quantization/sparsity:sparsifier",
     ],
 )
 
