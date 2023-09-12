@@ -18,11 +18,11 @@
 import functools
 import string
 from typing import Any, Sequence
-
 from absl import logging
 import jax
 from jax import lax
 from jax import numpy as jnp
+from opt_einsum import parser as einsum_parser
 from praxis import pytypes
 from praxis.layers.quantization import optimization
 from praxis.layers.quantization import quantization_hparams
@@ -211,6 +211,8 @@ def einsum(
     zp: JTensor | None = None,
     scale_act: JTensor | None = None,
     zp_act: JTensor | None = None,
+    scale_eqn: str | None = None,
+    zp_eqn: str | None = None,
 ) -> JTensor:
   """Performs quantized einsum.
 
@@ -230,6 +232,10 @@ def einsum(
       result is brought back to true value.
     zp_act: Optional zero point for the einsum on the right-hand-side  tensor
       which is activation in most cases.
+    scale_eqn: Optional. Let tmp = einsum(eqn, x, w), scale_out =
+      einsum(scale_eqn, tmp, out). Default scale_eqn act as '...z,z->...z'
+    zp_eqn: Optional. ret = scale_out - einsum(zp_eqn, x, zp) Default zp_eqn act
+      as '...y,z->...z'
 
   Returns:
     A JTensor.
@@ -284,10 +290,16 @@ def einsum(
   if filling_dims_rhs:
     scale = jnp.expand_dims(scale, filling_dims_rhs)
 
-  ret = jnp.multiply(ret, scale)
+  if scale_eqn is not None:
+    ret = jnp.einsum(scale_eqn, ret, scale)
+  else:
+    ret = jnp.multiply(ret, scale)
 
   if zp is not None:
-    offset = compute_offset(x, zp, eqn)
+    if zp_eqn is not None:
+      offset = jnp.einsum(zp_eqn, x, zp)
+    else:
+      offset = compute_offset(x, zp, eqn)
     ret = ret - offset
 
   if zp_act is not None:
@@ -486,17 +498,33 @@ def fakequant_einsum(
   Returns:
     The nudged weight tensor.
   """
-  original_shape = t.shape
+  contract_dims = eqn_to_weight_contract_dims(eqn)
+  original_shape = list(t.shape)
   if block_size > 0:
-    # TODO(jianlijianli): Make this more general.
-    assert original_shape[0] % block_size == 0
-    assert original_shape[0] >= block_size
-    t.reshape(block_size, original_shape[0] * original_shape[1] // block_size)
-  q, scale, zp = reduce_einsum_weight_precision(
-      eqn,
+    if len(contract_dims) > 1:
+      raise NotImplementedError(
+          'Sub-channel quantization with more than one contract_dims is not'
+          f' supported. eqn: {eqn}'
+      )
+    contract_dim = contract_dims[0]
+    sub_channels, rem = divmod(original_shape[contract_dim], block_size)
+    if rem > 0:
+      raise ValueError(
+          f'block_size {block_size} must fully divide contract dim of'
+          f' {original_shape}'
+      )
+    sub_channel_shape = original_shape.copy()
+    sub_channel_shape[contract_dim] = block_size
+    sub_channel_shape.insert(contract_dim, sub_channels)
+    t = jnp.reshape(t, sub_channel_shape)
+    contract_dims[0] += 1
+
+  if t.dtype != calculation_type:
+    t = t.astype(calculation_type)
+
+  q, scale, zp = reduce_precision(
       t,
-      calculation_type=calculation_type,
-      squeeze=False,
+      contract_dims,
       need_gradient=True,
       bits=bits,
       optimization_on_bound=False,
@@ -506,7 +534,7 @@ def fakequant_einsum(
   if zp is not None:
     res = jnp.subtract(res, zp)
   if block_size > 0:
-    t.reshape(original_shape)
+    res = jnp.reshape(res, original_shape)
   return res.astype(t.dtype)
 
 
@@ -667,6 +695,8 @@ def aqt_einsum(
     *,
     lhs_quantizer: Any,
     rhs_quantizer: Any,
+    scale_eqn: str | None = None,
+    zp_eqn: str | None = None,
 ) -> JTensor:
   """Quantized einsum with AQT style.
 
@@ -676,26 +706,27 @@ def aqt_einsum(
     rhs: Right-hand side of the einsum (mostly weight, can be activation).
     lhs_quantizer: The tensor quantizer for lhs.
     rhs_quantizer: The tensor quantizer for rhs.
+    scale_eqn: Optional. Let tmp = einsum(eqn, x, w), scale_out =
+      einsum(scale_eqn, tmp, out). Default scale_eqn act as '...z,z->...z'
+    zp_eqn: Optional. ret = scale_out - einsum(zp_eqn, x, zp) Default zp_eqn act
+      as '...y,z->...z'
 
   Returns:
     An array containing the result with the same dtype as 'lhs' and 'rhs'.
   """
-  if '.' in eqn:
-    # Replace the ellipsis with arbitrary symbols.
-    eqn_sym = ''.join(sorted(set(string.ascii_uppercase) - set('yz')))
-    rank = len(lhs.shape)
-    batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
-    eqn_edited = f'{batch_eqn}y,yz->{batch_eqn}z'
-    dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn_edited)
-  else:
-    dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
-
+  input_str, output_str, _ = einsum_parser.parse_einsum_input((eqn, lhs, rhs))
+  eqn_edited = input_str + '->' + output_str
+  dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn_edited)
   lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
 
   if (
       hasattr(rhs_quantizer, 'sub_channels')
       and rhs_quantizer.sub_channels is not None
   ):
+    logging.warning(
+        'sub_channels option will deprecate. Use the block_size API for sub'
+        ' channel support instead.'
+    )
     if lhs_quantizer.precision is not None:
       raise ValueError(
           'sub_channels is not implemented for activation quantization yet.'
@@ -717,17 +748,31 @@ def aqt_einsum(
     deq_rhs = jnp.reshape(deq_rhs, input_shape)
     ret = jnp.einsum(eqn, lhs, deq_rhs)
   else:
-    lhs, lhs_scale, _ = lhs_quantizer.quantize(
-        lhs, lhs_contract_dims, squeeze_scale=False, quantized_dtype=lhs.dtype
-    )
+    if scale_eqn is not None or zp_eqn is not None:
+      if lhs_quantizer.precision is not None:
+        raise NotImplementedError(
+            'Activation quantization with custom scale_eqn/zp_eqn is not'
+            ' implemented.'
+        )
+      rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
+          rhs, rhs_contract_dims, squeeze_scale=True, quantized_dtype=rhs.dtype
+      )
+      out_scale = rhs_scale
+    else:
+      lhs, lhs_scale, _ = lhs_quantizer.quantize(
+          lhs, lhs_contract_dims, squeeze_scale=False, quantized_dtype=lhs.dtype
+      )
+      rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
+          rhs, rhs_contract_dims, squeeze_scale=False, quantized_dtype=rhs.dtype
+      )
+      out_scale = jnp.einsum(eqn, lhs_scale, rhs_scale)
 
-    rhs, rhs_scale, rhs_zp = rhs_quantizer.quantize(
-        rhs, rhs_contract_dims, squeeze_scale=False, quantized_dtype=rhs.dtype)
+    ret = jnp.einsum(eqn, lhs, rhs)
 
-    out = jnp.einsum(eqn, lhs, rhs)
-    out_scale = jnp.einsum(eqn, lhs_scale, rhs_scale)
-
-    ret = out * out_scale
+    if scale_eqn is not None:
+      ret = jnp.einsum(scale_eqn, ret, out_scale)
+    else:
+      ret = jnp.multiply(ret, out_scale)
 
     if rhs_zp is not None:
       if (
@@ -738,7 +783,10 @@ def aqt_einsum(
             'Activation quantization with weight zero point '
             'is not supported yet.'
         )
-      offset = compute_offset(lhs, jnp.squeeze(rhs_zp), eqn)
+      if zp_eqn is not None:
+        offset = jnp.einsum(zp_eqn, lhs, rhs_zp)
+      else:
+        offset = compute_offset(lhs, jnp.squeeze(rhs_zp), eqn)
       ret = ret - offset
 
   return ret

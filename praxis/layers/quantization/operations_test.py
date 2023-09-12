@@ -168,6 +168,24 @@ class QuantizationUtilsTest(test_utils.TestCase):
     offset_eqn = operations._get_offset_eqn(eqn)
     self.assertEqual(offset_eqn, expected_offset_eqn)
 
+  def test_subchannel_einsum(self):
+    x = np.random.rand(4, 2, 4).astype(np.float32)
+    w = np.arange(32).astype(np.int8).reshape(2, 4, 4)
+    s = np.random.rand(2, 4).astype(np.float32)
+    zp = np.random.rand(2, 4).astype(np.float32)
+    expected = np.einsum('...sc,scz,sz->...z', x, w.astype(np.float32), s)
+    expected = expected - np.einsum('...sc,sz->...z', x, zp)
+    actual = operations.einsum(
+        '...sc,scz->...sz',
+        x,
+        w,
+        s,
+        zp,
+        scale_eqn='...sz,sz->...z',
+        zp_eqn='...sc,sz->...z',
+    )
+    self.assertAllClose(expected, actual, rtol=0.01, atol=0.01)
+
 
 class ReducePrecisionTest(test_utils.TestCase):
 
@@ -440,13 +458,16 @@ class AqtEinsum(base_layer.BaseLayer):
     )
 
   def __call__(self):
-    def aqt_einsum(eqn, lhs, rhs):
+
+    def aqt_einsum(eqn, lhs, rhs, scale_eqn=None, zp_eqn=None):
       return operations.aqt_einsum(
           eqn,
           lhs,
           rhs,
           lhs_quantizer=self.lhs_quantizer,
           rhs_quantizer=self.rhs_quantizer,
+          scale_eqn=scale_eqn,
+          zp_eqn=zp_eqn,
       )
 
     return aqt_einsum
@@ -511,6 +532,20 @@ class AqtEinsumTest(test_utils.TestCase):
     actual_ret = aqt_einsum(eqn, lhs, rhs)
     expected_ret = jnp.einsum(eqn, lhs, rhs)
     self.assertArraysEqual(actual_ret, expected_ret)
+
+  @parameterized.parameters(False, True)
+  def test_aqt_subchannel(self, use_symmetric):
+    aqt_einsum, _ = self.get_aqt_einsum_module(
+        rhs_prec=8, use_symmetric=use_symmetric
+    )
+    lhs = np.arange(32).astype(np.float32).reshape(4, 2, 4)
+    rhs = np.arange(32).astype(np.float32).reshape(2, 4, 4)
+    expected = jnp.einsum('bsc,scz->bz', lhs, rhs)
+    zp_eqn = None if use_symmetric else 'bsc,sz->bz'
+    actual = aqt_einsum(
+        'bsc,scz->bsz', lhs, rhs, scale_eqn='bsz,sz->bz', zp_eqn=zp_eqn
+    )
+    self.assertAllClose(expected, actual, rtol=0.01, atol=0.01)
 
 
 class QuantizationVNTest(test_utils.TestCase):
