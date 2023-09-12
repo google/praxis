@@ -333,31 +333,99 @@ def top_p_mask_logits(
   return logits
 
 
-def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  # jax-ndarray
+class BaseLogitsSampler(
+    base_hyperparams.FiddleBaseParameterizable, metaclass=abc.ABCMeta
+):
+  """Interface for temperature based sampling given logits.
+
+  Final step used by a NextTokenSampler to apply temperature scaling and do
+  argmax sampling given the logits.
+  """
+
+  @abc.abstractmethod
+  def __call__(
+      self,
+      prng_key: JTensor,
+      logits: JTensor,
+      ids: JTensor | None,
+      temperature: float | JTensor,
+      decode_loop_state: NestedMap,
+  ) -> tuple[JTensor, NestedMap]:
+    """Samples the token ids given the logits.
+
+    Args:
+      prng_key: Random key for sampling.
+      logits: Input logits.
+      ids: Indices corresponding to top-k logits.
+      temperature: Temperature of sampling decoding. It could be a float or a
+        JTensor of shape [batch_size * num_samples].
+      decode_loop_state: Decode loop state provides access to all the relevant
+        sampling loop information.
+
+    Returns:
+      Tuple consisting of sampled indices and NestedMap of state variables to
+      be updated. These state variables are specific to the state variables
+      related to sampler; only used when sampling of tokens itself needs state
+      to be maintained.
+    """
+
+
+class DefaultCategoricalLogitsSampler(BaseLogitsSampler):
+  """Default implementation for temperature based sampling given logits."""
+
+  def __call__(
+      self,
+      prng_key: JTensor,
+      logits: JTensor,
+      ids: JTensor | None,
+      temperature: float | JTensor,
+      decode_loop_state: NestedMap,
+  ) -> tuple[JTensor, NestedMap]:
+    """Apply temperature scaling and sample via the gumbel-max trick.
+
+    Args:
+      prng_key: Random key for sampling.
+      logits: Input logits.
+      ids: Indices corresponding to top-k logits.
+      temperature: Temperature of sampling decoding. It could be a float or a
+        JTensor of shape [batch_size * num_samples].
+      decode_loop_state: Decode loop state provides access to all the relevant
+        sampling loop information.
+
+    Returns:
+      Tuple consisting of sampled indices and empty NestedMap for any updated
+      state variables. This sampler does not use and update any state variables.
+    """
+    del ids, decode_loop_state  # unused
+    if temperature is None:
+      temperature = 0.0
+    gumbel_noise = _batch_rngs_random_gumbel(prng_key, logits.shape).astype(
+        logits.dtype
+    )
+    logits += gumbel_noise * temperature
+    return jnp.argmax(logits, axis=-1), NestedMap()
+
+
+def _apply_top_p_given_top_k(
     top_k_logits: JTensor,
     top_k_indices: JTensor,
-    prng_key: pytypes.PRNGKey,
-    temperature: JTensor | float,
     top_p: float | JTensor | None = None,
     topk_is_sorted: bool = True,
-    logits_sum: JTensor = None,
-) -> Sequence[JTensor]:
-  """Sample decode algorithm from TopP given output from TopK.
+    logits_sum: JTensor | None = None,
+) -> tuple[JTensor, JTensor, JTensor]:
+  """Get top_p logits given top_k logits and indices.
 
   Args:
     top_k_logits: Top k logits.
     top_k_indices: Indices corresponding to top-k logits.
-    prng_key: The prng key.
-    temperature: Temperature of sampling decoding. It could be a float or a
-      JTensor of shape [batch_size * num_samples].
-    top_p: See params of `sample_from_top_k_and_top_p`.
+    top_p: Optional cutoff probability. A scalar or a JTensor. Use the smallest
+      number of logits whose cumulative sum of probs adds up to (at least)
+      top_p. If it is a JTensor, it has shape [batch_size * num_samples, 1]
     topk_is_sorted: Whether topk logits are sorted.
     logits_sum: logits sum.
 
   Returns:
-    A tuple of next_token_id of shape [batch_size * num_samples] and
-      logprobs_at_new_ids of shape [batch_size * num_samples] computed from the
-      top_k_logits.  next_token_id of shape [batch_size * num_samples].
+    A tuple of top_p_logits, top_k_logprobs, top_k_indices for sampling.
   """
   if top_p is None:
     top_p_logits = top_k_logits
@@ -385,19 +453,113 @@ def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  
         logits_sorted_in_descending_order=topk_is_sorted,
     )
 
-  # Add gumbel noise.
-  if temperature is None:
-    temperature = 0.0
-  gumbel_noise_shape = list(top_p_logits.shape)
-  gumbel_noise = _batch_rngs_random_gumbel(prng_key, gumbel_noise_shape).astype(
-      top_k_logits.dtype
+  # Compute log probabilities from top_k logits
+  top_k_logprobs = jax.nn.log_softmax(top_k_logits.astype(jnp.float32))
+  return top_p_logits, top_k_logprobs, top_k_indices
+
+
+def _apply_top_k_and_top_p(
+    logits: JTensor,
+    top_k: int,
+    top_p: float | JTensor | None = None,
+    per_example_top_k: JTensor | None = None,
+    global_normalize: bool = False,
+    top_k_recall_target: float = 1.0,
+) -> tuple[JTensor, JTensor, JTensor]:
+  """Get top_k and top_p logits.
+
+  When both top_k and top_p are defined, top_k will be applied first.
+
+  Args:
+    logits: Logits of current step. This is a JTensor of [batch_size *
+      num_samples, vocab_size].
+    top_k: If nonzero, use top-k sampling, only selecting among the most likely
+      k tokens at each step. top_k is set to the maximum k value for sampling
+      decode.
+    top_p: Optional cutoff probability. A scalar or a JTensor. Use the smallest
+      number of logits whose cumulative sum of probs adds up to (at least)
+      top_p. If it is a JTensor, it has shape [batch_size * num_samples, 1]
+    per_example_top_k: Optional per example top_k of shape [batch_size *
+      num_samples]. The value of per_example_top_k should be smaller or equal to
+      `top_k` and larger than 0.
+    global_normalize: Normalize the logits over top-k logits or globally in the
+      whole vocabulary.
+    top_k_recall_target: if less than 1.0, use TPU optimized approx_top_k with
+      specified recall target for the top_k sampling. See
+      https://arxiv.org/abs/2206.14286 for more details.
+
+  Returns:
+    A tuple of top_p_logits, top_k_logprobs, top_k_indices for sampling.
+  """
+  # TopK of shape [batch_size * num_samples, top_k]
+  top_k_logits, top_k_indices = get_top_k(
+      logits, top_k, per_example_top_k, top_k_recall_target
+  )
+  if global_normalize:
+    logits_sum = jnp.sum(logits.astype(jnp.float32), axis=-1, keepdims=True)
+  else:
+    logits_sum = None
+  return _apply_top_p_given_top_k(
+      top_k_logits=top_k_logits,
+      top_k_indices=top_k_indices,
+      top_p=top_p,
+      topk_is_sorted=True,
+      logits_sum=logits_sum,
   )
 
-  # Apply gumbel noise.
-  logits_with_noise = top_p_logits + gumbel_noise * temperature
-  argmax_ids_in_topk = jnp.argmax(logits_with_noise, axis=-1)
-  # Computes log probabilities from top_k logits
-  top_k_logprobs = jax.nn.log_softmax(top_k_logits.astype(jnp.float32))
+
+# TODO(b/299978151): Consider removing or updating this public API.
+def sample_from_top_p_given_top_k(
+    top_k_logits: JTensor,
+    top_k_indices: JTensor,
+    prng_key: pytypes.PRNGKey,
+    temperature: JTensor | float,
+    top_p: float | JTensor | None = None,
+    topk_is_sorted: bool = True,
+    logits_sum: JTensor | None = None,
+    logits_sampler: BaseLogitsSampler | None = None,
+    decode_loop_state: NestedMap | None = None,
+) -> Sequence[JTensor]:
+  """Sample decode algorithm from TopP given output from TopK.
+
+  Args:
+    top_k_logits: Top k logits.
+    top_k_indices: Indices corresponding to top-k logits.
+    prng_key: The prng key.
+    temperature: Temperature of sampling decoding. It could be a float or a
+      JTensor of shape [batch_size * num_samples].
+    top_p: See params of `sample_from_top_k_and_top_p`.
+    topk_is_sorted: Whether topk logits are sorted.
+    logits_sum: logits sum.
+    logits_sampler: Callable to sample token from given logits along with
+      rng_key, temperature and loop state information.
+    decode_loop_state: Decode loop state provides access to all the relevant
+      sampling loop information.
+
+  Returns:
+    A tuple of
+      next_token_id of shape [batch_size * num_samples]
+      logprobs_at_new_ids of shape [batch_size * num_samples] computed from
+        the top_k_logits.
+  """
+  if not logits_sampler:
+    logits_sampler = DefaultCategoricalLogitsSampler()
+  top_p_logits, top_k_logprobs, top_k_indices = _apply_top_p_given_top_k(
+      top_k_logits,
+      top_k_indices,
+      top_p,
+      topk_is_sorted,
+      logits_sum,
+  )
+
+  # Add gumbel noise.
+  argmax_ids_in_topk, _ = logits_sampler(
+      prng_key,
+      top_p_logits,
+      top_k_indices,
+      temperature,
+      decode_loop_state,
+  )
 
   return (
       _get_argmax_ids(argmax_ids_in_topk, top_k_indices),
@@ -405,6 +567,7 @@ def sample_from_top_p_given_top_k(  # pytype: disable=annotation-type-mismatch  
   )
 
 
+# TODO(b/299978151): Consider removing or updating this public API.
 def sample_from_top_k_and_top_p(
     logits: JTensor,
     prng_key: pytypes.PRNGKey,
@@ -414,6 +577,8 @@ def sample_from_top_k_and_top_p(
     per_example_top_k: JTensor | None = None,
     global_normalize: bool = False,
     top_k_recall_target: float = 1.0,
+    logits_sampler: BaseLogitsSampler | None = None,
+    decode_loop_state: NestedMap | None = None,
 ) -> Sequence[JTensor]:
   """Sample decode algorithm from TopK and TopP.
 
@@ -439,29 +604,39 @@ def sample_from_top_k_and_top_p(
     top_k_recall_target: if less than 1.0, use TPU optimized approx_top_k with
       specified recall target for the top_k sampling. See
       https://arxiv.org/abs/2206.14286 for more details.
+    logits_sampler: Callable to sample tokens given logits along with rng_key,
+      temperature and loop state information.
+    decode_loop_state: Decode loop state provides access to all the relevant
+      sampling loop information.
 
   Returns:
-    A tuple of next_token_id of shape [batch_size * num_samples] and
-      logprobs_at_new_ids of shape [batch_size * num_samples] computed from the
-      top_k_logits.  next_token_id of shape [batch_size * num_samples].
+    A tuple of
+      next_token_id of shape [batch_size * num_samples]
+      logprobs_at_new_ids of shape [batch_size * num_samples] computed from
+        the top_k_logits.
   """
-
-  # TopK of shape [batch_size * num_samples, top_k]
-  top_k_logits, top_k_indices = get_top_k(
-      logits, top_k, per_example_top_k, top_k_recall_target
+  if not logits_sampler:
+    logits_sampler = DefaultCategoricalLogitsSampler()
+  top_p_logits, top_k_logprobs, top_k_indices = _apply_top_k_and_top_p(
+      logits=logits,
+      top_k=top_k,
+      top_p=top_p,
+      per_example_top_k=per_example_top_k,
+      global_normalize=global_normalize,
+      top_k_recall_target=top_k_recall_target,
   )
-  if global_normalize:
-    logits_sum = jnp.sum(logits.astype(jnp.float32), axis=-1, keepdims=True)
-  else:
-    logits_sum = None
-  return sample_from_top_p_given_top_k(
-      top_k_logits,
-      top_k_indices,
+
+  argmax_ids_in_topk, _ = logits_sampler(
       prng_key,
+      top_p_logits,
+      top_k_indices,
       temperature,
-      top_p,
-      topk_is_sorted=True,
-      logits_sum=logits_sum,
+      decode_loop_state,
+  )
+
+  return (
+      _get_argmax_ids(argmax_ids_in_topk, top_k_indices),
+      _get_argmax_ids(argmax_ids_in_topk, top_k_logprobs),
   )
 
 
@@ -584,6 +759,7 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
       https://arxiv.org/abs/2206.14286 for more details.
     use_top_k_for_logprobs: computes the log probability from the top k logits
       instead of all logits.
+    logits_sampler: BaseLogitsSampler function used to sample ids given logits.
   """
 
   top_k: int = 40
@@ -592,6 +768,9 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
   global_normalize: bool = False
   top_k_recall_target: float = 1.0
   use_top_k_for_logprobs: bool = False
+  logits_sampler: BaseLogitsSampler = pax_fiddle.instance_field(
+      DefaultCategoricalLogitsSampler
+  )
 
   def __call__(
       self,
@@ -604,11 +783,10 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
       gumbel_prng_key: JTensor | None = None,
   ) -> NestedMap:
     """The default sampling logic implementing top-K and top-P sampling."""
-    del decode_loop_state
     assert self.top_k >= 0
     input_logits = logits
 
-    def _get_prng_key(prng_key):
+    def _get_prng_key(prng_key: JTensor | None) -> JTensor:
       if prng_key is None:
         # Default method, use `next_prng_key` to generate noise.
         return model.next_prng_key()
@@ -632,37 +810,60 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
     if self.epsilon_p > 0.0:
       logits = epsilon_mask_logits(logits, self.epsilon_p)
 
+    # TODO(vbachani): Revisit, maybe combine top_k various cases.
     if self.top_k > 1:
-      new_ids, logprobs_at_new_ids = sample_from_top_k_and_top_p(
-          logits,
-          _get_prng_key(gumbel_prng_key),
-          temperature=temperature,
+      top_p_logits, top_k_logprobs, top_k_indices = _apply_top_k_and_top_p(
+          logits=logits,
           top_k=self.top_k,
           top_p=top_p,
           per_example_top_k=per_example_top_k,
           global_normalize=self.global_normalize,
           top_k_recall_target=self.top_k_recall_target,
       )
+
+      argmax_ids_in_topk, state_vars_to_update = self.logits_sampler(
+          _get_prng_key(gumbel_prng_key),
+          top_p_logits,
+          top_k_indices,
+          temperature,
+          decode_loop_state,
+      )
+
+      new_ids = _get_argmax_ids(argmax_ids_in_topk, top_k_indices)
+
       if self.use_top_k_for_logprobs:
+        logprobs_at_new_ids = _get_argmax_ids(
+            argmax_ids_in_topk, top_k_logprobs
+        )
         return NestedMap(
             new_ids=new_ids,
             logits=input_logits,
             logprobs_at_new_ids=logprobs_at_new_ids,
+            **state_vars_to_update,
         )
       else:
         return NestedMap(
-            new_ids=new_ids,
-            logits=input_logits,
+            new_ids=new_ids, logits=input_logits, **state_vars_to_update
         )
     elif self.top_k == 0:
       if top_p is not None:
         logits = top_p_mask_logits(logits, top_p)
       if isinstance(temperature, JTensor) or temperature > 0.0:
-        gumbel_noise = _batch_rngs_random_gumbel(
-            _get_prng_key(gumbel_prng_key), logits.shape
-        ).astype(logits.dtype)
-        logits += gumbel_noise * temperature
-      new_ids = jnp.argmax(logits, axis=1)
+        new_ids, state_vars_to_update = self.logits_sampler(
+            _get_prng_key(gumbel_prng_key),
+            logits,
+            None,
+            temperature,
+            decode_loop_state,
+        )
+      else:
+        new_ids = jnp.argmax(logits, axis=1)
+        state_vars_to_update = NestedMap()
+      return NestedMap(
+          new_ids=new_ids,
+          logits=input_logits,
+          **state_vars_to_update,
+      )
     else:  #  k == 1
       new_ids = jnp.argmax(logits, axis=1)
     return NestedMap(new_ids=new_ids, logits=input_logits)

@@ -369,6 +369,67 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     # gumbel noise is relatively smaller compared to the logits value.
     self.assertArraysEqual(new_ids, np.array([1, 4, 1, 0], dtype=np.int32))
 
+  def test_apply_top_k(self):
+    """Tests apply_top_k_and_top_p helper for top_k sampling only."""
+    logits = jnp.array(
+        [
+            [0.1, 0.7, 0.2, 0, 0],
+            [0.3, 0.1, 0, 0.2, 0.5],
+            [0.2, 0.6, 0.1, 0, 0.1],
+            [0.5, 0, 0.5, 0, 0],
+        ],
+        dtype=jnp.float32,
+    )
+    top_p_logits, top_k_logprobs, top_k_indices = (
+        sample_decode._apply_top_k_and_top_p(logits, top_k=2)
+    )
+    expected_top_k_logits = np.array(
+        [[0.7, 0.2], [0.5, 0.3], [0.6, 0.2], [0.5, 0.5]], dtype=np.float32
+    )
+    self.assertArraysEqual(
+        top_k_logprobs, jax.nn.log_softmax(expected_top_k_logits)
+    )
+    self.assertArraysEqual(
+        top_k_indices,
+        np.array([[1, 2], [4, 0], [1, 0], [0, 2]], dtype=np.int32),
+    )
+    self.assertArraysEqual(top_p_logits, expected_top_k_logits)
+
+  def test_apply_top_k_and_top_p(self):
+    logits = jnp.array(
+        [
+            [0.1, 0.7, 0.2, 0, 0],
+            [0.3, 0.1, 0, 0.2, 0.5],
+            [0.2, 0.6, 0.1, 0, 0.1],
+            [0.5, 0, 0.5, 0, 0],
+        ],
+        dtype=jnp.float32,
+    )
+    top_p_logits, top_k_logprobs, top_k_indices = (
+        sample_decode._apply_top_k_and_top_p(logits, top_k=2, top_p=0.5)
+    )
+    self.assertArraysEqual(
+        top_k_logprobs,
+        jax.nn.log_softmax(
+            np.array(
+                [[0.7, 0.2], [0.5, 0.3], [0.6, 0.2], [0.5, 0.5]],
+                dtype=np.float32,
+            )
+        ),
+    )
+    self.assertArraysEqual(
+        top_k_indices,
+        np.array([[1, 2], [4, 0], [1, 0], [0, 2]], dtype=np.int32),
+    )
+    large_neg = py_utils.get_large_negative_number(np.float32)
+    self.assertAllClose(
+        top_p_logits,
+        np.array(
+            [[0.7, large_neg], [0.5, large_neg], [0.6, large_neg], [0.5, 0.5]],
+            dtype=np.float32,
+        ),
+    )
+
   def test_sample_from_top_k_dyn_temp(self):
     logits = jnp.array(
         [
