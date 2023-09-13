@@ -286,6 +286,7 @@ class TransformerLm(base_layer.BaseLayer):
       dcn_mesh_shape=None,
       batch_axes=None,
       mesh_axis_names,
+      seq_axis=None,
       training_optimized,
   ):
     """Set Canonical sharding params.
@@ -318,7 +319,7 @@ class TransformerLm(base_layer.BaseLayer):
     if batch_axes is None:
       batch_axes = (replica_axis, data_axis)
     bld = (
-        [batch_axes, None, mdl_axis]
+        [batch_axes, seq_axis, mdl_axis]
         if training_optimized
         else [batch_axes, None, None]
     )
@@ -328,26 +329,31 @@ class TransformerLm(base_layer.BaseLayer):
         else [batch_axes, None, None, None]
     )
 
+    if seq_axis is None:
+      w_data_axes = data_axis
+    else:
+      w_data_axes = (data_axis, seq_axis)
+
     # w_df: sharding for weight of ffn0, shape (d, f). ff1 weights will be
     # inferred from it.
-    w_df = [data_axis, mdl_axis]
+    w_df = [w_data_axes, mdl_axis]
     # w_dnh: Sharding of qkv projection weights, shape (d, num_heads,
     # per_head_size)
-    w_dnh = [data_axis, mdl_axis, None]
+    w_dnh = [w_data_axes, mdl_axis, None]
     # w_emh: sharding for first MoE FFN weight, shape (e, m, h). The second MoE
     # ffn weight will be inferred from it.
     w_emh = [data_axis, None, mdl_axis]
     # w_vd: sharding of the embedding weight of (vocab_size, d).
-    w_vd = [mdl_axis, data_axis]
+    w_vd = [mdl_axis, w_data_axes]
     # a_bld: sharding of output of ffn/attention, shape (b, l, d).
     a_bld = bld
     # a_blf: sharding of output of ffn0, shape (b, l, f).
-    a_blf = [batch_axes, None, mdl_axis]
+    a_blf = [batch_axes, seq_axis, mdl_axis]
     # a_blnh: sharding of the attention activation of shape (b, l, num_heads,
     # per_head_size).
-    a_blnh = [batch_axes, None, mdl_axis, None]
+    a_blnh = [batch_axes, seq_axis, mdl_axis, None]
     # a_blv: sharding of the logits activation of shape (b, l, vocab_size).
-    a_blv = [batch_axes, None, mdl_axis]
+    a_blv = [batch_axes, seq_axis, mdl_axis]
     # a_egch: sharding of the output of first MoE FFN, shape (e, g, c, h).
     a_egch = [data_axis, None, None, mdl_axis]
     # a_egcm: sharding of the output of second MoE FFN, shape (e, g, c, m).
