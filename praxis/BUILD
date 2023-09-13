@@ -288,7 +288,7 @@ pytype_strict_library(
         ":decoder_utils",
         ":pax_fiddle",
         ":py_utils",
-        ":pytypes",
+        ":token_samplers",
         # Implicit flax.core dependency.
         # Implicit jax dependency.
     ],
@@ -302,6 +302,20 @@ pytype_strict_library(
         ":pax_fiddle",
         # Implicit jax dependency.
         # Implicit optax dependency.
+    ],
+)
+
+pytype_strict_library(
+    name = "token_samplers",
+    srcs = ["token_samplers.py"],
+    deps = [
+        ":base_hyperparams",
+        ":base_layer",
+        ":decoder_utils",
+        ":pax_fiddle",
+        ":py_utils",
+        ":pytypes",
+        # Implicit jax dependency.
     ],
 )
 
@@ -525,6 +539,20 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit lingvo.core.py_utils dependency.
         # Implicit lingvo.core.schedule dependency.
+    ],
+)
+
+py_strict_test(
+    name = "token_samplers_test",
+    srcs = ["token_samplers_test.py"],
+    deps = [
+        ":base_layer",
+        ":py_utils",
+        ":test_utils",
+        ":token_samplers",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
     ],
 )
 
