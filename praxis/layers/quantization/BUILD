@@ -48,6 +48,7 @@ pytype_strict_library(
         ":layers",
         ":quantization_hparams",
         ":utils",
+        # Internal dependency for internal quantization hyper parameters.
         # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -577,6 +578,7 @@ pytype_strict_library(
         ":operations",
         ":quantization_hparams",
         ":utils",
+        # Internal dependency for internal quantization support.
         # Implicit absl.logging dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -605,6 +607,7 @@ pytype_strict_library(
     name = "quantization_hparams",
     srcs = ["quantization_hparams.py"],
     deps = [
+        # Internal dependency for internal quantization hyper parameters.
         # Implicit jax dependency.
     ],
 )

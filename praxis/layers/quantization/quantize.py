@@ -43,6 +43,8 @@ from praxis.layers import quantization
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import utils
 
+# Internal import for internal quantization hyper parameters.
+
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationType = quantization_hparams.QuantizationType
@@ -301,6 +303,7 @@ def for_transformer(
     dtype: jnp.dtype = jnp.int8,
     quantize_init_from_checkpoint_rules_task: bool = False,
     block_size: int = 0,
+    # Internal quantization parameters.
 ):
   """Find and quantize transformer.
 
@@ -374,6 +377,7 @@ def for_transformer(
               quantize_ngrammer_embedding=quantize_ngrammer_embedding,
               dtype=dtype,
               block_size=block_size,
+              # Pass internal quantization parameters.
           )
         return task_p
 
@@ -475,6 +479,7 @@ def set_transformer_quantization(
     block_size: int = 0,
     use_int4_packed_weights: bool = True,
     int4_packed_weights_container_dtype: jnp.dtype = jnp.int32,
+    # Internal quantization parameters.
 ):
   """Sets quantization parameters for TransformerLm in 'config'.
 
@@ -511,6 +516,7 @@ def set_transformer_quantization(
       block_size=block_size,
       use_int4_packed_weights=use_int4_packed_weights,
       int4_packed_weights_container_dtype=int4_packed_weights_container_dtype,
+      # Pass internal quantization parameters.
   )
   act_quantization_params = (
       None if weight_quant_only else ActQuantizationParams(precision=num_bits)

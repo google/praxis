@@ -232,6 +232,7 @@ class Linear(  # pytype: disable=signature-mismatch
             percentile=self.quantization.weight_params.clipping_coeff,
             use_symmetric=self.quantization.weight_params.use_symmetric,
         )
+    # Internal quantization type support.
     elif self.quantization.quantization_type == QuantizationType.AQT:
       if self._do_static_activation_quantization():
         raise NotImplementedError(

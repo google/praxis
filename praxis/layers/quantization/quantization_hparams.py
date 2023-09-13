@@ -20,6 +20,8 @@ import enum
 
 import jax.numpy as jnp
 
+# Internal import for internal quantization hyper parameters.
+
 
 @enum.unique
 class QuantizationType(str, enum.Enum):
@@ -34,6 +36,7 @@ class QuantizationType(str, enum.Enum):
   AQT = 'aqt'
   FQ = 'fq'
   FQ_VN = 'fq_vn'
+  # Internal quantization type.
 
 
 @enum.unique
@@ -152,6 +155,7 @@ class WeightQuantizationParams:
   kurt_loss_weight: float | None = None
   kurt: float = 1.8
   block_size: int = 0
+  # Internal quantization parameters.
 
 
 @dataclasses.dataclass

@@ -30,6 +30,8 @@ from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import utils
 
+# Internal import for internal quantization support.
+
 
 WeightHParams = base_layer.WeightHParams
 JTensor = pytypes.JTensor
@@ -229,6 +231,7 @@ class QuantizationLayer(base_layer.BaseLayer):
         )
         out = jnp.einsum(eqn, x, w)
         return out
+      # Internal quantization type support.
       # Fall back to regular einsum.
       return jnp.einsum(eqn, x, w)
 
