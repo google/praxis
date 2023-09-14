@@ -59,7 +59,6 @@ class DecoderHParams:
     use_extra_input_kwargs: if True, pass through any extra_input_kwargs from
       the input batch to the decode data.
   """
-  # TODO(b/229679837): remove seqlen and uses max_decode_steps.
   seqlen: int = 0
   min_prefix_len: int = 5
   eos_id: int | Sequence[int] = 2
