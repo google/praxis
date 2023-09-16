@@ -35,6 +35,7 @@ from praxis.layers import stochastics
 
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
+instance_field = base_layer.instance_field
 template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 JTensor = pytypes.JTensor
@@ -191,7 +192,11 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   output_proj_use_nhd_shape: bool = False
   internal_enable_query_scale: bool = True
   atten_logit_cap: float = 0.0
+  # TODO(b/300717814): Remove redundant `use_rotary_position_emb` field.
   use_rotary_position_emb: bool = False
+  rotary_position_emb_tpl: LayerTpl = instance_field(
+      embedding_softmax.RotaryPositionalEmbedding
+  )
   relative_bias_tpl: LayerTpl | None = template_field(None)
   attention_extra_logit: float | None = None
   dconv_qkv: bool = False
@@ -303,7 +308,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     )
 
     if self.use_rotary_position_emb:
-      pos_emb_p = pax_fiddle.Config(embedding_softmax.RotaryPositionalEmbedding)
+      pos_emb_p = self.rotary_position_emb_tpl.clone()
       pos_emb_p.embedding_dims = dim_per_head
       self.create_child('rotary_position_emb', pos_emb_p)
 
