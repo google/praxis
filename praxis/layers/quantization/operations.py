@@ -498,6 +498,7 @@ def fakequant_einsum(
   Returns:
     The nudged weight tensor.
   """
+  ret_type = t.dtype
   contract_dims = eqn_to_weight_contract_dims(eqn)
   original_shape = list(t.shape)
   if block_size > 0:
@@ -535,7 +536,7 @@ def fakequant_einsum(
     res = jnp.subtract(res, zp)
   if block_size > 0:
     res = jnp.reshape(res, original_shape)
-  return res.astype(t.dtype)
+  return res.astype(ret_type)
 
 
 def reduce_precision_activation(
