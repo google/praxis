@@ -504,6 +504,7 @@ py_strict_test(
         "//praxis:test_utils",
         "//praxis/layers/quantization:linears",
         "//praxis/layers/quantization/sparsity:sparsity_hparams",
+        "//praxis/layers/quantization/sparsity:sparsity_modes",
     ],
 )
 

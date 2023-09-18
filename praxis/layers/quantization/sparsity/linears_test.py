@@ -30,6 +30,7 @@ from praxis import test_utils
 from praxis.layers import linears
 from praxis.layers.quantization import linears as slinears
 from praxis.layers.quantization.sparsity import sparsity_hparams
+from praxis.layers.quantization.sparsity import sparsity_modes
 
 instantiate = base_layer.instantiate
 NON_TRAINABLE = base_layer.NON_TRAINABLE
@@ -42,22 +43,25 @@ WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 SparsityHParams = sparsity_hparams.SparsityHParams
 WeightSparsityParams = sparsity_hparams.WeightSparsityParams
-SparsityMode = sparsity_hparams.SparsityMode
 SparsityType = sparsity_hparams.SparsityType
+InferenceMode = sparsity_modes.InferenceMode
+MaterializeMode = sparsity_modes.MaterializeMode
+TrainingMode = sparsity_modes.TrainingMode
+FewShotMode = sparsity_modes.FewShotMode
 
 
 def _generate_sparsity_types_modes() -> Sequence[dict[str, Any]]:
-  keys = ['testcase_name', 'sparsity_type', 'mode']
+  keys = ['testcase_name', 'sparsity_type', 'mode_name', 'mode']
   types = [SparsityType.STRUCTURED_NM]
   modes = [
-      SparsityMode.INFERENCE,
-      SparsityMode.MATERIALIZE,
-      SparsityMode.TRAINING,
+      ('inference_mode', pax_fiddle.Config(InferenceMode)),
+      ('materialize_mode', pax_fiddle.Config(MaterializeMode)),
+      ('training_mode', pax_fiddle.Config(TrainingMode)),
   ]
   cases = []
   for case in itertools.product(types, modes):
-    name = case[0].value + '_' + case[1].value
-    cases.append([name] + list(case))
+    name = case[0].value + '_' + case[1][0]
+    cases.append([name, case[0], case[1][0], case[1][1]])
 
   return [dict(zip(keys, case)) for case in cases]
 
@@ -70,14 +74,15 @@ class SparseLinearTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.named_parameters(_generate_sparsity_types_modes())
-  def test_linear_sparse(self, sparsity_type, mode):
+  def test_linear_sparse(self, sparsity_type, mode_name, mode):
     p = pax_fiddle.Config(
         slinears.Linear,
         name='_linear',
         input_dims=4,
         output_dims=4,
         quantization=None,
-        sparsity=SparsityHParams(
+        sparsity=pax_fiddle.Config(
+            SparsityHParams,
             sparsity_type=sparsity_type,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
             mode=mode,
@@ -96,7 +101,7 @@ class SparseLinearTest(test_utils.TestCase):
       initial_vars = linear.init(prng_key, inputs)
       initial_vars[PARAMS]['w'] = weights
 
-      if mode != SparsityMode.INFERENCE:
+      if mode_name != 'inference_mode':
         self.assertArraysEqual(
             initial_vars[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
             jnp.array([
@@ -108,7 +113,7 @@ class SparseLinearTest(test_utils.TestCase):
         )
 
       # Materialize mode do not making pruning or mask updating.
-      if mode == SparsityMode.MATERIALIZE:
+      if mode_name == 'materialize_mode':
         initial_vars[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX] = jnp.array([
             [False, False, True, True],
             [True, True, False, False],
@@ -117,7 +122,7 @@ class SparseLinearTest(test_utils.TestCase):
         ])
       outputs, state = linear.apply(initial_vars, inputs, mutable=True)
     self.assertEqual(outputs.shape, (2, 4))
-    if mode != SparsityMode.INFERENCE:
+    if mode_name != 'inference_mode':
       self.assertArraysEqual(
           state[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
           jnp.array([
@@ -143,13 +148,13 @@ class SparseLinearTest(test_utils.TestCase):
         input_dims=4,
         output_dims=4,
         quantization=None,
-        sparsity=SparsityHParams(
+        sparsity=pax_fiddle.Config(
+            SparsityHParams,
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-            mode=SparsityMode.FEWSHOT,
-            target_step=0,
-            num_shots=2,
-            mask_update_interval=2,  # Update mask every 2 steps
+            mode=pax_fiddle.Config(
+                FewShotMode, num_shots=2, mask_update_interval=2, target_step=0
+            ),  # Update mask every 2 steps
         ),
     )
     linear = instantiate(p)
@@ -226,17 +231,23 @@ class SparseLinearTest(test_utils.TestCase):
 
   def test_sparsity_hparams_asserts(self):
     with self.assertRaises(AssertionError):
-      SparsityHParams(
-          sparsity_type=SparsityType.STRUCTURED_NM,
-          weight_params=WeightSparsityParams(prune_rate=0.2),
-          mode=SparsityMode.INFERENCE,
+      instantiate(
+          pax_fiddle.Config(
+              SparsityHParams,
+              sparsity_type=SparsityType.STRUCTURED_NM,
+              weight_params=WeightSparsityParams(prune_rate=0.2),
+              mode=pax_fiddle.Config(InferenceMode),
+          )
       )
 
     with self.assertRaises(AssertionError):
-      SparsityHParams(
-          sparsity_type=SparsityType.UNSTRUCTURED,
-          weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-          mode=SparsityMode.INFERENCE,
+      instantiate(
+          pax_fiddle.Config(
+              SparsityHParams,
+              sparsity_type=SparsityType.UNSTRUCTURED,
+              weight_params=WeightSparsityParams(prune_rate=(2, 4)),
+              mode=pax_fiddle.Config(InferenceMode),
+          )
       )
 
 
@@ -277,10 +288,11 @@ class LinearLayersConsistencyTest(test_utils.TestCase):
         slinears.Linear,
         name='_linear',
         quantization=None,
-        sparsity=SparsityHParams(
+        sparsity=pax_fiddle.Config(
+            SparsityHParams,
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-            mode=SparsityMode.INFERENCE,
+            mode=pax_fiddle.Config(InferenceMode),
         ),
     )
     for p in [p_f, p_s]:

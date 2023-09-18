@@ -27,6 +27,7 @@ from praxis import test_utils
 from praxis.layers import linears
 from praxis.layers.quantization.sparsity import sparsifier
 from praxis.layers.quantization.sparsity import sparsity_hparams
+from praxis.layers.quantization.sparsity import sparsity_modes
 
 instantiate = base_layer.instantiate
 NON_TRAINABLE = base_layer.NON_TRAINABLE
@@ -39,8 +40,12 @@ WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 SparsityHParams = sparsity_hparams.SparsityHParams
 WeightSparsityParams = sparsity_hparams.WeightSparsityParams
-SparsityMode = sparsity_hparams.SparsityMode
 SparsityType = sparsity_hparams.SparsityType
+InferenceMode = sparsity_modes.InferenceMode
+FewShotMode = sparsity_modes.FewShotMode
+OneShotMode = sparsity_modes.OneShotMode
+MaterializeMode = sparsity_modes.MaterializeMode
+TrainingMode = sparsity_modes.TrainingMode
 
 
 class SparseLinearTestLayer(sparsifier.SparsityBaseLayer, linears.Linear):
@@ -72,22 +77,32 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.named_parameters(
-      ('training_mode', 0, 1, 0, SparsityMode.TRAINING),
-      ('inference_mode', 0, 1, 0, SparsityMode.INFERENCE),
-      ('materialize_mode', 0, 1, 0, SparsityMode.MATERIALIZE),
-      ('oneshot_mode', 1, 1, 10, SparsityMode.ONESHOT),
-      ('fewshot_mode', 10, 2, 20, SparsityMode.FEWSHOT),
+      ('training_mode', 'training_mode', pax_fiddle.Config(TrainingMode)),
+      ('inference_mode', 'inference_mode', pax_fiddle.Config(InferenceMode)),
+      (
+          'materialize_mode',
+          'materialize_mode',
+          pax_fiddle.Config(MaterializeMode),
+      ),
+      (
+          'oneshot_mode',
+          'oneshot_mode',
+          pax_fiddle.Config(OneShotMode, target_step=10),
+      ),
+      (
+          'fewshot_mode',
+          'fewshot_mode',
+          pax_fiddle.Config(
+              FewShotMode, num_shots=10, mask_update_interval=2, target_step=20
+          ),
+      ),
   )
-  def test_create_aux_variables(
-      self, num_shots, mask_update_interval, target_step, mode
-  ):
-    sparsity_p = sparsity_hparams.SparsityHParams(
+  def test_create_aux_variables(self, mode_name, mode):
+    sparsity_p = pax_fiddle.Config(
+        SparsityHParams,
         sparsity_type=SparsityType.STRUCTURED_NM,
         mode=mode,
         weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-        num_shots=num_shots,
-        mask_update_interval=mask_update_interval,
-        target_step=target_step,
     )
 
     p = pax_fiddle.Config(
@@ -97,20 +112,18 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
     prng_key = jax.random.PRNGKey(seed=123)
     inputs = jnp.array([[1, 2, 3], [4, 5, 6]], dtype=p.dtype)
     initial_var = test_layer.init(prng_key, inputs)
-    self.assertEqual(test_layer.sparsity.num_shots, num_shots)
-    self.assertEqual(
-        test_layer.sparsity.mask_update_interval, mask_update_interval
-    )
-    self.assertEqual(test_layer.sparsity.target_step, target_step)
-    if mode == SparsityMode.TRAINING or mode == SparsityMode.MATERIALIZE:
+    if mode_name == 'training_mode' or mode_name == 'materialize_mode':
       self.assertEqual(initial_var[NON_TRAINABLE]['num_shots'], -1)
-    elif mode != SparsityMode.INFERENCE:
-      self.assertEqual(initial_var[NON_TRAINABLE]['num_shots'], num_shots)
+    elif mode_name == 'oneshot_mode':
+      self.assertEqual(initial_var[NON_TRAINABLE]['num_shots'], 1)
+    elif mode_name == 'fewshot_mode':
+      self.assertEqual(initial_var[NON_TRAINABLE]['num_shots'], 10)
 
   def test_masked_weight_gradient(self):
-    sparsity_p = sparsity_hparams.SparsityHParams(
+    sparsity_p = pax_fiddle.Config(
+        SparsityHParams,
         sparsity_type=SparsityType.STRUCTURED_NM,
-        mode=SparsityMode.MATERIALIZE,
+        mode=pax_fiddle.Config(MaterializeMode),
         weight_params=WeightSparsityParams(prune_rate=(2, 4)),
     )
 
@@ -169,11 +182,11 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
       self.assertArraysEqual(grads[PARAMS]['w'] != 0, fixed_mask)
 
   def test_training_mode(self):
-    sparsity_p = sparsity_hparams.SparsityHParams(
+    sparsity_p = pax_fiddle.Config(
+        SparsityHParams,
         sparsity_type=SparsityType.STRUCTURED_NM,
-        mode=SparsityMode.TRAINING,
+        mode=pax_fiddle.Config(TrainingMode, target_step=2),
         weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-        target_step=2,
     )
 
     p = pax_fiddle.Config(
@@ -324,18 +337,12 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
           ),
       )
 
-  @parameterized.named_parameters(
-      ('materialize_mode_test1', 1, 1, 3),
-      ('materialize_mode_test2', 5, 1, 5),
-  )
-  def test_materialize_mode(self, num_shots, mask_update_interval, target_step):
-    sparsity_p = sparsity_hparams.SparsityHParams(
+  def test_materialize_mode(self):
+    sparsity_p = pax_fiddle.Config(
+        SparsityHParams,
         sparsity_type=SparsityType.STRUCTURED_NM,
-        mode=SparsityMode.MATERIALIZE,
+        mode=pax_fiddle.Config(MaterializeMode),
         weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-        num_shots=num_shots,
-        mask_update_interval=mask_update_interval,
-        target_step=target_step,
     )
 
     p = pax_fiddle.Config(
@@ -403,17 +410,12 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
         )
         params = copy.deepcopy(updated_params)
 
-  @parameterized.named_parameters(
-      ('inference_mode_test1', 1, 1, 3), ('inference_mode_test2', 5, 1, 5)
-  )
-  def test_inference_mode(self, num_shots, mask_update_interval, target_step):
-    sparsity_p = sparsity_hparams.SparsityHParams(
+  def test_inference_mode(self):
+    sparsity_p = pax_fiddle.Config(
+        SparsityHParams,
         sparsity_type=SparsityType.STRUCTURED_NM,
-        mode=SparsityMode.INFERENCE,
+        mode=pax_fiddle.Config(InferenceMode),
         weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-        num_shots=num_shots,
-        mask_update_interval=mask_update_interval,
-        target_step=target_step,
     )
 
     p = pax_fiddle.Config(
@@ -448,12 +450,11 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
         params = copy.deepcopy(updated_params)
 
   def test_one_shot_mode(self):
-    sparsity_p = sparsity_hparams.SparsityHParams(
+    sparsity_p = pax_fiddle.Config(
+        SparsityHParams,
         sparsity_type=SparsityType.STRUCTURED_NM,
-        mode=SparsityMode.ONESHOT,
+        mode=pax_fiddle.Config(OneShotMode, target_step=2),
         weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-        num_shots=1,
-        target_step=2,
     )
 
     p = pax_fiddle.Config(
@@ -637,13 +638,13 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
       )
 
   def test_few_shot_mode(self):
-    sparsity_p = sparsity_hparams.SparsityHParams(
+    sparsity_p = pax_fiddle.Config(
+        SparsityHParams,
         sparsity_type=SparsityType.STRUCTURED_NM,
-        mode=SparsityMode.FEWSHOT,
+        mode=pax_fiddle.Config(
+            FewShotMode, num_shots=2, mask_update_interval=2, target_step=2
+        ),
         weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-        num_shots=2,
-        mask_update_interval=2,
-        target_step=2,
     )
 
     p = pax_fiddle.Config(
@@ -932,11 +933,11 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
       ('column_wise', 'C'),
   )
   def test_sparsity_order(self, sparsity_order):
-    sparsity_p = sparsity_hparams.SparsityHParams(
+    sparsity_p = pax_fiddle.Config(
+        SparsityHParams,
         sparsity_type=SparsityType.STRUCTURED_NM,
-        mode=SparsityMode.TRAINING,
+        mode=pax_fiddle.Config(TrainingMode, target_step=0),
         weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-        target_step=0,
         order=sparsity_order,
     )
 

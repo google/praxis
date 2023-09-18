@@ -30,6 +30,7 @@ from praxis import test_utils
 from praxis.layers import attentions
 from praxis.layers.quantization import attentions as sattentions
 from praxis.layers.quantization.sparsity import sparsity_hparams
+from praxis.layers.quantization.sparsity import sparsity_modes
 
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 SPARSITY_NAME_POSTFIX = base_layer.SPARSITY_NAME_POSTFIX
@@ -37,24 +38,27 @@ WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
 SparsityHParams = sparsity_hparams.SparsityHParams
 WeightSparsityParams = sparsity_hparams.WeightSparsityParams
-SparsityMode = sparsity_hparams.SparsityMode
 SparsityType = sparsity_hparams.SparsityType
+InferenceMode = sparsity_modes.InferenceMode
+MaterializeMode = sparsity_modes.MaterializeMode
+TrainingMode = sparsity_modes.TrainingMode
+FewShotMode = sparsity_modes.FewShotMode
 
 instantiate = base_layer.instantiate
 
 
 def _generate_sparsity_types_modes() -> Sequence[dict[str, Any]]:
-  keys = ['testcase_name', 'sparsity_type', 'mode']
+  keys = ['testcase_name', 'sparsity_type', 'mode_name', 'mode']
   types = [SparsityType.STRUCTURED_NM]
   modes = [
-      SparsityMode.INFERENCE,
-      SparsityMode.MATERIALIZE,
-      SparsityMode.TRAINING,
+      ('inference_mode', pax_fiddle.Config(InferenceMode)),
+      ('materialize_mode', pax_fiddle.Config(MaterializeMode)),
+      ('training_mode', pax_fiddle.Config(TrainingMode)),
   ]
   cases = []
   for case in itertools.product(types, modes):
-    name = case[0].value + '_' + case[1].value
-    cases.append([name] + list(case))
+    name = case[0].value + '_' + case[1][0]
+    cases.append([name, case[0], case[1][0], case[1][1]])
 
   return [dict(zip(keys, case)) for case in cases]
 
@@ -67,7 +71,7 @@ class SparseAttentionTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.named_parameters(_generate_sparsity_types_modes())
-  def test_attention_projection_sparse(self, sparsity_type, mode):
+  def test_attention_projection_sparse(self, sparsity_type, mode_name, mode):
     p = pax_fiddle.Config(
         sattentions.AttentionProjection,
         name='_attn_proj',
@@ -75,7 +79,8 @@ class SparseAttentionTest(test_utils.TestCase):
         num_heads=2,
         dim_per_head=4,
         quantization=None,
-        sparsity=SparsityHParams(
+        sparsity=pax_fiddle.Config(
+            SparsityHParams,
             sparsity_type=sparsity_type,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
             mode=mode,
@@ -98,7 +103,7 @@ class SparseAttentionTest(test_utils.TestCase):
       initial_vars = attn.init(prng_key, inputs)
       initial_vars['params']['w'] = weights
       # Materialize mode do not making pruning or mask updating.
-      if mode == SparsityMode.MATERIALIZE:
+      if mode_name == 'materialize_mode':
         initial_vars[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX] = jnp.array([
             [
                 [False, False, True, True],
@@ -111,7 +116,7 @@ class SparseAttentionTest(test_utils.TestCase):
         ])
       outputs, state = attn.apply(initial_vars, inputs, mutable=True)
     self.assertEqual(outputs.shape, (1, 1, 2, 4))
-    if mode != SparsityMode.INFERENCE:
+    if mode_name != 'inference_mode':
       self.assertArraysEqual(
           state[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
           jnp.array([
@@ -143,12 +148,13 @@ class SparseAttentionTest(test_utils.TestCase):
         num_heads=2,
         dim_per_head=4,
         quantization=None,
-        sparsity=SparsityHParams(
+        sparsity=pax_fiddle.Config(
+            SparsityHParams,
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-            mode=SparsityMode.FEWSHOT,
-            num_shots=2,
-            mask_update_interval=2,  # Update mask every 2 steps
+            mode=pax_fiddle.Config(
+                FewShotMode, num_shots=2, mask_update_interval=2
+            ),  # Update mask every 2 steps
         ),
     )
     attn = instantiate(p)
@@ -231,7 +237,9 @@ class SparseAttentionTest(test_utils.TestCase):
     )
 
   @parameterized.named_parameters(_generate_sparsity_types_modes())
-  def test_combine_qkv_with_attention_combine_dims(self, sparsity_type, mode):
+  def test_combine_qkv_with_attention_combine_dims(
+      self, sparsity_type, mode_name, mode
+  ):
     input_dim = 2
     dim_per_head = 4
     num_heads = 2
@@ -243,7 +251,8 @@ class SparseAttentionTest(test_utils.TestCase):
         dim_per_head=dim_per_head,
         num_heads=num_heads,
         quantization=None,
-        sparsity=SparsityHParams(
+        sparsity=pax_fiddle.Config(
+            SparsityHParams,
             sparsity_type=sparsity_type,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
             mode=mode,
@@ -260,7 +269,8 @@ class SparseAttentionTest(test_utils.TestCase):
         num_heads=num_heads,
         attention_combine_dims=True,
         quantization=None,
-        sparsity=SparsityHParams(
+        sparsity=pax_fiddle.Config(
+            SparsityHParams,
             sparsity_type=sparsity_type,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
             mode=mode,
@@ -344,10 +354,11 @@ class AttentionLayersConsistencyTest(test_utils.TestCase):
         sattentions.AttentionProjection,
         name='_attn_proj_s',
         quantization=None,
-        sparsity=SparsityHParams(
+        sparsity=pax_fiddle.Config(
+            SparsityHParams,
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-            mode=SparsityMode.INFERENCE,
+            mode=pax_fiddle.Config(InferenceMode),
         ),
     )
     for p in [p_f, p_s]:
@@ -367,10 +378,11 @@ class AttentionLayersConsistencyTest(test_utils.TestCase):
         sattentions.AttentionProjection,
         name='_attn_proj_s',
         quantization=None,
-        sparsity=SparsityHParams(
+        sparsity=pax_fiddle.Config(
+            SparsityHParams,
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-            mode=SparsityMode.INFERENCE,
+            mode=pax_fiddle.Config(InferenceMode),
         ),
     )
     for p in [p_f, p_s]:
@@ -390,10 +402,11 @@ class AttentionLayersConsistencyTest(test_utils.TestCase):
         sattentions.AttentionProjection,
         name='_attn_proj_s',
         quantization=None,
-        sparsity=SparsityHParams(
+        sparsity=pax_fiddle.Config(
+            SparsityHParams,
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-            mode=SparsityMode.INFERENCE,
+            mode=pax_fiddle.Config(InferenceMode),
         ),
     )
     for p in [p_f, p_s]:
@@ -422,10 +435,11 @@ class AttentionLayersConsistencyTest(test_utils.TestCase):
         sattentions.CombinedQKVProjectionLayer,
         name='_attn_qkv_s',
         quantization=None,
-        sparsity=SparsityHParams(
+        sparsity=pax_fiddle.Config(
+            SparsityHParams,
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
-            mode=SparsityMode.INFERENCE,
+            mode=pax_fiddle.Config(InferenceMode),
         ),
     )
     for p in [p_f, p_s]:

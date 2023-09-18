@@ -24,9 +24,9 @@ from praxis import base_layer
 from praxis import pytypes
 from praxis.layers.quantization.sparsity import sparsity
 from praxis.layers.quantization.sparsity import sparsity_hparams
+from praxis.layers.quantization.sparsity import sparsity_modes
 
 
-SparsityMode = sparsity_hparams.SparsityMode
 SparsityType = sparsity_hparams.SparsityType
 SparsityHParams = sparsity_hparams.SparsityHParams
 WeightHParams = base_layer.WeightHParams
@@ -35,6 +35,10 @@ WeightSparsityParams = sparsity_hparams.WeightSparsityParams
 # Postfix for sparsity mask
 SPARSITY_NAME_POSTFIX = base_layer.SPARSITY_NAME_POSTFIX
 JTensor = pytypes.JTensor
+InferenceMode = sparsity_modes.InferenceMode
+FewShotMode = sparsity_modes.FewShotMode
+OneShotMode = sparsity_modes.OneShotMode
+MaterializeMode = sparsity_modes.MaterializeMode
 
 instance_field = base_layer.instance_field
 
@@ -52,7 +56,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
   def create_aux_variables(
       self, name: str, weight_hparams: WeightHParams
   ) -> None:
-    if self.sparsity is None or self.sparsity.mode == SparsityMode.INFERENCE:
+    if self.sparsity is None or isinstance(self.sparsity.mode, InferenceMode):
       return
     self._create_masks_variables(name, weight_hparams)
     self._create_counter_variables()
@@ -77,7 +81,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
   def _create_counter_variables(self):
     """Create variable of num_shot and mask update count."""
     assert self.sparsity is not None
-    num_shots = self.sparsity.get_num_shots()
+    num_shots = self.sparsity.mode.get_num_shots()
     num_shots_hp = WeightHParams(
         shape=[], init=WeightInit.Constant(num_shots), dtype=jnp.int32
     )
@@ -89,36 +93,6 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     # TODO(zhonglinhan): remove these variable to callable sparse scheduler.
     self.create_variable('mask_update_count', count_hp, trainable=False)
     self.create_variable('step', copy.deepcopy(count_hp), trainable=False)
-
-  def _update_schedule_cond(
-      self,
-      step: int,
-      target_step: int,
-      mask_update_times: int,
-      num_shots: int,
-  ) -> JTensor:
-    """Sparse mask update schedule.
-
-    Make mask update when following conditions are all satisfied
-    1) mask_update_times <= num_shots for one(few) shot or num_shots == -1 for
-      training mode and
-    2) current step is the target step to do pruning.
-
-    Args:
-      step: current step.
-      target_step: step to do pruning.
-      mask_update_times: number of times sparse masks has been updated.
-      num_shots: the target number of times to prune.
-
-    Returns:
-      A boolean condition results.
-    """
-    should_do_pruning = jnp.logical_or(
-        jnp.equal(num_shots, -1),  # SparsityMode.Training/MATERIALIZE
-        jnp.less(mask_update_times, num_shots),  # OneShot/FewShot
-    )
-    mask_update_step = jnp.equal(step, target_step)
-    return jnp.logical_and(mask_update_step, should_do_pruning)
 
   # TODO(shivaniagrawal): add base layer tests for boundary conditions.
   def _get_sparsity_mask(self, score, mask, step):
@@ -188,9 +162,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     assert self.sparsity is not None
 
     # Return without updating mask if in MATERIALIZE MODE
-    if self.sparsity.mode in [
-        SparsityMode.MATERIALIZE,
-    ]:
+    if isinstance(self.sparsity.mode, MaterializeMode):
       return
 
     mask_var_name = name + SPARSITY_NAME_POSTFIX
@@ -206,11 +178,8 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
     update_cnt = self.get_var('mask_update_count')
 
-    num_shots = self.sparsity.get_num_shots()
-    target_step = (
-        self.sparsity.target_step
-        + self.sparsity.mask_update_interval * update_cnt
-    )
+    if isinstance(self.sparsity.mode, FewShotMode):
+      self.sparsity.mode.increment_target_step(update_cnt)
 
     def mask_update(w, inputs, mask, update_cnt, step):  # pylint: disable=unused-argument
       score = sparsity.compute_score(
@@ -222,7 +191,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       return mask, update_cnt
 
     new_mask, update_cnt = jax.lax.cond(
-        self._update_schedule_cond(step, target_step, update_cnt, num_shots),
+        self.sparsity.mode.update_cond(step, update_cnt),
         mask_update,
         no_mask_update,
         weight,
@@ -235,7 +204,9 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     self.update_var('mask_update_count', update_cnt)
     self.update_var(mask_var_name, new_mask)
 
-    if num_shots > 0:
+    if isinstance(self.sparsity.mode, OneShotMode) or isinstance(
+        self.sparsity.mode, FewShotMode
+    ):
       self.add_summary('mask_update_count', update_cnt, verbosity=4)
 
   def sparsifiy(
@@ -258,7 +229,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     """
 
     if self.sparsity is None or (
-        self.sparsity.mode == SparsityMode.INFERENCE
+        isinstance(self.sparsity.mode, InferenceMode)
         or self.sparsity.weight_params is None
     ):
       return weight

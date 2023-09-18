@@ -34,6 +34,7 @@ pytype_strict_library(
 pytype_strict_library(
     name = "sparsity_hparams",
     srcs = ["sparsity_hparams.py"],
+    deps = [":sparsity_modes"],
 )
 
 pytype_strict_library(
@@ -60,11 +61,21 @@ py_strict_test(
     ],
 )
 
+pytype_strict_library(
+    name = "sparsity_modes",
+    srcs = ["sparsity_modes.py"],
+    deps = [
+        # Implicit jax dependency.
+        "//praxis:pytypes",
+    ],
+)
+
 py_strict_test(
     name = "linears_test",
     srcs = ["linears_test.py"],
     deps = [
         ":sparsity_hparams",
+        ":sparsity_modes",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
@@ -83,6 +94,7 @@ py_strict_test(
     srcs = ["attentions_test.py"],
     deps = [
         ":sparsity_hparams",
+        ":sparsity_modes",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
@@ -102,6 +114,7 @@ pytype_strict_library(
     deps = [
         ":sparsity",
         ":sparsity_hparams",
+        ":sparsity_modes",
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pytypes",
@@ -114,6 +127,7 @@ py_strict_test(
     deps = [
         ":sparsifier",
         ":sparsity_hparams",
+        ":sparsity_modes",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.

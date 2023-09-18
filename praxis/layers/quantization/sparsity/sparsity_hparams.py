@@ -17,6 +17,12 @@
 
 import dataclasses
 import enum
+from praxis.layers.quantization.sparsity import sparsity_modes
+
+
+BaseSparsityScheduleMode = sparsity_modes.BaseSparsityScheduleMode
+InferenceMode = sparsity_modes.InferenceMode
+FewShotMode = sparsity_modes.FewShotMode
 
 
 @enum.unique
@@ -41,27 +47,6 @@ class SparsityType(str, enum.Enum):
 
   STRUCTURED_NM = 'structured_nm'
   UNSTRUCTURED = 'unstructured'
-
-
-@enum.unique
-class SparsityMode(str, enum.Enum):
-  """The different modes for sparsity.
-
-  TRAINING indicates that the model is in the sparse training mode.
-  MATERIALIZE indicates that the model weights are being materialized as
-    sparsed weights. After materialization mode is set to inference.
-  INFERENCE indicates that the model is in the inference mode with sparsed
-    weights.
-  """
-
-  TRAINING = 'training'
-  # Oneshot pruning do sparsity mask updating for the very first step.
-  ONESHOT = 'oneshot'
-  # Fewshot pruning do sparsity mask updating for the beginning steps, user
-  # needs to define num_shots > 1 correspondingly.
-  FEWSHOT = 'fewshot'
-  MATERIALIZE = 'materialize'
-  INFERENCE = 'inference'
 
 
 @dataclasses.dataclass
@@ -154,10 +139,6 @@ class SparsityHParams:
     weight_params: WeightSparsityParams object.
     mode: Defines sparsity mode.
     score: Defines sparsity score function.
-    num_shots: Number of shots during pruning. This needs to be set
-      correspondingly to ONESHOT and FEWSHOT mode.
-    mask_update_interval: The step invertal between two mask updates. This is
-      only valide under FEWSHOT mode.
     target_step: target step to start sparsity pruning.
     sparsified_layers: List of indices of layer to sparisify. None means all the
       layers to be sparsified.
@@ -171,25 +152,13 @@ class SparsityHParams:
 
   sparsity_type: SparsityType = SparsityType.STRUCTURED_NM
   weight_params: WeightSparsityParams | None = None
-  mode: SparsityMode = SparsityMode.INFERENCE
+  mode: BaseSparsityScheduleMode = dataclasses.field(
+      default_factory=InferenceMode
+  )
   score: SparsityScore = SparsityScore.MAGNITUDE
-  num_shots: int = 0
-  mask_update_interval: int = 1
-  target_step: int = 0
   sparsified_layers: list[int] | None = None
   polynomial_decay_schedule: PolynomialDecayParams | None = None
   order: str = 'R'
-
-  def get_num_shots(self):
-    if self.mode == SparsityMode.INFERENCE:
-      return 0
-    elif (
-        self.mode == SparsityMode.TRAINING
-        or self.mode == SparsityMode.MATERIALIZE
-    ):
-      return -1
-    else:
-      return self.num_shots
 
   def __post_init__(self):
     if (
@@ -214,22 +183,6 @@ class SparsityHParams:
 
       else:
         assert False, f'Unrecognized sparsity type {self.sparsity_type}.'
-
-      # Check sparsity mode.
-      if self.mode == SparsityMode.ONESHOT:
-        assert (
-            self.num_shots == 1
-        ), '`num_shots should be set for ONESHOT sparse.`'
-      elif self.mode == SparsityMode.FEWSHOT:
-        assert (
-            self.num_shots > 1
-        ), '`num_shots should be set for FEWSHOT sparse.`'
-
-      # Check mask_update_interval is only set when the mode is FEWSHOT
-      if self.mask_update_interval != 1:
-        assert (
-            self.mode == SparsityMode.FEWSHOT
-        ), 'mask_update_interval only be set for FEWSHOT mode.'
 
       if self.order not in ['C', 'R']:
         raise ValueError(f'Index order {self.order} not supported.')
