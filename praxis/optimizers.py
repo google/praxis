@@ -2136,6 +2136,7 @@ class _ShardedAdafactorHelper:
       multiply_by_parameter_scale: bool,
       epsilon2_param_scale_reg: float,
       maybe_inf_to_nan: bool,
+      name: str,
   ) -> None:
     """Constructor. See ShardedAdafactor() below."""
     if weight_decay:
@@ -2160,6 +2161,7 @@ class _ShardedAdafactorHelper:
     self._multiply_by_parameter_scale = multiply_by_parameter_scale
     self._epsilon2 = epsilon2_param_scale_reg
     self._maybe_inf_to_nan = maybe_inf_to_nan
+    self._name = name
 
   def should_use_factored_second_moment_estimate(self, shape):
     """Should we use a factored second moment estimator.
@@ -2433,20 +2435,24 @@ class _ShardedAdafactorHelper:
 
     return subtrahend, output_m, output_m_scale
 
-  def compute_var_and_slot_update(self, count, grad, m, m_scale, vr, vc, v,
-                                  param, var_name):
+  def compute_var_and_slot_update(
+      self, count, grad, m, m_scale, vr, vc, v, param, var_name
+  ):
     """Computes the var and optimizer slots updates for a single variable."""
     # We can probably skip this step
     grad = grad.astype(jnp.float32)
     grad = self.inf_to_nan(grad)
     grad_squared = jnp.square(grad)
 
+    prefix_name = '' if not self._name else f'{self._name}/'
+
     if self._per_var_learning_summary:
       grad_num_elements = jnp.array(grad.size, dtype=grad.dtype)
       num_zeros_in_grad = jnp.sum(grad_squared < 0.01 * self._epsilon1) * 1.0
       fraction_zero_grad = num_zeros_in_grad / grad_num_elements
-      base_layer.add_global_summary(f'fraction_zero_grad/{var_name}',
-                                    fraction_zero_grad)
+      base_layer.add_global_summary(
+          f'{prefix_name}fraction_zero_grad/{var_name}', fraction_zero_grad
+      )
 
     # Add epsilon1_grad_sq_reg as per Algorithm 4
     # of https://arxiv.org/pdf/1804.04235.pdf
@@ -2471,8 +2477,9 @@ class _ShardedAdafactorHelper:
       if self._per_var_learning_summary:
         # Add summary for this var.
         base_layer.add_global_summary(
-            f'sharded_adafactor_parameter_scale/{var_name}',
-            self.parameter_scale(old_val).astype(update_scale.dtype))
+            f'{prefix_name}sharded_adafactor_parameter_scale/{var_name}',
+            self.parameter_scale(old_val).astype(update_scale.dtype),
+        )
 
     # Q(yonghui): Can we remove the hack now?
     # HACK: Make things dependent on grad.
@@ -2482,11 +2489,17 @@ class _ShardedAdafactorHelper:
     decay_rate += grad_squared_mean * 1e-30
     update_scale += grad_squared_mean * 1e-30
     # END HACK
+
     if self._per_var_learning_summary:
       base_layer.add_global_summary(
-          f'sharded_adafactor_update_scale/{var_name}', update_scale)
+          f'{prefix_name}sharded_adafactor_decay_rate/{var_name}', decay_rate
+      )
+      base_layer.add_global_summary(
+          f'{prefix_name}sharded_adafactor_update_scale/{var_name}',
+          update_scale,
+      )
 
-    mixing_rate = 1. - decay_rate
+    mixing_rate = 1.0 - decay_rate
     shape = param.shape
 
     output_vr = jnp.zeros((1,))
@@ -2499,18 +2512,23 @@ class _ShardedAdafactorHelper:
       # reduce_mean().
       vr_axis, vc_axis = factored_second_moment_dims
       grad_squared_row_mean = self.inf_to_nan(
-          jnp.mean(grad_squared, axis=vr_axis))
+          jnp.mean(grad_squared, axis=vr_axis)
+      )
       grad_squared_col_mean = self.inf_to_nan(
-          jnp.mean(grad_squared, axis=vc_axis))
+          jnp.mean(grad_squared, axis=vc_axis)
+      )
       new_vr = decay_rate * vr + mixing_rate * grad_squared_row_mean
       new_vc = decay_rate * vc + mixing_rate * grad_squared_col_mean
       output_vr = new_vr
       output_vc = new_vc
       long_term_mean = jnp.mean(new_vr, axis=-1, keepdims=True)
-      r_factor = 1. / jnp.sqrt(new_vr / long_term_mean)
-      c_factor = 1. / jnp.sqrt(new_vc)
-      x = grad * jnp.expand_dims(r_factor, vr_axis) * jnp.expand_dims(
-          c_factor, vc_axis)
+      r_factor = 1.0 / jnp.sqrt(new_vr / long_term_mean)
+      c_factor = 1.0 / jnp.sqrt(new_vc)
+      x = (
+          grad
+          * jnp.expand_dims(r_factor, vr_axis)
+          * jnp.expand_dims(c_factor, vc_axis)
+      )
     else:
       # v with sharding annotation.
       new_v = decay_rate * v + mixing_rate * grad_squared
@@ -2520,24 +2538,28 @@ class _ShardedAdafactorHelper:
     if self._per_var_learning_summary:
       # Add summary for this var.
       x_l2_scale = jnp.sqrt(reduce_mean(x * x))
-      base_layer.add_global_summary(f'sharded_adafactor_learning/{var_name}',
-                                    x_l2_scale)
+      base_layer.add_global_summary(
+          f'{prefix_name}sharded_adafactor_learning/{var_name}', x_l2_scale
+      )
 
     if self._clip_threshold is not None:
-      clipping_denom = jnp.maximum(1., reduce_rms(x) / self._clip_threshold)
+      clipping_denom = jnp.maximum(1.0, reduce_rms(x) / self._clip_threshold)
       clipping_denom = self.inf_to_nan(clipping_denom)
       x /= clipping_denom
       if self._per_var_learning_summary:
         # Add summary for this var.
         base_layer.add_global_summary(
-            f'sharded_adafactor_clipping_denom/{var_name}', clipping_denom)
+            f'{prefix_name}sharded_adafactor_clipping_denom/{var_name}',
+            clipping_denom,
+        )
 
     if self._per_var_learning_summary:
       # Add summary for this var.
       x_l2_scale_after_clipping = jnp.sqrt(reduce_mean(x * x))
       base_layer.add_global_summary(
-          f'sharded_adafactor_learning_after_clipping/{var_name}',
-          x_l2_scale_after_clipping)
+          f'{prefix_name}sharded_adafactor_learning_after_clipping/{var_name}',
+          x_l2_scale_after_clipping,
+      )
 
     subtrahend, output_m, output_m_scale = self.compute_subtrahend(
         x, shape, update_scale, m, m_scale
@@ -2571,7 +2593,9 @@ class _ShardedAdafactorHelper:
         g_norm = reduce_rms(subtrahend / update_scale) + self._epsilon1
         ratio = jnp.where(
             jnp.greater(w_norm, 0),
-            jnp.where(jnp.greater(g_norm, 0), (w_norm / g_norm), 1.0), 1.0)
+            jnp.where(jnp.greater(g_norm, 0), (w_norm / g_norm), 1.0),
+            1.0,
+        )
         subtrahend *= ratio
 
     return _ShardedAdafactorUpdateResult(
@@ -2580,7 +2604,8 @@ class _ShardedAdafactorHelper:
         m_scale=output_m_scale,
         vr=output_vr,
         vc=output_vc,
-        v=output_v)
+        v=output_v,
+    )
 
 
 def sharded_adafactor(
@@ -2730,6 +2755,7 @@ class ShardedAdafactor(BaseOptimizer):
   multiply_by_parameter_scale: bool = False
   epsilon2_param_scale_reg: float = 1e-3
   maybe_inf_to_nan: bool = True
+  name: str = ''
 
   @classmethod
   def HParamsAdamB(cls) -> pax_fiddle.Config[ShardedAdafactor]:  # pylint: disable=invalid-name
@@ -2774,6 +2800,7 @@ class ShardedAdafactor(BaseOptimizer):
         multiply_by_parameter_scale=self.multiply_by_parameter_scale,
         epsilon2_param_scale_reg=self.epsilon2_param_scale_reg,
         maybe_inf_to_nan=self.maybe_inf_to_nan,
+        name=self.name,
     )
 
   def _get_raw_grad_transformation(
