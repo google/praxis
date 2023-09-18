@@ -351,7 +351,7 @@ def for_transformer(
       """Wrapper class for cls with Quantization enabled."""
 
       def task(self):
-        config = super(Wrapper, self)
+        config = super()
         task_p = config.task()
         assert num_bits in [2, 4, 8]
         models = [task_p.model]
@@ -433,7 +433,7 @@ def for_diffusion(
       """Wrapper class for cls with Quantization enabled."""
 
       def task(self):
-        config = super(Wrapper, self)
+        config = super()
         task_p = config.task()
         assert num_bits in [2, 4, 8]
         models = [task_p.model]
