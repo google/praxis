@@ -82,6 +82,11 @@ def qdq_and_return(x, q_dtype, scale, amax_history, compute_dtype):
       x, q_dtype, scale, amax_history)
   return qx, new_scale, new_amax_history
 
+# For fp8_params, we hijack gradient to feed out their new values. Ideally,
+# these parameters should be updated during the train step, like how the moving
+# mean/var get updated using the "mutable" mechanism in batch normalization.
+# However, in our case, we have to do the updating in the bprop phase and this
+# is not well supported in the "mutable".
 @partial(custom_vjp, nondiff_argnums=(0,))
 def in_qdq(compute_dtype, inp, scale, amax_history):
   qin, _, _ = qdq_and_return(
