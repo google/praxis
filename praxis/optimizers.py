@@ -597,12 +597,22 @@ def apply_decoupled_weight_decay(
       if params is None:
         raise ValueError('Params must not be empty when applying weight decay.')
 
-      fn = lambda g, p, m=1.0: g - lr * regularizer_weight * p * m
+      fn = (
+          lambda g, p, m=1.0: g - lr * regularizer_weight * p * m  # pylint: disable=g-long-lambda
+          if not py_utils.is_optax_masked_node(g)
+          else optax.MaskedNode()
+      )
 
       if var_wd_mask is None:
         updates = jax.tree_map(fn, updates, params)
       else:
-        updates = jax.tree_map(fn, updates, params, var_wd_mask)
+        updates = jax.tree_map(
+            fn,
+            updates,
+            params,
+            var_wd_mask,
+            is_leaf=py_utils.is_optax_masked_node,
+        )
     updated_state = NestedMap(count=count + 1)
     return updates, updated_state
 
