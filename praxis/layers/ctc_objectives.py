@@ -16,6 +16,7 @@
 """Objective function for Connectionist Temporal Classification (CTC)."""
 
 import dataclasses
+from typing import Union
 
 import jax
 import jax.numpy as jnp
@@ -95,10 +96,10 @@ class CtcAlignments:
 
 
 def ctc_loss_with_alignments(
-    logits: np.ndarray,
-    logitpaddings: np.ndarray,
-    labels: np.ndarray,
-    labelpaddings: np.ndarray,
+    logits: Union[np.ndarray, JTensor],
+    logitpaddings: Union[np.ndarray, JTensor],
+    labels: Union[np.ndarray, JTensor],
+    labelpaddings: Union[np.ndarray, JTensor],
     blank_id: int = 0,
     logepsilon: float = -1e5,
 ) -> tuple[np.ndarray, CtcAlignments]:
