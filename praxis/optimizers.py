@@ -1058,6 +1058,7 @@ class OptaxOptimizer(base_hyperparams.FiddleBaseParameterizable):
     ewc_weight_per_var: If not None, set weight for each model weight, e.g.,
       refer to https://arxiv.org/abs/1612.00796 by using a Fisher information
       matrix.
+    grad_tx: The gradient transformation used by this optimizer.
   """
 
   l2_regularizer_weight: float | None = None
@@ -1071,11 +1072,9 @@ class OptaxOptimizer(base_hyperparams.FiddleBaseParameterizable):
   ema_decay: float = 0.0
   ewc_regularizer_weight: float = 0.0
   ewc_weight_per_var: NestedMap | None = None
-  _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
-  learning_rate: float = 0.0
-  lr_schedule: pax_fiddle.Config[schedules.BaseSchedule] | None = None
-  _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
   grad_tx: optax.GradientTransformation | None = None
+
+  _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
     self._lr_schedule_inst = instantiate(self.lr_schedule)
