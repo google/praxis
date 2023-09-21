@@ -49,8 +49,8 @@ class Einsum(base_layer.BaseLayer):
     operands, out = self.eqn.split('->')
     x, w = operands.split(',')
     assert '.' not in w
-    fan_in = sorted([w.index(d) for d in (set(x) - set(out))])
-    fan_out = sorted([w.index(d) for d in (set(out) - set(x))])
+    fan_in = sorted(w.index(d) for d in (set(x) - set(out)))
+    fan_out = sorted(w.index(d) for d in (set(out) - set(x)))
     w_sharding = self.weight_split_dims_mapping.wt
     pc = base_layer.WeightHParams(
         shape=self.w_shape,
@@ -61,9 +61,9 @@ class Einsum(base_layer.BaseLayer):
     )
     self.create_variable('w', pc)
     if self.use_bias:
-      out_bias_dims = sorted([out.index(d) for d in (set(out) - set(x))])
+      out_bias_dims = sorted(out.index(d) for d in (set(out) - set(x)))
       # Fan-out dims must be at the end of `out`.
-      assert all([d >= len(out) - len(out_bias_dims) for d in out_bias_dims])
+      assert all(d >= len(out) - len(out_bias_dims) for d in out_bias_dims)
       bias_shape = [self.w_shape[w.index(out[d])] for d in out_bias_dims]
       if w_sharding is not None:
         b_sharding = [w_sharding[w.index(out[d])] for d in out_bias_dims]
@@ -87,11 +87,9 @@ class Einsum(base_layer.BaseLayer):
     Returns:
       The result of the einsum with maybe a bias added.
     """
-    theta = self.theta
-    ret = self.einsum(self.eqn, inputs, theta.w)
+    ret = self.einsum(self.eqn, inputs, self.theta.w)
     if self.use_bias:
-      ret += theta.b
-    ret = base_layer.maybe_shard(
+      ret += self.theta.b
+    return base_layer.maybe_shard(
         ret, self.activation_split_dims_mapping.out, self.mesh_axis_names
     )
-    return ret
