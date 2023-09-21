@@ -97,6 +97,26 @@ def _run_transformation(
 
 class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
 
+  def test_adafactor(self):
+    opt_tpl = optimizers.ShardedAdafactor.HParamsAdamB()
+    opt_tpl.lr_schedule = pax_fiddle.Config(schedules.Constant, value=1.0)
+    opt_tpl.learning_rate = 1.0
+    opt = optimizers.instantiate(opt_tpl)
+    tx = opt.get_grad_transformation()
+    mdl_vars = {'var': jnp.array(0.0, dtype=jnp.float32)}
+    opt_state = tx.init(mdl_vars)
+    num_steps = 3
+    for t in range(num_steps):
+      fake_update = float(t + 1)
+      updates, opt_state = tx.update(
+          {'var': jnp.array(fake_update)}, opt_state, mdl_vars
+      )
+      mdl_vars = optax.apply_updates(mdl_vars, updates)
+    expected_var_value = -0.561
+    self.assertEqual(
+        mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32)
+    )
+
   def test_static_accumulator(self):
     base_opt_tpl = pax_fiddle.Config(optimizers.ShardedSgd)
     num_sub_batches = 3
