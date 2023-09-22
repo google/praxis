@@ -632,10 +632,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
             relative_bias,
             relative_bias.shape[:1] + (nk, n // nk) + relative_bias.shape[2:],
         )
+      else:
+        v_rb = None
       with self._context_for_kv_vmap():
         encoded, probs = jax.vmap(
             self._dot_atten_one_step_from_qkv,
-            in_axes=(1, 2, 2, None, None, 1),
+            in_axes=(1, 2, 2, None, 1),
             out_axes=(1, 1),
         )(v_q, key, value, atten_mask, v_rb)
         encoded = self._shard_bnh(jnp.reshape(encoded, (b, n, h)))
@@ -703,6 +705,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     # visible by the layer code.
     if self.activation_split_dims_mapping.blnh:
       n_sharding = self.activation_split_dims_mapping.blnh[2]
+      if isinstance(n_sharding, tuple):
+        n_sharding = n_sharding[0]
     else:
       n_sharding = None
     assert n_sharding is None or isinstance(n_sharding, str)
@@ -810,7 +814,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       with self._context_for_kv_vmap():
         encoded, atten_probs = jax.vmap(
             self._dot_atten,
-            in_axes=(2, 2, 2, None, 1, None),
+            in_axes=(2, 2, 2, None, 1),
             out_axes=(2, 1),
         )(
             v_q,
@@ -872,7 +876,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     Returns:
       Updated decode cache state of that variable.
     """
-    if len(value.shape) == time_dim + 1:
+    if (self.num_kv_heads == 1 and len(value.shape) == time_dim + 1) or (
+        self.num_kv_heads > 1 and len(value.shape) == time_dim + 2
+    ):
       extend_value = jnp.expand_dims(value, axis=time_dim)
     else:
       extend_value = value
@@ -936,24 +942,29 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
           self.mesh_axis_names,
       )
       if not is_cross_attention:
+        if self.num_kv_heads == 1:
+          sharding = [ap.bld[0], ap.blnh[3]]
+        else:
+          sharding = [ap.bld[0], ap.blnh[2], ap.blnh[3]]
+
         value_proj = base_layer.maybe_shard(
             value_proj,
-            [ap.bld[0], ap.blnh[3]],
+            sharding,
             self.mesh_axis_names,
         )
         key_proj = base_layer.maybe_shard(
             key_proj,
-            [ap.bld[0], ap.blnh[3]],
+            sharding,
             self.mesh_axis_names,
         )
         value_proj = base_layer.maybe_shard(
             value_proj,
-            [ap.blnh[0], ap.blnh[3]],
+            sharding,
             self.mesh_axis_names,
         )
         key_proj = base_layer.maybe_shard(
             key_proj,
-            [ap.blnh[0], ap.blnh[3]],
+            sharding,
             self.mesh_axis_names,
         )
 
@@ -1032,7 +1043,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       if not isinstance(state, JTensor):
         continue
       new_state = transform_fn(state, batch_dim, time_dim)
-      new_state = self._shard_blh(new_state)
+      if self.num_kv_heads == 1:
+        new_state = self._shard_blh(new_state)
+      else:
+        new_state = self._shard_blnh(new_state)
       self.update_decode_state(name, new_state)
 
   def lazy_broadcast_prefix(self, num_suffix_samples: int,

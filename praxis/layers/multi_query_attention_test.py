@@ -84,6 +84,31 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     self.assertSequenceEqual(encoded.shape, [5, 12, 16])
     self.assertSequenceEqual(attens.shape, [5, 10, 12, 12])
 
+  @parameterized.parameters([2, 5])
+  def test_multi_query_attention_shape_multiple_kv_heads(self, kv_heads):
+    test_layer_p = pax_fiddle.Config(
+        multi_query_attention.MultiQueryDotProductAttention,
+        name='mqa',
+        input_dim=16,
+        hidden_dim=60,
+        num_heads=10,
+        num_kv_heads=kv_heads,
+    )
+    layer = instantiate(test_layer_p)
+    inputs = np.random.normal(1.5, 2.0, [5, 12, 16]).astype(np.float32)
+    atten_mask = jnp.zeros([1, 1, 1, 12])
+    prng_key = jax.random.PRNGKey(seed=123)
+    prng_key, init_key = jax.random.split(prng_key)
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(init_key, inputs, inputs, inputs, atten_mask)
+      logging.info('initial_vars: %s', initial_vars)
+      encoded, attens = layer.apply(
+          initial_vars, inputs, inputs, inputs, atten_mask
+      )
+    self.assertSequenceEqual(encoded.shape, [5, 12, 16])
+    self.assertSequenceEqual(attens.shape, [5, 12, 10, 12])
+
   @parameterized.parameters(*list(itertools.product([True, False], repeat=3)))
   def test_multi_query_attention_decoding_shape(
       self, use_rotary_position_emb, lpb, n_step
@@ -221,7 +246,9 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     self.assertSequenceEqual(encoded.shape, [5, 16])
 
   @parameterized.parameters([(1,), (2,)])
-  def test_multi_query_attention_consistent(self, kv_heads):
+  def test_multi_query_attention_consistent_with_multiple_kv_heads(
+      self, kv_heads
+  ):
     test_layer_p = pax_fiddle.Config(
         multi_query_attention.MultiQueryDotProductAttention,
         name='mqa',
@@ -229,7 +256,6 @@ class MultiQueryAttentionTest(test_utils.TestCase):
         hidden_dim=32,
         num_heads=4,
         num_kv_heads=kv_heads,
-        decoding_window_alignment=2,
         relative_bias_tpl=pax_fiddle.Config(
             attentions.RelativeBias,
             relative_attention_num_buckets=2,
