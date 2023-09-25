@@ -47,6 +47,7 @@ SUMMARIES = base_layer.SUMMARIES
 DECODE_CACHE = base_layer.DECODE_CACHE
 PREFIX_DECODE_CACHE = base_layer.PREFIX_DECODE_CACHE
 DUMMY_PRNG_KEY = decoder_utils.DUMMY_PRNG_KEY
+MAX_NUM_PER_TOKEN_LOGPROBS = 5
 
 
 # TODO(pax-dev): Remove these indirect exposures.
@@ -276,6 +277,7 @@ def sample_decode(
     optimize_eos: bool = False,
     sample_constraint: BaseSampleTerminationConstraint | None = None,
     enforce_sample_constraints: JTensor | None = None,
+    num_per_token_logprobs: int | None = None,
 ) -> NestedMap:
   """Sampling decode the input batch.
 
@@ -370,6 +372,11 @@ def sample_decode(
       conform to specific constraints.
     enforce_sample_constraints: A JTensor indicating which samples to enforce
       sample constraints for.
+    num_per_token_logprobs: returns the top `num_per_token_logprobs` candidate
+      token IDs with their log probabilities at each step. Must <=
+      MAX_NUM_PER_TOKEN_LOGPROBS. Returned token IDs are of shape (batch,
+      num_samples, seqlen, vocab). Returned log probabilities are of shape
+      (batch, num_samples, seqlen, MAX_NUM_PER_TOKEN_LOGPROBS).
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -436,6 +443,7 @@ def sample_decode(
         optimize_eos,
         sample_constraint,
         enforce_sample_constraints,
+        num_per_token_logprobs,
     )
     if process_result_fn is not None:
       result = process_result_fn(model, result)
@@ -476,6 +484,7 @@ def sample_decode_after_fprop(
     optimize_eos: bool = False,
     sample_constraint: BaseSampleTerminationConstraint | None = None,
     enforce_sample_constraints: JTensor | None = None,
+    num_per_token_logprobs: int | None = None,
 ) -> NestedMap:
   """Sampling decode after init decode state the input batch.
 
@@ -567,6 +576,11 @@ def sample_decode_after_fprop(
       conform to specific constraints.
     enforce_sample_constraints: A JTensor indicating which samples to enforce
       sample constraints for.
+    num_per_token_logprobs: returns the top `num_per_token_logprobs` candidate
+      token IDs with their log probabilities at each step. Must <=
+      MAX_NUM_PER_TOKEN_LOGPROBS. Returned token IDs are of shape (batch,
+      num_samples, seqlen, vocab). Returned log probabilities are of shape
+      (batch, num_samples, seqlen, MAX_NUM_PER_TOKEN_LOGPROBS).
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -775,6 +789,15 @@ def sample_decode_after_fprop(
   val.decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
   # We use a positive value of 1.0 to indicate blank or padded positions.
   val.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
+  if num_per_token_logprobs is not None:
+    asserts.ge(num_per_token_logprobs, 0)
+    asserts.le(num_per_token_logprobs, MAX_NUM_PER_TOKEN_LOGPROBS)
+    val.top_candidate_ids = jnp.zeros(
+        shape=(batch_size, seq_len, MAX_NUM_PER_TOKEN_LOGPROBS), dtype=jnp.int32
+    )
+    val.top_candidate_logprobs = jnp.zeros_like(
+        val.top_candidate_ids, dtype=jnp.float32
+    )
   if optimize_eos:
     assert not isinstance(
         eos_id, JTensor
@@ -936,6 +959,37 @@ def sample_decode_after_fprop(
         prev_done, jnp.ones_like(logprobs_at_new_ids), logprobs_at_new_ids
     )
     val.logprobs = val.logprobs.at[:, step + 1].set(logprobs_at_new_ids)
+
+    if num_per_token_logprobs is not None and num_per_token_logprobs > 0:
+      # It's very unlikely that vocabulary size < MAX_NUM_PER_TOKEN_LOGPROBS in
+      # production, but it's possible in tests.
+      # k will be static after tracing.
+      # NOMUTANTS -- logprobs's shape is (batch, vocab), so logprobs.shape[1]
+      #              is the same as `logprobs.shape[-1]`.
+      k = min(logprobs.shape[-1], MAX_NUM_PER_TOKEN_LOGPROBS)
+      top_candidate_logprobs, top_candidate_ids = jax.lax.top_k(logprobs, k)
+      if k < MAX_NUM_PER_TOKEN_LOGPROBS:
+        pad_width = [[0, 0], [0, MAX_NUM_PER_TOKEN_LOGPROBS - k]]
+        top_candidate_logprobs = jnp.pad(top_candidate_logprobs, pad_width)
+        top_candidate_ids = jnp.pad(top_candidate_ids, pad_width)
+      indexes = jnp.arange(MAX_NUM_PER_TOKEN_LOGPROBS)
+      top_candidate_logprobs = jnp.where(
+          jnp.greater_equal(indexes, num_per_token_logprobs),
+          jnp.zeros_like(top_candidate_logprobs),
+          top_candidate_logprobs,
+      )
+      top_candidate_ids = jnp.where(
+          jnp.greater_equal(indexes, num_per_token_logprobs),
+          jnp.zeros_like(top_candidate_ids),
+          top_candidate_ids,
+      )
+      val.top_candidate_logprobs = val.top_candidate_logprobs.at[
+          :, step + 1
+      ].set(top_candidate_logprobs)
+      val.top_candidate_ids = val.top_candidate_ids.at[:, step + 1].set(
+          top_candidate_ids
+      )
+
     if optimize_eos:
       eos_logits = logits.at[:, eos_id].add(1e6)
       best_eos_id = jnp.argmax(eos_logits, axis=-1)
