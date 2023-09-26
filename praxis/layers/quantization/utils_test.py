@@ -160,7 +160,11 @@ class UtilsTest(test_utils.TestCase):
     self.assertSequenceEqual(utils.get_packed_shape((4, 8, 3), 1, 8), (4, 1, 3))
     self.assertRaises(ValueError, utils.get_packed_shape, (4, 7, 3), 1, 8)
 
-  def test_find_target_tpl(self):
+  @parameterized.named_parameters(
+      ('single target', True),
+      ('multiple targets', False),
+  )
+  def test_find_target_tpl(self, sequence_of_inputs):
     @dataclasses.dataclass(frozen=True)
     class Target:
       marker: str = 'default'
@@ -214,7 +218,10 @@ class UtilsTest(test_utils.TestCase):
             },
         ),
     )
-    targets = utils.find_target_tpl(outer_p, Target)
+    if sequence_of_inputs:
+      targets = utils.find_target_tpl(outer_p, [Target, Target])
+    else:
+      targets = utils.find_target_tpl(outer_p, Target)
     # NOTE(yinzhong): fdl.Config is not hashable or sortable, so we have to
     # build before comparing.
     self.assertSameElements(

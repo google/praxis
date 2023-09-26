@@ -243,14 +243,15 @@ def get_packed_shape(shape: Sequence[int], pack_dim: int, packing_factor: int):
 
 
 def find_target_tpl(
-    config: fdl.Config[base_layer.BaseLayer],
-    target: Type[base_layer.BaseLayer],
+    config: pax_fiddle.Config[base_layer.BaseLayer],
+    targets: Type[base_layer.BaseLayer] | Sequence[Type[base_layer.BaseLayer]],
 ) -> Sequence[fdl.Config]:
-  """Traverses the entire config tree to find Configs of the target type."""
+  """Traverses the entire config tree to find Configs of the target types."""
+  targets = list(targets) if hasattr(targets, '__iter__') else [targets]
   target_tpl = []
   for node, _ in fdl.daglish.iterate(config):
-    if isinstance(node, fdl.Config) and issubclass(
-        fdl.get_callable(node), target
+    if isinstance(node, fdl.Config) and any(
+        issubclass(fdl.get_callable(node), target) for target in targets
     ):
       target_tpl.append(node)
   return target_tpl

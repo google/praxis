@@ -30,7 +30,6 @@ This creates a quantized model for the original XYZModel configuration by
 quantizing all transformer blocks.
 
 """
-
 import functools
 from typing import Sequence, Type, cast
 
@@ -54,71 +53,97 @@ ActQuantizationParams = quantization_hparams.ActQuantizationParams
 
 
 def _quantize_embedding_softmax_layer_weights(
-    lm_tpl: pax_fiddle.Config[layers.TransformerLm],
+    layer_tpl: pax_fiddle.Config[layers.TransformerLm]
+    | pax_fiddle.Config[layers.TransformerEncoderDecoder],
     quantization_type: QuantizationType,
     mode: QuantizationMode,
     weight_quantization_params: WeightQuantizationParams,
     transposed_embedding_softmax: bool,
+    softmax_only: bool = True,
 ) -> None:
   """Rewrites Embedding HParam for weight only quantization."""
-  if issubclass(lm_tpl.softmax_tpl.cls, layers.SharedEmbeddingSoftmax):
-    if transposed_embedding_softmax:
-      # Transposed embedding quantization.
-      # Replace softmax_tpl to quantized NClassMajorSharedEmbeddingSoftmax.
-      new_softmax_tpl = pax_fiddle.Config(
-          quantization.NClassMajorSharedEmbeddingSoftmax,
-          quantization=QuantizationParams(
-              quantization_type=quantization_type,
-              mode=mode,
-              weight_params=weight_quantization_params,
-          ),
-      )
-    else:
-      # Non-transposed embedding quantization.
-      # Replace softmax_tpl to quantized SharedEmbeddingSoftmax.
-      new_softmax_tpl = pax_fiddle.Config(
-          quantization.SharedEmbeddingSoftmax,
-          quantization=QuantizationParams(
-              quantization_type=quantization_type,
-              mode=mode,
-              weight_params=weight_quantization_params,
-          ),
-      )
-    new_softmax_tpl.copy_fields_from(lm_tpl.softmax_tpl)
-    lm_tpl.softmax_tpl = new_softmax_tpl
-  else:
-    raise ValueError(
-        f'lm_tpl.softmax_tpl.cls is : {lm_tpl.softmax_tpl.cls}'
-        'but has to be layers.SharedEmbeddingSoftmax'
+  if transposed_embedding_softmax:
+    # Transposed embedding quantization.
+    # Replace softmax_tpl to quantized NClassMajorSharedEmbeddingSoftmax.
+    quant_embedding_softmax_tpl = pax_fiddle.Config(
+        quantization.NClassMajorSharedEmbeddingSoftmax,
+        quantization=QuantizationParams(
+            quantization_type=quantization_type,
+            mode=mode,
+            weight_params=weight_quantization_params,
+        ),
     )
+  else:
+    # Non-transposed embedding quantization.
+    # Replace softmax_tpl to quantized SharedEmbeddingSoftmax.
+    quant_embedding_softmax_tpl = pax_fiddle.Config(
+        quantization.SharedEmbeddingSoftmax,
+        quantization=QuantizationParams(
+            quantization_type=quantization_type,
+            mode=mode,
+            weight_params=weight_quantization_params,
+        ),
+    )
+
+  def _quantize(name: str):
+    embedding_softmax_tpl = getattr(layer_tpl, name)
+    if embedding_softmax_tpl is None:
+      return
+    if issubclass(embedding_softmax_tpl.cls, layers.SharedEmbeddingSoftmax):
+      new_embedding_softmax_tpl = quant_embedding_softmax_tpl.clone()
+      new_embedding_softmax_tpl.copy_fields_from(embedding_softmax_tpl)
+      setattr(layer_tpl, name, new_embedding_softmax_tpl)
+    else:
+      raise ValueError(
+          f'layer_tpl.{name}.cls is : {embedding_softmax_tpl.cls}'
+          'but has to be layers.SharedEmbeddingSoftmax'
+      )
+
+  _quantize('softmax_tpl')
+  if not softmax_only:
+    if issubclass(layer_tpl.cls, layers.TransformerLm):
+      _quantize('separate_embedding_tpl')
+    if issubclass(layer_tpl.cls, layers.TransformerEncoderDecoder):
+      _quantize('encoder_embedding_tpl')
+      _quantize('decoder_embedding_tpl')
 
 
 def _quantize_ngrammer_embedding_weights(
-    lm_tpl: pax_fiddle.Config[layers.TransformerLm],
+    layer_tpl: pax_fiddle.Config[layers.TransformerLm]
+    | pax_fiddle.Config[layers.TransformerEncoderDecoder],
     quantization_type: QuantizationType,
     mode: QuantizationMode,
     weight_quantization_params: WeightQuantizationParams,
 ) -> None:
   """Rewrites Ngrammer Embedding HParam for weight only quantization."""
-  if lm_tpl.ngrammer_tpl is None:
-    return
-  if issubclass(lm_tpl.ngrammer_tpl.cls, layers.ngrammer.Ngrammer):
-    new_ngrammer_cls = quantization.Ngrammer
-  elif issubclass(lm_tpl.ngrammer_tpl.cls, layers.ngrammer.VQNgrammer):
-    new_ngrammer_cls = quantization.VQNgrammer
-  else:
-    return
 
-  new_ngrammer_tpl = pax_fiddle.Config(
-      new_ngrammer_cls,
-      quantization=QuantizationParams(
-          quantization_type=quantization_type,
-          mode=mode,
-          weight_params=weight_quantization_params,
-      ),
-  )
-  new_ngrammer_tpl.copy_fields_from(lm_tpl.ngrammer_tpl)
-  lm_tpl.ngrammer_tpl = new_ngrammer_tpl
+  def _quantize(name: str):
+    ngrammer_tpl = getattr(layer_tpl, name)
+    if ngrammer_tpl is None:
+      return
+    if issubclass(ngrammer_tpl.cls, layers.ngrammer.Ngrammer):
+      new_ngrammer_cls = quantization.Ngrammer
+    elif issubclass(ngrammer_tpl.cls, layers.ngrammer.VQNgrammer):
+      new_ngrammer_cls = quantization.VQNgrammer
+    else:
+      return
+
+    new_ngrammer_tpl = pax_fiddle.Config(
+        new_ngrammer_cls,
+        quantization=QuantizationParams(
+            quantization_type=quantization_type,
+            mode=mode,
+            weight_params=weight_quantization_params,
+        ),
+    )
+    new_ngrammer_tpl.copy_fields_from(ngrammer_tpl)
+    setattr(layer_tpl, name, new_ngrammer_tpl)
+
+  if issubclass(layer_tpl.cls, layers.TransformerLm):
+    _quantize('ngrammer_tpl')
+  if issubclass(layer_tpl.cls, layers.TransformerEncoderDecoder):
+    _quantize('encoder_ngrammer_tpl')
+    _quantize('decoder_ngrammer_tpl')
 
 
 # TODO(jianlijianli): mark quantize_* as private.
@@ -130,6 +155,8 @@ def quantize_transformer_layer_weights(
     act_quantization_params: ActQuantizationParams | None = None,
     linear_only: bool = False,
     rank: int = -1,
+    quantize_self_attention: bool = True,
+    quantize_cross_attention: bool = True,
 ) -> None:
   """Rewrites Transformer HParam for weight and act quantization."""
   if not linear_only:
@@ -140,6 +167,8 @@ def quantize_transformer_layer_weights(
         mode,
         weight_quantization_params,
         act_quantization_params,
+        quantize_self_attention,
+        quantize_cross_attention,
     )
   # Always quantize linears layers.
   tr_fflayer_tpl = cast(
@@ -162,42 +191,55 @@ def quantize_attention_layer_weights(
     mode: QuantizationMode,
     weight_quantization_params: WeightQuantizationParams,
     act_quantization_params: ActQuantizationParams | None = None,
+    quantize_self_attention: bool = True,
+    quantize_cross_attention: bool = True,
 ) -> None:
   """Rewrites Attention HParam for weight and act quantization."""
-  if issubclass(tr_tpl.tr_atten_tpl.cls, layers.attentions.DotProductAttention):
-    tr_atten_tpl = cast(
-        pax_fiddle.Config[layers.attentions.DotProductAttention],
-        tr_tpl.tr_atten_tpl,
-    )
-    quantize_dot_product_attention_layer_weights(
-        tr_atten_tpl,
-        quantization_type,
-        mode,
-        weight_quantization_params,
-        act_quantization_params,
-    )
-    return
 
-  if 'MultiQueryDotProductAttention' in tr_tpl.tr_atten_tpl.cls.__name__:
-    tr_atten_tpl = cast(
-        pax_fiddle.Config[
-            layers.multi_query_attention.MultiQueryDotProductAttention
-        ],
-        tr_tpl.tr_atten_tpl,
-    )
-    quantize_mq_dot_product_attention_layer_weights(
-        tr_atten_tpl,
-        quantization_type,
-        mode,
-        weight_quantization_params,
-        act_quantization_params,
-    )
-    return
+  def _quantize(name: str):
+    atten_tpl = getattr(tr_tpl, name)
+    if atten_tpl is None:
+      return
 
-  raise ValueError(
-      f'tr_tpl.tr_atten_tpl.cls is : {tr_tpl.tr_atten_tpl.cls}'
-      'but has to be DotProductAttention or MultiQueryDotProductAttention'
-  )
+    if issubclass(atten_tpl.cls, layers.attentions.DotProductAttention):
+      quantize_dot_product_attention_layer_weights(
+          atten_tpl,
+          quantization_type,
+          mode,
+          weight_quantization_params,
+          act_quantization_params,
+      )
+    elif issubclass(
+        atten_tpl.cls,
+        layers.multi_query_attention.MultiQueryDotProductAttention,
+    ):
+      quantize_mq_dot_product_attention_layer_weights(
+          atten_tpl,
+          quantization_type,
+          mode,
+          weight_quantization_params,
+          act_quantization_params,
+      )
+    else:
+      raise ValueError(
+          f'tr_tpl.{name}.cls is : {atten_tpl.cls}'
+          'but has to be DotProductAttention or MultiQueryDotProductAttention'
+      )
+
+  if quantize_cross_attention != quantize_self_attention:
+    if tr_tpl.cross_atten_tpl is None:
+      # Note that we do not depends on the value of tr_tpl.use_cross_attention
+      # to decide whether a copy needs to be made, because this value is not
+      # reliable before running layer initialization. If this value is
+      # eventually not being set, e.g. in the case of transformer encoder, then
+      # this copy operation is a noop, i.e. no cross attention layer will
+      # be created.
+      tr_tpl.cross_atten_tpl = tr_tpl.tr_atten_tpl.clone()
+
+  if quantize_self_attention:
+    _quantize('tr_atten_tpl')
+  if quantize_cross_attention:
+    _quantize('cross_atten_tpl')
 
 
 def quantize_dot_product_attention_layer_weights(
@@ -298,8 +340,11 @@ def for_transformer(
     weight_quant_only: bool = True,
     quantize_embedding_softmax: bool = False,
     transposed_embedding_softmax: bool = False,
+    softmax_only: bool = True,
     quantize_ngrammer_embedding: bool = False,
     linear_only: bool = False,
+    quantize_self_attention: bool = True,
+    quantize_cross_attention: bool = True,
     dtype: jnp.dtype = jnp.int8,
     quantize_init_from_checkpoint_rules_task: bool = False,
     block_size: int = 0,
@@ -325,14 +370,29 @@ def for_transformer(
     rank: If positive, factorize weight matrix for linear layers to two [in_dim,
       rank], [rank, out_dim] matrices.
     weight_quant_only: If true, quantize weight only, otherweise quantize both
-      weight and activation.
-    quantize_embedding_softmax: Quantize embedding table of embedding softmax
-      layer.
+      weight and activation except that softmax, embedding, Ngrammer/VQNgrammer
+      layer only support weight quantization regardless of this option.
+    quantize_embedding_softmax: If true, Quantize embedding table of embedding
+      softmax layer. This applies to both softmax and embedding layers unless
+      softmax_only is set to True.
     transposed_embedding_softmax: If the model is using transposed embedding for
-      embedding softmax layer.
+      embedding softmax layer. This applies to both softmax and embedding layers
+      unless softmax_only is set to True.
+    softmax_only: Only quantize softmax layers and leave embedding layers
+      untouched. This option only works if softmax and embedding layers are not
+      sharing the same weights. This argument does not impact whether layers
+      other than softmax and embedding are quantized or not.
     quantize_ngrammer_embedding: Quantize embedding table of each embedding in
       Ngrammer/VQNgrammer layer.
-    linear_only: quantize only linear layer.
+    linear_only: If True, quantize only the linear layers inside the transforemr
+      layer. If False, linear layers inside the transformer layer are still
+      quantized, self attention and cross attention layers inside the
+      transformer layer maybe quantized. This argument does not impact whether
+      layers outside of transformer layer are quantized or not.
+    quantize_self_attention: Quantize the self attention layer inside the
+      transformer layer. Must set linear_only to false to take effect.
+    quantize_cross_attention: Quantize the cross attention layer inside the
+      transformer layer. Must set linear_only to false to take effect.
     dtype: Dtype of the quantized variables.
     quantize_init_from_checkpoint_rules_task: Apply quantization to the tasks
       that are defined in task_p.train.init_from_checkpoint_rules.values()
@@ -378,6 +438,9 @@ def for_transformer(
               dtype=dtype,
               block_size=block_size,
               # Pass internal quantization parameters.
+              quantize_self_attention=quantize_self_attention,
+              quantize_cross_attention=quantize_cross_attention,
+              softmax_only=softmax_only,
           )
         return task_p
 
@@ -472,8 +535,11 @@ def set_transformer_quantization(
     rank: int = -1,
     *,
     weight_quant_only: bool = True,
+    quantize_self_attention: bool = True,
+    quantize_cross_attention: bool = True,
     quantize_embedding_softmax: bool = False,
     transposed_embedding_softmax: bool = False,
+    softmax_only: bool = True,
     quantize_ngrammer_embedding: bool = False,
     dtype: jnp.dtype = jnp.int8,
     block_size: int = 0,
@@ -481,23 +547,38 @@ def set_transformer_quantization(
     int4_packed_weights_container_dtype: jnp.dtype = jnp.int32,
     # Internal quantization parameters.
 ):
-  """Sets quantization parameters for TransformerLm in 'config'.
+  """Sets quantization params for TransformerLm or TransformerEncoderDecoder.
 
   Args:
     config: The config to apply quantization on.
     quantization_type: The quantization types (PTQ, FQ, AQT etc)
     mode: The quantization modes (INFERENCE, TRAINING, MATERIALIZE etc)
     num_bits: The number of bits used for quantization.
-    linear_only: Quantize only the linear layers.
+    linear_only: If True, quantize only the linear layers inside the transforemr
+      layer. If False, linear layers inside the transformer layer are still
+      quantized, self attention and cross attention layers inside the
+      transformer layer maybe quantized. This argument does not impact whether
+      layers outside of transformer layer are quantized or not.
     use_symmetric: Use symmetric weight quantization.
     rank: If positive, factorize weight matrix for linear layers to two [in_dim,
       rank], [rank, out_dim] matrices.
     weight_quant_only: If true, quantize weight only, otherweise quantize both
-      weight and activation.
+      weight and activation except that softmax, embedding, Ngrammer/VQNgrammer
+      layer only support weight quantization regardless of this option.
+    quantize_self_attention: Quantize the self attention layer inside the
+      transformer layer. Must set linear_only to false to take effect.
+    quantize_cross_attention: Quantize the cross attention layer inside the
+      transformer layer. Must set linear_only to false to take effect.
     quantize_embedding_softmax: If true, Quantize embedding table of embedding
-      softmax layer. This rewrites TransformerLm.softmax_tpl in `config`.
+      softmax layer. This applies to both softmax and embedding layers unless
+      softmax_only is set to True.
     transposed_embedding_softmax: If the model is using transposed embedding for
-      embedding softmax layer.
+      embedding softmax layer. This applies to both softmax and embedding layers
+      unless softmax_only is set to True.
+    softmax_only: Only quantize softmax layers and leave embedding layers
+      untouched. This option only works if softmax and embedding layers are not
+      sharing the same weights. This argument does not impact whether layers
+      other than softmax and embedding are quantized or not.
     quantize_ngrammer_embedding: If true, Quantize embedding table of each
       embedding in Ngrammer/VQNgrammer layer. This rewrites
       TransformerLm.ngrammer_tpl in `config`.
@@ -534,22 +615,27 @@ def set_transformer_quantization(
         act_quantization_params,
         linear_only,
         rank,
+        quantize_self_attention,
+        quantize_cross_attention,
     )  # pytype: disable=wrong-arg-types  # py310-upgrade
 
   if quantize_embedding_softmax or quantize_ngrammer_embedding:
-    lm_tpls = utils.find_target_tpl(config, layers.TransformerLm)
-    for lm_tpl in lm_tpls:
+    lm_or_encdec_tpls = utils.find_target_tpl(
+        config, [layers.TransformerLm, layers.TransformerEncoderDecoder]
+    )
+    for lm_or_encdec_tpl in lm_or_encdec_tpls:
       if quantize_embedding_softmax:
         _quantize_embedding_softmax_layer_weights(
-            lm_tpl,
+            lm_or_encdec_tpl,
             quantization_type,
             mode,
             weight_quantization_params,
             transposed_embedding_softmax,
+            softmax_only,
         )  # pytype: disable=wrong-arg-types  # py310-upgrade
       if quantize_ngrammer_embedding:
         _quantize_ngrammer_embedding_weights(
-            lm_tpl,
+            lm_or_encdec_tpl,
             quantization_type,
             mode,
             weight_quantization_params,
