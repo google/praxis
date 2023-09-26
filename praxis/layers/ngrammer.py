@@ -1320,7 +1320,7 @@ class NgrammerStub(base_layer.BaseLayer):
         input_embs, slice_size=1, start_index=step, axis=1
     )
     output_embs = self(
-        input_ids=jnp.array(),  # unused
+        input_ids=jnp.array(),  # unused  # pytype: disable=missing-parameter  # jnp-type
         input_embs=desired_step,
         merge_heads=merge_heads,
     )

@@ -153,7 +153,7 @@ def ctc_loss_with_alignments(
   # we flip it to '    olleh', then move it left to become 'olleh    '.
   reverse_labels = jnp.flip(labels, axis=1)
   sum_labelpaddings = jnp.sum(labelpaddings, axis=1)
-  reverse_labels = _shift(reverse_labels, -sum_labelpaddings, 0)
+  reverse_labels = _shift(reverse_labels, -sum_labelpaddings, 0)  # pytype: disable=wrong-arg-types  # jnp-type
 
   # _, [T, B, N+1], [T, B, N]
   _, logbeta_reverse_phi, logbeta_reverse_emit = (
@@ -170,9 +170,9 @@ def ctc_loss_with_alignments(
   # sequence is backward. So we flip the time and label axes, then shift
   # them left (see the hello example, above).
   logbeta_phi = jnp.flip(jnp.flip(logbeta_reverse_phi, axis=0), axis=2)
-  logbeta_phi = _shift(logbeta_phi, -sum_labelpaddings, logepsilon)
+  logbeta_phi = _shift(logbeta_phi, -sum_labelpaddings, logepsilon)  # pytype: disable=wrong-arg-types  # jnp-type
   logbeta_emit = jnp.flip(jnp.flip(logbeta_reverse_emit, axis=0), axis=2)
-  logbeta_emit = _shift(logbeta_emit, -sum_labelpaddings, logepsilon)
+  logbeta_emit = _shift(logbeta_emit, -sum_labelpaddings, logepsilon)  # pytype: disable=wrong-arg-types  # jnp-type
 
   # The emit tensor is length N, one per label.
   # phi is length N+1; the 0 element is the probability of being in the

@@ -304,7 +304,7 @@ class _ShardedAdamHelper:
   def init_opt_state(self, var_hparams: WeightHParams) -> _AdamOptState:
     """Returns optimizer state for one particular variable."""
     return _AdamOptState(
-        m=jnp.zeros_like(var_hparams), v=jnp.zeros_like(var_hparams))
+        m=jnp.zeros_like(var_hparams), v=jnp.zeros_like(var_hparams))  # pytype: disable=wrong-arg-types  # jnp-type
 
   def inf_to_nan(self, array: JTensor):
     """Converting Infinity values to the more sticky NaN."""
@@ -373,7 +373,7 @@ class _ShardedLionHelper(_ShardedAdamHelper):
                      var_hparams: WeightHParams,
                      m_dtype: jnp.dtype = jnp.float32) -> _LionOptState:
     """Returns optimizer state for one particular variable."""
-    return _LionOptState(m=jnp.zeros_like(var_hparams, dtype=m_dtype))
+    return _LionOptState(m=jnp.zeros_like(var_hparams, dtype=m_dtype))  # pytype: disable=wrong-arg-types  # jnp-type
 
   def update_moments(self, step: JTensor, update: JTensor,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                      moments: _LionOptState,

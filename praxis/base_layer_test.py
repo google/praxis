@@ -839,11 +839,11 @@ class BaseLayerTest(test_utils.TestCase):
     layer_p = pax_fiddle.Config(SimpleBaseLayer)
     with self.assertRaisesRegex(
         TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
-      SimpleBaseLayer(layer_p)
+      SimpleBaseLayer(layer_p)  # pytype: disable=wrong-arg-types  # jnp-type
 
     with self.assertRaisesRegex(
         TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
-      SimpleBaseLayer('foo')
+      SimpleBaseLayer('foo')  # pytype: disable=wrong-arg-types  # jnp-type
 
   def test_get_fan_in_fan_out(self):
     self.assertEqual((None, None), base_layer.get_fan_in_fan_out(shape=[]))
