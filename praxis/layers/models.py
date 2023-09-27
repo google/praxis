@@ -626,6 +626,9 @@ class LanguageModel(base_model.BaseModel):
       enforce_sample_constraints = getattr(
           input_batch, 'enforce_sample_constraints', None
       )
+      num_per_token_logprobs = getattr(
+          input_batch, 'num_per_token_logprobs', None
+      )
 
       next_token_sampler_p = decoder_params.next_token_sampler_tpl.clone()
       # TODO(b/260646361): Avoid this param propagation.
@@ -751,6 +754,7 @@ class LanguageModel(base_model.BaseModel):
             optimize_eos=decoder_params.optimize_eos,
             sample_constraint=decoder_params.sample_constraint,
             enforce_sample_constraints=enforce_sample_constraints,
+            num_per_token_logprobs=num_per_token_logprobs,
         )
 
     elif template_has_type(decoder_params, GreedyDecoderHParams):

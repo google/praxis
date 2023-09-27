@@ -927,6 +927,7 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
+        "//praxis:sample_decode",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.
     ],

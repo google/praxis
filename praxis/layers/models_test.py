@@ -28,6 +28,7 @@ from praxis import decoder_utils
 from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
+from praxis import sample_decode
 from praxis import test_utils
 from praxis.layers import attentions
 from praxis.layers import embedding_softmax
@@ -1143,6 +1144,74 @@ class LanguageModelTest(test_utils.TestCase):
     )
     results = self._run_decode(p, logits, input_batch)
     self.assertLen(results.entropy, 3)
+
+  def test_sample_decoding_with_num_per_token_logprobs(self):
+    p = models.SampleDecoderHParams(
+        seqlen=7,
+        min_prefix_len=0,
+        eos_id=[1, 2],
+        num_samples=1,
+        k=2,
+        temperature=0.5,
+        fprop_for_prefix=True,
+        max_decode_steps=4,
+    )
+    logits = [
+        [
+            [0, 0, 0, 0, 1],
+            [0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0],  # argmax=[4, 1, 3]
+        ],
+        [
+            [0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 1],
+            [0, 0, 1, 0, 0],  # argmax=[1, 4, 2]
+        ],
+        [
+            [0, 0, 0, 1, 0],
+            [0, 0, 1, 0, 0],
+            [0, 0, 0, 1, 0],  # argmax=[3, 2, 3]
+        ],
+        [
+            [0, 0, 0, 0, 1],
+            [0, 0, 0, 0, 1],
+            [0, 0, 0, 1, 0],  # argmax=[4, 4, 3]
+        ],
+    ]
+    num_per_token_logprobs = 3
+    input_batch = NestedMap(
+        ids=jnp.array(
+            [[11, 13, 15], [12, 14, 16], [20, 30, 40]], dtype=jnp.int32
+        ),
+        paddings=jnp.zeros(shape=(3, 3), dtype=jnp.float32),
+        prefix_lengths=jnp.array([2, 2, 1], dtype=jnp.int32),
+        num_per_token_logprobs=num_per_token_logprobs,
+    )
+    results = self._run_decode(p, logits, input_batch)
+    top_candidate_ids = results.top_candidate_ids
+    top_candidate_logprobs = results.top_candidate_logprobs
+    # Check shape.
+    shape = (
+        3,  # batch_size
+        1,  # num_samples
+        7,  # seq_len
+        sample_decode.MAX_NUM_PER_TOKEN_LOGPROBS,
+    )
+    self.assertEqual(shape, top_candidate_ids.shape)
+    self.assertEqual(shape, top_candidate_logprobs.shape)
+    # Check that values outside of the top `num_per_token_logprobs` are 0.
+    self.assertArraysEqual(
+        top_candidate_ids[:, :, :, num_per_token_logprobs:], 0
+    )
+    self.assertArraysEqual(
+        top_candidate_logprobs[:, :, :, num_per_token_logprobs:], 0.0
+    )
+    # Check that logprobs are sorted in descending order.
+    logprobs = top_candidate_logprobs[:, :, :, :num_per_token_logprobs]
+    self.assertArraysEqual(
+        jnp.flip(jnp.sort(logprobs), -1),
+        logprobs,
+    )
 
   def test_cf_guidance_unimplemented_exception(self):
     p = models.SampleDecoderHParams(seqlen=5, cf_guidance_scale=2.0)
