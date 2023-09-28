@@ -16,6 +16,7 @@
 """Sparse base layer."""
 
 import copy
+import functools
 from typing import Optional
 
 import jax
@@ -41,6 +42,81 @@ OneShotMode = sparsity_modes.OneShotMode
 MaterializeMode = sparsity_modes.MaterializeMode
 
 instance_field = base_layer.instance_field
+
+
+@functools.partial(jax.custom_vjp, nondiff_argnums=(2,))
+def sr_ste(
+    inputs: jnp.ndarray,
+    mask: jnp.ndarray,
+    sparse_ste_weight: float,
+):
+  """Wrapper function for custom derivative rule for structured sparsity.
+
+  Algorithm description: https://arxiv.org/abs/2102.04010
+
+  The last arguement is forced to be static to simplify
+    the implementation.
+
+  Args:
+    inputs: Input array for which N:M pruning mask is computed.
+    mask: The mask matrix which defines which elements to be pruned.
+    sparse_ste_weight: Denotes the relative weight for the sparse-refined term.
+      As mentioned in the paper (https://arxiv.org/abs/2102.04010), the best
+      default value is 0.0002 (lambda_w in the paper).
+
+  Returns:
+    The updated input values after applying sparsity.
+  """
+
+  return sr_ste_fwd(
+      inputs=inputs,
+      mask=mask,
+      sparse_ste_weight=sparse_ste_weight,
+  )[0]
+
+
+@functools.partial(jax.jit, static_argnums=(2,))
+def sr_ste_fwd(
+    inputs: jnp.ndarray,
+    mask: jnp.ndarray,
+    sparse_ste_weight: float,
+) -> tuple[
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+]:
+  """Custom forward pass for structured sparsity."""
+  updated_inputs = jnp.multiply(mask, inputs)
+  # pylint:enable=g-long-lambda
+  return (updated_inputs, mask, jnp.array(sparse_ste_weight)), (
+      inputs,
+      mask,
+      jnp.array(sparse_ste_weight),
+  )
+
+
+def sr_ste_bwd(sparsity_params, res, g):
+  """Implements custom gradient for backward pass.
+
+  Args:
+    sparsity_params: Non-diff arguments as defined in `sr_ste`.
+    res: Residuals computed in sr_ste_fwd.
+    g: Default calculated gradients.
+
+  Returns:
+    Gradients for differentiable inputs:
+      - inputs
+      - mask
+  """
+  del sparsity_params
+  inputs, mask, ste_weight = res
+  # g contains a list of gradients, one per output.
+  # g1: updated_inputs
+  g1, _, _ = g
+  g1 = g1 + ste_weight * jnp.multiply(~mask, inputs)
+  return (g1, None)
+
+
+sr_ste.defvjp(sr_ste_fwd, sr_ste_bwd)
 
 
 class SparsityBaseLayer(base_layer.BaseLayer):
@@ -259,7 +335,13 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
     if mask.shape != weight.shape:
       mask = jnp.reshape(mask, weight.shape)
-    weight = sparsity.apply_sparsity(weight, mask)
+
+    if self.sparsity.weight_params.sparse_ste:
+      weight, _, _ = sr_ste(
+          weight, mask, self.sparsity.weight_params.sparse_ste_weight
+      )
+    else:
+      weight = sparsity.apply_sparsity(weight, mask)
 
     self.update_var('step', step + 1)
 

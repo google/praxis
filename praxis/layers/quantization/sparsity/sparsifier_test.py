@@ -119,12 +119,22 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
     elif mode_name == 'fewshot_mode':
       self.assertEqual(initial_var[NON_TRAINABLE]['num_shots'], 10)
 
-  def test_masked_weight_gradient(self):
+  @parameterized.parameters(
+      dict(
+          sparse_ste=True,
+      ),
+      dict(
+          sparse_ste=False,
+      ),
+  )
+  def test_masked_weight_gradient(self, sparse_ste):
     sparsity_p = pax_fiddle.Config(
         SparsityHParams,
         sparsity_type=SparsityType.STRUCTURED_NM,
         mode=pax_fiddle.Config(MaterializeMode),
-        weight_params=WeightSparsityParams(prune_rate=(2, 4)),
+        weight_params=WeightSparsityParams(
+            prune_rate=(2, 4), sparse_ste=sparse_ste
+        ),
     )
 
     p = pax_fiddle.Config(
@@ -179,7 +189,17 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
 
       targets = jnp.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=p.dtype)
       grads, _ = update(test_layer, initial_vars, inputs, targets)
-      self.assertArraysEqual(grads[PARAMS]['w'] != 0, fixed_mask)
+      if sparse_ste:
+        self.assertArraysEqual(
+            grads[PARAMS]['w'] != 0,
+            jnp.array([
+                [True, True, True, True],
+                [True, True, True, True],
+                [True, True, True, True],
+            ]),
+        )
+      else:
+        self.assertArraysEqual(grads[PARAMS]['w'] != 0, fixed_mask)
 
   def test_training_mode(self):
     sparsity_p = pax_fiddle.Config(
@@ -1023,6 +1043,161 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
                   updated_params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
               ),
           ),
+      )
+
+  @parameterized.parameters(
+      dict(
+          prune_rate=(1, 4),
+          sparse_ste=True,
+          mask_decay_weight=0.1,
+      ),
+      dict(
+          prune_rate=0.2,
+          sparse_ste=True,
+          mask_decay_weight=0.1,
+      ),
+  )
+  def test_invalid_sparse_ste_with_non_zero_mask_decay_weight(
+      self, prune_rate, sparse_ste, mask_decay_weight
+  ):
+    with self.assertRaisesRegex(
+        ValueError, 'SR-STE only works with non-decaying mask.'
+    ):
+      sparsity_hparams.WeightSparsityParams(
+          prune_rate=prune_rate,
+          sparse_ste=sparse_ste,
+          mask_decay_weight=mask_decay_weight,
+      )
+
+  @parameterized.parameters(
+      dict(
+          prune_rate=(1, 4),
+          sparse_ste=True,
+          structure_decay=True,
+      ),
+      dict(
+          prune_rate=0.2,
+          sparse_ste=True,
+          structure_decay=True,
+      ),
+  )
+  def test_invalid_sparse_ste_with_structure_decay(
+      self, prune_rate, sparse_ste, structure_decay
+  ):
+    with self.assertRaisesRegex(
+        ValueError, 'SR-STE only works with non-decaying sparse structure.'
+    ):
+      sparsity_hparams.WeightSparsityParams(
+          prune_rate=prune_rate,
+          sparse_ste=sparse_ste,
+          structure_decay=structure_decay,
+      )
+
+  @parameterized.parameters(
+      dict(sparse_type='unstructured', prune_rate=0.2, sparse_ste=True)
+  )
+  def test_invalid_sparse_ste_with_unstructured_sparsity(
+      self, sparse_type, prune_rate, sparse_ste
+  ):
+    with self.assertRaisesRegex(
+        ValueError, 'SR-STE only works with structured sparsity.'
+    ):
+      weight_params = sparsity_hparams.WeightSparsityParams(
+          prune_rate=prune_rate, sparse_ste=sparse_ste
+      )
+      sparsity_hparams.SparsityHParams(
+          sparsity_type=sparse_type, weight_params=weight_params
+      )
+
+  def test_sparse_ste_correctness(self):
+    sparsity_p_with_ste = pax_fiddle.Config(
+        SparsityHParams,
+        sparsity_type=SparsityType.STRUCTURED_NM,
+        mode=pax_fiddle.Config(MaterializeMode),
+        weight_params=WeightSparsityParams(
+            prune_rate=(2, 4),
+            sparse_ste=True,
+        ),
+    )
+
+    sparsity_p_no_ste = pax_fiddle.Config(
+        SparsityHParams,
+        sparsity_type=SparsityType.STRUCTURED_NM,
+        mode=pax_fiddle.Config(MaterializeMode),
+        weight_params=WeightSparsityParams(
+            prune_rate=(2, 4),
+            sparse_ste=False,
+        ),
+    )
+
+    p_with_ste = pax_fiddle.Config(
+        SparseLinearTestLayer,
+        sparsity=sparsity_p_with_ste,
+        input_dims=3,
+        output_dims=4,
+    )
+
+    p_no_ste = pax_fiddle.Config(
+        SparseLinearTestLayer,
+        sparsity=sparsity_p_no_ste,
+        input_dims=3,
+        output_dims=4,
+    )
+
+    test_layer_with_ste = instantiate(p_with_ste)
+    test_layer_no_ste = instantiate(p_no_ste)
+    prng_key = jax.random.PRNGKey(seed=123)
+    inputs = jnp.array([[1, 2, 3], [4, 5, 6]], dtype=p_with_ste.dtype)
+    weights = jnp.array(
+        [
+            [1, 2, 3, 4],
+            [-3, 1, 4, -2],
+            [2, 4, -1, 3],
+        ],
+        dtype=p_with_ste.dtype,
+    )
+    step_size = 0.01
+    targets = jnp.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=p_with_ste.dtype)
+
+    def update(test_layer, params, inputs, targets):
+      def value_and_loss(params, inputs, targets):
+        outputs = test_layer.apply(params, inputs)
+        return -jnp.mean(jnp.abs(outputs - targets))
+
+      grads = jax.grad(value_and_loss, allow_int=True)(params, inputs, targets)
+
+      out_params = copy.deepcopy(params)
+      w_grad = grads[PARAMS]['w']
+      out_params[PARAMS]['w'] = params[PARAMS]['w'] - step_size * w_grad
+
+      return grads, out_params
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = test_layer_with_ste.init(prng_key, inputs)
+      initial_vars[PARAMS]['w'] = weights
+
+      self.assertArraysEqual(
+          initial_vars[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
+          jnp.array([
+              [True, True, True, True],
+              [True, True, True, True],
+              [True, True, True, True],
+          ]),
+      )
+
+      fixed_mask = jnp.array([
+          [False, False, True, True],
+          [True, True, False, False],
+          [True, False, True, False],
+      ])
+      initial_vars[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX] = fixed_mask
+      grads_with_ste, _ = update(
+          test_layer_with_ste, initial_vars, inputs, targets
+      )
+      grads_no_ste, _ = update(test_layer_no_ste, initial_vars, inputs, targets)
+      self.assertArraysEqual(
+          grads_with_ste[PARAMS]['w'] == grads_no_ste[PARAMS]['w'],
+          fixed_mask,
       )
 
 
