@@ -413,7 +413,7 @@ def eqn_to_activation_contract_dims(eqn: str):
 def reduce_einsum_weight_precision(
     eqn: str,
     t: JTensor,
-    calculation_type: jnp.dtype = jnp.bfloat16,
+    calculation_dtype: jnp.dtype = jnp.bfloat16,
     squeeze: bool = True,
     need_gradient: bool = False,
     bits: int = 8,
@@ -428,7 +428,7 @@ def reduce_einsum_weight_precision(
   Args:
     eqn: The equation for the einsum.
     t: The weight tensor for the einsum.
-    calculation_type: The type for calculation.
+    calculation_dtype: The type for calculation.
     squeeze: If the output scale is squeezed.
     need_gradient: If gradient is needed out of this function.
     bits: Target number of bits.
@@ -442,8 +442,8 @@ def reduce_einsum_weight_precision(
   """
   contract_dims = eqn_to_weight_contract_dims(eqn)
 
-  if t.dtype != calculation_type:
-    t = t.astype(calculation_type)
+  if t.dtype != calculation_dtype:
+    t = t.astype(calculation_dtype)
 
   t, scale, zp = reduce_precision(
       t,
@@ -481,7 +481,7 @@ def fakequant_einsum(
     eqn: str,
     t: JTensor,
     bits: int = 8,
-    calculation_type: jnp.dtype = jnp.float32,
+    calculation_dtype: jnp.dtype = jnp.float32,
     use_symmetric: bool = True,
     block_size: int = 0,
 ) -> JTensor:
@@ -491,7 +491,7 @@ def fakequant_einsum(
     eqn: The equation for the einsum. Determines the channel dimension.
     t: The weight tensor for the einsum.
     bits: Target number of bits.
-    calculation_type: The type for calculation.
+    calculation_dtype: The type for calculation.
     use_symmetric: Use symmetric quantization for weights.
     block_size: block wise quantization size. 0 to turn if off.
 
@@ -520,8 +520,8 @@ def fakequant_einsum(
     t = jnp.reshape(t, sub_channel_shape)
     contract_dims[0] += 1
 
-  if t.dtype != calculation_type:
-    t = t.astype(calculation_type)
+  if t.dtype != calculation_dtype:
+    t = t.astype(calculation_dtype)
 
   q, scale, zp = reduce_precision(
       t,
@@ -801,7 +801,7 @@ def fakequant_vn(
     step: JTensor | None = None,
     do_eval: bool = False,
     bits: int = 8,
-    calculation_type: jnp.dtype = jnp.bfloat16,
+    calculation_dtype: jnp.dtype = jnp.bfloat16,
     use_symmetric: bool = True,
 ):
   """Add variational noise to weight w.
@@ -814,7 +814,7 @@ def fakequant_vn(
     step: Current training step.
     do_eval: Evaluation mode, if True.
     bits: Target number of bits.
-    calculation_type: The type for calculation.
+    calculation_dtype: The type for calculation.
     use_symmetric: Use symmetric quantization for weights.
 
   Returns:
@@ -842,7 +842,7 @@ def fakequant_vn(
         eqn,
         w,
         bits=bits,
-        calculation_type=calculation_type,
+        calculation_dtype=calculation_dtype,
         use_symmetric=use_symmetric,
     )
   else:

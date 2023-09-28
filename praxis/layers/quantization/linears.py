@@ -227,7 +227,7 @@ class Linear(  # pytype: disable=signature-mismatch
         q_w, q_s, zp = operations.reduce_einsum_weight_precision(
             eqn,
             theta.w,
-            calculation_type=self.dtype,
+            calculation_dtype=self.dtype,
             bits=self.quantization.weight_params.precision,
             percentile=self.quantization.weight_params.clipping_coeff,
             use_symmetric=self.quantization.weight_params.use_symmetric,

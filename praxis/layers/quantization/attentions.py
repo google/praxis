@@ -253,7 +253,7 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
       q_w, q_s, zp = operations.reduce_einsum_weight_precision(
           eqn,
           self.theta.w,
-          calculation_type=self.dtype,
+          calculation_dtype=self.dtype,
           need_gradient=False,
           bits=self.quantization.weight_params.precision,
           optimization_on_bound=False,
@@ -495,7 +495,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
             self.do_eval,
             bits=self.quantization.weight_params.precision,
             use_symmetric=self.quantization.weight_params.use_symmetric,
-            calculation_type=self.quantization.weight_params.calculation_dtype,
+            calculation_dtype=self.quantization.weight_params.calculation_dtype,
         )
         ret = jnp.einsum(eqn, inputs, w)
       else:
@@ -572,7 +572,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
       q_w, q_s, zp = operations.reduce_einsum_weight_precision(
           eqn,
           theta.w,
-          calculation_type=self.dtype,
+          calculation_dtype=self.dtype,
           need_gradient=False,
           bits=self.quantization.weight_params.precision,
           optimization_on_bound=False,

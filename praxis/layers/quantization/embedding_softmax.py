@@ -98,7 +98,7 @@ class Embedding(embedding_softmax.Embedding):
             emb_var,
             bits=self.quantization.weight_params.precision,
             use_symmetric=self.quantization.weight_params.use_symmetric,
-            calculation_type=self.quantization.weight_params.calculation_dtype,
+            calculation_dtype=self.quantization.weight_params.calculation_dtype,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ_VN:
         if self.quantization.weight_params.use_step_count:
@@ -114,7 +114,7 @@ class Embedding(embedding_softmax.Embedding):
             step_count,
             self.do_eval,
             bits=self.quantization.weight_params.precision,
-            calculation_type=self.quantization.weight_params.calculation_dtype,
+            calculation_dtype=self.quantization.weight_params.calculation_dtype,
             use_symmetric=self.quantization.weight_params.use_symmetric,
         )
       elif self.quantization.quantization_type == QuantizationType.AQT:
@@ -208,7 +208,7 @@ class Embedding(embedding_softmax.Embedding):
       q_w, q_s, zp = quantized_operations.reduce_einsum_weight_precision(
           eqn,
           self.theta.emb_var,
-          calculation_type=self.dtype,
+          calculation_dtype=self.dtype,
           bits=bits,
           percentile=percentile,
           use_symmetric=self.quantization.weight_params.use_symmetric,
@@ -310,7 +310,7 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
             emb_var,
             bits=self.quantization.weight_params.precision,
             use_symmetric=self.quantization.weight_params.use_symmetric,
-            calculation_type=self.quantization.weight_params.calculation_dtype,
+            calculation_dtype=self.quantization.weight_params.calculation_dtype,
         )
       elif self.quantization.quantization_type == QuantizationType.FQ_VN:
         if self.quantization.weight_params.use_step_count:
@@ -326,7 +326,7 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
             step_count,
             self.do_eval,
             bits=self.quantization.weight_params.precision,
-            calculation_type=self.quantization.weight_params.calculation_dtype,
+            calculation_dtype=self.quantization.weight_params.calculation_dtype,
             use_symmetric=self.quantization.weight_params.use_symmetric,
         )
 
@@ -577,7 +577,7 @@ class NClassMajorSharedEmbeddingSoftmax(
       q_w, q_s, zp = quantized_operations.reduce_einsum_weight_precision(
           eqn,
           w,
-          calculation_type=self.dtype,
+          calculation_dtype=self.dtype,
           bits=bits,
           percentile=percentile,
           use_symmetric=self.quantization.weight_params.use_symmetric,
