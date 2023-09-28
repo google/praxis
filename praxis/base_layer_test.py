@@ -760,7 +760,10 @@ class BaseLayerTest(test_utils.TestCase):
     }
     unboxed = base_layer.unbox_meta(tree)
     self.assertEqual(unboxed['params']['whp'], meta)
-    self.assertArraysEqual(unboxed['params']['jarr'], jnp.zeros([1, 1, 1]))
+    self.assertIsInstance(unboxed['params']['jarr'], base_layer.WeightHParams)
+    self.assertSequenceEqual(unboxed['params']['jarr'].shape, [1, 1, 1])
+    self.assertEqual(unboxed['params']['jarr'].dtype, jnp.float32)
+    self.assertEmpty(unboxed['params']['jarr'].collections)
 
   def test_fprop_dtype(self):
     with self.subTest('default'):

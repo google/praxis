@@ -940,11 +940,25 @@ def maybe_unbox_value(tree):
 
 
 def unbox_meta(tree):
-  """Return the `meta` leaf component of the pytree of BoxedParam."""
+  """Return the `meta` component of the pytree of BoxedParam.
+
+  For unwrapped/shaped params this creates default meta that includes
+  shape/dtype.
+
+  Args:
+    tree: tree
+
+  Returns:
+    Tree, whose leaves are replaced by their metadata.
+  """
+
+  def extract_meta(bp):
+    if isinstance(bp, BoxedParam):
+      return bp.meta
+    return WeightHParams(shape=bp.shape, dtype=bp.dtype)
+
   return jax.tree_map(
-      lambda bp: bp.meta if isinstance(bp, BoxedParam) else bp,
-      tree,
-      is_leaf=lambda x: isinstance(x, BoxedParam),
+      extract_meta, tree, is_leaf=lambda x: isinstance(x, BoxedParam)
   )
 
 
