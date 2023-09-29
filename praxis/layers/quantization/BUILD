@@ -372,7 +372,6 @@ py_strict_test(
         # Implicit numpy dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
-        "//praxis:schedules",
         "//praxis:test_utils",
         "//praxis/layers:linears",
     ],
