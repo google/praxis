@@ -161,6 +161,7 @@ class WeightHParamsCollection:
   REQUIRES_MEAN_SYNC = '_requires_mean_sync'
   REQUIRES_SUM_SYNC = '_requires_sum_sync'
   DISALLOW_BFLOAT16_CONVERSION = '_disallow_bfloat16_conversion'
+  OVERWRITE_WITH_GRADIENT = '_overwrite_with_gradient'
 
 
 def var_not_trainable(var_hparams: ParamsT) -> bool:
@@ -188,6 +189,12 @@ def var_skip_lp_regularization(var_params: ParamsT) -> bool:
   return (
       WeightHParamsCollection.SKIP_LP_REGULARIZATION in var_params.collections
   )
+
+
+def var_overwrite_with_gradient(var_hparams: ParamsT) -> bool:
+  """Returns True if var_hparams overwrites with gradient."""
+  return (WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
+          in var_hparams.collections)
 
 
 def to_partition_spec(
