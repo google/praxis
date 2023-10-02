@@ -489,7 +489,7 @@ class TensorQuantizer(base_layer.BaseLayer):
       contract_dims: int | Sequence[int],
   ) -> tuple[JTensor, JTensor | None]:
     def quantization_error_and_scale(clipping):
-      q_scale, x_min = self._get_scale_and_min(
+      q_scale, x_min = self._get_scale_and_min(  # pytype: disable=wrong-arg-types  # jnp-type
           x, contract_dims, clipping_coeff=clipping
       )
       x_scaled, zp_time_scale = self._scale(x, q_scale, x_min)
