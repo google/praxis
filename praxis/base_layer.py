@@ -755,13 +755,26 @@ def var_init_scale(var_p: WeightHParams, var_key: str | None = None) -> float:
   logging.info('var_init_scale called with: %s scale %f', method, scale)
   if method == 'gaussian':
     return scale
-  elif method in ['gaussian_sqrt_fanin', 'xavier']:
+  elif method == 'gaussian_sqrt_fanin':
     fan_in_axes = var_p.fan_in_axes
     fan_out_axes = var_p.fan_out_axes
     fan_in, fan_out = get_fan_in_fan_out(var_p.shape, fan_in_axes, fan_out_axes)
-    scale = 1.0 / math.sqrt(fan_in)
+    scale *= 1.0 / math.sqrt(fan_in)
     logging.info(
-        '%s sqrt_fanin/xavier fan_in: %d fan_out %d scale %f',
+        '%s sqrt_fanin fan_in: %d fan_out %d scale %f',
+        var_key if var_key else 'unset_var_key',
+        fan_in,
+        fan_out,
+        scale,
+    )
+    return scale
+  elif method == 'xavier':
+    fan_in_axes = var_p.fan_in_axes
+    fan_out_axes = var_p.fan_out_axes
+    fan_in, fan_out = get_fan_in_fan_out(var_p.shape, fan_in_axes, fan_out_axes)
+    scale *= math.sqrt(6.0 / (fan_in + fan_out))
+    logging.info(
+        '%s xavier fan_in: %d fan_out %d scale %f',
         var_key if var_key else 'unset_var_key',
         fan_in,
         fan_out,
