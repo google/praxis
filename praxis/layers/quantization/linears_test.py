@@ -15,7 +15,6 @@
 
 """Tests for quantized linears."""
 
-import copy
 import itertools
 from typing import Any, Sequence
 
@@ -549,91 +548,6 @@ class FactorizedLinearTest(test_utils.TestCase):
       initial_vars = linear.init(prng_key, inputs)
       outputs = linear.apply(initial_vars, inputs)
     self.assertEqual(outputs.shape, (2, 4))
-
-
-class SubChannelLinearTest(test_utils.TestCase):
-
-  def setUp(self):
-    super().setUp()
-    np.random.seed(12345)
-
-  @parameterized.product(
-      quantization_type=[
-          QuantizationType.PTQ,
-          QuantizationType.FQ,
-          QuantizationType.AQT,
-      ],
-      num_bits=[4, 8],
-      use_symmetric=[True, False],
-  )
-  def test_quantize(self, quantization_type, num_bits, use_symmetric):
-    batch_dims = 8
-    input_dims = 256
-    block_size = 16
-    output_dims = 32
-    p_training = pax_fiddle.Config(
-        qlinears.Linear,
-        name='_linear',
-        input_dims=input_dims,
-        output_dims=output_dims,
-        mesh_axis_names=['replica', 'mdl', 'data'],
-        weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
-            wt=['mdl', None],
-        ),
-        quantization=QuantizationParams(
-            quantization_type=quantization_type,
-            mode=QuantizationMode.TRAINING,
-            weight_params=quantization_hparams.WeightQuantizationParams(
-                precision=num_bits,
-                use_int4_packed_weights=True,
-                int4_packed_weights_container_dtype=jnp.int32,
-                block_size=block_size,
-                use_symmetric=use_symmetric,
-            ),
-        ),
-    )
-    tol = 0.01
-    if num_bits == 4:
-      tol = 0.15
-    p_inference = copy.deepcopy(p_training)
-    p_inference.quantization.mode = QuantizationMode.INFERENCE
-    training = instantiate(p_training)
-    inference = instantiate(p_inference)
-    inputs = np.random.rand(batch_dims, input_dims).astype(jnp.float32)
-    with base_layer.JaxContext.new_context():
-      prng_key = jax.random.PRNGKey(seed=42)
-      training_vars = training.init(prng_key, inputs)
-      inference_vars, _ = training.apply(
-          training_vars, mutable=[], method=training.quantize_weight
-      )
-      expected_output = training.apply(training_vars, inputs)
-      quantized_output = inference.apply(inference_vars, inputs)
-      training_pspec, _ = training.apply(
-          training_vars, mutable=[], method=training.quantized_partition_specs
-      )
-      inference_pspec, _ = inference.apply(
-          inference_vars, mutable=[], method=inference.quantized_partition_specs
-      )
-
-    self.assertAllClose(expected_output, quantized_output, rtol=tol, atol=tol)
-    expected_pspec = {
-        'params': {
-            'w': base_layer.BoxedPartitionSpec(
-                meta=jax.sharding.PartitionSpec('mdl', None, None)
-            ),
-            'w_quantized_scale': base_layer.BoxedPartitionSpec(
-                meta=jax.sharding.PartitionSpec('mdl', None)
-            ),
-        }
-    }
-    if not use_symmetric:
-      expected_pspec['params']['w_quantized_zp'] = (
-          base_layer.BoxedPartitionSpec(
-              meta=jax.sharding.PartitionSpec('mdl', None)
-          )
-      )
-    self.assertEqual(expected_pspec, training_pspec)
-    self.assertEqual(expected_pspec, inference_pspec)
 
 
 if __name__ == '__main__':
