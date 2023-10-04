@@ -52,24 +52,6 @@ class Linear(  # pytype: disable=signature-mismatch
   _PACK_4BIT_DIM = 0
   rank: int = -1
 
-  def create_tensor_quantizers(self):
-    weight_params = (
-        self.quantization.weight_params if self.quantization else None
-    )
-    act_params = self.quantization.act_params if self.quantization else None
-    self.create_child(
-        'act_quantizer',
-        quantizer.create_tensor_quantizer('act_quantizer', act_params),
-    )
-    self.create_child(
-        'weight_quantizer',
-        quantizer.create_tensor_quantizer('weight_quantizer', weight_params),
-    )
-
-  def _do_static_activation_quantization(self) -> bool:
-    act_params = self.quantization.act_params if self.quantization else None
-    return act_params is not None and act_params.stats_config is not None
-
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
     if self.rank > 0:

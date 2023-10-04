@@ -54,20 +54,6 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
 
   _PACK_4BIT_DIM = 0
 
-  def create_tensor_quantizers(self):
-    act_params = self.quantization.act_params if self.quantization else None
-    weight_params = (
-        self.quantization.weight_params if self.quantization else None
-    )
-    self.create_child(
-        'act_quantizer',
-        quantizer.create_tensor_quantizer('act_quantizer', act_params),
-    )
-    self.create_child(
-        'weight_quantizer',
-        quantizer.create_tensor_quantizer('weight_quantizer', weight_params),
-    )
-
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
     has_sharding = self.mesh_shape is not None and wp.wt is not None
@@ -305,20 +291,6 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
   """
 
   _PACK_4BIT_DIM = 1
-
-  def create_tensor_quantizers(self):
-    act_params = self.quantization.act_params if self.quantization else None
-    weight_params = (
-        self.quantization.weight_params if self.quantization else None
-    )
-    self.create_child(
-        'act_quantizer',
-        quantizer.create_tensor_quantizer('aqt_quantizer', act_params),
-    )
-    self.create_child(
-        'weight_quantizer',
-        quantizer.create_tensor_quantizer('weight_quantizer', weight_params),
-    )
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -652,17 +624,6 @@ class DotProductAttention(  # pytype: disable=signature-mismatch
     quantization: Information related to the quantization applied to this layer,
       such as dtype for the quantized weight.
   """
-
-  def create_tensor_quantizers(self):
-    act_params = self.quantization.act_params if self.quantization else None
-    self.create_child(
-        'act_quantizer',
-        quantizer.create_tensor_quantizer('aqt_quantizer', act_params),
-    )
-
-  def _do_static_activation_quantization(self) -> bool:
-    act_params = self.quantization.act_params if self.quantization else None
-    return act_params is not None and act_params.stats_config is not None
 
   def setup(self) -> None:
     super().setup()

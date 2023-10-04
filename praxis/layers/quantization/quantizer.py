@@ -57,6 +57,24 @@ class QuantizationLayer(base_layer.BaseLayer):
 
   quantization: QuantizationParams | None = instance_field(QuantizationParams)
 
+  def create_tensor_quantizers(self):
+    weight_params = (
+        self.quantization.weight_params if self.quantization else None
+    )
+    act_params = self.quantization.act_params if self.quantization else None
+    self.create_child(
+        'act_quantizer',
+        create_tensor_quantizer('act_quantizer', act_params),
+    )
+    self.create_child(
+        'weight_quantizer',
+        create_tensor_quantizer('weight_quantizer', weight_params),
+    )
+
+  def _do_static_activation_quantization(self) -> bool:
+    act_params = self.quantization.act_params if self.quantization else None
+    return act_params is not None and act_params.stats_config is not None
+
   def set_up_weights(
       self,
       *,
