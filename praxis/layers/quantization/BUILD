@@ -31,6 +31,7 @@ pytype_strict_library(
         ":attentions",
         ":conformers",
         ":convolutions",
+        ":einsum",
         ":embedding_softmax",
         ":linears",
         ":multi_query_attention",
@@ -375,6 +376,36 @@ py_strict_test(
         "//praxis:schedules",
         "//praxis:test_utils",
         "//praxis/layers:linears",
+    ],
+)
+
+pytype_strict_library(
+    name = "einsum",
+    srcs = ["einsum.py"],
+    deps = [
+        ":quantizer",
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:pytypes",
+    ],
+)
+
+py_strict_test(
+    name = "einsum_test",
+    srcs = ["einsum_test.py"],
+    deps = [
+        ":einsum",
+        ":operations",
+        ":quantization_hparams",
+        ":utils",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:schedules",
+        "//praxis:test_utils",
     ],
 )
 
