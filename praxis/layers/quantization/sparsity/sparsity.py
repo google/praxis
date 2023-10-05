@@ -15,15 +15,9 @@
 
 """Basic functionalities for pruning neural networks implemented in jax."""
 
-import functools
-import math
-
-from absl import logging
-from flax import linen as nn
 import jax
 import jax.numpy as jnp
 from praxis.layers.quantization.sparsity import sparsity_hparams
-
 
 
 def apply_sparsity(inputs: jnp.ndarray, mask: jnp.ndarray) -> jnp.ndarray:
@@ -65,12 +59,13 @@ def get_sparsity_mask(
 
   group = int(length / m_sparsity)
   inputs = jnp.abs(inputs)
+  original_shape = inputs.shape
   if order == 'R':
     inputs_temp = inputs.reshape(group, m_sparsity, order='C')
   else:
-    inputs_temp = jnp.einsum('...ij->...ji', inputs).reshape(
-        group, m_sparsity, order='C'
-    )
+    inputs_trans = jnp.einsum('...ij->...ji', inputs)
+    original_shape = inputs_trans.shape
+    inputs_temp = inputs_trans.reshape(group, m_sparsity, order='C')
   # Extract the smallest elements and forcefully make them zero.
   _, top_k_indices = jax.lax.top_k(inputs_temp, k=n_sparsity)
   mask = jnp.any(
@@ -78,13 +73,9 @@ def get_sparsity_mask(
   )
 
   if order == 'R':
-    return mask.reshape(inputs.shape, order='C')
+    return mask.reshape(original_shape, order='C')
   else:
-    if len(inputs.shape) > 2:
-      # TODO: b/299363175 - Fix the shaping issue.
-      raise ValueError('Current not supported')
-    else:
-      return jnp.einsum('ij->ji', mask).reshape(inputs.shape, order='F')
+    return jnp.einsum('...ij->...ji', mask.reshape(original_shape, order='C'))
 
 
 # TODO(ayazdan): Add support for fast top-k.

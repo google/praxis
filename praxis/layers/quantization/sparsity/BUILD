@@ -42,8 +42,6 @@ pytype_strict_library(
     srcs = ["sparsity.py"],
     deps = [
         ":sparsity_hparams",
-        # Implicit absl.logging dependency.
-        # Implicit flax.core dependency.
         # Implicit jax dependency.
     ],
 )
