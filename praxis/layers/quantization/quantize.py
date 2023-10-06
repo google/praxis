@@ -255,7 +255,7 @@ def quantize_dot_product_attention_layer_weights(
 ) -> None:
   """Rewrites DotProductAttention HParam for weight only quantization."""
 
-  attn_tpl.proj_tpl = pax_fiddle.Config(
+  quant_proj_tpl = pax_fiddle.Config(
       quantization.AttentionProjection,
       quantization=QuantizationParams(
           quantization_type=quantization_type,
@@ -264,8 +264,11 @@ def quantize_dot_product_attention_layer_weights(
           weight_params=weight_quantization_params,
       ),
   )
+  if issubclass(attn_tpl.proj_tpl.cls, layers.attentions.AttentionProjection):
+    quant_proj_tpl.copy_fields_from(attn_tpl.proj_tpl)
+  attn_tpl.proj_tpl = quant_proj_tpl
 
-  attn_tpl.combined_qkv_proj_tpl = pax_fiddle.Config(
+  quant_combined_qkv_proj_tpl = pax_fiddle.Config(
       quantization.attentions.CombinedQKVProjectionLayer,
       quantization=QuantizationParams(
           quantization_type=quantization_type,
@@ -274,6 +277,12 @@ def quantize_dot_product_attention_layer_weights(
           weight_params=weight_quantization_params,
       ),
   )
+  if issubclass(
+      attn_tpl.combined_qkv_proj_tpl.cls,
+      layers.attentions.CombinedQKVProjectionLayer,
+  ):
+    quant_combined_qkv_proj_tpl.copy_fields_from(attn_tpl.combined_qkv_proj_tpl)
+  attn_tpl.combined_qkv_proj_tpl = quant_combined_qkv_proj_tpl
 
 
 def quantize_mq_dot_product_attention_layer_weights(
@@ -287,7 +296,7 @@ def quantize_mq_dot_product_attention_layer_weights(
 ) -> None:
   """Rewrites MultiQueryDotProductAttention HParam."""
 
-  attn_tpl.proj_tpl = pax_fiddle.Config(
+  quant_proj_tpl = pax_fiddle.Config(
       quantization.attentions.AttentionProjection,
       quantization=QuantizationParams(
           quantization_type=quantization_type,
@@ -296,8 +305,11 @@ def quantize_mq_dot_product_attention_layer_weights(
           weight_params=weight_quantization_params,
       ),
   )
+  if issubclass(attn_tpl.proj_tpl.cls, layers.attentions.AttentionProjection):
+    quant_proj_tpl.copy_fields_from(attn_tpl.proj_tpl)
+  attn_tpl.proj_tpl = quant_proj_tpl
 
-  attn_tpl.headless_proj_tpl = pax_fiddle.Config(
+  quant_headless_proj_tpl = pax_fiddle.Config(
       quantization.multi_query_attention.OneHeadedAttentionProjection,
       quantization=QuantizationParams(
           quantization_type=quantization_type,
@@ -306,6 +318,12 @@ def quantize_mq_dot_product_attention_layer_weights(
           weight_params=weight_quantization_params,
       ),
   )
+  if issubclass(
+      attn_tpl.headless_proj_tpl.cls,
+      layers.multi_query_attention.OneHeadedAttentionProjection,
+  ):
+    quant_headless_proj_tpl.copy_fields_from(attn_tpl.headless_proj_tpl)
+  attn_tpl.headless_proj_tpl = quant_headless_proj_tpl
 
 
 def quantize_transformer_feed_forward_layer_weights(
