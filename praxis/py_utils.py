@@ -506,12 +506,12 @@ def is_optax_masked_node(x: Any) -> bool:
 
 
 def maybe_pad_uneven_sharding(
-    xs: JTensor,
+    xs: pytypes.NestedJTensor,
     partition_specs: jax.sharding.PartitionSpec | flax.struct.PyTreeNode,
     unpadded_shapes: Sequence[int],
     mesh_shape: Sequence[int],
     mesh_axis_names: Sequence[str],
-) -> JTensor:
+) -> pytypes.NestedJTensor:
   """Pads xs to make them evenly shardable, if needed."""
 
   def _maybe_pad(x, pspec, shape):
@@ -519,7 +519,7 @@ def maybe_pad_uneven_sharding(
       return x
     paddings = get_uneven_sharding_paddings(pspec, shape, mesh_shape,
                                             mesh_axis_names)
-    if all([p == 0 for p in paddings]):
+    if all(p == 0 for p in paddings):
       return x
     # Annotate before pad to make sure they have the same sharding.
     # (Pad does not have the highest sharding propagation priority.)
@@ -536,11 +536,11 @@ def maybe_pad_uneven_sharding(
 
 
 def maybe_slice_uneven_sharding(
-    xs: JTensor,
+    xs: pytypes.NestedJTensor,
     partition_spec: jax.sharding.PartitionSpec,
     unpadded_shapes: Sequence[int],
     is_leaf: Any = None,
-) -> JTensor:
+) -> pytypes.NestedJTensor:
   """Slices xs to remove padding due to uneven sharding, if needed."""
 
   def _maybe_slice(x, pspec, shape):
