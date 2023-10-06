@@ -43,6 +43,7 @@ from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import utils
 
 # Internal import for internal quantization hyper parameters.
+# Internal import for internal quantization long seq support.
 
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 QuantizationParams = quantization_hparams.QuantizationParams
@@ -209,9 +210,12 @@ def quantize_attention_layer_weights(
           weight_quantization_params,
           act_quantization_params,
       )
-    elif issubclass(
-        atten_tpl.cls,
-        layers.multi_query_attention.MultiQueryDotProductAttention,
+    elif (
+        issubclass(
+            atten_tpl.cls,
+            layers.multi_query_attention.MultiQueryDotProductAttention,
+        )
+        # Internal quantization long seq support.
     ):
       quantize_mq_dot_product_attention_layer_weights(
           atten_tpl,
