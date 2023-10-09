@@ -95,5 +95,59 @@ class SSMTest(test_utils.TestCase):
     # Make sure the convolution/fft gets the same results as extend_step.
     self.assertAllClose(to_np(outputs), to_np(out_step), atol=1e-6)
 
+
+class S5Test(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+    tf.random.set_seed(123)
+
+  def test_s5_layer(self):
+    p = pax_fiddle.Config(
+        ssm.S5,
+        name='ssm',
+        nheads=5,
+        dim=1,
+        l_max=2,
+        decode_num_samples=1,
+        step_size=1.0,
+    )
+    s5 = instantiate(p)
+    npy_input = np.random.normal(1.0, 0.5, [2, p.l_max, p.dim]).astype(
+        'float32'
+    )
+    inputs = jnp.asarray(npy_input)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = s5.init(prng_key, inputs)
+
+    # Test convolution/parallel_scan.
+    outputs, ssm_state = s5.apply(
+        initial_vars, inputs, mutable=[base_layer.DECODE_CACHE]
+    )
+    logging.info('outputs = %s', outputs)
+
+    # Test extend_step.
+    out_step = []
+    updated_vars = py_utils.merge_dict(ssm_state, initial_vars)
+    logging.info('init_vars w state = %s', updated_vars)
+    for i in range(p.l_max):
+      out, ssm_state = s5.apply(
+          updated_vars,
+          inputs[:, i, :],
+          method=s5.extend_step,
+          mutable=[base_layer.DECODE_CACHE],
+      )
+      logging.info('outputs = %s', out)
+      logging.info('ssm_states = %s', ssm_state)
+      updated_vars['decoder_cache'] = ssm_state['decoder_cache']
+      out_step.append(out)
+
+    out_step = jnp.stack(out_step, axis=1)
+
+    # Make sure the convolution gets the same results as extend_step.
+    self.assertAllClose(to_np(outputs), to_np(out_step), atol=1e-6)
+
+
 if __name__ == '__main__':
   absltest.main()

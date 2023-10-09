@@ -13,13 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Implementation of the SSM-S4D layer.
+"""Implementation of SSM layers.
 
 S4 means Structured State Space for Sequence Modeling. See:
 https://srush.github.io/annotated-s4/
 
 S4D is its diagonal version which is simpler and performs similarly, see:
 https://arxiv.org/abs/2206.11893.
+
+S5 stands for Simplified S4, which uses MIMO SSMs as opposed to multiple
+independent SISO SSMs of S4. See:
+https://arxiv.org/pdf/2208.04933.pdf.
 """
 
 import jax
@@ -99,7 +103,7 @@ def make_dplr_hippo(n, hippo_type):
   return lambda_real + 1j * lambda_imag, pmat, bmat, vmat
 
 
-############### SSM kernel and layer #####################
+############### S4D-SSM kernel and layer #####################
 def causal_convolution(u, ker):
   """y = conv(ker, u)."""
   assert ker.shape[-2] >= u.shape[-2], "%d, %d" % (ker.shape[-2], u.shape[-2])
@@ -137,15 +141,15 @@ def s4d_discretize(a, b, step):
 
 
 class SSM(base_layer.BaseLayer):
-  """A generic SSM layer for 1D input.
+  """A generic S4D-SSM layer for (multiple) 1D input.
 
-     Attributes:
-       nheads: number of heads per channel.
-       dim: input dimension/channel size.
-       l_max: longest seq length.
-       decode_num_samples: How many decoding samples for each example
-       step_size: the step size for SSM discretization.
-       hippo_type: which type of hippo to use.
+  Attributes:
+    nheads: number of heads per channel.
+    dim: input dimension/channel size.
+    l_max: longest seq length.
+    decode_num_samples: How many decoding samples for each example
+    step_size: the step size for SSM discretization.
+    hippo_type: which type of hippo to use.
   """
   nheads: int = 0
   dim: int = 0
@@ -251,3 +255,171 @@ class SSM(base_layer.BaseLayer):
     y = causal_convolution(inputs, self.ssm_k)
     return y + self.dmat[None, :, :] * inputs
 
+
+############### S5 kernel and layer #####################
+def s5_discretize(a, b, step):
+  """A [nh, d] where nh represents a diagonal matrix for an input channel."""
+  # A is nh-dim diagonal, B[:, i] is an (nh, 1) vector.
+  abar = jnp.exp(step * a)
+  return abar, ((abar - 1) / a)[:, None] * b
+
+
+def binary_operator(element_i, element_j):
+  """Binary operator for parallel scan of linear recurrence."""
+  a_i, bu_i = element_i
+  a_j, bu_j = element_j
+  return a_j * a_i, a_j * bu_i + bu_j
+
+
+def s5_parallel_scan(params, input_sequence):
+  """Compute the BxLxd output of discretized SSM given an BxLxd input."""
+  # Prepare elements required to initialize parallel scan
+  a_bar, b_bar, c_mat, d_mat = params
+  lambda_elements = jnp.repeat(
+      a_bar[None, ...], input_sequence.shape[-2], axis=0
+  )  # [L, nh]
+  bu_elements = input_sequence @ b_bar.T
+  elements = (lambda_elements[None, :, :], bu_elements)  # (1,L,nh), (B,L,nh)
+
+  # Compute latent state sequence given input sequence using parallel scan
+  _, xs = jax.lax.associative_scan(
+      binary_operator, elements, axis=1
+  )  # (B, L, nh)
+
+  # Compute SSM output sequence
+  ys = xs @ c_mat.T + d_mat[None, None, :] * input_sequence
+  return ys.real
+
+
+def s5_step(ab, bb, cb, u_k, x_k_1):
+  """x_k = Ab x_k_1 + Bb u_k , y_k = Cb x_k."""
+  # A = [nh], B = [nh, d], u_k = [B, d], x = [B, nh]
+  x_k = ab[None, :] * x_k_1 + u_k @ bb.T  # [B, nh]
+  # C = [d, nh]
+  y_k = x_k @ cb.T  # [B, d]
+  return x_k, y_k.real
+
+
+class S5(SSM):
+  """S5 layer for MIMO processing. https://arxiv.org/pdf/2208.04933.pdf."""
+
+  def init_s5_abc(self, nh, suffix=""):
+    wp = self.weight_split_dims_mapping
+
+    # We freeze the A matrix without training, because it behaves similarly.
+    if self.hippo_type.endswith("legs"):
+      amat, _, _, _ = make_dplr_hippo(nh, "LegS")
+    elif self.hippo_type.endswith("lagt"):
+      amat, _, _, _ = make_dplr_hippo(nh, "LagT")
+    else:
+      a_im = jnp.arange(
+          -jnp.pi / 2.0 * (nh - 1),
+          jnp.pi / 2.0 / nh * (nh - 1) ** 2,
+          jnp.pi / nh * (nh - 1),
+      )
+      a_re = jnp.ones([nh]) * -0.5
+      amat = a_re + 1j * a_im
+
+    b_re = self.create_variable(
+        "B_re" + suffix,
+        WeightHParams(
+            shape=[nh, self.dim],
+            init=WeightInit.Gaussian((1.0 / self.dim) ** 0.5),
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=wp.wt,
+        ),
+    )
+    b_im = self.create_variable(
+        "B_im" + suffix,
+        WeightHParams(
+            shape=[nh, self.dim],
+            init=WeightInit.Gaussian((1.0 / self.dim) ** 0.5),
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=wp.wt,
+        ),
+    )
+    bmat = b_re + 1j * b_im
+
+    c_re = self.create_variable(
+        "C_re" + suffix,
+        WeightHParams(
+            shape=[self.dim, nh],
+            init=WeightInit.Gaussian((1.0 / nh) ** 0.5),
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=wp.wt,
+        ),
+    )
+    c_im = self.create_variable(
+        "C_im" + suffix,
+        WeightHParams(
+            shape=[self.dim, nh],
+            init=WeightInit.Gaussian((1.0 / nh) ** 0.5),
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=wp.wt,
+        ),
+    )
+    cmat = c_re + 1j * c_im
+
+    return amat, bmat, cmat
+
+  def setup(self) -> None:
+    wp = self.weight_split_dims_mapping
+
+    # We freeze the step_size without training, because it behaves better.
+    self.ss = self.step_size
+    self.dmat = self.create_variable(
+        "D",
+        WeightHParams(
+            shape=[self.dim],
+            init=WeightInit.Constant(1.0),
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=wp.wt,
+        ),
+    )
+
+    # A: [nh], B: [nh, d], C: [d, nh]
+    self.amat, self.bmat, self.cmat = self.init_s5_abc(self.nheads)
+    self.abar, self.bbar = s5_discretize(
+        self.amat, jnp.ones((self.nheads, self.dim)), self.ss
+    )  # B is just ones.
+
+  def init_states(self, batch_size: int) -> None:
+    """Initialize the ssm state to all zeros."""
+    state = jnp.zeros((batch_size, self.nheads), dtype=jnp.complex64)
+    self.update_decode_state("ssm_state", state)
+
+  def extend_step(self, inputs: JTensor) -> JTensor:
+    """Extends SSM for one step on 'inputs' from the last 'ssm_state'.
+
+    Args:
+      inputs: A JTensor of inputs. [B, d]
+
+    Returns:
+      outputs: A JTensor. [B, d]
+    """
+    batch_size = inputs.shape[0]
+    if not self.has_variable(base_layer.DECODE_CACHE, "ssm_state"):
+      self.init_states(batch_size)
+
+    x = self.get_decode_state("ssm_state")
+    assert x.shape[0] == batch_size, (x.shape[0], batch_size)
+
+    x, y = s5_step(self.abar, self.bbar, self.cmat, inputs, x)
+    self.update_decode_state("ssm_state", x)
+    return y + self.dmat[None, :] * inputs
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Use convolution to compute outputs in parallel.
+
+    Args:
+      inputs: A JTensor of inputs. [B, L, d]
+
+    Returns:
+      outputs: A JTensor [B, L, d]
+    """
+    batch_size = inputs.shape[0]
+    # the batch is x decode_num_samples in extend_step decoding.
+    self.init_states(batch_size * self.decode_num_samples)
+
+    params = self.abar, self.bbar, self.cmat, self.dmat
+    return s5_parallel_scan(params, inputs)
