@@ -133,14 +133,6 @@ def partition_params(
   ) -> base_layer.WeightHParams | None:
     if isinstance(params, optax.MaskedNode):
       return None
-    if len(params.shape) < 1:
-      return base_layer.WeightHParams(
-          shape=[],
-          init=None,
-          dtype=jnp.int32,
-          collections=None,
-          tensor_split_dims_mapping=[],
-      )
     return spec
 
   def sharding_for_non_parameter_fields(_: Any) -> base_layer.WeightHParams:

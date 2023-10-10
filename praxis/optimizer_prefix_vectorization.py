@@ -101,26 +101,11 @@ def partition_params(
     # original transformation and call tree_map_params on it.
     if isinstance(opt_states, dict):
       opt_states_pspec = NestedMap()
-
       for prefix, group in opt_states.items():
-        shape_prefix, _, optimizer_prefix = _parse_var_param_repeat_prefix_key(
-            prefix, repeat_prefix_sep
-        )
-        # _vectorize_on_prefix_dims calls jax.vmap which states that "Arguments
-        # passed as keywords are always mapped over their leading axis
-        # (i.e. axis index 0)". Since prefix vectorization can convert the
-        # var_weight_hparams to scalars, we create a partial function to bypass
-        # this error.
-        f = functools.partial(
-            optimizers.partition_params,
+        opt_states_pspec[prefix] = optimizers.partition_params(
             grad_tx=grad_tx.original_grad_tx,
             var_weight_hparams=var_weight_hparams,
             opt_states=group,
-        )
-        opt_states_pspec[prefix] = _vectorize_on_prefix_dims(
-            f,
-            num_dim=len(shape_prefix),
-            optimizer_prefix=optimizer_prefix,
         )
       return opt_states_pspec
     else:
