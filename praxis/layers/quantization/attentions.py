@@ -449,7 +449,9 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
         )
       elif self.quantization.quantization_type == QuantizationType.FQ:
         if self.quantization.act_params is not None:
-          inputs = operations.fakequant_activation(inputs)
+          inputs = operations.fakequant_activation(
+              inputs, bits=self.quantization.act_params.precision
+          )
         w = operations.fakequant_einsum(
             eqn,
             w,
