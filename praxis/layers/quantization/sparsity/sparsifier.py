@@ -159,16 +159,35 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     assert self.sparsity is not None
     num_shots = self.sparsity.mode.get_num_shots()
     num_shots_hp = WeightHParams(
-        shape=[], init=WeightInit.Constant(num_shots), dtype=jnp.int32
+        shape=[],
+        init=WeightInit.Constant(num_shots),
+        dtype=jnp.int32,
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
     )
     self.create_variable('num_shots', num_shots_hp, trainable=False)
 
     count_hp = WeightHParams(
-        shape=[], init=WeightInit.Constant(0), dtype=jnp.int32
+        shape=[],
+        init=WeightInit.Constant(0),
+        dtype=jnp.int32,
+        collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
     )
     # TODO(zhonglinhan): remove these variable to callable sparse scheduler.
     self.create_variable('mask_update_count', count_hp, trainable=False)
     self.create_variable('step', copy.deepcopy(count_hp), trainable=False)
+
+    # create variable for tracking sparse architecture divergence (SAD) metric
+    # proposed in https://arxiv.org/abs/2102.04010
+    if self.sparsity.track_sad_metric:
+      sad_hp = WeightHParams(
+          shape=[],
+          init=WeightInit.Constant(0.0),
+          dtype=jnp.float32,
+          collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
+      )
+      self.create_variable(
+          'sparse_architecture_divergence', sad_hp, trainable=False
+      )
 
   # TODO(shivaniagrawal): add base layer tests for boundary conditions.
   def _get_sparsity_mask(self, score, mask, step):
@@ -261,12 +280,28 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       score = sparsity.compute_score(
           w, score_func=self.sparsity.score, inputs=inputs
       )
-      return self._get_sparsity_mask(score, mask, step), update_cnt + 1
+      new_mask = self._get_sparsity_mask(score, mask, step)
+
+      sad_score = None
+      if self.sparsity.track_sad_metric:
+        # compute sad = #mask-changes / #params
+        sad_score = jnp.sum(jnp.logical_xor(mask, new_mask)) / jnp.size(mask)
+
+      return (
+          self._get_sparsity_mask(score, mask, step),
+          update_cnt + 1,
+          sad_score,
+      )
 
     def no_mask_update(w, inputs, mask, update_cnt, step):  # pylint: disable=unused-argument
-      return mask, update_cnt
+      sad_score = None
+      if self.sparsity.track_sad_metric:
+        # sad metric becomes zero as there are no mask-changes
+        sad_score = jnp.zeros((), dtype=jnp.float32)
 
-    new_mask, update_cnt = jax.lax.cond(
+      return mask, update_cnt, sad_score
+
+    new_mask, update_cnt, sad_score = jax.lax.cond(
         self.sparsity.mode.update_cond(step, update_cnt),
         mask_update,
         no_mask_update,
@@ -279,6 +314,8 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
     self.update_var('mask_update_count', update_cnt)
     self.update_var(mask_var_name, new_mask)
+    if self.sparsity.track_sad_metric:
+      self.update_var('sparse_architecture_divergence', sad_score)
 
     if isinstance(self.sparsity.mode, OneShotMode) or isinstance(
         self.sparsity.mode, FewShotMode

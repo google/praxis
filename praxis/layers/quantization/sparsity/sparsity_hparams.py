@@ -115,10 +115,10 @@ class WeightSparsityParams:
         '`mask_decay_weight` must be positive.'
     )
 
-    assert self.sparse_ste_weight > 0.0, (
+    assert self.sparse_ste_weight >= 0.0, (
         'Invalid value for '
         f'{self.sparse_ste_weight}. '
-        '`sparse_ste_weight` must be positive.'
+        '`sparse_ste_weight` must be positive (uses SR-STE) or 0 (uses STE).'
     )
 
     if self.sparse_ste:
@@ -148,6 +148,7 @@ class SparsityHParams:
       `C` and `R` indicate column-wise and row-wise masking, respectively.
       Default is `R` indicating to applying N:M sparsity across rows of the
       input matrix.
+    track_sad_metric: Should we track sparse architecture divergence metric?
   """
 
   sparsity_type: SparsityType = SparsityType.STRUCTURED_NM
@@ -159,6 +160,7 @@ class SparsityHParams:
   sparsified_layers: list[int] | None = None
   polynomial_decay_schedule: PolynomialDecayParams | None = None
   order: str = 'R'
+  track_sad_metric: bool = False
 
   def __post_init__(self):
     if (
