@@ -1359,6 +1359,53 @@ class Lamb(BaseOptimizer):
     )
 
 
+class Lars(BaseOptimizer):
+  """Canonical Lars optimizer.
+
+  Please check optax lars doc
+  (https://optax.readthedocs.io/en/latest/api.html#optax.lars) for more details.
+
+  Attributes:
+    weight_decay: Strength of the weight decay regularization.
+    weight_decay_mask: a PyTree with same structure as (or a prefix of) the
+      params PyTree, or a Callable that returns such a pytree given the
+      params/updates. The leaves should be booleans, ``True`` for
+      leaves/subtrees you want to apply the transformation for weight decay to,
+      and ``False`` for those you want to skip.
+    trust_coefficient: A multiplier for the trust ratio.
+    eps: Optional additive constant in the trust ratio denominator.
+    trust_ratio_mask: a PyTree with same structure as (or a prefix of) the
+      params PyTree, or a Callable that returns such a pytree given the
+      params/updates. The leaves should be booleans, ``True`` for
+      leaves/subtrees you want to apply the transformation for trust ratio to,
+      and ``False`` for those you want to skip.
+    momentum: Decay rate for momentum.
+    nesterov: Whether to use Nesterov momentum.
+  """
+
+  weight_decay: float = 0.0
+  weight_decay_mask: Any = True
+  trust_coefficient: float = 0.001
+  eps: float = 0.0
+  trust_ratio_mask: Any = True
+  momentum: float = 0.9
+  nesterov: bool = False
+
+  def _get_raw_grad_transformation(
+      self, lr: optax.Schedule
+  ) -> optax.GradientTransformation:
+    return optax.lars(
+        learning_rate=lr,
+        weight_decay=self.weight_decay,
+        weight_decay_mask=self.weight_decay_mask,
+        trust_coefficient=self.trust_coefficient,
+        eps=self.eps,
+        trust_ratio_mask=self.trust_ratio_mask,
+        momentum=self.momentum,
+        nesterov=self.nesterov,
+    )
+
+
 class ShardedSgd(BaseOptimizer):
   """Sharded SGD optimizer.
 
