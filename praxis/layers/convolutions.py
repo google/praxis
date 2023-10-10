@@ -49,12 +49,15 @@ def _extract_pad_beg_end(size: int) -> tuple[int, int]:
   return pad_beg, pad_end
 
 
-def _causal_padding(size: int, filter_shape: int, filter_stride: int) -> int:
+def _effective_kernel_size(filter_shape: int, dilation_rate: int) -> int:
+  """Returns the effective filter size for a convolution."""
+  return dilation_rate * (filter_shape - 1) + 1
+
+
+def causal_padding(filter_shape: int, dilation_rate: int) -> int:
   """Gets the padding for a causal convolution."""
-  if size % filter_stride == 0:
-    return max(filter_shape - filter_stride, 0)
-  else:
-    return max(filter_shape - (size % filter_stride), 0)
+  effective_kernel_size = _effective_kernel_size(filter_shape, dilation_rate)
+  return effective_kernel_size - 1
 
 
 class Conv2D(base_layer.BaseLayer):
@@ -179,11 +182,15 @@ class Conv2D(base_layer.BaseLayer):
     self.weight_norm: normalizations.BaseNormalization
     self.create_child('weight_norm', wn)
 
-  def _compute_padding(self, inputs_shape, pad_height_zero=False):
-    filter_height = (self.filter_shape[0] - 1) * self.dilations[0] + 1
-    filter_width = (self.filter_shape[1] - 1) * self.dilations[1] + 1
+  def _compute_padding(self, pad_height_zero=False):
     if not self.tf_equivalent_padding:
       if self.padding == 'SAME':
+        filter_height = _effective_kernel_size(
+            self.filter_shape[0], self.dilations[0]
+        )
+        filter_width = _effective_kernel_size(
+            self.filter_shape[1], self.dilations[1]
+        )
         pad_height_beg, pad_height_end = _extract_pad_beg_end(filter_height)
         pad_width_beg, pad_width_end = _extract_pad_beg_end(filter_width)
       else:
@@ -200,19 +207,20 @@ class Conv2D(base_layer.BaseLayer):
       if not self.is_causal:
         padding = self.padding
       else:
-        # Compute padding for causal convolution
-        # Reference:
-        # https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2
-        pad_height_total = _causal_padding(
-            inputs_shape[1], filter_height, self.filter_stride[0]
+        # Compute padding for causal convolution.
+        pad_height_total = causal_padding(
+            self.filter_shape[0], self.dilations[0]
         )
-        pad_width_total = _causal_padding(
-            inputs_shape[2], filter_width, self.filter_stride[1]
+        pad_width_total = causal_padding(
+            self.filter_shape[1], self.dilations[1]
         )
 
-        # first dimension is causal
+        # Causal padding for the height dimension.
         pad_height_beg = 0 if pad_height_zero else pad_height_total
         pad_height_end = 0
+        # SAME padding for the width dimension. To match TensorFlow SAME padding
+        # behavior, put the extra padding at the end when pad amount is odd.
+        # https://www.tensorflow.org/api_docs/python/tf/nn#same_padding
         pad_width_beg = pad_width_total // 2
         pad_width_end = pad_width_total - pad_width_beg
 
@@ -260,7 +268,7 @@ class Conv2D(base_layer.BaseLayer):
           f'(Input shape: {inputs.shape}, '
           f'filter shape: {self.filter_shape}).'
       )
-    padding = self._compute_padding(inputs.shape)
+    padding = self._compute_padding()
     inputs = self._shard_bhwc(inputs.astype(self.fprop_dtype))
 
     # The `dimension_numbers=('NHWC', 'HWIO', 'NHWC')` is to be consistent
@@ -382,16 +390,21 @@ class Conv3D(base_layer.BaseLayer):
           'b', WeightHParams(shape=[self.filter_shape[-1]], init=self.bias_init)
       )
 
-  def _compute_padding(self, inputs_shape, pad_height_zero=False):
+  def _compute_padding(self, pad_height_zero=False):
     if not self.tf_equivalent_padding:
       if self.padding == 'SAME':
-        pad_time_beg, pad_time_end = _extract_pad_beg_end(self.filter_shape[0])
-        pad_height_beg, pad_height_end = _extract_pad_beg_end(
-            self.filter_shape[1]
+        filter_time = _effective_kernel_size(
+            self.filter_shape[0], self.dilations[0]
         )
-        pad_width_beg, pad_width_end = _extract_pad_beg_end(
-            self.filter_shape[2]
+        filter_height = _effective_kernel_size(
+            self.filter_shape[1], self.dilations[1]
         )
+        filter_width = _effective_kernel_size(
+            self.filter_shape[2], self.dilations[2]
+        )
+        pad_time_beg, pad_time_end = _extract_pad_beg_end(filter_time)
+        pad_height_beg, pad_height_end = _extract_pad_beg_end(filter_height)
+        pad_width_beg, pad_width_end = _extract_pad_beg_end(filter_width)
       else:
         assert self.padding == 'VALID', self.padding
         pad_time_beg = 0
@@ -409,25 +422,22 @@ class Conv3D(base_layer.BaseLayer):
       if not self.is_causal:
         padding = self.padding
       else:
-        # Compute padding for causal convolution
-        # Reference:
-        # https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2
-        filter_time = (self.filter_shape[0] - 1) * self.dilations[0] + 1
-        filter_height = (self.filter_shape[1] - 1) * self.dilations[1] + 1
-        filter_width = (self.filter_shape[2] - 1) * self.dilations[2] + 1
-        pad_time_total = _causal_padding(
-            inputs_shape[1], filter_time, self.filter_stride[0]
+        # Compute padding for causal convolution.
+        pad_time_total = causal_padding(self.filter_shape[0], self.dilations[0])
+        pad_height_total = causal_padding(
+            self.filter_shape[1], self.dilations[1]
         )
-        pad_height_total = _causal_padding(
-            inputs_shape[2], filter_height, self.filter_stride[1]
-        )
-        pad_width_total = _causal_padding(
-            inputs_shape[3], filter_width, self.filter_stride[2]
+        pad_width_total = causal_padding(
+            self.filter_shape[2], self.dilations[2]
         )
 
-        # first dimension is causal
+        # Causal padding for the height dimension.
         pad_time_beg = 0 if pad_height_zero else pad_time_total
         pad_time_end = 0
+        # SAME padding for the height and width dimensions. To match TensorFlow
+        # SAME padding behavior, put the extra padding at the end when pad
+        # amount is odd.
+        # https://www.tensorflow.org/api_docs/python/tf/nn#same_padding
         pad_height_beg = pad_height_total // 2
         pad_height_end = pad_height_total - pad_height_beg
         pad_width_beg = pad_width_total // 2
@@ -470,7 +480,7 @@ class Conv3D(base_layer.BaseLayer):
           f'(Input shape: {inputs.shape}, '
           f'filter shape: {self.filter_shape}).'
       )
-    padding = self._compute_padding(inputs.shape)
+    padding = self._compute_padding()
 
     # The `dimension_numbers=('NTHWC', 'THWIO', 'NTHWC')` is to be consistent
     # with tf.conv3d.
@@ -742,7 +752,9 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
     )
 
     if self.is_causal:
-      causal_pad_size = self.rhs_dilation_rate * (self.filter_shape[0] - 1)
+      causal_pad_size = causal_padding(
+          self.filter_shape[0], self.rhs_dilation_rate
+      )
       padding = [(causal_pad_size, 0)]
     else:
       padding = 'SAME'

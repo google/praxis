@@ -104,9 +104,24 @@ class ConvolutionsTest(test_utils.TestCase):
     initial_vars = conv_layer.init(prng_key, inputs)
     initial_vars = jax.tree_map(jnp.ones_like, initial_vars)
 
+    # Test odd length sequence.
     output = conv_layer.apply(initial_vars, inputs)
     np_output = np.array(
         [[2.0, 6.0, 6.0], [24.0, 42.0, 32.0], [66.0, 108.0, 78.0]]
+    )
+    self.assertAllClose(to_np(output[0, :, :, 0]), np_output)
+
+    # Test even length sequence.
+    npy_inputs = np.arange(36).reshape((1, 6, 6, 1)).astype('float32')
+    inputs = jnp.asarray(npy_inputs)
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = conv_layer.init(prng_key, inputs)
+    initial_vars = jax.tree_map(jnp.ones_like, initial_vars)
+
+    output = conv_layer.apply(initial_vars, inputs)
+    np_output = np.array(
+        [[2.0, 6.0, 6.0], [28.0, 48.0, 36.0], [78.0, 126.0, 90.0]]
     )
     self.assertAllClose(to_np(output[0, :, :, 0]), np_output)
 
