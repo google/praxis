@@ -532,15 +532,6 @@ class GroupNorm(BaseNormalization):
 
   def _normalize(self, grouped_inputs: JTensor, group_mean: JTensor,
                  group_variance: JTensor) -> JTensor:
-    moment_shape = list(grouped_inputs.shape)
-    if self.input_rank == 4:
-      moment_shape[2] = 1
-    moment_shape[-1] = 1
-
-    if not self.cumulative:
-      # If not cumulative, the seqlen dimension is also reduced.
-      moment_shape[1] = 1
-
     group_stddev_inv = jax.lax.rsqrt(group_variance + self.epsilon)
 
     grouped_inputs = (grouped_inputs - group_mean) * group_stddev_inv
@@ -600,8 +591,9 @@ class GroupNorm(BaseNormalization):
           x,
           expanded_paddings,
           reduce_over_dims,
-          cumulative_axis=1,
-          keepdims=True)
+          cumulative_axis=1 if self.cumulative else None,
+          keepdims=True,
+      )
 
     gn_output = self._normalize(x, group_mean, group_variance)
     if self.set_padded_output_to_zero and paddings is not None:
