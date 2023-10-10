@@ -225,7 +225,9 @@ class QuantizationLayer(base_layer.BaseLayer):
       elif self.quantization.quantization_type == QuantizationType.FQ:
         if self.quantization.act_params is not None:
           act_params = self.quantization.act_params
-          x = operations.fakequant_activation(x, bits=act_params.precision)
+          x = operations.fakequant_activation(
+              x, bits=act_params.precision, symmetric=act_params.symmetric
+          )
         w = operations.fakequant_einsum(
             eqn,
             w,
@@ -293,7 +295,7 @@ def quantized_conv(
           'Static activation quantization is not supported yet.'
       )
     elif layer.quantization.act_params is not None:
-      x, act_scale = operations.reduce_precision_activation(x)
+      x, act_scale, _ = operations.reduce_precision_activation(x)
       s = jnp.multiply(jnp.squeeze(act_scale), s)
     dtype = layer.quantization.weight_params.dtype
     if (

@@ -544,7 +544,8 @@ def reduce_precision_activation(
     need_gradient: bool = False,
     bits: int = 8,
     contract_dims: Sequence[int] | None = None,
-) -> tuple[JTensor, JTensor]:
+    symmetric: bool = True,
+) -> tuple[JTensor, JTensor, JTensor | None]:
   """Reduce the precision of activation.
 
   Args:
@@ -552,13 +553,16 @@ def reduce_precision_activation(
     need_gradient: If gradient is needed out of this function.
     bits: Target number of bits.
     contract_dims: contract dimension.
+    symmetric: if the activation is quantized symmetrically.
 
   Returns:
-    A tuple of JTensors. The first one is the quantized activation and the
-    second one is the scaling factor.
+    A tuple of JTensors. The first one is the quantized activation, the
+    second one is the scaling factor, and the last is the zero point.
   """
-  qt, scale, _ = reduce_precision(t, contract_dims, need_gradient, bits, False)
-  return qt, scale
+  qt, scale, zp = reduce_precision(
+      t, contract_dims, need_gradient, bits, False, use_symmetric=symmetric
+  )
+  return qt, scale, zp
 
 
 # TODO(wppark): support clipping for activation, e.g, using standard deviation.
@@ -600,7 +604,7 @@ def reduce_einsum_activation_precision(
 
 
 def fakequant_activation(
-    t: JTensor, bits: int = 8, eqn: str | None = None
+    t: JTensor, bits: int = 8, eqn: str | None = None, symmetric: bool = True
 ) -> JTensor:
   """FakeQuant activation.
 
@@ -608,6 +612,7 @@ def fakequant_activation(
     t: Activation tensor.
     bits: Target number of bits.
     eqn: einsum equation. If None, do per-tensor quantization.
+    symmetric: if the activation is quantized symmetrically.
 
   Returns:
     Nudged activation.
@@ -615,10 +620,17 @@ def fakequant_activation(
   contract_dims = None
   if eqn:
     contract_dims = eqn_to_activation_contract_dims(eqn)
-  qt, scale = reduce_precision_activation(
-      t, need_gradient=True, bits=bits, contract_dims=contract_dims
+  qt, scale, zp = reduce_precision_activation(
+      t,
+      need_gradient=True,
+      bits=bits,
+      contract_dims=contract_dims,
+      symmetric=symmetric,
   )
-  return jnp.multiply(qt, scale).astype(t.dtype)
+  res = jnp.multiply(qt, scale)
+  if zp is not None:
+    res = jnp.subtract(res, zp)
+  return res.astype(t.dtype)
 
 
 def compute_shape_with_subchannels(

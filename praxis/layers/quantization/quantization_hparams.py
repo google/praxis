@@ -71,6 +71,7 @@ class ActQuantizationParams:
   fp16: clip activation to fp16. This overrides the int8 activation quantization
     for QAT.
   per_channel: Whether or not to quantize activation channel-wisely.
+  symmetric: Whether or not to quantize activation symmetrically.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -80,6 +81,7 @@ class ActQuantizationParams:
   stop_scale_gradient: bool = False
   fp16: bool = False
   per_channel: bool = True
+  symmetric: bool = True
 
 
 @dataclasses.dataclass

@@ -426,7 +426,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
           self.quantization.act_params is not None
           and self.quantization.act_params.stats_config is None
       ):
-        inputs, act_scale = operations.reduce_precision_activation(inputs)
+        inputs, act_scale, _ = operations.reduce_precision_activation(inputs)
         ret = operations.einsum(
             eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
         )
