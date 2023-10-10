@@ -2141,7 +2141,7 @@ class BaseLayer(nn.Module):
       use_symmetric: If False, additionally create a variable for the zero point
         used for asymmetric weight quantization.
       scale_hparams: Optional hparams for scale and zero-point. User should
-        speicfy one of scale_shape or scale_hparams, not both.
+        specify one of scale_shape or scale_hparams, not both.
     """
 
     quantized_weight_hparams = copy.deepcopy(weight_hparams)
@@ -2622,9 +2622,14 @@ def get_template_fields(template: pax_fiddle.Config) -> list[str]:
     template: The HParams or fdl.Config whose field names should be returned.
   """
   if isinstance(template, pax_fiddle.Config):
-    return list(
+    return list(  # pytype: disable=bad-return-type
         fdl.ordered_arguments(
-            template, include_defaults=True, include_unset=True))
+            template,
+            include_defaults=True,
+            include_unset=True,
+            include_positional=False,
+        )
+    )
   else:
     raise TypeError(f'Unexpected type for template: {type(template)}')
 

@@ -307,8 +307,9 @@ class HyperParamsTest(absltest.TestCase):
   def test_fiddle_eager_error_checking(self):
     p = SimpleTestClass.config()
     with self.assertRaisesRegex(
-        TypeError,
-        "No parameter named 'not_there' exists.*valid parameter names: a, b"):
+        (AttributeError, TypeError),
+        "No parameter named 'not_there' exists.*valid parameter names: a, b",
+    ):
       p.not_there = 5
 
     with self.assertRaisesRegex(TypeError, 'invalid_name'):
