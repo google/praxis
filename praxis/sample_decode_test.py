@@ -349,26 +349,26 @@ class SampleDecodeHelperTest(test_utils.TestCase):
           testcase_name='use_dummy_next_token_sampler',
           use_dummy_next_token_sampler=True,
           use_gumbel_prng_key=False,  # doesn't matter
-          top_logprobs=None,
+          num_per_token_logprobs=None,
       ),
       dict(
           testcase_name='without_gumbel_prng_key',
           use_dummy_next_token_sampler=False,
           use_gumbel_prng_key=False,
-          top_logprobs=1,
+          num_per_token_logprobs=1,
       ),
       dict(
           testcase_name='with_gumbel_prng_key',
           use_dummy_next_token_sampler=False,
           use_gumbel_prng_key=True,
-          top_logprobs=2,
+          num_per_token_logprobs=2,
       ),
       dict(
           testcase_name='return_entropy_score',
           use_dummy_next_token_sampler=True,
           use_gumbel_prng_key=False,  # doesn't matter
           return_entropy_score=True,
-          top_logprobs=3,
+          num_per_token_logprobs=3,
       ),
   )
   def test_sample_decode(
@@ -376,7 +376,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
       use_dummy_next_token_sampler,
       use_gumbel_prng_key,
       return_entropy_score=False,
-      top_logprobs=None,
+      num_per_token_logprobs=None,
   ):
     batch_size = 1
     num_samples = 2
@@ -432,7 +432,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
           # Call the scan loop.
           early_exit=False,
           return_entropy_score=return_entropy_score,
-          num_per_token_logprobs=top_logprobs,
+          num_per_token_logprobs=num_per_token_logprobs,
       )
 
     mutables = [SUMMARIES, DECODE_CACHE]
@@ -468,7 +468,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
     else:
       self.assertNotIn('entropy', result)
 
-    if top_logprobs is None:
+    if num_per_token_logprobs is None:
       self.assertNotIn('top_candidate_logprobs', result)
       self.assertNotIn('top_candidate_ids', result)
     else:
@@ -483,13 +483,15 @@ class SampleDecodeHelperTest(test_utils.TestCase):
       )
       self.assertEqual(shape, top_candidate_ids.shape)
       self.assertEqual(shape, top_candidate_logprobs.shape)
-      # Check that values outside of the top `top_logprobs` are 0.
-      self.assertArraysEqual(top_candidate_ids[:, :, :, top_logprobs:], 0)
+      # Check that values outside of the top `num_per_token_logprobs` are 0.
       self.assertArraysEqual(
-          top_candidate_logprobs[:, :, :, top_logprobs:], 0.0
+          top_candidate_ids[:, :, :, num_per_token_logprobs:], 0
+      )
+      self.assertArraysEqual(
+          top_candidate_logprobs[:, :, :, num_per_token_logprobs:], 0.0
       )
       # Check that logprobs are sorted in descending order.
-      logprobs = top_candidate_logprobs[:, :, :, :top_logprobs]
+      logprobs = top_candidate_logprobs[:, :, :, :num_per_token_logprobs]
       self.assertArraysEqual(
           jnp.flip(jnp.sort(logprobs), -1),
           logprobs,
@@ -498,14 +500,16 @@ class SampleDecodeHelperTest(test_utils.TestCase):
       # swap seq_len and num_samples -> (sample, seq, vocab).
       logits_var = jnp.swapaxes(logits_var, 0, 1)
       logprobs = jax.nn.log_softmax(logits_var)
-      logprobs, ids = jax.lax.top_k(logprobs, top_logprobs)
+      logprobs, ids = jax.lax.top_k(logprobs, num_per_token_logprobs)
       # batch size is 1.
       self.assertEqual(1, top_candidate_logprobs.shape[0])
       self.assertEqual(1, top_candidate_ids.shape[0])
       self.assertArraysEqual(
-          logprobs, top_candidate_logprobs[0, :, :, :top_logprobs]
+          logprobs, top_candidate_logprobs[0, :, :, :num_per_token_logprobs]
       )
-      self.assertArraysEqual(ids, top_candidate_ids[0, :, :, :top_logprobs])
+      self.assertArraysEqual(
+          ids, top_candidate_ids[0, :, :, :num_per_token_logprobs]
+      )
 
   @parameterized.named_parameters(
       dict(
