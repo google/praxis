@@ -426,7 +426,9 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
           self.quantization.act_params is not None
           and self.quantization.act_params.stats_config is None
       ):
-        inputs, act_scale, _ = operations.reduce_precision_activation(inputs)
+        inputs, act_scale, _ = operations.reduce_precision_activation(
+            inputs, bits=self.quantization.act_params.precision
+        )
         ret = operations.einsum(
             eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
         )
@@ -473,7 +475,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
         )
         ret = jnp.einsum(eqn, inputs, w)
       else:
-        raise ValueError('invaid quantization type')
+        raise ValueError('invalid quantization type')
 
     ret = checkpoint_name(ret, 'combined_qkv_proj')
     if self.use_bias:

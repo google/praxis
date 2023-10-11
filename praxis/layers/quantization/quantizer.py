@@ -295,7 +295,9 @@ def quantized_conv(
           'Static activation quantization is not supported yet.'
       )
     elif layer.quantization.act_params is not None:
-      x, act_scale, _ = operations.reduce_precision_activation(x)
+      x, act_scale, _ = operations.reduce_precision_activation(
+          x, bits=layer.quantization.act_params.precision
+      )
       s = jnp.multiply(jnp.squeeze(act_scale), s)
     dtype = layer.quantization.weight_params.dtype
     if (
