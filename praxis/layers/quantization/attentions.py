@@ -230,7 +230,6 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
     else:
       eqn = 'AD,DNH->ANH'
 
-    percentile = self.quantization.weight_params.clipping_coeff
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type in [
         QuantizationType.PTQ,
@@ -243,7 +242,7 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
           need_gradient=False,
           bits=self.quantization.weight_params.precision,
           optimization_on_bound=False,
-          percentile=percentile,
+          percentile=self.quantization.weight_params.clipping_coeff,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
     elif self.quantization.quantization_type == QuantizationType.AQT:
@@ -427,7 +426,9 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
           and self.quantization.act_params.stats_config is None
       ):
         inputs, act_scale, _ = operations.reduce_precision_activation(
-            inputs, bits=self.quantization.act_params.precision
+            inputs,
+            bits=self.quantization.act_params.precision,
+            percentile=self.quantization.act_params.clipping_coeff,
         )
         ret = operations.einsum(
             eqn, inputs, w, jnp.multiply(jnp.squeeze(act_scale), s)
@@ -452,7 +453,9 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
       elif self.quantization.quantization_type == QuantizationType.FQ:
         if self.quantization.act_params is not None:
           inputs = operations.fakequant_activation(
-              inputs, bits=self.quantization.act_params.precision
+              inputs,
+              bits=self.quantization.act_params.precision,
+              percentile=self.quantization.act_params.clipping_coeff,
           )
         w = operations.fakequant_einsum(
             eqn,

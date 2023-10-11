@@ -269,12 +269,12 @@ def quantized_conv(
   Static activation quantization is to be added.
 
   Args:
-    layer: the layer that calls this function.
-    x: input tensor.
-    padding: the padding dims on input.
-    dimension_numbers: the dimension numbers
-    feature_group_count: feature groups
-    pack_dim: pack dimension for int4 packing.
+    layer: The layer that calls this function.
+    x: Input tensor.
+    padding: The padding dims on input.
+    dimension_numbers: The dimension numbers
+    feature_group_count: Feature groups
+    pack_dim: Pack dimension for int4 packing.
 
   Returns:
     the convolution output.
@@ -296,7 +296,9 @@ def quantized_conv(
       )
     elif layer.quantization.act_params is not None:
       x, act_scale, _ = operations.reduce_precision_activation(
-          x, bits=layer.quantization.act_params.precision
+          x,
+          bits=layer.quantization.act_params.precision,
+          percentile=layer.quantization.act_params.clipping_coeff,
       )
       s = jnp.multiply(jnp.squeeze(act_scale), s)
     dtype = layer.quantization.weight_params.dtype

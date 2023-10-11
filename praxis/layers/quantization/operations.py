@@ -333,13 +333,15 @@ def reduce_precision(
     t: Input tensor.
     contract_dims: Speficies contracting dimesnions of the input tensor.
     need_gradient: If gradient is needed out of this function.
-    bits: target number of bits.
+    bits: Target number of bits.
     optimization_on_bound: If p-mean bound optimizer is used.
     p_value: Exponent of the p-mean error metric. Default to 1.0 which is MAE.
-    percentile: percentile Factor to apply on the min/max range. Setting this to
+    percentile: Percentile Factor to apply on the min/max range. Setting this to
       other than 1.0 disables optimization_on_bound.
     use_symmetric: If the input tensor is quantized symmetrically.
-    use_fp: use floating point.
+    use_fp: Use floating point.
+    add_scale_eps: Add eps value or replace zero value by 1 to avoid division by
+      zero.
 
   Returns:
     A tuple of quantized tensor, quantization scale
@@ -545,6 +547,7 @@ def reduce_precision_activation(
     bits: int = 8,
     contract_dims: Sequence[int] | None = None,
     symmetric: bool = True,
+    percentile: float = 1.0,
 ) -> tuple[JTensor, JTensor, JTensor | None]:
   """Reduce the precision of activation.
 
@@ -552,20 +555,28 @@ def reduce_precision_activation(
     t: Input tensor.
     need_gradient: If gradient is needed out of this function.
     bits: Target number of bits.
-    contract_dims: contract dimension.
-    symmetric: if the activation is quantized symmetrically.
+    contract_dims: Contract dimension.
+    symmetric: If the activation is quantized symmetrically.
+    percentile: Percentile Factor to apply on the min/max range. Setting this to
+      other than 1.0 disables optimization_on_bound.
 
   Returns:
     A tuple of JTensors. The first one is the quantized activation, the
     second one is the scaling factor, and the last is the zero point.
   """
   qt, scale, zp = reduce_precision(
-      t, contract_dims, need_gradient, bits, False, use_symmetric=symmetric
+      t,
+      contract_dims,
+      need_gradient,
+      bits,
+      False,
+      use_symmetric=symmetric,
+      percentile=percentile,
   )
   return qt, scale, zp
 
 
-# TODO(wppark): support clipping for activation, e.g, using standard deviation.
+# TODO(wppark): support clipping for activation, e.g. using standard deviation.
 def reduce_einsum_activation_precision(
     eqn: str,
     t: JTensor,
@@ -604,15 +615,21 @@ def reduce_einsum_activation_precision(
 
 
 def fakequant_activation(
-    t: JTensor, bits: int = 8, eqn: str | None = None, symmetric: bool = True
+    t: JTensor,
+    bits: int = 8,
+    eqn: str | None = None,
+    symmetric: bool = True,
+    percentile: float = 1.0,
 ) -> JTensor:
   """FakeQuant activation.
 
   Args:
     t: Activation tensor.
     bits: Target number of bits.
-    eqn: einsum equation. If None, do per-tensor quantization.
-    symmetric: if the activation is quantized symmetrically.
+    eqn: Einsum equation. If None, do per-tensor quantization.
+    symmetric: If the activation is quantized symmetrically.
+    percentile: Percentile Factor to apply on the min/max range. Setting this to
+      other than 1.0 disables optimization_on_bound.
 
   Returns:
     Nudged activation.
@@ -626,6 +643,7 @@ def fakequant_activation(
       bits=bits,
       contract_dims=contract_dims,
       symmetric=symmetric,
+      percentile=percentile,
   )
   res = jnp.multiply(qt, scale)
   if zp is not None:
