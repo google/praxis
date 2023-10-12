@@ -16,7 +16,7 @@
 """Multi-Query Attention layers."""
 
 import math
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 
 from flax import linen as nn
 import jax
@@ -261,7 +261,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       assert self.weight_split_dims_mapping is not None
       assert self.activation_split_dims_mapping is not None
 
-    if isinstance(self.input_dim, dict):
+    if isinstance(self.input_dim, Mapping):
       key_input_dim = self.input_dim['key']
       value_input_dim = self.input_dim['value']
       query_input_dim = self.input_dim['query']
