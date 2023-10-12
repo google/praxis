@@ -26,12 +26,8 @@ import jax
 import jaxtyping as jt
 from praxis import pytypes
 
-Nested = pytypes.Nested
-NestedShapeDtypeLike = pytypes.NestedShapeDtypeLike
-NestedShapeDtypeStruct = pytypes.NestedShapeDtypeStruct
 
-
-def is_subset(subset: Nested, superset: Nested) -> bool:
+def is_subset(subset: pytypes.Nested, superset: pytypes.Nested) -> bool:
   """Returns True if subset is completely contained in superset (from root).
 
   Note that for Sequences a and b, a is not considered a subset of b unless all
@@ -65,7 +61,9 @@ def is_subset(subset: Nested, superset: Nested) -> bool:
   return subset == superset
 
 
-def get_shape_dtype(nested_obj: NestedShapeDtypeLike) -> NestedShapeDtypeStruct:
+def get_shape_dtype(
+    nested_obj: pytypes.NestedShapeDtypeLike,
+) -> pytypes.NestedShapeDtypeStruct:
   """Returns the shape/dtype information for the given nested input."""
   fn = lambda x: jax.ShapeDtypeStruct(shape=x.shape, dtype=x.dtype)
   return jax.tree_map(fn, nested_obj)
