@@ -25,10 +25,6 @@ package(default_visibility = JAX_VISIBILITY)
 pytype_strict_library(
     name = "layers",
     srcs = ["__init__.py"],
-    deps = [
-        "//praxis/layers/quantization:attentions",
-        "//praxis/layers/quantization:linears",
-    ],
 )
 
 pytype_strict_library(

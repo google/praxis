@@ -14,6 +14,3 @@
 # limitations under the License.
 
 """Exposes the public layer functionalities."""
-from praxis.layers.quantization.attentions import AttentionProjection
-from praxis.layers.quantization.attentions import CombinedQKVProjectionLayer
-from praxis.layers.quantization.linears import Linear
