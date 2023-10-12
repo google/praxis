@@ -15,13 +15,38 @@
 
 """Basic functionalities for pruning neural networks implemented in jax."""
 
+import functools
+from typing import Optional
+
 import jax
 import jax.numpy as jnp
 from praxis.layers.quantization.sparsity import sparsity_hparams
 
 
-def apply_sparsity(inputs: jnp.ndarray, mask: jnp.ndarray) -> jnp.ndarray:
-  """Returns sparsified inputs based on input mask."""
+def apply_sparsity(
+    inputs: jnp.ndarray,
+    mask: jnp.ndarray,
+    channelwise_dim: Optional[int] = None,
+) -> jnp.ndarray:
+  """Returns sparsified inputs based on input mask.
+
+  Args:
+    inputs: The input tensor.
+    mask: The mask to be applied to the input tensor.
+    channelwise_dim: The dimension in which the masked tensors exist. If
+      supplied, the mask will be converted to a channelwise mask and the input
+      tensor will be have the masked channels removed, reducing the overall
+      size.
+
+  Returns: The masked input tensor.
+  """
+  if channelwise_dim is not None:
+    target_axis = channelwise_dim % inputs.ndim
+    non_target_axes = [i for i in range(inputs.ndim) if i != target_axis]
+    channel_mask = jnp.any(mask, axis=non_target_axes, keepdims=True)
+    channel_mask = channel_mask.reshape(-1)
+    return jnp.take(inputs, jnp.nonzero(channel_mask)[0], axis=channelwise_dim)
+
   return jnp.where(mask, inputs, jnp.zeros(inputs.shape, inputs.dtype))
 
 
@@ -76,6 +101,51 @@ def get_sparsity_mask(
     return mask.reshape(original_shape, order='C')
   else:
     return jnp.einsum('...ij->...ji', mask.reshape(original_shape, order='C'))
+
+
+@jax.jit
+def _topk_mask_calculator_internal(inputs: jnp.ndarray, prune_rate: float):
+  """Creates a binary mask given the prune rate on the scores."""
+  flat_inputs = jnp.reshape(inputs, -1)
+  num_ones = jnp.round(flat_inputs.size * (1 - prune_rate)).astype(int)
+  num_ones = jnp.maximum(1, num_ones)
+
+  topk_index = jnp.argsort(-flat_inputs)[num_ones - 1]
+  topk_threshold = flat_inputs[topk_index]
+
+  mask_by_value = inputs >= topk_threshold
+
+  # Use lower value indices to prioritize unpruned weight values.
+  mask_by_index = (jnp.arange(flat_inputs.size) <= topk_index) | (
+      flat_inputs != topk_threshold
+  )
+  mask_by_index = jnp.reshape(mask_by_index, inputs.shape)
+  return mask_by_value * mask_by_index
+
+
+@functools.partial(jax.jit, static_argnames=['channel_dim'])
+def get_sparsity_mask_channelwise(
+    inputs: jnp.ndarray, prune_rate: float, channel_dim: int = -1
+) -> jnp.ndarray:
+  """Returns a mask for the channel-wise pruned input.
+
+    Args:
+      inputs: The input matrix to have channel-wise masking applied.
+      prune_rate: The rate in which values in the inputs are pruned.
+      channel_dim: The channel dimension, the dimension across which channels
+        will be pruned.
+
+  Returns:
+    A mask that indicates the pruning locations.
+  """
+  target_axis = channel_dim % inputs.ndim
+
+  non_target_axes = [i for i in range(inputs.ndim) if i != target_axis]
+  channel_score = jnp.sum(inputs, axis=non_target_axes, keepdims=True)
+
+  mask = _topk_mask_calculator_internal(channel_score, prune_rate)
+  mask = mask * jnp.ones_like(inputs)
+  return mask.astype(jnp.bool_)
 
 
 # TODO(ayazdan): Add support for fast top-k.

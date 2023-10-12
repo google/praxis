@@ -131,6 +131,94 @@ class PruningParamsTest(parameterized.TestCase):
       sparsity.get_sparsity_mask(inputs, n_sparsity=4, m_sparsity=1)
 
 
+class ChannelwisePruningTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='row_wise_pruning',
+          channel_dim=-2,
+          exp_mask=[
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+              [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+              [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+          ],
+      ),
+      dict(
+          testcase_name='column_wise_pruning',
+          channel_dim=-1,
+          exp_mask=[
+              [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
+              [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
+              [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
+              [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
+              [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
+              [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
+          ],
+      ),
+  )
+  def test_column_row_pruning(self, channel_dim, exp_mask):
+    inputs = jnp.reshape(jnp.arange(1, 73), (6, 12))
+    mask = sparsity.get_sparsity_mask_channelwise(inputs, 0.5, channel_dim)
+    np.testing.assert_array_equal(mask, exp_mask)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='row_wise_pruning',
+          channel_dim=-2,
+          exp_mask=[
+              [1, 1, 1, 1],
+              [1, 1, 1, 1],
+              [1, 1, 1, 1],
+              [0, 0, 0, 0],
+          ],
+      ),
+      dict(
+          testcase_name='column_wise_pruning',
+          channel_dim=-1,
+          exp_mask=[
+              [1, 1, 1, 0],
+              [1, 1, 1, 0],
+              [1, 1, 1, 0],
+              [1, 1, 1, 0],
+          ],
+      ),
+  )
+  def test_column_row_pruning_same_score(self, channel_dim, exp_mask):
+    inputs = jnp.ones((4, 4))
+    mask = sparsity.get_sparsity_mask_channelwise(
+        inputs, 0.25, channel_dim
+    ).astype(jnp.int32)
+    np.testing.assert_array_equal(mask, exp_mask)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='row_wise_pruning',
+          channel_dim=-2,
+          exp_mask=[
+              [
+                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+              ],
+              [
+                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+              ],
+              [
+                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+              ],
+          ],
+      ),
+  )
+  def test_3d_pruning(self, channel_dim, exp_mask):
+    inputs = jnp.reshape(jnp.arange(1, 73), (3, 2, 12))
+    mask = sparsity.get_sparsity_mask_channelwise(inputs, 0.5, channel_dim)
+    np.testing.assert_array_equal(mask, exp_mask)
+
+
 class PruningFunctionalityTest(parameterized.TestCase):
 
   def test_prune_inputs_n_m(self):
