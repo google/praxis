@@ -495,7 +495,7 @@ def fakequant_einsum(
     bits: Target number of bits.
     calculation_dtype: The type for calculation.
     use_symmetric: Use symmetric quantization for weights.
-    block_size: block wise quantization size. 0 to turn if off.
+    block_size: Block wise quantization size. 0 to turn if off.
 
   Returns:
     The nudged weight tensor.
@@ -583,6 +583,8 @@ def reduce_einsum_activation_precision(
     bits: int = 8,
     squeeze: bool = True,
     per_channel: bool = False,
+    symmetric: bool = True,
+    percentile: float = 1.0,
 ) -> tuple[JTensor, JTensor]:
   """Reduce the precision of the activation of einsum.
 
@@ -595,6 +597,9 @@ def reduce_einsum_activation_precision(
     bits: Target number of bits.
     squeeze: If the output scale is squeezed.
     per_channel: Whether or not to quantize activation channel-wisely.
+    symmetric: If the activation is quantized symmetrically.
+    percentile: Percentile Factor to apply on the min/max range. Setting this to
+      other than 1.0 disables optimization_on_bound.
 
   Returns:
     A tuple of JTensors. The first one is the quantized activation and the
@@ -606,7 +611,11 @@ def reduce_einsum_activation_precision(
     contract_dims = None
 
   t, scale, _ = reduce_precision(
-      t, contract_dims, bits=bits, use_symmetric=True
+      t,
+      contract_dims,
+      bits=bits,
+      use_symmetric=symmetric,
+      percentile=percentile,
   )
 
   if squeeze:

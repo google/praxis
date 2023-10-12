@@ -197,6 +197,8 @@ class QuantizationLayer(base_layer.BaseLayer):
             x,
             bits=act_params.precision,
             per_channel=act_params.per_channel,
+            symmetric=act_params.symmetric,
+            percentile=act_params.clipping_coeff,
         )
       dtype = self.quantization.weight_params.dtype
       if (
@@ -226,7 +228,10 @@ class QuantizationLayer(base_layer.BaseLayer):
         if self.quantization.act_params is not None:
           act_params = self.quantization.act_params
           x = operations.fakequant_activation(
-              x, bits=act_params.precision, symmetric=act_params.symmetric
+              x,
+              bits=act_params.precision,
+              symmetric=act_params.symmetric,
+              percentile=act_params.clipping_coeff,
           )
         w = operations.fakequant_einsum(
             eqn,
