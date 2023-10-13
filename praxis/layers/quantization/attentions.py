@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Quantized Attention Layers."""
+"""Quantized and optionally sparsified Attention Layers."""
 
 import copy
 import string

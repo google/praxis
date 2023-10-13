@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Quantized Linear Layers."""
+"""Quantized and optionally sparsified Linear Layers."""
 
 import copy
 from typing import Any
