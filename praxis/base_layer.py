@@ -192,7 +192,21 @@ def var_skip_lp_regularization(var_params: ParamsT) -> bool:
 
 
 def var_overwrite_with_gradient(var_hparams: ParamsT) -> bool:
-  """Returns True if var_hparams overwrites with gradient."""
+  """Returns True if var_hparams is OWG (overwrite_with_gradient) variable.
+
+  OWG variables are semi-trainable; their new values are directly assigned as
+  `x = grad`. In other words, after each training step, they are overwritten by
+  the gradient value with respect to themselves. In contrast, regular trainable
+  variables are updated by the learner through the formula
+  `x = x + update(grad)`. Non-trainable variables, on the other hand, remain
+  unchanged, i.e., `x = x`.
+
+  Args:
+    var_hparams: WeightHParams used to create the variable.
+
+  Returns:
+    True if var_hparams belongs to OWG collection.
+  """
   return (WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
           in var_hparams.collections)
 
