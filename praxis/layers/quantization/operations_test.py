@@ -103,6 +103,23 @@ class QuantizationUtilsTest(test_utils.TestCase):
     )
     self.assertAllClose(ret, expected, rtol=0.02, atol=0.02)
 
+  @parameterized.named_parameters(
+      ('eqn_with_dot', '...y,yz->...z'),
+  )
+  def test_quantized_einsum_with_asym_weight_act(self, eqn):
+    w = jax.random.uniform(jax.random.PRNGKey(0), (4, 3))
+    x = jax.random.uniform(jax.random.PRNGKey(0), (2, 4))
+    qw, sw, zpw = operations.reduce_einsum_weight_precision(
+        eqn, w, use_symmetric=False
+    )
+    qx, sx, zpx = operations.reduce_einsum_activation_precision(
+        eqn, x, symmetric=False
+    )
+
+    ret = operations.einsum(eqn, qx, qw, sw, zpw, sx, zpx)
+    expected = jnp.einsum(eqn, x, w)
+    self.assertAllClose(ret, expected, rtol=0.1, atol=0.5)
+
   @parameterized.parameters(
       ('ab,bc->ac', (10, 4), (4, 5)),
       ('...y,yz->...z', (10, 8, 4), (4, 5)),
@@ -120,10 +137,10 @@ class QuantizationUtilsTest(test_utils.TestCase):
     qw, sw, _ = operations.reduce_einsum_weight_precision(
         eqn, w, use_symmetric=True
     )
-    qx, sx = operations.reduce_einsum_activation_precision(
+    qx, sx, _ = operations.reduce_einsum_activation_precision(
         eqn, x, per_channel=False
     )
-    qx_channel_wise, sx_channel_wise = (
+    qx_channel_wise, sx_channel_wise, _ = (
         operations.reduce_einsum_activation_precision(eqn, x, per_channel=True)
     )
     o = jnp.einsum(eqn, x, w)
@@ -361,8 +378,10 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
       per_channel=True,
   ):
     activation = np.random.normal(1.5, 2.0, x_shape).astype(np.float32)
-    reduced_activation, scale = operations.reduce_einsum_activation_precision(
-        eqn, activation, per_channel=per_channel, squeeze=squeeze
+    reduced_activation, scale, _ = (
+        operations.reduce_einsum_activation_precision(
+            eqn, activation, per_channel=per_channel, squeeze=squeeze
+        )
     )
     self.assertEqual(scale.shape, expected_scale_shape)
     if expand_dims:

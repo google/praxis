@@ -303,7 +303,10 @@ def einsum(
     ret = ret - offset
 
   if zp_act is not None:
-    raise ValueError('Zero-point for activaiton is not yet supported.')
+    # Non performent equation for inference testing purposes
+    dequantized_x = scale_act * x - zp_act
+    dequantized_w = scale * w - zp
+    ret = jnp.einsum(eqn, dequantized_x, dequantized_w)
   return ret
 
 
@@ -585,7 +588,7 @@ def reduce_einsum_activation_precision(
     per_channel: bool = False,
     symmetric: bool = True,
     percentile: float = 1.0,
-) -> tuple[JTensor, JTensor]:
+) -> tuple[JTensor, JTensor, JTensor | None]:
   """Reduce the precision of the activation of einsum.
 
   It uses per-tensor or per-toeken quantization so einsum equation is passed in
@@ -610,7 +613,7 @@ def reduce_einsum_activation_precision(
   else:
     contract_dims = None
 
-  t, scale, _ = reduce_precision(
+  t, scale, zp = reduce_precision(
       t,
       contract_dims,
       bits=bits,
@@ -620,7 +623,7 @@ def reduce_einsum_activation_precision(
 
   if squeeze:
     scale = jnp.squeeze(scale, axis=contract_dims)
-  return t, scale
+  return t, scale, zp
 
 
 def fakequant_activation(
