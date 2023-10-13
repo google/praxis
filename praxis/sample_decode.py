@@ -1037,6 +1037,14 @@ def sample_decode_after_fprop(
         # scores: [b * num_samples]
         outfeed_tensors = NestedMap()
         outfeed_tensors.output_ids = _get_slice(val.output_ids)
+        if hasattr(val, 'top_candidate_ids'):
+          assert hasattr(val, 'top_candidate_logprobs')
+          assert hasattr(val, 'logprobs')
+          outfeed_tensors.top_candidate_ids = _get_slice(val.top_candidate_ids)
+          outfeed_tensors.top_candidate_logprobs = _get_slice(
+              val.top_candidate_logprobs
+          )
+          outfeed_tensors.sampled_logprobs = _get_slice(val.logprobs)
         outfeed_tensors.decode_lengths = (
             jnp.ones_like(val.decode_lengths) * result_callback.interval_steps
         )
