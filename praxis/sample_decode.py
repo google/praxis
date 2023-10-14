@@ -135,7 +135,7 @@ def split_batch_dim(
   Returns:
     A tensor of shape [batch, num_samples, ...].
   """
-  assert isinstance(x, jnp.ndarray)
+  assert isinstance(x, jnp.ndarray), type(x)
   x_shape = list(x.shape)
   assert x_shape[batch_dim] % num_samples == 0
   x_shape[batch_dim] = x_shape[batch_dim] // num_samples
