@@ -1,3 +1,11 @@
+# Version: 1.2.0
+## Major Features and Improvements
+## Breaking changes
+## Deprecations
+## Note
+*   Version: 1.2.0
+*   Build Date: 20231016
+*   Praxis commit: 7bd63412bf86a68e09fcd9455f76a4909d19377e
 # Version: 1.1.0
 ## Major Features and Improvements
 * Move to python 3.10 as the minimal python requirement (previously on python 3.8).
