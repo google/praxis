@@ -38,7 +38,6 @@ class Einsum(quantizer.QuantizationLayer):
       '...d,df->...f'.
     w_shape: Weight shape.
     use_bias: Whether to add a bias.
-    einsum_op_tpl: The op definition that implements einsum. Enables injection.
   """
   eqn: str = ''
   w_shape: Sequence[int] = ()

@@ -51,13 +51,18 @@ class EinsumTest(test_utils.TestCase):
     inputs = np.random.normal(1.0, 0.5, in_shape).astype('float32')
     prng_key = jax.random.PRNGKey(seed=123)
     initial_vars = layer.init(prng_key, inputs)
+    qw = np.arange(np.prod(w_shape)).astype('int8').reshape(w_shape)
+    initial_vars['params']['w'] = qw
     if use_bias:
       # Make sure the bias is non-zero.
       initial_vars['params']['b'] = np.random.normal(
           1.0, 0.5, initial_vars['params']['b'].shape
       ).astype('float32')
     outputs = layer.apply(initial_vars, inputs)
-    np_outputs = np.einsum(eqn, inputs, initial_vars['params']['w'])
+    np_outputs = np.multiply(
+        np.einsum(eqn, inputs, initial_vars['params']['w']),
+        initial_vars['params']['w_quantized_scale'],
+    )
     if use_bias:
       np_outputs += initial_vars['params']['b']
     self.assertAllClose(outputs, np_outputs, atol=1e-6)
