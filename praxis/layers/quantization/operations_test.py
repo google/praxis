@@ -118,7 +118,24 @@ class QuantizationUtilsTest(test_utils.TestCase):
 
     ret = operations.einsum(eqn, qx, qw, sw, zpw, sx, zpx)
     expected = jnp.einsum(eqn, x, w)
-    self.assertAllClose(ret, expected, rtol=0.1, atol=0.5)
+    self.assertAllClose(ret, expected, rtol=0.02, atol=0.02)
+
+  @parameterized.named_parameters(
+      ('eqn_with_dot', '...y,yz->...z'),
+  )
+  def test_quantized_einsum_with_aym_weight_asym_act(self, eqn):
+    w = jax.random.uniform(jax.random.PRNGKey(0), (4, 3))
+    x = jax.random.uniform(jax.random.PRNGKey(0), (2, 4))
+    qw, sw, zpw = operations.reduce_einsum_weight_precision(
+        eqn, w, use_symmetric=True
+    )
+    qx, sx, zpx = operations.reduce_einsum_activation_precision(
+        eqn, x, symmetric=False
+    )
+
+    ret = operations.einsum(eqn, qx, qw, sw, zpw, sx, zpx)
+    expected = jnp.einsum(eqn, x, w)
+    self.assertAllClose(ret, expected, rtol=0.02, atol=0.02)
 
   @parameterized.parameters(
       ('ab,bc->ac', (10, 4), (4, 5)),

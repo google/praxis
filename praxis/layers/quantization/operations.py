@@ -240,6 +240,17 @@ def einsum(
   Returns:
     A JTensor.
   """
+  # Non performent equation for inference testing purposes
+  # TODO: b/305735188 - Improve the performance by using the integer einsum op.
+  if zp_act is not None:
+    dequantized_x = jnp.multiply(x, scale_act) - zp_act
+    # explicit broadcast if necessary.
+    if w.ndim == 3 and scale.ndim == 1:
+      scale = jnp.expand_dims(scale, (1, 2))
+    dequantized_w = jnp.multiply(w, scale)
+    if zp is not None:
+      dequantized_w = dequantized_w - zp
+    return jnp.einsum(eqn, dequantized_x, dequantized_w)
 
   use_int_dot_general = (
       x.dtype in QUANTIZED_TYPES and w.dtype in QUANTIZED_TYPES
@@ -302,11 +313,6 @@ def einsum(
       offset = compute_offset(x, zp, eqn)
     ret = ret - offset
 
-  if zp_act is not None:
-    # Non performent equation for inference testing purposes
-    dequantized_x = scale_act * x - zp_act
-    dequantized_w = scale * w - zp
-    ret = jnp.einsum(eqn, dequantized_x, dequantized_w)
   return ret
 
 
@@ -623,6 +629,8 @@ def reduce_einsum_activation_precision(
 
   if squeeze:
     scale = jnp.squeeze(scale, axis=contract_dims)
+    if zp is not None:
+      zp = jnp.squeeze(zp, axis=contract_dims)
   return t, scale, zp
 
 
