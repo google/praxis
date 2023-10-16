@@ -371,6 +371,8 @@ def for_transformer(
     quantize_init_from_checkpoint_rules_task: bool = False,
     block_size: int = 0,
     # Internal quantization parameters.
+    num_bits_act: int | None = None,
+    use_symmetric_act: bool | None = None,
 ):
   """Find and quantize transformer.
 
@@ -420,6 +422,10 @@ def for_transformer(
       that are defined in task_p.train.init_from_checkpoint_rules.values()
     block_size: block size for sub-channel quantization. Defaults to 0, which
       means off.
+    num_bits_act: The number of bits used for activation quantization. Only
+      valid when weight_quant_only is false.
+    use_symmetric_act: Use symmetric activation quantization.Only valid when
+      weight_quant_only is false.
 
   Returns:
     A modifier that quantizes transformers when applied to a config.
@@ -463,6 +469,8 @@ def for_transformer(
               quantize_self_attention=quantize_self_attention,
               quantize_cross_attention=quantize_cross_attention,
               softmax_only=softmax_only,
+              use_symmetric_act=use_symmetric_act,
+              num_bits_act=num_bits_act,
           )
         return task_p
 
@@ -568,6 +576,8 @@ def set_transformer_quantization(
     use_int4_packed_weights: bool = True,
     int4_packed_weights_container_dtype: jnp.dtype = jnp.int32,
     # Internal quantization parameters.
+    num_bits_act: int | None = None,
+    use_symmetric_act: bool | None = None,
 ):
   """Sets quantization params for TransformerLm or TransformerEncoderDecoder.
 
@@ -611,6 +621,10 @@ def set_transformer_quantization(
       False int4 weights will be kept in int8.
     int4_packed_weights_container_dtype: Container type for int4 weights: int32
       to pack 8 int4s, or int8 to pack 2 int4s.
+    num_bits_act: The number of bits used for activation quantization. Only
+      valid when weight_quant_only is false.
+    use_symmetric_act: Use symmetric activation quantization. Only valid when
+      weight_quant_only is false.
   """
   weight_quantization_params = WeightQuantizationParams(
       precision=num_bits,
@@ -621,9 +635,26 @@ def set_transformer_quantization(
       int4_packed_weights_container_dtype=int4_packed_weights_container_dtype,
       # Pass internal quantization parameters.
   )
-  act_quantization_params = (
-      None if weight_quant_only else ActQuantizationParams(precision=num_bits)
-  )
+  act_quantization_params = None
+  if (
+      num_bits_act is not None or use_symmetric_act is not None
+  ) and weight_quant_only:
+    raise ValueError(
+        f'Activation quantization params (`num_bits_act` and'
+        f' `use_symmetric_act`) should not be set when `weight_quant_only` is'
+        f' set to True.'
+    )
+  if not weight_quant_only:
+    if num_bits_act == None or use_symmetric_act == None:
+      raise ValueError(
+          f'Activation quantization params (`num_bits_act` and'
+          f' `use_symmetric_act`) have to be set when  `weight_quant_only` is'
+          f' set to false.'
+      )
+    act_quantization_params = ActQuantizationParams(
+        precision=num_bits_act,
+        symmetric=use_symmetric_act,
+    )
 
   transformer_tpls = utils.find_target_tpl(
       config, layers.transformers.Transformer
