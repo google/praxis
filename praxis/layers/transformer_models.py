@@ -511,8 +511,6 @@ class TransformerLm(base_layer.BaseLayer):
       xformer_params = xformer_params.pipeline_stage
     if issubclass(xformer_params.cls, transformers.StackedTransformerRepeated):
       xformer_params = xformer_params.block
-    if not issubclass(xformer_params.cls, transformers.StackedTransformer):
-      assert False, f'{xformer_params.cls} not supported.'
     assert (
         xformer_params.model_dims == 0
         or xformer_params.model_dims == self.model_dims
