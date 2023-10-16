@@ -5,9 +5,9 @@ absl-py
 clu
 einops
 etils
-fiddle @ git+https://github.com/google/fiddle
+fiddle==0.2.11 
 flax
-jax @ git+https://github.com/google/jax
+jax==0.4.18
 jax-bitempered-loss
 jaxtyping
 lingvo
