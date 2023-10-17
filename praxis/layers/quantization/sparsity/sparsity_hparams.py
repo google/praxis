@@ -149,6 +149,7 @@ class SparsityHParams:
       Default is `R` indicating to applying N:M sparsity across rows of the
       input matrix.
     track_sad_metric: Should we track sparse architecture divergence metric?
+    topk_estimator_type: Sets the type of top-k mask learning.
   """
 
   sparsity_type: SparsityType = SparsityType.STRUCTURED_NM
@@ -161,6 +162,7 @@ class SparsityHParams:
   polynomial_decay_schedule: PolynomialDecayParams | None = None
   order: str = 'R'
   track_sad_metric: bool = False
+  topk_estimator_type: str | None = None
 
   def __post_init__(self):
     if (

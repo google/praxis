@@ -130,5 +130,6 @@ py_strict_test(
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
         "//praxis/layers:linears",
+        "//praxis/layers/quantization:layers",
     ],
 )

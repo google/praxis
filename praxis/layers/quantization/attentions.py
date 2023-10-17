@@ -88,7 +88,7 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
         scale_shape=scale_shape,
         pack_dim=self._PACK_4BIT_DIM,
     )
-    self.create_aux_variables('w', pc)
+    self.create_aux_variables('w', pc, scale_shape=scale_shape)
 
     if self.use_bias:
       if self.is_output_projection:

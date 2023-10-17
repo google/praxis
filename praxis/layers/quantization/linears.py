@@ -97,7 +97,7 @@ class Linear(  # pytype: disable=signature-mismatch
           scale_shape=[self.output_dims],
           pack_dim=self._PACK_4BIT_DIM,
       )
-      self.create_aux_variables('w', pc)
+      self.create_aux_variables('w', pc, scale_shape=[self.output_dims])
 
   def __call__(self, inputs: JTensor) -> JTensor:
     """Apply projection to inputs.
