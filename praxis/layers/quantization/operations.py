@@ -723,7 +723,7 @@ def compute_shape_with_subchannels(
       logging.info(
           f'inputs_shape[axis_ind_max_size]: {inputs_shape[axis_ind_max_size]} '
           f'is not divisible by sub_channels: {sub_channels} '
-          'so early stoping of dividing into sub-channels'
+          'so early stopping of dividing into sub-channels'
       )
       break
 

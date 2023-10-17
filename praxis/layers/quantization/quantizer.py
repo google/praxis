@@ -302,6 +302,11 @@ def quantized_conv(
           'Static activation quantization is not supported yet.'
       )
     elif layer.quantization.act_params is not None:
+      if not layer.quantization.act_params.symmetric:
+        raise NotImplementedError(
+            'Asymmetric activation quantization '
+            'is not supported yet for quantized_conv.'
+        )
       x, act_scale, _ = operations.reduce_precision_activation(
           x,
           bits=layer.quantization.act_params.precision,

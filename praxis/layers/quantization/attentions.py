@@ -425,6 +425,12 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
           self.quantization.act_params is not None
           and self.quantization.act_params.stats_config is None
       ):
+        if not self.quantization.act_params.symmetric:
+          # TODO(b/304376632)
+          raise ValueError(
+              'Asymmetric activation quantization is enabled '
+              'for training but not for inference b/304376632.'
+          )
         inputs, act_scale, _ = operations.reduce_precision_activation(
             inputs,
             bits=self.quantization.act_params.precision,
