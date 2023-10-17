@@ -28,36 +28,17 @@ from praxis import layers
 from praxis import pax_fiddle
 from praxis import pytypes
 
-WeightInit = base_layer.WeightInit
-WeightHParams = base_layer.WeightHParams
-JTensor = pytypes.JTensor
-OVERWRITE_WITH_GRADIENT = \
-    base_layer.WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
-
-
-def fp8_einsum(eqn, x, k, compute_dtype, x_scale, x_amax_history, k_scale,
-               k_amax_history, dy_scale, dy_amax_history):
-  """Perform any einsum formula.  """
-
-  x_qdq = fp8_ops.in_qdq(compute_dtype, x, x_scale, x_amax_history)
-
-  k_qdq = fp8_ops.in_qdq(compute_dtype, k, k_scale, k_amax_history)
-
-  y_qdq = jnp.einsum(eqn, x_qdq, k_qdq)
-
-  y = fp8_ops.out_qdq(compute_dtype, y_qdq, dy_scale, dy_amax_history)
-
-  return y
-
 
 class Fp8EinsumOp(base_layer.BaseLayer):
   """Wrapper around jnp.einsum used in standard Pax layers."""
   amax_history_length: int = 1024
 
   def setup(self) -> None:
+    OVERWRITE_WITH_GRADIENT = \
+        base_layer.WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
     scale_args = {
         'shape': [1],
-        'init': WeightInit.Constant(1.0),
+        'init': base_layer.WeightInit.Constant(1.0),
         'dtype': jnp.float32,
         'mesh_shape': self.mesh_shape,
         'tensor_split_dims_mapping': None,
@@ -65,25 +46,26 @@ class Fp8EinsumOp(base_layer.BaseLayer):
     }
     amax_history_args = {
         'shape': [self.amax_history_length],
-        'init': WeightInit.Constant(0.0),
+        'init': base_layer.WeightInit.Constant(0.0),
         'dtype': jnp.float32,
         'mesh_shape': self.mesh_shape,
         'tensor_split_dims_mapping': None,
         'collections': [OVERWRITE_WITH_GRADIENT],
     }
     self.create_variable(
-        'input_amax_history', WeightHParams(**amax_history_args))
+        'input_amax_history', base_layer.WeightHParams(**amax_history_args))
     self.create_variable(
-        'kernel_amax_history', WeightHParams(**amax_history_args))
+        'kernel_amax_history', base_layer.WeightHParams(**amax_history_args))
     self.create_variable(
-        'output_grad_amax_history', WeightHParams(**amax_history_args))
+        'output_grad_amax_history',
+        base_layer.WeightHParams(**amax_history_args))
 
-    self.create_variable('input_scale', WeightHParams(**scale_args))
-    self.create_variable('kernel_scale', WeightHParams(**scale_args))
+    self.create_variable('input_scale', base_layer.WeightHParams(**scale_args))
+    self.create_variable('kernel_scale', base_layer.WeightHParams(**scale_args))
     self.create_variable(
-         'output_grad_scale', WeightHParams(**scale_args))
+         'output_grad_scale', base_layer.WeightHParams(**scale_args))
 
-  def __call__(self, equation: str, *args: JTensor) -> JTensor:
+  def __call__(self, equation: str, *args: pytypes.JTensor) -> pytypes.JTensor:
 
     assert len(args) == 2
     x = args[0]
@@ -96,20 +78,15 @@ class Fp8EinsumOp(base_layer.BaseLayer):
     x = jnp.asarray(x, comp_dtype)
 
     theta = self.theta
-    out = fp8_einsum(equation, x, k, comp_dtype, theta.input_scale,
-                     theta.input_amax_history, theta.kernel_scale,
-                     theta.kernel_amax_history, theta.output_grad_scale,
-                     theta.output_grad_amax_history)
+
+    x_qdq = fp8_ops.in_qdq(comp_dtype, x, theta.input_scale,
+                           theta.input_amax_history)
+    k_qdq = fp8_ops.in_qdq(comp_dtype, k, theta.kernel_scale,
+                           theta.kernel_amax_history)
+    y_qdq = jnp.einsum(equation, x_qdq, k_qdq)
+    y = fp8_ops.out_qdq(comp_dtype, y_qdq, theta.output_grad_scale,
+                        theta.output_grad_amax_history)
+
     return out
 
 
-def tr_set_fp8_quantization(
-    transformer_layer_p: pax_fiddle.Config[layers.transformers.Transformer]
-):
-  """Inject Fp8EinsumOp to desired layers in transformer."""
-  transformer_layer_p.tr_atten_tpl.proj_tpl.einsum_tpl = \
-      pax_fiddle.Config(Fp8EinsumOp)
-  transformer_layer_p.tr_atten_tpl.combined_qkv_proj_tpl.einsum_tpl = \
-      pax_fiddle.Config(Fp8EinsumOp)
-  transformer_layer_p.tr_fflayer_tpl.fflayer_tpl.linear_tpl.einsum_tpl = \
-      pax_fiddle.Config(Fp8EinsumOp)
