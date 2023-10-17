@@ -498,6 +498,8 @@ def fakequant_einsum(
 ) -> JTensor:
   """Nudges weight of einsum with FakeQuant.
 
+    It quantizes weights (using einsum equation for getting contract_dims) then
+    de-quantizes it and returns it as an output.
   Args:
     eqn: The equation for the einsum. Determines the channel dimension.
     t: The weight tensor for the einsum.

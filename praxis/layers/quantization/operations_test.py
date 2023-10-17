@@ -410,15 +410,28 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
         atol=0.02,
     )
 
-  def test_fakequant_with_block_size(self):
+  @parameterized.parameters(True, False)
+  def test_fakequant_with_block_size(self, use_symmetric):
     """Test fakequant with block size."""
     weight = np.random.normal(-0.5, 1.0, (12, 16)).astype(np.float32)
     eqn = '...y,yz->...z'
-    for use_symmetric in [True, False]:
-      weight_nudged = operations.fakequant_einsum(
-          eqn, weight, use_symmetric=use_symmetric, block_size=6
-      )
-      self.assertAllClose(weight, weight_nudged, rtol=0.01, atol=0.01)
+    weight_nudged = operations.fakequant_einsum(
+        eqn, weight, use_symmetric=use_symmetric, block_size=6
+    )
+    weight_fakequant = operations.fakequant_einsum(
+        eqn, weight, use_symmetric=use_symmetric, block_size=0
+    )
+    fakequant_error_block_size = jnp.sum(jnp.square(weight_nudged - weight))
+    fakequant_error = jnp.sum(jnp.square(weight_fakequant - weight))
+
+    if use_symmetric:  # Symmetric is less accurate.
+      self.assertLess(fakequant_error_block_size, 0.0033)
+      self.assertLess(fakequant_error, 0.0045)
+    else:
+      # With block_size it is more accurate.
+      self.assertLess(fakequant_error_block_size, 0.0015)
+      self.assertLess(fakequant_error, 0.0026)
+    self.assertAllClose(weight, weight_nudged, rtol=0.01, atol=0.01)
 
   def test_percentile(self):
     weight = np.random.normal(-2.0, 2.0, (4, 3)).astype(np.float32)
