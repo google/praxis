@@ -125,6 +125,67 @@ class ConvolutionsTest(test_utils.TestCase):
     )
     self.assertAllClose(to_np(output[0, :, :, 0]), np_output)
 
+    # Add some more causal tests using nan as indicator
+    # Case 1:
+    p = pax_fiddle.Config(
+        convolutions.Conv2D,
+        name='conv2d_nan',
+        filter_shape=[3, 1, 1, 1],
+        filter_stride=[2, 1],
+        padding='SAME',
+        is_causal=True,
+        tf_equivalent_padding=True,
+    )
+    conv_layer = instantiate(p)
+    conv_filter = {'params': {'w': jnp.ones([3, 1, 1, 1])}}
+    conv_layer = conv_layer.bind(conv_filter)
+    x = jnp.arange(7)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis].astype(
+        jnp.float32
+    )
+    # x: [0, nan, 2, 3, 4, 5, 6]
+    x = x.at[:, 1, :, :].set(jnp.nan)
+    # expected y: [0, nan, 9, 15]
+    # 0 <-- x x 0
+    # nan <-- 0 nan 2
+    # 9 <-- 2 3 4
+    # 15 <-- 4 5 6
+    y = conv_layer(x)
+
+    assert y[0, 0, 0, 0] == 0
+    assert jnp.isnan(y[0, 1, 0, 0])
+    assert y[0, 2, 0, 0] == 9
+    assert y[0, 3, 0, 0] == 15
+
+    # Case 2:
+    p = pax_fiddle.Config(
+        convolutions.Conv2D,
+        name='conv2d_nan',
+        filter_shape=[2, 1, 1, 1],
+        filter_stride=[1, 1],
+        padding='SAME',
+        is_causal=True,
+        tf_equivalent_padding=True,
+    )
+    conv_layer = instantiate(p)
+    conv_filter = {'params': {'w': jnp.ones([2, 1, 1, 1])}}
+    conv_layer = conv_layer.bind(conv_filter)
+    x = jnp.arange(5)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis].astype(
+        jnp.float32
+    )
+    # x: [0, nan, 2, 3, nan]
+    x = x.at[:, 1, :, :].set(jnp.nan)
+    x = x.at[:, -1, :, :].set(jnp.nan)
+    # expected y: [0, nan, nan, 5, nan]
+    y = conv_layer(x)
+
+    print('#bai#:', x[0, :, 0, 0])
+    print('#bai#:', y[0, :, 0, 0])
+    assert y[0, 0, 0, 0] == 0
+    assert jnp.isnan(y[0, 1, 0, 0])
+    assert jnp.isnan(y[0, 2, 0, 0])
+    assert y[0, 3, 0, 0] == 5
+    assert jnp.isnan(y[0, 4, 0, 0])
+
   @parameterized.parameters(
       ((2, 5, 4, 24, 36), (1, 1, 1), [2, 4, 16, 36, 72]),
       ((2, 2, 4, 16, 8), (2, 2, 2), [2, 8, 16, 32, 128]),
