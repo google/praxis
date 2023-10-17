@@ -85,6 +85,45 @@ class ConvolutionsTest(test_utils.TestCase):
     for i in [1, 2]:
       self.assertEqual(output.shape[i], inputs.shape[i] // filter_stride[i - 1])
 
+  @parameterized.parameters(
+      (2, 3, 2),
+      (2, 4, 2),
+      (3, 3, 2),
+      (3, 4, 2),
+  )
+  def test_conv_2d_for_causal_1d_conv(
+      self,
+      stride_time_dim,
+      filter_time_dim,
+      diltion_time_dim,
+  ):
+    filter_shape = (filter_time_dim, 1, 1, 1)
+    p = pax_fiddle.Config(
+        convolutions.Conv2D,
+        name='jax_conv2d',
+        filter_shape=filter_shape,
+        filter_stride=(stride_time_dim, 1),
+        dilations=(diltion_time_dim, 1),
+        is_causal=True,
+        tf_equivalent_padding=True,
+        padding='SAME',
+    )
+    conv_layer = instantiate(p)
+
+    length = 7
+    inputs = jnp.arange(length * stride_time_dim)[
+        jnp.newaxis, :, jnp.newaxis, jnp.newaxis
+    ].astype(jnp.float32)
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = conv_layer.init(prng_key, inputs)
+    initial_vars['params']['w'] = jnp.ones(filter_shape)
+
+    output = conv_layer.apply(initial_vars, inputs)
+
+    # With padding == 'SAME' and stride > 1 output length should be
+    # (length*stride) / stride = length.
+    self.assertEqual(output.shape, (1, length, 1, 1))
+
   def test_causal_conv2d_layer(self):
     p = pax_fiddle.Config(
         convolutions.Conv2D,
