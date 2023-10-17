@@ -87,6 +87,6 @@ class Fp8EinsumOp(base_layer.BaseLayer):
     y = fp8_ops.out_qdq(comp_dtype, y_qdq, theta.output_grad_scale,
                         theta.output_grad_amax_history)
 
-    return out
+    return y
 
 

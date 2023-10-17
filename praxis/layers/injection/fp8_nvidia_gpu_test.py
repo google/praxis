@@ -17,16 +17,15 @@
 
 from functools import partial
 
-from praxis import pax_fiddle
 from absl.testing import absltest
+from flax.linen.fp8_ops import quantize_dequantize
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import linears
 from praxis.layers.injection import fp8_nvidia_gpu as fp8_ops
-
-instantiate = base_layer.instantiate
 
 
 class Fp8LinearsTest(test_utils.TestCase):
@@ -34,8 +33,7 @@ class Fp8LinearsTest(test_utils.TestCase):
 
     # Used to cast the inputs to be representable in FP8, so that the difference
     # of the results from the original gemm and fp8 gemm is small.
-    cast_to_representable = partial(fp8_ops.quantize_dequantize,
-                                    scale=jnp.ones((1,)),
+    cast_to_representable = partial(quantize_dequantize, scale=jnp.ones((1,)),
                                     compute_dtype=jnp.float32)
     def run(custom_einsum_tpl, expected_shapes):
       p = pax_fiddle.Config(
@@ -47,7 +45,7 @@ class Fp8LinearsTest(test_utils.TestCase):
       if custom_einsum_tpl:
         p.set(einsum_tpl=custom_einsum_tpl)
 
-      ffn = instantiate(p)
+      ffn = base_layer.instantiate(p)
       prng_key = jax.random.PRNGKey(seed=123)
       prng_key, init_key, random_key = jax.random.split(prng_key, 3)
       inputs = jax.random.uniform(random_key, (16, 32))
