@@ -1056,15 +1056,25 @@ class AttentionsTest(test_utils.TestCase):
     )
 
   @parameterized.parameters([
-      (4, 2, 1, True, True),
-      (4, 2, 1, False, True),
-      (8, 3, 5, True, False),
-      (8, 3, 5, False, False),
-      (5, 4, 0, False, True),
-      (5, 4, 0, True, True),
+      (4, 2, 1, True, True, False),
+      (4, 2, 1, False, True, False),
+      (8, 3, 5, True, False, False),
+      (8, 3, 5, False, False, False),
+      (5, 4, 0, False, True, False),
+      (5, 4, 0, True, True, False),
+      (4, 2, 1, True, True, True),
+      (4, 2, 1, False, True, True),
+      (5, 4, 0, False, True, True),
+      (5, 4, 0, True, True, True),
   ])
   def test_local_attention(
-      self, block_size, left_context, right_context, is_full, zero_fully_masked
+      self,
+      block_size,
+      left_context,
+      right_context,
+      is_full,
+      zero_fully_masked,
+      simulated,
   ):
     mdl_dim = 16
     hidden_dim = 32
@@ -1079,6 +1089,7 @@ class AttentionsTest(test_utils.TestCase):
         left_context=left_context,
         right_context=right_context,
         zero_fully_masked=zero_fully_masked,
+        simulated=simulated,
     )
     layer = instantiate(test_layer_p)
 
@@ -1138,9 +1149,10 @@ class AttentionsTest(test_utils.TestCase):
     self.assertAllClose(
         test_utils.to_np(jax_fprop_out), test_utils.to_np(tf_out)
     )
-    self.assertAllClose(
-        test_utils.to_np(jax_atten_prob), test_utils.to_np(tf_atten_prob)
-    )
+    if not simulated:
+      self.assertAllClose(
+          test_utils.to_np(jax_atten_prob), test_utils.to_np(tf_atten_prob)
+      )
 
   def test_local_attention_fully_masked(self):
     mdl_dim = 16

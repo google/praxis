@@ -33,7 +33,6 @@ from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import base_ops
 from praxis.layers import embedding_softmax
-from praxis.layers import normalizations
 from praxis.layers import stochastics
 
 NestedMap = py_utils.NestedMap
@@ -55,6 +54,7 @@ def limited_context_mask(
     right_context: int | None,
     time_size: int,
     dtype: jnp.dtype = jnp.float32,
+    column_time_size: int | None = None,
 ) -> JTensor:
   """Generates a logit mask from window configuration.
 
@@ -66,22 +66,26 @@ def limited_context_mask(
     right_context: integer or None
     time_size: size of time dimension.
     dtype: data type of the output.
+    column_time_size: size of the column time dimension, defaults to time_size
 
   Returns:
-    A JTensor of shape [T, T] ready to add to attention logits.
+    A JTensor of shape [time_size, column_time_size] ready to add to attention
+    logits.
   """
   large_negative_number = py_utils.get_large_negative_number(dtype)
 
+  if column_time_size is None:
+    column_time_size = time_size
+
   if right_context is None:
-    right_context = time_size
+    right_context = max(time_size, column_time_size)
   if left_context is None:
-    left_context = time_size
-  col_idx = jnp.tile(jnp.arange(time_size)[jnp.newaxis, :], [time_size, 1])
-  row_idx = jnp.tile(jnp.arange(time_size)[:, jnp.newaxis], [1, time_size])
-  mask = (
+    left_context = max(time_size, column_time_size)
+  col_idx = jnp.arange(column_time_size)[jnp.newaxis, :]
+  row_idx = jnp.arange(time_size)[:, jnp.newaxis]
+  return (
       (col_idx + left_context <= row_idx) | (row_idx < col_idx - right_context)
   ).astype(dtype) * large_negative_number
-  return mask
 
 
 def causal_mask(input_t: JTensor) -> JTensor:
@@ -3091,14 +3095,20 @@ class LocalSelfAttention(DotProductAttention):
     left_context: Number of left positions to attend (including current
       position).
     right_context: Number of right positions to attend.
+    simulated: If True, the computation will be done by simply applying a local
+      mask. This is faster when the block size is close to the full sequence
+      length.
   """
 
   block_size: int | None = None
   left_context: int | None = None
   right_context: int | None = None
+  simulated: bool = False
 
   def _atten_logits(self, query: JTensor, key: JTensor) -> JTensor:
     """Computes logits from query and key."""
+    if self.simulated:
+      return super()._atten_logits(query, key)
     logits = jnp.einsum('buwnh,bucnh->bnuwc', query, key)
     return logits
 
@@ -3127,6 +3137,18 @@ class LocalSelfAttention(DotProductAttention):
       encoded: JTensor of shape [B, T, N, H].
       atten_probs: JTensor of shape [B, N, T, S].
     """
+
+    if self.simulated:
+      local_atten_mask = limited_context_mask(
+          self.left_context,
+          self.right_context,
+          time_size=query.shape[1],
+          column_time_size=key.shape[1],
+      )
+      atten_mask = jnp.minimum(atten_mask, local_atten_mask)
+
+      return super()._dot_atten(query, key, value, atten_mask, relative_bias)
+
     # Relative bias is not supported yet
     if relative_bias is not None:
       raise NotImplementedError(
@@ -3385,6 +3407,8 @@ class LocalSelfAttentionXL(LocalSelfAttention):
   def setup(self) -> None:
     """Constructs a LocalSelfAttentionXL object."""
     super().setup()
+    if self.simulated:
+      raise ValueError('simulated is not supported for %s' % self.__name__)
     create_relative_positional_embedding(self)
 
   def _atten_logits(self, query, key):
