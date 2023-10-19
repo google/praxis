@@ -39,9 +39,11 @@ import numpy as np
 from praxis import lazy_loader
 from praxis import pax_fiddle
 from praxis import py_utils
+from typing_extensions import dataclass_transform
 
 from google.protobuf import message
 from google.protobuf import text_format
+
 
 # TF is slow to import, so we do it lazily.
 tf = lazy_loader.LazyLoader('tf', globals(), 'tensorflow.compat.v2')
@@ -971,7 +973,7 @@ def _require_kwargs(cls):
 
 
 @kw_only_dataclasses.dataclass
-class FiddleBaseParameterizable:
+class FiddleBaseParameterizableBase:
   """A base class for classes migrated from `BaseParameterizable`.
 
   This class provides backwards-compatibility stubs (for nested `HParams`
@@ -1021,6 +1023,19 @@ class FiddleBaseParameterizable:
       raise ValueError(
           f'Unexpected arguments to __post_init__:\n{args=}\n{kwargs=}'
       )
+
+
+# pytype: disable=not-supported-yet
+# This disable is needed because the decorator has to match the existing
+# decorator of the decorator for FiddleBaseParameterizableBase.
+@dataclass_transform(field_specifiers=(kw_only_dataclasses.field,))
+# pytype: enable=not-supported-yet
+class FiddleBaseParameterizable(FiddleBaseParameterizableBase):
+  """A wrapper for FiddleBaseParameterizableBase.
+
+  This is needed so that static type checkers know all the derived classes have
+  dataclass-like semantics.
+  """
 
 
 def _bind_cls_to_nested_params_class(cls: Type[Any]):

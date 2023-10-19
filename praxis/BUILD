@@ -49,7 +49,7 @@ pytype_strict_library(
         # Implicit flax.core dependency.
         # Implicit ml_collections config_dict dependency.
         # Implicit numpy dependency.
-        # Implicit tensorflow_no_contrib dependency.
+        # Implicit typing_extensions dependency.
     ],
 )
 
