@@ -206,6 +206,9 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
       dict(
           topk_estimator_type='BINARY_MASK',
       ),
+      dict(
+          topk_estimator_type='PROB_MASK',
+      ),
   )
   def test_topk_mask_learner(self, topk_estimator_type):
     sparsity_p = pax_fiddle.Config(

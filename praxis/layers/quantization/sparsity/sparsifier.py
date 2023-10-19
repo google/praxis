@@ -434,6 +434,31 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
         # create binary mask
         cur_binary_mask = cur_float_mask == 1.0
+      elif self.sparsity.topk_estimator_type == 'PROB_MASK':
+        # set the binary mask
+        cur_binary_mask = new_mask.reshape(weight.shape)
+
+        # renormalize mask_params by setting -inf for pruned weight
+        renorm_mask_params_grouped = jnp.where(
+            new_mask,
+            mask_params_grouped,
+            jnp.full(
+                mask_params_grouped.shape,
+                -jnp.inf,
+                dtype=mask_params_grouped.dtype,
+            ),
+        )
+
+        # convert to prob distrib. via softmax
+        prob_mask_params_grouped = jax.nn.softmax(
+            renorm_mask_params_grouped, axis=-1
+        )
+
+        # scale probs by #unpruned params
+        prob_mask_params_grouped = prob_mask_params_grouped * sparsity_n
+
+        # reshape it to original size
+        cur_float_mask = prob_mask_params_grouped.reshape(weight.shape)
 
       # apply mask on weight
       weight = weight * cur_float_mask
