@@ -228,12 +228,11 @@ class QuantizationLayer(base_layer.BaseLayer):
         return out
       elif self.quantization.quantization_type == QuantizationType.FQ:
         if self.quantization.act_params is not None:
-          act_params = self.quantization.act_params
           x = operations.fakequant_activation(
               x,
-              bits=act_params.precision,
-              symmetric=act_params.symmetric,
-              percentile=act_params.clipping_coeff,
+              bits=self.quantization.act_params.precision,
+              symmetric=self.quantization.act_params.symmetric,
+              percentile=self.quantization.act_params.clipping_coeff,
           )
         w = operations.fakequant_einsum(
             eqn,
@@ -244,6 +243,11 @@ class QuantizationLayer(base_layer.BaseLayer):
             block_size=self.quantization.weight_params.block_size,
         )
         out = jnp.einsum(eqn, x, w)
+        if (
+            self.quantization.act_params is not None
+            and self.quantization.act_params.fp16
+        ):
+          out = operations.clip_to_fp16(out)
         return out
       elif self.quantization.quantization_type == QuantizationType.FQ_VN:
         w = operations.fakequant_vn(
@@ -339,7 +343,9 @@ def quantized_conv(
     raise NotImplementedError('QAT not supported for conv.')
 
 
-def do_static_activation_quantization(act_params) -> bool:
+def do_static_activation_quantization(
+    act_params: ActQuantizationParams,
+) -> bool:
   return act_params is not None and act_params.stats_config is not None
 
 

@@ -93,8 +93,8 @@ def _get_offset_eqn(eqn: str) -> str:
     has_eplison = True
   segs = eqn.split('->')
   ins = segs[0].split(',')
-  left = ins[0]
-  right = ins[1]
+  assert len(ins) == 2
+  left, right = ins
   if has_eplison:
     left = left.replace('...', '')
   reduce_dim = set(left).intersection(set(right))
@@ -343,7 +343,7 @@ def reduce_precision(
     contract_dims: Speficies contracting dimesnions of the input tensor.
     need_gradient: If gradient is needed out of this function.
     bits: Target number of bits.
-    optimization_on_bound: If p-mean bound optimizer is used.
+    optimization_on_bound: If MAE bound optimizer is used.
     p_value: Exponent of the p-mean error metric. Default to 1.0 which is MAE.
     percentile: Percentile Factor to apply on the min/max range. Setting this to
       other than 1.0 disables optimization_on_bound.
@@ -356,6 +356,12 @@ def reduce_precision(
     A tuple of quantized tensor, quantization scale
       and quantization zero point (optional).
   """
+  if percentile != 1.0 and optimization_on_bound:
+    raise ValueError(
+        'Only one parameters: percentile or optimization_on_bound '
+        'can be enabled.'
+    )
+
   min_value, max_value = get_min_max(bits, use_fp=use_fp)
 
   if use_symmetric:
@@ -407,14 +413,14 @@ def reduce_precision(
   return t, scale, zp
 
 
-def eqn_to_weight_contract_dims(eqn: str):
+def eqn_to_weight_contract_dims(eqn: str) -> list[int]:
   segs = eqn.split('->')
   ins = segs[0].split(',')
   w, out = ins[1].replace('.', ''), segs[1].replace('.', '')
   return [i for i, val in enumerate(w) if val not in out]
 
 
-def eqn_to_activation_contract_dims(eqn: str):
+def eqn_to_activation_contract_dims(eqn: str) -> list[int]:
   segs = eqn.split('->')
   ins = segs[0].split(',')
   act, out = ins[0].replace('.', ''), segs[1].replace('.', '')
