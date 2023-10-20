@@ -135,7 +135,7 @@ def get_min_max(
     return -1 * 2 ** (bits - 1), 2 ** (bits - 1) - 1
 
 
-def compute_offset(x: JTensor, zp: JTensor, eqn: str):
+def compute_offset(x: JTensor, zp: JTensor, eqn: str) -> JTensor:
   """Computes offset: product of activation x with zero point of weight.
 
   Args:
@@ -646,6 +646,7 @@ def fakequant_activation(
     t: JTensor,
     bits: int = 8,
     eqn: str | None = None,
+    per_channel: bool = False,
     symmetric: bool = True,
     percentile: float = 1.0,
 ) -> JTensor:
@@ -655,6 +656,7 @@ def fakequant_activation(
     t: Activation tensor.
     bits: Target number of bits.
     eqn: Einsum equation. If None, do per-tensor quantization.
+    per_channel: Whether or not to quantize activation channel-wisely.
     symmetric: If the activation is quantized symmetrically.
     percentile: Percentile Factor to apply on the min/max range. Setting this to
       other than 1.0 disables optimization_on_bound.
@@ -663,7 +665,9 @@ def fakequant_activation(
     Nudged activation.
   """
   contract_dims = None
-  if eqn:
+  if per_channel:
+    if eqn is None:
+      raise ValueError('eqn should be defined with per_channel = True.')
     contract_dims = eqn_to_activation_contract_dims(eqn)
   qt, scale, zp = reduce_precision_activation(
       t,

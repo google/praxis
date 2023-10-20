@@ -40,7 +40,7 @@ instantiate = base_layer.instantiate
 
 def _generate_quantization_types_modes() -> Sequence[dict[str, Any]]:
   keys = ['testcase_name', 'quantization_type', 'mode', 'precision']
-  types = [QuantizationType.PTQ, QuantizationType.AQT]
+  types = [QuantizationType.PTQ, QuantizationType.AQT, QuantizationType.FQ]
   modes = [QuantizationMode.INFERENCE, QuantizationMode.TRAINING]
   precisions = [8, 4]
 
@@ -72,6 +72,9 @@ class QuantizedAttentionTest(test_utils.TestCase):
             quantization_type=quantization_type,
             mode=mode,
             weight_params=quantization_hparams.WeightQuantizationParams(
+                precision=precision,
+            ),
+            act_params=quantization_hparams.ActQuantizationParams(
                 precision=precision,
             ),
         ),
@@ -135,6 +138,9 @@ class QuantizedAttentionTest(test_utils.TestCase):
             quantization_type=quantization_type,
             mode=mode,
             weight_params=quantization_hparams.WeightQuantizationParams(
+                precision=precision,
+            ),
+            act_params=quantization_hparams.ActQuantizationParams(
                 precision=precision,
             ),
         ),

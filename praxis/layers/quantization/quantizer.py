@@ -231,6 +231,8 @@ class QuantizationLayer(base_layer.BaseLayer):
           x = operations.fakequant_activation(
               x,
               bits=self.quantization.act_params.precision,
+              eqn=eqn,
+              per_channel=self.quantization.act_params.per_channel,
               symmetric=self.quantization.act_params.symmetric,
               percentile=self.quantization.act_params.clipping_coeff,
           )

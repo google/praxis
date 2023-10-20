@@ -461,6 +461,9 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
           inputs = operations.fakequant_activation(
               inputs,
               bits=self.quantization.act_params.precision,
+              eqn=eqn,
+              per_channel=self.quantization.act_params.per_channel,
+              symmetric=self.quantization.act_params.symmetric,
               percentile=self.quantization.act_params.clipping_coeff,
           )
         w = operations.fakequant_einsum(

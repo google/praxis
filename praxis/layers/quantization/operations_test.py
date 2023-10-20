@@ -461,8 +461,18 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
   )
   def test_reduce_activation_precision_per_channel(self, eqn):
     act = np.random.normal(-1.0, 1.0, [10, 100]).astype(np.float32)
-    act_nudged = operations.fakequant_activation(act, eqn=eqn)
-    self.assertAllClose(act, act_nudged, rtol=0.02, atol=0.02)
+    act_per_channel_nudged = operations.fakequant_activation(
+        act, eqn=eqn, per_channel=True
+    )
+    act_per_tensor_nudged = operations.fakequant_activation(
+        act, eqn=eqn, per_channel=False
+    )
+    per_channel_diff = jnp.sum(jnp.abs(act - act_per_channel_nudged))
+    per_tensor_diff = jnp.sum(jnp.abs(act - act_per_tensor_nudged))
+    self.assertLess(per_channel_diff, 6.91)
+    self.assertLess(per_tensor_diff, 8.05)
+    self.assertAllClose(act, act_per_channel_nudged, rtol=0.02, atol=0.02)
+    self.assertAllClose(act, act_per_tensor_nudged, rtol=0.02, atol=0.02)
 
 
 def _generate_einsum_eqn() -> Sequence[dict[str, str]]:
