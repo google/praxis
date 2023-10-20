@@ -161,6 +161,7 @@ class WeightHParamsCollection:
   REQUIRES_MEAN_SYNC = '_requires_mean_sync'
   REQUIRES_SUM_SYNC = '_requires_sum_sync'
   DISALLOW_BFLOAT16_CONVERSION = '_disallow_bfloat16_conversion'
+  OVERWRITE_WITH_GRADIENT = '_overwrite_with_gradient'
 
 
 def var_not_trainable(var_hparams: ParamsT) -> bool:
@@ -187,6 +188,27 @@ def var_disallow_bfloat16_conversion(var_hparams: ParamsT) -> bool:
 def var_skip_lp_regularization(var_params: ParamsT) -> bool:
   return (
       WeightHParamsCollection.SKIP_LP_REGULARIZATION in var_params.collections
+  )
+
+
+def var_overwrite_with_gradient(var_hparams: ParamsT) -> bool:
+  """Returns True if var_hparams is OWG (overwrite_with_gradient) variable.
+
+  OWG variables are semi-trainable; their new values are directly assigned as
+  `x = grad`. In other words, after each training step, they are overwritten by
+  the gradient value with respect to themselves. In contrast, regular trainable
+  variables are updated by the learner through the formula
+  `x = x + update(grad)`. Non-trainable variables, on the other hand, remain
+  unchanged, i.e., `x = x`.
+
+  Args:
+    var_hparams: WeightHParams used to create the variable.
+
+  Returns:
+    True if var_hparams belongs to OWG collection.
+  """
+  return (
+      WeightHParamsCollection.OVERWRITE_WITH_GRADIENT in var_hparams.collections
   )
 
 
