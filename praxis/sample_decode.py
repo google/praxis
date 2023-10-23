@@ -320,9 +320,9 @@ def sample_decode(
     gumbel_prng_key: PRNG key for generating gumbel random noise. If None,
       model.next_prng_key() is used; if not None, must be of shape [B] or [B,
       key_shape_dim], where key_shape_dim =
-      jax.random.default_prng_impl().key_shape[0]. Usually, key_shape_dim = 2 or
-      4. where B is the batch size before being duplicated wrt num_samples or
-      cfg. If all the values in gumbel_prng_key is set to DUMMY_PRNG_KEY,
+      jax.random.key_data(jax.random.key(0)).shape[0]. Usually, key_shape_dim =
+      2 or 4. where B is the batch size before being duplicated wrt num_samples
+      or cfg. If all the values in gumbel_prng_key is set to DUMMY_PRNG_KEY,
       gumbel_prng_key will be ignored and model.next_prng_key() is used.
     per_example_top_p: Per example top_p of sampling decoding. Optional JTensor
       of shape [B].
@@ -528,9 +528,9 @@ def sample_decode_after_fprop(
     gumbel_prng_key: PRNG key for generating gumbel random noise. If None,
       model.next_prng_key() is used; if not None, must be of shape [B] or [B,
       key_shape_dim], where key_shape_dim =
-      jax.random.default_prng_impl().key_shape[0]. Usually, key_shape_dim = 2 or
-      4. where B is the batch size before being duplicated wrt num_samples or
-      cfg. If all the values in gumbel_prng_key is set to DUMMY_PRNG_KEY,
+      jax.random.key_data(jax.random.key(0)).shape[0]. Usually, key_shape_dim =
+      2 or 4. where B is the batch size before being duplicated wrt num_samples
+      or cfg. If all the values in gumbel_prng_key is set to DUMMY_PRNG_KEY,
       gumbel_prng_key will be ignored and model.next_prng_key() is used.
     per_example_top_p: Per example top_p of sampling decoding. Optional JTensor
       of shape [B].
@@ -724,7 +724,7 @@ def sample_decode_after_fprop(
 
   if gumbel_prng_key is not None and isinstance(gumbel_prng_key, JTensor):
     gumbel_prng_key = gumbel_prng_key.astype(jnp.uint32)
-    dup_len = jax.random.default_prng_impl().key_shape[0]
+    dup_len = jax.random.key_data(jax.random.key(0)).shape[0]
     if len(gumbel_prng_key.shape) == 1:
       gumbel_prng_key = jnp.stack([gumbel_prng_key] * dup_len, axis=-1)
 
@@ -1323,9 +1323,9 @@ def vanilla_sample_decode(
     gumbel_prng_key: PRNG key for generating gumbel random noise. If None,
       model.next_prng_key() is used; if not None, must be of shape [B] or [B,
       key_shape_dim], where key_shape_dim =
-      jax.random.default_prng_impl().key_shape[0]. Usually, key_shape_dim = 2 or
-      4. where B is the batch size before being duplicated wrt num_samples or
-      cfg. If all the values in gumbel_prng_key is set to DUMMY_PRNG_KEY,
+      jax.random.key_data(jax.random.key(0)).shape[0]. Usually, key_shape_dim =
+      2 or 4. where B is the batch size before being duplicated wrt num_samples
+      or cfg. If all the values in gumbel_prng_key is set to DUMMY_PRNG_KEY,
       gumbel_prng_key will be ignored and model.next_prng_key() is used.
     max_decode_steps: Python int, the max decode step to run after the prefix
       (if any).
@@ -1368,7 +1368,7 @@ def vanilla_sample_decode(
 
     if gumbel_prng_key is not None and isinstance(gumbel_prng_key, JTensor):
       gumbel_prng_key = gumbel_prng_key.astype(jnp.uint32)
-      dup_len = jax.random.default_prng_impl().key_shape[0]
+      dup_len = jax.random.key_data(jax.random.key(0)).shape[0]
       if len(gumbel_prng_key.shape) == 1:
         gumbel_prng_key = jnp.stack([gumbel_prng_key] * dup_len, axis=-1)
       assert gumbel_prng_key.shape == [batch_size, dup_len]
