@@ -283,6 +283,36 @@ def var_partition_specs(
   return jax.tree_map(_get_spec, var_specs)
 
 
+def transpose_one_axis(
+    axis: str | None, mesh_axes_transpose: dict[str, str] | None
+) -> str | None:
+  """Remap one device mesh axis based on mesh_axes_transpose."""
+  if mesh_axes_transpose is None or axis is None:
+    return axis
+  assert isinstance(axis, str)
+  return mesh_axes_transpose.get(axis, axis)
+
+
+def maybe_transpose_mesh_axes(
+    partition_spec: jax.sharding.PartitionSpec,
+) -> jax.sharding.PartitionSpec:
+  """Remap device mesh axes if mesh_axes_transpose exists."""
+  if JaxContext.has_context():
+    mapping = cur_jax_context().hparams.mesh_axes_transpose
+    if mapping:
+
+      def _transpose_one_dim(axes):
+        if axes is None or isinstance(axes, str):
+          return transpose_one_axis(axes, mapping)
+        mapped_axes = [_transpose_one_dim(x) for x in axes]
+        return tuple(x for x in mapped_axes if x)
+
+      partition_spec = jax.sharding.PartitionSpec(
+          *[_transpose_one_dim(x) for x in partition_spec]
+      )
+  return partition_spec
+
+
 def maybe_shard(
     x: JTensor,
     split_dims_mapping: SplitDimsMapping = None,
@@ -330,22 +360,7 @@ def maybe_shard(
       f'x.shape = {x.shape} and split_dims_mapping = {split_dims_mapping}'
   )
   partition_spec = to_partition_spec(split_dims_mapping, mesh_axis_names)
-
-  if JaxContext.has_context():
-    mapping = cur_jax_context().hparams.mesh_axes_transpose
-    if mapping:
-
-      def _transpose_one_dim(axes):
-        if axes is None:
-          return axes
-        if isinstance(axes, str):
-          return mapping.get(axes, axes)
-        mapped_axes = [_transpose_one_dim(x) for x in axes]
-        return tuple(x for x in mapped_axes if x)
-
-      partition_spec = jax.sharding.PartitionSpec(
-          *[_transpose_one_dim(x) for x in partition_spec]
-      )
+  partition_spec = maybe_transpose_mesh_axes(partition_spec)
 
   if unconstrained_dims is not None:
     partition_spec_list = list(partition_spec)
