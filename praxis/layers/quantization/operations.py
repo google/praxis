@@ -356,12 +356,6 @@ def reduce_precision(
     A tuple of quantized tensor, quantization scale
       and quantization zero point (optional).
   """
-  if percentile != 1.0 and optimization_on_bound:
-    raise ValueError(
-        'Only one parameters: percentile or optimization_on_bound '
-        'can be enabled.'
-    )
-
   min_value, max_value = get_min_max(bits, use_fp=use_fp)
 
   if use_symmetric:
