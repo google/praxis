@@ -20,7 +20,7 @@ top_p.
 """
 
 import abc
-from typing import Sequence
+from typing import Any, Sequence
 
 import jax
 from jax import numpy as jnp
@@ -565,6 +565,13 @@ class BaseNextTokenSampler(
   ) -> NestedMap:
     """Delete unused decode loop state."""
     return decode_loop_state
+
+  @classmethod
+  def get_extra_kwargs(
+      cls, inputs: NestedMap, num_samples: int
+  ) -> dict[str, Any]:
+    """Gets the supported extra arguments from model inputs."""
+    return {}
 
   def _get_prng_key(
       self,

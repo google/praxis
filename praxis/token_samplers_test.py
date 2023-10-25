@@ -18,13 +18,9 @@ from absl.testing import absltest
 import jax
 from jax import numpy as jnp
 import numpy as np
-from praxis import base_layer
 from praxis import py_utils
 from praxis import test_utils
 from praxis import token_samplers
-
-NestedMap = py_utils.NestedMap
-instantiate = base_layer.instantiate
 
 
 class TokenSamplersTest(test_utils.TestCase):

@@ -642,7 +642,12 @@ class LanguageModel(base_model.BaseModel):
         next_token_sampler_p.use_top_k_for_logprobs = (
             decoder_params.use_top_k_for_logprobs
         )
-      next_token_sampler = base_layer.instantiate(next_token_sampler_p)
+      next_token_sampler = base_layer.instantiate(
+          next_token_sampler_p,
+          **next_token_sampler_p.cls.get_extra_kwargs(
+              input_batch, decoder_params.num_samples
+          ),
+      )
 
       if decoder_params.vanilla_sample_decode:
         # TODO(b/289423925): All decoders should remove the last id. Currently,

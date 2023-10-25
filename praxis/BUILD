@@ -546,7 +546,6 @@ py_strict_test(
     name = "token_samplers_test",
     srcs = ["token_samplers_test.py"],
     deps = [
-        ":base_layer",
         ":py_utils",
         ":test_utils",
         ":token_samplers",
