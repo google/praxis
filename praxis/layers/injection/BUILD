@@ -20,10 +20,7 @@ load("//praxis:praxis.bzl", "pytype_strict_library")
 load("//praxis:praxis.bzl", "py_strict_test")
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
 
-package(
-    default_applicable_licenses = ["//praxis:license"],
-    default_visibility = JAX_VISIBILITY,
-)
+package(default_visibility = JAX_VISIBILITY)
 
 licenses(["notice"])
 
