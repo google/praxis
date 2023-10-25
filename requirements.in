@@ -6,7 +6,7 @@ clu
 einops
 etils
 fiddle @ git+https://github.com/google/fiddle
-flax
+flax @ git+https://github.com/google/flax
 jax @ git+https://github.com/google/jax
 jax-bitempered-loss
 jaxtyping
