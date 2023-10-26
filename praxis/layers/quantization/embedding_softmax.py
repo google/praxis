@@ -30,6 +30,7 @@ from praxis.layers.quantization import linears as quantized_linears
 from praxis.layers.quantization import operations as quantized_operations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
+from praxis.layers.quantization import utils
 
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
@@ -282,6 +283,9 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
       emb_var, scale_var, zp_var = linear_layer.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
+      # Upcast (u)int4 types due to lack of implicit promotion support.
+      if emb_var.dtype in utils.INT4_TYPES:
+        emb_var = emb_var.astype(jnp.int8)
     else:
       eqn = 'xy,zy->xz'
       emb_var = linear_layer.theta.w

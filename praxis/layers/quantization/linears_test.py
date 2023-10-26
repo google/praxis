@@ -270,13 +270,14 @@ class QuantizedLinearTest(test_utils.TestCase):
       )
       packed_4bit_in_int32 = qutils.pack_4bit(w, 0, packed_dtype=jnp.int32)
       packed_4bit_in_int8 = qutils.pack_4bit(w, 0, packed_dtype=jnp.int8)
-      self.assertArraysEqual(
-          w.astype(jnp.int32),
-          qutils.unpack_4bit(packed_4bit_in_int32, 0, jnp.int8),
+      unpacked_4bit_in_int32 = qutils.unpack_4bit(
+          packed_4bit_in_int32, 0, jnp.int8
       )
-      self.assertArraysEqual(
-          w, qutils.unpack_4bit(packed_4bit_in_int8, 0, jnp.int8)
+      unpacked_4bit_in_int8 = qutils.unpack_4bit(
+          packed_4bit_in_int8, 0, jnp.int8
       )
+      self.assertArraysEqual(w, unpacked_4bit_in_int32.astype(jnp.int8))
+      self.assertArraysEqual(w, unpacked_4bit_in_int8.astype(jnp.int8))
 
       # Same weights packed in different format
       packed_int32_vars = {
@@ -323,6 +324,17 @@ class QuantizedLinearTest(test_utils.TestCase):
           rtol=bf16_epsilon,
           atol=bf16_epsilon,
       )
+
+      # Test get_quantized_weight returns the correct unpacked weight with an
+      # int8 dtype.
+      # XLA CPU/GPU currently does not support the existence of (u)int4 tensors
+      # so we use int8 instead on CPU/GPU.
+      linear_int8_packed = linear_int8_packed.bind(packed_int8_vars)
+      linear_int32_packed = linear_int32_packed.bind(packed_int32_vars)
+      q_w_int8, _, _ = linear_int8_packed.get_quantized_weight('w')
+      q_w_int32, _, _ = linear_int32_packed.get_quantized_weight('w')
+      self.assertArraysEqual(q_w_int8, w)
+      self.assertArraysEqual(q_w_int32, w)
 
 
 class QuantizedLinearsSyncTest(test_utils.TestCase):

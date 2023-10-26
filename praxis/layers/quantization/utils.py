@@ -22,9 +22,24 @@ from jax import lax
 import jax.numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle
+from praxis import py_utils
 
 
 JTensor = jnp.ndarray
+
+
+INT4_TYPES = [jnp.int4, jnp.uint4]
+QUANTIZED_TYPES = [jnp.int4, jnp.uint4, jnp.int8, jnp.uint8]
+INT_TYPES = [
+    jnp.int4,
+    jnp.uint4,
+    jnp.int8,
+    jnp.uint8,
+    jnp.int16,
+    jnp.uint16,
+    jnp.int32,
+    jnp.uint32,
+]
 
 
 def einsum_eqn_to_dimension_numbers(
@@ -106,50 +121,50 @@ def einsum_eqn_to_dimension_numbers(
 def pack_4bit(
     x: JTensor, pack_dim: int, packed_dtype: jnp.dtype = jnp.int32
 ) -> JTensor:
-  """Pack int8 or uint8 tensor where its values are actually int4 or uint4, to int32 or int8 nibble format along pack_dim.
+  """Pack tensor where its values are actually int4 or uint4, to int8 or int32 nibble format along pack_dim.
 
   Args:
-    x: Original int8 or uint8 tensor to pack.
+    x: Original (u)int4 or (u)int8 tensor to pack.
     pack_dim: Dimension to pack along. x.shape[pack_dim] must be divisible by 8,
-      when packed_dtype is int32 and divisible by 2 when target_type is int8.
+      when packed_dtype is int32 and divisible by 2 when packed_dtype is int8.
       Also pack_dim must be < x.ndim - 1.
-    packed_dtype: Target type to pack to, int32 or int8.
+    packed_dtype: Target type to pack to, int8 or int32.
 
   Returns:
-    int32 or int8 packed tensor where the pack_dim size is dividened by 8
-    from the original tensor x.
+    int8 or int32 packed tensor where the pack_dim size is dividened by 2 or 8
+    respectively from the original tensor x.
   """
-  if packed_dtype == jnp.int8 and x.dtype == jnp.uint8:
+  if x.dtype not in QUANTIZED_TYPES:
+    raise ValueError(f'{x.dtype=} must be one of {QUANTIZED_TYPES}')
+  if packed_dtype == jnp.int8 and x.dtype in [jnp.uint4, jnp.uint8]:
     # It doesn't make sense to pack uint8 numbers into int4 as we'll
     # the range overlap between uint8 and int4 is [0..7].
     raise ValueError(
-        'only int8 input dtype is supported when packing into int8. '
-        f'Given {x.dtype}'
-    )
-
-  if x.dtype != jnp.int8 and x.dtype != jnp.uint8:
-    raise ValueError(
-        f'input dtype must be either int8 or uint8. Given {x.dtype}'
+        'only int4 and int8 input dtypes are supported when packing into int8. '
+        f'Given {x.dtype=}'
     )
   if pack_dim >= x.ndim - 1:
     raise ValueError(
-        f'pack_dim must be < input ndim - 1. input shape {x.shape} and pack_dim'
-        f' {pack_dim}'
+        f'pack_dim must be < x.ndim - 1. {x.shape=} and {pack_dim=}'
     )
-  if packed_dtype != jnp.int32 and packed_dtype != jnp.int8:
-    raise ValueError(
-        f'packed_dtype must be either int32 or int8. Given {packed_dtype}'
-    )
+  if packed_dtype not in [jnp.int8, jnp.int32]:
+    raise ValueError(f'{packed_dtype=} must be either int8 or int32')
   if packed_dtype == jnp.int32 and x.shape[pack_dim] % 8 != 0:
     raise ValueError(
-        'input shape[pack_dim] must be divisible by 8 when target_type '
+        f'x.shape[{pack_dim=}] must be divisible by 8 when packed_dtype '
         f'is int32. Given shape {x.shape}'
     )
   if packed_dtype == jnp.int8 and x.shape[pack_dim] % 2 != 0:
     raise ValueError(
-        'input shape[pack_dim] must be divisible by 2 when target_type '
+        f'x.shape[{pack_dim=}] must be divisible by 2 when packed_dtype '
         f'is int8. Given shape {x.shape}'
     )
+
+  # Upcast int4 types before packing to avoid lack of CPU support for int4 ops.
+  if x.dtype == jnp.int4:
+    x = x.astype(jnp.int8)
+  elif x.dtype == jnp.uint4:
+    x = x.astype(jnp.uint8)
 
   int4s_per_packed_type = 8 if packed_dtype == jnp.int32 else 2
 
@@ -171,35 +186,27 @@ def pack_4bit(
 def unpack_4bit(
     packed: JTensor, pack_dim: int, original_dtype: jnp.dtype
 ) -> JTensor:
-  """Unpack int32/int8 tensor packed by pack_4bit() to int32/int8 tensor.
+  """Unpack int8/int32 tensor packed by pack_4bit() to (u)int4 tensor.
 
   Args:
-    packed: int32 or int8 tensor that was packed by pack_4bit() function.
+    packed: int8 or int32 tensor that was packed by pack_4bit() function.
     pack_dim: Dimension that was used to pack along. pack_dim must be <
       packed.ndim - 1.
     original_dtype: dtype of the original tensor that was packed by pack_4bit()
-      function. Must be either int8 or uint8.
+      function. Must be (u)int4 or (u)int8.
 
   Returns:
-    int32/int8 unpack tensor where the pack_dim size is multiplied by 8/2 from
+    (u)int4 unpack tensor where the pack_dim size is multiplied by 2 or 8 from
     the packed tensor. Which means that the returned shape is identical to the
     original shape before pack_4bit().
-    Note that original input to pack_4bit() is int8 or uint8, but the unpacked
-    tensor returned by unpack_4bit() is int32/int8 with same values
-    and shape of the original tensor.
   """
-  if packed.dtype != jnp.int32 and packed.dtype != jnp.int8:
-    raise ValueError(
-        f'packed dtype must be either int32 or int8. Given {packed.dtype}'
-    )
-  if original_dtype != jnp.int8 and original_dtype != jnp.uint8:
-    raise ValueError(
-        f'original_dtype must be either int8 or uint8. Given {original_dtype}'
-    )
+  if packed.dtype not in [jnp.int8, jnp.int32]:
+    raise ValueError(f'{packed.dtype=} must be either int8 or int32')
+  if original_dtype not in QUANTIZED_TYPES:
+    raise ValueError(f'{original_dtype=} must be one of {QUANTIZED_TYPES}')
   if pack_dim >= packed.ndim - 1:
     raise ValueError(
-        f'pack_dim must be < input ndim - 1. input shape {packed.shape} and'
-        f' pack_dim {pack_dim}'
+        f'pack_dim must be < packed.ndim - 1. {packed.shape=} and {pack_dim=}'
     )
 
   packet_type_bits = 32 if packed.dtype == jnp.int32 else 8
@@ -221,13 +228,78 @@ def unpack_4bit(
   rep <<= shifts
   if jnp.issubdtype(original_dtype, jnp.signedinteger):
     # Arithmetic shift is required to repsect negative numbers
-    return lax.shift_right_arithmetic(
+    rep = lax.shift_right_arithmetic(
         rep, jnp.array(packet_type_bits - 4, packed.dtype)
     )
+    # XLA CPU/GPU currently does not support the existence of (u)int4 tensors.
+    # TODO(b/183567451): Change to a int4 -> int8 double cast on CPU/GPU
+    # once XLA supports (u)int4 tensors.
+    rep = rep.astype(jnp.int4) if py_utils.is_tpu() else rep.astype(jnp.int8)
+    return rep
   else:
-    return lax.shift_right_logical(
+    rep = lax.shift_right_logical(
         rep, jnp.array(packet_type_bits - 4, packed.dtype)
     )
+    # XLA CPU/GPU currently does not support the existence of (u)int4 tensors.
+    # TODO(b/183567451): Change to a int4 -> int8 double cast on CPU/GPU
+    # once XLA supports (u)int4 tensors.
+    rep = rep.astype(jnp.uint4) if py_utils.is_tpu() else rep.astype(jnp.uint8)
+    return rep
+
+
+def dtype_to_bits(dtype: jnp.dtype) -> int:
+  # dtype.itemsize does not reflect int4 being smaller than int8.
+  return 4 if dtype in INT4_TYPES else dtype.itemsize * 8
+
+
+def bits_to_dtype(bits: int, signed: bool = True) -> jnp.dtype:
+  """Returns the smallest int dtype that can represent a specific precision."""
+  assert 1 <= bits <= 32, f'{bits=} must be between 1 and 32'
+  if bits <= 4 and py_utils.is_tpu():
+    # XLA CPU/GPU currently does not support the existence of (u)int4 tensors.
+    # TODO(b/183567451): Change to a int4 -> int8 double cast on CPU/GPU
+    # once XLA supports (u)int4 tensors.
+    return jnp.int4 if signed else jnp.uint4
+  elif bits <= 8:
+    return jnp.int8 if signed else jnp.uint8
+  elif bits <= 16:
+    return jnp.int16 if signed else jnp.uint16
+  else:
+    return jnp.int32 if signed else jnp.uint32
+
+
+def get_smallest_matching_dtype(lhs: JTensor, rhs: JTensor) -> jnp.dtype:
+  """Returns the smallest integer dtype that can represent both lhs and rhs."""
+  if lhs.dtype not in INT_TYPES:
+    raise ValueError(f'lhs.dtype: {lhs.dtype} is not int type: {INT_TYPES} ')
+  if rhs.dtype not in INT_TYPES:
+    raise ValueError(f'rhs.dtype: {rhs.dtype} is not int type: {INT_TYPES} ')
+
+  lhs_signed = jnp.issubdtype(lhs.dtype, jnp.signedinteger)
+  rhs_signed = jnp.issubdtype(rhs.dtype, jnp.signedinteger)
+
+  if (lhs_signed and rhs_signed) or (not lhs_signed and not rhs_signed):
+    # If the signedness matches, simply use the larger dtype.
+    lhs_bits = dtype_to_bits(lhs.dtype)
+    rhs_bits = dtype_to_bits(rhs.dtype)
+    return lhs.dtype if lhs_bits >= rhs_bits else rhs.dtype
+  else:
+    signed = rhs if rhs_signed else lhs
+    unsigned = lhs if rhs_signed else rhs
+    signed_bits = dtype_to_bits(signed.dtype)
+    unsigned_bits = dtype_to_bits(unsigned.dtype)
+    if unsigned_bits < signed_bits:
+      # If the unsigned dtype is smaller, it fits in the larger signed dtype.
+      return signed.dtype
+    else:
+      # If the unsigned dtype is as big or larger than the signed dtype, then
+      # represent both with the next largest signed dtype.
+      if unsigned_bits < 32:
+        return bits_to_dtype(unsigned_bits * 2, signed=True)
+      else:
+        # Since i64 support is usually disabled, just match XLA's behavior of
+        # truncating ui32 to i32.
+        return jnp.int32
 
 
 def get_packed_shape(shape: Sequence[int], pack_dim: int, packing_factor: int):

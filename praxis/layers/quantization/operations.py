@@ -31,9 +31,9 @@ from praxis.layers.quantization import utils
 JTensor = pytypes.JTensor
 PRNGKey = pytypes.PRNGKey
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
-
-QUANTIZED_TYPES = [jnp.int8, jnp.uint8]
-INT_TYPES = [jnp.int8, jnp.uint8, jnp.int16, jnp.uint16, jnp.int32, jnp.uint32]
+QUANTIZED_TYPES = utils.QUANTIZED_TYPES
+INT_TYPES = utils.INT_TYPES
+INT4_TYPES = utils.INT4_TYPES
 
 
 def _get_expand_dims_rhs(eqn: str) -> list[int]:
@@ -167,6 +167,13 @@ def dot_general_int(lhs, rhs, dimension_numbers):
 
   def _dot_general_int(ops):
     lhs_, rhs_ = ops
+    if lhs_.dtype != rhs_.dtype:
+      # XLA will automatically cast operands with non-matching dtypes up to
+      # int32, which is often suboptimal.
+      dtype = utils.get_smallest_matching_dtype(lhs_, rhs_)
+      lhs_ = lhs_.astype(dtype)
+      rhs_ = rhs_.astype(dtype)
+
     return lax.dot_general(
         lhs_,
         rhs_,
@@ -281,10 +288,11 @@ def einsum(
     if perm is not None:
       ret = lax.transpose(ret, perm)
   else:
-    # TODO(b/283692107): jnp.einsum of int4 is currently not supported.
-    # Remove the following dtype casting of w once it's resolved.
-    if w.dtype == jnp.int4:
+    # jnp.einsum does not support implicit promotion of (u)int4 types.
+    if w.dtype in INT4_TYPES:
       w = w.astype(jnp.int8)
+    if x.dtype in INT4_TYPES:
+      x = x.astype(jnp.int8)
     ret = jnp.einsum(eqn, x, w)
 
   if scale_act is not None:
@@ -399,9 +407,7 @@ def reduce_precision(
       t = jnp.clip(t, min_value, max_value)
     else:
       t = jnp.round(t)
-      container_dtype = (
-          jnp.int8 if bits <= 8 else jnp.int16 if bits <= 16 else jnp.int32
-      )
+      container_dtype = utils.bits_to_dtype(bits, signed=True)
       t = jnp.clip(t, min_value, max_value).astype(container_dtype)
 
   return t, scale, zp

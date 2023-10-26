@@ -86,7 +86,6 @@ class OneHeadedAttentionProjection(  # pytype: disable=signature-mismatch
         weight_name='w',
         weight_params=pc,
         scale_shape=[self.output_dim],
-        pack_dim=self._PACK_4BIT_DIM,
     )
     if self.use_bias:
       if self.mesh_shape is not None:
@@ -123,7 +122,6 @@ class OneHeadedAttentionProjection(  # pytype: disable=signature-mismatch
         eqn=eqn,
         x=inputs,
         w=self.theta.w,
-        pack_dim=self._PACK_4BIT_DIM,
         reshape=[],
     )
     if self.use_bias:
