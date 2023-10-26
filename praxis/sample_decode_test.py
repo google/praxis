@@ -407,7 +407,6 @@ class SampleDecodeHelperTest(test_utils.TestCase):
 
     input_ids = jnp.zeros([batch_size, seq_len], dtype=jnp.int32)
     input_paddings = jnp.zeros([batch_size, seq_len], dtype=jnp.float32)
-
     def decode_fn(model, input_ids, input_paddings):
       gumbel_prng_key = None
       if use_gumbel_prng_key:
@@ -432,7 +431,9 @@ class SampleDecodeHelperTest(test_utils.TestCase):
           # Call the scan loop.
           early_exit=False,
           return_entropy_score=return_entropy_score,
-          num_per_token_logprobs=num_per_token_logprobs,
+          num_per_token_logprobs=None
+          if num_per_token_logprobs is None
+          else jnp.array([num_per_token_logprobs], dtype=jnp.int32),
       )
 
     mutables = [SUMMARIES, DECODE_CACHE]
@@ -483,12 +484,13 @@ class SampleDecodeHelperTest(test_utils.TestCase):
       )
       self.assertEqual(shape, top_candidate_ids.shape)
       self.assertEqual(shape, top_candidate_logprobs.shape)
-      # Check that values outside of the top `num_per_token_logprobs` are 0.
+      # Check that ids outside of the top `num_per_token_logprobs` are 0.
       self.assertArraysEqual(
           top_candidate_ids[:, :, :, num_per_token_logprobs:], 0
       )
+      # Check that logprobs outside of the top `num_per_token_logprobs` are 1.
       self.assertArraysEqual(
-          top_candidate_logprobs[:, :, :, num_per_token_logprobs:], 0.0
+          top_candidate_logprobs[:, :, :, num_per_token_logprobs:], 1.0
       )
       # Check that logprobs are sorted in descending order.
       logprobs = top_candidate_logprobs[:, :, :, :num_per_token_logprobs]

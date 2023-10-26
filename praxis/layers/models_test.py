@@ -1185,7 +1185,9 @@ class LanguageModelTest(test_utils.TestCase):
         ),
         paddings=jnp.zeros(shape=(3, 3), dtype=jnp.float32),
         prefix_lengths=jnp.array([2, 2, 1], dtype=jnp.int32),
-        num_per_token_logprobs=num_per_token_logprobs,
+        num_per_token_logprobs=jnp.array(
+            [num_per_token_logprobs], dtype=jnp.int32
+        ),
     )
     results = self._run_decode(p, logits, input_batch)
     top_candidate_ids = results.top_candidate_ids
@@ -1204,7 +1206,7 @@ class LanguageModelTest(test_utils.TestCase):
         top_candidate_ids[:, :, :, num_per_token_logprobs:], 0
     )
     self.assertArraysEqual(
-        top_candidate_logprobs[:, :, :, num_per_token_logprobs:], 0.0
+        top_candidate_logprobs[:, :, :, num_per_token_logprobs:], 1.0
     )
     # Check that logprobs are sorted in descending order.
     logprobs = top_candidate_logprobs[:, :, :, :num_per_token_logprobs]

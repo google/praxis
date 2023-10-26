@@ -21,7 +21,7 @@ Greedy decode is a special case for sample decode.
 
 import abc
 import functools
-from typing import Sequence
+from typing import Sequence, Tuple
 
 from flax import linen as nn
 import jax
@@ -48,7 +48,6 @@ DECODE_CACHE = base_layer.DECODE_CACHE
 PREFIX_DECODE_CACHE = base_layer.PREFIX_DECODE_CACHE
 DUMMY_PRNG_KEY = decoder_utils.DUMMY_PRNG_KEY
 MAX_NUM_PER_TOKEN_LOGPROBS = 5
-
 
 # TODO(pax-dev): Remove these indirect exposures.
 _batch_rngs_random_gumbel = token_samplers._batch_rngs_random_gumbel
@@ -239,11 +238,69 @@ class BaseSampleTerminationConstraint(
     """Determines which samples to terminate early."""
 
 
+def _compute_top_candidate_logprobs_and_ids(
+    num_per_token_logprobs: JTensor, logprobs: JTensor
+) -> Tuple[JTensor, JTensor]:
+  """Computes the top logprobs and token IDs at the current sampling step.
+
+  At the current sampling step, given the log probabilities of all candidate
+  tokens in the vocabulary, computes and returns the top-k
+  (k = num_per_token_logprobs) log probabilities and the corresponding token
+  IDs.
+
+  Args:
+    num_per_token_logprobs: float JTensor of shape [batch_size * num_samples,].
+      See documentation for the same parameter in `sample_decode` for details.
+    logprobs: float JTensor of shape [batch_size * num_samples, vocab_size]. The
+      log probabilities of all candidate tokens in the vocabulary at the current
+      sampling step for each sample. logprobs[s][t] is the log probability for
+      token t in sample s.
+
+  Returns:
+    (top_candidate_logprobs, top_candidate_ids).
+    top_candidate_logprobs is a float JTensor of shape
+    [batch_size * num_samples, MAX_NUM_PER_TOKEN_LOGPROBS].
+    top_candidate_ids is a jnp.int32 JTensor with the same shape.
+  """
+  # It's very unlikely that vocabulary size < MAX_NUM_PER_TOKEN_LOGPROBS in
+  # production, but it's possible in tests. k will be static after tracing.
+  # NOMUTANTS -- logprobs's shape is (batch, vocab), so logprobs.shape[1]
+  # NOMUTANTS -- is the same as `logprobs.shape[-1]`.
+  k = min(logprobs.shape[-1], MAX_NUM_PER_TOKEN_LOGPROBS)
+  top_candidate_logprobs, top_candidate_ids = jax.lax.top_k(logprobs, k)
+  if k < MAX_NUM_PER_TOKEN_LOGPROBS:
+    pad_width = [[0, 0], [0, MAX_NUM_PER_TOKEN_LOGPROBS - k]]
+    top_candidate_logprobs = jnp.pad(
+        top_candidate_logprobs, pad_width, constant_values=1.0
+    )
+    top_candidate_ids = jnp.pad(top_candidate_ids, pad_width)
+  indexes = jnp.tile(
+      jnp.arange(MAX_NUM_PER_TOKEN_LOGPROBS),
+      reps=(top_candidate_logprobs.shape[0], 1),
+  )
+  num_per_token_logprobs = jnp.expand_dims(num_per_token_logprobs, axis=-1)
+  index_before_num_per_token_logprobs = jnp.less(
+      indexes, num_per_token_logprobs
+  )
+  top_candidate_logprobs = jnp.where(
+      index_before_num_per_token_logprobs,
+      top_candidate_logprobs,
+      jnp.ones_like(top_candidate_logprobs),
+  )
+  top_candidate_ids = jnp.where(
+      index_before_num_per_token_logprobs,
+      top_candidate_ids,
+      jnp.zeros_like(top_candidate_ids),
+  )
+  return top_candidate_logprobs, top_candidate_ids
+
+
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def sample_decode(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: decoder_utils.ExtendStepFn
-    | decoder_utils.ExpandedExtendStepFn,
+    extend_step_fn: (
+        decoder_utils.ExtendStepFn | decoder_utils.ExpandedExtendStepFn
+    ),
     transform_state_fn: decoder_utils.TransformStateFn | None,
     lazy_broadcast_prefix_fn: decoder_utils.LazyBroadcastPrefixFn | None,
     next_token_sampler: BaseNextTokenSampler,
@@ -277,7 +334,7 @@ def sample_decode(
     optimize_eos: bool = False,
     sample_constraint: BaseSampleTerminationConstraint | None = None,
     enforce_sample_constraints: JTensor | None = None,
-    num_per_token_logprobs: int | None = None,
+    num_per_token_logprobs: JTensor | None = None,
 ) -> NestedMap:
   """Sampling decode the input batch.
 
@@ -372,10 +429,12 @@ def sample_decode(
       conform to specific constraints.
     enforce_sample_constraints: A JTensor indicating which samples to enforce
       sample constraints for.
-    num_per_token_logprobs: returns the top `num_per_token_logprobs` candidate
-      token IDs with their log probabilities at each step. Must <=
-      MAX_NUM_PER_TOKEN_LOGPROBS. Returned token IDs are of shape (batch,
-      num_samples, seqlen, vocab). Returned log probabilities are of shape
+    num_per_token_logprobs: A jnp.int32 JTensor with shape [batch,]. Must <=
+      MAX_NUM_PER_TOKEN_LOGPROBS. If > 0, returns the top
+      `num_per_token_logprobs` candidate token IDs with their log probabilities
+      at each step, right padded with 0s for token IDs and 1s for log
+      probabilities. If <= 0, returns 0s for token IDs and 1s for log
+      probabilities. Returned token IDs and log probabilities are of shape
       (batch, num_samples, seqlen, MAX_NUM_PER_TOKEN_LOGPROBS).
 
   Returns:
@@ -453,8 +512,9 @@ def sample_decode(
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def sample_decode_after_fprop(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: decoder_utils.ExtendStepFn
-    | decoder_utils.ExpandedExtendStepFn,
+    extend_step_fn: (
+        decoder_utils.ExtendStepFn | decoder_utils.ExpandedExtendStepFn
+    ),
     transform_state_fn: decoder_utils.TransformStateFn | None,
     lazy_broadcast_prefix_fn: decoder_utils.LazyBroadcastPrefixFn | None,
     next_token_sampler: base_layer.BaseLayerApi,
@@ -484,7 +544,7 @@ def sample_decode_after_fprop(
     optimize_eos: bool = False,
     sample_constraint: BaseSampleTerminationConstraint | None = None,
     enforce_sample_constraints: JTensor | None = None,
-    num_per_token_logprobs: int | None = None,
+    num_per_token_logprobs: JTensor | None = None,
 ) -> NestedMap:
   """Sampling decode after init decode state the input batch.
 
@@ -576,11 +636,7 @@ def sample_decode_after_fprop(
       conform to specific constraints.
     enforce_sample_constraints: A JTensor indicating which samples to enforce
       sample constraints for.
-    num_per_token_logprobs: returns the top `num_per_token_logprobs` candidate
-      token IDs with their log probabilities at each step. Must <=
-      MAX_NUM_PER_TOKEN_LOGPROBS. Returned token IDs are of shape (batch,
-      num_samples, seqlen, vocab). Returned log probabilities are of shape
-      (batch, num_samples, seqlen, MAX_NUM_PER_TOKEN_LOGPROBS).
+    num_per_token_logprobs: See documentation in `sample_decode`.
 
   Returns:
     A NestedMap with `.prefix_lengths` (indicating the lengths of prefixes for
@@ -668,6 +724,11 @@ def sample_decode_after_fprop(
     if per_example_top_k is not None:
       per_example_top_k = _broadcast_input(
           per_example_top_k, 'per_example_top_k'
+      )
+
+    if num_per_token_logprobs is not None:
+      num_per_token_logprobs = _broadcast_input(
+          num_per_token_logprobs, 'num_per_token_logprobs'
       )
 
     if eos_id is not None and isinstance(eos_id, JTensor):
@@ -790,12 +851,13 @@ def sample_decode_after_fprop(
   # We use a positive value of 1.0 to indicate blank or padded positions.
   val.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
   if num_per_token_logprobs is not None:
-    asserts.ge(num_per_token_logprobs, 0)
-    asserts.le(num_per_token_logprobs, MAX_NUM_PER_TOKEN_LOGPROBS)
+    num_per_token_logprobs = jnp.minimum(
+        num_per_token_logprobs, MAX_NUM_PER_TOKEN_LOGPROBS
+    )
     val.top_candidate_ids = jnp.zeros(
         shape=(batch_size, seq_len, MAX_NUM_PER_TOKEN_LOGPROBS), dtype=jnp.int32
     )
-    val.top_candidate_logprobs = jnp.zeros_like(
+    val.top_candidate_logprobs = jnp.ones_like(
         val.top_candidate_ids, dtype=jnp.float32
     )
   if optimize_eos:
@@ -960,35 +1022,24 @@ def sample_decode_after_fprop(
     )
     val.logprobs = val.logprobs.at[:, step + 1].set(logprobs_at_new_ids)
 
-    if num_per_token_logprobs is not None and num_per_token_logprobs > 0:
-      # It's very unlikely that vocabulary size < MAX_NUM_PER_TOKEN_LOGPROBS in
-      # production, but it's possible in tests.
-      # k will be static after tracing.
-      # NOMUTANTS -- logprobs's shape is (batch, vocab), so logprobs.shape[1]
-      #              is the same as `logprobs.shape[-1]`.
-      k = min(logprobs.shape[-1], MAX_NUM_PER_TOKEN_LOGPROBS)
-      top_candidate_logprobs, top_candidate_ids = jax.lax.top_k(logprobs, k)
-      if k < MAX_NUM_PER_TOKEN_LOGPROBS:
-        pad_width = [[0, 0], [0, MAX_NUM_PER_TOKEN_LOGPROBS - k]]
-        top_candidate_logprobs = jnp.pad(top_candidate_logprobs, pad_width)
-        top_candidate_ids = jnp.pad(top_candidate_ids, pad_width)
-      indexes = jnp.arange(MAX_NUM_PER_TOKEN_LOGPROBS)
-      top_candidate_logprobs = jnp.where(
-          jnp.greater_equal(indexes, num_per_token_logprobs),
-          jnp.zeros_like(top_candidate_logprobs),
-          top_candidate_logprobs,
+    if num_per_token_logprobs is not None:
+      top_candidate_logprobs, top_candidate_ids = jax.lax.cond(
+          jnp.any(num_per_token_logprobs > 0),
+          lambda: _compute_top_candidate_logprobs_and_ids(
+              num_per_token_logprobs, logprobs
+          ),
+          lambda: (
+              jnp.ones_like(val.top_candidate_logprobs[:, 0]),
+              jnp.zeros_like(val.top_candidate_ids[:, 0]),
+          ),
       )
-      top_candidate_ids = jnp.where(
-          jnp.greater_equal(indexes, num_per_token_logprobs),
-          jnp.zeros_like(top_candidate_ids),
-          top_candidate_ids,
-      )
+      current_sampling_step = step - val.start_step
       val.top_candidate_logprobs = val.top_candidate_logprobs.at[
-          :, step + 1
+          :, current_sampling_step
       ].set(top_candidate_logprobs)
-      val.top_candidate_ids = val.top_candidate_ids.at[:, step + 1].set(
-          top_candidate_ids
-      )
+      val.top_candidate_ids = val.top_candidate_ids.at[
+          :, current_sampling_step
+      ].set(top_candidate_ids)
 
     if optimize_eos:
       eos_logits = logits.at[:, eos_id].add(1e6)
@@ -1008,7 +1059,7 @@ def sample_decode_after_fprop(
         """Dummy function."""
         pass
 
-      def _get_slice(sequence):
+      def _get_slice(sequence, const_value_for_padding):
         mod_size = (
             val.output_ids.shape[-1] - 1 - start_step
         ) % result_callback.interval_steps
@@ -1016,6 +1067,7 @@ def sample_decode_after_fprop(
           sequence = jnp.pad(
               sequence,
               [[0, 0], [0, result_callback.interval_steps - mod_size]],
+              constant_values=const_value_for_padding,
           )
         interval_start_id = (
             ((step - start_step) // result_callback.interval_steps)
@@ -1029,22 +1081,51 @@ def sample_decode_after_fprop(
             [batch_size, result_callback.interval_steps],
         )
 
+      def _get_top_candidate_slice(sequence, const_value_for_padding):
+        # top_candidate_ids/top_candidate_logprobs's shape is
+        # [batch, seqlen, MAX_NUM_PER_TOKEN_LOGPROBS].
+        # index i in the seqlen dimension means the i-th decoding step.
+        mod_size = (
+            val.top_candidate_ids.shape[1] % result_callback.interval_steps
+        )
+        if mod_size > 0:
+          sequence = jnp.pad(
+              sequence,
+              [[0, 0], [0, result_callback.interval_steps - mod_size], [0, 0]],
+              constant_values=const_value_for_padding,
+          )
+        interval_start_id = (
+            (step - start_step) // result_callback.interval_steps
+        ) * result_callback.interval_steps
+        return jax.lax.dynamic_slice(
+            sequence,
+            [0, interval_start_id, 0],
+            [batch_size, result_callback.interval_steps, sequence.shape[-1]],
+        )
+
       def _true_fn():
         """Outfeed logic."""
         # prefix_lengths: [b]
         # decode_lengths: [b * num_samples]
         # output_ids: [b * num_samples, interval_steps]
         # scores: [b * num_samples]
+        # logprobs: [b * num_samples, interval_steps]
+        # top_candidate_ids and top_candidate_logprobs:
+        #   [b * num_samples, interval_steps, MAX_NUM_PER_TOKEN_LOGPROBS]
         outfeed_tensors = NestedMap()
-        outfeed_tensors.output_ids = _get_slice(val.output_ids)
-        if hasattr(val, 'top_candidate_ids'):
+        outfeed_tensors.output_ids = _get_slice(val.output_ids, 0)
+        if num_per_token_logprobs is not None:
+          assert hasattr(val, 'top_candidate_ids')
           assert hasattr(val, 'top_candidate_logprobs')
           assert hasattr(val, 'logprobs')
-          outfeed_tensors.top_candidate_ids = _get_slice(val.top_candidate_ids)
-          outfeed_tensors.top_candidate_logprobs = _get_slice(
-              val.top_candidate_logprobs
+          outfeed_tensors.num_per_token_logprobs = num_per_token_logprobs
+          outfeed_tensors.top_candidate_ids = _get_top_candidate_slice(
+              val.top_candidate_ids, 0
           )
-          outfeed_tensors.sampled_logprobs = _get_slice(val.logprobs)
+          outfeed_tensors.top_candidate_logprobs = _get_top_candidate_slice(
+              val.top_candidate_logprobs, 1
+          )
+          outfeed_tensors.logprobs = _get_slice(val.logprobs, 1)
         outfeed_tensors.decode_lengths = (
             jnp.ones_like(val.decode_lengths) * result_callback.interval_steps
         )
@@ -1053,7 +1134,7 @@ def sample_decode_after_fprop(
         else:
           outfeed_tensors.scores = jnp.sum(
               # Padded logprobs can have values of 1.0, so we cap it to 0.0.
-              jnp.minimum(_get_slice(val.logprobs), 0.0),
+              jnp.minimum(_get_slice(val.logprobs, 1), 0.0),
               axis=-1,
           )
         outfeed_tensors.done = val.done
