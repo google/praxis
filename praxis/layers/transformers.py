@@ -1950,6 +1950,9 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
       optimizer state variables corresponding to the repeat prefix dims.
     nd_prefix_shape: If not None, there are multiple prefix dims of this shape
       and np.prod(nd_prefix_shape) == x_times.
+    return_intermediate_outputs: If True, the stacked transformer layers will
+      give output [L, B, N, C] where the first dimension contains all
+      intermediate features.
   """
 
   block: LayerTpl = template_field(StackedTransformer)
@@ -1962,6 +1965,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
   sublayer_name: str = 'sub'
   repeat_optimizer_dims_mapping: SplitDimsMapping = None
   nd_prefix_shape: Sequence[int] | None = None
+  return_intermediate_outputs: bool = False
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -1983,6 +1987,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         unpack_summaries=True,
         unroll_in_decode=self.unroll_in_decode,
         sublayer_name=self.sublayer_name,
+        return_intermediate_outputs=self.return_intermediate_outputs,
         optimizer_dims_mapping=self.repeat_optimizer_dims_mapping,
         nd_prefix_shape=self.nd_prefix_shape,
     )
