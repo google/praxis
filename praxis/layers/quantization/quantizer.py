@@ -228,6 +228,11 @@ class QuantizationLayer(base_layer.BaseLayer):
             symmetric=act_params.symmetric,
             percentile=act_params.clipping_coeff,
         )
+        if act_params.precision <= 8:
+          if act_params.symmetric:
+            # TODO(rybakov): add support for asymmetric too.
+            x = x.astype(jnp.int8)
+
       dtype = self.quantization.weight_params.dtype
       if (
           jax.dtypes.scalar_type_of(dtype) == float

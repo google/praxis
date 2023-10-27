@@ -63,6 +63,16 @@ class QuantizationUtilsTest(test_utils.TestCase):
                          dtype=jnp.bfloat16)
     self.assertArraysEqual(ret, expected)
 
+  def test_int8_quantized_einsum(self):
+    x = jnp.array([[1, 2, 3], [4, 1, 2]], dtype=jnp.int8)
+    w = jnp.array([[1, 2, 1], [2, 1, 2], [1, 3, 1]], dtype=jnp.int8)
+    s = jnp.array([1, 2, 3], dtype=jnp.int8)
+    eqn = '...y,yz->...z'
+    # It will use dot_general with native int8 multiplication.
+    ret = operations.einsum(eqn, x, w, s)
+    expected = jnp.array([[8, 26, 24], [8, 30, 24]], dtype=jnp.int32)
+    self.assertArraysEqual(ret, expected)
+
   def test_quantized_einsum_with_expand_dim(self):
     # pylint: disable=invalid-name
     A, B, D, K, N, H = 6, 4, 5, 3, 7, 2
