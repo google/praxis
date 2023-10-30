@@ -347,10 +347,15 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         )
         if NON_TRAINABLE in var_tree:
           non_trainable = mapped_vars[NON_TRAINABLE]
-          backups = non_trainable[non_trainable_backup_dict_key]
-          del non_trainable[non_trainable_backup_dict_key]
-          mapped_vars[NON_TRAINABLE] = jax.tree_map(
-              lambda x, y: jnp.where(is_valid_mb, x, y), non_trainable, backups)
+          # non_trainable_backup_dict_key can be missing during init.
+          if non_trainable_backup_dict_key in non_trainable:
+            backups = non_trainable[non_trainable_backup_dict_key]
+            del non_trainable[non_trainable_backup_dict_key]
+            mapped_vars[NON_TRAINABLE] = jax.tree_map(
+                lambda x, y: jnp.where(is_valid_mb, x, y),
+                non_trainable,
+                backups,
+            )
         return mapped_vars
 
       def layer_fprop(layer, *args, **kwargs):
