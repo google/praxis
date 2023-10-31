@@ -270,11 +270,28 @@ pytype_strict_library(
     srcs = ["pytypes.py"],
     deps = [
         ":lingvo_lib",
+        # Implicit absl.logging dependency.
         # Implicit clu.metrics dependency.
         # Implicit jax dependency.
         # Implicit jaxtyping dependency.
         # Implicit numpy dependency.
         # Implicit typeguard dependency.
+    ],
+)
+
+py_strict_test(
+    name = "pytypes_test",
+    srcs = ["pytypes_test.py"],
+    deps = [
+        ":base_layer",
+        ":pytypes",
+        ":test_utils",
+        ":trees",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit flax.core dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
     ],
 )
 

@@ -65,21 +65,6 @@ Nested = pytypes.Nested
 JTensor = jnp.ndarray
 
 
-# A utility function to flatten copied from jax/_src/util.py
-def _unzip2(xys):
-  xs = []
-  ys = []
-  for x, y in xys:
-    xs.append(x)
-    ys.append(y)
-  return tuple(xs), tuple(ys)
-
-
-jax.tree_util.register_pytree_node(NestedMap,
-                                   lambda xs: _unzip2(sorted(xs.items()))[::-1],
-                                   lambda keys, xs: NestedMap(zip(keys, xs)))
-
-
 def merge_dict(dict1, dict2):
   """Merges two dictionaries and asserts keys in both have identical values."""
   for key in set(dict1) & set(dict2):

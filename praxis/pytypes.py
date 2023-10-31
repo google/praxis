@@ -17,21 +17,69 @@
 
 from typing import Any, Callable, Sequence, TypeVar
 
+from absl import logging
 import clu.metrics as clu_metrics
 import jax
 from jax import core
 from jax import numpy as jnp
+from jax import tree_util as jtu
 import jaxtyping
-from jaxtyping import AbstractDtype, Bool, Float, Int, Float32, Int32, PyTree, Shaped  # pylint: disable=g-multiple-import, g-importing-member, unused-import
+from jaxtyping import AbstractDtype, Bool, Float, Float32, Int, Int32, PyTree, Shaped  # pylint: disable=g-multiple-import, g-importing-member, unused-import
 import numpy as np
 from praxis import lingvo_lib
 import typeguard
 
 # No other imports from lingvo should be accessed by core JAX library.
 InstantiableParams = lingvo_lib.InstantiableParams
-NestedMap = lingvo_lib.NestedMap
 HParams = lingvo_lib.HParams
 HParamsT = HParams
+NestedMap = lingvo_lib.NestedMap
+
+
+def _transpose_pair_of_seqs(xys):
+  """Pivots/transposes a sequence of pairs to a pair of sequences."""
+  # While this function could be generalized to pivot any seq of seqs along its
+  # first two axes, doing so yields some XLA-level errors in some tests, where
+  # the compiler requires this function return a pair.
+  if not xys:
+    return ((), ())
+  l, r = zip(*xys)
+  return tuple(l), tuple(r)
+
+
+def _flatten(xs):
+  """Flattens a NestedMap into a values and keys tuple."""
+  keys, values = _transpose_pair_of_seqs(sorted(xs.items()))
+  return values, keys  # Note the order is flipped
+
+
+def _to_keys_handler(xs):
+  return tuple(jtu.DictKey(k) for k in sorted(xs))
+
+
+def _flatten_with_keys(xs):
+  children, treedef = _flatten(xs)
+  return list(zip(_to_keys_handler(xs), children)), treedef
+
+
+def _unflatten(keys, values):
+  return NestedMap(zip(keys, values, strict=True))
+
+
+try:
+  # Register NestedMap the same way `dict` and its sibling types are registered,
+  # so that when jtu..*_with_path functions yield paths with DictKey types.
+  jtu.register_pytree_with_keys(
+      NestedMap,
+      _flatten_with_keys,
+      _unflatten,
+      _flatten,
+  )
+except ValueError:
+  logging.error(
+      'NestedMap is already registered as JAX PyTree node. This should not'
+      ' happen - this is the canonical implementation'
+  )
 
 JTensor = jax.Array
 PRNGKey = JTensor
