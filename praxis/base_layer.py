@@ -302,6 +302,8 @@ def maybe_transpose_mesh_axes(
     if mapping:
 
       def _transpose_one_dim(axes):
+        if axes == jax.sharding.PartitionSpec.UNCONSTRAINED:
+          return axes
         if axes is None or isinstance(axes, str):
           return transpose_one_axis(axes, mapping)
         mapped_axes = [_transpose_one_dim(x) for x in axes]
