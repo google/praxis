@@ -284,6 +284,111 @@ class StackFrnn(base_layer.BaseLayer):
     return inputs.act, final_states
 
 
+class StackBiFrnn(base_layer.BaseLayer):
+  """A stack of a bidrectional FRNN which includes multiple layers.
+
+    Each layer is composed of an RNN and a reverse RNN. We pass the input to
+    both RNNs, and then concat both of their outputs and pass to the next layer.
+
+    Note that the output of each RNN is half the dim of the total output.
+
+
+  Attributes:
+    frnn_tpl: Configs for the frnn.
+    num_layers: number of frnn layers.
+    num_input_nodes: Number of input nodes.
+    num_output_nodes: Number of output nodes. If num_hidden_nodes is 0, also
+      used as cell size.
+  """
+
+  frnn_tpl: LayerTpl | None = base_layer.template_field(None)
+  num_layers: int = 1
+  num_input_nodes: int = 0
+  num_output_nodes: int = 0
+
+  def setup(self) -> None:
+    assert self.num_layers > 0
+    input_nodes = self.num_input_nodes
+    fwd_frnns_p = []
+    bwd_frnns_p = []
+    # The output of both directions are concatenated and passed to the next
+    # layer, thus the divsion of the output_notes by 2.
+    out_nodes = self.num_output_nodes // 2
+    assert self.frnn_tpl is not None
+    for _ in range(self.num_layers):
+      # Add the forward cells.
+      fwd_p = self.frnn_tpl.clone()
+      fwd_p.cell_tpl.set(
+          num_input_nodes=input_nodes, num_output_nodes=out_nodes
+      )
+      fwd_p.reverse = False  # Forward.
+      fwd_frnns_p.append(fwd_p)
+
+      # Add the backward cells.
+      bwd_p = self.frnn_tpl.clone()
+      bwd_p.cell_tpl.set(
+          num_input_nodes=input_nodes, num_output_nodes=out_nodes
+      )
+      bwd_p.reverse = True  # Backward.
+      bwd_frnns_p.append(bwd_p)
+
+      input_nodes = self.num_output_nodes
+
+    self.create_children('fwd_frnn', fwd_frnns_p)
+    self.create_children('bwd_frnn', bwd_frnns_p)
+
+  def fwd_init_states(self, batch_size: int) -> list[NestedMap]:
+    return [
+        self.fwd_frnn[i].init_states(batch_size) for i in range(self.num_layers)
+    ]
+
+  def bwd_init_states(self, batch_size: int) -> list[NestedMap]:
+    return [
+        self.bwd_frnn[i].init_states(batch_size) for i in range(self.num_layers)
+    ]
+
+  def init_states(self, batch_size: int) -> NestedMap:
+    state = NestedMap()
+    state.fwd = self.fwd_init_states(batch_size)
+    state.bwd = self.bwd_init_states(batch_size)
+    return state
+
+  def __call__(
+      self, inputs: NestedMap, state0: NestedMap | None = None
+  ) -> tuple[JTensor, list[NestedMap]]:
+    """Computes the bidrectional stacked RNN forward pass.
+
+    Args:
+      inputs: A NestedMap of inputs. 'inputs' must contain two elements, 'act'
+        and 'padding', 'act' can be a single tensor, or a list/tuple of tensors,
+        all of shape [b, t, dim], and 'padding' are of shape [b, t, 1]. 'inputs'
+        can optionally contain other tensors.
+      state0: If not None, the initial rnn state of `.NestedMap`.
+
+    Returns:
+      act: A tensor of [batch, time, dims]. The output.
+      state: Final state - a list of NestedMap of fwd and bwd states.
+    """
+    # This is to create a copy.
+    inputs = jax.tree_map(lambda x: x, inputs)
+
+    if not state0:
+      batch_size = inputs.padding.shape[0]
+      state0 = self.init_states(batch_size)
+
+    final_states = []
+    for i in range(self.num_layers):
+      fwd_act_i, fwd_state = self.fwd_frnn[i](
+          inputs=inputs, state0=state0.fwd[i]
+      )
+      bwd_act_i, bwd_state = self.bwd_frnn[i](
+          inputs=inputs, state0=state0.bwd[i]
+      )
+      inputs.act = jnp.concatenate([fwd_act_i, bwd_act_i], axis=-1)
+      final_states.append(NestedMap(fwd=fwd_state, bwd=bwd_state))
+    return inputs.act, final_states
+
+
 class LstmFrnn(FRnn):
   """A FRNN for LSTMCellSimple cell.
 

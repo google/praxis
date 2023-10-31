@@ -279,6 +279,61 @@ class FRNNTest(test_utils.TestCase):
       (jax_rnn_cell.CifgLstmCellSimple, False, 3),
       (jax_rnn_cell.CifgLstmCellSimple, True, 4),
   )
+  def test_stackbifrnn_lstm(
+      self, jax_cell_class, output_nonlinearity, num_layers
+  ):
+    seqlen, batch, input_dim, output_dim = 4, 5, 7, 18
+    cell_p = self._get_cell_params(jax_cell_class, False, output_nonlinearity)
+    frnn_p = pax_fiddle.Config(frnn.LstmFrnn, name='frnn', cell_tpl=cell_p)
+    stack_bifrnn_p = pax_fiddle.Config(
+        frnn.StackBiFrnn,
+        name='StackBiFrnn',
+        frnn_tpl=frnn_p,
+        num_input_nodes=input_dim,
+        num_output_nodes=output_dim,
+        num_layers=num_layers,
+    )
+
+    act_in, padding, _, m0, c0, _ = self._get_test_inputs()
+    stack_bifrnn_model = instantiate(stack_bifrnn_p)
+
+    inputs = NestedMap(act=act_in, padding=padding)
+    with base_layer.JaxContext.new_context():
+      theta = stack_bifrnn_model.init(jax.random.PRNGKey(5678), inputs)
+
+      # Test init_state.
+      state0 = stack_bifrnn_model.apply(
+          theta, batch_size=batch, method=stack_bifrnn_model.init_states
+      )
+      # We have an init_satae for each layer and for fwd and bwd.
+      self.assertLen(state0.fwd, num_layers)
+      self.assertLen(state0.bwd, num_layers)
+
+      # Test the shapes of those states.
+      self.assertTupleEqual(state0.fwd[-1].m.shape, m0.shape)
+      self.assertTupleEqual(state0.bwd[0].m.shape, m0.shape)
+      self.assertTupleEqual(state0.fwd[-1].c.shape, c0.shape)
+      self.assertTupleEqual(state0.bwd[0].c.shape, c0.shape)
+
+      stack_frnn_act, stack_frnn_state = stack_bifrnn_model.apply(
+          theta, inputs, state0=state0
+      )
+
+      self.assertTupleEqual(stack_frnn_act.shape, (batch, seqlen, output_dim))
+      self.assertLen(stack_frnn_state, num_layers)
+
+      last_state = stack_frnn_state[-1]
+      self.assertTupleEqual(last_state.fwd.m.shape, (batch, output_dim // 2))
+      self.assertTupleEqual(last_state.fwd.c.shape, (batch, output_dim // 2))
+      self.assertTupleEqual(last_state.bwd.m.shape, (batch, output_dim // 2))
+      self.assertTupleEqual(last_state.bwd.c.shape, (batch, output_dim // 2))
+
+  @parameterized.parameters(
+      (jax_rnn_cell.LstmCellSimple, False, 1),
+      (jax_rnn_cell.LstmCellSimple, True, 2),
+      (jax_rnn_cell.CifgLstmCellSimple, False, 3),
+      (jax_rnn_cell.CifgLstmCellSimple, True, 4),
+  )
   def test_frnn_vs_lstm(self, jax_cell_class, output_nonlinearity, num_layers):
     input_dim, output_dim = 7, 9
     cell_p = self._get_cell_params(jax_cell_class, False, output_nonlinearity)
