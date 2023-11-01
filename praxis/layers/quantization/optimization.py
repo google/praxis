@@ -30,7 +30,7 @@ def get_best_bound(
     max_value: float,
     p_value: float = 1.0,
 ) -> JTensor:
-  """Scan around [0.95, 1] * hard max value to get bound value.
+  """Scan around [0.5, 1] * hard max value to get bound value.
 
   This does a scan to get bound value(s) that minimize mean absolute error (MAE)
   between original tensor 't' and quantized tensor. It's (almost) equivalent to
