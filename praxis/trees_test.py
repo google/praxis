@@ -14,24 +14,35 @@
 # limitations under the License.
 
 """Tests for trees."""
-from typing import NamedTuple
+
+import collections
+import re
+from typing import Any, List, NamedTuple
+
 from absl.testing import absltest
 from absl.testing import parameterized
+from flax import struct
 import jax
 from jax import numpy as jnp
+from jax import tree_util as jtu
 import numpy as np
-from praxis import py_utils
+from praxis import base_layer
 from praxis import pytypes
 from praxis import test_utils
 from praxis import trees
 
-Nested = pytypes.Nested
-NestedMap = py_utils.NestedMap
-
 
 class TestPair(NamedTuple):
-  subset: Nested
-  superset: Nested
+  subset: pytypes.Nested
+  superset: pytypes.Nested
+
+
+class TrainState(struct.PyTreeNode):
+  """Simple train state."""
+
+  step: base_layer.JTensorOrPartitionSpec
+  mdl_vars: base_layer.NestedJTensorOrPartitionSpec
+  opt_states: List[base_layer.NestedJTensorOrPartitionSpec]
 
 
 class TreesTest(test_utils.TestCase):
@@ -57,11 +68,11 @@ class TreesTest(test_utils.TestCase):
       (
           'nestedmap',
           TestPair(
-              subset=NestedMap.FromNestedDict({
+              subset=pytypes.NestedMap.FromNestedDict({
                   'a': [1, 2, 3],
                   'b': {'c': 'hello', 'd': [123]},
               }),
-              superset=NestedMap.FromNestedDict({
+              superset=pytypes.NestedMap.FromNestedDict({
                   'a': [1, 2, 3],
                   'b': {'c': 'hello', 'd': [123]},
               }),
@@ -70,11 +81,11 @@ class TreesTest(test_utils.TestCase):
       (
           'nestedmap_strict',
           TestPair(
-              subset=NestedMap.FromNestedDict({
+              subset=pytypes.NestedMap.FromNestedDict({
                   'a': [1, 2, 3],
                   'b': {'c': 'hello', 'd': [123]},
               }),
-              superset=NestedMap.FromNestedDict({
+              superset=pytypes.NestedMap.FromNestedDict({
                   'a': [1, 2, 3],
                   'b': {'c': 'hello', 'd': [123]},
                   'e': 'not in subset',
@@ -85,7 +96,7 @@ class TreesTest(test_utils.TestCase):
           'mixed_nested_dtypes',
           TestPair(
               subset={'a': [1, 2, 3]},
-              superset=NestedMap.FromNestedDict(
+              superset=pytypes.NestedMap.FromNestedDict(
                   {'a': [1, 2, 3, 4], 'b': 'hello'}
               ),
           ),
@@ -114,11 +125,11 @@ class TreesTest(test_utils.TestCase):
       (
           'nestedmap',
           TestPair(
-              subset=NestedMap.FromNestedDict({
+              subset=pytypes.NestedMap.FromNestedDict({
                   'a': [999, 444],
                   'b': {'c': 'hello', 'd': [123]},
               }),
-              superset=NestedMap.FromNestedDict({
+              superset=pytypes.NestedMap.FromNestedDict({
                   'a': [1, 2, 3],
                   'b': {'c': 'hello', 'd': [123]},
               }),
@@ -128,7 +139,7 @@ class TreesTest(test_utils.TestCase):
       (
           'mixed_nested_dtypes',
           TestPair(
-              subset=NestedMap.FromNestedDict(
+              subset=pytypes.NestedMap.FromNestedDict(
                   {'a': (1, 2, 3, 4), 'b': 'hello'}
               ),
               superset={'a': [1, 2, 3]},
@@ -197,16 +208,20 @@ class TreesTest(test_utils.TestCase):
   @parameterized.named_parameters(
       ('trivial_int', 1, 1),
       ('trivial_list', [1, 2, 3], [1, 2, 3]),
-      ('nestedmap', NestedMap(a=[1, 2, 3]), NestedMap(a=[1, 2, 3])),
+      (
+          'nestedmap',
+          pytypes.NestedMap(a=[1, 2, 3]),
+          pytypes.NestedMap(a=[1, 2, 3]),
+      ),
   )
   def test_copy(self, orig, expected):
-    arrayify = lambda t: jax.tree_util.tree_map(jnp.array, t)
+    arrayify = lambda t: jtu.tree_map(jnp.array, t)
     self.assertArraysEqual(trees.copy(arrayify(orig)), arrayify(expected))
 
   def test_copy_complex(self):
-    original = NestedMap(
+    original = pytypes.NestedMap(
         a=jnp.array([1, 2, 3]),
-        b=NestedMap(c=jnp.array([5, 5, 5])),
+        b=pytypes.NestedMap(c=jnp.array([5, 5, 5])),
     )
     copy = trees.copy(original)
 
@@ -215,6 +230,121 @@ class TreesTest(test_utils.TestCase):
     self.assertArraysEqual(original.a, copy.a)
     self.assertArraysEqual(original.b.c, jnp.array([5, 5, 5]))
     self.assertArraysEqual(copy.b.c, jnp.array([6, 6, 6]))
+
+  def test_to_path_tree_from_state_specs(self):
+    w_sepc = base_layer.var_partition_specs(
+        {'w': base_layer.WeightHParams(shape=(4, 8))},
+        mesh_shape=[1, 1],
+        device_axis_names=['a', 'b'],
+    )
+    train_state_partition_specs = TrainState(
+        step=jax.sharding.PartitionSpec(), mdl_vars=w_sepc, opt_states=[]
+    )
+    nested_names = trees.to_path_tree(train_state_partition_specs)
+    self.assertListEqual(['step', 'mdl_vars/w'], jtu.tree_leaves(nested_names))
+
+  def test_to_path_tree_from_nested_map(self):
+    Point = collections.namedtuple('Point', ['x', 'y'])
+
+    inputs = {'a': [1, 2, Point(x=3, y=4), (5, 6)], 'b': ('c', 'd')}
+    outputs = trees.to_path_tree(inputs)
+    self.assertEqual(
+        {
+            'a': [
+                'a[0]',
+                'a[1]',
+                Point(x='a[2]/x', y='a[2]/y'),
+                ('a[3][0]', 'a[3][1]'),
+            ],
+            'b': ('b[0]', 'b[1]'),
+        },
+        outputs,
+    )
+
+  def test_to_path_tree_from_dataclass(self):
+    @struct.dataclass
+    class GlobalShardedParameterStats:
+      statistics: np.ndarray  # Statistics
+      preconditioners: np.ndarray  # Preconditioners
+      exponents: np.ndarray  # exponents
+      index_start: int = struct.field(pytree_node=False)
+      sizes: Any = struct.field(pytree_node=False)
+
+    stats0 = GlobalShardedParameterStats(
+        statistics=np.array([0], dtype=np.float32),
+        preconditioners=np.array([1, 1], dtype=np.float32),
+        exponents=np.array([2, 2, 2], dtype=np.float32),
+        index_start=0,
+        sizes=0,
+    )
+    # Even though the `preconditioners` is first here, the order is decided
+    # by the order in `GlobalShardedParameterStats` class.
+    stats1 = GlobalShardedParameterStats(
+        preconditioners=np.array([5, 5], dtype=np.float32),
+        statistics=np.array([4], dtype=np.float32),
+        exponents=np.array([6, 6, 6], dtype=np.float32),
+        index_start=1,
+        sizes=1,
+    )
+
+    nested_data = pytypes.NestedMap(stats0=stats0, stats1=stats1)
+    nested_names = trees.to_path_tree(nested_data)
+    flattened_nested_names, _ = jax.tree_util.tree_flatten(nested_names)
+
+    self.assertListEqual(
+        [
+            'stats0/statistics',
+            'stats0/preconditioners',
+            'stats0/exponents',
+            'stats1/statistics',
+            'stats1/preconditioners',
+            'stats1/exponents',
+        ],
+        flattened_nested_names,
+    )
+
+  def test_to_path_tree_using_is_leaf(self):
+    class Masked:
+      """Test class."""
+
+    Point = collections.namedtuple('Point', ['x', 'y'])
+
+    inputs = {
+        'a': [1, 2, Point(x=3, y=4), (5, 6, Masked())],
+        'b': ('c', 'd'),
+        'e': Masked(),
+    }
+    outputs = trees.to_path_tree(
+        inputs, is_leaf=lambda x: isinstance(x, Masked)
+    )
+    self.assertEqual(
+        {
+            'a': [
+                'a[0]',
+                'a[1]',
+                Point(x='a[2]/x', y='a[2]/y'),
+                ('a[3][0]', 'a[3][1]', None),
+            ],
+            'b': ('b[0]', 'b[1]'),
+            'e': None,
+        },
+        outputs,
+    )
+
+  def test_match_variable_names(self):
+    tree = pytypes.NestedMap(
+        a=pytypes.NestedMap(x=0, y=1, zz=2),
+        b=pytypes.NestedMap(z=1),
+    )
+    expected = pytypes.NestedMap(
+        a=pytypes.NestedMap(x=True, y=True, zz=False),
+        b=pytypes.NestedMap(z=False),
+    )
+    result = trees.fullmatch_path(tree, r'a/.')
+    self.assertEqual(result, expected)
+    expected.a.zz = True
+    result = trees.fullmatch_path(tree, [r'a/.', re.compile('.*zz')])
+    self.assertEqual(result, expected)
 
 
 if __name__ == '__main__':

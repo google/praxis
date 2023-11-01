@@ -255,6 +255,7 @@ pytype_strict_library(
     deps = [
         ":lingvo_lib",
         ":pytypes",
+        ":trees",
         # Implicit absl.flags dependency.
         # Implicit absl.logging dependency.
         # Implicit flax dependency.
@@ -607,12 +608,13 @@ py_strict_test(
     name = "trees_test",
     srcs = ["trees_test.py"],
     deps = [
-        ":py_utils",
+        ":base_layer",
         ":pytypes",
         ":test_utils",
         ":trees",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
     ],

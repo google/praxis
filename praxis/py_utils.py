@@ -36,6 +36,7 @@ import numpy as np
 import optax
 from praxis import lingvo_lib
 from praxis import pytypes
+from praxis import trees
 
 flags.DEFINE_bool(
     'pmap_use_tensorstore', False,
@@ -574,28 +575,26 @@ def select_nodes_by_indices(indices, *trees):
 Patterns = str | re.Pattern | Iterable[re.Pattern | str]
 
 
-def match_variable_names(tree: NestedMap, patterns: Patterns) -> NestedMap:
+def match_variable_names(
+    tree: NestedMap,
+    patterns: Patterns,
+    is_leaf: Callable[..., bool] | None = None,
+) -> NestedMap:
   """Checks if a prefix key of each variable is matching to one of `patterns`.
 
   Args:
     tree: NestedMap to be matched against `patterns`.
     patterns: `re.Pattern`, `str` that can be compiled into `re.Pattern`, or an
       iterator of those.
+    is_leaf: an optional Callable returning a boolean. When it is true, the
+      prefix is replaced by None.
 
   Returns:
     A nested map with the same structure as `tree`. Each node of the tree is
     a boolean flag denoting whether the prefix name of the variable is matching
     to one of `patterns`.
   """
-  # Convert singleton to the list
-  if isinstance(patterns, (str, re.Pattern)):
-    patterns = [patterns]
-  # Compile (`re.compile` acts as an identity func when p is `Pattern`)
-  patterns = [re.compile(p) for p in patterns]
-
-  var_prefix = extract_prefixed_keys_from_nested_map(tree)
-  return jax.tree_map(
-      lambda x: any(p.fullmatch(x) is not None for p in patterns), var_prefix)
+  return trees.fullmatch_path(tree, patterns, is_leaf=is_leaf)
 
 
 def update_matched_variables(old_tree: NestedMap,

@@ -17,14 +17,103 @@
 
 Longer-term, we ought to aim to move all tree-related utility functions here.
 """
+
 # Even longer term, we could consider defining the Nested union type in a more
 # object-oriented way here, rename the module nested.py, and write a full suite
 # of utility functions for it. E.g. the way `Set` has `issubset`/`<=`, we could
 # have for all Nesteds in the Praxis context.
-
+import re
+from typing import Callable, Iterable, Union
 import jax
+from jax import tree_util as jtu
 import jaxtyping as jt
 from praxis import pytypes
+
+KeyType = jtu.DictKey | jtu.SequenceKey | jtu.GetAttrKey | jtu.FlattenedIndexKey
+Patterns = Union[str, re.Pattern, Iterable[Union[re.Pattern, str]]]
+
+
+def _tree_key_to_str(path: KeyType) -> str:
+  """Returns a string representation of a tree key used by to_path_tree."""
+  match path:
+    case jtu.DictKey(key=key):
+      return f'{key}'
+    case jtu.SequenceKey(idx=idx):
+      return f'[{idx}]'
+    case jtu.GetAttrKey(name=name):
+      return name
+    case jtu.FlattenedIndexKey(key=key):
+      return f'{key}'
+    case _:
+      raise ValueError(f'Unexpected key type: {path=} {type(path)=}')
+
+
+def to_path_tree(
+    tree: jt.PyTree, is_leaf: None | Callable[..., bool] = None
+) -> jt.PyTree:
+  """For a given tree node, returns the pax-style prefix.
+
+  This meant to be a simpler implementation of
+  `extract_prefixed_keys_from_nested_map`.
+
+  Example:
+      {'a': [1, 2, Point(x=3, y=4), (5, 6, Masked())],
+      'b': ('c', 'd'),
+      'e': Masked()}
+
+  Becomes
+      {'a': ['a[0]', 'a[1]', Point(x='a[2]/x', y='a[2]/y'), ('a[3][0]',
+                                                             'a[3][1]', None)],
+      'b': ('b[0]', 'b[1]'),
+      'e': None}
+
+  When is_leaf returns true, that path is replaced by None.
+
+  Args:
+    tree: the pytree whose prefixes you wish to extract
+    is_leaf: an optional Callable returning a boolean. When it is true, the
+      prefix is replaced by None.
+
+  Returns:
+    A pytree of the same shape as tree, but having just string values
+  """
+
+  def process_node(path):
+    return re.sub(r'/\[', '[', '/'.join(map(_tree_key_to_str, path)))
+
+  return jtu.tree_map_with_path(
+      lambda p, v: None if (is_leaf and is_leaf(v)) else process_node(p), tree
+  )
+
+
+def fullmatch_path(
+    tree: jt.PyTree,
+    patterns: Patterns,
+    is_leaf: Callable[..., bool] | None = None,
+) -> jt.PyTree[bool]:
+  """Produces a PyTree[bool] indicating which nodes have paths that match.
+
+  This function uses to_path_tree to generate string paths for each node,
+  which are then matched against the given regex patterns, yielding a
+  PyTree[bool] indicating where matches succeeded.
+
+  Args:
+    tree: The structure to process.
+    patterns: a string, re.Pattern, or sequence thereof.
+    is_leaf: Optional function which can limit the behavior of the traversal.
+
+  Returns:
+    A PyTree[bool] indicating whether each node's stringified path matches at
+    least one of the given regexes.
+  """
+  patterns = [patterns] if isinstance(patterns, (str, re.Pattern)) else patterns
+  compiled_patterns = [re.compile(pattern) for pattern in patterns]
+
+  return jtu.tree_map(
+      lambda x: any(p.fullmatch(x) for p in compiled_patterns),
+      to_path_tree(tree, is_leaf=is_leaf),
+      is_leaf=is_leaf,
+  )
 
 
 def is_subset(subset: pytypes.Nested, superset: pytypes.Nested) -> bool:
