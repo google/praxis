@@ -91,9 +91,15 @@ class QuantizationLayer(base_layer.BaseLayer):
       return
 
     dtype = self.quantization.weight_params.dtype
+    precision = self.quantization.weight_params.precision
+    if utils.dtype_to_bits(dtype) < precision:
+      raise ValueError(
+          f'Expected {dtype=} to be able to contain the weight {precision=}'
+      )
+
     if self.quantization.mode == QuantizationMode.INFERENCE:
       if (
-          self.quantization.weight_params.precision == 4
+          precision == 4
           and self.quantization.weight_params.use_int4_packed_weights
       ):
         assert self._PACK_4BIT_DIM is not None, (

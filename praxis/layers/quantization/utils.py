@@ -248,6 +248,7 @@ def unpack_4bit(
 
 
 def dtype_to_bits(dtype: jnp.dtype) -> int:
+  dtype = jnp.dtype(dtype) if not isinstance(dtype, jnp.dtype) else dtype
   # dtype.itemsize does not reflect int4 being smaller than int8.
   return 4 if dtype in INT4_TYPES else dtype.itemsize * 8
 
