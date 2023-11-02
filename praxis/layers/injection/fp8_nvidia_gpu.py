@@ -103,7 +103,8 @@ class Fp8EinsumOp(base_layer.BaseLayer):
     k_qdq = fp8_ops.in_qdq(
         comp_dtype, k, theta.kernel_scale, theta.kernel_amax_history
     )
-    y_qdq = jnp.einsum(equation, x_qdq, k_qdq)
+    y_qdq = jnp.einsum(equation, x_qdq, k_qdq,
+                       _dot_general=fp8_ops.dot_general_with_precision)
     y = fp8_ops.out_qdq(
         comp_dtype,
         y_qdq,
