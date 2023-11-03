@@ -49,8 +49,8 @@ class Linear(  # pytype: disable=signature-mismatch
     rank: Rank to factorize to low-weights. Set to -1 to disable low-rank
       factorization.
   """
-  rank: int = -1
   _PACK_4BIT_DIM = 0
+  rank: int = -1
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -69,6 +69,7 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_name='w_a',
           weight_params=wp_a,
           scale_shape=[self.rank],
+          pack_dim=self._PACK_4BIT_DIM,
       )
       self.create_aux_variables('w_a', wp_a)
       wp_b = WeightHParams(
@@ -80,6 +81,7 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_name='w_b',
           weight_params=wp_b,
           scale_shape=[self.output_dims],
+          pack_dim=self._PACK_4BIT_DIM,
       )
       self.create_aux_variables('w_b', wp_b)
 
@@ -93,6 +95,7 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_name='w',
           weight_params=pc,
           scale_shape=[self.output_dims],
+          pack_dim=self._PACK_4BIT_DIM,
       )
       self.create_aux_variables('w', pc, scale_shape=[self.output_dims])
 
@@ -115,6 +118,7 @@ class Linear(  # pytype: disable=signature-mismatch
           eqn=eqn,
           x=inputs,
           w=w_a,
+          pack_dim=self._PACK_4BIT_DIM,
           reshape=[],
           weight_name='w_a',
       )
@@ -123,6 +127,7 @@ class Linear(  # pytype: disable=signature-mismatch
           eqn=eqn,
           x=intermediate,
           w=w_b,
+          pack_dim=self._PACK_4BIT_DIM,
           reshape=[],
           weight_name='w_b',
       )
@@ -132,6 +137,7 @@ class Linear(  # pytype: disable=signature-mismatch
           eqn=eqn,
           x=inputs,
           w=w,
+          pack_dim=self._PACK_4BIT_DIM,
           reshape=[],
       )
     # Adjust sharding annotation during decoding.

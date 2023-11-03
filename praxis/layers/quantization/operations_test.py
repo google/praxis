@@ -28,7 +28,6 @@ from praxis import test_utils
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
-from praxis.layers.quantization import utils
 
 
 class QuantizationUtilsTest(test_utils.TestCase):
@@ -85,32 +84,18 @@ class QuantizationUtilsTest(test_utils.TestCase):
     expected = jnp.ones([K, A, B, N, H], dtype=jnp.bfloat16) * D
     self.assertArraysEqual(ret, expected)
 
-  @parameterized.product(
-      x_dtype=[jnp.int4, jnp.uint4, jnp.int8, jnp.uint8, jnp.bfloat16],
-      w_dtype=[jnp.int4, jnp.int8, jnp.bfloat16],
-  )
-  def test_mixed_precision_int_einsum(self, x_dtype, w_dtype):
-    # XLA CPU/GPU currently does not support the existence of (u)int4 tensors.
-    # TODO(b/183567451): Remove (u)int4 -> (u)int8 cast once support is re-added
-    # to test (u)int4 types.
-    if x_dtype in utils.INT4_TYPES:
-      x_dtype = utils.bits_to_dtype(
-          8, signed=jnp.issubdtype(x_dtype, jnp.signedinteger)
-      )
-    if w_dtype in utils.INT4_TYPES:
-      w_dtype = utils.bits_to_dtype(
-          8, signed=jnp.issubdtype(w_dtype, jnp.signedinteger)
-      )
+  @parameterized.parameters(jnp.int8, jnp.uint8)
+  def test_int_einsum(self, dtype):
+    # pylint: disable=invalid-name
+    A, D, H = 6, 5, 2
 
-    A, D, H = 6, 5, 2  # pylint: disable=invalid-name
-    x = jnp.ones([A, D], dtype=x_dtype)
-    w = jnp.ones([D, H], dtype=w_dtype)
-    # (u)int4 does not support multiplication.
-    s = jnp.ones([H], dtype=jnp.int8)
+    x = jnp.ones([A, D], dtype=dtype)
+    w = jnp.ones([D, H], dtype=dtype)
+    s = jnp.ones([H], dtype=dtype)
 
     ret = operations.einsum('AD,DH->AH', x, w, s)
-    expected = jnp.ones([A, H], dtype=jnp.float32) * D
-    self.assertArraysEqual(ret.astype(jnp.float32), expected)
+    expected = jnp.ones([A, H], dtype=jnp.int32) * D
+    self.assertArraysEqual(ret, expected)
 
   @parameterized.named_parameters(
       ('eqn_with_dot', '...y,yz->...z'),

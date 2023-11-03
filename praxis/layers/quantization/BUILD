@@ -473,7 +473,6 @@ pytype_strict_library(
         ":operations",
         ":quantization_hparams",
         ":quantizer",
-        ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
@@ -490,7 +489,6 @@ py_strict_test(
     deps = [
         ":layers",
         ":quantization_hparams",
-        ":utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
@@ -545,7 +543,6 @@ pytype_strict_library(
         # Implicit absl.logging dependency.
         # Implicit jax dependency.
         # Implicit opt_einsum dependency from jax.
-        "//praxis:py_utils",
         "//praxis:pytypes",
     ],
 )
@@ -557,7 +554,6 @@ py_strict_test(
         ":operations",
         ":quantization_hparams",
         ":quantizer",
-        ":utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit jax dependency.
@@ -616,11 +612,9 @@ pytype_strict_library(
         ":utils",
         # Internal dependency for internal quantization support.
         # Implicit absl.logging dependency.
-        # Implicit flax.core dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
-        "//praxis:py_utils",
         "//praxis:pytypes",
     ],
 )
@@ -658,7 +652,6 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
-        "//praxis:py_utils",
     ],
 )
 

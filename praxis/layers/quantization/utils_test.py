@@ -70,7 +70,7 @@ class UtilsTest(test_utils.TestCase):
       utils.einsum_eqn_to_dimension_numbers(eqn)
 
   @parameterized.parameters(
-      # Tests for packing/unpacking (u)int8 to/from int32
+      # Tests for packing/unpacking to/from int32
       dict(
           vals=[range(-8, 8)],
           shape=(8, 2),
@@ -113,7 +113,7 @@ class UtilsTest(test_utils.TestCase):
           pack_dim=1,
           packed_dtype=jnp.int32,
       ),
-      # Tests for packing/unpacking int8 to/from int8
+      # Tests for packing/unpacking to/from int8
       dict(
           vals=[range(-8, 8)],
           shape=(8, 2),
@@ -139,78 +139,6 @@ class UtilsTest(test_utils.TestCase):
           vals=[range(7, -9, -1)] * 2,
           shape=(2, 8, 2),
           dtype=jnp.int8,
-          pack_dim=1,
-          packed_dtype=jnp.int8,
-      ),
-      # Tests for packing/unpacking (u)int4 to/from int32
-      dict(
-          vals=[range(-8, 8)],
-          shape=(8, 2),
-          dtype=jnp.int4,
-          pack_dim=0,
-          packed_dtype=jnp.int32,
-      ),
-      dict(
-          vals=[range(-8, 8)] * 2,
-          shape=(8, 2, 2),
-          dtype=jnp.int4,
-          pack_dim=0,
-          packed_dtype=jnp.int32,
-      ),
-      dict(
-          vals=[range(-8, 8)] * 2,
-          shape=(2, 8, 2),
-          dtype=jnp.int4,
-          pack_dim=1,
-          packed_dtype=jnp.int32,
-      ),
-      dict(
-          vals=[range(7, -9, -1)] * 2,
-          shape=(2, 8, 2),
-          dtype=jnp.int4,
-          pack_dim=1,
-          packed_dtype=jnp.int32,
-      ),
-      dict(
-          vals=[range(0, 16)] * 2,
-          shape=(8, 2, 2),
-          dtype=jnp.uint4,
-          pack_dim=0,
-          packed_dtype=jnp.int32,
-      ),
-      dict(
-          vals=[range(0, 16)] * 2,
-          shape=(2, 8, 2),
-          dtype=jnp.uint4,
-          pack_dim=1,
-          packed_dtype=jnp.int32,
-      ),
-      # Tests for packing/unpacking int4 to/from int8
-      dict(
-          vals=[range(-8, 8)],
-          shape=(8, 2),
-          dtype=jnp.int4,
-          pack_dim=0,
-          packed_dtype=jnp.int8,
-      ),
-      dict(
-          vals=[range(-8, 8)] * 2,
-          shape=(8, 2, 2),
-          dtype=jnp.int4,
-          pack_dim=0,
-          packed_dtype=jnp.int8,
-      ),
-      dict(
-          vals=[range(-8, 8)] * 2,
-          shape=(2, 8, 2),
-          dtype=jnp.int4,
-          pack_dim=1,
-          packed_dtype=jnp.int8,
-      ),
-      dict(
-          vals=[range(7, -9, -1)] * 2,
-          shape=(2, 8, 2),
-          dtype=jnp.int4,
           pack_dim=1,
           packed_dtype=jnp.int8,
       ),
@@ -218,14 +146,6 @@ class UtilsTest(test_utils.TestCase):
   def test_pack_4bit_unpack_4bit(
       self, vals, shape, dtype, pack_dim, packed_dtype
   ):
-    # XLA CPU/GPU currently does not support the existence of (u)int4 tensors.
-    # TODO(b/183567451): Remove (u)int4 -> (u)int8 cast once support is re-added
-    # to test (u)int4 types.
-    if dtype == jnp.int4:
-      dtype = jnp.int8
-    elif dtype == jnp.uint4:
-      dtype = jnp.uint8
-
     x = jnp.array(vals).reshape(shape).astype(dtype)
     packed = utils.pack_4bit(x, pack_dim, packed_dtype)
     expected_packed_shape = list(x.shape)
@@ -234,11 +154,7 @@ class UtilsTest(test_utils.TestCase):
     self.assertSequenceEqual(packed.shape, expected_packed_shape)
 
     unpacked = utils.unpack_4bit(packed, pack_dim, x.dtype)
-    # int4 does not support comparison, so upcast to the packed_dtype to check
-    # correctness.
-    self.assertArraysEqual(
-        unpacked.astype(packed_dtype), x.astype(packed_dtype)
-    )
+    self.assertArraysEqual(unpacked, x.astype(packed_dtype))
 
   def test_get_packed_shape(self):
     self.assertSequenceEqual(utils.get_packed_shape((4, 8, 3), 1, 8), (4, 1, 3))
