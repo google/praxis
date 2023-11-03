@@ -1140,6 +1140,175 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
           ),
       )
 
+  @parameterized.named_parameters(
+      ('column_wise', -1),
+      ('row_wise', -2),
+  )
+  def test_sparsity_channelwise(self, channel_dim):
+    sparsity_p = pax_fiddle.Config(
+        SparsityHParams,
+        sparsity_type=SparsityType.CHANNELWISE_PRUNING,
+        mode=pax_fiddle.Config(TrainingMode, target_step=0),
+        weight_params=WeightSparsityParams(prune_rate=0.5),
+        channelwise_pruning_dim=channel_dim,
+    )
+
+    p = pax_fiddle.Config(
+        SparseLinearTestLayer, sparsity=sparsity_p, input_dims=4, output_dims=4
+    )
+
+    test_layer = instantiate(p)
+    prng_key = jax.random.PRNGKey(seed=123)
+    inputs = jnp.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=p.dtype)
+    weights = jnp.array(
+        [
+            [10, 20, 3, 4],
+            [-3, 10, 4, 2],
+            [2, 4, -1, 30],
+            [40, -1, 2, -3],
+        ],
+        dtype=p.dtype,
+    )
+
+    def update(test_layer, params, inputs, updated_weights):
+      outputs, updated_params = test_layer.apply(params, inputs, mutable=True)
+      updated_params[PARAMS]['w'] = updated_weights
+
+      return outputs, updated_params
+
+    with base_layer.JaxContext.new_context():
+      params = test_layer.init(prng_key, inputs)
+      params[PARAMS]['w'] = weights
+
+      self.assertArraysEqual(
+          params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
+          jnp.array([
+              [True, True, True, True],
+              [True, True, True, True],
+              [True, True, True, True],
+              [True, True, True, True],
+          ]),
+      )
+
+      # step 0, update mask, apply mask
+      outputs, updated_params = update(
+          test_layer,
+          params,
+          inputs,
+          jnp.array(
+              [
+                  [10, 20, 3, 4],
+                  [-3, 1, 4, 2],
+                  [20, 4, -10, 3],
+                  [4, -1, 2, -30],
+              ],
+              dtype=p.dtype,
+          ),
+      )
+      if channel_dim == -2:
+        self.assertArraysEqual(
+            updated_params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
+            jnp.array([
+                [True, True, True, True],
+                [False, False, False, False],
+                [False, False, False, False],
+                [True, True, True, True],
+            ]),
+        )
+      else:
+        self.assertArraysEqual(
+            updated_params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
+            jnp.array([
+                [True, False, False, True],
+                [True, False, False, True],
+                [True, False, False, True],
+                [True, False, False, True],
+            ]),
+        )
+      self.assertArraysEqual(
+          outputs,
+          jnp.einsum(
+              '...y,yz->...z',
+              inputs,
+              jnp.multiply(
+                  params[PARAMS]['w'],
+                  updated_params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
+              ),
+          ),
+      )
+
+  def test_materialize_mode_channelwise(self):
+    sparsity_p = pax_fiddle.Config(
+        SparsityHParams,
+        sparsity_type=SparsityType.CHANNELWISE_PRUNING,
+        mode=pax_fiddle.Config(MaterializeMode),
+        weight_params=WeightSparsityParams(prune_rate=0.25),
+        channelwise_pruning_dim=-1,
+    )
+
+    p = pax_fiddle.Config(
+        SparseLinearTestLayer, sparsity=sparsity_p, input_dims=3, output_dims=4
+    )
+
+    test_layer = instantiate(p)
+    prng_key = jax.random.PRNGKey(seed=123)
+    inputs = jnp.array([[1, 2, 3], [4, 5, 6]], dtype=p.dtype)
+    weights = jnp.array(
+        [
+            [1, 2, 3, 4],
+            [-3, 1, 4, -2],
+            [2, 4, -1, 3],
+        ],
+        dtype=p.dtype,
+    )
+
+    with base_layer.JaxContext.new_context():
+      params = test_layer.init(prng_key, inputs)
+      params[PARAMS]['w'] = weights
+
+      self.assertArraysEqual(
+          params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX],
+          jnp.array([
+              [True, True, True, True],
+              [True, True, True, True],
+              [True, True, True, True],
+          ]),
+      )
+
+      fixed_mask = jnp.array([
+          [True, False, False, True],
+          [True, False, False, True],
+          [True, False, False, True],
+      ])
+
+      params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX] = fixed_mask
+      self.assertArraysEqual(
+          params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX], fixed_mask
+      )
+      self.assertArraysEqual(params[PARAMS]['w'], weights)
+      self.assertArraysEqual(params[NON_TRAINABLE]['num_shots'], -1)
+      self.assertArraysEqual(params[NON_TRAINABLE]['mask_update_count'], 0)
+      self.assertArraysEqual(params[NON_TRAINABLE]['step'], 0)
+
+      outputs, updated_params = test_layer.apply(params, inputs, mutable=True)
+      sparsified_weights = [
+          [1, 4],
+          [-3, -2],
+          [2, 3],
+      ]
+      self.assertArraysEqual(
+          outputs, jnp.einsum('...y,yz->...z', inputs, sparsified_weights)
+      )  # apply mask
+      self.assertArraysEqual(
+          params[NON_TRAINABLE]['w' + SPARSITY_NAME_POSTFIX], fixed_mask
+      )
+      self.assertArraysEqual(updated_params[PARAMS]['w'], weights)
+      self.assertArraysEqual(updated_params[NON_TRAINABLE]['num_shots'], -1)
+      self.assertArraysEqual(
+          updated_params[NON_TRAINABLE]['mask_update_count'], 0
+      )
+      self.assertArraysEqual(updated_params[NON_TRAINABLE]['step'], 1)
+
   @parameterized.parameters(
       dict(
           prune_rate=(1, 4),

@@ -236,6 +236,18 @@ class SparsityBaseLayer(base_layer.BaseLayer):
           order=self.sparsity.order,
       )
 
+    if self.sparsity.sparsity_type == SparsityType.CHANNELWISE_PRUNING:
+      if (
+          self.sparsity.weight_params is None
+          or self.sparsity.weight_params.prune_rate is None
+      ):
+        return mask
+      return sparsity.get_sparsity_mask_channelwise(
+          score,
+          self.sparsity.weight_params.prune_rate,
+          self.sparsity.channelwise_pruning_dim,
+      )
+
     assert (
         self.sparsity.sparsity_type == SparsityType.UNSTRUCTURED
     ), f'invalid sparsity type {self.sparsity.sparsity_type}'
@@ -560,6 +572,13 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     if self.sparsity.weight_params.sparse_ste:
       weight, _, _ = sr_ste(
           weight, mask, self.sparsity.weight_params.sparse_ste_weight
+      )
+    elif (
+        isinstance(self.sparsity.mode, MaterializeMode)
+        and self.sparsity.sparsity_type == SparsityType.CHANNELWISE_PRUNING
+    ):
+      weight = sparsity.apply_sparsity(
+          weight, mask, channelwise_dim=self.sparsity.channelwise_pruning_dim
       )
     else:
       weight = sparsity.apply_sparsity(weight, mask)

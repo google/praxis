@@ -47,6 +47,7 @@ class SparsityType(str, enum.Enum):
 
   STRUCTURED_NM = 'structured_nm'
   UNSTRUCTURED = 'unstructured'
+  CHANNELWISE_PRUNING = 'channelwise_pruning'
 
 
 @dataclasses.dataclass
@@ -163,6 +164,9 @@ class SparsityHParams:
   order: str = 'R'
   track_sad_metric: bool = False
   topk_estimator_type: str | None = None
+  # TODO enable per layer dim i.e. linear 1 and 2
+  # Enable unstacking
+  channelwise_pruning_dim: int = -1
 
   def __post_init__(self):
     if (
@@ -177,6 +181,15 @@ class SparsityHParams:
               'N:M structured sparsity.'
           )
       elif self.sparsity_type == SparsityType.UNSTRUCTURED:
+        if self.weight_params.prune_rate is not None:
+          assert isinstance(self.weight_params.prune_rate, float), (
+              'Prune rate must be either None or float '
+              'for unstructured sparsity.'
+          )
+        if self.weight_params.sparse_ste:
+          raise ValueError('SR-STE only works with structured sparsity.')
+
+      elif self.sparsity_type == SparsityType.CHANNELWISE_PRUNING:
         if self.weight_params.prune_rate is not None:
           assert isinstance(self.weight_params.prune_rate, float), (
               'Prune rate must be either None or float '
