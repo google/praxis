@@ -240,6 +240,9 @@ def einsum(
   Returns:
     A JTensor.
   """
+  input_str, output_str, _ = einsum_parser.parse_einsum_input((eqn, x, w))
+  eqn_normalized = input_str + '->' + output_str
+
   # Non performent equation for inference testing purposes
   # TODO: b/305735188 - Improve the performance by using the integer einsum op.
   if zp_act is not None:
@@ -263,16 +266,9 @@ def einsum(
     w = w.astype(jnp.bfloat16)
 
   if use_int_dot_general:
-    if '.' in eqn:
-      # Replace the ellipsis with arbitrary symbols. Because
-      # einsum_eqn_to_dimension_numbers does not support ...
-      eqn_sym = ''.join(sorted(set(string.ascii_uppercase) - set('yz')))
-      rank = len(x.shape)
-      batch_eqn = eqn_sym[:(rank - 1)] if rank else '...'
-      eqn_edited = f'{batch_eqn}y,yz->{batch_eqn}z'
-    else:
-      eqn_edited = eqn
-    dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(eqn_edited)
+    dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(
+        eqn_normalized
+    )
     ret = dot_general_int(
         x,
         w,
@@ -285,7 +281,7 @@ def einsum(
     # Remove the following dtype casting of w once it's resolved.
     if w.dtype == jnp.int4:
       w = w.astype(jnp.int8)
-    ret = jnp.einsum(eqn, x, w)
+    ret = jnp.einsum(eqn_normalized, x, w)
 
   if scale_act is not None:
     if scale_act.ndim == 0:
@@ -310,7 +306,7 @@ def einsum(
     if zp_eqn is not None:
       offset = jnp.einsum(zp_eqn, x, zp)
     else:
-      offset = compute_offset(x, zp, eqn)
+      offset = compute_offset(x, zp, eqn_normalized)
     ret = ret - offset
 
   return ret
@@ -772,8 +768,8 @@ def aqt_einsum(
     An array containing the result with the same dtype as 'lhs' and 'rhs'.
   """
   input_str, output_str, _ = einsum_parser.parse_einsum_input((eqn, lhs, rhs))
-  eqn_edited = input_str + '->' + output_str
-  dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn_edited)
+  eqn_normalized = input_str + '->' + output_str
+  dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn_normalized)
   lhs_contract_dims, rhs_contract_dims = dimension_numbers[0]
 
   if (
