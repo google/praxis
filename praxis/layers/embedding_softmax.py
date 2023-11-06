@@ -37,6 +37,7 @@ SplitDimsMapping = pytypes.SplitDimsMapping
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 
 template_field = base_layer.template_field
+instance_field = base_layer.instance_field
 
 
 def _compute_z_loss(logits):
@@ -111,8 +112,8 @@ class Embedding(base_layer.BaseLayer):
   lookup_style: str = 'index'
   scale_sqrt_depth: bool = False
   set_nan_for_oob_id: bool = False
-  array_lookup_tpl: LayerTpl = template_field(base_ops.ArrayLookup)
-  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  array_lookup: base_ops.ArrayLookup = instance_field(base_ops.ArrayLookup)
+  einsum: base_ops.EinsumOp = instance_field(base_ops.EinsumOp)
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
@@ -136,8 +137,6 @@ class Embedding(base_layer.BaseLayer):
             tensor_split_dims_mapping=wp.wt,
         ),
     )
-    self.create_child('array_lookup', self.array_lookup_tpl.clone())
-    self.create_child('einsum', self.einsum_tpl.clone())
 
   def __call__(self, ids: JTensor) -> JTensor:
     return self.emb_lookup(ids)
