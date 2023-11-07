@@ -49,6 +49,24 @@ class OptimizationTest(test_utils.TestCase):
     expected = jnp.array([[2.85], [3.8]])
     self.assertArraysEqual(ret, expected)
 
+  def test_optimization_int4_per_channel(self):
+    t = jnp.array([[1.0, 2.0, 3.0], [4.0, 1.0, 2.0]])
+    bound = jnp.max(t, axis=0, keepdims=True)
+    best_bound_per_channel = optimization.get_best_bound(
+        t, bound, -8.0, 7.0, 2.0, per_channel=True
+    )
+    expected_best_bound_per_channel = jnp.array([[4.0, 1.9, 3.0]])
+    self.assertArraysEqual(
+        best_bound_per_channel, expected_best_bound_per_channel
+    )
+    best_bound_per_tensor = optimization.get_best_bound(
+        t, bound, -8.0, 7.0, 2.0
+    )
+    expected_best_bound_per_tensor = jnp.array([[4.0, 2.0, 3.0]])
+    self.assertArraysEqual(
+        best_bound_per_tensor, expected_best_bound_per_tensor
+    )
+
 
 if __name__ == '__main__':
   absltest.main()
