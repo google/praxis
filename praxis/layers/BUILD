@@ -40,6 +40,7 @@ pytype_strict_library(
         ":einsum",
         ":embedding_softmax",
         ":frnn",
+        ":grouped_query_attention",
         ":linears",
         ":losses",
         ":models",
@@ -136,6 +137,38 @@ pytype_strict_library(
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
+    ],
+)
+
+pytype_strict_library(
+    name = "grouped_query_attention",
+    srcs = ["grouped_query_attention.py"],
+    deps = [
+        ":einsum",
+        ":sharding",
+        # Implicit flax.core dependency.
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
+    ],
+)
+
+py_strict_test(
+    name = "grouped_query_attention_test",
+    srcs = ["grouped_query_attention_test.py"],
+    env = {"XLA_FLAGS": "--xla_force_host_platform_device_count=4"},
+    deps = [
+        ":grouped_query_attention",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
     ],
 )
 
@@ -1332,5 +1365,15 @@ py_strict_test(
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:test_utils",
+    ],
+)
+
+pytype_strict_library(
+    name = "sharding",
+    srcs = ["sharding.py"],
+    deps = [
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:py_utils",
     ],
 )

@@ -68,6 +68,7 @@ from praxis.layers.embedding_softmax import TrainablePositionalEmbedding
 from praxis.layers.frnn import FRnn
 from praxis.layers.frnn import LstmFrnn
 from praxis.layers.frnn import StackFrnn
+from praxis.layers.grouped_query_attention import GroupedQueryAttention
 from praxis.layers.linears import Bias
 from praxis.layers.linears import FeedForward
 from praxis.layers.linears import Linear
