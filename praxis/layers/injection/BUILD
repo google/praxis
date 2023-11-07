@@ -44,6 +44,7 @@ py_strict_test(
         ":fp8_nvidia_gpu",
         # Implicit absl.testing.absltest dependency.
         # Implicit flax.core dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",

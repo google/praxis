@@ -225,6 +225,7 @@ py_strict_test(
         ":test_utils",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit optax dependency.
     ],
@@ -386,6 +387,7 @@ py_strict_test(
         ":py_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax.experimental.jax2tf dependency.
         # Implicit numpy dependency.
         # Implicit tensorflow_no_contrib dependency.
@@ -403,6 +405,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit fiddle dependency.
         # Implicit flax.core dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit ml_collections config_dict dependency.
         # Implicit numpy dependency.
@@ -423,6 +426,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit fiddle dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit lingvo.core.base_input_generator dependency.
         # Implicit lingvo.core.generic_input dependency.
@@ -461,6 +465,7 @@ py_strict_test(
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis/layers:models",
@@ -477,6 +482,7 @@ py_strict_test(
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
     ],
@@ -489,6 +495,7 @@ py_strict_test(
         ":flat_beam_search",
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
     ],
@@ -506,6 +513,7 @@ py_strict_test(
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         # Implicit optax dependency.
@@ -522,6 +530,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit flax.core dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
     ],
@@ -541,6 +550,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit flax.core dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
     ],
@@ -554,6 +564,7 @@ py_strict_test(
         ":test_utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit lingvo.core.py_utils dependency.
         # Implicit lingvo.core.schedule dependency.
@@ -568,6 +579,7 @@ py_strict_test(
         ":test_utils",
         ":token_samplers",
         # Implicit absl.testing.absltest dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
     ],
@@ -589,6 +601,7 @@ py_strict_test(
         # Implicit fiddle.experimental.visualize dependency.
         # Implicit fiddle.testing dependency.
         # Implicit flax.core dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit lingvo.core.nested_map dependency.
     ],
@@ -615,6 +628,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit flax.core dependency.
+        # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
     ],
