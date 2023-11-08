@@ -577,6 +577,7 @@ py_strict_test(
         # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
+        # Implicit opt_einsum dependency from jax.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:test_utils",

@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import jax
 from jax import numpy as jnp
 import numpy as np
+from opt_einsum import parser as einsum_parser
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import test_utils
@@ -198,19 +199,41 @@ class QuantizationUtilsTest(test_utils.TestCase):
     self.assertEqual(operations.get_min_max(8, True, True), (-448.0, 448.0))
 
   @parameterized.named_parameters(
-      ('eqn1', 'AD,KDNH->KANH', 'A,KNH->KANH'),
-      ('eqn2', 'ANH,DNH->AD', 'A,D->AD'),
-      ('eqn3', '...y,yz->...z', '...,z->...z'),
-      ('eqn4', 'ABD,KDNH->KABNH', 'AB,KNH->KABNH'),
-      ('eqn5', 'ABNH,DNH->ABD', 'AB,D->ABD'),
-      ('eqn6', 'ABD,DNH->ABNH', 'AB,NH->ABNH'),
-      ('eqn7', 'AD,DNH->ANH', 'A,NH->ANH'),
-      ('eqn8', '...D,DH->...H', '...,H->...H'),
-      ('eqn9', '...y,zy->...z', '...,z->...z'),
+      (
+          'eqn1',
+          'AD,KDNH->KANH',
+          'AD,KNH->KANH',
+          [8, 16],
+          [2, 16, 4, 5],
+          [2, 4, 5],
+      ),
+      ('eqn2', 'ANH,DNH->AD', 'ANH,D->AD', [8, 4, 16], [20, 4, 16], [20]),
+      ('eqn3', '...y,yz->...z', '...y,z->...z', [8, 16], [16, 8], [8]),
+      (
+          'eqn4',
+          'ABD,KDNH->KABNH',
+          'ABD,KNH->KABNH',
+          [8, 4, 16],
+          [4, 16, 8, 8],
+          [4, 8, 8],
+      ),
+      ('eqn5', 'ABNH,DNH->ABD', 'ABNH,D->ABD', [4, 4, 4, 4], [16, 4, 4], [16]),
+      ('eqn6', 'ABD,DNH->ABNH', 'ABD,NH->ABNH', [4, 4, 4], [4, 4, 16], [4, 16]),
+      ('eqn7', 'AD,DNH->ANH', 'AD,NH->ANH', [8, 16], [16, 4, 4], [4, 4]),
+      ('eqn8', '...D,DH->...H', '...D,H->...H', [8, 8], [8, 16], [16]),
+      ('eqn9', '...y,zy->...z', '...y,z->...z', [16, 8], [8, 20], [20]),
   )
-  def test_offset_einsum(self, eqn, expected_offset_eqn):
-    offset_eqn = operations._get_offset_eqn(eqn)
-    self.assertEqual(offset_eqn, expected_offset_eqn)
+  def test_offset_einsum(
+      self, eqn, offset_eqn, input_dims, weight_dims, zp_dims
+  ):
+    x = np.random.rand(*input_dims).astype(np.float32)
+    w = np.random.rand(*weight_dims).astype(np.float32)
+    zp = np.random.rand(*zp_dims).astype(np.float32)
+    input_str, output_str, _ = einsum_parser.parse_einsum_input((eqn, x, w))
+    eqn_normalized = input_str + '->' + output_str
+    expected_offset = np.einsum(offset_eqn, x, zp)
+    offset = operations.compute_offset(eqn_normalized, x, zp)
+    self.assertAllClose(offset, expected_offset)
 
   def test_subchannel_einsum(self):
     x = np.random.rand(4, 2, 4).astype(np.float32)

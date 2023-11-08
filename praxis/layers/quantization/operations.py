@@ -86,28 +86,6 @@ def _get_expand_dims_lhs(eqn: str) -> list[int]:
   return filling_dims
 
 
-def _get_offset_eqn(eqn: str) -> str:
-  """Get the einsum equantion for zero point calculation."""
-  has_eplison = False
-  if eqn.count('...') > 0:
-    has_eplison = True
-  segs = eqn.split('->')
-  ins = segs[0].split(',')
-  assert len(ins) == 2
-  left, right = ins
-  if has_eplison:
-    left = left.replace('...', '')
-  reduce_dim = set(left).intersection(set(right))
-  new_left = [c for c in left if c not in reduce_dim]
-  new_right = [c for c in right if c not in reduce_dim]
-  new_left = ''.join(new_left)
-  new_right = ''.join(new_right)
-  if has_eplison:
-    new_left = '...' + new_left
-  res = new_left + ',' + new_right + '->' + segs[1]
-  return res
-
-
 def get_min_max(
     bits: int = 8,
     unsigned: bool = False,
@@ -135,29 +113,28 @@ def get_min_max(
     return -1 * 2 ** (bits - 1), 2 ** (bits - 1) - 1
 
 
-def compute_offset(x: JTensor, zp: JTensor, eqn: str) -> JTensor:
+def compute_offset(eqn_normalized: str, x: JTensor, zp: JTensor) -> JTensor:
   """Computes offset: product of activation x with zero point of weight.
 
   Args:
+    eqn_normalized: The equation for the einsum between x and w. eqn_normalized
+      should not contain any '...'.
     x: Not quantized activation.
     zp: Not quantized zero point of weight.
-    eqn: The equation for the einsum between x and w.
 
   Returns:
     Offset tensor.
   """
-
-  def _get_x_reduce_axis(eqn: str, x_dims: int) -> list[int]:
-    """Get reduction axis on activation."""
-    if eqn == 'ANH,DNH->AD' or eqn == 'ABNH,DNH->ABD':
-      return [x_dims - 2, x_dims - 1]
-    else:
-      return [x_dims-1]
-
-  reduce_axis = _get_x_reduce_axis(eqn, len(x.shape))
-  x_reduce = jnp.sum(x, axis=reduce_axis, keepdims=False)
-  offset_eqn = _get_offset_eqn(eqn)
-  offset = jnp.einsum(offset_eqn, x_reduce, zp)
+  if '.' in eqn_normalized:
+    raise ValueError(
+        'eqn_normalized should not contain broadcast ellipsis "...". Use'
+        ' opt_einsum.parser to normalize the eqn before using this function.'
+    )
+  ins, out = eqn_normalized.split('->')
+  lhs, rhs = ins.split(',')
+  rhs_out_dims = ''.join([c for c in out if c in rhs])
+  offset_eqn = lhs + ',' + rhs_out_dims + '->' + out
+  offset = jnp.einsum(offset_eqn, x, zp)
   return offset
 
 
@@ -306,7 +283,7 @@ def einsum(
     if zp_eqn is not None:
       offset = jnp.einsum(zp_eqn, x, zp)
     else:
-      offset = compute_offset(x, zp, eqn_normalized)
+      offset = compute_offset(eqn_normalized, x, zp)
     ret = ret - offset
 
   return ret
@@ -839,7 +816,7 @@ def aqt_einsum(
       if zp_eqn is not None:
         offset = jnp.einsum(zp_eqn, lhs, rhs_zp)
       else:
-        offset = compute_offset(lhs, jnp.squeeze(rhs_zp), eqn)
+        offset = compute_offset(eqn_normalized, lhs, jnp.squeeze(rhs_zp))
       ret = ret - offset
 
   return ret
