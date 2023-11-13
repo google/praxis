@@ -1590,7 +1590,7 @@ class StackedTransformer(base_layer.BaseLayer):
       non-PADs as another.
     moe_layer_tpl: Template configuration for the moe feedforward layer.
     num_experts: Total number of experts.
-    num_groups: Number of groups for dispathcing.
+    num_groups: Number of groups for dispatching.
     min_group_size: If not None, num_groups will be adjusted so that there will
       be at least min_group_size tokens in each group.
     moe_layers: List of MoE layer indices, e.g. [0, 2, 4].
