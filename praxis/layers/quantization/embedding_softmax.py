@@ -30,6 +30,7 @@ from praxis.layers.quantization import linears as quantized_linears
 from praxis.layers.quantization import operations as quantized_operations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
+from praxis.layers.quantization import utils
 
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
@@ -282,6 +283,14 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
       emb_var, scale_var, zp_var = linear_layer.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
+      # TODO(meadowlark): Fold this into get_quantized_weight.
+      weight_params = linear_layer.quantization.weight_params
+      if weight_params.precision == 4 and weight_params.use_int4_packed_weights:
+        emb_var = utils.unpack_4bit(
+            emb_var,
+            pack_dim=0,  # linear_layer._PACK_4BIT_DIM is currently always 0.
+            original_dtype=self.quantization.weight_params.dtype,
+        )
     else:
       eqn = 'xy,zy->xz'
       emb_var = linear_layer.theta.w

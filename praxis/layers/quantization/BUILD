@@ -489,6 +489,7 @@ pytype_strict_library(
         ":operations",
         ":quantization_hparams",
         ":quantizer",
+        ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
@@ -505,6 +506,7 @@ py_strict_test(
     deps = [
         ":layers",
         ":quantization_hparams",
+        ":utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit upb python proto dependency.
