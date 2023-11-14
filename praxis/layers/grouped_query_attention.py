@@ -225,7 +225,7 @@ class GroupedQueryAttention(base_layer.BaseLayer):
     encoded = jnp.einsum('BKGTS,BSKH->BTKGH', probs, value)
     encoded = jnp.reshape(encoded, (b, t, n, h))
     encoded = checkpoint_name(encoded, 'context')
-    return encoded
+    return encoded, probs
 
   def _maybe_rope(self, x: JTensor, pos: JTensor) -> JTensor:
     if self.rope_min_max_timescales is None:
@@ -308,13 +308,13 @@ class GroupedQueryAttention(base_layer.BaseLayer):
     k = shd.shard_one_dim(k, None, dim=1)
     v = shd.shard_one_dim(v, None, dim=1)
     atten_mask = shd.shard_one_dim(atten_mask, None, dim=3)
-    encoded = self._atten_context(q, k, v, atten_mask)
+    encoded, atten_probs = self._atten_context(q, k, v, atten_mask)
     sh = self.activation_split_dims_mapping
     encoded = shd.shard(encoded, sh.btnh)
     # Post projection
     encoded = self.post(encoded)
     encoded = shd.shard(encoded, sh.btd)
-    return checkpoint_name(encoded, 'out_proj')
+    return checkpoint_name(encoded, 'out_proj'), atten_probs
 
   @nn.nowrap
   def extend_decode_state(
