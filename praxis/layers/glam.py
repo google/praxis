@@ -208,6 +208,7 @@ def GlamUniTransformerLmHParams(
     z_loss_weight=1e-4,
     combine_qkv=False,
     bidirectional=False,
+    repeat=True,
     num_pipeline_stages=1,
     num_pipeline_microbatches=1,
     model_type=LanguageModelType.CAUSAL,
@@ -322,14 +323,19 @@ def GlamUniTransformerLmHParams(
   num_blocks = num_transformer_layers // 2 if moe else num_transformer_layers
 
   if num_pipeline_stages == 1:
-    p.stacked_transformer_tpl = pax_fiddle.Config(
-        transformers.StackedTransformerRepeated,
-        name='decoder',
-        unroll_in_decode=True,
-        block=glam_p,
-        x_times=num_blocks,
-        checkpoint_policy=checkpoint_policy,
-    )
+    if repeat:
+      p.stacked_transformer_tpl = pax_fiddle.Config(
+          transformers.StackedTransformerRepeated,
+          name='decoder',
+          unroll_in_decode=True,
+          block=glam_p,
+          x_times=num_blocks,
+          checkpoint_policy=checkpoint_policy,
+      )
+    else:
+      glam_p.num_layers = num_transformer_layers
+      glam_p.moe_layers = list(range(0, glam_p.num_layers, 2))
+      p.stacked_transformer_tpl = glam_p
   else:
     assert num_blocks % num_pipeline_stages == 0
     glam_p.num_layers = num_transformer_layers // num_pipeline_stages
