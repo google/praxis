@@ -95,7 +95,8 @@ class GroupedQueryAttention(base_layer.BaseLayer):
   KV heads.
 
   Attributes:
-    model_dim: An integer as number of input nodes.
+    input_dim: An integer as number of input nodes.
+    hidden_dim: Unused legacy field. Set "input_dim" instead.
     num_heads: Number of attention heads.
     num_kv_heads: Number of kv heads. num_heads % num_kv_heads = 0.
     dim_per_head: Dimension of each attention head.
@@ -110,7 +111,8 @@ class GroupedQueryAttention(base_layer.BaseLayer):
       computing self attention scores.
   """
 
-  model_dim: int = 0
+  input_dim: int = 0
+  hidden_dim: int = 0
   num_heads: int = 1
   num_kv_heads: int = 1
   dim_per_head: int = 0
@@ -145,11 +147,11 @@ class GroupedQueryAttention(base_layer.BaseLayer):
     bskh: _SplitDimsMapping = None
 
   def setup(self) -> None:
-    d = self.model_dim
+    d = self.input_dim
     n = self.num_heads
     k = self.num_kv_heads
     h = self.dim_per_head
-    assert d, f'model_dim is {d}'
+    assert d, f'input_dim is {d}'
     assert h, f'dim_per_head is {h}'
     assert n % k == 0, f'num_heads {n} % num_kv_heads {k} != 0'
 
