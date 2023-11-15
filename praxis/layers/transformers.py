@@ -40,6 +40,7 @@ from praxis.layers import pipeline
 from praxis.layers import repeats
 from praxis.layers import stats
 from praxis.layers import stochastics
+from praxis.contrib.gpu.scripts_gpu.te_helper import TransformerEngineHelper
 
 NestedMap = py_utils.NestedMap
 WeightInit = base_layer.WeightInit
@@ -1738,28 +1739,8 @@ class StackedTransformer(base_layer.BaseLayer):
         p_i = self._clone_layer_params(self.transformer_layer_params_tpl[ii])
       else:
         p_i = self._clone_layer_params(self.transformer_layer_params_tpl)
-      p_i.name = f'layer_{i}'
-      p_i.use_cross_attention = self.use_cross_attention
-      p_i.num_heads = self.num_heads
-      p_i.dim_per_head = self.dim_per_head
-      p_i.input_dims = self.model_dims
-      p_i.packed_input = self.packed_input
-      p_i.atten_dropout_prob = self.atten_dropout_prob or self.dropout_prob
-      p_i.residual_dropout_prob = (
-          self.residual_dropout_prob or self.dropout_prob
-      )
-      p_i.relu_dropout_prob = self.relu_dropout_prob or self.dropout_prob
-      p_i.hidden_dims = self.hidden_dims
-      if self.local_window_size is not None:
-        if isinstance(self.local_window_size[0], tuple):
-          p_i.tr_atten_tpl.local_window_size = self.local_window_size[i]
-        else:
-          p_i.tr_atten_tpl.local_window_size = self.local_window_size
 
-      if self.residual_droppath_prob > 0.0:
-        p_i.residual_droppath_prob = (
-            self.residual_droppath_prob * i / max(1, self.num_layers)
-        )
+      p_i = TransformerEngineHelper.set_layer_params_to_stack_transformer(self, p_i, i)
 
       if self.moe_layers and i in self.moe_layers:
         assert self.num_experts > 0
@@ -1877,6 +1858,8 @@ class StackedTransformer(base_layer.BaseLayer):
           segment_pos=segment_pos,
       )
       return x_out
+
+    _fprop = TransformerEngineHelper.get_fprop_caller_of_stack_transformer(_fprop, self.do_eval)
 
     fprop = _fprop
     if self.remat:
@@ -2347,7 +2330,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
     else:
       assert self.pipeline_stage.cls == StackedTransformerRepeated
       xformer_layer_p = self.pipeline_stage.block.transformer_layer_params_tpl
-    bld_mapping = xformer_layer_p.tr_atten_tpl.activation_split_dims_mapping.bld
+    bld_mapping = TransformerEngineHelper.get_bld_mapping_for_pipelined_transformer(xformer_layer_p)
     if not self.stream_io:
       # Annotate the inputs before the pipeline to prevent unexpected
       # propagation from earlier layers.
