@@ -5,18 +5,25 @@ from praxis import pax_fiddle
 from praxis import pytypes
 
 try:
-  import transformer_engine.jax as te
-  import transformer_engine.jax.flax as te_flax
-  import transformer_engine.jax.praxis as te_praxis
-  _IS_TRANSFORMER_ENGINE_INSTALLED = True
-  import praxis.layers.repeats as praxis_repeat
-  # This is to make Repeat module correctly generate collections we need.
-  praxis_repeat.SCAN_VARIABLE_AXES.update({base_layer.NON_PAX_VAR_COLLECTION[1]: 0, # 1-idx = params_axes
-                                           te.fp8.FP8Helper.FP8_COLLECTION_NAME:0})
+    import transformer_engine.jax as te
+    import transformer_engine.jax.flax as te_flax
+    import transformer_engine.jax.praxis as te_praxis
+    _IS_TRANSFORMER_ENGINE_INSTALLED = True
+    import praxis.layers.repeats as praxis_repeat
+    # This is to make Repeat module correctly generate collections we need.
+    praxis_repeat.SCAN_VARIABLE_AXES.update({base_layer.NON_PAX_VAR_COLLECTION[1]: 0, # 1-idx = params_axes
+                                            te.fp8.FP8Helper.FP8_COLLECTION_NAME:0})
+    TE_PIPELINE_EXTRA_VMAP_VAR_AXES = {
+        base_layer.NON_PAX_VAR_COLLECTION[1]: 0, # 1-idx = params_axes
+        te.fp8.FP8Helper.FP8_COLLECTION_NAME:0
+    }
+
+    TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST = [te.fp8.FP8Helper.FP8_COLLECTION_NAME]
 
 except ModuleNotFoundError as e:
-  _IS_TRANSFORMER_ENGINE_INSTALLED = False
-
+    _IS_TRANSFORMER_ENGINE_INSTALLED = False
+    TE_PIPELINE_EXTRA_VMAP_VAR_AXES = {}
+    TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST = []
 
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 JTensor = pytypes.JTensor
@@ -142,8 +149,9 @@ class TEInstalledHelper(TransformerEngineHelperBase):
     @staticmethod
     def get_bld_mapping_for_pipelined_transformer(_):
         rules = te_flax.extend_logical_axis_rules(tuple())
-        batch_mapping = rules[0]
-        hidden_tp_mapping = rules[4]
+        # rules [(batch_axis_name, ('replicat', 'data'))', ...)]
+        batch_mapping = rules[0][1]
+        hidden_tp_mapping = rules[4][1]
         # [Batch, Seqlen, Hidden]
         bld_mapping = [batch_mapping, None, hidden_tp_mapping]
         return bld_mapping
@@ -178,5 +186,3 @@ class TransformerEngineHelper(TransformerEngineHelperBase):
     def get_bld_mapping_for_pipelined_transformer(xformer_layer_p):
         return TransformerEngineHelper.get_helper().get_bld_mapping_for_pipelined_transformer(
                     xformer_layer_p)
-
-
