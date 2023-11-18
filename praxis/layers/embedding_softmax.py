@@ -17,6 +17,7 @@
 
 import math
 
+from flax import linen as nn
 import jax
 from jax import numpy as jnp
 import numpy as np
@@ -26,6 +27,7 @@ from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
 from praxis.layers import base_ops
+from praxis.layers import chunk
 from praxis.layers import linears
 
 NestedMap = py_utils.NestedMap
@@ -193,6 +195,9 @@ class FullSoftmax(base_layer.BaseLayer):
       None, skip feedforward layer and directly apply softmax to the input.
     scale_before_logits: If set True, activations are scaled with 1/sqrt(M)
       before computing the logits
+    chunk_size: chunk size of sequence axis. If set, lax.scan computes softmax
+      chunkwise to save HBM. If set, it doesn't return logits and log_probs. 256
+      is a compromise between performance and memory usage.
   """
 
   input_dims: int = 0
@@ -205,6 +210,7 @@ class FullSoftmax(base_layer.BaseLayer):
   bias_init: float | None = 0.0
   feed_forward_tpl: LayerTpl = template_field(linears.FeedForward)
   scale_before_logits: bool = False
+  chunk_size: int | None = None
 
   def setup(self) -> None:
     if self.feed_forward_tpl is not None:
@@ -292,8 +298,93 @@ class FullSoftmax(base_layer.BaseLayer):
     if class_ids is None and class_probabilities is None:
       raise ValueError('One of class_ids or class_probabilities must be given.')
 
+    chunk_size = self.chunk_size or 0
+    use_full_softmax = (
+        (chunk_size == 0)
+        # The scan optimization is not meaningful, as class_probabilities
+        # already allocates full HBM.
+        | (class_probabilities is not None)
+        # Don't use vmap optimization for small inputs.
+        | (inputs.ndim != 3)
+        | (inputs.shape[1] < chunk_size)
+        # TODO(pax-dev): support scan for z_loss_weight if needed.
+        | (self.z_loss_weight > 0.0)
+    )
+    if use_full_softmax:
+      per_example_xent, per_example_argmax, logits, log_probs = (
+          self._compute_xent(inputs, class_ids, class_probabilities)
+      )
+    else:
+      per_example_xent, per_example_argmax = self._compute_xent_scan(
+          inputs, class_ids
+      )
+      logits = log_probs = None
+
+    # Compute total softmax cross-entropy loss for the output tensor.
+    total_xent = jnp.sum(
+        jnp.expand_dims(per_example_xent, axis=-1) * class_weights,
+        dtype=jnp.float32,
+    )
+    total_weight = jnp.sum(class_weights, dtype=jnp.float32)
+
+    if self.z_loss_weight > 0.0:
+      assert logits is not None
+      z_loss = (
+          jnp.sum(_compute_z_loss(logits) * class_weights, dtype=jnp.float32)
+          / total_weight
+      )
+      z_loss *= self.z_loss_weight
+      self.add_summary('aux_z_loss', z_loss)
+      self.add_aux_loss('aux_z_loss', z_loss)
+
+    if logits is not None:
+      logits = logits.astype(inputs.dtype)
+      log_probs = log_probs.astype(inputs.dtype)
+
+    output_nmap = NestedMap(
+        logits=logits,
+        log_probs=log_probs,
+        per_example_argmax=per_example_argmax,
+        per_example_xent=per_example_xent.astype(jnp.float32),
+        total_xent=total_xent,
+        total_weight=total_weight,
+        avg_xent=(total_xent / (total_weight + 1e-6)).astype(jnp.float32),
+    )
+    if class_ids is not None:
+      output_nmap.accuracy = (
+          jnp.sum(
+              (per_example_argmax[..., jnp.newaxis] == class_ids)
+              * class_weights
+          )
+          / total_weight
+      )
+    if self.z_loss_weight > 0.0:
+      output_nmap['z_loss'] = z_loss
+    return output_nmap
+
+  @nn.nowrap
+  def _compute_xent(
+      self,
+      inputs: JTensor,
+      class_ids: JTensor | None = None,
+      class_probabilities: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor, JTensor, JTensor]:
+    """Computes logits and softmax cross entropy.
+
+    Args:
+      inputs:        [..., input_dims].
+      class_ids:     [..., 1], int32 type, target labels.
+      class_probabilities: [..., num_classes].
+
+    Returns:
+      per_example_argmax: [...]. argmax of i-th example.
+      per_example_xent:   [...]. Cross entropy between i-th example's
+        prediction and its label.
+      logits:    [..., num_classes], unnormalized softmax logits.
+      log_probs: [..., num_classes], normalized softmax logits.
+    """
+
     # Compute logits
-    inputs_dtype = inputs.dtype
     logits = self.get_logits(inputs)
     # We perform softmax in float32 to improve stability.
     logits = logits.astype(jnp.float32)
@@ -326,43 +417,43 @@ class FullSoftmax(base_layer.BaseLayer):
     per_example_argmax = jax.lax.stop_gradient(
         jnp.argmax(logits.astype(jnp.float32), axis=-1)
     )
+    return per_example_xent, per_example_argmax, logits, log_probs
 
-    # Compute total softmax cross-entropy loss for the output tensor.
-    total_xent = jnp.sum(
-        jnp.expand_dims(per_example_xent, axis=-1) * class_weights,
-        dtype=jnp.float32,
-    )
-    total_weight = jnp.sum(class_weights, dtype=jnp.float32)
+  @nn.nowrap
+  def _compute_xent_scan(
+      self,
+      inputs: JTensor,
+      class_ids: JTensor,
+  ) -> tuple[JTensor, JTensor]:
+    """Computes softmax cross entropy using scan.
 
-    if self.z_loss_weight > 0.0:
-      z_loss = (
-          jnp.sum(_compute_z_loss(logits) * class_weights, dtype=jnp.float32)
-          / total_weight
+    Args:
+      inputs:        [B, L, input_dims].
+      class_ids:     [B, L, 1], int32 type, target labels.
+
+    Returns:
+      per_example_xent: [B, L]. Cross entropy between i-th example's
+      per_example_argmax: [B, L]. argmax of i-th example.
+    """
+
+    def step_fn(_, step_inputs):
+      inputs, class_ids = step_inputs
+      per_example_xent, per_example_argmax, _, _ = self._compute_xent(
+          inputs, class_ids
       )
-      z_loss *= self.z_loss_weight
-      self.add_summary('aux_z_loss', z_loss)
-      self.add_aux_loss('aux_z_loss', z_loss)
+      return None, (per_example_xent, per_example_argmax)
 
-    output_nmap = NestedMap(
-        logits=logits.astype(inputs_dtype),
-        log_probs=log_probs.astype(inputs_dtype),
-        per_example_argmax=per_example_argmax,
-        per_example_xent=per_example_xent.astype(jnp.float32),
-        total_xent=total_xent,
-        total_weight=total_weight,
-        avg_xent=(total_xent / (total_weight + 1e-6)).astype(jnp.float32),
+    seqlen = inputs.shape[1]
+    input_chunk = chunk.chunk(inputs, chunk_size=self.chunk_size)
+    class_ids = chunk.chunk(class_ids, chunk_size=self.chunk_size)
+    # Workaround: flax lazy init doesn't work in scan, so init all sublayers.
+    step_fn(None, (input_chunk[0, :1], class_ids[0, :1]))
+    _, (per_example_xent, per_example_argmax) = jax.lax.scan(
+        jax.remat(step_fn), None, (input_chunk, class_ids)
     )
-    if class_ids is not None:
-      output_nmap.accuracy = (
-          jnp.sum(
-              (per_example_argmax[..., jnp.newaxis] == class_ids)
-              * class_weights
-          )
-          / total_weight
-      )
-    if self.z_loss_weight > 0.0:
-      output_nmap['z_loss'] = z_loss
-    return output_nmap
+    per_example_xent = chunk.unchunk(per_example_xent, seqlen=seqlen)
+    per_example_argmax = chunk.unchunk(per_example_argmax, seqlen=seqlen)
+    return per_example_xent, per_example_argmax
 
 
 class SharedEmbeddingSoftmax(FullSoftmax):

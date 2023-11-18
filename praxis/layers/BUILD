@@ -204,6 +204,31 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "chunk",
+    srcs = ["chunk.py"],
+    deps = [
+        # Implicit jax dependency.
+        "//praxis:pytypes",
+    ],
+)
+
+py_strict_test(
+    name = "chunk_test",
+    srcs = ["chunk_test.py"],
+    deps = [
+        ":chunk",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit upb python proto dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:test_utils",
+    ],
+)
+
+pytype_strict_library(
     name = "convolutions",
     srcs = ["convolutions.py"],
     deps = [
@@ -253,7 +278,9 @@ pytype_strict_library(
     deps = [
         ":activations",
         ":base_ops",
+        ":chunk",
         ":linears",
+        # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:base_layer",

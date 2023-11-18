@@ -223,6 +223,72 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
       self.assertAllClose(to_np(outputs[k]), to_np(tf_output[k]), atol=1e-6)
     self.assertEqual(outputs.per_example_argmax.dtype, jnp.int32)
 
+  @parameterized.parameters(
+      (True, False),
+      (False, True),
+      (True, True),
+  )
+  def test_softmax_layer_vs_scan(
+      self,
+      use_class_ids,
+      use_class_probabilities,
+  ):
+    if use_class_ids:
+      class_ids = np.random.randint(1, 50, [8, 10, 1])
+    else:
+      class_ids = None
+    if use_class_probabilities:
+      class_probabilities = np.random.normal(1.5, 2.0, [8, 10, 50])
+    else:
+      class_probabilities = None
+    p = pax_fiddle.Config(
+        embedding_softmax.FullSoftmax,
+        name='jax_softmax',
+        num_classes=50,
+        input_dims=40,
+        soft_cap_logits=30.0,
+    )
+    softmax_layer = instantiate(p)
+    p_scan = p.clone().set(
+        name='jax_softmax_scan',
+        chunk_size=4,
+    )
+    softmax_scan_layer = instantiate(p_scan)
+    npy_input = np.random.normal(1.5, 2.0, [8, 10, p.input_dims])
+    inputs = jnp.asarray(npy_input)
+    class_weights = np.random.normal(1.5, 2.0, [8, 10, 1])
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = softmax_layer.init(
+          prng_key,
+          inputs,
+          class_weights,
+          class_ids=class_ids,
+          class_probabilities=class_probabilities,
+      )
+      outputs = softmax_layer.apply(
+          initial_vars,
+          inputs,
+          class_weights,
+          class_ids=class_ids,
+          class_probabilities=class_probabilities,
+      )
+      scan_outputs = softmax_scan_layer.apply(
+          initial_vars,
+          inputs,
+          class_weights,
+          class_ids=class_ids,
+          class_probabilities=class_probabilities,
+      )
+
+    # When chunk_size is set, it doesn't return logits and log_probs.
+    for k in ('logits', 'log_probs'):
+      del outputs[k]
+      del scan_outputs[k]
+
+    for k in outputs.keys():
+      self.assertAllClose(to_np(outputs[k]), to_np(scan_outputs[k]))
+
   def test_simple_softmax_layer_class_ids(self):
     batch_size = 8
     num_classes = 50
