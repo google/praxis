@@ -16,7 +16,6 @@
 """Operations for quantization."""
 
 import functools
-import string
 from typing import Any, Sequence
 from absl import logging
 import jax
@@ -672,8 +671,6 @@ def compute_shape_with_subchannels(
   Returns:
     New shape for subchannel quantization.
   """
-  # pylint: disable=logging-fstring-interpolation
-  logging.info(f'inputs_shape before sub-channel split {inputs_shape}')
   ndims = len(inputs_shape)
 
   feature_axis = tuple(i for i in range(ndims) if i not in contract_dims)
@@ -703,11 +700,6 @@ def compute_shape_with_subchannels(
     # To avoid it, we do feature size redistribution,
     # so feature size has to be divisible by 2:
     if new_size*2 != new_inputs_shape[axis_ind_max_size]:
-      logging.info(
-          f'inputs_shape[axis_ind_max_size]: {inputs_shape[axis_ind_max_size]} '
-          f'is not divisible by sub_channels: {sub_channels} '
-          'so early stopping of dividing into sub-channels'
-      )
       break
 
     if new_size < min_sub_channel_size:
@@ -717,8 +709,6 @@ def compute_shape_with_subchannels(
     new_inputs_shape[feature_axis[0]] *= 2
 
     remainder /= 2
-  logging.info(f'new_inputs_shape after sub-channel split: {new_inputs_shape}')
-  # pylint: enable=logging-fstring-interpolation
   return new_inputs_shape
 
 
