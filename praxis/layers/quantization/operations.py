@@ -306,6 +306,7 @@ def reduce_precision(
     use_symmetric: bool = True,
     use_fp: bool = False,
     add_scale_eps: bool = False,
+    per_channel: bool = False,
 ) -> tuple[JTensor, JTensor, JTensor | None]:
   """Reduce the precision of a tensor.
 
@@ -324,6 +325,7 @@ def reduce_precision(
     use_fp: Use floating point.
     add_scale_eps: Add eps value or replace zero value by 1 to avoid division by
       zero.
+    per_channel: use per-channel clipping optimization.
 
   Returns:
     A tuple of quantized tensor, quantization scale
@@ -343,7 +345,9 @@ def reduce_precision(
   if percentile < 1.0:
     bound = jnp.multiply(bound, percentile)
   elif optimization_on_bound:
-    bound = optimization.get_best_bound(t, bound, min_value, max_value, p_value)
+    bound = optimization.get_best_bound(
+        t, bound, min_value, max_value, p_value, per_channel=per_channel
+    )
 
   scale = bound / scale_bound
 
