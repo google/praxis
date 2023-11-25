@@ -114,6 +114,8 @@ def _set_embedding_softmax_sharding_params_for_transformers(
     (
         embedding_softmax_p.activation_split_dims_mapping.emb_out_split_dims_mapping
     ) = a_bld
+  elif fdl.get_callable(embedding_softmax_p) == embedding_softmax.FullSoftmax:
+    embedding_softmax_p.activation_split_dims_mapping.out = a_blv
   return embedding_softmax_p
 
 
