@@ -373,6 +373,7 @@ def for_transformer(
     # Internal quantization parameters.
     num_bits_act: int | None = None,
     use_symmetric_act: bool | None = None,
+    skip_transformers: list[str] | None = None,
 ):
   """Find and quantize transformer.
 
@@ -426,6 +427,8 @@ def for_transformer(
       valid when weight_quant_only is false.
     use_symmetric_act: Use symmetric activation quantization.Only valid when
       weight_quant_only is false.
+    skip_transformers: If not None, will skip quantizing transformers with the
+      name in this list.
 
   Returns:
     A modifier that quantizes transformers when applied to a config.
@@ -471,6 +474,7 @@ def for_transformer(
               softmax_only=softmax_only,
               use_symmetric_act=use_symmetric_act,
               num_bits_act=num_bits_act,
+              skip_transformers=skip_transformers,
           )
         return task_p
 
@@ -578,6 +582,7 @@ def set_transformer_quantization(
     # Internal quantization parameters.
     num_bits_act: int | None = None,
     use_symmetric_act: bool | None = None,
+    skip_transformers: list[str] | None = None,
 ):
   """Sets quantization params for TransformerLm or TransformerEncoderDecoder.
 
@@ -625,6 +630,8 @@ def set_transformer_quantization(
       valid when weight_quant_only is false.
     use_symmetric_act: Use symmetric activation quantization. Only valid when
       weight_quant_only is false.
+    skip_transformers: If not None, will skip quantizing transformers with the
+      name in this list.
   """
   weight_quantization_params = WeightQuantizationParams(
       precision=num_bits,
@@ -659,6 +666,14 @@ def set_transformer_quantization(
   transformer_tpls = utils.find_target_tpl(
       config, layers.transformers.Transformer
   )
+  if skip_transformers is not None:
+    match_transformers = []
+    for transformer_tpl in transformer_tpls:
+      if transformer_tpl.name in skip_transformers:
+        continue
+      match_transformers.append(transformer_tpl)
+    transformer_tpls = match_transformers
+
   for transformer_tpl in transformer_tpls:
     quantize_transformer_layer_weights(
         transformer_tpl,
