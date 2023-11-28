@@ -983,12 +983,80 @@ class AuxLossStruct:
   weight: JTensor
 
 
+def _is_internal_meta(meta: Any) -> bool:
+  # Internal metadata is invisible to pax, so we check the name instead.
+  return type(meta).__name__ == 'InternalMeta'
+
+
+def _is_meta(x):
+  return isinstance(x, BoxedParam) or _is_internal_meta(x)
+
+
 def maybe_unbox_value(tree):
   """Return the `value` leaf component of the pytree if it is a BoxedParam."""
   return jax.tree_map(
-      lambda bp: bp.value if isinstance(bp, BoxedParam) else bp,
-      tree,
-      is_leaf=lambda x: isinstance(x, BoxedParam))
+      lambda bp: bp.value if _is_meta(bp) else bp, tree, is_leaf=_is_meta
+  )
+
+
+def _internal_meta_to_hparams(meta: Any) -> WeightHParams:
+  # Checks and converts the axis types.
+  ndim = len(meta.value.shape)
+  stacked_ended = False
+  repeat_prefix = []
+  fan_in_axes = []
+  for idx, t in enumerate(meta.axes_types):
+    if t is not None and t.name == 'STACKED':
+      if stacked_ended:
+        raise ValueError(
+            'Incompatible axes types: expect STACKED axes at the beginning,'
+            f' got {meta.axes_types}.'
+        )
+      repeat_prefix.append(meta.value.shape[idx])
+      continue
+
+    stacked_ended = True
+
+    if t is None:
+      pass
+    elif t.name == 'FANIN':
+      fan_in_axes.append(idx - ndim)  # Pax use negative fanin/fanout axes.
+    elif t.name == 'CHANNEL':
+      # TODO(laigd): CHANNEL type is used widely, skipping for now.
+      pass
+    else:
+      raise ValueError(f'Unsupported axis type: {t}.')
+
+  # Creates the WeightHParams.
+  shape = meta.value.shape[len(repeat_prefix) :]
+  param = WeightHParams(shape=shape)
+  param.dtype = meta.value.dtype
+  param.init = WeightInit.Constant(meta.value)  # TODO(laigd): do we need this?
+
+  if meta.mesh is not None:
+    current_mesh = jax.experimental.maps.thread_resources.env.physical_mesh
+    if meta.mesh is not current_mesh:
+      raise ValueError(
+          f'Internal metadata uses a different mesh ({meta.mesh}) than the one'
+          f' currently being used ({current_mesh})'
+      )
+    param.mesh_shape = meta.mesh.devices.shape
+
+  if meta.mesh_axes:
+    repeat_shardings = meta.mesh_axes[: len(repeat_prefix)]
+    non_repeat_shardings = meta.mesh_axes[len(repeat_prefix) :]
+    param.tensor_split_dims_mapping = non_repeat_shardings or None
+    param.repeat_prefix_split_dims_mapping = repeat_shardings or None
+
+  param.repeat_prefix = tuple(repeat_prefix) or None
+  param.fan_in_axes = tuple(fan_in_axes) or None
+
+  # TODO(laigd): handle these.
+  # param.repeat_optimizer_dims_mapping
+  # param.fan_out_axes
+  # param.collections
+
+  return param
 
 
 def unbox_meta(tree):
@@ -1007,11 +1075,11 @@ def unbox_meta(tree):
   def extract_meta(bp):
     if isinstance(bp, BoxedParam):
       return bp.meta
+    elif _is_internal_meta(bp):
+      return _internal_meta_to_hparams(bp)
     return WeightHParams(shape=bp.shape, dtype=bp.dtype)
 
-  return jax.tree_map(
-      extract_meta, tree, is_leaf=lambda x: isinstance(x, BoxedParam)
-  )
+  return jax.tree_map(extract_meta, tree, is_leaf=_is_meta)
 
 
 class SummaryType(enum.Enum):
