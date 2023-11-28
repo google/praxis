@@ -518,6 +518,34 @@ class QuantizationTest(test_utils.TestCase):
           encdec_p.decoder_ngrammer_tpl.cls, qlayer.ngrammer.Ngrammer
       )
 
+  def test_skip_transformer(self):
+    tr_a_p = pax_fiddle.Config(
+        layers.transformers.Transformer,
+        input_dims=12,
+        hidden_dims=4,
+        num_heads=8,
+        name='A',
+    )
+    tr_b_p = pax_fiddle.Config(
+        layers.transformers.Transformer,
+        input_dims=12,
+        hidden_dims=4,
+        num_heads=8,
+        name='B',
+    )
+    tr_stacked = pax_fiddle.Config(
+        layers.transformers.StackedTransformer,
+        num_layers=2,
+        transformer_layer_params_tpl=[tr_a_p, tr_b_p],
+    )
+    quantize.set_transformer_quantization(tr_stacked, skip_transformers=['B'])
+    self.assertEqual(
+        tr_a_p.tr_fflayer_tpl.fflayer_tpl.linear_tpl.cls, qlayer.linears.Linear
+    )
+    self.assertEqual(
+        tr_b_p.tr_fflayer_tpl.fflayer_tpl.linear_tpl.cls, layers.Linear
+    )
+
   def test_diffusion(self):
     class DummyDiffusion(base_layer.BaseLayer):
       conv_tpl: base_layer.BaseLayer = base_layer.template_field(layers.Conv2D)
