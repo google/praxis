@@ -573,13 +573,6 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       weight, _, _ = sr_ste(
           weight, mask, self.sparsity.weight_params.sparse_ste_weight
       )
-    elif (
-        isinstance(self.sparsity.mode, MaterializeMode)
-        and self.sparsity.sparsity_type == SparsityType.CHANNELWISE_PRUNING
-    ):
-      weight = sparsity.apply_sparsity(
-          weight, mask, channelwise_dim=self.sparsity.channelwise_pruning_dim
-      )
     else:
       weight = sparsity.apply_sparsity(weight, mask)
 
