@@ -1442,19 +1442,62 @@ class TransformersTest(test_utils.TestCase):
     segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
     attention_mask = jnp.minimum(attention_mask, segment_mask)
 
+    transformer_layer = instantiate(p)
+    prng_key = jax.random.PRNGKey(seed=123)
+    cross_inputs = None
+    cross_attention_mask = None
     with base_layer.JaxContext.new_context():
-      transformer_layer = instantiate(p)
-      prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = transformer_layer.init(
-          prng_key, inputs, paddings, attention_mask=attention_mask)
-      outputs, _ = transformer_layer.apply(
-          initial_vars, inputs, paddings, attention_mask=attention_mask)
+          prng_key,
+          jnp.zeros_like(inputs),
+          jnp.ones_like(paddings),
+          attention_mask=attention_mask,
+          cross_inputs=cross_inputs,
+          cross_attention_mask=cross_attention_mask,
+          method=transformer_layer.__call__,
+      )
+      _, decoder_state = transformer_layer.apply(
+          initial_vars,
+          jnp.zeros_like(inputs),
+          jnp.ones_like(paddings),
+          attention_mask=attention_mask,
+          cross_inputs=cross_inputs,
+          cross_attention_mask=cross_attention_mask,
+          method=transformer_layer.__call__,
+          mutable=[DECODE_CACHE],
+      )
+      fprop_outputs, _ = transformer_layer.apply(
+          initial_vars,
+          inputs,
+          paddings,
+          attention_mask=attention_mask,
+          cross_inputs=cross_inputs,
+          cross_attention_mask=cross_attention_mask,
+          method=transformer_layer.__call__,
+      )
+      decoder_outputs = jnp.zeros(shape=[seq_len, batch_size, p.input_dims])
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+      for t in range(seq_len):
+        attention_mask_t = attention_mask[:, :, t, :]
+        cross_attention_mask_t = cross_attention_mask
+        encoded, decoder_state = transformer_layer.apply(
+            updated_vars,
+            inputs=inputs[:, t, :],
+            time_step=t,
+            attention_mask=attention_mask_t,
+            cross_attention_mask=cross_attention_mask_t,
+            method=transformer_layer.extend_step,
+            mutable=[DECODE_CACHE],
+        )
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+        decoder_outputs = decoder_outputs.at[t].set(encoded)
+
+    decoder_out_transposed = jnp.transpose(decoder_outputs, [1, 0, 2])
     logging.info('initial_vars in transformer layer = %s',
                  jax.tree_map(lambda x: x.shape, initial_vars))
-
-    np_outputs = test_utils.to_np(outputs)
-    # Plumbing test.
-    self.assertAllClose(np_outputs, np_outputs, atol=1e-5)
+    np_fprop_outputs = test_utils.to_np(fprop_outputs)
+    np_decoder_outputs = test_utils.to_np(decoder_out_transposed)
+    self.assertAllClose(np_fprop_outputs, np_decoder_outputs, atol=1e-5)
 
   @parameterized.parameters(['pre', 'primer_hybrid', 'post', 'post_skip'])
   def test_transformer_cross_attention_layer_norm_policies(self, norm_policy):
@@ -1470,7 +1513,6 @@ class TransformersTest(test_utils.TestCase):
     )
     seq_len = np.random.randint(10, 32)
     batch_size = 10
-    transformer_layer = instantiate(p)
     npy_inputs = np.random.normal(
         1.0, 0.5, [batch_size, seq_len, p.input_dims]).astype('float32')
     inputs = jnp.asarray(npy_inputs)
@@ -1484,28 +1526,76 @@ class TransformersTest(test_utils.TestCase):
     segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
     attention_mask = jnp.minimum(attention_mask, segment_mask)
 
+    transformer_layer = instantiate(p)
+    prng_key = jax.random.PRNGKey(seed=123)
+    cross_seq_len = np.random.randint(10, 32)
+    npy_cross_inputs = np.random.normal(
+        1.0, 0.5, [batch_size, cross_seq_len, p.input_dims]
+    ).astype('float32')
+    cross_inputs = jnp.asarray(npy_cross_inputs)
+    npy_cross_paddings = np.random.randint(
+        0, 1, [batch_size, cross_seq_len]
+    ).astype('float32')
+    cross_paddings = jnp.asarray(npy_cross_paddings)
+    cross_attention_mask = attentions.convert_paddings_to_mask(cross_paddings)
+    source_segment_ids = np.random.randint(0, 3, [batch_size, cross_seq_len])
+    cross_segment_mask = attentions.segment_mask(
+        segment_ids, source_segment_ids, dtype=np.float32
+    )
+    cross_attention_mask = jnp.minimum(cross_attention_mask, cross_segment_mask)
     with base_layer.JaxContext.new_context():
-      prng_key = jax.random.PRNGKey(seed=123)
       initial_vars = transformer_layer.init(
           prng_key,
-          inputs,
-          paddings,
+          jnp.zeros_like(inputs),
+          jnp.ones_like(paddings),
           attention_mask=attention_mask,
-          cross_inputs=inputs,
-          cross_attention_mask=attention_mask)
-      outputs, _ = transformer_layer.apply(
+          cross_inputs=cross_inputs,
+          cross_attention_mask=cross_attention_mask,
+          method=transformer_layer.__call__,
+      )
+      _, decoder_state = transformer_layer.apply(
+          initial_vars,
+          jnp.zeros_like(inputs),
+          jnp.ones_like(paddings),
+          attention_mask=attention_mask,
+          cross_inputs=cross_inputs,
+          cross_attention_mask=cross_attention_mask,
+          method=transformer_layer.__call__,
+          mutable=[DECODE_CACHE],
+      )
+      fprop_outputs, _ = transformer_layer.apply(
           initial_vars,
           inputs,
           paddings,
           attention_mask=attention_mask,
-          cross_inputs=inputs,
-          cross_attention_mask=attention_mask)
+          cross_inputs=cross_inputs,
+          cross_attention_mask=cross_attention_mask,
+          method=transformer_layer.__call__,
+      )
+      decoder_outputs = jnp.zeros(shape=[seq_len, batch_size, p.input_dims])
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+      for t in range(seq_len):
+        attention_mask_t = attention_mask[:, :, t, :]
+        cross_attention_mask_t = cross_attention_mask[:, :, t, :]
+        cross_attention_mask_t = np.expand_dims(cross_attention_mask_t, axis=2)
+        encoded, decoder_state = transformer_layer.apply(
+            updated_vars,
+            inputs=inputs[:, t, :],
+            time_step=t,
+            attention_mask=attention_mask_t,
+            cross_attention_mask=cross_attention_mask_t,
+            method=transformer_layer.extend_step,
+            mutable=[DECODE_CACHE],
+        )
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+        decoder_outputs = decoder_outputs.at[t].set(encoded)
+
+    decoder_out_transposed = jnp.transpose(decoder_outputs, [1, 0, 2])
     logging.info('initial_vars in transformer layer = %s',
                  jax.tree_map(lambda x: x.shape, initial_vars))
-
-    np_outputs = test_utils.to_np(outputs)
-    # Plumbing test.
-    self.assertAllClose(np_outputs, np_outputs, atol=1e-5)
+    np_fprop_outputs = test_utils.to_np(fprop_outputs)
+    np_decoder_outputs = test_utils.to_np(decoder_out_transposed)
+    self.assertAllClose(np_fprop_outputs, np_decoder_outputs, atol=1e-5)
 
   @parameterized.parameters([True, False])
   def test_transformer_relative_bias(self, use_relative_bias):

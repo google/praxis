@@ -1472,6 +1472,8 @@ class Transformer(base_layer.BaseLayer):
       inputs_normalized = self.pre_layer_norm(inputs)
     elif self.norm_policy == 'pre':
       inputs_normalized = self.layer_norm(inputs)
+    else:
+      inputs_normalized = inputs
 
     # Self-attention layer.
     atten_output = self.self_attention.extend_step(
@@ -1489,6 +1491,9 @@ class Transformer(base_layer.BaseLayer):
     atten_output = self.residual_dropout(atten_output)
     atten_output += inputs
 
+    if self.norm_policy == 'post_skip':
+      atten_output = self.layer_norm(atten_output)
+
     # Apply cross attention if applicable
     if self.use_cross_attention and (
         not self.allow_skip_cross_attention or cross_attention_mask is not None
@@ -1498,7 +1503,7 @@ class Transformer(base_layer.BaseLayer):
         atten_output_normalized = self.cross_layer_norm(atten_output)
       elif self.norm_policy == 'primer_hybrid':
         atten_output_normalized = self.pre_cross_layer_norm(atten_output)
-      elif self.norm_policy == 'post':
+      elif self.norm_policy in ('post', 'post_skip'):
         atten_output_normalized = atten_output
 
       cross_atten_output = self.cross_attention.extend_step(
@@ -1517,6 +1522,9 @@ class Transformer(base_layer.BaseLayer):
       # Residual dropout and connection
       cross_atten_output = self.residual_dropout(cross_atten_output)
       atten_output += cross_atten_output
+
+      if self.norm_policy == 'post_skip':
+        atten_output = self.cross_layer_norm(atten_output)
 
     # Apply FFN layer
     output = self.ff_layer.extend_step(atten_output, time_step=time_step)
