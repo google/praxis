@@ -135,7 +135,12 @@ def ctc_loss_with_alignments(
   # logalpha_phi is [T, B, N+1]
   # logalpha_emit is [T, B, N]
   per_seq_loss, logalpha_phi, logalpha_emit = optax.ctc_loss_with_forward_probs(
-      logits, logitpaddings, labels, labelpaddings, blank_id
+      logits,
+      logitpaddings,
+      labels,
+      labelpaddings,
+      blank_id,
+      log_epsilon=logepsilon,
   )
 
   # Now we compute the same computation, but backwards; starting from the
@@ -163,6 +168,7 @@ def ctc_loss_with_alignments(
           reverse_labels,
           labelpaddings,
           blank_id,
+          log_epsilon=logepsilon,
       )
   )
 
@@ -267,3 +273,181 @@ def ctc_loss_with_alignments(
           state_logprobs=state_logprobs,
       ),
   )
+
+
+def is_valid_ctc_seq(logitpaddings, labels, labelpaddings):
+  """Returns for per example sequence if it passes validity check.
+
+  Note that the above `ctc_loss_with_alignments` returns logeps
+  (usually a very large number) if the input length is smaller than
+  the label length plus number of consectutive duplications.
+  However, in that case, we should ignore the loss.
+
+  A validity check is passed if for an example when :
+    input.length >= labels.length + num(consecutive dup label tokens)
+
+  Args:
+    logitpaddings:  [b, t], 0/1 JTensor.
+    labels:         [b, t], int32 JTensor.
+    labelpaddings:  [b, t], 0/1 JTensor.
+
+  Returns:
+    A shape [b] float tensor indicating if each (input, label) pair is valid,
+      with a value of 1.0 indicating valid and 0.0 otherwise.
+  """
+  # [b]
+  label_lengths = jnp.sum(1.0 - labelpaddings, axis=-1)
+  # [b]
+  input_lengths = jnp.sum(1.0 - logitpaddings, axis=-1)
+  # [b, t-1]
+  dups = (1.0 - labelpaddings[:, 1:]) * (labels[:, :-1] == labels[:, 1:])
+  # [b]
+  num_consecutive_dups = jnp.sum(dups, axis=-1)
+  # [b]
+  is_valid = (label_lengths + num_consecutive_dups) <= input_lengths
+  is_valid = is_valid.astype(jnp.float32)
+  return is_valid
+
+
+def frame_alignment_to_label_alignment(
+    frame_alignment: Union[np.ndarray, JTensor],
+    frame_paddings: Union[np.ndarray, JTensor],
+) -> tuple[JTensor, JTensor]:
+  """Converts frame alignment to label alignment.
+
+  Args:
+    frame_alignment: (B, T)-array of integers describing the best label
+      alignment to label, i.e., frame_alignment[b, t] is the index of label that
+      aligned to b-th sequence, t-th frame;
+    frame_paddings: (B, T)-array. Padding array for each frame
+
+  Returns:
+    label_alignment: (B, T)-array, label_alignment[b, n] means the starting
+      frame index of the n-th label in the b-th sequence;
+    label_lengths: (B,)-array. label lengths of each sequence; this is only
+      used to verify `frame_alignment` is a valid input.
+
+  Note: frame_alignment describes how the frame index is mapped to the label
+    index; while label_alignment describes how the label index is mapped to the
+    corresponding starting frames. The latter is more widely used to convert
+    the alignment to timestamp of each output label.
+
+    An example is:
+
+      frame_alignment = [
+          [0, 0, 0, 0, 1, 1, 2, 2, 3, 0, 0],
+          [1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 0]
+      ]
+      frame_paddings = [
+          [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      ]
+
+      This means that there are 9 and 10 frames in 2 sequences respectively.
+      The `frame_alignment` provides the best alignment paths against 3 labels.
+      For the first sequence, the 0st, 1st and 2nd label starts from 4-th,
+      6-th and 8-th frame respectively; for the second sequence, the 0th, 1st,
+      and 2nd label starts from 0-th, 3-rd and 6-th frame respectively, so the
+      `label_alignment` =
+
+      [
+          [4, 6, 8, 0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 3, 6, 0, 0, 0, 0, 0, 0, 0, 0]
+      ]
+      and `label_length` = [3, 3]
+
+      Note that `label_alignment` is padded to length T.
+
+      It is user's responsibility to make sure the input consistency, i.e.,
+      `jnp.max(frame_alignment, axis=-1) == label_lengths`.
+  """
+  # 0. get shape
+  batch_size, max_num_frames = frame_alignment.shape
+  # 1. right shift `frame_alignment`
+  frame_alignment_rshift = jnp.concatenate(
+      [
+          jnp.full([batch_size, 1], fill_value=-1, dtype=jnp.int32),
+          frame_alignment[:, :-1],
+      ],
+      axis=-1,
+  )
+  # 2. get `segment_boundary_mask`, segment_boundary_mask[b, t] means t-th
+  # frame's label is different from its previous label or it is the sequence
+  # start frame.
+  segment_boundary_mask = jnp.not_equal(
+      frame_alignment_rshift, frame_alignment
+  ).astype(jnp.int32)
+  segment_boundary_mask = segment_boundary_mask * (
+      1 - frame_paddings.astype(jnp.int32)
+  )
+  # 3. also note that frame_alignment may contain 0s, which means those frames
+  # are aligned to blank symbols before the 0-th label starts -- we don't need
+  # them.
+  normal_label_emitted = jnp.not_equal(frame_alignment, 0).astype(jnp.int32) * (
+      1 - frame_paddings.astype(jnp.int32)
+  )
+  # now the `segment_boundary_mask`=1 means the corresponding frame has a label
+  # emitted (the first frame in the segment)
+  segment_boundary_mask = segment_boundary_mask * normal_label_emitted
+  label_lengths = jnp.sum(segment_boundary_mask, axis=-1)
+
+  label_alignment = jnp.tile(
+      jnp.arange(max_num_frames, dtype=jnp.int32)[jnp.newaxis, :],
+      jnp.array([batch_size, 1]),
+  )
+  label_alignment = jnp.where(
+      segment_boundary_mask, label_alignment, max_num_frames + 1
+  )
+  label_alignment = jnp.sort(label_alignment, axis=-1)
+  label_alignment = jnp.where(
+      label_alignment == max_num_frames + 1, 0, label_alignment
+  )
+
+  return label_alignment, label_lengths
+
+
+def forced_alignment(
+    logits: Union[np.ndarray, JTensor],
+    logitpaddings: Union[np.ndarray, JTensor],
+    labels: Union[np.ndarray, JTensor],
+    labelpaddings: Union[np.ndarray, JTensor],
+    blank_id: int = 0,
+) -> JTensor:
+  """Given a pair of logits and labels sequence, calculate the best alignment.
+
+  Args:
+    logits: (B, T, K)-Array containing log-probabilities of the target class.
+    logitpaddings: (B, T)-array. Padding array for `logprobs`.
+    labels: (B, N)-array containing reference labels.
+    labelpaddings: (B, N)-array. Paddings for `labels`. Currently `labels` must
+      be right-padded, i.e. each row of labelspaddings must be repetition of
+      zeroes, followed by repetition of ones. On the other hand, `logprobs` can
+      have padded values at any position.
+    blank_id: Id for blank token.
+
+  Returns:
+    label_alignment: (B, N)-array, label_alignment[b, n] means the starting
+      frame index of the n-th label in the b-th sequence; Also note that due
+      to the limit of CTC loss, it is possible that some sequence cannot find
+      alignment, in that case, label_alignment[b, :] = -1.
+  """
+  max_label_lengths = labels.shape[-1]
+  max_input_lengths = logitpaddings.shape[-1]
+  _, aux = ctc_loss_with_alignments(
+      logits, logitpaddings, labels, labelpaddings, blank_id
+  )
+  frame_alignment = aux.alignment
+  label_alignment, _ = frame_alignment_to_label_alignment(
+      frame_alignment=frame_alignment, frame_paddings=logitpaddings
+  )
+  # label_alignment now is a [B, T]-shaped tensor
+  is_valid_seq = is_valid_ctc_seq(
+      logitpaddings=logitpaddings, labels=labels, labelpaddings=labelpaddings
+  )
+  # is_valid_seq is now a [B,]-shaped tensor, broadcast to [B, T]
+  is_valid = jnp.tile(is_valid_seq[:, jnp.newaxis], [1, max_input_lengths])
+  label_alignment = jnp.where(is_valid, label_alignment, -1)
+  # it is possible max_label_lengths > max_input_lengths, but it looks like jax
+  # can hanle this situation.
+  label_alignment = label_alignment[:, :max_label_lengths]
+  return label_alignment

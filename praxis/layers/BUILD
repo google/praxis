@@ -895,6 +895,7 @@ py_strict_test(
         # Implicit jax.experimental.jax2tf dependency.
         # Implicit numpy dependency.
         # Implicit optax dependency.
+        "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis:test_utils",
         # Implicit tensorflow_no_contrib dependency.

@@ -21,6 +21,7 @@ from jax.experimental import jax2tf
 import jax.numpy as jnp
 import numpy as np
 import optax
+from praxis import py_utils
 from praxis import pytypes
 from praxis import test_utils
 from praxis.layers import ctc_objectives
@@ -141,6 +142,89 @@ class CtcTest(test_utils.TestCase):
     self.assertAllClose(jax_per_seq.squeeze(), tf_per_seq.squeeze())
 
 
+class ValidCtcSeqTest(test_utils.TestCase):
+
+  def get_logits_and_labels(self, batchsize, timesteps, labelsteps, nclasses):
+    logits = np.random.randn(batchsize, timesteps, nclasses)
+    logitpaddings = np.zeros((batchsize, timesteps), dtype=np.int32)
+    labels = np.random.randint(
+        1, nclasses, size=(batchsize, labelsteps)
+    ).astype(np.int32)
+    labelpaddings = np.zeros((batchsize, labelsteps), dtype=np.int32)
+    return logits, logitpaddings, labels, labelpaddings
+
+  def test_label_longer_than_input(self):
+    batchsize = 4
+    timesteps = 10
+    labelsteps = 11
+    nclasses = 400
+    # generate logits and labels, which has logits shorter than labels
+    logits, logitpaddings, labels, labelpaddings = self.get_logits_and_labels(
+        batchsize, timesteps, labelsteps, nclasses
+    )
+    per_seq_loss, _ = ctc_objectives.ctc_loss_with_alignments(
+        logits, logitpaddings, labels, labelpaddings, logepsilon=-1e8
+    )
+    print(per_seq_loss)  # they are very close to `logepsilon`
+    per_seq_validality = ctc_objectives.is_valid_ctc_seq(
+        logitpaddings, labels, labelpaddings
+    )
+    self.assertAllClose(per_seq_validality, [0.0] * batchsize)
+
+  def test_label_shorter_than_input(self):
+    batchsize = 4
+    timesteps = 15
+    labelsteps = 10
+    nclasses = 400
+    logits, logitpaddings, _, labelpaddings = self.get_logits_and_labels(
+        batchsize, timesteps, labelsteps, nclasses
+    )
+    # to make sure there is no duplicate in the labels
+    labels = np.tile(np.arange(labelsteps)[np.newaxis, :], [batchsize, 1])
+
+    per_seq_loss, _ = ctc_objectives.ctc_loss_with_alignments(
+        logits, logitpaddings, labels, labelpaddings, logepsilon=-1e6
+    )
+    # per_seq_loss in this case looks normal, it should be around log(400)*15
+    print(per_seq_loss)
+    per_seq_validality = ctc_objectives.is_valid_ctc_seq(
+        logitpaddings, labels, labelpaddings
+    )
+    self.assertAllClose(per_seq_validality, [1.0] * batchsize)
+
+  def test_label_with_duplicates(self):
+    batchsize = 4
+    timesteps = 12
+    labelsteps = 10
+    nclasses = 400
+    logits, logitpaddings, _, labelpaddings = self.get_logits_and_labels(
+        batchsize, timesteps, labelsteps, nclasses
+    )
+    # there are 12 timesteps, and 10 labels. If the consecutive duplicates in
+    # one sequence is larger than 2, then the pair become non-valid
+    labels = np.array(
+        [
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],  # no duplicates
+            [0, 0, 1, 1, 2, 3, 4, 5, 6, 7],  # 2 duplicates
+            [0, 0, 0, 1, 1, 2, 3, 4, 5, 6],  # 3 duplicates -> invalid seq
+            [0, 0, 1, 1, 2, 3, 4, 5, 6, 6],
+            # 2 duplicates, since the last 6 is a padding
+        ],
+        dtype=np.int32,
+    )
+    labelpaddings[3, 9:] = 1
+    per_seq_loss, _ = ctc_objectives.ctc_loss_with_alignments(
+        logits, logitpaddings, labels, labelpaddings, logepsilon=-1e6
+    )
+    # per_seq_loss[0:1] and per_seq_loss[3] should near log(400) * 15, while
+    # per_seq_loss[2] should be around logepsilon
+    print(per_seq_loss)
+    per_seq_validality = ctc_objectives.is_valid_ctc_seq(
+        logitpaddings, labels, labelpaddings
+    )
+    self.assertAllClose(per_seq_validality, [1.0, 1.0, 0.0, 1.0])
+
+
 class CtcAlignmentsTest(test_utils.TestCase):
 
   def test_ctc_loss_with_alignments(self):
@@ -240,6 +324,105 @@ class CtcAlignmentsTest(test_utils.TestCase):
         # You can't skip tokens in the alignment.
         self.assertLessEqual(output, last_output + 1)
         last_output = output
+
+  def test_ctc_frame_alignment_to_label_alignment(self):
+    frame_alignment1 = [0] * 4 + [1] * 2 + [2] * 2 + [3] * 1 + [0] * 2
+    frame_paddings = [0] * 9 + [1] * 2
+    frame_alignment2 = [1] * 3 + [2] * 3 + [3] * 4 + [0] * 1
+    frame_paddings2 = [0] * 10 + [1] * 1
+
+    # seq1 emits 3 symbols, at frame 4 , 6, 8 respectively
+    expected_label_alignment1 = [4, 6, 8] + [0] * (11 - 3)
+    # seq2 emits 3 symbols, at frame 0, 3, 6 respecitvely
+    expected_label_alignment2 = [0, 3, 6] + [0] * (11 - 3)
+    expected_label_alignment = jnp.array(
+        [expected_label_alignment1, expected_label_alignment2], dtype=jnp.int32
+    )
+    expected_label_lengths = jnp.array([3, 3], dtype=jnp.int32)
+
+    frame_alignment = jnp.array(
+        [frame_alignment1, frame_alignment2], dtype=jnp.int32
+    )
+    frame_paddings = jnp.array(
+        [frame_paddings, frame_paddings2], dtype=jnp.int32
+    )
+    label_alignment, label_lengths = (
+        ctc_objectives.frame_alignment_to_label_alignment(
+            frame_alignment, frame_paddings
+        )
+    )
+    self.assertArraysEqual(label_alignment, expected_label_alignment)
+    self.assertArraysEqual(label_lengths, expected_label_lengths)
+
+  def _make_logits(
+      self,
+      batch_size,
+      timesteps,
+      nclasses,
+      labels,
+      labelpaddings,
+      label_emit_pos,
+      blankid,
+  ):
+    logits = np.random.randn(batch_size, timesteps, nclasses).astype(np.float32)
+    logits[:, :, blankid] = 50.0
+
+    for b in range(batch_size):
+      max_lengths = int(np.sum(1.0 - labelpaddings[b]))
+      for t in range(max_lengths):
+        pos = label_emit_pos[b, t]
+        classid = labels[b, t]
+        logits[b, pos, classid] = 100.0  # give it a very high logits
+    return jnp.array(logits)
+
+  def test_forced_alignment(self):
+    timesteps = 10
+    labelsteps = 8
+    nclasses = 400
+    batchsize = 4
+    blankid = 0
+
+    logitpaddings = np.zeros((batchsize, timesteps), dtype=np.float32)
+    labels = np.array(
+        [
+            [101, 102, 103, 0, 0, 0, 0, 0],
+            [104, 105, 0, 0, 0, 0, 0, 0],
+            [106, 0, 0, 0, 0, 0, 0, 0],
+            [107] * 8,
+        ],
+        dtype=np.int32,
+    )
+    label_emit_pos = np.array(
+        [
+            [4, 5, 9, 0, 0, 0, 0, 0],
+            [5, 8, 0, 0, 0, 0, 0, 0],
+            [6, 0, 0, 0, 0, 0, 0, 0],
+            [1, 2, 3, 4, 5, 6, 7, 8],
+        ],
+        dtype=np.int32,
+    )
+    labellengths = jnp.array([3, 2, 1, 8], dtype=jnp.int32)
+    # the last sequence has 8 labels and 8 duplications, but the timestpes is
+    # 10, so it is invalid
+    labelpaddings = py_utils.sequence_paddings(
+        labellengths, maxlen=labelsteps, dtype=jnp.float32
+    )
+    logits = self._make_logits(
+        batchsize,
+        timesteps,
+        nclasses,
+        labels,
+        labelpaddings,
+        label_emit_pos,
+        blankid=blankid,
+    )
+    label_alignment = ctc_objectives.forced_alignment(
+        logits, logitpaddings, labels, labelpaddings, blankid
+    )
+
+    expected_alignment = label_emit_pos
+    expected_alignment[-1, :] = -1
+    self.assertArraysEqual(label_alignment, label_emit_pos)
 
 
 if __name__ == '__main__':
