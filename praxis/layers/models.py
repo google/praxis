@@ -1315,6 +1315,9 @@ class SequenceModel(base_model.BaseModel):
       )
       next_token_sampler = base_layer.instantiate(next_token_sampler_p)
 
+      prefix_lengths = None
+      if 'prefix_lengths' in input_batch:
+        prefix_lengths = input_batch.prefix_lengths
       result = sample_decode.sample_decode(
           self,
           extend_step_fn,
@@ -1323,6 +1326,7 @@ class SequenceModel(base_model.BaseModel):
           next_token_sampler=next_token_sampler,
           prefix_ids=input_batch.tgt.ids,
           prefix_paddings=input_batch.tgt.paddings,
+          prefix_lengths=prefix_lengths,
           seq_len=decoder_params.seqlen,
           fprop_fn=fprop_fn,
           num_samples=decoder_params.num_samples,
@@ -1353,12 +1357,16 @@ class SequenceModel(base_model.BaseModel):
             ),
         )
 
+      prefix_lengths = None
+      if 'prefix_lengths' in input_batch:
+        prefix_lengths = input_batch.prefix_lengths
       result = sample_decode.greedy_decode(
           self,
           extend_step_fn,
           input_batch.tgt.ids,
           input_batch.tgt.paddings,
           decoder_params.seqlen,
+          prefix_lengths=prefix_lengths,
           eos_id=decoder_params.eos_id,
           fprop_fn=fprop_fn,
           transform_state_fn=transform_decode_state_fn,
