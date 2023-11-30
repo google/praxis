@@ -80,8 +80,9 @@ class QuantizationLayer(base_layer.BaseLayer):
       *,
       weight_name: str,
       weight_params: base_layer.WeightHParams,
-      scale_shape: list[int],
       pack_dim: int,
+      scale_shape: list[int] = [],
+      scale_hparams: base_layer.WeightHParams | None = None,
   ):
     """Set up weights, quantizer, steps."""
     if not self.quantization:
@@ -123,6 +124,7 @@ class QuantizationLayer(base_layer.BaseLayer):
           weight_name,
           weight_params,
           scale_shape,
+          scale_hparams=scale_hparams,
           dtype=dtype,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
@@ -157,6 +159,8 @@ class QuantizationLayer(base_layer.BaseLayer):
       pack_dim: int,
       reshape: list[int],
       weight_name: str = 'w',
+      scale_eqn: str | None = None,
+      zp_eqn: str | None = None,
   ) -> JTensor:
     """Quantized Einsum for inference and training."""
 
@@ -220,7 +224,15 @@ class QuantizationLayer(base_layer.BaseLayer):
         # cast to bf16 since bf16 x fp8 is not supported.
         w = w.astype(jnp.bfloat16)
       out = operations.einsum(
-          eqn, x, w, s, zp=zp, scale_act=scale_act, zp_act=zp_act
+          eqn,
+          x,
+          w,
+          s,
+          zp=zp,
+          scale_act=scale_act,
+          zp_act=zp_act,
+          scale_eqn=scale_eqn,
+          zp_eqn=zp_eqn,
       )
 
       return out

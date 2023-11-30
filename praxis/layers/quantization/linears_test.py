@@ -15,6 +15,7 @@
 
 """Tests for quantized linears."""
 
+import copy
 import itertools
 from typing import Any, Sequence
 
@@ -453,6 +454,7 @@ class QuantizeLinearTest(test_utils.TestCase):
             'w': base_layer.BoxedPartitionSpec(
                 meta=jax.sharding.PartitionSpec('mdl', 'data')
             ),
+            # TODO(pax): Replicated scale runs faster on large models.
             'w_quantized_scale': base_layer.BoxedPartitionSpec(
                 meta=jax.sharding.PartitionSpec('data')
             ),
@@ -462,6 +464,7 @@ class QuantizeLinearTest(test_utils.TestCase):
     if not use_symmetric:
       expected_shape[base_layer.PARAMS]['w_quantized_zp'] = (4,)
       expected_types[base_layer.PARAMS]['w_quantized_zp'] = p.dtype
+      # TODO(pax): Replicated zp runs faster on large models.
       expected_pspec['params']['w_quantized_zp'] = (
           base_layer.BoxedPartitionSpec(meta=jax.sharding.PartitionSpec('data'))
       )
@@ -548,6 +551,113 @@ class FactorizedLinearTest(test_utils.TestCase):
       initial_vars = linear.init(prng_key, inputs)
       outputs = linear.apply(initial_vars, inputs)
     self.assertEqual(outputs.shape, (2, 4))
+
+
+class SubChannelLinearTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(12345)
+
+  @parameterized.product(
+      quantization_type=[
+          QuantizationType.PTQ,
+          QuantizationType.FQ,
+      ],
+      num_bits=[4, 8],
+      use_symmetric=[True, False],
+  )
+  def test_quantize(self, quantization_type, num_bits, use_symmetric):
+    batch_dims = 8
+    input_dims = 256
+    block_size = 16
+    output_dims = 128
+    tol = 0.01
+    if num_bits == 4:
+      tol = 0.15
+    # postfix sc := sub-channel
+    # postfix pc := per-channel
+    p_training_sc = pax_fiddle.Config(
+        qlinears.Linear,
+        name='_linear',
+        input_dims=input_dims,
+        output_dims=output_dims,
+        mesh_axis_names=['replica', 'mdl', 'data'],
+        weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
+            wt=['mdl', None],
+        ),
+        quantization=QuantizationParams(
+            quantization_type=quantization_type,
+            mode=QuantizationMode.TRAINING,
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                precision=num_bits,
+                use_int4_packed_weights=True,
+                int4_packed_weights_container_dtype=jnp.int32,
+                block_size=block_size,
+                use_symmetric=use_symmetric,
+            ),
+        ),
+    )
+    p_training_pc = copy.deepcopy(p_training_sc)
+    p_inference_sc = copy.deepcopy(p_training_sc)
+    p_inference_pc = copy.deepcopy(p_training_sc)
+    p_training_pc.quantization.weight_params.block_size = 0
+    p_inference_pc.quantization.weight_params.block_size = 0
+    p_inference_sc.quantization.mode = QuantizationMode.INFERENCE
+    p_inference_pc.quantization.mode = QuantizationMode.INFERENCE
+    training_sc = instantiate(p_training_sc)
+    training_pc = instantiate(p_training_pc)
+    inference_pc = instantiate(p_inference_pc)
+    inference_sc = instantiate(p_inference_sc)
+    inputs = np.random.rand(batch_dims, input_dims).astype(jnp.float32)
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=42)
+      training_vars = training_sc.init(prng_key, inputs)
+      inference_vars_pc, _ = training_pc.apply(
+          training_vars, mutable=[], method=training_pc.quantize_weight
+      )
+      inference_vars_sc, _ = training_sc.apply(
+          training_vars, mutable=[], method=training_sc.quantize_weight
+      )
+      expected_output = training_sc.apply(training_vars, inputs)
+      quantized_output_pc = inference_pc.apply(inference_vars_pc, inputs)
+      quantized_output_sc = inference_sc.apply(inference_vars_sc, inputs)
+      distortion_pc = jnp.sum(jnp.square(quantized_output_pc - expected_output))
+      distortion_sc = jnp.sum(jnp.square(quantized_output_sc - expected_output))
+      training_pspec, _ = training_sc.apply(
+          training_vars,
+          mutable=[],
+          method=training_sc.quantized_partition_specs,
+      )
+      inference_pspec, _ = inference_sc.apply(
+          inference_vars_sc,
+          mutable=[],
+          method=inference_sc.quantized_partition_specs,
+      )
+
+    # Sub-channel should be more accurate than per-channel.
+    self.assertLess(distortion_sc, distortion_pc)
+    self.assertAllClose(
+        expected_output, quantized_output_sc, rtol=tol, atol=tol
+    )
+    expected_pspec = {
+        'params': {
+            'w': base_layer.BoxedPartitionSpec(
+                meta=jax.sharding.PartitionSpec('mdl', None, None)
+            ),
+            'w_quantized_scale': base_layer.BoxedPartitionSpec(
+                meta=jax.sharding.PartitionSpec('mdl', None)
+            ),
+        }
+    }
+    if not use_symmetric:
+      expected_pspec['params']['w_quantized_zp'] = (
+          base_layer.BoxedPartitionSpec(
+              meta=jax.sharding.PartitionSpec('mdl', None)
+          )
+      )
+    self.assertEqual(expected_pspec, training_pspec)
+    self.assertEqual(expected_pspec, inference_pspec)
 
 
 if __name__ == '__main__':
