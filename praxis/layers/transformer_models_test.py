@@ -1479,6 +1479,156 @@ class TransformerModelsTest(test_utils.TestCase):
       # Activations is [batch, seq_len, hidden_dims].
       self.assertSequenceEqual(outputs.activations.shape, [8, 64, 32])
 
+  @parameterized.parameters(*list(itertools.product([True, False], repeat=4)))
+  def test_inference_record_activations_in_xent_output(
+      self,
+      use_rotary_position_emb,
+      share_embedding_and_softmax,
+      use_ngrammer,
+      use_trainable_position_emb_and_index_lookup,
+  ):
+    vocab_size = 8
+    num_layers = 2
+    num_heads = 2
+    dim_per_head = 4
+    ngrammer_params = None
+    if use_ngrammer:
+      ngrammer_params = pax_fiddle.Config(
+          ngrammer.VQNgrammer,
+          ngram_vocab_size=vocab_size**2,
+          ngram_emb_dim=2,
+          num_heads=num_heads,
+          concat_ngrams=True,
+          num_clusters=2,
+          dim_per_head=dim_per_head,
+      )
+    p = pax_fiddle.Config(
+        transformer_models.TransformerLm,
+        name='jax_lm_layer',
+        model_dims=num_heads * dim_per_head,
+        model_type=transformer_models.LanguageModelType.CAUSAL,
+        packed_input=False,
+        ngrammer_tpl=ngrammer_params,
+        vocab_size=vocab_size,
+        record_activations_in_xent_output=True,
+    )
+    stacked_transformer_tpl = p.stacked_transformer_tpl
+    stacked_transformer_tpl.model_dims = num_heads * dim_per_head
+    stacked_transformer_tpl.hidden_dims = 2 * num_heads * dim_per_head
+    stacked_transformer_tpl.num_heads = num_heads
+    stacked_transformer_tpl.num_layers = num_layers
+    if not share_embedding_and_softmax:
+      p.separate_embedding_tpl = pax_fiddle.Config(embedding_softmax.Embedding)
+      p.softmax_tpl = pax_fiddle.Config(embedding_softmax.FullSoftmax)
+    if use_trainable_position_emb_and_index_lookup:
+      p.position_emb_tpl = pax_fiddle.Config(
+          embedding_softmax.TrainablePositionalEmbedding,
+          max_seq_length=20,
+          lookup_style='index',
+      )
+    seq_len = 6
+    batch_size = 3
+    # Turn on dconv as in Primer.
+    params = p.stacked_transformer_tpl.transformer_layer_params_tpl
+    params.tr_atten_tpl.dconv_qkv = False
+    # Rotary position embedding.
+    params = p.stacked_transformer_tpl.transformer_layer_params_tpl
+    params.tr_atten_tpl = pax_fiddle.Config(
+        attentions.DotProductAttentionWithLPB,
+        input_dim=num_heads * dim_per_head,
+        hidden_dim=2 * num_heads * dim_per_head,
+        num_heads=num_heads,
+        dim_per_head=dim_per_head if use_rotary_position_emb else None,
+        atten_logit_cap=20.0,
+        combine_qkv=True,
+        dconv_qkv=False,
+        use_rotary_position_emb=use_rotary_position_emb,
+    )
+    transformer_lm = instantiate(p)
+    npy_inputs = np.random.randint(
+        vocab_size, size=(batch_size, seq_len)
+    ).astype('int32')
+    inputs = jnp.asarray(npy_inputs)
+    input_emb = np.random.uniform(
+        size=(batch_size, seq_len, num_heads * dim_per_head)
+    ).astype(np.float32)
+    segment_mask = attentions.causal_mask(input_emb)
+    segment_mask = jnp.tile(segment_mask, (batch_size, 1, 1, 1))
+    segment_pos = jnp.stack([jnp.arange(seq_len)] * batch_size)
+    context_params = base_layer.JaxContext.HParams(do_eval=True)
+    with base_layer.JaxContext.new_context(hparams=context_params):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = transformer_lm.init(
+          prng_key,
+          inputs,
+          jnp.zeros_like(inputs),
+      )
+      fprop_outputs = transformer_lm.apply(
+          initial_vars,
+          inputs,
+          jnp.zeros_like(inputs),
+          method=transformer_lm.__call__,
+      )
+      activations = fprop_outputs.activations
+      _, decoder_state = transformer_lm.apply(
+          initial_vars,
+          jnp.zeros_like(inputs),
+          jnp.ones_like(inputs),
+          method=transformer_lm.__call__,
+          mutable=[DECODE_CACHE],
+      )
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+      xent_output, _ = transformer_lm.apply(
+          updated_vars,
+          inputs,
+          method=transformer_lm.extend_step,
+          segment_pos=segment_pos,
+          atten_mask=segment_mask,
+          mutable=[DECODE_CACHE],
+      )
+      self.assertAllClose(activations, xent_output.activations)
+
+      # Ensure that calling extend_step 1 step at a time matches fprop.
+      for step_i in range(seq_len):
+        xent_output, decoder_state = transformer_lm.apply(
+            updated_vars,
+            inputs[:, step_i],
+            method=transformer_lm.extend_step,
+            mutable=[DECODE_CACHE],
+        )
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+        self.assertAllClose(activations[:, step_i, :], xent_output.activations)
+
+      _, decoder_state = transformer_lm.apply(
+          initial_vars,
+          jnp.zeros_like(inputs),
+          jnp.ones_like(inputs),
+          method=transformer_lm.__call__,
+          mutable=[DECODE_CACHE],
+      )
+      logits = fprop_outputs.logits
+      updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+
+      # Ensure that calling extend_step k steps at a time matches fprop.
+      k = 2
+      for step_i in range(seq_len // k):
+        xent_output, decoder_state = transformer_lm.apply(
+            updated_vars,
+            inputs[:, step_i * k : (step_i + 1) * k],
+            method=transformer_lm.extend_step,
+            segment_pos=segment_pos[:, step_i * k : (step_i + 1) * k],
+            atten_mask=segment_mask[..., step_i * k : (step_i + 1) * k, :],
+            mutable=[DECODE_CACHE],
+        )
+        updated_vars = py_utils.merge_dict(decoder_state, initial_vars)
+        self.assertAllClose(
+            logits[:, step_i * k : (step_i + 1) * k, :], xent_output.logits
+        )
+        self.assertAllClose(
+            activations[:, step_i * k : (step_i + 1) * k, :],
+            xent_output.activations,
+        )
+
 
 if __name__ == '__main__':
   absltest.main()

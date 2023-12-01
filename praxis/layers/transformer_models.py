@@ -923,9 +923,10 @@ class TransformerLm(base_layer.BaseLayer):
 
     Returns:
       A NestedMap of:
-      - logits: [B, T, D]
-      - log_probs: [B, T, D]
-      - probs: [B, T, D]
+      - logits: [B, T, vocab_size]
+      - log_probs: [B, T, vocab_size]
+      - probs: [B, T, vocab_size]
+      - activations: [B, T, D]
     """
     del segment_pos
     logits = self.softmax.get_logits(inputs=activations, input_ids=input_ids)
@@ -937,6 +938,8 @@ class TransformerLm(base_layer.BaseLayer):
         logits_dtype
     )
     xent_output.probs = jax.nn.softmax(casted_logits).astype(logits_dtype)
+    if self.record_activations_in_xent_output:
+      xent_output.activations = activations
     return xent_output
 
   def extend_step(
