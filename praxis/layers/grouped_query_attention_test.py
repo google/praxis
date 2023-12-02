@@ -55,7 +55,7 @@ class AttentionTest(test_utils.TestCase):
     p = fdl.Config(
         grouped_query_attention.GroupedQueryAttention,
         name='attention',
-        model_dim=d,
+        input_dim=d,
         num_heads=n,
         num_kv_heads=k,
         dim_per_head=h,
@@ -98,7 +98,7 @@ class AttentionTest(test_utils.TestCase):
       updated_vars = py_utils.merge_dict(attention_states, initial_vars)
       decoder_output[t] = encoded
     decoder_output = np.transpose(decoder_output[starting_index:], [1, 0, 2])
-    fprop_out = outputs[:, starting_index:]
+    fprop_out = outputs[0][:, starting_index:]
     self.assertAllClose(fprop_out, decoder_output)
 
   @parameterized.parameters(
@@ -135,7 +135,7 @@ class AttentionTest(test_utils.TestCase):
     p = fdl.Config(
         grouped_query_attention.GroupedQueryAttention,
         name='attention',
-        model_dim=d,
+        input_dim=d,
         num_heads=n,
         num_kv_heads=k,
         dim_per_head=h,
@@ -197,7 +197,7 @@ class AttentionTest(test_utils.TestCase):
     with mesh:
       sharded_outputs = sharded_step(initial_vars, inputs, mask, positions)
 
-    self.assertAllClose(outputs, sharded_outputs)
+    self.assertAllClose(outputs[0], sharded_outputs[0])
 
 
 if __name__ == '__main__':

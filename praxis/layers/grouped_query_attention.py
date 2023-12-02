@@ -15,7 +15,7 @@
 
 """Attention layer that supports different number of q and kv heads."""
 
-from typing import Sequence
+from typing import Sequence, Tuple
 
 from flax import linen as nn
 import jax
@@ -95,7 +95,8 @@ class GroupedQueryAttention(base_layer.BaseLayer):
   KV heads.
 
   Attributes:
-    model_dim: An integer as number of input nodes.
+    input_dim: An integer as number of input nodes.
+    hidden_dim: Unused legacy field. Set "input_dim" instead.
     num_heads: Number of attention heads.
     num_kv_heads: Number of kv heads. num_heads % num_kv_heads = 0.
     dim_per_head: Dimension of each attention head.
@@ -110,7 +111,8 @@ class GroupedQueryAttention(base_layer.BaseLayer):
       computing self attention scores.
   """
 
-  model_dim: int = 0
+  input_dim: int = 0
+  hidden_dim: int = 0
   num_heads: int = 1
   num_kv_heads: int = 1
   dim_per_head: int = 0
@@ -145,11 +147,11 @@ class GroupedQueryAttention(base_layer.BaseLayer):
     bskh: _SplitDimsMapping = None
 
   def setup(self) -> None:
-    d = self.model_dim
+    d = self.input_dim
     n = self.num_heads
     k = self.num_kv_heads
     h = self.dim_per_head
-    assert d, f'model_dim is {d}'
+    assert d, f'input_dim is {d}'
     assert h, f'dim_per_head is {h}'
     assert n % k == 0, f'num_heads {n} % num_kv_heads {k} != 0'
 
@@ -188,7 +190,7 @@ class GroupedQueryAttention(base_layer.BaseLayer):
       key: JTensor,
       value: JTensor,
       atten_mask: JTensor,
-  ) -> JTensor:
+  ) -> Tuple[JTensor, JTensor]:
     """Computes atten context."""
     b, t, n, h = query.shape
     query = query * (self.dim_per_head**-0.5) / self.atten_temp
@@ -223,7 +225,7 @@ class GroupedQueryAttention(base_layer.BaseLayer):
     encoded = jnp.einsum('BKGTS,BSKH->BTKGH', probs, value)
     encoded = jnp.reshape(encoded, (b, t, n, h))
     encoded = checkpoint_name(encoded, 'context')
-    return encoded
+    return encoded, probs
 
   def _maybe_rope(self, x: JTensor, pos: JTensor) -> JTensor:
     if self.rope_min_max_timescales is None:
@@ -277,7 +279,7 @@ class GroupedQueryAttention(base_layer.BaseLayer):
       atten_mask: JTensor,
       query_segment_pos: JTensor,
       key_segment_pos: JTensor,
-  ) -> JTensor:
+  ) -> Tuple[JTensor, JTensor]:
     """Computes the value vector given the current query output.
 
     Args:
@@ -306,13 +308,13 @@ class GroupedQueryAttention(base_layer.BaseLayer):
     k = shd.shard_one_dim(k, None, dim=1)
     v = shd.shard_one_dim(v, None, dim=1)
     atten_mask = shd.shard_one_dim(atten_mask, None, dim=3)
-    encoded = self._atten_context(q, k, v, atten_mask)
+    encoded, atten_probs = self._atten_context(q, k, v, atten_mask)
     sh = self.activation_split_dims_mapping
     encoded = shd.shard(encoded, sh.btnh)
     # Post projection
     encoded = self.post(encoded)
     encoded = shd.shard(encoded, sh.btd)
-    return checkpoint_name(encoded, 'out_proj')
+    return checkpoint_name(encoded, 'out_proj'), atten_probs
 
   @nn.nowrap
   def extend_decode_state(
@@ -384,12 +386,13 @@ class GroupedQueryAttention(base_layer.BaseLayer):
     if not is_cross_attention:
       self.extend_decode_state('key_state', k, time_step)
       self.extend_decode_state('value_state', v, time_step)
-    encoded = self._atten_context(
+    encoded, atten_probs = self._atten_context(
         jnp.expand_dims(q, axis=1),
         self.get_decode_state('key_state'),
         self.get_decode_state('value_state'),
         jnp.expand_dims(atten_mask, axis=2),
     )
+    del atten_probs
     encoded = shd.shard(encoded, self.activation_split_dims_mapping.btnh)
     # Work around b/305051548
     encoded = shd.shard(
