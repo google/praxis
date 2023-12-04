@@ -154,7 +154,7 @@ class UtilsTest(test_utils.TestCase):
     self.assertSequenceEqual(packed.shape, expected_packed_shape)
 
     unpacked = utils.unpack_4bit(packed, pack_dim, x.dtype)
-    self.assertArraysEqual(unpacked, x.astype(packed_dtype))
+    self.assertArraysEqual(unpacked, x)
 
   def test_get_packed_shape(self):
     self.assertSequenceEqual(utils.get_packed_shape((4, 8, 3), 1, 8), (4, 1, 3))

@@ -70,15 +70,41 @@ def _generate_quantization_types_modes() -> Sequence[dict[str, Any]]:
 
 
 def _generate_quantization_types_symmetric() -> Sequence[dict[str, Any]]:
-  keys = ['testcase_name', 'quantization_type', 'use_symmetric']
-  types = [QuantizationType.PTQ, QuantizationType.FQ, QuantizationType.AQT]
+  keys = [
+      'testcase_name',
+      'quantization_type',
+      'use_symmetric',
+      'precision',
+      'use_int4_packed_weights',
+      'int4_packed_weights_container_dtype',
+  ]
+  quantization_type = [
+      QuantizationType.PTQ,
+      QuantizationType.FQ,
+      QuantizationType.AQT,
+  ]
+  precision = [4, 8]
   use_symmetric = [True, False]
+  use_int4_packed_weights = [True, False]
+  int4_packed_weights_container_dtype = [jnp.int32, jnp.int8]
 
   cases = []
-  for case in itertools.product(types, use_symmetric):
+  for case in itertools.product(
+      quantization_type,
+      use_symmetric,
+      precision,
+      use_int4_packed_weights,
+      int4_packed_weights_container_dtype,
+  ):
+    quant_type = case[0].value
     is_symmetric = 'symmetric' if case[1] else 'asymmetric'
-    name = case[0].value + '_' + is_symmetric
-    cases.append([name] + list(case))
+    prec = str(case[2])
+    pack = 'pack' if case[3] else 'no_pack'
+    dtype = str(case[4])
+    name = '_'.join([quant_type, is_symmetric, prec, pack, dtype])
+
+    if not (prec == '8' and pack):  # Packing of int8 is not supported.
+      cases.append([name] + list(case))
 
   return [dict(zip(keys, case)) for case in cases]
 
@@ -240,7 +266,10 @@ class QuantizedLinearTest(test_utils.TestCase):
             quantization_type=QuantizationType.PTQ,
             mode=QuantizationMode.INFERENCE,
             weight_params=quantization_hparams.WeightQuantizationParams(
-                precision=4, use_int4_packed_weights=True
+                precision=4,
+                use_int4_packed_weights=True,
+                dtype=jnp.int8,
+                int4_packed_weights_container_dtype=jnp.int32,
             ),
         ),
     )
@@ -272,7 +301,7 @@ class QuantizedLinearTest(test_utils.TestCase):
       packed_4bit_in_int32 = qutils.pack_4bit(w, 0, packed_dtype=jnp.int32)
       packed_4bit_in_int8 = qutils.pack_4bit(w, 0, packed_dtype=jnp.int8)
       self.assertArraysEqual(
-          w.astype(jnp.int32),
+          w,
           qutils.unpack_4bit(packed_4bit_in_int32, 0, jnp.int8),
       )
       self.assertArraysEqual(
@@ -310,16 +339,16 @@ class QuantizedLinearTest(test_utils.TestCase):
       )
       packed_int32_otuput = packed_int32_apply(packed_int32_vars, inputs)
       packed_int8_otuput = packed_int8_apply(packed_int8_vars, inputs)
-      unpakced_output = unpacked_apply(unpacked_vars, inputs)
+      unpacked_output = unpacked_apply(unpacked_vars, inputs)
       bf16_epsilon = float(jnp.finfo(jnp.bfloat16).eps)
       self.assertAllClose(
-          unpakced_output,
+          unpacked_output,
           packed_int32_otuput,
           rtol=bf16_epsilon,
           atol=bf16_epsilon,
       )
       self.assertAllClose(
-          unpakced_output,
+          unpacked_output,
           packed_int8_otuput,
           rtol=bf16_epsilon,
           atol=bf16_epsilon,
@@ -407,7 +436,14 @@ class QuantizeLinearTest(test_utils.TestCase):
     np.random.seed(123456)
 
   @parameterized.named_parameters(_generate_quantization_types_symmetric())
-  def test_quantize_linear(self, quantization_type, use_symmetric):
+  def test_quantize_linear(
+      self,
+      quantization_type,
+      use_symmetric,
+      precision,
+      use_int4_packed_weights,
+      int4_packed_weights_container_dtype,
+  ):
     p = pax_fiddle.Config(
         qlinears.Linear,
         name='_linear_q',
@@ -419,15 +455,19 @@ class QuantizeLinearTest(test_utils.TestCase):
             quantization_type=quantization_type,
             mode=QuantizationMode.TRAINING,
             weight_params=quantization_hparams.WeightQuantizationParams(
-                use_symmetric=use_symmetric
+                precision=precision,
+                use_symmetric=use_symmetric,
+                use_int4_packed_weights=use_int4_packed_weights,
+                dtype=jnp.int8,
+                int4_packed_weights_container_dtype=int4_packed_weights_container_dtype,
             ),
         ),
     )
-    p.input_dims = 6
-    p.output_dims = 4
+    p.input_dims = 8
+    p.output_dims = 8
     layer = instantiate(p)
 
-    inputs = np.random.normal(1.5, 2.0, [5, 6]).astype(np.float32)
+    inputs = np.random.normal(1.5, 2.0, [3, p.input_dims]).astype(np.float32)
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -443,11 +483,24 @@ class QuantizeLinearTest(test_utils.TestCase):
     shapes = jax.tree_map(lambda x: x.shape, res)
     types = jax.tree_map(lambda x: x.dtype, res)
 
+    pack_reduction = 1
+    if use_int4_packed_weights:
+      if int4_packed_weights_container_dtype == jnp.int32 and precision == 4:
+        pack_reduction = 8
+      elif int4_packed_weights_container_dtype == jnp.int8 and precision == 4:
+        pack_reduction = 2
+
     expected_shape = {
-        base_layer.PARAMS: {'w': (6, 4), 'w_quantized_scale': (4,)}
+        base_layer.PARAMS: {
+            'w': (p.input_dims // pack_reduction, p.output_dims),
+            'w_quantized_scale': (p.output_dims,),
+        }
     }
+    dtype = jnp.int8
+    if use_int4_packed_weights:
+      dtype = int4_packed_weights_container_dtype
     expected_types = {
-        base_layer.PARAMS: {'w': jnp.int8, 'w_quantized_scale': p.dtype}
+        base_layer.PARAMS: {'w': dtype, 'w_quantized_scale': p.dtype}
     }
     expected_pspec = {
         'params': {
@@ -462,7 +515,7 @@ class QuantizeLinearTest(test_utils.TestCase):
     }
 
     if not use_symmetric:
-      expected_shape[base_layer.PARAMS]['w_quantized_zp'] = (4,)
+      expected_shape[base_layer.PARAMS]['w_quantized_zp'] = (p.output_dims,)
       expected_types[base_layer.PARAMS]['w_quantized_zp'] = p.dtype
       # TODO(pax): Replicated zp runs faster on large models.
       expected_pspec['params']['w_quantized_zp'] = (

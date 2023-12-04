@@ -117,6 +117,16 @@ class WeightQuantizationParams:
   use_int4_packed_weights: If True, pack/unpack int4 weights into int32 or int8.
     It is for int4 weights only and has not effect on other type.
     If False int4 weights will be kept in int8.
+    There are several edge cases:
+      1. use_int4_packed_weights=True, precision=4, dtype=jnp.int8
+        It keeps int4 values in int8 type and packs it into int8 or int32
+        depending on int4_packed_weights_container_dtype.
+      2. use_int4_packed_weights=False, precision=4, dtype=jnp.int8
+        It keeps int4 values in int8 type.
+      3. use_int4_packed_weights=False, precision=4, dtype=jnp.int4
+        It will use native jnp.int4 type.
+      4. use_int4_packed_weights=True, precision=4, dtype=jnp.int4
+        it will raise an error.
   int4_packed_weights_container_dtype: Container type for int4 weights:
     int32 to pack 8 int4s, or int8 to pack 2 int4s.
   vn_scale: Scale coefficient for VN quantization. TODO(rybakov) use bits.

@@ -194,7 +194,7 @@ class QuantizationLayer(base_layer.BaseLayer):
       ):
         w = utils.unpack_4bit(
             w, pack_dim, self.quantization.weight_params.dtype
-        ).astype(jnp.int8)
+        )
       if do_static_activation_quantization(self.quantization.act_params):
         # This is for benchmarking only, to get the headroom.
         # TODO(jianlijianli): implement this properly.

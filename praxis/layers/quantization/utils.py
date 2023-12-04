@@ -173,7 +173,7 @@ def pack_4bit(
 def unpack_4bit(
     packed: JTensor, pack_dim: int, original_dtype: jnp.dtype
 ) -> JTensor:
-  """Unpack int32/int8 tensor packed by pack_4bit() to int32/int8 tensor.
+  """Unpack int32/int8 tensor packed by pack_4bit() to uint8/int8 tensor.
 
   Args:
     packed: int32 or int8 tensor that was packed by pack_4bit() function.
@@ -183,11 +183,11 @@ def unpack_4bit(
       function. Must be either int8 or uint8.
 
   Returns:
-    int32/int8 unpack tensor where the pack_dim size is multiplied by 8/2 from
+    uint8/int8 unpack tensor where the pack_dim size is multiplied by 8/2 from
     the packed tensor. Which means that the returned shape is identical to the
     original shape before pack_4bit().
-    Note that original input to pack_4bit() is int8 or uint8, but the unpacked
-    tensor returned by unpack_4bit() is int32/int8 with same values
+    Note that original input to pack_4bit() is int8 or uint8, so the unpacked
+    tensor returned by unpack_4bit() is uint8/int8 with same values
     and shape of the original tensor.
   """
   if packed.dtype != jnp.int32 and packed.dtype != jnp.int8:
@@ -225,11 +225,11 @@ def unpack_4bit(
     # Arithmetic shift is required to repsect negative numbers
     return lax.shift_right_arithmetic(
         rep, jnp.array(packet_type_bits - 4, packed.dtype)
-    )
+    ).astype(original_dtype)
   else:
     return lax.shift_right_logical(
         rep, jnp.array(packet_type_bits - 4, packed.dtype)
-    )
+    ).astype(original_dtype)
 
 
 def dtype_to_bits(dtype: jnp.dtype) -> int:
