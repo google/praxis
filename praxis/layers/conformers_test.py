@@ -35,6 +35,11 @@ to_np = test_utils.to_np
 NestedMap = py_utils.NestedMap
 
 
+def get_padding_from_length(batch_size, seq_len, length):
+  idx = np.tile(np.arange(seq_len), [batch_size, 1])
+  return (idx >= np.expand_dims(length, -1)).astype('float32')
+
+
 class ConformerTest(test_utils.TestCase):
 
   @parameterized.parameters(
@@ -73,12 +78,8 @@ class ConformerTest(test_utils.TestCase):
     ).astype('float32')
     inputs = jnp.asarray(npy_inputs)
 
-    def get_padding_from_length(length):
-      idx = np.tile(np.arange(seq_len), [batch_size, 1])
-      return (idx >= np.expand_dims(length, -1)).astype('float32')
-
     length = np.random.randint(seq_len // 2, seq_len, (batch_size,))
-    npy_paddings = get_padding_from_length(length)
+    npy_paddings = get_padding_from_length(batch_size, seq_len, length)
     paddings = jnp.asarray(npy_paddings)
 
     context_p = base_layer.JaxContext.HParams(do_eval=True)
@@ -174,14 +175,12 @@ class ConformerTest(test_utils.TestCase):
         size=[target_batch_size, source_max_length, mdl_dim]
     ).astype(np.float32)
 
-    def get_padding_from_length(length):
-      idx = np.tile(np.arange(source_max_length), [target_batch_size, 1])
-      return np.asarray(idx >= np.expand_dims(length, -1)).astype('float32')
-
     length = np.random.randint(
         source_max_length // 2, source_max_length, (target_batch_size,)
     )
-    paddings = get_padding_from_length(length)
+    paddings = get_padding_from_length(
+        target_batch_size, source_max_length, length
+    )
 
     # Convert paddings to atten_mask:
     atten_mask_padding = attentions.convert_paddings_to_mask(
@@ -202,7 +201,7 @@ class ConformerTest(test_utils.TestCase):
     local_layer = instantiate(local_layer_p)
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
-      prng_key, init_key = jax.random.split(prng_key)
+      _, init_key = jax.random.split(prng_key)
       initial_vars = global_layer.init(
           init_key, query_vec, key_vec, value_vec, atten_mask_padding
       )
@@ -282,14 +281,12 @@ class ConformerTest(test_utils.TestCase):
         size=[target_batch_size, source_max_length, mdl_dim]
     ).astype(np.float32)
 
-    def get_padding_from_length(length):
-      idx = np.tile(np.arange(source_max_length), [target_batch_size, 1])
-      return np.asarray(idx >= np.expand_dims(length, -1)).astype('float32')
-
     length = np.random.randint(
         source_max_length // 2, source_max_length, (target_batch_size,)
     )
-    paddings = get_padding_from_length(length)
+    paddings = get_padding_from_length(
+        target_batch_size, source_max_length, length
+    )
 
     # Convert paddings to atten_mask for LocalSelfAttentionXL:
     atten_mask_padding = attentions.convert_paddings_to_mask(
@@ -315,7 +312,7 @@ class ConformerTest(test_utils.TestCase):
     local_layer = instantiate(local_layer_p)
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
-      prng_key, init_key = jax.random.split(prng_key)
+      _, init_key = jax.random.split(prng_key)
       initial_vars = global_layer.init(
           init_key, query_vec, key_vec, value_vec, atten_mask_padding
       )

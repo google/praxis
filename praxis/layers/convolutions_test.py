@@ -95,7 +95,7 @@ class ConvolutionsTest(test_utils.TestCase):
       self,
       stride_time_dim,
       filter_time_dim,
-      diltion_time_dim,
+      dilation_time_dim,
   ):
     filter_shape = (filter_time_dim, 1, 1, 1)
     p = pax_fiddle.Config(
@@ -103,7 +103,7 @@ class ConvolutionsTest(test_utils.TestCase):
         name='jax_conv2d',
         filter_shape=filter_shape,
         filter_stride=(stride_time_dim, 1),
-        dilations=(diltion_time_dim, 1),
+        dilations=(dilation_time_dim, 1),
         is_causal=True,
         tf_equivalent_padding=True,
         padding='SAME',
@@ -568,7 +568,7 @@ class ConvolutionsTest(test_utils.TestCase):
     )
     layer = instantiate(test_layer_p)
     prng_key = jax.random.PRNGKey(seed=123)
-    prng_key, init_key = jax.random.split(prng_key)
+    _, init_key = jax.random.split(prng_key)
 
     inputs = np.random.normal(size=[1, 8, 4]).astype(np.float32)
     initial_vars = layer.init(init_key, inputs)
