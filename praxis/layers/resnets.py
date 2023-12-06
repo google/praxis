@@ -90,8 +90,9 @@ class ResNetBlock(base_layer.BaseLayer):
     )
 
     # conv_out, expand back to hidden dim
-    last_bn_tpl = self.conv_params.batch_norm_tpl
+    kwargs = {}
     if self.zero_init_residual:
+      last_bn_tpl = self.conv_params.batch_norm_tpl
       if last_bn_tpl is None:
         # This can be implemented by zero-init the weights of conv layer.
         raise NotImplementedError(
@@ -102,13 +103,16 @@ class ResNetBlock(base_layer.BaseLayer):
                 -1.0 if self.zero_init_residual else 0.0
             )
         )
+      kwargs['batch_norm_tpl'] = last_bn_tpl
+
+    # This allows the use of layer norm in conv_params.
     body.append(
         self.conv_params.clone().set(
             name='conv_out',
             filter_shape=(1, 1, self.output_dim // 4, self.output_dim),
             filter_stride=(1, 1),
             activation_tpl=pax_fiddle.Config(activations.Identity),
-            batch_norm_tpl=last_bn_tpl,
+            **kwargs,
         )
     )
     self.create_children('body', body)
@@ -305,6 +309,8 @@ class ResNet(base_layer.BaseLayer):
       convolution.
     output_spatial_pooling_params: A layer params template specifying spatial
       pooling before output. If None, spatial pooling is not added.
+    return_block_features: Return per level features.
+    entry_max_pool: Apply max pooling after entry layer.
   """
   # pylint: disable=g-long-lambda
   conv_params: LayerTpl = pax_fiddle.fdl_field(
@@ -322,6 +328,7 @@ class ResNet(base_layer.BaseLayer):
       default_factory=_res_net_output_spatial_pooling_params_default
   )
   return_block_features: bool = False
+  entry_max_pool: bool = True
 
   @classmethod
   def HParamsResNet5(cls) -> LayerTpl:
@@ -449,7 +456,8 @@ class ResNet(base_layer.BaseLayer):
     outputs = self.entryflow_conv(inputs)
 
     # Apply the entryflow maxpooling layer.
-    outputs, _ = self.entryflow_maxpool(outputs)
+    if self.entry_max_pool:
+      outputs, _ = self.entryflow_maxpool(outputs)
 
     # Apply the ResNet blocks.
     for stage_id, num_blocks in enumerate(self.blocks):
