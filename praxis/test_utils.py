@@ -21,6 +21,7 @@ import zlib
 
 from absl import flags
 from absl.testing import parameterized
+from etils import epath
 import jax
 from jax import numpy as jnp
 import numpy as np
@@ -518,7 +519,7 @@ def replace_jax_conformer_layer_vars_to_tf(
   return tf_initial_vars
 
 
-def get_tfevent_log_dirs(root: str) -> list[str]:
+def get_tfevent_log_dirs(root: epath.PathLike) -> list[str]:
   """Return list of log dirs relative to `root` that contain tfevent files."""
   log_dir_names = []
   for dirname, subdir, fnames in tf.io.gfile.walk(root):

@@ -348,6 +348,7 @@ pytype_strict_library(
         ":pytypes",
         # Implicit absl.flags dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit etils dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
         # Implicit tensorflow_no_contrib dependency.
