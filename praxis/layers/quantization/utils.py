@@ -27,6 +27,16 @@ from praxis import pax_fiddle
 JTensor = jnp.ndarray
 
 INT4_TYPES = [jnp.int4, jnp.uint4]
+INT_TYPES = [
+    jnp.int4,
+    jnp.uint4,
+    jnp.int8,
+    jnp.uint8,
+    jnp.int16,
+    jnp.uint16,
+    jnp.int32,
+    jnp.uint32,
+]
 
 
 def einsum_eqn_to_dimension_numbers(
@@ -236,6 +246,53 @@ def dtype_to_bits(dtype: jnp.dtype) -> int:
   dtype = jnp.dtype(dtype) if not isinstance(dtype, jnp.dtype) else dtype
   # dtype.itemsize does not reflect int4 being smaller than int8.
   return 4 if dtype in INT4_TYPES else dtype.itemsize * 8
+
+
+def bits_to_dtype(bits: int, signed: bool = True) -> jnp.dtype:
+  """Returns the smallest int dtype that can represent a specific precision."""
+  assert 1 <= bits <= 32, f'{bits=} must be between 1 and 32'
+  if bits <= 4:
+    return jnp.int4 if signed else jnp.uint4
+  elif bits <= 8:
+    return jnp.int8 if signed else jnp.uint8
+  elif bits <= 16:
+    return jnp.int16 if signed else jnp.uint16
+  else:
+    return jnp.int32 if signed else jnp.uint32
+
+
+def get_smallest_matching_dtype(lhs: JTensor, rhs: JTensor) -> jnp.dtype:
+  """Returns the smallest integer dtype that can represent both lhs and rhs."""
+  if lhs.dtype not in INT_TYPES:
+    raise ValueError(f'{lhs.dtype=} is not an int type: {INT_TYPES} ')
+  if rhs.dtype not in INT_TYPES:
+    raise ValueError(f'{rhs.dtype=} is not an int type: {INT_TYPES} ')
+
+  lhs_signed = jnp.issubdtype(lhs.dtype, jnp.signedinteger)
+  rhs_signed = jnp.issubdtype(rhs.dtype, jnp.signedinteger)
+
+  if (lhs_signed and rhs_signed) or (not lhs_signed and not rhs_signed):
+    # If the signedness matches, simply use the larger dtype.
+    lhs_bits = dtype_to_bits(lhs.dtype)
+    rhs_bits = dtype_to_bits(rhs.dtype)
+    return lhs.dtype if lhs_bits >= rhs_bits else rhs.dtype
+  else:
+    signed = rhs if rhs_signed else lhs
+    unsigned = lhs if rhs_signed else rhs
+    signed_bits = dtype_to_bits(signed.dtype)
+    unsigned_bits = dtype_to_bits(unsigned.dtype)
+    if unsigned_bits < signed_bits:
+      # If the unsigned dtype is smaller, it fits in the larger signed dtype.
+      return signed.dtype
+    else:
+      # If the unsigned dtype is as big or larger than the signed dtype, then
+      # represent both with the next largest signed dtype.
+      if unsigned_bits < 32:
+        return bits_to_dtype(unsigned_bits * 2, signed=True)
+      else:
+        # Since i64 support is usually disabled, just match XLA's behavior of
+        # truncating ui32 to i32.
+        return jnp.int32
 
 
 def get_packed_shape(shape: Sequence[int], pack_dim: int, packing_factor: int):

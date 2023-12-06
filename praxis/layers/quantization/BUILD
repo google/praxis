@@ -574,6 +574,7 @@ py_strict_test(
         ":operations",
         ":quantization_hparams",
         ":quantizer",
+        ":utils",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit upb python proto dependency.

@@ -29,6 +29,7 @@ from praxis import test_utils
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
+from praxis.layers.quantization import utils
 
 
 class QuantizationUtilsTest(test_utils.TestCase):
@@ -85,16 +86,45 @@ class QuantizationUtilsTest(test_utils.TestCase):
     expected = jnp.ones([K, A, B, N, H], dtype=jnp.bfloat16) * D
     self.assertArraysEqual(ret, expected)
 
-  @parameterized.parameters(jnp.int8, jnp.uint8)
-  def test_int_einsum(self, dtype):
-    # pylint: disable=invalid-name
-    A, D, H = 6, 5, 2
+  def test_native_int4_einsum_export(self):
+    A, D, H = 6, 5, 2  # pylint: disable=invalid-name
+    # jnp.zeros currently does not support dtype=jnp.int4
+    x = jnp.zeros([A, D], dtype=jnp.int8).astype(jnp.int4)
+    w = jnp.zeros([D, H], dtype=jnp.int8).astype(jnp.int4)
+    # (u)int4 does not support multiplication.
+    s = jnp.ones([H], dtype=jnp.int8)
 
-    x = jnp.ones([A, D], dtype=dtype)
-    w = jnp.ones([D, H], dtype=dtype)
-    s = jnp.ones([H], dtype=dtype)
+    # XLA CPU/GPU currently does not support int4 operations other than convert,
+    # so we validate that the exported compiler IR contains a dot_general with
+    # int4 operands and int32 accumulation instead.
+    wrapped_einsum = lambda x, w, s: operations.einsum('AD,DH->AH', x, w, s)
+    ir = jax.jit(wrapped_einsum).lower(x, w, s).compiler_ir('stablehlo')
+    self.assertRegex(str(ir), r'.*dot_general.*i4.*i4.*i32.*')
+
+  @parameterized.product(
+      x_dtype=[jnp.int4, jnp.uint4, jnp.int8, jnp.uint8, jnp.int16, jnp.uint16],
+      w_dtype=[jnp.int4, jnp.int8, jnp.int16],
+  )
+  def test_mixed_precision_int_einsum(self, x_dtype, w_dtype):
+    # TODO(b/183567451): Remove (u)int4 -> (u)int8 cast once XLA CPU supports
+    # int4 dtypes in dot_general.
+    if x_dtype in utils.INT4_TYPES:
+      x_dtype = utils.bits_to_dtype(
+          8, signed=jnp.issubdtype(x_dtype, jnp.signedinteger)
+      )
+    if w_dtype in utils.INT4_TYPES:
+      w_dtype = utils.bits_to_dtype(
+          8, signed=jnp.issubdtype(w_dtype, jnp.signedinteger)
+      )
+
+    A, D, H = 6, 5, 2  # pylint: disable=invalid-name
+    x = jnp.ones([A, D], dtype=x_dtype)
+    w = jnp.ones([D, H], dtype=w_dtype)
+    # (u)int4 does not support multiplication.
+    s = jnp.ones([H], dtype=jnp.int8)
 
     ret = operations.einsum('AD,DH->AH', x, w, s)
+    # Tests that int32 accumulation is used.
     expected = jnp.ones([A, H], dtype=jnp.int32) * D
     self.assertArraysEqual(ret, expected)
 

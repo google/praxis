@@ -30,9 +30,8 @@ from praxis.layers.quantization import utils
 JTensor = pytypes.JTensor
 PRNGKey = pytypes.PRNGKey
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
-
-QUANTIZED_TYPES = [jnp.int8, jnp.uint8]
-INT_TYPES = [jnp.int8, jnp.uint8, jnp.int16, jnp.uint16, jnp.int32, jnp.uint32]
+INT4_TYPES = utils.INT4_TYPES
+INT_TYPES = utils.INT_TYPES
 
 
 def _get_expand_dims_rhs(eqn: str) -> list[int]:
@@ -143,6 +142,13 @@ def dot_general_int(lhs, rhs, dimension_numbers):
 
   def _dot_general_int(ops):
     lhs_, rhs_ = ops
+    if lhs_.dtype != rhs_.dtype:
+      # XLA will automatically cast operands with non-matching dtypes up to
+      # int32, which is often suboptimal.
+      dtype = utils.get_smallest_matching_dtype(lhs_, rhs_)
+      lhs_ = lhs_.astype(dtype)
+      rhs_ = rhs_.astype(dtype)
+
     return lax.dot_general(
         lhs_,
         rhs_,
@@ -150,9 +156,9 @@ def dot_general_int(lhs, rhs, dimension_numbers):
         preferred_element_type=jnp.int32)
 
   if lhs.dtype not in INT_TYPES:
-    raise ValueError(f'lhs.dtype: {lhs.dtype} is not int type: {INT_TYPES} ')
+    raise ValueError(f'{lhs.dtype=} is not an int type: {INT_TYPES} ')
   if rhs.dtype not in INT_TYPES:
-    raise ValueError(f'rhs.dtype: {rhs.dtype} is not int type: {INT_TYPES} ')
+    raise ValueError(f'{rhs.dtype=} is not an int type: {INT_TYPES} ')
   return _dot_general_int((lhs, rhs))
 
 
@@ -231,17 +237,13 @@ def einsum(
       dequantized_w = dequantized_w - zp
     return jnp.einsum(eqn, dequantized_x, dequantized_w)
 
-  use_int_dot_general = (
-      x.dtype in QUANTIZED_TYPES and w.dtype in QUANTIZED_TYPES
-  )
-
   if (
       jax.dtypes.scalar_type_of(w.dtype) == float
       and jnp.finfo(w.dtype).bits == 8
   ):
     w = w.astype(jnp.bfloat16)
 
-  if use_int_dot_general:
+  if x.dtype in INT_TYPES and w.dtype in INT_TYPES:
     dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(
         eqn_normalized
     )
@@ -253,10 +255,9 @@ def einsum(
     if perm is not None:
       ret = lax.transpose(ret, perm)
   else:
-    # TODO(b/283692107): jnp.einsum of int4 is currently not supported.
-    # Remove the following dtype casting of w once it's resolved.
-    if w.dtype == jnp.int4:
-      w = w.astype(jnp.int8)
+    # jnp.einsum does not support implicit promotion of (u)int4 types.
+    w = w.astype(jnp.int8) if w.dtype in INT4_TYPES else w
+    x = x.astype(jnp.int8) if x.dtype in INT4_TYPES else x
     ret = jnp.einsum(eqn_normalized, x, w)
 
   if scale_act is not None:
