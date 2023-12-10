@@ -396,7 +396,7 @@ def convert_fully_replicated_array_to_pmap_array(arr):
   assert isinstance(arr, jax.Array)
   with jax.transfer_guard('disallow'):
     local_shape = (jax.local_device_count(),) + arr.shape
-    device_buffers = arr.device_buffers  # pytype: disable=attribute-error
+    device_buffers = [shard.data for shard in arr.addressable_shards]
     devices = np.array([d.device() for d in device_buffers])
 
     s = jax.sharding.PmapSharding.default(
@@ -416,7 +416,7 @@ def convert_host_local_array_to_global_array(arr):
     A global array similar to GDA.
   """
   # input `arr` is fully replicated, so it's shape is the global shape.
-  global_shape = arr.device_buffers[0].shape
+  global_shape = arr.addressable_data(0).shape
   # Create a 1D mesh to create fully replicated global jax.Array.
   mesh = jax.sharding.Mesh(np.array(jax.devices()), axis_names=('x',))
   partition_spec = (
@@ -425,7 +425,10 @@ def convert_host_local_array_to_global_array(arr):
       else jax.sharding.PartitionSpec()
   )
   # pmap-produced Array has a "scrambled" device order.
-  dbs = sorted(arr.device_buffers, key=lambda x: x.device().id)
+  dbs = sorted(
+      [shard.data for shard in arr.addressable_shards],
+      key=lambda x: x.device().id,
+  )
   return jax.make_array_from_single_device_arrays(
       global_shape, jax.sharding.NamedSharding(mesh, partition_spec), dbs
   )
