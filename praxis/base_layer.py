@@ -1972,9 +1972,10 @@ class BaseLayer(nn.Module):
       method=None,
       extra_mutable_list=None,
       self_reflect_configs=False,
+      capture_intermediates: bool | Callable[[nn.Module, str], bool] = False,
       **kwargs,
   ) -> dict[str, NestedWeightHParams]:
-    # Dummy key is enough because we eval_shape only.
+    # The fixed rng key is good, because we eval_shape only.
     k = jax.random.PRNGKey(1)
     rngs = {PARAMS: k, RANDOM: k, NON_PAX_RNG_KEY: k}
     # Only PARAMS and NON_TRAINABLE have BoxedParam.
@@ -1986,7 +1987,10 @@ class BaseLayer(nn.Module):
     if extra_mutable_list is not None:
       mutable_list = [*mutable_list, *extra_mutable_list]
     init_fn = functools.partial(
-        super().init, mutable=mutable_list, method=method
+        super().init,
+        mutable=mutable_list,
+        method=method,
+        capture_intermediates=capture_intermediates,
     )
     # Disable logging to reduce logspam.
     with py_utils.logging_verbosity_level('FATAL'):
@@ -2009,12 +2013,19 @@ class BaseLayer(nn.Module):
   # the unpadded variable shapes and SPMD annotations for
   # PARAMS and NON_TRAINABLE collections.
   def abstract_init_with_metadata(
-      self, *args, do_eval=False, method=None, extra_mutable_list=None, **kwargs
+      self,
+      *args,
+      do_eval=False,
+      method=None,
+      extra_mutable_list=None,
+      capture_intermediates: bool | Callable[[nn.Module, str], bool] = False,
+      **kwargs,
   ) -> NestedWeightHParams:
     variables_abstract = self._abstract_init(
         *args,
         do_eval=do_eval,
         method=method,
+        capture_intermediates=capture_intermediates,
         extra_mutable_list=extra_mutable_list,
         **kwargs,
     )
@@ -2027,7 +2038,13 @@ class BaseLayer(nn.Module):
   # A systematic self-reflection of the model structure, with configs for the
   # nested tree of BaseLayers.
   def abstract_init_with_mdl_config(
-      self, *args, do_eval=False, method=None, extra_mutable_list=None, **kwargs
+      self,
+      *args,
+      do_eval=False,
+      method=None,
+      extra_mutable_list=None,
+      capture_intermediates: bool | Callable[[nn.Module, str], bool] = False,
+      **kwargs,
   ) -> Nested[pax_fiddle.Config[BaseLayer]]:
     variables_abstract = self._abstract_init(
         *args,
@@ -2035,6 +2052,7 @@ class BaseLayer(nn.Module):
         method=method,
         extra_mutable_list=extra_mutable_list,
         self_reflect_configs=True,
+        capture_intermediates=capture_intermediates,
         **kwargs,
     )
     hyper_params = jax.tree_map(
