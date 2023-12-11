@@ -44,6 +44,12 @@ class UtilsTest(test_utils.TestCase):
           lhs_shape=(1, 2, 3, 4),
           rhs_shape=(4, 3, 1, 5),
       ),
+      dict(
+          # Tests einsum with non-matching contraction dimension orders.
+          eqn='ABCD,DC->AB',
+          lhs_shape=(1, 2, 3, 4),
+          rhs_shape=(4, 3),
+      ),
   )
   def test_einsum_equation_conversion(self, eqn, lhs_shape, rhs_shape):
     """Validate that lax.dot_general produces the same output as jnp.einsum."""

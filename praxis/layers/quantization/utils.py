@@ -90,10 +90,11 @@ def einsum_eqn_to_dimension_numbers(
         'Contraction dims must be present in both lhs and rhs, but got '
         f'{lhs_contraction_names} and {rhs_contraction_names}'
     )
-  contraction_names = lhs_contraction_names
+  # The order of the contraction dims does not matter to dot_general so long as
+  # it is the same for both arguments, but ensuring that the order is
+  # deterministic allows for easier validation of exported model artifacts.
+  contraction_names = sorted(lhs_contraction_names)
 
-  # The order of the contraction dims does not matter so long as it is the same
-  # for both arguments.
   lhs_contraction_dims = [lhs_names.index(name) for name in contraction_names]
   rhs_contraction_dims = [rhs_names.index(name) for name in contraction_names]
   dimension_numbers = (
