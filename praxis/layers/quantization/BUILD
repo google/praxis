@@ -489,7 +489,6 @@ pytype_strict_library(
         ":operations",
         ":quantization_hparams",
         ":quantizer",
-        ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
@@ -637,6 +636,7 @@ pytype_strict_library(
         ":utils",
         # Internal dependency for internal quantization support.
         # Implicit absl.logging dependency.
+        # Implicit flax.core dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",

@@ -48,7 +48,6 @@ class Conv2D(convolutions.Conv2D, quantizer.QuantizationLayer):  # pytype: disab
         weight_name='w',
         weight_params=pc,
         scale_shape=[self.filter_shape[-1]],
-        pack_dim=self._PACK_4BIT_DIM,
     )
 
     if self.bias:
@@ -104,7 +103,7 @@ class Conv2D(convolutions.Conv2D, quantizer.QuantizationLayer):  # pytype: disab
     # https://github.com/google/jax/blob/main/jax/_src/lax/lax.py#L622
     dimension_numbers = ('NHWC', 'HWIO', 'NHWC')
     outputs = quantizer.quantized_conv(
-        self, inputs, padding, dimension_numbers, feature_group_count, 0
+        self, inputs, padding, dimension_numbers, feature_group_count
     )
     outputs = self._shard_bhwc(outputs)
     if self.bias:

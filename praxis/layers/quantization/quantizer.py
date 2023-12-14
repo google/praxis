@@ -21,6 +21,7 @@ import itertools
 from typing import Sequence
 
 from absl import logging
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
 from praxis import base_layer
@@ -56,6 +57,7 @@ class QuantizationLayer(base_layer.BaseLayer):
   """
 
   quantization: QuantizationParams | None = instance_field(QuantizationParams)
+  _PACK_4BIT_DIM = None
 
   def create_tensor_quantizers(self):
     weight_params = (
@@ -80,7 +82,6 @@ class QuantizationLayer(base_layer.BaseLayer):
       *,
       weight_name: str,
       weight_params: base_layer.WeightHParams,
-      pack_dim: int,
       scale_shape: list[int] = [],
       scale_hparams: base_layer.WeightHParams | None = None,
   ):
@@ -101,6 +102,10 @@ class QuantizationLayer(base_layer.BaseLayer):
           precision == 4
           and self.quantization.weight_params.use_int4_packed_weights
       ):
+        assert self._PACK_4BIT_DIM is not None, (
+            '_PACK_4BIT_DIM must be set on the QuantizationLayer subclass if '
+            'use_int4_packed_weights is True.'
+        )
         # For 4bit pack/unpack.
         # TODO(jianlijianli): Replace this with proper 4bit type.
         # Type to store int4 values, int32 or int8 are supported.
@@ -109,7 +114,9 @@ class QuantizationLayer(base_layer.BaseLayer):
         )
         packing_factor = 2 if dtype == jnp.int8 else 8
         weight_params.shape = utils.get_packed_shape(
-            weight_params.shape, pack_dim, packing_factor=packing_factor
+            weight_params.shape,
+            self._PACK_4BIT_DIM,
+            packing_factor=packing_factor,
         )
       if do_static_activation_quantization(self.quantization.act_params):
         raise NotImplementedError(
@@ -150,13 +157,34 @@ class QuantizationLayer(base_layer.BaseLayer):
       )
       self.create_variable('step_count', step_count_pc, trainable=False)
 
+  @nn.nowrap
+  def get_quantized_weight(
+      self, name: str, use_symmetric: bool = True
+  ) -> tuple[JTensor, JTensor, JTensor | None]:
+    q_w, q_s, zp = super().get_quantized_weight(name, use_symmetric)
+    assert self.quantization is not None, (
+        'get_quantized_weight is called during serving for quantized'
+        ' model, please set quantized config for the model.'
+    )
+    if (
+        self.quantization.weight_params.precision == 4
+        and self.quantization.weight_params.use_int4_packed_weights
+    ):
+      assert self._PACK_4BIT_DIM is not None, (
+          '_PACK_4BIT_DIM must be set on the QuantizationLayer subclass if '
+          'use_int4_packed_weights is True.'
+      )
+      q_w = utils.unpack_4bit(
+          q_w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
+      )
+    return q_w, q_s, zp
+
   def quantized_einsum(
       self,
       *,
       eqn: str,
       x: JTensor,
       w: JTensor,
-      pack_dim: int,
       reshape: list[int],
       weight_name: str = 'w',
       scale_eqn: str | None = None,
@@ -188,13 +216,6 @@ class QuantizationLayer(base_layer.BaseLayer):
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
       scale_act, zp_act = None, None
-      if (
-          self.quantization.weight_params.precision == 4
-          and self.quantization.weight_params.use_int4_packed_weights
-      ):
-        w = utils.unpack_4bit(
-            w, pack_dim, self.quantization.weight_params.dtype
-        )
       if do_static_activation_quantization(self.quantization.act_params):
         # This is for benchmarking only, to get the headroom.
         # TODO(jianlijianli): implement this properly.
@@ -298,7 +319,6 @@ def quantized_conv(
     padding: str,
     dimension_numbers: tuple[str, ...],
     feature_group_count: int,
-    pack_dim: int,
 ) -> JTensor:
   """Quantized Conv for inference and training.
 
@@ -310,7 +330,6 @@ def quantized_conv(
     padding: The padding dims on input.
     dimension_numbers: The dimension numbers
     feature_group_count: Feature groups
-    pack_dim: Pack dimension for int4 packing.
 
   Returns:
     the convolution output.
@@ -319,11 +338,6 @@ def quantized_conv(
     raise ValueError('Conv supports only symmetric weight quantization.')
   if layer.quantization.mode == QuantizationMode.INFERENCE:
     w, s, _ = layer.get_quantized_weight('w')
-    if (
-        layer.quantization.weight_params.precision == 4
-        and layer.quantization.weight_params.use_int4_packed_weights
-    ):
-      w = utils.unpack_4bit(w, pack_dim, layer.quantization.weight_params.dtype)
     if do_static_activation_quantization(layer.quantization.act_params):
       raise NotImplementedError(
           'Static activation quantization is not supported yet.'

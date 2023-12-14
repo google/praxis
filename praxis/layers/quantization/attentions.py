@@ -86,7 +86,6 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
         weight_name='w',
         weight_params=pc,
         scale_shape=scale_shape,
-        pack_dim=self._PACK_4BIT_DIM,
     )
     self.create_aux_variables('w', pc, scale_shape=scale_shape)
 
@@ -164,7 +163,6 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
         eqn=eqn,
         x=inputs,
         w=w,
-        pack_dim=self._PACK_4BIT_DIM,
         reshape=pc_shape,
     )
 
@@ -336,7 +334,6 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
         weight_name='w',
         weight_params=pc,
         scale_shape=[3] + hd_shape,
-        pack_dim=self._PACK_4BIT_DIM,
     )
     self.create_aux_variables('w', pc)
     if self.use_bias:
@@ -406,13 +403,6 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
-      if (
-          self.quantization.weight_params.precision == 4
-          and self.quantization.weight_params.use_int4_packed_weights
-      ):
-        w = utils.unpack_4bit(
-            w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
-        )
 
       if (
           self.quantization.act_params is not None

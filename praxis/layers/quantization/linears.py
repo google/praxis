@@ -49,8 +49,8 @@ class Linear(  # pytype: disable=signature-mismatch
     rank: Rank to factorize to low-weights. Set to -1 to disable low-rank
       factorization.
   """
-  _PACK_4BIT_DIM = 0
   rank: int = -1
+  _PACK_4BIT_DIM = 0
 
   def _get_sub_channel_shape(
       self, shape: Sequence[int], block_size: int, contract_dim: int
@@ -142,7 +142,6 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_name='w_a',
           weight_params=wp_a,
           scale_shape=[self.rank],
-          pack_dim=self._PACK_4BIT_DIM,
       )
       self.create_aux_variables('w_a', wp_a)
       wp_b = WeightHParams(
@@ -154,7 +153,6 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_name='w_b',
           weight_params=wp_b,
           scale_shape=[self.output_dims],
-          pack_dim=self._PACK_4BIT_DIM,
       )
       self.create_aux_variables('w_b', wp_b)
 
@@ -174,7 +172,6 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_name='w',
           weight_params=weight_hparams,
           scale_hparams=scale_hparams,
-          pack_dim=self._PACK_4BIT_DIM,
       )
       self.create_aux_variables(
           'w',
@@ -196,7 +193,6 @@ class Linear(  # pytype: disable=signature-mismatch
     q_einsum_params = {
         'eqn': '...y,yz->...z',
         'reshape': [],
-        'pack_dim': self._PACK_4BIT_DIM,
     }
 
     if self.rank > 0:
