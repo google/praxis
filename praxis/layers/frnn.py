@@ -87,11 +87,15 @@ class FRnn(base_layer.BaseLayer):
   Attributes:
     cell_tpl: Configs for the RnnCell.
     reverse: Whether or not to unroll the sequence in reversed order.
+    unroll: Number of steps to unroll in the scan function (using >1 can speed
+      up gradient computation).
   """
   cell_tpl: LayerTpl | None = base_layer.template_field(None)
   reverse: bool = False
+  unroll: int = 1
 
   def setup(self) -> None:
+    assert self.unroll > 0, 'Unroll must be positive.'
     self.create_child('cell', self.cell_tpl)
 
   def init_states(self, batch_size: int) -> NestedMap:
@@ -186,6 +190,7 @@ class FRnn(base_layer.BaseLayer):
         split_rngs=SCAN_SPLIT_RNGS,
         in_axes=1,
         out_axes=1,
+        unroll=self.unroll,
     )
     # Sum-up aux losses.
     mapped_scan_fn = nn.map_variables(
@@ -476,6 +481,7 @@ class LstmFrnn(FRnn):
         split_rngs=SCAN_SPLIT_RNGS,
         in_axes=1,
         out_axes=1,
+        unroll=self.unroll,
     )
     # Sum-up aux losses.
     mapped_scan_fn = nn.map_variables(
