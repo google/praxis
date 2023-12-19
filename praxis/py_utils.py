@@ -22,7 +22,7 @@ import inspect
 import re
 import threading
 import time
-from typing import Any, Callable, Dict, Iterable, Iterator, NamedTuple, Sequence
+from typing import Any, Callable, Dict, Iterable, Iterator, Mapping, NamedTuple, Sequence
 
 from absl import flags
 from absl import logging
@@ -351,7 +351,8 @@ def make_array(
     host_arrays: np.ndarray | Any,
     global_shapes: jax.ShapeDtypeStruct | Any,
     global_mesh: jax.sharding.Mesh,
-    pspecs: Any,
+    pspecs: Any | None = None,
+    sharding: Mapping[str, jax.sharding.Sharding] | None = None,
 ) -> Any:
   """Makes a Jax Array from host array.
 
@@ -361,12 +362,16 @@ def make_array(
     host_arrays: host-local arrays.
     global_shapes: global shapes of the resultant Array.
     global_mesh: global mesh of the resultant Array.
-    pspecs: partition specs of the resultant Array.
+    pspecs: Optional partition specs of the resultant Array.
+    sharding: Optional sharding of the resultant Array. Either pspecs or
+      sharding must be provided.
 
   Returns:
     A Jax Array with x as the host-local data.
   """
-
+  assert (pspecs is not None) != (
+      sharding is not None
+  ), 'Either pspecs or sharding must be provided.'
   local_devices = global_mesh.local_devices
 
   def _put_to_devices(x):
@@ -374,13 +379,16 @@ def make_array(
 
   device_buffers = jax.tree_map(_put_to_devices, host_arrays)
 
-  def _jax_array(global_shape, pspec, dbs):
-    # This is cached because creating new sharding objects everytime is
-    # expensive in pjit dispatch path for inputs.
-    s = jax.sharding.NamedSharding(global_mesh, pspec)
-    return jax.make_array_from_single_device_arrays(global_shape.shape, s, dbs)
+  def _jax_array(global_shape, dbs, sharding):
+    return jax.make_array_from_single_device_arrays(
+        global_shape.shape, sharding, dbs
+    )
 
-  return jax.tree_map(_jax_array, global_shapes, pspecs, device_buffers)
+  # If sharding not provided, create it from the partition spec.
+  sharding = sharding or jax.tree_map(
+      lambda x: jax.sharding.NamedSharding(global_mesh, x), pspecs
+  )
+  return jax.tree_map(_jax_array, global_shapes, device_buffers, sharding)
 
 
 def convert_fully_replicated_array_to_pmap_array(arr):
