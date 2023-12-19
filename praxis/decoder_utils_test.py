@@ -176,7 +176,9 @@ class DecoderUtilsTest(test_utils.TestCase):
 
     # True for the 1st element in the batch.
     result = decoder_utils.end_with_sequences(
-        end_sequences, output_ids, decode_step=5
+        end_sequences,
+        output_ids,
+        decode_step=5,
     )
     self.assertArraysEqual(result, jnp.array([1, 0, 0], dtype=jnp.bool_))
 
@@ -265,6 +267,69 @@ class DecoderUtilsTest(test_utils.TestCase):
     self.assertArraysEqual(
         new_result.has_eos,
         jnp.array([True, True]))
+
+  def _tile_to_bsize(self, arr, bsize) -> jnp.ndarray:
+    return jnp.tile(arr[jnp.newaxis, ...], (bsize, 1, 1))
+
+  def test_end_with_any_sequence_any_position(self):
+    sequences = np.asarray([[2, 3, 4, 5], [0, 2, 6, 8]])
+
+    col_idxs = np.asarray([[2, 3], [2, 3]])
+    # Repeat stop seqs.
+    stop_seqs = self._tile_to_bsize(
+        np.asarray([[3, 4, 5], [0, 2, 6]]), sequences.shape[0]
+    )
+    out = decoder_utils.end_with_any_sequence_any_position(
+        stop_seqs, sequences, col_idxs
+    )
+    # TODO(pcyc) add example where sequences is shorter than stop seqs
+    self.assertArraysEqual(
+        out,
+        np.array(
+            [[[False, False], [True, False]], [[False, True], [False, False]]]
+        ),
+    )
+
+  def test_find_first_stop_seq_match(self):
+
+    # We only look for stop sequence matches at these indices or after!
+    first_new_decode_idx = np.asarray([
+        2,
+        0,
+        2,
+        2,
+    ])
+    sequences = np.asarray([
+        [2, 3, 4, 5],  # Will match first eos seq.
+        [2, 3, 4, 5],  # Nearly match first eos seq, but index too small.
+        [6, 7, 8, 9],  # No match.
+        [4, 2, 6, 7],  # Match second eos sequence, which starts with padding.
+    ])
+
+    # 0 corresponds to padding. Stop sequences are left padded.
+    stop_sequences = self._tile_to_bsize(
+        np.asarray([
+            [3, 4, 5],
+            [0, 2, 6],
+        ]),
+        sequences.shape[0],
+    )
+
+    self.assertArraysEqual(
+        decoder_utils.find_first_new_stop_seq_match(
+            first_new_decode_idx=first_new_decode_idx,
+            num_new_tokens=2,
+            stop_sequences=stop_sequences,
+            sequences=sequences,
+        ),
+        # First sequence matches first stop sequence at index 3, which is
+        # 1 token past the first new token.
+        # Second sequence doesn't match any stop sequence.
+        # Third sequence doesn't match any stop sequence.
+        # Fourth sequence matches second stop sequence at index 2, which is 0
+        # tokens past the first new token.
+        np.array([1, 2, 2, 0]),
+    )
 
 
 if __name__ == '__main__':

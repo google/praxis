@@ -22,6 +22,7 @@ from typing import Callable, Sequence, cast
 
 from flax import core as flax_core
 import jax
+from jax import lax
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import py_utils
@@ -358,7 +359,6 @@ def concat_suffix_and_left_align(
 ):
   """Concatenates suffix tensor to decoded tensor and then left aligns.
 
-
   When batch_size = 1, num_samples = 1, num_suffix = 1 if decoded_tensors has
   the following middle align format:
   |-max_prefix_len--|
@@ -499,42 +499,150 @@ def maybe_decode_mesh_transpose(
   return base_layer.JaxContext.new_context(hparams=new_context_params)
 
 
-def end_with_sequences(
-    end_sequences: JTensor,
+def find_first_new_stop_seq_match(
+    first_new_decode_idx: JTensor,
+    num_new_tokens: int,
+    stop_sequences: JTensor,
+    sequences: JTensor,
+):
+  """Finds index of first stop sequence match in newly decoded tokens.
+
+  *The returned index is relative to the first new decode index.*
+
+  Example:
+    first_new_decode_idx = [2, 0, 2]
+    num_new_tokens = 2
+    stop_sequences = [[[3, 4, 5], [0, 2, 6]],
+                      [[3, 4, 5], [0, 2, 6]]]
+    sequences = [[3, 4, 5, 0],
+                 [3, 4, 5, 0],
+                 [4, 2, 6, 7]]
+
+    * batch element 0: we look for a match starting from index 2. The
+        subsequence ending at index 2 is [3, 4, 5], which matches stop sequence
+        0. Relative to the first new decode index (2), the match index is 0.
+    * batch element 1: we look for a match starting from index 0. The
+        subsequence ending at index 0 is [3], doesn't match any stop sequence.
+        At position 1 the subsequence is [3, 4] -> no match. The number of new
+        tokens is 2, so we stop with no match and return 2.
+    * batch element 2: we look for a match starting from index 2. The
+        subsequence ending at index 2 is [4, 2, 6], which matches stop sequence
+        1. Relative to the first new decode index (2), the match index is 0.
+
+  Args:
+    first_new_decode_idx: [B], idx of first new decode
+    num_new_tokens: scalar, number of new decoded tokens
+    stop_sequences: [B, num_stop_sequences, max_stop_seq_len]
+    sequences: [B, max_seq_len]
+
+  Returns:
+    Tensor of shape [B]. Indices of the first stop sequence match for each batch
+    element, *relative to their respective first new decode indices*.
+  """
+
+  # [B, num_new_tokens]
+  col_idxs = (
+      first_new_decode_idx[:, jnp.newaxis]
+      + jnp.arange(num_new_tokens)[jnp.newaxis, :]
+  )
+
+  # First find all idx, stop_seq, seq triples that match.
+  # [B, num_new_tokens, num_stop_sequences]
+  matches = end_with_any_sequence_any_position(
+      stop_sequences, sequences, col_idxs
+  )
+
+  # For any idx and sequence, we only care if _any_ stop sequence matched.
+  # [B, num_new_tokens]
+  any_eos_match = jax.numpy.any(matches, axis=-1, keepdims=False)
+
+  # Some funky way to find the index of the first true value along the axis.
+  # We add first new decode idx because the indices we tried for each sequence
+  # don't start at 0.
+  # If the value is equal to the number of sequences, no match was found.
+  # [B]
+  first_stop_seq_hit = jnp.sum(
+      jax.lax.cummin(1 - any_eos_match.astype(jnp.int32), axis=1), axis=-1
+  )
+
+  return first_stop_seq_hit
+
+
+def _end_with_sequence_single(
+    stop_sequence: JTensor,
     output_ids: JTensor,
     decode_step: int | JTensor,
 ) -> JTensor:
-  """Check if the output_ids ended with given sequences.
+  """Check if the output_ids end with given sequence.
 
-  The end_sequences tensor is a 2D tensor, if the original end_sequences is
+  The stop_sequence tensor is a 1D tensor. If you want to use the vmapped
+  version of this function, and the original stop_sequences is
   [[2], [3, 4], [5, 5, 5]], it should be padded to
   [[0, 0, 2], [0, 3, 4], [5, 5, 5]] before passed to this function.
 
-  The comparison is performed by matching the tokens of output_ids ended at
-  index 'decode_step' with the tokens in `end_sequences`.
+  The comparison is performed by matching the tokens of output_ids ending at
+  index 'decode_step' with the tokens in `stop_sequence`.
 
   Args:
-    end_sequences: Given end of sequences of shape [batch_size, eos_len].
-    output_ids: Generated output ids of shape [batch_size, seq_len].
+    stop_sequence: Given end of sequences of shape [eos_len].
+    output_ids: Generated output ids of shape [seq_len].
     decode_step: Current decode step as an int or a 0D tensor.
 
   Returns:
-    A JTensor of shape [batch] which indicates if the output_ids ended with
-    end_sequences.
+    A JTensor of rank 0 which indicates if the output_ids ended with
+    stop_sequences.
   """
-  batch, eos_len = end_sequences.shape
-  padded_output_ids = jnp.pad(output_ids, [[0, 0], [eos_len, 0]])
+
+  eos_len = stop_sequence.shape[0]
+  padded_output_ids = jnp.pad(output_ids, [eos_len, 0])
   # Slice start index = decode_step + eos_len - eos_len + 1.
   sliced_output_ids = jax.lax.dynamic_slice(
-      padded_output_ids, [0, decode_step + 1], [batch, eos_len]
+      padded_output_ids, [decode_step + 1], [eos_len]
   )
 
-  # end_sequences are padded from the left with 0s.
-  ignore_tokens = jnp.equal(end_sequences, 0)
+  # stop_sequences are padded from the left with 0s.
+  ignore_tokens = jnp.equal(stop_sequence, 0)
+
   tokens_equal = jnp.logical_or(
-      jnp.equal(sliced_output_ids, end_sequences), ignore_tokens
+      jnp.equal(sliced_output_ids, stop_sequence), ignore_tokens
   )
   return jnp.all(tokens_equal, axis=-1)
+
+
+def end_with_sequences(
+    stop_sequences: JTensor, output_ids: JTensor, decode_step: int | JTensor
+) -> JTensor:
+  """Applies _end_with_sequence_single to a batch of (stop_seq, sequence) pairs."""
+  return jax.vmap(_end_with_sequence_single, in_axes=(0, 0, None))(
+      stop_sequences, output_ids, decode_step
+  )
+
+
+@functools.partial(jax.vmap, in_axes=(0, 0, 0))  # map over batch
+@functools.partial(jax.vmap, in_axes=(None, None, 0))  # map over decode step
+@functools.partial(jax.vmap, in_axes=(0, None, None))  # map over stop sequence
+def end_with_any_sequence_any_position(stop_sequence, output_ids, decode_step):
+  """Checks for matches of stop_sequence in output_ids at at decode_step.
+
+  The un-vmapped function will return true if stop_sequence matches
+  output_ids[decode_step-len(stop_seq):decode_step].
+
+  The vmapped function allows you to pass multiple stop sequences, check
+  multiple column indices, and do this for all items in a batch.
+
+  Args:
+    stop_sequence: stop sequences to look for of shape [B, num_stop_seqs,
+      max_stop_seq_len].
+    output_ids: sequences, of shape [B, seq_len].
+    decode_step: step to check for matches, shape [B, num_positions_to_check].
+
+  Returns:
+    Tensor of shape [B, num_positions_to_check, num_stop_seqs] denoting whether
+    there was a match for each position to check in the sequence with each
+    stop sequence.
+  """
+
+  return _end_with_sequence_single(stop_sequence, output_ids, decode_step)
 
 
 def has_any_eos(arr: JTensor, eos_ids: int | Sequence[int]):
@@ -564,8 +672,9 @@ def coerce_to_expanded_extend_step_fn(
   return _expanded_extend_step_fn
 
 
-def collect_results_to_optimize_eos(result: NestedMap,
-                                    decode_length_shift: int = 0) -> NestedMap:
+def collect_results_to_optimize_eos(
+    result: NestedMap, decode_length_shift: int = 0
+) -> NestedMap:
   """Collects decoding results when optimize_eos=True."""
   new_result = result.DeepCopy()
   cumulative_logprobs = jnp.cumsum(new_result.logprobs, -1)
