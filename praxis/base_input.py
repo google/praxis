@@ -1119,31 +1119,3 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
   def get_input_specs(self) -> NestedShapeDtypeStruct:
     """Returns example input specs from the input pipeline for model init."""
     return self._input_specs
-
-
-def distributed_builder(fn: Any) -> Any:  # Any to avoid user PyType errors.
-  """Annotates a function that promises to return a BaseInput instance.
-
-  This is used in conjunection with `DistributedInputHParams` type below.
-
-  Args:
-    fn: The function to annotate.
-
-  Returns:
-    The function `fn` (that has now been annotated).hg st
-  """
-  assert inspect.isfunction(fn)
-  setattr(fn, '_am_input_hparam_type_promise', True)
-  return fn
-
-
-class DistributedInputHParamsMeta(type):
-
-  def __instancecheck__(cls, instance):
-    return isinstance(instance, pax_fiddle.Config) and hasattr(
-        fdl.get_callable(instance), '_am_input_hparam_type_promise'
-    )
-
-
-class DistributedInputHParams(metaclass=DistributedInputHParamsMeta):
-  pass
