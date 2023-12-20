@@ -365,6 +365,22 @@ class ResNet(base_layer.BaseLayer):
     )
 
   @classmethod
+  def HParamsResNet56(cls) -> LayerTpl:
+    """Returns custom ResNet 56 hyperparams."""
+    return pax_fiddle.Config(
+        cls,
+        blocks=[3, 3, 9, 3],
+    )
+
+  @classmethod
+  def HParamsResNet83(cls) -> LayerTpl:
+    """Returns custom ResNet 83 hyperparams."""
+    return pax_fiddle.Config(
+        cls,
+        blocks=[3, 3, 18, 3],
+    )
+
+  @classmethod
   def HParamsResNet101(cls) -> LayerTpl:
     """Returns commonly used ResNet101 hyperparams."""
     return pax_fiddle.Config(cls, blocks=[3, 4, 23, 3])
