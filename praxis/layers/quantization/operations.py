@@ -195,6 +195,7 @@ def einsum(
     zp_act: JTensor | None = None,
     scale_eqn: str | None = None,
     zp_eqn: str | None = None,
+    swap_xw: bool = False,
 ) -> JTensor:
   """Performs quantized einsum.
 
@@ -218,11 +219,15 @@ def einsum(
       einsum(scale_eqn, tmp, out). Default scale_eqn act as '...z,z->...z'
     zp_eqn: Optional. ret = scale_out - einsum(zp_eqn, x, zp) Default zp_eqn act
       as '...y,z->...z'
+    swap_xw: Swap the input and weight tensor in einsum for performance,
 
   Returns:
     A JTensor.
   """
-  input_str, output_str, _ = einsum_parser.parse_einsum_input((eqn, x, w))
+  if swap_xw:
+    input_str, output_str, _ = einsum_parser.parse_einsum_input((eqn, w, x))
+  else:
+    input_str, output_str, _ = einsum_parser.parse_einsum_input((eqn, x, w))
   eqn_normalized = input_str + '->' + output_str
 
   # Non performent equation for inference testing purposes
@@ -244,6 +249,7 @@ def einsum(
     w = w.astype(jnp.bfloat16)
 
   if x.dtype in INT_TYPES and w.dtype in INT_TYPES:
+    assert not swap_xw, 'No need to swap x and w when both are int types.'
     dimension_numbers, perm = utils.einsum_eqn_to_dimension_numbers(
         eqn_normalized
     )
@@ -258,7 +264,10 @@ def einsum(
     # jnp.einsum does not support implicit promotion of (u)int4 types.
     w = w.astype(jnp.int8) if w.dtype in INT4_TYPES else w
     x = x.astype(jnp.int8) if x.dtype in INT4_TYPES else x
-    ret = jnp.einsum(eqn_normalized, x, w)
+    if swap_xw:
+      ret = jnp.einsum(eqn_normalized, w, x)
+    else:
+      ret = jnp.einsum(eqn_normalized, x, w)
 
   if scale_act is not None:
     if scale_act.ndim == 0:
@@ -271,7 +280,7 @@ def einsum(
 
   # Potentially expand dimensions of scale to match einsum output.
   filling_dims_rhs = _get_expand_dims_rhs(eqn)
-  if filling_dims_rhs:
+  if not swap_xw and filling_dims_rhs:
     scale = jnp.expand_dims(scale, filling_dims_rhs)
 
   if scale_eqn is not None:

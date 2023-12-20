@@ -189,13 +189,17 @@ class QuantizationLayer(base_layer.BaseLayer):
       weight_name: str = 'w',
       scale_eqn: str | None = None,
       zp_eqn: str | None = None,
+      swap_xw: bool = False,
   ) -> JTensor:
     """Quantized Einsum for inference and training."""
 
     if not self.quantization:
       if reshape:
         w = jnp.reshape(w, reshape)
-      return jnp.einsum(eqn, x, w)
+      if swap_xw:
+        return jnp.einsum(eqn, w, x)
+      else:
+        return jnp.einsum(eqn, x, w)
 
     # Optionally create step count.
     step_count = None
@@ -254,10 +258,12 @@ class QuantizationLayer(base_layer.BaseLayer):
           zp_act=zp_act,
           scale_eqn=scale_eqn,
           zp_eqn=zp_eqn,
+          swap_xw=swap_xw,
       )
 
       return out
     else:
+      assert not swap_xw, 'Swapping xw is only supported in inference mode.'
       if reshape:
         w = jnp.reshape(w, reshape)
 

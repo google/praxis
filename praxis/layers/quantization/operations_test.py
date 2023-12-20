@@ -64,6 +64,18 @@ class QuantizationUtilsTest(test_utils.TestCase):
                          dtype=jnp.bfloat16)
     self.assertArraysEqual(ret, expected)
 
+  def test_quantized_einsum_swap_xw(self):
+    x = jnp.array([[1.0, 2.0, 3.0], [4.0, 1.0, 2.0]], dtype=jnp.bfloat16)
+    w = jnp.array([[1, 2, 1], [2, 1, 2], [1, 3, 1]], dtype=jnp.int8)
+    s = jnp.array([0.1, 0.2, 0.3], dtype=jnp.bfloat16)
+    # Multiplication without swap_xw
+    eqn = '...y,yz->...z'
+    ret = operations.einsum(eqn, x, w, s)
+    # Multiplication without swap_wx
+    eqn = 'yz,...y->...z'
+    ret_swap = operations.einsum(eqn, x, w, s, swap_xw=True)
+    self.assertArraysEqual(ret, ret_swap)
+
   def test_int8_quantized_einsum(self):
     x = jnp.array([[1, 2, 3], [4, 1, 2]], dtype=jnp.int8)
     w = jnp.array([[1, 2, 1], [2, 1, 2], [1, 3, 1]], dtype=jnp.int8)
