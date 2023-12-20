@@ -575,8 +575,8 @@ class BaseLayerTest(test_utils.TestCase):
         pax_fiddle.Config(FiddleChild, x=12),
     ]
     p.child_tpl_dict = {'x': pax_fiddle.Config(FiddleChild, x=12)}
-    p.child_instance_list = p.child_tpl_list
-    p.child_instance_dict = p.child_tpl_dict
+    p.child_instance_list = p.child_tpl_list  # pytype: disable=annotation-type-mismatch  # use-fiddle-overlay
+    p.child_instance_dict = p.child_tpl_dict  # pytype: disable=annotation-type-mismatch  # use-fiddle-overlay
     layer = p.Instantiate()
 
     hyper_params = layer.abstract_init_with_mdl_config()
