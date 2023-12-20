@@ -89,6 +89,8 @@ class AdaptersTest(test_utils.TestCase):
     del theta['norm']
     theta = jax.tree_map(np.array, theta)
     theta = py_utils.NestedMap.FromNestedDict(theta)
+    theta.down_w = tf.convert_to_tensor(theta.down_w)
+    theta.up_w = tf.convert_to_tensor(theta.up_w)
 
     with cluster_factory.SetEval(True):
       tf_output = tf_adapter.FProp(theta, inputs, tf.convert_to_tensor(tasks))
