@@ -1961,6 +1961,8 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
     return_intermediate_outputs: If True, the stacked transformer layers will
       give output [L, B, N, C] where the first dimension contains all
       intermediate features.
+    collect_intermediate_outputs: If True, makes outputs of underneath repeat
+      layers available for flax capture_intermediates.
   """
 
   block: LayerTpl = template_field(StackedTransformer)
@@ -1974,6 +1976,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
   repeat_optimizer_dims_mapping: SplitDimsMapping = None
   nd_prefix_shape: Sequence[int] | None = None
   return_intermediate_outputs: bool = False
+  collect_intermediate_outputs: bool = False
 
   class WeightSharding(base_layer.BaseLayer.WeightSharding):
     """Represents how layer's learned parameters are partitioned across a mesh.
@@ -1995,6 +1998,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         unpack_summaries=True,
         unroll_in_decode=self.unroll_in_decode,
         sublayer_name=self.sublayer_name,
+        collect_intermediate_outputs=self.collect_intermediate_outputs,
         return_intermediate_outputs=self.return_intermediate_outputs,
         optimizer_dims_mapping=self.repeat_optimizer_dims_mapping,
         nd_prefix_shape=self.nd_prefix_shape,
