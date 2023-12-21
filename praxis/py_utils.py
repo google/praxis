@@ -947,22 +947,21 @@ class RunningPeriod:
   @property
   def elapsed(self) -> float:
     """Returns the elapsed time in second."""
-    assert self.end is not None
-    return max(self.end - self.start, self.min_elapsed)
+    right_boundary = time.time() if self.end is None else self.end
+    return max(right_boundary - self.start, self.min_elapsed)
 
 
 @contextlib.contextmanager
 def timeit(min_elapsed: float = 1e-6) -> Iterator[RunningPeriod]:
-  """A context manager that times a running period.
+  """A context manager that times an interval of execution.
 
   Usage:
     with py_utils.timeit() as period:
-      run_logics()
-    period.elapsed
+      run_logic()
+    print(period.elapsed)
 
   Args:
-    min_elapsed: the minimal elapsed to use if elapsed is smaller than this
-      number.
+    min_elapsed: the smallest time interval (seconds) period.elapsed will yield.
 
   Yields:
     A `RunningPeriod` object that contains time information for execution
