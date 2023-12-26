@@ -59,17 +59,19 @@ class Linear(  # pytype: disable=signature-mismatch
 
     For activation, by => bsz
     For weight, yz => scz
+
+    Args:
+      shape: Tensor shape.
+      block_size: Block size, it defines number of sub-channels.
+      contract_dim: Contraction dim.
+
+    Returns:
+      New shape with sub channels and block_size.
     """
-    sub_channels, rem = divmod(shape[contract_dim], block_size)
-    if rem != 0:
-      raise ValueError(
-          f'block_size {block_size} must fully divide shape[contract_dim]'
-          f' {shape}[{contract_dim}]'
-      )
-    out_shape = list(shape)
-    out_shape.insert(contract_dim, sub_channels)
-    out_shape[contract_dim + 1] = block_size
-    return out_shape
+    weight_shape, _ = operations.get_sub_channel_shape(
+        shape, block_size, [contract_dim]
+    )
+    return weight_shape
 
   def _sub_channel_block_size(self) -> int:
     """Determine sub-channels' block_size if it was given."""
@@ -87,11 +89,13 @@ class Linear(  # pytype: disable=signature-mismatch
   ) -> Tuple[WeightHParams, WeightHParams]:
     """Determines shard-aware weight params.
 
-    Without sub-channel, the weight is sharded along the contract_dim, and the
-    scale is replicated.
+    Args:
+      using_sub_channel: If False, the weight is sharded along the contract_dim,
+        and the scale is replicated. If True, both the weight and the scale are
+        sharded along the sub-channel dimension.
 
-    With Sub-channel, both the weight and the scale are sharded along the
-    sub-channel dimension.
+    Returns:
+      Tuple with weight and scale params.
     """
     wp = self.weight_split_dims_mapping
     weight_shape = [self.input_dims, self.output_dims]

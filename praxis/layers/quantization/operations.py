@@ -474,6 +474,42 @@ def clip_to_fp16(t: JTensor) -> JTensor:
   return t
 
 
+def get_sub_channel_shape(
+    shape: Sequence[int],
+    block_size: int,
+    contract_dims: Sequence[int],
+) -> tuple[Sequence[int], Sequence[int]]:
+  """Converts a shape's contract dim into sub-channel and block_size.
+
+  Args:
+    shape: Tensor shape.
+    block_size: Block size, it defines number of sub-channels.
+    contract_dims: List of contraction dims.
+
+  Returns:
+    A tuple of new shape with new contract_dims.
+  """
+
+  new_contract_dims = list(contract_dims)
+
+  if len(new_contract_dims) > 1:
+    raise NotImplementedError(
+        'Sub-channel quantization with more than one contract_dims '
+        'is not supported.'
+    )
+  contract_dim = new_contract_dims[0]
+  sub_channels, rem = divmod(shape[contract_dim], block_size)
+  if rem > 0:
+    raise ValueError(
+        f'block_size {block_size} must fully divide contract dim of {shape}'
+    )
+  sub_channel_shape = list(shape)
+  sub_channel_shape[contract_dim] = block_size
+  sub_channel_shape.insert(contract_dim, sub_channels)
+  new_contract_dims[0] += 1
+  return sub_channel_shape, new_contract_dims
+
+
 def fakequant_einsum(
     eqn: str,
     t: JTensor,
@@ -501,23 +537,10 @@ def fakequant_einsum(
   contract_dims = eqn_to_weight_contract_dims(eqn)
   original_shape = list(t.shape)
   if block_size > 0:
-    if len(contract_dims) > 1:
-      raise NotImplementedError(
-          'Sub-channel quantization with more than one contract_dims is not'
-          f' supported. eqn: {eqn}'
-      )
-    contract_dim = contract_dims[0]
-    sub_channels, rem = divmod(original_shape[contract_dim], block_size)
-    if rem > 0:
-      raise ValueError(
-          f'block_size {block_size} must fully divide contract dim of'
-          f' {original_shape}'
-      )
-    sub_channel_shape = original_shape.copy()
-    sub_channel_shape[contract_dim] = block_size
-    sub_channel_shape.insert(contract_dim, sub_channels)
+    sub_channel_shape, contract_dims = get_sub_channel_shape(
+        original_shape, block_size, contract_dims
+    )
     t = jnp.reshape(t, sub_channel_shape)
-    contract_dims[0] += 1
 
   if t.dtype != calculation_dtype:
     t = t.astype(calculation_dtype)

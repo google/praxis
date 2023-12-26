@@ -793,6 +793,20 @@ class SubChannelTest(test_utils.TestCase):
     ]
     self.assertArraysEqual(new_shape, expected_shape)
 
+  def test_block_sub_channel_shape(self):
+    shape = [4, 16, 32, 64]
+    block_size = 8
+    new_shape, new_contract_dims = operations.get_sub_channel_shape(
+        shape, block_size, [2]
+    )
+
+    # Contraction dim is replaced by two dims: remainder channels (4) and
+    # new contraction dim with block_size (8)
+    self.assertArraysEqual(new_shape, [4, 16, 4, 8, 64])
+
+    # New contract dim points to dim with block_size
+    self.assertArraysEqual(new_contract_dims, [3])
+
 
 class ClipToFp16Test(test_utils.TestCase):
 
