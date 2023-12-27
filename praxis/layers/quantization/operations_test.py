@@ -807,6 +807,35 @@ class SubChannelTest(test_utils.TestCase):
     # New contract dim points to dim with block_size
     self.assertArraysEqual(new_contract_dims, [3])
 
+  def test_block_sub_channel_shape_several_contract_dims(self):
+
+    # Last contract dim is maximum.
+    shape = [4, 16, 32, 64]
+    block_size = 8
+    new_shape, new_contract_dims = operations.get_sub_channel_shape(
+        shape, block_size, [1, 2]
+    )
+    self.assertArraysEqual(new_shape, [4, 16, 4, 8, 64])
+    self.assertArraysEqual(new_contract_dims, [1, 3])
+
+    # First contract dim is maximum.
+    shape = [4, 32, 16, 64, 7]
+    block_size = 8
+    new_shape, new_contract_dims = operations.get_sub_channel_shape(
+        shape, block_size, [1, 2, 4]
+    )
+    self.assertArraysEqual(new_shape, [4, 4, 8, 16, 64, 7])
+    self.assertArraysEqual(new_contract_dims, [2, 3, 5])
+
+    # Middle contract dim is maximum.
+    shape = [4, 32, 16, 64, 7]
+    block_size = 8
+    new_shape, new_contract_dims = operations.get_sub_channel_shape(
+        shape, block_size, [1, 2, 3, 4]
+    )
+    self.assertArraysEqual(new_shape, [4, 32, 16, 8, 8, 7])
+    self.assertArraysEqual(new_contract_dims, [1, 2, 4, 5])
+
 
 class ClipToFp16Test(test_utils.TestCase):
 

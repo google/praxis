@@ -492,12 +492,17 @@ def get_sub_channel_shape(
 
   new_contract_dims = list(contract_dims)
 
-  if len(new_contract_dims) > 1:
-    raise NotImplementedError(
-        'Sub-channel quantization with more than one contract_dims '
-        'is not supported.'
-    )
-  contract_dim = new_contract_dims[0]
+  max_dim_size = 0
+  # Index of dim in new_contract_dims, which corresponds to max dim among
+  # contraction dims of input shape.
+  max_contract_dim_ind = 0
+  for i in range(len(new_contract_dims)):
+    contract_dim = new_contract_dims[i]
+    if max_dim_size < shape[contract_dim]:
+      max_dim_size = shape[contract_dim]
+      max_contract_dim_ind = i
+
+  contract_dim = new_contract_dims[max_contract_dim_ind]
   sub_channels, rem = divmod(shape[contract_dim], block_size)
   if rem > 0:
     raise ValueError(
@@ -506,7 +511,11 @@ def get_sub_channel_shape(
   sub_channel_shape = list(shape)
   sub_channel_shape[contract_dim] = block_size
   sub_channel_shape.insert(contract_dim, sub_channels)
-  new_contract_dims[0] += 1
+
+  # Shift all contract dims starting from max_contract_dim_ind:
+  for i in range(max_contract_dim_ind, len(new_contract_dims)):
+    new_contract_dims[i] += 1
+
   return sub_channel_shape, new_contract_dims
 
 
