@@ -138,7 +138,7 @@ def is_subset(subset: pytypes.Nested, superset: pytypes.Nested) -> bool:
     return False
 
   elif type(subset) != type(superset):  # pylint:disable=unidiomatic-typecheck
-    # This conditional is here insetad of above to permit nestedmaps and dicts
+    # This conditional is here instead of above to permit nestedmaps and dicts
     # to be comperable, i.e. those can differ by type if they're both dicts.
     return False
 
@@ -148,6 +148,75 @@ def is_subset(subset: pytypes.Nested, superset: pytypes.Nested) -> bool:
     return False
 
   return subset == superset
+
+
+def extract_elements_matching_subset_structure(
+    subset: pytypes.Nested, superset: pytypes.Nested
+) -> pytypes.Nested:
+  """Returns elements from superset matching structure of subset.
+
+  Note that for Sequences a and b, a is not considered a subset of b unless all
+  elements match exactly - subset logic is used only for sets, dicts, and
+  NestedMaps (e.g. [1, 3] is not a subset of [1, 2, 3]).
+
+  Args:
+    subset: a nested object which might be contained in superset
+    superset: a nested object which may contain subset
+
+  Returns:
+    Elements from superset which match the structure of subset.
+
+  Raises:
+    ValueError if subset is not a subset of superset.
+  """
+
+  if isinstance(subset, dict) and isinstance(superset, dict):
+    if not set(subset) <= set(superset):
+      raise ValueError(
+          'Expected extract_elements_matching_subset_structure to be called '
+          'with subset and superset arguments; found elements '
+          f'{subset} of subset which are not contained in '
+          f'{superset}.'
+      )
+    return type(subset)(**{
+        k: extract_elements_matching_subset_structure(subset[k], superset[k])
+        for k in subset
+    })
+
+  elif type(subset) != type(superset):  # pylint:disable=unidiomatic-typecheck
+    # If we encounter leaves of different types, no problem; but we should
+    # ensure that these are indeed leaves. We only need to check the subset for
+    # being a leaf, since if the subset is not a leaf, the supserset should not
+    # be either and the failure below is appropriate.
+
+    def _is_strict_leaf(x):
+      treedef = jax.tree_util.tree_structure(x)
+      return treedef.num_nodes == 1 and treedef.num_leaves == 1
+
+    if _is_strict_leaf(subset):
+      return superset
+
+    raise ValueError(
+        'Expected extract_elements_matching_subset_structure to be called '
+        'with subset and superset arguments of matching type; '
+        f'found subset type {type(subset)} with superset type '
+        f'{type(superset)}.'
+    )
+
+  elif type(subset) in (tuple, list):  # pylint:disable=unidiomatic-typecheck
+    if len(subset) > len(superset):
+      raise ValueError(
+          'Expected extract_elements_matching_subset_structure to be called '
+          'with subset and superset arguments; found elements '
+          f'{subset} of subset which are not contained in '
+          f'{superset}.'
+      )
+    return type(subset)(
+        extract_elements_matching_subset_structure(sub, sup)
+        for sub, sup in zip(subset, superset)
+    )
+
+  return superset
 
 
 def get_shape_dtype(

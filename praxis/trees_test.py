@@ -45,9 +45,8 @@ class TrainState(struct.PyTreeNode):
   opt_states: List[base_layer.NestedJTensorOrPartitionSpec]
 
 
-class TreesTest(test_utils.TestCase):
-
-  @parameterized.named_parameters(
+def _is_subset_pairs():
+  return (
       ('trivial', TestPair(subset=123, superset=123)),
       ('lists_prefix', TestPair(subset=[1, 2], superset=[1, 2, 3])),
       ('lists', TestPair(subset=[1, 2, 3], superset=[1, 2, 3])),
@@ -102,38 +101,15 @@ class TreesTest(test_utils.TestCase):
           ),
       ),
   )
-  def test_is_subset(self, pair):
-    self.assertTrue(trees.is_subset(pair.subset, pair.superset))
 
-  @parameterized.named_parameters(
-      ('trivial', TestPair(subset=345, superset=123)),
-      ('lists_reorder', TestPair(subset=[1, 3, 2], superset=[1, 2, 3])),
-      ('lists_strict', TestPair(subset=[1, 3], superset=[1, 2, 3])),
+
+def _is_not_structural_subset_pairs():
+  return (
       ('lists_flipped', TestPair(subset=[1, 2, 3], superset=[2])),
       ('lists_prefix_flipped', TestPair(subset=[1, 2, 3], superset=[1, 2])),
       (
           'lists_types',
           TestPair(subset=[1, 2, 3, 'dev'], superset=[2, 3, 'testing']),
-      ),
-      (
-          'mixed_types',
-          TestPair(
-              subset={'a': [12345678, 456]},
-              superset={'a': [1, 2, 3], 'b': {'c': 'hello', 'd': [123]}},
-          ),
-      ),
-      (
-          'nestedmap',
-          TestPair(
-              subset=pytypes.NestedMap.FromNestedDict({
-                  'a': [999, 444],
-                  'b': {'c': 'hello', 'd': [123]},
-              }),
-              superset=pytypes.NestedMap.FromNestedDict({
-                  'a': [1, 2, 3],
-                  'b': {'c': 'hello', 'd': [123]},
-              }),
-          ),
       ),
       ('mixed_dtypes', TestPair(subset=(1, 2, 3, 4), superset=[1, 2, 3])),
       (
@@ -161,8 +137,67 @@ class TreesTest(test_utils.TestCase):
           TestPair(subset=(), superset=jax.sharding.PartitionSpec()),
       ),
   )
+
+
+def _is_not_elementwise_subset_pairs():
+  return (
+      ('trivial', TestPair(subset=345, superset=123)),
+      ('lists_reorder', TestPair(subset=[1, 3, 2], superset=[1, 2, 3])),
+      ('lists_strict', TestPair(subset=[1, 3], superset=[1, 2, 3])),
+      (
+          'mixed_types',
+          TestPair(
+              subset={'a': [12345678, 456]},
+              superset={'a': [1, 2, 3], 'b': {'c': 'hello', 'd': [123]}},
+          ),
+      ),
+      (
+          'nestedmap',
+          TestPair(
+              subset=pytypes.NestedMap.FromNestedDict({
+                  'a': [999, 444],
+                  'b': {'c': 'hello', 'd': [123]},
+              }),
+              superset=pytypes.NestedMap.FromNestedDict({
+                  'a': [1, 2, 3],
+                  'b': {'c': 'hello', 'd': [123]},
+              }),
+          ),
+      ),
+  )
+
+
+class TreesTest(test_utils.TestCase):
+
+  def assert_treedefs_match(self, structure1, structure2):
+    _, treedef1 = jax.tree_util.tree_flatten(structure1)
+    _, treedef2 = jax.tree_util.tree_flatten(structure2)
+    self.assertEqual(treedef1, treedef2)
+
+  @parameterized.named_parameters(*_is_subset_pairs())
+  def test_is_subset(self, pair):
+    self.assertTrue(trees.is_subset(pair.subset, pair.superset))
+
+  @parameterized.named_parameters(*_is_subset_pairs())
+  def test_extract_subset(self, pair):
+    subset_extracted = trees.extract_elements_matching_subset_structure(
+        pair.subset, pair.superset
+    )
+    self.assertTrue(trees.is_subset(subset_extracted, pair.superset))
+    self.assert_treedefs_match(pair.subset, subset_extracted)
+
+  @parameterized.named_parameters(
+      *(_is_not_structural_subset_pairs() + _is_not_elementwise_subset_pairs())
+  )
   def test_is_not_subset(self, pair):
     self.assertFalse(trees.is_subset(pair.subset, pair.superset))
+
+  @parameterized.named_parameters(*_is_not_structural_subset_pairs())
+  def test_extract_subset_raises_on_structural_mismatch(self, pair):
+    with self.assertRaises(ValueError):
+      subset_extracted = trees.extract_elements_matching_subset_structure(
+          pair.subset, pair.superset
+      )
 
   def test_special_case(self):
     subset = {
@@ -204,6 +239,11 @@ class TreesTest(test_utils.TestCase):
     }
 
     self.assertTrue(trees.is_subset(subset, superset))
+    subset_extracted = trees.extract_elements_matching_subset_structure(
+        subset, superset
+    )
+    self.assertTrue(trees.is_subset(subset_extracted, superset))
+    self.assert_treedefs_match(subset, subset_extracted)
 
   @parameterized.named_parameters(
       ('trivial_int', 1, 1),
