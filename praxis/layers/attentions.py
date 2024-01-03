@@ -2777,15 +2777,16 @@ def create_relative_positional_embedding(
   pos_proj_tpl.weight_split_dims_mapping.wt = wp.proj
   layer.create_child('pos_proj', pos_proj_tpl)
 
-  u_pc = WeightHParams(
-      shape=[layer.num_heads, dim_per_head], init=WeightInit.Constant(0.0)
-  )
-  v_pc = WeightHParams(
-      shape=[layer.num_heads, dim_per_head], init=WeightInit.Constant(0.0)
-  )
+  if layer.use_bias:
+    u_pc = WeightHParams(
+        shape=[layer.num_heads, dim_per_head], init=WeightInit.Constant(0.0)
+    )
+    v_pc = WeightHParams(
+        shape=[layer.num_heads, dim_per_head], init=WeightInit.Constant(0.0)
+    )
 
-  layer.create_variable('u', u_pc)
-  layer.create_variable('v', v_pc)
+    layer.create_variable('u', u_pc)
+    layer.create_variable('v', v_pc)
 
 
 class DotProductAttentionXL(DotProductAttention):
@@ -2824,7 +2825,7 @@ class DotProductAttentionXL(DotProductAttention):
     H: per-head attention dimension.
 
     Args: tensors of the following shapes:
-      content:          B, T, N, H]
+      content:         [B, T, N, H]
       abs_pos_emb:     [2T - 1, N, H], the absolute positional embedding.
       abs_pos_emb[i] is the emb of relative distance i - (T-1).
 
@@ -2859,11 +2860,12 @@ class DotProductAttentionXL(DotProductAttention):
     sin_emb = jnp.squeeze(sin_emb, 0)
 
     # [B, N, T, S=T]
-    content = query + self.theta.u
-    term_ac = jnp.einsum('BTNH,BSNH->BNTS', content, key)
-
-    content = query + self.theta.v
-    term_bd = self._rel_position_bias(content, sin_emb)
+    if self.use_bias:
+      term_ac = jnp.einsum('BTNH,BSNH->BNTS', query + self.theta.u, key)
+      term_bd = self._rel_position_bias(query + self.theta.v, sin_emb)
+    else:
+      term_ac = jnp.einsum('BTNH,BSNH->BNTS', query, key)
+      term_bd = self._rel_position_bias(query, sin_emb)
     return term_ac + term_bd
 
   def _atten_logits_one_step(self, query, key, step):
@@ -2879,11 +2881,12 @@ class DotProductAttentionXL(DotProductAttention):
     sin_emb = jnp.squeeze(sin_emb, 0)
 
     # [B, N, T, S=T]
-    content = query + self.theta.u
-    term_ac = jnp.einsum('BNH,BSNH->BNS', content, key)
-
-    content = query + self.theta.v
-    term_bd = jnp.einsum('BNH,TNH->BNT', content, sin_emb)
+    if self.use_bias:
+      term_ac = jnp.einsum('BNH,BSNH->BNS', query + self.theta.u, key)
+      term_bd = jnp.einsum('BNH,TNH->BNT', query + self.theta.v, sin_emb)
+    else:
+      term_ac = jnp.einsum('BNH,BSNH->BNS', query, key)
+      term_bd = jnp.einsum('BNH,TNH->BNT', query, sin_emb)
     return term_ac + term_bd
 
   def _dot_atten_one_step(
@@ -3419,7 +3422,10 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     r = self.right_context
     f = l + r
     # term a and c
-    term_ac = jnp.einsum('BUWNH,BUCNH->BNUWC', query + self.theta.u, key)
+    if self.use_bias:
+      term_ac = jnp.einsum('BUWNH,BUCNH->BNUWC', query + self.theta.u, key)
+    else:
+      term_ac = jnp.einsum('BUWNH,BUCNH->BNUWC', query, key)
 
     # term b and d
     # [1, F]
@@ -3432,7 +3438,10 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     sin_emb = jnp.squeeze(sin_emb, 0)
 
     # [B, N, U, W, F]
-    term_bd = jnp.einsum('BUWNH,FNH->BNUWF', query + self.theta.v, sin_emb)
+    if self.use_bias:
+      term_bd = jnp.einsum('BUWNH,FNH->BNUWF', query + self.theta.v, sin_emb)
+    else:
+      term_bd = jnp.einsum('BUWNH,FNH->BNUWF', query, sin_emb)
 
     # Perform relative shift in order to get [B, N, U, W, C]
     # Pads the input to [B, N, U, W, C + 1]
