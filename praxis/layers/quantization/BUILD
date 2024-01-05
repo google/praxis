@@ -561,6 +561,7 @@ pytype_strict_library(
         ":utils",
         # Implicit absl.logging dependency.
         # Implicit jax dependency.
+        # Implicit numpy dependency.
         # Implicit opt_einsum dependency from jax.
         "//praxis:pytypes",
     ],

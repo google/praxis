@@ -17,15 +17,18 @@
 
 import functools
 from typing import Any, Sequence
+
 from absl import logging
 import jax
 from jax import lax
 from jax import numpy as jnp
+import numpy as np
 from opt_einsum import parser as einsum_parser
 from praxis import pytypes
 from praxis.layers.quantization import optimization
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import utils
+
 
 JTensor = pytypes.JTensor
 PRNGKey = pytypes.PRNGKey
@@ -478,6 +481,7 @@ def get_sub_channel_shape(
     shape: Sequence[int],
     block_size: int,
     contract_dims: Sequence[int],
+    insert_sub_channel: bool = True,
 ) -> tuple[Sequence[int], Sequence[int]]:
   """Converts a shape's contract dim into sub-channel and block_size.
 
@@ -485,36 +489,49 @@ def get_sub_channel_shape(
     shape: Tensor shape.
     block_size: Block size, it defines number of sub-channels.
     contract_dims: List of contraction dims.
+    insert_sub_channel: If True it will insert new dim for sub channel, else it
+      will use existing feature dim.
 
   Returns:
     A tuple of new shape with new contract_dims.
   """
 
   new_contract_dims = list(contract_dims)
+  sub_channel_shape = list(shape)
 
-  max_dim_size = 0
+  contract_shape = [shape[i] for i in new_contract_dims]
   # Index of dim in new_contract_dims, which corresponds to max dim among
   # contraction dims of input shape.
-  max_contract_dim_ind = 0
-  for i in range(len(new_contract_dims)):
-    contract_dim = new_contract_dims[i]
-    if max_dim_size < shape[contract_dim]:
-      max_dim_size = shape[contract_dim]
-      max_contract_dim_ind = i
+  max_contract_dim_ind = np.argmax(contract_shape)
 
   contract_dim = new_contract_dims[max_contract_dim_ind]
+  if block_size >= shape[contract_dim]:
+    logging.warning(
+        'block_size %d is smaller than max input dim: %s; of contract dims: %s',
+        block_size,
+        str(shape),
+        str(contract_dims),
+    )
+    return sub_channel_shape, new_contract_dims
+
   sub_channels, rem = divmod(shape[contract_dim], block_size)
   if rem > 0:
     raise ValueError(
-        f'block_size {block_size} must fully divide contract dim of {shape}'
+        f'block_size {block_size} must fully divide shape: {shape}'
+        f'with contract dims: {contract_dims}'
     )
-  sub_channel_shape = list(shape)
-  sub_channel_shape[contract_dim] = block_size
-  sub_channel_shape.insert(contract_dim, sub_channels)
 
-  # Shift all contract dims starting from max_contract_dim_ind:
-  for i in range(max_contract_dim_ind, len(new_contract_dims)):
-    new_contract_dims[i] += 1
+  if insert_sub_channel:
+    sub_channel_shape[contract_dim] = block_size
+    sub_channel_shape.insert(contract_dim, sub_channels)
+
+    # Shift all contract dims starting from max_contract_dim_ind:
+    for i in range(max_contract_dim_ind, len(new_contract_dims)):
+      new_contract_dims[i] += 1
+  else:
+    feature_dims = tuple(i for i in range(len(shape)) if i not in contract_dims)
+    sub_channel_shape[contract_dim] = block_size
+    sub_channel_shape[feature_dims[0]] *= sub_channels
 
   return sub_channel_shape, new_contract_dims
 
