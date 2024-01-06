@@ -35,7 +35,7 @@ astunparse==1.6.3
     # via tensorflow
 async-lru==2.0.4
     # via jupyterlab
-attrs==23.1.0
+attrs==23.2.0
     # via
     #   jsonschema
     #   lingvo
@@ -60,9 +60,9 @@ click==8.1.7
     # via
     #   tensorflow-datasets
     #   tfds-nightly
-clu==0.0.10
+clu @ git+https://github.com/google/CommonLoopUtils
     # via -r praxis-requirements.in
-comm==0.2.0
+comm==0.2.1
     # via
     #   ipykernel
     #   ipywidgets
@@ -100,7 +100,7 @@ exceptiongroup==1.2.0
     #   ipython
 executing==2.0.1
     # via stack-data
-fastjsonschema==2.19.0
+fastjsonschema==2.19.1
     # via nbformat
 fiddle @ git+https://github.com/google/fiddle
     # via -r praxis-requirements.in
@@ -118,7 +118,7 @@ fsspec==2023.12.2
     # via etils
 gast==0.4.0
     # via tensorflow
-google-auth==2.25.2
+google-auth==2.26.1
     # via
     #   google-auth-oauthlib
     #   tensorboard
@@ -145,14 +145,14 @@ idna==3.6
     #   requests
 importlib-resources==6.1.1
     # via etils
-ipykernel==6.27.1
+ipykernel==6.28.0
     # via
     #   jupyter
     #   jupyter-console
     #   jupyterlab
     #   lingvo
     #   qtconsole
-ipython==8.18.1
+ipython==8.19.0
     # via
     #   ipykernel
     #   ipywidgets
@@ -198,7 +198,7 @@ jsonschema[format-nongpl]==4.20.0
     #   jupyter-events
     #   jupyterlab-server
     #   nbformat
-jsonschema-specifications==2023.11.2
+jsonschema-specifications==2023.12.1
     # via jsonschema
 jupyter==1.0.0
     # via lingvo
@@ -211,7 +211,7 @@ jupyter-client==8.6.0
     #   qtconsole
 jupyter-console==6.6.3
     # via jupyter
-jupyter-core==5.5.1
+jupyter-core==5.7.0
     # via
     #   ipykernel
     #   jupyter-client
@@ -228,16 +228,16 @@ jupyter-http-over-ws==0.0.8
     # via lingvo
 jupyter-lsp==2.2.1
     # via jupyterlab
-jupyter-server==2.12.1
+jupyter-server==2.12.2
     # via
     #   jupyter-lsp
     #   jupyterlab
     #   jupyterlab-server
     #   notebook
     #   notebook-shim
-jupyter-server-terminals==0.5.0
+jupyter-server-terminals==0.5.1
     # via jupyter-server
-jupyterlab==4.0.9
+jupyterlab==4.0.10
     # via notebook
 jupyterlab-pygments==0.3.0
     # via nbconvert
@@ -280,7 +280,7 @@ mistune==3.0.2
     # via nbconvert
 ml-collections==0.1.1
     # via clu
-ml-dtypes==0.3.1
+ml-dtypes==0.3.2
     # via
     #   jax
     #   jaxlib
@@ -297,7 +297,7 @@ mypy-extensions==1.0.0
     # via typing-inspect
 nbclient==0.9.0
     # via nbconvert
-nbconvert==7.13.0
+nbconvert==7.14.0
     # via
     #   jupyter
     #   jupyter-server
@@ -379,7 +379,7 @@ parso==0.8.3
     # via jedi
 pexpect==4.9.0
     # via ipython
-pillow==10.1.0
+pillow==10.2.0
     # via
     #   lingvo
     #   matplotlib
@@ -483,7 +483,7 @@ rfc3986-validator==0.1.1
     #   jupyter-events
 rich==13.7.0
     # via flax
-rpds-py==0.15.2
+rpds-py==0.16.2
     # via
     #   jsonschema
     #   referencing
@@ -542,7 +542,7 @@ tensorflow-hub==0.15.0
     # via
     #   lingvo
     #   tensorflow-text
-tensorflow-io-gcs-filesystem==0.34.0
+tensorflow-io-gcs-filesystem==0.35.0
     # via tensorflow
 tensorflow-metadata==1.12.0
     # via
@@ -553,7 +553,7 @@ tensorflow-text==2.9.0
     # via
     #   -r praxis-requirements.in
     #   lingvo
-tensorstore==0.1.51
+tensorstore==0.1.52
     # via
     #   flax
     #   orbax-checkpoint
@@ -593,7 +593,7 @@ tqdm==4.66.1
     # via
     #   tensorflow-datasets
     #   tfds-nightly
-traitlets==5.14.0
+traitlets==5.14.1
     # via
     #   comm
     #   ipykernel
