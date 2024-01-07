@@ -337,6 +337,24 @@ class ReducePrecisionTest(test_utils.TestCase):
       )
     self.assertIsNone(zp)
 
+  def test_precision_random(self):
+    inputs = np.array([[1.0, 2.0, 5.5, 2.9], [0.02, -0.01, 3.3, 4.0]])
+    qx, scale, zp = operations.reduce_precision(
+        inputs,
+        contract_dims=[1],
+        random_rounding=True,
+        key=jax.random.PRNGKey(0),
+    )
+
+    self.assertAllClose(
+        qx,
+        np.array([[23, 46, 127, 67], [0, 0, 104, 127]], dtype=np.int8),
+    )
+    self.assertAllClose(
+        scale, np.array([[0.04330709], [0.03149606]], dtype=np.float32)
+    )
+    self.assertIsNone(zp)
+
 
 class ReducePrecisionEinsumTest(test_utils.TestCase):
 

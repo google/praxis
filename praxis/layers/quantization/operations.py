@@ -319,6 +319,8 @@ def reduce_precision(
     use_fp: bool = False,
     add_scale_eps: bool = False,
     per_channel: bool = False,
+    random_rounding: bool = False,
+    key: jax.Array | None = None,
 ) -> tuple[JTensor, JTensor, JTensor | None]:
   """Reduce the precision of a tensor.
 
@@ -338,6 +340,8 @@ def reduce_precision(
     add_scale_eps: Add eps value or replace zero value by 1 to avoid division by
       zero.
     per_channel: use per-channel clipping optimization.
+    random_rounding: round with uniform random.
+    key: rng key for rounding.
 
   Returns:
     A tuple of quantized tensor, quantization scale
@@ -387,6 +391,10 @@ def reduce_precision(
       t = pass_through(t, jnp.round)
       t = jnp.clip(t, min_value, max_value)
     else:
+      if random_rounding:
+        t = t + jax.random.uniform(
+            key=key, shape=t.shape, minval=-0.5, maxval=0.5
+        )
       t = jnp.round(t)
       container_dtype = (
           jnp.int8 if bits <= 8 else jnp.int16 if bits <= 16 else jnp.int32
