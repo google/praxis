@@ -53,6 +53,7 @@ class QuantizationMode(str, enum.Enum):
   TRAINING = 'training'
   MATERIALIZE = 'materialize'
   INFERENCE = 'inference'
+  QT = 'qt'
 
 
 @dataclasses.dataclass

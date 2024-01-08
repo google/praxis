@@ -188,6 +188,25 @@ def dot_general_int_jvp(
   return y, y_tangent
 
 
+@jax.custom_vjp
+def custom_einsum(x, w) -> jnp.ndarray:
+  return jnp.einsum('abc,cd->abd', x, w)
+
+
+def custom_einsum_fwd(x, w):
+  return jnp.einsum('abc,cd->abd', x, w), (x, w)
+
+
+def custom_einsum_bwd(res, g):
+  x, w = res
+  gx = jnp.einsum('abd,cd->abc', g, w)
+  gw = jnp.einsum('abc,abd->cd', x, g)
+  return gx, gw
+
+
+custom_einsum.defvjp(custom_einsum_fwd, custom_einsum_bwd)
+
+
 def einsum(
     eqn: str,
     x: JTensor,
