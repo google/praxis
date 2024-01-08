@@ -477,7 +477,7 @@ class GroupNorm(BaseNormalization):
     num_groups: Number of groups for GroupNorm.
     min_group_size: Minimum group size for GroupNorm.
     cumulative: If true, only normalize by current and previous time steps.
-    input_rank: Rank of input. Only 3(BTD) and 4(NHWC) are supported.
+    input_rank: Rank of input. Only 3(BTD), 4(NHWC) and 5 (NTHWC) are supported.
     epsilon: Epsilon added when computing the rsqrt.
     set_padded_output_to_zero: bool. whether to pad padding part to zero.
     use_scale: Whether to use a learned scaling.
@@ -509,9 +509,9 @@ class GroupNorm(BaseNormalization):
           ),
       )
 
-    asserts.in_set(self.input_rank, (3, 4))
+    asserts.in_set(self.input_rank, (3, 4, 5))
 
-    shape = [1, 1, 1, self.dim] if self.input_rank == 4 else [1, 1, self.dim]
+    shape = [1] * (self.input_rank - 1) + [self.dim]
     pc = WeightHParams(
         shape,
         init=WeightInit.Constant(0.0),
@@ -554,7 +554,8 @@ class GroupNorm(BaseNormalization):
 
     Args:
       inputs: The inputs JTensor. Shaped [batch_size, height, width, channel] if
-        p.rank == 4, else [batch, height, channel].
+        p.rank == 4, [batch_size, time, height, width, channel] if p.rank == 5,
+        else [batch, height, channel].
       paddings: The paddings JTensor. Shaped [batch_size, height]. Intended to
         be used for sequence processing where `height` is `time`.
 

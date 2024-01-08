@@ -313,6 +313,163 @@ class NormalizationsTest(test_utils.TestCase):
 
     self.assertAllClose(to_np(tf_output), to_np(output))
 
+  @parameterized.named_parameters(
+      (
+          '_epsilon_1e-3',
+          4,
+          2,
+          False,
+          5,
+          1e-3,
+          [2, 2, 2, 2, 4],
+          jnp.float32,
+          None,
+          jnp.float32,
+      ),
+      (
+          '_epsilon_1e-6',
+          4,
+          2,
+          False,
+          5,
+          1e-6,
+          [2, 2, 2, 2, 4],
+          jnp.float32,
+          None,
+          jnp.float32,
+      ),
+      (
+          '_f32_input_f32_fprop',
+          4,
+          2,
+          False,
+          5,
+          1e-3,
+          [2, 2, 2, 2, 4],
+          jnp.float32,
+          [[0, 0], [0, 1]],
+          jnp.float32,
+      ),
+      (
+          '_bf16_input_f32_fprop',
+          4,
+          2,
+          False,
+          5,
+          1e-3,
+          [2, 2, 2, 2, 4],
+          jnp.bfloat16,
+          [[0, 0], [0, 1]],
+          jnp.float32,
+      ),
+      (
+          '_f32_input_bf16_fprop',
+          4,
+          2,
+          False,
+          5,
+          1e-3,
+          [2, 2, 2, 2, 4],
+          jnp.float32,
+          [[0, 0], [0, 1]],
+          jnp.bfloat16,
+      ),
+      (
+          '_bf16_input_bf16_fprop',
+          4,
+          2,
+          False,
+          5,
+          1e-3,
+          [2, 2, 2, 2, 4],
+          jnp.bfloat16,
+          [[0, 0], [0, 1]],
+          jnp.bfloat16,
+      ),
+      (
+          '_5d_input',
+          4,
+          2,
+          False,
+          5,
+          1e-3,
+          [2, 5, 2, 3, 4],
+          jnp.float32,
+          [[0, 0, 0, 0, 1], [1, 0, 0, 1, 0]],
+          jnp.float32,
+      ),
+      (
+          '_5d_input_cumulative_mode',
+          4,
+          2,
+          True,
+          5,
+          1e-3,
+          [2, 5, 2, 3, 4],
+          jnp.float32,
+          [[0, 0, 0, 0, 1], [1, 0, 0, 1, 0]],
+          jnp.float32,
+      ),
+  )
+  def test_group_norm_3d(
+      self,
+      dim,
+      num_groups,
+      cumulative,
+      input_rank,
+      epsilon,
+      input_shape,
+      input_dtype,
+      paddings,
+      fprop_dtype,
+  ):
+    p = pax_fiddle.Config(
+        normalizations.GroupNorm,
+        name='jax_gn',
+        dim=dim,
+        num_groups=num_groups,
+        cumulative=cumulative,
+        input_rank=input_rank,
+        epsilon=epsilon,
+        fprop_dtype=fprop_dtype,
+    )
+    group_norm = instantiate(p)
+    npy_input = np.random.normal(1.0, 0.5, input_shape).astype(np.float32)
+    inputs = jnp.asarray(npy_input, dtype=input_dtype)
+    jax_paddings = paddings
+    if jax_paddings is not None:
+      jax_paddings = jnp.asarray(jax_paddings, dtype=input_dtype)
+    prng_key = jax.random.PRNGKey(seed=123456)
+    _, init_key = jax.random.split(prng_key)
+    initial_vars = group_norm.init(init_key, inputs, paddings=jax_paddings)
+    output = group_norm.apply(initial_vars, inputs, paddings=jax_paddings)
+
+    # Now test whether reshaping input into NHWC returns same output.
+    p_2d = pax_fiddle.Config(
+        normalizations.GroupNorm,
+        name='jax_gn_2d',
+        dim=dim,
+        num_groups=num_groups,
+        cumulative=cumulative,
+        input_rank=4,
+        epsilon=epsilon,
+        fprop_dtype=fprop_dtype,
+    )
+    group_norm_2d = instantiate(p_2d)
+    new_shape = tuple(input_shape[:2]) + (
+        input_shape[2] * input_shape[3],
+        input_shape[4],
+    )
+    inputs_2d = jnp.reshape(inputs, new_shape)
+    initial_vars_2d = group_norm_2d.init(
+        init_key, inputs_2d, paddings=jax_paddings
+    )
+    output_2d = group_norm_2d.apply(
+        initial_vars_2d, inputs_2d, paddings=jax_paddings
+    )
+    output_2d = jnp.reshape(output_2d, input_shape)
+    self.assertAllClose(to_np(output_2d), to_np(output))
+
   @parameterized.parameters(
       ((5, 4, 24, 36), (1, 1), [2, 16, 36, 72]),
       ((2, 4, 16, 8), (2, 2), [2, 16, 32, 128]),
