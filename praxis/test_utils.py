@@ -65,6 +65,10 @@ class TestCase(parameterized.TestCase):
       err: A float value.
       msg: An optional string message to append to the failure message.
     """
+    if isinstance(f1, jax.Array):
+      f1 = float(f1.item())
+    if isinstance(f2, jax.Array):
+      f2 = float(f2.item())
     # f1 == f2 is needed here as we might have: f1, f2 = inf, inf
     self.assertTrue(
         f1 == f2 or math.fabs(f1 - f2) <= err,
