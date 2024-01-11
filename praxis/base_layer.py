@@ -2201,9 +2201,10 @@ class BaseLayer(nn.Module):
   @nn.nowrap
   def update_var(self, name: str, new_val: JTensor) -> None:
     """Update var 'name' in the forward pass."""
-    old_val = self.get_var(name)
+    old_val = super().get_variable(NON_TRAINABLE, name)
     if self.is_mutable_collection(NON_TRAINABLE) and not self.is_initializing():
-      asserts.eq(old_val.shape, new_val.shape)
+      asserts.eq(maybe_unbox_value(old_val).shape, new_val.shape)
+      new_val = flax_core.meta.replace_boxed(old_val, new_val)
       self.put_variable(NON_TRAINABLE, name, new_val)
 
   @nn.nowrap
