@@ -5,6 +5,9 @@ from praxis import pax_fiddle
 from praxis import pytypes
 from praxis import layers
 from praxis.layers.checkpoint_policy import AutodiffCheckpointType
+from praxis.layers import activations
+from praxis.layers import attentions, grouped_query_attention, multi_query_attention
+from praxis.layers import normalizations
 
 try:
     import transformer_engine.jax as te
@@ -117,18 +120,84 @@ class TEInstalledHelper(TransformerEngineHelperBase):
 
     @staticmethod
     def set_layer_params_to_stack_transformer(stacked_transformer_obj, _, layer_id):
+        enable_sp = bool(int(os.environ.get('ENABLE_TE_SP', 0)))
         te_transformer_tpl = pax_fiddle.Config(te_praxis.TransformerLayer,
             name=f'layer_{layer_id}',
-            layernorm_type='layernorm',
-            zero_centered_gamma = True,
-            mlp_activations=('gelu',),
-            use_bias=True,
-            self_attn_mask_type='causal',
             enable_relative_embedding=False,
-            scaled_query_init=False,
-            scale_attn_logits=True,
+            enable_sequence_parallel=enable_sp,
             transpose_batch_sequence=False
         )
+
+        def update_ln_te_tpl(te_tpl, transformer_layer_tpl):
+            # TE requires all normalization are the same
+            assert transformer_layer_tpl.ln_tpl == transformer_layer_tpl.tr_fflayer_tpl.ln_tpl
+            ln_tpl = transformer_layer_tpl.ln_tpl
+            if issubclass(ln_tpl.cls, normalizations.LayerNorm):
+                te_tpl.layernorm_type = 'layernorm'
+                assert ln_tpl.use_scale
+                assert ln_tpl.use_bias
+            elif issubclass(ln_tpl.cls, normalizations.RmsNorm):
+                te_tpl.layernorm_type = 'rmsnorm'
+            else:
+                raise ValueError(f'Unsupported {ln_tpl.cls=}, LayerNorm, RmsNorm are supported.')
+            te_tpl.zero_centered_gamma = not ln_tpl.direct_scale
+            te_tpl.layernorm_epsilon = ln_tpl.epsilon
+            return te_tpl
+
+        def update_ff_te_tpl(te_tpl, ff_layer_tpl):
+            if issubclass(ff_layer_tpl.activation_tpl.cls, activations.Identity):
+                mlp_activations = ('linear',)
+            else:
+                mlp_activations = (ff_layer_tpl.activation_tpl.cls.__name__.lower(),)
+            if ff_layer_tpl.use_gated_activation:
+                mlp_activations += ('linear',)
+            te_tpl.mlp_activations = mlp_activations
+            return te_tpl
+
+        def update_attn_te_tpl(te_tpl, attn_tpl):
+            # TODO(rewang): rope
+            if issubclass(attn_tpl.cls, attentions.DotProductAttention):
+                # Check the DotProductAttention parameters are aligned to TE's attention
+                assert attn_tpl.internal_enable_query_scale or attn_tpl.scale_logits_by_head_dims
+                assert not (attn_tpl.internal_enable_query_scale and attn_tpl.scale_logits_by_head_dims)
+                assert not attn_tpl.internal_enable_per_dim_scale
+                assert not attn_tpl.scale_query_by_dim_per_head
+                assert not attn_tpl.dconv_qkv
+                assert not attn_tpl.internal_gshard_gaussian_init
+                assert not attn_tpl.use_rotary_position_emb
+                assert attn_tpl.relative_bias_tpl is None
+                assert attn_tpl.attention_extra_logit is None
+                assert attn_tpl.ngrammer_tpl is None
+                te_tpl.enable_rotary_pos_emb = attn_tpl.use_rotary_position_emb
+            elif issubclass(attn_tpl.cls, grouped_query_attention.GroupedQueryAttention):
+                te_tpl.num_gqa_groups = attn_tpl.num_kv_heads
+                if attn_tpl.rope_min_max_timescales is not None:
+                    te_tpl.enable_rotary_pos_emb = True
+                    te_tpl.rotary_pos_emb_windows = attn_tpl.rope_min_max_timescales
+                assert attn_tpl.atten_temp == 1.
+            elif issubclass(attn_tpl.cls, multi_query_attention.MultiQueryDotProductAttention):
+                te_tpl.num_gqa_groups = attn_tpl.num_kv_heads
+                te_tpl.enable_rotary_pos_emb = attn_tpl.use_rotary_position_emb
+            else:
+                raise ValueError(f'Unsupported {attn_tpl.cls=}')
+            assert attn_tpl.atten_logit_cap <= 0., 'atten_logit_cap > 0. is not supported in TE'
+            te_tpl.scaled_query_init = False
+            te_tpl.scale_attn_logits = True
+            return te_tpl
+
+        transformer_layer_tpl = stacked_transformer_obj.transformer_layer_params_tpl
+        # Update TE normalization layer configs
+        te_transformer_tpl = update_ln_te_tpl(te_transformer_tpl, transformer_layer_tpl)
+        # Update TE feed forward layer configs
+        te_transformer_tpl = update_ff_te_tpl(te_transformer_tpl, transformer_layer_tpl.tr_fflayer_tpl)
+        # Update TE attention layer configs
+        te_transformer_tpl = update_attn_te_tpl(te_transformer_tpl, transformer_layer_tpl.tr_atten_tpl)
+        # TE currently only allow the bias config to be same between feed forward, qkv proj, out proj
+        assert (transformer_layer_tpl.tr_fflayer_tpl.has_bias ==
+            transformer_layer_tpl.tr_atten_tpl.use_bias), "TE only allows same bias settings."
+        te_transformer_tpl.use_bias = transformer_layer_tpl.tr_fflayer_tpl.has_bias
+        te_transformer_tpl.self_attn_mask_type = 'causal' \
+            if stacked_transformer_obj.mask_self_attention else 'padding'
 
         te_transformer_tpl.logical_axes_rules = te_flax.extend_logical_axis_rules(tuple())
         te_transformer_tpl.params_init = stacked_transformer_obj.params_init
@@ -138,7 +207,6 @@ class TEInstalledHelper(TransformerEngineHelperBase):
         te_transformer_tpl.num_attention_heads = stacked_transformer_obj.num_heads
         te_transformer_tpl.hidden_size = stacked_transformer_obj.model_dims
         te_transformer_tpl.mlp_hidden_size = stacked_transformer_obj.hidden_dims
-        te_transformer_tpl.layernorm_epsilon = stacked_transformer_obj.transformer_layer_params_tpl.ln_tpl.epsilon
         te_transformer_tpl.dropout_rng_name = base_layer.RANDOM
         te_transformer_tpl.attention_dropout = stacked_transformer_obj.atten_dropout_prob or stacked_transformer_obj.dropout_prob
         te_transformer_tpl.hidden_dropout = stacked_transformer_obj.residual_dropout_prob or stacked_transformer_obj.dropout_prob
