@@ -189,19 +189,44 @@ def dot_general_int_jvp(
 
 
 @jax.custom_vjp
-def custom_einsum(x, w) -> jnp.ndarray:
+def custom_einsum(x: JTensor, w: JTensor, key: jax.Array) -> jnp.ndarray:
   return jnp.einsum('abc,cd->abd', x, w)
 
 
-def custom_einsum_fwd(x, w):
-  return jnp.einsum('abc,cd->abd', x, w), (x, w)
+def custom_einsum_fwd(x: JTensor, w: JTensor, key: jax.Array):
+  """Custom forward pass for custom_einsum."""
+  # Currently support only abc,cd->abd
+  # TODO(jianlijianli): make this more general.
+  assert x.ndim == 3
+  assert w.ndim == 2
+  assert x.shape[2] == w.shape[0]
+  qx, sx, _ = reduce_precision(x, bits=8, contract_dims=[2])
+  qw, sw, _ = reduce_precision(w, bits=8, contract_dims=[0])
+  acc = jnp.einsum('abc,cd->abd', qx, qw, preferred_element_type=jnp.bfloat16)
+  res = jnp.multiply(sx, jnp.multiply(acc, sw))
+  return res, (qx, qw, sx, sw, key)
 
 
-def custom_einsum_bwd(res, g):
-  x, w = res
-  gx = jnp.einsum('abd,cd->abc', g, w)
-  gw = jnp.einsum('abc,abd->cd', x, g)
-  return gx, gw
+def custom_einsum_bwd(res: Any, g: Any):
+  """Custom gradient for custom_einsum."""
+  qx, qw, sx, sw, key = res
+  g_with_sw = jnp.multiply(g, sw)
+  g_with_sx = jnp.multiply(g, sx)
+  qg_for_w, sg_for_w, _ = reduce_precision(
+      t=g_with_sw, bits=8, contract_dims=[2], random_rounding=True, key=key
+  )
+  qg_for_x, sg_for_x, _ = reduce_precision(
+      t=g_with_sx, bits=8, contract_dims=[0, 1], random_rounding=True, key=key
+  )
+  gx = jnp.einsum(
+      'abd,cd->abc', qg_for_w, qw, preferred_element_type=jnp.bfloat16
+  )
+  gw = jnp.einsum(
+      'abc,abd->cd', qx, qg_for_x, preferred_element_type=jnp.bfloat16
+  )
+  gx = jnp.multiply(gx, sg_for_w)
+  gw = jnp.multiply(gw, jnp.squeeze(sg_for_x))
+  return gx, gw, None
 
 
 custom_einsum.defvjp(custom_einsum_fwd, custom_einsum_bwd)

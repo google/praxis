@@ -263,7 +263,8 @@ class QuantizationLayer(base_layer.BaseLayer):
 
       return out
     elif self.quantization.mode == QuantizationMode.QT:
-      return operations.custom_einsum(x, w)
+      key = self.next_prng_key()
+      return operations.custom_einsum(x, w, key)
     else:
       assert not swap_xw, 'Swapping xw is only supported in inference mode.'
       if reshape:
