@@ -54,7 +54,9 @@ class Fp8LinearsTest(test_utils.TestCase):
       inputs = cast_to_representable(inputs, jnp.float8_e4m3fn)
       dy = jax.random.uniform(random_key, (16, 64))
       dy = cast_to_representable(dy, jnp.float8_e5m2)
-      initial_vars = ffn.init(
+      
+      init_fn = jax.jit(ffn.init)
+      initial_vars = init_fn(
           {
               'params': init_key,
               'random': init_key,
