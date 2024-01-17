@@ -1740,6 +1740,8 @@ class StackedTransformer(base_layer.BaseLayer):
       else:
         p_i = self._clone_layer_params(self.transformer_layer_params_tpl)
 
+      TransformerEngineHelper.check_checkpoint_policy(self._to_fdl_config())
+
       p_i = TransformerEngineHelper.set_layer_params_to_stack_transformer(self, p_i, i)
 
       if self.moe_layers and i in self.moe_layers:
@@ -2052,6 +2054,8 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
+
+    TransformerEngineHelper.check_checkpoint_policy(self._to_fdl_config())
 
     repeat_l_params = pax_fiddle.Config(
         repeats.Repeat,

@@ -3,6 +3,8 @@ import os
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes
+from praxis import layers
+from praxis.layers.checkpoint_policy import AutodiffCheckpointType
 
 try:
     import transformer_engine.jax as te
@@ -43,6 +45,9 @@ class TransformerEngineHelperBase:
     def get_bld_mapping_for_pipelined_transformer(xformer_layer_p):
         raise NotImplementedError
 
+    @staticmethod
+    def check_checkpoint_policy(tpl):
+        raise NotImplementedError
 
 
 class TENotInstalledHelper(TransformerEngineHelperBase):
@@ -80,6 +85,11 @@ class TENotInstalledHelper(TransformerEngineHelperBase):
     @staticmethod
     def get_bld_mapping_for_pipelined_transformer(xformer_layer_p):
         return xformer_layer_p.tr_atten_tpl.activation_split_dims_mapping.bld
+
+    @staticmethod
+    def check_checkpoint_policy(_):
+        """Every checkpoint policy is valid without TE"""
+        pass
 
 
 class TEInstalledHelper(TransformerEngineHelperBase):
@@ -156,7 +166,36 @@ class TEInstalledHelper(TransformerEngineHelperBase):
         bld_mapping = [batch_mapping, None, hidden_tp_mapping]
         return bld_mapping
 
+    @staticmethod
+    def check_checkpoint_policy(tpl):
+        """Some checkpoint policies are not compatible with TE fused attention"""
+        if issubclass(tpl.cls, layers.transformers.StackedTransformer):
+            remat = tpl.remat
+            attention_dropout = tpl.atten_dropout_prob or tpl.dropout_prob
+        elif issubclass(tpl.cls, layers.transformers.StackedTransformerRepeated):
+            if not issubclass(tpl.block.cls, layers.transformers.StackedTransformer):
+                return
+            remat = True  # Current StackedTransformerRepeat always enables remat
+            attention_dropout = tpl.block.atten_dropout_prob or tpl.block.dropout_prob
+        else:
+            raise ValueError(f'Unsupported class={tpl.cls}')
 
+        supported_checkpoint_policies = [
+            AutodiffCheckpointType.SAVE_CONTEXT,
+            AutodiffCheckpointType.SAVE_CONTEXT_AND_OUT_PROJ,
+            AutodiffCheckpointType.SAVE_DOT_FOR_MLPERF_200B,
+            AutodiffCheckpointType.SAVE_QUANTIZED,
+            AutodiffCheckpointType.SAVE_DOT_EXCEPT_LOGITS_FFN1,
+            AutodiffCheckpointType.SAVE_DOT_EXCEPT_LOGITS]
+        fused_attn_enabled = int(os.getenv("NVTE_FUSED_ATTN", "0"))
+        if remat and fused_attn_enabled and attention_dropout > 0.:
+            assert tpl.checkpoint_policy in supported_checkpoint_policies, \
+            "Fused attn in TE only permits policies that save 'context' tensors when dropout is " \
+            "enabled. This restriction is due to the maintenance of the dropout offset within TE, " \
+            "which is incompatible with the JAX remat. Consequently, it's necessary to bypass " \
+            "recomputation in the attention layer when fused attention is activated. The supported " \
+            f"checkpoint_policies are {supported_checkpoint_policies} but the provided " \
+            f"checkpoint_policy is '{tpl.checkpoint_policy}'."
 
 
 class TransformerEngineHelper(TransformerEngineHelperBase):
@@ -186,3 +225,7 @@ class TransformerEngineHelper(TransformerEngineHelperBase):
     def get_bld_mapping_for_pipelined_transformer(xformer_layer_p):
         return TransformerEngineHelper.get_helper().get_bld_mapping_for_pipelined_transformer(
                     xformer_layer_p)
+
+    @staticmethod
+    def check_checkpoint_policy(tpl):
+        return TransformerEngineHelper.get_helper().check_checkpoint_policy(tpl)
