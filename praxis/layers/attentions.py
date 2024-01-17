@@ -98,9 +98,7 @@ def causal_mask(input_t: JTensor) -> JTensor:
     An attention_mask JTensor of shape [1, 1, T, T]. Attention mask has
     already been converted large negative values.
   """
-  assert (
-      input_t.dtype == jnp.float32 or input_t.dtype == jnp.bfloat16
-  ), input_t.dtype
+  assert jnp.issubdtype(input_t.dtype, jnp.floating), input_t.dtype
   large_negative_number = py_utils.get_large_negative_number(input_t.dtype)
   t = input_t.shape[1]
   col_idx = jnp.tile(jnp.arange(t)[jnp.newaxis, :], [t, 1])
