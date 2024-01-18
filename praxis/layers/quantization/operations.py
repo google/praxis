@@ -365,6 +365,7 @@ def reduce_precision(
     per_channel: bool = False,
     random_rounding: bool = False,
     key: jax.Array | None = None,
+    save_fp8_to_int8: bool = True,
 ) -> tuple[JTensor, JTensor, JTensor | None]:
   """Reduce the precision of a tensor.
 
@@ -386,6 +387,8 @@ def reduce_precision(
     per_channel: use per-channel clipping optimization.
     random_rounding: round with uniform random.
     key: rng key for rounding.
+    save_fp8_to_int8: If fp8 will be saved as int8. Only works when use_fp is
+      true and should be removed eventually.
 
   Returns:
     A tuple of quantized tensor, quantization scale
@@ -429,7 +432,12 @@ def reduce_precision(
     # No need to round.
     t = jnp.clip(t, min_value, max_value).astype(jnp.float8_e4m3fn)
     # TODO(jianlijianli): refactor to remove this logic.
-    t = jax.lax.bitcast_convert_type(t, new_dtype=jnp.int8)
+    if save_fp8_to_int8:
+      # This is needed since fp8 cannot be saved.
+      t = jax.lax.bitcast_convert_type(t, new_dtype=jnp.int8)
+    else:
+      # This is needed since bf16 x fp8 is not allowed.
+      t = t.astype(jnp.bfloat16)
   else:
     if need_gradient:
       t = pass_through(t, jnp.round)
