@@ -110,10 +110,15 @@ def _nested_map_from_state_dict(
 ) -> NestedMap:
   return NestedMap(flax.serialization.from_state_dict(dict(xs), states))
 
-
-flax.serialization.register_serialization_state(NestedMap,
-                                                _nested_map_to_state_dict,
-                                                _nested_map_from_state_dict)
+try:
+  flax.serialization.register_serialization_state(
+      NestedMap, _nested_map_to_state_dict, _nested_map_from_state_dict
+  )
+except ValueError:
+  logging.error(
+      'ValueError: a serialization handler for "NestedMap" is already'
+      ' registered'
+  )
 
 
 @functools.partial(functools.partial, jax.tree_map)
