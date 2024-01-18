@@ -2382,7 +2382,9 @@ class DotProductAttentionWithLPB(DotProductAttention):
       relative_bias = jnp.reshape(
           relative_bias, batch_dims + relative_bias.shape[1:]
       )
-    am_batched = atten_mask.shape[0] > 1
+    am_batched = (
+        not isinstance(atten_mask.shape[0], int) or atten_mask.shape[0] > 1
+    )
     if am_batched:
       atten_mask = jnp.reshape(atten_mask, batch_dims + atten_mask.shape[1:])
 
