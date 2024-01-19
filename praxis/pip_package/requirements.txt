@@ -310,7 +310,7 @@ nest-asyncio==1.5.8
     # via
     #   ipykernel
     #   orbax-checkpoint
-notebook==7.0.6
+notebook==7.0.7
     # via
     #   jupyter
     #   jupyter-http-over-ws
