@@ -2,7 +2,7 @@
 # cd ../../paxml/pip_package && bash ./compile_requirements.sh
 
 absl-py
-clu
+clu @ git+https://github.com/google/CommonLoopUtils
 einops
 etils
 fiddle @ git+https://github.com/google/fiddle

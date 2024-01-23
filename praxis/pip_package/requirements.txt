@@ -42,7 +42,7 @@ attrs==23.2.0
     #   referencing
 babel==2.14.0
     # via jupyterlab-server
-beautifulsoup4==4.12.2
+beautifulsoup4==4.12.3
     # via nbconvert
 bleach==6.1.0
     # via nbconvert
@@ -80,7 +80,6 @@ defusedxml==0.7.1
     # via nbconvert
 dm-tree==0.1.8
     # via
-    #   chex
     #   tensorflow-datasets
     #   tfds-nightly
 einops==0.7.0
@@ -110,7 +109,7 @@ flax @ git+https://github.com/google/flax
     # via
     #   -r praxis-requirements.in
     #   clu
-fonttools==4.47.0
+fonttools==4.47.2
     # via matplotlib
 fqdn==1.5.1
     # via jsonschema
@@ -118,7 +117,7 @@ fsspec==2023.12.2
     # via etils
 gast==0.4.0
     # via tensorflow
-google-auth==2.26.1
+google-auth==2.26.2
     # via
     #   google-auth-oauthlib
     #   tensorboard
@@ -145,14 +144,14 @@ idna==3.6
     #   requests
 importlib-resources==6.1.1
     # via etils
-ipykernel==6.28.0
+ipykernel==6.29.0
     # via
     #   jupyter
     #   jupyter-console
     #   jupyterlab
     #   lingvo
     #   qtconsole
-ipython==8.19.0
+ipython==8.20.0
     # via
     #   ipykernel
     #   ipywidgets
@@ -181,7 +180,7 @@ jaxtyping==0.2.25
     # via -r praxis-requirements.in
 jedi==0.19.1
     # via ipython
-jinja2==3.1.2
+jinja2==3.1.3
     # via
     #   jupyter-server
     #   jupyterlab
@@ -193,7 +192,7 @@ json5==0.9.14
     # via jupyterlab-server
 jsonpointer==2.4
     # via jsonschema
-jsonschema[format-nongpl]==4.20.0
+jsonschema[format-nongpl]==4.21.1
     # via
     #   jupyter-events
     #   jupyterlab-server
@@ -211,7 +210,7 @@ jupyter-client==8.6.0
     #   qtconsole
 jupyter-console==6.6.3
     # via jupyter
-jupyter-core==5.7.0
+jupyter-core==5.7.1
     # via
     #   ipykernel
     #   jupyter-client
@@ -226,9 +225,9 @@ jupyter-events==0.9.0
     # via jupyter-server
 jupyter-http-over-ws==0.0.8
     # via lingvo
-jupyter-lsp==2.2.1
+jupyter-lsp==2.2.2
     # via jupyterlab
-jupyter-server==2.12.2
+jupyter-server==2.12.5
     # via
     #   jupyter-lsp
     #   jupyterlab
@@ -237,7 +236,7 @@ jupyter-server==2.12.2
     #   notebook-shim
 jupyter-server-terminals==0.5.1
     # via jupyter-server
-jupyterlab==4.0.10
+jupyterlab==4.0.11
     # via notebook
 jupyterlab-pygments==0.3.0
     # via nbconvert
@@ -259,11 +258,11 @@ libcst==1.1.0
     # via fiddle
 lingvo==0.12.7
     # via -r praxis-requirements.in
-markdown==3.5.1
+markdown==3.5.2
     # via tensorboard
 markdown-it-py==3.0.0
     # via rich
-markupsafe==2.1.3
+markupsafe==2.1.4
     # via
     #   jinja2
     #   nbconvert
@@ -297,7 +296,7 @@ mypy-extensions==1.0.0
     # via typing-inspect
 nbclient==0.9.0
     # via nbconvert
-nbconvert==7.14.0
+nbconvert==7.14.2
     # via
     #   jupyter
     #   jupyter-server
@@ -306,11 +305,11 @@ nbformat==5.9.2
     #   jupyter-server
     #   nbclient
     #   nbconvert
-nest-asyncio==1.5.8
+nest-asyncio==1.6.0
     # via
     #   ipykernel
     #   orbax-checkpoint
-notebook==7.0.6
+notebook==7.0.7
     # via
     #   jupyter
     #   jupyter-http-over-ws
@@ -318,7 +317,7 @@ notebook-shim==0.2.3
     # via
     #   jupyterlab
     #   notebook
-numpy==1.23.1
+numpy==1.26.3
     # via
     #   -r praxis-requirements.in
     #   chex
@@ -351,15 +350,15 @@ opt-einsum==3.3.0
     #   -r praxis-requirements.in
     #   jax
     #   tensorflow
-optax==0.1.7
+optax==0.1.8
     # via
     #   -r praxis-requirements.in
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax-checkpoint==0.4.8
+orbax-checkpoint==0.5.0
     # via flax
-overrides==7.4.0
+overrides==7.6.0
     # via jupyter-server
 packaging==23.2
     # via
@@ -373,7 +372,7 @@ packaging==23.2
     #   qtconsole
     #   qtpy
     #   tensorflow
-pandocfilters==1.5.0
+pandocfilters==1.5.1
     # via nbconvert
 parso==0.8.3
     # via jedi
@@ -406,7 +405,7 @@ protobuf==3.19.6
     #   tensorflow-hub
     #   tensorflow-metadata
     #   tfds-nightly
-psutil==5.9.7
+psutil==5.9.8
     # via
     #   ipykernel
     #   tensorflow-datasets
@@ -459,7 +458,7 @@ qtconsole==5.5.1
     # via jupyter
 qtpy==2.4.1
     # via qtconsole
-referencing==0.32.0
+referencing==0.32.1
     # via
     #   jsonschema
     #   jsonschema-specifications
@@ -483,15 +482,15 @@ rfc3986-validator==0.1.1
     #   jupyter-events
 rich==13.7.0
     # via flax
-rpds-py==0.16.2
+rpds-py==0.17.1
     # via
     #   jsonschema
     #   referencing
 rsa==4.9
     # via google-auth
-scikit-learn==1.3.2
+scikit-learn==1.4.0
     # via lingvo
-scipy==1.11.4
+scipy==1.12.0
     # via
     #   jax
     #   jaxlib
@@ -538,7 +537,7 @@ tensorflow-datasets==4.8.3
     #   lingvo
 tensorflow-estimator==2.9.0
     # via tensorflow
-tensorflow-hub==0.15.0
+tensorflow-hub==0.16.0
     # via
     #   lingvo
     #   tensorflow-text
@@ -614,7 +613,7 @@ typeguard==2.13.3
     # via
     #   -r praxis-requirements.in
     #   jaxtyping
-types-python-dateutil==2.8.19.14
+types-python-dateutil==2.8.19.20240106
     # via arrow
 typing-extensions==4.9.0
     # via
@@ -636,7 +635,7 @@ uri-template==1.3.0
     # via jsonschema
 urllib3==2.1.0
     # via requests
-wcwidth==0.2.12
+wcwidth==0.2.13
     # via prompt-toolkit
 webcolors==1.13
     # via jsonschema
