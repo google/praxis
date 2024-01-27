@@ -556,7 +556,7 @@ class Ngrammer(base_layer.BaseLayer):
     ngram_embs = jnp.stack(ngram_embs_to_concat, axis=2)
 
     # Layer norm input embeddings independently for each head.
-    input_embs_per_head = jnp.split(input_embs, self.num_heads, 2)
+    input_embs_per_head = list(jnp.split(input_embs, self.num_heads, 2))
     for i in range(self.num_heads):
       input_embs_per_head[i] = self.emb_layer_norm[i](input_embs_per_head[i])
 
@@ -1172,7 +1172,7 @@ class BregmanNgrammer(base_layer.BaseLayer):
     ngram_embs = jnp.stack(ngram_embs_to_concat, axis=2)
 
     # Layer norm input embeddings independently for each head.
-    input_embs_per_head = jnp.split(input_embs, self.num_heads, 2)
+    input_embs_per_head = list(jnp.split(input_embs, self.num_heads, 2))
     for i in range(self.num_heads):
       # Reshape into [B * L, H]
       per_head_emb = jnp.reshape(
@@ -1279,7 +1279,7 @@ class NgrammerStub(base_layer.BaseLayer):
           input_embs, [b, l, d // self.dim_per_head, self.dim_per_head]
       )
 
-    input_embs_per_head = jnp.split(input_embs, self.num_heads, 2)
+    input_embs_per_head = list(jnp.split(input_embs, self.num_heads, 2))
     for i in range(self.num_heads):
       input_embs_per_head[i] = self.emb_layer_norm[i](input_embs_per_head[i])
     input_embs = jnp.concatenate(input_embs_per_head, 2)
