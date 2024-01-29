@@ -1141,6 +1141,8 @@ class DotProductAttention(base_layer.BaseLayer):
       keys are all padded.
     ln_tpl: Parameterization of the layer normalization layer used in QK norm.
       Other options include RmsNorm as well.
+    decoding_maybe_shard_projections: Adds sharding to query_proj, key_proj,
+      value_proj, and encoded.
   """
 
   input_dim: int | dict[str, int] = 0
@@ -1180,6 +1182,7 @@ class DotProductAttention(base_layer.BaseLayer):
   per_dim_scale_tpl: LayerTpl = template_field(PerDimScale)
   causal_depthwise_conv1d_tpl: LayerTpl = template_field(CausalDepthwiseConv1D)
   ln_tpl: LayerTpl | None = template_field(None)
+  decoding_maybe_shard_projections: bool = False
 
   # SPMD partition related params.
   #
@@ -1864,6 +1867,21 @@ class DotProductAttention(base_layer.BaseLayer):
         key_proj = self.key.extend_step(query_vec, time_step=time_step)
         value_proj = self.value.extend_step(query_vec, time_step=time_step)
 
+    if self.decoding_maybe_shard_projections:
+      ap = self.activation_split_dims_mapping
+      query_proj = base_layer.maybe_shard(
+          query_proj, [ap.bld[0], ap.blnh[2], ap.blnh[3]], self.mesh_axis_names
+      )
+      key_proj = base_layer.maybe_shard(
+          key_proj, [ap.bld[0], ap.blnh[2], ap.blnh[3]], self.mesh_axis_names
+      )
+      value_proj = base_layer.maybe_shard(
+          value_proj, [ap.bld[0], ap.blnh[2], ap.blnh[3]], self.mesh_axis_names
+      )
+      query_proj = self._shard_bnh(query_proj)
+      key_proj = self._shard_bnh(key_proj)
+      value_proj = self._shard_bnh(value_proj)
+
     def _extend_decode_state_and_shard(
         name: str, extend_value: JTensor
     ) -> JTensor:
@@ -1936,6 +1954,10 @@ class DotProductAttention(base_layer.BaseLayer):
         relative_bias,
         time_step=time_step,
     )
+    if self.decoding_maybe_shard_projections:
+      encoded = base_layer.maybe_shard(
+          encoded, [ap.bld[0], ap.blnh[2], ap.blnh[3]], self.mesh_axis_names
+      )
     # TODO(yonghui): return atten_probs back to the caller.
 
     # Apply NGrammer to the output of the attention.
