@@ -24,6 +24,7 @@ from praxis.layers import embedding_softmax
 from praxis.layers import normalizations
 from praxis.layers import transformer_models
 from praxis.layers import transformers
+from praxis.layers import AutodiffCheckpointType
 
 LanguageModelType = transformer_models.LanguageModelType
 
@@ -211,6 +212,7 @@ def GlamUniTransformerLmHParams(
     num_pipeline_stages=1,
     num_pipeline_microbatches=1,
     model_type=LanguageModelType.CAUSAL,
+    checkpoint_policy=AutodiffCheckpointType.SAVE_NOTHING,
 ) -> pax_fiddle.Config[transformer_models.TransformerLm]:
   """Common setup for GLaM Decoder-only Transformer Model.
 
@@ -263,6 +265,7 @@ def GlamUniTransformerLmHParams(
     num_pipeline_microbatches: Number of pipeline microbatches.
     model_type: Type of the Language Model. Either `CAUSAL`, `PREFIX`, or
       `BIDIRECTIONAL`.
+    checkpoint_policy: Select activation rematerialization policy
 
   Returns:
     A Params object to set up a StackedTransformer.
@@ -326,6 +329,7 @@ def GlamUniTransformerLmHParams(
         unroll_in_decode=True,
         block=glam_p,
         x_times=num_blocks,
+        checkpoint_policy=checkpoint_policy,
     )
   else:
     assert num_blocks % num_pipeline_stages == 0
