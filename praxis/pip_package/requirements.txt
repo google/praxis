@@ -117,7 +117,7 @@ fsspec==2023.12.2
     # via etils
 gast==0.4.0
     # via tensorflow
-google-auth==2.26.2
+google-auth==2.27.0
     # via
     #   google-auth-oauthlib
     #   tensorboard
@@ -234,7 +234,7 @@ jupyter-server==2.12.5
     #   jupyterlab-server
     #   notebook
     #   notebook-shim
-jupyter-server-terminals==0.5.1
+jupyter-server-terminals==0.5.2
     # via jupyter-server
 jupyterlab==4.0.11
     # via notebook
@@ -356,9 +356,9 @@ optax==0.1.8
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax-checkpoint==0.5.0
+orbax-checkpoint==0.5.2
     # via flax
-overrides==7.6.0
+overrides==7.7.0
     # via jupyter-server
 packaging==23.2
     # via
@@ -458,7 +458,7 @@ qtconsole==5.5.1
     # via jupyter
 qtpy==2.4.1
     # via qtconsole
-referencing==0.32.1
+referencing==0.33.0
     # via
     #   jsonschema
     #   jsonschema-specifications
@@ -577,7 +577,7 @@ toml==0.10.2
     #   tfds-nightly
 tomli==2.0.1
     # via jupyterlab
-toolz==0.12.0
+toolz==0.12.1
     # via chex
 tornado==6.4
     # via
