@@ -947,5 +947,25 @@ class LowRankOperationsTest(test_utils.TestCase):
       self.assertAllClose(x, jnp.einsum('ij,jk->ik', u, sv))
 
 
+class FP4Test(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(0)
+
+  def test_fp4_round(self):
+    fp4 = operations.FP4()
+    tensor = jnp.array([[-26, 2.3], [33.3, 4.1]], dtype=jnp.float32)
+    expected_tensor = jnp.array([[-6, 2], [6, 4]], dtype=jnp.float32)
+    self.assertArraysEqual(fp4.round(tensor), expected_tensor)
+
+  def test_fp4_nudge(self):
+    t = jnp.array([[-0.5, 2.1], [0.3, 12.5]], dtype=jnp.float32)
+    self.assertAllClose(
+        operations.fakequant_einsum(t=t, eqn='ab,bc->ac', bits=4, use_fp=True),
+        t,
+    )
+
+
 if __name__ == '__main__':
   absltest.main()

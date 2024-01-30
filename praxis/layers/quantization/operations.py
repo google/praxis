@@ -37,6 +37,51 @@ INT4_TYPES = utils.INT4_TYPES
 INT_TYPES = utils.INT_TYPES
 
 
+class FP4:
+  """FP4 quantization."""
+
+  int4_val = [
+      -6.0,
+      -4.0,
+      -3.0,
+      -2.0,
+      -1.5,
+      -1.0,
+      -0.5,
+      0.0,
+      0.5,
+      1.0,
+      1.5,
+      2.0,
+      3.0,
+      4.0,
+      6.0,
+  ]
+
+  def __init__(self, val=None):
+    self.v = jnp.array(val if val else self.int4_val, dtype=jnp.float32)
+
+  def round(self, x):
+    # TODO(jianlijianli): make a faster version.
+    diff = jnp.abs(jnp.subtract(jnp.expand_dims(x, axis=-1), self.v))
+    argmin = jnp.argmin(diff, axis=-1)
+    return jnp.take(self.v, argmin.flatten()).reshape(x.shape)
+
+  def nudge(self, x, contract_dim):
+    # TODO(jianlijianli): allow symmetric, sub-channel etc.
+    target_min, target_max = self.v[0], self.v[-1]
+    value_min = jnp.min(x, axis=contract_dim, keepdims=True)
+    value_max = jnp.max(x, axis=contract_dim, keepdims=True)
+    scale = (value_max - value_min) / (target_max - target_min)
+    scale = scale + jnp.finfo(x.dtype).eps
+    zp = target_min - value_min / scale
+
+    q = jnp.divide(x, scale) + zp
+    rounded = self.round(q)
+    recover = jnp.multiply(jnp.subtract(rounded, zp), scale)
+    return recover.astype(x.dtype)
+
+
 def _get_expand_dims_rhs(eqn: str) -> list[int]:
   """Potentially expand dimensions for scale of right-hand-side tensor.
 
@@ -603,6 +648,7 @@ def fakequant_einsum(
     calculation_dtype: jnp.dtype = jnp.float32,
     use_symmetric: bool = True,
     block_size: int = 0,
+    use_fp: bool = False,
 ) -> JTensor:
   """Nudges weight of einsum with FakeQuant.
 
@@ -615,6 +661,7 @@ def fakequant_einsum(
     calculation_dtype: The type for calculation.
     use_symmetric: Use symmetric quantization for weights.
     block_size: Block wise quantization size. 0 to turn if off.
+    use_fp: Use floating point.
 
   Returns:
     The nudged weight tensor.
@@ -631,6 +678,10 @@ def fakequant_einsum(
   if t.dtype != calculation_dtype:
     t = t.astype(calculation_dtype)
 
+  if use_fp and bits == 4:
+    # Short cut for fp4.
+    fp4 = FP4()
+    return fp4.nudge(t, contract_dims)
   q, scale, zp = reduce_precision(
       t,
       contract_dims,
