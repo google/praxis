@@ -211,7 +211,7 @@ def GlamUniTransformerLmHParams(
     num_pipeline_stages=1,
     num_pipeline_microbatches=1,
     model_type=LanguageModelType.CAUSAL,
-) -> pax_fiddle.Config[transformer_models.TransformerLm]:
+) -> pax_fiddle.Config[transformer_models.TransformerLmMoe]:
   """Common setup for GLaM Decoder-only Transformer Model.
 
   This function sets up configs for both MoE and dense GLaM models.
@@ -267,7 +267,7 @@ def GlamUniTransformerLmHParams(
   Returns:
     A Params object to set up a StackedTransformer.
   """
-  p = pax_fiddle.Config(transformer_models.TransformerLm)
+  p = pax_fiddle.Config(transformer_models.TransformerLmMoe)
   p.name = name
   p.packed_input = True
   p.model_dims = model_dim
