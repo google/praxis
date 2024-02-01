@@ -382,7 +382,7 @@ class WeightInit:
     scale: Initialization scale.
   """
   method: str
-  scale: float
+  scale: float | int
 
   @pax_fiddle.auto_config
   @staticmethod
@@ -415,7 +415,7 @@ class WeightInit:
 
   @pax_fiddle.auto_config
   @staticmethod
-  def Constant(scale: float | bool = 1.0) -> WeightInit:
+  def Constant(scale: float | int = 1.0) -> WeightInit:
     """scale."""
     return WeightInit('constant', scale)
 
@@ -750,7 +750,16 @@ def init_var(
     return scale * jrandom.truncated_normal(
         prng_key, lower=-2.0, upper=2.0, shape=shape, dtype=init_dtype)
   elif method in ['constant']:
-    return scale + jnp.zeros(shape=shape, dtype=init_dtype)
+    if jnp.issubdtype(init_dtype, jnp.integer) and not isinstance(scale, int):
+      raise ValueError(
+          'An integer scale must be provided when initializing an '
+          f'integer variable (of type {init_dtype}), but got {scale=}'
+      )
+    if init_dtype in [jnp.int4, jnp.uint4]:
+      # jnp.zeros(dtype=int4) is not currently supported.
+      return (scale + jnp.zeros(shape=shape, dtype=jnp.int8)).astype(init_dtype)
+    else:
+      return scale + jnp.zeros(shape=shape, dtype=init_dtype)
   elif method in ['xavier']:
     fan_in, fan_out = get_fan_in_fan_out(shape, fan_in_axes, fan_out_axes)
     limit = scale * math.sqrt(6. / (fan_in + fan_out))

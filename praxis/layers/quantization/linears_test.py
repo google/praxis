@@ -251,6 +251,28 @@ class QuantizedLinearTest(test_utils.TestCase):
         updated_vars[SUMMARIES]['step_count_scalar'], np.array([1])
     )
 
+  def test_int4_weight_init(self):
+    p = pax_fiddle.Config(
+        qlinears.Linear,
+        name='linear',
+        input_dims=16,
+        output_dims=32,
+        quantization=QuantizationParams(
+            mode=QuantizationMode.INFERENCE,
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                precision=4,
+                dtype=jnp.int4,
+                use_int4_packed_weights=False,
+            ),
+            act_params=quantization_hparams.ActQuantizationParams(precision=4),
+        ),
+    )
+    linear = instantiate(p)
+    with base_layer.JaxContext.new_context():
+      inputs = jnp.zeros([1, p.input_dims], dtype=jnp.float32)
+      linear_vars = linear.init(jax.random.PRNGKey(123), inputs)
+      self.assertEqual(linear_vars['params']['w'].dtype, jnp.int4)
+
   @parameterized.product(
       input_dim=[64, 256, 1024],
       apply_jit=[False, True],
