@@ -151,11 +151,11 @@ class Fp8LinearsTest(test_utils.TestCase):
     new_vars, grads = jitted_loss_grads(variables, jnp.full(in_shape, 2.))
     self.assertAllClose(new_vars[PARAMS]['body']['einsum'][AH], [[2., 0., 0.]])
     self.assertAllClose(new_vars[PARAMS]['body']['einsum'][SF], [[1.]])
-    ## 2nd iteration
+    # 2nd iteration
     new_vars, grads = jitted_loss_grads(new_vars, jnp.full(in_shape, 3.))
     self.assertAllClose(new_vars[PARAMS]['body']['einsum'][AH], [[3., 0., 2.]])
     self.assertAllClose(new_vars[PARAMS]['body']['einsum'][SF], [[2. / 448]])
-    ## # 3rd iteration
+    # 3rd iteration
     new_vars, grads = jitted_loss_grads(new_vars, jnp.full(in_shape, 4.))
     self.assertAllClose(new_vars[PARAMS]['body']['einsum'][AH], [[4., 2., 3.]])
     self.assertAllClose(new_vars[PARAMS]['body']['einsum'][SF], [[3. / 448]])
