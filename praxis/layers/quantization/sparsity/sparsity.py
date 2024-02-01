@@ -54,7 +54,7 @@ def get_sparsity_mask(
     inputs: jnp.ndarray,
     n_sparsity: int = 0,
     m_sparsity: int = 0,
-    order: str = 'R',
+    order: sparsity_hparams.SparsityOrder = sparsity_hparams.SparsityOrder.C,
 ) -> jnp.ndarray:
   """Returns sparsified inputs for n:m structured pruning.
 
@@ -183,7 +183,11 @@ def get_sparsity_mask_unstructured(
 # TODO(shivaniagrawal): Only used for testing the functionality of
 # get_prune_mask; update the test to call get_pruning_n_m_mask instead.
 def prune_inputs_n_m(
-    inputs: jnp.ndarray, *, n: int, m: int, order: str = 'R'
+    inputs: jnp.ndarray,
+    *,
+    n: int,
+    m: int,
+    order: sparsity_hparams.SparsityOrder = sparsity_hparams.SparsityOrder.C,
 ) -> jnp.ndarray:
   """Returns pruned array with N:M (structured) pruning.
 

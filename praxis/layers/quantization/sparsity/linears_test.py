@@ -86,6 +86,7 @@ class SparseLinearTest(test_utils.TestCase):
             sparsity_type=sparsity_type,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
             mode=mode,
+            order='R',
         ),
     )
     linear = instantiate(p)
@@ -151,6 +152,7 @@ class SparseLinearTest(test_utils.TestCase):
         sparsity=pax_fiddle.Config(
             SparsityHParams,
             sparsity_type=SparsityType.STRUCTURED_NM,
+            order='R',
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
             mode=pax_fiddle.Config(
                 FewShotMode, num_shots=2, mask_update_interval=2, target_step=0
@@ -237,6 +239,7 @@ class SparseLinearTest(test_utils.TestCase):
               sparsity_type=SparsityType.STRUCTURED_NM,
               weight_params=WeightSparsityParams(prune_rate=0.2),
               mode=pax_fiddle.Config(InferenceMode),
+              order='R',
           )
       )
 
@@ -247,6 +250,7 @@ class SparseLinearTest(test_utils.TestCase):
               sparsity_type=SparsityType.UNSTRUCTURED,
               weight_params=WeightSparsityParams(prune_rate=(2, 4)),
               mode=pax_fiddle.Config(InferenceMode),
+              order='R',
           )
       )
 
@@ -293,6 +297,7 @@ class LinearLayersConsistencyTest(test_utils.TestCase):
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
             mode=pax_fiddle.Config(InferenceMode),
+            order='R',
         ),
     )
     for p in [p_f, p_s]:

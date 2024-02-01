@@ -131,6 +131,18 @@ class WeightSparsityParams:
         )
 
 
+@enum.unique
+class SparsityOrder(str, enum.Enum):
+  """The different index order to apply pruning.
+
+  `C` Column wise pruning.
+  `R` Rows wise pruning.
+  """
+
+  C = 'C'
+  R = 'R'
+
+
 @dataclasses.dataclass
 class SparsityHParams:
   """Collection of hyper-parameters for sparsity.
@@ -161,7 +173,7 @@ class SparsityHParams:
   score: SparsityScore = SparsityScore.MAGNITUDE
   sparsified_layers: list[int] | None = None
   polynomial_decay_schedule: PolynomialDecayParams | None = None
-  order: str = 'R'
+  order: SparsityOrder = SparsityOrder.C
   track_sad_metric: bool = False
   topk_estimator_type: str | None = None
   # TODO enable per layer dim i.e. linear 1 and 2

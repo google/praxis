@@ -225,7 +225,9 @@ class PruningFunctionalityTest(parameterized.TestCase):
     inputs = jnp.array(np.random.rand(10, 2, 4))
     prune_rate = (1, 4)
 
-    out = sparsity.prune_inputs_n_m(inputs, n=prune_rate[0], m=prune_rate[1])
+    out = sparsity.prune_inputs_n_m(
+        inputs, n=prune_rate[0], m=prune_rate[1], order='R'
+    )
     self.assertEqual(out.shape[0], inputs.shape[0])
     self.assertEqual(out.shape[1], inputs.shape[1])
     self.assertEqual(out.shape[2], inputs.shape[2])
@@ -242,7 +244,7 @@ class PruningFunctionalityTest(parameterized.TestCase):
     inputs = jnp.array(np.random.rand(10, 2, 4))
     prune_rate = (1, 4)
     mask = sparsity.get_sparsity_mask(
-        inputs, n_sparsity=prune_rate[0], m_sparsity=prune_rate[1]
+        inputs, n_sparsity=prune_rate[0], m_sparsity=prune_rate[1], order='R'
     )
     self.assertEqual(
         list(np.argmax(inputs, axis=2).flatten()),

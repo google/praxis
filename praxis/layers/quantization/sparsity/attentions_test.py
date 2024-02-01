@@ -84,6 +84,7 @@ class SparseAttentionTest(test_utils.TestCase):
             sparsity_type=sparsity_type,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
             mode=mode,
+            order='R',
         ),
     )
     attn = instantiate(p)
@@ -155,6 +156,7 @@ class SparseAttentionTest(test_utils.TestCase):
             mode=pax_fiddle.Config(
                 FewShotMode, num_shots=2, mask_update_interval=2
             ),  # Update mask every 2 steps
+            order='R',
         ),
     )
     attn = instantiate(p)
@@ -274,6 +276,7 @@ class SparseAttentionTest(test_utils.TestCase):
             sparsity_type=sparsity_type,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
             mode=mode,
+            order='R',
         ),
     )
     combine_proj = instantiate(combine_proj_p)
