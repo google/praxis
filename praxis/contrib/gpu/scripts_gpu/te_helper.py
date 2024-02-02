@@ -26,10 +26,13 @@ try:
 
     TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST = [te.fp8.FP8Helper.FP8_COLLECTION_NAME]
 
+    ENABLE_TE_SP = bool(int(os.environ.get('ENABLE_TE_SP', 0)))
+
 except ModuleNotFoundError as e:
     _IS_TRANSFORMER_ENGINE_INSTALLED = False
     TE_PIPELINE_EXTRA_VMAP_VAR_AXES = {}
     TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST = []
+    ENABLE_TE_SP = False
 
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 JTensor = pytypes.JTensor
@@ -43,6 +46,10 @@ class TransformerEngineHelperBase:
 
     @staticmethod
     def set_layer_params_to_stack_transformer(stacked_transformer_obj, layer_p, layer_id):
+        raise NotImplementedError
+
+    @staticmethod
+    def get_input_bld(original_bld, batch_axes, mdl_axis):
         raise NotImplementedError
 
     @staticmethod
@@ -87,6 +94,10 @@ class TENotInstalledHelper(TransformerEngineHelperBase):
         return layer_p
 
     @staticmethod
+    def get_input_bld(original_bld, _, _):
+        return original_bld
+
+    @staticmethod
     def get_bld_mapping_for_pipelined_transformer(xformer_layer_p):
         return xformer_layer_p.tr_atten_tpl.activation_split_dims_mapping.bld
 
@@ -121,11 +132,10 @@ class TEInstalledHelper(TransformerEngineHelperBase):
 
     @staticmethod
     def set_layer_params_to_stack_transformer(stacked_transformer_obj, _, layer_id):
-        enable_sp = bool(int(os.environ.get('ENABLE_TE_SP', 0)))
         te_transformer_tpl = pax_fiddle.Config(te_praxis.TransformerLayer,
             name=f'layer_{layer_id}',
             enable_relative_embedding=False,
-            enable_sequence_parallel=enable_sp,
+            enable_sequence_parallel=ENABLE_TE_SP,
             transpose_batch_sequence=False
         )
 
@@ -231,6 +241,12 @@ class TEInstalledHelper(TransformerEngineHelperBase):
         return te_transformer_tpl
 
     @staticmethod
+    def get_input_bld(_, batch_axes, mdl_axis):
+        if ENABLE_TE_SP:
+            return [batch_axes, mdl_axis, None]
+        return [batch_axes, None, None]
+
+    @staticmethod
     def get_bld_mapping_for_pipelined_transformer(_):
         rules = te_flax.extend_logical_axis_rules(tuple())
         # rules [(batch_axis_name, ('replicat', 'data'))', ...)]
@@ -294,6 +310,11 @@ class TransformerEngineHelper(TransformerEngineHelperBase):
     def set_layer_params_to_stack_transformer(stacked_transformer_obj, layer_p, layer_id):
         return TransformerEngineHelper.get_helper().set_layer_params_to_stack_transformer(
                     stacked_transformer_obj, layer_p, layer_id)
+
+    @staticmethod
+    def get_input_bld(original_bld, batch_axes, mdl_axis):
+        return TransformerEngineHelper.get_helper().get_input_bld(
+                    original_bld, batch_axes, mdl_axis)
 
     @staticmethod
     def get_bld_mapping_for_pipelined_transformer(xformer_layer_p):
