@@ -237,10 +237,13 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         [batch_size, seq_len, dim_per_head].
       bld: Mesh split for output after post projection with the shape of
         [batch_size, seq_len, model_dim].
+      bd: Mesh split for extend step output after post projection with the shape
+        of [batch_size, model_dim].
     """
     blnh: SplitDimsMapping = None
     blh: SplitDimsMapping = None
     bld: SplitDimsMapping = None
+    bd: SplitDimsMapping = None
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -385,8 +388,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       return x
     if ap.bld is None:
       return x
-    assert len(ap.bld) == 3
-    bd = [ap.bld[0], ap.bld[2]]
+    if ap.bd is not None:
+      bd = ap.bd
+      assert len(bd) == 2
+    else:
+      assert len(ap.bld) == 3
+      bd = [ap.bld[0], ap.bld[2]]
     return base_layer.maybe_shard(x, bd, self.mesh_axis_names)
 
   def _scale_query(self, query: JTensor) -> JTensor:
@@ -928,35 +935,28 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     assert time_step.ndim == 0
     # Project inputs to key, value and query. Query has shape [B, N, H],
     # key/value shapes [B, H]
+    if extend_one_step:
+      query_vec = self._shard_bd(query_vec)
     query_proj = self.query(query_vec)
-    if not is_cross_attention:
-      key_proj = self.key(query_vec)
-      value_proj = self.value(query_vec)
+
     # TODO(b/290067837): Workaround for problems when batch dim is sharded
     # differently in bld and blnh.
     ap = self.activation_split_dims_mapping
+    sharding = None
     if ap.bld and ap.blnh:
-      query_proj = base_layer.maybe_shard(
-          query_proj,
-          [ap.bld[0], ap.blnh[2], ap.blnh[3]],
-          self.mesh_axis_names,
-      )
-      if not is_cross_attention:
-        if self.num_kv_heads == 1:
-          sharding = [ap.bld[0], ap.blnh[3]]
-        else:
-          sharding = [ap.bld[0], ap.blnh[2], ap.blnh[3]]
+      ap_b = ap.bd[0] if ap.bd else ap.bld[0]
+      sharding = [ap_b, ap.blnh[2], ap.blnh[3]]
+    query_proj = base_layer.maybe_shard(
+        query_proj, sharding, self.mesh_axis_names
+    )
 
-        value_proj = base_layer.maybe_shard(
-            value_proj,
-            sharding,
-            self.mesh_axis_names,
-        )
-        key_proj = base_layer.maybe_shard(
-            key_proj,
-            sharding,
-            self.mesh_axis_names,
-        )
+    if not is_cross_attention:
+      key_proj = self.key(query_vec)
+      value_proj = self.value(query_vec)
+      if ap.bld and ap.blnh:
+        if self.num_kv_heads == 1:
+          ap_b = ap.bd[0] if ap.bd else ap.bld[0]
+          sharding = [ap_b, ap.blnh[3]]
         value_proj = base_layer.maybe_shard(
             value_proj,
             sharding,
@@ -1022,9 +1022,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     if ap.bld and ap.blnh:
       # TODO(b/290067837): Workaround for problems when batch dim is sharded
       # differently in bld and blnh.
+      ap_b = ap.bd[0] if ap.bd else ap.bld[0]
       encoded = base_layer.maybe_shard(
           encoded,
-          [ap.bld[0], ap.blnh[2], ap.blnh[3]],
+          [ap_b, ap.blnh[2], ap.blnh[3]],
           self.mesh_axis_names,
       )
     encoded = self.post(encoded)

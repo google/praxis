@@ -329,7 +329,9 @@ class TransformerFeedForward(base_layer.BaseLayer):
     """
 
     ffn0: SplitDimsMapping = None
+    ffn0_extend_step: SplitDimsMapping = None
     ffn1: SplitDimsMapping = None
+    ffn1_extend_step: SplitDimsMapping = None
 
   def setup(self) -> None:
     output_dims = self.output_dims
@@ -376,6 +378,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
     ffn1_p.output_dims = self.hidden_dims
     ffn1_p.weight_split_dims_mapping.wt = wp.ffn0
     ffn1_p.activation_split_dims_mapping.out = ap.ffn0
+    ffn1_p.activation_split_dims_mapping.extend_step_out = ap.ffn0_extend_step
     ffn1_p.checkpoint_str = 'ffn1'
     if self.internal_gshard_variance_scaling_fan_in_init:
       scale = (1.0 / self.input_dims) ** 0.5 * (3.0**0.5)
@@ -392,6 +395,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
       gate_p.output_dims = self.hidden_dims
       gate_p.weight_split_dims_mapping.wt = wp.ffn0
       gate_p.activation_split_dims_mapping.out = ap.ffn0
+      gate_p.activation_split_dims_mapping.extend_step_out = ap.ffn0_extend_step
       if self.internal_gshard_variance_scaling_fan_in_init:
         scale = (1.0 / self.input_dims) ** 0.5 * (3.0**0.5)
         gate_p.linear_tpl.params_init = WeightInit.Uniform(scale)
@@ -411,6 +415,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
     ffn2_p.output_dims = output_dims
     ffn2_p.weight_split_dims_mapping.wt = wp.ffn1
     ffn2_p.activation_split_dims_mapping.out = ap.ffn1
+    ffn2_p.activation_split_dims_mapping.extend_step_out = ap.ffn1_extend_step
     if self.internal_gshard_variance_scaling_fan_in_init:
       scale = (1.0 / self.hidden_dims) ** 0.5 * (3.0**0.5)
       ffn2_p.linear_tpl.params_init = WeightInit.Uniform(scale)
@@ -454,6 +459,21 @@ class TransformerFeedForward(base_layer.BaseLayer):
     if self.norm_policy in ('primer_hybrid', 'pre'):
       self.add_summary('input_norm_rms', _rms(inputs), verbosity=4)
 
+    ap = self.activation_split_dims_mapping
+    ap_ff0 = ap.ffn0  # a_blf or a_bf
+    ap_ff1 = ap.ffn1  # a_bld or a_bd
+    if inputs.ndim == 2:
+      if ap.ffn0_extend_step is not None and len(ap.ffn0_extend_step) == 2:
+        ap_ff0 = ap.ffn0_extend_step
+      elif ap_ff0 is not None and len(ap_ff0) == 3:
+        ap_ff0 = [ap_ff0[0], ap_ff0[2]]
+      if ap.ffn1_extend_step is not None and len(ap.ffn1_extend_step) == 2:
+        ap_ff1 = ap.ffn1_extend_step
+      elif ap_ff1 is not None and len(ap_ff1) == 3:
+        ap_ff1 = [ap_ff1[0], ap_ff1[2]]
+
+    inputs = base_layer.maybe_shard(inputs, ap_ff1, self.mesh_axis_names)
+
     # Apply first FFN layer
     if self._is_ffn1_gated:
       # theta.ffn_layer1_gate corresponds to gshard_builder's wi0
@@ -462,6 +482,10 @@ class TransformerFeedForward(base_layer.BaseLayer):
       activations = gate_value * self.ffn_layer1(inputs)
     else:
       activations = self.ffn_layer1(inputs)
+
+    activations = base_layer.maybe_shard(
+        activations, ap_ff0, self.mesh_axis_names
+    )
 
     # Apply paddings if not None
     if not self.apply_padding_first and paddings is not None:
@@ -474,6 +498,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
 
     # Apply second FFN layer
     outputs = self.ffn_layer2(activations)
+    outputs = base_layer.maybe_shard(outputs, ap_ff1, self.mesh_axis_names)
     outputs = checkpoint_name(outputs, 'ffn2')
 
     # Apply paddings if not None
@@ -509,7 +534,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
       self.add_summary(
           'output_rel_cos', _rel_cos(residual, outputs), verbosity=4
       )
-
+    outputs = base_layer.maybe_shard(outputs, ap_ff1, self.mesh_axis_names)
     return outputs
 
   def extend_step(self, inputs: JTensor, *, time_step: JTensor) -> JTensor:
@@ -1339,7 +1364,6 @@ class Transformer(base_layer.BaseLayer):
     self.add_summary('xformer_input_abs_max', inputs_stats.max_v, verbosity=3)
 
     self.add_summary('attention_input_rms', _rms(inputs), verbosity=4)
-
     if self.norm_policy == 'primer_hybrid':
       inputs_normalized = self.pre_layer_norm(inputs)
     elif self.norm_policy == 'pre':
@@ -1467,6 +1491,17 @@ class Transformer(base_layer.BaseLayer):
     Returns:
       output: [B, D] or [B, L, D].
     """
+    a_bld = None
+    if hasattr(self.tr_fflayer_tpl.activation_split_dims_mapping, 'ffn1'):
+      ap = self.tr_fflayer_tpl.activation_split_dims_mapping
+      a_bld = ap.ffn1
+      if inputs.ndim == 2:
+        if ap.ffn1_extend_step is not None and len(ap.ffn1_extend_step) == 2:
+          a_bld = ap.ffn1_extend_step
+        elif a_bld is not None and len(a_bld) == 3:
+          a_bld = [a_bld[0], a_bld[2]]
+    inputs = base_layer.maybe_shard(inputs, a_bld, self.mesh_axis_names)
+
     # Layer normalize input
     if self.norm_policy == 'primer_hybrid':
       inputs_normalized = self.pre_layer_norm(inputs)
@@ -1474,6 +1509,9 @@ class Transformer(base_layer.BaseLayer):
       inputs_normalized = self.layer_norm(inputs)
     else:
       inputs_normalized = inputs
+    inputs_normalized = base_layer.maybe_shard(
+        inputs_normalized, a_bld, self.mesh_axis_names
+    )
 
     # Self-attention layer.
     atten_output = self.self_attention.extend_step(
@@ -1487,12 +1525,20 @@ class Transformer(base_layer.BaseLayer):
     elif self.norm_policy == 'post':
       atten_output = self.layer_norm(atten_output)
 
+    atten_output = base_layer.maybe_shard(
+        atten_output, a_bld, self.mesh_axis_names
+    )
+
     # Residual dropout and connection
     atten_output = self.residual_dropout(atten_output)
     atten_output += inputs
 
     if self.norm_policy == 'post_skip':
       atten_output = self.layer_norm(atten_output)
+
+    atten_output = base_layer.maybe_shard(
+        atten_output, a_bld, self.mesh_axis_names
+    )
 
     # Apply cross attention if applicable
     if self.use_cross_attention and (

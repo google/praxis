@@ -467,8 +467,11 @@ class NClassMajorSharedEmbeddingSoftmax(
           ' NClassMajorSharedEmbeddingSoftmax.'
       )
     ap_out = ap.out
-    if ap_out is not None and len(ap_out) == 3 and projected_inputs.ndim == 2:
-      ap_out = [ap_out[0], ap_out[2]]
+    if projected_inputs.ndim == 2:
+      if ap.extend_step_out is not None and len(ap.extend_step_out) == 2:
+        ap_out = ap.extend_step_out
+      elif ap_out is not None and len(ap_out) == 3:
+        ap_out = [ap_out[0], ap_out[2]]
     projected_inputs = base_layer.maybe_shard(
         projected_inputs, ap_out, self.mesh_axis_names
     )

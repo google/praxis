@@ -480,9 +480,11 @@ class SharedEmbeddingSoftmax(FullSoftmax):
 
     Attributes:
       emb_out_split_dims_mapping: Sharding of the emb output.
+      extend_step_out: Sharding annotations for the primary extend step output.
     """
 
     emb_out_split_dims_mapping: SplitDimsMapping = None
+    extend_step_out: SplitDimsMapping = None
 
   def emb_lookup(self, ids: JTensor) -> JTensor:
     ap = self.activation_split_dims_mapping
@@ -711,9 +713,11 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
 
     Attributes:
       emb_out_split_dims_mapping: Mesh split for embedding outputs..
+      extend_step_out: Sharding annotations for the primary extend step output.
     """
 
     emb_out_split_dims_mapping: SplitDimsMapping = None
+    extend_step_out: SplitDimsMapping = None
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -764,8 +768,11 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
     logits = linears.project_last_dim(inputs, softmax_var)
     # Adjust sharding annotation during decoding.
     ap_out = ap.out
-    if ap_out is not None and len(ap_out) == 3 and logits.ndim == 2:
-      ap_out = [ap_out[0], ap_out[2]]
+    if logits.ndim == 2:
+      if ap.extend_step_out is not None and len(ap.extend_step_out) == 2:
+        ap_out = ap.extend_step_out
+      elif ap_out is not None and len(ap_out) == 3:
+        ap_out = [ap_out[0], ap_out[2]]
     logits = base_layer.maybe_shard(logits, ap_out, self.mesh_axis_names)
 
     # Soft cap logits if applicable

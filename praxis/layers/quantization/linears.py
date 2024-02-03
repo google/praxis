@@ -254,8 +254,15 @@ class Linear(  # pytype: disable=signature-mismatch
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
     ap_out = ap.out
-    if ap_out is not None and len(ap_out) == 3 and out.ndim == 2:
-      ap_out = [ap_out[0], ap_out[2]]
+    if out.ndim == 2:
+      if (
+          hasattr(ap, 'extend_step_out')
+          and ap.extend_step_out is not None
+          and len(ap.extend_step_out) == 2
+      ):
+        ap_out = ap.extend_step_out
+      elif ap_out is not None and len(ap_out) == 3:
+        ap_out = [ap_out[0], ap_out[2]]
     out = base_layer.maybe_shard(out, ap_out, self.mesh_axis_names)
     return out
 
