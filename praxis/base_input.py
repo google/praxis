@@ -303,8 +303,7 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
     try:
       # Not all subclasses support _get_state_internal().
       try:
-        if self.input_checkpointing_enabled:
-          self._state_before_peek = self._get_state_internal()
+        self._state_before_peek = self._get_state_internal()
       except NotImplementedError:
         pass
       self._peek = self.get_next_padded()

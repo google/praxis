@@ -454,9 +454,7 @@ class InputTest(test_utils.TestCase):
     """Using peek_padded() works with get_state()/set_state()."""
 
     def create_pipeline():
-      pipeline_p = pax_fiddle.Config(
-          TestInputCheckpointable, input_checkpointing_enabled=True
-      )
+      pipeline_p = pax_fiddle.Config(TestInputCheckpointable)
       pipeline_p.batch_size = 2
       pipeline_p.shuffle = False
       return instantiate(pipeline_p)
