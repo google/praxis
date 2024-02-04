@@ -272,6 +272,7 @@ class QuantizedLinearTest(test_utils.TestCase):
       inputs = jnp.zeros([1, p.input_dims], dtype=jnp.float32)
       linear_vars = linear.init(jax.random.PRNGKey(123), inputs)
       self.assertEqual(linear_vars['params']['w'].dtype, jnp.int4)
+      linear.apply(linear_vars, inputs)
 
   @parameterized.product(
       input_dim=[64, 256, 1024],

@@ -256,16 +256,25 @@ class SharedEmbeddingSoftmaxTest(test_utils.TestCase):
       ],
       use_symmetric=[True, False],
       lookup_style=['index', 'matmul'],
+      use_native_types=[True, False],
   )
   def test_quantized_inference(
-      self, precision, quantization_type, use_symmetric, lookup_style
+      self,
+      precision,
+      quantization_type,
+      use_symmetric,
+      lookup_style,
+      use_native_types,
   ):
+    dtype = jnp.int4 if use_native_types and precision == 4 else jnp.int8
     quantization_option = QuantizationParams(
         quantization_type=quantization_type,
         mode=QuantizationMode.INFERENCE,
         weight_params=WeightQuantizationParams(
             precision=precision,
             use_symmetric=use_symmetric,
+            use_int4_packed_weights=not use_native_types,
+            dtype=dtype,
             int4_packed_weights_container_dtype=jnp.int8,
         ),
     )
@@ -313,9 +322,10 @@ class SharedEmbeddingSoftmaxTest(test_utils.TestCase):
           dtype=np.int8,
       )
       if precision == 4:
-        q_linear_params['w'] = utils.pack_4bit(
-            q_linear_params['w'], 0, jnp.int8
-        )
+        if use_native_types:
+          q_linear_params['w'] = jnp.array(q_linear_params['w'], dtype)
+        else:
+          q_linear_params['w'] = utils.pack_4bit(q_linear_params['w'], 0, dtype)
       q_linear_params['w_quantized_scale'] = np.array(
           self.SCALES_SYMMETRIC if use_symmetric else self.SCALES_ASYMMETRIC,
           dtype=q_p.dtype,

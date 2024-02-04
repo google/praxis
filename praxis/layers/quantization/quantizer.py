@@ -26,6 +26,7 @@ import jax
 import jax.numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle
+from praxis import py_utils
 from praxis import pytypes
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
@@ -177,6 +178,10 @@ class QuantizationLayer(base_layer.BaseLayer):
       q_w = utils.unpack_4bit(
           q_w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
       )
+    if not py_utils.is_tpu() and q_w.dtype in utils.INT4_TYPES:
+      # (u)int4 is only supported for convert operations on XLA CPU and GPU, but
+      # the double cast is useful for other compilers.
+      q_w = q_w.astype(jnp.int8)
     return q_w, q_s, zp
 
   def quantized_einsum(
