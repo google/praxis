@@ -378,7 +378,8 @@ class TransformerFeedForward(base_layer.BaseLayer):
     ffn1_p.output_dims = self.hidden_dims
     ffn1_p.weight_split_dims_mapping.wt = wp.ffn0
     ffn1_p.activation_split_dims_mapping.out = ap.ffn0
-    ffn1_p.activation_split_dims_mapping.extend_step_out = ap.ffn0_extend_step
+    if hasattr(ffn1_p.activation_split_dims_mapping, 'extend_step_out'):
+      ffn1_p.activation_split_dims_mapping.extend_step_out = ap.ffn0_extend_step
     ffn1_p.checkpoint_str = 'ffn1'
     if self.internal_gshard_variance_scaling_fan_in_init:
       scale = (1.0 / self.input_dims) ** 0.5 * (3.0**0.5)
@@ -395,7 +396,10 @@ class TransformerFeedForward(base_layer.BaseLayer):
       gate_p.output_dims = self.hidden_dims
       gate_p.weight_split_dims_mapping.wt = wp.ffn0
       gate_p.activation_split_dims_mapping.out = ap.ffn0
-      gate_p.activation_split_dims_mapping.extend_step_out = ap.ffn0_extend_step
+      if hasattr(gate_p.activation_split_dims_mapping, 'extend_step_out'):
+        gate_p.activation_split_dims_mapping.extend_step_out = (
+            ap.ffn0_extend_step
+        )
       if self.internal_gshard_variance_scaling_fan_in_init:
         scale = (1.0 / self.input_dims) ** 0.5 * (3.0**0.5)
         gate_p.linear_tpl.params_init = WeightInit.Uniform(scale)
@@ -415,7 +419,8 @@ class TransformerFeedForward(base_layer.BaseLayer):
     ffn2_p.output_dims = output_dims
     ffn2_p.weight_split_dims_mapping.wt = wp.ffn1
     ffn2_p.activation_split_dims_mapping.out = ap.ffn1
-    ffn2_p.activation_split_dims_mapping.extend_step_out = ap.ffn1_extend_step
+    if hasattr(ffn2_p.activation_split_dims_mapping, 'extend_step_out'):
+      ffn2_p.activation_split_dims_mapping.extend_step_out = ap.ffn1_extend_step
     if self.internal_gshard_variance_scaling_fan_in_init:
       scale = (1.0 / self.hidden_dims) ** 0.5 * (3.0**0.5)
       ffn2_p.linear_tpl.params_init = WeightInit.Uniform(scale)
