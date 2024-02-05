@@ -672,10 +672,14 @@ def init_var(
   init_dtype = var_p.dtype
   fan_in_axes = var_p.fan_in_axes
   fan_out_axes = var_p.fan_out_axes
-  logging.info(
+  logging.debug(
       'Creating var %s with shape=%s, dtype=%s, init method=%s and scale=%s',
-      var_full_name, shape, init_dtype, var_p.init.method,
-      var_p.init.scale)
+      var_full_name,
+      shape,
+      init_dtype,
+      var_p.init.method,
+      var_p.init.scale,
+  )
   # We rely on nn.scan to transform vars, hence init_var shouldn't expect a
   # repeat_prefix or repeat_prefix_split_dims_mapping.
   assert not var_p.repeat_prefix
