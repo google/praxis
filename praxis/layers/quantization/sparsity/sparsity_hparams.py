@@ -131,6 +131,11 @@ class WeightSparsityParams:
         )
 
 
+# NOTE: Pay attention to which dimension, and type of tensor being sparsified.
+# Some hardware may support sparsity along the reduction dimension alone. This
+# would translate to `C' i.e., column-wise pruning for weights, and `R' i.e.,
+# row-wise pruning for activations. Enforcing the correct order may be required
+# to suitably target hardware capabilities.
 @enum.unique
 class SparsityOrder(str, enum.Enum):
   """The different index order to apply pruning.
@@ -159,8 +164,10 @@ class SparsityHParams:
       sparsity
     order: Apply pruning using this index order. Supported values are `C`, `R`.
       `C` and `R` indicate column-wise and row-wise masking, respectively.
-      Default is `R` indicating to applying N:M sparsity across rows of the
-      input matrix.
+      Default is `C` indicating to applying N:M sparsity across columns of the
+      input matrix. The choice may intersect with hardware capabilities, that
+      support sparsity only along a reduction dimension. For a weight tensor `C`
+      corresponds to the reduction dimension, and `R' for activations.
     track_sad_metric: Should we track sparse architecture divergence metric?
     topk_estimator_type: Sets the type of top-k mask learning.
   """

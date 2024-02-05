@@ -65,7 +65,10 @@ def get_sparsity_mask(
     order: Apply pruning using this index order. Supported values are `C`, `R`.
       `C` and `R` indicate column-wise and row-wise masking, respectively.
       Default is `R` indicating to applying N:M sparsity across rows of the
-      input matrix.
+      input matrix. Default is `C` indicating to applying N:M sparsity across
+      columns of the input matrix. The choice may intersect with hardware
+      capabilities. For a weight tensor `C` corresponds to the reduction
+      dimension, and `R' for activations.
 
   Returns:
     A mask that indicates the pruning locations (`0`: no pruning, `1`: pruned).
@@ -201,7 +204,9 @@ def prune_inputs_n_m(
     order: Apply pruning using this index order. Supported values are `C`, `R`.
       `C` and `R` indicate column-wise and row-wise masking, respectively.
       Default is `R` indicating to applying N:M sparsity across rows of the
-      input matrix.
+      input matrix. The choice may intersect with hardware capabilities. For a
+      weight tensor `C` corresponds to the reduction dimension, and `R' for
+      activations.
 
   Returns:
     An array with the same shape as inputs pruned with N:M strategy.
