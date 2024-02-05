@@ -47,6 +47,8 @@ JTensor = pytypes.JTensor
 class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
   """Using Jax/Pallas/Triton to call into a fused MHA kernel on NVIDIA GPU."""
 
+  is_causal: bool = False
+
   def _blnh_pspec(self):
     """Return sharding annotations to tensors of shape [b, l, n, h]."""
     ap = self.activation_split_dims_mapping
@@ -77,7 +79,6 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
       encoded: JTensor of shape [B, T, N, H].
       atten_probs: JTensor of shape [B, N, T, S].
     """
-    logging.info('Using experimental GpuTritonFusedDotProductAttention.')
     assert relative_bias is None, 'Unimplemented'
 
     query = self._shard_blnh(query)
@@ -130,7 +131,12 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
     )
     def sharded_mha(q, k, v):
       return attention.mha(
-          q, k, v, sm_scale=1.0 / math.sqrt(h), backward_pass_impl=bwd_pass_impl
+          q,
+          k,
+          v,
+          sm_scale=1.0 / math.sqrt(h),
+          causal=self.is_causal,
+          backward_pass_impl=bwd_pass_impl,
       )
 
     encoded = sharded_mha(query, key, value)
