@@ -767,8 +767,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         _rep_d(x) for x in [query_vec, key_vec, value_vec]
     ]
 
-    # Project inputs to key, value and query, respectively has shape
-    # [B, S, N, H], [B, S, H], and [B, T, H].
+    # Project inputs to query, key and value, respectively has shape
+    # [B, T, N, H], [B, S, H], and [B, S, H].
     query_proj = self.query(query_vec)
     key_proj = self.key(key_vec)
     value_proj = self.value(value_vec)
