@@ -52,6 +52,7 @@ def _set_embedding_softmax_sharding_params_for_transformers(
     w_vd,
     a_blv,
     a_bld,
+    a_bv=None,
 ):
   """Sets sharding params for embedding_softmax modules in transformers.
 
@@ -67,6 +68,7 @@ def _set_embedding_softmax_sharding_params_for_transformers(
     w_vd: sharding of the embedding weight of (vocab_size, d).
     a_blv: sharding of the logits of shape (b, l, vocab_size).
     a_bld: sharding of embedding output activation, shape (b, l, d).
+    a_bv: sharding of the logits of shape (b, vocab_size).
 
   Returns:
     Params with sharding annotations added.
@@ -114,6 +116,11 @@ def _set_embedding_softmax_sharding_params_for_transformers(
     (
         embedding_softmax_p.activation_split_dims_mapping.emb_out_split_dims_mapping
     ) = a_bld
+    if hasattr(
+        embedding_softmax_p.activation_split_dims_mapping, 'extend_step_out'
+    ):
+      embedding_softmax_p.activation_split_dims_mapping.extend_step_out = a_bv
+
   elif fdl.get_callable(embedding_softmax_p) == embedding_softmax.FullSoftmax:
     embedding_softmax_p.activation_split_dims_mapping.out = a_blv
   return embedding_softmax_p
@@ -131,6 +138,8 @@ def _set_stacked_transformer_sharding(
     a_egch,
     a_egcm,
     a_blh=None,
+    a_bd=None,
+    a_bf=None,
 ):
   """Set sharding params for the stacked transformer layer."""
   stacked_p = stacked_transformer_p
@@ -156,6 +165,8 @@ def _set_stacked_transformer_sharding(
       atten_ap = atten_p.activation_split_dims_mapping
       atten_ap.blnh = a_blnh
       atten_ap.bld = a_bld
+      if hasattr(atten_ap, 'bd'):
+        atten_ap.bd = a_bd
       if issubclass(
           fdl.get_callable(atten_p),
           multi_query_attention.MultiQueryDotProductAttention,
@@ -175,7 +186,11 @@ def _set_stacked_transformer_sharding(
       ff_wp.ffn1 = [w_df[1], w_df[0]]
     ff_ap = ff_p.activation_split_dims_mapping
     ff_ap.ffn0 = a_blf
+    if hasattr(ff_ap, 'ffn0_extend_step'):
+      ff_ap.ffn0_extend_step = a_bf
     ff_ap.ffn1 = a_bld
+    if hasattr(ff_ap, 'ffn1_extend_step'):
+      ff_ap.ffn1_extend_step = a_bd
 
   if stacked_p.moe_layer_tpl is not None:
     # Set Moe layer sharding hparams.
@@ -396,6 +411,9 @@ class TransformerLm(base_layer.BaseLayer):
       a_blv=None,
       a_egch=None,
       a_egcm=None,
+      a_bd=None,
+      a_bf=None,
+      a_bv=None,
   ):
     """Configure the shardings on each tensor.
 
@@ -421,6 +439,9 @@ class TransformerLm(base_layer.BaseLayer):
       a_blv: sharding of the logits activation of shape (b, l, vocab_size).
       a_egch: sharding of the output of first MoE FFN, shape (e, g, c, h).
       a_egcm: sharding of the output of second MoE FFN, shape (e, g, c, m).
+      a_bd: sharding of extend step of ffn/attention, shape (b, d).
+      a_bf: sharding of extend step of ffn0, shape (b, f).
+      a_bv: sharding of the logits activation of shape (b, vocab_size).
 
     Returns:
       Params with sharding annotations added.
@@ -448,7 +469,12 @@ class TransformerLm(base_layer.BaseLayer):
         'mesh_axis_names': mesh_axis_names,
     }
     lm_p.softmax_tpl = _set_embedding_softmax_sharding_params_for_transformers(
-        lm_p.softmax_tpl, w_vd=w_vd, a_blv=a_blv, a_bld=a_bld, **mesh_kwargs
+        lm_p.softmax_tpl,
+        w_vd=w_vd,
+        a_blv=a_blv,
+        a_bld=a_bld,
+        a_bv=a_bv,
+        **mesh_kwargs,
     )
 
     def _set_transformer_sharding(transformer_tpl):
@@ -461,6 +487,8 @@ class TransformerLm(base_layer.BaseLayer):
           a_blf=a_blf,
           a_blh=a_blh,
           a_blnh=a_blnh,
+          a_bd=a_bd,
+          a_bf=a_bf,
           a_egch=a_egch,
           a_egcm=a_egcm,
       )
@@ -481,6 +509,7 @@ class TransformerLm(base_layer.BaseLayer):
               w_vd=w_vd,
               a_blv=a_blv,
               a_bld=a_bld,
+              a_bv=a_bv,
               **mesh_kwargs,
           )
       )
