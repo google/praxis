@@ -147,7 +147,11 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_params=wp_a,
           scale_shape=[self.rank],
       )
-      self.create_aux_variables('w_a', wp_a)
+      self.create_aux_variables(
+          'w_a',
+          wp_a,
+          scale_shape=[self.rank],
+      )
       wp_b = WeightHParams(
           shape=shape_b,
           mesh_shape=self.mesh_shape,
@@ -158,7 +162,11 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_params=wp_b,
           scale_shape=[self.output_dims],
       )
-      self.create_aux_variables('w_b', wp_b)
+      self.create_aux_variables(
+          'w_b',
+          wp_b,
+          scale_shape=[self.output_dims],
+      )
 
     else:
       block_size = self._sub_channel_block_size()

@@ -335,7 +335,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
         weight_params=pc,
         scale_shape=[3] + hd_shape,
     )
-    self.create_aux_variables('w', pc)
+    self.create_aux_variables('w', pc, scale_shape=[3] + hd_shape)
     if self.use_bias:
       # Combined bias weight for q, k, v projections.
       pc_bias = WeightHParams(

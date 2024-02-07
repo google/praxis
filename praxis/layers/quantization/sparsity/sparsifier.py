@@ -164,6 +164,9 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     )
     if self.sparsity.topk_estimator_type:
       # create learnable mask parameters for top-k methods
+      assert (
+          scale_shape is not None
+      ), 'scale_shape is required for top-k methods.'
       sparsity_mask_hp = copy.deepcopy(weight_hp)
       self.set_up_weights(
           weight_name='w_mask',
