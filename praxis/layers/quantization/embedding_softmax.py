@@ -240,8 +240,6 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
 
   quantization: QuantizationParams = instance_field(QuantizationParams)
 
-  fq_reverse_contract_embed_dim: bool = False
-
   def setup(self) -> None:
     if self.feed_forward_tpl is not None:
       wp = self.weight_split_dims_mapping
@@ -285,10 +283,8 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
     else:
-      if self.fq_reverse_contract_embed_dim:
-        eqn = 'xy,yz->xz'
-      else:
-        eqn = 'xy,zy->xz'
+      eqn = 'xy,yz->xz'  # Embeddings is transposed here, so this will give
+      # row-wise quantization for embeddings.
       emb_var = linear_layer.theta.w
       if self.quantization.quantization_type == QuantizationType.AQT:
         contract_dims = quantized_operations.eqn_to_weight_contract_dims(eqn)
