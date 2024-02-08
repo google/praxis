@@ -54,7 +54,7 @@ def sr_ste(
 
   Algorithm description: https://arxiv.org/abs/2102.04010
 
-  The last arguement is forced to be static to simplify
+  The last argument is forced to be static to simplify
     the implementation.
 
   Args:
@@ -129,7 +129,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
   sparsity: Optional[SparsityHParams] = None
 
-  def create_aux_variables(
+  def create_sparsity_variables(
       self,
       name: str,
       weight_hparams: WeightHParams,

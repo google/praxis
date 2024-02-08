@@ -60,7 +60,7 @@ class SparseLinearTestLayer(sparsifier.SparsityBaseLayer, linears.Linear):
     name = 'w'
     self.create_variable(name, weight_hp)
     self.create_child('einsum', self.einsum_tpl.clone())
-    self.create_aux_variables(name, weight_hp)
+    self.create_sparsity_variables(name, weight_hp)
 
   def __call__(self, inputs):
     w = self.sparsifiy(
@@ -98,7 +98,7 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
           ),
       ),
   )
-  def test_create_aux_variables(self, mode_name, mode):
+  def test_create_sparsity_variables(self, mode_name, mode):
     sparsity_p = pax_fiddle.Config(
         SparsityHParams,
         sparsity_type=SparsityType.STRUCTURED_NM,

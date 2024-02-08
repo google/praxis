@@ -87,7 +87,7 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
         weight_params=pc,
         scale_shape=scale_shape,
     )
-    self.create_aux_variables('w', pc, scale_shape=scale_shape)
+    self.create_sparsity_variables('w', pc, scale_shape=scale_shape)
 
     if self.use_bias:
       if self.is_output_projection:
@@ -335,7 +335,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
         weight_params=pc,
         scale_shape=[3] + hd_shape,
     )
-    self.create_aux_variables('w', pc, scale_shape=[3] + hd_shape)
+    self.create_sparsity_variables('w', pc, scale_shape=[3] + hd_shape)
     if self.use_bias:
       # Combined bias weight for q, k, v projections.
       pc_bias = WeightHParams(

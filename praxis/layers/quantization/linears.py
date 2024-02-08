@@ -147,7 +147,7 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_params=wp_a,
           scale_shape=[self.rank],
       )
-      self.create_aux_variables(
+      self.create_sparsity_variables(
           'w_a',
           wp_a,
           scale_shape=[self.rank],
@@ -162,7 +162,7 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_params=wp_b,
           scale_shape=[self.output_dims],
       )
-      self.create_aux_variables(
+      self.create_sparsity_variables(
           'w_b',
           wp_b,
           scale_shape=[self.output_dims],
@@ -185,7 +185,7 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_params=weight_hparams,
           scale_hparams=scale_hparams,
       )
-      self.create_aux_variables(
+      self.create_sparsity_variables(
           'w',
           weight_hparams,
           scale_shape=[self.output_dims],
