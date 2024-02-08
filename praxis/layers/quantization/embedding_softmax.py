@@ -77,6 +77,10 @@ class Embedding(embedding_softmax.Embedding):
       )
 
   def emb_lookup(self, ids: JTensor) -> JTensor:
+    if self.quantization.act_params is not None:
+      raise NotImplementedError(
+          'Input id quantization is not implemented for the Embedding layer.'
+      )
     ap = self.activation_split_dims_mapping
 
     if self.quantization.mode == QuantizationMode.INFERENCE:
@@ -87,10 +91,6 @@ class Embedding(embedding_softmax.Embedding):
       emb_var = self.theta.emb_var
       eqn = 'xy,zy->xz'
       if self.quantization.quantization_type == QuantizationType.FQ:
-        if self.quantization.act_params is not None:
-          raise NotImplementedError(
-              'Input quantization is not implemented for Embeddings.'
-          )
         # We compute scale factor per input channel, in contrast to other
         # places where we compute per output channel.
         emb_var = quantized_operations.fakequant_einsum(
@@ -271,11 +271,10 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
       )
 
   def emb_lookup(self, ids: JTensor) -> JTensor:
+    # NOTE: The input ids are not quantized because doing so would significantly
+    # limit any model's vocabulary. Activation quantization is applied to the
+    # softmax inputs in the logits_ffn subclass however.
     linear_layer = self.logits_ffn.linear
-    if self.quantization.act_params is not None:
-      raise NotImplementedError(
-          'Input quantization is not implemented for Embedding.'
-      )
     ap = self.activation_split_dims_mapping
 
     if self.quantization.mode == QuantizationMode.INFERENCE:
@@ -295,8 +294,6 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
             quantized_dtype=emb_var.dtype)
 
       elif self.quantization.quantization_type == QuantizationType.FQ:
-        if self.quantization.act_params is not None:
-          raise ValueError('Input quantization is not supported for Embedding.')
         # TODO(b/283327622)  Note that we quantize embeddings during FF logit as
         # well, could this be optimized by getting quantized embeddings from
         # linear layers instead of recomputing?
@@ -447,6 +444,12 @@ class NClassMajorSharedEmbeddingSoftmax(
     """
     del input_ids
     ap = self.activation_split_dims_mapping
+    if self.quantization.act_params is not None:
+      raise NotImplementedError(
+          'Activation quantization is not implemented for'
+          ' NClassMajorSharedEmbeddingSoftmax'
+      )
+
     if self.quantization.mode == QuantizationMode.INFERENCE:
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
@@ -481,6 +484,9 @@ class NClassMajorSharedEmbeddingSoftmax(
     return logits
 
   def emb_lookup(self, ids: JTensor) -> JTensor:
+    # NOTE: The input ids are not quantized because doing so would significantly
+    # limit any model's vocabulary. Activation quantization could be applied to
+    # the softmax inputs in get_logits however.
     ap = self.activation_split_dims_mapping
 
     if self.quantization.mode == QuantizationMode.INFERENCE:

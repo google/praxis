@@ -54,12 +54,15 @@ ActQuantizationParams = quantization_hparams.ActQuantizationParams
 
 
 def _quantize_embedding_softmax_layer_weights(
-    layer_tpl: pax_fiddle.Config[layers.TransformerLm]
-    | pax_fiddle.Config[layers.TransformerEncoderDecoder],
+    layer_tpl: (
+        pax_fiddle.Config[layers.TransformerLm]
+        | pax_fiddle.Config[layers.TransformerEncoderDecoder]
+    ),
     quantization_type: QuantizationType,
     mode: QuantizationMode,
     weight_quantization_params: WeightQuantizationParams,
-    transposed_embedding_softmax: bool,
+    act_quantization_params: ActQuantizationParams | None = None,
+    transposed_embedding_softmax: bool = False,
     softmax_only: bool = True,
 ) -> None:
   """Rewrites Embedding HParam for weight only quantization."""
@@ -72,6 +75,7 @@ def _quantize_embedding_softmax_layer_weights(
             quantization_type=quantization_type,
             mode=mode,
             weight_params=weight_quantization_params,
+            act_params=act_quantization_params,
         ),
     )
   else:
@@ -83,6 +87,7 @@ def _quantize_embedding_softmax_layer_weights(
             quantization_type=quantization_type,
             mode=mode,
             weight_params=weight_quantization_params,
+            act_params=act_quantization_params,
         ),
     )
 
@@ -698,6 +703,7 @@ def set_transformer_quantization(
             quantization_type,
             mode,
             weight_quantization_params,
+            act_quantization_params,
             transposed_embedding_softmax,
             softmax_only,
         )  # pytype: disable=wrong-arg-types  # py310-upgrade
