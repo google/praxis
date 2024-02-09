@@ -93,7 +93,7 @@ def compute_attention_masks_for_fprop(
       ready to add to logits (optional).
     cross_inputs: Output JTensor of the encoder, to be used for cross attention,
       of shape [B, S, H].
-    cross_paddings: Paddings JTensor for cross atention of shape [B, S].
+    cross_paddings: Paddings JTensor for cross attention of shape [B, S].
     cross_segment_mask: Segment mask JTensor for encoder-decoder in packed input
       case of shape [B, 1, T, S].
     fold_padding_with_segment_mask: If True then segment mask is supposed to
@@ -280,7 +280,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
       residual_weight + x.
     residual_droppath_prob: Probability at which we drop the entire residual
       path.
-    norm_policy: Policy for applying normaliztion wrt. transformations. Options
+    norm_policy: Policy for applying normalization wrt. transformations. Options
       are: (1) "pre", applied before transformation. (2) "primer_hybrid",
         applied before and after transformation. (3) "post", applied after
         transformation, (4) "post_skip", applied after the skip connection.
@@ -578,7 +578,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     residual_weight: Weight applied on residual connection. Final output is
       residual_weight * residual_fn(x) + x. Only in effect when
       add_skip_connection is True.
-    norm_policy: Policy for applying normaliztion wrt. transformations. Options
+    norm_policy: Policy for applying normalization wrt. transformations. Options
       are: (1) "pre", applied before transformation. (2) "primer_hybrid",
         applied before and after transformation. (3) "post", applied after
         transformation.
@@ -587,8 +587,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     gating_func: Gating function type--can be one of the following options:
       'top2', based on the GShard paper: https://arxiv.org/abs/2006.16668,
       'expert_choice', based on https://arxiv.org/abs/2202.09368, 'dense_top2':
-      experimental gating function for decodiing. Similar to 'top2' gating, but
-      no capacity constrainst for each expert.
+      experimental gating function for decoding. Similar to 'top2' gating, but
+      no capacity constraints for each expert.
     num_experts: Total number of experts in this layer.
     num_groups: Total number of groups for dispatching. num_groups typically
       should be the same as num devices.
@@ -806,7 +806,6 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     ]
     wo_init = None
     if self.internal_gshard_variance_scaling_fan_in_init:
-      wi_init = None
       stddev = (1.0 / self.hidden_dims) ** 0.5
       wo_init_scale = stddev * 3.0**0.5
       wo_init = WeightInit.Uniform(wo_init_scale)
@@ -1198,7 +1197,7 @@ class Transformer(base_layer.BaseLayer):
       set to None, then cross-attention params will be inherited from
       tr_atten_tpl.
     ln_tpl: Parameterization of the layer normalization layer.
-    norm_policy: Policy for applying normaliztion wrt. transformations. Options
+    norm_policy: Policy for applying normalization wrt. transformations. Options
       are: (1) "pre", applied before transformation. (2) "primer_hybrid",
         applied before and after transformation. (3) "post", applied after
         transformation. (4) "post_skip", applied after the skip connection.
@@ -1635,8 +1634,8 @@ class StackedTransformer(base_layer.BaseLayer):
     gating_func: Gating function type--can be one of the following options:
       'top2', based on the GShard paper: https://arxiv.org/abs/2006.16668,
       'expert_choice', based on https://arxiv.org/abs/2202.09368, 'dense_top2':
-      experimental gating function for decodiing. Similar to 'top2' gating, but
-      no capacity constrainst for each expert.
+      experimental gating function for decoding. Similar to 'top2' gating, but
+      no capacity constraints for each expert.
     unadjusted_expert_capacity_factor: Unadjusted expert capacity_factor. This
       is the ratio between global batch size and total capacity across all
       experts and all routing groups.
@@ -1695,7 +1694,7 @@ class StackedTransformer(base_layer.BaseLayer):
   )
 
   def _clone_layer_params(self, layer_tpl: LayerTpl) -> LayerTpl:
-    """Useful to let sublasses switch the class (e.g. Streaming version)."""
+    """Useful to let subclasses switch the class (e.g. Streaming version)."""
     return layer_tpl.clone()
 
   def setup(self) -> None:
@@ -1798,7 +1797,7 @@ class StackedTransformer(base_layer.BaseLayer):
         add to logits.
       cross_inputs: Output of the encoder, to be used for cross attention, of
         shape [B, S, H].
-      cross_paddings: Paddings for cross atention of shape [B, S].
+      cross_paddings: Paddings for cross attention of shape [B, S].
       cross_segment_mask: Segment mask for encoder-decoder in packed input case
         of shape [B, 1, T, S].
       segment_pos: Segment pos for packed input of shape [B, T].
@@ -1881,7 +1880,7 @@ class StackedTransformer(base_layer.BaseLayer):
   ) -> JTensor:
     """Transformer stacked decoder layers, autoregressive cached decoding.
 
-    When `inputs` has shape [B, L, D], it will do extend_step on N tokenks per
+    When `inputs` has shape [B, L, D], it will do extend_step on N tokens per
     batch. This is used to do suffix scoring after autoregressive decoding.
 
     When `inputs` has shape [B, D], it will do extend_step on one token per
@@ -2081,7 +2080,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
         add to logits.
       cross_inputs: Output of the encoder, to be used for cross attention, of
         shape [B, S, H].
-      cross_paddings: Paddings for cross atention of shape [B, S].
+      cross_paddings: Paddings for cross attention of shape [B, S].
       cross_segment_mask: Segment mask for encoder-decoder in packed input case
         of shape [B, 1, T, S].
       segment_pos: Segment position of shape [B, T].
@@ -2126,7 +2125,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
   ) -> JTensor:
     """Transformer stacked decoder layers, autoregressive cached decoding.
 
-    When `inputs` has shape [B, L, D], it will do extend_step on N tokenks per
+    When `inputs` has shape [B, L, D], it will do extend_step on N tokens per
     batch. This is used to do suffix scoring after autoregressive decoding.
 
     When `inputs` has shape [B, D], it will do extend_step on one token per
@@ -2305,7 +2304,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
         add to logits.
       cross_inputs: Output of the encoder, to be used for cross attention, of
         shape [B, S, H].
-      cross_paddings: Paddings for cross atention of shape [B, S].
+      cross_paddings: Paddings for cross attention of shape [B, S].
       cross_segment_mask: Segment mask for encoder-decoder in packed input case
         of shape [B, 1, T, S].
       segment_pos: Segment position of shape [B, T].
