@@ -410,7 +410,7 @@ def convert_fully_replicated_array_to_pmap_array(arr):
   with jax.transfer_guard('disallow'):
     local_shape = (jax.local_device_count(),) + arr.shape
     device_buffers = [shard.data for shard in arr.addressable_shards]
-    devices = np.array([d.device() for d in device_buffers])
+    devices = np.array([shard.device for shard in arr.addressable_shards])
 
     s = jax.sharding.PmapSharding.default(
         local_shape, sharded_dim=0, devices=devices
@@ -440,7 +440,7 @@ def convert_host_local_array_to_global_array(arr):
   # pmap-produced Array has a "scrambled" device order.
   dbs = sorted(
       [shard.data for shard in arr.addressable_shards],
-      key=lambda x: x.device().id,
+      key=lambda x: list(x.devices())[0].id,
   )
   return jax.make_array_from_single_device_arrays(
       global_shape, jax.sharding.NamedSharding(mesh, partition_spec), dbs
