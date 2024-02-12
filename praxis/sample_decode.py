@@ -1684,3 +1684,173 @@ def greedy_decode(
       temperature=0.0,
       process_result_fn=process_result_fn,
   )
+
+
+# functions used for continuous batching
+def greedy_init_decode_state(
+    model: base_layer.BaseLayerApi,
+    prefix_ids: JTensor,
+    # # remove the logic when fprop_for_prefix=False to simplify for now
+    # fprop_for_prefix: bool = False,
+    max_prefix_len: int | None = None,
+    max_decode_steps: int | Sequence[int] | None = None,
+    prefix_lengths: JTensor | None = None,
+    eos_id: int | None = None,
+    transform_state_fn: decoder_utils.TransformStateFn | None = None,
+) -> NestedMap:
+  # set up decoding parameters
+  if transform_state_fn:
+    pad_state_sizes = max_decode_steps
+    transform_state_fn(model, decoder_utils.pad_state_fn(pad_state_sizes))
+
+  batch_size = prefix_ids.shape[0]
+  # If prefix length is not specified, set it to 0.
+  if prefix_lengths is None:
+    prefix_lengths = jnp.zeros([batch_size], dtype=jnp.int32)
+
+  seq_len = max_prefix_len + max_decode_steps
+  output_ids = jnp.zeros(shape=(batch_size,), dtype=jnp.int32)
+
+  # initialize decode state
+  decode_state = NestedMap()
+
+  # Update output_ids with last tokens of prefix_ids.
+  output_ids = output_ids.at[:].set(prefix_ids[:, -1])
+
+  assert max_prefix_len is not None
+  start_step = max_prefix_len - 1
+  decode_state.start_step = start_step
+  decode_state.step = start_step
+  decode_state.per_sample_steps = (
+      jnp.ones(shape=batch_size, dtype=jnp.int32) * start_step
+  )
+
+  decode_state.output_ids = output_ids
+  decode_state.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
+
+  decode_state.done = jnp.ones(shape=batch_size, dtype=jnp.bool_)
+  decode_state.has_eos = jnp.zeros(shape=batch_size, dtype=jnp.bool_)
+
+  decode_state.prefix_lengths = prefix_lengths
+  decode_state.decode_lengths = jnp.ones_like(prefix_lengths) * seq_len
+  decode_state.segment_pos = prefix_lengths - 1
+
+  next_token_sampler = base_layer.instantiate(
+      pax_fiddle.Config(DefaultNextTokenSampler, top_k=1)
+  )
+  decode_state = next_token_sampler.init_decode_loop_state(
+      decode_state, model, batch_size, eos_id
+  )
+  return decode_state
+
+
+def greedy_decoding_step(
+    model: base_layer.BaseLayerApi,
+    decode_state: NestedMap,
+    extend_step_fn: (
+        decoder_utils.ExtendStepFn | decoder_utils.ExpandedExtendStepFn
+    ),
+    # # remove the logic when fprop_for_prefix = False to simplify for now
+    # fprop_for_prefix: bool = False,
+    max_prefix_len: int | None = None,
+    max_decode_steps: int | Sequence[int] | None = None,
+    decode_loop_mesh_axes_transpose: dict[str, str] | None = None,
+    eos_id: int | None = None,
+) -> NestedMap:
+
+  with decoder_utils.maybe_decode_mesh_transpose(
+      model, decode_loop_mesh_axes_transpose
+  ):
+    if isinstance(eos_id, int):
+      eos_id = [eos_id]
+
+    per_example_max_decode_steps = max_decode_steps
+    batch_size = decode_state.per_sample_steps.shape[0]
+
+    prefix_lengths = decode_state.prefix_lengths
+    if prefix_lengths is None:
+      prefix_lengths = jnp.zeros([batch_size], dtype=jnp.int32)
+
+    # Get an `ExpandedExtendStepFn`, regardless of which variant was passed in.
+    expanded_extend_step_fn = decoder_utils.coerce_to_expanded_extend_step_fn(
+        extend_step_fn
+    )
+
+    next_token_sampler = base_layer.instantiate(
+        pax_fiddle.Config(DefaultNextTokenSampler, top_k=1)
+    )
+
+    def loop_body(model, val):
+      """From ids at `step`, update output ids at `step + 1`."""
+      per_sample_steps = val.per_sample_steps
+
+      logits = expanded_extend_step_fn(
+          model, val.output_ids, val.segment_pos, val
+      )
+
+      next_token_logits = logits
+      sampler_output = next_token_sampler(
+          model,
+          next_token_logits,
+          0.0,
+          val,
+          per_example_top_p=None,
+          per_example_top_k=None,
+          gumbel_prng_key=None,
+      )
+      new_ids, sample_logits = sampler_output.new_ids, sampler_output.logits
+      for k in sampler_output.keys() & val.keys():
+        val[k] = sampler_output[k]
+
+      assert new_ids.shape == (sample_logits.shape[0],)
+      assert new_ids.dtype == jnp.int32
+
+      model.add_summary('new_ids', new_ids)
+      model.add_summary('sample_logits', sample_logits)
+
+      prev_done = val.done
+      new_ids = jnp.where(prev_done, jnp.zeros_like(new_ids), new_ids)
+      val.output_ids = new_ids
+
+      # check if any sample ends with EOS in current step
+      if eos_id is not None:
+        if isinstance(eos_id, JTensor):
+          has_eos = decoder_utils.end_with_sequences(
+              eos_id, val.output_ids, val.step + 1
+          )
+        else:
+          has_eos = decoder_utils.has_any_eos(new_ids, eos_id)
+        val.done = jnp.logical_or(
+            prev_done,
+            has_eos,
+        )
+        val.has_eos = jnp.logical_or(val.has_eos, has_eos)
+
+      # set decode lengths
+      prefix_offset = max_prefix_len
+      decode_lengths = prefix_lengths + (per_sample_steps - max_prefix_len + 2)
+      val.segment_pos += 1
+
+      # check if any sample reached max_steps
+      max_decoding_steps_reached = (
+          jnp.ones_like(prefix_lengths) * (per_sample_steps + 2) - prefix_offset
+      ) >= per_example_max_decode_steps
+      val.done = jnp.logical_or(val.done, max_decoding_steps_reached)
+      done_at_this_step = jnp.logical_and(jnp.logical_not(prev_done), val.done)
+      val.decode_lengths = jnp.where(
+          done_at_this_step, decode_lengths, val.decode_lengths
+      )
+
+      logprobs = jax.nn.log_softmax(logits.astype(jnp.float32))
+      logprobs_at_new_ids = logprobs.at[jnp.arange(batch_size), new_ids].get()
+      logprobs_at_new_ids = jnp.where(
+          prev_done, jnp.ones_like(logprobs_at_new_ids), logprobs_at_new_ids
+      )
+      val.logprobs = logprobs_at_new_ids
+
+      val.step += 1
+      val.per_sample_steps += 1
+      return val
+
+    decode_state = loop_body(model, decode_state)
+    return decode_state

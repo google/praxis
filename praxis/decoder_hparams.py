@@ -58,7 +58,10 @@ class DecoderHParams:
     emb_lookup_style: lookup style for the softmax embedding layer.
     use_extra_input_kwargs: if True, pass through any extra_input_kwargs from
       the input batch to the decode data.
+      num_cache_slots: if num_cache_slots > 0, continuous batching will be
+        enabled with max batch_size = num_cache_slots
   """
+
   seqlen: int = 0
   min_prefix_len: int = 5
   eos_id: int | Sequence[int] = 2
@@ -70,6 +73,7 @@ class DecoderHParams:
   process_result_fn: decoder_utils.ProcessResultFn | None = None
   emb_lookup_style: str = 'matmul'
   use_extra_input_kwargs: bool = False
+  num_cache_slots: int = 0
 
   def clone(self: _TDecoderHParams) -> _TDecoderHParams:
     return copy.deepcopy(self)
@@ -78,7 +82,6 @@ class DecoderHParams:
 @dataclasses.dataclass
 class GreedyDecoderHParams(DecoderHParams):
   """HParams for greedy decode."""
-
 
 @dataclasses.dataclass
 class BeamSearchHParams(DecoderHParams):

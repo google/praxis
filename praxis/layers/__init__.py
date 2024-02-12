@@ -80,6 +80,7 @@ from praxis.layers.models import BertModel
 from praxis.layers.models import ClassificationMLPModel
 from praxis.layers.models import ClassificationModel
 from praxis.layers.models import LanguageModel
+from praxis.layers.models import LanguageModelContinuousBatching
 from praxis.layers.models import LanguageModelDPO
 from praxis.layers.models import SequenceModel
 from praxis.layers.ngrammer import get_bigram_ids

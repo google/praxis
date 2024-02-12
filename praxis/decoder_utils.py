@@ -347,6 +347,57 @@ def left_align_tensor(
   return jax.vmap(_align_one)(x, prefix_lengths)
 
 
+def left_align_kv_cache(
+    x: JTensor,
+    prefix_lengths: JTensor,
+    max_prefix_len: int,
+    pad_value: float = 0.0,
+) -> JTensor:
+  """Changes middle aligned sequence to be left aligned.
+
+  x has the following middle aligned format:
+  |-max_prefix_len--|
+  [0, 0, 0, 0, P, P, X, X, X, 0, 0, 0]
+  where prefix_lengths = 2, max_prefix_len = 6, there are 4 paddings in the
+  prefix.
+
+  After left aligned, x will have the following format:
+  |-max_prefix_len--|
+  [P, P, X, X, X, 0, 0, 0, 0, 0, 0, 0]
+
+  Args:
+    x: Tensor of shape [batch_size, seq_len, num_heads, head_dim].
+    prefix_lengths: prefix lengths of shape [batch_size].
+    max_prefix_len: max prefix lengths.
+    pad_value: Value for padding.
+
+  Returns:
+    Left aligned tensor with shape [batch_size, seqlen, num_heads, head_dim].
+  """
+  if len(x.shape) != 4:
+    raise ValueError(
+        f'Argument `x` needs to be 4-index, but has shape: {x.shape}'
+    )
+
+  seqlen = x.shape[1]
+
+  def _align_one(x: JTensor, prefix_length: JTensor) -> JTensor:
+    """Aligns one middle align tensor to be left align."""
+    padded = jnp.pad(
+        x,
+        [[0, max_prefix_len], [0, 0], [0, 0]],
+        mode='constant',
+        constant_values=x.dtype.type(pad_value),
+    )
+    return jax.lax.dynamic_slice(
+        padded,
+        [max_prefix_len - prefix_length, 0, 0],
+        [seqlen, x.shape[1], x.shape[2]],
+    )
+
+  return jax.vmap(_align_one)(x, prefix_lengths)
+
+
 def concat_suffix_and_left_align(
     decoded_tensors: JTensor,
     suffix_tensors: JTensor,
