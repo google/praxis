@@ -246,10 +246,16 @@ class Linear(  # pytype: disable=signature-mismatch
                 inputs_shape, block_size, len(inputs_shape) - 1
             ),
         )
-        q_einsum_params['eqn'] = 'scz,...sc->...sz'
-        q_einsum_params['scale_eqn'] = '...sz,sz->...z'
-        q_einsum_params['zp_eqn'] = '...sc,sz->...z'
-        q_einsum_params['swap_xw'] = True
+        if self.quantization.act_params is not None:
+          q_einsum_params['eqn'] = '...sc,scz->...sz'
+          q_einsum_params['scale_eqn'] = '...sz,sz->...z'
+          q_einsum_params['zp_eqn'] = '...sc,sz->...z'
+          q_einsum_params['swap_xw'] = False
+        else:
+          q_einsum_params['eqn'] = 'scz,...sc->...sz'
+          q_einsum_params['scale_eqn'] = '...sz,sz->...z'
+          q_einsum_params['zp_eqn'] = '...sc,sz->...z'
+          q_einsum_params['swap_xw'] = True
         if len(w.shape) == 2:
           q_einsum_params['reshape'] = self._get_sub_channel_shape(
               list(w.shape), block_size, 0
