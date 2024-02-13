@@ -730,6 +730,132 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     logging.info('decoder_out: %s', decoder_output)
     self.assertAllClose(fprop_out, decoder_output)
 
+  @parameterized.parameters([
+      (True),
+      (False),
+  ])
+  def test_consolidate_rope_key_state(self, lpb):
+    if lpb:
+      mqa = multi_query_attention.MultiQueryDotProductAttentionLPB
+    else:
+      mqa = multi_query_attention.MultiQueryDotProductAttention
+    unconsolidated_key_layer_p = pax_fiddle.Config(
+        mqa,
+        name='mqa',
+        input_dim=2,
+        hidden_dim=2,
+        num_heads=1,
+        use_rotary_position_emb=True,
+    )
+    consolidated_key_layer_p = unconsolidated_key_layer_p.clone()
+    consolidated_key_layer_p.consolidate_rope_key_state = True
+
+    unconsolidated_key_layer = instantiate(unconsolidated_key_layer_p)
+    consolidated_key_layer = instantiate(consolidated_key_layer_p)
+
+    key = np.reshape(np.identity(2), (1, 2, 2))
+    query = np.reshape(np.identity(2), (1, 2, 2))
+    value = np.reshape(np.identity(2), (1, 2, 2))
+    mask = np.reshape(np.zeros((2,)), (1, 1, 1, 2))
+
+    params = py_utils.NestedMap.FromNestedDict({
+        'params': {
+            'key': {
+                'b': np.zeros((2)),
+                'w': np.reshape(np.identity(2), (2, 2)),
+            },
+            'per_dim_scale': {'per_dim_scale': np.ones((2,))},
+            'post': {
+                'b': np.zeros((2,)),
+                'w': np.reshape(np.identity(2), (2, 1, 2)),
+            },
+            'query': {
+                'b': np.zeros((1, 2)),
+                'w': np.reshape(np.identity(2), (2, 1, 2)),
+            },
+            'value': {
+                'b': np.zeros((2)),
+                'w': np.reshape(np.identity(2), (2, 2)),
+            },
+        }
+    })
+
+    expected_encoded, expected_probs = unconsolidated_key_layer.apply(
+        params, query, key, value, mask
+    )
+    encoded, probs = consolidated_key_layer.apply(
+        params, query, key, value, mask
+    )
+    self.assertArraysEqual(expected_encoded, encoded)
+    self.assertArraysEqual(expected_probs, probs)
+
+    # Apply __call__ at the first time step to initialize the decoder state.
+    (expected_encoded_0, expected_probs_0), unconsolidated_updated_vars = (
+        unconsolidated_key_layer.apply(
+            params,
+            np.expand_dims(query[:, 0], axis=1),
+            key,
+            value,
+            mask,
+            mutable=[base_layer.DECODE_CACHE],
+        )
+    )
+    (encoded_0, probs_0), consolidated_updated_vars = (
+        consolidated_key_layer.apply(
+            params,
+            np.expand_dims(query[:, 0], axis=1),
+            key,
+            value,
+            mask,
+            mutable=[base_layer.DECODE_CACHE],
+        )
+    )
+    self.assertArraysEqual(expected_encoded_0, encoded_0)
+    self.assertArraysEqual(expected_probs_0, probs_0)
+    self.assertNotIn(
+        'key_post_rotary_pos_emb', consolidated_updated_vars['decoder_cache']
+    )
+    self.assertArraysEqual(
+        consolidated_updated_vars['decoder_cache']['key_state'],
+        unconsolidated_updated_vars['decoder_cache']['key_post_rotary_pos_emb'],
+    )
+    unconsolidated_updated_vars = py_utils.merge_dict(
+        unconsolidated_updated_vars, params
+    )
+    consolidated_updated_vars = py_utils.merge_dict(
+        consolidated_updated_vars, params
+    )
+    # Apply extend_step at the second time step.
+    expected_encoded_1, unconsolidated_updated_vars = (
+        unconsolidated_key_layer.apply(
+            unconsolidated_updated_vars,
+            query[:, 1],
+            atten_mask=np.squeeze(mask, axis=2),
+            time_step=1,
+            segment_pos=None,
+            method=unconsolidated_key_layer.extend_step,
+            mutable=[base_layer.DECODE_CACHE],
+        )
+    )
+    encoded_1, consolidated_updated_vars = consolidated_key_layer.apply(
+        consolidated_updated_vars,
+        query[:, 1],
+        atten_mask=np.squeeze(mask, axis=2),
+        time_step=1,
+        segment_pos=None,
+        method=consolidated_key_layer.extend_step,
+        mutable=[base_layer.DECODE_CACHE],
+    )
+
+    self.assertArraysEqual(expected_encoded_1, encoded_1)
+    self.assertNotIn(
+        'key_post_rotary_pos_emb', consolidated_updated_vars['decoder_cache']
+    )
+    self.assertArraysEqual(
+        consolidated_updated_vars['decoder_cache']['key_state'],
+        unconsolidated_updated_vars['decoder_cache']['key_post_rotary_pos_emb'],
+    )
+
   # TODO(apassos) test the SPMD codepath for deriving sharding annotations.
 
 if __name__ == '__main__':

@@ -164,6 +164,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     use_rotary_position_emb: Whether to add rotary position embedding to the
       queries and keys before computing self attention scores. This was proposed
       in https://arxiv.org/abs/2104.09864.
+    consolidate_rope_key_state: Whether to consolidate `key_post_rotary_pos_emb`
+      with `key_state` as `key_state` when RoPE is enabled. Only set it as
+      `True` when `use_rotary_position_emb` is True.
     relative_bias_tpl: Optional parameterization of relative bias.
     attention_extra_logit: Extra logit for attention softmax.
     combine_qkv: Whether to combine qkv tensor for optimizing qkv input gradient
@@ -193,6 +196,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   atten_logit_cap: float = 0.0
   # TODO(b/300717814): Remove redundant `use_rotary_position_emb` field.
   use_rotary_position_emb: bool = False
+  consolidate_rope_key_state: bool = False
   rotary_position_emb_tpl: LayerTpl = template_field(
       embedding_softmax.RotaryPositionalEmbedding
   )
@@ -263,6 +267,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     if self.mesh_shape is not None:
       assert self.weight_split_dims_mapping is not None
       assert self.activation_split_dims_mapping is not None
+
+    if self.consolidate_rope_key_state:
+      assert self.use_rotary_position_emb
 
     if isinstance(self.input_dim, Mapping):
       key_input_dim = self.input_dim['key']
@@ -773,7 +780,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     key_proj = self.key(key_vec)
     value_proj = self.value(value_vec)
 
-    self._fprop_update_decode_state('key_state', key_proj)
+    if not self.consolidate_rope_key_state:
+      self._fprop_update_decode_state('key_state', key_proj)
     self._fprop_update_decode_state('value_state', value_proj)
 
     # Apply rotary position embeddings.
@@ -787,7 +795,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       key_proj = self.rotary_position_emb(key_proj, key_segment_pos)
       if self.num_kv_heads == 1:
         key_proj = jnp.reshape(key_proj, key_shape)
-      self._fprop_update_decode_state('key_post_rotary_pos_emb', key_proj)
+      if self.consolidate_rope_key_state:
+        self._fprop_update_decode_state('key_state', key_proj)
+      else:
+        self._fprop_update_decode_state('key_post_rotary_pos_emb', key_proj)
 
     # Apply relative bias.
     # Paper: https://aclanthology.org/N18-2074.pdf.
@@ -985,7 +996,11 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       _extend_decode_state_and_shard_blh(key_state_name, key_proj)
 
     if self.use_rotary_position_emb:
-      key_state_name = 'key_post_rotary_pos_emb'
+      key_state_name = (
+          'key_post_rotary_pos_emb'
+          if not self.consolidate_rope_key_state
+          else 'key_state'
+      )
       if segment_pos is None:
         position = jnp.broadcast_to(time_step, [query_vec.shape[0]])
       else:
@@ -1597,7 +1612,11 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
                                                      position)
 
       # Update key post rotary position embedding in the cache.
-      key_state_name = 'key_post_rotary_pos_emb'
+      key_state_name = (
+          'key_post_rotary_pos_emb'
+          if not self.consolidate_rope_key_state
+          else 'key_state'
+      )
       if not is_cross_attention:
         _extend_decode_state_and_shard(key_state_name, key_proj)
 

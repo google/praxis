@@ -1127,6 +1127,9 @@ class DotProductAttention(base_layer.BaseLayer):
     use_rotary_position_emb: Whether to add rotary position embedding to the
       queries and keys before computing self attention scores. This was proposed
       in https://arxiv.org/abs/2104.09864.
+    consolidate_rope_key_state: Whether to consolidate `key_post_rotary_pos_emb`
+      with `key_state` as `key_state` when RoPE is enabled. Only set it as
+      `True` when dconv_qkv is False and `use_rotary_position_emb` is True.
     cast_rotary_position_emb: Whether to cast the return vars of
       rotary_position_emb to save memory.
     relative_bias_tpl: Optional parameterization of relative bias.
@@ -1167,6 +1170,7 @@ class DotProductAttention(base_layer.BaseLayer):
   # TODO(pax-dev): merge use_rotary_position_emb and rotary_position_emb_tpl
   # by initializing rotary_position_emb_tpl = None.
   use_rotary_position_emb: bool = False
+  consolidate_rope_key_state: bool = False
   rotary_position_emb_tpl: LayerTpl | None = template_field(
       embedding_softmax.RotaryPositionalEmbedding
   )
@@ -1243,6 +1247,13 @@ class DotProductAttention(base_layer.BaseLayer):
     if self.mesh_shape is not None:
       assert self.weight_split_dims_mapping is not None
       assert self.activation_split_dims_mapping is not None
+
+    # Consolidating `key_post_rotary_pos_emb` with `key_state` as `key_state` is
+    # only feasible when RoPE enabled and dconv_qkv disabled for the current
+    # implementation.
+    if self.consolidate_rope_key_state:
+      assert self.use_rotary_position_emb
+      assert not self.dconv_qkv
 
     def project_input(input_dim, gaussian_std=None):
       proj_p = self.proj_tpl.clone().set(
@@ -1687,7 +1698,8 @@ class DotProductAttention(base_layer.BaseLayer):
       key_proj = self.key(key_vec)
       value_proj = self.value(value_vec)
 
-    self._fprop_update_decode_state('key_state', key_proj)
+    if not self.consolidate_rope_key_state:
+      self._fprop_update_decode_state('key_state', key_proj)
     self._fprop_update_decode_state('value_state', value_proj)
 
     # Apply depth-wise convolution as in Primer.
@@ -1707,7 +1719,10 @@ class DotProductAttention(base_layer.BaseLayer):
     if self.use_rotary_position_emb:
       query_proj = self.rotary_position_emb(query_proj, query_segment_pos)
       key_proj = self.rotary_position_emb(key_proj, key_segment_pos)
-      self._fprop_update_decode_state('key_post_rotary_pos_emb', key_proj)
+      if self.consolidate_rope_key_state:
+        self._fprop_update_decode_state('key_state', key_proj)
+      else:
+        self._fprop_update_decode_state('key_post_rotary_pos_emb', key_proj)
 
     # Apply relative bias.
     # Paper: https://aclanthology.org/N18-2074.pdf.
@@ -1926,7 +1941,11 @@ class DotProductAttention(base_layer.BaseLayer):
     # Apply rotary position embeddings.
     # Paper: https://arxiv.org/abs/2104.09864.
     if self.use_rotary_position_emb:
-      key_state_name = 'key_post_rotary_pos_emb'
+      key_state_name = (
+          'key_post_rotary_pos_emb'
+          if not self.consolidate_rope_key_state
+          else 'key_state'
+      )
       if segment_pos is None:
         position = jnp.broadcast_to(time_step, [query_vec.shape[0]])
       else:
@@ -2719,7 +2738,11 @@ class DotProductAttentionWithLPB(DotProductAttention):
       )
 
       # Update key post rotary position embedding in the cache.
-      key_state_name = 'key_post_rotary_pos_emb'
+      key_state_name = (
+          'key_post_rotary_pos_emb'
+          if not self.consolidate_rope_key_state
+          else 'key_state'
+      )
       _extend_decode_state_and_shard(key_state_name, key_proj)
 
     if self.relative_bias_tpl:
