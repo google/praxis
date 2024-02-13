@@ -1687,7 +1687,7 @@ class BaseLayer(nn.Module):
     out: SplitDimsMapping = None
 
   dtype: jnp.dtype = jnp.float32
-  fprop_dtype: Any | None = None
+  fprop_dtype: jnp.dtype | None = None
   params_init: WeightInit = instance_field(default_param_init)
   skip_lp_regularization: bool | None = None
   ici_mesh_shape: Sequence[int] | None = None
@@ -1697,8 +1697,8 @@ class BaseLayer(nn.Module):
   shared_weight_layer_id: str | None = None
   # TODO(b/249483164): Change these to use instance_field rather than
   # template_field after the Fiddle migration.
-  weight_split_dims_mapping: pax_fiddle.Config[BaseLayer.WeightSharding] = template_field(
-      WeightSharding
+  weight_split_dims_mapping: pax_fiddle.Config[BaseLayer.WeightSharding] = (
+      template_field(WeightSharding)
   )
   activation_split_dims_mapping: pax_fiddle.Config[
       BaseLayer.ActivationSharding

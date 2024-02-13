@@ -759,6 +759,9 @@ class DepthwiseConv1D(BaseDepthwiseConv1D):
     else:
       padding = 'SAME'
 
+    if self.fprop_dtype is not None and inputs.dtype != self.fprop_dtype:
+      inputs = inputs.astype(self.fprop_dtype)
+
     out = jax.lax.conv_general_dilated(
         lhs=inputs,
         rhs=self.get_w(),
