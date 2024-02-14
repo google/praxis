@@ -1066,7 +1066,7 @@ class LanguageModelContinuousBatching(LanguageModel):
               )[0]
           )
       )
-    return decode_state
+    return decode_state, decode_cache
 
   def left_align_decode_state(
       self, max_prefix_len, max_decode_steps, decode_state
@@ -1132,9 +1132,9 @@ class LanguageModelContinuousBatching(LanguageModel):
     decode_state.step = jnp.where(
         decode_state.step < row_length - 1, decode_state.step, left_align_steps
     )
-    self.variables[base_layer.DECODE_CACHE]['lm'][
-        'time_step'
-    ] = decode_state.step
+    self.variables[base_layer.DECODE_CACHE]['lm']['time_step'] = (
+        decode_state.step[0]
+    )
 
     return decode_state
 

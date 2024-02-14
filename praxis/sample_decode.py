@@ -1715,7 +1715,7 @@ def greedy_init_decode_state(
   decode_state = NestedMap()
 
   # Update output_ids with last tokens of prefix_ids.
-  output_ids = output_ids.at[:].set(prefix_ids[:, -1])
+  output_ids = output_ids.at[:].set(prefix_ids[:, max_prefix_len - 1])
 
   assert max_prefix_len is not None
   start_step = max_prefix_len - 1
