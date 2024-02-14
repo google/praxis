@@ -440,6 +440,33 @@ class TransformerFeedForward(base_layer.BaseLayer):
       )
       self.create_child('residual_droppath', droppath_p)
 
+  def _compute_ffns(self, inputs, paddings, ap_ff0=None):
+    # Apply first FFN layer
+    if self._is_ffn1_gated:
+      # theta.ffn_layer1_gate corresponds to gshard_builder's wi0
+      gate_value = self.ffn_layer1_gate(inputs)
+      # theta.ffn_layer1 corresponds to gshard_builder's wi1
+      activations = gate_value * self.ffn_layer1(inputs)
+    else:
+      activations = self.ffn_layer1(inputs)
+
+    activations = base_layer.maybe_shard(
+        activations, ap_ff0, self.mesh_axis_names
+    )
+
+    # Apply paddings if not None
+    if not self.apply_padding_first and paddings is not None:
+      activations *= 1.0 - paddings
+
+    self.add_summary('activation_rms', _rms(activations), verbosity=4)
+
+    # Apply RELU dropout
+    activations = self.relu_dropout(activations)
+
+    # Apply second FFN layer
+    outputs = self.ffn_layer2(activations)
+    return outputs
+
   def __call__(
       self,
       inputs: JTensor,
@@ -478,31 +505,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
         ap_ff1 = [ap_ff1[0], ap_ff1[2]]
 
     inputs = base_layer.maybe_shard(inputs, ap_ff1, self.mesh_axis_names)
-
-    # Apply first FFN layer
-    if self._is_ffn1_gated:
-      # theta.ffn_layer1_gate corresponds to gshard_builder's wi0
-      gate_value = self.ffn_layer1_gate(inputs)
-      # theta.ffn_layer1 corresponds to gshard_builder's wi1
-      activations = gate_value * self.ffn_layer1(inputs)
-    else:
-      activations = self.ffn_layer1(inputs)
-
-    activations = base_layer.maybe_shard(
-        activations, ap_ff0, self.mesh_axis_names
-    )
-
-    # Apply paddings if not None
-    if not self.apply_padding_first and paddings is not None:
-      activations *= 1.0 - paddings
-
-    self.add_summary('activation_rms', _rms(activations), verbosity=4)
-
-    # Apply RELU dropout
-    activations = self.relu_dropout(activations)
-
-    # Apply second FFN layer
-    outputs = self.ffn_layer2(activations)
+    outputs = self._compute_ffns(inputs, paddings, ap_ff0)
     outputs = base_layer.maybe_shard(outputs, ap_ff1, self.mesh_axis_names)
     outputs = checkpoint_name(outputs, 'ffn2')
 
