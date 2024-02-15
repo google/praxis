@@ -113,7 +113,6 @@ class Linear(  # pytype: disable=signature-mismatch
         scale_sharding = None
     else:
       weight_sharding = wp.wt
-      scale_sharding = None
       if wp.wt is not None and len(wp.wt) > 1:
         scale_sharding = [wp.wt[1]]
       else:
@@ -327,7 +326,6 @@ class Linear(  # pytype: disable=signature-mismatch
         'quantize_weight is called during serving for quantized model, please'
         ' set quantized config for the model.'
     )
-    theta = self.theta
     scale_name = 'w' + base_layer.QUANTIZED_SCALE_NAME_POSTFIX
 
     w = self.theta.w
