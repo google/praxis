@@ -431,6 +431,7 @@ class LanguageModel(base_model.BaseModel):
 
     if (
         template_has_type(decoder_params, SampleDecoderHParams)
+        and hasattr(decoder_params, 'cf_guidance_scale')
         and decoder_params.cf_guidance_scale is not None
     ):
       decode_data = self._prepare_guidance_decode_data(decode_data)
@@ -915,7 +916,14 @@ class LanguageModel(base_model.BaseModel):
 class LanguageModelContinuousBatching(LanguageModel):
   """Language model that uses continuous batching."""
 
-  def greedy_init_decode_state(
+  def _last_decode_step(self, decoder_params):
+    max_decode_steps = decoder_params.max_decode_steps
+    if isinstance(decoder_params.max_decode_steps, int):
+      max_decode_steps = [decoder_params.max_decode_steps]
+    max_decode_steps = sorted(max_decode_steps)
+    return max(max_decode_steps)
+
+  def sample_init_decode_state(
       self, decode_data: NestedMap, decoder_params: DecoderHParams
   ) -> NestedMap:
     max_prefix_len = decoder_params.seqlen - decoder_params.max_decode_steps
@@ -923,24 +931,24 @@ class LanguageModelContinuousBatching(LanguageModel):
     def transform_decode_state_fn(mdl, transform_fn):
       mdl.transform_decode_state(transform_fn)
 
-    assert isinstance(decoder_params, GreedyDecoderHParams)
-    decode_state = sample_decode.greedy_init_decode_state(
+    decode_state = sample_decode.sample_init_decode_state(
         model=self.lm,
         prefix_ids=decode_data.input_ids,
         max_prefix_len=max_prefix_len,
-        max_decode_steps=decoder_params.max_decode_steps,
+        max_decode_steps=self._last_decode_step(decoder_params),
+        top_k=getattr(decoder_params, 'k', 1),
+        top_p=getattr(decoder_params, 'p', None),
         prefix_lengths=decode_data.prefix_lengths,
         eos_id=decoder_params.eos_id,
         transform_state_fn=transform_decode_state_fn,
     )
     return decode_state
 
-  def greedy_prefill(
+  def sample_prefill(
       self,
       input_batch: NestedMap,
       decoder_params: DecoderHParams,
   ) -> NestedMap:
-    assert isinstance(decoder_params, GreedyDecoderHParams)
     if decoder_params.seqlen <= 0:
       raise ValueError(
           'Must set p.decoder_tpl.seqlen > 0, current value = '
@@ -964,12 +972,33 @@ class LanguageModelContinuousBatching(LanguageModel):
     fprop_fn(self.lm, decode_data.input_ids, decode_data.input_paddings)
 
     # init prefix decode state
-    prefill_decode_state = self.greedy_init_decode_state(
+    prefill_decode_state = self.sample_init_decode_state(
         decode_data, decoder_params
     )
+
+    batch_size = input_batch.ids.shape[0]
+    # Fetch dynamic per params from input_batch if the
+    # input_batch has this information.
+    last_decode_step = self._last_decode_step(decoder_params)
+    prefill_decode_state.per_example_max_decode_steps = getattr(
+        input_batch,
+        'per_example_max_decode_steps',
+        jnp.ones(shape=(batch_size,), dtype=jnp.int32) * last_decode_step,
+    )
+    prefill_decode_state.per_example_top_p = getattr(
+        input_batch,
+        'per_example_top_p',
+        jnp.ones(shape=(batch_size,), dtype=jnp.float32),
+    )
+    prefill_decode_state.per_example_top_k = getattr(
+        input_batch,
+        'per_example_top_k',
+        jnp.ones(shape=(batch_size,), dtype=jnp.int32),
+    )
+
     return prefill_decode_state
 
-  def greedy_insert(
+  def sample_insert(
       self,
       decoder_params,
       prefix_decode_state,
@@ -1006,6 +1035,17 @@ class LanguageModelContinuousBatching(LanguageModel):
     decode_state.logprobs = decode_state.logprobs.at[slot].set(
         prefix_decode_state.logprobs[0]
     )
+    decode_state.per_example_max_decode_steps = (
+        decode_state.per_example_max_decode_steps.at[slot].set(
+            prefix_decode_state.per_example_max_decode_steps[0]
+        )
+    )
+    decode_state.per_example_top_p = decode_state.per_example_top_p.at[
+        slot
+    ].set(prefix_decode_state.per_example_top_p[0])
+    decode_state.per_example_top_k = decode_state.per_example_top_k.at[
+        slot
+    ].set(prefix_decode_state.per_example_top_k[0])
 
     # update kv_cache (need to right aligned)
     max_prefix_len = decoder_params.seqlen - decoder_params.max_decode_steps
@@ -1144,7 +1184,7 @@ class LanguageModelContinuousBatching(LanguageModel):
 
     return decode_state
 
-  def greedy_generate(
+  def sample_generate(
       self,
       tokens: JTensor,
       decode_state: NestedMap,
@@ -1157,19 +1197,21 @@ class LanguageModelContinuousBatching(LanguageModel):
 
     model = self.lm
     decode_mesh_transpose = decoder_params.decode_loop_mesh_axes_transpose
+    last_decode_steps = self._last_decode_step(decoder_params)
 
-    max_prefix_len = decoder_params.seqlen - decoder_params.max_decode_steps
-    max_decode_steps = decoder_params.max_decode_steps
+    max_prefix_len = decoder_params.seqlen - last_decode_steps
     if align_decode_state:
       decode_state = self.left_align_decode_state(
-          max_prefix_len, max_decode_steps, decode_state
+          max_prefix_len, last_decode_steps, decode_state
       )
 
     decode_state.output_ids = tokens
-    decode_state = sample_decode.greedy_decoding_step(
+
+    decode_state = sample_decode.sample_decoding_step(
         model=model,
         extend_step_fn=extend_step_fn,
         decode_state=decode_state,
+        temperature=getattr(decoder_params, 'temperature', 0.0),
         max_prefix_len=max_prefix_len,
         eos_id=decoder_params.eos_id,
         decode_loop_mesh_axes_transpose=decode_mesh_transpose,

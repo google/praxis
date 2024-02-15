@@ -1687,13 +1687,15 @@ def greedy_decode(
 
 
 # functions used for continuous batching
-def greedy_init_decode_state(
+def sample_init_decode_state(
     model: base_layer.BaseLayerApi,
     prefix_ids: JTensor,
     # # remove the logic when fprop_for_prefix=False to simplify for now
     # fprop_for_prefix: bool = False,
     max_prefix_len: int | None = None,
-    max_decode_steps: int | Sequence[int] | None = None,
+    max_decode_steps: int | None = None,
+    top_k: int | None = 1,
+    top_p: float | JTensor | None = None,
     prefix_lengths: JTensor | None = None,
     eos_id: int | None = None,
     transform_state_fn: decoder_utils.TransformStateFn | None = None,
@@ -1736,7 +1738,7 @@ def greedy_init_decode_state(
   decode_state.segment_pos = prefix_lengths - 1
 
   next_token_sampler = base_layer.instantiate(
-      pax_fiddle.Config(DefaultNextTokenSampler, top_k=1)
+      pax_fiddle.Config(DefaultNextTokenSampler, top_k=top_k, top_p=top_p)
   )
   decode_state = next_token_sampler.init_decode_loop_state(
       decode_state, model, batch_size, eos_id
@@ -1744,16 +1746,19 @@ def greedy_init_decode_state(
   return decode_state
 
 
-def greedy_decoding_step(
+def sample_decoding_step(
     model: base_layer.BaseLayerApi,
     decode_state: NestedMap,
     extend_step_fn: (
         decoder_utils.ExtendStepFn | decoder_utils.ExpandedExtendStepFn
     ),
+    temperature: float | JTensor = 1.0,
+    top_k: int | None = 1,
+    top_p: float | JTensor | None = None,
     # # remove the logic when fprop_for_prefix = False to simplify for now
     # fprop_for_prefix: bool = False,
     max_prefix_len: int | None = None,
-    max_decode_steps: int | Sequence[int] | None = None,
+    max_decode_steps: int | None = None,
     decode_loop_mesh_axes_transpose: dict[str, str] | None = None,
     eos_id: int | None = None,
 ) -> NestedMap:
@@ -1764,7 +1769,14 @@ def greedy_decoding_step(
     if isinstance(eos_id, int):
       eos_id = [eos_id]
 
-    per_example_max_decode_steps = max_decode_steps
+    per_example_max_decode_steps = jnp.minimum(
+        decode_state.per_example_max_decode_steps, max_decode_steps
+    )
+    if isinstance(temperature, JTensor):
+      temperature = temperature.flatten()[:, jnp.newaxis]
+    if isinstance(decode_state.per_example_top_p, JTensor):
+      per_example_top_p = decode_state.per_example_top_p[:, jnp.newaxis]
+
     batch_size = decode_state.per_sample_steps.shape[0]
 
     prefix_lengths = decode_state.prefix_lengths
@@ -1777,7 +1789,7 @@ def greedy_decoding_step(
     )
 
     next_token_sampler = base_layer.instantiate(
-        pax_fiddle.Config(DefaultNextTokenSampler, top_k=1)
+        pax_fiddle.Config(DefaultNextTokenSampler, top_k=top_k, top_p=top_p)
     )
 
     def loop_body(model, val):
@@ -1792,10 +1804,10 @@ def greedy_decoding_step(
       sampler_output = next_token_sampler(
           model,
           next_token_logits,
-          0.0,
+          temperature,
           val,
-          per_example_top_p=None,
-          per_example_top_k=None,
+          per_example_top_p=per_example_top_p,
+          per_example_top_k=decode_state.per_example_top_k,
           gumbel_prng_key=None,
       )
       new_ids, sample_logits = sampler_output.new_ids, sampler_output.logits
