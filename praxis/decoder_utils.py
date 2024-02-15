@@ -374,25 +374,34 @@ def left_align_kv_cache(
   Returns:
     Left aligned tensor with shape [batch_size, seqlen, num_heads, head_dim].
   """
-  if len(x.shape) != 4:
+  rank = len(x.shape)
+  if rank not in [3, 4]:
     raise ValueError(
-        f'Argument `x` needs to be 4-index, but has shape: {x.shape}'
+        f'Argument `x` needs to be 3 or 4-index, but has shape: {x.shape}'
     )
 
   seqlen = x.shape[1]
 
   def _align_one(x: JTensor, prefix_length: JTensor) -> JTensor:
     """Aligns one middle align tensor to be left align."""
+    pad_width = [[0, max_prefix_len], [0, 0]]
+    start_indices = [max_prefix_len - prefix_length, 0]
+    slice_sizes = [seqlen, x.shape[1]]
+    if rank == 4:
+      pad_width = pad_width + [[0, 0]]
+      start_indices = start_indices + [0]
+      slice_sizes = slice_sizes + [x.shape[2]]
+
     padded = jnp.pad(
         x,
-        [[0, max_prefix_len], [0, 0], [0, 0]],
+        pad_width,
         mode='constant',
         constant_values=x.dtype.type(pad_value),
     )
     return jax.lax.dynamic_slice(
         padded,
-        [max_prefix_len - prefix_length, 0, 0],
-        [seqlen, x.shape[1], x.shape[2]],
+        start_indices,
+        slice_sizes,
     )
 
   return jax.vmap(_align_one)(x, prefix_lengths)
