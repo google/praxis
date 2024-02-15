@@ -396,6 +396,7 @@ class TransformerFeedForward(base_layer.BaseLayer):
       gate_p.output_dims = self.hidden_dims
       gate_p.weight_split_dims_mapping.wt = wp.ffn0
       gate_p.activation_split_dims_mapping.out = ap.ffn0
+      gate_p.checkpoint_str = 'ffn1_gate'
       if hasattr(gate_p.activation_split_dims_mapping, 'extend_step_out'):
         gate_p.activation_split_dims_mapping.extend_step_out = (
             ap.ffn0_extend_step
