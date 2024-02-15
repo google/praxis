@@ -2,6 +2,8 @@
 # cd ../../paxml/pip_package && bash ./compile_requirements.sh
 
 absl-py
+# enforce newer chex version to avoid deprecated jax syntax
+chex>=0.1.85
 clu @ git+https://github.com/google/CommonLoopUtils
 einops
 etils
