@@ -114,6 +114,7 @@ pytype_strict_library(
         ":normalizations",
         # Implicit jax dependency.
         # Implicit Pallas GPU dependency.
+        # Implicit Pallas GPU Ops dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
         "//praxis:py_utils",
