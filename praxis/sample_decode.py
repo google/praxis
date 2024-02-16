@@ -1752,7 +1752,6 @@ def sample_decoding_step(
     extend_step_fn: (
         decoder_utils.ExtendStepFn | decoder_utils.ExpandedExtendStepFn
     ),
-    temperature: float | JTensor = 1.0,
     top_k: int | None = 1,
     top_p: float | JTensor | None = None,
     # # remove the logic when fprop_for_prefix = False to simplify for now
@@ -1772,6 +1771,7 @@ def sample_decoding_step(
     per_example_max_decode_steps = jnp.minimum(
         decode_state.per_example_max_decode_steps, max_decode_steps
     )
+    temperature = decode_state.temperature
     if isinstance(temperature, JTensor):
       temperature = temperature.flatten()[:, jnp.newaxis]
     if isinstance(decode_state.per_example_top_p, JTensor):

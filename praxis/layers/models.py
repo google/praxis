@@ -980,6 +980,12 @@ class LanguageModelContinuousBatching(LanguageModel):
     # Fetch dynamic per params from input_batch if the
     # input_batch has this information.
     last_decode_step = self._last_decode_step(decoder_params)
+    temperature = getattr(decoder_params, 'temperature', 0.0)
+    prefill_decode_state.temperature = getattr(
+        input_batch,
+        'temperature',
+        jnp.ones(shape=(batch_size,), dtype=jnp.float32) * temperature,
+    )
     prefill_decode_state.per_example_max_decode_steps = getattr(
         input_batch,
         'per_example_max_decode_steps',
@@ -1034,6 +1040,9 @@ class LanguageModelContinuousBatching(LanguageModel):
     )
     decode_state.logprobs = decode_state.logprobs.at[slot].set(
         prefix_decode_state.logprobs[0]
+    )
+    decode_state.temperature = decode_state.temperature.at[slot].set(
+        prefix_decode_state.temperature[0]
     )
     decode_state.per_example_max_decode_steps = (
         decode_state.per_example_max_decode_steps.at[slot].set(
@@ -1211,7 +1220,6 @@ class LanguageModelContinuousBatching(LanguageModel):
         model=model,
         extend_step_fn=extend_step_fn,
         decode_state=decode_state,
-        temperature=getattr(decoder_params, 'temperature', 0.0),
         max_prefix_len=max_prefix_len,
         eos_id=decoder_params.eos_id,
         decode_loop_mesh_axes_transpose=decode_mesh_transpose,
