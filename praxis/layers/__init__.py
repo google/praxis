@@ -38,6 +38,8 @@ from praxis.layers.attentions import convert_paddings_to_mask
 from praxis.layers.attentions import DotProductAttention
 from praxis.layers.attentions import DotProductAttentionXL
 from praxis.layers.attentions import LocalSelfAttention
+from praxis.layers.attentions import LocalSelfAttentionAlibi
+from praxis.layers.attentions import LocalSelfAttentionRelativeBias
 from praxis.layers.attentions import LocalSelfAttentionXL
 from praxis.layers.attentions import PerDimScale
 from praxis.layers.attentions import RelativeBias

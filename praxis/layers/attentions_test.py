@@ -1219,6 +1219,172 @@ class AttentionsTest(test_utils.TestCase):
     ]
     self.assertNotEqual(np.amin(np.abs(test_utils.to_np(non_masked_out))), 0)
 
+  @parameterized.parameters([
+      (4, 2, 1, True, True),
+      (4, 2, 1, False, True),
+      (8, 3, 5, True, False),
+      (8, 3, 5, False, False),
+      (5, 4, 0, False, True),
+      (5, 4, 0, True, True),
+  ])
+  def test_local_attention_rel_bias(
+      self,
+      block_size,
+      left_context,
+      right_context,
+      is_full,
+      zero_fully_masked,
+  ):
+    mdl_dim = 16
+    hidden_dim = 32
+    num_heads = 4
+    test_layer_p = pax_fiddle.Config(
+        attentions.LocalSelfAttentionRelativeBias,
+        name='rel_bias',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        block_size=block_size,
+        left_context=left_context,
+        right_context=right_context,
+        zero_fully_masked=zero_fully_masked,
+    )
+    layer = instantiate(test_layer_p)
+
+    target_batch_size = 3
+    source_max_length = 16
+
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+    key_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+    value_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+
+    paddings = range(source_max_length)[-target_batch_size:]
+    paddings = [[0] * l + [1] * (source_max_length - l) for l in paddings]
+    paddings = np.array(paddings)
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
+    if is_full:
+      atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(
+          init_key, query_vec, key_vec, value_vec, atten_mask
+      )
+      jax_fprop_out, jax_atten_prob = layer.apply(
+          initial_vars, query_vec, key_vec, value_vec, atten_mask
+      )
+
+    self.assertEqual(
+        jax_fprop_out.shape, (target_batch_size, source_max_length, mdl_dim)
+    )
+
+    # -> [B, U, C, ...]
+    key_block_context = attentions.extract_block_context(
+        key_vec,
+        block_size=block_size,
+        left_context=left_context,
+        right_context=right_context,
+    )
+    _, u, c, _ = key_block_context.shape
+
+    # -> [B, U, W, ...]
+    query_blocks = attentions.convert_to_block(query_vec, block_size=block_size)
+    _, _, w, _ = query_blocks.shape
+
+    self.assertEqual(
+        jax_atten_prob.shape, (target_batch_size, num_heads, u, w, c)
+    )
+
+  @parameterized.parameters([
+      (4, 2, 1, True, True),
+      (4, 2, 1, False, True),
+      (8, 3, 5, True, False),
+      (8, 3, 5, False, False),
+      (5, 4, 0, False, True),
+      (5, 4, 0, True, True),
+  ])
+  def test_local_attention_alibi(
+      self,
+      block_size,
+      left_context,
+      right_context,
+      is_full,
+      zero_fully_masked,
+  ):
+    mdl_dim = 16
+    hidden_dim = 32
+    num_heads = 4
+    test_layer_p = pax_fiddle.Config(
+        attentions.LocalSelfAttentionAlibi,
+        name='alibi',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        block_size=block_size,
+        left_context=left_context,
+        right_context=right_context,
+        zero_fully_masked=zero_fully_masked,
+    )
+    layer = instantiate(test_layer_p)
+
+    target_batch_size = 3
+    source_max_length = 16
+
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+    key_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+    value_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+
+    paddings = range(source_max_length)[-target_batch_size:]
+    paddings = [[0] * l + [1] * (source_max_length - l) for l in paddings]
+    paddings = np.array(paddings)
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
+    if is_full:
+      atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(
+          init_key, query_vec, key_vec, value_vec, atten_mask
+      )
+      jax_fprop_out, jax_atten_prob = layer.apply(
+          initial_vars, query_vec, key_vec, value_vec, atten_mask
+      )
+
+    self.assertEqual(
+        jax_fprop_out.shape, (target_batch_size, source_max_length, mdl_dim)
+    )
+
+    # -> [B, U, C, ...]
+    key_block_context = attentions.extract_block_context(
+        key_vec,
+        block_size=block_size,
+        left_context=left_context,
+        right_context=right_context,
+    )
+    _, u, c, _ = key_block_context.shape
+
+    # -> [B, U, W, ...]
+    query_blocks = attentions.convert_to_block(query_vec, block_size=block_size)
+    _, _, w, _ = query_blocks.shape
+
+    self.assertEqual(
+        jax_atten_prob.shape, (target_batch_size, num_heads, u, w, c)
+    )
+
   @parameterized.parameters(
       ([1, 2, 3, 4, 5], 1, 0, [0, 1, 2, 3, 4]),
       ([1, 2, 3, 4, 5], -1, 0, [2, 3, 4, 5, 0]),

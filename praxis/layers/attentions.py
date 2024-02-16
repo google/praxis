@@ -16,6 +16,7 @@
 """Attention layers."""
 
 import functools
+from functools import partial
 import math
 import string
 from typing import Any, Callable, Mapping, Sequence
@@ -3511,3 +3512,101 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     raise NotImplementedError(
         'extend_step is not implemented for %s' % self.__name__
     )
+
+
+class LocalSelfAttentionRelativeBias(LocalSelfAttention):
+  """Local version of trainable relative bias position encoding.
+
+  See DIET-REL in https://arxiv.org/abs/2104.08698.
+  """
+
+  def setup(self) -> None:
+    """Constructs a LocalSelfAttentionRelativeBias object with fixed pos_emb."""
+    super().setup()
+    # Number of possible relative positional distance indices =
+    #   C + (W - 1) =
+    #   [(L - 1) + W + R] + (W - 1) =
+    #   L + R + 2 * (W - 1).
+    #
+    # Conceptually, num_positions =
+    #   [- (L - 1) - (W - 1), ..., 0, ..., (W - 1) + R]
+    w = self.block_size
+    c = w + self.left_context + self.right_context - 1
+    num_positions = c + w - 1
+
+    pc = WeightHParams(shape=[self.num_heads, num_positions])
+    self.create_variable('pos_emb_compressed', pc)
+
+  def _atten_logits(self, query, key):
+    b, u, w, n, _ = query.shape[:5]
+    c = w + self.left_context + self.right_context - 1
+
+    # reconstruct the Toeplitz matrix
+    # -> [N, W, C]
+    pos_emb_compressed = self.theta.pos_emb_compressed
+    self.add_summary('pos_emb_compressed', jnp.sum(pos_emb_compressed))
+    pos_bias = jnp.tile(pos_emb_compressed, [1, w])[:, : w * (w + c - 2)]
+    pos_bias = jnp.reshape(pos_bias, [n, w, w + c - 2])
+    pos_bias = pos_bias[..., w - 2 :]
+
+    # -> [B, N, U, W, C]
+    pos_bias = pos_bias[jnp.newaxis, :, jnp.newaxis, :, :]
+    pos_bias = jnp.broadcast_to(pos_bias, (b, n, u, w, c))
+
+    logits = jnp.einsum('buwnh,bucnh->bnuwc', query, key)
+    logits += pos_bias
+
+    return logits
+
+
+class LocalSelfAttentionAlibi(LocalSelfAttention):
+  """Local version of non-trainable relative bias position encoding.
+
+  See ALiBi in https://arxiv.org/abs/2108.12409.
+  """
+
+  def setup(self) -> None:
+    """Constructs a LocalSelfAttentionAlibi object with fixed pos_emb."""
+    super().setup()
+
+  def _atten_logits(self, query, key):
+    b, u, w, n, _ = query.shape[:5]
+    c = w + self.left_context + self.right_context - 1
+
+    # -> [N, W, C]
+    # reconstruct the Toeplitz matrix
+    num_pos = c + w - 1
+    # Assume this will be replaced with variables
+    abs_pos_indices = jnp.arange(num_pos + 1)
+    # broadcast to each head to represent "shared" indices value
+    abs_pos_indices = jnp.broadcast_to(abs_pos_indices, [n, w + c])
+    pos_bias = jnp.tile(abs_pos_indices, [1, w])[:, : w * (w + c - 1)]
+    pos_bias = jnp.reshape(pos_bias, [n, w, w + c - 1])
+    pos_bias = pos_bias[..., w - 1 :]
+
+    # Construct ALiBi
+    # -> [N, W, C]
+    @partial(jax.jit, static_argnums=0)
+    def _get_slopes(n_heads):
+      n = 2 ** np.floor(np.log2(n_heads))
+      m_0 = 2.0 ** (-8.0 / n)
+      m = m_0 ** jnp.arange(1, 1 + n_heads)
+
+      if n < n_heads:
+        m_hat_0 = 2.0 ** (-4.0 / n)
+        m_hat = m_hat_0 ** jnp.arange(1, 1 + 2 * (n_heads - n), 2)
+        m = jnp.concatenate([m, m_hat])
+
+      return m
+
+    m = _get_slopes(n)
+    alibi = pos_bias * m[:, None, None]
+
+    # -> [B, N, U, W, C]
+    pos_bias = alibi[None, :, None, :, :]
+    pos_bias = jnp.broadcast_to(pos_bias, (b, n, u, w, c))
+
+    logits = jnp.einsum('buwnh,bucnh->bnuwc', query, key)
+    logits += pos_bias
+
+    return logits
