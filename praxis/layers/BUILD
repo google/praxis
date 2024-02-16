@@ -111,6 +111,7 @@ pytype_strict_library(
     visibility = JAX_VISIBILITY,
     deps = [
         ":attentions",
+        ":grouped_query_attention",
         ":normalizations",
         # Implicit jax dependency.
         # Implicit Pallas GPU dependency.
