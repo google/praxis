@@ -1010,7 +1010,6 @@ class LanguageModelContinuousBatching(LanguageModel):
       prefix_decode_state,
       prefix_decode_cache,
       decode_state,
-      decode_cache,
       slot,
   ):
 
@@ -1076,17 +1075,12 @@ class LanguageModelContinuousBatching(LanguageModel):
       if 'key_post_rotary_pos_emb' in per_layerprefix_decode_cache:
         new_pos_emb = per_layerprefix_decode_cache['key_post_rotary_pos_emb']
 
-      decode_kv_cache = decode_cache['decoder_cache']['lm']['transformer'][
+      self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
           layer_kv_cache_key
-      ]['self_attention']
-
-      logging.info(
-          'decode_kv_cache shape: %s', decode_kv_cache['key_state'].shape
-      )
-      logging.info('new_key_cache shape: %s', new_key_cache.shape)
-      logging.info('right_aligned_length: %s', right_aligned_length)
-      decode_kv_cache['key_state'] = (
-          decode_kv_cache['key_state']
+      ]['self_attention']['key_state'] = (
+          self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
+              layer_kv_cache_key
+          ]['self_attention']['key_state']
           .at[slot]
           .set(
               decoder_utils.right_align_tensors(
@@ -1095,8 +1089,12 @@ class LanguageModelContinuousBatching(LanguageModel):
           )
       )
 
-      decode_kv_cache['value_state'] = (
-          decode_kv_cache['value_state']
+      self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
+          layer_kv_cache_key
+      ]['self_attention']['value_state'] = (
+          self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
+              layer_kv_cache_key
+          ]['self_attention']['value_state']
           .at[slot]
           .set(
               decoder_utils.right_align_tensors(
@@ -1104,9 +1102,14 @@ class LanguageModelContinuousBatching(LanguageModel):
               )[0]
           )
       )
+
       if new_pos_emb is not None:
-        decode_kv_cache['key_post_rotary_pos_emb'] = (
-            decode_kv_cache['key_post_rotary_pos_emb']
+        self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
+            layer_kv_cache_key
+        ]['self_attention']['key_post_rotary_pos_emb'] = (
+            self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
+                layer_kv_cache_key
+            ]['self_attention']['key_post_rotary_pos_emb']
             .at[slot]
             .set(
                 decoder_utils.right_align_tensors(
@@ -1114,7 +1117,7 @@ class LanguageModelContinuousBatching(LanguageModel):
                 )[0]
             )
         )
-    return decode_state, decode_cache
+    return decode_state
 
   def left_align_decode_state(
       self, max_prefix_len, max_decode_steps, decode_state
