@@ -145,12 +145,15 @@ class TEInstalledHelper(TransformerEngineHelperBase):
             return te_tpl
 
         def update_ff_te_tpl(te_tpl, ff_layer_tpl):
-            if issubclass(ff_layer_tpl.activation_tpl.cls, activations.Identity):
-                mlp_activations = ('linear',)
-            else:
-                mlp_activations = (ff_layer_tpl.activation_tpl.cls.__name__.lower(),)
+            mlp_activations = ()
             if ff_layer_tpl.use_gated_activation:
+               mlp_activations += ('linear',)
+
+            if issubclass(ff_layer_tpl.activation_tpl.cls, activations.Identity):
                 mlp_activations += ('linear',)
+            else:
+                mlp_activations += (ff_layer_tpl.activation_tpl.cls.__name__.lower(),)
+
             te_tpl.mlp_activations = mlp_activations
             return te_tpl
 
