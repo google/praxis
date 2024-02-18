@@ -1120,7 +1120,7 @@ class LanguageModelContinuousBatching(LanguageModel):
     return decode_state
 
   def left_align_decode_state(
-      self, max_prefix_len, max_decode_steps, decode_state
+      self, max_prefix_len, max_decode_steps, decode_state, batch_size
   ):
     # when reach end of sequence, align all tensors to left end, reset step
     decode_state.per_sample_steps = jnp.where(
@@ -1138,26 +1138,18 @@ class LanguageModelContinuousBatching(LanguageModel):
     ]
     for i in range(self.lm_tpl.stacked_transformer_tpl.num_layers):
       layer_kv_cache_key = 'x_layers_{}'.format(i)
-      new_key_cache = transformer_kv_cache[layer_kv_cache_key][
-          'self_attention'
-      ]['key_state']
-      new_value_cache = transformer_kv_cache[layer_kv_cache_key][
-          'self_attention'
-      ]['value_state']
+      atten_kv = transformer_kv_cache[layer_kv_cache_key]['self_attention']
+      new_key_cache = atten_kv['key_state']
+      new_value_cache = atten_kv['value_state']
 
       new_pos_emb = None
-      if (
-          'key_post_rotary_pos_emb'
-          in transformer_kv_cache[layer_kv_cache_key]['self_attention']
-      ):
-        new_pos_emb = transformer_kv_cache[layer_kv_cache_key][
-            'self_attention'
-        ]['key_post_rotary_pos_emb']
+      if 'key_post_rotary_pos_emb' in atten_kv:
+        new_pos_emb = atten_kv['key_post_rotary_pos_emb']
         new_pos_emb = jnp.where(
             decode_state.step < row_length - 1,
             new_pos_emb,
             decoder_utils.left_align_kv_cache(
-                new_pos_emb, left_align_steps_arr, row_length - 1
+                new_pos_emb, left_align_steps_arr, row_length - 1, batch_size
             ),
         )
 
@@ -1165,27 +1157,21 @@ class LanguageModelContinuousBatching(LanguageModel):
           decode_state.step < row_length - 1,
           new_key_cache,
           decoder_utils.left_align_kv_cache(
-              new_key_cache, left_align_steps_arr, row_length - 1
+              new_key_cache, left_align_steps_arr, row_length - 1, batch_size
           ),
       )
       new_value_cache = jnp.where(
           decode_state.step < row_length - 1,
           new_value_cache,
           decoder_utils.left_align_kv_cache(
-              new_value_cache, left_align_steps_arr, row_length - 1
+              new_value_cache, left_align_steps_arr, row_length - 1, batch_size
           ),
       )
 
-      self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
-          layer_kv_cache_key
-      ]['self_attention']['key_state'] = new_key_cache
-      self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
-          layer_kv_cache_key
-      ]['self_attention']['value_state'] = new_value_cache
+      atten_kv['key_state'] = new_key_cache
+      atten_kv['value_state'] = new_value_cache
       if new_pos_emb is not None:
-        self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
-            layer_kv_cache_key
-        ]['self_attention']['key_post_rotary_pos_emb'] = new_pos_emb
+        atten_kv['key_post_rotary_pos_emb'] = new_pos_emb
 
     decode_state.step = jnp.where(
         decode_state.step < row_length - 1, decode_state.step, left_align_steps
@@ -1214,7 +1200,10 @@ class LanguageModelContinuousBatching(LanguageModel):
     max_prefix_len = decoder_params.seqlen - last_decode_steps
     if align_decode_state:
       decode_state = self.left_align_decode_state(
-          max_prefix_len, last_decode_steps, decode_state
+          max_prefix_len,
+          last_decode_steps,
+          decode_state,
+          decoder_params.num_cache_slots,
       )
 
     decode_state.output_ids = tokens

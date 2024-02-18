@@ -352,6 +352,7 @@ def left_align_kv_cache(
     prefix_lengths: JTensor,
     max_prefix_len: int,
     pad_value: float = 0.0,
+    batch_size: int = 1,
 ) -> JTensor:
   """Changes middle aligned sequence to be left aligned.
 
@@ -370,6 +371,7 @@ def left_align_kv_cache(
     prefix_lengths: prefix lengths of shape [batch_size].
     max_prefix_len: max prefix lengths.
     pad_value: Value for padding.
+    batch_size: x.shape[0] in int.
 
   Returns:
     Left aligned tensor with shape [batch_size, seqlen, num_heads, head_dim].
@@ -380,31 +382,21 @@ def left_align_kv_cache(
         f'Argument `x` needs to be 3 or 4-index, but has shape: {x.shape}'
     )
 
-  seqlen = x.shape[1]
-
-  def _align_one(x: JTensor, prefix_length: JTensor) -> JTensor:
-    """Aligns one middle align tensor to be left align."""
+  out = []
+  for i in range(batch_size):
     pad_width = [[0, max_prefix_len], [0, 0]]
-    start_indices = [max_prefix_len - prefix_length, 0]
-    slice_sizes = [seqlen, x.shape[1]]
+    start_indices = [max_prefix_len - prefix_lengths[i], 0]
     if rank == 4:
       pad_width = pad_width + [[0, 0]]
       start_indices = start_indices + [0]
-      slice_sizes = slice_sizes + [x.shape[2]]
-
     padded = jnp.pad(
-        x,
+        x[i],
         pad_width,
         mode='constant',
         constant_values=x.dtype.type(pad_value),
     )
-    return jax.lax.dynamic_slice(
-        padded,
-        start_indices,
-        slice_sizes,
-    )
-
-  return jax.vmap(_align_one)(x, prefix_lengths)
+    out.append(jax.lax.dynamic_slice(padded, start_indices, x.shape[1:]))
+  return jnp.stack(out)
 
 
 def concat_suffix_and_left_align(
