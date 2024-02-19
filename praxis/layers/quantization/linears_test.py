@@ -251,6 +251,46 @@ class QuantizedLinearTest(test_utils.TestCase):
         updated_vars[SUMMARIES]['step_count_scalar'], np.array([1])
     )
 
+  def test_linear_calibration(self):
+    p_q = pax_fiddle.Config(
+        qlinears.Linear,
+        name='_linear_q',
+        quantization=QuantizationParams(
+            mode=QuantizationMode.CALIB,
+            quantization_type=QuantizationType.FR,
+        ),
+        input_dims=3,
+        output_dims=3,
+    )
+    linear_q = instantiate(p_q)
+    inputs = jnp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=jnp.float32)
+
+    context_params = base_layer.JaxContext.HParams(do_eval=False)
+    with base_layer.JaxContext.new_context(hparams=context_params):
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars_q = linear_q.init(prng_key, inputs)
+      self.assertArraysEqual(
+          initial_vars_q[NON_TRAINABLE]['framestat'],
+          jnp.array([0], dtype=jnp.bfloat16),
+      )
+      _, updated_vars = linear_q.apply(
+          initial_vars_q, inputs, mutable=[PARAMS, NON_TRAINABLE, SUMMARIES]
+      )
+      self.assertArraysEqual(
+          updated_vars[NON_TRAINABLE]['framestat'],
+          jnp.array([9], dtype=jnp.bfloat16),
+      )
+
+      # No grad.
+      def loss(params, inputs):
+        return jnp.sum(linear_q.apply(params, inputs)[0])
+
+      grad = jax.grad(loss)(initial_vars_q, inputs)
+      self.assertArraysEqual(
+          grad['params']['w'],
+          jnp.zeros_like(initial_vars_q['params']['w'], dtype=jnp.float32),
+      )
+
   def test_int4_weight_init(self):
     p = pax_fiddle.Config(
         qlinears.Linear,

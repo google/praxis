@@ -31,11 +31,13 @@ class QuantizationType(str, enum.Enum):
   AQT: Accurate Quantized Training, which is one flavor of QAT.
   FQ:  Fake Quantization, which is one flavor of QAT.
   FQ_VN:  Use variational noise to emulate quantization noise.
+  FR: Fr quantization.
   """
   PTQ = 'ptq'
   AQT = 'aqt'
   FQ = 'fq'
   FQ_VN = 'fq_vn'
+  FR = 'fr'
   # Internal quantization type.
 
 
@@ -49,11 +51,14 @@ class QuantizationMode(str, enum.Enum):
     INFERENCE. This mode is referenced only by `ServableModelParams` for
     serving.
   INFERENCE indicates that the model is in inference mode.
+  QT indicates the model will train with quantization.
+  CALIB inidates that the model is going to be calibrated.
   """
   TRAINING = 'training'
   MATERIALIZE = 'materialize'
   INFERENCE = 'inference'
   QT = 'qt'
+  CALIB = 'calib'
 
 
 @dataclasses.dataclass
