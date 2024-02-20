@@ -19,7 +19,7 @@ absl-py==1.4.0
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tfds-nightly
-anyio==4.2.0
+anyio==4.3.0
     # via
     #   httpx
     #   jupyter-server
@@ -202,7 +202,7 @@ jinja2==3.1.3
     #   nbconvert
 joblib==1.3.2
     # via scikit-learn
-json5==0.9.14
+json5==0.9.17
     # via jupyterlab-server
 jsonpointer==2.4
     # via jsonschema
@@ -250,7 +250,7 @@ jupyter-server==2.12.5
     #   notebook-shim
 jupyter-server-terminals==0.5.2
     # via jupyter-server
-jupyterlab==4.1.1
+jupyterlab==4.1.2
     # via notebook
 jupyterlab-pygments==0.3.0
     # via nbconvert
@@ -268,7 +268,7 @@ kiwisolver==1.4.5
     # via matplotlib
 libclang==16.0.6
     # via tensorflow
-libcst==1.1.0
+libcst==1.2.0
     # via fiddle
 lingvo==0.12.7
     # via -r praxis-requirements.in
@@ -310,7 +310,7 @@ mypy-extensions==1.0.0
     # via typing-inspect
 nbclient==0.9.0
     # via nbconvert
-nbconvert==7.16.0
+nbconvert==7.16.1
     # via
     #   jupyter
     #   jupyter-server
@@ -408,7 +408,7 @@ prompt-toolkit==3.0.43
     # via
     #   ipython
     #   jupyter-console
-protobuf==3.19.6
+protobuf==4.25.3
     # via
     #   googleapis-common-protos
     #   lingvo
@@ -511,7 +511,7 @@ scipy==1.12.0
     #   scikit-learn
 send2trash==1.8.2
     # via jupyter-server
-sentencepiece==0.1.99
+sentencepiece==0.2.0
     # via lingvo
 six==1.16.0
     # via
@@ -651,7 +651,7 @@ typing-inspect==0.9.0
     # via libcst
 uri-template==1.3.0
     # via jsonschema
-urllib3==2.2.0
+urllib3==2.2.1
     # via requests
 wcwidth==0.2.13
     # via prompt-toolkit
