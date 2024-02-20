@@ -108,7 +108,7 @@ pytype_strict_library(
 pytype_strict_library(
     name = "gpu_fast_attention",
     srcs = ["gpu_fast_attention.py"],
-    visibility = JAX_VISIBILITY,
+    # Internal cuda visibility rule.
     deps = [
         ":attentions",
         ":grouped_query_attention",
