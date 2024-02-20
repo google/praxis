@@ -408,7 +408,7 @@ prompt-toolkit==3.0.43
     # via
     #   ipython
     #   jupyter-console
-protobuf==4.25.3
+protobuf==3.19.6
     # via
     #   googleapis-common-protos
     #   lingvo
@@ -511,7 +511,7 @@ scipy==1.12.0
     #   scikit-learn
 send2trash==1.8.2
     # via jupyter-server
-sentencepiece==0.2.0
+sentencepiece==0.1.99
     # via lingvo
 six==1.16.0
     # via
