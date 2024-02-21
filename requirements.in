@@ -4,17 +4,17 @@
 absl-py
 # enforce newer chex version to avoid deprecated jax syntax
 chex>=0.1.85
-clu @ git+https://github.com/google/CommonLoopUtils
+clu==0.0.11
 einops
 etils
-fiddle @ git+https://github.com/google/fiddle
-flax @ git+https://github.com/google/flax
-jax @ git+https://github.com/google/jax
+fiddle==0.2.11
+flax==0.8.1
+jax==0.4.24
 jax-bitempered-loss
 jaxtyping
 lingvo
 numpy
-optax
+optax==0.1.9
 optax-shampoo
 opt-einsum
 # ensure sentencepiece is compataible with protobuf 3.19.6
