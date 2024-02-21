@@ -312,12 +312,12 @@ pytype_strict_library(
     deps = [
         ":activations",
         ":attentions",
+        ":checkpoint_policy",
         ":embedding_softmax",
         ":normalizations",
         ":transformer_models",
         ":transformers",
         # Implicit fiddle dependency.
-        "//praxis:base_layer",
         "//praxis:pax_fiddle",
     ],
 )
