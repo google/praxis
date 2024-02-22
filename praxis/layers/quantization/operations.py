@@ -587,6 +587,7 @@ def get_sub_channel_shape(
     block_size: int,
     contract_dims: Sequence[int],
     insert_sub_channel: bool = True,
+    error_on_misaligned_shape: bool = False,
 ) -> tuple[Sequence[int], Sequence[int]]:
   """Converts a shape's contract dim into sub-channel and block_size.
 
@@ -596,6 +597,10 @@ def get_sub_channel_shape(
     contract_dims: List of contraction dims.
     insert_sub_channel: If True it will insert new dim for sub channel, else it
       will use existing feature dim.
+    error_on_misaligned_shape: If True it will raise an error for size not
+      aligned with block_size. By default it is False. It allows to apply sub
+      channel on layers with aligned shape and ignore layers with non aligned
+      shape, so it will not block an experiment.
 
   Returns:
     A tuple of new shape with new contract_dims.
@@ -621,10 +626,19 @@ def get_sub_channel_shape(
 
   sub_channels, rem = divmod(shape[contract_dim], block_size)
   if rem > 0:
-    raise ValueError(
-        f'block_size {block_size} must fully divide shape: {shape}'
-        f'with contract dims: {contract_dims}'
-    )
+    if error_on_misaligned_shape:
+      raise ValueError(
+          f'block_size {block_size} must fully divide shape: {shape}'
+          f'with contract dims: {contract_dims}'
+      )
+    else:
+      logging.warning(
+          'block_size %d must fully divide shape: %s; of contract dims: %s',
+          block_size,
+          str(shape),
+          str(contract_dims),
+      )
+      return sub_channel_shape, new_contract_dims
 
   if insert_sub_channel:
     sub_channel_shape[contract_dim] = block_size

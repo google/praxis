@@ -825,6 +825,22 @@ class SubChannelTest(test_utils.TestCase):
     # New contract dim points to dim with block_size
     self.assertArraysEqual(new_contract_dims, [3])
 
+  def test_block_sub_channel_shape_misaligned(self):
+    shape = [4, 16, 31, 64]
+    block_size = 8
+    new_shape, new_contract_dims = operations.get_sub_channel_shape(
+        shape, block_size, [2]
+    )
+
+    # No changes in shape.
+    self.assertArraysEqual(new_shape, [4, 16, 31, 64])
+    self.assertArraysEqual(new_contract_dims, [2])
+
+    with self.assertRaises(ValueError):
+      _, _ = operations.get_sub_channel_shape(
+          shape, block_size, [2], error_on_misaligned_shape=True
+      )
+
   def test_insert_block_sub_channel_shape_several_contract_dims(self):
 
     # Last contract dim is maximum.
