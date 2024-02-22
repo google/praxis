@@ -1184,7 +1184,6 @@ class LanguageModelContinuousBatching(LanguageModel):
 
   def sample_generate(
       self,
-      tokens: JTensor,
       decode_state: NestedMap,
       decoder_params: DecoderHParams,
       align_decode_state: bool = False,
@@ -1205,8 +1204,6 @@ class LanguageModelContinuousBatching(LanguageModel):
           decode_state,
           decoder_params.num_cache_slots,
       )
-
-    decode_state.output_ids = tokens
 
     decode_state = sample_decode.sample_decoding_step(
         model=model,
