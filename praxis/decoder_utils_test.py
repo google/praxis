@@ -331,6 +331,35 @@ class DecoderUtilsTest(test_utils.TestCase):
         np.array([1, 2, 2, 0]),
     )
 
+  def test_left_align_kv_cache(self):
+    num_cache_slots = 3
+    sql_len = 6
+    num_kv_heads = 3
+    head_dims = 2
+
+    kv_state_shape = (
+        num_cache_slots,
+        sql_len,
+        num_kv_heads,
+        head_dims,
+    )
+    x = jnp.ones(kv_state_shape)
+    prefix_lengths = jnp.array([1, 3, 2], dtype=jnp.int32)
+    # max step is 4 which means the longest seq length is 5 at this moment.
+    # Given the sql_len is 6, the slots[:,-1,:,:] should be padded with zero.
+    max_step = 4
+    left_align_steps_arr = jnp.ones_like(prefix_lengths) * max_step
+    got = decoder_utils.left_align_kv_cache(
+        x, left_align_steps_arr, sql_len - 1, pad_value=0, batch_size=3
+    )
+    self.assertArraysEqual(
+        got[:, -1, :, :], jnp.zeros((num_cache_slots, num_kv_heads, head_dims))
+    )
+    self.assertArraysEqual(
+        got[:, 0:-1, :, :],
+        jnp.ones((num_cache_slots, sql_len - 1, num_kv_heads, head_dims)),
+    )
+
 
 if __name__ == '__main__':
   absltest.main()
