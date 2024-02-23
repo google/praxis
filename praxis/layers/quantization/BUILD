@@ -51,6 +51,7 @@ pytype_strict_library(
         ":utils",
         # Internal dependency for internal quantization hyper parameters.
         # Internal dependency for internal quantization long seq support.
+        # Implicit absl.logging dependency.
         # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",

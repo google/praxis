@@ -33,6 +33,7 @@ quantizing all transformer blocks.
 import functools
 from typing import Sequence, Type, cast
 
+from absl import logging
 import fiddle as fdl
 from jax import numpy as jnp
 from praxis import base_layer
@@ -100,7 +101,7 @@ def _quantize_embedding_softmax_layer_weights(
       new_embedding_softmax_tpl.copy_fields_from(embedding_softmax_tpl)
       setattr(layer_tpl, name, new_embedding_softmax_tpl)
     else:
-      raise ValueError(
+      logging.info(
           f'layer_tpl.{name}.cls is : {embedding_softmax_tpl.cls}'
           'but has to be layers.SharedEmbeddingSoftmax'
       )
