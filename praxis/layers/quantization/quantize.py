@@ -44,7 +44,10 @@ from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import utils
 
 # Internal import for internal quantization hyper parameters.
+# Internal quantization helper.
 # Internal import for internal quantization long seq support.
+# Internal embedding implementation.
+
 
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 QuantizationParams = quantization_hparams.QuantizationParams
@@ -67,43 +70,44 @@ def _quantize_embedding_softmax_layer_weights(
     softmax_only: bool = True,
 ) -> None:
   """Rewrites Embedding HParam for weight only quantization."""
-  if transposed_embedding_softmax:
-    # Transposed embedding quantization.
-    # Replace softmax_tpl to quantized NClassMajorSharedEmbeddingSoftmax.
-    quant_embedding_softmax_tpl = pax_fiddle.Config(
-        quantization.NClassMajorSharedEmbeddingSoftmax,
-        quantization=QuantizationParams(
-            quantization_type=quantization_type,
-            mode=mode,
-            weight_params=weight_quantization_params,
-            act_params=act_quantization_params,
-        ),
-    )
-  else:
-    # Non-transposed embedding quantization.
-    # Replace softmax_tpl to quantized SharedEmbeddingSoftmax.
-    quant_embedding_softmax_tpl = pax_fiddle.Config(
-        quantization.SharedEmbeddingSoftmax,
-        quantization=QuantizationParams(
-            quantization_type=quantization_type,
-            mode=mode,
-            weight_params=weight_quantization_params,
-            act_params=act_quantization_params,
-        ),
-    )
+
+  quantization_params = QuantizationParams(
+      quantization_type=quantization_type,
+      mode=mode,
+      weight_params=weight_quantization_params,
+      act_params=act_quantization_params,
+  )
+
+  def _quantize_shared_embedding_softmax(embedding_softmax_tpl, name):
+    if transposed_embedding_softmax:
+      # Transposed embedding quantization.
+      # Replace softmax_tpl to quantized NClassMajorSharedEmbeddingSoftmax.
+      quant_embedding_softmax_tpl = pax_fiddle.Config(
+          quantization.NClassMajorSharedEmbeddingSoftmax,
+          quantization=quantization_params,
+      )
+    else:
+      # Non-transposed embedding quantization.
+      # Replace softmax_tpl to quantized SharedEmbeddingSoftmax.
+      quant_embedding_softmax_tpl = pax_fiddle.Config(
+          quantization.SharedEmbeddingSoftmax,
+          quantization=quantization_params,
+      )
+    new_embedding_softmax_tpl = quant_embedding_softmax_tpl.clone()
+    new_embedding_softmax_tpl.copy_fields_from(embedding_softmax_tpl)
+    setattr(layer_tpl, name, new_embedding_softmax_tpl)
 
   def _quantize(name: str):
     embedding_softmax_tpl = getattr(layer_tpl, name)
     if embedding_softmax_tpl is None:
       return
     if issubclass(embedding_softmax_tpl.cls, layers.SharedEmbeddingSoftmax):
-      new_embedding_softmax_tpl = quant_embedding_softmax_tpl.clone()
-      new_embedding_softmax_tpl.copy_fields_from(embedding_softmax_tpl)
-      setattr(layer_tpl, name, new_embedding_softmax_tpl)
+      _quantize_shared_embedding_softmax(embedding_softmax_tpl, name)
+ # Internal quantization support.
     else:
       logging.info(
           f'layer_tpl.{name}.cls is : {embedding_softmax_tpl.cls}'
-          'but has to be layers.SharedEmbeddingSoftmax'
+          ' but has to be SharedSoftmaxEmbedding or MultiModalSoftmaxEmbedding.'
       )
 
   _quantize('softmax_tpl')

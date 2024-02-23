@@ -50,7 +50,9 @@ pytype_strict_library(
         ":quantization_hparams",
         ":utils",
         # Internal dependency for internal quantization hyper parameters.
+        # Internal dependency for internal embedding quantization.
         # Internal dependency for internal quantization long seq support.
+        # Internal dependency for internal embedding.
         # Implicit absl.logging dependency.
         # Implicit fiddle dependency.
         # Implicit jax dependency.
