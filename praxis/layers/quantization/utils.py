@@ -15,7 +15,7 @@
 
 """Utilities for quantization."""
 
-from typing import Sequence, Type
+from typing import List, Sequence, Type
 
 import fiddle as fdl
 from jax import lax
@@ -321,3 +321,198 @@ def find_target_tpl(
     ):
       target_tpl.append(node)
   return target_tpl
+
+
+def get_lora_shape_and_eqn(
+    shape: Sequence[int], lora_size: int, eqn: str, max_reduction=True
+) -> tuple[str, str, List[int], List[int], List[int], List[int]]:
+  """Gets equations and shapes for LoRA weights of einsum equation.
+
+  Args:
+    shape: Weight shape.
+    lora_size: Size of LoRA dimension.
+    eqn: Einsum equation.
+    max_reduction: It is used only for a case when there are two reduction dims.
+      If True, then max reduction dim will be used as LoRA dim, else it will use
+      both dims for two LoRA dims.
+
+  Returns:
+    Einsum equation for w_left.
+    Einsum equation for w_right.
+    Weight shape for w_left.
+    Weight shape for w_right.
+    Index of LoRA dim in w_left.
+    Index of LoRA dim in w_right.
+  """
+  # Below comments are for example of eqn='...y,yz->...z'.
+  eqn_split = eqn.split('->')
+  assert len(eqn_split) == 2
+  left_right = eqn_split[0]  # '...y,yz'
+  left_right = left_right.split(',')
+  assert len(left_right) == 2
+  left, right = left_right[0], left_right[1]  # ('...y', 'yz')
+
+  def map_str2ind(eqn_part):
+    ch_map = {}
+    ind = 0
+    for ch in eqn_part:
+      if ch != '.':
+        ch_map[ch] = ind
+        ind += 1
+    return ch_map
+
+  left_map = map_str2ind(left)
+  right_map = map_str2ind(right)
+
+  # Find unique character which is not part of eqn.
+  lora_ch1 = None
+  lora_ch2 = None
+  for x in range(97, 123):
+    ch = chr(x)
+    if ch not in left_map and ch not in right_map:
+      if lora_ch1 is None:
+        lora_ch1 = ch
+      elif lora_ch2 is None:
+        lora_ch2 = ch
+      else:
+        break
+  assert lora_ch1 is not None
+  assert lora_ch2 is not None
+
+  # Select reduction dimension.
+  ch_reductions = []
+  ch_reduction2 = None
+  for ch in left_map:
+    if ch in right_map:
+      ch_reductions.append(ch)
+  assert ch_reductions
+  if len(ch_reductions) == 1:
+    ch_reduction1 = ch_reductions[0]
+  elif len(ch_reductions) == 2:
+    # If there are several reduction dimensions then select the largest one
+    # as LoRA dim.
+    if max_reduction:
+      max_reduction_size = 0
+      for ch in ch_reductions:
+        eqn_right_ind = right_map[ch]
+        eqn_right_size = shape[eqn_right_ind]
+        if max_reduction_size < eqn_right_size:
+          max_reduction_size = eqn_right_size
+          ch_reduction1 = ch
+    else:
+      ch_reduction1 = ch_reductions[0]
+      ch_reduction2 = ch_reductions[1]
+  else:
+    raise ValueError(
+        f'Unsupported number of reduction dims: {len(ch_reductions)}'
+    )
+
+  offset = 0
+  if len(left) >= 3:
+    if left[:3] == '...':
+      offset = 3
+
+  if ch_reduction2 is None:
+    # Equation for w_left
+    eqn_left_ind1 = left_map[ch_reduction1]
+    new_right = [ch_reduction1, lora_ch1]
+    new_left = list(left)
+    new_left[eqn_left_ind1 + offset] = lora_ch1
+    new_eqn_left = list(left) + [','] + new_right + ['->'] + new_left
+    new_eqn_left = ''.join(new_eqn_left)
+
+    # Equation for w_right
+    new_right = list(right)
+    eqn_right_ind1 = right_map[ch_reduction1]
+    assert new_right[0] != '.'
+    new_right[eqn_right_ind1] = lora_ch1
+    new_eqn_right = new_left + [','] + new_right + ['->'] + list(eqn_split[1])
+    new_eqn_right = ''.join(new_eqn_right)
+
+    # Shapes for w_left and w_right
+    left_shape = [shape[eqn_right_ind1], lora_size]
+    right_shape = list(shape)
+    right_shape[eqn_right_ind1] = lora_size
+    return (
+        new_eqn_left,
+        new_eqn_right,
+        left_shape,
+        right_shape,
+        [1],
+        [eqn_right_ind1],
+    )
+  else:
+    # Equation for w_left
+    eqn_left_ind1 = left_map[ch_reduction1]
+    eqn_left_ind2 = left_map[ch_reduction2]
+    new_right = [ch_reduction1, ch_reduction2, lora_ch1, lora_ch2]
+    new_left = list(left)
+    new_left[eqn_left_ind1 + offset] = lora_ch1
+    new_left[eqn_left_ind2 + offset] = lora_ch2
+    new_eqn_left = list(left) + [','] + new_right + ['->'] + new_left
+    new_eqn_left = ''.join(new_eqn_left)
+
+    # Equation for w_right
+    new_right = list(right)
+    eqn_right_ind1 = right_map[ch_reduction1]
+    eqn_right_ind2 = right_map[ch_reduction2]
+    assert new_right[0] != '.'
+    new_right[eqn_right_ind1] = lora_ch1
+    new_right[eqn_right_ind2] = lora_ch2
+    new_eqn_right = new_left + [','] + new_right + ['->'] + list(eqn_split[1])
+    new_eqn_right = ''.join(new_eqn_right)
+
+    # Shapes for w_left and w_right
+    left_shape = [
+        shape[eqn_right_ind1],
+        shape[eqn_right_ind2],
+        lora_size,
+        lora_size,
+    ]
+    right_shape = list(shape)
+    right_shape[eqn_right_ind1] = lora_size
+    right_shape[eqn_right_ind2] = lora_size
+    return (
+        new_eqn_left,
+        new_eqn_right,
+        left_shape,
+        right_shape,
+        [2, 3],
+        [eqn_right_ind1, eqn_right_ind2],
+    )
+
+
+def get_left_weight_split_dims_mapping(
+    weight_split_dims_mapping: tuple[str | None, ...] | None,
+    eqn_left_ind: List[int],
+) -> tuple[str | None, ...] | None:
+  if weight_split_dims_mapping is None:
+    return None
+  else:
+    if len(eqn_left_ind) == 1:
+      return (weight_split_dims_mapping[0], None)
+    elif len(eqn_left_ind) == 2:
+      return (
+          weight_split_dims_mapping[0],
+          weight_split_dims_mapping[1],
+          None,
+          None,
+      )
+    else:
+      raise ValueError(
+          f'Usupported number of reduction dims {len(eqn_left_ind)}'
+      )
+
+
+def get_right_weight_split_dims_mapping(
+    weight_split_dims_mapping: tuple[str | None, ...] | None,
+    eqn_right_ind: List[int],
+) -> tuple[str | None, ...] | None:
+
+  if weight_split_dims_mapping is None:
+    return None
+  else:
+    out_weight_split_dims_mapping = list(weight_split_dims_mapping)
+    for ind in eqn_right_ind:
+      out_weight_split_dims_mapping[ind] = None
+    return tuple(out_weight_split_dims_mapping)

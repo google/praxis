@@ -591,6 +591,9 @@ def get_sub_channel_shape(
 ) -> tuple[Sequence[int], Sequence[int]]:
   """Converts a shape's contract dim into sub-channel and block_size.
 
+  It can be useful for reducing quantization error in post training quantization
+  or quantization aware training, shown in https://arxiv.org/pdf/2305.16619.pdf.
+
   Args:
     shape: Tensor shape.
     block_size: Block size, it defines number of sub-channels.
