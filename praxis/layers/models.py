@@ -1139,39 +1139,26 @@ class LanguageModelContinuousBatching(LanguageModel):
     for i in range(self.lm_tpl.stacked_transformer_tpl.num_layers):
       layer_kv_cache_key = 'x_layers_{}'.format(i)
       atten_kv = transformer_kv_cache[layer_kv_cache_key]['self_attention']
-      new_key_cache = atten_kv['key_state']
-      new_value_cache = atten_kv['value_state']
-
-      new_pos_emb = None
       if 'key_post_rotary_pos_emb' in atten_kv:
-        new_pos_emb = atten_kv['key_post_rotary_pos_emb']
-        new_pos_emb = jnp.where(
-            decode_state.step < row_length - 1,
-            new_pos_emb,
-            decoder_utils.left_align_kv_cache(
-                new_pos_emb, left_align_steps_arr, row_length - 1, batch_size
-            ),
+        atten_kv['key_post_rotary_pos_emb'] = decoder_utils.left_align_kv_cache(
+            atten_kv['key_post_rotary_pos_emb'],
+            left_align_steps_arr,
+            row_length - 1,
+            batch_size=batch_size,
         )
 
-      new_key_cache = jnp.where(
-          decode_state.step < row_length - 1,
-          new_key_cache,
-          decoder_utils.left_align_kv_cache(
-              new_key_cache, left_align_steps_arr, row_length - 1, batch_size
-          ),
+      atten_kv['key_state'] = decoder_utils.left_align_kv_cache(
+          atten_kv['key_state'],
+          left_align_steps_arr,
+          row_length - 1,
+          batch_size=batch_size,
       )
-      new_value_cache = jnp.where(
-          decode_state.step < row_length - 1,
-          new_value_cache,
-          decoder_utils.left_align_kv_cache(
-              new_value_cache, left_align_steps_arr, row_length - 1, batch_size
-          ),
+      atten_kv['value_state'] = decoder_utils.left_align_kv_cache(
+          atten_kv['value_state'],
+          left_align_steps_arr,
+          row_length - 1,
+          batch_size=batch_size,
       )
-
-      atten_kv['key_state'] = new_key_cache
-      atten_kv['value_state'] = new_value_cache
-      if new_pos_emb is not None:
-        atten_kv['key_post_rotary_pos_emb'] = new_pos_emb
 
     decode_state.step = jnp.where(
         decode_state.step < row_length - 1, decode_state.step, left_align_steps

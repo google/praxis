@@ -377,17 +377,17 @@ def left_align_kv_cache(
     Left aligned tensor with shape [batch_size, seqlen, num_heads, head_dim].
   """
   rank = len(x.shape)
+  slice_sizes = x.shape[1:]
   if rank not in [3, 4]:
     raise ValueError(
         f'Argument `x` needs to be 3 or 4-index, but has shape: {x.shape}'
     )
-
-  out = []
+  pad_width = [[0, max_prefix_len], [0, 0]]
+  if rank == 4:
+    pad_width = pad_width + [[0, 0]]
   for i in range(batch_size):
-    pad_width = [[0, max_prefix_len], [0, 0]]
     start_indices = [max_prefix_len - prefix_lengths[i], 0]
     if rank == 4:
-      pad_width = pad_width + [[0, 0]]
       start_indices = start_indices + [0]
     padded = jnp.pad(
         x[i],
@@ -395,8 +395,9 @@ def left_align_kv_cache(
         mode='constant',
         constant_values=x.dtype.type(pad_value),
     )
-    out.append(jax.lax.dynamic_slice(padded, start_indices, x.shape[1:]))
-  return jnp.stack(out)
+    padded = jax.lax.dynamic_slice(padded, start_indices, slice_sizes)
+    x = x.at[i].set(padded)
+  return x
 
 
 def concat_suffix_and_left_align(
