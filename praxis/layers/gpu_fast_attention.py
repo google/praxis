@@ -135,7 +135,7 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
 
     @functools.partial(
         shard_map,
-        mesh=self.get_mesh(),
+        mesh=self._get_mesh(),
         in_specs=(
             blnh_pspec,
             blnh_pspec,
@@ -221,7 +221,7 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
 
     @functools.partial(
         shard_map,
-        mesh=self.get_mesh(),
+        mesh=self._get_mesh(),
         in_specs=(
             bnh_pspec,
             blnh_pspec,
@@ -292,7 +292,7 @@ class GpuTritonFusedGroupedQueryAttention(
 
     @functools.partial(
         shard_map,
-        mesh=self.get_mesh(),
+        mesh=self._get_mesh(),
         in_specs=(
             bnh_pspec,
             blnh_pspec,
