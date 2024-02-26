@@ -367,10 +367,13 @@ pytype_strict_library(
         ":quantization_hparams",
         ":quantizer",
         ":utils",
+        # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:pytypes",
         "//praxis/layers:linears",
+        "//praxis/layers:normalizations",
         "//praxis/layers/quantization/sparsity:sparsifier",
     ],
 )

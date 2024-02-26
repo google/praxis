@@ -776,5 +776,35 @@ class SubChannelLinearTest(test_utils.TestCase):
     self.assertEqual(expected_pspec, inference_pspec)
 
 
+class LinearLoRATest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(123456)
+
+  @parameterized.parameters(None, 'pre', 'mid', 'post')
+  def test_linear_lora(self, norm_order):
+    p = pax_fiddle.Config(
+        qlinears.LinearLoRA,
+        name='_linear',
+        input_dims=8,
+        output_dims=4,
+        lora_rank=2,
+        norm_order=norm_order,
+    )
+    linear = instantiate(p)
+    inputs = jnp.array(
+        [[1, 2, 3, 4, 5, 6, 7, 8], [9, 10, 11, 12, 13, 14, 15, 16]],
+        dtype=p.dtype,
+    )
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = linear.init(prng_key, inputs)
+      outputs = linear.apply(initial_vars, inputs)
+    self.assertEqual(outputs.shape, (2, 4))
+    self.assertEqual(initial_vars['params']['w_left'].shape, (8, 2))
+    self.assertEqual(initial_vars['params']['w_right'].shape, (2, 4))
+
+
 if __name__ == '__main__':
   absltest.main()
