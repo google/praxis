@@ -236,6 +236,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
           n_sparsity=self.sparsity.weight_params.prune_rate[0],
           m_sparsity=self.sparsity.weight_params.prune_rate[1],
           order=self.sparsity.order,
+          block_size=self.sparsity.block_size,
       )
 
     if self.sparsity.sparsity_type == SparsityType.CHANNELWISE_PRUNING:
@@ -563,7 +564,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     )
 
     # NOTE: Mask will be all True (as initialized) for steps before target step
-    # [case of few shot/one shot]; and for layer we dont want to sparsify
+    # [case of few shot/one shot]; and for layer we don't want to sparsify
     # so we apply mask for all the cases.
     mask_var_name = name + SPARSITY_NAME_POSTFIX
     mask = self.get_var(mask_var_name)

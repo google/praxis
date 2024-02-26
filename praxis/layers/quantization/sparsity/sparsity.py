@@ -55,6 +55,7 @@ def get_sparsity_mask(
     n_sparsity: int = 0,
     m_sparsity: int = 0,
     order: sparsity_hparams.SparsityOrder = sparsity_hparams.SparsityOrder.C,
+    block_size: int = 0,
 ) -> jnp.ndarray:
   """Returns sparsified inputs for n:m structured pruning.
 
@@ -69,6 +70,7 @@ def get_sparsity_mask(
       columns of the input matrix. The choice may intersect with hardware
       capabilities. For a weight tensor `C` corresponds to the reduction
       dimension, and `R' for activations.
+    block_size: Number of values in each weight block.
 
   Returns:
     A mask that indicates the pruning locations (`0`: no pruning, `1`: pruned).
@@ -85,6 +87,37 @@ def get_sparsity_mask(
   if order not in ['C', 'R']:
     raise ValueError(f'Index order {order} not supported.')
 
+  if block_size > 1:
+    blocks = int(length / block_size)
+    original_shape = inputs.shape
+    if order == 'R':
+      inputs_block = inputs.reshape(blocks, block_size, order='C')
+    else:
+      inputs_trans = jnp.einsum('...ij->...ji', inputs)
+      original_shape = inputs_trans.shape
+      inputs_block = inputs_trans.reshape(blocks, block_size, order='C')
+
+    def block_score(inputs: jnp.ndarray):
+      return jnp.sum(jnp.abs(inputs), axis=-1)
+
+    inputs_block_temp = jnp.apply_along_axis(
+        block_score, axis=-1, arr=inputs_block
+    )
+    mask_shape = tuple((
+        original_shape[i]
+        if i != jnp.size(original_shape) - 1
+        else int(original_shape[i] / block_size)
+        for i in range(jnp.size(original_shape))
+    ))
+    if order == 'R':
+      new_inputs = inputs_block_temp.reshape(mask_shape, order='C')
+    else:
+      new_inputs = jnp.einsum(
+          '...ij->...ji', inputs_block_temp.reshape(mask_shape, order='C')
+      )
+    inputs = new_inputs
+
+  length = jnp.size(inputs)
   group = int(length / m_sparsity)
   inputs = jnp.abs(inputs)
   original_shape = inputs.shape
@@ -101,9 +134,20 @@ def get_sparsity_mask(
   )
 
   if order == 'R':
-    return mask.reshape(original_shape, order='C')
+    result_mask = mask.reshape(original_shape, order='C')
   else:
-    return jnp.einsum('...ij->...ji', mask.reshape(original_shape, order='C'))
+    result_mask = jnp.einsum(
+        '...ij->...ji', mask.reshape(original_shape, order='C')
+    )
+
+  if block_size > 0:
+    if order == 'R':
+      expanded_mask = jnp.repeat(result_mask, block_size, axis=-1)
+    else:
+      expanded_mask = jnp.repeat(result_mask, block_size, axis=-2)
+    return expanded_mask
+  else:
+    return result_mask
 
 
 @jax.jit

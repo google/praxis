@@ -170,6 +170,7 @@ class SparsityHParams:
       corresponds to the reduction dimension, and `R' for activations.
     track_sad_metric: Should we track sparse architecture divergence metric?
     topk_estimator_type: Sets the type of top-k mask learning.
+    block_size: Number of values in each weight block.
   """
 
   sparsity_type: SparsityType = SparsityType.STRUCTURED_NM
@@ -186,6 +187,7 @@ class SparsityHParams:
   # TODO enable per layer dim i.e. linear 1 and 2
   # Enable unstacking
   channelwise_pruning_dim: int = -1
+  block_size: int = 0
 
   def __post_init__(self):
     if (
@@ -222,3 +224,11 @@ class SparsityHParams:
 
       if self.order not in ['C', 'R']:
         raise ValueError(f'Index order {self.order} not supported.')
+
+      if self.block_size != 0:
+        assert self.block_size > 0, 'Block size must be positive.'
+        if self.sparsity_type != SparsityType.STRUCTURED_NM:
+          raise ValueError(
+              f'Block size {self.block_size} not supported for '
+              'unstructured sparsity.'
+          )
