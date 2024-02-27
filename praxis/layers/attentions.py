@@ -3384,7 +3384,7 @@ class LocalSelfAttention(DotProductAttention):
         time_step + 1 - l,
         f,
         -1,
-        py_utils.get_large_negative_number(jnp.float32),
+        py_utils.get_large_negative_number(atten_mask.dtype),
     )
 
     b, f, n, h = key.shape

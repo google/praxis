@@ -927,12 +927,12 @@ class TransformerLm(base_layer.BaseLayer):
     # when time_step > 0.
     ngrammer_prefix = self.get_decode_state('ngrammer_prefix')
     ngrammer_prefix_emb = self.get_decode_state('ngrammer_prefix_emb')
-    ngrammer_segment_pos_prefix = self.get_decode_state(
-        'ngrammer_prefix_segment_pos'
-    )
     input_ids = jnp.concatenate([ngrammer_prefix, input_ids], axis=1)
     input_emb = jnp.concatenate([ngrammer_prefix_emb, input_emb], axis=1)
     if segment_pos is not None:
+      ngrammer_segment_pos_prefix = self.get_decode_state(
+          'ngrammer_prefix_segment_pos'
+      )
       segment_pos = jnp.concatenate(
           [ngrammer_segment_pos_prefix, segment_pos], axis=1
       )

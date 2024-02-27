@@ -1321,7 +1321,7 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
     ap = self.activation_split_dims_mapping
     if position is None:
       assert seq_length is not None
-      position = jnp.arange(seq_length, dtype=jnp.float32)[jnp.newaxis, :]
+      position = jnp.arange(seq_length, dtype=jnp.int32)[jnp.newaxis, :]
     if seq_length is None:
       assert position is not None
       assert position.ndim == 2
