@@ -149,6 +149,7 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
           q,
           k,
           v,
+          segment_ids=None,
           causal=self.is_causal,
           backward_pass_impl=bwd_pass_impl,
       )
