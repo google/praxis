@@ -1730,7 +1730,7 @@ def sample_init_decode_state(
   decode_state.output_ids = output_ids
   decode_state.logprobs = jnp.ones_like(output_ids, dtype=jnp.float32)
 
-  decode_state.done = jnp.ones(shape=batch_size, dtype=jnp.bool_)
+  decode_state.done = jnp.zeros(shape=batch_size, dtype=jnp.bool_)
   decode_state.has_eos = jnp.zeros(shape=batch_size, dtype=jnp.bool_)
 
   decode_state.prefix_lengths = prefix_lengths

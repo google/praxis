@@ -959,7 +959,7 @@ class LanguageModelContinuousBatching(LanguageModel):
     # run prefill
     def fprop_fn(mdl, ids, paddings):
       del ids, paddings
-      mdl(
+      output = mdl(
           decode_data.fprop_input_ids,
           decode_data.fprop_input_paddings,
           segment_ids=decode_data.fprop_segment_ids,
@@ -968,8 +968,12 @@ class LanguageModelContinuousBatching(LanguageModel):
           causal_attention_mask=decode_data.causal_attention_mask,
           **decode_data.extra_input_kwargs,
       )
+      return output.logits
 
-    fprop_fn(self.lm, decode_data.input_ids, decode_data.input_paddings)
+    logits = fprop_fn(
+        self.lm, decode_data.input_ids, decode_data.input_paddings
+    )
+    last_prefix_logits = logits[:, -1, :]
 
     # init prefix decode state
     prefill_decode_state = self.sample_init_decode_state(
@@ -1002,6 +1006,22 @@ class LanguageModelContinuousBatching(LanguageModel):
         jnp.ones(shape=(batch_size,), dtype=jnp.int32),
     )
 
+    def extend_step_fn(mdl, ids, segment_pos):
+      del mdl, ids, segment_pos
+      return last_prefix_logits
+
+    last_decode_steps = self._last_decode_step(decoder_params)
+    max_prefix_len = decoder_params.seqlen - last_decode_steps
+
+    prefill_decode_state = sample_decode.sample_decoding_step(
+        model=self.lm,
+        extend_step_fn=extend_step_fn,
+        decode_state=prefill_decode_state,
+        max_prefix_len=max_prefix_len,
+        eos_id=decoder_params.eos_id,
+        decode_loop_mesh_axes_transpose=decoder_params.decode_loop_mesh_axes_transpose,
+        max_decode_steps=decoder_params.max_decode_steps,
+    )
     return prefill_decode_state
 
   def sample_insert(
@@ -1059,9 +1079,7 @@ class LanguageModelContinuousBatching(LanguageModel):
     max_prefix_len = decoder_params.seqlen - decoder_params.max_decode_steps
     sequence_len = decoder_params.seqlen
 
-    right_aligned_length = sequence_len - (
-        decode_state.step - max_prefix_len + 1
-    )
+    right_aligned_length = sequence_len - (decode_state.step - max_prefix_len)
     for i in range(self.lm_tpl.stacked_transformer_tpl.num_layers):
       layer_kv_cache_key = 'x_layers_{}'.format(i)
       per_layerprefix_decode_cache = prefix_decode_cache['decoder_cache']['lm'][
@@ -1124,7 +1142,7 @@ class LanguageModelContinuousBatching(LanguageModel):
   ):
     # when reach end of sequence, align all tensors to left end, reset step
     decode_state.per_sample_steps = jnp.where(
-        decode_state.done, max_prefix_len - 1, decode_state.per_sample_steps
+        decode_state.done, max_prefix_len, decode_state.per_sample_steps
     )
     left_align_steps = jnp.max(decode_state.per_sample_steps)
     left_align_steps_arr = (
