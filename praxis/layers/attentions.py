@@ -2919,7 +2919,7 @@ class DotProductAttentionXL(DotProductAttention):
     s = key.shape[1]
 
     # [1, S]
-    pos = jnp.expand_dims(jnp.arange(t - 1, t - s - 1, -1), 0)
+    pos = jnp.expand_dims(t - 1 - jnp.arange(s), 0)
     sin_emb = self.pos_emb(position=pos)
     # [1, S, N, H]
     sin_emb = self.pos_proj(sin_emb)
