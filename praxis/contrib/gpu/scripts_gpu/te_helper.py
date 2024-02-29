@@ -7,6 +7,7 @@ from praxis import layers
 from praxis.layers.checkpoint_policy import AutodiffCheckpointType
 from praxis.layers import activations
 from praxis.layers import attentions, grouped_query_attention, multi_query_attention
+from praxis.layers import embedding_softmax
 from praxis.layers import normalizations
 
 try:
@@ -170,6 +171,8 @@ class TEInstalledHelper(TransformerEngineHelperBase):
                 assert attn_tpl.attention_extra_logit is None
                 assert attn_tpl.ngrammer_tpl is None
                 te_tpl.enable_rotary_pos_emb = attn_tpl.use_rotary_position_emb
+                if issubclass(attn_tpl.rotary_position_emb_tpl, embedding_softmax.RotaryPositionalEmbedding):
+                    te_tpl.rotary_pos_emb_group_method = 'alternate'
             elif issubclass(attn_tpl.cls, grouped_query_attention.GroupedQueryAttention):
                 te_tpl.num_gqa_groups = attn_tpl.num_kv_heads
                 if attn_tpl.rope_min_max_timescales is not None:
@@ -179,6 +182,8 @@ class TEInstalledHelper(TransformerEngineHelperBase):
             elif issubclass(attn_tpl.cls, multi_query_attention.MultiQueryDotProductAttention):
                 te_tpl.num_gqa_groups = attn_tpl.num_kv_heads
                 te_tpl.enable_rotary_pos_emb = attn_tpl.use_rotary_position_emb
+                if issubclass(attn_tpl.rotary_position_emb_tpl, embedding_softmax.RotaryPositionalEmbedding):
+                    te_tpl.rotary_pos_emb_group_method = 'alternate'
             else:
                 raise ValueError(f'Unsupported {attn_tpl.cls=}')
             assert attn_tpl.atten_logit_cap <= 0., 'atten_logit_cap > 0. is not supported in TE'
