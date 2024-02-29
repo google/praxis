@@ -158,7 +158,6 @@ class TEInstalledHelper(TransformerEngineHelperBase):
             return te_tpl
 
         def update_attn_te_tpl(te_tpl, attn_tpl):
-            # TODO(rewang): rope
             if issubclass(attn_tpl.cls, attentions.DotProductAttention):
                 # Check the DotProductAttention parameters are aligned to TE's attention
                 assert attn_tpl.internal_enable_query_scale or attn_tpl.scale_logits_by_head_dims
@@ -167,7 +166,6 @@ class TEInstalledHelper(TransformerEngineHelperBase):
                 assert not attn_tpl.scale_query_by_dim_per_head
                 assert not attn_tpl.dconv_qkv
                 assert not attn_tpl.internal_gshard_gaussian_init
-                assert not attn_tpl.use_rotary_position_emb
                 assert attn_tpl.relative_bias_tpl is None
                 assert attn_tpl.attention_extra_logit is None
                 assert attn_tpl.ngrammer_tpl is None
