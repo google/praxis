@@ -280,7 +280,7 @@ def var_partition_specs(
   def _get_spec(var_p: WeightHParams) -> jax.sharding.PartitionSpec:
     return to_partition_spec(var_p.full_split_dims_mapping, device_axis_names)
 
-  return jax.tree_map(_get_spec, var_specs)
+  return jax.tree_util.tree_map(_get_spec, var_specs)
 
 
 def transpose_one_axis(
@@ -1007,7 +1007,7 @@ def _is_meta(x):
 
 def maybe_unbox_value(tree):
   """Return the `value` leaf component of the pytree if it is a BoxedParam."""
-  return jax.tree_map(
+  return jax.tree_util.tree_map(
       lambda bp: bp.value if _is_meta(bp) else bp, tree, is_leaf=_is_meta
   )
 
@@ -1092,7 +1092,7 @@ def unbox_meta(tree):
       return _internal_meta_to_hparams(bp)
     return WeightHParams(shape=bp.shape, dtype=bp.dtype)
 
-  return jax.tree_map(extract_meta, tree, is_leaf=_is_meta)
+  return jax.tree_util.tree_map(extract_meta, tree, is_leaf=_is_meta)
 
 
 class SummaryType(enum.Enum):
@@ -2012,8 +2012,12 @@ class BaseLayer(nn.Module):
       )
       with JaxContext.new_context(hparams=context_p):
         if self.fprop_dtype == jnp.bfloat16:
-          converted_args = jax.tree_map(_maybe_to_bfloat16_dtype, args)
-          converted_kwargs = jax.tree_map(_maybe_to_bfloat16_dtype, kwargs)
+          converted_args = jax.tree_util.tree_map(
+              _maybe_to_bfloat16_dtype, args
+          )
+          converted_kwargs = jax.tree_util.tree_map(
+              _maybe_to_bfloat16_dtype, kwargs
+          )
         else:
           converted_args = args
           converted_kwargs = kwargs
@@ -2068,7 +2072,7 @@ class BaseLayer(nn.Module):
         capture_intermediates=capture_intermediates,
         **kwargs,
     )
-    hyper_params = jax.tree_map(
+    hyper_params = jax.tree_util.tree_map(
         lambda x: x.meta,
         variables_abstract[HYPER_PARAMS],
         is_leaf=lambda x: isinstance(x, WrappedHParams),
