@@ -54,8 +54,9 @@ def get_sparsity_mask(
     inputs: jnp.ndarray,
     n_sparsity: int = 0,
     m_sparsity: int = 0,
-    order: sparsity_hparams.SparsityOrder = sparsity_hparams.SparsityOrder.C,
+    order: str = 'R',
     block_size: int = 0,
+    offset: int = 0,
 ) -> jnp.ndarray:
   """Returns sparsified inputs for n:m structured pruning.
 
@@ -71,6 +72,14 @@ def get_sparsity_mask(
       capabilities. For a weight tensor `C` corresponds to the reduction
       dimension, and `R' for activations.
     block_size: Number of values in each weight block.
+    offset: Indicates the offset between the group of M elements on which
+      N:M sparsity is applied. The default is `0` (narrowly-separated),
+        indicating that `M` elements are selected from adjacent values in the
+        input matrix. Generally, because of the XLA layout (lanes 128/sublanes
+        8), another value for offset would be 128 (widely-separated). If offset
+        > 0, we only support scenarios where the input array size is equal to
+        (offset * m). Offset != 128 may not be best optimized for the memory
+        layout.
 
   Returns:
     A mask that indicates the pruning locations (`0`: no pruning, `1`: pruned).
@@ -78,6 +87,11 @@ def get_sparsity_mask(
   assert (
       n_sparsity <= m_sparsity
   ), f'N must be lower than M for N:M ({n_sparsity}:{m_sparsity}) sparsity.'
+  if order not in ['C', 'R']:
+    raise ValueError(f'Index order {order} not supported.')
+  if offset < 0:
+    raise ValueError(f'Offset value must be positive. You provided {offset}.')
+
   length = jnp.size(inputs)
   if length % m_sparsity != 0:
     raise ValueError(
@@ -119,19 +133,39 @@ def get_sparsity_mask(
 
   length = jnp.size(inputs)
   group = int(length / m_sparsity)
+  if offset > 0 and group % offset != 0:
+    raise ValueError(
+        'When offset > 0, we only support a group size that is divisble to '
+        f'offset. Provided offset = {offset}, group = {group}.'
+    )
+  if offset > 0 and int(group / offset) * m_sparsity * offset != length:
+    raise ValueError(
+        'When offset > 0, we only support an array size '
+        '(length) equal to (offset * m_sparsity). '
+        f'Provided offset = {offset}, m_sparsity = {m_sparsity}, '
+        f'length = {length}.'
+    )
   inputs = jnp.abs(inputs)
   original_shape = inputs.shape
-  if order == 'R':
-    inputs_temp = inputs.reshape(group, m_sparsity, order='C')
-  else:
-    inputs_trans = jnp.einsum('...ij->...ji', inputs)
-    original_shape = inputs_trans.shape
-    inputs_temp = inputs_trans.reshape(group, m_sparsity, order='C')
-  # Extract the smallest elements and forcefully make them zero.
+
+  if order == 'C':
+    inputs = jnp.einsum('...ij->...ji', inputs)
+    original_shape = inputs.shape
+
+  if offset > 0:
+    inputs = inputs.reshape((int(group / offset), m_sparsity, offset))
+    inputs = jnp.einsum('...ij->...ji', inputs)
+
+  inputs_temp = inputs.reshape(group, m_sparsity, order='C')
+
   _, top_k_indices = jax.lax.top_k(inputs_temp, k=n_sparsity)
   mask = jnp.any(
       jax.nn.one_hot(top_k_indices, m_sparsity, dtype=jnp.bool_), axis=-2
   )
+
+  if offset > 0:
+    mask = mask.reshape((int(group / offset), offset, m_sparsity))
+    mask = jnp.einsum('...ij->...ji', mask)
 
   if order == 'R':
     result_mask = mask.reshape(original_shape, order='C')
@@ -176,11 +210,11 @@ def get_sparsity_mask_channelwise(
 ) -> jnp.ndarray:
   """Returns a mask for the channel-wise pruned input.
 
-    Args:
-      inputs: The input matrix to have channel-wise masking applied.
-      prune_rate: The rate in which values in the inputs are pruned.
-      channel_dim: The channel dimension, the dimension across which channels
-        will be pruned.
+  Args:
+    inputs: The input matrix to have channel-wise masking applied.
+    prune_rate: The rate in which values in the inputs are pruned.
+    channel_dim: The channel dimension, the dimension across which channels will
+      be pruned.
 
   Returns:
     A mask that indicates the pruning locations.
