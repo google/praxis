@@ -20,8 +20,8 @@ Experimental only. Only tested on NVIDIA A100s.
 
 import functools
 import logging
-import math
 import os
+from typing import Tuple
 
 import jax
 from jax.experimental.shard_map import shard_map
@@ -30,12 +30,14 @@ from praxis import base_layer
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import attentions
+from praxis.layers import grouped_query_attention
 from praxis.layers import normalizations
 
 # pylint: disable=g-import-not-at-top
 try:
   from jax.experimental.pallas.ops import attention
   from jax.experimental.pallas.ops import layer_norm
+  from jax.experimental.pallas.ops.gpu import decode_attention
 except ImportError:
   logging.warning('jax_triton not found, please `pip install jax-triton`')
 # pylint: enable=g-import-not-at-top
@@ -47,10 +49,33 @@ JTensor = pytypes.JTensor
 class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
   """Using Jax/Pallas/Triton to call into a fused MHA kernel on NVIDIA GPU."""
 
+  is_causal: bool = False
+
+  # Note that flash decoding may speedup MQA and GQA only.
+  # XLA MHA may still run faster than Pallas Flash decoding.
+  # Tune k_splits and then measure before toggling on flash decoding.
+  # https://crfm.stanford.edu/2023/10/12/flashdecoding.html
+  use_flash_decoding: bool = False
+  flash_decoding_k_splits: int = 16
+
   def _blnh_pspec(self):
     """Return sharding annotations to tensors of shape [b, l, n, h]."""
     ap = self.activation_split_dims_mapping
     return base_layer.to_partition_spec(ap.blnh, self.mesh_axis_names)
+
+  def _bnh_pspec(self):
+    """Return sharding annotations to tensors of shape [b, n, h]."""
+    blnh = self._blnh_pspec()
+    return jax.sharding.PartitionSpec(blnh[0], blnh[2], blnh[3])
+
+  def _get_mesh(self) -> jax.sharding.Mesh:
+    device_mesh = py_utils.create_device_mesh(
+        self.ici_mesh_shape,
+        self.dcn_mesh_shape,
+        contiguous_submeshes=self.contiguous_submeshes,
+    )
+    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)
+    return mesh
 
   def _dot_atten(
       self,
@@ -77,7 +102,6 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
       encoded: JTensor of shape [B, T, N, H].
       atten_probs: JTensor of shape [B, N, T, S].
     """
-    logging.info('Using experimental GpuTritonFusedDotProductAttention.')
     assert relative_bias is None, 'Unimplemented'
 
     query = self._shard_blnh(query)
@@ -104,14 +128,6 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
 
     blnh_pspec = self._blnh_pspec()
 
-    # TODO(zhangqiaorjc): Pass a mesh from caller.
-    device_mesh = py_utils.create_device_mesh(
-        self.ici_mesh_shape,
-        self.dcn_mesh_shape,
-        contiguous_submeshes=self.contiguous_submeshes,
-    )
-    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)
-
     # TODO(zhangqiaorjc): Use hparam instead of env var.
     bwd_pass_impl = os.getenv(
         'pax_flash_attention_backward_pass_impl', default='xla'
@@ -119,7 +135,7 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
 
     @functools.partial(
         shard_map,
-        mesh=mesh,
+        mesh=self._get_mesh(),
         in_specs=(
             blnh_pspec,
             blnh_pspec,
@@ -130,12 +146,171 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
     )
     def sharded_mha(q, k, v):
       return attention.mha(
-          q, k, v, sm_scale=1.0 / math.sqrt(h), backward_pass_impl=bwd_pass_impl
+          q,
+          k,
+          v,
+          segment_ids=None,
+          causal=self.is_causal,
+          backward_pass_impl=bwd_pass_impl,
       )
 
     encoded = sharded_mha(query, key, value)
     encoded = self._shard_blnh(encoded)
     # TODO(zhangqiaorjc): return probs.
+    return encoded, None  # pytype: disable=bad-return-type  # jax-ndarray
+
+  def _dot_atten_one_step(
+      self,
+      query: JTensor,
+      key_state_name: str,
+      value_state_name: str,
+      atten_mask: JTensor,
+      relative_bias: JTensor | None = None,
+      time_step: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
+    """Dot attention function for queries with 1 time step.
+
+    Args:
+      query: JTensor of shape [B, N, H].
+      key_state_name: Name of the decoding key state variable.
+      value_state_name: Name of the decoding value state variable.
+      atten_mask: JTensor of shape [1|B, 1, S] which is a mask that is applied
+        to prevent attention between unwanted pairs. This has already been
+        converted into large negative logits. The first dimension is allowed to
+        be of size 1, if the mask is shared by all items in the batch (e.g.,
+        only a causal mask).
+      relative_bias: Relative bias of shape [1|B, N, 1, S].
+      time_step: A scalar. The time step tensor.
+
+    Returns:
+      encoded: JTensor of shape [B, N, H].
+      probs: JTensor of shape [B, N, S].
+    """
+    if not self.use_flash_decoding:
+      return super()._dot_atten_one_step(
+          query,
+          key_state_name,
+          value_state_name,
+          atten_mask,
+          relative_bias,
+          time_step,
+      )
+
+    assert relative_bias is None
+    assert not self.scale_logits_by_head_dims
+    assert self.attention_extra_logit is None
+    assert not self.zero_fully_masked
+    del time_step
+    key = self._shard_blnh(self.get_decode_state(key_state_name))
+    value = self._shard_blnh(self.get_decode_state(value_state_name))
+    k_b = key.shape[0]
+    q_b = query.shape[0]
+    assert k_b == q_b, (k_b, q_b)
+
+    # query is 3d.
+    query = self._shard_bnh(query)
+
+    b, s, n, h = key.shape
+    base_layer.assert_has_shape(value, [b, s, n, h])
+    base_layer.assert_has_shape(query, [b, n, h])
+    base_layer.assert_has_shape(atten_mask, [-1, 1, s])
+    asserts.in_set(atten_mask.shape[0], [b, 1])
+    query = self._scale_query(query)
+
+    bnh_pspec = self._bnh_pspec()
+    blnh_pspec = self._blnh_pspec()
+
+    @functools.partial(
+        shard_map,
+        mesh=self._get_mesh(),
+        in_specs=(
+            bnh_pspec,
+            blnh_pspec,
+            blnh_pspec,
+        ),
+        out_specs=bnh_pspec,
+        check_rep=False,
+    )
+    def sharded_decode_mha(q, k, v):
+      return decode_attention.gqa(
+          q,
+          k,
+          v,
+          k_splits=self.flash_decoding_k_splits,
+      )
+
+    encoded = sharded_decode_mha(query, key, value)
+    encoded = self._shard_bnh(encoded)
+    return encoded, None  # pytype: disable=bad-return-type  # jax-ndarray
+
+
+class GpuTritonFusedGroupedQueryAttention(
+    grouped_query_attention.GroupedQueryAttention
+):
+  """Using flash decoding for GroupedQueryAttention."""
+
+  # Note that flash decoding may speedup MQA and GQA only.
+  # XLA MHA may still run faster than Pallas Flash decoding.
+  # Tune k_splits and then measure before toggling on flash decoding.
+  # https://crfm.stanford.edu/2023/10/12/flashdecoding.html
+  use_flash_decoding: bool = False
+  flash_decoding_k_splits: int = 16
+
+  def _get_mesh(self) -> jax.sharding.Mesh:
+    device_mesh = py_utils.create_device_mesh(
+        self.ici_mesh_shape,
+        self.dcn_mesh_shape,
+        contiguous_submeshes=self.contiguous_submeshes,
+    )
+    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)
+    return mesh
+
+  def _atten_context(
+      self,
+      query: JTensor,
+      key: JTensor,
+      value: JTensor,
+      atten_mask: JTensor,
+  ) -> Tuple[JTensor, JTensor]:
+    """Computes atten context."""
+    b, t, n, h = query.shape
+    is_decoding = t == 1
+    if not is_decoding or not self.use_flash_decoding:
+      return super()._atten_context(query, key, value, atten_mask)
+
+    if self.atten_dropout_prob > 0.0 and not self.do_eval:
+      raise NotImplementedError
+    if self.atten_logit_cap > 0.0:
+      raise NotImplementedError
+
+    query = query * (self.dim_per_head**-0.5) / self.atten_temp
+    query = query.reshape([b, n, h])
+
+    # Assume causal self-attention mask. Not supporting cross_attention.
+    sh = self.activation_split_dims_mapping
+    bnh_pspec = jax.sharding.PartitionSpec(sh.btnh[0], sh.btnh[2], sh.btnh[3])
+    blnh_pspec = jax.sharding.PartitionSpec(sh.bskh)
+
+    @functools.partial(
+        shard_map,
+        mesh=self._get_mesh(),
+        in_specs=(
+            bnh_pspec,
+            blnh_pspec,
+            blnh_pspec,
+        ),
+        out_specs=bnh_pspec,
+        check_rep=False,
+    )
+    def sharded_decode_gqa(q, k, v):
+      return decode_attention.gqa(
+          q,  # [batch_size, num_q_heads, head_dim]
+          k,  # [batch_size, k_seq_len, num_kv_heads, head_dim]
+          v,  # [batch_size, k_seq_len, num_kv_heads, head_dim]
+          k_splits=self.flash_decoding_k_splits,
+      )
+
+    encoded = sharded_decode_gqa(query, key, value)
     return encoded, None  # pytype: disable=bad-return-type  # jax-ndarray
 
 

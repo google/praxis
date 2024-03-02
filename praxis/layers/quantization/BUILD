@@ -50,7 +50,10 @@ pytype_strict_library(
         ":quantization_hparams",
         ":utils",
         # Internal dependency for internal quantization hyper parameters.
+        # Internal dependency for internal embedding quantization.
         # Internal dependency for internal quantization long seq support.
+        # Internal dependency for internal embedding.
+        # Implicit absl.logging dependency.
         # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -85,11 +88,14 @@ pytype_strict_library(
         ":quantization_hparams",
         ":quantizer",
         ":utils",
+        # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis/layers:attentions",
+        "//praxis/layers:normalizations",
         "//praxis/layers/quantization/sparsity:sparsifier",
     ],
 )
@@ -364,10 +370,13 @@ pytype_strict_library(
         ":quantization_hparams",
         ":quantizer",
         ":utils",
+        # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
+        "//praxis:pax_fiddle",
         "//praxis:pytypes",
         "//praxis/layers:linears",
+        "//praxis/layers:normalizations",
         "//praxis/layers/quantization/sparsity:sparsifier",
     ],
 )
@@ -641,6 +650,7 @@ pytype_strict_library(
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
+        "//praxis:py_utils",
         "//praxis:pytypes",
     ],
 )

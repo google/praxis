@@ -2,6 +2,8 @@
 # cd ../../paxml/pip_package && bash ./compile_requirements.sh
 
 absl-py
+# enforce newer chex version to avoid deprecated jax syntax
+chex>=0.1.85
 clu @ git+https://github.com/google/CommonLoopUtils
 einops
 etils
@@ -15,6 +17,8 @@ numpy
 optax
 optax-shampoo
 opt-einsum
+# ensure sentencepiece is compataible with protobuf 3.19.6
+sentencepiece==0.1.99
 tensorflow-datasets==4.8.3
 tensorflow-metadata==1.12.0
 tensorflow-text~=2.9.0

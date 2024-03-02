@@ -225,7 +225,9 @@ class PruningFunctionalityTest(parameterized.TestCase):
     inputs = jnp.array(np.random.rand(10, 2, 4))
     prune_rate = (1, 4)
 
-    out = sparsity.prune_inputs_n_m(inputs, n=prune_rate[0], m=prune_rate[1])
+    out = sparsity.prune_inputs_n_m(
+        inputs, n=prune_rate[0], m=prune_rate[1], order='R'
+    )
     self.assertEqual(out.shape[0], inputs.shape[0])
     self.assertEqual(out.shape[1], inputs.shape[1])
     self.assertEqual(out.shape[2], inputs.shape[2])
@@ -242,7 +244,7 @@ class PruningFunctionalityTest(parameterized.TestCase):
     inputs = jnp.array(np.random.rand(10, 2, 4))
     prune_rate = (1, 4)
     mask = sparsity.get_sparsity_mask(
-        inputs, n_sparsity=prune_rate[0], m_sparsity=prune_rate[1]
+        inputs, n_sparsity=prune_rate[0], m_sparsity=prune_rate[1], order='R'
     )
     self.assertEqual(
         list(np.argmax(inputs, axis=2).flatten()),
@@ -365,6 +367,218 @@ class PruningFunctionalityTest(parameterized.TestCase):
     output = sparsity.prune_inputs_n_m(
         inputs, n=n_sparsity, m=m_sparsity, order=order
     )
+    np.testing.assert_array_equal(output, exp_output)
+
+
+class BlockPruningFunctionalityTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(testcase_name='block_size_1', block_size=1),
+      dict(testcase_name='block_size_2', block_size=2),
+      dict(testcase_name='block_size_4', block_size=4),
+  )
+  def test_prune_inputs_n_m(self, block_size):
+    inputs = jnp.array(np.random.rand(10, 2, 4))
+    prune_rate = (1, 2)
+
+    block_mask = sparsity.get_sparsity_mask(
+        inputs,
+        n_sparsity=prune_rate[0],
+        m_sparsity=prune_rate[1],
+        order='R',
+        block_size=block_size,
+    )
+    out = sparsity.apply_sparsity(inputs, block_mask)
+    self.assertEqual(out.shape[0], inputs.shape[0])
+    self.assertEqual(out.shape[1], inputs.shape[1])
+    self.assertEqual(out.shape[2], inputs.shape[2])
+
+    # Only 40 non-zero elements must exist after pruning.
+    num_non_zero_elems = 0.5 * inputs.size
+    self.assertEqual(out[out != 0].shape[0], num_non_zero_elems)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='2d_row_wise_pruning',
+          order='R',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 0, 3, 4, 5, 6, 0, 0, 9, 10, 11, 12],
+              [0, 0, 15, 16, 17, 18, 0, 0, 21, 22, 23, 24],
+              [0, 0, 27, 28, 29, 30, 0, 0, 33, 34, 35, 36],
+              [0, 0, 39, 40, 41, 42, 0, 0, 45, 46, 47, 48],
+              [0, 0, 51, 52, 53, 54, 0, 0, 57, 58, 59, 60],
+              [0, 0, 63, 64, 65, 66, 0, 0, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          block_size=2,
+      ),
+      dict(
+          testcase_name='2d_row_wise_pruning_2',
+          order='R',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 0, 0, 0, 5, 6, 7, 8, 9, 10, 11, 12],
+              [0, 0, 0, 0, 17, 18, 19, 20, 21, 22, 23, 24],
+              [0, 0, 0, 0, 29, 30, 31, 32, 33, 34, 35, 36],
+              [0, 0, 0, 0, 41, 42, 43, 44, 45, 46, 47, 48],
+              [0, 0, 0, 0, 53, 54, 55, 56, 57, 58, 59, 60],
+              [0, 0, 0, 0, 65, 66, 67, 68, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          block_size=4,
+      ),
+      dict(
+          testcase_name='3d_row_wise_pruning',
+          order='R',
+          inputs=np.arange(1, 73).reshape(2, 6, 6),
+          exp_output=[
+              [
+                  [0, 0, 3, 4, 5, 6],
+                  [0, 0, 9, 10, 11, 12],
+                  [0, 0, 15, 16, 17, 18],
+                  [0, 0, 21, 22, 23, 24],
+                  [0, 0, 27, 28, 29, 30],
+                  [0, 0, 33, 34, 35, 36],
+              ],
+              [
+                  [0, 0, 39, 40, 41, 42],
+                  [0, 0, 45, 46, 47, 48],
+                  [0, 0, 51, 52, 53, 54],
+                  [0, 0, 57, 58, 59, 60],
+                  [0, 0, 63, 64, 65, 66],
+                  [0, 0, 69, 70, 71, 72],
+              ],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          block_size=2,
+      ),
+      dict(
+          testcase_name='3d_row_wise_pruning_2',
+          order='R',
+          inputs=np.arange(1, 73).reshape(1, 6, 12),
+          exp_output=[
+              [
+                  [0, 0, 0, 0, 5, 6, 7, 8, 9, 10, 11, 12],
+                  [0, 0, 0, 0, 17, 18, 19, 20, 21, 22, 23, 24],
+                  [0, 0, 0, 0, 29, 30, 31, 32, 33, 34, 35, 36],
+                  [0, 0, 0, 0, 41, 42, 43, 44, 45, 46, 47, 48],
+                  [0, 0, 0, 0, 53, 54, 55, 56, 57, 58, 59, 60],
+                  [0, 0, 0, 0, 65, 66, 67, 68, 69, 70, 71, 72],
+              ],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          block_size=4,
+      ),
+      dict(
+          testcase_name='2d_column_wise_pruning',
+          order='C',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
+              [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48],
+              [49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60],
+              [61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          block_size=2,
+      ),
+      dict(
+          testcase_name='2d_column_wise_pruning_2',
+          order='C',
+          inputs=np.arange(1, 73).reshape(12, 6),
+          exp_output=[
+              [0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0],
+              [25, 26, 27, 28, 29, 30],
+              [31, 32, 33, 34, 35, 36],
+              [37, 38, 39, 40, 41, 42],
+              [43, 44, 45, 46, 47, 48],
+              [49, 50, 51, 52, 53, 54],
+              [55, 56, 57, 58, 59, 60],
+              [61, 62, 63, 64, 65, 66],
+              [67, 68, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          block_size=4,
+      ),
+      dict(
+          testcase_name='3d_column_wise_pruning',
+          order='C',
+          inputs=np.arange(1, 65).reshape(2, 8, 4),
+          exp_output=[
+              [
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [17, 18, 19, 20],
+                  [21, 22, 23, 24],
+                  [25, 26, 27, 28],
+                  [29, 30, 31, 32],
+              ],
+              [
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [49, 50, 51, 52],
+                  [53, 54, 55, 56],
+                  [57, 58, 59, 60],
+                  [61, 62, 63, 64],
+              ],
+          ],
+          n_sparsity=2,
+          m_sparsity=4,
+          block_size=2,
+      ),
+      dict(
+          testcase_name='3d_column_wise_pruning_2',
+          order='C',
+          inputs=np.arange(1, 65).reshape(1, 16, 4),
+          exp_output=[
+              [
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0],
+                  [33, 34, 35, 36],
+                  [37, 38, 39, 40],
+                  [41, 42, 43, 44],
+                  [45, 46, 47, 48],
+                  [49, 50, 51, 52],
+                  [53, 54, 55, 56],
+                  [57, 58, 59, 60],
+                  [61, 62, 63, 64],
+              ],
+          ],
+          n_sparsity=2,
+          m_sparsity=4,
+          block_size=4,
+      ),
+  )
+  def test_block_pruning(
+      self, order, inputs, exp_output, n_sparsity, m_sparsity, block_size
+  ):
+    inputs = jnp.array(inputs)
+    block_mask = sparsity.get_sparsity_mask(
+        inputs, n_sparsity, m_sparsity, order=order, block_size=block_size
+    )
+    output = sparsity.apply_sparsity(inputs, block_mask)
     np.testing.assert_array_equal(output, exp_output)
 
 

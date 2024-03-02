@@ -366,6 +366,7 @@ class RepeatsSparsityTest(test_utils.TestCase):
             sparsity_type=SparsityType.STRUCTURED_NM,
             weight_params=WeightSparsityParams(prune_rate=(2, 4)),
             mode=pax_fiddle.Config(sparsity_modes.TrainingMode),
+            order='R',
         ),
     )
     sub_p = pax_fiddle.Config(

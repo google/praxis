@@ -185,8 +185,7 @@ def top2_gating_on_logits(
     if expert_capacity_dim < auto_expert_capacity:
       expert_capacity_dim = auto_expert_capacity
       # Round up to a multiple of 4 to avoid possible padding.
-      while expert_capacity_dim % 4:
-        expert_capacity_dim += 1
+      expert_capacity_dim = ((expert_capacity_dim + 3) // 4) * 4
       logging.info(
           'Setting expert_capacity_dim=%r (capacity_factor=%r '
           'group_size_dim=%r experts_dim=%r)',
@@ -505,8 +504,7 @@ def topk_gating_on_logits(
     if expert_capacity_dim < auto_expert_capacity:
       expert_capacity_dim = auto_expert_capacity
       # Round up to a multiple of 4 to avoid possible padding.
-      while expert_capacity_dim % 4:
-        expert_capacity_dim += 1
+      expert_capacity_dim = ((expert_capacity_dim + 3) // 4) * 4
       logging.info(
           'Setting expert_capacity_dim=%r (capacity_factor=%r '
           'group_size_dim=%r experts_dim=%r)',
@@ -900,8 +898,7 @@ def expert_choice_gating_on_logits_v2(
     if expert_capacity_dim < auto_expert_capacity:
       expert_capacity_dim = auto_expert_capacity
       # Round up to a multiple of 4 to avoid possible padding.
-      while expert_capacity_dim % 4:
-        expert_capacity_dim += 1
+      expert_capacity_dim = ((expert_capacity_dim + 3) // 4) * 4
       logging.info(
           'Setting expert_capacity_dim=%r (capacity_factor=%r '
           'group_size_dim=%r experts_dim=%r)',

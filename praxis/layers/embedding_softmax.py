@@ -14,8 +14,8 @@
 # limitations under the License.
 
 """Embedding and softmax layers."""
-
 import math
+from typing import Optional
 
 from flax import linen as nn
 import jax
@@ -480,9 +480,11 @@ class SharedEmbeddingSoftmax(FullSoftmax):
 
     Attributes:
       emb_out_split_dims_mapping: Sharding of the emb output.
+      extend_step_out: Sharding annotations for the primary extend step output.
     """
 
     emb_out_split_dims_mapping: SplitDimsMapping = None
+    extend_step_out: SplitDimsMapping = None
 
   def emb_lookup(self, ids: JTensor) -> JTensor:
     ap = self.activation_split_dims_mapping
@@ -509,6 +511,102 @@ class SharedEmbeddingSoftmax(FullSoftmax):
   def extend_step(self, ids: JTensor, *, time_step: JTensor) -> JTensor:
     del time_step  # Not used.
     return self.emb_lookup(ids)
+
+
+class NClassMajorSharedEmbeddingSoftmax(SharedEmbeddingSoftmax):
+  """A softmax layer that also supports embedding lookups.
+
+  The embedding table is constructed with num_classes as the major dimension.
+
+  Attributes:
+    activation_tpl: Sub configurable field for the activation layer.
+  """
+
+  activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
+      template_field(activations.Identity)
+  )
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  use_bias: bool = True
+
+  def setup(self) -> None:
+    wp = self.weight_split_dims_mapping
+    ap = self.activation_split_dims_mapping
+    wp_wt = None
+    if wp.wt is not None:
+      wp_wt = [wp.wt[1], wp.wt[0]]
+    self.create_variable(
+        'w',
+        WeightHParams(
+            shape=[self.num_classes, self.input_dims],
+            mesh_shape=self.mesh_shape,
+            tensor_split_dims_mapping=wp_wt,
+        ),
+    )
+    bias_layer_p = pax_fiddle.Config(
+        linears.Bias, dims=self.num_classes, bias_init=self.bias_init
+    )
+    if self.mesh_shape is not None and ap.out is not None:
+      wp_bias = [ap.out[-1]]
+      bias_layer_p.weight_split_dims_mapping.wt = wp_bias
+    if self.use_bias:
+      self.create_child('bias', bias_layer_p)
+    self.create_child('activation', self.activation_tpl.clone())
+    if self.bi_tempered_loss_tpl:
+      self.create_child('bi_tempered_loss', self.bi_tempered_loss_tpl)
+    self.create_child('einsum', self.einsum_tpl.clone())
+
+  def get_logits(
+      self, inputs: JTensor, input_ids: Optional[JTensor] = None
+  ) -> JTensor:
+    """Returns logits given the inputs with an option to soft cap it.
+
+    Args:
+      inputs: a single JTensor with shape [..., input_dim].
+      input_ids: Unused. Needed for API compatibility with downstream usage.
+
+    Returns:
+      logits: with shape [..., num_classes]. Unnormalized softmax's logits.
+    """
+    ap = self.activation_split_dims_mapping
+    projected_inputs = self.einsum('...y,zy->...z', inputs, self.theta.w)
+    ap_out = ap.out
+    if projected_inputs.ndim == 2:
+      if ap.extend_step_out is not None and len(ap.extend_step_out) == 2:
+        ap_out = ap.extend_step_out
+      elif ap_out is not None and len(ap_out) == 3:
+        ap_out = [ap_out[0], ap_out[2]]
+    projected_inputs = base_layer.maybe_shard(
+        projected_inputs, ap_out, self.mesh_axis_names
+    )
+    if self.use_bias:
+      projected_inputs = self.bias(projected_inputs)
+    logits = self.activation(projected_inputs)
+
+    # Soft cap logits if applicable.
+    if self.soft_cap_logits:
+      logits = self.soft_cap_logits * jnp.tanh(logits / self.soft_cap_logits)
+    return logits
+
+  def emb_lookup(self, ids: JTensor) -> JTensor:
+    ap = self.activation_split_dims_mapping
+    if self.lookup_style == 'index':
+      embs = jnp.asarray(self.theta.w)[(ids,)]
+    elif self.lookup_style == 'matmul':
+      # Explicit casting to fprop_dtype needed for bf16.
+      one_hot_ids = jax.nn.one_hot(
+          ids, self.num_classes, dtype=self.fprop_dtype
+      )
+      embs = linears.project_last_dim(one_hot_ids, self.theta.w)
+    else:
+      raise ValueError('Unknown lookup style.')
+    # Scale with sqrt(embedding dims)
+    if self.scale_sqrt_depth:
+      embs *= self.input_dims**0.5
+
+    embs = base_layer.maybe_shard(
+        embs, ap.emb_out_split_dims_mapping, self.mesh_axis_names
+    )
+    return embs
 
 
 class SigmoidCrossEntropy(base_layer.BaseLayer):
@@ -711,9 +809,11 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
 
     Attributes:
       emb_out_split_dims_mapping: Mesh split for embedding outputs..
+      extend_step_out: Sharding annotations for the primary extend step output.
     """
 
     emb_out_split_dims_mapping: SplitDimsMapping = None
+    extend_step_out: SplitDimsMapping = None
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -764,8 +864,11 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
     logits = linears.project_last_dim(inputs, softmax_var)
     # Adjust sharding annotation during decoding.
     ap_out = ap.out
-    if ap_out is not None and len(ap_out) == 3 and logits.ndim == 2:
-      ap_out = [ap_out[0], ap_out[2]]
+    if logits.ndim == 2:
+      if ap.extend_step_out is not None and len(ap.extend_step_out) == 2:
+        ap_out = ap.extend_step_out
+      elif ap_out is not None and len(ap_out) == 3:
+        ap_out = [ap_out[0], ap_out[2]]
     logits = base_layer.maybe_shard(logits, ap_out, self.mesh_axis_names)
 
     # Soft cap logits if applicable
@@ -1218,7 +1321,7 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
     ap = self.activation_split_dims_mapping
     if position is None:
       assert seq_length is not None
-      position = jnp.arange(seq_length, dtype=jnp.float32)[jnp.newaxis, :]
+      position = jnp.arange(seq_length, dtype=jnp.int32)[jnp.newaxis, :]
     if seq_length is None:
       assert position is not None
       assert position.ndim == 2

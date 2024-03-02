@@ -32,6 +32,7 @@ WeightHParams = base_layer.WeightHParams
 template_field = base_layer.template_field
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
 JTensor = pytypes.JTensor
+SplitDimsMapping = pytypes.SplitDimsMapping
 
 
 def project_last_dim(
@@ -73,6 +74,15 @@ class Linear(base_layer.BaseLayer):
   weight_init: WeightInit | None = None
   einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
 
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
+    """Represents how intermediate values should be partitioned across a mesh.
+
+    Attributes:
+      extend_step_out: Sharding annotations for the primary extend step output.
+    """
+
+    extend_step_out: SplitDimsMapping = None
+
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
     self.create_variable(
@@ -97,12 +107,18 @@ class Linear(base_layer.BaseLayer):
     """
     ap = self.activation_split_dims_mapping
     out = self.einsum('...y,yz->...z', inputs, self.theta.w)
-
     # Adjust sharding annotation during decoding.
     # TODO(pax): This logic should likely be lifted somewhere else.
     ap_out = ap.out
-    if ap_out is not None and len(ap_out) == 3 and out.ndim == 2:
-      ap_out = [ap_out[0], ap_out[2]]
+    if out.ndim == 2:
+      if (
+          hasattr(ap, 'extend_step_out')
+          and ap.extend_step_out is not None
+          and len(ap.extend_step_out) == 2
+      ):
+        ap_out = ap.extend_step_out
+      elif ap_out is not None and len(ap_out) == 3:
+        ap_out = [ap_out[0], ap_out[2]]
     out = base_layer.maybe_shard(out, ap_out, self.mesh_axis_names)
     return out
 
@@ -164,6 +180,15 @@ class FeedForward(base_layer.BaseLayer):
   weight_init: WeightInit | None = None
   bias_init: float | None = 0.0
   checkpoint_str: str | None = None
+
+  class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
+    """Represents how intermediate values should be partitioned across a mesh.
+
+    Attributes:
+      extend_step_out: Sharding annotations for the primary extend step output.
+    """
+
+    extend_step_out: SplitDimsMapping = None
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping

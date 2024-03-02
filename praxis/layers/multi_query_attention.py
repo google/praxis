@@ -164,6 +164,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     use_rotary_position_emb: Whether to add rotary position embedding to the
       queries and keys before computing self attention scores. This was proposed
       in https://arxiv.org/abs/2104.09864.
+    consolidate_rope_key_state: Whether to consolidate `key_post_rotary_pos_emb`
+      with `key_state` as `key_state` when RoPE is enabled. Only set it as
+      `True` when `use_rotary_position_emb` is True.
     relative_bias_tpl: Optional parameterization of relative bias.
     attention_extra_logit: Extra logit for attention softmax.
     combine_qkv: Whether to combine qkv tensor for optimizing qkv input gradient
@@ -193,6 +196,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   atten_logit_cap: float = 0.0
   # TODO(b/300717814): Remove redundant `use_rotary_position_emb` field.
   use_rotary_position_emb: bool = False
+  consolidate_rope_key_state: bool = False
   rotary_position_emb_tpl: LayerTpl = template_field(
       embedding_softmax.RotaryPositionalEmbedding
   )
@@ -237,10 +241,13 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         [batch_size, seq_len, dim_per_head].
       bld: Mesh split for output after post projection with the shape of
         [batch_size, seq_len, model_dim].
+      bd: Mesh split for extend step output after post projection with the shape
+        of [batch_size, model_dim].
     """
     blnh: SplitDimsMapping = None
     blh: SplitDimsMapping = None
     bld: SplitDimsMapping = None
+    bd: SplitDimsMapping = None
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -260,6 +267,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     if self.mesh_shape is not None:
       assert self.weight_split_dims_mapping is not None
       assert self.activation_split_dims_mapping is not None
+
+    if self.consolidate_rope_key_state:
+      assert self.use_rotary_position_emb
 
     if isinstance(self.input_dim, Mapping):
       key_input_dim = self.input_dim['key']
@@ -385,8 +395,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       return x
     if ap.bld is None:
       return x
-    assert len(ap.bld) == 3
-    bd = [ap.bld[0], ap.bld[2]]
+    if ap.bd is not None:
+      bd = ap.bd
+      assert len(bd) == 2
+    else:
+      assert len(ap.bld) == 3
+      bd = [ap.bld[0], ap.bld[2]]
     return base_layer.maybe_shard(x, bd, self.mesh_axis_names)
 
   def _scale_query(self, query: JTensor) -> JTensor:
@@ -760,13 +774,17 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         _rep_d(x) for x in [query_vec, key_vec, value_vec]
     ]
 
-    # Project inputs to key, value and query, respectively has shape
-    # [B, S, N, H], [B, S, H], and [B, T, H].
+    # Project inputs to query, key and value, respectively has shape
+    # [B, T, N, H], [B, S, H], and [B, S, H].
     query_proj = self.query(query_vec)
     key_proj = self.key(key_vec)
     value_proj = self.value(value_vec)
+    query_proj = checkpoint_name(query_proj, 'query_proj')
+    key_proj = checkpoint_name(key_proj, 'key_proj')
+    value_proj = checkpoint_name(value_proj, 'value_proj')
 
-    self._fprop_update_decode_state('key_state', key_proj)
+    if not self.consolidate_rope_key_state:
+      self._fprop_update_decode_state('key_state', key_proj)
     self._fprop_update_decode_state('value_state', value_proj)
 
     # Apply rotary position embeddings.
@@ -780,7 +798,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       key_proj = self.rotary_position_emb(key_proj, key_segment_pos)
       if self.num_kv_heads == 1:
         key_proj = jnp.reshape(key_proj, key_shape)
-      self._fprop_update_decode_state('key_post_rotary_pos_emb', key_proj)
+      if self.consolidate_rope_key_state:
+        self._fprop_update_decode_state('key_state', key_proj)
+      else:
+        self._fprop_update_decode_state('key_post_rotary_pos_emb', key_proj)
 
     # Apply relative bias.
     # Paper: https://aclanthology.org/N18-2074.pdf.
@@ -928,35 +949,28 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     assert time_step.ndim == 0
     # Project inputs to key, value and query. Query has shape [B, N, H],
     # key/value shapes [B, H]
+    if extend_one_step:
+      query_vec = self._shard_bd(query_vec)
     query_proj = self.query(query_vec)
-    if not is_cross_attention:
-      key_proj = self.key(query_vec)
-      value_proj = self.value(query_vec)
+
     # TODO(b/290067837): Workaround for problems when batch dim is sharded
     # differently in bld and blnh.
     ap = self.activation_split_dims_mapping
+    sharding = None
     if ap.bld and ap.blnh:
-      query_proj = base_layer.maybe_shard(
-          query_proj,
-          [ap.bld[0], ap.blnh[2], ap.blnh[3]],
-          self.mesh_axis_names,
-      )
-      if not is_cross_attention:
-        if self.num_kv_heads == 1:
-          sharding = [ap.bld[0], ap.blnh[3]]
-        else:
-          sharding = [ap.bld[0], ap.blnh[2], ap.blnh[3]]
+      ap_b = ap.bd[0] if ap.bd else ap.bld[0]
+      sharding = [ap_b, ap.blnh[2], ap.blnh[3]]
+    query_proj = base_layer.maybe_shard(
+        query_proj, sharding, self.mesh_axis_names
+    )
 
-        value_proj = base_layer.maybe_shard(
-            value_proj,
-            sharding,
-            self.mesh_axis_names,
-        )
-        key_proj = base_layer.maybe_shard(
-            key_proj,
-            sharding,
-            self.mesh_axis_names,
-        )
+    if not is_cross_attention:
+      key_proj = self.key(query_vec)
+      value_proj = self.value(query_vec)
+      if ap.bld and ap.blnh:
+        if self.num_kv_heads == 1:
+          ap_b = ap.bd[0] if ap.bd else ap.bld[0]
+          sharding = [ap_b, ap.blnh[3]]
         value_proj = base_layer.maybe_shard(
             value_proj,
             sharding,
@@ -985,7 +999,11 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       _extend_decode_state_and_shard_blh(key_state_name, key_proj)
 
     if self.use_rotary_position_emb:
-      key_state_name = 'key_post_rotary_pos_emb'
+      key_state_name = (
+          'key_post_rotary_pos_emb'
+          if not self.consolidate_rope_key_state
+          else 'key_state'
+      )
       if segment_pos is None:
         position = jnp.broadcast_to(time_step, [query_vec.shape[0]])
       else:
@@ -1022,9 +1040,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     if ap.bld and ap.blnh:
       # TODO(b/290067837): Workaround for problems when batch dim is sharded
       # differently in bld and blnh.
+      ap_b = ap.bd[0] if ap.bd else ap.bld[0]
       encoded = base_layer.maybe_shard(
           encoded,
-          [ap.bld[0], ap.blnh[2], ap.blnh[3]],
+          [ap_b, ap.blnh[2], ap.blnh[3]],
           self.mesh_axis_names,
       )
     encoded = self.post(encoded)
@@ -1596,7 +1615,11 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
                                                      position)
 
       # Update key post rotary position embedding in the cache.
-      key_state_name = 'key_post_rotary_pos_emb'
+      key_state_name = (
+          'key_post_rotary_pos_emb'
+          if not self.consolidate_rope_key_state
+          else 'key_state'
+      )
       if not is_cross_attention:
         _extend_decode_state_and_shard(key_state_name, key_proj)
 

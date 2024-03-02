@@ -280,7 +280,7 @@ def var_partition_specs(
   def _get_spec(var_p: WeightHParams) -> jax.sharding.PartitionSpec:
     return to_partition_spec(var_p.full_split_dims_mapping, device_axis_names)
 
-  return jax.tree_map(_get_spec, var_specs)
+  return jax.tree_util.tree_map(_get_spec, var_specs)
 
 
 def transpose_one_axis(
@@ -382,7 +382,7 @@ class WeightInit:
     scale: Initialization scale.
   """
   method: str
-  scale: float
+  scale: float | int
 
   @pax_fiddle.auto_config
   @staticmethod
@@ -415,7 +415,7 @@ class WeightInit:
 
   @pax_fiddle.auto_config
   @staticmethod
-  def Constant(scale: float | bool = 1.0) -> WeightInit:
+  def Constant(scale: float | int = 1.0) -> WeightInit:
     """scale."""
     return WeightInit('constant', scale)
 
@@ -672,10 +672,14 @@ def init_var(
   init_dtype = var_p.dtype
   fan_in_axes = var_p.fan_in_axes
   fan_out_axes = var_p.fan_out_axes
-  logging.info(
+  logging.debug(
       'Creating var %s with shape=%s, dtype=%s, init method=%s and scale=%s',
-      var_full_name, shape, init_dtype, var_p.init.method,
-      var_p.init.scale)
+      var_full_name,
+      shape,
+      init_dtype,
+      var_p.init.method,
+      var_p.init.scale,
+  )
   # We rely on nn.scan to transform vars, hence init_var shouldn't expect a
   # repeat_prefix or repeat_prefix_split_dims_mapping.
   assert not var_p.repeat_prefix
@@ -750,7 +754,16 @@ def init_var(
     return scale * jrandom.truncated_normal(
         prng_key, lower=-2.0, upper=2.0, shape=shape, dtype=init_dtype)
   elif method in ['constant']:
-    return scale + jnp.zeros(shape=shape, dtype=init_dtype)
+    if jnp.issubdtype(init_dtype, jnp.integer) and not isinstance(scale, int):
+      raise ValueError(
+          'An integer scale must be provided when initializing an '
+          f'integer variable (of type {init_dtype}), but got {scale=}'
+      )
+    if init_dtype in [jnp.int4, jnp.uint4]:
+      # jnp.zeros(dtype=int4) is not currently supported.
+      return (scale + jnp.zeros(shape=shape, dtype=jnp.int8)).astype(init_dtype)
+    else:
+      return scale + jnp.zeros(shape=shape, dtype=init_dtype)
   elif method in ['xavier']:
     fan_in, fan_out = get_fan_in_fan_out(shape, fan_in_axes, fan_out_axes)
     limit = scale * math.sqrt(6. / (fan_in + fan_out))
@@ -994,7 +1007,7 @@ def _is_meta(x):
 
 def maybe_unbox_value(tree):
   """Return the `value` leaf component of the pytree if it is a BoxedParam."""
-  return jax.tree_map(
+  return jax.tree_util.tree_map(
       lambda bp: bp.value if _is_meta(bp) else bp, tree, is_leaf=_is_meta
   )
 
@@ -1079,7 +1092,7 @@ def unbox_meta(tree):
       return _internal_meta_to_hparams(bp)
     return WeightHParams(shape=bp.shape, dtype=bp.dtype)
 
-  return jax.tree_map(extract_meta, tree, is_leaf=_is_meta)
+  return jax.tree_util.tree_map(extract_meta, tree, is_leaf=_is_meta)
 
 
 class SummaryType(enum.Enum):
@@ -1674,7 +1687,7 @@ class BaseLayer(nn.Module):
     out: SplitDimsMapping = None
 
   dtype: jnp.dtype = jnp.float32
-  fprop_dtype: Any | None = None
+  fprop_dtype: jnp.dtype | None = None
   params_init: WeightInit = instance_field(default_param_init)
   skip_lp_regularization: bool | None = None
   ici_mesh_shape: Sequence[int] | None = None
@@ -1684,8 +1697,8 @@ class BaseLayer(nn.Module):
   shared_weight_layer_id: str | None = None
   # TODO(b/249483164): Change these to use instance_field rather than
   # template_field after the Fiddle migration.
-  weight_split_dims_mapping: pax_fiddle.Config[BaseLayer.WeightSharding] = template_field(
-      WeightSharding
+  weight_split_dims_mapping: pax_fiddle.Config[BaseLayer.WeightSharding] = (
+      template_field(WeightSharding)
   )
   activation_split_dims_mapping: pax_fiddle.Config[
       BaseLayer.ActivationSharding
@@ -1999,8 +2012,12 @@ class BaseLayer(nn.Module):
       )
       with JaxContext.new_context(hparams=context_p):
         if self.fprop_dtype == jnp.bfloat16:
-          converted_args = jax.tree_map(_maybe_to_bfloat16_dtype, args)
-          converted_kwargs = jax.tree_map(_maybe_to_bfloat16_dtype, kwargs)
+          converted_args = jax.tree_util.tree_map(
+              _maybe_to_bfloat16_dtype, args
+          )
+          converted_kwargs = jax.tree_util.tree_map(
+              _maybe_to_bfloat16_dtype, kwargs
+          )
         else:
           converted_args = args
           converted_kwargs = kwargs
@@ -2055,7 +2072,7 @@ class BaseLayer(nn.Module):
         capture_intermediates=capture_intermediates,
         **kwargs,
     )
-    hyper_params = jax.tree_map(
+    hyper_params = jax.tree_util.tree_map(
         lambda x: x.meta,
         variables_abstract[HYPER_PARAMS],
         is_leaf=lambda x: isinstance(x, WrappedHParams),

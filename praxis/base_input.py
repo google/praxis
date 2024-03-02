@@ -227,6 +227,11 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
   def get_state(self) -> bytes:
     """Returns the serialized state as bytes object."""
     if self._peek is not None:
+      if not self._state_before_peek:
+        raise ValueError(
+            'get_state() should only be used when input_checkpointing_enabled ='
+            ' True. Otherwise, the peeked iterator state will not be captured.'
+        )
       return self._state_before_peek
     return self._get_state_internal()
 

@@ -1219,6 +1219,172 @@ class AttentionsTest(test_utils.TestCase):
     ]
     self.assertNotEqual(np.amin(np.abs(test_utils.to_np(non_masked_out))), 0)
 
+  @parameterized.parameters([
+      (4, 2, 1, True, True),
+      (4, 2, 1, False, True),
+      (8, 3, 5, True, False),
+      (8, 3, 5, False, False),
+      (5, 4, 0, False, True),
+      (5, 4, 0, True, True),
+  ])
+  def test_local_attention_rel_bias(
+      self,
+      block_size,
+      left_context,
+      right_context,
+      is_full,
+      zero_fully_masked,
+  ):
+    mdl_dim = 16
+    hidden_dim = 32
+    num_heads = 4
+    test_layer_p = pax_fiddle.Config(
+        attentions.LocalSelfAttentionRelativeBias,
+        name='rel_bias',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        block_size=block_size,
+        left_context=left_context,
+        right_context=right_context,
+        zero_fully_masked=zero_fully_masked,
+    )
+    layer = instantiate(test_layer_p)
+
+    target_batch_size = 3
+    source_max_length = 16
+
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+    key_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+    value_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+
+    paddings = range(source_max_length)[-target_batch_size:]
+    paddings = [[0] * l + [1] * (source_max_length - l) for l in paddings]
+    paddings = np.array(paddings)
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
+    if is_full:
+      atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(
+          init_key, query_vec, key_vec, value_vec, atten_mask
+      )
+      jax_fprop_out, jax_atten_prob = layer.apply(
+          initial_vars, query_vec, key_vec, value_vec, atten_mask
+      )
+
+    self.assertEqual(
+        jax_fprop_out.shape, (target_batch_size, source_max_length, mdl_dim)
+    )
+
+    # -> [B, U, C, ...]
+    key_block_context = attentions.extract_block_context(
+        key_vec,
+        block_size=block_size,
+        left_context=left_context,
+        right_context=right_context,
+    )
+    _, u, c, _ = key_block_context.shape
+
+    # -> [B, U, W, ...]
+    query_blocks = attentions.convert_to_block(query_vec, block_size=block_size)
+    _, _, w, _ = query_blocks.shape
+
+    self.assertEqual(
+        jax_atten_prob.shape, (target_batch_size, num_heads, u, w, c)
+    )
+
+  @parameterized.parameters([
+      (4, 2, 1, True, True),
+      (4, 2, 1, False, True),
+      (8, 3, 5, True, False),
+      (8, 3, 5, False, False),
+      (5, 4, 0, False, True),
+      (5, 4, 0, True, True),
+  ])
+  def test_local_attention_alibi(
+      self,
+      block_size,
+      left_context,
+      right_context,
+      is_full,
+      zero_fully_masked,
+  ):
+    mdl_dim = 16
+    hidden_dim = 32
+    num_heads = 4
+    test_layer_p = pax_fiddle.Config(
+        attentions.LocalSelfAttentionAlibi,
+        name='alibi',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        block_size=block_size,
+        left_context=left_context,
+        right_context=right_context,
+        zero_fully_masked=zero_fully_masked,
+    )
+    layer = instantiate(test_layer_p)
+
+    target_batch_size = 3
+    source_max_length = 16
+
+    query_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+    key_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+    value_vec = np.random.normal(
+        size=[target_batch_size, source_max_length, mdl_dim]
+    ).astype(np.float32)
+
+    paddings = range(source_max_length)[-target_batch_size:]
+    paddings = [[0] * l + [1] * (source_max_length - l) for l in paddings]
+    paddings = np.array(paddings)
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
+    if is_full:
+      atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key, init_key = jax.random.split(prng_key)
+      initial_vars = layer.init(
+          init_key, query_vec, key_vec, value_vec, atten_mask
+      )
+      jax_fprop_out, jax_atten_prob = layer.apply(
+          initial_vars, query_vec, key_vec, value_vec, atten_mask
+      )
+
+    self.assertEqual(
+        jax_fprop_out.shape, (target_batch_size, source_max_length, mdl_dim)
+    )
+
+    # -> [B, U, C, ...]
+    key_block_context = attentions.extract_block_context(
+        key_vec,
+        block_size=block_size,
+        left_context=left_context,
+        right_context=right_context,
+    )
+    _, u, c, _ = key_block_context.shape
+
+    # -> [B, U, W, ...]
+    query_blocks = attentions.convert_to_block(query_vec, block_size=block_size)
+    _, _, w, _ = query_blocks.shape
+
+    self.assertEqual(
+        jax_atten_prob.shape, (target_batch_size, num_heads, u, w, c)
+    )
+
   @parameterized.parameters(
       ([1, 2, 3, 4, 5], 1, 0, [0, 1, 2, 3, 4]),
       ([1, 2, 3, 4, 5], -1, 0, [2, 3, 4, 5, 0]),
@@ -2333,6 +2499,132 @@ class AttentionsTest(test_utils.TestCase):
         mutable=[base_layer.DECODE_CACHE],
     )
     self.assertAllClose(encoded_1, encoded[:, 1])
+
+  @parameterized.parameters([
+      (True),
+      (False),
+  ])
+  def test_consolidate_rope_key_state(self, lpb):
+    if lpb:
+      mha = attentions.DotProductAttentionWithLPB
+    else:
+      mha = attentions.DotProductAttention
+    unconsolidated_key_layer_p = pax_fiddle.Config(
+        mha,
+        name='mha',
+        input_dim=2,
+        hidden_dim=2,
+        num_heads=1,
+        use_rotary_position_emb=True,
+    )
+    consolidated_key_layer_p = unconsolidated_key_layer_p.clone()
+    consolidated_key_layer_p.consolidate_rope_key_state = True
+
+    unconsolidated_key_layer = instantiate(unconsolidated_key_layer_p)
+    consolidated_key_layer = instantiate(consolidated_key_layer_p)
+
+    key = np.reshape(np.identity(2), (1, 2, 2))
+    query = np.reshape(np.identity(2), (1, 2, 2))
+    value = np.reshape(np.identity(2), (1, 2, 2))
+    mask = np.reshape(np.zeros((2,)), (1, 1, 1, 2))
+
+    params = py_utils.NestedMap.FromNestedDict({
+        'params': {
+            'key': {
+                'b': np.zeros((1, 2)),
+                'w': np.reshape(np.identity(2), (2, 1, 2)),
+            },
+            'per_dim_scale': {'per_dim_scale': np.ones((2,))},
+            'post': {
+                'b': np.zeros((2,)),
+                'w': np.reshape(np.identity(2), (2, 1, 2)),
+            },
+            'query': {
+                'b': np.zeros((1, 2)),
+                'w': np.reshape(np.identity(2), (2, 1, 2)),
+            },
+            'value': {
+                'b': np.zeros((1, 2)),
+                'w': np.reshape(np.identity(2), (2, 1, 2)),
+            },
+        }
+    })
+
+    expected_encoded, expected_probs = unconsolidated_key_layer.apply(
+        params, query, key, value, mask
+    )
+    encoded, probs = consolidated_key_layer.apply(
+        params, query, key, value, mask
+    )
+    self.assertArraysEqual(expected_encoded, encoded)
+    self.assertArraysEqual(expected_probs, probs)
+
+    # Apply __call__ at the first time step to initialize the decoder state.
+    (expected_encoded_0, expected_probs_0), unconsolidated_updated_vars = (
+        unconsolidated_key_layer.apply(
+            params,
+            np.expand_dims(query[:, 0], axis=1),
+            key,
+            value,
+            mask,
+            mutable=[base_layer.DECODE_CACHE],
+        )
+    )
+    (encoded_0, probs_0), consolidated_updated_vars = (
+        consolidated_key_layer.apply(
+            params,
+            np.expand_dims(query[:, 0], axis=1),
+            key,
+            value,
+            mask,
+            mutable=[base_layer.DECODE_CACHE],
+        )
+    )
+    self.assertArraysEqual(expected_encoded_0, encoded_0)
+    self.assertArraysEqual(expected_probs_0, probs_0)
+    self.assertNotIn(
+        'key_post_rotary_pos_emb', consolidated_updated_vars['decoder_cache']
+    )
+    self.assertArraysEqual(
+        consolidated_updated_vars['decoder_cache']['key_state'],
+        unconsolidated_updated_vars['decoder_cache']['key_post_rotary_pos_emb'],
+    )
+    unconsolidated_updated_vars = py_utils.merge_dict(
+        unconsolidated_updated_vars, params
+    )
+    consolidated_updated_vars = py_utils.merge_dict(
+        consolidated_updated_vars, params
+    )
+    # Apply extend_step at the second time step.
+    expected_encoded_1, unconsolidated_updated_vars = (
+        unconsolidated_key_layer.apply(
+            unconsolidated_updated_vars,
+            query[:, 1],
+            atten_mask=np.squeeze(mask, axis=2),
+            time_step=1,
+            segment_pos=None,
+            method=unconsolidated_key_layer.extend_step,
+            mutable=[base_layer.DECODE_CACHE],
+        )
+    )
+    encoded_1, consolidated_updated_vars = consolidated_key_layer.apply(
+        consolidated_updated_vars,
+        query[:, 1],
+        atten_mask=np.squeeze(mask, axis=2),
+        time_step=1,
+        segment_pos=None,
+        method=consolidated_key_layer.extend_step,
+        mutable=[base_layer.DECODE_CACHE],
+    )
+
+    self.assertArraysEqual(expected_encoded_1, encoded_1)
+    self.assertNotIn(
+        'key_post_rotary_pos_emb', consolidated_updated_vars['decoder_cache']
+    )
+    self.assertArraysEqual(
+        consolidated_updated_vars['decoder_cache']['key_state'],
+        unconsolidated_updated_vars['decoder_cache']['key_post_rotary_pos_emb'],
+    )
 
 
 if __name__ == '__main__':

@@ -26,6 +26,7 @@ import jax
 import jax.numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle
+from praxis import py_utils
 from praxis import pytypes
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
@@ -98,6 +99,10 @@ class QuantizationLayer(base_layer.BaseLayer):
       )
 
     if self.quantization.mode == QuantizationMode.INFERENCE:
+      if self.quantization.quantization_type == QuantizationType.FR:
+        raise NotImplementedError(
+            'FRAME Quantization is not supported yet for inference.'
+        )
       if (
           precision == 4
           and self.quantization.weight_params.use_int4_packed_weights
@@ -135,6 +140,15 @@ class QuantizationLayer(base_layer.BaseLayer):
           dtype=dtype,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
+    elif self.quantization.mode == QuantizationMode.CALIB:
+      assert self.quantization.quantization_type == QuantizationType.FR
+      stats = base_layer.WeightHParams(
+          shape=[1],
+          init=base_layer.WeightInit.Constant(0),
+          dtype=jnp.bfloat16,
+      )
+      self.create_variable('framestat', stats, trainable=False)
+      self.create_variable(weight_name, weight_params)
     else:
       self.create_variable(weight_name, weight_params)
 
@@ -177,6 +191,10 @@ class QuantizationLayer(base_layer.BaseLayer):
       q_w = utils.unpack_4bit(
           q_w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
       )
+    if not py_utils.is_tpu() and q_w.dtype in utils.INT4_TYPES:
+      # (u)int4 is only supported for convert operations on XLA CPU and GPU, but
+      # the double cast is useful for other compilers.
+      q_w = q_w.astype(jnp.int8)
     return q_w, q_s, zp
 
   def quantized_einsum(
@@ -210,6 +228,11 @@ class QuantizationLayer(base_layer.BaseLayer):
       self.add_summary('step_count', step_count)
 
     if self.quantization.mode == QuantizationMode.INFERENCE:
+      if self.quantization.quantization_type == QuantizationType.FR:
+        # It takes extra parameters during infernece.
+        raise NotImplementedError(
+            'FR Quantization is not supported yet for inference.'
+        )
       # PTQ, QAT has the same inference graph, only difference is on activation.
       # No matter which quantization type is used, the weight and scale
       # dimensions are the same for all types.
@@ -265,6 +288,13 @@ class QuantizationLayer(base_layer.BaseLayer):
     elif self.quantization.mode == QuantizationMode.QT:
       key = self.next_prng_key()
       return operations.custom_einsum(x, w, key)
+    elif self.quantization.mode == QuantizationMode.CALIB:
+      stat = self.get_var('framestat')
+      new_stat = jnp.maximum(jnp.max(x), stat)
+      self.update_var('framestat', new_stat.astype(jnp.bfloat16))
+      x = jax.lax.stop_gradient(x)
+      w = jax.lax.stop_gradient(w)
+      return jnp.einsum(eqn, x, w)
     else:
       assert not swap_xw, 'Swapping xw is only supported in inference mode.'
       if reshape:

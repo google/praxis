@@ -38,6 +38,8 @@ from praxis.layers.attentions import convert_paddings_to_mask
 from praxis.layers.attentions import DotProductAttention
 from praxis.layers.attentions import DotProductAttentionXL
 from praxis.layers.attentions import LocalSelfAttention
+from praxis.layers.attentions import LocalSelfAttentionAlibi
+from praxis.layers.attentions import LocalSelfAttentionRelativeBias
 from praxis.layers.attentions import LocalSelfAttentionXL
 from praxis.layers.attentions import PerDimScale
 from praxis.layers.attentions import RelativeBias
@@ -80,6 +82,7 @@ from praxis.layers.models import BertModel
 from praxis.layers.models import ClassificationMLPModel
 from praxis.layers.models import ClassificationModel
 from praxis.layers.models import LanguageModel
+from praxis.layers.models import LanguageModelContinuousBatching
 from praxis.layers.models import LanguageModelDPO
 from praxis.layers.models import SequenceModel
 from praxis.layers.ngrammer import get_bigram_ids

@@ -431,6 +431,7 @@ class LanguageModel(base_model.BaseModel):
 
     if (
         template_has_type(decoder_params, SampleDecoderHParams)
+        and hasattr(decoder_params, 'cf_guidance_scale')
         and decoder_params.cf_guidance_scale is not None
     ):
       decode_data = self._prepare_guidance_decode_data(decode_data)
@@ -909,6 +910,326 @@ class LanguageModel(base_model.BaseModel):
     )
     out_clu_metrics = NestedMap()
     return metrics, ret, out_clu_metrics
+
+
+# TODO(@jwyang): add support for sample decoding and beam search
+class LanguageModelContinuousBatching(LanguageModel):
+  """Language model that uses continuous batching."""
+
+  def _last_decode_step(self, decoder_params):
+    max_decode_steps = decoder_params.max_decode_steps
+    if isinstance(decoder_params.max_decode_steps, int):
+      max_decode_steps = [decoder_params.max_decode_steps]
+    max_decode_steps = sorted(max_decode_steps)
+    return max(max_decode_steps)
+
+  def sample_init_decode_state(
+      self, decode_data: NestedMap, decoder_params: DecoderHParams
+  ) -> NestedMap:
+    max_prefix_len = decoder_params.seqlen - decoder_params.max_decode_steps
+
+    def transform_decode_state_fn(mdl, transform_fn):
+      mdl.transform_decode_state(transform_fn)
+
+    decode_state = sample_decode.sample_init_decode_state(
+        model=self.lm,
+        prefix_ids=decode_data.input_ids,
+        max_prefix_len=max_prefix_len,
+        max_decode_steps=self._last_decode_step(decoder_params),
+        top_k=getattr(decoder_params, 'k', 1),
+        top_p=getattr(decoder_params, 'p', None),
+        prefix_lengths=decode_data.prefix_lengths,
+        eos_id=decoder_params.eos_id,
+        transform_state_fn=transform_decode_state_fn,
+    )
+    return decode_state
+
+  def sample_prefill(
+      self,
+      input_batch: NestedMap,
+      decoder_params: DecoderHParams,
+  ) -> NestedMap:
+    if decoder_params.seqlen <= 0:
+      raise ValueError(
+          'Must set p.decoder_tpl.seqlen > 0, current value = '
+          f'{decoder_params.seqlen}'
+      )
+    decode_data = self._prepare_decode_data(input_batch, decoder_params)
+
+    # run prefill
+    def fprop_fn(mdl, ids, paddings):
+      del ids, paddings
+      output = mdl(
+          decode_data.fprop_input_ids,
+          decode_data.fprop_input_paddings,
+          segment_ids=decode_data.fprop_segment_ids,
+          segment_pos=decode_data.fprop_segment_pos,
+          start_time_step=decode_data.start_time_step,
+          causal_attention_mask=decode_data.causal_attention_mask,
+          **decode_data.extra_input_kwargs,
+      )
+      return output.logits
+
+    logits = fprop_fn(
+        self.lm, decode_data.input_ids, decode_data.input_paddings
+    )
+    last_prefix_logits = logits[:, -1, :]
+
+    # init prefix decode state
+    prefill_decode_state = self.sample_init_decode_state(
+        decode_data, decoder_params
+    )
+
+    batch_size = input_batch.ids.shape[0]
+    logging.info('Prefill batch_size is %s', batch_size)
+    # Fetch dynamic per params from input_batch if the
+    # input_batch has this information.
+    last_decode_step = self._last_decode_step(decoder_params)
+    temperature = getattr(decoder_params, 'temperature', 0.0)
+    prefill_decode_state.temperature = getattr(
+        input_batch,
+        'temperature',
+        jnp.ones(shape=(batch_size,), dtype=jnp.float32) * temperature,
+    )
+    prefill_decode_state.per_example_max_decode_steps = getattr(
+        input_batch,
+        'per_example_max_decode_steps',
+        jnp.ones(shape=(batch_size,), dtype=jnp.int32) * last_decode_step,
+    )
+    prefill_decode_state.per_example_top_p = getattr(
+        input_batch,
+        'per_example_top_p',
+        jnp.ones(shape=(batch_size,), dtype=jnp.float32),
+    )
+    prefill_decode_state.per_example_top_k = getattr(
+        input_batch,
+        'per_example_top_k',
+        jnp.ones(shape=(batch_size,), dtype=jnp.int32),
+    )
+
+    def extend_step_fn(mdl, ids, segment_pos):
+      del mdl, ids, segment_pos
+      return last_prefix_logits
+
+    last_decode_steps = self._last_decode_step(decoder_params)
+    max_prefix_len = decoder_params.seqlen - last_decode_steps
+
+    prefill_decode_state = sample_decode.sample_decoding_step(
+        model=self.lm,
+        extend_step_fn=extend_step_fn,
+        decode_state=prefill_decode_state,
+        max_prefix_len=max_prefix_len,
+        eos_id=decoder_params.eos_id,
+        decode_loop_mesh_axes_transpose=decoder_params.decode_loop_mesh_axes_transpose,
+        max_decode_steps=decoder_params.max_decode_steps,
+    )
+    return prefill_decode_state
+
+  def sample_insert(
+      self,
+      decoder_params,
+      prefix_decode_state,
+      prefix_decode_cache,
+      decode_state,
+      slot,
+  ):
+    if not isinstance(slot, (list, Sequence)):
+      slot = [slot]
+    assert prefix_decode_state.per_sample_steps.shape[0] == len(slot)
+    # update decode_state
+    for example_i, slot_id in enumerate(slot):
+      decode_state.per_sample_steps = decode_state.per_sample_steps.at[
+          slot_id
+      ].set(prefix_decode_state.per_sample_steps[example_i])
+
+      # set 0 to start decoding phase
+      decode_state.done = decode_state.done.at[slot_id].set(0)
+      decode_state.has_eos = decode_state.has_eos.at[slot_id].set(
+          prefix_decode_state.has_eos[example_i]
+      )
+
+      decode_state.prefix_lengths = decode_state.prefix_lengths.at[slot_id].set(
+          prefix_decode_state.prefix_lengths[example_i]
+      )
+      decode_state.segment_pos = decode_state.segment_pos.at[slot_id].set(
+          prefix_decode_state.segment_pos[example_i]
+      )
+      decode_state.decode_lengths = decode_state.decode_lengths.at[slot_id].set(
+          prefix_decode_state.decode_lengths[example_i]
+      )
+
+      decode_state.output_ids = decode_state.output_ids.at[slot_id].set(
+          prefix_decode_state.output_ids[example_i]
+      )
+      decode_state.logprobs = decode_state.logprobs.at[slot_id].set(
+          prefix_decode_state.logprobs[example_i]
+      )
+      decode_state.temperature = decode_state.temperature.at[slot_id].set(
+          prefix_decode_state.temperature[example_i]
+      )
+      decode_state.per_example_max_decode_steps = (
+          decode_state.per_example_max_decode_steps.at[slot_id].set(
+              prefix_decode_state.per_example_max_decode_steps[example_i]
+          )
+      )
+      decode_state.per_example_top_p = decode_state.per_example_top_p.at[
+          slot_id
+      ].set(prefix_decode_state.per_example_top_p[example_i])
+      decode_state.per_example_top_k = decode_state.per_example_top_k.at[
+          slot_id
+      ].set(prefix_decode_state.per_example_top_k[example_i])
+
+      # update kv_cache (need to right aligned)
+      max_prefix_len = decoder_params.seqlen - decoder_params.max_decode_steps
+      sequence_len = decoder_params.seqlen
+
+      right_aligned_length = sequence_len - (decode_state.step - max_prefix_len)
+      for i in range(self.lm_tpl.stacked_transformer_tpl.num_layers):
+        layer_kv_cache_key = 'x_layers_{}'.format(i)
+        per_layer_prefix_decode_cache = prefix_decode_cache['decoder_cache'][
+            'lm'
+        ]['transformer'][layer_kv_cache_key]['self_attention']
+        new_key_cache = per_layer_prefix_decode_cache['key_state'][
+            example_i : example_i + 1
+        ]
+
+        new_value_cache = per_layer_prefix_decode_cache['value_state'][
+            example_i : example_i + 1
+        ]
+
+        new_pos_emb = None
+        if 'key_post_rotary_pos_emb' in per_layer_prefix_decode_cache:
+          new_pos_emb = per_layer_prefix_decode_cache[
+              'key_post_rotary_pos_emb'
+          ][example_i : example_i + 1]
+
+        self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
+            layer_kv_cache_key
+        ]['self_attention']['key_state'] = (
+            self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
+                layer_kv_cache_key
+            ]['self_attention']['key_state']
+            .at[slot_id]
+            .set(
+                decoder_utils.right_align_tensors(
+                    new_key_cache, right_aligned_length
+                )[0]
+            )
+        )
+
+        self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
+            layer_kv_cache_key
+        ]['self_attention']['value_state'] = (
+            self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
+                layer_kv_cache_key
+            ]['self_attention']['value_state']
+            .at[slot_id]
+            .set(
+                decoder_utils.right_align_tensors(
+                    new_value_cache, right_aligned_length
+                )[0]
+            )
+        )
+
+        if new_pos_emb is not None:
+          self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
+              layer_kv_cache_key
+          ]['self_attention']['key_post_rotary_pos_emb'] = (
+              self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
+                  layer_kv_cache_key
+              ]['self_attention']['key_post_rotary_pos_emb']
+              .at[slot_id]
+              .set(
+                  decoder_utils.right_align_tensors(
+                      new_pos_emb, right_aligned_length
+                  )[0]
+              )
+          )
+    return decode_state
+
+  def left_align_decode_state(
+      self, max_prefix_len, max_decode_steps, decode_state, batch_size
+  ):
+    # when reach end of sequence, align all tensors to left end, reset step
+    decode_state.per_sample_steps = jnp.where(
+        decode_state.done, max_prefix_len, decode_state.per_sample_steps
+    )
+    left_align_steps = jnp.max(decode_state.per_sample_steps)
+    left_align_steps_arr = (
+        jnp.ones_like(decode_state.prefix_lengths) * left_align_steps
+    )
+
+    row_length = max_prefix_len + max_decode_steps
+
+    transformer_kv_cache = self.variables[base_layer.DECODE_CACHE]['lm'][
+        'transformer'
+    ]
+    for i in range(self.lm_tpl.stacked_transformer_tpl.num_layers):
+      layer_kv_cache_key = 'x_layers_{}'.format(i)
+      atten_kv = transformer_kv_cache[layer_kv_cache_key]['self_attention']
+      if 'key_post_rotary_pos_emb' in atten_kv:
+        atten_kv['key_post_rotary_pos_emb'] = decoder_utils.left_align_kv_cache(
+            atten_kv['key_post_rotary_pos_emb'],
+            left_align_steps_arr,
+            row_length - 1,
+            batch_size=batch_size,
+        )
+
+      atten_kv['key_state'] = decoder_utils.left_align_kv_cache(
+          atten_kv['key_state'],
+          left_align_steps_arr,
+          row_length - 1,
+          batch_size=batch_size,
+      )
+      atten_kv['value_state'] = decoder_utils.left_align_kv_cache(
+          atten_kv['value_state'],
+          left_align_steps_arr,
+          row_length - 1,
+          batch_size=batch_size,
+      )
+
+    decode_state.step = jnp.where(
+        decode_state.step < row_length - 1, decode_state.step, left_align_steps
+    )
+    self.variables[base_layer.DECODE_CACHE]['lm']['time_step'] = (
+        decode_state.step[0]
+    )
+
+    return decode_state
+
+  def sample_generate(
+      self,
+      decode_state: NestedMap,
+      decoder_params: DecoderHParams,
+      align_decode_state: bool = False,
+  ) -> NestedMap:
+    def extend_step_fn(mdl, ids, segment_pos):
+      xent = mdl.extend_step(ids, segment_pos=segment_pos)
+      return xent.logits
+
+    model = self.lm
+    decode_mesh_transpose = decoder_params.decode_loop_mesh_axes_transpose
+    last_decode_steps = self._last_decode_step(decoder_params)
+
+    max_prefix_len = decoder_params.seqlen - last_decode_steps
+    if align_decode_state:
+      decode_state = self.left_align_decode_state(
+          max_prefix_len,
+          last_decode_steps,
+          decode_state,
+          decoder_params.num_cache_slots,
+      )
+
+    decode_state = sample_decode.sample_decoding_step(
+        model=model,
+        extend_step_fn=extend_step_fn,
+        decode_state=decode_state,
+        max_prefix_len=max_prefix_len,
+        eos_id=decoder_params.eos_id,
+        decode_loop_mesh_axes_transpose=decode_mesh_transpose,
+        max_decode_steps=decoder_params.max_decode_steps,
+    )
+    return decode_state
 
 
 @dataclasses.dataclass(kw_only=True, slots=True)

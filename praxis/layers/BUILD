@@ -108,12 +108,14 @@ pytype_strict_library(
 pytype_strict_library(
     name = "gpu_fast_attention",
     srcs = ["gpu_fast_attention.py"],
-    visibility = JAX_VISIBILITY,
+    # Internal cuda visibility rule.
     deps = [
         ":attentions",
+        ":grouped_query_attention",
         ":normalizations",
         # Implicit jax dependency.
         # Implicit Pallas GPU dependency.
+        # Implicit Pallas GPU Ops dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
         "//praxis:py_utils",
@@ -310,12 +312,12 @@ pytype_strict_library(
     deps = [
         ":activations",
         ":attentions",
+        ":checkpoint_policy",
         ":embedding_softmax",
         ":normalizations",
         ":transformer_models",
         ":transformers",
         # Implicit fiddle dependency.
-        "//praxis:base_layer",
         "//praxis:pax_fiddle",
     ],
 )

@@ -16,30 +16,38 @@
 """Quantized and optionally sparsified Attention Layers."""
 
 import copy
+import math
 import string
 from typing import Any, Sequence
 
+import fiddle as fdl
 import jax
 from jax import numpy as jnp
 from jax.ad_checkpoint import checkpoint_name
 from praxis import base_layer
+from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import attentions
+from praxis.layers import normalizations
 from praxis.layers.quantization import operations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import utils
 from praxis.layers.quantization.sparsity import sparsifier
 
+
 QuantizationParams = quantization_hparams.QuantizationParams
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
-instance_field = base_layer.instance_field
 JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
+LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]
+
+instance_field = base_layer.instance_field
+template_field = base_layer.template_field
 
 
 class AttentionProjection(  # pytype: disable=signature-mismatch
@@ -71,15 +79,17 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
             h_sharding += (axes,)
           elif axes is not None:
             h_sharding += axes
-        wt = [h_sharding, wp.wt[2]]
-        assert len(wt) == 2
+        self.wt = [h_sharding, wp.wt[2]]
+        assert len(self.wt) == 2
     else:
-      wt = wp.wt
+      self.wt = wp.wt
     pc_shape = [self.input_dim] + hd_shape
     if self.is_output_projection and self.use_nhd_shape:
       pc_shape = hd_shape + [self.input_dim]
     pc = WeightHParams(
-        shape=pc_shape, mesh_shape=self.mesh_shape, tensor_split_dims_mapping=wt
+        shape=pc_shape,
+        mesh_shape=self.mesh_shape,
+        tensor_split_dims_mapping=self.wt,
     )
     scale_shape = [self.input_dim] if self.is_output_projection else hd_shape
     self.set_up_weights(
@@ -87,7 +97,7 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
         weight_params=pc,
         scale_shape=scale_shape,
     )
-    self.create_aux_variables('w', pc, scale_shape=scale_shape)
+    self.create_sparsity_variables('w', pc, scale_shape=scale_shape)
 
     if self.use_bias:
       if self.is_output_projection:
@@ -277,6 +287,141 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
     return {base_layer.PARAMS: ret_params}
 
 
+class AttentionProjectionLoRA(AttentionProjection):
+  """AttentionProjection with residual LoRA.
+
+  Attributes:
+    lora_rank: Rank of LoRA.
+    init_method: LoRA weights initialization method.
+    norm_tpl: Normalization layer type.
+    norm_order: Where to apply normalization layer:
+      * None: no normalization. * 'pre': normalization before LoRA projections.
+        * 'mid': normalization between LoRA projections. * 'post': normalization
+        after LoRA projections.
+    max_reduction: If True, it will select the reduction dim with the max size
+      and use it as LoRA dim, else it will use multiple reduction dims for LoRA
+      dims. It is applied only for a case when there are several reduction dims.
+  """
+
+  lora_rank: int = 0
+  init_method: str = 'one_zero'
+  norm_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  norm_order: str | None = None
+  max_reduction: bool = True
+
+  def setup(self):
+    super().setup()
+    weight_shape = self.theta.w.shape
+    if self.is_output_projection:
+      if self.use_nhd_shape:
+        eqn = '...NH,NHD->...D'
+        norm_input_dims = weight_shape[1]
+        norm_output_dims = weight_shape[2]
+        total_size_right = weight_shape[2]
+        total_size_left = max(weight_shape[0], weight_shape[1]) * self.lora_rank
+      else:
+        eqn = '...NH,DNH->...D'
+        norm_input_dims = weight_shape[2]
+        norm_output_dims = weight_shape[0]
+        total_size_right = weight_shape[0]
+        total_size_left = max(weight_shape[1], weight_shape[2]) * self.lora_rank
+    else:
+      eqn = '...D,DNH->...NH'
+      norm_input_dims = weight_shape[0]
+      norm_output_dims = weight_shape[1]
+      total_size_right = weight_shape[1] * weight_shape[2]
+      total_size_left = self.lora_rank
+
+    if self.init_method == 'one_zero':
+      w_left_scale = 1.0
+      w_right_scale = 0.0
+    elif self.init_method == 'output_dim':
+      w_left_scale = 1.0 / math.sqrt(total_size_left)
+      w_right_scale = 1.0 / math.sqrt(total_size_right)
+    else:
+      raise ValueError(f'Unrecognized init_method: {self.init_method}')
+
+    (
+        self.eqn_left,
+        self.eqn_right,
+        left_shape,
+        right_shape,
+        eqn_left_ind,
+        eqn_right_ind,
+    ) = utils.get_lora_shape_and_eqn(
+        weight_shape, self.lora_rank, eqn, max_reduction=self.max_reduction
+    )
+
+    self.create_variable(
+        'w_left',
+        WeightHParams(
+            shape=left_shape,
+            mesh_shape=self.mesh_shape,
+            init=WeightInit.Gaussian(w_left_scale),
+            tensor_split_dims_mapping=utils.get_left_weight_split_dims_mapping(
+                self.wt, eqn_left_ind
+            ),
+        ),
+    )
+
+    self.create_variable(
+        'w_right',
+        WeightHParams(
+            shape=right_shape,
+            mesh_shape=self.mesh_shape,
+            init=WeightInit.Constant(w_right_scale)
+            if w_right_scale == 0.0
+            else WeightInit.Gaussian(w_left_scale),
+            tensor_split_dims_mapping=utils.get_right_weight_split_dims_mapping(
+                self.wt, eqn_right_ind
+            ),
+        ),
+    )
+
+    if self.norm_order is not None:
+      norm_tpl = self.norm_tpl.clone()
+      if fdl.get_callable(norm_tpl) not in {
+          normalizations.BatchNorm,
+          normalizations.GroupNorm,
+          normalizations.LayerNorm,
+      }:
+        raise NotImplementedError(
+            '%s is not supported' % fdl.get_callable(norm_tpl)
+        )
+      if self.norm_order == 'pre':
+        norm_tpl.dim = norm_input_dims
+      elif self.norm_order == 'mid':
+        norm_tpl.dim = self.lora_rank
+      elif self.norm_order == 'post':
+        norm_tpl.dim = norm_output_dims
+      else:
+        raise ValueError(f'Unrecognized norm_order: {self.norm_order}')
+
+      self.create_child('norm', norm_tpl)
+
+  def __call__(
+      self,
+      inputs: JTensor,
+  ) -> JTensor:
+    """Computes the multi headed projection for inputs."""
+    inputs = self._cast_to_fprop_dtype(inputs)
+    out = super().__call__(inputs)
+
+    if self.lora_rank:
+      lora_output = inputs
+      if self.norm_order == 'pre':
+        lora_output = self.norm(lora_output)
+      lora_output = jnp.einsum(self.eqn_left, lora_output, self.theta.w_left)
+      if self.norm_order == 'mid':
+        lora_output = self.norm(lora_output)
+      lora_output = jnp.einsum(self.eqn_right, lora_output, self.theta.w_right)
+      if self.norm_order == 'post':
+        lora_output = self.norm(lora_output)
+      out += lora_output
+
+    return out
+
+
 class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
     attentions.CombinedQKVProjectionLayer,
     quantizer.QuantizationLayer,
@@ -335,7 +480,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
         weight_params=pc,
         scale_shape=[3] + hd_shape,
     )
-    self.create_aux_variables('w', pc)
+    self.create_sparsity_variables('w', pc, scale_shape=[3] + hd_shape)
     if self.use_bias:
       # Combined bias weight for q, k, v projections.
       pc_bias = WeightHParams(
