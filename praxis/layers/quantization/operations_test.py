@@ -887,10 +887,12 @@ class SubChannelTest(test_utils.TestCase):
     new_shape, new_contract_dims = operations.get_sub_channel_shape(
         shape, block_size, [2]
     )
+    new_scale_shape = operations.get_scale_shape(new_shape, new_contract_dims)
 
     # Contraction dim is replaced by two dims: remainder channels (4) and
     # new contraction dim with block_size (8)
     self.assertArraysEqual(new_shape, [4, 16, 4, 8, 64])
+    self.assertArraysEqual(new_scale_shape, [4, 16, 4, 64])
 
     # New contract dim points to dim with block_size
     self.assertArraysEqual(new_contract_dims, [3])
@@ -901,9 +903,11 @@ class SubChannelTest(test_utils.TestCase):
     new_shape, new_contract_dims = operations.get_sub_channel_shape(
         shape, block_size, [2]
     )
+    new_scale_shape = operations.get_scale_shape(new_shape, new_contract_dims)
 
     # No changes in shape.
     self.assertArraysEqual(new_shape, [4, 16, 31, 64])
+    self.assertArraysEqual(new_scale_shape, [4, 16, 64])
     self.assertArraysEqual(new_contract_dims, [2])
 
     with self.assertRaises(ValueError):
@@ -919,7 +923,9 @@ class SubChannelTest(test_utils.TestCase):
     new_shape, new_contract_dims = operations.get_sub_channel_shape(
         shape, block_size, [1, 2]
     )
+    new_scale_shape = operations.get_scale_shape(new_shape, new_contract_dims)
     self.assertArraysEqual(new_shape, [4, 16, 4, 8, 64])
+    self.assertArraysEqual(new_scale_shape, [4, 4, 64])
     self.assertArraysEqual(new_contract_dims, [1, 3])
 
     # If block_size is bigger than max reduction dim, new shape is not changed.
@@ -927,7 +933,9 @@ class SubChannelTest(test_utils.TestCase):
     new_shape, new_contract_dims = operations.get_sub_channel_shape(
         shape, block_size, [1, 2]
     )
+    new_scale_shape = operations.get_scale_shape(new_shape, new_contract_dims)
     self.assertArraysEqual(new_shape, shape)
+    self.assertArraysEqual(new_scale_shape, [4, 64])
     self.assertArraysEqual(new_contract_dims, [1, 2])
 
     # First contract dim is maximum.
@@ -936,7 +944,9 @@ class SubChannelTest(test_utils.TestCase):
     new_shape, new_contract_dims = operations.get_sub_channel_shape(
         shape, block_size, [1, 2, 4]
     )
+    new_scale_shape = operations.get_scale_shape(new_shape, new_contract_dims)
     self.assertArraysEqual(new_shape, [4, 4, 8, 16, 64, 7])
+    self.assertArraysEqual(new_scale_shape, [4, 4, 64])
     self.assertArraysEqual(new_contract_dims, [2, 3, 5])
 
     # Middle contract dim is maximum.
@@ -945,7 +955,9 @@ class SubChannelTest(test_utils.TestCase):
     new_shape, new_contract_dims = operations.get_sub_channel_shape(
         shape, block_size, [1, 2, 3, 4]
     )
+    new_scale_shape = operations.get_scale_shape(new_shape, new_contract_dims)
     self.assertArraysEqual(new_shape, [4, 32, 16, 8, 8, 7])
+    self.assertArraysEqual(new_scale_shape, [4, 8])
     self.assertArraysEqual(new_contract_dims, [1, 2, 4, 5])
 
   def test_inplace_block_sub_channel_shape_several_contract_dims(self):
@@ -954,7 +966,7 @@ class SubChannelTest(test_utils.TestCase):
     shape = [4, 16, 32, 64]
     block_size = 8
     new_shape, new_contract_dims = operations.get_sub_channel_shape(
-        shape, block_size, [1, 2], False
+        shape, block_size, [1, 2], insert_sub_channel=False
     )
     self.assertArraysEqual(new_shape, [16, 16, 8, 64])
     self.assertArraysEqual(new_contract_dims, [1, 2])
@@ -963,7 +975,7 @@ class SubChannelTest(test_utils.TestCase):
     shape = [4, 32, 16, 64, 7]
     block_size = 8
     new_shape, new_contract_dims = operations.get_sub_channel_shape(
-        shape, block_size, [1, 2, 4], False
+        shape, block_size, [1, 2, 4], insert_sub_channel=False
     )
     self.assertArraysEqual(new_shape, [16, 8, 16, 64, 7])
     self.assertArraysEqual(new_contract_dims, [1, 2, 4])
@@ -972,7 +984,7 @@ class SubChannelTest(test_utils.TestCase):
     shape = [4, 32, 16, 64, 7]
     block_size = 8
     new_shape, new_contract_dims = operations.get_sub_channel_shape(
-        shape, block_size, [1, 2, 3, 4], False
+        shape, block_size, [1, 2, 3, 4], insert_sub_channel=False
     )
     self.assertArraysEqual(new_shape, [32, 32, 16, 8, 7])
     self.assertArraysEqual(new_contract_dims, [1, 2, 3, 4])

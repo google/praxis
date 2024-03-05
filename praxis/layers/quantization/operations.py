@@ -604,6 +604,25 @@ def clip_to_fp16(t: JTensor) -> JTensor:
   return t
 
 
+def get_scale_shape(
+    weight_shape: Sequence[int], contract_dims: Sequence[int]
+) -> Sequence[int]:
+  """Gets scaler shape from weight_shape and contract_dims.
+
+  Args:
+    weight_shape: Weights shape.
+    contract_dims: List of contraction dims.
+
+  Returns:
+    A scale shape.
+  """
+  return [
+      dim_size
+      for i, dim_size in enumerate(weight_shape)
+      if i not in contract_dims
+  ]
+
+
 def get_sub_channel_shape(
     shape: Sequence[int],
     block_size: int,
@@ -633,6 +652,9 @@ def get_sub_channel_shape(
 
   new_contract_dims = list(contract_dims)
   sub_channel_shape = list(shape)
+
+  if block_size <= 0:
+    return sub_channel_shape, new_contract_dims
 
   contract_shape = [shape[i] for i in new_contract_dims]
   # Index of dim in new_contract_dims, which corresponds to max dim among
