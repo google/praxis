@@ -1631,8 +1631,7 @@ class TransformerLmDpoTest(test_utils.TestCase):
       initial_vars = dpo_lm.init(prng_key, input_batch)
       outputs, _ = dpo_lm.apply(initial_vars, input_batch)
       logging.info('outputs: %s', outputs)
-      self.assertEqual(0.0, outputs.total_loss[0])
-      self.assertEqual(0.6931472, outputs.dpo_loss[0])
+      self.assertEqual(0.6931472, outputs.total_loss[0])
 
 
 if __name__ == '__main__':
