@@ -363,6 +363,7 @@ class Linear(  # pytype: disable=signature-mismatch
             bits=self.quantization.weight_params.precision,
             percentile=self.quantization.weight_params.clipping_coeff,
             use_symmetric=self.quantization.weight_params.use_symmetric,
+            quant_method=self.quantization.weight_params.quant_method,
         )
         q_s = jnp.squeeze(q_s)
         if zp is not None:

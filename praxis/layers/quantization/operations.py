@@ -411,6 +411,7 @@ def reduce_precision(
     random_rounding: bool = False,
     key: jax.Array | None = None,
     save_fp8_to_int8: bool = True,
+    quant_method: str = 'default',
 ) -> tuple[JTensor, JTensor, JTensor | None]:
   """Reduce the precision of a tensor.
 
@@ -434,71 +435,89 @@ def reduce_precision(
     key: rng key for rounding.
     save_fp8_to_int8: If fp8 will be saved as int8. Only works when use_fp is
       true and should be removed eventually.
+    quant_method: Quantization method: * 'default' - extracts min and max for
+      quantization scale estimation. It is well applied for int8, in4, int2
+      quantization. * 'bin' - binarization, where scale is defined by mean|w|. *
+      'bin_norm' - binarization with weight normalization.
 
   Returns:
     A tuple of quantized tensor, quantization scale
       and quantization zero point (optional).
   """
-  min_value, max_value = get_min_max(bits, use_fp=use_fp)
 
-  if use_symmetric:
-    bound = jnp.max(jnp.abs(t), axis=contract_dims, keepdims=True)
-    scale_bound = max_value
+  if bits == 1 and quant_method in ['bin', 'bin_norm']:
+    if quant_method == 'bin_norm':
+      mean = jnp.mean(t, axis=contract_dims, keepdims=True)
+      t = t - mean
+
+    # Remove zeros, so that below jnp.sign return only 1, -1.
+    t = jnp.where(t == 0.0, 1e-6, t)
+    scale = jnp.mean(jnp.abs(t), axis=contract_dims, keepdims=True)
+
+    # Binarize, (conditioned that all zeros are removed above).
+    t = pass_through(t, jnp.sign)
+    return t, scale, None
   else:
-    t_max = jnp.max(t, axis=contract_dims, keepdims=True)
-    t_min = jnp.min(t, axis=contract_dims, keepdims=True)
-    bound = t_max - t_min
-    scale_bound = max_value - min_value
+    min_value, max_value = get_min_max(bits, use_fp=use_fp)
 
-  if isinstance(percentile, JTensor) or percentile < 1.0:
-    bound = jnp.multiply(bound, percentile)
-  elif optimization_on_bound:
-    bound = optimization.get_best_bound(
-        t, bound, min_value, max_value, p_value, per_channel=per_channel
-    )
-
-  scale = bound / scale_bound
-
-  if add_scale_eps:
-    # Add epsilon to avoid divide-by-zero.
-    scale = scale + jnp.finfo(t.dtype).eps
-  else:
-    scale = jnp.where(scale == 0.0, 1.0, scale)
-
-  if use_symmetric:
-    zp = None
-    t = jnp.divide(t, scale)
-  else:
-    zp = min_value - t_min / scale
-    t = jnp.divide(t, scale) + zp
-    zp = jnp.multiply(scale, zp)
-
-  if use_fp:
-    # No need to round.
-    t = jnp.clip(t, min_value, max_value).astype(jnp.float8_e4m3fn)
-    # TODO(jianlijianli): refactor to remove this logic.
-    if save_fp8_to_int8:
-      # This is needed since fp8 cannot be saved.
-      t = jax.lax.bitcast_convert_type(t, new_dtype=jnp.int8)
+    if use_symmetric:
+      bound = jnp.max(jnp.abs(t), axis=contract_dims, keepdims=True)
+      scale_bound = max_value
     else:
-      # This is needed since bf16 x fp8 is not allowed.
-      t = t.astype(jnp.bfloat16)
-  else:
-    if need_gradient:
-      t = pass_through(t, jnp.round)
-      t = jnp.clip(t, min_value, max_value)
-    else:
-      if random_rounding:
-        t = t + jax.random.uniform(
-            key=key, shape=t.shape, minval=-0.5, maxval=0.5
-        )
-      t = jnp.round(t)
-      container_dtype = (
-          jnp.int8 if bits <= 8 else jnp.int16 if bits <= 16 else jnp.int32
+      t_max = jnp.max(t, axis=contract_dims, keepdims=True)
+      t_min = jnp.min(t, axis=contract_dims, keepdims=True)
+      bound = t_max - t_min
+      scale_bound = max_value - min_value
+
+    if isinstance(percentile, JTensor) or percentile < 1.0:
+      bound = jnp.multiply(bound, percentile)
+    elif optimization_on_bound:
+      bound = optimization.get_best_bound(
+          t, bound, min_value, max_value, p_value, per_channel=per_channel
       )
-      t = jnp.clip(t, min_value, max_value).astype(container_dtype)
 
-  return t, scale, zp
+    scale = bound / scale_bound
+
+    if add_scale_eps:
+      # Add epsilon to avoid divide-by-zero.
+      scale = scale + jnp.finfo(t.dtype).eps
+    else:
+      scale = jnp.where(scale == 0.0, 1.0, scale)
+
+    if use_symmetric:
+      zp = None
+      t = jnp.divide(t, scale)
+    else:
+      zp = min_value - t_min / scale
+      t = jnp.divide(t, scale) + zp
+      zp = jnp.multiply(scale, zp)
+
+    if use_fp:
+      # No need to round.
+      t = jnp.clip(t, min_value, max_value).astype(jnp.float8_e4m3fn)
+      # TODO(jianlijianli): refactor to remove this logic.
+      if save_fp8_to_int8:
+        # This is needed since fp8 cannot be saved.
+        t = jax.lax.bitcast_convert_type(t, new_dtype=jnp.int8)
+      else:
+        # This is needed since bf16 x fp8 is not allowed.
+        t = t.astype(jnp.bfloat16)
+    else:
+      if need_gradient:
+        t = pass_through(t, jnp.round)
+        t = jnp.clip(t, min_value, max_value)
+      else:
+        if random_rounding:
+          t = t + jax.random.uniform(
+              key=key, shape=t.shape, minval=-0.5, maxval=0.5
+          )
+        t = jnp.round(t)
+        container_dtype = (
+            jnp.int8 if bits <= 8 else jnp.int16 if bits <= 16 else jnp.int32
+        )
+        t = jnp.clip(t, min_value, max_value).astype(container_dtype)
+
+    return t, scale, zp
 
 
 def eqn_to_weight_contract_dims(eqn: str) -> list[int]:
@@ -525,6 +544,7 @@ def reduce_einsum_weight_precision(
     optimization_on_bound: bool = False,
     percentile: float = 1.0,
     use_symmetric: bool = True,
+    quant_method: str = 'default',
 ) -> tuple[JTensor, JTensor, JTensor | None]:
   """Reduce the precision of the weight of einsum.
 
@@ -540,6 +560,7 @@ def reduce_einsum_weight_precision(
     optimization_on_bound: If MAE bound optimizer is used.
     percentile: Percentile factor to apply on the min/max range.
     use_symmetric: If weights are quantized symmetrically.
+    quant_method: Quantization method.
 
   Returns:
     A tuple of JTensors. The first one is the quantized weight and the second
@@ -558,6 +579,7 @@ def reduce_einsum_weight_precision(
       optimization_on_bound,
       percentile=percentile,
       use_symmetric=use_symmetric,
+      quant_method=quant_method,
   )
   if squeeze:
     scale = jnp.squeeze(scale)
@@ -666,6 +688,7 @@ def fakequant_einsum(
     use_symmetric: bool = True,
     block_size: int = 0,
     use_fp: bool = False,
+    quant_method: str = 'default',
 ) -> JTensor:
   """Nudges weight of einsum with FakeQuant.
 
@@ -679,6 +702,12 @@ def fakequant_einsum(
     use_symmetric: Use symmetric quantization for weights.
     block_size: Block wise quantization size. 0 to turn if off.
     use_fp: Use floating point.
+
+  quant_method: Quantization method:
+    * 'default' - extracts min and max for quantization scale estimation.
+      It is well applied for int8, in4, int2 quantization.
+    * 'bin' - binarization, where scale is defined by mean|w|.
+    * 'bin_norm' - binarization with weight normalization.
 
   Returns:
     The nudged weight tensor.
@@ -699,6 +728,8 @@ def fakequant_einsum(
     # Short cut for fp4.
     fp4 = FP4()
     return fp4.nudge(t, contract_dims)
+
+  # Quantize input tensor.
   q, scale, zp = reduce_precision(
       t,
       contract_dims,
@@ -706,7 +737,9 @@ def fakequant_einsum(
       bits=bits,
       optimization_on_bound=False,
       use_symmetric=use_symmetric,
+      quant_method=quant_method,
   )
+  # De-quantized q using scale and zp.
   res = jnp.multiply(q, scale)
   if zp is not None:
     res = jnp.subtract(res, zp)

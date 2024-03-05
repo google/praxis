@@ -148,6 +148,11 @@ class WeightQuantizationParams:
     It is based on paper: "Robust Quantization: One Model to Rule Them All".
   block_size: block size for sub channel quantization. 0 to set it off. Defaults
     to off.
+  quant_method: Quantization method:
+    * 'default' - extracts min and max for quantization scale estimation.
+      It is well applied for int8, in4, int2 quantization.
+    * 'bin' - binarization, where scale is defined by mean|w|.
+    * 'bin_norm' - binarization with weight normalization.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -174,6 +179,7 @@ class WeightQuantizationParams:
   kurt: float = 1.8
   block_size: int = 0
   # Internal quantization parameters.
+  quant_method: str = 'default'
 
 
 @dataclasses.dataclass

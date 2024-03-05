@@ -252,6 +252,7 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
           optimization_on_bound=False,
           percentile=self.quantization.weight_params.clipping_coeff,
           use_symmetric=self.quantization.weight_params.use_symmetric,
+          quant_method=self.quantization.weight_params.quant_method,
       )
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
@@ -701,6 +702,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
           optimization_on_bound=False,
           percentile=self.quantization.weight_params.clipping_coeff,
           use_symmetric=self.quantization.weight_params.use_symmetric,
+          quant_method=self.quantization.weight_params.quant_method,
       )
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)

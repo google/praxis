@@ -355,6 +355,76 @@ class ReducePrecisionTest(test_utils.TestCase):
     )
     self.assertIsNone(zp)
 
+  def test_binarization(self):
+
+    inputs = np.array([[1.0, -2.0, 5.5, 0.0], [0.02, -0.01, 3.3, 0.0]])
+    qx, scale, zp = operations.reduce_precision(
+        inputs, contract_dims=[1], bits=1, quant_method='bin'
+    )
+
+    # There must be no zeros.
+    self.assertFalse(np.any(qx == 0.0))
+
+    # Output array has only 1, -1
+    self.assertArraysEqual(
+        qx,
+        np.array(
+            [[1.0, -1.0, 1.0, 1.0], [1.0, -1.0, 1.0, 1.0]], dtype=np.float32
+        ),
+    )
+    self.assertAllClose(
+        scale, np.array([[2.1250002], [0.8325002]], dtype=np.float32)
+    )
+
+    self.assertIsNone(zp)
+
+    qx, scale, zp = operations.reduce_precision(
+        inputs, contract_dims=[1], bits=1, quant_method='bin_norm'
+    )
+    # There must be no zeros.
+    self.assertFalse(np.any(qx == 0.0))
+
+    # Output array has only 1, -1
+    self.assertArraysEqual(
+        qx,
+        np.array(
+            [[-1.0, -1.0, 1.0, -1.0], [-1.0, -1.0, 1.0, -1.0]], dtype=np.float32
+        ),
+    )
+    self.assertAllClose(
+        scale, np.array([[2.1875], [1.2362499]], dtype=np.float32)
+    )
+
+    self.assertIsNone(zp)
+
+    # Binarization with 'default' symmetric approach does not work: returns 0s
+    qx, _, _ = operations.reduce_precision(
+        inputs,
+        contract_dims=[1],
+        bits=1,
+        quant_method='default',
+        use_symmetric=True,
+    )
+    self.assertArraysEqual(
+        qx,
+        np.array([[0, 0, 0, 0], [0, 0, 0, 0]], dtype=np.int8),
+    )
+
+    # Binarization with 'default' asymmetric approach can work.
+    qx, scale, zp = operations.reduce_precision(
+        inputs,
+        contract_dims=[1],
+        bits=1,
+        quant_method='default',
+        use_symmetric=False,
+    )
+    self.assertArraysEqual(
+        qx,
+        np.array([[-1, -1, 0, -1], [-1, -1, 0, -1]], dtype=np.int8),
+    )
+    self.assertAllClose(scale, np.array([[7.5], [3.31]], dtype=np.float32))
+    self.assertAllClose(zp, np.array([[-5.5], [-3.3]], dtype=np.float32))
+
 
 class ReducePrecisionEinsumTest(test_utils.TestCase):
 

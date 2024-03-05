@@ -326,6 +326,7 @@ class QuantizationLayer(base_layer.BaseLayer):
             use_symmetric=self.quantization.weight_params.use_symmetric,
             calculation_dtype=self.quantization.weight_params.calculation_dtype,
             block_size=self.quantization.weight_params.block_size,
+            quant_method=self.quantization.weight_params.quant_method,
         )
         out = jnp.einsum(eqn, x, w)
         if (
