@@ -88,6 +88,7 @@ pytype_strict_library(
         ":quantization_hparams",
         ":quantizer",
         ":utils",
+        # Implicit absl.logging dependency.
         # Implicit fiddle dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",

@@ -510,6 +510,50 @@ class QuantizeAttentionTest(test_utils.TestCase):
     }
     self.assertEqual(pspec, expected_pspec)
 
+  @parameterized.parameters(0, 2)
+  def test_quantize_attention_projection_sub_channel(self, block_size):
+    p = pax_fiddle.Config(
+        qattentions.AttentionProjection,
+        name='_attn_proj_q',
+        mesh_axis_names=['replica', 'mdl', 'data'],
+        weight_split_dims_mapping=base_layer.BaseLayer.WeightSharding(
+            wt=['mdl', 'data']
+        ),
+        quantization=QuantizationParams(
+            quantization_type=QuantizationType.PTQ,
+            mode=QuantizationMode.TRAINING,
+            weight_params=quantization_hparams.WeightQuantizationParams(
+                block_size=block_size,
+            ),
+        ),
+        use_bias=True,
+    )
+    p.input_dim = 32
+    p.num_heads = 4
+    p.dim_per_head = 8
+    p.is_output_projection = True
+    p.use_nhd_shape = True
+    layer = instantiate(p)
+    inputs = np.random.normal(1.5, 2.0, [8, 4, 8]).astype(np.float32)
+
+    with base_layer.JaxContext.new_context():
+      prng_key = jax.random.PRNGKey(seed=123)
+      initial_vars = layer.init(prng_key, inputs)
+      res, _ = layer.apply(
+          initial_vars, mutable=[], method=layer.quantize_weight
+      )
+
+    self.assertEqual(res[base_layer.PARAMS]['w'].dtype, jnp.int8)
+
+    if block_size == 0:
+      self.assertEqual(res[base_layer.PARAMS]['w'].shape, (4, 8, 32))
+      self.assertEqual(res[base_layer.PARAMS]['w_quantized_scale'].shape, (32,))
+    elif block_size == 2:
+      self.assertEqual(res[base_layer.PARAMS]['w'].shape, (4, 4, 2, 32))
+      self.assertEqual(
+          res[base_layer.PARAMS]['w_quantized_scale'].shape, (2, 32)
+      )
+
   @parameterized.product(
       quantization_type=[QuantizationType.PTQ, QuantizationType.AQT],
       use_symmetric=[True, False],

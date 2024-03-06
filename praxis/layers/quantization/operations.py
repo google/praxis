@@ -535,7 +535,7 @@ def eqn_to_activation_contract_dims(eqn: str) -> list[int]:
 
 
 def reduce_einsum_weight_precision(
-    eqn: str,
+    eqn: str | None,
     t: JTensor,
     calculation_dtype: jnp.dtype = jnp.bfloat16,
     squeeze: bool = True,
@@ -545,6 +545,7 @@ def reduce_einsum_weight_precision(
     percentile: float = 1.0,
     use_symmetric: bool = True,
     quant_method: str = 'default',
+    contract_dims: Sequence[int] | None = None,
 ) -> tuple[JTensor, JTensor, JTensor | None]:
   """Reduce the precision of the weight of einsum.
 
@@ -561,12 +562,20 @@ def reduce_einsum_weight_precision(
     percentile: Percentile factor to apply on the min/max range.
     use_symmetric: If weights are quantized symmetrically.
     quant_method: Quantization method.
+    contract_dims: Contraction dims. It can be used if eqn is not defined.
 
   Returns:
     A tuple of JTensors. The first one is the quantized weight and the second
     one is the scaling factor.
   """
-  contract_dims = eqn_to_weight_contract_dims(eqn)
+  assert not (
+      contract_dims is not None and eqn is not None
+  ), 'both contract_dims and eqn can not be defined'
+
+  if eqn is not None:
+    contract_dims = eqn_to_weight_contract_dims(eqn)
+  else:
+    assert contract_dims, 'contract_dims must be defined if eqn is None'
 
   if t.dtype != calculation_dtype:
     t = t.astype(calculation_dtype)

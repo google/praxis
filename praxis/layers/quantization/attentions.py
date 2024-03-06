@@ -20,6 +20,7 @@ import math
 import string
 from typing import Any, Sequence
 
+from absl import logging
 import fiddle as fdl
 import jax
 from jax import numpy as jnp
@@ -62,7 +63,28 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
 
   _PACK_4BIT_DIM = 0
 
-  def setup(self) -> None:
+  def _sub_channel_block_size(self) -> int:
+    """Determine sub-channels' block_size if it was given."""
+    if (
+        self.quantization is not None
+        and self.quantization.weight_params is not None
+        and self.quantization.weight_params.block_size > 0
+    ):
+      return self.quantization.weight_params.block_size
+    return 0
+
+  def _get_eqn(self) -> str:
+    # This matches the equation logic in __call__ for weights.
+    if self.is_output_projection:
+      if self.use_nhd_shape:
+        eqn = 'ANH,NHD->AD'
+      else:
+        eqn = 'ANH,DNH->AD'
+    else:
+      eqn = 'AD,DNH->ANH'
+    return eqn
+
+  def _get_weight_scale_shape(self, block_size, use_block_size):
     wp = self.weight_split_dims_mapping
     has_sharding = self.mesh_shape is not None and wp.wt is not None
     if self.attention_combine_dims:
@@ -70,7 +92,6 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
       hd_shape = [self.num_heads * self.dim_per_head]
     else:
       hd_shape = [self.num_heads, self.dim_per_head]
-
     if self.attention_combine_dims and has_sharding:
       if len(wp.wt) == 3:
         h_sharding = ()
@@ -79,19 +100,44 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
             h_sharding += (axes,)
           elif axes is not None:
             h_sharding += axes
-        self.wt = [h_sharding, wp.wt[2]]
+        wt = [h_sharding, wp.wt[2]]
         assert len(self.wt) == 2
     else:
-      self.wt = wp.wt
-    pc_shape = [self.input_dim] + hd_shape
+      wt = wp.wt
+
     if self.is_output_projection and self.use_nhd_shape:
-      pc_shape = hd_shape + [self.input_dim]
+      weight_shape = hd_shape + [self.input_dim]
+    else:
+      weight_shape = [self.input_dim] + hd_shape
+
+    scale_shape = [self.input_dim] if self.is_output_projection else hd_shape
+
+    if block_size > 0 and use_block_size:
+      eqn = self._get_eqn()
+      new_contract_dims = operations.eqn_to_weight_contract_dims(eqn)
+      weight_shape, new_contract_dims = operations.get_sub_channel_shape(
+          list(weight_shape), block_size, new_contract_dims
+      )
+      scale_shape = operations.get_scale_shape(weight_shape, new_contract_dims)
+    return weight_shape, scale_shape, wt
+
+  def setup(self) -> None:
+    wp = self.weight_split_dims_mapping
+    has_sharding = self.mesh_shape is not None and wp.wt is not None
+    block_size = self._sub_channel_block_size()
+    use_block_size = (
+        self.quantization is not None
+        and self.quantization.mode == QuantizationMode.INFERENCE
+    )
+    weight_shape, scale_shape, self.wt = self._get_weight_scale_shape(
+        block_size, use_block_size
+    )
+
     pc = WeightHParams(
-        shape=pc_shape,
+        shape=weight_shape,
         mesh_shape=self.mesh_shape,
         tensor_split_dims_mapping=self.wt,
     )
-    scale_shape = [self.input_dim] if self.is_output_projection else hd_shape
     self.set_up_weights(
         weight_name='w',
         weight_params=pc,
@@ -169,6 +215,24 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
       eqn = f'{batch_eqn}D,DNH->{batch_eqn}NH'
 
     w = self.sparsifiy(theta.w, inputs=inputs, name='w')  # sparsify weight.
+
+    # Sub-channel
+    block_size = self._sub_channel_block_size()
+    if (
+        self.quantization is not None
+        and (self.quantization.mode == QuantizationMode.INFERENCE)
+        and block_size > 0
+    ):
+      # TODO(rybakov) Add sub channel support.
+      logging.warning(
+          'Weights are reshaped back to original shape. '
+          'Sub channel can be used only for weights '
+          'materialization.'
+      )
+      # Weight shape without sub channels.
+      weight_shape, _, _ = self._get_weight_scale_shape(0, False)
+      w = jnp.reshape(w, weight_shape)
+
     ret = self.quantized_einsum(
         eqn=eqn,
         x=inputs,
@@ -228,15 +292,17 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
         'quantize_weight is called during serving for quantized model, please'
         ' set quantized config for the model.'
     )
-    eqn = ''
-    # This matches the equation logic in __call__ for weights.
-    if self.is_output_projection:
-      if self.use_nhd_shape:
-        eqn = 'ANH,NHD->AD'
-      else:
-        eqn = 'ANH,DNH->AD'
-    else:
-      eqn = 'AD,DNH->ANH'
+
+    eqn = self._get_eqn()
+    w = self.theta.w
+
+    block_size = self._sub_channel_block_size()
+    new_contract_dims = operations.eqn_to_weight_contract_dims(eqn)
+
+    if block_size > 0:
+      # Weight shape with sub channels.
+      weight_shape, _, _ = self._get_weight_scale_shape(block_size, True)
+      w = jnp.reshape(w, weight_shape)
 
     # TODO(jihwanlee): Handle the cases for FQ and static quantization.
     if self.quantization.quantization_type in [
@@ -244,8 +310,8 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
         QuantizationType.FQ_VN,
     ]:
       q_w, q_s, zp = operations.reduce_einsum_weight_precision(
-          eqn,
-          self.theta.w,
+          None,
+          w,
           calculation_dtype=self.dtype,
           need_gradient=False,
           bits=self.quantization.weight_params.precision,
@@ -253,12 +319,13 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
           percentile=self.quantization.weight_params.clipping_coeff,
           use_symmetric=self.quantization.weight_params.use_symmetric,
           quant_method=self.quantization.weight_params.quant_method,
+          contract_dims=new_contract_dims,
       )
     elif self.quantization.quantization_type == QuantizationType.AQT:
       dimension_numbers, _ = utils.einsum_eqn_to_dimension_numbers(eqn)
       weight_contract_dims = dimension_numbers[0][1]
       q_w, q_s, zp = self.weight_quantizer.quantize(
-          self.theta.w,
+          w,
           weight_contract_dims,
           squeeze_scale=True,
           quantized_dtype=self.quantization.weight_params.dtype,
