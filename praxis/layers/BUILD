@@ -112,6 +112,7 @@ pytype_strict_library(
     deps = [
         ":attentions",
         ":grouped_query_attention",
+        ":multi_query_attention",
         ":normalizations",
         # Implicit jax dependency.
         # Implicit Pallas GPU dependency.

@@ -31,6 +31,7 @@ from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import attentions
 from praxis.layers import grouped_query_attention
+from praxis.layers import multi_query_attention
 from praxis.layers import normalizations
 
 # pylint: disable=g-import-not-at-top
@@ -284,6 +285,68 @@ class GpuTritonFusedGroupedQueryAttention(
       raise NotImplementedError
 
     query = query * (self.dim_per_head**-0.5) / self.atten_temp
+    query = query.reshape([b, n, h])
+
+    # Assume causal self-attention mask. Not supporting cross_attention.
+    sh = self.activation_split_dims_mapping
+    bnh_pspec = jax.sharding.PartitionSpec(sh.btnh[0], sh.btnh[2], sh.btnh[3])
+    blnh_pspec = jax.sharding.PartitionSpec(sh.bskh)
+
+    @functools.partial(
+        shard_map,
+        mesh=self._get_mesh(),
+        in_specs=(
+            bnh_pspec,
+            blnh_pspec,
+            blnh_pspec,
+        ),
+        out_specs=bnh_pspec,
+        check_rep=False,
+    )
+    def sharded_decode_gqa(q, k, v):
+      return decode_attention.gqa(
+          q,  # [batch_size, num_q_heads, head_dim]
+          k,  # [batch_size, k_seq_len, num_kv_heads, head_dim]
+          v,  # [batch_size, k_seq_len, num_kv_heads, head_dim]
+          k_splits=self.flash_decoding_k_splits,
+      )
+
+    encoded = sharded_decode_gqa(query, key, value)
+    return encoded, None  # pytype: disable=bad-return-type  # jax-ndarray
+
+
+class GpuTritonFusedMultiQueryDotProductAttention(
+    multi_query_attention.MultiQueryDotProductAttention
+):
+  """Using flash decoding for MultiQueryDotProductAttention."""
+
+  use_flash_decoding: bool = False
+  flash_decoding_k_splits: int = 16
+
+  def _atten_context(
+      self,
+      query: JTensor,
+      key: JTensor,
+      value: JTensor,
+      atten_mask: JTensor,
+      relative_bias: JTensor | None = None,
+  ) -> Tuple[JTensor, JTensor]:
+    """Computes atten context."""
+    b, t, n, h = query.shape
+    is_decoding = t == 1
+    if not is_decoding or not self.use_flash_decoding:
+      return super()._atten_context(
+          query, key, value, atten_mask, relative_bias
+      )
+
+    if self.atten_dropout_prob > 0.0 and not self.do_eval:
+      raise NotImplementedError
+    if self.atten_logit_cap > 0.0:
+      raise NotImplementedError
+    if relative_bias is not None:
+      raise NotImplementedError
+
+    query = self._scale_query(query)
     query = query.reshape([b, n, h])
 
     # Assume causal self-attention mask. Not supporting cross_attention.
