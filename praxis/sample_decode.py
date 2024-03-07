@@ -1352,8 +1352,9 @@ def sample_decode_after_fprop(
 def vanilla_sample_decode(
     model: base_layer.BaseLayerApi,
     fprop_fn: decoder_utils.FPropFn,
-    extend_step_fn: decoder_utils.ExtendStepFn
-    | decoder_utils.ExpandedExtendStepFn,
+    extend_step_fn: (
+        decoder_utils.ExtendStepFn | decoder_utils.ExpandedExtendStepFn
+    ),
     transform_state_fn: decoder_utils.TransformStateFn,
     next_token_sampler: base_layer.BaseLayerApi,
     prefix_ids: JTensor,
@@ -1601,8 +1602,9 @@ def vanilla_sample_decode(
 # TODO(b/249483164): Rename BaseLayerApi->BaseLayer after Fiddle migration.
 def greedy_decode(
     model: base_layer.BaseLayerApi,
-    extend_step_fn: decoder_utils.ExtendStepFn
-    | decoder_utils.ExpandedExtendStepFn,
+    extend_step_fn: (
+        decoder_utils.ExtendStepFn | decoder_utils.ExpandedExtendStepFn
+    ),
     prefix_ids: JTensor,
     prefix_paddings: JTensor,
     seq_len: int,

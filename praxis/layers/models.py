@@ -916,7 +916,7 @@ class LanguageModel(base_model.BaseModel):
 class LanguageModelContinuousBatching(LanguageModel):
   """Language model that uses continuous batching."""
 
-  def _last_decode_step(self, decoder_params):
+  def _last_decode_step(self, decoder_params) -> int:
     max_decode_steps = decoder_params.max_decode_steps
     if isinstance(decoder_params.max_decode_steps, int):
       max_decode_steps = [decoder_params.max_decode_steps]
@@ -1031,120 +1031,101 @@ class LanguageModelContinuousBatching(LanguageModel):
       prefix_decode_state,
       prefix_decode_cache,
       decode_state,
+      prefix_slot,
       slot,
   ):
-    if not isinstance(slot, (list, Sequence)):
-      slot = [slot]
-    assert prefix_decode_state.per_sample_steps.shape[0] == len(slot)
     # update decode_state
-    for example_i, slot_id in enumerate(slot):
-      decode_state.per_sample_steps = decode_state.per_sample_steps.at[
-          slot_id
-      ].set(prefix_decode_state.per_sample_steps[example_i])
+    decode_state.per_sample_steps = decode_state.per_sample_steps.at[slot].set(
+        prefix_decode_state.per_sample_steps[prefix_slot]
+    )
 
-      # set 0 to start decoding phase
-      decode_state.done = decode_state.done.at[slot_id].set(0)
-      decode_state.has_eos = decode_state.has_eos.at[slot_id].set(
-          prefix_decode_state.has_eos[example_i]
-      )
+    # set 0 to start decoding phase
+    decode_state.done = decode_state.done.at[slot].set(0)
 
-      decode_state.prefix_lengths = decode_state.prefix_lengths.at[slot_id].set(
-          prefix_decode_state.prefix_lengths[example_i]
-      )
-      decode_state.segment_pos = decode_state.segment_pos.at[slot_id].set(
-          prefix_decode_state.segment_pos[example_i]
-      )
-      decode_state.decode_lengths = decode_state.decode_lengths.at[slot_id].set(
-          prefix_decode_state.decode_lengths[example_i]
-      )
+    attrs = [
+        'has_eos',
+        'prefix_lengths',
+        'segment_pos',
+        'decode_lengths',
+        'output_ids',
+        'logprobs',
+        'temperature',
+        'per_example_max_decode_steps',
+        'per_example_top_p',
+        'per_example_top_k',
+    ]
 
-      decode_state.output_ids = decode_state.output_ids.at[slot_id].set(
-          prefix_decode_state.output_ids[example_i]
-      )
-      decode_state.logprobs = decode_state.logprobs.at[slot_id].set(
-          prefix_decode_state.logprobs[example_i]
-      )
-      decode_state.temperature = decode_state.temperature.at[slot_id].set(
-          prefix_decode_state.temperature[example_i]
-      )
-      decode_state.per_example_max_decode_steps = (
-          decode_state.per_example_max_decode_steps.at[slot_id].set(
-              prefix_decode_state.per_example_max_decode_steps[example_i]
-          )
-      )
-      decode_state.per_example_top_p = decode_state.per_example_top_p.at[
-          slot_id
-      ].set(prefix_decode_state.per_example_top_p[example_i])
-      decode_state.per_example_top_k = decode_state.per_example_top_k.at[
-          slot_id
-      ].set(prefix_decode_state.per_example_top_k[example_i])
+    for attr in attrs:
+      update = getattr(prefix_decode_state, attr)
+      update = update[prefix_slot]
 
-      # update kv_cache (need to right aligned)
-      max_prefix_len = decoder_params.seqlen - decoder_params.max_decode_steps
-      sequence_len = decoder_params.seqlen
+      if (
+          getattr(decode_state, attr).dtype == jnp.float32
+          and update.dtype == jnp.bfloat16
+      ):
+        update = update.astype(jnp.float32)
 
-      right_aligned_length = sequence_len - (decode_state.step - max_prefix_len)
-      for i in range(self.lm_tpl.stacked_transformer_tpl.num_layers):
-        layer_kv_cache_key = 'x_layers_{}'.format(i)
-        per_layer_prefix_decode_cache = prefix_decode_cache['decoder_cache'][
-            'lm'
-        ]['transformer'][layer_kv_cache_key]['self_attention']
-        new_key_cache = per_layer_prefix_decode_cache['key_state'][
-            example_i : example_i + 1
+      if update.ndim == 0:
+        update = jnp.expand_dims(update, axis=0)
+      ret = jax.lax.dynamic_update_slice_in_dim(
+          getattr(decode_state, attr), update, slot, axis=0
+      )
+      setattr(decode_state, attr, ret)
+
+    # update kv_cache (need to right aligned)
+    max_prefix_len = decoder_params.seqlen - decoder_params.max_decode_steps
+    sequence_len = decoder_params.seqlen
+
+    right_aligned_length = sequence_len - (decode_state.step - max_prefix_len)
+    for i in range(self.lm_tpl.stacked_transformer_tpl.num_layers):
+      layer_kv_cache_key = 'x_layers_{}'.format(i)
+      per_layer_prefix_decode_cache = prefix_decode_cache['decoder_cache'][
+          'lm'
+      ]['transformer'][layer_kv_cache_key]['self_attention']
+
+      new_key_cache = per_layer_prefix_decode_cache['key_state'][prefix_slot]
+      new_key_cache = jnp.expand_dims(new_key_cache, axis=0)
+
+      new_value_cache = per_layer_prefix_decode_cache['value_state'][
+          prefix_slot
+      ]
+      new_value_cache = jnp.expand_dims(new_value_cache, axis=0)
+
+      atten_state = self.variables[base_layer.DECODE_CACHE]['lm'][
+          'transformer'
+      ][layer_kv_cache_key]['self_attention']
+      atten_state['key_state'] = jax.lax.dynamic_update_slice_in_dim(
+          atten_state['key_state'],
+          decoder_utils.right_align_tensors(
+              new_key_cache, right_aligned_length
+          ),
+          slot,
+          axis=0,
+      )
+      atten_state['value_state'] = jax.lax.dynamic_update_slice_in_dim(
+          atten_state['value_state'],
+          decoder_utils.right_align_tensors(
+              new_value_cache, right_aligned_length
+          ),
+          slot,
+          axis=0,
+      )
+      if 'key_post_rotary_pos_emb' in per_layer_prefix_decode_cache:
+        new_pos_emb = per_layer_prefix_decode_cache['key_post_rotary_pos_emb'][
+            prefix_slot
         ]
-
-        new_value_cache = per_layer_prefix_decode_cache['value_state'][
-            example_i : example_i + 1
-        ]
-
-        new_pos_emb = None
-        if 'key_post_rotary_pos_emb' in per_layer_prefix_decode_cache:
-          new_pos_emb = per_layer_prefix_decode_cache[
-              'key_post_rotary_pos_emb'
-          ][example_i : example_i + 1]
-
-        self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
-            layer_kv_cache_key
-        ]['self_attention']['key_state'] = (
-            self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
-                layer_kv_cache_key
-            ]['self_attention']['key_state']
-            .at[slot_id]
-            .set(
+        new_pos_emb = jnp.expand_dims(new_pos_emb, axis=0)
+        atten_state['key_post_rotary_pos_emb'] = (
+            jax.lax.dynamic_update_slice_in_dim(
+                atten_state['key_post_rotary_pos_emb'],
                 decoder_utils.right_align_tensors(
-                    new_key_cache, right_aligned_length
-                )[0]
+                    new_pos_emb, right_aligned_length
+                ),
+                slot,
+                axis=0,
             )
         )
 
-        self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
-            layer_kv_cache_key
-        ]['self_attention']['value_state'] = (
-            self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
-                layer_kv_cache_key
-            ]['self_attention']['value_state']
-            .at[slot_id]
-            .set(
-                decoder_utils.right_align_tensors(
-                    new_value_cache, right_aligned_length
-                )[0]
-            )
-        )
-
-        if new_pos_emb is not None:
-          self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
-              layer_kv_cache_key
-          ]['self_attention']['key_post_rotary_pos_emb'] = (
-              self.variables[base_layer.DECODE_CACHE]['lm']['transformer'][
-                  layer_kv_cache_key
-              ]['self_attention']['key_post_rotary_pos_emb']
-              .at[slot_id]
-              .set(
-                  decoder_utils.right_align_tensors(
-                      new_pos_emb, right_aligned_length
-                  )[0]
-              )
-          )
     return decode_state
 
   def left_align_decode_state(
