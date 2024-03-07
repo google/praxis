@@ -198,7 +198,6 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
       )
 
     assert relative_bias is None
-    assert not self.scale_logits_by_head_dims
     assert self.attention_extra_logit is None
     assert not self.zero_fully_masked
     del time_step
@@ -323,6 +322,15 @@ class GpuTritonFusedMultiQueryDotProductAttention(
   use_flash_decoding: bool = False
   flash_decoding_k_splits: int = 16
 
+  def _get_mesh(self) -> jax.sharding.Mesh:
+    device_mesh = py_utils.create_device_mesh(
+        self.ici_mesh_shape,
+        self.dcn_mesh_shape,
+        contiguous_submeshes=self.contiguous_submeshes,
+    )
+    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)
+    return mesh
+
   def _atten_context(
       self,
       query: JTensor,
@@ -374,6 +382,89 @@ class GpuTritonFusedMultiQueryDotProductAttention(
       )
 
     encoded = sharded_decode_gqa(query, key, value)
+    return encoded, None  # pytype: disable=bad-return-type  # jax-ndarray
+
+  def _dot_atten_one_step(
+      self,
+      query: JTensor,
+      key_state_name: str,
+      value_state_name: str,
+      atten_mask: JTensor,
+      relative_bias: JTensor | None = None,
+  ) -> tuple[JTensor, JTensor]:
+    """Dot attention function for queries with 1 time step.
+
+    Args:
+      query: JTensor of shape [B, N, H].
+      key_state_name: Name of the decoding key state variable.
+      value_state_name: Name of the decoding value state variable.
+      atten_mask: JTensor of shape [1|B, 1, S] which is a mask that is applied
+        to prevent attention between unwanted pairs. This has already been
+        converted into large negative logits. The first dimension is allowed to
+        be of size 1, if the mask is shared by all items in the batch (e.g.,
+        only a causal mask).
+      relative_bias: Relative bias of shape [1|B, N, 1, S].
+
+    Returns:
+      encoded: JTensor of shape [B, N, H].
+      probs: JTensor of shape [B, N, S].
+    """
+    if not self.use_flash_decoding:
+      return super()._dot_atten_one_step(
+          query,
+          key_state_name,
+          value_state_name,
+          atten_mask,
+          relative_bias,
+      )
+
+    assert relative_bias is None
+    assert self.attention_extra_logit is None
+
+    key = self._shard_blnh(self.get_decode_state(key_state_name))
+    value = self._shard_blnh(self.get_decode_state(value_state_name))
+    k_b = key.shape[0]
+    q_b = query.shape[0]
+    assert k_b == q_b, (k_b, q_b)
+
+    # query is 3d.
+    query = self._shard_bnh(query)
+
+    b, s, n, h = key.shape
+    base_layer.assert_has_shape(value, [b, s, n, h])
+    base_layer.assert_has_shape(query, [b, n * self.num_kv_heads, h])
+    base_layer.assert_has_shape(atten_mask, [-1, 1, s])
+    asserts.in_set(atten_mask.shape[0], [b, 1])
+    query = self._scale_query(query)
+
+    blnh_pspec = base_layer.to_partition_spec(
+        self.activation_split_dims_mapping.blnh, self.mesh_axis_names
+    )
+    bnh_pspec = jax.sharding.PartitionSpec(
+        blnh_pspec[0], blnh_pspec[2], blnh_pspec[3]
+    )
+
+    @functools.partial(
+        shard_map,
+        mesh=self._get_mesh(),
+        in_specs=(
+            bnh_pspec,
+            blnh_pspec,
+            blnh_pspec,
+        ),
+        out_specs=bnh_pspec,
+        check_rep=False,
+    )
+    def sharded_decode_gqa(q, k, v):
+      return decode_attention.gqa(
+          q,
+          k,
+          v,
+          k_splits=self.flash_decoding_k_splits,
+      )
+
+    encoded = sharded_decode_gqa(query, key, value)
+    encoded = self._shard_bnh(encoded)
     return encoded, None  # pytype: disable=bad-return-type  # jax-ndarray
 
 
