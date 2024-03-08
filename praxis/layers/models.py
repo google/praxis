@@ -1058,12 +1058,12 @@ class LanguageModelContinuousBatching(LanguageModel):
     for attr in attrs:
       update = getattr(prefix_decode_state, attr)
       update = update[prefix_slot]
-
-      if (
-          getattr(decode_state, attr).dtype == jnp.float32
-          and update.dtype == jnp.bfloat16
-      ):
-        update = update.astype(jnp.float32)
+      state_dtype = getattr(decode_state, attr).dtype
+      if state_dtype != update.dtype:
+        logging.info(
+            '%s changed from %s to %s:', attr, state_dtype, update.dtype
+        )
+        update = update.astype(state_dtype)
 
       if update.ndim == 0:
         update = jnp.expand_dims(update, axis=0)
