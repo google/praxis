@@ -391,6 +391,7 @@ class GpuTritonFusedMultiQueryDotProductAttention(
       value_state_name: str,
       atten_mask: JTensor,
       relative_bias: JTensor | None = None,
+      time_step: JTensor | None = None,
   ) -> tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
@@ -404,11 +405,13 @@ class GpuTritonFusedMultiQueryDotProductAttention(
         be of size 1, if the mask is shared by all items in the batch (e.g.,
         only a causal mask).
       relative_bias: Relative bias of shape [1|B, N, 1, S].
+      time_step: A scalar. The time step tensor.
 
     Returns:
       encoded: JTensor of shape [B, N, H].
       probs: JTensor of shape [B, N, S].
     """
+    del time_step
     if not self.use_flash_decoding:
       return super()._dot_atten_one_step(
           query,

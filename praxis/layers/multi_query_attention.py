@@ -603,6 +603,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       value_state_name: str,
       atten_mask: JTensor,
       relative_bias: JTensor | None = None,
+      time_step: JTensor | None = None,
   ) -> tuple[JTensor, JTensor]:
     """Dot attention function for queries with 1 time step.
 
@@ -616,6 +617,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         is allowed to be of size 1, if the mask is shared by all items in the
         batch (e.g., only a causal mask).
       relative_bias: Relative bias of shape [1/B, N, 1, S].
+      time_step: A scalar or JTensor. Current time-step, 0-based.
 
     Returns:
       encoded: JTensor of shape [B, N, H].
@@ -632,7 +634,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       key = self._shard_blh(key)
       value = self._shard_blh(value)
       encoded, probs = self._dot_atten_one_step_from_qkv(
-          query, key, value, atten_mask, relative_bias
+          query, key, value, atten_mask, relative_bias, time_step
       )
       return self._shard_bnh(encoded), probs
     else:
@@ -651,9 +653,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       with self._context_for_kv_vmap():
         encoded, probs = jax.vmap(
             self._dot_atten_one_step_from_qkv,
-            in_axes=(1, 2, 2, None, 1),
+            in_axes=(1, 2, 2, None, 1, None),
             out_axes=(1, 1),
-        )(v_q, key, value, atten_mask, v_rb)
+        )(v_q, key, value, atten_mask, v_rb, time_step)
         encoded = self._shard_bnh(jnp.reshape(encoded, (b, n, h)))
         probs = jnp.reshape(probs, (b, n, -1))
         return encoded, probs
@@ -665,8 +667,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       value: JTensor,
       atten_mask: JTensor,
       relative_bias: JTensor | None,
+      time_step: JTensor | None = None,
   ) -> tuple[JTensor, JTensor]:
     """_dot_atten_one_step with tensors instead of state names."""
+    del time_step
     # query is 3d.
     extend_one_step = len(query.shape) == 3
     b, s, h = key.shape
@@ -1030,10 +1034,14 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     else:
       relative_bias = None
 
-    encoded, atten_prob = self._dot_atten_one_step(query_proj,
-                                                   key_state_name,
-                                                   value_state_name, atten_mask,
-                                                   relative_bias)
+    encoded, atten_prob = self._dot_atten_one_step(
+        query_proj,
+        key_state_name,
+        value_state_name,
+        atten_mask,
+        relative_bias,
+        time_step,
+    )
     # TODO(yonghui): return atten_probs back to the caller.
     del atten_prob
     # Post projection.
