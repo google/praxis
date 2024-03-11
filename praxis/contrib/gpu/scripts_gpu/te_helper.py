@@ -213,7 +213,7 @@ class TEInstalledHelper(TransformerEngineHelperBase):
         assert (transformer_layer_tpl.tr_fflayer_tpl.has_bias ==
             transformer_layer_tpl.tr_atten_tpl.use_bias), "TE only allows same bias settings."
         te_transformer_tpl.use_bias = transformer_layer_tpl.tr_fflayer_tpl.has_bias
-        te_transformer_tpl.self_attn_mask_type = 'causal' \
+        te_transformer_tpl.self_attn_mask_type = 'padding_causal' \
             if stacked_transformer_obj.mask_self_attention else 'padding'
 
         te_transformer_tpl.logical_axes_rules = te_flax.extend_logical_axis_rules(tuple())
