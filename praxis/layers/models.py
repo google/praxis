@@ -1082,48 +1082,18 @@ class LanguageModelContinuousBatching(LanguageModel):
       per_layer_prefix_decode_cache = prefix_decode_cache['decoder_cache'][
           'lm'
       ]['transformer'][layer_kv_cache_key]['self_attention']
-
-      new_key_cache = per_layer_prefix_decode_cache['key_state'][prefix_slot]
-      new_key_cache = jnp.expand_dims(new_key_cache, axis=0)
-
-      new_value_cache = per_layer_prefix_decode_cache['value_state'][
-          prefix_slot
-      ]
-      new_value_cache = jnp.expand_dims(new_value_cache, axis=0)
-
       atten_state = self.variables[base_layer.DECODE_CACHE]['lm'][
           'transformer'
       ][layer_kv_cache_key]['self_attention']
-      atten_state['key_state'] = jax.lax.dynamic_update_slice_in_dim(
-          atten_state['key_state'],
-          decoder_utils.right_align_tensors(
-              new_key_cache, right_aligned_length
-          ),
-          slot,
-          axis=0,
-      )
-      atten_state['value_state'] = jax.lax.dynamic_update_slice_in_dim(
-          atten_state['value_state'],
-          decoder_utils.right_align_tensors(
-              new_value_cache, right_aligned_length
-          ),
-          slot,
-          axis=0,
-      )
-      if 'key_post_rotary_pos_emb' in per_layer_prefix_decode_cache:
-        new_pos_emb = per_layer_prefix_decode_cache['key_post_rotary_pos_emb'][
-            prefix_slot
-        ]
-        new_pos_emb = jnp.expand_dims(new_pos_emb, axis=0)
-        atten_state['key_post_rotary_pos_emb'] = (
-            jax.lax.dynamic_update_slice_in_dim(
-                atten_state['key_post_rotary_pos_emb'],
-                decoder_utils.right_align_tensors(
-                    new_pos_emb, right_aligned_length
-                ),
-                slot,
-                axis=0,
-            )
+
+      for name in atten_state.keys():
+        new_state = per_layer_prefix_decode_cache[name][prefix_slot]
+        new_state = jnp.expand_dims(new_state, axis=0)
+        atten_state[name] = jax.lax.dynamic_update_slice_in_dim(
+            atten_state[name],
+            decoder_utils.right_align_tensors(new_state, right_aligned_length),
+            slot,
+            axis=0,
         )
 
     return decode_state
@@ -1148,26 +1118,13 @@ class LanguageModelContinuousBatching(LanguageModel):
     for i in range(self.lm_tpl.stacked_transformer_tpl.num_layers):
       layer_kv_cache_key = 'x_layers_{}'.format(i)
       atten_kv = transformer_kv_cache[layer_kv_cache_key]['self_attention']
-      if 'key_post_rotary_pos_emb' in atten_kv:
-        atten_kv['key_post_rotary_pos_emb'] = decoder_utils.left_align_kv_cache(
-            atten_kv['key_post_rotary_pos_emb'],
+      for name in atten_kv.keys():
+        atten_kv[name] = decoder_utils.left_align_kv_cache(
+            atten_kv[name],
             left_align_steps_arr,
             row_length - 1,
             batch_size=batch_size,
         )
-
-      atten_kv['key_state'] = decoder_utils.left_align_kv_cache(
-          atten_kv['key_state'],
-          left_align_steps_arr,
-          row_length - 1,
-          batch_size=batch_size,
-      )
-      atten_kv['value_state'] = decoder_utils.left_align_kv_cache(
-          atten_kv['value_state'],
-          left_align_steps_arr,
-          row_length - 1,
-          batch_size=batch_size,
-      )
 
     decode_state.step = jnp.where(
         decode_state.step < row_length - 1, decode_state.step, left_align_steps
