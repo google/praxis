@@ -269,6 +269,7 @@ def prune_inputs_n_m(
     n: int,
     m: int,
     order: sparsity_hparams.SparsityOrder = sparsity_hparams.SparsityOrder.C,
+    offset: int = 0,
 ) -> jnp.ndarray:
   """Returns pruned array with N:M (structured) pruning.
 
@@ -285,11 +286,19 @@ def prune_inputs_n_m(
       input matrix. The choice may intersect with hardware capabilities. For a
       weight tensor `C` corresponds to the reduction dimension, and `R' for
       activations.
+    offset: Indicates the offset between the group of M elements on which
+      N:M sparsity is applied. The default is `0` (narrowly-separated),
+        indicating that `M` elements are selected from adjacent values in the
+        input matrix. Generally, because of the XLA layout (lanes 128/sublanes
+        8), another value for offset would be 128 (widely-separated). If offset
+        > 0, we only support scenarios where the input array size is equal to
+        (offset * m). Offset != 128 may not be best optimized for the memory
+        layout.
 
   Returns:
     An array with the same shape as inputs pruned with N:M strategy.
   """
-  mask = get_sparsity_mask(inputs, n, m, order=order)
+  mask = get_sparsity_mask(inputs, n, m, order=order, offset=offset)
   return jnp.where(mask, inputs, jnp.zeros(inputs.shape, inputs.dtype))
 
 

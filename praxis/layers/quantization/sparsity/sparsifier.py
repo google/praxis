@@ -236,6 +236,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
           n_sparsity=self.sparsity.weight_params.prune_rate[0],
           m_sparsity=self.sparsity.weight_params.prune_rate[1],
           order=self.sparsity.order,
+          offset=self.sparsity.weight_params.offset,
           block_size=self.sparsity.block_size,
       )
 

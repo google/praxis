@@ -100,6 +100,14 @@ class WeightSparsityParams:
     sparse_ste_weight: Denotes the relative weight for the sparse-refined term.
       As mentioned in the paper (https://arxiv.org/abs/2102.04010), the best
       default value is 0.0002 (lambda_w in the paper).
+    offset:  Indicates the offset between the group of M elements on which
+      N:M sparsity is applied. The default is `0` (narrowly-separated),
+        indicating that `M` elements are selected from adjacent values in the
+        input matrix. Generally, because of the XLA layout (lanes 128/sublanes
+        8), another value for offset would be 128 (widely-separated). If offset
+        > 0, we only support scenarios where the input array size is equal to
+        (offset * m). Offset != 128 may not be best optimized for the memory
+        layout.
   """
 
   # TODO(ayazdan): Add additional sparsity parameters (order, offset, etc.)
@@ -108,6 +116,7 @@ class WeightSparsityParams:
   mask_decay_weight: float = 0.0
   sparse_ste: bool = False
   sparse_ste_weight: float = 0.0002
+  offset: int = 0
 
   def __post_init__(self):
     assert self.mask_decay_weight >= 0.0, (
@@ -130,6 +139,7 @@ class WeightSparsityParams:
             'SR-STE only works with non-decaying sparse structure.'
         )
 
+    assert self.offset >= 0, 'Offset must be positive.'
 
 # NOTE: Pay attention to which dimension, and type of tensor being sparsified.
 # Some hardware may support sparsity along the reduction dimension alone. This
@@ -170,6 +180,8 @@ class SparsityHParams:
       corresponds to the reduction dimension, and `R' for activations.
     track_sad_metric: Should we track sparse architecture divergence metric?
     topk_estimator_type: Sets the type of top-k mask learning.
+    channelwise_pruning_dim: dimension along which we would want to do
+      channelwise pruning.
     block_size: Number of values in each weight block.
   """
 
