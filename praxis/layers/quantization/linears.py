@@ -520,3 +520,35 @@ class LinearLoRA(Linear):
       ap_out = [ap_out[0], ap_out[2]]
     out = base_layer.maybe_shard(out, ap_out, self.mesh_axis_names)
     return out
+
+
+class LinearActScaling(Linear):
+  """Linear layer with extra Activation Scaling."""
+
+  def setup(self):
+    super().setup()
+    self.create_variable(
+        'w_per_channel_act_max',
+        WeightHParams(
+            shape=[self.input_dims],
+            init=WeightInit.Constant(0.0),
+        ),
+    )
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    """Apply Activation Scaling to inputs.
+
+    Args:
+      inputs: The inputs JTensor.  Shaped [..., input_dims].
+
+    Returns:
+      Projected inputs.
+    """
+    ap = self.activation_split_dims_mapping
+    inputs = inputs * self.theta.w_per_channel_act_max
+    out = super().__call__(inputs)
+    ap_out = ap.out
+    if ap_out is not None and len(ap_out) == 3 and out.ndim == 2:
+      ap_out = [ap_out[0], ap_out[2]]
+    out = base_layer.maybe_shard(out, ap_out, self.mesh_axis_names)
+    return out
