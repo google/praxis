@@ -242,10 +242,10 @@ class TEInstalledHelper(TransformerEngineHelperBase):
         return te_transformer_tpl
 
     @staticmethod
-    def get_input_bld(_, batch_axes, mdl_axis):
+    def get_input_bld(original_bld, batch_axes, mdl_axis):
         if ENABLE_TE_SP:
             return [batch_axes, mdl_axis, None]
-        return [batch_axes, None, None]
+        return original_bld
 
     @staticmethod
     def get_bld_mapping_for_pipelined_transformer(_):
