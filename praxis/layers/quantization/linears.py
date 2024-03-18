@@ -64,7 +64,7 @@ class Linear(  # pytype: disable=signature-mismatch
   ) -> Sequence[int]:
     """Converts a shape's contract dim into sub-channel and block_size.
 
-    For activation, by => bsz
+    For activation, by => bsc
     For weight, yz => scz
 
     Args:
