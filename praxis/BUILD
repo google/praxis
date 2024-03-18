@@ -259,7 +259,7 @@ pytype_strict_library(
         ":trees",
         # Implicit absl.flags dependency.
         # Implicit absl.logging dependency.
-        # Implicit flax dependency.
+        # Implicit flax.core dependency.
         # Implicit jax dependency.
         # Implicit jax.mesh_utils dependency.
         # Implicit numpy dependency.
