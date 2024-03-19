@@ -1909,7 +1909,10 @@ class DotProductAttention(base_layer.BaseLayer):
     key_state_name = 'key_state'
     value_state_name = 'value_state'
     if not is_cross_attention:
-      key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
+      # No need to update key_state at this point if consolidate_rope_key_state
+      # is set.
+      if not (self.use_rotary_position_emb and self.consolidate_rope_key_state):
+        key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
       value_state = _extend_decode_state_and_shard(value_state_name, value_proj)
 
     # Apply depth-wise convolution as in Primer.
