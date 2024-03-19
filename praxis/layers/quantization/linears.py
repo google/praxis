@@ -113,7 +113,7 @@ class Linear(  # pytype: disable=signature-mismatch
       scale_shape = [weight_shape[0], weight_shape[2]]
       if wp.wt is not None:
         weight_sharding = wp.wt.copy()
-        weight_sharding.insert(1, -1)
+        weight_sharding.insert(1, None)
         scale_sharding = wp.wt.copy()
       else:
         weight_sharding = None
