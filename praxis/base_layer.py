@@ -37,6 +37,7 @@ from flax import struct
 import jax
 from jax import numpy as jnp
 from jax import random as jrandom
+from jax.interpreters import pxla
 import numpy as np
 from praxis import asserts
 from praxis import base_hyperparams
@@ -1047,7 +1048,7 @@ def _internal_meta_to_hparams(meta: Any) -> WeightHParams:
   param.init = WeightInit.Constant(meta.value)  # TODO(laigd): do we need this?
 
   if meta.mesh is not None:
-    current_mesh = jax.experimental.maps.thread_resources.env.physical_mesh
+    current_mesh = pxla.thread_resources.env.physical_mesh
     if meta.mesh is not current_mesh:
       raise ValueError(
           f'Internal metadata uses a different mesh ({meta.mesh}) than the one'

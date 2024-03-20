@@ -31,6 +31,7 @@ import jax
 from jax import lax
 from jax.experimental import mesh_utils
 from jax.experimental import multihost_utils
+from jax.interpreters import pxla
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -469,7 +470,7 @@ def total_num_vars(variables) -> int:
 
 def global_mesh_defined() -> bool:
   """Checks if global xmap/pjit mesh resource environment is defined."""
-  maps_env = jax.experimental.maps.thread_resources.env
+  maps_env = pxla.thread_resources.env
   return maps_env.physical_mesh.devices.shape != ()  # pylint: disable=g-explicit-bool-comparison
 
 

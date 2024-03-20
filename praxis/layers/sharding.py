@@ -20,6 +20,7 @@ import re
 from typing import Sequence
 
 import jax
+from jax.interpreters import pxla
 from praxis import base_layer
 from praxis import py_utils
 
@@ -125,7 +126,7 @@ def shard_one_dim(x: jax.Array, s: DimSharding, dim: int) -> jax.Array:
 
 def num_shards_on_dim(dim_sharding: DimSharding) -> int:
   """Returns the number of shards on one dimension in a sharding."""
-  mesh = jax.experimental.maps.thread_resources.env.physical_mesh
+  mesh = pxla.thread_resources.env.physical_mesh
   axis_sizes = dict(zip(mesh.axis_names, mesh.devices.shape))
 
   mapping = None
