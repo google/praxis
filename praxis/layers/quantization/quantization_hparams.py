@@ -61,6 +61,31 @@ class QuantizationMode(str, enum.Enum):
   CALIB = 'calib'
 
 
+@enum.unique
+class TransformerLayer(str, enum.Enum):
+  """Transformer layer types used in quantization.
+
+  Users can use this enum to specify mixed precision quantization
+  for transformer models.
+
+  LINEAR: The FFN layer weight in a transformer.
+  LINEAR_ACT: The FFN layer activation in a transformer.
+  ATTENTION: The attention layer weight.
+  ATTENTION_ACT: The attention layer activation.
+  EMBEDDING_SOFTMAX: Embedding for the softmax layer.
+  EMBEDDING_SOFTMAX_ACT: Embedding activation for the softmax layer.
+  EMBEDDING_NGRAMMER: Embedding for the ngrammar layer.
+  """
+
+  LINEAR = 'linear'
+  LINEAR_ACT = 'linear_activation'
+  ATTENTION = 'attention'
+  ATTENTION_ACT = 'attention_activation'
+  EMBEDDING_SOFTMAX = 'embedding_softmax'
+  EMBEDDING_SOFTMAX_ACT = 'embedding_softmax_activation'
+  EMBEDDING_NGRAMMER = 'embedding_ngrammer'
+
+
 @dataclasses.dataclass
 class ActQuantizationParams:
   """Parameters for activation quantization.
