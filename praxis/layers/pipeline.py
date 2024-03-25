@@ -28,6 +28,8 @@ from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import checkpoint_policy
+from praxis.contrib.gpu.scripts_gpu.te_helper import TE_PIPELINE_EXTRA_VMAP_VAR_AXES
+from praxis.contrib.gpu.scripts_gpu.te_helper import TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
@@ -414,6 +416,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
             NON_TRAINABLE: 0,
             INTERMEDIATES: 0,
             HYPER_PARAMS: 0,
+            **TE_PIPELINE_EXTRA_VMAP_VAR_AXES
         },
         split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
         metadata_params={
@@ -798,7 +801,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     #
     # Note that fprop should not use PARAMS rng because there is no var init.
     variable_carry = []
-    variable_broadcast = [PARAMS]
+    variable_broadcast = [PARAMS] + TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST
     if self.is_mutable_collection(NON_TRAINABLE):
       variable_carry.append(NON_TRAINABLE)
     else:
@@ -821,7 +824,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     if bf16_vars_to_convert is not None:
       scan_fn = nn.map_variables(
           scan_fn,
-          mapped_collections=[PARAMS],
+          mapped_collections=[PARAMS, 'fp8_meta_collection'],
           mutable=True,
           trans_in_fn=_get_to_f32_converter(bf16_vars_to_convert),
           trans_out_fn=_get_to_bf16_converter(bf16_vars_to_convert),
