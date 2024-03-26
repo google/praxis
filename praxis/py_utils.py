@@ -122,7 +122,7 @@ except ValueError:
   )
 
 
-@functools.partial(functools.partial, jax.tree_map)
+@functools.partial(functools.partial, jax.tree.map)
 def assert_same_shape_and_dtype(x, y):
   assert x.shape == y.shape and x.dtype == y.dtype, f'x={x}, y={y}'
 
@@ -182,7 +182,7 @@ def maybe_unreplicate_for_fully_replicated(data):
   Returns:
     First shard of data.
   """
-  return jax.tree_map(_unreplicate, data)
+  return jax.tree.map(_unreplicate, data)
 
 
 def maybe_unreplicate_for_first_shard(data):
@@ -199,7 +199,7 @@ def maybe_unreplicate_for_first_shard(data):
   Returns:
     First shard of data.
   """
-  return jax.tree_map(_unreplicate, data)
+  return jax.tree.map(_unreplicate, data)
 
 
 def extract_keys(n, p, key_separator, left_separator, right_separator, is_leaf):
@@ -383,7 +383,7 @@ def make_array(
   def _put_to_devices(x):
     return put_to_devices(x, local_devices)
 
-  device_buffers = jax.tree_map(_put_to_devices, host_arrays)
+  device_buffers = jax.tree.map(_put_to_devices, host_arrays)
 
   def _jax_array(global_shape, dbs, sharding):
     return jax.make_array_from_single_device_arrays(
@@ -391,10 +391,10 @@ def make_array(
     )
 
   # If sharding not provided, create it from the partition spec.
-  sharding = sharding or jax.tree_map(
+  sharding = sharding or jax.tree.map(
       lambda x: jax.sharding.NamedSharding(global_mesh, x), pspecs
   )
-  return jax.tree_map(_jax_array, global_shapes, device_buffers, sharding)
+  return jax.tree.map(_jax_array, global_shapes, device_buffers, sharding)
 
 
 def convert_fully_replicated_array_to_pmap_array(arr):
@@ -463,7 +463,7 @@ def set_globally_use_rbg_prng_key() -> None:
 
 def total_num_vars(variables) -> int:
   """Returns the total number of variables of the given variable collections."""
-  param_shape_counts = jax.tree_map(lambda x: np.prod(x.shape), variables)
+  param_shape_counts = jax.tree.map(lambda x: np.prod(x.shape), variables)
   flattened_counts, _ = jax.tree_util.tree_flatten(param_shape_counts)
   return np.sum(flattened_counts)
 
@@ -529,7 +529,7 @@ def maybe_pad_uneven_sharding(
     x = with_sharding_constraint(x, pspec)
     return jnp.pad(x, [[0, p] for p in paddings])
 
-  return jax.tree_map(
+  return jax.tree.map(
       _maybe_pad,
       xs,
       partition_specs,
@@ -558,7 +558,7 @@ def maybe_slice_uneven_sharding(
     # not have the highest sharding propagation priority.)
     return with_sharding_constraint(x, pspec)
 
-  return jax.tree_map(
+  return jax.tree.map(
       _maybe_slice, xs, partition_spec, unpadded_shapes, is_leaf=is_leaf
   )
 
@@ -586,7 +586,7 @@ def select_nodes_by_indices(indices, *trees):
     nodes are accessible as `tree[key]`, each node in the return value is
     defined as `ret[key] = trees[indices[key]][key]`.
   """
-  return jax.tree_map(lambda idx, *arrays: arrays[idx], indices, *trees)
+  return jax.tree.map(lambda idx, *arrays: arrays[idx], indices, *trees)
 
 
 Patterns = str | re.Pattern | Iterable[re.Pattern | str]
@@ -641,7 +641,7 @@ def update_matched_variables(old_tree: NestedMap,
   """
   mask = match_variable_names(old_tree, patterns)  # True for update
   if invert:
-    mask = jax.tree_map(lambda x: not x, mask)
+    mask = jax.tree.map(lambda x: not x, mask)
   flat_var_prefix = jax.tree_flatten(
       extract_prefixed_keys_from_nested_map(old_tree))[0]
   flat_mask = jax.tree_flatten(mask)[0]
@@ -653,7 +653,7 @@ def update_matched_variables(old_tree: NestedMap,
     if not match:
       logging.info('Bprop excluded var: %s', prefix)
 
-  indices = jax.tree_map(lambda x: 1 if x else 0, mask)
+  indices = jax.tree.map(lambda x: 1 if x else 0, mask)
   return select_nodes_by_indices(indices, old_tree, new_tree)
 
 
@@ -885,7 +885,7 @@ def tree_unstack(tree: Any, axis: int) -> Sequence[Any]:
 
   flat_pytrees = []
   for i in range(axis_size):
-    flat_pytrees.append(jax.tree_map(lambda x: x.take(i, axis), tree))  # pylint: disable=cell-var-from-loop"
+    flat_pytrees.append(jax.tree.map(lambda x: x.take(i, axis), tree))  # pylint: disable=cell-var-from-loop"
 
   return flat_pytrees
 
