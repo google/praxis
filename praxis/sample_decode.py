@@ -893,7 +893,7 @@ def sample_decode_after_fprop(
       #   (1) We have yet to exceed the max steps set by self.decoder.seqlen
       #   (2) At least one row in the batch has not terminated.
       max_steps = start_step + stop_at_decode_steps
-      length_ok = val.step < min(seq_len - 1, max_steps)
+      length_ok = val.step < jnp.minimum(seq_len - 1, max_steps)
       all_rows_done = jnp.all(val.done)
       return jnp.logical_and(length_ok, jnp.logical_not(all_rows_done))
 
