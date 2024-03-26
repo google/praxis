@@ -127,7 +127,7 @@ class GpuCudnnFusedDotProductAttention(attentions.DotProductAttention):
     encoded = dot_product_attention(
         query, key, value, relative_bias, scale=logits_scale,
         is_causal_mask=self.is_causal, dropout_rate=self.atten_dropout_prob,
-        qkv_layout='BNTH'
+        qkv_layout='BNTH', is_training=not self.do_eval,
     )
     encoded = jnp.einsum('BNTH->BTNH', encoded)
     encoded = self._shard_blnh(encoded)
