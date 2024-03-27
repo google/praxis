@@ -132,19 +132,13 @@ def get_sparsity_mask(
     inputs = new_inputs
 
   length = jnp.size(inputs)
-  group = int(length / m_sparsity)
-  if offset > 0 and group % offset != 0:
+  if offset > 0 and length % (offset * m_sparsity) != 0:
     raise ValueError(
-        'When offset > 0, we only support a group size that is divisble to '
-        f'offset. Provided offset = {offset}, group = {group}.'
+        'When offset > 0, we only support an array size (length) equal to '
+        f'(offset * m_sparsity). Provided offset = {offset}, '
+        f'm_sparsity = {m_sparsity}, length = {length}.'
     )
-  if offset > 0 and int(group / offset) * m_sparsity * offset != length:
-    raise ValueError(
-        'When offset > 0, we only support an array size '
-        '(length) equal to (offset * m_sparsity). '
-        f'Provided offset = {offset}, m_sparsity = {m_sparsity}, '
-        f'length = {length}.'
-    )
+
   inputs = jnp.abs(inputs)
   original_shape = inputs.shape
 
@@ -152,11 +146,26 @@ def get_sparsity_mask(
     inputs = jnp.einsum('...ij->...ji', inputs)
     original_shape = inputs.shape
 
-  if offset > 0:
-    inputs = inputs.reshape((int(group / offset), m_sparsity, offset))
-    inputs = jnp.einsum('...ij->...ji', inputs)
+  prac_offset = 1 if offset == 0 else offset
+  if original_shape[-1] % (m_sparsity * prac_offset) == 0:
+    group = original_shape[-1] // m_sparsity
+    # TODO(shivaniagrawal): we can always split in 3D with offset=1 too and
+    # do top-K in -2 dimension.
+    if offset > 1:
+      new_shape = (*original_shape[:-1], group // offset, m_sparsity, offset)
+      inputs = inputs.reshape(new_shape)
+      inputs = jnp.einsum('...ij->...ji', inputs)
 
-  inputs_temp = inputs.reshape(group, m_sparsity, order='C')
+    new_shape = (*original_shape[:-1], group, m_sparsity)
+    inputs_temp = inputs.reshape(new_shape)
+
+  else:
+    group = int(length / m_sparsity)
+    if offset > 0:
+      inputs = inputs.reshape((group // offset, m_sparsity, offset))
+      inputs = jnp.einsum('...ij->...ji', inputs)
+
+    inputs_temp = inputs.reshape(group, m_sparsity, order='C')
 
   _, top_k_indices = jax.lax.top_k(inputs_temp, k=n_sparsity)
   mask = jnp.any(
@@ -164,7 +173,16 @@ def get_sparsity_mask(
   )
 
   if offset > 0:
-    mask = mask.reshape((int(group / offset), offset, m_sparsity))
+    # NOTE: without meeting this condition, we had flattened the whole matrix
+    # and mask as well.
+    if original_shape[-1] % (m_sparsity * offset) == 0:
+      # group = original_shape[-1] // m_sparsity in this case
+      mask = mask.reshape(
+          (*original_shape[:-1], group // offset, offset, m_sparsity)
+      )
+    else:
+      # group = length // m_sparsity in this case
+      mask = mask.reshape((group // offset, offset, m_sparsity))
     mask = jnp.einsum('...ij->...ji', mask)
 
   if order == 'R':
