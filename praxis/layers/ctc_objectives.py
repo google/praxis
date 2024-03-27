@@ -139,7 +139,7 @@ def ctc_loss_with_alignments(
       logitpaddings,
       labels,
       labelpaddings,
-      blank_id,
+      blank_id=blank_id,
       log_epsilon=logepsilon,
   )
 
@@ -167,7 +167,7 @@ def ctc_loss_with_alignments(
           reverse_logitpaddings,
           reverse_labels,
           labelpaddings,
-          blank_id,
+          blank_id=blank_id,
           log_epsilon=logepsilon,
       )
   )
