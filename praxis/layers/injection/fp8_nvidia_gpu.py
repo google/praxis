@@ -51,13 +51,16 @@ class Fp8EinsumOp(base_layer.BaseLayer):
     OVERWRITE_WITH_GRADIENT = (
         base_layer.WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
     )
+    DISALLOW_BFLOAT16_CONVERSION = (
+        base_layer.WeightHParamsCollection.DISALLOW_BFLOAT16_CONVERSION
+    )
     scale_args = {
         'shape': [1],
         'init': base_layer.WeightInit.Constant(1.0),
         'dtype': jnp.float32,
         'mesh_shape': self.mesh_shape,
         'tensor_split_dims_mapping': None,
-        'collections': [OVERWRITE_WITH_GRADIENT],
+        'collections': [OVERWRITE_WITH_GRADIENT, DISALLOW_BFLOAT16_CONVERSION],
     }
     amax_history_args = {
         'shape': [self.amax_history_length],
@@ -65,7 +68,7 @@ class Fp8EinsumOp(base_layer.BaseLayer):
         'dtype': jnp.float32,
         'mesh_shape': self.mesh_shape,
         'tensor_split_dims_mapping': None,
-        'collections': [OVERWRITE_WITH_GRADIENT],
+        'collections': [OVERWRITE_WITH_GRADIENT, DISALLOW_BFLOAT16_CONVERSION],
     }
     self.create_variable(
         'input_amax_history', base_layer.WeightHParams(**amax_history_args)
