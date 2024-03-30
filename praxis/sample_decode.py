@@ -1281,10 +1281,6 @@ def sample_decode_after_fprop(
     result_callback.done_fn()
 
   if optimize_eos:
-    if fprop_for_prefix:
-      decode_length_shift = max_prefix_len
-    else:
-      decode_length_shift = 0
     result = decoder_utils.collect_results_to_optimize_eos(
         result, decode_length_shift=max_prefix_len
     )
