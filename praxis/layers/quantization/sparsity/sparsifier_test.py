@@ -49,7 +49,7 @@ MaterializeMode = sparsity_modes.MaterializeMode
 TrainingMode = sparsity_modes.TrainingMode
 
 
-class SparseLinearTestLayer(sparsifier.SparsityBaseLayer, linears.Linear):
+class SparseLinearTestLayer(sparsifier.SparsityBaseLayer, linears.Linear):  # pytype: disable=signature-mismatch
 
   def setup(self):
     weight_hp = base_layer.WeightHParams(

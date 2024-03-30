@@ -15,6 +15,8 @@
 
 """Unit tests for prefix vectorization in optimizers."""
 
+import typing
+
 from absl import logging
 from absl.testing import absltest
 import jax
@@ -72,6 +74,8 @@ class OptimizerPrefixVectorizationTest(test_utils.TestCase):
     )
     # Variables a and c are scalars excluding the prefix, so the update must be
     # equal to the initial variable values.
+    update = typing.cast(base_layer.NestedMap, update)
+    variables = typing.cast(base_layer.NestedMap, variables)
     self.assertAllClose(update.a, variables.a)
     self.assertAllClose(update.c, variables.c)
     # b is not vectorized, so the update equals the sum reduction of the initial

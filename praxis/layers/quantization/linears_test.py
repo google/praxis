@@ -738,8 +738,8 @@ class SubChannelLinearTest(test_utils.TestCase):
       expected_output = training_sc.apply(training_vars, inputs)
       quantized_output_pc = inference_pc.apply(inference_vars_pc, inputs)
       quantized_output_sc = inference_sc.apply(inference_vars_sc, inputs)
-      distortion_pc = jnp.sum(jnp.square(quantized_output_pc - expected_output))
-      distortion_sc = jnp.sum(jnp.square(quantized_output_sc - expected_output))
+      distortion_pc = np.sum(jnp.square(quantized_output_pc - expected_output))
+      distortion_sc = np.sum(jnp.square(quantized_output_sc - expected_output))
       training_pspec, _ = training_sc.apply(
           training_vars,
           mutable=[],

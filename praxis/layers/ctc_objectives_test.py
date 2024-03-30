@@ -71,9 +71,9 @@ def average_ctc_loss(
   )
 
 
-def lengths_to_paddings(lengths: JTensor, maxlength: int) -> JTensor:
-  indices = jnp.arange(maxlength).reshape((1,) * lengths.ndim + (maxlength,))
-  lengths = jnp.expand_dims(lengths, axis=-1)
+def lengths_to_paddings(lengths: np.ndarray, maxlength: int) -> np.ndarray:
+  indices = np.arange(maxlength).reshape((1,) * lengths.ndim + (maxlength,))
+  lengths = np.expand_dims(lengths, axis=-1)
   elem_valid = indices < lengths
   return np.logical_not(elem_valid).astype(np.float32)
 
@@ -125,7 +125,7 @@ class CtcTest(test_utils.TestCase):
     nclasses = 400
 
     logits = np.random.randn(batchsize, timesteps, nclasses)
-    logprobs = jax.nn.log_softmax(logits)
+    logprobs = np.array(jax.nn.log_softmax(logits))
     logprob_lens = np.random.randint(25, timesteps - 3, size=(batchsize,))
     logprob_paddings = lengths_to_paddings(logprob_lens, timesteps)
 

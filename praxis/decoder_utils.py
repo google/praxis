@@ -134,11 +134,11 @@ def gather_logprobs(
 
 
 def two_stage_topk(
-    logits: jnp.ndarray,
-    hyp_scores: jnp.ndarray,
+    logits: jax.Array,
+    hyp_scores: jax.Array,
     terminal_ids: list[int],
     tokens_per_beam: int | None = None,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
   """Two stage TopK to choose TopK values and indices from each beam.
 
   Args:

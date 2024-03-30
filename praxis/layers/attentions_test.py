@@ -182,7 +182,7 @@ class MaskUtilsTest(test_utils.TestCase, parameterized.TestCase):
 
     mask = attentions.limited_context_mask(
         left_context, right_context, padding.shape[1], np.float32
-    )
+    )  # pytype: disable=wrong-arg-types
 
     # Merge the above mask with paddings:
     padding_mask = attentions.convert_paddings_to_mask(padding)
@@ -757,7 +757,7 @@ class AttentionsTest(test_utils.TestCase):
     segment_ids = np.random.randint(
         0, 2, size=[target_batch_size, target_max_length]
     ).astype(np.int32)
-    atten_mask = attentions.causal_segment_mask(segment_ids, np.float32)
+    atten_mask = attentions.causal_segment_mask(segment_ids, np.float32)  # pytype: disable=wrong-arg-types
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -833,7 +833,7 @@ class AttentionsTest(test_utils.TestCase):
         size=[target_batch_size, source_max_length, mdl_dim]
     ).astype(np.float32)
     paddings = np.zeros([target_batch_size, source_max_length], dtype=np.int32)
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -1005,7 +1005,7 @@ class AttentionsTest(test_utils.TestCase):
     paddings = np.zeros(
         [target_batch_size, source_max_length], dtype=np.float32
     )
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -1108,7 +1108,7 @@ class AttentionsTest(test_utils.TestCase):
     paddings = range(source_max_length)[-target_batch_size:]
     paddings = [[0] * l + [1] * (source_max_length - l) for l in paddings]
     paddings = np.array(paddings)
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
     if is_full:
       atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
 
@@ -1194,7 +1194,7 @@ class AttentionsTest(test_utils.TestCase):
         for p in padding_zone
     ]
     paddings = np.array(paddings)
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -1207,17 +1207,19 @@ class AttentionsTest(test_utils.TestCase):
       )
 
     # Those positions are fully masked.
-    fully_masked_out = [jax_fprop_out[i, p] for i, p in enumerate(padding_zone)]
-    self.assertEqual(np.sum(np.abs(test_utils.to_np(fully_masked_out))), 0)
+    fully_masked_out = np.array(
+        [jax_fprop_out[i, p] for i, p in enumerate(padding_zone)]
+    )
+    self.assertEqual(np.sum(np.abs(fully_masked_out)), 0)
 
     # Example of positions which are not fully masked.
-    non_masked_out = [
+    non_masked_out = np.array([
         jax_fprop_out[0, padding_zone[0] + 1],
         jax_fprop_out[1, padding_zone[1] - 1],
         jax_fprop_out[1, padding_zone[2] + 1],
         jax_fprop_out[2, padding_zone[2] - 1],
-    ]
-    self.assertNotEqual(np.amin(np.abs(test_utils.to_np(non_masked_out))), 0)
+    ])
+    self.assertNotEqual(np.amin(np.abs(non_masked_out)), 0)
 
   @parameterized.parameters([
       (4, 2, 1, True, True),
@@ -1267,7 +1269,7 @@ class AttentionsTest(test_utils.TestCase):
     paddings = range(source_max_length)[-target_batch_size:]
     paddings = [[0] * l + [1] * (source_max_length - l) for l in paddings]
     paddings = np.array(paddings)
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
     if is_full:
       atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
 
@@ -1350,7 +1352,7 @@ class AttentionsTest(test_utils.TestCase):
     paddings = range(source_max_length)[-target_batch_size:]
     paddings = [[0] * l + [1] * (source_max_length - l) for l in paddings]
     paddings = np.array(paddings)
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
     if is_full:
       atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
 
@@ -1397,7 +1399,7 @@ class AttentionsTest(test_utils.TestCase):
       ([1], 1, 0, [0]),
   )
   def test_shift1d(self, inputs, offset, axis, outputs):
-    inputs = np.asarray(inputs)
+    inputs = jnp.asarray(inputs)
     shift_outputs = attentions.shift_1d(inputs, offset, axis)
     self.assertArraysEqual(shift_outputs, np.asarray(outputs))
 
@@ -1645,7 +1647,7 @@ class AttentionsTest(test_utils.TestCase):
     layer_len = instantiate(test_layer_p)
     target_batch_size = 3
     source_max_length = 8
-    segment_ids = np.array(
+    segment_ids = jnp.array(
         [
             [0, 0, 0, 0, 0, 1, 1, 1],
             [0, 0, 0, 0, 1, 1, 1, 1],
@@ -1653,7 +1655,7 @@ class AttentionsTest(test_utils.TestCase):
         ],
         dtype=jnp.int32,
     )
-    segment_pos = np.array(
+    segment_pos = jnp.array(
         [
             [0, 1, 2, 3, 4, 0, 1, 2],
             [0, 1, 2, 3, 0, 1, 2, 3],

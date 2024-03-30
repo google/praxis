@@ -37,12 +37,16 @@ class FlatBeamSearchHelperTest(test_utils.TestCase):
                  dtype=np.float32))
 
   def test_update_mask_without_step2(self):
-    beam_mask = np.array([[[1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-                           [0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-                           [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                           [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0]]],
-                         dtype=jnp.float32)
-    hyp_id = np.array([[3, 3, 0, 1]], jnp.float32)
+    beam_mask = jnp.array(
+        [[
+            [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+        ]],
+        dtype=jnp.float32,
+    )
+    hyp_id = jnp.array([[3, 3, 0, 1]], jnp.float32)
     update_beam_mask = flat_beam_search.update_beam_mask(
         beam_mask, hyp_id, time_step=None)
     self.assertArraysEqual(
@@ -54,12 +58,16 @@ class FlatBeamSearchHelperTest(test_utils.TestCase):
                  dtype=np.float32))
 
   def test_update_mask_with_step(self):
-    beam_mask = np.array([[[1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-                           [0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-                           [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                           [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0]]],
-                         dtype=jnp.float32)
-    hyp_id = np.array([[3, 3, 0, 1]], jnp.float32)
+    beam_mask = jnp.array(
+        [[
+            [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+        ]],
+        dtype=jnp.float32,
+    )
+    hyp_id = jnp.array([[3, 3, 0, 1]], jnp.float32)
     update_beam_mask = flat_beam_search.update_beam_mask(
         beam_mask, hyp_id, time_step=2)
     self.assertArraysEqual(

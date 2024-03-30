@@ -16,10 +16,10 @@
 # Description:
 #   Praxis: a set of modules for training machine learning models in Jax.
 
-load("//praxis:praxis.bzl", "py_library")
-load("//praxis:praxis.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
-load("//praxis:praxis.bzl", "py_strict_test")
+# Internal license-related bzl load
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
+load("//praxis:praxis.bzl", "pytype_strict_library", "pytype_strict_test")
 
 package(default_visibility = JAX_VISIBILITY)
 
@@ -174,7 +174,7 @@ pytype_strict_library(
     ],
 )
 
-py_library(
+pytype_strict_library(
     name = "lazy_loader",
     srcs = ["lazy_loader.py"],
     deps = [
@@ -216,7 +216,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "optimizer_prefix_vectorization_test",
     srcs = ["optimizer_prefix_vectorization_test.py"],
     deps = [
@@ -281,7 +281,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "pytypes_test",
     srcs = ["pytypes_test.py"],
     deps = [
@@ -380,7 +380,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "asserts_test",
     srcs = ["asserts_test.py"],
     deps = [
@@ -395,7 +395,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "base_hyperparams_test",
     srcs = ["base_hyperparams_test.py"],
     tags = ["fast_and_reliable_fiddle_integration_test"],
@@ -414,7 +414,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "base_input_test",
     srcs = ["base_input_test.py"],
     deps = [
@@ -437,7 +437,7 @@ py_strict_test(
     ],
 )
 
-pytype_strict_contrib_test(
+pytype_strict_test(
     name = "base_layer_test",
     srcs = ["base_layer_test.py"],
     tags = ["fast_and_reliable_fiddle_integration_test"],
@@ -454,7 +454,7 @@ pytype_strict_contrib_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "beam_search_test",
     srcs = ["beam_search_test.py"],
     deps = [
@@ -474,10 +474,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "decoder_utils_test",
     srcs = ["decoder_utils_test.py"],
     deps = [
+        ":base_model",
         ":decoder_utils",
         ":pytypes",
         ":test_utils",
@@ -489,7 +490,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "flat_beam_search_test",
     srcs = ["flat_beam_search_test.py"],
     deps = [
@@ -502,7 +503,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "optimizers_test",
     srcs = ["optimizers_test.py"],
     deps = [
@@ -521,7 +522,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "py_utils_test",
     srcs = ["py_utils_test.py"],
     deps = [
@@ -537,7 +538,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "sample_decode_test",
     srcs = ["sample_decode_test.py"],
     deps = [
@@ -557,7 +558,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "schedules_test",
     srcs = ["schedules_test.py"],
     deps = [
@@ -572,7 +573,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "token_samplers_test",
     srcs = ["token_samplers_test.py"],
     deps = [
@@ -586,7 +587,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "pax_fiddle_test",
     srcs = ["pax_fiddle_test.py"],
     tags = ["fast_and_reliable_fiddle_integration_test"],
@@ -618,7 +619,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "trees_test",
     srcs = ["trees_test.py"],
     deps = [
@@ -633,4 +634,11 @@ py_strict_test(
         # Implicit jax dependency.
         # Implicit numpy dependency.
     ],
+)
+
+bzl_library(
+    name = "praxis_bzl",
+    srcs = ["praxis.bzl"],
+    # Implicit build flag
+    visibility = ["//visibility:private"],
 )

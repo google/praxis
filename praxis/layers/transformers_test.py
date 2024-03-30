@@ -80,7 +80,7 @@ class TransformersTest(test_utils.TestCase):
       attention_mask = jnp.minimum(attention_mask, causal_mask)
     if packed_input:
       segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
       attention_mask = jnp.minimum(attention_mask, segment_mask)
       if mask_self_attention:
         tf_segment_mask = batch_major_attention.CausalSegmentMask(
@@ -109,7 +109,8 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32)
+            segment_ids, source_segment_ids, dtype=np.float32
+        )  # pytype: disable=wrong-arg-types
         cross_attention_mask = jnp.minimum(cross_attention_mask,
                                            cross_segment_mask)
         tf_cross_segment_mask = batch_major_attention.SegmentMask(
@@ -203,7 +204,7 @@ class TransformersTest(test_utils.TestCase):
     attention_mask = jnp.minimum(causal_mask, attention_mask)
     if packed_input:
       segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
       attention_mask = jnp.minimum(attention_mask, segment_mask)
     cross_inputs = None
     cross_paddings = None
@@ -221,7 +222,8 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32)
+            segment_ids, source_segment_ids, dtype=np.float32
+        )  # pytype: disable=wrong-arg-types
         cross_attention_mask = jnp.minimum(cross_attention_mask,
                                            cross_segment_mask)
 
@@ -305,7 +307,7 @@ class TransformersTest(test_utils.TestCase):
     attention_mask = jnp.minimum(causal_mask, attention_mask)
     if packed_input:
       segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
       attention_mask = jnp.minimum(attention_mask, segment_mask)
 
     cross_seq_len = np.random.randint(10, 32)
@@ -319,7 +321,8 @@ class TransformersTest(test_utils.TestCase):
     if packed_input:
       source_segment_ids = np.random.randint(0, 3, [batch_size, cross_seq_len])
       cross_segment_mask = attentions.segment_mask(
-          segment_ids, source_segment_ids, dtype=np.float32)
+          segment_ids, source_segment_ids, dtype=np.float32
+      )  # pytype: disable=wrong-arg-types
       cross_attention_mask = jnp.minimum(cross_attention_mask,
                                          cross_segment_mask)
     with base_layer.JaxContext.new_context():
@@ -483,7 +486,7 @@ class TransformersTest(test_utils.TestCase):
     paddings = jnp.asarray(npy_paddings)
     segment_mask = None
     segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-    segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+    segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
 
     cross_inputs = None
     cross_paddings = None
@@ -607,7 +610,7 @@ class TransformersTest(test_utils.TestCase):
     segment_mask = None
     if packed_input:
       segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
 
     cross_inputs = None
     cross_paddings = None
@@ -625,7 +628,8 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32)
+            segment_ids, source_segment_ids, dtype=np.float32
+        )  # pytype: disable=wrong-arg-types
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -708,7 +712,7 @@ class TransformersTest(test_utils.TestCase):
     tf_segment_mask = None
     if packed_input:
       segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
       if mask_self_attention:
         tf_segment_mask = batch_major_attention.CausalSegmentMask(
             segment_ids, tf.float32)
@@ -736,7 +740,8 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32)
+            segment_ids, source_segment_ids, dtype=np.float32
+        )  # pytype: disable=wrong-arg-types
         tf_cross_segment_mask = batch_major_attention.SegmentMask(
             segment_ids, source_segment_ids)
 
@@ -846,7 +851,7 @@ class TransformersTest(test_utils.TestCase):
     segment_mask = None
     if packed_input:
       segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
 
     cross_inputs = None
     cross_paddings = None
@@ -867,7 +872,7 @@ class TransformersTest(test_utils.TestCase):
         )
         cross_segment_mask = attentions.segment_mask(
             segment_ids, source_segment_ids, dtype=np.float32
-        )
+        )  # pytype: disable=wrong-arg-types
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -935,7 +940,7 @@ class TransformersTest(test_utils.TestCase):
     segment_mask = None
     if packed_input:
       segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
 
     cross_inputs = None
     cross_paddings = None
@@ -952,7 +957,8 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32)
+            segment_ids, source_segment_ids, dtype=np.float32
+        )  # pytype: disable=wrong-arg-types
 
     with base_layer.JaxContext.new_context():
       stacked_transformer_layer = instantiate(p1)
@@ -1148,7 +1154,7 @@ class TransformersTest(test_utils.TestCase):
         for t in range(1, seq_len):
           if (segment_ids[b, t] == segment_ids[b, t - 1]):
             segment_pos[b, t] = segment_pos[b, t - 1] + 1
-      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+      segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
       segment_pos = jnp.asarray(segment_pos)
 
     cross_inputs = None
@@ -1166,14 +1172,17 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32)
+            segment_ids, source_segment_ids, dtype=np.float32
+        )  # pytype: disable=wrong-arg-types
 
     if use_custom_attention:
       custom_attention_mask = jnp.asarray(
           np.random.randint(0, 2, [batch_size, 1, seq_len, seq_len]).astype(
               'float32'
           )
-      ) * py_utils.get_large_negative_number('float32')
+      ) * py_utils.get_large_negative_number(
+          np.float32
+      )  # pytype: disable=wrong-arg-types
       custom_attention_mask = jnp.minimum(
           custom_attention_mask, attentions.convert_paddings_to_mask(paddings)
       )
@@ -1439,7 +1448,7 @@ class TransformersTest(test_utils.TestCase):
     causal_mask = attentions.causal_mask(inputs)
     attention_mask = jnp.minimum(attention_mask, causal_mask)
     segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-    segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+    segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
     attention_mask = jnp.minimum(attention_mask, segment_mask)
 
     transformer_layer = instantiate(p)
@@ -1523,7 +1532,7 @@ class TransformersTest(test_utils.TestCase):
     causal_mask = attentions.causal_mask(inputs)
     attention_mask = jnp.minimum(attention_mask, causal_mask)
     segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-    segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+    segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
     attention_mask = jnp.minimum(attention_mask, segment_mask)
 
     transformer_layer = instantiate(p)
@@ -1541,7 +1550,7 @@ class TransformersTest(test_utils.TestCase):
     source_segment_ids = np.random.randint(0, 3, [batch_size, cross_seq_len])
     cross_segment_mask = attentions.segment_mask(
         segment_ids, source_segment_ids, dtype=np.float32
-    )
+    )  # pytype: disable=wrong-arg-types
     cross_attention_mask = jnp.minimum(cross_attention_mask, cross_segment_mask)
     with base_layer.JaxContext.new_context():
       initial_vars = transformer_layer.init(
@@ -1626,7 +1635,7 @@ class TransformersTest(test_utils.TestCase):
     causal_mask = attentions.causal_mask(inputs)
     attention_mask = jnp.minimum(attention_mask, causal_mask)
     segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-    segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)
+    segment_mask = attentions.segment_mask(segment_ids, dtype=np.float32)  # pytype: disable=wrong-arg-types
     attention_mask = jnp.minimum(attention_mask, segment_mask)
 
     if use_relative_bias:

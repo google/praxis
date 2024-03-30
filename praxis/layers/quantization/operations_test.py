@@ -229,8 +229,8 @@ class QuantizationUtilsTest(test_utils.TestCase):
         scale=sw,
         scale_act=sx_channel_wise,
     )
-    error_per_tensor = jnp.abs(o - q_o).mean()
-    error_per_token = jnp.abs(o - q_o_channel_wise).mean()
+    error_per_tensor = np.abs(o - q_o).mean()
+    error_per_token = np.abs(o - q_o_channel_wise).mean()
     self.assertLess(error_per_tensor, 0.01)
     self.assertLess(error_per_token, 0.01)
     self.assertLess(error_per_token, error_per_tensor)
@@ -304,7 +304,7 @@ class ReducePrecisionTest(test_utils.TestCase):
 
   def test_precision_fp8(self):
 
-    inputs = np.array([[1.0, 2.0, 5.5, 2.9], [0.02, -0.01, 3.3, 4.0]])
+    inputs = jnp.array([[1.0, 2.0, 5.5, 2.9], [0.02, -0.01, 3.3, 4.0]])
     qx, scale, zp = operations.reduce_precision(
         inputs, contract_dims=[1], use_fp=True
     )
@@ -320,7 +320,7 @@ class ReducePrecisionTest(test_utils.TestCase):
 
   @parameterized.parameters(True, False)
   def test_precsion_int8_add_scale_eps(self, add_scale_eps):
-    inputs = np.array([[1.0, 2.0, 5.5, 2.9], [0.0, 0.0, 0.0, 0.0]])
+    inputs = jnp.array([[1.0, 2.0, 5.5, 2.9], [0.0, 0.0, 0.0, 0.0]])
     qx, scale, zp = operations.reduce_precision(
         inputs, contract_dims=[1], add_scale_eps=add_scale_eps
     )
@@ -338,7 +338,7 @@ class ReducePrecisionTest(test_utils.TestCase):
     self.assertIsNone(zp)
 
   def test_precision_random(self):
-    inputs = np.array([[1.0, 2.0, 5.5, 2.9], [0.02, -0.01, 3.3, 4.0]])
+    inputs = jnp.array([[1.0, 2.0, 5.5, 2.9], [0.02, -0.01, 3.3, 4.0]])
     qx, scale, zp = operations.reduce_precision(
         inputs,
         contract_dims=[1],
@@ -357,7 +357,7 @@ class ReducePrecisionTest(test_utils.TestCase):
 
   def test_binarization(self):
 
-    inputs = np.array([[1.0, -2.0, 5.5, 0.0], [0.02, -0.01, 3.3, 0.0]])
+    inputs = jnp.array([[1.0, -2.0, 5.5, 0.0], [0.02, -0.01, 3.3, 0.0]])
     qx, scale, zp = operations.reduce_precision(
         inputs, contract_dims=[1], bits=1, quant_method='bin'
     )
@@ -774,7 +774,7 @@ class QuantizationVNTest(test_utils.TestCase):
 
   def test_warmup_step(self):
 
-    wp = quantization_hparams.WeightQuantizationParams
+    wp = quantization_hparams.WeightQuantizationParams()
     wp.precision = 4
     wp.use_symmetric = True
     wp.vn_scale = 1. / 7
@@ -792,7 +792,7 @@ class QuantizationVNTest(test_utils.TestCase):
         weight,
         next_prng_key,
         wp,
-        step=wp.vn_start_step-1,
+        step=jnp.array(wp.vn_start_step - 1),
         do_eval=False,
         bits=wp.precision,
         use_symmetric=wp.use_symmetric,

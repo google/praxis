@@ -363,8 +363,8 @@ class LanguageModelTest(test_utils.TestCase):
         results.prefix_lengths, np.array([[2]], dtype=np.int32)
     )
 
-    expected_output_ids = np.array([[[11, 5, 1, 3, 4]]], dtype=np.int32)
-    expected_prefix_ids = np.array([[[11, 5, 0, 0, 0]]], dtype=np.int32)
+    expected_output_ids = jnp.array([[[11, 5, 1, 3, 4]]], dtype=np.int32)
+    expected_prefix_ids = jnp.array([[[11, 5, 0, 0, 0]]], dtype=np.int32)
 
     if fprop_for_prefix:
       total_len = p.seqlen + p.max_decode_steps
@@ -421,12 +421,16 @@ class LanguageModelTest(test_utils.TestCase):
 
     if fprop_for_prefix:
       total_len = p.seqlen + p.max_decode_steps
-      expected_output_ids = py_utils.pad_or_trim_to(
-          expected_output_ids, [1, 1, total_len], pad_val=0
-      )
-      expected_prefix_ids = py_utils.pad_or_trim_to(
-          expected_prefix_ids, [1, 1, total_len], pad_val=0
-      )
+      expected_output_ids = test_utils.to_np(
+          py_utils.pad_or_trim_to(
+              jnp.array(expected_output_ids), [1, 1, total_len], pad_val=0
+          )
+      ).astype(np.int32)
+      expected_prefix_ids = test_utils.to_np(
+          py_utils.pad_or_trim_to(
+              jnp.array(expected_prefix_ids), [1, 1, total_len], pad_val=0
+          )
+      ).astype(np.int32)
 
     self.assertArraysEqual(results.output_ids, expected_output_ids)
     self.assertArraysEqual(results.prefix_ids, expected_prefix_ids)
@@ -489,13 +493,17 @@ class LanguageModelTest(test_utils.TestCase):
 
     if fprop_for_prefix:
       total_len = p.seqlen + p.max_decode_steps
-      expected_output_ids = py_utils.pad_or_trim_to(
-          expected_output_ids, [1, 1, total_len], pad_val=0
-      )
+      expected_output_ids = test_utils.to_np(
+          py_utils.pad_or_trim_to(
+              jnp.array(expected_output_ids), [1, 1, total_len], pad_val=0
+          )
+      ).astype(np.int32)
       if not vanilla_sample_decode:
-        expected_prefix_ids = py_utils.pad_or_trim_to(
-            expected_prefix_ids, [1, 1, total_len], pad_val=0
-        )
+        expected_prefix_ids = test_utils.to_np(
+            py_utils.pad_or_trim_to(
+                jnp.array(expected_prefix_ids), [1, 1, total_len], pad_val=0
+            )
+        ).astype(np.int32)
 
     self.assertArraysEqual(results.output_ids, expected_output_ids)
     self.assertArraysEqual(results.prefix_ids, expected_prefix_ids)

@@ -15,16 +15,38 @@
 
 """Tests for utilities."""
 
+from __future__ import annotations
+
 import dataclasses
 
 from absl.testing import absltest
 from absl.testing import parameterized
-import fiddle as fdl
 import jax
 from jax import numpy as jnp
 import numpy as np
+from praxis import pax_fiddle as fdl
 from praxis import test_utils
 from praxis.layers.quantization import utils
+
+
+@dataclasses.dataclass(frozen=True)
+class Target:
+  marker: str = 'default'
+
+
+@dataclasses.dataclass
+class Inner:
+  irrelevant: int
+  target1: Target
+
+
+@dataclasses.dataclass
+class Outer:
+  irrelevant: int
+  target2: Target
+  inner_direct: Inner
+  inner_list: list[Inner]
+  inner_dict: dict[str, Inner]
 
 
 class UtilsTest(test_utils.TestCase):
@@ -171,24 +193,7 @@ class UtilsTest(test_utils.TestCase):
       ('multiple targets', False),
   )
   def test_find_target_tpl(self, sequence_of_inputs):
-    @dataclasses.dataclass(frozen=True)
-    class Target:
-      marker: str = 'default'
-
-    @dataclasses.dataclass()
-    class Inner:
-      irrelevant: int
-      target1: Target
-
-    @dataclasses.dataclass()
-    class Outer:
-      irrelevant: int
-      target2: Target
-      inner_direct: Inner
-      inner_list: list[Inner]
-      inner_dict: dict[str, Inner]
-
-    outer_p = (
+    outer_p = [
         fdl.Config(
             Outer,
             irrelevant=-1,
@@ -223,11 +228,11 @@ class UtilsTest(test_utils.TestCase):
                 ),
             },
         ),
-    )
+    ]
     if sequence_of_inputs:
-      targets = utils.find_target_tpl(outer_p, [Target, Target])
+      targets = utils.find_target_tpl(outer_p, [Target, Target])  # pytype: disable=wrong-arg-types
     else:
-      targets = utils.find_target_tpl(outer_p, Target)
+      targets = utils.find_target_tpl(outer_p, Target)  # pytype: disable=wrong-arg-types
     # NOTE(yinzhong): fdl.Config is not hashable or sortable, so we have to
     # build before comparing.
     self.assertSameElements(

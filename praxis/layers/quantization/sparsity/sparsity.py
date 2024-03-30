@@ -286,7 +286,9 @@ def prune_inputs_n_m(
     *,
     n: int,
     m: int,
-    order: sparsity_hparams.SparsityOrder = sparsity_hparams.SparsityOrder.C,
+    order: (
+        sparsity_hparams.SparsityOrder | str
+    ) = sparsity_hparams.SparsityOrder.C,
     offset: int = 0,
 ) -> jnp.ndarray:
   """Returns pruned array with N:M (structured) pruning.

@@ -35,7 +35,7 @@ class QuantizerTest(test_utils.TestCase):
 
   def get_quantize_dequantized_and_scale(
       self, p_quant, sample, axis=None
-  ) -> tuple[JTensor, JTensor]:
+  ) -> tuple[JTensor, JTensor, JTensor]:
     # Computes quantized-dequantized and scale of input sample.
 
     quant = p_quant.Instantiate()
@@ -152,8 +152,8 @@ class QuantizerTest(test_utils.TestCase):
     per_tensor_result = jax.lax.dot(per_tensor_qx, y)
     per_tensor_result = per_tensor_result / per_tensor_scale
 
-    per_example_error = jnp.sum((float_result - per_example_result)**2)
-    per_tensor_error = jnp.sum((float_result - per_tensor_result)**2)
+    per_example_error = np.sum((float_result - per_example_result) ** 2)
+    per_tensor_error = np.sum((float_result - per_tensor_result) ** 2)
 
     self.assertLessEqual(per_example_error, per_tensor_error)
 
@@ -199,7 +199,7 @@ class QuantizerTest(test_utils.TestCase):
         zp_time_scale,
         method=quant.dequantize,
     )
-    sum_error = jnp.sum(jnp.abs(jnp.subtract(x, q_deq_x)))
+    sum_error = np.sum(jnp.abs(jnp.subtract(x, q_deq_x)))
     return q_x, sum_error
 
   def test_clipping_optimization(self):
@@ -404,7 +404,7 @@ class QuantizerTest(test_utils.TestCase):
     _, x_dequant_symmetric, _ = self.get_quantize_dequantized_and_scale(
         p_quant_symmetric, x, axis=[1]
     )
-    quant_error_symmetric = jnp.sum(jnp.abs(x_dequant_symmetric - x))
+    quant_error_symmetric = np.sum(jnp.abs(x_dequant_symmetric - x))
 
     self.assertLessEqual(quant_error_asymmetric, quant_error_symmetric)
 
@@ -451,7 +451,7 @@ class QuantizerTest(test_utils.TestCase):
         )
     )
     self.assertEqual(2**precision - 1, jnp.max(x_quant_unsigned))
-    quant_error_unsigned = jnp.sum(jnp.abs(x_dequant_unsigned - x))
+    quant_error_unsigned = np.sum(jnp.abs(x_dequant_unsigned - x))
 
     self.assertLessEqual(quant_error_asymmetric, quant_error_unsigned)
 
@@ -496,7 +496,7 @@ class QuantizerTest(test_utils.TestCase):
     )
     self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant_no_clip))
     self.assertEqual(-2 ** (precision - 1), jnp.min(x_quant_no_clip))
-    quant_error_no_clip = jnp.sum(jnp.abs(x_dequant_no_clip - x))
+    quant_error_no_clip = np.sum(jnp.abs(x_dequant_no_clip - x))
 
     # Note that if x has uniform distribution then below will be false.
     self.assertLessEqual(quant_error_clip, quant_error_no_clip)
@@ -545,7 +545,7 @@ class QuantizerTest(test_utils.TestCase):
     )
     self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant_symmetric))
     self.assertLessEqual(-(2 ** (precision - 1)), jnp.min(x_quant_symmetric))
-    quant_error_symmetric = jnp.sum(jnp.abs(x_dequant_symmetric - x))
+    quant_error_symmetric = np.sum(jnp.abs(x_dequant_symmetric - x))
 
     self.assertLessEqual(quant_error_asymmetric, quant_error_symmetric)
 
@@ -737,7 +737,7 @@ class QuantizerTest(test_utils.TestCase):
     )
     self.assertEqual(2 ** (precision - 1) - 1, jnp.max(x_quant_sub))
     self.assertLessEqual(-(2 ** (precision - 1)), jnp.min(x_quant_sub))
-    quant_error_sub = jnp.sum(jnp.abs(x_dequant_sub - x))
+    quant_error_sub = np.sum(jnp.abs(x_dequant_sub - x))
 
     self.assertLessEqual(quant_error, quant_error_sub)
 

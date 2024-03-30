@@ -16,9 +16,8 @@
 # Description:
 #   Praxis layers. The public API is defined in __init__.py.
 
-load("//praxis:praxis.bzl", "pytype_strict_library")
-load("//praxis:praxis.bzl", "py_strict_test")
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
+load("//praxis:praxis.bzl", "pytype_strict_library", "pytype_strict_test")
 
 package(default_visibility = JAX_VISIBILITY)
 
@@ -37,7 +36,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "fp8_nvidia_gpu_test",
     srcs = ["fp8_nvidia_gpu_test.py"],
     deps = [

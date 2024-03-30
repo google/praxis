@@ -33,8 +33,8 @@ from praxis import trees
 
 
 class TestPair(NamedTuple):
-  subset: pytypes.Nested
-  superset: pytypes.Nested
+  subset: pytypes.Nested[Any]
+  superset: pytypes.Nested[Any]
 
 
 class TrainState(struct.PyTreeNode):

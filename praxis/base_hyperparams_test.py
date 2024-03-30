@@ -15,6 +15,8 @@
 
 """Tests for base_hyperparams."""
 
+from __future__ import annotations
+
 import dataclasses
 import functools
 import inspect
@@ -238,11 +240,12 @@ class HyperParamsTest(absltest.TestCase):
     x.d.a = 200
     self.assertEqual(200, x.d.a)
     x.freeze()
-    self.assertEqual(True, x._internal_frozen)
-    self.assertEqual(True, x.d._internal_frozen)
+    self.assertTrue(x._internal_frozen)
+    assert x.d is not None
+    self.assertTrue(x.d._internal_frozen)
     x_clone = x.clone()
     self.assertEqual(200, x_clone.d.a)
-    self.assertEqual(False, x_clone._internal_frozen)
+    self.assertFalse(x_clone._internal_frozen)
     x_clone.d.a = 300
     self.assertEqual(300, x_clone.d.a)
     # pylint: enable=protected-access
@@ -794,11 +797,11 @@ class NestedStructToTextTestCase(absltest.TestCase):
       )
 
     class WeightedLoss(NamedTuple):
-      loss: Callable[..., Any]
+      loss: Callable[..., Any] | pax_fiddle.Config
       weight: float = 1.0
 
     class Model(base_layer.BaseLayer):
-      weighted_loss: WeightedLoss = None
+      weighted_loss: Any | None = None
 
       def __call__(self, x):
         return x

@@ -46,7 +46,9 @@ class _Scale(BaseLayer):
 
   factor: float = 1.0
 
-  def __call__(self, inputs: JTensor, paddings: JTensor) -> JTensor:
+  def __call__(
+      self, inputs: JTensor, paddings: JTensor
+  ) -> tuple[JTensor, JTensor]:
     scaled = inputs * self.factor
     return scaled, paddings
 

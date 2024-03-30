@@ -335,7 +335,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
             # Test using 23 bits to minimize the quantization error and test
             # for numerical correctness.
             act_params=quantization_hparams.ActQuantizationParams(precision=23),
-            weight_params=None,
+            weight_params=quantization_hparams.WeightQuantizationParams(),
         ),
     )
     for p in [atten_f_p, atten_q_p]:

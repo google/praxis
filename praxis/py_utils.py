@@ -64,7 +64,7 @@ NestedMap = pytypes.NestedMap
 HParams = pytypes.HParams
 Nested = pytypes.Nested
 
-JTensor = jnp.ndarray
+JTensor = jax.Array
 
 
 def merge_dict(dict1, dict2):
@@ -708,7 +708,7 @@ def create_device_mesh(
   return device_mesh
 
 
-def get_large_negative_number(dtype: jnp.dtype) -> JTensor:
+def get_large_negative_number(dtype: jnp.dtype | np.dtype) -> JTensor:
   """Returns a large negative value for the given dtype."""
   # -0.7 is a float64 in Jax. Explicit cast output to target dtype.
   if jnp.issubdtype(dtype, jnp.inexact):

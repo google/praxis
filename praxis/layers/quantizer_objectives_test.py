@@ -16,14 +16,17 @@
 """Tests for quantizer_objectives."""
 
 from absl.testing import absltest
+import jax.numpy as jnp
 import numpy as np
 from praxis import test_utils
 from praxis.layers import quantizer_objectives
 
 
 class CodebookObjectivesTest(test_utils.TestCase):
-  codes = np.array([[[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [0, 0]],
-                    [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [0, 0]]])
+  codes = np.array([
+      [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [0, 0]],
+      [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [0, 0]],
+  ])
 
   paddings = np.array([[0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 1]])
   entropy = 1.609
@@ -32,12 +35,23 @@ class CodebookObjectivesTest(test_utils.TestCase):
 
   def test_batch_pplx_entropy_from_codes(self):
     pplx, entropy, _ = quantizer_objectives.batch_pplx_entropy_from_codes(
-        codes=self.codes, num_classes=self.num_classes, paddings=self.paddings)
+        codes=jnp.array(self.codes),
+        num_classes=self.num_classes,
+        paddings=jnp.array(self.paddings),
+    )
 
     self.assertAlmostEqual(
-        pplx, self.pplx, delta=1e-3, msg='PPLX is not the same')
+        np.array(pplx),
+        np.array(self.pplx),
+        delta=1e-3,
+        msg='PPLX is not the same',
+    )
     self.assertAlmostEqual(
-        entropy, self.entropy, delta=1e-3, msg='Entropy is not the same')
+        np.array(entropy),
+        np.array(self.entropy),
+        delta=1e-3,
+        msg='Entropy is not the same',
+    )
 
 
 if __name__ == '__main__':

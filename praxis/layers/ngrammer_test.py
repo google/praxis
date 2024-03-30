@@ -59,8 +59,10 @@ class NgrammerTest(test_utils.TestCase):
       (500),
   )
   def test_get_bigram_ids_with_packing(self, vocab_size):
-    ids = np.random.randint(vocab_size, size=(2, 8), dtype=np.int64)
-    segment_pos = np.array([[0, 1, 2, 3, 0, 1, 2, 3], [0, 1, 2, 0, 1, 2, 3, 4]])
+    ids = jnp.array(np.random.randint(vocab_size, size=(2, 8), dtype=np.int64))
+    segment_pos = jnp.array(
+        [[0, 1, 2, 3, 0, 1, 2, 3], [0, 1, 2, 0, 1, 2, 3, 4]]
+    )
     ngram_ids = ngrammer.get_bigram_ids(ids, vocab_size, segment_pos)
     np_ngram_ids = to_np(ngram_ids)
     self.assertLess(np.max(np_ngram_ids), vocab_size**2)
@@ -76,10 +78,13 @@ class NgrammerTest(test_utils.TestCase):
       (500),
   )
   def test_get_bigram_ids_with_packing_and_pair_ids(self, vocab_size):
-    ids = np.random.randint(vocab_size, size=(3, 8), dtype=np.int64)
-    segment_pos = np.array([[0, 1, 2, 3, 0, 1, 2, 3], [0, 1, 2, 0, 1, 2, 3, 4],
-                            [0, 1, 2, 3, 4, 5, 6, 7]])
-    pair_ids = np.array([[8, 0, 1, 2, 3, 4, 5, 6]] * 3)
+    ids = jnp.array(np.random.randint(vocab_size, size=(3, 8), dtype=np.int64))
+    segment_pos = jnp.array([
+        [0, 1, 2, 3, 0, 1, 2, 3],
+        [0, 1, 2, 0, 1, 2, 3, 4],
+        [0, 1, 2, 3, 4, 5, 6, 7],
+    ])
+    pair_ids = jnp.array([[8, 0, 1, 2, 3, 4, 5, 6]] * 3)
     ngram_ids = ngrammer.get_bigram_ids(ids, vocab_size, segment_pos)
     np_ngram_ids = to_np(ngram_ids)
     ngram_ids_pair_ids = ngrammer.get_bigram_ids(

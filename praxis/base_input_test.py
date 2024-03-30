@@ -19,7 +19,8 @@ import dataclasses
 import itertools
 import os
 import pickle
-from typing import Any
+import typing
+from typing import Any, Type
 from unittest import mock
 
 from absl import flags
@@ -117,10 +118,13 @@ class TestInputCheckpointable(TestInput):
 
 class LingvoInput(base_input_generator.BaseInputGeneratorFromFiles):
 
-  def _DataSourceFromFilePattern(self,
-                                 file_pattern,
-                                 input_source_weights=None,
-                                 **extra_input_kwargs):
+  def _DataSourceFromFilePattern(
+      self,
+      file_pattern,
+      input_source_weights=None,
+      input_source_id_offset=0,
+      **extra_input_kwargs,
+  ):
     p = self.params
     assert not tf.compat.v1.executing_eagerly()
     assert tf.compat.v1.executing_eagerly_outside_functions()
@@ -337,13 +341,13 @@ class InputTest(test_utils.TestCase):
     p.num_infeed_hosts = 3
     p.input_random_seed = 345
     p.batch_size = 2
-    train = [None] * p.num_infeed_hosts
-    test = [None] * p.num_infeed_hosts
+    train = []
+    test = []
     for i in range(p.num_infeed_hosts):
       train_p = p.clone().set(infeed_host_index=i)
       test_p = train_p.clone().set(reset_for_eval=True)
-      train[i] = instantiate(train_p)
-      test[i] = instantiate(test_p)
+      train.append(instantiate(train_p))
+      test.append(instantiate(test_p))
 
     num_train_batches = 10
     for _ in range(num_train_batches):
@@ -374,13 +378,13 @@ class InputTest(test_utils.TestCase):
     p.num_infeed_hosts = 3
     p.input_random_seed = 345
     p.batch_size = 2
-    train = [None] * p.num_infeed_hosts
-    test = [None] * p.num_infeed_hosts
+    train = []
+    test = []
     for i in range(p.num_infeed_hosts):
       train_p = p.clone().set(infeed_host_index=i)
       test_p = train_p.clone().set(reset_for_eval=True)
-      train[i] = instantiate(train_p)
-      test[i] = instantiate(test_p)
+      train.append(instantiate(train_p))
+      test.append(instantiate(test_p))
 
     for i in range(p.num_infeed_hosts):
       train[i] = pickle.loads(pickle.dumps(train[i]))
@@ -643,10 +647,9 @@ class InputTest(test_utils.TestCase):
         batch_size=2,
         num_infeed_hosts=3,
     )
-    self.assertEqual(fdl.get_callable(adaptor_p).get_batch_size(adaptor_p), 2)
-    self.assertEqual(
-        fdl.get_callable(adaptor_p).get_global_batch_size(adaptor_p), 6
-    )
+    adaptor_cls = typing.cast(Type, fdl.get_callable(adaptor_p))
+    self.assertEqual(adaptor_cls.get_batch_size(adaptor_p), 2)
+    self.assertEqual(adaptor_cls.get_global_batch_size(adaptor_p), 6)
 
   def test_lingvo_lazy_eval_adaptor(self):
     tmp = os.path.join(FLAGS.test_tmpdir, 'lazy_eval_adaptor')

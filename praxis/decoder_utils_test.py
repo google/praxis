@@ -19,6 +19,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from jax import numpy as jnp
 import numpy as np
+from praxis import base_model
 from praxis import decoder_utils
 from praxis import pytypes
 from praxis import test_utils
@@ -64,7 +65,9 @@ class DecoderUtilsTest(test_utils.TestCase):
     ]
     topk_value, topk_indices, final_topk_value, final_topk_indices = (
         decoder_utils.two_stage_topk(
-            np.array(logits, dtype=np.float32), hyp_scores, terminal_ids))
+            jnp.array(logits, dtype=np.float32), hyp_scores, terminal_ids
+        )
+    )
 
     # Compares 1st topk
     self.assertArraysEqual(topk_value,
@@ -116,7 +119,8 @@ class DecoderUtilsTest(test_utils.TestCase):
         dtype=np.float32)
     seq_lengths = jnp.array([3])
     right_align_decode_cache = decoder_utils.right_align_state_fn(seq_lengths)(
-        decode_cache, batch_dim=0, time_dim=1)
+        decode_cache, 0, 1
+    )
     self.assertArraysEqual(
         right_align_decode_cache,
         np.array([[[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0.1, 0.1], [0.2, 0.3]],
@@ -217,10 +221,14 @@ class DecoderUtilsTest(test_utils.TestCase):
     expanded_extend_step_fn = decoder_utils.coerce_to_expanded_extend_step_fn(
         _extend_step_fn
     )
+    unused_model = base_model.BaseModel()
 
     self.assertArraysEqual(
         expanded_extend_step_fn(
-            None, jnp.array([[1, 2]]), jnp.array([3, 4]), pytypes.NestedMap()
+            unused_model,
+            jnp.array([[1, 2]]),
+            jnp.array([3, 4]),
+            pytypes.NestedMap(),
         ),
         jnp.array([[0.5, 1.0]]),
     )
@@ -233,11 +241,15 @@ class DecoderUtilsTest(test_utils.TestCase):
     expanded_extend_step_fn = decoder_utils.coerce_to_expanded_extend_step_fn(
         _extend_step_fn
     )
+    unused_model = base_model.BaseModel()
 
     self.assertIs(expanded_extend_step_fn, _extend_step_fn)  # merely casted
     self.assertArraysEqual(
         expanded_extend_step_fn(
-            None, jnp.array([[1, 2]]), jnp.array([3, 4]), pytypes.NestedMap()
+            unused_model,
+            jnp.array([[1, 2]]),
+            jnp.array([3, 4]),
+            pytypes.NestedMap(),
         ),
         jnp.array([[0.5, 1.0]]),
     )
@@ -293,13 +305,13 @@ class DecoderUtilsTest(test_utils.TestCase):
   def test_find_first_stop_seq_match(self):
 
     # We only look for stop sequence matches at these indices or after!
-    first_new_decode_idx = np.asarray([
+    first_new_decode_idx = jnp.asarray([
         2,
         0,
         2,
         2,
     ])
-    sequences = np.asarray([
+    sequences = jnp.asarray([
         [2, 3, 4, 5],  # Will match first eos seq.
         [2, 3, 4, 5],  # Nearly match first eos seq, but index too small.
         [6, 7, 8, 9],  # No match.
@@ -308,7 +320,7 @@ class DecoderUtilsTest(test_utils.TestCase):
 
     # 0 corresponds to padding. Stop sequences are left padded.
     stop_sequences = self._tile_to_bsize(
-        np.asarray([
+        jnp.asarray([
             [3, 4, 5],
             [0, 2, 6],
         ]),

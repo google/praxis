@@ -45,8 +45,8 @@ class SearchableTest(test_utils.TestCase):
     self.quantization_tpl = quantization_hparams.QuantizationParams(
         quantization_type=quantization_hparams.QuantizationType.AQT,
         mode=quantization_hparams.QuantizationMode.TRAINING,
-        act_params=quantization_hparams.ActQuantizationParams,
-        weight_params=quantization_hparams.WeightQuantizationParams,
+        act_params=quantization_hparams.ActQuantizationParams(),
+        weight_params=quantization_hparams.WeightQuantizationParams(),
     )
 
   def _test_common(self, p, x):

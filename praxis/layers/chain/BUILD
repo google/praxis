@@ -16,9 +16,8 @@
 # Description: Chain and utilities.
 # The public API is defined in __init__.py.
 
-load("//praxis:praxis.bzl", "py_strict_test")
-load("//praxis:praxis.bzl", "pytype_strict_library")
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
+load("//praxis:praxis.bzl", "pytype_strict_library", "pytype_strict_test")
 
 package(default_visibility = JAX_VISIBILITY)
 
@@ -53,7 +52,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "chain_test",
     srcs = ["chain_test.py"],
     deps = [

@@ -309,7 +309,10 @@ def get_packed_shape(shape: Sequence[int], pack_dim: int, packing_factor: int):
 
 
 def find_target_tpl(
-    config: pax_fiddle.Config[base_layer.BaseLayer],
+    config: (
+        pax_fiddle.Config[base_layer.BaseLayer]
+        | Sequence[pax_fiddle.Config[base_layer.BaseLayer]]
+    ),
     targets: Type[base_layer.BaseLayer] | Sequence[Type[base_layer.BaseLayer]],
 ) -> Sequence[fdl.Config]:
   """Traverses the entire config tree to find Configs of the target types."""

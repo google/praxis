@@ -95,7 +95,7 @@ class MixLayer(base_layer.BaseLayer):
     out = self.bn(out1 + out2)
     return out1, out2, out
 
-  def classify(self, x: JTensor) -> JTensor:
+  def classify(self, x: JTensor) -> tuple[JTensor, JTensor]:
     out1 = self.cnn_p1.call_method('classify', x)
     out2 = self.cnn_p2.call_method('classify', x)
     return out1, out2

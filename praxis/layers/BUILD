@@ -16,8 +16,7 @@
 # Description:
 #   Praxis layers. The public API is defined in __init__.py.
 
-load("//praxis:praxis.bzl", "pytype_strict_library")
-load("//praxis:praxis.bzl", "py_strict_test")
+load("//praxis:praxis.bzl", "pytype_strict_library", "pytype_strict_test")
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
 
 licenses(["notice"])
@@ -74,7 +73,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "activations_test",
     srcs = ["activations_test.py"],
     deps = [
@@ -115,8 +114,8 @@ pytype_strict_library(
         ":multi_query_attention",
         ":normalizations",
         # Implicit jax dependency.
-        # Implicit Pallas GPU dependency.
-        # Implicit Pallas GPU Ops dependency.
+        # Implicit Pallas GPU dependency.  # BC internal suffix.
+        # Implicit Pallas GPU Ops dependency.  # BC internal suffix.
         "//praxis:asserts",
         "//praxis:base_layer",
         "//praxis:py_utils",
@@ -158,7 +157,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "grouped_query_attention_test",
     srcs = ["grouped_query_attention_test.py"],
     env = {"XLA_FLAGS": "--xla_force_host_platform_device_count=4"},
@@ -215,7 +214,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "chunk_test",
     srcs = ["chunk_test.py"],
     deps = [
@@ -223,10 +222,7 @@ py_strict_test(
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
         # Implicit upb python proto dependency.
-        # Implicit jax dependency.
         # Implicit numpy dependency.
-        "//praxis:base_layer",
-        "//praxis:pax_fiddle",
         "//praxis:test_utils",
     ],
 )
@@ -258,7 +254,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "einsum_test",
     size = "large",
     srcs = ["einsum_test.py"],
@@ -424,7 +420,6 @@ pytype_strict_library(
     name = "ssm",
     srcs = ["ssm.py"],
     deps = [
-        # Implicit flax.core dependency.
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:py_utils",
@@ -452,7 +447,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "ssm_transformers_test",
     size = "large",
     srcs = ["ssm_transformers_test.py"],
@@ -485,7 +480,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "stats_test",
     srcs = ["stats_test.py"],
     deps = [
@@ -554,7 +549,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "repeats_test",
     srcs = ["repeats_test.py"],
     deps = [
@@ -602,7 +597,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "spectrum_augmenter_test",
     srcs = ["spectrum_augmenter_test.py"],
     deps = [
@@ -644,7 +639,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "vanillanets_test",
     srcs = ["vanillanets_test.py"],
     deps = [
@@ -697,7 +692,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "adapters_test",
     srcs = ["adapters_test.py"],
     deps = [
@@ -719,7 +714,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "conformers_test",
     srcs = ["conformers_test.py"],
     deps = [
@@ -811,7 +806,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "vits_test",
     srcs = ["vits_test.py"],
     deps = [
@@ -832,7 +827,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "attentions_test",
     srcs = ["attentions_test.py"],
     shard_count = 2,
@@ -854,7 +849,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "augmentations_test",
     srcs = ["augmentations_test.py"],
     deps = [
@@ -870,7 +865,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "bregman_test",
     srcs = ["bregman_test.py"],
     deps = [
@@ -887,7 +882,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "ctc_objectives_test",
     srcs = ["ctc_objectives_test.py"],
     deps = [
@@ -905,7 +900,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "embedding_softmax_test",
     srcs = ["embedding_softmax_test.py"],
     shard_count = 2,
@@ -926,7 +921,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "frnn_test",
     srcs = ["frnn_test.py"],
     deps = [
@@ -944,7 +939,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "linears_test",
     srcs = ["linears_test.py"],
     deps = [
@@ -968,7 +963,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "shared_layers_test",
     srcs = ["shared_layers_test.py"],
     tags = ["fast_and_reliable_fiddle_integration_test"],
@@ -986,7 +981,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "models_test",
     srcs = ["models_test.py"],
     shard_count = 4,
@@ -1015,7 +1010,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "ngrammer_test",
     srcs = ["ngrammer_test.py"],
     deps = [
@@ -1035,7 +1030,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "normalizations_test",
     srcs = ["normalizations_test.py"],
     deps = [
@@ -1058,7 +1053,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "poolings_test",
     srcs = ["poolings_test.py"],
     deps = [
@@ -1077,7 +1072,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "quantizer_test",
     srcs = ["quantizer_test.py"],
     deps = [
@@ -1093,19 +1088,20 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "quantizer_objectives_test",
     srcs = ["quantizer_objectives_test.py"],
     deps = [
         ":objectives",
         # Implicit absl.testing.absltest dependency.
         # Implicit upb python proto dependency.
+        # Implicit jax dependency.
         # Implicit numpy dependency.
         "//praxis:test_utils",
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "rnn_cell_test",
     srcs = ["rnn_cell_test.py"],
     deps = [
@@ -1124,7 +1120,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "ssm_test",
     srcs = ["ssm_test.py"],
     deps = [
@@ -1134,9 +1130,7 @@ py_strict_test(
         # Implicit absl.testing.parameterized dependency.
         # Implicit upb python proto dependency.
         # Implicit jax dependency.
-        # Implicit lingvo.core.layers dependency.
         # Implicit numpy dependency.
-        "//praxis:base_hyperparams",
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis:py_utils",
@@ -1145,7 +1139,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "stochastics_test",
     srcs = ["stochastics_test.py"],
     deps = [
@@ -1160,12 +1154,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "sequential_test",
     srcs = ["sequential_test.py"],
     deps = [
         ":sequential",
-        # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit upb python proto dependency.
         # Implicit jax dependency.
@@ -1177,7 +1170,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "transformers_test",
     size = "large",
     srcs = ["transformers_test.py"],
@@ -1203,7 +1196,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "transformer_models_test",
     size = "large",
     srcs = ["transformer_models_test.py"],
@@ -1232,7 +1225,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "transformer_models_encoder_decoder_test",
     size = "large",
     srcs = ["transformer_models_encoder_decoder_test.py"],
@@ -1268,7 +1261,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "flax_adapter_test",
     srcs = ["flax_adapter_test.py"],
     deps = [
@@ -1327,7 +1320,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "multi_query_attention_test",
     srcs = ["multi_query_attention_test.py"],
     deps = [
@@ -1347,7 +1340,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "convolutions_test",
     srcs = ["convolutions_test.py"],
     shard_count = 10,
@@ -1383,7 +1376,7 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+pytype_strict_test(
     name = "searchable_test",
     srcs = ["searchable_test.py"],
     deps = [

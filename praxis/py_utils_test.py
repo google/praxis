@@ -267,31 +267,31 @@ class PyUtilsTest(test_utils.TestCase):
 
   def test_apply_padding_zero(self):
     y = py_utils.apply_padding(
-        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
-        padding=np.array([[0.0], [1.0], [0.0]]),
+        inputs=jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=jnp.array([[0.0], [1.0], [0.0]]),
     )
     self.assertAllClose(y, [[1.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
 
   def test_apply_padding_constant(self):
     y = py_utils.apply_padding(
-        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
-        padding=np.array([[0.0], [1.0], [0.0]]),
-        pad_value=np.array([[1.0, 2.0], [9.0, 10.0], [5.0, 6.0]]),
+        inputs=jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=jnp.array([[0.0], [1.0], [0.0]]),
+        pad_value=jnp.array([[1.0, 2.0], [9.0, 10.0], [5.0, 6.0]]),
     )
     self.assertAllClose(y, [[1.0, 2.0], [9.0, 10.0], [5.0, 6.0]])
 
   def test_apply_padding_zero_arithmetic(self):
     y = py_utils.apply_padding(
-        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
-        padding=np.array([[0.0], [1.0], [0.0]]),
+        inputs=jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=jnp.array([[0.0], [1.0], [0.0]]),
         use_select=False,
     )
     self.assertAllClose(y, [[1.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
 
   def test_apply_padding_with_axis_0(self):
     y = py_utils.apply_padding(
-        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
-        padding=np.array([[0.0], [1.0], [0.0]]),
+        inputs=jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=jnp.array([[0.0], [1.0], [0.0]]),
         axis=0,
     )
     self.assertAllClose(y, [[1.0, 2.0], [0.0, 0.0], [5.0, 6.0]])
@@ -299,9 +299,9 @@ class PyUtilsTest(test_utils.TestCase):
   def test_apply_padding_with_axis_0_and_one_more_dim(self):
     # inputs=[3, 2] and paddings=[3, 2, 1]
     y = py_utils.apply_padding(
-        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
-        padding=np.expand_dims(
-            np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]), -1
+        inputs=jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=jnp.expand_dims(
+            jnp.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]), -1
         ),
         axis=0,
     )
@@ -310,8 +310,8 @@ class PyUtilsTest(test_utils.TestCase):
   def test_pad_inputs_with_axis_0_and_one_less_dim(self):
     # inputs=[1, 2, 3] and paddings=[1, 2]
     y = py_utils.apply_padding(
-        inputs=np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]]),
-        padding=np.array([[1.0, 0.0]]),
+        inputs=jnp.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]]),
+        padding=jnp.array([[1.0, 0.0]]),
         axis=0,
     )
     self.assertAllClose(y, [[[0.0, 0.0, 0.0], [4.0, 5.0, 6.0]]])
@@ -319,9 +319,9 @@ class PyUtilsTest(test_utils.TestCase):
   def test_apply_padding_with_axis_1_and_one_more_dim(self):
     # inputs=[3, 2] and paddings=[3, 2, 1]
     y = py_utils.apply_padding(
-        inputs=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
-        padding=np.expand_dims(
-            np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]), -1
+        inputs=jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        padding=jnp.expand_dims(
+            jnp.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]), -1
         ),
         axis=1,
     )
@@ -331,8 +331,8 @@ class PyUtilsTest(test_utils.TestCase):
     # inputs=[5, 1, 2, 3] and paddings=[1, 2, 1]
     batch = 5
     y = py_utils.apply_padding(
-        inputs=np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]] * batch),
-        padding=np.expand_dims(np.array([[1.0, 0.0]]), -1),
+        inputs=jnp.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]] * batch),
+        padding=jnp.expand_dims(np.array([[1.0, 0.0]]), -1),
         axis=1,
     )
     self.assertAllClose(y, [[[0.0, 0.0, 0.0], [4.0, 5.0, 6.0]]] * batch)
@@ -341,8 +341,8 @@ class PyUtilsTest(test_utils.TestCase):
     # inputs=[5, 1, 2, 3] and paddings=[1, 2]
     batch = 5
     y = py_utils.apply_padding(
-        inputs=np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]] * batch),
-        padding=np.array([[1.0, 0.0]]),
+        inputs=jnp.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]] * batch),
+        padding=jnp.array([[1.0, 0.0]]),
         axis=1,
     )
     self.assertAllClose(y, [[[0.0, 0.0, 0.0], [4.0, 5.0, 6.0]]] * batch)
@@ -390,6 +390,7 @@ class PyUtilsTest(test_utils.TestCase):
     x = jax.random.normal(key, shape=(3, 3))
     shape = [4, 6]
     padded_x = py_utils.pad_or_trim_to(x, shape, pad_val=pad_val)
+    assert padded_x is not None
     self.assertEqual(padded_x.shape, (4, 6))
     self.assertAllClose(x, padded_x[:3, :3])
     sum_diff = jnp.sum(padded_x) - jnp.sum(x)
@@ -404,6 +405,7 @@ class PyUtilsTest(test_utils.TestCase):
     src = (2, 3)
     x = np.random.uniform(0, 1, src).astype(np.float32)
     y = py_utils.pad_or_trim_to(x, dst)
+    assert y is not None
     self.assertSequenceEqual(y.shape, dst)
     self.assertAllClose(y, x[: dst[0], : dst[1]])
 
@@ -417,6 +419,7 @@ class PyUtilsTest(test_utils.TestCase):
     pad_value = 42.0
     x = np.random.uniform(0, 1, src).astype(np.float32)
     y = py_utils.pad_or_trim_to(x, dst, pad_value)
+    assert y is not None
     self.assertSequenceEqual(y.shape, dst)
     self.assertAllClose(y[: src[0], : src[1]], x)
     self.assertAllClose(y[src[0] :], pad_value)
@@ -430,6 +433,7 @@ class PyUtilsTest(test_utils.TestCase):
     pad_value = 42.0
     x = np.random.uniform(0, 1, src).astype(np.float32)
     y = py_utils.pad_or_trim_to(x, dst, pad_value)
+    assert y is not None
     self.assertSequenceEqual(y.shape, dst)
     self.assertAllClose(y[:2, :2], x[:2, :2])
     self.assertAllClose(y[2:], pad_value)
@@ -512,7 +516,7 @@ class PyUtilsTest(test_utils.TestCase):
     self.assertAllClose(output, expected_output)
 
   def test_concat_nested_maps(self):
-    map_0 = {
+    map_0 = py_utils.NestedMap.FromNestedDict({
         'A': jnp.zeros((8, 1, 4)),
         'B': jnp.zeros((1, 2)),
         'C': {
@@ -520,18 +524,18 @@ class PyUtilsTest(test_utils.TestCase):
             'E': 5,
             'F': jnp.zeros((5)),
         },
-    }
+    })
 
-    map_1 = {
+    map_1 = py_utils.NestedMap.FromNestedDict({
         'A': jnp.zeros((8, 2, 4)),
         'B': jnp.zeros((1, 3)),
         'C': {
             'D': jnp.zeros((4, 1)),
             'F': jnp.zeros(5),
         },
-    }
+    })
 
-    map_2 = {
+    map_2 = py_utils.NestedMap.FromNestedDict({
         'A': jnp.zeros((8, 3, 4)),
         'B': jnp.zeros((1, 1)),
         'C': {
@@ -539,7 +543,7 @@ class PyUtilsTest(test_utils.TestCase):
             'E': 5,
             'F': jnp.zeros((5)),
         },
-    }
+    })
 
     expected = {
         'A': jnp.zeros((8, 6, 4)),

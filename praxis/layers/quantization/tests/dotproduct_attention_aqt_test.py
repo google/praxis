@@ -1001,7 +1001,7 @@ class DotProductAttentionAQTTest(quantization_test_util.QuantizationTestCase):
         quantization_type=QuantizationType.AQT,
         mode=QuantizationMode.TRAINING,
         act_params=quantization_hparams.ActQuantizationParams(precision=16),
-        weight_params=None,
+        weight_params=quantization_hparams.WeightQuantizationParams(),
     )
     atten_f = pax_fiddle.Config(
         attentions.DotProductAttention,
@@ -1154,7 +1154,7 @@ class DotProductAttentionAQTTest(quantization_test_util.QuantizationTestCase):
         quantization_type=QuantizationType.AQT,
         mode=QuantizationMode.TRAINING,
         act_params=quantization_hparams.ActQuantizationParams(precision=23),
-        weight_params=None,
+        weight_params=quantization_hparams.WeightQuantizationParams(),
     )
 
     atten_q = pax_fiddle.Config(
