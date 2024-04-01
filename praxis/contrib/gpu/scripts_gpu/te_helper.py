@@ -182,7 +182,7 @@ class TEInstalledHelper(TransformerEngineHelperBase):
                 assert attn_tpl.attention_extra_logit is None
                 assert attn_tpl.ngrammer_tpl is None
                 te_tpl.enable_rotary_pos_emb = attn_tpl.use_rotary_position_emb
-                if issubclass(attn_tpl.rotary_position_emb_tpl.cls, embedding_softmax.RotaryPositionalEmbedding):
+                if attn_tpl.rotary_position_emb_tpl.cls == embedding_softmax.RotaryPositionalEmbedding:
                     te_tpl.rotary_pos_emb_group_method = 'alternate'
             elif issubclass(attn_tpl.cls, grouped_query_attention.GroupedQueryAttention):
                 te_tpl.num_gqa_groups = attn_tpl.num_kv_heads
@@ -193,7 +193,7 @@ class TEInstalledHelper(TransformerEngineHelperBase):
             elif issubclass(attn_tpl.cls, multi_query_attention.MultiQueryDotProductAttention):
                 te_tpl.num_gqa_groups = attn_tpl.num_kv_heads
                 te_tpl.enable_rotary_pos_emb = attn_tpl.use_rotary_position_emb
-                if issubclass(attn_tpl.rotary_position_emb_tpl.cls, embedding_softmax.RotaryPositionalEmbedding):
+                if attn_tpl.rotary_position_emb_tpl.cls == embedding_softmax.RotaryPositionalEmbedding:
                     te_tpl.rotary_pos_emb_group_method = 'alternate'
             else:
                 raise ValueError(f'Unsupported {attn_tpl.cls=}')
