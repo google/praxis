@@ -761,6 +761,7 @@ class LanguageModel(base_model.BaseModel):
             sample_constraint=decoder_params.sample_constraint,
             enforce_sample_constraints=enforce_sample_constraints,
             num_per_token_logprobs=num_per_token_logprobs,
+            early_exit=decoder_params.early_exit,
         )
 
     elif template_has_type(decoder_params, GreedyDecoderHParams):
@@ -1589,6 +1590,7 @@ class SequenceModel(base_model.BaseModel):
           use_top_k_for_logprobs=decoder_params.use_top_k_for_logprobs,
           return_entropy_score=False,
           process_result_fn=decoder_params.process_result_fn,
+          early_exit=decoder_params.early_exit,
       )
     elif template_has_type(decoder_params, GreedyDecoderHParams):
 

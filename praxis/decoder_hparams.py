@@ -159,3 +159,4 @@ class SampleDecoderHParams(DecoderHParams):
   override_next_token_sampler_params: bool = True
   optimize_eos: bool = False
   vanilla_sample_decode: bool = False
+  early_exit: bool = True
