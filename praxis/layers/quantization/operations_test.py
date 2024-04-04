@@ -1065,5 +1065,41 @@ class FP4Test(test_utils.TestCase):
     )
 
 
+def _custom_loss(x, w, prng_key, bits_fwd, bits_bwd):
+  preds = operations.custom_einsum(x, w, prng_key, bits_fwd, bits_bwd)
+  return -jnp.sum(preds)
+
+
+def _loss(x, w, eqn):
+  preds = jnp.einsum(eqn, x, w, preferred_element_type=jnp.bfloat16)
+  return -jnp.sum(preds)
+
+
+class CustomEinsumTest(test_utils.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    np.random.seed(0)
+
+  def test_custom_einsum(self):
+    eqn = 'abc,cd->abd'
+    x = np.random.normal(size=[2, 2, 2])
+    w = np.random.normal(size=[2, 2])
+
+    prng_key = jax.random.PRNGKey(seed=0)
+    grads = jax.grad(_loss, argnums=[0, 1])(x, w, eqn)
+    custom_grads = jax.grad(_custom_loss, argnums=[0, 1])(
+        x, w, prng_key, bits_fwd=None, bits_bwd=None
+    )
+
+    print('grads ' + str(grads))
+    print('custome_grads ' + str(custom_grads))
+
+    self.assertEqual(len(custom_grads), 2)
+    self.assertEqual(len(grads), 2)
+    self.assertAllClose(custom_grads[0], grads[0].astype(jnp.bfloat16))
+    self.assertAllClose(custom_grads[1], grads[1].astype(jnp.bfloat16))
+
+
 if __name__ == '__main__':
   absltest.main()

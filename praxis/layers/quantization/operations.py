@@ -234,44 +234,84 @@ def dot_general_int_jvp(
 
 
 @jax.custom_vjp
-def custom_einsum(x: JTensor, w: JTensor, key: jax.Array) -> jnp.ndarray:
+def custom_einsum(
+    x: JTensor,
+    w: JTensor,
+    prng_key: jax.Array,
+    bits_fwd: int | None = 8,
+    bits_bwd: int | None = 8,
+) -> jnp.ndarray:
   return jnp.einsum('abc,cd->abd', x, w)
 
 
-def custom_einsum_fwd(x: JTensor, w: JTensor, key: jax.Array):
+def custom_einsum_fwd(
+    x: JTensor,
+    w: JTensor,
+    prng_key: jax.Array,
+    bits_fwd: int | None,
+    bits_bwd: int | None,
+):
   """Custom forward pass for custom_einsum."""
   # Currently support only abc,cd->abd
   # TODO(jianlijianli): make this more general.
   assert x.ndim == 3
   assert w.ndim == 2
   assert x.shape[2] == w.shape[0]
-  qx, sx, _ = reduce_precision(x, bits=8, contract_dims=[2])
-  qw, sw, _ = reduce_precision(w, bits=8, contract_dims=[0])
+  if bits_fwd is not None:
+    qx, sx, _ = reduce_precision(x, bits=8, contract_dims=[2])
+    qw, sw, _ = reduce_precision(w, bits=8, contract_dims=[0])
+  else:
+    qx, sx = x, None
+    qw, sw = w, None
+
   acc = jnp.einsum('abc,cd->abd', qx, qw, preferred_element_type=jnp.bfloat16)
-  res = jnp.multiply(sx, jnp.multiply(acc, sw))
-  return res, (qx, qw, sx, sw, key)
+
+  if bits_fwd is not None:
+    res = jnp.multiply(sx, jnp.multiply(acc, sw))
+  else:
+    res = acc
+
+  return res, (qx, qw, sx, sw, prng_key, bits_bwd)
 
 
 def custom_einsum_bwd(res: Any, g: Any):
   """Custom gradient for custom_einsum."""
-  qx, qw, sx, sw, key = res
-  g_with_sw = jnp.multiply(g, sw)
-  g_with_sx = jnp.multiply(g, sx)
-  qg_for_w, sg_for_w, _ = reduce_precision(
-      t=g_with_sw, bits=8, contract_dims=[2], random_rounding=True, key=key
-  )
-  qg_for_x, sg_for_x, _ = reduce_precision(
-      t=g_with_sx, bits=8, contract_dims=[0, 1], random_rounding=True, key=key
-  )
+  qx, qw, sx, sw, prng_key, bits_bwd = res
+  if bits_bwd is not None:
+    g_with_sw = jnp.multiply(g, sw)
+    g_with_sx = jnp.multiply(g, sx)
+    qg_for_w, sg_for_w, _ = reduce_precision(
+        t=g_with_sw,
+        bits=bits_bwd,
+        contract_dims=[2],
+        random_rounding=True,
+        key=prng_key,
+    )
+    qg_for_x, sg_for_x, _ = reduce_precision(
+        t=g_with_sx,
+        bits=bits_bwd,
+        contract_dims=[0, 1],
+        random_rounding=True,
+        key=prng_key,
+    )
+  else:
+    qg_for_w = g
+    qg_for_x = g
+
   gx = jnp.einsum(
       'abd,cd->abc', qg_for_w, qw, preferred_element_type=jnp.bfloat16
   )
   gw = jnp.einsum(
       'abc,abd->cd', qx, qg_for_x, preferred_element_type=jnp.bfloat16
   )
-  gx = jnp.multiply(gx, sg_for_w)
-  gw = jnp.multiply(gw, jnp.squeeze(sg_for_x))
-  return gx, gw, None
+
+  if bits_bwd is not None:
+    gx = jnp.multiply(gx, sg_for_w)
+    gw = jnp.multiply(gw, jnp.squeeze(sg_for_x))
+
+  # Custom VJP bwd rule must produce an output with the same container (pytree)
+  # structure as the args tuple of the primal function (custom_einsum).
+  return gx, gw, None, None, None
 
 
 custom_einsum.defvjp(custom_einsum_fwd, custom_einsum_bwd)
