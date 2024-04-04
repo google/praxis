@@ -1081,24 +1081,45 @@ class CustomEinsumTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(0)
 
-  def test_custom_einsum(self):
+  def test_custom_einsum_grad(self):
     eqn = 'abc,cd->abd'
     x = np.random.normal(size=[2, 2, 2])
     w = np.random.normal(size=[2, 2])
 
     prng_key = jax.random.PRNGKey(seed=0)
     grads = jax.grad(_loss, argnums=[0, 1])(x, w, eqn)
-    custom_grads = jax.grad(_custom_loss, argnums=[0, 1])(
+    custom_grads_float = jax.grad(_custom_loss, argnums=[0, 1])(
         x, w, prng_key, bits_fwd=None, bits_bwd=None
     )
 
-    print('grads ' + str(grads))
-    print('custome_grads ' + str(custom_grads))
+    # Validate that float custom gradient is the same with standard gradient.
+    self.assertLen(custom_grads_float, 2)
+    self.assertLen(grads, 2)
+    self.assertAllClose(custom_grads_float[0], grads[0].astype(jnp.bfloat16))
+    self.assertAllClose(custom_grads_float[1], grads[1].astype(jnp.bfloat16))
 
-    self.assertEqual(len(custom_grads), 2)
-    self.assertEqual(len(grads), 2)
-    self.assertAllClose(custom_grads[0], grads[0].astype(jnp.bfloat16))
-    self.assertAllClose(custom_grads[1], grads[1].astype(jnp.bfloat16))
+    # Validate that gradient of int8 einsum is close to float one.
+    custom_grads_int8 = jax.grad(_custom_loss, argnums=[0, 1])(
+        x, w, prng_key, bits_fwd=8, bits_bwd=8
+    )
+    self.assertAllClose(custom_grads_int8[0], grads[0], rtol=0.008, atol=0.012)
+    self.assertAllClose(custom_grads_int8[1], grads[1], rtol=0.008, atol=0.012)
+
+  def test_custom_einsum_fwd_int8(self):
+    x = np.random.normal(size=[2, 2, 2])
+    w = np.random.normal(size=[2, 2])
+
+    prng_key = jax.random.PRNGKey(seed=0)
+    einsum_output = operations.custom_einsum(
+        x, w, prng_key, bits_fwd=8, bits_bwd=8
+    )
+    self.assertAllClose(
+        einsum_output,
+        np.array([
+            [[-0.1244434, 1.3062553], [0.22176202, 3.6607397]],
+            [[-0.3335378, -0.65441275], [-0.11986907, 0.16999012]],
+        ]),
+    )
 
 
 if __name__ == '__main__':
