@@ -1804,26 +1804,26 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     xent_output.total_loss = xent_output.avg_xent + xent_output.aux_loss
     return xent_output
 
-  def __call__(
+  def fprop_with_encoder_output(
       self,
-      inputs: JTensor,
+      encoder_output: JTensor,
       input_paddings: JTensor,
       targets: JTensor,
       target_paddings: JTensor,
       labels: NestedMap | None = None,
       input_segment_ids: JTensor | None = None,
       input_segment_pos: JTensor | None = None,
-      input_segment_mask: JTensor | None = None,
       target_segment_ids: JTensor | None = None,
       target_segment_pos: JTensor | None = None,
       target_segment_mask: JTensor | None = None,
       cross_segment_mask: JTensor | None = None,
       start_time_step: int = 0,
   ) -> NestedMap:
-    """Computes xent loss given the sequence model inputs.
+    """Computes xent loss given the encoder output.
 
     Args:
-      inputs: Input ids. An int32 JTensor of shape [B, S].
+      encoder_output: A JTensor of shape [B, S, D]. It's the output of the
+        encoder for the input.
       input_paddings: A 0/1 JTensor of shape [B, S] with 1 denoting padding
         corresponding to the input sequence.
       targets: Target ids. An int32 JTensor of shape [B, T].
@@ -1838,8 +1838,6 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
         token belongs to.
       input_segment_pos: A JTensor of shape [B, S]. The position of each input
         token within a segment.
-      input_segment_mask: A JTensor or shape [B, 1, S, S]. The segment mask for
-        packed input tokens.
       target_segment_ids: A JTensor of shape [B,T]. The segment that each target
         token belongs to.
       target_segment_pos: A JTensor of shape [B, T]. The position of each target
@@ -1858,14 +1856,6 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       for tokens in a sequence.
     """
     batch, target_seq_length = targets.shape[:2]
-
-    encoder_output = self.encode(
-        inputs,
-        input_paddings,
-        input_segment_ids,
-        input_segment_pos,
-        input_segment_mask,
-    )
 
     if self.decoder_embedding_tpl is not None:
       # Targets have separate embedding params.
@@ -1933,6 +1923,83 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     output = self.decoder_ln(output)
 
     return self.compute_loss(output, labels)
+
+  def __call__(
+      self,
+      inputs: JTensor,
+      input_paddings: JTensor,
+      targets: JTensor,
+      target_paddings: JTensor,
+      labels: NestedMap | None = None,
+      input_segment_ids: JTensor | None = None,
+      input_segment_pos: JTensor | None = None,
+      input_segment_mask: JTensor | None = None,
+      target_segment_ids: JTensor | None = None,
+      target_segment_pos: JTensor | None = None,
+      target_segment_mask: JTensor | None = None,
+      cross_segment_mask: JTensor | None = None,
+      start_time_step: int = 0,
+  ) -> NestedMap:
+    """Computes xent loss given the sequence model inputs.
+
+    Args:
+      inputs: Input ids. An int32 JTensor of shape [B, S].
+      input_paddings: A 0/1 JTensor of shape [B, S] with 1 denoting padding
+        corresponding to the input sequence.
+      targets: Target ids. An int32 JTensor of shape [B, T].
+      target_paddings: A 0/1 JTensor of shape [B, T] with 1 denoting padding
+        corresponding to the target sequence.
+      labels: A `.NestedMap` containing the following fields: class_weights, a
+        JTensor with shape [batch, seqlen] containing weights for each target
+        word. class_ids, a JTensor with shape [B, T] of int32 dtype containing
+        the target class labels. class_probabilities, a JTensor with shape [B,
+        T, V] of float values indicating class-membership probabilities.
+      input_segment_ids: A JTensor of shape [B,S]. The segment that each input
+        token belongs to.
+      input_segment_pos: A JTensor of shape [B, S]. The position of each input
+        token within a segment.
+      input_segment_mask: A JTensor or shape [B, 1, S, S]. The segment mask for
+        packed input tokens.
+      target_segment_ids: A JTensor of shape [B,T]. The segment that each target
+        token belongs to.
+      target_segment_pos: A JTensor of shape [B, T]. The position of each target
+        token within a segment.
+      target_segment_mask: A JTensor or shape [B, 1, T, T]. The segment mask for
+        packed target tokens.
+      cross_segment_mask: A JTensor or shape [B, 1, T, S]. The encoder-decoder
+        segment mask.
+      start_time_step: Decode extend_step start time step. When decoding after
+        prefix, start_time_step will be prefix_len - 1.
+
+    Returns:
+      Returns xent_output, where
+      `xent_output` is a `.NestedMap` as defined by `SoftmaxLayer`'s return. In
+      addition, per_sequence_xent is added which equal to the sum of xent loss
+      for tokens in a sequence.
+    """
+    batch, target_seq_length = targets.shape[:2]
+
+    encoder_output = self.encode(
+        inputs,
+        input_paddings,
+        input_segment_ids,
+        input_segment_pos,
+        input_segment_mask,
+    )
+    return self.fprop_with_encoder_output(
+        encoder_output=encoder_output,
+        input_paddings=input_paddings,
+        targets=targets,
+        target_paddings=target_paddings,
+        labels=labels,
+        input_segment_ids=input_segment_ids,
+        input_segment_pos=input_segment_pos,
+        target_segment_ids=target_segment_ids,
+        target_segment_pos=target_segment_pos,
+        target_segment_mask=target_segment_mask,
+        cross_segment_mask=cross_segment_mask,
+        start_time_step=start_time_step,
+    )
 
   def transform_decode_state(
       self, transform_fn: base_layer.DecodeStateTransformFn

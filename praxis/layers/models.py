@@ -1427,6 +1427,9 @@ class SequenceModel(base_model.BaseModel):
         **packed_input_kwargs,
     )
 
+  def _prepare_guidance_decode_data(self, decode_data: NestedMap) -> NestedMap:
+    raise NotImplementedError('SequenceModel does not support guidance.')
+
   def compute_loss(self, predictions, input_batch):
     """Computes the loss and other metrics for the given predictions.
 
@@ -1536,18 +1539,43 @@ class SequenceModel(base_model.BaseModel):
     elif template_has_type(decoder_params, SampleDecoderHParams):
       assert isinstance(decoder_params, SampleDecoderHParams)
 
+      decode_data = NestedMap(
+          input_ids=input_batch.src.ids,
+          input_paddings=input_batch.src.paddings,
+          target_ids=input_batch.tgt.ids,
+          target_paddings=input_batch.tgt.paddings,
+          prefix_lengths=input_batch.prefix_lengths
+          if 'prefix_lengths' in input_batch
+          else None,
+      )
+
+      if getattr(decoder_params, 'cf_guidance_scale', None) is not None:
+        decode_data = self._prepare_guidance_decode_data(decode_data)
+
       def fprop_fn(mdl, ids, paddings):
         del ids, paddings
-        mdl.model(
-            inputs=input_batch.src.ids,
-            input_paddings=input_batch.src.paddings,
-            targets=jax.lax.dynamic_slice_in_dim(
-                input_batch.tgt.ids, 0, 1, axis=1
-            ),
-            target_paddings=jax.lax.dynamic_slice_in_dim(
-                input_batch.tgt.paddings, 0, 1, axis=1
-            ),
-        )
+        if 'encoder_output' in decode_data:
+          mdl.model.fprop_with_encoder_output(
+              encoder_output=decode_data.encoder_output,
+              input_paddings=decode_data.input_paddings,
+              targets=jax.lax.dynamic_slice_in_dim(
+                  decode_data.target_ids, 0, 1, axis=1
+              ),
+              target_paddings=jax.lax.dynamic_slice_in_dim(
+                  decode_data.target_paddings, 0, 1, axis=1
+              ),
+          )
+        else:
+          mdl.model(
+              inputs=decode_data.input_ids,
+              input_paddings=decode_data.input_paddings,
+              targets=jax.lax.dynamic_slice_in_dim(
+                  decode_data.target_ids, 0, 1, axis=1
+              ),
+              target_paddings=jax.lax.dynamic_slice_in_dim(
+                  decode_data.target_paddings, 0, 1, axis=1
+              ),
+          )
 
       temperature = decoder_params.temperature
 
@@ -1564,17 +1592,15 @@ class SequenceModel(base_model.BaseModel):
       )
       next_token_sampler = base_layer.instantiate(next_token_sampler_p)
 
-      prefix_lengths = None
-      if 'prefix_lengths' in input_batch:
-        prefix_lengths = input_batch.prefix_lengths
+      prefix_lengths = decode_data.prefix_lengths
       result = sample_decode.sample_decode(
           self,
           extend_step_fn,
           transform_state_fn=transform_decode_state_fn,
           lazy_broadcast_prefix_fn=None,
           next_token_sampler=next_token_sampler,
-          prefix_ids=input_batch.tgt.ids,
-          prefix_paddings=input_batch.tgt.paddings,
+          prefix_ids=decode_data.target_ids,
+          prefix_paddings=decode_data.target_paddings,
           prefix_lengths=prefix_lengths,
           seq_len=decoder_params.seqlen,
           fprop_fn=fprop_fn,

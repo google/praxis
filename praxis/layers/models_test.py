@@ -1548,6 +1548,21 @@ class SequenceModelTest(test_utils.TestCase):
         [[[11, 10, 9, 1, 14], [11, 14, 14, 7, 14], [11, 11, 13, 3, 6]]],
     )
 
+  def test_cf_guidance_unimplemented_exception(self):
+    p = models.SampleDecoderHParams(seqlen=5, cf_guidance_scale=2.0)
+    data = NestedMap(
+        ids=jnp.array([[11, 12, 13, 14, 15]], dtype=jnp.int32),
+        paddings=jnp.array([[0, 1, 1, 1, 1]], dtype=jnp.float32),
+        labels=jnp.ones([1, 5], jnp.float32),
+        weights=jnp.ones([1, 5], jnp.float32),
+    )
+    input_batch = NestedMap(src=data, tgt=data)
+
+    with self.assertRaisesRegex(
+        NotImplementedError, 'SequenceModel does not support guidance.'
+    ):
+      self._run_decode(p, input_batch)
+
   def test_beam_search_decode(self):
     data = NestedMap(
         ids=jnp.array([[11, 12, 13, 14, 15]], dtype=jnp.int32),
