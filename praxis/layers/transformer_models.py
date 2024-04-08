@@ -126,6 +126,99 @@ def _set_embedding_softmax_sharding_params_for_transformers(
   return embedding_softmax_p
 
 
+def _set_stacked_transformer_sharding_with_expert_parallelism(
+    stacked_transformer_p,
+    *,
+    w_df,
+    w_dnh,
+    w_emh,
+    a_bld,
+    a_blf,
+    a_blnh,
+    a_egch,
+    a_egcm,
+    a_blh=None,
+    a_bd=None,
+    a_bf=None,
+):
+  """Set sharding params for the stacked transformer layer."""
+  stacked_p = stacked_transformer_p
+  if fdl.get_callable(stacked_p) == transformers.PipelinedTransformer:
+    stacked_p = stacked_p.pipeline_stage
+  if issubclass(
+      fdl.get_callable(stacked_p), transformers.StackedTransformerRepeated
+  ):
+    stacked_p = stacked_p.block
+  transformer_p = stacked_p.transformer_layer_params_tpl
+  if isinstance(transformer_p, Sequence):
+    transformer_p_lst = transformer_p
+  else:
+    transformer_p_lst = [transformer_p]
+  for t_p in transformer_p_lst:
+    for atten_p in (t_p.tr_atten_tpl, t_p.cross_atten_tpl):
+      if atten_p is None:
+        continue
+      atten_wp = atten_p.weight_split_dims_mapping
+      atten_wp.proj = w_dnh
+      w_n_sharding = None if w_dnh is None else w_dnh[1]
+      atten_wp.dconv = [w_n_sharding, None]
+      atten_ap = atten_p.activation_split_dims_mapping
+      atten_ap.blnh = a_blnh
+      atten_ap.bld = a_bld
+      if hasattr(atten_ap, 'bd'):
+        atten_ap.bd = a_bd
+      if issubclass(
+          fdl.get_callable(atten_p),
+          multi_query_attention.MultiQueryDotProductAttention,
+      ):
+        atten_wp.proj_headless = [w_dnh[0], w_dnh[2]]
+        if a_blh is None:
+          atten_ap.blh = [a_blnh[0], a_blnh[1], a_blnh[3]]
+        else:
+          atten_ap.blh = a_blh
+
+    ff_p = t_p.tr_fflayer_tpl
+    ff_wp = ff_p.weight_split_dims_mapping
+    ff_wp.ffn0 = w_df
+    if w_df is None:
+      ff_wp.ffn1 = None
+    else:
+      ff_wp.ffn1 = [w_df[1], w_df[0]]
+    ff_ap = ff_p.activation_split_dims_mapping
+    ff_ap.ffn0 = a_blf
+    if hasattr(ff_ap, 'ffn0_extend_step'):
+      ff_ap.ffn0_extend_step = a_bf
+    ff_ap.ffn1 = a_bld
+    if hasattr(ff_ap, 'ffn1_extend_step'):
+      ff_ap.ffn1_extend_step = a_bd
+
+  if stacked_p.moe_layer_tpl is not None:
+    # Set Moe layer sharding hparams.
+    moe_p = stacked_p.moe_layer_tpl
+    moe_wp = moe_p.weight_split_dims_mapping
+    moe_wp.me = [None, None]  # Replicated.
+    moe_wp.emh = w_emh
+    w_e_sharding = None if w_emh is None else w_emh[0]
+    w_m_sharding = None if w_emh is None else w_emh[1]
+    w_h_sharding = None if w_emh is None else w_emh[2]
+    moe_wp.ehm = [w_e_sharding, w_h_sharding, w_m_sharding]
+    # Activations
+    a_e_sharding = None if a_egch is None else ('data', 'data_expert')
+    moe_ap = moe_p.activation_split_dims_mapping
+    moe_ap.gs = [a_e_sharding, None]
+    # dispatch and combine tensors
+    moe_ap.gsec = [a_e_sharding, None, None, None]
+    moe_ap.gecs = [a_e_sharding, None, None, None]
+    moe_ap.gec = [a_e_sharding, None, None]
+    moe_ap.egch = a_egch
+    a_e_sharding = None if a_egcm is None else ('data', 'data_expert')
+    a_m_sharding = None if a_egcm is None else a_egcm[3]
+    moe_ap.gsm = [a_e_sharding, None, a_m_sharding]
+    moe_ap.egcm = a_egcm
+    moe_ap.gecm = [a_egcm[1], a_egcm[0], a_egcm[2], a_egcm[3]]
+  return stacked_transformer_p
+
+
 def _set_stacked_transformer_sharding(
     stacked_transformer_p,
     *,
@@ -292,6 +385,108 @@ class TransformerLm(base_layer.BaseLayer):
   entropy_loss_weight: float | None = None
 
   @classmethod
+  def set_sharding_params_with_expert_parallelism(
+      cls,
+      lm_p,
+      *,
+      replica_axis,
+      data_axis,
+      data_expert_axis,
+      mdl_axis,
+      ici_mesh_shape,
+      dcn_mesh_shape=None,
+      batch_axes=None,
+      mesh_axis_names,
+      seq_axis=None,
+      training_optimized,
+  ):
+    """Set Canonical sharding params.
+
+    Args:
+      lm_p: A params of this class.
+      replica_axis: A string or int of the model replica axis name.
+      data_axis: A string or int of the data axis name.
+      data_expert_axis: A string or int of the data/expert axis name.
+      mdl_axis: A string or int of the mdl axis name.
+      ici_mesh_shape: Shape of logical mesh for a slice.
+      dcn_mesh_shape: Shape of logical mesh between slices.
+      batch_axes: A tuple with all axes used for splitting activations along
+        batch dimension. Defaults to (replica_axis, data_axis).
+      mesh_axis_names: A list of length len(shape). Each element of the list is
+        the name of the corresponding device axis.
+      training_optimized: A bool indicating whether sharding is optimized for
+        training by saving activation memory between forward and backward
+        passes.
+
+    Returns:
+      Params with sharding annotations added.
+    """
+    # In the following, model weights are layed out on the [data_axis, mdl_axis]
+    # 2d mesh. Model weights are always replicated over the replica_axis mesh
+    # axis.
+    #
+    # The batch axis of the activations are always sharded over the combination
+    # of (replica_axis, data_axis).
+    if batch_axes is None:
+      batch_axes = (replica_axis, data_axis, data_expert_axis)
+    bld = (
+        [batch_axes, seq_axis, mdl_axis]
+        if training_optimized
+        else [batch_axes, None, None]
+    )
+    egcm = (
+        [data_expert_axis, data_axis, None, mdl_axis]
+        if training_optimized
+        else [batch_axes, None, None, None]
+    )
+
+    if seq_axis is None:
+      w_data_axes = (data_axis, data_expert_axis)
+    else:
+      w_data_axes = (data_axis, data_expert_axis, seq_axis)
+
+    # w_df: sharding for weight of ffn0, shape (d, f). ff1 weights will be
+    # inferred from it.
+    w_df = [w_data_axes, mdl_axis]
+    # w_dnh: Sharding of qkv projection weights, shape (d, num_heads,
+    # per_head_size)
+    w_dnh = [w_data_axes, mdl_axis, None]
+    # w_emh: sharding for first MoE FFN weight, shape (e, m, h). The second MoE
+    # ffn weight will be inferred from it.
+    w_emh = [data_expert_axis, data_axis, mdl_axis]
+    # w_vd: sharding of the embedding weight of (vocab_size, d).
+    w_vd = [mdl_axis, w_data_axes]
+    # a_bld: sharding of output of ffn/attention, shape (b, l, d).
+    a_bld = bld
+    # a_blf: sharding of output of ffn0, shape (b, l, f).
+    a_blf = [batch_axes, seq_axis, mdl_axis]
+    # a_blnh: sharding of the attention activation of shape (b, l, num_heads,
+    # per_head_size).
+    a_blnh = [batch_axes, seq_axis, mdl_axis, None]
+    # a_blv: sharding of the logits activation of shape (b, l, vocab_size).
+    a_blv = [batch_axes, seq_axis, mdl_axis]
+    # a_egch: sharding of the output of first MoE FFN, shape (e, g, c, h).
+    a_egch = [data_expert_axis, data_axis, None, mdl_axis]
+    # a_egcm: sharding of the output of second MoE FFN, shape (e, g, c, m).
+    a_egcm = egcm
+    return cls.set_custom_sharding_params(
+        lm_p,
+        ici_mesh_shape=ici_mesh_shape,
+        dcn_mesh_shape=dcn_mesh_shape,
+        mesh_axis_names=mesh_axis_names,
+        w_df=w_df,
+        w_dnh=w_dnh,
+        w_emh=w_emh,
+        w_vd=w_vd,
+        a_bld=a_bld,
+        a_blf=a_blf,
+        a_blnh=a_blnh,
+        a_blv=a_blv,
+        a_egch=a_egch,
+        a_egcm=a_egcm,
+    )
+
+  @classmethod
   def set_sharding_params_v1(
       cls,
       lm_p,
@@ -449,6 +644,9 @@ class TransformerLm(base_layer.BaseLayer):
     lm_p.ici_mesh_shape = ici_mesh_shape
     lm_p.dcn_mesh_shape = dcn_mesh_shape
     lm_p.mesh_axis_names = mesh_axis_names
+    use_expert_parallem = (
+        mesh_axis_names is not None and 'data_expert' in mesh_axis_names
+    )
     pos_emb_w_ld = w_df
     if (
         lm_p.position_emb_tpl is not None
@@ -477,7 +675,22 @@ class TransformerLm(base_layer.BaseLayer):
         **mesh_kwargs,
     )
 
-    def _set_transformer_sharding(transformer_tpl):
+    def _set_transformer_sharding(transformer_tpl, use_expert_parallem=False):
+      if use_expert_parallem:
+        return _set_stacked_transformer_sharding_with_expert_parallelism(
+            transformer_tpl,
+            w_df=w_df,
+            w_dnh=w_dnh,
+            w_emh=w_emh,
+            a_bld=a_bld,
+            a_blf=a_blf,
+            a_blh=a_blh,
+            a_blnh=a_blnh,
+            a_bd=a_bd,
+            a_bf=a_bf,
+            a_egch=a_egch,
+            a_egcm=a_egcm,
+        )
       return _set_stacked_transformer_sharding(
           transformer_tpl,
           w_df=w_df,
@@ -495,11 +708,11 @@ class TransformerLm(base_layer.BaseLayer):
 
     if lm_p.stacked_transformer_tpl.cls == transformers.PipelinedTransformer:
       lm_p.stacked_transformer_tpl.pipeline_stage = _set_transformer_sharding(
-          lm_p.stacked_transformer_tpl.pipeline_stage
+          lm_p.stacked_transformer_tpl.pipeline_stage, use_expert_parallem
       )
     else:
       lm_p.stacked_transformer_tpl = _set_transformer_sharding(
-          lm_p.stacked_transformer_tpl
+          lm_p.stacked_transformer_tpl, use_expert_parallem
       )
 
     if lm_p.separate_embedding_tpl is not None:
