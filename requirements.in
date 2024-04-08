@@ -1,22 +1,22 @@
 # To update requirements.txt for praxis and paxml, run:
 # cd ../../paxml/pip_package && bash ./compile_requirements.sh
 
-absl-py
+absl-py==1.4.0
 # enforce newer chex version to avoid deprecated jax syntax
 chex>=0.1.85
-clu @ git+https://github.com/google/CommonLoopUtils
-einops
-etils
-fiddle @ git+https://github.com/google/fiddle
-flax @ git+https://github.com/google/flax
-jax @ git+https://github.com/google/jax
-jax-bitempered-loss
-jaxtyping
-lingvo
-numpy
-optax
-optax-shampoo
-opt-einsum
+clu==0.0.11
+einops==0.7.0
+etils==1.7.0
+fiddle==0.2.11
+flax==0.8.2
+jax==0.4.26
+jax-bitempered-loss==0.0.2
+jaxtyping==0.2.28
+lingvo==0.12.7
+numpy==1.26.4
+optax==0.2.2
+optax-shampoo==0.0.6
+opt-einsum==3.3.0
 # ensure sentencepiece is compataible with protobuf 3.19.6
 sentencepiece==0.1.99
 tensorflow-datasets==4.8.3
@@ -24,4 +24,4 @@ tensorflow-metadata==1.12.0
 tensorflow-text~=2.9.0
 tensorflow~=2.9.2
 tfds-nightly==4.8.3.dev202303280045
-typeguard
+typeguard==2.13.3
