@@ -1,3 +1,11 @@
+# Version: 1.4.0
+## Major Features and Improvements
+## Breaking changes
+## Deprecations
+## Note
+*   Version: 1.4.0
+*   Build Date: 20240408
+*   Praxis commit: 794623a65934cac98aaa962afcbf9d40a51c02f8
 # Version: 1.3.1
 ## Major Features and Improvements
 ## Breaking changes
