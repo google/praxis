@@ -108,7 +108,7 @@ executing==2.0.1
     # via stack-data
 fastjsonschema==2.19.1
     # via nbformat
-fiddle==0.2.11
+fiddle==0.3.0
     # via -r praxis-requirements.in
 flatbuffers==1.12
     # via tensorflow
