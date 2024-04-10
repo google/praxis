@@ -32,6 +32,7 @@ from praxis import sample_decode
 from praxis import test_utils
 from praxis.layers import attentions
 from praxis.layers import embedding_softmax
+from praxis.layers import mobilenet
 from praxis.layers import models
 from praxis.layers import ngrammer
 from praxis.layers import resnets
@@ -202,7 +203,9 @@ class LanguageModelTest(test_utils.TestCase):
           initial_vars, input_batch, rngs={RANDOM: prng_key})
     total_loss_all, total_loss_w_all = metrics_all.total_loss
     avg_xent_all, avg_xent_w_all = metrics_all.avg_xent
-    accuracy_all, accuracy_w_all = metrics_all.fraction_of_correct_next_step_preds
+    accuracy_all, accuracy_w_all = (
+        metrics_all.fraction_of_correct_next_step_preds
+    )
     num_predictions_all, _ = metrics_all.num_predictions
     scores_all = per_example_out_all.scores
 
@@ -1391,6 +1394,37 @@ class ClassifierModelTest(test_utils.TestCase):
         models.ClassificationModel,
         name='classifier',
         network_tpl=resnets.ResNet.HParamsResNet5(),
+    )
+    p.softmax_tpl.num_classes = num_classes
+    p.softmax_tpl.input_dims = 16
+
+    inputs = NestedMap(
+        image=jnp.zeros((1, 25, 25, 3), jnp.float32),
+        label_probs=jax.nn.one_hot(
+            jnp.array([0]), num_classes, dtype=jnp.float32
+        ),
+    )
+    model = instantiate(p)
+    with base_layer.JaxContext.new_context():
+      (metrics, _), _ = model.init_with_output(jax.random.PRNGKey(42), inputs)
+
+    self.assertContainsSubset(['accuracy', 'error'], metrics)
+    if num_classes > 5:
+      self.assertContainsSubset(['acc5', 'error5'], metrics)
+
+  def test_fprop_mobilenet(self):
+    num_classes = 6
+
+    p = pax_fiddle.Config(
+        models.ClassificationModel,
+        name='classifier',
+        network_tpl=pax_fiddle.Config(
+            mobilenet.MobileNet,
+            expansions=[3],
+            strides=[1],
+            channels=[16],
+            output_channels=16,
+        ),
     )
     p.softmax_tpl.num_classes = num_classes
     p.softmax_tpl.input_dims = 16

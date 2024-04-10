@@ -78,6 +78,7 @@ from praxis.layers.linears import MLPBlock
 from praxis.layers.linears import project_last_dim
 from praxis.layers.linears import StackingOverTime
 from praxis.layers.losses import BiTemperedLoss
+from praxis.layers.mobilenet import MobileNet
 from praxis.layers.models import BertModel
 from praxis.layers.models import ClassificationMLPModel
 from praxis.layers.models import ClassificationModel

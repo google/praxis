@@ -42,6 +42,7 @@ pytype_strict_library(
         ":grouped_query_attention",
         ":linears",
         ":losses",
+        ":mobilenet",
         ":models",
         ":ngrammer",
         ":normalizations",
@@ -351,6 +352,7 @@ pytype_strict_library(
         ":augmentations",
         ":embedding_softmax",
         ":linears",
+        ":mobilenet",
         ":resnets",
         ":transformer_models",
         # Implicit absl.logging dependency.
@@ -567,6 +569,23 @@ pytype_strict_test(
         "//praxis/layers/quantization:linears",
         "//praxis/layers/quantization/sparsity:sparsity_hparams",
         "//praxis/layers/quantization/sparsity:sparsity_modes",
+    ],
+)
+
+pytype_strict_library(
+    name = "mobilenet",
+    srcs = ["mobilenet.py"],
+    deps = [
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
+        "//praxis/layers:activations",
+        "//praxis/layers:convolutions",
+        "//praxis/layers:linears",
+        "//praxis/layers:normalizations",
+        "//praxis/layers:poolings",
+        "//praxis/layers:sequential",
     ],
 )
 
@@ -988,6 +1007,7 @@ pytype_strict_test(
     deps = [
         ":attentions",
         ":embedding_softmax",
+        ":mobilenet",
         ":models",
         ":ngrammer",
         ":resnets",
