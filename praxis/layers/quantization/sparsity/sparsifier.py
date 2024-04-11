@@ -19,13 +19,13 @@ import copy
 import functools
 from typing import Optional, Sequence
 
+from aqt.jax_legacy.jax.sparsity import sparsity_core as sparsity
+from aqt.jax_legacy.jax.sparsity import sparsity_hparams
+from aqt.jax_legacy.jax.sparsity import sparsity_modes
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pytypes
-from praxis.layers.quantization.sparsity import sparsity
-from praxis.layers.quantization.sparsity import sparsity_hparams
-from praxis.layers.quantization.sparsity import sparsity_modes
 
 
 SparsityType = sparsity_hparams.SparsityType

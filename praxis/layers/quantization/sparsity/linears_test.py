@@ -21,6 +21,8 @@ from typing import Any, Sequence
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
+from aqt.jax_legacy.jax.sparsity import sparsity_hparams
+from aqt.jax_legacy.jax.sparsity import sparsity_modes
 import jax
 from jax import numpy as jnp
 import numpy as np
@@ -29,8 +31,7 @@ from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import linears
 from praxis.layers.quantization import linears as slinears
-from praxis.layers.quantization.sparsity import sparsity_hparams
-from praxis.layers.quantization.sparsity import sparsity_modes
+
 
 instantiate = base_layer.instantiate
 NON_TRAINABLE = base_layer.NON_TRAINABLE

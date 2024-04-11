@@ -26,53 +26,15 @@ pytype_strict_library(
     srcs = ["__init__.py"],
 )
 
-pytype_strict_library(
-    name = "sparsity_hparams",
-    srcs = ["sparsity_hparams.py"],
-    deps = [":sparsity_modes"],
-)
-
-pytype_strict_library(
-    name = "sparsity",
-    srcs = ["sparsity.py"],
-    deps = [
-        ":sparsity_hparams",
-        # Implicit jax dependency.
-    ],
-)
-
-pytype_strict_test(
-    name = "sparsity_test",
-    srcs = ["sparsity_test.py"],
-    deps = [
-        ":sparsity",
-        ":sparsity_hparams",
-        # Implicit absl.testing.absltest dependency.
-        # Implicit absl.testing.parameterized dependency.
-        # Implicit upb python proto dependency.
-        # Implicit jax dependency.
-        # Implicit numpy dependency.
-    ],
-)
-
-pytype_strict_library(
-    name = "sparsity_modes",
-    srcs = ["sparsity_modes.py"],
-    deps = [
-        # Implicit jax dependency.
-        "//praxis:pytypes",
-    ],
-)
-
 pytype_strict_test(
     name = "linears_test",
     srcs = ["linears_test.py"],
     deps = [
-        ":sparsity_hparams",
-        ":sparsity_modes",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        "//third_party/py/aqt/jax_legacy/jax/sparsity:sparsity_hparams",
+        "//third_party/py/aqt/jax_legacy/jax/sparsity:sparsity_modes",
         # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -88,10 +50,10 @@ pytype_strict_test(
     name = "attentions_test",
     srcs = ["attentions_test.py"],
     deps = [
-        ":sparsity_hparams",
-        ":sparsity_modes",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        "//third_party/py/aqt/jax_legacy/jax/sparsity:sparsity_hparams",
+        "//third_party/py/aqt/jax_legacy/jax/sparsity:sparsity_modes",
         # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -108,9 +70,9 @@ pytype_strict_library(
     name = "sparsifier",
     srcs = ["sparsifier.py"],
     deps = [
-        ":sparsity",
-        ":sparsity_hparams",
-        ":sparsity_modes",
+        "//third_party/py/aqt/jax_legacy/jax/sparsity:sparsity_core",
+        "//third_party/py/aqt/jax_legacy/jax/sparsity:sparsity_hparams",
+        "//third_party/py/aqt/jax_legacy/jax/sparsity:sparsity_modes",
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pytypes",
@@ -122,10 +84,10 @@ pytype_strict_test(
     srcs = ["sparsifier_test.py"],
     deps = [
         ":sparsifier",
-        ":sparsity_hparams",
-        ":sparsity_modes",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        "//third_party/py/aqt/jax_legacy/jax/sparsity:sparsity_hparams",
+        "//third_party/py/aqt/jax_legacy/jax/sparsity:sparsity_modes",
         # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.

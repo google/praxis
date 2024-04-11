@@ -559,6 +559,8 @@ pytype_strict_test(
         ":repeats",
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        "//third_party/py/aqt/jax_legacy/jax/sparsity:sparsity_hparams",
+        "//third_party/py/aqt/jax_legacy/jax/sparsity:sparsity_modes",
         # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -567,8 +569,6 @@ pytype_strict_test(
         "//praxis:py_utils",
         "//praxis:test_utils",
         "//praxis/layers/quantization:linears",
-        "//praxis/layers/quantization/sparsity:sparsity_hparams",
-        "//praxis/layers/quantization/sparsity:sparsity_modes",
     ],
 )
 
