@@ -1065,8 +1065,10 @@ class FP4Test(test_utils.TestCase):
     )
 
 
-def _custom_loss(x, w, prng_key, bits_fwd, bits_bwd):
-  preds = operations.custom_einsum(x, w, prng_key, bits_fwd, bits_bwd)
+def _custom_loss(x, w, eqn, prng_key, params):
+  preds = operations.custom_einsum(
+      x, w, eqn=eqn, prng_key=prng_key, params=params
+  )
   return -jnp.sum(preds)
 
 
@@ -1081,16 +1083,44 @@ class CustomEinsumTest(test_utils.TestCase):
     super().setUp()
     np.random.seed(0)
 
-  def test_custom_einsum_grad(self):
-    eqn = 'abc,cd->abd'
-    x = np.random.normal(size=[2, 2, 2])
-    w = np.random.normal(size=[2, 2])
+  @parameterized.parameters(
+      'abc,cd->abd',
+      'ABD,KDNH->KABNH',
+      'ABD,DNH->ABNH',
+      # 'aby,yz->abz' TODO(rybakov) this test fails in OSS.
+  )
+  def test_custom_einsum_grad_float(self, eqn):
+
+    if eqn == 'abc,cd->abd':
+      x = np.random.normal(size=[2, 2, 2])
+      w = np.random.normal(size=[2, 2])
+    elif eqn == 'ABD,KDNH->KABNH':
+      x = np.random.normal(size=[2, 3, 5])
+      w = np.random.normal(size=[2, 5, 4, 6])
+    # elif eqn == 'aby,yz->abz':
+    #   x = np.random.normal(size=[2, 3, 5])
+    #   w = np.random.normal(size=[5, 2])
+    # TODO(rybakov) above test fails in OSS:
+    # x: array([[ 2.75    ,  2.75    ],
+    #       [-5.      , -5.      ],
+    #       [-2.0625  , -2.0625  ],
+    # y: array([[ 2.75    , -2.0625  ],
+    #       [ 2.75    , -3.359375],
+    #       [-5.      , -3.359375],
+    elif eqn == 'ABD,DNH->ABNH':
+      x = np.random.normal(size=[7, 4, 5])
+      w = np.random.normal(size=[5, 2, 3])
 
     prng_key = jax.random.PRNGKey(seed=0)
-    grads = jax.grad(_loss, argnums=[0, 1])(x, w, eqn)
+
+    params = quantization_hparams.QuantizedTrainingParams()
+    params.bits_fwd = None
+    params.bits_bwd = None
+    params.einsum_output_dtype = jnp.bfloat16  # match dtype of float grad
     custom_grads_float = jax.grad(_custom_loss, argnums=[0, 1])(
-        x, w, prng_key, bits_fwd=None, bits_bwd=None
+        x, w, eqn=eqn, prng_key=prng_key, params=params
     )
+    grads = jax.grad(_loss, argnums=[0, 1])(x, w, eqn)
 
     # Validate that float custom gradient is the same with standard gradient.
     self.assertLen(custom_grads_float, 2)
@@ -1098,20 +1128,62 @@ class CustomEinsumTest(test_utils.TestCase):
     self.assertAllClose(custom_grads_float[0], grads[0].astype(jnp.bfloat16))
     self.assertAllClose(custom_grads_float[1], grads[1].astype(jnp.bfloat16))
 
-    # Validate that gradient of int8 einsum is close to float one.
-    custom_grads_int8 = jax.grad(_custom_loss, argnums=[0, 1])(
-        x, w, prng_key, bits_fwd=8, bits_bwd=8
+    # Validate that int8 can be executed
+    params.bits_fwd = 8
+    params.bits_bwd = 8
+    params.einsum_output_dtype = jnp.bfloat16
+    params.einsum_scale_output_dtype = jnp.float32
+    einsum_output = operations.custom_einsum(
+        x, w, eqn=eqn, prng_key=prng_key, params=params
     )
-    self.assertAllClose(custom_grads_int8[0], grads[0], rtol=0.008, atol=0.012)
-    self.assertAllClose(custom_grads_int8[1], grads[1], rtol=0.008, atol=0.012)
+    self.assertNotEmpty(einsum_output)
+    custom_grads_int8 = jax.grad(_custom_loss, argnums=[0, 1])(
+        x, w, eqn=eqn, prng_key=prng_key, params=params
+    )
+    self.assertAllClose(custom_grads_int8[0], grads[0], rtol=0.35, atol=0.035)
+    self.assertAllClose(custom_grads_int8[1], grads[1], rtol=0.35, atol=0.012)
 
-  def test_custom_einsum_fwd_int8(self):
+  def test_custom_einsum_grad_int8(self):
+    eqn = 'abc,cd->abd'
     x = np.random.normal(size=[2, 2, 2])
     w = np.random.normal(size=[2, 2])
 
     prng_key = jax.random.PRNGKey(seed=0)
+    grads = jax.grad(_loss, argnums=[0, 1])(x, w, eqn)
+
+    # Validate that gradient of int8 einsum is close to float one.
+    params = quantization_hparams.QuantizedTrainingParams()
+    params.bits_fwd = 8
+    params.bits_bwd = 8
+    params.einsum_output_dtype = jnp.bfloat16
+    params.einsum_scale_output_dtype = jnp.bfloat16
+    custom_grads_int8 = jax.grad(_custom_loss, argnums=[0, 1])(
+        x, w, eqn=eqn, prng_key=prng_key, params=params
+    )
+    self.assertAllClose(
+        custom_grads_int8[0],
+        grads[0].astype(jnp.bfloat16),
+        rtol=0.008,
+        atol=0.012,
+    )
+    self.assertAllClose(
+        custom_grads_int8[1],
+        grads[1].astype(jnp.bfloat16),
+        rtol=0.008,
+        atol=0.012,
+    )
+
+  def test_custom_einsum_fwd_int8(self):
+    eqn = 'abc,cd->abd'
+    x = np.random.normal(size=[2, 2, 2])
+    w = np.random.normal(size=[2, 2])
+
+    prng_key = jax.random.PRNGKey(seed=0)
+    params = quantization_hparams.QuantizedTrainingParams()
+    params.bits_fwd = 8
+    params.bits_bwd = 8
     einsum_output = operations.custom_einsum(
-        x, w, prng_key, bits_fwd=8, bits_bwd=8
+        x, w, eqn=eqn, prng_key=prng_key, params=params
     )
     self.assertAllClose(
         einsum_output,

@@ -208,6 +208,32 @@ class WeightQuantizationParams:
 
 
 @dataclasses.dataclass
+class QuantizedTrainingParams:
+  """Quantized training settings.
+
+  bits_fwd: Number of bits for quantization of forward propagation.
+  bits_bwd: Number of bits for quantization of backward propagation.
+  cast_bits_fwd: Cast forward propagation to number of bits.
+  cast_bits_bwd: Cast backward propagation to number of bits.
+  random_rounding_bwd: Add random noise in round of backward propagation.
+  einsum_output_dtype: Output type of einsum computation in custom forward and
+    custom backward propagation.
+  einsum_scale_output_dtype: Output type of scale multip;lication
+    in custom forward and custom backward propagation.
+  bwd_output_dtype: If defined apply casting of output of backward propagation.
+  """
+
+  bits_fwd: int | None = 8
+  bits_bwd: int | None = 8
+  cast_bits_fwd: int | None = None
+  cast_bits_bwd: int | None = None
+  random_rounding_bwd: bool = True
+  einsum_output_dtype: jnp.dtype = jnp.bfloat16
+  einsum_scale_output_dtype: jnp.dtype = jnp.float32
+  bwd_output_dtype: jnp.dtype | None = None
+
+
+@dataclasses.dataclass
 class QuantizationParams:
   """Parameters for quantization.
 
@@ -216,10 +242,14 @@ class QuantizationParams:
     mode: The quantization mode associated with this quantization parameter.
     act_params: Config for activation quantization.
     weight_params: Config for weight quantization.
+    quantized_training_params: Config for quantized training.
   """
   quantization_type: QuantizationType = QuantizationType.PTQ
   mode: QuantizationMode = QuantizationMode.INFERENCE
   act_params: ActQuantizationParams | None = None
   weight_params: WeightQuantizationParams = dataclasses.field(
       default_factory=WeightQuantizationParams
+  )
+  quantized_training_params: QuantizedTrainingParams = dataclasses.field(
+      default_factory=QuantizedTrainingParams
   )

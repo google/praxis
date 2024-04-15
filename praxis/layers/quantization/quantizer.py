@@ -287,7 +287,13 @@ class QuantizationLayer(base_layer.BaseLayer):
       return out
     elif self.quantization.mode == QuantizationMode.QT:
       key = self.next_prng_key()
-      return operations.custom_einsum(x, w, key)
+      return operations.custom_einsum(
+          x,
+          w,
+          eqn=eqn,
+          prng_key=key,
+          params=quantization_hparams.QuantizedTrainingParams(),
+      )
     elif self.quantization.mode == QuantizationMode.CALIB:
       stat = self.get_var('framestat')
       new_stat = jnp.maximum(jnp.max(x), stat)
