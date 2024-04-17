@@ -20,8 +20,6 @@ from typing import Any, Sequence
 
 from absl.testing import absltest
 from absl.testing import parameterized
-from aqt.jax_legacy.jax.sparsity import sparsity_hparams
-from aqt.jax_legacy.jax.sparsity import sparsity_modes
 import jax
 from jax import numpy as jnp
 import numpy as np
@@ -31,7 +29,8 @@ from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import attentions
 from praxis.layers.quantization import attentions as sattentions
-
+from praxis.layers.quantization.sparsity import sparsity_hparams
+from praxis.layers.quantization.sparsity import sparsity_modes
 
 NON_TRAINABLE = base_layer.NON_TRAINABLE
 SPARSITY_NAME_POSTFIX = base_layer.SPARSITY_NAME_POSTFIX
