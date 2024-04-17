@@ -1074,6 +1074,35 @@ pytype_strict_test(
 )
 
 pytype_strict_test(
+    name = "pipeline_gpu_test",
+    srcs = ["pipeline_test.py"],
+    main = "pipeline_test.py",
+    shard_count = 2,
+    tags = ["manual"],
+    # Internal pipeline_gpu_test tags.
+    deps = [
+        ":attentions",
+        ":normalizations",
+        ":pipeline",
+        ":transformers",
+        # Internal GPU dependency.
+        # Implicit absl.logging dependency.
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit upb python proto dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:asserts",
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+    ],
+)
+
+# Internal pipeline_test.
+
+pytype_strict_test(
     name = "poolings_test",
     srcs = ["poolings_test.py"],
     deps = [
