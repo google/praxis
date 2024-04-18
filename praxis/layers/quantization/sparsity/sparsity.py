@@ -22,6 +22,14 @@ import jax
 import jax.numpy as jnp
 from praxis.layers.quantization.sparsity import sparsity_hparams
 
+SPARSITY_MASK_SUFFIX = '_sparsity_mask'
+# NOTE: This has to be same as base_layer.SPARSITY_NAME_POSTFIX but we wouldn't
+# want a dependency on the two files.
+
+SPARSITY_METADATA_SUFFIX = '_sparsity_metadata'
+SPARSITY_NZ_SUFFIX = '_sparsity_nz'
+SPARSITY_CONFIG_SUFFIX = '_sparsity_config'
+
 
 def apply_sparsity(
     inputs: jnp.ndarray,
