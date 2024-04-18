@@ -1728,6 +1728,14 @@ class DotProductAttention(base_layer.BaseLayer):
     # Apply relative bias.
     # Paper: https://aclanthology.org/N18-2074.pdf.
     if self.relative_bias_tpl:
+      # Create dummy variables for segment_pos if they are none so that
+      # the relative bias layer can infer the shape of the keys and queries.
+      if query_segment_pos is None:
+        # shape should be B x T
+        query_segment_pos = jnp.zeros(query_vec.shape[:2], dtype=jnp.int32)
+      if key_segment_pos is None:
+        # shape should be B x S
+        key_segment_pos = jnp.zeros(key_vec.shape[:2], dtype=jnp.int32)
       relative_bias = self.relative_bias(query_segment_pos, key_segment_pos)
     else:
       relative_bias = None
