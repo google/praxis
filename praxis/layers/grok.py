@@ -16,11 +16,10 @@
 """Helper function to config Grok models."""
 
 import fiddle as fdl
-from praxis import base_layer
 from praxis import pax_fiddle
 from praxis.layers import activations
 from praxis.layers import attentions
-from praxis.layers import AutodiffCheckpointType
+from praxis.layers import checkpoint_policy
 from praxis.layers import embedding_softmax
 from praxis.layers import multi_query_attention
 from praxis.layers import normalizations
@@ -28,7 +27,7 @@ from praxis.layers import transformer_models
 from praxis.layers import transformers
 from praxis.layers.injection import fp8_nvidia_gpu as fp8_ops
 
-
+AutodiffCheckpointType = checkpoint_policy.AutodiffCheckpointType
 LanguageModelType = transformer_models.LanguageModelType
 
 

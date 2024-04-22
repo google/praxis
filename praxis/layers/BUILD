@@ -1457,14 +1457,13 @@ pytype_strict_library(
     deps = [
         ":activations",
         ":attentions",
+        ":checkpoint_policy",
         ":embedding_softmax",
-        ":layers",
         ":multi_query_attention",
         ":normalizations",
         ":transformer_models",
         ":transformers",
         # Implicit fiddle dependency.
-        "//praxis:base_layer",
         "//praxis:pax_fiddle",
         "//praxis/layers/injection:fp8_nvidia_gpu",
     ],
