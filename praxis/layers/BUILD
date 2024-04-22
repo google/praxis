@@ -1450,3 +1450,22 @@ pytype_strict_library(
         "//praxis:py_utils",
     ],
 )
+
+pytype_strict_library(
+    name = "grok",
+    srcs = ["grok.py"],
+    deps = [
+        ":activations",
+        ":attentions",
+        ":embedding_softmax",
+        ":layers",
+        ":multi_query_attention",
+        ":normalizations",
+        ":transformer_models",
+        ":transformers",
+        # Implicit fiddle dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis/layers/injection:fp8_nvidia_gpu",
+    ],
+)
