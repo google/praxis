@@ -28,6 +28,9 @@ from praxis.layers.quantization.sparsity import sparsity_hparams
 from praxis.layers.quantization.sparsity import sparsity_modes
 
 
+SPARSITY_METADATA_SUFFIX = '_sparsity_metadata'
+SPARSITY_NZ_SUFFIX = '_sparsity_nz'
+SPARSITY_CONFIG_SUFFIX = '_sparsity_config'
 SparsityType = sparsity_hparams.SparsityType
 SparsityHParams = sparsity_hparams.SparsityHParams
 WeightHParams = base_layer.WeightHParams
