@@ -337,7 +337,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
         sad_score = jnp.sum(jnp.logical_xor(mask, new_mask)) / jnp.size(mask)
 
       return (
-          self._get_sparsity_mask(score, mask, step),
+          new_mask,
           update_cnt + 1,
           sad_score,
       )
