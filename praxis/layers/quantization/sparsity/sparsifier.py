@@ -542,6 +542,10 @@ class SparsityBaseLayer(base_layer.BaseLayer):
     ):
       return weight
 
+    assert (
+        self.sparsity.sparsity_type != SparsityType.CHANNELWISE_PRUNING
+    ), 'Channel-wise pruning is temporarily disabled'
+
     step = self.get_var('step')
 
     # Return without updating mask if in we want to do mixed sparsity for

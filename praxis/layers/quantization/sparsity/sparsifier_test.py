@@ -16,6 +16,8 @@
 """Tests for sparse_base_layer."""
 
 import copy
+import unittest
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -29,6 +31,7 @@ from praxis.layers import quantization
 from praxis.layers.quantization.sparsity import sparsifier
 from praxis.layers.quantization.sparsity import sparsity_hparams
 from praxis.layers.quantization.sparsity import sparsity_modes
+
 
 instantiate = base_layer.instantiate
 NON_TRAINABLE = base_layer.NON_TRAINABLE
@@ -1222,6 +1225,7 @@ class SparseBaseLayerCorrectnessTest(test_utils.TestCase):
           ),
       )
 
+  @unittest.skip('Channel-wise pruning is temporarily disabled')
   @parameterized.named_parameters(
       ('column_wise', -1),
       ('row_wise', -2),
