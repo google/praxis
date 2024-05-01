@@ -652,6 +652,7 @@ def reduce_precision(
     use_symmetric: bool = True,
     use_fp: bool = False,
     add_scale_eps: bool = False,
+    scale_eps: float = -1.0,
     per_channel: bool = False,
     random_rounding: bool = False,
     key: jax.Array | None = None,
@@ -675,6 +676,8 @@ def reduce_precision(
     use_fp: Use floating point.
     add_scale_eps: Add eps value or replace zero value by 1 to avoid division by
       zero.
+    scale_eps: Value to add to avoid division by zero. Only used when
+      add_scale_eps is True.
     per_channel: use per-channel clipping optimization.
     random_rounding: round with uniform random.
     key: rng key for rounding.
@@ -725,7 +728,13 @@ def reduce_precision(
 
     if add_scale_eps:
       # Add epsilon to avoid divide-by-zero.
-      scale = scale + jnp.finfo(t.dtype).eps
+      # if scale_eps is negative, used the default jnp eps value. Otherwise use
+      # the provided scale_eps.
+      # default jnp values are 0.0078125 for bf16 and 1.1920929e-07 for f32.
+      if scale_eps < 0.0:
+        scale = scale + jnp.finfo(t.dtype).eps
+      else:
+        scale = scale + scale_eps
     else:
       scale = jnp.where(scale == 0.0, 1.0, scale)
 
