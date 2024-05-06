@@ -279,6 +279,8 @@ class LinearRampupCosineDecay(BaseSchedule):
   """Learning rate that first linearly ramps up to max and then cos decays.
 
   Attributes:
+    start_step: The step at which the schedule should start. All the step
+      numbers below are interpreted relative to this.
     warmup_steps: Increases the learning rate linearly before warmup steps.
     decay_start: Starts the learning rate decay at decay_start-th step.
     decay_end: Ends the learning rate decay at decay_end-th step.
@@ -286,6 +288,7 @@ class LinearRampupCosineDecay(BaseSchedule):
     max: The schedule is never larger than this value.
   """
 
+  start_step: int = 0
   warmup_steps: int = 0
   decay_start: int = 0
   decay_end: int = 0
@@ -309,6 +312,15 @@ class LinearRampupCosineDecay(BaseSchedule):
 
     self._schedules = []
     self._boundaries = []
+    if self.start_step > 0:
+      self._schedules.append(
+          Linear.config(
+              start=(0, 1.0),
+              limit=(self.start_step, 1.0),
+          ).Instantiate()
+      )
+      self._boundaries.append(self.start_step)
+
     if self.warmup_steps > 0:
       self._schedules.append(
           Linear.config(
@@ -316,7 +328,7 @@ class LinearRampupCosineDecay(BaseSchedule):
           ).Instantiate()
       )
 
-      self._boundaries.append(self.warmup_steps)
+      self._boundaries.append(self.start_step + self.warmup_steps)
     if self.decay_start > self.warmup_steps:
       self._schedules.append(
           Linear.config(
@@ -325,7 +337,7 @@ class LinearRampupCosineDecay(BaseSchedule):
           ).Instantiate()
       )
 
-      self._boundaries.append(self.decay_start)
+      self._boundaries.append(self.start_step + self.decay_start)
     self._schedules.append(
         DelayedCosine.config(
             start=(0, self.max),

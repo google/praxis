@@ -526,6 +526,40 @@ class SchedulesTest(test_utils.TestCase):
     for count, expected_value in zip(xs, expected_values):
       self.assertAllClose(jit_value(jnp.array(count)), expected_value)
 
+  def test_linear_rampup_cos_decay_schedule_start_step(self):
+    lr_schedule = schedules.LinearRampupCosineDecay.config(
+        start_step=100,
+        warmup_steps=100,
+        decay_start=200,
+        decay_end=300,
+        max=1.0,
+        min_ratio=0.01,
+    ).Instantiate()
+
+    jit_value = jax.jit(lr_schedule.value_at)
+
+    xs = [0, 10, 50, 90] + [
+        x + 100 for x in [0, 10, 20, 100, 120, 150, 200, 250, 300, 350]
+    ]
+    expected_values = [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.0,
+        0.1,
+        0.2,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.505,
+        0.01,
+        0.01,
+    ]
+    for count, expected_value in zip(xs, expected_values):
+      self.assertAllClose(jit_value(jnp.array(count)), expected_value)
+
   def test_linear_rampup_piecewise_constant_schedule(self):
     boundaries = [40, 64, 80, 96]
     values = [1.0, 0.1, 0.01, 0.001]
