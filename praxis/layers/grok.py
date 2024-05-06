@@ -155,19 +155,6 @@ def GrokStackedTransformerHParams(
     tr_atten_tpl.combine_qkv = True
     tr_atten_tpl.combined_qkv_proj_tpl.use_bias = False
     tr_atten_tpl.combined_qkv_proj_tpl.attention_combine_dims = True
-  # Non-MoE ffn setup
-  ff_tpl = p.transformer_layer_params_tpl.tr_fflayer_tpl  # pytype: disable=attribute-error  # enable-nested-classes
-  assert fdl.get_callable(ff_tpl) == transformers.TransformerFeedForward
-  ff_tpl.input_dims = model_dim
-  ff_tpl.hidden_dims = ff_dim
-  ff_tpl.has_bias = False
-  ff_tpl.apply_padding_first = True
-  ff_tpl.ln_tpl = pax_fiddle.Config(normalizations.RmsNorm)
-  ff_tpl.ln_tpl.direct_scale = True
-  ff_tpl.add_skip_connection = True
-  ff_tpl.activation_tpl = ffn_activation_tpl
-  ff_tpl.use_gated_activation = use_gated_activation
-  ff_tpl.internal_gshard_variance_scaling_fan_in_init = True
 
   # MoE ffn setup
   moe_p = p.moe_layer_tpl
