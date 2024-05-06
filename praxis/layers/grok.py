@@ -118,8 +118,8 @@ def GrokStackedTransformerHParams(
 
   p.name = name
   p.packed_input = True
-  p.moe_layers = [0, 1] if moe else None
-  p.num_layers = 2 if moe else 1
+  p.moe_layers = [0] if moe else None
+  p.num_layers = 1
   p.model_dims = model_dim
   p.hidden_dims = ff_dim
   p.num_heads = attention_num_heads
@@ -142,7 +142,7 @@ def GrokStackedTransformerHParams(
   tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl  # pytype: disable=attribute-error  # enable-nested-classes
   assert fdl.get_callable(tr_atten_tpl) == attentions.DotProductAttention
   tr_atten_tpl.attention_extra_logit = attention_extra_logit
-  tr_atten_tpl.use_bias = False
+  tr_atten_tpl.use_bias = True
   tr_atten_tpl.atten_logit_cap = atten_logit_cap
   tr_atten_tpl.internal_gshard_gaussian_init = True
   tr_atten_tpl.internal_enable_query_scale = False
@@ -150,12 +150,6 @@ def GrokStackedTransformerHParams(
 
   assert tr_atten_tpl.proj_tpl.cls == attentions.AttentionProjection
   tr_atten_tpl.proj_tpl.attention_combine_dims = True
-  tr_atten_tpl.relative_bias_tpl = pax_fiddle.Config(
-      attentions.RelativeBias,
-      relative_attention_num_buckets=relative_attention_num_buckets,
-      relative_attention_max_distance=relative_attention_max_distance,
-      bidirectional=bidirectional,
-  )
   tr_atten_tpl.output_proj_use_nhd_shape = True
   if combine_qkv:
     tr_atten_tpl.combine_qkv = True
@@ -182,6 +176,9 @@ def GrokStackedTransformerHParams(
   moe_p.hidden_dims = moe_hidden_dim or ff_dim
   moe_p.ln_tpl = pax_fiddle.Config(normalizations.RmsNorm)
   moe_p.ln_tpl.direct_scale = True
+  moe_p.add_skip_connection = True
+  moe_p.activation_tpl = ffn_activation_tpl
+  moe_p.use_gated_activation = use_gated_activation
   moe_p.num_experts = e_dim
   moe_p.num_groups = num_groups
   moe_p.gating_logit_cap = moe_gating_logit_cap
@@ -197,7 +194,7 @@ def GrokStackedTransformerHParams(
   )
   tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl
   tr_atten_tpl.combine_qkv = False
-  tr_atten_tpl.proj_tpl.use_bias = False
+  tr_atten_tpl.proj_tpl.use_bias = True
 
   # p.moe_layer_tpl.einsum_tpl = (
   #      pax_fiddle.Config(fp8_ops.Fp8EinsumOp)
@@ -244,9 +241,9 @@ def GrokUniTransformerLmHParams(
   This function sets up configs for both MoE and dense Grok-1 models.
 
   1) The feedforward sublayer used gated gleu so there are two wi and one wo.
-  2) No bias in all projections and embeddings.
+  2) Use bias in all projections and embeddings.
   3) Use no bias RMS norm for the layer norm.
-  4) Use relative attention bias.
+  4) No relative attention bias.
   5) Add an optional z-loss to stablize final softmax logits.
 
   Args:
@@ -341,7 +338,7 @@ def GrokUniTransformerLmHParams(
       bidirectional=bidirectional,
       moe_gating_embedding_level=moe_gating_embedding_level,
   )
-  num_blocks = num_transformer_layers // 2 if moe else num_transformer_layers
+  num_blocks = num_transformer_layers
 
   if num_pipeline_stages == 1:
     p.stacked_transformer_tpl = pax_fiddle.Config(
@@ -355,7 +352,7 @@ def GrokUniTransformerLmHParams(
   else:
     assert num_blocks % num_pipeline_stages == 0
     grok_p.num_layers = num_transformer_layers // num_pipeline_stages
-    grok_p.moe_layers = list(range(0, grok_p.num_layers, 2))
+    grok_p.moe_layers = list(range(0, grok_p.num_layers))
     p.stacked_transformer_tpl = pax_fiddle.Config(
         transformers.PipelinedTransformer,
         pipeline_stage=grok_p,
