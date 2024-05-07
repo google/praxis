@@ -105,16 +105,7 @@ def GrokStackedTransformerHParams(
   ffn_activation_tpl = pax_fiddle.Config(ffn_activation_cls)
 
   p = pax_fiddle.Config(transformers.StackedTransformer)
-  if use_fp8:
-    p.transformer_layer_params_tpl.tr_atten_tpl.proj_tpl.einsum_tpl = (
-        pax_fiddle.Config(fp8_ops.Fp8EinsumOp)
-    )
-    p.transformer_layer_params_tpl.tr_atten_tpl.combined_qkv_proj_tpl.einsum_tpl = pax_fiddle.Config(
-        fp8_ops.Fp8EinsumOp
-    )
-    p.transformer_layer_params_tpl.tr_fflayer_tpl.fflayer_tpl.linear_tpl.einsum_tpl = pax_fiddle.Config(
-        fp8_ops.Fp8EinsumOp
-    )
+
 
   p.name = name
   p.packed_input = True
@@ -183,6 +174,20 @@ def GrokStackedTransformerHParams(
   tr_atten_tpl.combine_qkv = False
   tr_atten_tpl.proj_tpl.use_bias = True
 
+  if use_fp8:
+    p.transformer_layer_params_tpl.tr_atten_tpl.proj_tpl.einsum_tpl = (
+        pax_fiddle.Config(fp8_ops.Fp8EinsumOp)
+    )
+    if combine_qkv:
+      p.transformer_layer_params_tpl.tr_atten_tpl.combined_qkv_proj_tpl.einsum_tpl = pax_fiddle.Config(
+          fp8_ops.Fp8EinsumOp
+      )
+    p.transformer_layer_params_tpl.tr_fflayer_tpl.fflayer_tpl.linear_tpl.einsum_tpl = pax_fiddle.Config(
+        fp8_ops.Fp8EinsumOp
+    )
+    p.moe_layer_tpl.einsum_tpl = (
+        pax_fiddle.Config(fp8_ops.Fp8EinsumOp)
+    )
   # p.moe_layer_tpl.einsum_tpl = (
   #      pax_fiddle.Config(fp8_ops.Fp8EinsumOp)
   #  )
@@ -222,6 +227,7 @@ def GrokUniTransformerLmHParams(
     num_pipeline_microbatches=1,
     model_type=LanguageModelType.CAUSAL,
     checkpoint_policy=AutodiffCheckpointType.SAVE_NOTHING,
+    use_fp8=False,
 ) -> pax_fiddle.Config[transformer_models.TransformerLm]:
   """Common setup for Grok-1 Decoder-only Transformer Model.
 
@@ -324,6 +330,7 @@ def GrokUniTransformerLmHParams(
       combine_qkv=combine_qkv,
       bidirectional=bidirectional,
       moe_gating_embedding_level=moe_gating_embedding_level,
+      use_fp8=use_fp8,
   )
   num_blocks = num_transformer_layers
 
