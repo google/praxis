@@ -444,20 +444,41 @@ class NClassMajorSharedEmbeddingSoftmax(
     """
     del input_ids
     ap = self.activation_split_dims_mapping
-    if self.quantization.act_params is not None:
-      raise NotImplementedError(
-          'Activation quantization is not implemented for'
-          ' NClassMajorSharedEmbeddingSoftmax'
-      )
+    act_params = self.quantization.act_params
 
     if self.quantization.mode == QuantizationMode.INFERENCE:
+      eqn = '...y,zy->...z'
+      scale_act, zp_act = None, None
+      if act_params is not None:
+        inputs, scale_act, zp_act = (
+            quantized_operations.reduce_einsum_activation_precision(
+                eqn,
+                inputs,
+                bits=act_params.precision,
+                per_channel=act_params.per_channel,
+                symmetric=act_params.symmetric,
+                percentile=act_params.clipping_coeff,
+            )
+        )
+
       w, s, zp = self.get_quantized_weight(
           'w', use_symmetric=self.quantization.weight_params.use_symmetric
       )
       projected_inputs = quantized_operations.einsum(
-          '...y,zy->...z', inputs, w, s, zp
+          eqn=eqn,
+          x=inputs,
+          w=w,
+          scale=s,
+          zp=zp,
+          scale_act=scale_act,
+          zp_act=zp_act,
       )
     elif self.quantization.mode == QuantizationMode.MATERIALIZE:
+      if act_params is not None:
+        raise NotImplementedError(
+            'Activation quantization is not implemented for'
+            ' NClassMajorSharedEmbeddingSoftmax in MATERIALIZE mode'
+        )
       w = self.theta.w
       projected_inputs = jnp.einsum('...y,yz->...z', inputs, w)
     else:
