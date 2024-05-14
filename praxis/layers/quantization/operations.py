@@ -132,6 +132,26 @@ def _get_expand_dims_lhs(eqn: str) -> list[int]:
   return filling_dims
 
 
+def _dequantize(
+    x: JTensor,
+    scale: JTensor | None,
+    zp: JTensor | None,
+    contraction_dims: Sequence[int],
+) -> JTensor:
+  """Dequantize x, unsqueezing with contraction_dims if needed."""
+  if scale is None and zp is not None:
+    raise ValueError('scale must not be None if zp is not None')
+  if scale is not None:
+    if scale.ndim > 0 and x.ndim != scale.ndim:
+      scale = jnp.expand_dims(scale, contraction_dims)
+    x *= scale
+  if zp is not None:
+    if zp.ndim > 0 and x.ndim != zp.ndim:
+      zp = jnp.expand_dims(zp, contraction_dims)
+    x -= zp
+  return x
+
+
 def get_min_max(
     bits: int = 8,
     unsigned: bool = False,
@@ -176,6 +196,11 @@ def compute_offset(eqn_normalized: str, x: JTensor, zp: JTensor) -> JTensor:
         'eqn_normalized should not contain broadcast ellipsis "...". Use'
         ' opt_einsum.parser to normalize the eqn before using this function.'
     )
+  if x.dtype in INT_TYPES:
+    raise ValueError(f'x should not be quantized, but got {x.dtype=}')
+  if zp.dtype in INT_TYPES:
+    raise ValueError(f'zp should not be quantized, but got {zp.dtype=}')
+
   ins, out = eqn_normalized.split('->')
   lhs, rhs = ins.split(',')
   rhs_out_dims = ''.join([c for c in out if c in rhs])
@@ -570,14 +595,11 @@ def einsum(
   # Non performent equation for inference testing purposes
   # TODO: b/305735188 - Improve the performance by using the integer einsum op.
   if zp_act is not None:
-    dequantized_x = jnp.multiply(x, scale_act) - zp_act
-    # explicit broadcast if necessary.
-    if w.ndim == 3 and scale.ndim == 1:
-      scale = jnp.expand_dims(scale, (1, 2))
-    dequantized_w = jnp.multiply(w, scale)
-    if zp is not None:
-      dequantized_w = dequantized_w - zp
-    return jnp.einsum(eqn, dequantized_x, dequantized_w)
+    x_dequantized = _dequantize(
+        x, scale_act, zp_act, eqn_to_activation_contract_dims(eqn)
+    )
+    w_dequantized = _dequantize(w, scale, zp, eqn_to_weight_contract_dims(eqn))
+    return jnp.einsum(eqn, x_dequantized, w_dequantized)
 
   if (
       jax.dtypes.scalar_type_of(w.dtype) == float
@@ -610,10 +632,7 @@ def einsum(
     if scale_act.ndim == 0:
       scale *= scale_act
     else:
-      filling_dims_lhs = _get_expand_dims_lhs(eqn)
-      if filling_dims_lhs:
-        scale_act = jnp.expand_dims(scale_act, filling_dims_lhs)
-      ret = jnp.multiply(ret, scale_act)
+      ret *= jnp.expand_dims(scale_act, _get_expand_dims_lhs(eqn))
 
   # Potentially expand dimensions of scale to match einsum output.
   filling_dims_rhs = _get_expand_dims_rhs(eqn)
@@ -626,10 +645,13 @@ def einsum(
     ret = jnp.multiply(ret, scale)
 
   if zp is not None:
+    x_dequantized = _dequantize(
+        x, scale_act, zp_act, eqn_to_activation_contract_dims(eqn)
+    )
     if zp_eqn is not None:
-      offset = jnp.einsum(zp_eqn, x, zp)
+      offset = jnp.einsum(zp_eqn, x_dequantized, zp)
     else:
-      offset = compute_offset(eqn_normalized, x, zp)
+      offset = compute_offset(eqn_normalized, x_dequantized, zp)
     ret = ret - offset
 
   return ret
@@ -1061,7 +1083,7 @@ def reduce_precision_activation(
       contract_dims,
       need_gradient,
       bits,
-      False,
+      optimization_on_bound=False,
       use_symmetric=symmetric,
       percentile=percentile,
   )

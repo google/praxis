@@ -156,39 +156,39 @@ class QuantizationUtilsTest(test_utils.TestCase):
     )
     self.assertAllClose(ret, expected, rtol=0.02, atol=0.02)
 
-  @parameterized.named_parameters(
-      ('eqn_with_dot', '...y,yz->...z'),
+  @parameterized.product(
+      sym_weights=[True, False],
+      sym_acts=[True, False],
+      zp_eqn=[None, 'byh,z->bzh'],
   )
-  def test_quantized_einsum_with_asym_weight_act(self, eqn):
-    w = jax.random.uniform(jax.random.PRNGKey(0), (4, 3))
-    x = jax.random.uniform(jax.random.PRNGKey(0), (2, 4))
+  def test_quantized_einsum_with_mixed_symmetry(
+      self, sym_weights, sym_acts, zp_eqn
+  ):
+    eqn = '...yh,zy->...zh'
+    w = jax.random.uniform(jax.random.PRNGKey(0), (3, 4))
+    x = jax.random.uniform(jax.random.PRNGKey(0), (2, 4, 5))
     qw, sw, zpw = operations.reduce_einsum_weight_precision(
-        eqn, w, use_symmetric=False
+        eqn, w, use_symmetric=sym_weights
     )
     qx, sx, zpx = operations.reduce_einsum_activation_precision(
-        eqn, x, symmetric=False
+        eqn,
+        x,
+        symmetric=sym_acts,
+        per_channel=True,
     )
 
-    ret = operations.einsum(eqn, qx, qw, sw, zpw, sx, zpx)
+    ret = operations.einsum(
+        eqn=eqn,
+        x=qx,
+        w=qw,
+        scale=sw,
+        zp=zpw,
+        scale_act=sx,
+        zp_act=zpx,
+        zp_eqn=zp_eqn,
+    )
     expected = jnp.einsum(eqn, x, w)
-    self.assertAllClose(ret, expected, rtol=0.02, atol=0.02)
-
-  @parameterized.named_parameters(
-      ('eqn_with_dot', '...y,yz->...z'),
-  )
-  def test_quantized_einsum_with_aym_weight_asym_act(self, eqn):
-    w = jax.random.uniform(jax.random.PRNGKey(0), (4, 3))
-    x = jax.random.uniform(jax.random.PRNGKey(0), (2, 4))
-    qw, sw, zpw = operations.reduce_einsum_weight_precision(
-        eqn, w, use_symmetric=True
-    )
-    qx, sx, zpx = operations.reduce_einsum_activation_precision(
-        eqn, x, symmetric=False
-    )
-
-    ret = operations.einsum(eqn, qx, qw, sw, zpw, sx, zpx)
-    expected = jnp.einsum(eqn, x, w)
-    self.assertAllClose(ret, expected, rtol=0.02, atol=0.02)
+    self.assertAllClose(ret, expected, rtol=0.02, atol=0.01)
 
   @parameterized.parameters(
       ('ab,bc->ac', (10, 4), (4, 5)),
