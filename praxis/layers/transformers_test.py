@@ -274,8 +274,10 @@ class TransformersTest(test_utils.TestCase):
         decoder_outputs = decoder_outputs.at[t].set(encoded)
 
     decoder_out_transposed = jnp.transpose(decoder_outputs, [1, 0, 2])
-    logging.info('initial_vars in transformer layer = %s',
-                 jax.tree_map(lambda x: x.shape, initial_vars))
+    logging.info(
+        'initial_vars in transformer layer = %s',
+        jax.tree.map(lambda x: x.shape, initial_vars),
+    )
     np_fprop_outputs = test_utils.to_np(fprop_outputs)
     np_decoder_outputs = test_utils.to_np(decoder_out_transposed)
     self.assertAllClose(np_fprop_outputs, np_decoder_outputs, atol=1e-5)
@@ -517,12 +519,14 @@ class TransformersTest(test_utils.TestCase):
           cross_inputs=cross_inputs,
           cross_paddings=cross_paddings,
           cross_segment_mask=cross_segment_mask)
-      stack_initial_vars[PARAMS]['x_layers_0'] = jax.tree_map(
+      stack_initial_vars[PARAMS]['x_layers_0'] = jax.tree.map(
           lambda x: jnp.squeeze(x, axis=0),
-          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_0'])
-      stack_initial_vars[PARAMS]['x_layers_1'] = jax.tree_map(
+          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_0'],
+      )
+      stack_initial_vars[PARAMS]['x_layers_1'] = jax.tree.map(
           lambda x: jnp.squeeze(x, axis=0),
-          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_1'])
+          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_1'],
+      )
       block_outputs = transformer_block.apply(
           block_initial_vars,
           inputs,
@@ -656,12 +660,14 @@ class TransformersTest(test_utils.TestCase):
           cross_inputs=cross_inputs,
           cross_paddings=cross_paddings,
           cross_segment_mask=cross_segment_mask)
-      stack_initial_vars[PARAMS]['x_layers_0'] = jax.tree_map(
+      stack_initial_vars[PARAMS]['x_layers_0'] = jax.tree.map(
           lambda x: jnp.squeeze(x, axis=0),
-          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_0'])
-      stack_initial_vars[PARAMS]['x_layers_1'] = jax.tree_map(
+          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_0'],
+      )
+      stack_initial_vars[PARAMS]['x_layers_1'] = jax.tree.map(
           lambda x: jnp.squeeze(x, axis=0),
-          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_1'])
+          block_initial_vars[PARAMS]['repeat']['sub']['x_layers_1'],
+      )
       block_outputs = transformer_block.apply(
           block_initial_vars,
           inputs,
@@ -764,8 +770,10 @@ class TransformersTest(test_utils.TestCase):
           cross_paddings=cross_paddings,
           cross_segment_mask=cross_segment_mask)
     logging.info('initial_vars in transformer layer = %s', initial_vars)
-    logging.info('initial_vars in stacked_transformer_layer layer = %s',
-                 jax.tree_map(lambda x: x.shape, initial_vars))
+    logging.info(
+        'initial_vars in stacked_transformer_layer layer = %s',
+        jax.tree.map(lambda x: x.shape, initial_vars),
+    )
     # Test whether tf Transformer layer returns same output
     # Modify initial_vars to use TF compatible params
     tf_initial_vars = py_utils.NestedMap()
@@ -1502,8 +1510,10 @@ class TransformersTest(test_utils.TestCase):
         decoder_outputs = decoder_outputs.at[t].set(encoded)
 
     decoder_out_transposed = jnp.transpose(decoder_outputs, [1, 0, 2])
-    logging.info('initial_vars in transformer layer = %s',
-                 jax.tree_map(lambda x: x.shape, initial_vars))
+    logging.info(
+        'initial_vars in transformer layer = %s',
+        jax.tree.map(lambda x: x.shape, initial_vars),
+    )
     np_fprop_outputs = test_utils.to_np(fprop_outputs)
     np_decoder_outputs = test_utils.to_np(decoder_out_transposed)
     self.assertAllClose(np_fprop_outputs, np_decoder_outputs, atol=1e-5)
@@ -1600,8 +1610,10 @@ class TransformersTest(test_utils.TestCase):
         decoder_outputs = decoder_outputs.at[t].set(encoded)
 
     decoder_out_transposed = jnp.transpose(decoder_outputs, [1, 0, 2])
-    logging.info('initial_vars in transformer layer = %s',
-                 jax.tree_map(lambda x: x.shape, initial_vars))
+    logging.info(
+        'initial_vars in transformer layer = %s',
+        jax.tree.map(lambda x: x.shape, initial_vars),
+    )
     np_fprop_outputs = test_utils.to_np(fprop_outputs)
     np_decoder_outputs = test_utils.to_np(decoder_out_transposed)
     self.assertAllClose(np_fprop_outputs, np_decoder_outputs, atol=1e-5)
@@ -1660,8 +1672,10 @@ class TransformersTest(test_utils.TestCase):
           paddings,
           attention_mask=attention_mask,
           segment_pos=segment_pos)
-    logging.info('initial_vars in transformer layer = %s',
-                 jax.tree_map(lambda x: x.shape, initial_vars))
+    logging.info(
+        'initial_vars in transformer layer = %s',
+        jax.tree.map(lambda x: x.shape, initial_vars),
+    )
 
     np_outputs = test_utils.to_np(outputs)
     logging.info('np_outputs: %s', np_outputs)

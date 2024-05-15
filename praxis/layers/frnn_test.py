@@ -206,7 +206,7 @@ class FRNNTest(test_utils.TestCase):
 
     rnn_theta = {'params': theta['params']['cell']}
     ys = []
-    cell_state = jax.tree_map(lambda x: x, state0)
+    cell_state = jax.tree.map(lambda x: x, state0)
     for t in range(act_in.shape[1]):
       with base_layer.JaxContext.new_context():
         inputs_t = NestedMap(act=act_in[:, t], padding=padding[:, t])
@@ -414,7 +414,7 @@ class FRNNTest(test_utils.TestCase):
 
     rnn_theta = {'params': theta['params']['cell']}
     ys = []
-    cell_state = jax.tree_map(lambda x: x, state0)
+    cell_state = jax.tree.map(lambda x: x, state0)
     for t in range(act_in.shape[1]):
       with base_layer.JaxContext.new_context():
         inputs_t = NestedMap(

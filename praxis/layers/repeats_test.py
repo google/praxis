@@ -189,7 +189,7 @@ class RepeatsTest(test_utils.TestCase):
         (-1,))
 
     init_vars = repeated_ffn.init(init_key, x, paddings)
-    init_vars_shape = jax.tree_map(lambda x: x.shape, init_vars)
+    init_vars_shape = jax.tree.map(lambda x: x.shape, init_vars)
     self.assertEqual(set(init_vars_shape), {PARAMS, NON_TRAINABLE})
     self.assertEqual(init_vars_shape[PARAMS]['sub']['w'], (5, 2, 2))
     self.assertEqual(init_vars_shape[NON_TRAINABLE]['sub']['step'], (5,))
@@ -203,7 +203,7 @@ class RepeatsTest(test_utils.TestCase):
                            jnp.ones((5,), dtype=jnp.int32))
 
     # Ensure top level variables all exist with the right shape.
-    updated_vars_shape = jax.tree_map(lambda x: x.shape, updated_vars)
+    updated_vars_shape = jax.tree.map(lambda x: x.shape, updated_vars)
     self.assertEqual(
         set(updated_vars_shape), {NON_TRAINABLE, SUMMARIES, AUX_LOSS})
     self.assertEqual(updated_vars_shape[NON_TRAINABLE]['sub']['step'], (5,))
@@ -220,7 +220,7 @@ class RepeatsTest(test_utils.TestCase):
       self.assertEqual(
           updated_vars_shape[SUMMARIES]['sub']['inputs_mean_scalar'], (5,))
 
-    print(jax.tree_map(lambda x: x.shape, updated_vars))
+    print(jax.tree.map(lambda x: x.shape, updated_vars))
 
   @parameterized.parameters((False,), (True,))
   def test_repeats_nd(self, unpack_summaries):
@@ -250,7 +250,7 @@ class RepeatsTest(test_utils.TestCase):
         (-1, -1))
 
     init_vars = repeated_ffn.init(init_key, x)
-    init_vars_shape = jax.tree_map(lambda x: x.shape, init_vars)
+    init_vars_shape = jax.tree.map(lambda x: x.shape, init_vars)
     self.assertEqual(set(init_vars_shape), {PARAMS, NON_TRAINABLE})
     self.assertEqual(init_vars_shape[PARAMS]['sub']['w'], (2, 3, 2, 2))
     self.assertEqual(init_vars_shape[NON_TRAINABLE]['sub']['step'], (2, 3,))
@@ -263,7 +263,7 @@ class RepeatsTest(test_utils.TestCase):
                            jnp.ones((2, 3,), dtype=jnp.int32))
 
     # Ensure top level variables all exist with the right shape.
-    updated_vars_shape = jax.tree_map(lambda x: x.shape, updated_vars)
+    updated_vars_shape = jax.tree.map(lambda x: x.shape, updated_vars)
     self.assertEqual(
         set(updated_vars_shape), {NON_TRAINABLE, SUMMARIES, AUX_LOSS})
     self.assertEqual(updated_vars_shape[NON_TRAINABLE]['sub']['step'], (2, 3,))
@@ -280,7 +280,7 @@ class RepeatsTest(test_utils.TestCase):
       self.assertEqual(
           updated_vars_shape[SUMMARIES]['sub']['inputs_mean_scalar'], (6,))
 
-    print(jax.tree_map(lambda x: x.shape, updated_vars))
+    print(jax.tree.map(lambda x: x.shape, updated_vars))
 
   @parameterized.parameters((False,), (True,))
   def test_extend_step(self, unroll):
@@ -417,7 +417,7 @@ class RepeatsSparsityTest(test_utils.TestCase):
         ]),
     )
     self.assertEqual(res.shape, (4, 4))
-    shapes = jax.tree_map(lambda x: x.shape, state)
+    shapes = jax.tree.map(lambda x: x.shape, state)
     expected_shapes = {
         'non_trainable': {
             'sub': {
@@ -451,7 +451,7 @@ class RepeatsQuantizeTest(test_utils.TestCase):
     init_vars = ffn.init(prng_key, inputs)
 
     res, _ = ffn.apply(init_vars, mutable=[], method=ffn.quantize_weight)
-    shapes = jax.tree_map(lambda x: x.shape, res)
+    shapes = jax.tree.map(lambda x: x.shape, res)
     expected_shapes = {
         'non_trainable': {
             'sub': {

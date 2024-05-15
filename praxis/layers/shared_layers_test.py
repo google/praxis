@@ -87,7 +87,8 @@ class SharedLayersTest(test_utils.TestCase):
         }
     }
     self.assertEqual(
-        jax.tree_map(lambda x: x.shape, initial_vars), expected_shape)
+        jax.tree.map(lambda x: x.shape, initial_vars), expected_shape
+    )
 
     output = foo_shared.apply(initial_vars, inputs)
     logging.info('output=%s', output)

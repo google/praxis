@@ -141,7 +141,7 @@ class ConvolutionsTest(test_utils.TestCase):
 
     prng_key = jax.random.PRNGKey(seed=123)
     initial_vars = conv_layer.init(prng_key, inputs)
-    initial_vars = jax.tree_map(jnp.ones_like, initial_vars)
+    initial_vars = jax.tree.map(jnp.ones_like, initial_vars)
 
     # Test odd length sequence.
     output = conv_layer.apply(initial_vars, inputs)
@@ -156,7 +156,7 @@ class ConvolutionsTest(test_utils.TestCase):
 
     prng_key = jax.random.PRNGKey(seed=123)
     initial_vars = conv_layer.init(prng_key, inputs)
-    initial_vars = jax.tree_map(jnp.ones_like, initial_vars)
+    initial_vars = jax.tree.map(jnp.ones_like, initial_vars)
 
     output = conv_layer.apply(initial_vars, inputs)
     np_output = np.array(

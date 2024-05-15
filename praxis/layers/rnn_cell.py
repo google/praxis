@@ -255,7 +255,7 @@ class LstmCellSimple(BaseRnnCell):
     Returns:
       state1: The next recurrent state.
     """
-    inputs = jax.tree_map(lambda x: x, inputs)
+    inputs = jax.tree.map(lambda x: x, inputs)
     if not isinstance(inputs.act, (list, tuple)):
       inputs.act = [inputs.act]
     asserts.eq(self.inputs_arity, len(inputs.act))

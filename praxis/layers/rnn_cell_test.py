@@ -131,10 +131,10 @@ class RnnCellTest(test_utils.TestCase):
 
     with base_layer.JaxContext.new_context():
       initial_vars = model.init(jax.random.PRNGKey(5678), state0, inputs)
-      jax.tree_map(lambda x: self.assertDtypesMatch(x, dtype), initial_vars)
+      jax.tree.map(lambda x: self.assertDtypesMatch(x, dtype), initial_vars)
       initial_vars[PARAMS]['wm'] = lstm.vars['wm'].numpy()
       initial_vars[PARAMS]['b'] = lstm.vars['b'].numpy()
-      jax.tree_map(lambda x: self.assertDtypesMatch(x, dtype), initial_vars)
+      jax.tree.map(lambda x: self.assertDtypesMatch(x, dtype), initial_vars)
       output = model.apply(initial_vars, state0, inputs)
 
     self.assertDtypesMatch(m_expected, fprop_dtype)
@@ -222,11 +222,11 @@ class RnnCellTest(test_utils.TestCase):
     model = instantiate(p)
     with base_layer.JaxContext.new_context():
       initial_vars = model.init(jax.random.PRNGKey(5678), state0, inputs)
-      jax.tree_map(lambda x: self.assertDtypesMatch(x, dtype), initial_vars)
+      jax.tree.map(lambda x: self.assertDtypesMatch(x, dtype), initial_vars)
       initial_vars[PARAMS]['wm'] = lstm.vars['wm'].numpy()
       initial_vars[PARAMS]['b'] = lstm.vars['b'].numpy()
       initial_vars[PARAMS]['ln_scale'] = lstm.vars['ln_scale'].numpy()
-      jax.tree_map(lambda x: self.assertDtypesMatch(x, dtype), initial_vars)
+      jax.tree.map(lambda x: self.assertDtypesMatch(x, dtype), initial_vars)
       output = model.apply(initial_vars, state0, inputs)
     self.assertDtypesMatch(m_expected, fprop_dtype)
     self.assertDtypesMatch(c_expected, fprop_dtype)
@@ -346,15 +346,15 @@ class RnnCellTest(test_utils.TestCase):
 
     with base_layer.JaxContext.new_context():
       initial_vars = model.init(jax.random.PRNGKey(5678), state0, inputs)
-      jax.tree_map(lambda x: self.assertDtypesMatch(x, dtype), initial_vars)
+      jax.tree.map(lambda x: self.assertDtypesMatch(x, dtype), initial_vars)
       state1_fprop = model.apply(initial_vars, state0, inputs)
 
       projected_inputs = model.apply(
           initial_vars,
-          jax.tree_map(lambda x: jnp.expand_dims(x, axis=0), inputs),
+          jax.tree.map(lambda x: jnp.expand_dims(x, axis=0), inputs),
           method=model.project_input,
       )
-      inputs_with_proj = jax.tree_map(lambda x: x, inputs)
+      inputs_with_proj = jax.tree.map(lambda x: x, inputs)
       inputs_with_proj.proj_inputs = jnp.squeeze(projected_inputs, axis=0)
       state1_fprop_with_projected_inputs = model.apply(
           initial_vars,

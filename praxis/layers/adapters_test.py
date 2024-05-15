@@ -87,7 +87,7 @@ class AdaptersTest(test_utils.TestCase):
     theta = initial_vars['params'].copy()
     theta['layer_norm'] = theta['norm']
     del theta['norm']
-    theta = jax.tree_map(np.array, theta)
+    theta = jax.tree.map(np.array, theta)
     theta = py_utils.NestedMap.FromNestedDict(theta)
     theta.down_w = tf.convert_to_tensor(theta.down_w)
     theta.up_w = tf.convert_to_tensor(theta.up_w)

@@ -78,7 +78,7 @@ def reset_mask(
 
 
 def _sum_aux_loss(tree):
-  return jax.tree_map(jnp.sum, tree)
+  return jax.tree.map(jnp.sum, tree)
 
 
 class FRnn(base_layer.BaseLayer):
@@ -143,7 +143,7 @@ class FRnn(base_layer.BaseLayer):
       state: Final state.
     """
     # Make a copy of the input structure to avoid side-effect.
-    inputs = jax.tree_map(lambda x: x, inputs)
+    inputs = jax.tree.map(lambda x: x, inputs)
     assert hasattr(inputs, 'act')
     assert hasattr(inputs, 'padding')
     assert isinstance(self.cell, rnn_cell.BaseRnnCell)
@@ -159,7 +159,7 @@ class FRnn(base_layer.BaseLayer):
       inputs.reset_mask = jnp.ones_like(inputs.padding, dtype=self.fprop_dtype)
 
     if self.reverse:
-      inputs = jax.tree_map(lambda x: jnp.flip(x, axis=[1]), inputs)
+      inputs = jax.tree.map(lambda x: jnp.flip(x, axis=[1]), inputs)
 
     if not state0:
       batch_size = inputs.padding.shape[0]
@@ -176,7 +176,7 @@ class FRnn(base_layer.BaseLayer):
     if self.is_initializing():
       # inputs has shape [b, t, dim] or [b, t, 1]
       # sliced_inputs has shape [b, dim] or [b, 1].
-      sliced_inputs = jax.tree_map(lambda x: x[:, 1], inputs)
+      sliced_inputs = jax.tree.map(lambda x: x[:, 1], inputs)
       _ = body_fn(self.cell, state0, sliced_inputs)
 
     # NON_TRAINABLE variables are carried over from one iteration to another.
@@ -248,7 +248,7 @@ class StackFrnn(base_layer.BaseLayer):
   def extend_step(
       self, inputs: NestedMap, state: list[NestedMap]
   ) -> tuple[list[NestedMap], JTensor]:
-    inputs = jax.tree_map(lambda x: x, inputs)
+    inputs = jax.tree.map(lambda x: x, inputs)
     new_states = []
     for i in range(self.num_layers):
       new_state, act_i = self.frnn[i].extend_step(inputs, state[i])
@@ -275,7 +275,7 @@ class StackFrnn(base_layer.BaseLayer):
       act: A tensor of [batch, time, dims]. The output.
       state: Final state.
     """
-    inputs = jax.tree_map(lambda x: x, inputs)
+    inputs = jax.tree.map(lambda x: x, inputs)
 
     if not state0:
       batch_size = inputs.padding.shape[0]
@@ -375,7 +375,7 @@ class StackBiFrnn(base_layer.BaseLayer):
       state: Final state - a list of NestedMap of fwd and bwd states.
     """
     # This is to create a copy.
-    inputs = jax.tree_map(lambda x: x, inputs)
+    inputs = jax.tree.map(lambda x: x, inputs)
 
     if not state0:
       batch_size = inputs.padding.shape[0]
@@ -428,7 +428,7 @@ class LstmFrnn(FRnn):
       state: Final state.
     """
     # Make a copy of the input structure to avoid side-effect.
-    inputs = jax.tree_map(lambda x: x, inputs)
+    inputs = jax.tree.map(lambda x: x, inputs)
     assert hasattr(inputs, 'act')
     assert hasattr(inputs, 'padding')
     assert isinstance(self.cell, rnn_cell.BaseRnnCell)
@@ -444,7 +444,7 @@ class LstmFrnn(FRnn):
       inputs.reset_mask = jnp.ones_like(inputs.padding, dtype=self.fprop_dtype)
 
     if self.reverse:
-      inputs = jax.tree_map(lambda x: jnp.flip(x, axis=[1]), inputs)
+      inputs = jax.tree.map(lambda x: jnp.flip(x, axis=[1]), inputs)
 
     if not state0:
       batch_size = inputs.padding.shape[0]
@@ -466,7 +466,7 @@ class LstmFrnn(FRnn):
     if self.is_initializing():
       # inputs has shape [b, t, dim] or [b, t, 1]
       # sliced_inputs has shape [b, dim] or [b, 1].
-      sliced_inputs = jax.tree_map(lambda x: x[:, 1], inputs)
+      sliced_inputs = jax.tree.map(lambda x: x[:, 1], inputs)
       # `body_fn` is sufficient to trigger PARAMS initialization.
       _ = body_fn(self.cell, state0, sliced_inputs)
 

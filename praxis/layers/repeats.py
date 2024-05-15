@@ -66,7 +66,7 @@ SCAN_VARIABLE_AXES = {
 
 
 def _sum_aux_loss(tree):
-  return jax.tree_map(jnp.sum, tree)
+  return jax.tree.map(jnp.sum, tree)
 
 
 class Repeat(base_layer.BaseLayer):
@@ -156,10 +156,10 @@ class Repeat(base_layer.BaseLayer):
     n = len(nd_shape)
 
     def merge_dims(tree: pytypes.PyTree) -> pytypes.PyTree:
-      return jax.tree_map(lambda x: jnp.reshape(x, (-1,) + x.shape[n:]), tree)
+      return jax.tree.map(lambda x: jnp.reshape(x, (-1,) + x.shape[n:]), tree)
 
     def split_dims(tree: pytypes.PyTree) -> pytypes.PyTree:
-      return jax.tree_map(
+      return jax.tree.map(
           lambda x: jnp.reshape(x, tuple(nd_shape) + x.shape[1:]), tree
       )
 
@@ -240,8 +240,8 @@ class Repeat(base_layer.BaseLayer):
       fn = method_factory(sub)
       if per_layer_kwargs is not None or reversed_per_layer_kwargs is not None:
         layer_in, idx = layer_in
-        per_layer_kw = jax.tree_map(lambda x: x[idx], per_layer_kwargs or {})
-        per_layer_kw_rev = jax.tree_map(
+        per_layer_kw = jax.tree.map(lambda x: x[idx], per_layer_kwargs or {})
+        per_layer_kw_rev = jax.tree.map(
             lambda x: x[self.x_times - 1 - idx],
             (reversed_per_layer_kwargs or {}),
         )
@@ -318,7 +318,7 @@ class Repeat(base_layer.BaseLayer):
             def _slice(x, i=i):
               return x[i]
 
-            new_tree[collection][f'layer{i}'] = jax.tree_map(_slice, subtree)
+            new_tree[collection][f'layer{i}'] = jax.tree.map(_slice, subtree)
         return new_tree
 
       mapped_scan_fn = nn.map_variables(
@@ -402,10 +402,11 @@ class Repeat(base_layer.BaseLayer):
         ret[collection] = {self.sublayer_name: res[collection]}
 
     if return_pspec:
-      ret = jax.tree_map(
+      ret = jax.tree.map(
           add_leading_none,
           ret,
-          is_leaf=lambda x: isinstance(x, base_layer.BoxedPartitionSpec))
+          is_leaf=lambda x: isinstance(x, base_layer.BoxedPartitionSpec),
+      )
     return ret
 
   @property
@@ -469,7 +470,7 @@ class Repeat(base_layer.BaseLayer):
       def _map_in(tree):
         for collection, subtree in tree.items():
           if collection not in [DECODE_CACHE, PREFIX_DECODE_CACHE]:
-            layer_i = jax.tree_map(lambda x: x[i], subtree)
+            layer_i = jax.tree.map(lambda x: x[i], subtree)
             subtree.clear()
             subtree.update(layer_i)
           else:

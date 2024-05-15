@@ -1319,12 +1319,16 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
 
     # Wraps fn with slicing on args_to_slice and broadcast_args_to_slice.
     def _sliced_fn(layer, args, args_to_slice, broadcast_args_to_slice, states):
-      sliced = jax.tree_map(
-          lambda x, d: self._slice_decode_chunk(x, chunk_id, d), args_to_slice,
-          args_time_dims)
-      broadcast_sliced = jax.tree_map(
+      sliced = jax.tree.map(
           lambda x, d: self._slice_decode_chunk(x, chunk_id, d),
-          broadcast_args_to_slice, broadcast_args_time_dims)
+          args_to_slice,
+          args_time_dims,
+      )
+      broadcast_sliced = jax.tree.map(
+          lambda x, d: self._slice_decode_chunk(x, chunk_id, d),
+          broadcast_args_to_slice,
+          broadcast_args_time_dims,
+      )
       return fn(layer, args, sliced, broadcast_sliced, states)
 
     broadcast_dim_sizes = self.get_decode_state(

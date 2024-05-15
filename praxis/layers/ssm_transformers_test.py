@@ -141,8 +141,10 @@ class SSMTransformersTest(test_utils.TestCase):
         decoder_outputs = decoder_outputs.at[t].set(encoded)
 
     decoder_out_transposed = jnp.transpose(decoder_outputs, [1, 0, 2])
-    logging.info('initial_vars in transformer layer = %s',
-                 jax.tree_map(lambda x: x.shape, initial_vars))
+    logging.info(
+        'initial_vars in transformer layer = %s',
+        jax.tree.map(lambda x: x.shape, initial_vars),
+    )
     np_fprop_outputs = test_utils.to_np(fprop_outputs)
     np_decoder_outputs = test_utils.to_np(decoder_out_transposed)
     self.assertAllClose(np_fprop_outputs, np_decoder_outputs, atol=1e-5)

@@ -55,7 +55,7 @@ def _get_to_f32_converter(
     new_vars = {}
     for col in var_tree:
       if col in vars_to_convert and var_tree[col]:
-        new_vars[col] = jax.tree_map(
+        new_vars[col] = jax.tree.map(
             lambda x, p: x.astype(jnp.float32) if p else x,
             var_tree[col],
             vars_to_convert[col],
@@ -76,7 +76,7 @@ def _get_to_bf16_converter(
     new_vars = {}
     for col in var_tree:
       if col in vars_to_convert and var_tree[col]:
-        new_vars[col] = jax.tree_map(
+        new_vars[col] = jax.tree.map(
             lambda x, p: x.astype(jnp.bfloat16) if p else x,
             var_tree[col],
             vars_to_convert[col],
@@ -311,7 +311,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         mapped_vars = {}
         for key in var_tree:
           if key in collections:
-            mapped_vars[key] = jax.tree_map(fn, var_tree[key])
+            mapped_vars[key] = jax.tree.map(fn, var_tree[key])
           else:
             mapped_vars[key] = var_tree[key]
         return mapped_vars
@@ -335,7 +335,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
               lambda x: jnp.where(is_valid_mb, x, jax.lax.stop_gradient(x)),
           )
           if NON_TRAINABLE in var_tree:
-            backups = jax.tree_map(lambda x: x, var_tree[NON_TRAINABLE])
+            backups = jax.tree.map(lambda x: x, var_tree[NON_TRAINABLE])
             mapped_vars[NON_TRAINABLE][non_trainable_backup_dict_key] = backups
           return mapped_vars
 
@@ -351,7 +351,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
           if non_trainable_backup_dict_key in non_trainable:
             backups = non_trainable[non_trainable_backup_dict_key]
             del non_trainable[non_trainable_backup_dict_key]
-            mapped_vars[NON_TRAINABLE] = jax.tree_map(
+            mapped_vars[NON_TRAINABLE] = jax.tree.map(
                 lambda x, y: jnp.where(is_valid_mb, x, y),
                 non_trainable,
                 backups,
@@ -466,9 +466,9 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       def annotate(x):
         return self._shard_dim_by_stages(x, 0)
 
-      per_stage_inputs = jax.tree_map(annotate, per_stage_inputs)
-      per_stage_args = jax.tree_map(annotate, per_stage_args)
-      per_stage_kwargs = jax.tree_map(annotate, per_stage_kwargs)
+      per_stage_inputs = jax.tree.map(annotate, per_stage_inputs)
+      per_stage_args = jax.tree.map(annotate, per_stage_args)
+      per_stage_kwargs = jax.tree.map(annotate, per_stage_kwargs)
 
     # nn.vmap does not support kwargs, so we use a NestedMap for kwargs.
     def _to_nmap(**kwargs):
@@ -490,8 +490,10 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     # The shifting loop state has shape [num_stages, ...]
     # Inputs are not the loop state: they are not changed during the loop. The
     # state (shifting buffer) does not have a num_microbatches dimension.
-    shift = jax.tree_map(lambda x: jnp.zeros((L,) + x.shape[1:], dtype=x.dtype),
-                         microbatched_inputs)
+    shift = jax.tree.map(
+        lambda x: jnp.zeros((L,) + x.shape[1:], dtype=x.dtype),
+        microbatched_inputs,
+    )
     state = py_utils.NestedMap(shift=shift)
     if self.stream_io:
       # The streaming buffer has shape [L, num_microbatches // L, ...]. In each
@@ -501,7 +503,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         reshaped = jnp.reshape(x, (L, num_microbatches // L) + x.shape[1:])
         return self._shard_dim_by_stages(reshaped, 0)
 
-      state.stream = jax.tree_map(_to_stream, microbatched_inputs)
+      state.stream = jax.tree.map(_to_stream, microbatched_inputs)
 
     return state
 
@@ -519,12 +521,14 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
   ) -> NestedJTensor:
     if self.stream_io:
       stream_buf_idx = loop_iteration % (num_microbatches // self.num_stages)
-      stream_slice = jax.tree_map(lambda x: x[:, stream_buf_idx],
-                                  loop_state.stream)  # pytype: disable=attribute-error  # jax-ndarray
+      stream_slice = jax.tree.map(
+          lambda x: x[:, stream_buf_idx], loop_state.stream  # pytype: disable=attribute-error  # jax-ndarray
+      )
       inputs = stream_slice
     else:
-      inputs = jax.tree_map(lambda x: x[loop_iteration % num_microbatches],
-                            per_stage_inputs)
+      inputs = jax.tree.map(
+          lambda x: x[loop_iteration % num_microbatches], per_stage_inputs
+      )
     return inputs
 
   def _get_new_loop_state(self, loop_iteration: JTensor, num_microbatches: int,
@@ -538,13 +542,14 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       # Use lax.slice to guarantee the gradient is a pad.
       return jax.lax.slice(jnp.pad(x, padding), [0] * x.ndim, x.shape)
 
-    shifted_out_state = jax.tree_map(_shift_right, body_outputs)
+    shifted_out_state = jax.tree.map(_shift_right, body_outputs)
     new_state = NestedMap(shift=shifted_out_state)
 
     if self.stream_io:
       stream_buf_idx = loop_iteration % (num_microbatches // L)
-      stream_slice = jax.tree_map(lambda x: x[:, stream_buf_idx],
-                                  old_state.stream)  # pytype: disable=attribute-error  # jax-ndarray
+      stream_slice = jax.tree.map(
+          lambda x: x[:, stream_buf_idx], old_state.stream  # pytype: disable=attribute-error  # jax-ndarray
+      )
 
       def _updated_stream(x, sslice, out):
         # Shift the current slice to the left, then fill the last stage with
@@ -559,8 +564,12 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         return jax.lax.dynamic_update_slice_in_dim(
             x, sslice, stream_buf_idx, axis=1)
 
-      new_state.stream = jax.tree_map(_updated_stream, old_state.stream,  # pytype: disable=attribute-error  # jax-ndarray
-                                      stream_slice, body_outputs)
+      new_state.stream = jax.tree.map(  # pytype: disable=attribute-error  # jax-ndarray
+          _updated_stream,
+          old_state.stream,  # pytype: disable=attribute-error  # jax-ndarray
+          stream_slice,
+          body_outputs,
+      )
 
     return new_state
 
@@ -605,7 +614,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     bf16_vars_to_convert = None
     if self.bf16_accum_in_fp32 and PARAMS in self.variables:
       bf16_vars_to_convert = {
-          PARAMS: jax.tree_map(
+          PARAMS: jax.tree.map(
               lambda x: x.dtype == jnp.bfloat16,
               flax_core.unfreeze(self.variables[PARAMS]),  # pytype: disable=wrong-arg-types
           )
@@ -651,9 +660,9 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
                                      list(range(3, len(reshaped.shape))))
         return jnp.reshape(streams, (num_microbatches,) + streams.shape[2:])
 
-      inputs = jax.tree_map(_to_microbatches, inputs)
-      broadcast_inputs = jax.tree_map(_to_microbatches, broadcast_inputs)
-      broadcast_kwargs = jax.tree_map(_to_microbatches, broadcast_kwargs)
+      inputs = jax.tree.map(_to_microbatches, inputs)
+      broadcast_inputs = jax.tree.map(_to_microbatches, broadcast_inputs)
+      broadcast_kwargs = jax.tree.map(_to_microbatches, broadcast_kwargs)
 
     if self.pipeline_broadcast_inputs:
       inputs = py_utils.NestedMap(
@@ -677,10 +686,12 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
             unconstrained_dims=list(range(1, x.ndim)),
         )
 
-      broadcast_inputs = jax.tree_map(_replicate_broadcast_inputs,
-                                      broadcast_inputs)
-      broadcast_kwargs = jax.tree_map(_replicate_broadcast_inputs,
-                                      broadcast_kwargs)
+      broadcast_inputs = jax.tree.map(
+          _replicate_broadcast_inputs, broadcast_inputs
+      )
+      broadcast_kwargs = jax.tree.map(
+          _replicate_broadcast_inputs, broadcast_kwargs
+      )
     else:
       # Create a L dimension, but use pad instead of broadcast to avoid gradient
       # accumulation in the backward pass (only the first stage produces
@@ -690,7 +701,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
             jnp.expand_dims(x, 1),
             [[0, 0], [0, L - 1]] + [[0, 0]] * (x.ndim - 1))
 
-      per_stage_inputs = jax.tree_map(_add_l_dim, inputs)
+      per_stage_inputs = jax.tree.map(_add_l_dim, inputs)
 
     loop_state0 = self._get_init_loop_state(inputs, num_microbatches)
 
@@ -719,24 +730,27 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
           mask = jnp.reshape(is_valid_mb, (L,) + (1,) * (x.ndim - 1))
           return jnp.where(mask, x, jnp.zeros_like(x) + jnp.nan)
 
-        stages_in = jax.tree_map(_fill_nan_for_bubbles, stages_in)
+        stages_in = jax.tree.map(_fill_nan_for_bubbles, stages_in)
 
-      stages_in = jax.tree_map(_select_state_or_input, stages_in, in_state)
+      stages_in = jax.tree.map(_select_state_or_input, stages_in, in_state)
       if self._should_checkpoint_stages_in():
-        stages_in = jax.tree_map(
-            lambda x: checkpoint_name(x, 'iteration_input'), stages_in)
+        stages_in = jax.tree.map(
+            lambda x: checkpoint_name(x, 'iteration_input'), stages_in
+        )
 
       if self.pipeline_broadcast_inputs:
         per_stage_args = stages_in.broadcast_inputs
         per_stage_kwargs = stages_in.broadcast_kwargs
         stages_in = stages_in.inputs
       else:
-        per_stage_args = jax.tree_map(
+        per_stage_args = jax.tree.map(
             functools.partial(self._vmap_gather, ids=microbatch_ids, ids_dim=0),
-            broadcast_inputs)
-        per_stage_kwargs = jax.tree_map(
+            broadcast_inputs,
+        )
+        per_stage_kwargs = jax.tree.map(
             functools.partial(self._vmap_gather, ids=microbatch_ids, ids_dim=0),
-            broadcast_kwargs)
+            broadcast_kwargs,
+        )
       # Run through pipeline body.
       out_state = model.body_fprop(
           loop_iter,
@@ -830,17 +844,19 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     def post_process(var_tree: pytypes.PyTree) -> pytypes.PyTree:
       if AUX_LOSS in var_tree:
         # Normalize aux_loss by num_microbatches.
-        var_tree[AUX_LOSS] = jax.tree_map(
-            lambda x: jnp.sum(x, axis=0) / num_microbatches, var_tree[AUX_LOSS])
+        var_tree[AUX_LOSS] = jax.tree.map(
+            lambda x: jnp.sum(x, axis=0) / num_microbatches, var_tree[AUX_LOSS]
+        )
         # Q(yonghui): Why do we further aggregate aux-loss across pipeline
         # stages?
-        var_tree[AUX_LOSS] = jax.tree_map(lambda x: jnp.sum(x, axis=0),
-                                          var_tree[AUX_LOSS])
+        var_tree[AUX_LOSS] = jax.tree.map(
+            lambda x: jnp.sum(x, axis=0), var_tree[AUX_LOSS]
+        )
       if SUMMARIES in var_tree:
         # Normalize summaries by num_microbatches.
-        summaries = jax.tree_map(
-            lambda x: jnp.sum(x, axis=0) / num_microbatches,
-            var_tree[SUMMARIES])
+        summaries = jax.tree.map(
+            lambda x: jnp.sum(x, axis=0) / num_microbatches, var_tree[SUMMARIES]
+        )
         if self.unpack_summaries:
           def _unpack(vars_dict):
             per_stage = {}
@@ -905,7 +921,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
           return tree_map_fn
 
-        var_tree[INTERMEDIATES] = jax.tree_map(
+        var_tree[INTERMEDIATES] = jax.tree.map(
             do_unrolling(
                 total_iterations, L, jax.vmap(do_shifting(num_microbatches))
             ),
@@ -931,8 +947,9 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       shift_buf = out.data.shift
       if self.pipeline_broadcast_inputs:
         shift_buf = shift_buf.inputs
-      output = jax.tree_map(
-          lambda x: jax.lax.broadcast(x[0], [num_microbatches]), shift_buf)
+      output = jax.tree.map(
+          lambda x: jax.lax.broadcast(x[0], [num_microbatches]), shift_buf
+      )
     else:
       # The following is layer.apply codepath.
       out, accum = after_post_process(self, init_carry)
@@ -946,7 +963,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
                   x, [total_iterations - num_microbatches, x.shape[1] - 1] +
                   [0] * (x.ndim - 2), x.shape), 1)
 
-        output = jax.tree_map(_extract_out, accum.data)
+        output = jax.tree.map(_extract_out, accum.data)
       else:
         # Extract output the streaming buffer.
         # The output can be misaligned on the (num_microbatches // L) dim,
@@ -962,9 +979,9 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
           return jnp.reshape(x, (num_microbatches,) + x.shape[2:])
 
         if self.pipeline_broadcast_inputs:
-          output = jax.tree_map(_extract_out, out.data.stream.inputs)
+          output = jax.tree.map(_extract_out, out.data.stream.inputs)
         else:
-          output = jax.tree_map(_extract_out, out.data.stream)
+          output = jax.tree.map(_extract_out, out.data.stream)
 
     if needs_microbatching:
 
@@ -974,7 +991,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         x = x.transpose([0, 2, 1] + list(range(3, len(x.shape))))
         return x.reshape((num_microbatches * x.shape[1],) + x.shape[3:])
 
-      output = jax.tree_map(_to_batches, output)
+      output = jax.tree.map(_to_batches, output)
 
     return output
 
@@ -1061,14 +1078,14 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
       )
 
       def _fn(layer, *args, **kwargs):
-        args = jax.tree_map(
+        args = jax.tree.map(
             lambda x: jax.lax.broadcast(x, [self.circular_repeat]), args
         )
-        kwargs = jax.tree_map(
+        kwargs = jax.tree.map(
             lambda x: jax.lax.broadcast(x, [self.circular_repeat]), kwargs
         )
         outs = vmapped_fn(layer, *args, **kwargs)
-        return jax.tree_map(lambda x: x[0], outs)
+        return jax.tree.map(lambda x: x[0], outs)
 
       return _fn
 
@@ -1092,10 +1109,12 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
     # Gather per-stage layers; they have different repeat_ids.
     def trans_in(var_tree: pytypes.PyTree) -> pytypes.PyTree:
       assert SUMMARIES not in var_tree
-      return jax.tree_map(
+      return jax.tree.map(
           functools.partial(
-              self._vmap_parallel_gather, ids=repeat_ids, ids_dim=0, xs_dim=1),
-          var_tree)
+              self._vmap_parallel_gather, ids=repeat_ids, ids_dim=0, xs_dim=1
+          ),
+          var_tree,
+      )
 
     def trans_out(var_tree: pytypes.PyTree) -> pytypes.PyTree:
       mapped_vars = {}
@@ -1103,17 +1122,21 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
         if collection in backup_vars:
           original_vars = flax_core.unfreeze(backup_vars[collection])
         else:
-          original_vars = jax.tree_map(
+          original_vars = jax.tree.map(
               lambda x: jnp.zeros((self.circular_repeat,) + x.shape, x.dtype),
               tree,
           )
-        mapped_vars[collection] = jax.tree_map(
+        mapped_vars[collection] = jax.tree.map(
             functools.partial(
                 self._vmap_scatter,
                 ids=repeat_ids,
                 ids_dim=0,
                 xs_dim=1,
-                updates_dim=0), original_vars, tree)
+                updates_dim=0,
+            ),
+            original_vars,
+            tree,
+        )
       return mapped_vars
 
     vmapped_fn = nn.map_variables(
@@ -1134,7 +1157,7 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
     state = super()._get_init_loop_state(microbatched_inputs, num_microbatches)
     if self._async_circular_transfer(num_microbatches):
       state.last_iter_result = state.shift  # type: ignore  # jax-ndarray
-      state.circular_inputs = jax.tree_map(  # pytype: disable=not-writable  # jax-ndarray
+      state.circular_inputs = jax.tree.map(  # pytype: disable=not-writable  # jax-ndarray
           lambda x: jnp.zeros((self.num_stages,) + x.shape, x.dtype),
           microbatched_inputs,
       )
@@ -1153,15 +1176,18 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
       # After all the microbatches finish repeat_index 0, the first stage will
       # use data received from earlier iterations from the last stage
       # (circular_inputs).
-      circular_slice = jax.tree_map(
+      circular_slice = jax.tree.map(
           lambda x: x[:, loop_iteration % num_microbatches],
-          loop_state.circular_inputs)  # pytype: disable=attribute-error  # jax-ndarray
+          loop_state.circular_inputs,  # pytype: disable=attribute-error  # jax-ndarray
+      )
     else:
       # shift is a circular buffer in this case.
       circular_slice = loop_state.shift  # pytype: disable=attribute-error  # jax-ndarray
-    return jax.tree_map(
-        lambda x, c: jnp.where(loop_iteration < num_microbatches, x, c), inputs,
-        circular_slice)
+    return jax.tree.map(
+        lambda x, c: jnp.where(loop_iteration < num_microbatches, x, c),
+        inputs,
+        circular_slice,
+    )
 
   def _get_new_loop_state(self, loop_iteration: JTensor, num_microbatches: int,
                           body_outputs: NestedJTensor,
@@ -1192,12 +1218,14 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
         return jax.lax.dynamic_update_slice_in_dim(
             inp_buf, rotated, offset, axis=1)
 
-      new_state.circular_inputs = jax.tree_map(_rotate_right_and_update,  # pytype: disable=not-writable  # jax-ndarray
-                                               old_state.last_iter_result,  # pytype: disable=attribute-error  # jax-ndarray
-                                               old_state.circular_inputs)  # pytype: disable=attribute-error  # jax-ndarray
+      new_state.circular_inputs = jax.tree.map(  # pytype: disable=not-writable  # jax-ndarray
+          _rotate_right_and_update,
+          old_state.last_iter_result,  # pytype: disable=attribute-error  # jax-ndarray
+          old_state.circular_inputs,  # pytype: disable=attribute-error  # jax-ndarray
+      )
       new_state.last_iter_result = body_outputs  # pytype: disable=not-writable  # jax-ndarray
     else:
-      new_state.shift = jax.tree_map(_rotate_right, body_outputs)  # pytype: disable=not-writable  # jax-ndarray
+      new_state.shift = jax.tree.map(_rotate_right, body_outputs)  # pytype: disable=not-writable  # jax-ndarray
     return new_state
 
   def _unpack_summary(self, key: str, vectorized_summary: JTensor):

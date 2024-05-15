@@ -149,14 +149,14 @@ class FlaxWrapperTest(test_utils.TestCase):
       def assert_learnable(x):
         assert not x.collections
 
-      jax.tree_map(assert_learnable, init_var_meta['params'])
+      jax.tree.map(assert_learnable, init_var_meta['params'])
 
       def assert_non_learnable(x):
         assert WeightHParamsCollection.NON_TRAINABLE in x.collections
         assert WeightHParamsCollection.REQUIRES_MEAN_SYNC in x.collections
 
-      jax.tree_map(assert_non_learnable, init_var_meta['batch_stats'])
-      jax.tree_map(assert_non_learnable, init_var_meta['non_trainable'])
+      jax.tree.map(assert_non_learnable, init_var_meta['batch_stats'])
+      jax.tree.map(assert_non_learnable, init_var_meta['non_trainable'])
       init_vars = test_layer.init(prng_key, input_x)
       _ = test_layer.apply(init_vars, input_x, mutable=True)
       _ = test_layer.apply(
