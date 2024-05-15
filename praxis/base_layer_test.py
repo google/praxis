@@ -294,7 +294,7 @@ class BaseLayerTest(test_utils.TestCase):
     init_vars = layer.init(jax.random.PRNGKey(0), x)
     qw, _ = layer.apply(init_vars, mutable=[], method=layer.quantize_weight)
     self.assertEqual(
-        jax.tree_map(lambda x: x.dtype, qw),
+        jax.tree.map(lambda x: x.dtype, qw),
         {
             'params': {
                 'linear1': {'w': jnp.int8},
@@ -331,10 +331,10 @@ class BaseLayerTest(test_utils.TestCase):
     }
     dummy_pspec = base_layer.BoxedPartitionSpec(meta=None)
     self.assertEqual(
-        jax.tree_map(lambda x: x.dtype, init_vars), quantized_types
+        jax.tree.map(lambda x: x.dtype, init_vars), quantized_types
     )
     qw, _ = layer.apply(init_vars, mutable=[], method=layer.quantize_weight)
-    self.assertEqual(jax.tree_map(lambda x: x.dtype, qw), quantized_types)
+    self.assertEqual(jax.tree.map(lambda x: x.dtype, qw), quantized_types)
     quantized_pspec, _ = layer.apply(
         init_vars, mutable=[], method=layer.quantized_partition_specs
     )

@@ -40,7 +40,7 @@ def maybe_unpack_summary(
     assert value.shape[0] == x_times
     return jnp.split(value, x_times)
 
-  return jax.tree_map(unpack, tree)
+  return jax.tree.map(unpack, tree)
 
 
 def maybe_repack_summary(
@@ -58,7 +58,7 @@ def maybe_repack_summary(
     assert len(value) == x_times
     return jnp.stack(value)
 
-  return jax.tree_map(maybe_repack, tree, is_leaf=lambda x: isinstance(x, list))
+  return jax.tree.map(maybe_repack, tree, is_leaf=lambda x: isinstance(x, list))
 
 
 def convert_to_boxed_params(
@@ -148,7 +148,7 @@ def convert_to_boxed_params(
       full_logical_axes_tree = traverse_util.unflatten_dict(
           flat_full_logical_axes_tree, sep='/'
       )
-      boxed_params[key] = jax.tree_map(
+      boxed_params[key] = jax.tree.map(
           lambda x, y: to_boxed(x, var_collection=key, logical_axes=y),
           var_tree[key],
           full_logical_axes_tree,
@@ -156,7 +156,7 @@ def convert_to_boxed_params(
           is_leaf=lambda x: isinstance(x, base_layer.BoxedParam),
       )
     else:
-      boxed_params[key] = jax.tree_map(
+      boxed_params[key] = jax.tree.map(
           lambda x: to_boxed(x, var_collection=key, logical_axes=None),
           var_tree[key],
           is_leaf=lambda x: isinstance(x, base_layer.BoxedParam),

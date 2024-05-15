@@ -33,11 +33,11 @@ class OptimizerPrefixVectorizationTest(test_utils.TestCase):
     def _opt_init(params):
       # Reduction over each variable. Behavior will depend on vectorization.
       logging.info(f'Init called with params {params}')
-      return jax.tree_map(jnp.sum, params)
+      return jax.tree.map(jnp.sum, params)
 
     def _opt_update(updates, state, params):
       del params
-      return jax.tree_map(lambda u, s: u + s, updates, state), state
+      return jax.tree.map(lambda u, s: u + s, updates, state), state
 
     grad_tx = optax.GradientTransformationExtraArgs(
         init=_opt_init, update=_opt_update
@@ -70,7 +70,7 @@ class OptimizerPrefixVectorizationTest(test_utils.TestCase):
     logging.info('opt_states_pspec=%s', opt_states_pspec)
     # Computed update is 0 + state, and state is sum of each variable.
     update, _ = grad_tx.update(
-        jax.tree_map(jnp.zeros_like, variables), state, variables
+        jax.tree.map(jnp.zeros_like, variables), state, variables
     )
     # Variables a and c are scalars excluding the prefix, so the update must be
     # equal to the initial variable values.

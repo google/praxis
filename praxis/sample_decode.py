@@ -116,7 +116,7 @@ def sort_samples_by_scores(
     )
   else:
     _, indices = jax.lax.top_k(scores, num_samples)
-  return jax.tree_map(
+  return jax.tree.map(
       functools.partial(reorder_with_indices, indices=indices), result
   )
 
@@ -1138,7 +1138,7 @@ def sample_decode_after_fprop(
               axis=-1,
           )
         outfeed_tensors.done = val.done
-        outfeed_tensors = jax.tree_map(
+        outfeed_tensors = jax.tree.map(
             lambda x: split_batch_dim(x, 0, num_samples), outfeed_tensors
         )
         outfeed_tensors.prefix_lengths = jnp.zeros_like(original_prefix_lengths)
@@ -1332,12 +1332,12 @@ def sample_decode_after_fprop(
 
   if cf_guidance_scale is not None:
     # Split cond / uncond branches and only return conditioned branch.
-    result = jax.tree_map(
+    result = jax.tree.map(
         lambda x: split_batch_dim(x, 0, 2 * num_samples)[:, :num_samples],
         result,
     )
   else:
-    result = jax.tree_map(lambda x: split_batch_dim(x, 0, num_samples), result)
+    result = jax.tree.map(lambda x: split_batch_dim(x, 0, num_samples), result)
   if num_samples > 1 and sort_samples:
     return sort_samples_by_scores(result, top_k_recall_target)
 

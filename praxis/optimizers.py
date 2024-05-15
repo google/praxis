@@ -217,7 +217,7 @@ def sharded_sgd(
       # Momentum has same sharding as mdl var.
       return m_var_hparams
 
-    momentum_sharding = jax.tree_map(_opt_state_sharding_spec, mdl_params)
+    momentum_sharding = jax.tree.map(_opt_state_sharding_spec, mdl_params)
     return (optax.TraceState(trace=momentum_sharding),
             optax.ScaleByScheduleState(count=count))  # pytype: disable=wrong-arg-types  # numpy-scalars
 
@@ -266,7 +266,7 @@ def sharded_adagrad(learning_rate_fn: optax.Schedule,
       # ScaleByRssState has same sharding as `mdl_var`.
       return s_var_hparams
 
-    scale_by_rss_sharding = jax.tree_map(_opt_state_sharding_spec, mdl_params)
+    scale_by_rss_sharding = jax.tree.map(_opt_state_sharding_spec, mdl_params)
     return (optax.ScaleByRssState(sum_of_squares=scale_by_rss_sharding),
             optax.ScaleByScheduleState(count=count))  # pytype: disable=wrong-arg-types  # numpy-scalars
 
@@ -425,7 +425,7 @@ def sharded_chain(
     for s, fn in zip(state, args):
       updates, new_s = fn.update(updates, s, params)
       # Some of the new states may have None instead of optax.MaskedNode.
-      new_s = jax.tree_map(
+      new_s = jax.tree.map(
           lambda x: optax.MaskedNode() if x is None else x,
           new_s,
           is_leaf=lambda x: x is None)
@@ -544,9 +544,9 @@ def apply_lp_regularizer(
         )
 
       if var_lp_mask is None:
-        updates = jax.tree_map(fn, updates, params)
+        updates = jax.tree.map(fn, updates, params)
       else:
-        updates = jax.tree_map(
+        updates = jax.tree.map(
             fn,
             updates,
             params,
@@ -606,9 +606,9 @@ def apply_decoupled_weight_decay(
       )
 
       if var_wd_mask is None:
-        updates = jax.tree_map(fn, updates, params)
+        updates = jax.tree.map(fn, updates, params)
       else:
-        updates = jax.tree_map(
+        updates = jax.tree.map(
             fn,
             updates,
             params,
@@ -666,52 +666,52 @@ def sharded_adam(
   helper = _ShardedAdamHelper(maybe_inf_to_nan=maybe_inf_to_nan)
 
   def init_fn(mdl_vars):
-    slot_vars = jax.tree_map(helper.init_opt_state, mdl_vars)
+    slot_vars = jax.tree.map(helper.init_opt_state, mdl_vars)
     count = jnp.array(0, dtype=jnp.int32)
     return NestedMap(
         count=count,
-        m=jax.tree_map(lambda x: x.m, slot_vars),
-        v=jax.tree_map(lambda x: x.v, slot_vars))
+        m=jax.tree.map(lambda x: x.m, slot_vars),
+        v=jax.tree.map(lambda x: x.v, slot_vars))
 
   def init_partition_spec_fn(mdl_params):
-    slot_vars = jax.tree_map(helper.opt_state_sharding_spec, mdl_params)
+    slot_vars = jax.tree.map(helper.opt_state_sharding_spec, mdl_params)
     count = WeightHParams(
         shape=[], init=None, dtype=jnp.int32, collections=None)
 
     return NestedMap(
         count=count,
-        m=jax.tree_map(lambda x: x.m, slot_vars),
-        v=jax.tree_map(lambda x: x.v, slot_vars))
+        m=jax.tree.map(lambda x: x.m, slot_vars),
+        v=jax.tree.map(lambda x: x.v, slot_vars))
 
   def update_fn(updates, state, params=None):
     # Sanitize updates just in case.
     if weight_decay > 0:
       assert params is not None
-    updates = jax.tree_map(helper.inf_to_nan, updates)
+    updates = jax.tree.map(helper.inf_to_nan, updates)
     count = state.count
 
     def _update_momentum(g, m, v):
       return helper.update_moments(count, g, _AdamOptState(m=m, v=v), beta1,
                                    beta2)
 
-    updated_moments = jax.tree_map(_update_momentum, updates, state.m, state.v)
+    updated_moments = jax.tree.map(_update_momentum, updates, state.m, state.v)
 
-    m = jax.tree_map(lambda x: x.m, updated_moments)
-    v = jax.tree_map(lambda x: x.v, updated_moments)
+    m = jax.tree.map(lambda x: x.m, updated_moments)
+    v = jax.tree.map(lambda x: x.v, updated_moments)
 
-    updates = jax.tree_map(
+    updates = jax.tree.map(
         lambda m, v: m / (jnp.sqrt(v + epsilon_root) + epsilon), m, v)
 
     if update_capping > 0:
-      updates = jax.tree_map(lambda x: helper.clip_update(x, update_capping),
+      updates = jax.tree.map(lambda x: helper.clip_update(x, update_capping),
                              updates)
 
     if weight_decay > 0:
-      updates = jax.tree_map(lambda x, v: x + weight_decay * v, updates, params)
+      updates = jax.tree.map(lambda x, v: x + weight_decay * v, updates, params)
 
     step_size = -1.0 * learning_rate_fn(count)
     # Finally, fold in step size.
-    updates = jax.tree_map(lambda x: step_size * x, updates)
+    updates = jax.tree.map(lambda x: step_size * x, updates)
 
     updated_states = NestedMap(count=count + 1, m=m, v=v)
     return updates, updated_states
@@ -751,48 +751,48 @@ def sharded_lion(learning_rate_fn: optax.Schedule, beta1: float,
   init_opt_state = functools.partial(helper.init_opt_state, m_dtype=m_dtype)
 
   def init_fn(mdl_vars):
-    slot_vars = jax.tree_map(init_opt_state, mdl_vars)
+    slot_vars = jax.tree.map(init_opt_state, mdl_vars)
     count = jnp.array(0, dtype=jnp.int32)
-    return NestedMap(count=count, m=jax.tree_map(lambda x: x.m, slot_vars))
+    return NestedMap(count=count, m=jax.tree.map(lambda x: x.m, slot_vars))
 
   def init_partition_spec_fn(mdl_params):
-    slot_vars = jax.tree_map(helper.opt_state_sharding_spec, mdl_params)
+    slot_vars = jax.tree.map(helper.opt_state_sharding_spec, mdl_params)
     count = WeightHParams(
         shape=[], init=None, dtype=jnp.int32, collections=None)
 
-    return NestedMap(count=count, m=jax.tree_map(lambda x: x.m, slot_vars))
+    return NestedMap(count=count, m=jax.tree.map(lambda x: x.m, slot_vars))
 
   def update_fn(updates, state, params=None):
     # Sanitize updates just in case.
     if weight_decay > 0:
       assert params is not None
-    updates = jax.tree_map(helper.inf_to_nan, updates)
+    updates = jax.tree.map(helper.inf_to_nan, updates)
     count = state.count
 
-    m_casted = jax.tree_map(lambda u, x: x.astype(u.dtype), updates, state.m)
+    m_casted = jax.tree.map(lambda u, x: x.astype(u.dtype), updates, state.m)
 
     def _update_momentum(g, m):
       return helper.update_moments(count, g, _LionOptState(m=m), beta2)
 
-    updated_moments = jax.tree_map(_update_momentum, updates, m_casted)
+    updated_moments = jax.tree.map(_update_momentum, updates, m_casted)
 
-    updates = jax.tree_map(lambda g, m: jnp.sign((1.0 - beta1) * g + beta1 * m),
+    updates = jax.tree.map(lambda g, m: jnp.sign((1.0 - beta1) * g + beta1 * m),
                            updates, m_casted)
 
     if update_capping > 0:
-      updates = jax.tree_map(lambda x: helper.clip_update(x, update_capping),
+      updates = jax.tree.map(lambda x: helper.clip_update(x, update_capping),
                              updates)
 
     if weight_decay > 0:
-      updates = jax.tree_map(lambda x, v: x + weight_decay * v, updates, params)
+      updates = jax.tree.map(lambda x, v: x + weight_decay * v, updates, params)
 
     step_size = -1.0 * learning_rate_fn(count)
     # Finally, fold in step size.
-    updates = jax.tree_map(lambda x: step_size * x, updates)
+    updates = jax.tree.map(lambda x: step_size * x, updates)
 
     updated_states = NestedMap(
         count=count + 1,
-        m=jax.tree_map(lambda x: x.m.astype(m_dtype), updated_moments),
+        m=jax.tree.map(lambda x: x.m.astype(m_dtype), updated_moments),
     )
     return updates, updated_states
 
@@ -827,7 +827,7 @@ def apply_ema_weights(
 
   def init_fn(params):
     return NestedMap(
-        count=jnp.array(0, dtype=jnp.int32), ema=jax.tree_map(jnp.copy, params))
+        count=jnp.array(0, dtype=jnp.int32), ema=jax.tree.map(jnp.copy, params))
 
   def update_fn(updates, state, params):
     if params is None:
@@ -844,7 +844,7 @@ def apply_ema_weights(
       else:
         return old_v - (1.0 - ema_decay) * (old_v - new_v)
 
-    new_ema = jax.tree_map(update_func, state.ema, params)
+    new_ema = jax.tree.map(update_func, state.ema, params)
     count_inc = state.count + jnp.array(1, jnp.int32)
 
     return updates, NestedMap(count=count_inc, ema=new_ema)
@@ -867,7 +867,7 @@ def apply_ema_weights(
             dtype=jnp.int32,
             collections=None,
             tensor_split_dims_mapping=[]),
-        ema=jax.tree_map(_infer_ema_pspec, params))
+        ema=jax.tree.map(_infer_ema_pspec, params))
 
   if use_optax_gradient_transformations:
     return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)
@@ -902,11 +902,11 @@ def apply_ewc_regularization(
   """
   def init_fn(params):
     if ewc_regularizer_weight > 0.0:
-      var_weights = jax.tree_map(
+      var_weights = jax.tree.map(
           lambda v: jnp.array(ewc_regularizer_weight * 1.0 / 2, v.dtype), params
       )
       return NestedMap(count=jnp.array(0, dtype=jnp.int32),
-                       pretrain_vars=jax.tree_map(jnp.copy, params),
+                       pretrain_vars=jax.tree.map(jnp.copy, params),
                        var_weights=var_weights)
     else:
       return NestedMap(count=jnp.array(0, dtype=jnp.int32))
@@ -927,14 +927,14 @@ def apply_ewc_regularization(
 
       if ewc_weight_per_var:
         if jnp.equal(state.count, 0):
-          state.var_weights = jax.tree_map(
+          state.var_weights = jax.tree.map(
               lambda v, p, ewc_w: jnp.array(v * ewc_w, p.dtype),
               state.var_weights,
               params,
               ewc_weight_per_var,
           )
 
-      updates = jax.tree_map(
+      updates = jax.tree.map(
           fn,
           updates,
           params,
@@ -943,7 +943,7 @@ def apply_ewc_regularization(
 
       update_states = NestedMap(
           count=state.count + 1,
-          pretrain_vars=jax.tree_map(pretrain_fn, params, state.pretrain_vars),
+          pretrain_vars=jax.tree.map(pretrain_fn, params, state.pretrain_vars),
           var_weights=state.var_weights)
     else:
       update_states = NestedMap(
@@ -976,8 +976,8 @@ def apply_ewc_regularization(
               dtype=jnp.int32,
               collections=None,
               tensor_split_dims_mapping=[]),
-          pretrain_vars=jax.tree_map(_infer_ewc_pspec, params),
-          var_weights=jax.tree_map(_infer_ewc_weights_pspec, params))
+          pretrain_vars=jax.tree.map(_infer_ewc_pspec, params),
+          var_weights=jax.tree.map(_infer_ewc_weights_pspec, params))
     else:
       return NestedMap(
           count=WeightHParams(
@@ -1112,7 +1112,7 @@ class OptaxOptimizer(base_hyperparams.FiddleBaseParameterizable):
 
     # Compute the mask for lp regularization
     if var_weight_hparams:
-      var_lp_mask = jax.tree_map(
+      var_lp_mask = jax.tree.map(
           lambda x: not base_layer.var_skip_lp_regularization(x),
           var_weight_hparams,
       )
@@ -1256,7 +1256,7 @@ class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
 
     # Compute the mask for lp regularization
     if var_weight_hparams:
-      var_lp_mask = jax.tree_map(
+      var_lp_mask = jax.tree.map(
           lambda x: not base_layer.var_skip_lp_regularization(x),
           var_weight_hparams)
     else:
@@ -1765,7 +1765,7 @@ class DistributedShampoo(BaseOptimizer):
         for metrics, keys in zip(training_metrics, training_metrics_keys):
           # Walk all training metrics fields and summarize, assuming
           # they're scalars, using their key prefixes.
-          jax.tree_map(base_layer.add_global_summary, keys, metrics)
+          jax.tree.map(base_layer.add_global_summary, keys, metrics)
 
       return new_params, new_state
 
@@ -1907,7 +1907,7 @@ class ShardedDistributedShampoo(DistributedShampoo):
           *self._sharded_axes(axes_names, param.tensor_split_dims_mapping))
       return p
 
-    partition_spec_params = jax.tree_map(_pspec_from_weight_param, params)
+    partition_spec_params = jax.tree.map(_pspec_from_weight_param, params)
     shapes_and_dtypes = init_shapes_dtypes(params)
     partition_spec_opt_state = init_pspec(params, partition_spec_params,
                                           partition_spec_statistics)
@@ -1937,7 +1937,7 @@ class ShardedDistributedShampoo(DistributedShampoo):
           mesh_shape=mesh_shape,
           tensor_split_dims_mapping=tensor_split_dims_mapping)
 
-    return jax.tree_map(_weight_param_from_pspec_shape_dtype,
+    return jax.tree.map(_weight_param_from_pspec_shape_dtype,
                         partition_spec_opt_state, shapes_and_dtypes)
 
   def _get_raw_grad_transformation(  # pytype: disable=signature-mismatch  # overriding-return-type-checks
@@ -2285,11 +2285,11 @@ class _ShardedAdafactorHelper:
     """Maps from a tree of (factored) values to separate trees of values."""
     return ShardedAdafactorState(  # pytype: disable=wrong-arg-types  # jax-ndarray
         count=count,
-        m=jax.tree_map(lambda o: o.m, result_tree),
-        m_scale=jax.tree_map(lambda o: o.m_scale, result_tree),
-        vr=jax.tree_map(lambda o: o.vr, result_tree),
-        vc=jax.tree_map(lambda o: o.vc, result_tree),
-        v=jax.tree_map(lambda o: o.v, result_tree))
+        m=jax.tree.map(lambda o: o.m, result_tree),
+        m_scale=jax.tree.map(lambda o: o.m_scale, result_tree),
+        vr=jax.tree.map(lambda o: o.vr, result_tree),
+        vc=jax.tree.map(lambda o: o.vc, result_tree),
+        v=jax.tree.map(lambda o: o.v, result_tree))
 
   def init(self, param):
     """Initializes the optimizer state for a given param."""
@@ -2680,7 +2680,7 @@ def sharded_adafactor(
     """Initializes the optimizer's state."""
     return sharded_adafactor_helper.to_state(
         jnp.zeros([], jnp.int32),
-        jax.tree_map(sharded_adafactor_helper.init, params),
+        jax.tree.map(sharded_adafactor_helper.init, params),
     )
 
   def init_partition_spec_fn(
@@ -2695,7 +2695,7 @@ def sharded_adafactor(
     )
     return sharded_adafactor_helper.to_state(
         count,
-        jax.tree_map(sharded_adafactor_helper.init_partition_spec, var_hparams),
+        jax.tree.map(sharded_adafactor_helper.init_partition_spec, var_hparams),
     )
 
   def update_fn(updates, state, params=None):
@@ -2709,7 +2709,7 @@ def sharded_adafactor(
         sharded_adafactor_helper.compute_var_and_slot_update, state.count
     )
     var_names = py_utils.extract_prefixed_keys_from_nested_map(updates)
-    output = jax.tree_map(
+    output = jax.tree.map(
         compute_var_and_slot_update_fn,
         updates,
         state.m,
@@ -2720,7 +2720,7 @@ def sharded_adafactor(
         params,
         var_names,
     )
-    updates = jax.tree_map(lambda o: o.update, output)
+    updates = jax.tree.map(lambda o: o.update, output)
     count_plus_one = state.count + jnp.array(1, jnp.int32)
     updated_states = sharded_adafactor_helper.to_state(count_plus_one, output)
     return updates, updated_states
@@ -2877,7 +2877,7 @@ def sharded_static_accumulation(
   def init_fn(mdl_vars: NestedJTensor):
     base_state = base_tx.init(mdl_vars)
     # Make sure we accumulate in f32.
-    accumulated_update = jax.tree_map(
+    accumulated_update = jax.tree.map(
         lambda v: jnp.zeros_like(v, dtype=jnp.float32), mdl_vars)
     return NestedMap(
         base_state=base_state,
@@ -2895,7 +2895,7 @@ def sharded_static_accumulation(
           mesh_shape=param.mesh_shape,
           tensor_split_dims_mapping=param.tensor_split_dims_mapping)
 
-    accumulated_update = jax.tree_map(_weight_hparams, params)
+    accumulated_update = jax.tree.map(_weight_hparams, params)
     params_flattened, _ = jax.tree_util.tree_flatten(params)
     first_param = params_flattened[0]
     assert isinstance(first_param, WeightHParams)
@@ -2917,7 +2917,7 @@ def sharded_static_accumulation(
       state: NestedJTensor,
       params: NestedJTensor | None = None,
   ):
-    new_accumulated_update = jax.tree_map(lambda acc, x: acc + x,
+    new_accumulated_update = jax.tree.map(lambda acc, x: acc + x,
                                           state.accumulated_update, updates)  # pytype: disable=attribute-error  # jax-ndarray
 
     new_count = state.count + 1  # pytype: disable=attribute-error  # jax-ndarray
@@ -2926,19 +2926,19 @@ def sharded_static_accumulation(
                          lambda: new_count)
 
     def _run_base_tx():
-      averaged_updated = jax.tree_map(lambda acc: acc / num_sub_batches,
+      averaged_updated = jax.tree.map(lambda acc: acc / num_sub_batches,
                                       new_accumulated_update)
       emission_updates, emission_base_state = base_tx.update(
           averaged_updated, state.base_state, params)  # pytype: disable=attribute-error  # jax-ndarray
       return (emission_updates,
-              jax.tree_map(lambda u: jnp.zeros_like(u, dtype=jnp.float32),
+              jax.tree.map(lambda u: jnp.zeros_like(u, dtype=jnp.float32),
                            updates), emission_base_state)
 
     if accumulation_use_cond_op:
 
       def _continue_accumulating():
         return (
-            jax.tree_map(jnp.zeros_like, updates),
+            jax.tree.map(jnp.zeros_like, updates),
             new_accumulated_update,
             state.base_state,  # pytype: disable=attribute-error # jax-ndarray
         )
@@ -2970,7 +2970,7 @@ def sharded_static_accumulation(
           should_emit,
           _run_base_tx,
           [
-              jax.tree_map(jnp.zeros_like, updates),
+              jax.tree.map(jnp.zeros_like, updates),
               new_accumulated_update,
               state.base_state,  # pytype: disable=attribute-error  # jax-ndarray
           ],

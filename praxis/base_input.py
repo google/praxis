@@ -1114,7 +1114,7 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
         return jax.ShapeDtypeStruct(shape=spec.shape,
                                     dtype=spec.dtype.as_numpy_dtype())
 
-      self._input_specs = jax.tree_map(tf_spec_to_jax, dataset.element_spec)
+      self._input_specs = jax.tree.map(tf_spec_to_jax, dataset.element_spec)
       return
 
     logging.warning(
@@ -1123,7 +1123,7 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
         'param in BaseExperiment.get_input_specs_provider_params(), which is '
         'more deterministic and efficient.'
     )
-    self._input_specs = jax.tree_map(
+    self._input_specs = jax.tree.map(
         lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
         input_pipeline.get_next_padded(),
     )

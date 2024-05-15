@@ -596,8 +596,8 @@ class QuantizeAttentionTest(test_utils.TestCase):
 
     self.assertLen(res, 1)
 
-    shapes = jax.tree_map(lambda x: x.shape, res)
-    types = jax.tree_map(lambda x: x.dtype, res)
+    shapes = jax.tree.map(lambda x: x.shape, res)
+    types = jax.tree.map(lambda x: x.dtype, res)
 
     expected_shape = {
         base_layer.PARAMS: {'w': (3, 5, 6, 2), 'w_quantized_scale': (3, 6, 2)}

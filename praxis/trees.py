@@ -224,7 +224,7 @@ def get_shape_dtype(
 ) -> pytypes.NestedShapeDtypeStruct:
   """Returns the shape/dtype information for the given nested input."""
   fn = lambda x: jax.ShapeDtypeStruct(shape=x.shape, dtype=x.dtype)
-  return jax.tree_map(fn, nested_obj)
+  return jax.tree.map(fn, nested_obj)
 
 
 def copy(pytree: jt.PyTree) -> jt.PyTree:
@@ -238,4 +238,4 @@ def copy(pytree: jt.PyTree) -> jt.PyTree:
   Returns:
     a copy of the original object.
   """
-  return jax.tree_map(lambda x: x, pytree)
+  return jax.tree.map(lambda x: x, pytree)

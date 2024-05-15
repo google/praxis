@@ -914,7 +914,7 @@ class InputSpecsProviderTest(test_utils.TestCase):
     )
     input_pipeline = instantiate(input_p)
     spec_provider = instantiate(spec_provider_p)
-    spec_from_data = jax.tree_map(
+    spec_from_data = jax.tree.map(
         lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
         input_pipeline.get_next_padded())
     spec_from_provider = spec_provider.get_input_specs()
@@ -932,7 +932,7 @@ class InputSpecsProviderTest(test_utils.TestCase):
         base_input.DatasetInputSpecsProvider, input_p=input_p.clone()
     )
     input_pipeline = instantiate(input_p)
-    spec_from_data = jax.tree_map(
+    spec_from_data = jax.tree.map(
         lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
         input_pipeline.get_next(),
     )

@@ -642,9 +642,9 @@ def update_matched_variables(old_tree: NestedMap,
   mask = match_variable_names(old_tree, patterns)  # True for update
   if invert:
     mask = jax.tree.map(lambda x: not x, mask)
-  flat_var_prefix = jax.tree_flatten(
+  flat_var_prefix = jax.tree.flatten(
       extract_prefixed_keys_from_nested_map(old_tree))[0]
-  flat_mask = jax.tree_flatten(mask)[0]
+  flat_mask = jax.tree.flatten(mask)[0]
   assert len(flat_var_prefix) == len(flat_mask)
   for prefix, match in zip(flat_var_prefix, flat_mask):
     if match:

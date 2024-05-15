@@ -249,7 +249,7 @@ def _group_by_repeat_prefix(variables: NestedMap, var_hparams: NestedHParams,
         return v
       return optax.MaskedNode()
 
-    return jax.tree_map(_filter_one, variables, var_hparams)
+    return jax.tree.map(_filter_one, variables, var_hparams)
 
   # Iterate `key_set` in a stable order to ensure determinism. Otherwise, the
   # produced HLO may differ across runs.
@@ -259,7 +259,7 @@ def _group_by_repeat_prefix(variables: NestedMap, var_hparams: NestedHParams,
   # Make sure we still have NO_PREFIX_KEY, so that we can easily tell if it's
   # vectorized.
   if NO_PREFIX_KEY not in groups:
-    groups[NO_PREFIX_KEY] = jax.tree_map(
+    groups[NO_PREFIX_KEY] = jax.tree.map(
         lambda _: optax.MaskedNode(), variables
     )
 
@@ -280,7 +280,7 @@ def _ungroup_by_repeat_prefix(groups: NestedMap, var_hparams: NestedHParams,
     key = _get_var_param_repeat_prefix_key(p, repeat_prefix_sep)
     return group_vals[group_index[key]]
 
-  return jax.tree_map(_get_item, var_hparams, *group_list)
+  return jax.tree.map(_get_item, var_hparams, *group_list)
 
 
 def _init_with_vectorized_repeat_prefix(
@@ -375,7 +375,7 @@ def _init_partition_spec_with_vectorized_repeat_prefix(
       p.repeat_prefix_split_dims_mapping = None
       return p
 
-    group = jax.tree_map(_remove_prefix, group)
+    group = jax.tree.map(_remove_prefix, group)
     result = tx.init_partition_spec(group)
 
     def _add_prefix(p):
@@ -383,7 +383,7 @@ def _init_partition_spec_with_vectorized_repeat_prefix(
       p.repeat_prefix_split_dims_mapping = sharding_prefix
       return p
 
-    return jax.tree_map(_add_prefix, result)
+    return jax.tree.map(_add_prefix, result)
 
   # Use the same grouping as _init_with_vectorized_repeat_prefix, in order to
   # produce compatible tree structures.

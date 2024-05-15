@@ -543,8 +543,8 @@ class QuantizeLinearTest(test_utils.TestCase):
           initial_vars, mutable=[], method=layer.quantized_partition_specs
       )
 
-    shapes = jax.tree_map(lambda x: x.shape, res)
-    types = jax.tree_map(lambda x: x.dtype, res)
+    shapes = jax.tree.map(lambda x: x.shape, res)
+    types = jax.tree.map(lambda x: x.dtype, res)
 
     pack_reduction = 1
     if use_int4_packed_weights:

@@ -57,9 +57,9 @@ class RepeatsLinearQuantizeTest(test_utils.TestCase):
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
       init_vars = ffn.init(prng_key, inputs)
-      shapes = jax.tree_map(lambda x: x.shape, init_vars)
+      shapes = jax.tree.map(lambda x: x.shape, init_vars)
       res, _ = ffn.apply(init_vars, mutable=[], method=ffn.quantize_weight)
-    shapes = jax.tree_map(lambda x: x.shape, res)
+    shapes = jax.tree.map(lambda x: x.shape, res)
     expected_shapes = {
         base_layer.PARAMS: {
             'sub': {
@@ -162,8 +162,8 @@ class ChildrenQuantizeTest(test_utils.TestCase):
           initial_vars, mutable=[], method=layer.quantize_weight
       )
 
-    shapes = jax.tree_map(lambda x: x.shape, res)
-    types = jax.tree_map(lambda x: x.dtype, res)
+    shapes = jax.tree.map(lambda x: x.shape, res)
+    types = jax.tree.map(lambda x: x.dtype, res)
     self.assertEqual(
         shapes,
         {

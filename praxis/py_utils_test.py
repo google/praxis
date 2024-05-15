@@ -184,7 +184,7 @@ class PyUtilsTest(test_utils.TestCase):
         a=py_utils.NestedMap(x=0, y=0, zz=0),
         b=py_utils.NestedMap(z=0),
     )
-    new_tree = jax.tree_map(lambda x: x + 1, old_tree)
+    new_tree = jax.tree.map(lambda x: x + 1, old_tree)
     result = py_utils.update_matched_variables(
         old_tree, new_tree, re.compile('.*z')
     )
@@ -246,7 +246,7 @@ class PyUtilsTest(test_utils.TestCase):
     self.assertLen(flat_trees, batch_size)
 
     # Merge tree back
-    merged_tree = jax.tree_map(
+    merged_tree = jax.tree.map(
         lambda x: np_module.expand_dims(x, batch_axis), flat_trees[0]
     )
 
@@ -255,7 +255,7 @@ class PyUtilsTest(test_utils.TestCase):
       return np_module.concatenate((x_batch, y_batch), axis=batch_axis)
 
     for other_tree in flat_trees[1:]:
-      merged_tree = jax.tree_map(
+      merged_tree = jax.tree.map(
           _concat_tree_with_batch, merged_tree, other_tree
       )
 

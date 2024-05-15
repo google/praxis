@@ -231,7 +231,7 @@ class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
     acc_opt = optimizers.instantiate(opt_tpl)
     tx = acc_opt.get_grad_transformation()
 
-    var_weight_hparams = jax.tree_map(
+    var_weight_hparams = jax.tree.map(
         lambda v: base_layer.WeightHParams(
             v.shape, mesh_shape=mesh_shape, tensor_split_dims_mapping=[-1, 1]
         ),
@@ -242,7 +242,7 @@ class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
     opt_states_pspec = optimizers.partition_params(
         tx, var_weight_hparams, opt_state
     )
-    jax.tree_map(
+    jax.tree.map(
         lambda x, y: True,
         opt_states_pspec,
         opt_state,
@@ -251,7 +251,7 @@ class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
     num_steps = 3
     for t in range(num_steps):
       update_val = float(t + 1)
-      fake_update = jax.tree_map(
+      fake_update = jax.tree.map(
           lambda x: jnp.array([[update_val, update_val]]), mdl_vars
       )
       updates, opt_state = tx.update(
@@ -347,7 +347,7 @@ class CustomMaskedTest(test_utils.TestCase, parameterized.TestCase):
         learning_rate=1.0,
         grad_tx=optax.sgd(1.0),
     )
-    var_weight_hparams = jax.tree_map(
+    var_weight_hparams = jax.tree.map(
         lambda x: base_layer.WeightHParams(x.shape), params
     )
 
@@ -364,7 +364,7 @@ class CustomMaskedTest(test_utils.TestCase, parameterized.TestCase):
     num_steps = 3
     for t in range(num_steps):
       update_val = float(t + 1)
-      fake_update = jax.tree_map(lambda x: jnp.array(update_val), params)
+      fake_update = jax.tree.map(lambda x: jnp.array(update_val), params)
       updates, opt_state = masked_opt.update(
           fake_update,
           opt_state,
@@ -372,20 +372,20 @@ class CustomMaskedTest(test_utils.TestCase, parameterized.TestCase):
       )
 
       def _negate_updates_for_masked(m, upd):
-        return jax.tree_map(lambda x: -x, upd) if m else upd
+        return jax.tree.map(lambda x: -x, upd) if m else upd
 
-      expected_updates = jax.tree_map(
+      expected_updates = jax.tree.map(
           _negate_updates_for_masked,
           mask,
           fake_update,
       )
 
-      jax.tree_map(self.assertAllClose, updates, expected_updates)
+      jax.tree.map(self.assertAllClose, updates, expected_updates)
       expected_params = jax.tree_util.tree_map(
           lambda p, u: p + u, params, expected_updates
       )
       params = optax.apply_updates(params, updates)
-      jax.tree_map(self.assertAllClose, params, expected_params)
+      jax.tree.map(self.assertAllClose, params, expected_params)
 
 
 if __name__ == '__main__':
