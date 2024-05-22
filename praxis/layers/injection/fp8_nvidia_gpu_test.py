@@ -17,7 +17,7 @@
 
 from functools import partial
 
-from absl.testing import absltest
+from absl.testing import absltest, parameterized
 from flax.linen.fp8_ops import qdq
 import jax
 from jax import numpy as jnp
@@ -30,9 +30,10 @@ from praxis.layers.injection import fp8_nvidia_gpu as fp8_ops
 
 PARAMS = base_layer.PARAMS
 
-class Fp8LinearsTest(test_utils.TestCase):
+class Fp8LinearsTest(test_utils.TestCase, parameterized.TestCase):
 
-  def test_fp8_einsum_injection(self):
+  @parameterized.parameters([True, False])
+  def test_fp8_einsum_injection(self, use_direct_quant):
     # Used to cast the inputs to be representable in FP8, so that the difference
     # of the results from the original gemm and fp8 gemm is small.
     cast_to_representable = partial(
@@ -100,7 +101,9 @@ class Fp8LinearsTest(test_utils.TestCase):
     }
 
     output1a, output1b = run(None, expected_shapes_original)
-    einsum_tpl = pax_fiddle.Config(fp8_ops.Fp8EinsumOp)
+    einsum_tpl = pax_fiddle.Config(
+        fp8_ops.Fp8EinsumOp, use_direct_quant=use_direct_quant
+    )
     output2a, output2b = run(einsum_tpl, expected_shapes_new)
     dw1, dw2 = output1b[0][PARAMS]['w'], output2b[0][PARAMS]['w']
     dx1, dx2 = output1b[1], output2b[1]
