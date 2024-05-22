@@ -70,6 +70,7 @@ class Fp8EinsumOp(base_layer.BaseLayer):
   """Wrapper around jnp.einsum used in standard Pax layers."""
 
   amax_history_length: int = 1024
+  use_direct_quant: bool = False
 
   def setup(self) -> None:
     scale_args, amax_history_args = _get_fp8_args(
@@ -128,9 +129,7 @@ class Fp8EinsumOp(base_layer.BaseLayer):
       return y, x_qdq
     return y
 
-  def __call__(
-      self, equation: str, *args: JTensor
-  ) -> Union[JTensor, tuple[JTensor, JTensor]]:
+  def __call__(self, equation: str, *args: JTensor) -> JTensor:
     assert len(args) == 2
     x = args[0]
     k = args[1]
@@ -141,7 +140,29 @@ class Fp8EinsumOp(base_layer.BaseLayer):
     ), f'k dtype has to be {comp_dtype}, but got {k.dtype}'
     x = jnp.asarray(x, comp_dtype)
 
-    y = self.quantized_einsum(equation, x, k, return_quantized_x=False)
+    if self.use_direct_quant:
+      def _quantized_dot_general(
+          lhs, rhs, dimension_numbers, precision=None,
+          preferred_element_type=None
+      ):
+        theta = self.theta
+        return fp8_ops.q_dot_dq(
+            lhs,
+            rhs,
+            lhs_scale=theta.input_scale,
+            rhs_scale=theta.kernel_scale,
+            out_grad_scale=theta.output_grad_scale,
+            lhs_amax_history=theta.input_amax_history,
+            rhs_amax_history=theta.kernel_amax_history,
+            out_grad_amax_history=theta.output_grad_amax_history,
+            compute_dtype=comp_dtype,
+            dimension_numbers=dimension_numbers,
+            precision=precision,
+            preferred_element_type=preferred_element_type,
+        )
+      y = jnp.einsum(equation, x, k, _dot_general=_quantized_dot_general)
+    else:
+      y = self.quantized_einsum(equation, x, k, return_quantized_x=False)
 
     return y
 
