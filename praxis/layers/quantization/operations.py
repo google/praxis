@@ -28,6 +28,7 @@ from praxis import pytypes
 from praxis.layers.quantization import optimization
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import utils
+from flax.linen import fp8_ops
 
 
 JTensor = pytypes.JTensor
@@ -605,7 +606,7 @@ def einsum(
       jax.dtypes.scalar_type_of(w.dtype) == float
       and jnp.finfo(w.dtype).bits == 8
   ):
-    w = w.astype(jnp.bfloat16)
+    pass # stay as fp8
 
   if x.dtype in INT_TYPES and w.dtype in INT_TYPES:
     assert not swap_xw, 'No need to swap x and w when both are int types.'
@@ -626,7 +627,9 @@ def einsum(
     if swap_xw:
       ret = jnp.einsum(eqn_normalized, w, x)
     else:
-      ret = jnp.einsum(eqn_normalized, x, w)
+      x = fp8_ops.quantize_dequantize(x, jnp.float8_e4m3fn, 1.01 * jnp.ones((1,)), jnp.bfloat16)
+      w_dq = fp8_ops.in_dq(jnp.bfloat16, w, 0.99*jnp.ones((1,)), jnp.ones((1024,))) # kernel_amax_history is dummy
+      ret = jnp.einsum(eqn_normalized, x, w_dq, _dot_general=fp8_ops.dot_general_with_precision)
 
   if scale_act is not None:
     if scale_act.ndim == 0:

@@ -269,8 +269,8 @@ class QuantizationLayer(base_layer.BaseLayer):
           and jnp.finfo(dtype).bits == 8
       ):
         w = jax.lax.bitcast_convert_type(w, dtype)
-        # cast to bf16 since bf16 x fp8 is not supported.
-        w = w.astype(jnp.bfloat16)
+        # bf16 x fp8 is supported by nvidia
+        # w = w.astype(jnp.bfloat16)
       out = operations.einsum(
           eqn,
           x,
