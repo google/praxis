@@ -203,7 +203,9 @@ def _set_stacked_transformer_sharding_with_expert_parallelism(
     w_h_sharding = None if w_emh is None else w_emh[2]
     moe_wp.ehm = [w_e_sharding, w_h_sharding, w_m_sharding]
     # Activations
-    a_e_sharding = None if a_egch is None else ('data', 'data_expert')
+    a_e_sharding = (
+        None if a_egch is None else ('replica', 'data', 'data_expert')
+    )
     moe_ap = moe_p.activation_split_dims_mapping
     moe_ap.gs = [a_e_sharding, None]
     # dispatch and combine tensors
@@ -211,7 +213,9 @@ def _set_stacked_transformer_sharding_with_expert_parallelism(
     moe_ap.gecs = [a_e_sharding, None, None, None]
     moe_ap.gec = [a_e_sharding, None, None]
     moe_ap.egch = a_egch
-    a_e_sharding = None if a_egcm is None else ('data', 'data_expert')
+    a_e_sharding = (
+        None if a_egcm is None else ('replica', 'data', 'data_expert')
+    )
     a_m_sharding = None if a_egcm is None else a_egcm[3]
     moe_ap.gsm = [a_e_sharding, None, a_m_sharding]
     moe_ap.egcm = a_egcm
@@ -435,7 +439,7 @@ class TransformerLm(base_layer.BaseLayer):
         else [batch_axes, None, None]
     )
     egcm = (
-        [data_expert_axis, data_axis, None, mdl_axis]
+        [data_expert_axis, (replica_axis, data_axis), None, mdl_axis]
         if training_optimized
         else [batch_axes, None, None, None]
     )
