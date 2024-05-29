@@ -825,7 +825,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     )
     logging.debug('moe wo WeightHParams %s', wo_pc)
     self.create_variable('wo_0', wo_pc)
-    einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+    self.create_child('einsum', self.einsum_tpl.clone())
 
   def _split(self, t_in, sharding):
     return base_layer.maybe_shard(t_in, sharding, self.mesh_axis_names)
