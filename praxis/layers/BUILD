@@ -787,6 +787,7 @@ pytype_strict_library(
     deps = [
         ":activations",
         ":attentions",
+        ":base_ops",
         ":checkpoint_policy",
         ":linears",
         ":normalizations",
