@@ -1031,7 +1031,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     if self.gating_func in ['top2', 'expert_choice_v2']:
       combine_tensor = self._split(combine_tensor, ap.gsec)
       dispatch_tensor = self._split(dispatch_tensor, ap.gsec)
-      expert_inputs = jnp.einsum(
+      expert_inputs = self.einsum(
           'gsec,gsm->egcm', dispatch_tensor, reshaped_inputs
       )
     elif self.gating_func == 'expert_choice':
