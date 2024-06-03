@@ -24,8 +24,9 @@ from praxis import decoder_utils
 from praxis import pax_fiddle
 from praxis import pytypes
 from praxis import sample_decode
-JTensor = pytypes.JTensor
 
+JTensor = pytypes.JTensor
+NpTensor = pytypes.NpTensor
 
 _TDecoderHParams = TypeVar('_TDecoderHParams', bound='DecoderHParams')
 
@@ -60,6 +61,9 @@ class DecoderHParams:
       the input batch to the decode data.
       num_cache_slots: if num_cache_slots > 0, continuous batching will be
         enabled with max batch_size = num_cache_slots
+    precompute_kv_cache_prefix_ids: If not None, precompute kv cache for this
+      prefix (ids, paddings) during model initialization, and prepend the kv
+      cache during prefill.
   """
 
   seqlen: int = 0
@@ -74,6 +78,7 @@ class DecoderHParams:
   emb_lookup_style: str = 'matmul'
   use_extra_input_kwargs: bool = False
   num_cache_slots: int = 0
+  precompute_kv_cache_prefix_ids: tuple[NpTensor, NpTensor] | None = None
 
   def clone(self: _TDecoderHParams) -> _TDecoderHParams:
     return copy.deepcopy(self)
@@ -82,6 +87,7 @@ class DecoderHParams:
 @dataclasses.dataclass
 class GreedyDecoderHParams(DecoderHParams):
   """HParams for greedy decode."""
+
 
 @dataclasses.dataclass
 class BeamSearchHParams(DecoderHParams):
@@ -94,6 +100,7 @@ class BeamSearchHParams(DecoderHParams):
     length_norm_alpha: Length norm alpha for beam search.
     early_exit: A bool, whether or not to allow early exit.
   """
+
   beam_size: int = 1
   tokens_per_beam: int | None = None
   length_norm_alpha: float = 0.8
@@ -139,6 +146,7 @@ class SampleDecoderHParams(DecoderHParams):
       probability at each step.
     vanilla_sample_decode: Switch to vanilla sample decode.
   """
+
   num_samples: int = 1
   # TODO(wangtao): supports per-example temperature.
   temperature: float = 1.0
@@ -147,11 +155,11 @@ class SampleDecoderHParams(DecoderHParams):
   use_top_k_for_logprobs: bool = False
   p: float | JTensor | None = None
   next_token_sampler_tpl: pax_fiddle.Config[
-      sample_decode.BaseNextTokenSampler] = (
-          pax_fiddle.template_field(sample_decode.DefaultNextTokenSampler))
-  sample_constraint: pax_fiddle.Config[
-      sample_decode.BaseSampleTerminationConstraint
-  ] | None = None
+      sample_decode.BaseNextTokenSampler
+  ] = pax_fiddle.template_field(sample_decode.DefaultNextTokenSampler)
+  sample_constraint: (
+      pax_fiddle.Config[sample_decode.BaseSampleTerminationConstraint] | None
+  ) = None
   global_normalize: bool = False
   cf_guidance_scale: list[float] | float | None = None
   controlled_decoding: decoder_utils.ControlledDecodingHParams | None = None
