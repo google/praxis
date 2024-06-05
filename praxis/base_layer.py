@@ -110,6 +110,7 @@ NON_PAX_RNG_KEY = 'dropout'
 
 # Postfix for quantized scale and zero point names.
 QUANTIZED_SCALE_NAME_POSTFIX = '_quantized_scale'
+QUANTIZED_SCALE_ACT_NAME_POSTFIX = '_quantized_act_scale'
 QUANTIZED_ZP_NAME_POSTFIX = '_quantized_zp'
 
 # Postfix for sparsity mask
@@ -2294,13 +2295,20 @@ class BaseLayer(nn.Module):
     if scale_hparams is None:
       scale_hparams = WeightHParams(shape=scale_shape)
     else:
-      if len(scale_shape) > 0:
-        raise ValueError('Should either scale_shape or scale_hparams, not both')
+      pass
     self.create_variable(name=name, var_hparams=quantized_weight_hparams)
     self.create_variable(
         name=name + QUANTIZED_SCALE_NAME_POSTFIX,
         var_hparams=scale_hparams,
     )
+    dtype = weight_hparams.dtype
+    if (jax.dtypes.scalar_type_of(dtype) == float
+        and jnp.finfo(dtype).bits == 8
+    ):
+      self.create_variable(
+          name=name + QUANTIZED_SCALE_ACT_NAME_POSTFIX,
+          var_hparams=scale_hparams,
+      )    
     if not use_symmetric:
       self.create_variable(
           name=name + QUANTIZED_ZP_NAME_POSTFIX,
@@ -2334,6 +2342,25 @@ class BaseLayer(nn.Module):
     zp_name = name + QUANTIZED_ZP_NAME_POSTFIX
     zp = None if use_symmetric else self.theta[zp_name]
     return self.theta[name], self.theta[scale_name], zp
+
+  @nn.nowrap
+  def get_quantized_act_scale(
+      self, name: str,
+  ) -> tuple[JTensor, JTensor, JTensor | None]:
+    """Gets quantized activation scale.
+
+    `name` will be name of the weight tensor; assumes scale and zero point
+    tensor have the postfix, `_quantized_act_scale`.
+
+    Args:
+      name: Variable name for the weight tensor.
+
+    Returns:
+      Activation scale Tensor.
+    """
+
+    scale_act_name = name + QUANTIZED_SCALE_ACT_NAME_POSTFIX
+    return self.theta[scale_act_name]
 
   @nn.nowrap
   def create_sparse_variable(self, name: str, weight_hparams: WeightHParams):

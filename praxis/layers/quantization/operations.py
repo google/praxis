@@ -602,11 +602,12 @@ def einsum(
     w_dequantized = _dequantize(w, scale, zp, eqn_to_weight_contract_dims(eqn))
     return jnp.einsum(eqn, x_dequantized, w_dequantized)
 
+  use_fp8 = False
   if (
       jax.dtypes.scalar_type_of(w.dtype) == float
       and jnp.finfo(w.dtype).bits == 8
   ):
-    pass # stay as fp8
+    use_fp8 = True # w stay as fp8
 
   if x.dtype in INT_TYPES and w.dtype in INT_TYPES:
     assert not swap_xw, 'No need to swap x and w when both are int types.'
@@ -627,12 +628,18 @@ def einsum(
     if swap_xw:
       ret = jnp.einsum(eqn_normalized, w, x)
     else:
-      x = fp8_ops.quantize_dequantize(x, jnp.float8_e4m3fn, 1.01 * jnp.ones((1,)), jnp.bfloat16)
-      w_dq = fp8_ops.in_dq(jnp.bfloat16, w, 0.99*jnp.ones((1,)), jnp.ones((1024,))) # kernel_amax_history is dummy
-      ret = jnp.einsum(eqn_normalized, x, w_dq, _dot_general=fp8_ops.dot_general_with_precision)
+      dot_general_with_precision = lambda lhs, rhs, dimension_numbers, \
+      precision=None, preferred_element_type=jnp.bfloat16: lax.dot_general(
+          lhs,
+          rhs,
+          dimension_numbers=dimension_numbers,
+          precision=precision,
+          preferred_element_type=jnp.bfloat16, #TODO: use proper type
+      )
+      ret = jnp.einsum(eqn_normalized, x, w, preferred_element_type=jnp.bfloat16)
 
   if scale_act is not None:
-    if scale_act.ndim == 0:
+    if scale_act.ndim == 0 or use_fp8:
       scale *= scale_act
     else:
       ret *= jnp.expand_dims(scale_act, _get_expand_dims_lhs(eqn))
