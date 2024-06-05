@@ -36,8 +36,8 @@ from praxis.layers import normalizations
 
 # pylint: disable=g-import-not-at-top
 try:
-  from jax.experimental.pallas.ops import attention
-  from jax.experimental.pallas.ops import layer_norm
+  from jax.experimental.pallas.ops.gpu import attention
+  from jax.experimental.pallas.ops.gpu import layer_norm
   from jax.experimental.pallas.ops.gpu import decode_attention
 except ImportError:
   logging.warning('jax_triton not found, please `pip install jax-triton`')
