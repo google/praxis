@@ -49,15 +49,12 @@ class PruningParamsTest(parameterized.TestCase):
       dict(prune_rate=(1, 4), mask_decay_weight=-0.1),
       dict(prune_rate=0.2, mask_decay_weight=-0.1),
   )
-  def test_invalid_mask_decay_weight(
-      self, prune_rate, mask_decay_weight
-  ):
+  def test_invalid_mask_decay_weight(self, prune_rate, mask_decay_weight):
     with self.assertRaisesRegex(
         AssertionError, '.* `mask_decay_weight` must be positive.'
     ):
       sparsity_hparams.WeightSparsityParams(
-          prune_rate=prune_rate,
-          mask_decay_weight=mask_decay_weight
+          prune_rate=prune_rate, mask_decay_weight=mask_decay_weight
       )
 
   @parameterized.parameters(
@@ -129,6 +126,18 @@ class PruningParamsTest(parameterized.TestCase):
     inputs = jnp.arange(12)
     with self.assertRaisesRegex(AssertionError, error_msg):
       sparsity.get_sparsity_mask(inputs, n_sparsity=4, m_sparsity=1)
+
+  def test_invalid_offset_value(self):
+    inputs = jnp.arange(16)
+    with self.assertRaisesRegex(
+        ValueError, 'Offset value must be positive. You provided'
+    ):
+      _ = sparsity.prune_inputs_n_m(
+          inputs,
+          n=2,
+          m=4,
+          offset=-1,
+      )
 
 
 class ChannelwisePruningTest(parameterized.TestCase):
@@ -361,11 +370,125 @@ class PruningFunctionalityTest(parameterized.TestCase):
           n_sparsity=2,
           m_sparsity=4,
       ),
+      dict(
+          testcase_name='2d_row_wise_pruning_w_offset_two',
+          order='R',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 0, 3, 4, 5, 6, 0, 0, 9, 10, 11, 12],
+              [0, 0, 15, 16, 17, 18, 0, 0, 21, 22, 23, 24],
+              [0, 0, 27, 28, 29, 30, 0, 0, 33, 34, 35, 36],
+              [0, 0, 39, 40, 41, 42, 0, 0, 45, 46, 47, 48],
+              [0, 0, 51, 52, 53, 54, 0, 0, 57, 58, 59, 60],
+              [0, 0, 63, 64, 65, 66, 0, 0, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          offset=2,
+      ),
+      dict(
+          testcase_name='2d_row_wise_pruning_w_offset_three',
+          order='R',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 0, 0, 4, 5, 6, 7, 8, 9, 0, 0, 0],
+              [13, 14, 15, 16, 17, 18, 0, 0, 0, 22, 23, 24],
+              [25, 26, 27, 0, 0, 0, 31, 32, 33, 34, 35, 36],
+              [0, 0, 0, 40, 41, 42, 43, 44, 45, 0, 0, 0],
+              [49, 50, 51, 52, 53, 54, 0, 0, 0, 58, 59, 60],
+              [61, 62, 63, 0, 0, 0, 67, 68, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          offset=3,
+      ),
+      dict(
+          testcase_name='2d_row_wise_pruning_w_offset_four',
+          order='R',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 0, 0, 0, 5, 6, 7, 8, 9, 10, 11, 12],
+              [0, 0, 0, 0, 17, 18, 19, 20, 21, 22, 23, 24],
+              [0, 0, 0, 0, 29, 30, 31, 32, 33, 34, 35, 36],
+              [0, 0, 0, 0, 41, 42, 43, 44, 45, 46, 47, 48],
+              [0, 0, 0, 0, 53, 54, 55, 56, 57, 58, 59, 60],
+              [0, 0, 0, 0, 65, 66, 67, 68, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          offset=4,
+      ),
+      dict(
+          testcase_name='2d_col_wise_pruning_w_offset_two',
+          order='C',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
+              [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48],
+              [49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60],
+              [61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          offset=2,
+      ),
+      dict(
+          testcase_name='2d_col_wise_pruning_w_offset_three',
+          order='C',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 2, 0, 0, 5, 0, 0, 8, 0, 0, 11, 0],
+              [0, 14, 0, 0, 17, 0, 0, 20, 0, 0, 23, 0],
+              [0, 26, 0, 0, 29, 0, 0, 32, 0, 0, 35, 0],
+              [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48],
+              [49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60],
+              [61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          offset=3,
+      ),
+      dict(
+          testcase_name='2d_col_wise_pruning_w_offset_four',
+          order='C',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
+              [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48],
+              [49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60],
+              [61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          offset=4,
+      ),
+      dict(
+          testcase_name='2d_col_wise_pruning_w_offset_eight',
+          order='C',
+          inputs=np.arange(1, 97).reshape(6, 16),
+          exp_output=[
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 66, 67, 68, 69, 0, 71, 72, 73, 74, 0, 0, 77, 78, 79, 80],
+              [0, 82, 83, 84, 85, 0, 87, 88, 89, 90, 0, 0, 93, 94, 95, 96],
+          ],
+          n_sparsity=1,
+          m_sparsity=4,
+          offset=8,
+      ),
   )
-  def test_pruning(self, order, inputs, exp_output, n_sparsity, m_sparsity):
+  def test_pruning(
+      self, order, inputs, exp_output, n_sparsity, m_sparsity, offset=0
+  ):
     inputs = jnp.array(inputs)
     output = sparsity.prune_inputs_n_m(
-        inputs, n=n_sparsity, m=m_sparsity, order=order
+        inputs, n=n_sparsity, m=m_sparsity, order=order, offset=offset
     )
     np.testing.assert_array_equal(output, exp_output)
 
@@ -594,6 +717,96 @@ class PruningScoreTest(parameterized.TestCase):
         score_func=sparsity_hparams.SparsityScore.ACTIVATION_WEIGHTED,
     )
     self.assertTrue((score == expected_score).all())
+
+
+class UtilsTest(parameterized.TestCase):
+
+  @parameterized.parameters(
+      ('C', 0, False),
+      ('C', 1, False),
+      ('C', 4, False),
+      ('C', 8, True),
+      ('C', 9, False),
+      ('C', 16, True),
+      ('C', 30, False),
+      ('C', 128, True),
+      ('R', 0, False),
+      ('R', 1, False),
+      ('R', 4, False),
+      ('R', 8, False),
+      ('R', 16, False),
+      ('R', 30, False),
+      ('R', 128, True),
+      ('R', 256, True),
+  )
+  def test_is_optimized_offset(self, order, offset, expected_outcome):
+    self.assertEqual(
+        sparsity.is_optimized_offset(order, offset), expected_outcome
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='2d_row_wise_pruning_w_offset_two',
+          order='R',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 0, 3, 4, 5, 6, 0, 0, 9, 10, 11, 12],
+              [0, 0, 15, 16, 17, 18, 0, 0, 21, 22, 23, 24],
+              [0, 0, 27, 28, 29, 30, 0, 0, 33, 34, 35, 36],
+              [0, 0, 39, 40, 41, 42, 0, 0, 45, 46, 47, 48],
+              [0, 0, 51, 52, 53, 54, 0, 0, 57, 58, 59, 60],
+              [0, 0, 63, 64, 65, 66, 0, 0, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          offset=2,
+      ),
+      dict(
+          testcase_name='2d_row_wise_pruning_w_offset_four',
+          order='R',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 0, 0, 0, 5, 6, 7, 8, 9, 10, 11, 12],
+              [0, 0, 0, 0, 17, 18, 19, 20, 21, 22, 23, 24],
+              [0, 0, 0, 0, 29, 30, 31, 32, 33, 34, 35, 36],
+              [0, 0, 0, 0, 41, 42, 43, 44, 45, 46, 47, 48],
+              [0, 0, 0, 0, 53, 54, 55, 56, 57, 58, 59, 60],
+              [0, 0, 0, 0, 65, 66, 67, 68, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          offset=4,
+      ),
+      dict(
+          testcase_name='2d_col_wise_pruning_w_offset_two',
+          order='C',
+          inputs=np.arange(1, 73).reshape(6, 12),
+          exp_output=[
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
+              [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48],
+              [49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60],
+              [61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72],
+          ],
+          n_sparsity=2,
+          m_sparsity=3,
+          offset=2,
+      ),
+  )
+  def test_pruning(
+      self, order, inputs, exp_output, n_sparsity, m_sparsity, offset
+  ):
+    inputs = jnp.array(inputs)
+    mask = sparsity.get_sparsity_mask_optimized_for_offset(
+        inputs,
+        n_sparsity=n_sparsity,
+        m_sparsity=m_sparsity,
+        order=order,
+        offset=offset,
+    )
+    output = jnp.where(mask, inputs, jnp.zeros(inputs.shape, inputs.dtype))
+    np.testing.assert_array_equal(output, exp_output)
 
 
 if __name__ == '__main__':

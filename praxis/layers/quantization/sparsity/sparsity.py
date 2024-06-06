@@ -382,3 +382,135 @@ def score_activation_weighted(
     )
   score = jnp.einsum('...j,jk->jk', jnp.abs(inputs), jnp.abs(weight))
   return score
+
+
+def dtype_bitwidth(dtype: jnp.dtype) -> int:
+  if dtype == jnp.float32:
+    return 32
+  elif dtype == jnp.int32:
+    return 32
+  elif dtype == jnp.bfloat16:
+    return 16
+  elif dtype == jnp.int8:
+    return 8
+  elif dtype == jnp.int4:
+    return 4
+  else:
+    raise ValueError(f'Unsupported dtype {dtype}')
+
+
+def is_optimized_offset(
+    order: str, offset: int, input_dtype: jnp.dtype = jnp.float32
+) -> bool:
+  nz_packing = 32 // dtype_bitwidth(input_dtype)
+  stride_multiple = 8 * nz_packing
+  if order == 'C':
+    return (offset != 0) & (offset % stride_multiple == 0)
+  if order == 'R':
+    return (offset != 0) & (offset % 128 == 0)
+  return False
+
+
+@functools.partial(
+    jax.jit,
+    static_argnames=[
+        'n_sparsity',
+        'm_sparsity',
+        'order',
+        'offset',
+    ],
+)
+def get_sparsity_mask_optimized_for_offset(
+    inputs: jnp.ndarray,
+    n_sparsity: int = 0,
+    m_sparsity: int = 0,
+    order: str = 'R',
+    offset: int = 0,
+) -> jnp.ndarray:
+  """Returns sparsified inputs for n:m structured pruning.
+
+  Args:
+    inputs: Input array for which N:M pruning mask is computed.
+    n_sparsity: Maximum number of non-zero values in each block.
+    m_sparsity: Number of values in each block.
+    order: Apply pruning using this index order. Supported values are `C`, `R`.
+      `C` and `R` indicate column-wise and row-wise masking, respectively.
+      Default is `R` indicating to applying N:M sparsity across rows of the
+      input matrix. Default is `C` indicating to applying N:M sparsity across
+      columns of the input matrix. The choice may intersect with hardware
+      capabilities. For a weight tensor `C` corresponds to the reduction
+      dimension, and `R' for activations.
+    offset: Indicates the offset between the group of M elements on which
+      N:M sparsity is applied. The default is `0` (narrowly-separated),
+        indicating that `M` elements are selected from adjacent values in the
+        input matrix. Generally, because of the XLA layout (lanes 128/sublanes
+        8), another value for offset would be 128 (widely-separated). If offset
+        > 0, we only support scenarios where the input array size is equal to
+        (offset * m). Offset != 128 may not be best optimized for the memory
+        layout.
+
+  Returns:
+    A mask that indicates the pruning locations (`0`: no pruning, `1`: pruned).
+  """
+  assert (
+      n_sparsity <= m_sparsity
+  ), f'N must be lower than M for N:M ({n_sparsity}:{m_sparsity}) sparsity.'
+  if order not in ['C', 'R']:
+    raise ValueError(f'Index order {order} not supported.')
+  if offset < 0:
+    raise ValueError(f'Offset value must be positive. You provided {offset}.')
+
+  length = jnp.size(inputs)
+  if length % m_sparsity != 0:
+    raise ValueError(
+        f'inputs size must be divisible by m, provided {length} and'
+        f' {m_sparsity}'
+    )
+  if order not in ['C', 'R']:
+    raise ValueError(f'Index order {order} not supported.')
+
+  length = jnp.size(inputs)
+  group = int(length / m_sparsity)
+  if offset > 0 and group % offset != 0:
+    raise ValueError(
+        'When offset > 0, we only support a group size that is divisble to '
+        f'offset. Provided offset = {offset}, group = {group}.'
+    )
+  if offset > 0 and int(group / offset) * m_sparsity * offset != length:
+    raise ValueError(
+        'When offset > 0, we only support an array size '
+        '(length) equal to (offset * m_sparsity). '
+        f'Provided offset = {offset}, m_sparsity = {m_sparsity}, '
+        f'length = {length}.'
+    )
+
+  sparse_dim = 0 if order == 'C' else 1
+  assert len(inputs.shape) == 2
+  assert inputs.shape[sparse_dim] % (m_sparsity * offset) == 0
+  groups = inputs.shape[sparse_dim] // (m_sparsity * offset)
+  topk_indices = [[] for _ in range(n_sparsity)]
+  for group in jnp.split(inputs, groups, sparse_dim):
+    abs_splits = jnp.split(abs(group), m_sparsity, sparse_dim)
+    for i in range(n_sparsity):
+      abs_topk = abs_splits[0]
+      topk_idx = jnp.full_like(abs_topk, 0, dtype=jnp.int32)
+      for j in range(1, m_sparsity):
+        cond = abs_splits[j] > abs_topk
+        abs_topk = jnp.where(cond, abs_splits[j], abs_topk)
+        topk_idx = jnp.where(cond, j, topk_idx)
+      topk_indices[i].append(topk_idx)
+      for j in range(m_sparsity):
+        abs_splits[j] = jnp.where(topk_idx == j, -1, abs_splits[j])
+  topk_i = jnp.array(
+      [jnp.concatenate(indices, axis=sparse_dim) for indices in topk_indices]
+  )
+  masks = []
+  for split in jnp.split(
+      topk_i, topk_i.shape[sparse_dim + 1] // offset, sparse_dim + 1
+  ):
+    for j in range(m_sparsity):
+      mask = False
+      for i in range(n_sparsity):
+        mask = jnp.where(split[i] == j, True, mask)
+      masks.append(mask)
+  return jnp.concatenate(masks, axis=sparse_dim)

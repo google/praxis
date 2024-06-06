@@ -226,7 +226,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       )
 
   # TODO(shivaniagrawal): add base layer tests for boundary conditions.
-  def _get_sparsity_mask(self, score, mask, step):
+  def _get_sparsity_mask(self, score, mask, step, input_dtype):
     assert self.sparsity is not None
 
     if self.sparsity.sparsity_type == SparsityType.STRUCTURED_NM:
@@ -235,6 +235,22 @@ class SparsityBaseLayer(base_layer.BaseLayer):
           or self.sparsity.weight_params.prune_rate is None
       ):
         return mask
+      if (
+          sparsity.is_optimized_offset(
+              self.sparsity.order,
+              self.sparsity.weight_params.offset,
+              input_dtype,
+          )
+          and not self.sparsity.block_size
+      ):
+        return sparsity.get_sparsity_mask_optimized_for_offset(
+            score,
+            n_sparsity=self.sparsity.weight_params.prune_rate[0],
+            m_sparsity=self.sparsity.weight_params.prune_rate[1],
+            order=self.sparsity.order,
+            offset=self.sparsity.weight_params.offset,
+        )
+
       return sparsity.get_sparsity_mask(
           score,
           n_sparsity=self.sparsity.weight_params.prune_rate[0],
@@ -330,7 +346,8 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       score = sparsity.compute_score(
           w, score_func=self.sparsity.score, inputs=inputs
       )
-      new_mask = self._get_sparsity_mask(score, mask, step)
+      input_dtype = w.dtype
+      new_mask = self._get_sparsity_mask(score, mask, step, input_dtype)
 
       sad_score = None
       if self.sparsity.track_sad_metric:
