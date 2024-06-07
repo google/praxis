@@ -17,7 +17,7 @@
 
 import math
 from typing import Callable, Mapping, Sequence
-
+from absl import logging
 from flax import linen as nn
 import jax
 from jax import numpy as jnp
@@ -209,7 +209,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
   scale_query_by_dim_per_head: bool = False
   chunked_attn_num_seq_split: int = 1
-  use_te_dpa: bool = False
+  use_te_dpa: bool = False  # Experimental way to use TE flash attention when can't use standard TE
 
   # SPMD partition related params.
   #
@@ -844,6 +844,9 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       key_proj = self._shard_blnh(key_proj)
       value_proj = self._shard_blnh(value_proj)
       if self.use_te_dpa:
+        logging.warning(
+            'use_te_dpa is set to True, so TE dpa is used as an experimental way to use TE flash attention.'
+        )
         atten_probs = None
         encoded = self.dpa_layer(query_proj, key_proj, value_proj)
       else:
