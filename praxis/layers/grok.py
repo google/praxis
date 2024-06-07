@@ -59,7 +59,7 @@ def GrokStackedTransformerHParams(
     combine_qkv=False,
     bidirectional=False,
     use_fp8=False,
-    use_te_dpa=True,
+    use_te_dpa=False,
 ) -> pax_fiddle.Config[transformers.StackedTransformer]:
   """Common setup for Grok-1 Transformer layers.
 
@@ -230,7 +230,7 @@ def GrokUniTransformerLmHParams(
     model_type=LanguageModelType.CAUSAL,
     checkpoint_policy=AutodiffCheckpointType.SAVE_NOTHING,
     use_fp8=False,
-    use_te_dpa=True,
+    use_te_dpa=False,
 ) -> pax_fiddle.Config[transformer_models.TransformerLm]:
   """Common setup for Grok-1 Decoder-only Transformer Model.
 
