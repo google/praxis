@@ -31,7 +31,7 @@ from praxis.layers import attentions
 from praxis.layers import base_ops
 from praxis.layers import embedding_softmax
 from praxis.layers import stochastics
-
+from transformer_engine.jax.flax.transformer import DotProductAttention as TEDotProductAttention
 
 WeightInit = base_layer.WeightInit
 WeightHParams = base_layer.WeightHParams
@@ -209,6 +209,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
   scale_query_by_dim_per_head: bool = False
   chunked_attn_num_seq_split: int = 1
+  use_te_dpa: bool = False
 
   # SPMD partition related params.
   #
@@ -347,6 +348,20 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     self.create_child('post', post_proj_p)
     self.create_child('qk_einsum', self.qk_einsum_tpl.clone())
     self.create_child('pv_einsum', self.pv_einsum_tpl.clone())
+    self.dpa_layer = TEDotProductAttention(
+                  head_dim=dim_per_head,
+                  num_attention_heads=self.num_heads,
+                  num_gqa_groups=self.num_kv_heads,
+                  attn_mask_type='causal', # 'causal' or 'padding'
+                  attn_bias_type='no_bias', # 'no_bias', 'pre_scale_bias' or 'post_scale_bias'
+                  attention_dropout=0.,
+                  dropout_rng_name='aqt',
+                  dtype=jnp.bfloat16,
+                  float32_logits=False,
+                  qkv_layout='BSHD_BSHD_BSHD', # 'BS3HD', 'BSHD_BS2HD' or 'BSHD_BSHD_BSHD'
+                  scale_factor=1.0/math.sqrt(self.num_heads),
+                  transpose_batch_sequence=False
+            ) 
 
   def _shard_bnh(self, x: JTensor) -> JTensor:
     """Shards tensors of shape [b, n, h].
@@ -828,29 +843,33 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     else:
       key_proj = self._shard_blnh(key_proj)
       value_proj = self._shard_blnh(value_proj)
-      b, t, n, h = query_proj.shape
-      _, s, nk, _ = key_proj.shape
-      assert n % nk == 0
-      v_q = jnp.reshape(query_proj, (b, t, nk, n // nk, h))
-      if relative_bias is not None:
-        v_rb = jnp.reshape(relative_bias, (b, nk, n // nk, t, s))
+      if self.use_te_dpa:
+        atten_probs = None
+        encoded = self.dpa_layer(query_proj, key_proj, value_proj)
       else:
-        v_rb = None
-      with self._context_for_kv_vmap():
-        encoded, atten_probs = jax.vmap(
-            self._dot_atten,
-            in_axes=(2, 2, 2, None, 1),
-            out_axes=(2, 1),
-        )(
-            v_q,
-            key_proj,
-            value_proj,
-            atten_mask,
-            v_rb,
-        )
-      encoded = self._shard_blnh(jnp.reshape(encoded, (b, t, n, h)))
-      if atten_probs is not None:
-        atten_probs = jnp.reshape(atten_probs, (b, t, n, s))
+        b, t, n, h = query_proj.shape
+        _, s, nk, _ = key_proj.shape
+        assert n % nk == 0
+        v_q = jnp.reshape(query_proj, (b, t, nk, n // nk, h))
+        if relative_bias is not None:
+          v_rb = jnp.reshape(relative_bias, (b, nk, n // nk, t, s))
+        else:
+          v_rb = None
+        with self._context_for_kv_vmap():
+          encoded, atten_probs = jax.vmap(
+              self._dot_atten,
+              in_axes=(2, 2, 2, None, 1),
+              out_axes=(2, 1),
+          )(
+              v_q,
+              key_proj,
+              value_proj,
+              atten_mask,
+              v_rb,
+          )
+        encoded = self._shard_blnh(jnp.reshape(encoded, (b, t, n, h)))
+        if atten_probs is not None:
+          atten_probs = jnp.reshape(atten_probs, (b, t, n, s))
 
     # Post projection
     encoded = self.post(encoded)
