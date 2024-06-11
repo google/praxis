@@ -35,6 +35,7 @@ def apply_sparsity(
     inputs: jnp.ndarray,
     mask: jnp.ndarray,
     channelwise_dim: Optional[int] = None,
+    pruned_value: Optional[jnp.ndarray] = None,
 ) -> jnp.ndarray:
   """Returns sparsified inputs based on input mask.
 
@@ -45,6 +46,7 @@ def apply_sparsity(
       supplied, the mask will be converted to a channelwise mask and the input
       tensor will be have the masked channels removed, reducing the overall
       size.
+    pruned_value: Value to be used instead of 0s for sparsity masking.
 
   Returns: The masked input tensor.
   """
@@ -55,7 +57,18 @@ def apply_sparsity(
     channel_mask = channel_mask.reshape(-1)
     return jnp.take(inputs, jnp.nonzero(channel_mask)[0], axis=channelwise_dim)
 
-  return jnp.where(mask, inputs, jnp.zeros(inputs.shape, inputs.dtype))
+  if pruned_value is not None:
+    return jnp.where(
+        mask,
+        inputs,
+        pruned_value * jnp.ones(inputs.shape, inputs.dtype),
+    )
+  else:
+    return jnp.where(
+        mask,
+        inputs,
+        jnp.zeros(inputs.shape, inputs.dtype),
+    )
 
 
 def get_sparsity_mask(

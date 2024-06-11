@@ -110,13 +110,14 @@ class WeightSparsityParams:
         layout.
   """
 
-  # TODO(ayazdan): Add additional sparsity parameters (order, offset, etc.)
   prune_rate: None | float | tuple[int, int]
   structure_decay: bool = False
   mask_decay_weight: float = 0.0
   sparse_ste: bool = False
   sparse_ste_weight: float = 0.0002
   offset: int = 0
+  pruned_value: float = 0.0
+  pruned_value_trainable: bool = False
 
   def __post_init__(self):
     assert self.mask_decay_weight >= 0.0, (
