@@ -1325,9 +1325,12 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
           args_time_dims,
       )
       broadcast_sliced = jax.tree.map(
-          lambda x, d: self._slice_decode_chunk(x, chunk_id, d),
+          lambda x, d: (
+              None if x is None else self._slice_decode_chunk(x, chunk_id, d)
+          ),
           broadcast_args_to_slice,
           broadcast_args_time_dims,
+          is_leaf=lambda x: x is None,
       )
       return fn(layer, args, sliced, broadcast_sliced, states)
 
