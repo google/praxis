@@ -307,6 +307,13 @@ class QuantizationLayer(base_layer.BaseLayer):
         w = jnp.reshape(w, reshape)
 
       if self.quantization.quantization_type == QuantizationType.AQT:
+        if (
+            hasattr(self.act_quantizer, 'use_symmetric')
+            and not self.act_quantizer.use_symmetric
+        ):
+          raise NotImplementedError(
+              'Asymmetric activation quantization is not supported for AQT.'
+          )
         out = operations.aqt_einsum(
             eqn,
             x,
@@ -450,6 +457,9 @@ def create_tensor_quantizer(
     tq_params.precision = quant_params.precision
     tq_params.stop_scale_gradient = quant_params.stop_scale_gradient
     tq_params.unsigned_int_bounds = quant_params.unsigned_int_bounds
+
+  if isinstance(quant_params, ActQuantizationParams):
+    tq_params.use_symmetric = quant_params.symmetric
 
   if isinstance(quant_params, WeightQuantizationParams):
     tq_params.min_clipping = quant_params.min_clipping
