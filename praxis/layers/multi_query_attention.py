@@ -732,7 +732,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       new_context_params = base_layer.cur_jax_context().hparams.clone()
     else:
       new_context_params = base_layer.JaxContext.HParams()
-    if not self.is_initializing() and n_sharding is not None:
+    if n_sharding is not None:
       new_context_params.mesh_axes_transpose = {n_sharding: None}
     return base_layer.JaxContext.new_context(hparams=new_context_params)
 
