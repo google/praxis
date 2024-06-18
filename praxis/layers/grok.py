@@ -353,5 +353,6 @@ def GrokUniTransformerLmHParams(
         num_pipeline_stages=num_pipeline_stages,
         num_pipeline_microbatches=num_pipeline_microbatches,
         stream_io=True,
+        checkpoint_policy=checkpoint_policy,
     )
   return p
