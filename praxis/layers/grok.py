@@ -59,6 +59,7 @@ def GrokStackedTransformerHParams(
     combine_qkv=False,
     bidirectional=False,
     use_fp8=False,
+    use_te_dpa=False,
 ) -> pax_fiddle.Config[transformers.StackedTransformer]:
   """Common setup for Grok-1 Transformer layers.
 
@@ -168,6 +169,7 @@ def GrokStackedTransformerHParams(
   p.transformer_layer_params_tpl.tr_atten_tpl = pax_fiddle.Config(
       multi_query_attention.MultiQueryDotProductAttention,
       num_kv_heads=attention_num_groups,
+      use_te_dpa=use_te_dpa,
   )
   tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl
   tr_atten_tpl.combine_qkv = False
@@ -225,6 +227,7 @@ def GrokUniTransformerLmHParams(
     model_type=LanguageModelType.CAUSAL,
     checkpoint_policy=AutodiffCheckpointType.SAVE_NOTHING,
     use_fp8=False,
+    use_te_dpa=False,
 ) -> pax_fiddle.Config[transformer_models.TransformerLm]:
   """Common setup for Grok-1 Decoder-only Transformer Model.
 
@@ -328,6 +331,7 @@ def GrokUniTransformerLmHParams(
       bidirectional=bidirectional,
       moe_gating_embedding_level=moe_gating_embedding_level,
       use_fp8=use_fp8,
+      use_te_dpa=use_te_dpa,
   )
   num_blocks = num_transformer_layers
 
@@ -350,5 +354,6 @@ def GrokUniTransformerLmHParams(
         num_pipeline_stages=num_pipeline_stages,
         num_pipeline_microbatches=num_pipeline_microbatches,
         stream_io=True,
+        checkpoint_policy=checkpoint_policy,
     )
   return p
