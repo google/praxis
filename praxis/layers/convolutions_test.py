@@ -226,12 +226,16 @@ class ConvolutionsTest(test_utils.TestCase):
     assert jnp.isnan(y[0, 4, 0, 0])
 
   @parameterized.parameters(
-      ((2, 5, 4, 24, 36), (1, 1, 1), [2, 4, 16, 36, 72]),
-      ((2, 2, 4, 16, 8), (2, 2, 2), [2, 8, 16, 32, 128]),
-      ((2, 4, 8, 16, 32), (1, 1, 1), [2, 8, 16, 32, 64]),
+      ((2, 5, 4, 24, 36), (1, 1, 1), [2, 4, 16, 36, 72], jnp.float32),
+      ((2, 2, 4, 16, 8), (2, 2, 2), [2, 8, 16, 32, 128], jnp.float32),
+      ((2, 4, 8, 16, 32), (1, 1, 1), [2, 8, 16, 32, 64], jnp.bfloat16),
   )
   def test_conv3d_layer_same_padding(
-      self, filter_shape, filter_stride, input_shape
+      self,
+      filter_shape,
+      filter_stride,
+      input_shape,
+      fprop_dtype,
   ):
     p = pax_fiddle.Config(
         convolutions.Conv3D,
@@ -240,6 +244,7 @@ class ConvolutionsTest(test_utils.TestCase):
         filter_stride=filter_stride,
         dilations=(1, 1, 1),
         padding='SAME',
+        fprop_dtype=fprop_dtype,
     )
     conv_layer = instantiate(p)
     npy_inputs = np.random.normal(1.0, 0.5, input_shape).astype('float32')
@@ -252,6 +257,7 @@ class ConvolutionsTest(test_utils.TestCase):
     # Test whether output has same shape as input in time, height and width
     for i in [1, 2, 3]:
       self.assertEqual(output.shape[i], inputs.shape[i] // filter_stride[i - 1])
+    self.assertEqual(output.dtype, fprop_dtype)
 
   @parameterized.parameters(
       (2, 10, 3, 10, 1, True),

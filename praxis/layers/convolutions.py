@@ -481,6 +481,7 @@ class Conv3D(base_layer.BaseLayer):
           f'filter shape: {self.filter_shape}).'
       )
     padding = self._compute_padding()
+    inputs = inputs.astype(self.fprop_dtype)
 
     # The `dimension_numbers=('NTHWC', 'THWIO', 'NTHWC')` is to be consistent
     # with tf.conv3d.
