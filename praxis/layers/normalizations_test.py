@@ -566,6 +566,29 @@ class NormalizationsTest(test_utils.TestCase):
           updated[NON_TRAINABLE]['u'], init[NON_TRAINABLE]['u']
       )
 
+  @parameterized.parameters(
+      ((5, 4, 24, 36), (1, 1), [2, 16, 36, 72], jnp.bfloat16),
+      ((2, 4, 16, 8), (2, 2), [2, 16, 32, 128], jnp.bfloat16),
+      ((4, 8, 16, 32), (1, 1), [2, 16, 32, 64], jnp.float32),
+  )
+  def test_spectral_norm_conv_fprop_dtype(
+      self, filter_shape, filter_stride, input_shape, fprop_dtype
+  ):
+    inputs = np.random.normal(1.0, 0.5, input_shape).astype('float32')
+
+    p = pax_fiddle.Config(
+        convolutions.Conv2D,
+        name='jax_conv2d',
+        filter_shape=filter_shape,
+        filter_stride=filter_stride,
+        weight_norm_tpl=pax_fiddle.Config(normalizations.SpectralNorm),
+        fprop_dtype=fprop_dtype,
+    )
+    conv_layer = instantiate(p)
+    initial_vars = conv_layer.init(jax.random.PRNGKey(seed=123), inputs)
+    output = conv_layer.apply(initial_vars, inputs)
+    self.assertEqual(output.dtype, fprop_dtype)
+
 
 if __name__ == '__main__':
   absltest.main()

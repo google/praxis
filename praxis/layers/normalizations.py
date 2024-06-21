@@ -669,4 +669,5 @@ class SpectralNorm(BaseNormalization):
 
     norm = v @ w @ u
     wn = w / norm
-    return jnp.reshape(wn, inputs.shape)
+    wn = jnp.reshape(wn, inputs.shape)
+    return self._cast_to_fprop_dtype(wn)
