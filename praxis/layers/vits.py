@@ -144,7 +144,11 @@ def interpolate_embedding_2d(emb, source_emb_shape, target_emb_shape):
     raise ValueError('The shape of the embedding should be (1, H * W, D)')
 
   if emb.shape[1] != source_emb_shape[0] * source_emb_shape[1]:
-    raise ValueError('The shape of the embedding does NOT match input specs.')
+    raise ValueError(
+        f'The shape of the embedding ({emb.shape}) does NOT match input'
+        f' specs ({source_emb_shape}); expected embedding shape[1] to be the '
+        'product of the input spec.'
+    )
 
   emb_dims = emb.shape[2]
   emb = jnp.reshape(emb, (source_emb_shape[0], source_emb_shape[1], emb_dims))
