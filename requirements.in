@@ -13,7 +13,7 @@ jax @ git+https://github.com/google/jax
 jax-bitempered-loss
 jaxtyping
 lingvo
-numpy
+numpy<2
 optax
 optax-shampoo
 opt-einsum
