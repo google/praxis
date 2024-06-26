@@ -129,7 +129,7 @@ def pack_4bit(
     packed_dtype: Target type to pack to, int32 or int8.
 
   Returns:
-    int32 or int8 packed tensor where the pack_dim size is dividened by 8
+    int32 or int8 packed tensor where the pack_dim size is divided by 8
     from the original tensor x.
   """
   if packed_dtype == jnp.int8 and x.dtype == jnp.uint8:
