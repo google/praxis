@@ -52,7 +52,7 @@ class Chain(base_layer.BaseLayer):
   """
 
   preserve_adopted_names: bool = True
-  layers: base_layer.BaseLayer | None = None
+  layers: Sequence[base_layer.BaseLayer] | None = None
 
   def __call__(self, *args: Any, **kwargs: Any) -> Any:
     """Calls layers one-by-one and returns the last chain output."""
