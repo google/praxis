@@ -1698,6 +1698,9 @@ class DotProductAttention(base_layer.BaseLayer):
       query_proj = self.query(query_vec)
       key_proj = self.key(key_vec)
       value_proj = self.value(value_vec)
+      query_proj = checkpoint_name(query_proj, 'query_proj')
+      key_proj = checkpoint_name(key_proj, 'key_proj')
+      value_proj = checkpoint_name(value_proj, 'value_proj')
 
     if not self.consolidate_rope_key_state:
       self._fprop_update_decode_state('key_state', key_proj)
