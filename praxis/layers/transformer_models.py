@@ -33,6 +33,7 @@ from praxis.layers import embedding_softmax
 from praxis.layers import multi_query_attention
 from praxis.layers import normalizations
 from praxis.layers import transformers
+from praxis.contrib.gpu.scripts_gpu.te_helper import TransformerEngineHelper
 
 NestedMap = py_utils.NestedMap
 JTensor = pytypes.JTensor
@@ -539,6 +540,8 @@ class TransformerLm(base_layer.BaseLayer):
         if training_optimized
         else [batch_axes, None, None]
     )
+    bld = TransformerEngineHelper.get_input_bld(bld, batch_axes, mdl_axis)
+
     egcm = (
         [data_axis, None, None, mdl_axis]
         if training_optimized
