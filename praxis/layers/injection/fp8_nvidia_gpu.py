@@ -51,13 +51,16 @@ class Fp8EinsumOp(base_layer.BaseLayer):
     OVERWRITE_WITH_GRADIENT = (
         base_layer.WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
     )
+    DISALLOW_BFLOAT16_CONVERSION = (
+        base_layer.WeightHParamsCollection.DISALLOW_BFLOAT16_CONVERSION
+    )
     scale_args = {
         'shape': [1],
         'init': base_layer.WeightInit.Constant(1.0),
         'dtype': jnp.float32,
         'mesh_shape': self.mesh_shape,
         'tensor_split_dims_mapping': None,
-        'collections': [OVERWRITE_WITH_GRADIENT],
+        'collections': [OVERWRITE_WITH_GRADIENT, DISALLOW_BFLOAT16_CONVERSION],
     }
     amax_history_args = {
         'shape': [self.amax_history_length],
@@ -65,7 +68,7 @@ class Fp8EinsumOp(base_layer.BaseLayer):
         'dtype': jnp.float32,
         'mesh_shape': self.mesh_shape,
         'tensor_split_dims_mapping': None,
-        'collections': [OVERWRITE_WITH_GRADIENT],
+        'collections': [OVERWRITE_WITH_GRADIENT, DISALLOW_BFLOAT16_CONVERSION],
     }
     self.create_variable(
         'input_amax_history', base_layer.WeightHParams(**amax_history_args)
@@ -98,19 +101,19 @@ class Fp8EinsumOp(base_layer.BaseLayer):
     theta = self.theta
 
     x_qdq = fp8_ops.in_qdq(
-        comp_dtype, x, theta.input_scale, theta.input_amax_history
+        comp_dtype, jnp.float8_e4m3fn, x, theta.input_scale,
+        theta.input_amax_history
     )
     k_qdq = fp8_ops.in_qdq(
-        comp_dtype, k, theta.kernel_scale, theta.kernel_amax_history
+        comp_dtype, jnp.float8_e4m3fn, k, theta.kernel_scale,
+        theta.kernel_amax_history
     )
     y_qdq = jnp.einsum(
         equation, x_qdq, k_qdq, _dot_general=fp8_ops.dot_general_with_precision
     )
     y = fp8_ops.out_qdq(
-        comp_dtype,
-        y_qdq,
-        theta.output_grad_scale,
-        theta.output_grad_amax_history,
+        comp_dtype, jnp.float8_e5m2, y_qdq, theta.output_grad_scale,
+        theta.output_grad_amax_history
     )
 
     return y
