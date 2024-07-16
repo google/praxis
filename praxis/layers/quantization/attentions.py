@@ -101,7 +101,7 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
           elif axes is not None:
             h_sharding += axes
         wt = [h_sharding, wp.wt[2]]
-        assert len(self.wt) == 2
+        assert len(wt) == 2
     else:
       wt = wp.wt
 
