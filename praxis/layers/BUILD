@@ -117,6 +117,7 @@ pytype_strict_library(
         # Implicit jax dependency.
         # Implicit Pallas GPU dependency.  # BC internal suffix.
         # Implicit Pallas GPU Ops dependency.  # BC internal suffix.
+        # Implicit numpy dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
         "//praxis:py_utils",
