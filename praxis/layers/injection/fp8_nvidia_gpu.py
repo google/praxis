@@ -41,6 +41,30 @@ from praxis import layers
 from praxis import pax_fiddle
 from praxis import pytypes
 
+def _get_fp8_args():
+  OVERWRITE_WITH_GRADIENT = (
+      base_layer.WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
+  )
+  DISALLOW_BFLOAT16_CONVERSION = (
+      base_layer.WeightHParamsCollection.DISALLOW_BFLOAT16_CONVERSION
+  )
+  scale_args = {
+      'shape': [1],
+      'init': base_layer.WeightInit.Constant(1.0),
+      'dtype': jnp.float32,
+      'mesh_shape': self.mesh_shape,
+      'tensor_split_dims_mapping': None,
+      'collections': [OVERWRITE_WITH_GRADIENT, DISALLOW_BFLOAT16_CONVERSION],
+  }
+  amax_history_args = {
+      'shape': [self.amax_history_length],
+      'init': base_layer.WeightInit.Constant(0.0),
+      'dtype': jnp.float32,
+      'mesh_shape': self.mesh_shape,
+      'tensor_split_dims_mapping': None,
+      'collections': [OVERWRITE_WITH_GRADIENT, DISALLOW_BFLOAT16_CONVERSION],
+  }
+  return scale_args, amax_history_args
 
 class Fp8EinsumOp(base_layer.BaseLayer):
   """Wrapper around jnp.einsum used in standard Pax layers."""
@@ -48,28 +72,8 @@ class Fp8EinsumOp(base_layer.BaseLayer):
   amax_history_length: int = 1024
 
   def setup(self) -> None:
-    OVERWRITE_WITH_GRADIENT = (
-        base_layer.WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
-    )
-    DISALLOW_BFLOAT16_CONVERSION = (
-        base_layer.WeightHParamsCollection.DISALLOW_BFLOAT16_CONVERSION
-    )
-    scale_args = {
-        'shape': [1],
-        'init': base_layer.WeightInit.Constant(1.0),
-        'dtype': jnp.float32,
-        'mesh_shape': self.mesh_shape,
-        'tensor_split_dims_mapping': None,
-        'collections': [OVERWRITE_WITH_GRADIENT, DISALLOW_BFLOAT16_CONVERSION],
-    }
-    amax_history_args = {
-        'shape': [self.amax_history_length],
-        'init': base_layer.WeightInit.Constant(0.0),
-        'dtype': jnp.float32,
-        'mesh_shape': self.mesh_shape,
-        'tensor_split_dims_mapping': None,
-        'collections': [OVERWRITE_WITH_GRADIENT, DISALLOW_BFLOAT16_CONVERSION],
-    }
+    scale_args, amax_history_args = _get_fp8_args() 
+
     self.create_variable(
         'input_amax_history', base_layer.WeightHParams(**amax_history_args)
     )
@@ -126,3 +130,84 @@ class Fp8EinsumOp(base_layer.BaseLayer):
     )
 
     return y
+
+class Fp8EinsumGatedOp(Fp8EinsumOp):
+  """Wrapper around two jnp.einsum for gated FFN."""
+
+  def setup(self) -> None:
+    super().setup()
+
+    scale_args, amax_history_args = _get_fp8_args() 
+
+    self.create_variable(
+        'kernel_amax_history_gated',
+        base_layer.WeightHParams(**amax_history_args)
+    )
+    self.create_variable(
+        'output_grad_amax_history_gated',
+        base_layer.WeightHParams(**amax_history_args),
+    )
+
+    self.create_variable(
+        'kernel_scale_gated', base_layer.WeightHParams(**scale_args)
+    )
+    self.create_variable(
+        'output_grad_scale_gated', base_layer.WeightHParams(**scale_args)
+    )
+
+  def __call__(self, equation: str, *args: pytypes.JTensor) -> pytypes.JTensor:
+    assert len(args) == 3
+    x, k, k_gated = args
+
+    comp_dtype = self.fprop_dtype
+    assert (
+        k.dtype == k_gated.dtype == comp_dtype
+    ), f'k dtype has to be {comp_dtype}, but got {k.dtype} and {k_gated.dtype}'
+    x = jnp.asarray(x, comp_dtype)
+
+    theta = self.theta
+
+    x_qdq = fp8_ops.in_qdq(
+        comp_dtype,
+        jnp.float8_e4m3fn,
+        x,
+        theta.input_scale,
+        theta.input_amax_history,
+    )
+    k_qdq = fp8_ops.in_qdq(
+        comp_dtype,
+        jnp.float8_e4m3fn,
+        k,
+        theta.kernel_scale,
+        theta.kernel_amax_history,
+    )
+    k_gated_qdq = fp8_ops.in_qdq(
+        comp_dtype,
+        jnp.float8_e4m3fn,
+        k_gated,
+        theta.kernel_scale_gated,
+        theta.kernel_amax_history_gated,
+    )
+    y_qdq = jnp.einsum(
+        equation, x_qdq, k_qdq, _dot_general=fp8_ops.dot_general_with_precision
+    )
+    y_gated_qdq = jnp.einsum(
+        equation, x_qdq, k_gated_qdq,
+        _dot_general=fp8_ops.dot_general_with_precision
+    )
+    y = fp8_ops.out_qdq(
+        comp_dtype,
+        jnp.float8_e5m2,
+        y_qdq,
+        theta.output_grad_scale,
+        theta.output_grad_amax_history,
+    )
+    y_gated = fp8_ops.out_qdq(
+        comp_dtype,
+        jnp.float8_e5m2,
+        y_gated_qdq,
+        theta.output_grad_scale_gated,
+        theta.output_grad_amax_history_gated,
+    )
+
+    return y, y_gated

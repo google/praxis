@@ -185,6 +185,9 @@ def GrokStackedTransformerHParams(
         fp8_ops.Fp8EinsumOp
     )
     p.moe_layer_tpl.einsum_tpl = pax_fiddle.Config(fp8_ops.Fp8EinsumOp)
+    p.moe_layer_tpl.einsum_gated_tpl = pax_fiddle.Config(
+        fp8_ops.Fp8EinsumGatedOp
+    )
   return p
 
 

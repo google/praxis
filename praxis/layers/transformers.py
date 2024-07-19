@@ -662,6 +662,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
   moe_gating_embedding_level: str = 'token'
   use_gated_activation: bool = False
   einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  einsum_gated_tpl: LayerTpl = template_field(base_ops.EinsumGatedOp)
 
   # SPMD partition related params.
   # M - model_dim, for both inputs and outputs
@@ -827,8 +828,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     self.create_variable('wo_0', wo_pc)
     self.create_child('dispatch_einsum', self.einsum_tpl.clone())
     if self._is_ffn1_gated:
-      self.create_child('gated_ffn1_hidden0_einsum', self.einsum_tpl.clone())
-      self.create_child('gated_ffn1_hidden1_einsum', self.einsum_tpl.clone())
+      self.create_child('gated_ffn1_einsum', self.einsum_gated_tpl.clone())
     self.create_child('ffn2_einsum', self.einsum_tpl.clone())
     self.create_child('combine_einsum', self.einsum_tpl.clone())
 
@@ -1050,11 +1050,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     expert_inputs = self._split(expert_inputs, ap.egcm)
 
     if self._is_ffn1_gated:
-      hidden0 = self.gated_ffn1_hidden0_einsum(
-          'egcm,emh->egch', expert_inputs, theta_wi
-      )
-      hidden1 = self.gated_ffn1_hidden1_einsum(
-          'egcm,emh->egch', expert_inputs, theta_wi_gated
+      hidden0, hidden1 = self.gated_ffn1_einsum(
+          'egcm,emh->egch', expert_inputs, theta_wi, theta_wi_gated
       )
       if self.gating_func in ['top2', 'expert_choice_v2']:
         self._count_dead_neurons(hidden1, dispatch_tensor)
