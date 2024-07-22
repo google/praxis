@@ -168,12 +168,14 @@ def partition_params(
 
 
 def sharded_sgd(
-    learning_rate_fn: optax.Schedule, momentum: float | None, nesterov: bool
+    learning_rate_fn: optax.Schedule,
+    momentum: float | None = None,
+    nesterov: bool = False,
 ) -> ShardedGradientTransformation:
   """A Stochastic Gradient Descent optimiser that supports spmd sharding.
 
   This implements stochastic gradient descent. It also includes support for
-  momentum, and nesterov acceleration, as these are standard practice when
+  momentum and Nesterov acceleration, as these are standard practice when
   using stochastic gradient descent to train deep neural networks.
 
   References:
@@ -182,9 +184,9 @@ def sharded_sgd(
   Args:
     learning_rate_fn: a callable that given the current training step, returns
       the learning rate to apply.
-    momentum: (default `None`), the `decay` rate used by the momentum term, when
-      it is set to `None`, then momentum is not used at all.
-    nesterov (default `False`): whether nesterov momentum is used.
+    momentum: the `decay` rate used by the momentum term; when it is set to
+      `None`, then momentum is not used at all.
+    nesterov: whether Nesterov momentum is used.
 
   Returns:
     A `ShardedGradientTransformation`.
