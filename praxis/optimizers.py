@@ -283,14 +283,26 @@ def sharded_adagrad(learning_rate_fn: optax.Schedule,
 
 
 class _AdamOptState:
+  """Adam optimizer state.
 
-  def __init__(self, *, m, v):
+  Attributes:
+    m: first moment.
+    v: second moment.
+  """
+
+  def __init__(self, *, m: WeightHParams | JTensor, v: WeightHParams | JTensor):
     self.m = m
     self.v = v
 
 
 class _ShardedAdamHelper:
-  """A helper class facilitates the creation of sharded_adam_optimizer."""
+  """A helper class facilitates the creation of sharded_adam_optimizer.
+
+  Attributes:
+    _maybe_inf_to_nan: whether to replace infinite values with NaNs.
+  """
+
+  _maybe_inf_to_nan: bool
 
   def __init__(self, maybe_inf_to_nan: bool = True):
     self._maybe_inf_to_nan = maybe_inf_to_nan
@@ -357,8 +369,13 @@ class _ShardedAdamHelper:
 
 
 class _LionOptState:
+  """Lion optimizer state.
 
-  def __init__(self, *, m):
+  Attributes:
+    m: momentum.
+  """
+
+  def __init__(self, *, m: WeightHParams | JTensor):
     self.m = m
 
 
