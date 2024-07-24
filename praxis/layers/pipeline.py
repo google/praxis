@@ -359,8 +359,14 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         return mapped_vars
 
       def layer_fprop(layer, *args, **kwargs):
+        var_hparams = layer.abstract_init_with_metadata(*args, **kwargs)
+        OWG = base_layer.WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
+        owg_mask = jax.tree.map(
+            lambda x: True if OWG in x.collections else False, var_hparams
+        )
+
         out = layer(*args, **kwargs)
-        return out
+        return out, owg_mask
 
       mapped_fn = nn.map_variables(
           layer_fprop,
@@ -405,7 +411,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     vmapped_fn = nn.vmap(
         body_fn,
         in_axes=0,
-        out_axes=0,
+        out_axes=(0, None),  # layer_output, owg_mask
         spmd_axis_name=self.weight_split_dims_mapping.stages[0],
         variable_axes={
             PARAMS: 0,
@@ -581,6 +587,26 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       per_stage[f'{key}.stage{i}'] = vectorized_summary[i]
     return per_stage
 
+  def get_to_fm32_converter(self, owg_mask):
+    def _to_fm32(var_tree):
+      if self.is_initializing():
+        return var_tree
+      new_vars = {}
+      for col in var_tree:
+        if col in owg_mask and var_tree[col]:
+          new_vars[col] = jax.tree.map(
+              lambda m, x: jax.lax.convert_element_type(x, nn.fp8_ops.fm32)  # pytype: disable=wrong-arg-types
+              if m
+              else x,
+              owg_mask[col],
+              var_tree[col],
+          )
+        else:
+          new_vars[col] = var_tree[col]
+      return new_vars
+
+    return _to_fm32
+
   def __call__(self, inputs: NestedJTensor, *broadcast_inputs,
                **broadcast_kwargs) -> NestedJTensor:
     """FProp inputs through the pipeline body.
@@ -752,7 +778,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
             broadcast_kwargs,
         )
       # Run through pipeline body.
-      out_state = model.body_fprop(
+      out_state, owg_mask = model.body_fprop(
           loop_iter,
           num_microbatches,
           bf16_vars_to_convert,
@@ -773,7 +799,9 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
       # Accumulator saves out_state for final output retrieval.
       ys = NestedMap(data=y_out if not self.stream_io else None)
-      carry = NestedMap(data=new_carry_data, loop_iter=loop_iter + 1)
+      carry = NestedMap(
+          data=new_carry_data, loop_iter=loop_iter + 1, owg_mask=owg_mask
+      )
       return carry, ys
 
     # Loop over num_microbatches + (num_stages - 1), where input to each iter
@@ -936,8 +964,29 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         mutable=True,
         trans_out_fn=post_process)
 
+    init_owg_mask = {}
+    if PARAMS in self.variables:
+      init_owg_mask = jax.tree.map(lambda x: False, self.variables)
+      init_owg_mask = {PARAMS: init_owg_mask[PARAMS][self.body.name]}
     init_carry = NestedMap(
-        data=loop_state0, loop_iter=jnp.array(0, dtype=jnp.int32))
+        data=loop_state0,
+        loop_iter=jnp.array(0, dtype=jnp.int32),
+        owg_mask=init_owg_mask,
+    )
+
+    # One scan body is enough to obtain the static OWG masks.
+    out, _ = _scan_fn(self, init_carry)
+    owg_mask = {PARAMS: {self.body.name: out.owg_mask[PARAMS]}}
+
+    # OWG variables need to be in fm32 before they are broadcasted to the scan
+    # loops to ensure the correct accumulation operation.
+    after_post_process = nn.map_variables(
+        after_post_process,
+        mapped_collections=[PARAMS],
+        mutable=True,
+        trans_in_fn=self.get_to_fm32_converter(owg_mask),
+        init=self.is_initializing(),
+    )
 
     if self.is_initializing():
       # Variable initializations doesn't require scanning through microbatches.
