@@ -42,6 +42,17 @@ class EinsumOp(base_layer.BaseLayer):
     return jnp.einsum(equation, *args)
 
 
+class EinsumGatedOp(base_layer.BaseLayer):
+  """Wrapper around two jnp.einsum for gated FFN."""
+
+  def __call__(self, equation: str, *args: JTensor) -> tuple[JTensor, JTensor]:
+    assert len(args) == 3
+    x, k, k_gated = args
+    y = jnp.einsum(equation, x, k)
+    y_gated = jnp.einsum(equation, x, k_gated)
+    return y, y_gated
+
+
 class ArrayLookup(base_layer.BaseLayer):
   """Wrapper around array indexing as used in embedding lookup."""
 
