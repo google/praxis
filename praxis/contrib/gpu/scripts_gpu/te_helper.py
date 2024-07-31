@@ -31,6 +31,7 @@ try:
         te.fp8.FP8Helper.FP8_COLLECTION_NAME:0
     }
 
+    DEFAULT_INIT_MUTABLE_LIST = base_layer.DEFAULT_INIT_MUTABLE_LIST + [te.fp8.FP8Helper.FP8_COLLECTION_NAME]
     TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST = [te.fp8.FP8Helper.FP8_COLLECTION_NAME]
 
     ENABLE_TE_SP = bool(int(os.environ.get('ENABLE_TE_SP', 0)))
@@ -39,6 +40,7 @@ except ModuleNotFoundError as e:
     _IS_TRANSFORMER_ENGINE_INSTALLED = False
     TE_PIPELINE_EXTRA_VMAP_VAR_AXES = {}
     TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST = []
+    DEFAULT_INIT_MUTABLE_LIST = base_layer.DEFAULT_INIT_MUTABLE_LIST
     ENABLE_TE_SP = False
 
 LayerTpl = pax_fiddle.Config[base_layer.BaseLayer]

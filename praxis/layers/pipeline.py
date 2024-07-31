@@ -28,6 +28,7 @@ from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import checkpoint_policy
+from praxis.contrib.gpu.scripts_gpu.te_helper import DEFAULT_INIT_MUTABLE_LIST
 from praxis.contrib.gpu.scripts_gpu.te_helper import TE_PIPELINE_EXTRA_VMAP_VAR_AXES
 from praxis.contrib.gpu.scripts_gpu.te_helper import TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST
 
@@ -363,7 +364,9 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
       def layer_fprop(layer, *args, **kwargs):
         if query_owg_mask:
-          var_hparams = layer.abstract_init_with_metadata(*args, **kwargs)
+          var_hparams = layer.abstract_init_with_metadata(*args, **kwargs,
+            extra_mutable_list=DEFAULT_INIT_MUTABLE_LIST
+          )
           OWG = base_layer.WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
           owg_mask = jax.tree.map(
               lambda x: True if OWG in x.collections else False, var_hparams
@@ -872,7 +875,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     if bf16_vars_to_convert is not None:
       scan_fn = nn.map_variables(
           scan_fn,
-          mapped_collections=[PARAMS, 'fp8_meta_collection'],
+          mapped_collections=[PARAMS] + TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST,
           mutable=True,
           trans_in_fn=_get_to_f32_converter(bf16_vars_to_convert),
           trans_out_fn=_get_to_bf16_converter(bf16_vars_to_convert),
@@ -975,8 +978,13 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
     init_owg_mask = {}
     if PARAMS in self.variables:
-      init_owg_mask = jax.tree.map(lambda x: False, self.variables)
-      init_owg_mask = {PARAMS: init_owg_mask[PARAMS][self.body.name]}
+      init_owg_mask_from_vars = jax.tree.map(lambda x: False, self.variables)
+      init_owg_mask = {PARAMS: init_owg_mask_from_vars[PARAMS][self.body.name]}
+      if TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST[0] in init_owg_mask_from_vars:
+        init_owg_mask[TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST[0]] = \
+          jax.tree.map(lambda x: True,
+                       init_owg_mask_from_vars[TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST[0]])[self.body.name]
+
     init_carry = NestedMap(
         data=loop_state0, loop_iter=jnp.array(0, dtype=jnp.int32)
     )
@@ -988,7 +996,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     # loops to ensure the correct accumulation operation.
     after_post_process = nn.map_variables(
         after_post_process,
-        mapped_collections=[PARAMS],
+        mapped_collections=[PARAMS] + TE_PIPELINE_EXTRA_SCAN_VAR_BROADCAST,
         mutable=True,
         trans_in_fn=self.get_to_fm32_converter(owg_mask),
         init=self.is_initializing(),
