@@ -48,9 +48,9 @@ beautifulsoup4==4.12.3
     # via nbconvert
 bleach==6.1.0
     # via nbconvert
-cachetools==5.3.3
+cachetools==5.4.0
     # via google-auth
-certifi==2024.6.2
+certifi==2024.7.4
     # via
     #   httpcore
     #   httpx
@@ -79,7 +79,7 @@ contourpy==1.2.1
     # via matplotlib
 cycler==0.12.1
     # via matplotlib
-debugpy==1.8.1
+debugpy==1.8.2
     # via ipykernel
 decorator==5.1.1
     # via ipython
@@ -97,10 +97,11 @@ etils[enp,epath,epy]==1.7.0
     #   array-record
     #   clu
     #   lingvo
+    #   optax
     #   orbax-checkpoint
     #   tensorflow-datasets
     #   tfds-nightly
-exceptiongroup==1.2.1
+exceptiongroup==1.2.2
     # via
     #   anyio
     #   ipython
@@ -116,15 +117,15 @@ flax @ git+https://github.com/google/flax
     # via
     #   -r praxis-requirements.in
     #   clu
-fonttools==4.53.0
+fonttools==4.53.1
     # via matplotlib
 fqdn==1.5.1
     # via jsonschema
-fsspec==2024.6.0
+fsspec==2024.6.1
     # via etils
 gast==0.4.0
     # via tensorflow
-google-auth==2.30.0
+google-auth==2.32.0
     # via
     #   google-auth-oauthlib
     #   tensorboard
@@ -138,7 +139,7 @@ graph-compression-google-research==0.0.4
     # via lingvo
 graphviz==0.20.3
     # via fiddle
-grpcio==1.64.1
+grpcio==1.65.2
     # via
     #   tensorboard
     #   tensorflow
@@ -158,14 +159,14 @@ idna==3.7
     #   requests
 importlib-resources==6.4.0
     # via etils
-ipykernel==6.29.4
+ipykernel==6.29.5
     # via
     #   jupyter
     #   jupyter-console
     #   jupyterlab
     #   lingvo
     #   qtconsole
-ipython==8.25.0
+ipython==8.26.0
     # via
     #   ipykernel
     #   ipywidgets
@@ -184,14 +185,14 @@ jax @ git+https://github.com/google/jax
     #   orbax-checkpoint
 jax-bitempered-loss==0.0.2
     # via -r praxis-requirements.in
-jaxlib==0.4.30
+jaxlib==0.4.31
     # via
     #   chex
     #   clu
     #   jax
     #   optax
     #   orbax-checkpoint
-jaxtyping==0.2.30
+jaxtyping==0.2.33
     # via -r praxis-requirements.in
 jedi==0.19.1
     # via ipython
@@ -207,7 +208,7 @@ json5==0.9.25
     # via jupyterlab-server
 jsonpointer==3.0.0
     # via jsonschema
-jsonschema[format-nongpl]==4.22.0
+jsonschema[format-nongpl]==4.23.0
     # via
     #   jupyter-events
     #   jupyterlab-server
@@ -242,7 +243,7 @@ jupyter-http-over-ws==0.0.8
     # via lingvo
 jupyter-lsp==2.2.5
     # via jupyterlab
-jupyter-server==2.14.1
+jupyter-server==2.14.2
     # via
     #   jupyter-lsp
     #   jupyterlab
@@ -251,11 +252,11 @@ jupyter-server==2.14.1
     #   notebook-shim
 jupyter-server-terminals==0.5.3
     # via jupyter-server
-jupyterlab==4.2.2
+jupyterlab==4.2.4
     # via notebook
 jupyterlab-pygments==0.3.0
     # via nbconvert
-jupyterlab-server==2.27.2
+jupyterlab-server==2.27.3
     # via
     #   jupyterlab
     #   notebook
@@ -282,7 +283,7 @@ markupsafe==2.1.5
     #   jinja2
     #   nbconvert
     #   werkzeug
-matplotlib==3.9.0
+matplotlib==3.9.1
     # via lingvo
 matplotlib-inline==0.1.7
     # via
@@ -362,13 +363,13 @@ opt-einsum==3.3.0
     #   -r praxis-requirements.in
     #   jax
     #   tensorflow
-optax==0.2.2
+optax==0.2.3
     # via
     #   -r praxis-requirements.in
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax-checkpoint==0.5.20
+orbax-checkpoint==0.5.23
     # via flax
 overrides==7.7.0
     # via jupyter-server
@@ -390,7 +391,7 @@ parso==0.8.4
     # via jedi
 pexpect==4.9.0
     # via ipython
-pillow==10.3.0
+pillow==10.4.0
     # via
     #   lingvo
     #   matplotlib
@@ -426,7 +427,7 @@ ptyprocess==0.7.0
     # via
     #   pexpect
     #   terminado
-pure-eval==0.2.2
+pure-eval==0.2.3
     # via stack-data
 pyasn1==0.6.0
     # via
@@ -494,13 +495,13 @@ rfc3986-validator==0.1.1
     #   jupyter-events
 rich==13.7.1
     # via flax
-rpds-py==0.18.1
+rpds-py==0.19.1
     # via
     #   jsonschema
     #   referencing
 rsa==4.9
     # via google-auth
-scikit-learn==1.5.0
+scikit-learn==1.5.1
     # via lingvo
 scipy==1.14.0
     # via
@@ -534,7 +535,7 @@ soupsieve==2.5
     # via beautifulsoup4
 stack-data==0.6.3
     # via ipython
-sympy==1.12.1
+sympy==1.13.1
     # via lingvo
 tensorboard==2.9.1
     # via tensorflow
@@ -557,7 +558,7 @@ tensorflow-hub==0.16.1
     # via
     #   lingvo
     #   tensorflow-text
-tensorflow-io-gcs-filesystem==0.37.0
+tensorflow-io-gcs-filesystem==0.37.1
     # via tensorflow
 tensorflow-metadata==1.12.0
     # via
@@ -568,7 +569,7 @@ tensorflow-text==2.9.0
     # via
     #   -r praxis-requirements.in
     #   lingvo
-tensorstore==0.1.63
+tensorstore==0.1.64
     # via
     #   flax
     #   orbax-checkpoint
