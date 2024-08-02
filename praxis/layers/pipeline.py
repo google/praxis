@@ -291,7 +291,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       loop_iteration: JTensor,
       num_microbatches: int,
       bf16_vars_to_convert: pytypes.PyTree | None,
-      to_get_owg_mask: bool = False,
+      query_owg_mask: bool = False,
   ) -> Callable[..., JTensor]:
     """Returns a function that runs the fprop function of the stages."""
     del loop_iteration, num_microbatches
@@ -360,7 +360,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         return mapped_vars
 
       def layer_fprop(layer, *args, **kwargs):
-        if to_get_owg_mask:
+        if query_owg_mask:
           var_hparams = layer.abstract_init_with_metadata(*args, **kwargs)
           OWG = base_layer.WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
           owg_mask = jax.tree_map(lambda x: True
@@ -414,7 +414,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     vmapped_fn = nn.vmap(
         body_fn,
         in_axes=0,
-        out_axes=None if to_get_owg_mask else 0,
+        out_axes=None if query_owg_mask else 0,
         spmd_axis_name=self.weight_split_dims_mapping.stages[0],
         variable_axes={
             PARAMS: 0,
@@ -466,7 +466,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       num_microbatches: int,
       bf16_vars_to_convert: pytypes.PyTree | None,
       per_stage_inputs: JTensor,
-      to_get_owg_mask: bool = False,
+      query_owg_mask: bool = False,
       *per_stage_args,
       **per_stage_kwargs,
   ) -> NestedJTensor:
@@ -488,7 +488,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       return nmap
 
     body_fprop_fn = self._get_body_fprop_fn(
-        loop_iteration, num_microbatches, bf16_vars_to_convert, to_get_owg_mask
+        loop_iteration, num_microbatches, bf16_vars_to_convert, query_owg_mask
     )
     # per_mb_vars: per-microbatch vars that need to be adjusted.
     return body_fprop_fn(self.body, per_stage_is_valid_mb, per_stage_inputs,
@@ -735,7 +735,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
     loop_state0 = self._get_init_loop_state(inputs, num_microbatches)
 
-    def _scan_fn(model, carry, to_get_owg_mask=False):
+    def _scan_fn(model, carry, query_owg_mask=False):
       in_state = carry.data.shift
       loop_iter = carry.loop_iter
 
@@ -787,11 +787,11 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
           num_microbatches,
           bf16_vars_to_convert,
           stages_in,
-          to_get_owg_mask,
+          query_owg_mask,
           *per_stage_args,
           **per_stage_kwargs,
       )
-      if to_get_owg_mask:
+      if query_owg_mask:
         return out_state # owg_mask
 
       y_out = out_state
@@ -979,8 +979,8 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         data=loop_state0,
         loop_iter=jnp.array(0, dtype=jnp.int32))
 
-    query_owg_mask = _scan_fn(self, init_carry, to_get_owg_mask=True)
-    owg_mask = {PARAMS: {self.body.name : query_owg_mask[PARAMS]}}
+    owg_mask = _scan_fn(self, init_carry, query_owg_mask=True)
+    owg_mask = {PARAMS: {self.body.name : owg_mask[PARAMS]}}
 
     # OWG variables need to be in fm32 before they are broadcasted to the scan
     # loops to ensure the correct accumulation operation.
