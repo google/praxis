@@ -414,7 +414,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     vmapped_fn = nn.vmap(
         body_fn,
         in_axes=0,
-        out_axes= None if to_get_owg_mask else 0,
+        out_axes=None if to_get_owg_mask else 0,
         spmd_axis_name=self.weight_split_dims_mapping.stages[0],
         variable_axes={
             PARAMS: 0,
@@ -782,19 +782,18 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
             broadcast_kwargs,
         )
       # Run through pipeline body.
-      owg_mask_or_out_state = model.body_fprop(
-        loop_iter,
-        num_microbatches,
-        bf16_vars_to_convert,
-        stages_in,
-        to_get_owg_mask,
-        *per_stage_args,
-        **per_stage_kwargs,
+      out_state = model.body_fprop(
+          loop_iter,
+          num_microbatches,
+          bf16_vars_to_convert,
+          stages_in,
+          to_get_owg_mask,
+          *per_stage_args,
+          **per_stage_kwargs,
       )
       if to_get_owg_mask:
-        return owg_mask_or_out_state # owg_mask
+        return out_state # owg_mask
 
-      out_state = owg_mask_or_out_state
       y_out = out_state
       py_utils.assert_same_shape_and_dtype(stages_in, out_state)
       if self.pipeline_broadcast_inputs:
@@ -980,8 +979,8 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         data=loop_state0,
         loop_iter=jnp.array(0, dtype=jnp.int32))
 
-    owg_mask = _scan_fn(self, init_carry, to_get_owg_mask=True)
-    owg_mask = {PARAMS: {self.body.name : owg_mask[PARAMS]}}
+    query_owg_mask = _scan_fn(self, init_carry, to_get_owg_mask=True)
+    owg_mask = {PARAMS: {self.body.name : query_owg_mask[PARAMS]}}
 
     # OWG variables need to be in fm32 before they are broadcasted to the scan
     # loops to ensure the correct accumulation operation.
