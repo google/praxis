@@ -286,6 +286,108 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         out_axes=xs_dim)(xs, updates, ids)
     return self._shard_dim_by_stages(outs, xs_dim)
 
+  def _get_body_fprop_fn_get_owg_mask(
+      self,
+      loop_iteration: JTensor,
+      num_microbatches: int,
+      bf16_vars_to_convert: pytypes.PyTree | None,
+  ) -> Callable[..., JTensor]:
+    """Returns a function that runs the fprop function of the stages."""
+    del loop_iteration, num_microbatches
+
+    def _from_nmap(nmap):
+      return nmap.ToNestedDict()
+
+    # vmap self.body.fprop to get a leading stage dimension to handle per_stage
+    # inputs and args.
+    def body_fn(body, is_valid_mb, per_stage_inputs, per_stage_kwargs_nmp,
+                *per_stage_args):
+
+      def xform_collections(
+          var_tree: pytypes.PyTree,
+          collections: list[str],
+          fn: Callable[[JTensor], JTensor],
+      ) -> pytypes.PyTree:
+        mapped_vars = {}
+        for key in var_tree:
+          if key in collections:
+            mapped_vars[key] = jax.tree.map(fn, var_tree[key])
+          else:
+            mapped_vars[key] = var_tree[key]
+        return mapped_vars
+
+      non_trainable_backup_dict_key = '_pipeline_backup'
+
+      def layer_fprop(layer, *args, **kwargs):
+        var_hparams = layer.abstract_init_with_metadata(*args, **kwargs)
+        OWG = base_layer.WeightHParamsCollection.OVERWRITE_WITH_GRADIENT
+        owg_mask = jax.tree.map(lambda x: True
+                                if OWG in x.collections else False,
+                                var_hparams)
+
+        return owg_mask
+
+      mapped_fn = nn.map_variables(
+          layer_fprop,
+          mapped_collections=True,  # Transform the entire var col tree.
+          mutable=True)
+
+      if bf16_vars_to_convert is not None:
+        body_bf16_vars = {}
+        for col, tree in bf16_vars_to_convert.items():
+          if tree:
+            body_bf16_vars[col] = bf16_vars_to_convert[col]['body']
+          else:
+            body_bf16_vars[col] = tree
+
+        mapped_fn = nn.map_variables(
+            mapped_fn,
+            mapped_collections=[PARAMS],
+            mutable=True,
+            trans_in_fn=_get_to_bf16_converter(body_bf16_vars),
+            trans_out_fn=_get_to_f32_converter(body_bf16_vars),
+        )
+
+      per_stage_kwargs = _from_nmap(per_stage_kwargs_nmp)
+      return layer_fprop(body, per_stage_inputs, *per_stage_args,
+                       **per_stage_kwargs)
+
+    vmapped_fn = nn.vmap(
+        body_fn,
+        in_axes=0,
+        out_axes=0, # layer_output, owg_mask
+        spmd_axis_name=self.weight_split_dims_mapping.stages[0],
+        variable_axes={
+            PARAMS: 0,
+            AUX_LOSS: 0,
+            SUMMARIES: 0,
+            NON_TRAINABLE: 0,
+            INTERMEDIATES: 0,
+            HYPER_PARAMS: 0,
+        },
+        split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
+        metadata_params={
+            'is_initializing': self.is_initializing(),
+            'sub_weight_split_dims_mapping': (
+                self.weight_split_dims_mapping.stages
+            ),
+            'x_times': self.num_stages,
+            'optimizer_dims_mapping': self.optimizer_dims_mapping,
+        },
+    )
+    if self.is_initializing():
+      # Other vars are immutable.
+      vmapped_fn = nn.map_variables(
+          vmapped_fn,
+          mapped_collections=[
+              SUMMARIES,
+              AUX_LOSS,
+              INTERMEDIATES,
+          ],
+          mutable=False,
+      )
+    return vmapped_fn
+
   def _get_body_fprop_fn(
       self,
       loop_iteration: JTensor,
@@ -456,6 +558,38 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     return jnp.logical_and(
         stage_id <= loop_iteration,
         loop_iteration - stage_id < self.num_valid_iterations(num_microbatches))
+
+  def body_fprop_get_owg_mask(self,
+      loop_iteration: JTensor,
+      num_microbatches: int,
+      bf16_vars_to_convert: pytypes.PyTree | None,
+      per_stage_inputs: JTensor,
+      *per_stage_args,
+      **per_stage_kwargs,
+  ):
+    per_stage_is_valid_mb = self.get_valid_microbatch_mask(
+        loop_iteration, num_microbatches)
+    if self.mesh_axis_names is not None:
+      def annotate(x):
+        return self._shard_dim_by_stages(x, 0)
+
+      per_stage_inputs = jax.tree.map(annotate, per_stage_inputs)
+      per_stage_args = jax.tree.map(annotate, per_stage_args)
+      per_stage_kwargs = jax.tree.map(annotate, per_stage_kwargs)
+
+    # nn.vmap does not support kwargs, so we use a NestedMap for kwargs.
+    def _to_nmap(**kwargs):
+      nmap = NestedMap()
+      for k, v in kwargs.items():
+        nmap.Set(k, v)
+      return nmap
+
+    body_fprop_fn_get_owg_mask = self._get_body_fprop_fn_get_owg_mask(
+        loop_iteration, num_microbatches, bf16_vars_to_convert
+    )
+    # per_mb_vars: per-microbatch vars that need to be adjusted.
+    return body_fprop_fn_get_owg_mask(self.body, per_stage_is_valid_mb, per_stage_inputs,
+                         _to_nmap(**per_stage_kwargs), *per_stage_args)
 
   def body_fprop(
       self,
@@ -731,6 +865,60 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
 
     loop_state0 = self._get_init_loop_state(inputs, num_microbatches)
 
+    def _scan_fn2(model, carry):
+      in_state = carry.data.shift
+      loop_iter = carry.loop_iter
+
+      # Different stages need args from different microbatches.
+      microbatch_ids = jnp.maximum(loop_iter - jnp.arange(L), 0)
+      microbatch_ids = microbatch_ids % num_microbatches
+
+      # Bring in the next microbatch.
+      def _select_state_or_input(x, s):
+        return jnp.where(
+            jax.lax.broadcasted_iota('int32', s.shape, 0) == 0, x, s)
+
+      stages_in = self._get_iteration_inputs(loop_iter, num_microbatches,
+                                             per_stage_inputs, carry.data)
+      if self.polluting_bubbles_with_nan:
+        is_valid_mb = self.get_valid_microbatch_mask(loop_iter,
+                                                     num_microbatches)
+
+        def _fill_nan_for_bubbles(x):
+          if not jnp.issubdtype(x.dtype, jnp.floating):
+            return x
+          mask = jnp.reshape(is_valid_mb, (L,) + (1,) * (x.ndim - 1))
+          return jnp.where(mask, x, jnp.zeros_like(x) + jnp.nan)
+
+        stages_in = jax.tree.map(_fill_nan_for_bubbles, stages_in)
+
+      stages_in = jax.tree.map(_select_state_or_input, stages_in, in_state)
+      if self._should_checkpoint_stages_in():
+        stages_in = jax.tree.map(
+            lambda x: checkpoint_name(x, 'iteration_input'), stages_in)
+
+      if self.pipeline_broadcast_inputs:
+        per_stage_args = stages_in.broadcast_inputs
+        per_stage_kwargs = stages_in.broadcast_kwargs
+        stages_in = stages_in.inputs
+      else:
+        per_stage_args = jax.tree.map(
+            functools.partial(self._vmap_gather, ids=microbatch_ids, ids_dim=0),
+            broadcast_inputs)
+        per_stage_kwargs = jax.tree.map(
+            functools.partial(self._vmap_gather, ids=microbatch_ids, ids_dim=0),
+            broadcast_kwargs)
+      # Run through pipeline body.
+      owg_mask = model.body_fprop_get_owg_mask(
+          loop_iter,
+          num_microbatches,
+          bf16_vars_to_convert,
+          stages_in,
+          *per_stage_args,
+          **per_stage_kwargs,
+      )
+      return owg_mask
+
     def _scan_fn(model, carry):
       in_state = carry.data.shift
       loop_iter = carry.loop_iter
@@ -974,9 +1162,20 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         owg_mask=init_owg_mask,
     )
 
-    # One scan body is enough to obtain the static OWG masks.
-    out, _ = _scan_fn(self, init_carry)
-    owg_mask = {PARAMS: {self.body.name: out.owg_mask[PARAMS]}}
+    owg_mask = _scan_fn2(self, init_carry)
+
+    def update_dict_values(d):
+      def process_item(item):
+        key, value = item
+        if isinstance(value, dict):
+          return (key, update_dict_values(value))
+        elif key in ('input_amax_history', 'input_scale', 'kernel_amax_history', 'kernel_scale', 'output_grad_amax_history', 'output_grad_scale'):
+          return (key, True)
+        else:
+          return (key, False)
+      return dict(map(process_item, d.items()))
+    owg_mask = update_dict_values(owg_mask)
+    owg_mask = {PARAMS: {self.body.name : owg_mask[PARAMS]}}
 
     # OWG variables need to be in fm32 before they are broadcasted to the scan
     # loops to ensure the correct accumulation operation.
