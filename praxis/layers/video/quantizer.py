@@ -153,7 +153,7 @@ class LookupFreeQuantizer(base_layer.BaseLayer):
     result_dict = NestedMap()
     group_size = int(math.ceil(self.embedding_dim / self.num_token_groups))
     base = jnp.power(
-        2, jnp.arange(self.embedding_dim, dtype=jnp.uint8) % group_size
+        2, jnp.arange(self.embedding_dim, dtype=jnp.uint32) % group_size
     )
     samples = inputs >= 0
     quantized = jnp.where(samples, 1.0, -1.0)
@@ -215,7 +215,7 @@ class LookupFreeQuantizer(base_layer.BaseLayer):
   def decode_ids(self, inputs: JTensor) -> JTensor:
     group_size = int(math.ceil(self.embedding_dim / self.num_token_groups))
     base = jnp.power(
-        2, jnp.arange(self.embedding_dim, dtype=jnp.uint8) % group_size
+        2, jnp.arange(self.embedding_dim, dtype=jnp.uint32) % group_size
     )
     if self.num_token_groups == 1:
       inputs = inputs[..., None]
