@@ -719,6 +719,9 @@ def create_device_mesh(
 
 def get_large_negative_number(dtype: jnp.dtype | np.dtype) -> JTensor:
   """Returns a large negative value for the given dtype."""
+  # JAX may canonicalize 64-bit types to smaller types if x64 mode isn't
+  # enabled. This code avoids an integer overflow in that case.
+  dtype = jnp.asarray(0, dtype=dtype).dtype
   # -0.7 is a float64 in Jax. Explicit cast output to target dtype.
   if jnp.issubdtype(dtype, jnp.inexact):
     dtype_max = jnp.finfo(dtype).max
