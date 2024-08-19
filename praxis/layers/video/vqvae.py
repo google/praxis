@@ -23,6 +23,8 @@ from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
+from praxis.layers import convolutions
+from praxis.layers import linears
 from praxis.layers.video import enc_dec_3dcnn
 from praxis.layers.video import quantizer
 
@@ -289,6 +291,87 @@ class Decoder(base_layer.BaseLayer):
     x = self.norm(x)
     x = self.activation(x)
     x = self.conv_last(x)
+    return x
+
+
+class Discriminator(base_layer.BaseLayer):
+  """StyleGAN Discriminator."""
+
+  filters: int = 128
+  num_frames: int = 1
+  image_height: int = 256
+  image_width: int = 256
+  input_dim: int = 3  # RGB
+  blur_filter_size: int = 3
+  channel_multipliers: Sequence[int] = (2, 4, 4, 4)
+  conv_tpl: LayerTpl = template_field(convolutions.Conv3D)
+  res_block_tpl: LayerTpl = template_field(enc_dec_3dcnn.DiscriminatorResBlock)
+  activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
+      template_field(activations.LeakyReLU)
+  )
+  proj_tpl: LayerTpl = template_field(linears.MLPBlock)
+
+  def setup(self):
+    activation_p = self.activation_tpl.clone()
+    activation_p.name = 'activation'
+    activation_p.negative_slope = 0.2
+    self.create_child('activation', activation_p)
+
+    conv_p = self.conv_tpl.clone()
+    conv_p.name = 'conv_first'
+    conv_p.padding = 'SAME'
+    conv_p.bias = True
+    conv_p.filter_shape = (3, 3, 3, self.input_dim, self.filters)
+    conv_p.filter_stride = (1, 1, 1)
+    self.create_child('conv_first', conv_p)
+
+    input_dim = self.filters
+    output_dim = self.filters
+    res_blocks = []
+    t, h, w = self.num_frames, self.image_height, self.image_width
+    for i in range(len(self.channel_multipliers)):
+      output_dim = self.filters * self.channel_multipliers[i]
+      res_p = self.res_block_tpl.clone()
+      res_p.name = f'res_block_{i}'
+      res_p.input_dim = input_dim
+      res_p.output_dim = output_dim
+      res_p.activation_tpl = activation_p.clone()
+      res_p.blur_filter_size = self.blur_filter_size
+      res_blocks.append(res_p)
+      input_dim = output_dim
+      # res_block pads odd dim up to the next even number before strides
+      t = t // 2 + t % 2
+      h = h // 2 + h % 2
+      w = w // 2 + w % 2
+
+    self.create_children('res_blocks', res_blocks)
+    conv_p = self.conv_tpl.clone()
+    conv_p.name = 'conv_last'
+    conv_p.padding = 'SAME'
+    conv_p.bias = True
+    conv_p.filter_shape = (3, 3, 3, output_dim, output_dim)
+    conv_p.filter_stride = (1, 1, 1)
+    self.create_child('conv_last', conv_p)
+
+    proj_p = self.proj_tpl.clone()
+    proj_p.name = 'proj'
+    proj_p.num_layers = 2
+    proj_p.hidden_dims = output_dim
+    proj_p.activate_final = False
+    proj_p.ff_tpl.input_dims = output_dim * t * h * w
+    proj_p.ff_tpl.output_dims = 1
+    proj_p.ff_tpl.activation_tpl = activation_p.clone()
+    self.create_child('proj', proj_p)
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    x = self.conv_first(inputs)
+    x = self.activation(x)
+    for i in range(len(self.channel_multipliers)):
+      x = self.res_blocks[i](x)
+    x = self.conv_last(x)
+    x = self.activation(x)
+    x = x.reshape((x.shape[0], -1))
+    x = self.proj(x)
     return x
 
 

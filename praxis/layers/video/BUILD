@@ -89,5 +89,7 @@ pytype_strict_library(
         "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis/layers:activations",
+        "//praxis/layers:convolutions",
+        "//praxis/layers:linears",
     ],
 )

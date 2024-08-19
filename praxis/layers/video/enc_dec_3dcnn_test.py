@@ -30,6 +30,23 @@ class EndcDec3dcnnTest(test_utils.TestCase):
     y = enc_dec_3dcnn.depth_to_space(x, 2, 4)
     self.assertEqual(y.shape, (2, 10, 6, 6, 4))
 
+  def test_gan_res_block(self):
+    prng_key, _ = jax.random.split(jax.random.PRNGKey(1234))
+    pax_x = jax.random.normal(prng_key, (1, 17, 256, 257, 32))
+    res_block_p = pax_fiddle.Config(
+        enc_dec_3dcnn.DiscriminatorResBlock,
+        name='res_block',
+        input_dim=32,
+        output_dim=32,
+    )
+    pax_layer = base_layer.instantiate(res_block_p)
+    init_vars = pax_layer.init(prng_key, pax_x)
+    logging.info(
+        'init_vars: %s', jax.tree_util.tree_map(lambda x: x.shape, init_vars)
+    )
+    pax_y = pax_layer.apply(init_vars, pax_x)
+    self.assertEqual(pax_y.shape, (1, 9, 128, 129, 32))
+
   def test_res_block(self):
     prng_key, _ = jax.random.split(jax.random.PRNGKey(1234))
     pax_x = jax.random.normal(prng_key, (1, 5, 3, 3, 32))

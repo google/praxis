@@ -15,6 +15,7 @@
 
 """Encoder and Decoder structures with 3D CNNs."""
 
+import math
 from typing import Any, Callable, Sequence
 
 import jax
@@ -283,3 +284,145 @@ class ResBlock(base_layer.BaseLayer):
     if self.input_dim != self.output_dim:
       residual = self.conv_shortcut(residual)
     return x + residual
+
+
+def _conv_dimension_numbers(input_shape):
+  """Computes the dimension numbers based on the input shape."""
+  ndim = len(input_shape)
+  lhs_spec = (0, ndim - 1) + tuple(range(1, ndim - 1))
+  rhs_spec = (ndim - 1, ndim - 2) + tuple(range(0, ndim - 2))
+  out_spec = lhs_spec
+  return jax.lax.ConvDimensionNumbers(lhs_spec, rhs_spec, out_spec)
+
+
+class BlurPool3D(base_layer.BaseLayer):
+  """A layer to do channel-wise blurring + subsampling on 3D inputs.
+
+  Reference:
+    Zhang et al. Making Convolutional Networks Shift-Invariant Again.
+    https://arxiv.org/pdf/1904.11486.pdf.
+  """
+
+  filter_size: int = 3
+  strides: tuple[int, int, int] = (2, 2, 2)
+  padding: str = 'SAME'
+
+  def setup(self):
+    if self.filter_size == 2:
+      self.filter = [1.0, 1.0]
+    elif self.filter_size == 3:
+      self.filter = [1.0, 2.0, 1.0]
+    elif self.filter_size == 4:
+      self.filter = [1.0, 3.0, 3.0, 1.0]
+    elif self.filter_size == 5:
+      self.filter = [1.0, 4.0, 6.0, 4.0, 1.0]
+    elif self.filter_size == 6:
+      self.filter = [1.0, 5.0, 10.0, 10.0, 5.0, 1.0]
+    elif self.filter_size == 7:
+      self.filter = [1.0, 6.0, 15.0, 20.0, 15.0, 6.0, 1.0]
+    else:
+      raise ValueError('Only filter_size of 2, 3, 4, 5, 6 or 7 is supported.')
+
+    self.filter = jnp.array(self.filter, dtype=self.dtype)
+    self.filter = jnp.einsum(
+        'i,j,k->ijk', self.filter, self.filter, self.filter
+    )
+    precision = 'bfloat16' if self.dtype == jnp.bfloat16 else 'float32'
+    with jax.default_matmul_precision(precision):
+      self.filter /= jnp.sum(self.filter)
+    self.filter = jnp.reshape(
+        self.filter,
+        [
+            self.filter.shape[0],
+            self.filter.shape[1],
+            self.filter.shape[2],
+            1,
+            1,
+        ],
+    )
+
+  def __call__(self, inputs):
+    channel_num = inputs.shape[-1]
+    dimension_numbers = _conv_dimension_numbers(inputs.shape)
+    depthwise_filter = jnp.tile(self.filter, [1, 1, 1, 1, channel_num])
+    depthwise_filter = depthwise_filter.astype(self.dtype)
+    precision = 'bfloat16' if self.dtype == jnp.bfloat16 else 'float32'
+    with jax.default_matmul_precision(precision):
+      outputs = jax.lax.conv_general_dilated(
+          inputs,
+          depthwise_filter,
+          self.strides,
+          self.padding,
+          feature_group_count=channel_num,
+          dimension_numbers=dimension_numbers,
+      )
+    return outputs
+
+
+class DiscriminatorResBlock(base_layer.BaseLayer):
+  """ResBlock for StyleGAN Discriminator."""
+
+  input_dim: int = 0
+  output_dim: int = 128
+  blur_filter_size: int = 3
+  conv_layer_tpl: LayerTpl = template_field(convolutions.Conv3D)
+  activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
+      template_field(activations.LeakyReLU)
+  )
+  blur_pool_tpl: LayerTpl = template_field(BlurPool3D)
+
+  def setup(self):
+    activation_p = self.activation_tpl.clone()
+    self.create_child('activation', activation_p)
+
+    conv_p = self.conv_layer_tpl.clone()
+    conv_p.name = 'conv_first'
+    conv_p.dtype = self.dtype
+    conv_p.fprop_dtype = self.fprop_dtype
+    conv_p.padding = 'SAME'
+    conv_p.bias = True
+    conv_p.filter_shape = (3, 3, 3, self.input_dim, self.input_dim)
+    conv_p.filter_stride = (1, 1, 1)
+    self.create_child('conv_first', conv_p)
+
+    conv_p = self.conv_layer_tpl.clone()
+    conv_p.name = 'conv_residual'
+    conv_p.dtype = self.dtype
+    conv_p.fprop_dtype = self.fprop_dtype
+    conv_p.padding = 'SAME'
+    conv_p.bias = False
+    conv_p.filter_shape = (1, 1, 1, self.input_dim, self.output_dim)
+    conv_p.filter_stride = (1, 1, 1)
+    self.create_child('conv_residual', conv_p)
+
+    conv_p = self.conv_layer_tpl.clone()
+    conv_p.name = 'conv_last'
+    conv_p.dtype = self.dtype
+    conv_p.fprop_dtype = self.fprop_dtype
+    conv_p.padding = 'SAME'
+    conv_p.bias = True
+    conv_p.filter_shape = (3, 3, 3, self.input_dim, self.output_dim)
+    conv_p.filter_stride = (1, 1, 1)
+    self.create_child('conv_last', conv_p)
+
+    blur_pool_p = self.blur_pool_tpl.clone()
+    blur_pool_p.name = 'blur_pool'
+    blur_pool_p.dtype = self.dtype
+    blur_pool_p.fprop_dtype = self.fprop_dtype
+    blur_pool_p.filter_size = self.blur_filter_size
+    self.create_child('blur_pool', blur_pool_p)
+
+  def __call__(self, inputs: JTensor) -> JTensor:
+    if self.input_dim != inputs.shape[-1]:
+      raise ValueError(
+          f'Input dimension {inputs.shape[-1]} does not match {self.input_dim}'
+      )
+    residual = inputs
+    x = self.conv_first(inputs)
+    x = self.activation(x)
+    x = self.blur_pool(x)
+    residual = self.blur_pool(residual)
+    residual = self.conv_residual(residual)
+    x = self.conv_last(x)
+    x = self.activation(x)
+    return (x + residual) / math.sqrt(2.0)
