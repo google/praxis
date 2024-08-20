@@ -37,25 +37,25 @@ astunparse==1.6.3
     # via tensorflow
 async-lru==2.0.4
     # via jupyterlab
-attrs==23.2.0
+attrs==24.2.0
     # via
     #   jsonschema
     #   lingvo
     #   referencing
-babel==2.15.0
+babel==2.16.0
     # via jupyterlab-server
 beautifulsoup4==4.12.3
     # via nbconvert
 bleach==6.1.0
     # via nbconvert
-cachetools==5.4.0
+cachetools==5.5.0
     # via google-auth
 certifi==2024.7.4
     # via
     #   httpcore
     #   httpx
     #   requests
-cffi==1.16.0
+cffi==1.17.0
     # via argon2-cffi-bindings
 charset-normalizer==3.3.2
     # via requests
@@ -79,7 +79,7 @@ contourpy==1.2.1
     # via matplotlib
 cycler==0.12.1
     # via matplotlib
-debugpy==1.8.2
+debugpy==1.8.5
     # via ipykernel
 decorator==5.1.1
     # via ipython
@@ -125,7 +125,7 @@ fsspec==2024.6.1
     # via etils
 gast==0.4.0
     # via tensorflow
-google-auth==2.32.0
+google-auth==2.34.0
     # via
     #   google-auth-oauthlib
     #   tensorboard
@@ -139,7 +139,7 @@ graph-compression-google-research==0.0.4
     # via lingvo
 graphviz==0.20.3
     # via fiddle
-grpcio==1.65.2
+grpcio==1.65.5
     # via
     #   tensorboard
     #   tensorflow
@@ -151,13 +151,15 @@ httpcore==1.0.5
     # via httpx
 httpx==0.27.0
     # via jupyterlab
+humanize==4.10.0
+    # via orbax-checkpoint
 idna==3.7
     # via
     #   anyio
     #   httpx
     #   jsonschema
     #   requests
-importlib-resources==6.4.0
+importlib-resources==6.4.3
     # via etils
 ipykernel==6.29.5
     # via
@@ -274,7 +276,7 @@ libcst==1.4.0
     # via fiddle
 lingvo==0.12.7
     # via -r praxis-requirements.in
-markdown==3.6
+markdown==3.7
     # via tensorboard
 markdown-it-py==3.0.0
     # via rich
@@ -283,7 +285,7 @@ markupsafe==2.1.5
     #   jinja2
     #   nbconvert
     #   werkzeug
-matplotlib==3.9.1
+matplotlib==3.9.2
     # via lingvo
 matplotlib-inline==0.1.7
     # via
@@ -369,7 +371,7 @@ optax==0.2.3
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax-checkpoint==0.5.23
+orbax-checkpoint==0.6.0
     # via flax
 overrides==7.7.0
     # via jupyter-server
@@ -453,14 +455,14 @@ python-dateutil==2.9.0.post0
     #   matplotlib
 python-json-logger==2.0.7
     # via jupyter-events
-pyyaml==6.0.1
+pyyaml==6.0.2
     # via
     #   flax
     #   jupyter-events
     #   libcst
     #   ml-collections
     #   orbax-checkpoint
-pyzmq==26.0.3
+pyzmq==26.1.1
     # via
     #   ipykernel
     #   jupyter-client
@@ -495,7 +497,7 @@ rfc3986-validator==0.1.1
     #   jupyter-events
 rich==13.7.1
     # via flax
-rpds-py==0.19.1
+rpds-py==0.20.0
     # via
     #   jsonschema
     #   referencing
@@ -531,11 +533,11 @@ sniffio==1.3.1
     # via
     #   anyio
     #   httpx
-soupsieve==2.5
+soupsieve==2.6
     # via beautifulsoup4
 stack-data==0.6.3
     # via ipython
-sympy==1.13.1
+sympy==1.13.2
     # via lingvo
 tensorboard==2.9.1
     # via tensorflow
@@ -607,7 +609,7 @@ tornado==6.4.1
     #   jupyterlab
     #   notebook
     #   terminado
-tqdm==4.66.4
+tqdm==4.66.5
     # via
     #   tensorflow-datasets
     #   tfds-nightly
@@ -652,7 +654,7 @@ urllib3==2.2.2
     # via requests
 wcwidth==0.2.13
     # via prompt-toolkit
-webcolors==24.6.0
+webcolors==24.8.0
     # via jsonschema
 webencodings==0.5.1
     # via
@@ -662,7 +664,7 @@ websocket-client==1.8.0
     # via jupyter-server
 werkzeug==3.0.3
     # via tensorboard
-wheel==0.43.0
+wheel==0.44.0
     # via
     #   astunparse
     #   tensorboard
@@ -674,7 +676,7 @@ wrapt==1.16.0
     #   tensorflow
     #   tensorflow-datasets
     #   tfds-nightly
-zipp==3.19.2
+zipp==3.20.0
     # via etils
 
 # The following packages are considered to be unsafe in a requirements file:
