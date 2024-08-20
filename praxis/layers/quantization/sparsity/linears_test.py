@@ -18,7 +18,6 @@
 import itertools
 from typing import Any, Sequence
 
-from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax

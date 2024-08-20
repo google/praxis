@@ -17,9 +17,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-from absl import logging
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle

@@ -19,7 +19,6 @@ import itertools
 
 from absl.testing import absltest
 from absl.testing import parameterized
-import fiddle as fdl
 import jax
 from jax import numpy as jnp
 import numpy as np

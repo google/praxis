@@ -19,7 +19,6 @@ import copy
 import dataclasses
 from typing import Sequence, TypeVar
 
-from praxis import base_hyperparams
 from praxis import decoder_utils
 from praxis import pax_fiddle
 from praxis import pytypes

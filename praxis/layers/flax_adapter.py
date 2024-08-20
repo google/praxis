@@ -19,7 +19,7 @@ import abc
 from dataclasses import field
 import functools
 import typing
-from typing import Any, Callable
+from typing import Callable
 
 import flax.linen as nn
 from flax.linen import partitioning as flax_partitioning

@@ -20,14 +20,12 @@ from __future__ import annotations
 import abc
 import copy
 import dataclasses
-import inspect
 import math
 import re
 from typing import Any, Callable, Sequence
 
 from absl import logging
 from etils import epath
-import fiddle as fdl
 import jax
 from jax.lib import xla_client as xc
 import jax.tree_util

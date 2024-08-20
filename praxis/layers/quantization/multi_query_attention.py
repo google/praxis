@@ -18,7 +18,6 @@
 import copy
 from typing import Any
 
-from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import pytypes

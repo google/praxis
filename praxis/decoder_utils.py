@@ -22,7 +22,6 @@ from typing import Callable, Sequence, cast
 
 from flax import core as flax_core
 import jax
-from jax import lax
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import py_utils

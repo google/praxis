@@ -15,7 +15,6 @@
 
 """ResNet layers."""
 
-import dataclasses
 from typing import Sequence
 
 from praxis import base_layer

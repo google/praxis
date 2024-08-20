@@ -38,7 +38,6 @@ import einops
 import jax
 from jax import numpy as jnp
 import numpy as np
-from praxis import base_hyperparams
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import py_utils

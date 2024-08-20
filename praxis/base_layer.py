@@ -25,12 +25,11 @@ import functools
 import itertools
 import math
 import typing
-from typing import Any, Callable, Mapping, Optional, Sequence, Type, TypeVar
+from typing import Any, Callable, Mapping, Sequence, Type, TypeVar
 
 from absl import flags
 from absl import logging
 import fiddle as fdl
-from fiddle import daglish
 from flax import core as flax_core
 from flax import linen as nn
 from flax import struct

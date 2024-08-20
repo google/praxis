@@ -16,9 +16,6 @@
 """Tests for base_layer."""
 
 import copy
-import dataclasses
-import sys
-import typing
 from typing import Any, Callable
 
 from absl.testing import absltest

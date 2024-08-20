@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """A few utility layers to facilitate writing unit-tests."""
-from clu import metrics as clu_metrics
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import base_model

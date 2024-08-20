@@ -15,8 +15,6 @@
 
 """Test for quantized ngrammer layers."""
 
-import copy
-
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -24,7 +22,6 @@ import numpy as np
 from praxis import base_layer
 from praxis import pax_fiddle
 from praxis import test_utils
-from praxis.layers import embedding_softmax
 from praxis.layers import quantization
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers import ngrammer

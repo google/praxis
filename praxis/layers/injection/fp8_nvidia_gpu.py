@@ -30,16 +30,11 @@
 
 """Op wrappers to support FP8 GEMMs."""
 
-from functools import partial
 from typing import Union
 
 from flax.linen import fp8_ops
-from jax import custom_vjp
-from jax import lax
 from jax import numpy as jnp
 from praxis import base_layer
-from praxis import layers
-from praxis import pax_fiddle
 from praxis import pytypes
 
 JTensor = pytypes.JTensor
