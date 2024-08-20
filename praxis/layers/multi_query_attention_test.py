@@ -856,6 +856,132 @@ class MultiQueryAttentionTest(test_utils.TestCase):
         unconsolidated_updated_vars['decoder_cache']['key_post_rotary_pos_emb'],
     )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_global_window',
+          local_window_size=None,
+          chunked_attn_num_seq_split=1,
+          lpb=False,
+      ),
+      dict(
+          testcase_name='_global_window_chunked',
+          local_window_size=None,
+          chunked_attn_num_seq_split=2,
+          lpb=False,
+      ),
+      dict(
+          testcase_name='_local_window_left',
+          local_window_size=(2, 0),
+          chunked_attn_num_seq_split=1,
+          lpb=False,
+      ),
+      dict(
+          testcase_name='_local_window_right',
+          local_window_size=(0, 2),
+          chunked_attn_num_seq_split=1,
+          lpb=False,
+      ),
+      dict(
+          testcase_name='_local_window_left_right',
+          local_window_size=(3, 2),
+          chunked_attn_num_seq_split=1,
+          lpb=False,
+      ),
+      dict(
+          testcase_name='_local_window_chunked',
+          local_window_size=(2, 0),
+          chunked_attn_num_seq_split=2,
+          lpb=False,
+      ),
+      dict(
+          testcase_name='_local_window_lpb',
+          local_window_size=(3, 2),
+          chunked_attn_num_seq_split=1,
+          lpb=True,
+      ),
+  )
+  def test_mqa_local_window_size(
+      self, local_window_size, chunked_attn_num_seq_split, lpb
+  ):
+    mdl_dim = 4
+    hidden_dim = 8
+    num_heads = 1
+    source_max_length = 16
+
+    inputs = np.random.normal(1.5, 2.0, size=[3, 16, mdl_dim]).astype(
+        np.float32
+    )
+    if chunked_attn_num_seq_split > 1:
+      atten_mask = attentions.causal_mask(inputs)
+    else:
+      atten_mask = jnp.zeros(
+          (1, 1, source_max_length, source_max_length), dtype=jnp.float32
+      )
+
+    if lpb:
+      mqa = multi_query_attention.MultiQueryDotProductAttentionLPB
+    else:
+      mqa = multi_query_attention.MultiQueryDotProductAttention
+    test_layer_p = pax_fiddle.Config(
+        mqa,
+        name='mqa',
+        input_dim=mdl_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        dim_per_head=4,
+        atten_logit_cap=20.0,
+        local_window_size=local_window_size,
+        chunked_attn_num_seq_split=chunked_attn_num_seq_split,
+    )
+    layer = instantiate(test_layer_p)
+    no_local_window_size_layer = instantiate(
+        test_layer_p.clone().set(
+            local_window_size=None, chunked_attn_num_seq_split=1
+        )
+    )
+
+    prng_key = jax.random.PRNGKey(seed=123)
+    prng_key, init_key = jax.random.split(prng_key)
+
+    with base_layer.JaxContext.new_context():
+      initial_vars = layer.init(init_key, inputs, inputs, inputs, atten_mask)
+      logging.info('initial_vars: %s', initial_vars)
+      encoded, _ = layer.apply(initial_vars, inputs, inputs, inputs, atten_mask)
+
+    windowed_atten_mask = jnp.zeros(
+        [1, 1, source_max_length, source_max_length],
+    )
+    if local_window_size is not None:
+      upper_triangular_mask = jnp.tril(
+          jnp.ones(
+              [1, 1, source_max_length, source_max_length], dtype=jnp.bool_
+          ),
+          k=local_window_size[1],
+      )
+      lower_triangular_mask = jnp.triu(
+          jnp.ones(
+              [1, 1, source_max_length, source_max_length], dtype=jnp.bool_
+          ),
+          k=-local_window_size[0],
+      )
+      windowed_atten_mask = upper_triangular_mask * lower_triangular_mask
+      windowed_atten_mask = jnp.where(
+          1 - windowed_atten_mask,
+          py_utils.get_large_negative_number(jnp.float32),
+          0,
+      )
+    combined_atten_mask = jnp.minimum(atten_mask, windowed_atten_mask)
+
+    with base_layer.JaxContext.new_context():
+      no_local_window_size_encoded, _ = no_local_window_size_layer.apply(
+          initial_vars,
+          inputs,
+          inputs,
+          inputs,
+          combined_atten_mask,
+      )
+    self.assertAllClose(encoded, no_local_window_size_encoded)
+
   # TODO(apassos) test the SPMD codepath for deriving sharding annotations.
 
 if __name__ == '__main__':

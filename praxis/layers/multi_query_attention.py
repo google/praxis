@@ -16,7 +16,7 @@
 """Multi-Query Attention layers."""
 
 import math
-from typing import Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from flax import linen as nn
 import jax
@@ -177,6 +177,11 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     chunked_attn_num_seq_split: Whether to compute the attention context as a
       loop over the context sequence, avoiding the full attention matrix
       computation. Default value of 1 implies no loop.
+    local_window_size: Optional window sizes to make self attention to attend to
+      each token's local window. If set, this specifies the (left_window_size,
+      right_window_size) for each token. E.g., if local_window_size == (3, 2)
+      and the sequence is [0, 1, 2, 3, 4, 5, c, 7, 8, 9], token `c` can attend
+      to [3, 4, 5, c, 7, 8].
 
   Note: dconv_qkv and ngrammer are not supported.
   """
@@ -209,6 +214,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
   scale_query_by_dim_per_head: bool = False
   chunked_attn_num_seq_split: int = 1
+  local_window_size: tuple[int, int] | None = None
 
   # SPMD partition related params.
   #
@@ -455,6 +461,34 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     logits = self.qk_einsum('BNTH,BSH->BNTS', query, key)
     return logits
 
+  def _get_window_mask(
+      self, query_pos: JTensor, key_pos: JTensor, dtype: Any, leading_dims=()
+  ) -> JTensor:
+    """Creates window mask for attention if self.local_window_size is set.
+
+    Args:
+      query_pos: A 1D tensor of [t]. This is typically jnp.arange(t), but can be
+        chunked/shuffled with sequence sharding/chunking.
+      key_pos: A 1D tensor of [s].
+      dtype: dtype of the mask.
+      leading_dims: A sequence of leading dims used to broadcast the result.
+
+    Returns:
+      Mask of shape leading_dims + (t, s).
+    """
+    assert self.local_window_size is not None
+    assert dtype != jnp.bool_
+    left_window, right_window = self.local_window_size
+    query_pos = jax.lax.broadcast(query_pos, leading_dims)
+    key_pos = jax.lax.broadcast(key_pos, leading_dims)
+    left_mask = query_pos[..., None] > key_pos[..., None, :] + left_window
+    right_mask = query_pos[..., None] < key_pos[..., None, :] - right_window
+    return jnp.where(
+        jnp.logical_or(right_mask, left_mask),
+        py_utils.get_large_negative_number(dtype),
+        0,
+    )
+
   def _atten_context(
       self,
       query: JTensor,
@@ -475,6 +509,12 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     logits = self._cap_logits(logits)
     # Attention softmax is always carried out in fp32.
     logits = logits.astype(jnp.float32)
+    # Add b, l dims to make it fusible to logits.
+    if self.local_window_size is not None:
+      window_mask = self._get_window_mask(
+          jnp.arange(t), jnp.arange(s), atten_mask.dtype, logits.shape[:2]
+      )
+      atten_mask = jnp.minimum(atten_mask, window_mask)
     # Apply attention masking
     padded_logits = py_utils.apply_mask_to_logits(logits, atten_mask)
     if self.attention_extra_logit is None:
@@ -509,24 +549,45 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     w = s // self.chunked_attn_num_seq_split
     query = query.transpose(0, 2, 1, 3)
     full_encoded = jnp.zeros((b, n, t, h), dtype=value.dtype)
+    if self.local_window_size is None:
+      kv_starts = [0] * self.chunked_attn_num_seq_split
+    else:
+      kv_starts = [
+          max(0, i * w - self.local_window_size[0])
+          for i in range(self.chunked_attn_num_seq_split)
+      ]
     for i in range(self.chunked_attn_num_seq_split):
       logits = jnp.einsum(
           'BNTH,BSH->BNTS',
           query[:, :, i * w : (i + 1) * w, :],  # current query chunk
-          key[:, : (i + 1) * w, :],  # keys context up to current chunk
+          key[
+              :, kv_starts[i] : (i + 1) * w, :
+          ],  # keys context up to current chunk
       )
       if relative_bias is not None:
         # The relative_bias has shape [1, n, t, s] or [b, n, t, s].
         base_layer.assert_has_shape(relative_bias, [-1, n, t, s])
-        bias_slice = relative_bias[:, :, i * w : (i + 1) * w, : (i + 1) * w]
+        bias_slice = relative_bias[
+            :, :, i * w : (i + 1) * w, kv_starts[i] : (i + 1) * w
+        ]
         logits += bias_slice
       logits = checkpoint_name(logits, 'logits')
       logits = self._cap_logits(logits)
       # Attention softmax is always carried out in fp32.
       logits = logits.astype(jnp.float32)
-      mask_slice = atten_mask[:, :, i * w : (i + 1) * w, : (i + 1) * w]
+      mask_slice = atten_mask[
+          :, :, i * w : (i + 1) * w, kv_starts[i] : (i + 1) * w
+      ]
       # Consider supporting a boolean attention mask a la
       # attention_mask_use_where
+      if self.local_window_size is not None:
+        window_mask = self._get_window_mask(
+            jnp.arange(i * w, (i + 1) * w),
+            jnp.arange(kv_starts[i], (i + 1) * w),
+            atten_mask.dtype,
+            (b, n),
+        )
+        mask_slice = jnp.minimum(mask_slice, window_mask)
       padded_logits = logits + mask_slice.astype(jnp.float32)
       probs = jax.nn.softmax(padded_logits, axis=-1).astype(key.dtype)
       # Apply attention dropout.
@@ -535,7 +596,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       encoded = jnp.einsum(
           'BNTS,BSH->BNTH',
           probs,
-          value[:, : (i + 1) * w, :],
+          value[:, kv_starts[i] : (i + 1) * w, :],
       )
       encoded = checkpoint_name(encoded, 'context')
       full_encoded = full_encoded.at[:, :, i * w : (i + 1) * w, :].set(encoded)
