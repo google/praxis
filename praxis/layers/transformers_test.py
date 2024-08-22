@@ -21,6 +21,7 @@ import itertools
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
+from flax import linen as nn
 import jax
 from jax import numpy as jnp
 from lingvo.core import batch_major_attention
@@ -33,6 +34,7 @@ from praxis import py_utils
 from praxis import test_utils
 from praxis.layers import activations
 from praxis.layers import attentions
+from praxis.layers import multi_query_attention
 from praxis.layers import transformers
 import tensorflow.compat.v2 as tf
 
@@ -1694,6 +1696,91 @@ class TransformersTest(test_utils.TestCase):
     self.assertAllClose(
         sentence_embedding,
         [[0.0, 0.0], [2.5, 7.5], [2.5, 7.5], [4.5, 9.5], [4.5, 9.5]])
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_global_window',
+          local_window_size=None,
+          nr_layers=3,
+          raises_exception=False,
+          atten_tpl=multi_query_attention.MultiQueryDotProductAttention,
+      ),
+      dict(
+          testcase_name='_same_local_window',
+          local_window_size=(3, 2),
+          nr_layers=3,
+          raises_exception=False,
+          atten_tpl=multi_query_attention.MultiQueryDotProductAttention,
+      ),
+      dict(
+          testcase_name='_individual_local_window',
+          local_window_size=((3, 3), (2, 2), (1, 1)),
+          nr_layers=3,
+          raises_exception=False,
+          atten_tpl=multi_query_attention.MultiQueryDotProductAttention,
+      ),
+      dict(
+          testcase_name='_wrong_number_local_window',
+          local_window_size=((3, 3), (2, 2)),
+          nr_layers=3,
+          raises_exception=AssertionError,
+          atten_tpl=multi_query_attention.MultiQueryDotProductAttention,
+      ),
+      dict(
+          testcase_name='non_local_attention_raises_exception',
+          local_window_size=(3, 2),
+          nr_layers=3,
+          raises_exception=AttributeError,
+          atten_tpl=attentions.DotProductAttention,
+      ),
+  )
+  def test_stacked_transformer_local_window_attention(
+      self,
+      local_window_size,
+      nr_layers,
+      raises_exception,
+      atten_tpl,
+  ):
+    stacked_transformer_p = pax_fiddle.Config(
+        transformers.StackedTransformer,
+        name='jax_stacked_transformer',
+        num_layers=nr_layers,
+        model_dims=8,
+        hidden_dims=16,
+        num_heads=2,
+        packed_input=True,
+        use_cross_attention=False,
+        local_window_size=local_window_size,
+    )
+    transformer_layer_p = stacked_transformer_p.transformer_layer_params_tpl
+    transformer_layer_p.tr_atten_tpl = pax_fiddle.Config(
+        atten_tpl,
+    )
+    stacked_transformer = instantiate(stacked_transformer_p)
+
+    def get_layers(stacked_transformer):
+      return [
+          layer_param.clone() for layer_param in stacked_transformer.x_layers
+      ]
+
+    # This will call setup() behind the scenes
+    if raises_exception:
+      with self.assertRaises(raises_exception):
+        nn.apply(get_layers, stacked_transformer)({})
+      return
+    x_layers = nn.apply(get_layers, stacked_transformer)({})
+
+    for i, transformer_layer in enumerate(x_layers):
+      if local_window_size is None or not isinstance(
+          local_window_size[0], tuple
+      ):
+        expected_window_size = local_window_size
+      else:
+        expected_window_size = local_window_size[i]
+      self.assertEqual(
+          transformer_layer.tr_atten_tpl.local_window_size,
+          expected_window_size,
+      )
 
 
 if __name__ == '__main__':

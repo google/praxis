@@ -1229,10 +1229,12 @@ pytype_strict_test(
     deps = [
         ":activations",
         ":attentions",
+        ":multi_query_attention",
         ":transformers",
         # Implicit absl.logging dependency.
         # Implicit absl.testing.absltest dependency.
         # Implicit absl.testing.parameterized dependency.
+        # Implicit flax.core dependency.
         # Implicit upb python proto dependency.
         # Implicit jax dependency.
         # Implicit lingvo.core.batch_major_attention dependency.

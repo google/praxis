@@ -1673,6 +1673,12 @@ class StackedTransformer(base_layer.BaseLayer):
     remat: Boolean, whether to remat each layer to save memory.
     checkpoint_policy: How to checkpoint residuals for BProp: save nothing, dot
       only or dot with no batch dimensions.
+    local_window_size: Whether to use local window attention for the attention
+      layer. If None, global attention is used. If tuple[int, int], local
+      attention is used for each layer. If tuple[tuple[int, int] | None, ...],
+      it needs to be of same length as number of layers and type of attention
+      will be set per layer. The layers tr_atten_tpl needs to support local
+      window attention.
   """
 
   use_cross_attention: bool = False
@@ -1705,6 +1711,9 @@ class StackedTransformer(base_layer.BaseLayer):
   checkpoint_policy: AutodiffCheckpointType = (
       AutodiffCheckpointType.SAVE_DOT_EXCEPT_LOGITS_FFN1
   )
+  local_window_size: (
+      tuple[tuple[int, int] | None, ...] | tuple[int, int] | None
+  ) = None
 
   def _clone_layer_params(self, layer_tpl: LayerTpl) -> LayerTpl:
     """Useful to let subclasses switch the class (e.g. Streaming version)."""
@@ -1717,6 +1726,9 @@ class StackedTransformer(base_layer.BaseLayer):
     assert self.num_heads > 0
     assert 0.0 <= self.dropout_prob < 1.0
     assert 0.0 <= self.input_dropout_prob < 1.0
+    if self.local_window_size is not None:
+      if isinstance(self.local_window_size[0], tuple):
+        assert len(self.local_window_size) == self.num_layers
 
     def _layer_params(i):
       """Construct i-th layer params."""
@@ -1738,6 +1750,11 @@ class StackedTransformer(base_layer.BaseLayer):
       )
       p_i.relu_dropout_prob = self.relu_dropout_prob or self.dropout_prob
       p_i.hidden_dims = self.hidden_dims
+      if self.local_window_size is not None:
+        if isinstance(self.local_window_size[0], tuple):
+          p_i.tr_atten_tpl.local_window_size = self.local_window_size[i]
+        else:
+          p_i.tr_atten_tpl.local_window_size = self.local_window_size
 
       if self.residual_droppath_prob > 0.0:
         p_i.residual_droppath_prob = (
