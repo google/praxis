@@ -16,5 +16,6 @@
 """Exposes the public layer functionalities for video."""
 
 from praxis.layers.video import enc_dec_3dcnn
+from praxis.layers.video import losses
 from praxis.layers.video import quantizer
 from praxis.layers.video import vqvae

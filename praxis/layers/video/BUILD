@@ -59,6 +59,41 @@ pytype_strict_test(
 )
 
 pytype_strict_library(
+    name = "losses",
+    srcs = [
+        "losses.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:base_model",
+        "//praxis:py_utils",
+        "//praxis:pytypes",
+    ],
+)
+
+pytype_strict_test(
+    name = "losses_test",
+    srcs = [
+        "losses_test.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":losses",
+        ":vqvae",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        # Implicit numpy dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+    ],
+)
+
+pytype_strict_library(
     name = "quantizer",
     srcs = [
         "quantizer.py",
