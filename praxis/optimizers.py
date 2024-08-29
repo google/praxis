@@ -3039,7 +3039,6 @@ class ShardedStaticAccumulator(BaseOptimizer):
   accumulation_use_cond_op: bool = False
 
   def __post_init__(self):
-    super().__post_init__()
     assert self.optimizer_tpl is not None
     if self.num_sub_batches < 1:
       raise ValueError('Set `p.num_sub_batches >= 1`.')
@@ -3047,7 +3046,12 @@ class ShardedStaticAccumulator(BaseOptimizer):
     base_opt_tpl = self.optimizer_tpl.clone()
     if base_opt_tpl.lr_schedule is None:
       base_opt_tpl.lr_schedule = self.lr_schedule
+    elif self.lr_schedule is None:
+      self.lr_schedule = base_opt_tpl.lr_schedule
+    if not self.learning_rate:
+      self.learning_rate = base_opt_tpl.learning_rate
     self.base_optimizer = instantiate(base_opt_tpl)
+    super().__post_init__()
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> GeneralGradientTransformation:
