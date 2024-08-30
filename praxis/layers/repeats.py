@@ -434,6 +434,9 @@ class Repeat(base_layer.BaseLayer):
       sub.init_states(*args, **kwargs)
       return None, None
 
+    if self.unroll_in_decode:
+      return self._run_unrolled_for_decoding(body_fn, None)
+
     scan_fn = nn.scan(
         body_fn,
         variable_axes=SCAN_VARIABLE_AXES,
