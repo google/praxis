@@ -144,10 +144,10 @@ def pack_4bit(
     raise ValueError(
         f'input dtype must be either int8 or uint8. Given {x.dtype}'
     )
-  if pack_dim >= x.ndim - 1:
+  if pack_dim > x.ndim - 1:
     raise ValueError(
-        f'pack_dim must be < input ndim - 1. input shape {x.shape} and pack_dim'
-        f' {pack_dim}'
+        f'pack_dim must be <= input ndim - 1. input shape {x.shape} and'
+        f' pack_dim {pack_dim}'
     )
   if packed_dtype != jnp.int32 and packed_dtype != jnp.int8:
     raise ValueError(
@@ -209,9 +209,9 @@ def unpack_4bit(
     raise ValueError(
         f'original_dtype must be either int8 or uint8. Given {original_dtype}'
     )
-  if pack_dim >= packed.ndim - 1:
+  if pack_dim > packed.ndim - 1:
     raise ValueError(
-        f'pack_dim must be < input ndim - 1. input shape {packed.shape} and'
+        f'pack_dim must be <= input ndim - 1. input shape {packed.shape} and'
         f' pack_dim {pack_dim}'
     )
 

@@ -22,6 +22,7 @@ import jax
 from jax import numpy as jnp
 from praxis import base_layer
 from praxis import pax_fiddle
+from praxis import py_utils
 from praxis import pytypes
 from praxis.layers import activations
 from praxis.layers import embedding_softmax
@@ -30,6 +31,7 @@ from praxis.layers.quantization import linears as quantized_linears
 from praxis.layers.quantization import operations as quantized_operations
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
+from praxis.layers.quantization import utils
 
 QuantizationMode = quantization_hparams.QuantizationMode
 QuantizationType = quantization_hparams.QuantizationType
@@ -379,6 +381,7 @@ class NClassMajorSharedEmbeddingSoftmax(
   )
   quantization: QuantizationParams = instance_field(QuantizationParams)
   use_bias: bool = True
+  _PACK_4BIT_DIM = 1
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -391,11 +394,33 @@ class NClassMajorSharedEmbeddingSoftmax(
           if wp.wt is not None
           else None,
       )
+      dtype = jnp.int8
+      precision = self.quantization.weight_params.precision
+      if (
+          precision == 4
+          and self.quantization.weight_params.use_int4_packed_weights
+      ):
+        assert self._PACK_4BIT_DIM is not None, (
+            '_PACK_4BIT_DIM must be set on the QuantizationLayer subclass if '
+            'use_int4_packed_weights is True.'
+        )
+        # For 4bit pack/unpack.
+        # TODO(jianlijianli): Replace this with proper 4bit type.
+        # Type to store int4 values, int32 or int8 are supported.
+        dtype = (
+            self.quantization.weight_params.int4_packed_weights_container_dtype
+        )
+        packing_factor = 2 if dtype == jnp.int8 else 8
+        pc.shape = utils.get_packed_shape(
+            pc.shape,
+            self._PACK_4BIT_DIM,
+            packing_factor=packing_factor,
+        )
       self.create_quantized_variable(
           'w',
           pc,
           [self.num_classes],
-          dtype=jnp.int8,
+          dtype=dtype,
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
     elif self.quantization.mode == QuantizationMode.MATERIALIZE:
@@ -583,6 +608,31 @@ class NClassMajorSharedEmbeddingSoftmax(
     res = {base_layer.PARAMS: partitionspec}
     res = self._add_children_params(res, return_pspec=True)
     return res
+
+  def get_quantized_weight(
+      self, name: str, use_symmetric: bool = True
+  ) -> tuple[JTensor, JTensor, JTensor | None]:
+    q_w, q_s, zp = super().get_quantized_weight(name, use_symmetric)
+    assert self.quantization is not None, (
+        'get_quantized_weight is called during serving for quantized'
+        ' model, please set quantized config for the model.'
+    )
+    if (
+        self.quantization.weight_params.precision == 4
+        and self.quantization.weight_params.use_int4_packed_weights
+    ):
+      assert self._PACK_4BIT_DIM is not None, (
+          '_PACK_4BIT_DIM must be set on the QuantizationLayer subclass if '
+          'use_int4_packed_weights is True.'
+      )
+      q_w = utils.unpack_4bit(
+          q_w, self._PACK_4BIT_DIM, self.quantization.weight_params.dtype
+      )
+    if not py_utils.is_tpu() and q_w.dtype in utils.INT4_TYPES:
+      # (u)int4 is only supported for convert operations on XLA CPU and GPU, but
+      # the double cast is useful for other compilers.
+      q_w = q_w.astype(jnp.int8)
+    return q_w, q_s, zp
 
   def quantize_weight(self) -> NestedJTensor:
     """Get quantized weight, where w is transposed and class-dim (dim 0) wise quantized.

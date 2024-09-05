@@ -466,9 +466,11 @@ pytype_strict_library(
         ":operations",
         ":quantization_hparams",
         ":quantizer",
+        ":utils",
         # Implicit jax dependency.
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
+        "//praxis:py_utils",
         "//praxis:pytypes",
         "//praxis/layers:activations",
         "//praxis/layers:embedding_softmax",

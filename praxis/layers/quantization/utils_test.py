@@ -141,6 +141,13 @@ class UtilsTest(test_utils.TestCase):
           pack_dim=1,
           packed_dtype=jnp.int32,
       ),
+      dict(
+          vals=[range(0, 16)] * 2,
+          shape=(2, 2, 8),
+          dtype=jnp.uint8,
+          pack_dim=2,
+          packed_dtype=jnp.int32,
+      ),
       # Tests for packing/unpacking to/from int8
       dict(
           vals=[range(-8, 8)],
