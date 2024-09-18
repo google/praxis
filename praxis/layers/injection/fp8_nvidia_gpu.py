@@ -70,7 +70,7 @@ class Fp8EinsumOp(base_layer.BaseLayer):
   """Wrapper around jnp.einsum used in standard Pax layers."""
 
   amax_history_length: int = 1024
-  use_direct_quant: bool = False
+  use_direct_quant: bool = True
 
   def setup(self) -> None:
     scale_args, amax_history_args = _get_fp8_args(
