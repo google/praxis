@@ -108,6 +108,24 @@ pytype_strict_library(
     ],
 )
 
+pytype_strict_test(
+    name = "quantizer_test",
+    srcs = [
+        "quantizer_test.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":quantizer",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+    ],
+)
+
 pytype_strict_library(
     name = "vqvae",
     srcs = [
