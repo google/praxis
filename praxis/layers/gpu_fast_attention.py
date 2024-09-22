@@ -47,6 +47,7 @@ except ImportError:
 
 
 JTensor = pytypes.JTensor
+SplitDimsMapping = pytypes.SplitDimsMapping
 
 
 class GpuCudnnFusedDotProductAttention(attentions.DotProductAttention):
@@ -328,6 +329,55 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
 
     encoded = sharded_decode_mha(query, key, value)
     encoded = self._shard_bnh(encoded)
+    return encoded, None  # pytype: disable=bad-return-type  # jax-ndarray
+
+
+class GpuCudnnFusedGroupedQueryAttention(
+    grouped_query_attention.GroupedQueryAttention
+):
+  """Using cudnn flash decoding for GroupedQueryAttention."""
+
+  is_causal: bool = False
+
+  def _shard_blnh(
+      self, x: JTensor, split_dims_mapping: SplitDimsMapping
+  ) -> JTensor:
+    """Adds sharding annotations to tensors of shape [b, l, n, h]."""
+    return base_layer.maybe_shard(x, split_dims_mapping, self.mesh_axis_names)
+
+  def _atten_context(
+      self,
+      query: JTensor,
+      key: JTensor,
+      value: JTensor,
+      atten_mask: JTensor,
+  ) -> Tuple[JTensor, JTensor]:
+    """Computes atten context."""
+    if self.atten_dropout_prob > 0.0 and not self.do_eval:
+      raise NotImplementedError
+    if self.atten_logit_cap > 0.0:
+      raise NotImplementedError
+
+    logits_scale = (self.dim_per_head**-0.5) / self.atten_temp
+
+    sh = self.activation_split_dims_mapping
+    query = self._shard_blnh(query, sh.btnh)
+    key = self._shard_blnh(key, sh.bskh)
+    value = self._shard_blnh(value, sh.bskh)
+
+    # Assume causal self-attention mask.
+    assert self.is_causal
+
+    encoded = jax.nn.dot_product_attention(
+        query,
+        key,
+        value,
+        scale=logits_scale,
+        is_causal=self.is_causal,
+        implementation='cudnn',
+    )
+    encoded = self._shard_blnh(encoded, sh.btnh)
+
     return encoded, None  # pytype: disable=bad-return-type  # jax-ndarray
 
 
