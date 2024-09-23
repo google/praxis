@@ -146,3 +146,22 @@ pytype_strict_library(
         "//praxis/layers:linears",
     ],
 )
+
+pytype_strict_test(
+    name = "vqvae_test",
+    srcs = [
+        "vqvae_test.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":quantizer",
+        ":vqvae",
+        # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
+        # Implicit jax dependency.
+        "//praxis:base_layer",
+        "//praxis:pax_fiddle",
+        "//praxis:py_utils",
+        "//praxis:test_utils",
+    ],
+)
