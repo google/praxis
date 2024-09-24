@@ -202,29 +202,99 @@ class Fp8EinsumGatedOp(Fp8EinsumOp):
     ), f'k dtype has to be {comp_dtype}, but got {k.dtype} and {k_gated.dtype}'
     x = jnp.asarray(x, comp_dtype)
 
-    y, x_qdq = self.quantized_einsum(equation, x, k, return_quantized_x=True)
-
     theta = self.theta
 
-    k_gated_qdq = fp8_ops.in_qdq(
-        comp_dtype,
-        jnp.float8_e4m3fn,
-        k_gated,
-        theta.kernel_scale_gated,
-        theta.kernel_amax_history_gated,
-    )
-    y_gated_qdq = jnp.einsum(
-        equation,
-        x_qdq,
-        k_gated_qdq,
-        _dot_general=fp8_ops.dot_general_with_precision,
-    )
-    y_gated = fp8_ops.out_qdq(
-        comp_dtype,
-        jnp.float8_e5m2,
-        y_gated_qdq,
-        theta.output_grad_scale_gated,
-        theta.output_grad_amax_history_gated,
-    )
+    if self.use_direct_quant:
+      q_x, new_input_scale = fp8_ops.in_q(comp_dtype, jnp.float8_e4m3fn, x, theta.input_scale, theta.input_amax_history)
+    #   def create_one_sided_q_dot_dq(comp_dtype, q_x, new_input_scale, kernel_scale, out_grad_scale, kernel_amax_history, out_grad_amax_history):
+    #     def _quantized_one_sided_dot_general(
+    #         lhs, rhs, dimension_numbers, precision=None,
+    #         preferred_element_type=None
+    #     ):
+    #       return fp8_ops.one_sided_q_dot_dq(
+    #           lhs=lhs,
+    #           q_lhs=q_x,
+    #           lhs_scale=new_input_scale,
+    #           rhs=rhs,
+    #           rhs_scale=kernel_scale,
+    #           out_grad_scale=out_grad_scale,
+    #           rhs_amax_history=kernel_amax_history,
+    #           out_grad_amax_history=out_grad_amax_history,
+    #           compute_dtype=comp_dtype,
+    #           dimension_numbers=dimension_numbers,
+    #           precision=precision,
+    #           preferred_element_type=preferred_element_type
+    #       )
+    #     return _quantized_one_sided_dot_general
+
+    #   _one_sided_quantized_dot_general = create_one_sided_q_dot_dq(
+    #       comp_dtype, q_x, new_input_scale, 
+    #       theta.kernel_scale, theta.out_grad_scale, 
+    #       theta.kernel_amax_history, theta.out_grad_amax_history
+    #   )
+  
+    #   _one_sided_quantized_dot_general_gated = create_one_sided_q_dot_dq(
+    #       comp_dtype, q_x, new_input_scale, 
+    #       theta.kernel_scale_gated, theta.out_grad_scale_gated, 
+    #       theta.kernel_amax_history_gated, theta.out_grad_amax_history_gated
+    #   )
+      def one_sided_q_dot_dq(comp_dtype, q_x, new_input_scale, kernel_scale, out_grad_scale, kernel_amax_history, out_grad_amax_history):
+        def decorator(func):
+          @wraps(func)
+          def wrapper(lhs, rhs, dimension_numbers, precision=None, preferred_element_type=None):
+            return fp8_ops.one_sided_q_dot_dq(
+                lhs=lhs,
+                q_lhs=q_x,
+                lhs_scale=new_input_scale,
+                rhs=rhs,
+                rhs_scale=kernel_scale,
+                out_grad_scale=out_grad_scale,
+                rhs_amax_history=kernel_amax_history,
+                out_grad_amax_history=out_grad_amax_history,
+                compute_dtype=comp_dtype,
+                dimension_numbers=dimension_numbers,
+                precision=precision,
+                preferred_element_type=preferred_element_type
+            )
+          return wrapper
+        return decorator
+      common_args = (comp_dtype, q_x, new_input_scale)
+      main_fp8_metas = (
+          theta.kernel_scale, theta.out_grad_scale, 
+          theta.kernel_amax_history, theta.out_grad_amax_history
+      )
+      gated_fp8_metas = (
+          theta.kernel_scale_gated, theta.out_grad_scale_gated, 
+          theta.kernel_amax_history_gated, theta.out_grad_amax_history_gated
+      )
+      _dot_general_main = one_sided_q_dot_dq(*common_args, *main_fp8_metas)
+      _dot_general_gated = one_sided_q_dot_dq(*common_args, *gated_fp8_metas)
+
+      y = jnp.einsum(equation, x, k, _dot_general=_dot_general_main)
+      y_gated = jnp.einsum(equation, x, k_gated, _dot_general=_dot_general_gated)
+    else:
+      y, x_qdq = self.quantized_einsum(
+          equation, x, k, return_quantized_x=True
+      )
+      k_gated_qdq = fp8_ops.in_qdq(
+          comp_dtype,
+          jnp.float8_e4m3fn,
+          k_gated,
+          theta.kernel_scale_gated,
+          theta.kernel_amax_history_gated,
+      )
+      y_gated_qdq = jnp.einsum(
+          equation,
+          x_qdq,
+          k_gated_qdq,
+          _dot_general=fp8_ops.dot_general_with_precision,
+      )
+      y_gated = fp8_ops.out_qdq(
+          comp_dtype,
+          jnp.float8_e5m2,
+          y_gated_qdq,
+          theta.output_grad_scale_gated,
+          theta.output_grad_amax_history_gated,
+      )
 
     return y, y_gated
