@@ -18,7 +18,7 @@
 from functools import partial
 
 from absl.testing import absltest
-from flax.linen.fp8_ops import quantize_dequantize
+from flax.linen.fp8_ops import qdq
 import jax
 from jax import numpy as jnp
 from praxis import base_layer
@@ -36,7 +36,7 @@ class Fp8LinearsTest(test_utils.TestCase):
     # Used to cast the inputs to be representable in FP8, so that the difference
     # of the results from the original gemm and fp8 gemm is small.
     cast_to_representable = partial(
-        quantize_dequantize, scale=jnp.ones((1,)), compute_dtype=jnp.float32
+        qdq, scale=jnp.ones((1,)), compute_dtype=jnp.float32
     )
 
     def run(custom_einsum_tpl, expected_shapes):
