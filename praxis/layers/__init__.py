@@ -86,6 +86,7 @@ from praxis.layers.models import LanguageModel
 from praxis.layers.models import LanguageModelContinuousBatching
 from praxis.layers.models import LanguageModelDPO
 from praxis.layers.models import SequenceModel
+from praxis.layers.models import SequenceModelDPO
 from praxis.layers.ngrammer import get_bigram_ids
 from praxis.layers.ngrammer import Ngrammer
 from praxis.layers.ngrammer import VectorQuantization

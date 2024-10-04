@@ -353,7 +353,6 @@ pytype_strict_library(
         ":augmentations",
         ":embedding_softmax",
         ":linears",
-        ":mobilenet",
         ":resnets",
         ":transformer_models",
         # Implicit absl.logging dependency.

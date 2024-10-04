@@ -192,6 +192,90 @@ def add_hist(
   )
 
 
+def compute_dpo_loss_helper(
+    model: base_model.BaseModel,
+    predictions: NestedMap,
+) -> tuple[WeightedScalars, dict[str, Any]]:
+  """Helper to compute the DPO loss for the given predictions.
+
+  Args:
+    model: The model to compute the loss on. This is used to attch summaries to
+      the model. The model is expected to have a `beta` attribute.
+    predictions: A `.NestedMap` containing the keys `y_w_ref`, `y_l_ref`,
+      `y_w_pi`, `y_l_pi` which corresponds to the output of the Softmax layer
+      for both the reference and policy models.
+
+  Returns:
+    - A Tuple of two dictionsaries. The first is a NestedMap containing str keys
+    and (value, weight) pairs as values, where one of the entries is expected to
+    correspond to the loss.
+    The second is dict containing arbitrary tensors describing something about
+    eachtraining example, where the first dimension of each tensor is the batch
+    index. The base class just returns an empty dict.
+  """
+
+  def per_seq_log_p(softmax_out: NestedMap):
+    # assert per_example_xent is float32, learning might be unstable in
+    # bfloat16.
+    if softmax_out.per_example_xent.dtype != jnp.float32:
+      raise ValueError(
+          'per_example_xent is expected to be float32, but got'
+          f'{softmax_out.per_example_xent.dtype}'
+      )
+    if softmax_out.per_sequence_xent.dtype != jnp.float32:
+      raise ValueError(
+          'per_sequence_xent is expected to be float32, but got'
+          f'{softmax_out.per_sequence_xent.dtype}'
+      )
+    if len(softmax_out.per_sequence_xent.shape) != 1:
+      raise ValueError(
+          'per_sequence_xent is expected to be of shape [batch_size], but got'
+          f'{softmax_out.per_sequence_xent.shape}'
+      )
+    return -1.0 * softmax_out.per_sequence_xent
+
+  # Prevent backprop into reference model
+  y_w_ref_log_p = jax.lax.stop_gradient(per_seq_log_p(predictions.y_w_ref))
+  y_l_ref_log_p = jax.lax.stop_gradient(per_seq_log_p(predictions.y_l_ref))
+  # Allow backprop into policy model
+  y_w_pi_log_p = per_seq_log_p(predictions.y_w_pi)
+  y_l_pi_log_p = per_seq_log_p(predictions.y_l_pi)
+  model.add_summary('dpo/y_w_ref_log_p', jnp.mean(y_w_ref_log_p))
+  model.add_summary('dpo/y_w_pi_log_p', jnp.mean(y_w_pi_log_p))
+  model.add_summary('dpo/y_l_ref_log_p', jnp.mean(y_l_ref_log_p))
+  model.add_summary('dpo/y_l_pi_log_p', jnp.mean(y_l_pi_log_p))
+  add_hist(model, 'dpo/y_w_ref_log_p', y_w_ref_log_p)
+  add_hist(model, 'dpo/y_w_pi_log_p', y_w_pi_log_p)
+  add_hist(model, 'dpo/y_l_ref_log_p', y_l_ref_log_p)
+  add_hist(model, 'dpo/y_l_pi_log_p', y_l_pi_log_p)
+  r_hat_y_w = model.beta * (y_w_pi_log_p - y_w_ref_log_p)
+  r_hat_y_l = model.beta * (y_l_pi_log_p - y_l_ref_log_p)
+  # This is the dpo_loss, same as what equation 7 in the paper computes.
+  loss = -1.0 * jnp.mean(jax.nn.log_sigmoid(r_hat_y_w - r_hat_y_l))
+  model.add_summary('dpo/r_hat_y_w', jnp.mean(r_hat_y_w))
+  model.add_summary('dpo/r_hat_y_w_std', jnp.std(r_hat_y_w))
+  model.add_summary('dpo/r_hat_y_l', jnp.mean(r_hat_y_l))
+  model.add_summary('dpo/r_hat_y_l_std', jnp.std(r_hat_y_l))
+  model.add_summary('dpo/delta_r_hat', jnp.mean(r_hat_y_w - r_hat_y_l))
+  model.add_summary('dpo/delta_r_hat_std', jnp.std(r_hat_y_w - r_hat_y_l))
+  model.add_summary('dpo/dpo_loss', loss)
+  model.add_summary(
+      '_dpo_topline/p_correct_ranking',
+      jnp.mean(jax.nn.sigmoid(r_hat_y_w - r_hat_y_l)),
+  )
+  add_hist(model, 'dpo/r_hat_y_w', r_hat_y_w)
+  add_hist(model, 'dpo/r_hat_y_l', r_hat_y_l)
+  add_hist(model, 'dpo/delta_r_hat', r_hat_y_w - r_hat_y_l)
+  batch_size = predictions.y_l_ref.per_example_xent.shape[0]
+  # TODO(yonghui): Add diagnostic summaries.
+  return (
+      NestedMap(
+          total_loss=(loss, jnp.array(batch_size, loss.dtype)),
+      ),
+      {},
+  )
+
+
 class LanguageModel(base_model.BaseModel):
   """Language Model base task.
 
@@ -1320,60 +1404,7 @@ class LanguageModelDPO(base_model.BaseModel):
   def compute_loss(
       self, predictions, input_batch: NestedMap
   ) -> tuple[Union[WeightedScalars, Metrics], dict[str, Any]]:
-    def per_seq_log_p(softmax_out: NestedMap):
-      # assert per_example_xent is float32, learning might be unstable in
-      # bfloat16.
-      assert softmax_out.per_example_xent.dtype == jnp.float32
-      assert softmax_out.per_sequence_xent.dtype == jnp.float32
-      assert len(softmax_out.per_sequence_xent.shape) == 1
-      return -1.0 * softmax_out.per_sequence_xent
-
-    # Prevent backprop into reference model
-    y_w_ref_log_p = jax.lax.stop_gradient(per_seq_log_p(predictions.y_w_ref))
-    y_l_ref_log_p = jax.lax.stop_gradient(per_seq_log_p(predictions.y_l_ref))
-    # Allow backprop into policy model
-    y_w_pi_log_p = per_seq_log_p(predictions.y_w_pi)
-    y_l_pi_log_p = per_seq_log_p(predictions.y_l_pi)
-
-    self.add_summary('dpo/y_w_ref_log_p', jnp.mean(y_w_ref_log_p))
-    self.add_summary('dpo/y_w_pi_log_p', jnp.mean(y_w_pi_log_p))
-    self.add_summary('dpo/y_l_ref_log_p', jnp.mean(y_l_ref_log_p))
-    self.add_summary('dpo/y_l_pi_log_p', jnp.mean(y_l_pi_log_p))
-    add_hist(self, 'dpo/y_w_ref_log_p', y_w_ref_log_p)
-    add_hist(self, 'dpo/y_w_pi_log_p', y_w_pi_log_p)
-    add_hist(self, 'dpo/y_l_ref_log_p', y_l_ref_log_p)
-    add_hist(self, 'dpo/y_l_pi_log_p', y_l_pi_log_p)
-
-    r_hat_y_w = self.beta * (y_w_pi_log_p - y_w_ref_log_p)
-    r_hat_y_l = self.beta * (y_l_pi_log_p - y_l_ref_log_p)
-
-    # This is the dpo_loss, same as what equation 7 in the paper computes.
-    loss = -1.0 * jnp.mean(jax.nn.log_sigmoid(r_hat_y_w - r_hat_y_l))
-
-    self.add_summary('dpo/r_hat_y_w', jnp.mean(r_hat_y_w))
-    self.add_summary('dpo/r_hat_y_w_std', jnp.std(r_hat_y_w))
-    self.add_summary('dpo/r_hat_y_l', jnp.mean(r_hat_y_l))
-    self.add_summary('dpo/r_hat_y_l_std', jnp.std(r_hat_y_l))
-    self.add_summary('dpo/delta_r_hat', jnp.mean(r_hat_y_w - r_hat_y_l))
-    self.add_summary('dpo/delta_r_hat_std', jnp.std(r_hat_y_w - r_hat_y_l))
-    self.add_summary('dpo/dpo_loss', loss)
-    self.add_summary(
-        '_dpo_topline/p_correct_ranking',
-        jnp.mean(jax.nn.sigmoid(r_hat_y_w - r_hat_y_l)),
-    )
-    add_hist(self, 'dpo/r_hat_y_w', r_hat_y_w)
-    add_hist(self, 'dpo/r_hat_y_l', r_hat_y_l)
-    add_hist(self, 'dpo/delta_r_hat', r_hat_y_w - r_hat_y_l)
-
-    batch_size = predictions.y_l_ref.per_example_xent.shape[0]
-
-    # TODO(yonghui): Add diagnostic summaries.
-    return (
-        NestedMap(
-            total_loss=(loss, jnp.array(batch_size, loss.dtype)),
-        ),
-        {},
-    )
+    return compute_dpo_loss_helper(self, predictions)
 
 
 class SequenceModel(base_model.BaseModel):
@@ -1744,6 +1775,115 @@ class SequenceModel(base_model.BaseModel):
     )
     out_clu_metrics = NestedMap()
     return metrics, ret, out_clu_metrics
+
+
+@dataclasses.dataclass(kw_only=True, slots=True, frozen=True)
+class DPOExampleHalfSeq2Seq:
+  """Represents a rated DPO example."""
+
+  inputs: Int32[ArrayT, 'B T']
+  input_paddings: Int32[ArrayT, 'B T']
+  targets: Int32[ArrayT, 'B T']
+  target_paddings: Int32[ArrayT, 'B T']
+  labels: Labels
+
+  def as_xformer_encdec_input(self) -> dict[str, ArrayT | NestedMap]:
+    return NestedMap.FromNestedDataclass(self)
+
+
+@dataclasses.dataclass(kw_only=True, slots=True)
+class DPOExampleSeq2Seq:
+  """The structure of an example batch fed to a SequenceModelDPO instance.
+
+  Different from the RM data structure, we separate out exactly two generations
+  into y_w and y_l, where the former is the 'winner' in the pairwise matchup.
+  """
+
+  y_w: DPOExampleHalfSeq2Seq
+  y_l: DPOExampleHalfSeq2Seq
+
+  @classmethod
+  def from_feature_converter(cls, example: Mapping[str, JTensor]):
+    return cls(
+        y_w=DPOExampleHalfSeq2Seq(
+            inputs=example['inputs'],
+            input_paddings=example['input_paddings'],
+            targets=example['targets_w'],
+            target_paddings=example['targets_w/paddings'],
+            labels=Labels(
+                class_ids=example['targets_w/labels/ids'],
+                class_weights=example['targets_w/labels/weights'],
+            ),
+        ),
+        y_l=DPOExampleHalfSeq2Seq(
+            inputs=example['inputs'],
+            input_paddings=example['input_paddings'],
+            targets=example['targets_l'],
+            target_paddings=example['targets_l/paddings'],
+            labels=Labels(
+                class_ids=example['targets_l/labels/ids'],
+                class_weights=example['targets_l/labels/weights'],
+            ),
+        ),
+    )
+
+
+class SequenceModelDPO(base_model.BaseModel):
+  """Sequence Model with DPO loss function.
+
+  Attributes:
+    model_tpl: The model to be trained.
+    beta: kl divergence regularization weight.
+    label_smoothing_prob: If > 0.0, smooth out one-hot prob by spreading this
+      amount of prob mass to all other tokens.
+  """
+
+  model_tpl: LayerTpl = template_field(
+      transformer_models.TransformerEncoderDecoder
+  )
+  beta: float = 0.1
+  label_smoothing_prob: float | None = None
+
+  def setup(self) -> None:
+    # Construct the model.
+    model_p = self.model_tpl.clone()
+    if self.label_smoothing_prob is not None:
+      model_p.softmax_tpl.label_smoothing_prob = self.label_smoothing_prob
+    self.create_child('model', model_p)
+    self.create_child('ref_model', model_p.clone())
+
+  def compute_predictions(self, input_batch):
+    """Computes predictions for `input_batch`."""
+    # This is used for eval during training.
+    if 'src' in input_batch:
+      labels = NestedMap(
+          class_ids=input_batch.tgt.labels,
+          class_weights=input_batch.tgt.weights,
+      )
+      return self.model(
+          inputs=input_batch.src.ids,
+          input_paddings=input_batch.src.paddings,
+          targets=input_batch.tgt.ids,
+          target_paddings=input_batch.tgt.paddings,
+          labels=labels,
+      )
+
+    batch = DPOExampleSeq2Seq.from_feature_converter(input_batch)
+    # ref = reference policy; pi = current policy.
+    return NestedMap(
+        y_l_ref=self.ref_model(**batch.y_l.as_xformer_encdec_input()),
+        y_l_pi=self.model(**batch.y_l.as_xformer_encdec_input()),
+        y_w_ref=self.ref_model(**batch.y_w.as_xformer_encdec_input()),
+        y_w_pi=self.model(**batch.y_w.as_xformer_encdec_input()),
+    )
+
+  def compute_loss(
+      self, predictions, input_batch: NestedMap
+  ) -> tuple[Union[WeightedScalars, Metrics], dict[str, Any]]:
+    # This is used for eval during training.
+    if 'src' in input_batch:
+      return compute_xent_loss_helper(predictions, input_batch.tgt, False)
+    return compute_dpo_loss_helper(self, predictions)
 
 
 class ClassificationModel(base_model.BaseModel):
