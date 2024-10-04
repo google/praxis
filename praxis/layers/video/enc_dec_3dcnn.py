@@ -345,7 +345,7 @@ class BlurPool3D(base_layer.BaseLayer):
     channel_num = inputs.shape[-1]
     dimension_numbers = _conv_dimension_numbers(inputs.shape)
     depthwise_filter = jnp.tile(self.filter, [1, 1, 1, 1, channel_num])
-    depthwise_filter = depthwise_filter.astype(self.dtype)
+    depthwise_filter = depthwise_filter.astype(self.fprop_dtype)
     precision = 'bfloat16' if self.dtype == jnp.bfloat16 else 'float32'
     with jax.default_matmul_precision(precision):
       outputs = jax.lax.conv_general_dilated(
