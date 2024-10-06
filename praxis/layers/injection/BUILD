@@ -42,6 +42,7 @@ pytype_strict_test(
     deps = [
         ":fp8_nvidia_gpu",
         # Implicit absl.testing.absltest dependency.
+        # Implicit absl.testing.parameterized dependency.
         # Implicit flax.core dependency.
         # Implicit upb python proto dependency.
         # Implicit jax dependency.
