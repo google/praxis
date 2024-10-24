@@ -142,11 +142,7 @@ PMAP_PARALLEL_AXIS_NAME = 'batch'
 #     = ShardedDeviceArray([ True], dtype=bool)
 def is_running_under_pmap() -> bool:
   """Whether currently running under pmap with PMAP_PARALLEL_AXIS_NAME."""
-  try:
-    _ = jax.lax.axis_index(PMAP_PARALLEL_AXIS_NAME)
-    return True
-  except NameError:
-    return False
+  return PMAP_PARALLEL_AXIS_NAME in jax.core.unsafe_get_axis_names_DO_NOT_USE()
 
 
 class WeightHParamsCollection:
