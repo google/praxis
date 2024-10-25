@@ -19,7 +19,7 @@ absl-py==1.4.0
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tfds-nightly
-anyio==4.6.0
+anyio==4.6.2.post1
     # via
     #   httpx
     #   jupyter-server
@@ -57,7 +57,7 @@ certifi==2024.8.30
     #   requests
 cffi==1.17.1
     # via argon2-cffi-bindings
-charset-normalizer==3.3.2
+charset-normalizer==3.4.0
     # via requests
 chex==0.1.87
     # via
@@ -79,7 +79,7 @@ contourpy==1.3.0
     # via matplotlib
 cycler==0.12.1
     # via matplotlib
-debugpy==1.8.6
+debugpy==1.8.7
     # via ipykernel
 decorator==5.1.1
     # via ipython
@@ -91,7 +91,7 @@ dm-tree==0.1.8
     #   tfds-nightly
 einops==0.8.0
     # via -r praxis-requirements.in
-etils[enp,epath,epy]==1.9.4
+etils[enp,epath,epy]==1.10.0
     # via
     #   -r praxis-requirements.in
     #   array-record
@@ -121,7 +121,7 @@ fonttools==4.54.1
     # via matplotlib
 fqdn==1.5.1
     # via jsonschema
-fsspec==2024.9.0
+fsspec==2024.10.0
     # via etils
 gast==0.4.0
     # via tensorflow
@@ -139,7 +139,7 @@ graph-compression-google-research==0.0.4
     # via lingvo
 graphviz==0.20.3
     # via fiddle
-grpcio==1.66.2
+grpcio==1.67.0
     # via
     #   tensorboard
     #   tensorflow
@@ -151,7 +151,7 @@ httpcore==1.0.6
     # via httpx
 httpx==0.27.2
     # via jupyterlab
-humanize==4.10.0
+humanize==4.11.0
     # via orbax-checkpoint
 idna==3.10
     # via
@@ -186,13 +186,12 @@ jax @ git+https://github.com/google/jax
     #   orbax-checkpoint
 jax-bitempered-loss==0.0.2
     # via -r praxis-requirements.in
-jaxlib==0.4.34
+jaxlib==0.4.35
     # via
     #   chex
     #   clu
     #   jax
     #   optax
-    #   orbax-checkpoint
 jaxtyping==0.2.34
     # via -r praxis-requirements.in
 jedi==0.19.1
@@ -214,7 +213,7 @@ jsonschema[format-nongpl]==4.23.0
     #   jupyter-events
     #   jupyterlab-server
     #   nbformat
-jsonschema-specifications==2023.12.1
+jsonschema-specifications==2024.10.1
     # via jsonschema
 jupyter==1.1.1
     # via lingvo
@@ -271,7 +270,7 @@ kiwisolver==1.4.7
     # via matplotlib
 libclang==18.1.1
     # via tensorflow
-libcst==1.4.0
+libcst==1.5.0
     # via fiddle
 lingvo==0.12.7
     # via -r praxis-requirements.in
@@ -279,7 +278,7 @@ markdown==3.7
     # via tensorboard
 markdown-it-py==3.0.0
     # via rich
-markupsafe==2.1.5
+markupsafe==3.0.2
     # via
     #   jinja2
     #   nbconvert
@@ -368,7 +367,7 @@ optax==0.2.3
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax-checkpoint==0.6.4
+orbax-checkpoint==0.7.0
     # via flax
 overrides==7.7.0
     # via jupyter-server
@@ -388,7 +387,7 @@ parso==0.8.4
     # via jedi
 pexpect==4.9.0
     # via ipython
-pillow==10.4.0
+pillow==11.0.0
     # via
     #   lingvo
     #   matplotlib
@@ -415,7 +414,7 @@ protobuf==3.19.6
     #   tensorflow-hub
     #   tensorflow-metadata
     #   tfds-nightly
-psutil==6.0.0
+psutil==6.1.0
     # via
     #   ipykernel
     #   tensorflow-datasets
@@ -440,7 +439,7 @@ pygments==2.18.0
     #   jupyter-console
     #   nbconvert
     #   rich
-pyparsing==3.1.4
+pyparsing==3.2.0
     # via matplotlib
 python-dateutil==2.9.0.post0
     # via
@@ -484,7 +483,7 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rich==13.9.2
+rich==13.9.3
     # via flax
 rpds-py==0.20.0
     # via
@@ -564,7 +563,7 @@ tensorstore==0.1.66
     # via
     #   flax
     #   orbax-checkpoint
-termcolor==2.4.0
+termcolor==2.5.0
     # via
     #   tensorflow
     #   tensorflow-datasets
@@ -579,7 +578,7 @@ tfds-nightly==4.8.3.dev202303280045
     # via -r praxis-requirements.in
 threadpoolctl==3.5.0
     # via scikit-learn
-tinycss2==1.3.0
+tinycss2==1.4.0
     # via nbconvert
 toml==0.10.2
     # via
