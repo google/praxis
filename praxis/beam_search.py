@@ -418,6 +418,8 @@ def beam_search_after_prefix_fprop(
     new_ids = decoder_utils.gather_output_id(topk_indices, final_topk_indices)
     new_logprobs = decoder_utils.gather_logprobs(logprobs, hyp_id, new_ids)
 
+    new_ids = new_ids + beam_search_hparams.output_id_offset
+
     # Shuffle output ids at beam dimension using hyp_id.
     val.output_ids = shuffle_state(val.output_ids, hyp_id, use_one_hot_matmul)
     val.logprobs = shuffle_state(val.logprobs, hyp_id, use_one_hot_matmul)

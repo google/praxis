@@ -98,6 +98,9 @@ class BeamSearchHParams(DecoderHParams):
       beam_size if None.
     length_norm_alpha: Length norm alpha for beam search.
     early_exit: A bool, whether or not to allow early exit.
+    output_id_offset: The offset to add to the output token ids. When running
+      beam search on a subset of output vocab (e.g. to reduce inference cost),
+      this offset shifts the output ids back to the original vocab space.
   """
 
   beam_size: int = 1
@@ -105,6 +108,7 @@ class BeamSearchHParams(DecoderHParams):
   length_norm_alpha: float = 0.8
   early_exit: bool = False
   use_matmul_beam_shuffle: bool = False
+  output_id_offset: int = 0
 
 
 @dataclasses.dataclass
