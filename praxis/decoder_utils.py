@@ -160,14 +160,14 @@ def two_stage_topk(
   beam_size = hyp_scores.shape[1]
   tokens_per_beam = beam_size if tokens_per_beam is None else tokens_per_beam
   logits_reshape = jnp.reshape(
-      logits, newshape=(batch_size * beam_size, vocab_size)
+      logits, shape=(batch_size * beam_size, vocab_size)
   )
   topk_value, topk_indices = jax.lax.top_k(logits_reshape, tokens_per_beam)
   topk_value = jnp.reshape(
-      topk_value, newshape=(batch_size, beam_size, tokens_per_beam)
+      topk_value, shape=(batch_size, beam_size, tokens_per_beam)
   )
   topk_indices = jnp.reshape(
-      topk_indices, newshape=(batch_size, beam_size, tokens_per_beam)
+      topk_indices, shape=(batch_size, beam_size, tokens_per_beam)
   )
   topk_value += jnp.expand_dims(hyp_scores, -1)
   for terminal_id in terminal_ids:
@@ -176,10 +176,10 @@ def two_stage_topk(
     )
 
   topk_value = jnp.reshape(
-      topk_value, newshape=(batch_size, beam_size * tokens_per_beam)
+      topk_value, shape=(batch_size, beam_size * tokens_per_beam)
   )
   topk_indices = jnp.reshape(
-      topk_indices, newshape=(batch_size, beam_size * tokens_per_beam)
+      topk_indices, shape=(batch_size, beam_size * tokens_per_beam)
   )
 
   final_topk_value, final_topk_indices = jax.lax.top_k(topk_value, beam_size)
