@@ -19,7 +19,7 @@ absl-py==1.4.0
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tfds-nightly
-anyio==4.6.2.post1
+anyio==4.7.0
     # via
     #   httpx
     #   jupyter-server
@@ -31,7 +31,7 @@ array-record==0.5.1
     # via tfds-nightly
 arrow==1.3.0
     # via isoduration
-asttokens==2.4.1
+asttokens==3.0.0
     # via stack-data
 astunparse==1.6.3
     # via tensorflow
@@ -46,7 +46,7 @@ babel==2.16.0
     # via jupyterlab-server
 beautifulsoup4==4.12.3
     # via nbconvert
-bleach==6.1.0
+bleach==6.2.0
     # via nbconvert
 cachetools==5.5.0
     # via google-auth
@@ -73,13 +73,11 @@ comm==0.2.2
     # via
     #   ipykernel
     #   ipywidgets
-contextlib2==21.6.0
-    # via ml-collections
-contourpy==1.3.0
+contourpy==1.3.1
     # via matplotlib
 cycler==0.12.1
     # via matplotlib
-debugpy==1.8.7
+debugpy==1.8.9
     # via ipykernel
 decorator==5.1.1
     # via ipython
@@ -91,7 +89,7 @@ dm-tree==0.1.8
     #   tfds-nightly
 einops==0.8.0
     # via -r praxis-requirements.in
-etils[enp,epath,epy]==1.10.0
+etils[enp,epath,epy]==1.11.0
     # via
     #   -r praxis-requirements.in
     #   array-record
@@ -107,7 +105,7 @@ exceptiongroup==1.2.2
     #   ipython
 executing==2.1.0
     # via stack-data
-fastjsonschema==2.20.0
+fastjsonschema==2.21.1
     # via nbformat
 fiddle @ git+https://github.com/google/fiddle
     # via -r praxis-requirements.in
@@ -117,7 +115,7 @@ flax @ git+https://github.com/google/flax
     # via
     #   -r praxis-requirements.in
     #   clu
-fonttools==4.54.1
+fonttools==4.55.2
     # via matplotlib
 fqdn==1.5.1
     # via jsonschema
@@ -125,7 +123,7 @@ fsspec==2024.10.0
     # via etils
 gast==0.4.0
     # via tensorflow
-google-auth==2.35.0
+google-auth==2.36.0
     # via
     #   google-auth-oauthlib
     #   tensorboard
@@ -139,7 +137,7 @@ graph-compression-google-research==0.0.4
     # via lingvo
 graphviz==0.20.3
     # via fiddle
-grpcio==1.67.0
+grpcio==1.68.1
     # via
     #   tensorboard
     #   tensorflow
@@ -147,9 +145,9 @@ h11==0.14.0
     # via httpcore
 h5py==3.12.1
     # via tensorflow
-httpcore==1.0.6
+httpcore==1.0.7
     # via httpx
-httpx==0.27.2
+httpx==0.28.0
     # via jupyterlab
 humanize==4.11.0
     # via orbax-checkpoint
@@ -167,7 +165,7 @@ ipykernel==6.29.5
     #   jupyter-console
     #   jupyterlab
     #   lingvo
-ipython==8.28.0
+ipython==8.30.0
     # via
     #   ipykernel
     #   ipywidgets
@@ -186,15 +184,15 @@ jax @ git+https://github.com/google/jax
     #   orbax-checkpoint
 jax-bitempered-loss==0.0.2
     # via -r praxis-requirements.in
-jaxlib==0.4.35
+jaxlib==0.4.36
     # via
     #   chex
     #   clu
     #   jax
     #   optax
-jaxtyping==0.2.34
+jaxtyping==0.2.36
     # via -r praxis-requirements.in
-jedi==0.19.1
+jedi==0.19.2
     # via ipython
 jinja2==3.1.4
     # via
@@ -204,7 +202,7 @@ jinja2==3.1.4
     #   nbconvert
 joblib==1.4.2
     # via scikit-learn
-json5==0.9.25
+json5==0.10.0
     # via jupyterlab-server
 jsonpointer==3.0.0
     # via jsonschema
@@ -250,7 +248,7 @@ jupyter-server==2.14.2
     #   notebook-shim
 jupyter-server-terminals==0.5.3
     # via jupyter-server
-jupyterlab==4.2.5
+jupyterlab==4.3.2
     # via
     #   jupyter
     #   notebook
@@ -270,7 +268,7 @@ kiwisolver==1.4.7
     # via matplotlib
 libclang==18.1.1
     # via tensorflow
-libcst==1.5.0
+libcst==1.5.1
     # via fiddle
 lingvo==0.12.7
     # via -r praxis-requirements.in
@@ -283,7 +281,7 @@ markupsafe==3.0.2
     #   jinja2
     #   nbconvert
     #   werkzeug
-matplotlib==3.9.2
+matplotlib==3.9.3
     # via lingvo
 matplotlib-inline==0.1.7
     # via
@@ -293,7 +291,7 @@ mdurl==0.1.2
     # via markdown-it-py
 mistune==3.0.2
     # via nbconvert
-ml-collections==0.1.1
+ml-collections==1.0.0
     # via clu
 ml-dtypes==0.5.0
     # via
@@ -308,7 +306,7 @@ msgpack==1.1.0
     # via
     #   flax
     #   orbax-checkpoint
-nbclient==0.10.0
+nbclient==0.10.1
     # via nbconvert
 nbconvert==7.16.4
     # via
@@ -323,7 +321,7 @@ nest-asyncio==1.6.0
     # via
     #   ipykernel
     #   orbax-checkpoint
-notebook==7.2.2
+notebook==7.3.1
     # via
     #   jupyter
     #   jupyter-http-over-ws
@@ -354,6 +352,7 @@ numpy==1.26.4
     #   tensorflow-hub
     #   tensorstore
     #   tfds-nightly
+    #   treescope
 oauthlib==3.2.2
     # via requests-oauthlib
 opt-einsum==3.4.0
@@ -361,17 +360,17 @@ opt-einsum==3.4.0
     #   -r praxis-requirements.in
     #   jax
     #   tensorflow
-optax==0.2.3
+optax==0.2.4
     # via
     #   -r praxis-requirements.in
     #   flax
 optax-shampoo==0.0.6
     # via -r praxis-requirements.in
-orbax-checkpoint==0.7.0
+orbax-checkpoint==0.10.2
     # via flax
 overrides==7.7.0
     # via jupyter-server
-packaging==24.1
+packaging==24.2
     # via
     #   clu
     #   ipykernel
@@ -393,7 +392,7 @@ pillow==11.0.0
     #   matplotlib
 platformdirs==4.3.6
     # via jupyter-core
-prometheus-client==0.21.0
+prometheus-client==0.21.1
     # via jupyter-server
 promise==2.3
     # via
@@ -483,9 +482,9 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rich==13.9.3
+rich==13.9.4
     # via flax
-rpds-py==0.20.0
+rpds-py==0.22.3
     # via
     #   jsonschema
     #   referencing
@@ -504,11 +503,11 @@ sentencepiece==0.1.99
     # via
     #   -r praxis-requirements.in
     #   lingvo
-six==1.16.0
+simplejson==3.19.3
+    # via orbax-checkpoint
+six==1.17.0
     # via
-    #   asttokens
     #   astunparse
-    #   bleach
     #   google-pasta
     #   jupyter-http-over-ws
     #   keras-preprocessing
@@ -518,9 +517,7 @@ six==1.16.0
     #   rfc3339-validator
     #   tensorflow
 sniffio==1.3.1
-    # via
-    #   anyio
-    #   httpx
+    # via anyio
 soupsieve==2.6
     # via beautifulsoup4
 stack-data==0.6.3
@@ -559,7 +556,7 @@ tensorflow-text==2.9.0
     # via
     #   -r praxis-requirements.in
     #   lingvo
-tensorstore==0.1.66
+tensorstore==0.1.69
     # via
     #   flax
     #   orbax-checkpoint
@@ -584,11 +581,11 @@ toml==0.10.2
     # via
     #   tensorflow-datasets
     #   tfds-nightly
-tomli==2.0.2
+tomli==2.2.1
     # via jupyterlab
 toolz==1.0.0
     # via chex
-tornado==6.4.1
+tornado==6.4.2
     # via
     #   ipykernel
     #   jupyter-client
@@ -597,7 +594,7 @@ tornado==6.4.1
     #   jupyterlab
     #   notebook
     #   terminado
-tqdm==4.66.5
+tqdm==4.67.1
     # via
     #   tensorflow-datasets
     #   tfds-nightly
@@ -617,11 +614,11 @@ traitlets==5.14.3
     #   nbclient
     #   nbconvert
     #   nbformat
-typeguard==2.13.3
-    # via
-    #   -r praxis-requirements.in
-    #   jaxtyping
-types-python-dateutil==2.9.0.20241003
+treescope==0.1.6
+    # via flax
+typeguard==4.4.1
+    # via -r praxis-requirements.in
+types-python-dateutil==2.9.0.20241206
     # via arrow
 typing-extensions==4.12.2
     # via
@@ -636,13 +633,14 @@ typing-extensions==4.12.2
     #   orbax-checkpoint
     #   rich
     #   tensorflow
+    #   typeguard
 uri-template==1.3.0
     # via jsonschema
 urllib3==2.2.3
     # via requests
 wcwidth==0.2.13
     # via prompt-toolkit
-webcolors==24.8.0
+webcolors==24.11.1
     # via jsonschema
 webencodings==0.5.1
     # via
@@ -650,21 +648,21 @@ webencodings==0.5.1
     #   tinycss2
 websocket-client==1.8.0
     # via jupyter-server
-werkzeug==3.0.4
+werkzeug==3.1.3
     # via tensorboard
-wheel==0.44.0
+wheel==0.45.1
     # via
     #   astunparse
     #   tensorboard
 widgetsnbextension==4.0.13
     # via ipywidgets
-wrapt==1.16.0
+wrapt==1.17.0
     # via
     #   clu
     #   tensorflow
     #   tensorflow-datasets
     #   tfds-nightly
-zipp==3.20.2
+zipp==3.21.0
     # via etils
 
 # The following packages are considered to be unsafe in a requirements file:
