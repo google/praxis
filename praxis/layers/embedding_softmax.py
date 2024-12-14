@@ -1184,21 +1184,16 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     Args:
       inputs: The input sequence on which to apply the Rotary position
         embedding. Since rotary position embeddings are applied to query and
-        keys after projection, it is assumed of shape [B, S, N, H].
+        keys after projection, it is assumed of shape [B, S, N, H] or [B, S, H].
       position: Optional position JTensor which denotes the position of each
         token in the sequence. This only needs to be supplied when the sequence
         is packed. It is of shape [B, S].
 
     Returns:
-      a JTensor of shape [B, S, N, H] which includes the inputs together with
-      the rotary position embedding incorporated in it.
+      a JTensor of shape [B, S, N, H] or [B, S, H] which includes the inputs
+      together with the rotary position embedding incorporated in it.
     """
-    if len(inputs.shape) != 4:
-      raise ValueError(
-          'Input is assumed to be a rank 4 tensor of shape'
-          '[batch, sequence, heads, dims].'
-      )
-    if self.embedding_dims != inputs.shape[3]:
+    if self.embedding_dims != inputs.shape[-1]:
       raise ValueError(
           'The embedding dims of the rotary position embedding'
           'must match the hidden dimension of the inputs.'
@@ -1212,8 +1207,14 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     if position is None:
       seq_length = inputs.shape[1]
       position = jnp.arange(seq_length, dtype=jnp.float32)[jnp.newaxis, :]
-    position = position[:, :, jnp.newaxis, jnp.newaxis]
-    timescale = timescale[jnp.newaxis, jnp.newaxis, jnp.newaxis, :]
+    if len(inputs.shape) == 4:
+      position = position[:, :, jnp.newaxis, jnp.newaxis]
+      timescale = timescale[jnp.newaxis, jnp.newaxis, jnp.newaxis, :]
+    elif len(inputs.shape) == 3:
+      position = position[:, :, jnp.newaxis]
+      timescale = timescale[jnp.newaxis, jnp.newaxis, :]
+    else:
+      raise ValueError('Inputs must be of rank 3 or 4.')
     sinusoid_inp = position / timescale
     sin = jnp.sin(sinusoid_inp)
     cos = jnp.cos(sinusoid_inp)
@@ -1227,7 +1228,9 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     return jnp.concatenate([first_part, second_part], axis=-1)
 
   def extend_step(
-      self, inputs: JTensor, position: int | JTensor | None = None
+      self,
+      inputs: JTensor,
+      position: int | JTensor | None = None,
   ) -> JTensor:
     """Generates a JTensor of sinusoids with different frequencies for a step.
 
@@ -1235,7 +1238,9 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
       inputs: The input sequence on which to apply the Rotary position
         embedding. Since rotary position embeddings are applied to query and
         keys after projection, it is assumed of shape [B, N, H] or of shape [B,
-        P, N, H] where P may be a prefix length.
+        P, N, H] where P may be a prefix length if using multi-head attention.
+        If using multi-query attention, the shape is [B, H] or [B, P, H] where P
+        may be a prefix length.
       position: The position which is being decoded, this should correspond to
         the logical position of the last token in the prefix window (P) in the
         entire sequence length S. It is a scalar or having shape [B].
@@ -1244,10 +1249,12 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
       a JTensor of the same shape as input with the rotary position embedding
       incorporated in it.
     """
-    assert len(inputs.shape) in [3, 4]
+    assert len(inputs.shape) in [2, 3, 4]
     inputs_shape = inputs.shape
     if len(inputs_shape) == 3:
       inputs = inputs[:, jnp.newaxis, :, :]
+    elif len(inputs_shape) == 2:
+      inputs = inputs[:, jnp.newaxis, :]
     seq_length = inputs.shape[1]
     # Adjust the prefix's position with position.
     # Note that position may be a tracer rather than an int, and so we must use
@@ -1262,6 +1269,8 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     )
     output = self(inputs, position=prefix_position)
     if len(inputs_shape) == 3:
+      output = jnp.squeeze(output, axis=1)
+    elif len(inputs_shape) == 2:
       output = jnp.squeeze(output, axis=1)
     return output
 

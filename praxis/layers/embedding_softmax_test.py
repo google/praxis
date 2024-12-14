@@ -929,6 +929,7 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         max_timescale=max_timescale,
     )
     pos_layer = instantiate(p)
+    # test the case when the input is rank 4.
     inputs = np.random.normal(1.5, 2.5, (2, 8, 4, embedding_dims))
     prng_key = jax.random.PRNGKey(seed=123)
     initial_vars = pos_layer.init(prng_key, inputs)
@@ -953,6 +954,42 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
       )
       self.assertArraysEqual(jax_fprop_slice, jax_np_extend_step_out)
 
+    # test the case when the input is rank 3.
+    inputs_for_mqa = np.random.normal(1.5, 2.5, (2, 8, embedding_dims))[
+        :, :, jnp.newaxis, :
+    ]
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pos_layer.init(
+        prng_key, jnp.squeeze(inputs_for_mqa, axis=-2)
+    )
+    output = pos_layer.apply(initial_vars, jnp.squeeze(inputs_for_mqa, axis=-2))
+    # Test whether extend_step returns same output.
+    for i in range(inputs_for_mqa.shape[1]):
+      start = max(0, i + 1 - window_size)
+      end = i + 1
+      inputs_prefix = inputs_for_mqa[:, start:end, :, :]
+      pad_width = window_size - end + start
+      paddings = [(0, 0), (pad_width, 0), (0, 0), (0, 0)]
+      inputs_prefix = jnp.pad(inputs_prefix, paddings)
+      jax_extend_step_out = pos_layer.apply(
+          initial_vars,
+          inputs_prefix,
+          position=i,
+          method=pos_layer.extend_step,
+      )
+      jax_extend_step_out = jax.lax.dynamic_slice_in_dim(
+          jax_extend_step_out,
+          start_index=window_size - 1,
+          slice_size=1,
+          axis=1,
+      )
+      jax_np_extend_step_out = test_utils.to_np(jax_extend_step_out)
+      jax_np_extend_step_out = jnp.squeeze(jax_np_extend_step_out, axis=-2)
+      jax_fprop_slice = jax.lax.dynamic_slice_in_dim(
+          output, start_index=i, slice_size=1, axis=1
+      )
+      self.assertArraysEqual(jax_fprop_slice, jax_np_extend_step_out)
+
   @parameterized.parameters((1, 10), (1, 1e5), (10, 20), (10, 1e5))
   def test_rotary_position_embedding_layer_no_prefix(
       self, min_timescale, max_timescale
@@ -966,6 +1003,7 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
         max_timescale=max_timescale,
     )
     pos_layer = instantiate(p)
+    # test the case when the input is rank 4.
     inputs = np.random.normal(1.5, 2.5, (2, 8, 4, embedding_dims))
     prng_key = jax.random.PRNGKey(seed=123)
     initial_vars = pos_layer.init(prng_key, inputs=inputs)
@@ -980,6 +1018,25 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
       )
       jax_np_extend_step_out = test_utils.to_np(jax_extend_step_out)
       jax_fprop_slice = output[:, i, :, :]
+      self.assertArraysEqual(jax_fprop_slice, jax_np_extend_step_out)
+
+    # test the case when the input is rank 3.
+    inputs_for_mqa = np.random.normal(1.5, 2.5, (2, 8, embedding_dims))[
+        :, :, jnp.newaxis, :
+    ]
+    prng_key = jax.random.PRNGKey(seed=123)
+    initial_vars = pos_layer.init(prng_key, inputs=inputs_for_mqa)
+    output = pos_layer.apply(initial_vars, inputs=inputs_for_mqa)
+    # Test whether extend_step returns same output.
+    for i in range(inputs_for_mqa.shape[1]):
+      jax_extend_step_out = pos_layer.apply(
+          initial_vars,
+          inputs_for_mqa[:, i, :],
+          position=i,
+          method=pos_layer.extend_step,
+      )
+      jax_np_extend_step_out = test_utils.to_np(jax_extend_step_out)
+      jax_fprop_slice = output[:, i, :]
       self.assertArraysEqual(jax_fprop_slice, jax_np_extend_step_out)
 
   @parameterized.parameters(
