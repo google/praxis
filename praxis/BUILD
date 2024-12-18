@@ -642,3 +642,10 @@ bzl_library(
     # Implicit build flag
     visibility = ["//visibility:private"],
 )
+
+bzl_library(
+    name = "build_visibility_bzl",
+    srcs = ["build-visibility.bzl"],
+    # Implicit build flag
+    visibility = ["//visibility:private"],
+)
