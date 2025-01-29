@@ -26,7 +26,6 @@ pytype_strict_library(
     srcs = [
         "enc_dec_3dcnn.py",
     ],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -46,7 +45,6 @@ pytype_strict_test(
     srcs = [
         "enc_dec_3dcnn_test.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":enc_dec_3dcnn",
         # Implicit absl.logging dependency.
@@ -63,7 +61,6 @@ pytype_strict_library(
     srcs = [
         "losses.py",
     ],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -78,7 +75,6 @@ pytype_strict_test(
     srcs = [
         "losses_test.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":losses",
         ":vqvae",
@@ -98,7 +94,6 @@ pytype_strict_library(
     srcs = [
         "quantizer.py",
     ],
-    srcs_version = "PY3",
     deps = [
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -113,7 +108,6 @@ pytype_strict_test(
     srcs = [
         "quantizer_test.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":quantizer",
         # Implicit absl.testing.absltest dependency.
@@ -131,7 +125,6 @@ pytype_strict_library(
     srcs = [
         "vqvae.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":enc_dec_3dcnn",
         ":quantizer",
@@ -152,7 +145,6 @@ pytype_strict_test(
     srcs = [
         "vqvae_test.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":quantizer",
         ":vqvae",
