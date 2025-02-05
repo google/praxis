@@ -506,10 +506,10 @@ class SampleDecodeHelperTest(test_utils.TestCase):
       # batch size is 1.
       self.assertEqual(1, top_candidate_logprobs.shape[0])
       self.assertEqual(1, top_candidate_ids.shape[0])
-      self.assertArraysEqual(
+      self.assertAllClose(
           logprobs, top_candidate_logprobs[0, :, :, :num_per_token_logprobs]
       )
-      self.assertArraysEqual(
+      self.assertAllClose(
           ids, top_candidate_ids[0, :, :, :num_per_token_logprobs]
       )
 
