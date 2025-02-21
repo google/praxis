@@ -140,9 +140,9 @@ def get_sparsity_mask(
     )
     mask_shape = tuple((
         original_shape[i]
-        if i != jnp.size(original_shape) - 1
+        if i != len(original_shape) - 1
         else int(original_shape[i] / block_size)
-        for i in range(jnp.size(original_shape))
+        for i in range(len(original_shape))
     ))
     if order == 'R':
       new_inputs = inputs_block_temp.reshape(mask_shape, order='C')
