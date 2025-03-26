@@ -208,7 +208,7 @@ class FullSoftmax(base_layer.BaseLayer):
   label_smoothing_apply_for_eval: bool = True
   z_loss_weight: float = 0.0
   bias_init: float | None = 0.0
-  feed_forward_tpl: LayerTpl = template_field(linears.FeedForward)
+  feed_forward_tpl: LayerTpl | None = template_field(linears.FeedForward)
   scale_before_logits: bool = False
   chunk_size: int | None = None
 
@@ -627,7 +627,7 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
   num_classes: int = 0
   soft_cap_logits: float | None = 0.0
   bias_init: float | None = 0.0
-  feed_forward_tpl: LayerTpl = template_field(linears.FeedForward)
+  feed_forward_tpl: LayerTpl | None = template_field(linears.FeedForward)
 
   def setup(self) -> None:
     if self.feed_forward_tpl:
