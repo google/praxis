@@ -32,6 +32,7 @@ D = hidden dims
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Sequence
 
 import einops
@@ -194,6 +195,9 @@ class VitEntryLayers(base_layer.BaseLayer):
   pos_emb_dropout_prob: float = 0.0
   prepend_cls_tokens: int = 0
   append_cls_tokens: int = 0
+  cls_emb_init: WeightInit = dataclasses.field(
+      default_factory=lambda: WeightInit.Constant(0.0)
+  )
   pos_emb_tpl: LayerTpl | None = template_field(
       embedding_softmax.TrainablePositionalEmbedding
   )
@@ -228,7 +232,7 @@ class VitEntryLayers(base_layer.BaseLayer):
           'prepend_cls_embs',
           WeightHParams(
               shape=[1, self.prepend_cls_tokens, self.output_dims],
-              init=WeightInit.Constant(0.0),
+              init=self.cls_emb_init,
           ),
       )
     if self.append_cls_tokens > 0:
@@ -236,7 +240,7 @@ class VitEntryLayers(base_layer.BaseLayer):
           'append_cls_embs',
           WeightHParams(
               shape=[1, self.append_cls_tokens, self.output_dims],
-              init=WeightInit.Constant(0.0),
+              init=self.cls_emb_init,
           ),
       )
 
