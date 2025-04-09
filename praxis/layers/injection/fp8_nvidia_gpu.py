@@ -152,19 +152,19 @@ class Fp8EinsumOp(base_layer.BaseLayer):
           preferred_element_type=None,
       ):
         theta = self.theta
-        return fp8_ops.q_dot_dq(
+        return fp8_ops.fp8_scaled_dot_general(
             lhs,
             rhs,
-            lhs_scale=theta.input_scale,
-            rhs_scale=theta.kernel_scale,
-            out_grad_scale=theta.output_grad_scale,
-            lhs_amax_history=theta.input_amax_history,
-            rhs_amax_history=theta.kernel_amax_history,
-            out_grad_amax_history=theta.output_grad_amax_history,
-            compute_dtype=comp_dtype,
-            dimension_numbers=dimension_numbers,
+            dimension_numbers,
             precision=precision,
             preferred_element_type=preferred_element_type,
+            lhs_scale=theta.input_scale,
+            rhs_scale=theta.kernel_scale,
+            grad_scale=theta.output_grad_scale,
+            lhs_amax_history=theta.input_amax_history,
+            rhs_amax_history=theta.kernel_amax_history,
+            grad_amax_history=theta.output_grad_amax_history,
+            quantize_compute_type=comp_dtype,
         )
 
       y = jnp.einsum(equation, x, k, _dot_general=_quantized_dot_general)
