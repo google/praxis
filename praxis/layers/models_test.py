@@ -40,6 +40,8 @@ from praxis.layers import transformer_models
 from praxis.layers import transformers
 import tensorflow.compat.v2 as tf
 
+jax.config.update('jax_threefry_partitionable', False)
+
 
 NestedMap = py_utils.NestedMap
 instantiate = base_layer.instantiate

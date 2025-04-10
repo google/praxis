@@ -21,6 +21,8 @@ from praxis import test_utils
 from praxis.layers.video import quantizer
 from praxis.layers.video import vqvae
 
+jax.config.update("jax_threefry_partitionable", False)
+
 
 class VQVAETest(test_utils.TestCase):
 

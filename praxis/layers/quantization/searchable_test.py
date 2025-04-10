@@ -27,6 +27,8 @@ from praxis import test_utils
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import searchable
 
+jax.config.update('jax_threefry_partitionable', False)
+
 instantiate = base_hyperparams.instantiate
 QuantizationType = quantization_hparams.QuantizationType
 

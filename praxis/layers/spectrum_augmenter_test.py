@@ -25,6 +25,8 @@ from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import spectrum_augmenter
 
+jax.config.update('jax_threefry_partitionable', False)
+
 instantiate = base_layer.instantiate
 to_np = test_utils.to_np
 

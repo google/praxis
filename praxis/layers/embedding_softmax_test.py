@@ -31,6 +31,8 @@ from praxis import test_utils
 from praxis.layers import embedding_softmax
 import tensorflow.compat.v2 as tf
 
+jax.config.update('jax_threefry_partitionable', False)
+
 instantiate = base_layer.instantiate
 to_np = test_utils.to_np
 

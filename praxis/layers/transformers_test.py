@@ -38,6 +38,8 @@ from praxis.layers import multi_query_attention
 from praxis.layers import transformers
 import tensorflow.compat.v2 as tf
 
+jax.config.update('jax_threefry_partitionable', False)
+
 PARAMS = base_layer.PARAMS
 RANDOM = base_layer.RANDOM
 DECODE_CACHE = base_layer.DECODE_CACHE

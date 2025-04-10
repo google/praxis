@@ -22,6 +22,8 @@ from praxis import py_utils
 from praxis import test_utils
 from praxis import token_samplers
 
+jax.config.update("jax_threefry_partitionable", False)
+
 
 class TokenSamplersTest(test_utils.TestCase):
 

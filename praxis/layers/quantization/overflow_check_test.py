@@ -28,6 +28,8 @@ from praxis.layers import multi_query_attention
 from praxis.layers import quantization
 from praxis.layers.quantization import overflow_check
 
+jax.config.update('jax_threefry_partitionable', False)
+
 instantiate = base_layer.instantiate
 
 

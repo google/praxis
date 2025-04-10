@@ -21,6 +21,8 @@ from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers.video import quantizer
 
+jax.config.update("jax_threefry_partitionable", False)
+
 
 class QuantizerTest(test_utils.TestCase):
 

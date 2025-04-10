@@ -24,6 +24,8 @@ from praxis import pax_fiddle
 from praxis import test_utils
 from praxis.layers import stochastics
 
+jax.config.update('jax_threefry_partitionable', False)
+
 instantiate = base_layer.instantiate
 
 

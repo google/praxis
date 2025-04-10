@@ -30,6 +30,8 @@ from praxis import pytypes
 from praxis import sample_decode
 from praxis import test_utils
 
+jax.config.update('jax_threefry_partitionable', False)
+
 NestedMap = py_utils.NestedMap
 WeightHPrams = base_layer.WeightHParams
 instantiate = base_layer.instantiate

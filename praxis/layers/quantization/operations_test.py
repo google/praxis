@@ -31,6 +31,8 @@ from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import quantizer
 from praxis.layers.quantization import utils
 
+jax.config.update('jax_threefry_partitionable', False)
+
 
 class QuantizationUtilsTest(test_utils.TestCase):
 
