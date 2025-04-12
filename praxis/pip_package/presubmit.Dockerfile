@@ -25,6 +25,8 @@ RUN cd /praxis && \
     -praxis/layers:models_test \
     -praxis/layers:ngrammer_test \
     -praxis/layers:normalizations_test \
+    -praxis/layers:rnn_cell_test \
+    -praxis/layers:transformer_models_encoder_decoder_test \
     -praxis/layers:transformer_models_test \
     -praxis/layers:transformers_test
 
