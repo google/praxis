@@ -385,16 +385,14 @@ class BaseInput(base_hyperparams.FiddleBaseParameterizable):
 
     # Use custom device order to create OpSharding in jax.Array.
     def _make_array(x, global_shape):
-      op_sharding = xc.OpSharding()
-      op_sharding.type = xc.OpSharding.Type.OTHER
-      # Fully sharded on the batch dim.
-      op_sharding.tile_assignment_dimensions = [len(device_order)] + [1] * (
-          len(global_shape.shape) - 1)
-      # Custom device order.
-      op_sharding.tile_assignment_devices = device_order
       dbs = py_utils.put_to_devices(x, global_mesh.local_devices)
-      sharding = jax.sharding.GSPMDSharding(
-          list(global_mesh.devices.flat), op_sharding)
+      sharding = jax.sharding.NamedSharding(
+          global_mesh,
+          jax.sharding.PartitionSpec(
+              global_mesh.axis_names,
+          ),
+          _logical_device_ids=tuple(device_order),
+      )
       return jax.make_array_from_single_device_arrays(global_shape.shape,
                                                       sharding, dbs)
 
