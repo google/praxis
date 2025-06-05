@@ -179,7 +179,6 @@ def replace_jax_transformer_ffwd_vars_to_tf(
   Returns:
     tf_initial_vars which is TF compatible.
   """
-  tf_initial_vars = jax_initial_vars.copy()
   tf_initial_vars = py_utils.NestedMap()
   tf_initial_vars.fflayer = py_utils.NestedMap(
       fc=[
