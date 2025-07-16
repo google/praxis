@@ -105,7 +105,7 @@ class CtcTest(test_utils.TestCase):
     inputs = [logprobs, logprob_paddings, labels, label_paddings]
 
     jax_per_seq = optax.ctc_loss(*inputs)
-    tf_per_seq = tf_ctc_loss(*inputs)
+    tf_per_seq = tf_ctc_loss(*inputs)  # pytype: disable=wrong-arg-types  # jax-nn-types
     self.assertAllClose(jax_per_seq.squeeze(), tf_per_seq.squeeze())
 
     average_tf_ctc_loss = lambda *args: jnp.average(tf_ctc_loss(*args))
