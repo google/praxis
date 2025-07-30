@@ -668,6 +668,13 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
       logits = self.soft_cap_logits * jnp.tanh(logits / self.soft_cap_logits)
     return logits
 
+  def logits_to_logp(self, logits: JTensor) -> JTensor:
+    """Converts logits to log probability scores."""
+
+    # We perform sigmoid in float32 to improve stability.
+    logits = logits.astype(jnp.float32)
+    return jax.nn.log_sigmoid(logits)
+
   def __call__(
       self,
       inputs: JTensor,
@@ -705,9 +712,7 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
     # Compute logits
     inputs_dtype = inputs.dtype
     logits = self.get_logits(inputs)
-    # We perform softmax in float32 to improve stability.
-    logits = logits.astype(jnp.float32)
-    log_probs = jax.nn.log_sigmoid(logits)
+    log_probs = self.logits_to_logp(logits)
 
     if class_probabilities is None:
       if self.num_classes == 1:
