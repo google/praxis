@@ -158,8 +158,8 @@ def _unreplicate(x):
   """Helper to unreplicated the data based on its type."""
   if isinstance(x, jax.Array):
     y = x.addressable_data(0)
-    # if jax_pmap_no_rank_reduction is set, we need to perform rank reduction
-    # manually assuming that we're sharded along the first axis.
+    # We need to perform rank reduction manually assuming that we're sharded
+    # along the first axis.
     if (
         not x.sharding.is_fully_replicated
         and len(y.shape) == len(x.shape)
@@ -419,8 +419,7 @@ def convert_fully_replicated_array_to_pmap_array(arr):
   assert isinstance(arr, jax.Array)
   with jax.transfer_guard('disallow'):
     local_shape = (jax.local_device_count(),) + arr.shape
-    if jax.config.jax_pmap_no_rank_reduction:
-      arr = arr[None]
+    arr = arr[None]
     device_buffers = [shard.data for shard in arr.addressable_shards]
     devices = np.array([shard.device for shard in arr.addressable_shards])
     s = jax.sharding.PmapSharding.default(
@@ -441,8 +440,7 @@ def convert_host_local_array_to_global_array(arr):
   """
   # input `arr` is fully replicated, so it's shape is the global shape.
   global_shape = arr.addressable_data(0).shape
-  if jax.config.jax_pmap_no_rank_reduction:
-    global_shape = global_shape[1:]
+  global_shape = global_shape[1:]
   # Create a 1D mesh to create fully replicated global jax.Array.
   mesh = jax.sharding.Mesh(np.array(jax.devices()), axis_names=('x',))
   partition_spec = (
@@ -455,8 +453,7 @@ def convert_host_local_array_to_global_array(arr):
       [shard.data for shard in arr.addressable_shards],
       key=lambda x: list(x.devices())[0].id,
   )
-  if jax.config.jax_pmap_no_rank_reduction:
-    dbs = [s[0] for s in dbs]
+  dbs = [s[0] for s in dbs]
   return jax.make_array_from_single_device_arrays(
       global_shape, jax.sharding.NamedSharding(mesh, partition_spec), dbs
   )
