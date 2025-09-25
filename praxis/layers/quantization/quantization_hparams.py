@@ -19,6 +19,7 @@ import dataclasses
 import enum
 
 import jax.numpy as jnp
+from praxis import base_layer
 
 # Internal import for internal quantization hyper parameters.
 
@@ -103,6 +104,8 @@ class ActQuantizationParams:
     for QAT.
   per_channel: Whether or not to quantize activation channel-wisely.
   symmetric: Whether or not to quantize activation symmetrically.
+  override_quantizer_cls: Class to override default `TensorQuantizer`
+    implementation.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -113,6 +116,7 @@ class ActQuantizationParams:
   fp16: bool = False
   per_channel: bool = True
   symmetric: bool = True
+  override_quantizer_cls: type[base_layer.BaseLayer] | None = None
 
 
 @dataclasses.dataclass
@@ -178,6 +182,8 @@ class WeightQuantizationParams:
       It is well applied for int8, in4, int2 quantization.
     * 'bin' - binarization, where scale is defined by mean|w|.
     * 'bin_norm' - binarization with weight normalization.
+  override_quantizer_cls: Class to override default `TensorQuantizer`
+    implementation.
   """
   precision: int = 8
   unsigned_int_bounds: bool = False
@@ -205,6 +211,7 @@ class WeightQuantizationParams:
   block_size: int = 0
   # Internal quantization parameters.
   quant_method: str = 'default'
+  override_quantizer_cls: type[base_layer.BaseLayer] | None = None
 
 
 @dataclasses.dataclass

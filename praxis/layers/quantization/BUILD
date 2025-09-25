@@ -647,6 +647,7 @@ pytype_strict_library(
     deps = [
         # Internal dependency for internal quantization hyper parameters.
         # Implicit jax dependency.
+        "//praxis:base_layer",
     ],
 )
 

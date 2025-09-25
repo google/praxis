@@ -454,6 +454,8 @@ def create_tensor_quantizer(
   """
   tq_params = pax_fiddle.Config(TensorQuantizer, name=name)
   if quant_params is not None:
+    if quant_params.override_quantizer_cls is not None:
+      tq_params.cls = quant_params.override_quantizer_cls
     tq_params.precision = quant_params.precision
     tq_params.stop_scale_gradient = quant_params.stop_scale_gradient
     tq_params.unsigned_int_bounds = quant_params.unsigned_int_bounds
