@@ -27,7 +27,6 @@ from typing import Any, Callable, Sequence
 from absl import logging
 from etils import epath
 import jax
-from jax.lib import xla_client as xc
 import jax.tree_util
 import numpy as np
 from praxis import base_hyperparams
