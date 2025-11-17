@@ -15,6 +15,10 @@
 
 """Linear layers."""
 
+# This appears to be load-bearing under Python 3.14. If you remove this, make
+# sure you verify the tests pass under Python 3.14+.
+from __future__ import annotations
+
 from jax import numpy as jnp
 from jax import vmap
 from jax.ad_checkpoint import checkpoint_name
