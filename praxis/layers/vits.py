@@ -442,7 +442,12 @@ class VisionTransformer(base_layer.BaseLayer):
         self.mesh_axis_names,
     )
 
-  def __call__(self, inputs: JTensor, paddings: JTensor = None) -> JTensor:  # pytype: disable=annotation-type-mismatch  # jax-ndarray
+  def __call__(
+      self,
+      inputs: JTensor,
+      paddings: JTensor | None = None,
+      segment_pos: JTensor | None = None,
+  ) -> JTensor:
     """Applies the Vit model to the inputs.
 
     Args:
@@ -451,10 +456,12 @@ class VisionTransformer(base_layer.BaseLayer):
         - [B, N, D], where inputs are a sequence of embeddings or patches
       paddings: Optional [B, N] padding field of inputs when inputs are with
         [B, N, D].
+      segment_pos: Optional [B, N] position of each token in the segment of
+        inputs when inputs are with [B, N, D].
 
     Returns:
       Output tensor of shape [B, D] or [B, N, D] if pooled == False.
-    """
+    """  # fmt: skip
     features = inputs
     ap = self.activation_split_dims_mapping
     if self.entry_layers_tpl:
@@ -466,7 +473,9 @@ class VisionTransformer(base_layer.BaseLayer):
       )
     if paddings is None:
       paddings = jnp.zeros(features.shape[:-1], dtype=features.dtype)
-    features = self.transformers_stack(features, paddings)  # [B, N, D]
+    features = self.transformers_stack(
+        features, paddings, segment_pos=segment_pos
+    )  # [B, N, D]
     if self.exit_layers_tpl:
       features = base_layer.maybe_shard(
           features, ap.network_inputs, self.mesh_axis_names
