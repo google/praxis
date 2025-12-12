@@ -39,6 +39,33 @@ from praxis import lingvo_lib
 from praxis import pytypes
 from praxis import trees
 
+
+def _default_pmap_sharding(shape, sharded_dim=0, devices=None):
+  """Creates a sharding for pmap-style parallelism using only public JAX APIs."""
+  if not jax.config.jax_pmap_shmap_merge:
+    return jax.sharding.PmapSharding.default(
+        shape, sharded_dim=sharded_dim, devices=devices
+    )
+  if sharded_dim is None:
+    if devices is None:
+      raise ValueError('One of sharded_dim or devices must be set.')
+    mesh = jax.sharding.Mesh(np.array(devices), ('_pmap',))
+    return jax.sharding.NamedSharding(mesh, jax.sharding.PartitionSpec())
+  if len(shape) == 0:
+    raise ValueError('shape must be non-empty for sharded_dim != None')
+  num_ways_sharded = shape[sharded_dim]
+  if devices is None:
+    pmap_devices = np.array(jax.local_devices()[:num_ways_sharded])
+  else:
+    pmap_devices = np.array(devices)
+  mesh = jax.sharding.Mesh(pmap_devices, ('_pmap',))
+  spec_list = [None] * len(shape)
+  spec_list[sharded_dim] = '_pmap'
+  return jax.sharding.NamedSharding(
+      mesh, jax.sharding.PartitionSpec(*spec_list)
+  )
+
+
 flags.DEFINE_bool(
     'pmap_use_tensorstore', False,
     'Temporary flag to allow pmap users to fall back to flax checkpointing.')
@@ -422,9 +449,7 @@ def convert_fully_replicated_array_to_pmap_array(arr):
     arr = arr[None]
     device_buffers = [shard.data for shard in arr.addressable_shards]
     devices = np.array([shard.device for shard in arr.addressable_shards])
-    s = jax.sharding.PmapSharding.default(
-        local_shape, sharded_dim=0, devices=devices
-    )
+    s = _default_pmap_sharding(local_shape, sharded_dim=0, devices=devices)
     return jax.make_array_from_single_device_arrays(local_shape, s,
                                                     device_buffers)
 
