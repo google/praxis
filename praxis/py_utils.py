@@ -184,14 +184,28 @@ def combine_inner_and_outer_batches(array: jnp.ndarray) -> np.ndarray:
 def _unreplicate(x):
   """Helper to unreplicated the data based on its type."""
   if isinstance(x, jax.Array):
-    y = x.addressable_data(0)
-    # We need to perform rank reduction manually assuming that we're sharded
-    # along the first axis.
-    if (
-        not x.sharding.is_fully_replicated
-        and len(y.shape) == len(x.shape)
-        and y.shape[0] == 1
-    ):
+    if jax.config.jax_pmap_shmap_merge:
+      y = x.addressable_shards[0].data
+      # Determine if we need rank reduction.
+      # For NamedSharding from new pmap, always squeeze if first dim is 1.
+      # For other shardings, only squeeze when NOT fully replicated.
+      is_named_sharding = isinstance(x.sharding, jax.sharding.NamedSharding)
+      should_squeeze = (
+          (is_named_sharding or not x.sharding.is_fully_replicated)
+          and y.shape
+          and y.shape[0] == 1
+          and len(y.shape) == len(x.shape)
+      )
+    else:
+      y = x.addressable_data(0)
+      # We need to perform rank reduction manually assuming that we're sharded
+      # along the first axis.
+      should_squeeze = (
+          not x.sharding.is_fully_replicated
+          and len(y.shape) == len(x.shape)
+          and y.shape[0] == 1
+      )
+    if should_squeeze:
       return np.array(y)[0]
     return y
   else:
