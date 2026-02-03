@@ -185,17 +185,26 @@ def _unreplicate(x):
   """Helper to unreplicated the data based on its type."""
   if isinstance(x, jax.Array):
     if jax.config.jax_pmap_shmap_merge:
-      y = x.addressable_shards[0].data
-      # Determine if we need rank reduction.
-      # For NamedSharding from new pmap, always squeeze if first dim is 1.
-      # For other shardings, only squeeze when NOT fully replicated.
-      is_named_sharding = isinstance(x.sharding, jax.sharding.NamedSharding)
-      should_squeeze = (
-          (is_named_sharding or not x.sharding.is_fully_replicated)
-          and y.shape
-          and y.shape[0] == 1
-          and len(y.shape) == len(x.shape)
-      )
+      # Handle 0-dimensional (scalar) arrays - cannot index into them
+      if x.ndim == 0:
+        return x
+      # SingleDeviceSharding means no replication - return as-is
+      if not hasattr(x, 'sharding') or isinstance(
+          x.sharding, jax.sharding.SingleDeviceSharding
+      ):
+        return x
+      if len(jax.local_devices()) == 1:
+        return x[0]
+      if x.sharding.is_fully_replicated:
+        return x.addressable_shards[0].data
+      shard_data = x.addressable_shards[0].data
+      # For pmap outputs, each shard has shape (1, batch, ...) and we squeeze
+      # to get (batch, ...). However, this function may also be called on
+      # batch-sharded SPMD arrays where shard_data.shape[0] > 1, in which case
+      # squeezing would fail. Only squeeze if dim 0 is 1.
+      if shard_data.shape and shard_data.shape[0] == 1:
+        return shard_data.squeeze(0)
+      return shard_data
     else:
       y = x.addressable_data(0)
       # We need to perform rank reduction manually assuming that we're sharded
@@ -929,6 +938,10 @@ def tree_unstack(tree: Any, axis: int) -> Sequence[Any]:
 
   if not all(isinstance(leaf, (jnp.ndarray, np.ndarray)) for leaf in leaves):
     raise ValueError('leaves must be either a pure numpy or jax ndarray')
+
+  # Handle case where all leaves are 0-dimensional scalars
+  if all(leaf.ndim == 0 for leaf in leaves):
+    return [tree]
 
   axis_size = leaves[0].shape[axis]
   if not all(

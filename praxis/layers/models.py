@@ -960,6 +960,7 @@ class LanguageModel(base_model.BaseModel):
     for idx, decoded_str in enumerate(decoded_strs):
       if (
           'eval_sample_weights' in decode_out
+          and decode_out.eval_sample_weights.ndim > 0
           and not decode_out.eval_sample_weights[idx]
       ):
         # skip padded examples
