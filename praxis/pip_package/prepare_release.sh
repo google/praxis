@@ -44,7 +44,7 @@ echo "PRAXIS version: "$PRAXIS_VERSION
 
 sed -i "s/version='[0-9.]*'/version='$PRAXIS_VERSION'/" setup.py
 sed -i "s/_RELEASE_VERSION: '[0-9.]*'/_RELEASE_VERSION: '$PRAXIS_VERSION'/" cloudbuild-release.yaml
-gsutil cp gs://pax-on-cloud-tpu-project/wheels/"$BUILD_DATE"/praxis_commit.txt ./
+gcloud storage cp gs://pax-on-cloud-tpu-project/wheels/"$BUILD_DATE"/praxis_commit.txt ./
 PRAXIS_COMMIT=$(<praxis_commit.txt)
 rm praxis_commit.txt
 echo "PRAXIS_COMMIT: " $PRAXIS_COMMIT
