@@ -42,10 +42,6 @@ from praxis import trees
 
 def _default_pmap_sharding(shape, sharded_dim=0, devices=None):
   """Creates a sharding for pmap-style parallelism using only public JAX APIs."""
-  if not jax.config.jax_pmap_shmap_merge:
-    return jax.sharding.PmapSharding.default(
-        shape, sharded_dim=sharded_dim, devices=devices
-    )
   if sharded_dim is None:
     if devices is None:
       raise ValueError('One of sharded_dim or devices must be set.')
