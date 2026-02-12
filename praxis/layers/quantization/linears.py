@@ -106,7 +106,7 @@ class Linear(  # pytype: disable=signature-mismatch
     """
     wp = self.weight_split_dims_mapping
     weight_shape = [self.input_dims, self.output_dims]
-    scale_shape = [self.output_dims]
+    scale_shape = [1]
     block_size = self._sub_channel_block_size()
     if using_sub_channel:
       weight_shape = self._get_sub_channel_shape(weight_shape, block_size, 0)
@@ -190,11 +190,12 @@ class Linear(  # pytype: disable=signature-mismatch
           weight_name='w',
           weight_params=weight_hparams,
           scale_hparams=scale_hparams,
+          scale_shape=[1],
       )
       self.create_sparsity_variables(
           'w',
           weight_hparams,
-          scale_shape=[self.output_dims],
+          scale_shape=[1],
       )
 
   def __call__(self, inputs: JTensor) -> JTensor:
