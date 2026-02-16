@@ -1145,15 +1145,12 @@ def get_enumeration_id(
       for k in (INDEX_WITHIN_SHARD_KEY, SHARD_INDEX_KEY, NUM_SHARDS_KEY)):
     return
 
-  if pop:
-    get_fn = lambda ex, key: int(ex.pop(key))
-  else:
-    get_fn = lambda ex, key: int(ex[key])
-
+  look_up = example.pop if pop else example.get
+  get_fn = lambda k: int(np.asarray(look_up(k)).item())
   return (
-      f'{INDEX_WITHIN_SHARD_KEY}={get_fn(example, INDEX_WITHIN_SHARD_KEY)}/'
-      f'{SHARD_INDEX_KEY}={get_fn(example, SHARD_INDEX_KEY)}/'
-      f'{NUM_SHARDS_KEY}={get_fn(example, NUM_SHARDS_KEY)}'
+      f'{INDEX_WITHIN_SHARD_KEY}={get_fn(INDEX_WITHIN_SHARD_KEY)}/'
+      f'{SHARD_INDEX_KEY}={get_fn(SHARD_INDEX_KEY)}/'
+      f'{NUM_SHARDS_KEY}={get_fn(NUM_SHARDS_KEY)}'
   )
 
 
