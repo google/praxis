@@ -180,39 +180,26 @@ def combine_inner_and_outer_batches(array: jnp.ndarray) -> np.ndarray:
 def _unreplicate(x):
   """Helper to unreplicated the data based on its type."""
   if isinstance(x, jax.Array):
-    if jax.config.jax_pmap_shmap_merge:
-      # Handle 0-dimensional (scalar) arrays - cannot index into them
-      if x.ndim == 0:
-        return x
-      # SingleDeviceSharding means no replication - return as-is
-      if not hasattr(x, 'sharding') or isinstance(
-          x.sharding, jax.sharding.SingleDeviceSharding
-      ):
-        return x
-      if len(jax.local_devices()) == 1:
-        return x[0]
-      if x.sharding.is_fully_replicated:
-        return x.addressable_shards[0].data
-      shard_data = x.addressable_shards[0].data
-      # For pmap outputs, each shard has shape (1, batch, ...) and we squeeze
-      # to get (batch, ...). However, this function may also be called on
-      # batch-sharded SPMD arrays where shard_data.shape[0] > 1, in which case
-      # squeezing would fail. Only squeeze if dim 0 is 1.
-      if shard_data.shape and shard_data.shape[0] == 1:
-        return shard_data.squeeze(0)
-      return shard_data
-    else:
-      y = x.addressable_data(0)
-      # We need to perform rank reduction manually assuming that we're sharded
-      # along the first axis.
-      should_squeeze = (
-          not x.sharding.is_fully_replicated
-          and len(y.shape) == len(x.shape)
-          and y.shape[0] == 1
-      )
-    if should_squeeze:
-      return np.array(y)[0]
-    return y
+    # Handle 0-dimensional (scalar) arrays - cannot index into them
+    if x.ndim == 0:
+      return x
+    # SingleDeviceSharding means no replication - return as-is
+    if not hasattr(x, 'sharding') or isinstance(
+        x.sharding, jax.sharding.SingleDeviceSharding
+    ):
+      return x
+    if len(jax.local_devices()) == 1:
+      return x[0]
+    if x.sharding.is_fully_replicated:
+      return x.addressable_shards[0].data
+    shard_data = x.addressable_shards[0].data
+    # For pmap outputs, each shard has shape (1, batch, ...) and we squeeze
+    # to get (batch, ...). However, this function may also be called on
+    # batch-sharded SPMD arrays where shard_data.shape[0] > 1, in which case
+    # squeezing would fail. Only squeeze if dim 0 is 1.
+    if shard_data.shape and shard_data.shape[0] == 1:
+      return shard_data.squeeze(0)
+    return shard_data
   else:
     return x
 
