@@ -24,6 +24,7 @@ import enum
 import functools
 import itertools
 import math
+import sys
 import typing
 from typing import Any, Callable, Mapping, Sequence, Type, TypeVar
 
@@ -1831,7 +1832,7 @@ class BaseLayer(nn.Module):
     corresponding dataclass fields to use the new type for their
     default_factory.
     """
-    if '__annotations__' not in cls.__dict__:
+    if sys.version_info < (3, 14) and '__annotations__' not in cls.__dict__:
       cls.__annotations__ = {}
     if 'WeightSharding' in cls.__dict__:
       if not issubclass(cls.WeightSharding, BaseLayer.WeightSharding):
