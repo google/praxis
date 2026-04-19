@@ -45,6 +45,13 @@ from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 
+try:
+  # JAX v0.10.0 or newer
+  from jax.extend.core import unsafe_get_axis_names_DO_NOT_USE
+except ImportError:
+  # JAX v0.9.2 or older
+  from jax.core import unsafe_get_axis_names_DO_NOT_USE
+
 FLAGS = flags.FLAGS
 
 NestedMap = py_utils.NestedMap
@@ -143,7 +150,7 @@ PMAP_PARALLEL_AXIS_NAME = 'batch'
 #     = ShardedDeviceArray([ True], dtype=bool)
 def is_running_under_pmap() -> bool:
   """Whether currently running under pmap with PMAP_PARALLEL_AXIS_NAME."""
-  return PMAP_PARALLEL_AXIS_NAME in jax.core.unsafe_get_axis_names_DO_NOT_USE()
+  return PMAP_PARALLEL_AXIS_NAME in unsafe_get_axis_names_DO_NOT_USE()
 
 
 class WeightHParamsCollection:

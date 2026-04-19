@@ -87,6 +87,7 @@ pytype_strict_library(
         # Implicit fiddle.daglish dependency.
         # Implicit flax.core dependency.
         # Implicit jax dependency.
+        "//third_party/py/jax/extend:core",
         # Implicit numpy dependency.
     ],
 )
