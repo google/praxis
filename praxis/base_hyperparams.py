@@ -452,7 +452,8 @@ class BaseHyperParams:
       del annotations[attr_override_key]
 
     # In-place transformation to a data-class
-    cls.__annotations__ = annotations
+    if annotations or '__annotations__' in cls.__dict__:
+      cls.__annotations__ = annotations
     # TODO(b/225403281): Investigate if we can set the dataclasses frozen
     # attribute here.
     dataclasses.dataclass(cls)
@@ -1050,12 +1051,20 @@ def _bind_cls_to_nested_params_class(cls: Type[Any]):
     cls: The class to initialize.
   """
   # Update the HParams to dynamically bind a few fields.
-  fields = [
-      ('_attribute_overrides', tuple[str, ...], ('cls',)),
-      ('cls', Type[Any], cls),
-  ]
-  new_hparams = dataclasses.make_dataclass(
-      cls.HParams.__name__, fields=fields, bases=(cls.HParams,))  # pytype: disable=wrong-arg-types
+  # In Python 3.14+, dataclasses.make_dataclass might not correctly override
+  # fields from bases if they are already dataclass fields. Therefore, manually
+  # create the subclass and apply the dataclass decorator.
+  new_hparams_dict = {
+      'cls': cls,
+      '_attribute_overrides': ('cls',),
+      '__annotations__': {
+          'cls': type[Any],
+          '_attribute_overrides': tuple[str, ...],
+      },
+  }
+  new_hparams = type(cls.HParams.__name__, (cls.HParams,), new_hparams_dict)
+  new_hparams = dataclasses.dataclass(new_hparams)
+
   new_hparams.__doc__ = cls.HParams.__doc__
   # Forward cls.__module__, not cls.HParams.__module__, in case cls doesn't have
   # its own HParams class and its parent's is defined in another module.
