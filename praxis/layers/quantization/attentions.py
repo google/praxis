@@ -110,7 +110,7 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
     else:
       weight_shape = [self.input_dim] + hd_shape
 
-    scale_shape = [self.input_dim] if self.is_output_projection else hd_shape
+    scale_shape = [1]
 
     if block_size > 0 and use_block_size:
       eqn = self._get_eqn()
@@ -546,9 +546,9 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
     self.set_up_weights(
         weight_name='w',
         weight_params=pc,
-        scale_shape=[3] + hd_shape,
+        scale_shape=[1],
     )
-    self.create_sparsity_variables('w', pc, scale_shape=[3] + hd_shape)
+    self.create_sparsity_variables('w', pc, scale_shape=[1])
     if self.use_bias:
       # Combined bias weight for q, k, v projections.
       pc_bias = WeightHParams(
