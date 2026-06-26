@@ -578,7 +578,7 @@ def in_set(
       try:
         if value == e:
           return
-      except jax.core.InconclusiveDimensionOperation:
+      except jax.errors.InconclusiveDimensionOperation:
         pass
 
   if msg:
