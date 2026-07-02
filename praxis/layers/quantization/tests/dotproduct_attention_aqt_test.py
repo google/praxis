@@ -1030,7 +1030,7 @@ class DotProductAttentionAQTTest(quantization_test_util.QuantizationTestCase):
 
     fake_query = jnp.zeros_like(query)
 
-    atten_mask = attentions.causal_mask(query)
+    atten_mask = attentions.causal_mask(query)  # pyrefly: ignore[bad-argument-type]
     segment_pos = np.tile(np.arange(max_seq_len), (batch_size, 1))
 
     starting_index = 0
@@ -1175,7 +1175,7 @@ class DotProductAttentionAQTTest(quantization_test_util.QuantizationTestCase):
 
     atten_q = instantiate(atten_q)
     fake_query = jnp.zeros_like(query)
-    atten_mask = attentions.causal_mask(query)
+    atten_mask = attentions.causal_mask(query)  # pyrefly: ignore[bad-argument-type]
     segment_pos = np.tile(np.arange(max_seq_len), (batch_size, 1))
 
     starting_index = 0

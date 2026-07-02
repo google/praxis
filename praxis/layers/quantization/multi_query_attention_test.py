@@ -123,13 +123,13 @@ class MultiQueryAttentionTest(test_utils.TestCase):
       initial_vars_q = ohp_q.init(prng_key, inputs)
       initial_vars_f['params']['w'] = weight_rescaled
       initial_vars_q['params']['w'] = (
-          utils.pack_4bit(quantized_weight, pack_dim=0)
+          utils.pack_4bit(quantized_weight, pack_dim=0)  # pyrefly: ignore[bad-argument-type]
           if precision == 4
           else quantized_weight
       )
       initial_vars_q['params']['w_quantized_scale'] = w_scale
       if not use_symmetric:
-        initial_vars_q['params']['w_quantized_zp'] = w_zp
+        initial_vars_q['params']['w_quantized_zp'] = w_zp  # pyrefly: ignore[unbound-name]
       outputs_f = ohp_f.apply(initial_vars_f, inputs)
       outputs_q = ohp_q.apply(initial_vars_q, inputs)
       self.assertAllClose(outputs_f, outputs_q)

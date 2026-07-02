@@ -76,7 +76,7 @@ class SearchableTest(test_utils.TestCase):
     self._test_common(p, jnp.ones((1, 3), dtype=p.dtype))
 
   def test_searchable_linear_without_act_quant(self):
-    self.quantization_tpl.act_params.precision = None
+    self.quantization_tpl.act_params.precision = None  # pyrefly: ignore[bad-assignment, missing-attribute]
     p = pax_fiddle.Config(
         searchable.SearchableLinear,
         quantization=self.quantization_tpl,

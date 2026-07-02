@@ -242,7 +242,7 @@ class QuantizationTestCase(test_utils.TestCase):
     if isinstance(list1, list) and isinstance(list2, list):
       self.assertEqual(len(list1), len(list2))
     elif not isinstance(list1, list) and not isinstance(list2, list):
-      self.assertAlmostEqual(list1, list2, places)
+      self.assertAlmostEqual(list1, list2, places)  # pyrefly: ignore[no-matching-overload]
       return
     else:
       self.fail(f'Comparing non-list with list: {list1} and {list2}.')

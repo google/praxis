@@ -105,9 +105,9 @@ class VQGANLoss(base_layer.BaseLayer):
       self, predictions: base_model.Predictions, input_batch: py_utils.NestedMap
   ) -> py_utils.NestedMap:
     original_video = input_batch.video
-    reconstructed = predictions['reconstructed']
-    logits_real = predictions['logits_real']
-    logits_fake = predictions['logits_fake']
+    reconstructed = predictions['reconstructed']  # pyrefly: ignore[bad-index]
+    logits_real = predictions['logits_real']  # pyrefly: ignore[bad-index]
+    logits_fake = predictions['logits_fake']  # pyrefly: ignore[bad-index]
     real_pred = jnp.mean(logits_real)
     fake_pred = jnp.mean(logits_fake)
 
@@ -123,7 +123,7 @@ class VQGANLoss(base_layer.BaseLayer):
     self.update_var('ema_real_pred', ema_real_pred)
 
     losses = py_utils.NestedMap()
-    losses.grad_penalty = predictions['r1_gradient_penalty']
+    losses.grad_penalty = predictions['r1_gradient_penalty']  # pyrefly: ignore[bad-index]
     losses.lecam_loss = (
         self.lecam_loss(logits_real, logits_fake) * self.lecam_weight
     )
@@ -142,7 +142,7 @@ class VQGANLoss(base_layer.BaseLayer):
     if self.do_eval:
       losses.quantizer_loss = jnp.zeros_like(losses.reconstruction_loss)
     else:
-      losses.quantizer_loss = predictions['quantizer_loss']
+      losses.quantizer_loss = predictions['quantizer_loss']  # pyrefly: ignore[bad-index]
     losses.d_loss = (
         losses.d_adversarial_loss + losses.grad_penalty + losses.lecam_loss
     )

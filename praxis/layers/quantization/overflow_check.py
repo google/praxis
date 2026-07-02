@@ -36,14 +36,14 @@ JTensor = pytypes.JTensor
 class OverflowLimits:
   """Overflow limits."""
 
-  max_val: float = jnp.finfo(jnp.float16).max
-  min_val: float = jnp.finfo(jnp.float16).min
+  max_val: float = jnp.finfo(jnp.float16).max  # pyrefly: ignore[bad-assignment]
+  min_val: float = jnp.finfo(jnp.float16).min  # pyrefly: ignore[bad-assignment]
 
 
 class OverflowChecker(base_layer.BaseLayer):
   """Adds overflow checks."""
 
-  overflow_limits: OverflowLimits = instance_field(OverflowLimits)
+  overflow_limits: OverflowLimits = instance_field(OverflowLimits)  # pyrefly: ignore[bad-assignment]
 
   def check_overflow(self, inputs, class_name, name):
     max_val = jnp.max(inputs)
@@ -135,8 +135,8 @@ class OneHeadedAttentionProjectionOverflowCheck(
 
 def add_overflow_checks(
     task_p: Any,
-    max_val: float = jnp.finfo(jnp.float16).max,
-    min_val: float = jnp.finfo(jnp.float16).min,
+    max_val: float = jnp.finfo(jnp.float16).max,  # pyrefly: ignore[bad-function-definition]
+    min_val: float = jnp.finfo(jnp.float16).min,  # pyrefly: ignore[bad-function-definition]
 ) -> Any:
   """Adds overflow checks to the task."""
   overwrite_task_p = task_p.clone()

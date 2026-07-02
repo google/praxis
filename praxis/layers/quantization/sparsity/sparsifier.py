@@ -262,16 +262,16 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       ):
         return sparsity.get_sparsity_mask_optimized_for_offset(
             score,
-            n_sparsity=self.sparsity.weight_params.prune_rate[0],
-            m_sparsity=self.sparsity.weight_params.prune_rate[1],
+            n_sparsity=self.sparsity.weight_params.prune_rate[0],  # pyrefly: ignore[bad-index]
+            m_sparsity=self.sparsity.weight_params.prune_rate[1],  # pyrefly: ignore[bad-index]
             order=self.sparsity.order,
             offset=self.sparsity.weight_params.offset,
         )
 
       return sparsity.get_sparsity_mask(
           score,
-          n_sparsity=self.sparsity.weight_params.prune_rate[0],
-          m_sparsity=self.sparsity.weight_params.prune_rate[1],
+          n_sparsity=self.sparsity.weight_params.prune_rate[0],  # pyrefly: ignore[bad-index]
+          m_sparsity=self.sparsity.weight_params.prune_rate[1],  # pyrefly: ignore[bad-index]
           order=self.sparsity.order,
           offset=self.sparsity.weight_params.offset,
           block_size=self.sparsity.block_size,
@@ -460,8 +460,8 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
     def mask_update(binary_mask, weight, update_cnt, mask_params, float_mask):  # pylint: disable=unused-argument
       # get sparsity constraints
-      sparsity_n = self.sparsity.weight_params.prune_rate[0]
-      sparsity_m = self.sparsity.weight_params.prune_rate[1]
+      sparsity_n = self.sparsity.weight_params.prune_rate[0]  # pyrefly: ignore[missing-attribute]
+      sparsity_m = self.sparsity.weight_params.prune_rate[1]  # pyrefly: ignore[missing-attribute]
 
       # reshape the mask_params to groups
       num_params = jnp.size(mask_params)
@@ -521,8 +521,8 @@ class SparsityBaseLayer(base_layer.BaseLayer):
       if self.sparsity.track_sad_metric:
         # compute sad = #mask-changes / #params
         sad_score = jnp.sum(
-            jnp.logical_xor(binary_mask, cur_binary_mask)
-        ) / jnp.size(cur_binary_mask)
+            jnp.logical_xor(binary_mask, cur_binary_mask)  # pyrefly: ignore[bad-argument-type]
+        ) / jnp.size(cur_binary_mask)  # pyrefly: ignore[bad-argument-type]
 
       return weight, update_cnt, cur_float_mask, cur_binary_mask, sad_score
 
@@ -601,7 +601,7 @@ class SparsityBaseLayer(base_layer.BaseLayer):
 
     self._maybe_update_mask(
         weight=weight,
-        inputs=inputs,
+        inputs=inputs,  # pyrefly: ignore[bad-argument-type]
         name=name,
         step=step,
     )

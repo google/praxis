@@ -365,7 +365,7 @@ def custom_einsum(
       res = jnp.einsum(
           scale_eqn,
           acc,
-          sw,
+          sw,  # pyrefly: ignore[unbound-name]
           preferred_element_type=params.einsum_scale_output_dtype,
       )
 
@@ -374,7 +374,7 @@ def custom_einsum(
       res = jnp.einsum(
           scale_eqn,
           res,
-          sx,
+          sx,  # pyrefly: ignore[unbound-name]
           preferred_element_type=params.einsum_scale_output_dtype,
       )
     else:
@@ -764,7 +764,7 @@ def reduce_precision(
       zp = None
       t = jnp.divide(t, scale)
     else:
-      zp = min_value - t_min / scale
+      zp = min_value - t_min / scale  # pyrefly: ignore[unbound-name]
       t = jnp.divide(t, scale) + zp
       zp = jnp.multiply(scale, zp)
 
@@ -785,7 +785,7 @@ def reduce_precision(
       else:
         if random_rounding:
           t = t + jax.random.uniform(
-              key=key, shape=t.shape, minval=-0.5, maxval=0.5
+              key=key, shape=t.shape, minval=-0.5, maxval=0.5  # pyrefly: ignore[bad-argument-type]
           )
         t = jnp.round(t)
         container_dtype = (
@@ -1411,7 +1411,7 @@ def fakequant_vn(
 
     # During warmup period (defined by vn_start_step) there is no noise addition
     if wp.vn_start_step > 0:
-      scale = jax.lax.select(step >= wp.vn_start_step, wp.vn_scale, 0.0)
+      scale = jax.lax.select(step >= wp.vn_start_step, wp.vn_scale, 0.0)  # pyrefly: ignore[bad-argument-type, unsupported-operation]
     else:
       scale = wp.vn_scale
 
@@ -1419,11 +1419,11 @@ def fakequant_vn(
       raise ValueError('Not implemented.')
     elif wp.vn_weight_norm_type == 'Linf':
       # Per tensor scaling.
-      scale *= jnp.max(jnp.abs(w))
+      scale *= jnp.max(jnp.abs(w))  # pyrefly: ignore[unsupported-operation]
     elif wp.vn_weight_norm_type == 'PerChannelLinf':
       # Per channel scaling.
       contract_dims = eqn_to_weight_contract_dims(eqn)
-      scale *= jnp.max(jnp.abs(w), axis=contract_dims, keepdims=True)
+      scale *= jnp.max(jnp.abs(w), axis=contract_dims, keepdims=True)  # pyrefly: ignore[unsupported-operation]
 
     if wp.stop_scale_gradient:
       scale = jax.lax.stop_gradient(scale)

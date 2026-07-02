@@ -129,8 +129,8 @@ class FeedForward(base_layer.BaseLayer):
 
 
 class ParentLayer(base_layer.BaseLayer):
-  ff1_tpl: LayerTpl = base_layer.template_field(FeedForwardQuant)
-  ff2_tpl: LayerTpl = base_layer.template_field(FeedForward)
+  ff1_tpl: LayerTpl = base_layer.template_field(FeedForwardQuant)  # pyrefly: ignore[bad-assignment]
+  ff2_tpl: LayerTpl = base_layer.template_field(FeedForward)  # pyrefly: ignore[bad-assignment]
 
   def setup(self):
     self.create_child(

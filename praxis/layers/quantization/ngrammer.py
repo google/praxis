@@ -31,7 +31,7 @@ instance_field = base_layer.instance_field
 class Ngrammer(ngrammer.Ngrammer):
   """Quantized Ngrammer."""
 
-  quantization: QuantizationParams = instance_field(QuantizationParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     """Constructs an instance which looks up ngrams."""
@@ -79,7 +79,7 @@ class Ngrammer(ngrammer.Ngrammer):
 class VQNgrammer(ngrammer.VQNgrammer):
   """Quantized VQNgrammer."""
 
-  quantization: QuantizationParams = instance_field(QuantizationParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     """Constructs a VQ layer and an N-grammer layer."""

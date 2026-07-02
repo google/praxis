@@ -47,7 +47,7 @@ class OneHeadedAttentionProjection(  # pytype: disable=signature-mismatch
       such as the mode for the quantization.
   """
 
-  quantization: QuantizationParams = pax_fiddle.instance_field(
+  quantization: QuantizationParams = pax_fiddle.instance_field(  # pyrefly: ignore[bad-assignment]
       QuantizationParams
   )
   _PACK_4BIT_DIM = 0

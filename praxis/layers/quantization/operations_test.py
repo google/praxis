@@ -276,7 +276,7 @@ class QuantizationUtilsTest(test_utils.TestCase):
     input_str, output_str, _ = einsum_parser.parse_einsum_input((eqn, x, w))
     eqn_normalized = input_str + '->' + output_str
     expected_offset = np.einsum(offset_eqn, x, zp)
-    offset = operations.compute_offset(eqn_normalized, x, zp)
+    offset = operations.compute_offset(eqn_normalized, x, zp)  # pyrefly: ignore[bad-argument-type]
     self.assertAllClose(offset, expected_offset)
 
   def test_subchannel_einsum(self):
@@ -288,10 +288,10 @@ class QuantizationUtilsTest(test_utils.TestCase):
     expected = expected - np.einsum('...sc,sz->...z', x, zp)
     actual = operations.einsum(
         '...sc,scz->...sz',
-        x,
-        w,
-        s,
-        zp,
+        x,  # pyrefly: ignore[bad-argument-type]
+        w,  # pyrefly: ignore[bad-argument-type]
+        s,  # pyrefly: ignore[bad-argument-type]
+        zp,  # pyrefly: ignore[bad-argument-type]
         scale_eqn='...sz,sz->...z',
         zp_eqn='...sc,sz->...z',
     )
@@ -581,10 +581,10 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
     weight = np.random.normal(-0.5, 1.0, (12, 16)).astype(np.float32)
     eqn = '...y,yz->...z'
     weight_nudged = operations.fakequant_einsum(
-        eqn, weight, use_symmetric=use_symmetric, block_size=6
+        eqn, weight, use_symmetric=use_symmetric, block_size=6  # pyrefly: ignore[bad-argument-type]
     )
     weight_fakequant = operations.fakequant_einsum(
-        eqn, weight, use_symmetric=use_symmetric, block_size=0
+        eqn, weight, use_symmetric=use_symmetric, block_size=0  # pyrefly: ignore[bad-argument-type]
     )
     fakequant_error_block_size = jnp.sum(jnp.square(weight_nudged - weight))
     fakequant_error = jnp.sum(jnp.square(weight_fakequant - weight))
@@ -601,7 +601,7 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
   def test_percentile(self):
     weight = np.random.normal(-2.0, 2.0, (4, 3)).astype(np.float32)
     reduced_weight, scale, _ = operations.reduce_einsum_weight_precision(
-        'ab,bc->ac', weight, percentile=0.9
+        'ab,bc->ac', weight, percentile=0.9  # pyrefly: ignore[bad-argument-type]
     )
     # Large value discrepancy is expected since we use 0.9 percentile.
     # This just makes sure the percentile logic is correct. In practice, 0.9 is
@@ -617,7 +617,7 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
 
   def test_reduce_activation_precision(self):
     act = np.random.normal(-1.0, 1.0, [10, 100]).astype(np.float32)
-    act_nudged = operations.fakequant_activation(act)
+    act_nudged = operations.fakequant_activation(act)  # pyrefly: ignore[bad-argument-type]
     self.assertAllClose(act, act_nudged, rtol=0.02, atol=0.02)
 
   @parameterized.named_parameters(
@@ -627,10 +627,10 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
   def test_reduce_activation_precision_per_channel(self, eqn):
     act = np.random.normal(-1.0, 1.0, [10, 100]).astype(np.float32)
     act_per_channel_nudged = operations.fakequant_activation(
-        act, eqn=eqn, per_channel=True
+        act, eqn=eqn, per_channel=True  # pyrefly: ignore[bad-argument-type]
     )
     act_per_tensor_nudged = operations.fakequant_activation(
-        act, eqn=eqn, per_channel=False
+        act, eqn=eqn, per_channel=False  # pyrefly: ignore[bad-argument-type]
     )
     per_channel_diff = jnp.sum(jnp.abs(act - act_per_channel_nudged))
     per_tensor_diff = jnp.sum(jnp.abs(act - act_per_tensor_nudged))
@@ -791,7 +791,7 @@ class QuantizationVNTest(test_utils.TestCase):
 
     weight_ret = operations.fakequant_vn(
         eqn,
-        weight,
+        weight,  # pyrefly: ignore[bad-argument-type]
         next_prng_key,
         wp,
         step=jnp.array(wp.vn_start_step - 1),
@@ -1120,7 +1120,7 @@ class CustomEinsumTest(test_utils.TestCase):
     params.bits_bwd = None
     params.einsum_output_dtype = jnp.bfloat16  # match dtype of float grad
     custom_grads_float = jax.grad(_custom_loss, argnums=[0, 1])(
-        x, w, eqn=eqn, prng_key=prng_key, params=params
+        x, w, eqn=eqn, prng_key=prng_key, params=params  # pyrefly: ignore[unbound-name]
     )
     grads = jax.grad(_loss, argnums=[0, 1])(x, w, eqn)
 
@@ -1136,7 +1136,7 @@ class CustomEinsumTest(test_utils.TestCase):
     params.einsum_output_dtype = jnp.bfloat16
     params.einsum_scale_output_dtype = jnp.float32
     einsum_output = operations.custom_einsum(
-        x, w, eqn=eqn, prng_key=prng_key, params=params
+        x, w, eqn=eqn, prng_key=prng_key, params=params  # pyrefly: ignore[bad-argument-type]
     )
     self.assertNotEmpty(einsum_output)
     custom_grads_int8 = jax.grad(_custom_loss, argnums=[0, 1])(
@@ -1185,7 +1185,7 @@ class CustomEinsumTest(test_utils.TestCase):
     params.bits_fwd = 8
     params.bits_bwd = 8
     einsum_output = operations.custom_einsum(
-        x, w, eqn=eqn, prng_key=prng_key, params=params
+        x, w, eqn=eqn, prng_key=prng_key, params=params  # pyrefly: ignore[bad-argument-type]
     )
     self.assertAllClose(
         einsum_output,

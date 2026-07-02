@@ -72,7 +72,7 @@ class DotProductAttentionWithContexSyncTest(test_utils.TestCase):
     ).astype(np.float32)
     key_vec = query_vec
     value_vec = query_vec
-    atten_mask = attentions.causal_mask(query_vec)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
 
     with base_layer.JaxContext.new_context():
       initial_vars = atten_f.init(

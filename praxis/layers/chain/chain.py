@@ -60,7 +60,7 @@ class Chain(base_layer.BaseLayer):
 
   def call_chain(self, *args: Any, **kwargs: Any) -> Sequence[Any]:
     """Calls layers one-by-one and returns a list with each layer's output."""
-    return call_chain(self.layers, *args, **kwargs)
+    return call_chain(self.layers, *args, **kwargs)  # pyrefly: ignore[bad-argument-type]
 
 
 def call_chain(

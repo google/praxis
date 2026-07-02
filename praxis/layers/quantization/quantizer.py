@@ -57,7 +57,7 @@ class QuantizationLayer(base_layer.BaseLayer):
       given layer. Defaults to default QuantizationParams.
   """
 
-  quantization: QuantizationParams | None = instance_field(QuantizationParams)
+  quantization: QuantizationParams | None = instance_field(QuantizationParams)  # pyrefly: ignore[bad-assignment]
   _PACK_4BIT_DIM = None
 
   def create_tensor_quantizers(self):
@@ -123,7 +123,7 @@ class QuantizationLayer(base_layer.BaseLayer):
             self._PACK_4BIT_DIM,
             packing_factor=packing_factor,
         )
-      if do_static_activation_quantization(self.quantization.act_params):
+      if do_static_activation_quantization(self.quantization.act_params):  # pyrefly: ignore[bad-argument-type]
         raise NotImplementedError(
             'Static activation quantization is not supported yet.'
         )
@@ -157,7 +157,7 @@ class QuantizationLayer(base_layer.BaseLayer):
       # Optionally create stateful quantizer.
 
     if self.quantization.mode == QuantizationMode.TRAINING:
-      if do_static_activation_quantization(self.quantization.act_params):
+      if do_static_activation_quantization(self.quantization.act_params):  # pyrefly: ignore[bad-argument-type]
         raise NotImplementedError(
             'Static activation quantization is not supported yet.'
         )
@@ -243,7 +243,7 @@ class QuantizationLayer(base_layer.BaseLayer):
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
       scale_act, zp_act = None, None
-      if do_static_activation_quantization(self.quantization.act_params):
+      if do_static_activation_quantization(self.quantization.act_params):  # pyrefly: ignore[bad-argument-type]
         # This is for benchmarking only, to get the headroom.
         # TODO(jianlijianli): implement this properly.
         x = x.astype(jnp.int8)
@@ -424,7 +424,7 @@ def quantized_conv(
         window_strides=layer.filter_stride,
         padding=padding,
         rhs_dilation=layer.dilations,
-        dimension_numbers=dimension_numbers,
+        dimension_numbers=dimension_numbers,  # pyrefly: ignore[bad-argument-type]
         feature_group_count=feature_group_count,
     )
     outputs = jnp.multiply(outputs, s)
@@ -455,7 +455,7 @@ def create_tensor_quantizer(
   tq_params = pax_fiddle.Config(TensorQuantizer, name=name)
   if quant_params is not None:
     if quant_params.override_quantizer_cls is not None:
-      tq_params.cls = quant_params.override_quantizer_cls
+      tq_params.cls = quant_params.override_quantizer_cls  # pyrefly: ignore[read-only]
     tq_params.precision = quant_params.precision
     tq_params.stop_scale_gradient = quant_params.stop_scale_gradient
     tq_params.unsigned_int_bounds = quant_params.unsigned_int_bounds
@@ -627,7 +627,7 @@ class TensorQuantizer(base_layer.BaseLayer):
 
       return sum_error, q_scale, x_min
 
-    clipping = jnp.linspace(
+    clipping = jnp.linspace(  # pyrefly: ignore[no-matching-overload]
         1.0, self.min_clipping, num=self.num_optimize_clipping, dtype=x.dtype
     )
     sum_errors, q_scales, x_mins = jax.vmap(
@@ -727,7 +727,7 @@ class TensorQuantizer(base_layer.BaseLayer):
 
   def _get_zero_point(self, x, x_min, scale) -> JTensor:
     clip_bound_min, _ = operations.get_min_max(
-        self.precision, self.unsigned_int_bounds
+        self.precision, self.unsigned_int_bounds  # pyrefly: ignore[bad-argument-type]
     )
     zp = clip_bound_min - x_min / scale
     return zp
@@ -759,7 +759,7 @@ class TensorQuantizer(base_layer.BaseLayer):
     if self.use_symmetric:
       deq_q_x = q_x * q_scale
     else:
-      deq_q_x = q_x * q_scale - zp_time_scale
+      deq_q_x = q_x * q_scale - zp_time_scale  # pyrefly: ignore[unsupported-operation]
     return deq_q_x
 
   def _scale(

@@ -119,7 +119,7 @@ class AttentionProjection(  # pytype: disable=signature-mismatch
           list(weight_shape), block_size, new_contract_dims
       )
       scale_shape = operations.get_scale_shape(weight_shape, new_contract_dims)
-    return weight_shape, scale_shape, wt
+    return weight_shape, scale_shape, wt  # pyrefly: ignore[unbound-name]
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -373,7 +373,7 @@ class AttentionProjectionLoRA(AttentionProjection):
 
   lora_rank: int = 0
   init_method: str = 'one_zero'
-  norm_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  norm_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
   norm_order: str | None = None
   max_reduction: bool = True
 
@@ -692,11 +692,11 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
       else:
         raise ValueError('invalid quantization type')
 
-    ret = checkpoint_name(ret, 'combined_qkv_proj')
+    ret = checkpoint_name(ret, 'combined_qkv_proj')  # pyrefly: ignore[unbound-name]
     if self.use_bias:
       # Add newaxis to bias weight for each batch dim since ret is K...NH
       # and theta.b is KNH. Need to reshape theta.b to K...NH
-      ret += jnp.expand_dims(b, list(range(1, batch_dims_rank + 1)))
+      ret += jnp.expand_dims(b, list(range(1, batch_dims_rank + 1)))  # pyrefly: ignore[unbound-name]
     # Split into three projections.
     query_proj, key_proj, value_proj = ret
     query_proj = checkpoint_name(query_proj, 'query_proj')

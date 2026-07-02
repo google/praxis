@@ -50,7 +50,7 @@ template_field = base_layer.template_field
 class Embedding(embedding_softmax.Embedding):
   """Quantized Embedding layer."""
 
-  quantization: QuantizationParams = instance_field(QuantizationParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -142,10 +142,10 @@ class Embedding(embedding_softmax.Embedding):
         self.quantization.mode == QuantizationMode.INFERENCE
         or self.quantization.quantization_type == QuantizationType.AQT
     ):
-      scale = jnp.expand_dims(scale_var[(ids,)], axis=-1)
+      scale = jnp.expand_dims(scale_var[(ids,)], axis=-1)  # pyrefly: ignore[unbound-name]
       embs = jnp.multiply(embs, scale)
       if not self.quantization.weight_params.use_symmetric:
-        zp = jnp.expand_dims(zp_var[(ids,)], axis=-1)
+        zp = jnp.expand_dims(zp_var[(ids,)], axis=-1)  # pyrefly: ignore[unbound-name, unsupported-operation]
         embs = embs - zp
 
     # map out-of-boundary ids to nan for easier debug
@@ -240,7 +240,7 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
       such as dtype for the quantized weight.
   """
 
-  quantization: QuantizationParams = instance_field(QuantizationParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     if self.feed_forward_tpl is not None:
@@ -347,10 +347,10 @@ class SharedEmbeddingSoftmax(embedding_softmax.SharedEmbeddingSoftmax):
         self.quantization.mode == QuantizationMode.INFERENCE
         or self.quantization.quantization_type == QuantizationType.AQT
     ):
-      scale = jnp.expand_dims(scale_var[(ids,)], axis=-1)
+      scale = jnp.expand_dims(scale_var[(ids,)], axis=-1)  # pyrefly: ignore[unbound-name]
       embs = jnp.multiply(embs, scale)
       if not self.quantization.weight_params.use_symmetric:
-        zp = jnp.expand_dims(zp_var[(ids,)], axis=-1)
+        zp = jnp.expand_dims(zp_var[(ids,)], axis=-1)  # pyrefly: ignore[unbound-name]
         embs = embs - zp
 
     # Scale with sqrt(embedding dims)
@@ -377,9 +377,9 @@ class NClassMajorSharedEmbeddingSoftmax(
   """
 
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.Identity)
+      template_field(activations.Identity)  # pyrefly: ignore[bad-assignment]
   )
-  quantization: QuantizationParams = instance_field(QuantizationParams)
+  quantization: QuantizationParams = instance_field(QuantizationParams)  # pyrefly: ignore[bad-assignment]
   use_bias: bool = True
   _PACK_4BIT_DIM = 1
 
@@ -559,10 +559,10 @@ class NClassMajorSharedEmbeddingSoftmax(
       raise ValueError('Unknown lookup style.')
 
     if self.quantization.mode == QuantizationMode.INFERENCE:
-      scale = jnp.expand_dims(scale_var[(ids,)], axis=-1)
+      scale = jnp.expand_dims(scale_var[(ids,)], axis=-1)  # pyrefly: ignore[unbound-name]
       embs = jnp.multiply(embs, scale)
       if not self.quantization.weight_params.use_symmetric:
-        zp = jnp.expand_dims(zp_var[(ids,)], axis=-1)
+        zp = jnp.expand_dims(zp_var[(ids,)], axis=-1)  # pyrefly: ignore[unbound-name, unsupported-operation]
         embs = embs - zp
 
     # Scale with sqrt(embedding dims)

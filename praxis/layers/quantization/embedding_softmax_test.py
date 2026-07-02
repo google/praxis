@@ -325,7 +325,7 @@ class SharedEmbeddingSoftmaxTest(test_utils.TestCase):
         if use_native_types:
           q_linear_params['w'] = jnp.array(q_linear_params['w'], dtype)
         else:
-          q_linear_params['w'] = utils.pack_4bit(q_linear_params['w'], 0, dtype)
+          q_linear_params['w'] = utils.pack_4bit(q_linear_params['w'], 0, dtype)  # pyrefly: ignore[bad-argument-type]
       q_linear_params['w_quantized_scale'] = np.array(
           self.SCALES_SYMMETRIC if use_symmetric else self.SCALES_ASYMMETRIC,
           dtype=q_p.dtype,

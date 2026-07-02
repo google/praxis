@@ -521,7 +521,7 @@ def for_transformer(
               num_bits_act=num_bits_act,
               skip_transformers=skip_transformers,
               num_optimize_clipping=num_optimize_clipping,
-              min_clipping=min_clipping,
+              min_clipping=min_clipping,  # pyrefly: ignore[bad-argument-type]
               clipping_coeff=clipping_coeff,
               optimize_clipping_per_channel=optimize_clipping_per_channel,
               vn_scale=vn_scale,
@@ -811,7 +811,7 @@ def set_transformer_quantization(
       num_optimize_clipping=num_optimize_clipping,
       min_clipping=min_clipping,
       clipping_coeff=clipping_coeff,
-      optimize_clipping_per_channel=optimize_clipping_per_channel,
+      optimize_clipping_per_channel=optimize_clipping_per_channel,  # pyrefly: ignore[bad-argument-type]
       vn_scale=vn_scale,
   )
   act_quantization_params = None
@@ -848,7 +848,7 @@ def set_transformer_quantization(
 
   for transformer_tpl in transformer_tpls:
     quantize_transformer_layer_weights(
-        transformer_tpl,
+        transformer_tpl,  # pyrefly: ignore[bad-argument-type]
         quantization_type,
         mode,
         weight_quantization_params,
@@ -866,7 +866,7 @@ def set_transformer_quantization(
     for lm_or_encdec_tpl in lm_or_encdec_tpls:
       if quantize_embedding_softmax:
         _quantize_embedding_softmax_layer_weights(
-            lm_or_encdec_tpl,
+            lm_or_encdec_tpl,  # pyrefly: ignore[bad-argument-type]
             quantization_type,
             mode,
             weight_quantization_params,
@@ -876,7 +876,7 @@ def set_transformer_quantization(
         )  # pytype: disable=wrong-arg-types  # py310-upgrade
       if quantize_ngrammer_embedding:
         _quantize_ngrammer_embedding_weights(
-            lm_or_encdec_tpl,
+            lm_or_encdec_tpl,  # pyrefly: ignore[bad-argument-type]
             quantization_type,
             mode,
             weight_quantization_params,
@@ -976,7 +976,7 @@ def set_transformer_mixed_precision_quantization(
     act_params = _build_act_params(TransformerLayer.ATTENTION_ACT)
     for transformer_tpl in transformer_tpls:
       quantize_attention_layer_weights(
-          transformer_tpl,
+          transformer_tpl,  # pyrefly: ignore[bad-argument-type]
           quantization_type,
           mode,
           weight_params,
@@ -993,7 +993,7 @@ def set_transformer_mixed_precision_quantization(
     act_params = _build_act_params(TransformerLayer.EMBEDDING_SOFTMAX_ACT)
     for lm_or_encdec_tpl in lm_or_encdec_tpls:
       _quantize_embedding_softmax_layer_weights(
-          lm_or_encdec_tpl,
+          lm_or_encdec_tpl,  # pyrefly: ignore[bad-argument-type]
           quantization_type,
           mode,
           weight_params,
@@ -1005,7 +1005,7 @@ def set_transformer_mixed_precision_quantization(
     weight_params = _build_weight_params(TransformerLayer.EMBEDDING_NGRAMMER)
     for lm_or_encdec_tpl in lm_or_encdec_tpls:
       _quantize_ngrammer_embedding_weights(
-          lm_or_encdec_tpl,
+          lm_or_encdec_tpl,  # pyrefly: ignore[bad-argument-type]
           quantization_type,
           mode,
           weight_params,

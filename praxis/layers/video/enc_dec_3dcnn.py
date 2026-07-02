@@ -79,7 +79,7 @@ def scan_function(
         perm = np.concatenate(
             ([in_axis], np.arange(0, in_axis), np.arange(in_axis + 1, x.ndim))
         )
-        x = jnp.transpose(x, perm)
+        x = jnp.transpose(x, perm)  # pyrefly: ignore[bad-argument-type]
       return jnp.expand_dims(x, axis=in_axis + 1)
 
     def transpose_and_reshape(x):
@@ -91,7 +91,7 @@ def scan_function(
         perm = np.concatenate(
             (np.arange(1, in_axis + 1), [0], np.arange(in_axis + 1, x.ndim))
         )
-        x = jnp.transpose(x, perm)
+        x = jnp.transpose(x, perm)  # pyrefly: ignore[bad-argument-type]
       s = x.shape
       x = jnp.reshape(
           x, (*s[0:in_axis], s[in_axis] * s[in_axis + 1], *s[in_axis + 2 :])
@@ -146,9 +146,9 @@ class GroupNormSpatial(normalizations.GroupNorm):
 class CondNormLayer(base_layer.BaseLayer):
   """Conditional normalization layer."""
 
-  group_norm_tpl: LayerTpl = template_field(GroupNormSpatial)
-  linear_tpl: LayerTpl = template_field(linears.Linear)
-  bias_tpl: LayerTpl = template_field(linears.Bias)
+  group_norm_tpl: LayerTpl = template_field(GroupNormSpatial)  # pyrefly: ignore[bad-assignment]
+  linear_tpl: LayerTpl = template_field(linears.Linear)  # pyrefly: ignore[bad-assignment]
+  bias_tpl: LayerTpl = template_field(linears.Bias)  # pyrefly: ignore[bad-assignment]
   emb_dim: int = 0
   dim: int = 0
 
@@ -224,10 +224,10 @@ class ResBlock(base_layer.BaseLayer):
   input_dim: int = 0
   output_dim: int = 128
   use_conv_shortcut: bool = False
-  norm_layer_tpl: LayerTpl = template_field(GroupNormSpatial)
-  conv_layer_tpl: LayerTpl = template_field(CausalConv)
+  norm_layer_tpl: LayerTpl = template_field(GroupNormSpatial)  # pyrefly: ignore[bad-assignment]
+  conv_layer_tpl: LayerTpl = template_field(CausalConv)  # pyrefly: ignore[bad-assignment]
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.Swish)
+      template_field(activations.Swish)  # pyrefly: ignore[bad-assignment]
   )
 
   def setup(self):
@@ -344,7 +344,7 @@ class BlurPool3D(base_layer.BaseLayer):
   def __call__(self, inputs):
     channel_num = inputs.shape[-1]
     dimension_numbers = _conv_dimension_numbers(inputs.shape)
-    depthwise_filter = jnp.tile(self.filter, [1, 1, 1, 1, channel_num])
+    depthwise_filter = jnp.tile(self.filter, [1, 1, 1, 1, channel_num])  # pyrefly: ignore[bad-argument-type]
     depthwise_filter = depthwise_filter.astype(self.fprop_dtype)
     precision = 'bfloat16' if self.dtype == jnp.bfloat16 else 'float32'
     with jax.default_matmul_precision(precision):
@@ -365,11 +365,11 @@ class DiscriminatorResBlock(base_layer.BaseLayer):
   input_dim: int = 0
   output_dim: int = 128
   blur_filter_size: int = 3
-  conv_layer_tpl: LayerTpl = template_field(convolutions.Conv3D)
+  conv_layer_tpl: LayerTpl = template_field(convolutions.Conv3D)  # pyrefly: ignore[bad-assignment]
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.LeakyReLU)
+      template_field(activations.LeakyReLU)  # pyrefly: ignore[bad-assignment]
   )
-  blur_pool_tpl: LayerTpl = template_field(BlurPool3D)
+  blur_pool_tpl: LayerTpl = template_field(BlurPool3D)  # pyrefly: ignore[bad-assignment]
 
   def setup(self):
     activation_p = self.activation_tpl.clone()

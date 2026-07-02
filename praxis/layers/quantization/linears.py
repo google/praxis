@@ -256,14 +256,14 @@ class Linear(  # pytype: disable=signature-mismatch
           q_einsum_params['eqn'] = '...sc,scz->...sz'
           q_einsum_params['scale_eqn'] = '...sz,sz->...z'
           q_einsum_params['zp_eqn'] = '...sc,sz->...z'
-          q_einsum_params['swap_xw'] = False
+          q_einsum_params['swap_xw'] = False  # pyrefly: ignore[bad-assignment]
         else:
           q_einsum_params['eqn'] = 'scz,...sc->...sz'
           q_einsum_params['scale_eqn'] = '...sz,sz->...z'
           q_einsum_params['zp_eqn'] = '...sc,sz->...z'
-          q_einsum_params['swap_xw'] = True
+          q_einsum_params['swap_xw'] = True  # pyrefly: ignore[bad-assignment]
         if len(w.shape) == 2:
-          q_einsum_params['reshape'] = self._get_sub_channel_shape(
+          q_einsum_params['reshape'] = self._get_sub_channel_shape(  # pyrefly: ignore[bad-assignment]
               list(w.shape), block_size, 0
           )
       out = self.quantized_einsum(
@@ -387,16 +387,16 @@ class Linear(  # pytype: disable=signature-mismatch
         and self.quantization.weight_params.use_int4_packed_weights
     ):
       q_w = utils.pack_4bit(
-          q_w,
+          q_w,  # pyrefly: ignore[unbound-name]
           self._PACK_4BIT_DIM,
           self.quantization.weight_params.int4_packed_weights_container_dtype,
       )
 
     if self.quantization.weight_params.use_symmetric:
-      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}  # pyrefly: ignore[unbound-name]
     else:
       zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
-      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}  # pyrefly: ignore[unbound-name]
 
 
 class LinearLoRA(Linear):
@@ -414,7 +414,7 @@ class LinearLoRA(Linear):
 
   lora_rank: int = 0
   init_method: str = 'one_zero'
-  norm_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  norm_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
   norm_order: str | None = None
 
   def setup(self):
@@ -450,7 +450,7 @@ class LinearLoRA(Linear):
             shape=left_shape,
             mesh_shape=self.mesh_shape,
             tensor_split_dims_mapping=utils.get_left_weight_split_dims_mapping(
-                wp, eqn_left_ind
+                wp, eqn_left_ind  # pyrefly: ignore[bad-argument-type]
             ),
             init=WeightInit.Gaussian(w_left_scale),
         ),
@@ -461,7 +461,7 @@ class LinearLoRA(Linear):
             shape=right_shape,
             mesh_shape=self.mesh_shape,
             tensor_split_dims_mapping=utils.get_right_weight_split_dims_mapping(
-                wp, eqn_right_ind
+                wp, eqn_right_ind  # pyrefly: ignore[bad-argument-type]
             ),
             init=WeightInit.Constant(w_right_scale)
             if w_right_scale == 0.0

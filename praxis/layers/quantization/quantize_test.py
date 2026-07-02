@@ -548,10 +548,10 @@ class QuantizationTest(test_utils.TestCase):
 
   def test_diffusion(self):
     class DummyDiffusion(base_layer.BaseLayer):
-      conv_tpl: base_layer.BaseLayer = base_layer.template_field(layers.Conv2D)
+      conv_tpl: base_layer.BaseLayer = base_layer.template_field(layers.Conv2D)  # pyrefly: ignore[bad-assignment]
 
     class DummyModel(base_layer.BaseLayer):
-      diffusion_tpl: base_layer.BaseLayer = base_layer.template_field(
+      diffusion_tpl: base_layer.BaseLayer = base_layer.template_field(  # pyrefly: ignore[bad-assignment]
           DummyDiffusion
       )
 

@@ -363,7 +363,7 @@ class QuantizedAttentionSyncTest(test_utils.TestCase):
     key_vec = query_vec
     value_vec = query_vec
     fake_query_vec = jnp.zeros_like(query_vec)
-    atten_mask = attentions.causal_mask(query_vec)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
     segment_pos = np.tile(np.arange(source_max_length), (target_batch_size, 1))
 
     starting_index = 0

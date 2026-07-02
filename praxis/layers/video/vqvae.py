@@ -44,11 +44,11 @@ class Encoder(base_layer.BaseLayer):
   temporal_downsample: Sequence[bool] = (False, True, True)
   conv_downsample: bool = True
   channel_multipliers: Sequence[int] = (1, 2, 2, 4)
-  norm_tpl: LayerTpl = template_field(enc_dec_3dcnn.GroupNormSpatial)
-  conv_tpl: LayerTpl = template_field(enc_dec_3dcnn.CausalConv)
-  res_block_tpl: LayerTpl = template_field(enc_dec_3dcnn.ResBlock)
+  norm_tpl: LayerTpl = template_field(enc_dec_3dcnn.GroupNormSpatial)  # pyrefly: ignore[bad-assignment]
+  conv_tpl: LayerTpl = template_field(enc_dec_3dcnn.CausalConv)  # pyrefly: ignore[bad-assignment]
+  res_block_tpl: LayerTpl = template_field(enc_dec_3dcnn.ResBlock)  # pyrefly: ignore[bad-assignment]
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.Swish)
+      template_field(activations.Swish)  # pyrefly: ignore[bad-assignment]
   )
 
   def _check_input(self, x: JTensor) -> None:
@@ -165,12 +165,12 @@ class Decoder(base_layer.BaseLayer):
   num_res_blocks: int = 4
   temporal_downsample: Sequence[bool] = (False, True, True)
   channel_multipliers: Sequence[int] = (1, 2, 2, 4)
-  cond_norm_tpl: LayerTpl = template_field(enc_dec_3dcnn.CondNormLayer)
-  norm_tpl: LayerTpl = template_field(enc_dec_3dcnn.GroupNormSpatial)
-  conv_tpl: LayerTpl = template_field(enc_dec_3dcnn.CausalConv)
-  res_block_tpl: LayerTpl = template_field(enc_dec_3dcnn.ResBlock)
+  cond_norm_tpl: LayerTpl = template_field(enc_dec_3dcnn.CondNormLayer)  # pyrefly: ignore[bad-assignment]
+  norm_tpl: LayerTpl = template_field(enc_dec_3dcnn.GroupNormSpatial)  # pyrefly: ignore[bad-assignment]
+  conv_tpl: LayerTpl = template_field(enc_dec_3dcnn.CausalConv)  # pyrefly: ignore[bad-assignment]
+  res_block_tpl: LayerTpl = template_field(enc_dec_3dcnn.ResBlock)  # pyrefly: ignore[bad-assignment]
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.Swish)
+      template_field(activations.Swish)  # pyrefly: ignore[bad-assignment]
   )
 
   def setup(self):
@@ -304,12 +304,12 @@ class Discriminator(base_layer.BaseLayer):
   input_dim: int = 3  # RGB
   blur_filter_size: int = 3
   channel_multipliers: Sequence[int] = (2, 4, 4, 4)
-  conv_tpl: LayerTpl = template_field(convolutions.Conv3D)
-  res_block_tpl: LayerTpl = template_field(enc_dec_3dcnn.DiscriminatorResBlock)
+  conv_tpl: LayerTpl = template_field(convolutions.Conv3D)  # pyrefly: ignore[bad-assignment]
+  res_block_tpl: LayerTpl = template_field(enc_dec_3dcnn.DiscriminatorResBlock)  # pyrefly: ignore[bad-assignment]
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.LeakyReLU)
+      template_field(activations.LeakyReLU)  # pyrefly: ignore[bad-assignment]
   )
-  proj_tpl: LayerTpl = template_field(linears.MLPBlock)
+  proj_tpl: LayerTpl = template_field(linears.MLPBlock)  # pyrefly: ignore[bad-assignment]
 
   def setup(self):
     activation_p = self.activation_tpl.clone()
@@ -378,9 +378,9 @@ class Discriminator(base_layer.BaseLayer):
 class VQVaeModel(base_layer.BaseLayer):
   """VQ VAE base model."""
 
-  encoder_tpl: LayerTpl = template_field(Encoder)
-  decoder_tpl: LayerTpl = template_field(Decoder)
-  quantizer_tpl: LayerTpl = template_field(quantizer.LookupFreeQuantizer)
+  encoder_tpl: LayerTpl = template_field(Encoder)  # pyrefly: ignore[bad-assignment]
+  decoder_tpl: LayerTpl = template_field(Decoder)  # pyrefly: ignore[bad-assignment]
+  quantizer_tpl: LayerTpl = template_field(quantizer.LookupFreeQuantizer)  # pyrefly: ignore[bad-assignment]
 
   temporal_downsample: Sequence[bool] = (False, True, True)
   channel_multipliers: Sequence[int] = (1, 2, 2, 4)

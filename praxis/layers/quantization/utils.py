@@ -316,11 +316,11 @@ def find_target_tpl(
     targets: Type[base_layer.BaseLayer] | Sequence[Type[base_layer.BaseLayer]],
 ) -> Sequence[fdl.Config]:
   """Traverses the entire config tree to find Configs of the target types."""
-  targets = list(targets) if hasattr(targets, '__iter__') else [targets]
+  targets = list(targets) if hasattr(targets, '__iter__') else [targets]  # pyrefly: ignore[bad-argument-type, bad-assignment]
   target_tpl = []
   for node, _ in fdl.daglish.iterate(config):
     if isinstance(node, fdl.Config) and any(
-        issubclass(fdl.get_callable(node), target) for target in targets
+        issubclass(fdl.get_callable(node), target) for target in targets  # pyrefly: ignore[bad-argument-type, not-iterable]
     ):
       target_tpl.append(node)
   return target_tpl
@@ -417,7 +417,7 @@ def get_lora_shape_and_eqn(
 
   if ch_reduction2 is None:
     # Equation for w_left
-    eqn_left_ind1 = left_map[ch_reduction1]
+    eqn_left_ind1 = left_map[ch_reduction1]  # pyrefly: ignore[unbound-name]
     new_right = [ch_reduction1, lora_ch1]
     new_left = list(left)
     new_left[eqn_left_ind1 + offset] = lora_ch1
@@ -446,7 +446,7 @@ def get_lora_shape_and_eqn(
     )
   else:
     # Equation for w_left
-    eqn_left_ind1 = left_map[ch_reduction1]
+    eqn_left_ind1 = left_map[ch_reduction1]  # pyrefly: ignore[unbound-name]
     eqn_left_ind2 = left_map[ch_reduction2]
     new_right = [ch_reduction1, ch_reduction2, lora_ch1, lora_ch2]
     new_left = list(left)
