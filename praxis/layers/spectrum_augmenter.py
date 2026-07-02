@@ -111,9 +111,9 @@ class SpectrumAugmenter(base_layer.BaseLayer):
     """
     # Sample lengths for multiple masks.
     if max_length and max_length > 0:
-      max_length = jnp.tile(max_length, (batch_size,))
+      max_length = jnp.tile(max_length, (batch_size,))  # pyrefly: ignore[bad-assignment]
     else:
-      max_length = choose_range * max_ratio
+      max_length = choose_range * max_ratio  # pyrefly: ignore[bad-assignment]
     masked_portion = jax.random.uniform(
         key=self.next_prng_key(),
         shape=(batch_size, multiplicity),

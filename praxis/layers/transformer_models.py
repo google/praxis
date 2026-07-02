@@ -85,7 +85,7 @@ def _set_embedding_softmax_sharding_params_for_transformers(
     embedding_softmax_p.weight_split_dims_mapping.wt = w_vd
   elif (
       issubclass(
-          fdl.get_callable(embedding_softmax_p),
+          fdl.get_callable(embedding_softmax_p),  # pyrefly: ignore[bad-argument-type]
           embedding_softmax.SharedEmbeddingSoftmax,
       )
       or 'RecordingSharedEmbeddingSoftmax'
@@ -107,7 +107,7 @@ def _set_embedding_softmax_sharding_params_for_transformers(
       fdl.get_callable(embedding_softmax_p)
       == embedding_softmax.GShardSharedEmbeddingSoftmax
       or issubclass(
-          fdl.get_callable(embedding_softmax_p),
+          fdl.get_callable(embedding_softmax_p),  # pyrefly: ignore[bad-argument-type]
           embedding_softmax.SharedEmbeddingSoftmax,
       )
       or fdl.get_callable(embedding_softmax_p) == embedding_softmax.Embedding
@@ -146,7 +146,7 @@ def _set_stacked_transformer_sharding_with_expert_parallelism(
   if fdl.get_callable(stacked_p) == transformers.PipelinedTransformer:
     stacked_p = stacked_p.pipeline_stage
   if issubclass(
-      fdl.get_callable(stacked_p), transformers.StackedTransformerRepeated
+      fdl.get_callable(stacked_p), transformers.StackedTransformerRepeated  # pyrefly: ignore[bad-argument-type]
   ):
     stacked_p = stacked_p.block
   transformer_p = stacked_p.transformer_layer_params_tpl
@@ -168,7 +168,7 @@ def _set_stacked_transformer_sharding_with_expert_parallelism(
       if hasattr(atten_ap, 'bd'):
         atten_ap.bd = a_bd
       if issubclass(
-          fdl.get_callable(atten_p),
+          fdl.get_callable(atten_p),  # pyrefly: ignore[bad-argument-type]
           multi_query_attention.MultiQueryDotProductAttention,
       ):
         atten_wp.proj_headless = [w_dnh[0], w_dnh[2]]
@@ -243,7 +243,7 @@ def _set_stacked_transformer_sharding(
   if fdl.get_callable(stacked_p) == transformers.PipelinedTransformer:
     stacked_p = stacked_p.pipeline_stage
   if issubclass(
-      fdl.get_callable(stacked_p), transformers.StackedTransformerRepeated
+      fdl.get_callable(stacked_p), transformers.StackedTransformerRepeated  # pyrefly: ignore[bad-argument-type]
   ):
     stacked_p = stacked_p.block
   transformer_p = stacked_p.transformer_layer_params_tpl
@@ -265,7 +265,7 @@ def _set_stacked_transformer_sharding(
       if hasattr(atten_ap, 'bd'):
         atten_ap.bd = a_bd
       if issubclass(
-          fdl.get_callable(atten_p),
+          fdl.get_callable(atten_p),  # pyrefly: ignore[bad-argument-type]
           multi_query_attention.MultiQueryDotProductAttention,
       ):
         atten_wp.proj_headless = [w_dnh[0], w_dnh[2]]
@@ -368,23 +368,23 @@ class TransformerLm(base_layer.BaseLayer):
     entropy_loss_weight: If not None, an entropy loss is added to training.
   """
 
-  position_emb_tpl: LayerTpl = template_field(
+  position_emb_tpl: LayerTpl = template_field(  # pyrefly: ignore[bad-assignment]
       embedding_softmax.PositionalEmbedding
   )
   model_dims: int = 0
-  stacked_transformer_tpl: LayerTpl = template_field(
+  stacked_transformer_tpl: LayerTpl = template_field(  # pyrefly: ignore[bad-assignment]
       transformers.StackedTransformer
   )
-  softmax_tpl: LayerTpl = template_field(
+  softmax_tpl: LayerTpl = template_field(  # pyrefly: ignore[bad-assignment]
       embedding_softmax.SharedEmbeddingSoftmax
   )
   vocab_size: int = 0
   packed_input: bool = False
   model_type: LanguageModelType = LanguageModelType.CAUSAL
-  ngrammer_tpl: LayerTpl | None = template_field(None)
-  post_attention_ngrammer_tpls: Sequence[LayerTpl] | None = template_field(None)
-  separate_embedding_tpl: LayerTpl | None = template_field(None)
-  final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  ngrammer_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
+  post_attention_ngrammer_tpls: Sequence[LayerTpl] | None = template_field(None)  # pyrefly: ignore[bad-assignment]
+  separate_embedding_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
+  final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
   skip_compute_loss: bool = False
   skip_aux_loss: bool = False
   record_activations_in_xent_output: bool = False
@@ -905,7 +905,7 @@ class TransformerLm(base_layer.BaseLayer):
           aux_loss = jnp.array(aux_loss, dtype=self.fprop_dtype)
           aux_loss_weight = jnp.array(aux_loss_weight, dtype=self.fprop_dtype)
         self.add_summary('total_aux_loss', aux_loss)
-        self.add_summary('total_aux_loss_weight', aux_loss_weight)
+        self.add_summary('total_aux_loss_weight', aux_loss_weight)  # pyrefly: ignore[bad-argument-type]
         xent_output.aux_loss = aux_loss
         xent_output.aux_loss_weight = aux_loss_weight
         # This is the loss to minimize.
@@ -1412,30 +1412,30 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     decoder_ln_tpl: Parameterization of the decoder layer normalization layer.
   """
 
-  position_emb_tpl: LayerTpl | None = template_field(
+  position_emb_tpl: LayerTpl | None = template_field(  # pyrefly: ignore[bad-assignment]
       embedding_softmax.PositionalEmbedding
   )
-  encoder_position_emb_tpl: LayerTpl | None = template_field(None)
-  encoder_stacked_transformer_tpl: LayerTpl | None = template_field(None)
-  encoder_ngrammer_tpl: LayerTpl | None = template_field(None)
+  encoder_position_emb_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
+  encoder_stacked_transformer_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
+  encoder_ngrammer_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
   encoder_post_attention_ngrammer_tpls: Sequence[LayerTpl] | None = (
-      template_field(None)
+      template_field(None)  # pyrefly: ignore[bad-assignment]
   )
-  encoder_embedding_tpl: LayerTpl | None = template_field(None)
-  decoder_position_emb_tpl: LayerTpl | None = template_field(None)
-  decoder_stacked_transformer_tpl: LayerTpl | None = template_field(None)
-  decoder_ngrammer_tpl: LayerTpl | None = template_field(None)
+  encoder_embedding_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
+  decoder_position_emb_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
+  decoder_stacked_transformer_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
+  decoder_ngrammer_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
   decoder_post_attention_ngrammer_tpls: Sequence[LayerTpl] | None = (
-      template_field(None)
+      template_field(None)  # pyrefly: ignore[bad-assignment]
   )
-  decoder_embedding_tpl: LayerTpl | None = template_field(None)
+  decoder_embedding_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
   model_dims: int = 0
-  softmax_tpl: LayerTpl = template_field(
+  softmax_tpl: LayerTpl = template_field(  # pyrefly: ignore[bad-assignment]
       embedding_softmax.SharedEmbeddingSoftmax
   )
   packed_input: bool = False
-  encoder_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
-  decoder_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  encoder_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
+  decoder_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
 
   @classmethod
   def set_sharding_params_v1(
@@ -1639,7 +1639,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
         stacked_transformer_tpl, model_dims, packed_input
     ):
       if issubclass(
-          fdl.get_callable(stacked_transformer_tpl),
+          fdl.get_callable(stacked_transformer_tpl),  # pyrefly: ignore[bad-argument-type]
           transformers.StackedTransformer,
       ):
         assert (
@@ -1649,7 +1649,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
         stacked_transformer_tpl.model_dims = model_dims
         stacked_transformer_tpl.packed_input = packed_input
       elif issubclass(
-          fdl.get_callable(stacked_transformer_tpl),
+          fdl.get_callable(stacked_transformer_tpl),  # pyrefly: ignore[bad-argument-type]
           transformers.StackedTransformerRepeated,
       ):
         assert (
@@ -2021,7 +2021,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
     xent_output.aux_loss = aux_loss
     xent_output.aux_loss_weight = aux_loss_weight
     self.add_summary('total_aux_loss', aux_loss)
-    self.add_summary('total_aux_loss_weight', aux_loss_weight)
+    self.add_summary('total_aux_loss_weight', aux_loss_weight)  # pyrefly: ignore[bad-argument-type]
 
     # This is the loss to minimize.
     xent_output.total_loss = xent_output.avg_xent + xent_output.aux_loss

@@ -126,7 +126,7 @@ class SSMTransformersTest(test_utils.TestCase):
         attention_mask_t = attention_mask[:, :, t, :]
         cross_attention_mask_t = cross_attention_mask
         if cross_attention:
-          cross_attention_mask_t = cross_attention_mask[:, :, t, :]
+          cross_attention_mask_t = cross_attention_mask[:, :, t, :]  # pyrefly: ignore[unsupported-operation]
           cross_attention_mask_t = np.expand_dims(
               cross_attention_mask_t, axis=2)
         encoded, decoder_state = transformer_layer.apply(

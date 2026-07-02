@@ -67,11 +67,11 @@ class InvertedResidualBlock(base_layer.BaseLayer):
   input_dim: int = 0
   output_dim: int = 0
   expansion: int = 6
-  conv_params: LayerTpl = template_field(convolutions.ConvBNAct)
+  conv_params: LayerTpl = template_field(convolutions.ConvBNAct)  # pyrefly: ignore[bad-assignment]
   kernel_size: int = 3
   stride: int = 1
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.ReLU6)
+      template_field(activations.ReLU6)  # pyrefly: ignore[bad-assignment]
   )
 
   def setup(self) -> None:
@@ -195,10 +195,10 @@ class MobileNet(base_layer.BaseLayer):
       this.
   """
 
-  conv_params: LayerTpl = pax_fiddle.fdl_field(
+  conv_params: LayerTpl = pax_fiddle.fdl_field(  # pyrefly: ignore[bad-assignment]
       default_factory=_mobile_net_conv_params_default
   )
-  block_params: LayerTpl = template_field(InvertedResidualBlock)
+  block_params: LayerTpl = template_field(InvertedResidualBlock)  # pyrefly: ignore[bad-assignment]
   # Parameters for the 17 internal blocks in 5 groups.
   # pyformat: disable
   expansions: Sequence[int] = (
@@ -227,10 +227,10 @@ class MobileNet(base_layer.BaseLayer):
   num_classes: int = 0
   entryflow_conv_kernel: Sequence[int] = (3, 3, 3)
   entryflow_conv_stride: Sequence[int] = (2, 2)
-  output_spatial_pooling_params: LayerTpl | None = pax_fiddle.fdl_field(
+  output_spatial_pooling_params: LayerTpl | None = pax_fiddle.fdl_field(  # pyrefly: ignore[bad-assignment]
       default_factory=_mobile_net_output_spatial_pooling_params_default
   )
-  predict_params: LayerTpl = pax_fiddle.fdl_field(
+  predict_params: LayerTpl = pax_fiddle.fdl_field(  # pyrefly: ignore[bad-assignment]
       default_factory=_mobile_net_final_prediction_params_default
   )
   multiplier: float = 1.0

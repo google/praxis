@@ -90,13 +90,13 @@ class FRnn(base_layer.BaseLayer):
     unroll: Number of steps to unroll in the scan function (using >1 can speed
       up gradient computation).
   """
-  cell_tpl: LayerTpl | None = base_layer.template_field(None)
+  cell_tpl: LayerTpl | None = base_layer.template_field(None)  # pyrefly: ignore[bad-assignment]
   reverse: bool = False
   unroll: int = 1
 
   def setup(self) -> None:
     assert self.unroll > 0, 'Unroll must be positive.'
-    self.create_child('cell', self.cell_tpl)
+    self.create_child('cell', self.cell_tpl)  # pyrefly: ignore[bad-argument-type]
 
   def init_states(self, batch_size: int) -> NestedMap:
     return self.cell.init_states(batch_size)
@@ -153,7 +153,7 @@ class FRnn(base_layer.BaseLayer):
 
     if hasattr(inputs, 'segment_ids'):
       inputs.reset_mask = reset_mask(
-          inputs.segment_ids, inputs.padding, dtype=self.fprop_dtype
+          inputs.segment_ids, inputs.padding, dtype=self.fprop_dtype  # pyrefly: ignore[bad-argument-type]
       )
     else:
       inputs.reset_mask = jnp.ones_like(inputs.padding, dtype=self.fprop_dtype)
@@ -187,7 +187,7 @@ class FRnn(base_layer.BaseLayer):
         variable_axes={AUX_LOSS: 0, SUMMARIES: 0, HYPER_PARAMS: 0},
         variable_broadcast=[PARAMS],
         variable_carry=[NON_TRAINABLE],
-        split_rngs=SCAN_SPLIT_RNGS,
+        split_rngs=SCAN_SPLIT_RNGS,  # pyrefly: ignore[bad-argument-type]
         in_axes=1,
         out_axes=1,
         unroll=self.unroll,
@@ -219,7 +219,7 @@ class StackFrnn(base_layer.BaseLayer):
     num_output_nodes: Number of output nodes. If num_hidden_nodes is 0, also
       used as cell size.
   """
-  frnn_tpl: LayerTpl | None = base_layer.template_field(None)
+  frnn_tpl: LayerTpl | None = base_layer.template_field(None)  # pyrefly: ignore[bad-assignment]
   num_layers: int = 1
   num_input_nodes: int = 0
   num_output_nodes: int = 0
@@ -306,7 +306,7 @@ class StackBiFrnn(base_layer.BaseLayer):
       used as cell size.
   """
 
-  frnn_tpl: LayerTpl | None = base_layer.template_field(None)
+  frnn_tpl: LayerTpl | None = base_layer.template_field(None)  # pyrefly: ignore[bad-assignment]
   num_layers: int = 1
   num_input_nodes: int = 0
   num_output_nodes: int = 0
@@ -438,7 +438,7 @@ class LstmFrnn(FRnn):
 
     if hasattr(inputs, 'segment_ids'):
       inputs.reset_mask = reset_mask(
-          inputs.segment_ids, inputs.padding, dtype=self.fprop_dtype
+          inputs.segment_ids, inputs.padding, dtype=self.fprop_dtype  # pyrefly: ignore[bad-argument-type]
       )
     else:
       inputs.reset_mask = jnp.ones_like(inputs.padding, dtype=self.fprop_dtype)
@@ -478,7 +478,7 @@ class LstmFrnn(FRnn):
         variable_axes={AUX_LOSS: 0, SUMMARIES: 0, HYPER_PARAMS: 0},
         variable_broadcast=[PARAMS],
         variable_carry=[NON_TRAINABLE],
-        split_rngs=SCAN_SPLIT_RNGS,
+        split_rngs=SCAN_SPLIT_RNGS,  # pyrefly: ignore[bad-argument-type]
         in_axes=1,
         out_axes=1,
         unroll=self.unroll,

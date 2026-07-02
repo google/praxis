@@ -88,7 +88,7 @@ class AugmentationsTest(test_utils.TestCase):
       )
     logging.info('augmented_ids: %s', np.array_repr(augmented_ids))
     logging.info('augmented_pos: %s', np.array_repr(augmented_pos))
-    np.set_printoptions(threshold=np.inf)
+    np.set_printoptions(threshold=np.inf)  # pyrefly: ignore[bad-argument-type]
     expected_ids = np.array(
         [
             0,

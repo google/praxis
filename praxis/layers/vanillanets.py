@@ -61,7 +61,7 @@ class VanillaBlock(base_layer.BaseLayer):
   """
   input_dim: int = 0
   output_dim: int = 0
-  conv_params: LayerTpl = pax_fiddle.fdl_field(
+  conv_params: LayerTpl = pax_fiddle.fdl_field(  # pyrefly: ignore[bad-assignment]
       default_factory=_vanilla_block_conv_params_default
   )
   kernel_size: int = 3
@@ -163,17 +163,17 @@ class VanillaNet(base_layer.BaseLayer):
       pooling before output. If None, spatial pooling is not added.
     negative_slope: Negative slope for leaky relu.
   """
-  conv_params: LayerTpl = pax_fiddle.fdl_field(
+  conv_params: LayerTpl = pax_fiddle.fdl_field(  # pyrefly: ignore[bad-assignment]
       default_factory=_vanilla_net_conv_params_default
   )
-  block_params: LayerTpl = template_field(VanillaBlock)
+  block_params: LayerTpl = template_field(VanillaBlock)  # pyrefly: ignore[bad-assignment]
   strides: Sequence[int] = (1, 2, 2, 2)
   channels: Sequence[int] = (256, 512, 1024, 2048)
   blocks: Sequence[int] = (3, 4, 6, 3)
   kernels: Sequence[int] = (3, 3, 3, 3)
   entryflow_conv_kernel: Sequence[int] = (7, 7)
   entryflow_conv_stride: Sequence[int] = (2, 2)
-  output_spatial_pooling_params: LayerTpl | None = template_field(
+  output_spatial_pooling_params: LayerTpl | None = template_field(  # pyrefly: ignore[bad-assignment]
       poolings.GlobalPooling
   )
   negative_slope: float = 0.4

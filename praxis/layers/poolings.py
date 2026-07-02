@@ -223,7 +223,7 @@ class GlobalPooling(base_layer.BaseLayer):
           raise ValueError('Unsupported dtype for inputs.')
       elif self.pooling_type == 'AVG':
         padded_value = jnp.zeros(shape=(), dtype=inputs.dtype)
-      padded_value = jnp.ones_like(inputs) * padded_value
+      padded_value = jnp.ones_like(inputs) * padded_value  # pyrefly: ignore[unbound-name]
       inputs = jnp.where(compatible_paddings > 0, padded_value, inputs)
 
     if self.pooling_type == 'MAX':
@@ -247,7 +247,7 @@ class GlobalPooling(base_layer.BaseLayer):
         outputs = jnp.mean(
             inputs, self.pooling_dims, keepdims=self.keepdims
         ).astype(inputs.dtype)
-    return outputs
+    return outputs  # pyrefly: ignore[unbound-name]
 
 
 class Pooling1D(base_layer.BaseLayer):

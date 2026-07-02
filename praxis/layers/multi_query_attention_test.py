@@ -267,7 +267,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     layer = instantiate(test_layer_p)
 
     inputs = np.random.normal(1.5, 2.0, [2, 8, 16]).astype(np.float32)
-    mask = attentions.causal_mask(inputs)
+    mask = attentions.causal_mask(inputs)  # pyrefly: ignore[bad-argument-type]
     query_segment_pos = jax.lax.broadcast(jnp.arange(8), [2])
     key_segment_pos = jax.lax.broadcast(jnp.arange(8), [2])
 
@@ -326,7 +326,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
   @parameterized.parameters([[1], [4]])
   def test_multi_query_chunked_attn(self, seq_split):
     inputs = np.random.normal(1.5, 2.0, [5, 8, 16]).astype(np.float32)
-    mask = attentions.causal_mask(inputs)
+    mask = attentions.causal_mask(inputs)  # pyrefly: ignore[bad-argument-type]
 
     test_layer_p = pax_fiddle.Config(
         multi_query_attention.MultiQueryDotProductAttention,
@@ -383,8 +383,8 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     prefix = query_vec[:, 0:prefix_len, :]
     key_vec = query_vec
     value_vec = query_vec
-    atten_mask = attentions.causal_mask(query_vec)
-    prefix_atten_mask = attentions.causal_mask(prefix)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
+    prefix_atten_mask = attentions.causal_mask(prefix)  # pyrefly: ignore[bad-argument-type]
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -463,8 +463,8 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     prefix = query_vec[:, 0:prefix_len, :]
     key_vec = query_vec
     value_vec = query_vec
-    atten_mask = attentions.causal_mask(query_vec)
-    prefix_atten_mask = attentions.causal_mask(prefix)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
+    prefix_atten_mask = attentions.causal_mask(prefix)  # pyrefly: ignore[bad-argument-type]
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -585,7 +585,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
     layer = instantiate(test_layer_p)
 
     inputs = np.random.normal(1.5, 2.0, [5, 2, 16]).astype(np.float32)
-    mask = attentions.causal_mask(inputs)
+    mask = attentions.causal_mask(inputs)  # pyrefly: ignore[bad-argument-type]
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -912,7 +912,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
         np.float32
     )
     if chunked_attn_num_seq_split > 1:
-      atten_mask = attentions.causal_mask(inputs)
+      atten_mask = attentions.causal_mask(inputs)  # pyrefly: ignore[bad-argument-type]
     else:
       atten_mask = jnp.zeros(
           (1, 1, source_max_length, source_max_length), dtype=jnp.float32

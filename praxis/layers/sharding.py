@@ -100,7 +100,7 @@ def shard(x: jax.Array, s: Sharding, eqn: str | None = None) -> jax.Array:
     s = list(s)
     for i, p in enumerate(derived):
       if p == '?':
-        s[i] = jax.sharding.PartitionSpec.UNCONSTRAINED
+        s[i] = jax.sharding.PartitionSpec.UNCONSTRAINED  # pyrefly: ignore[unsupported-operation]
 
   partition_spec = jax.sharding.PartitionSpec(*s)
 

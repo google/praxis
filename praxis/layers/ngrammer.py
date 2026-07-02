@@ -210,7 +210,7 @@ class VectorQuantization(base_layer.BaseLayer):
 
     # Apply paddings.
     if paddings is not None:
-      nearest_one_hot *= (1 - paddings_4d)
+      nearest_one_hot *= (1 - paddings_4d)  # pyrefly: ignore[unbound-name]
 
     # Same shape as the input [B, L, N, H].
     nearest_centroid = jnp.einsum('BLNK, NKH -> BLNH', nearest_one_hot, means)
@@ -573,7 +573,7 @@ class Ngrammer(base_layer.BaseLayer):
 
     # Apply paddings back.
     if paddings is not None:
-      input_embs *= (1 - paddings_4d)
+      input_embs *= (1 - paddings_4d)  # pyrefly: ignore[unbound-name]
 
     # Merge heads.
     if merge_heads:
@@ -1047,14 +1047,14 @@ class BregmanNgrammer(base_layer.BaseLayer):
             self.num_heads,
         ],
         init=self.params_init,
-        tensor_split_dims_mapping=self.weight_split_dims_mapping,
+        tensor_split_dims_mapping=self.weight_split_dims_mapping,  # pyrefly: ignore[bad-argument-type]
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
     )
     # [V, H, N]
     embedding_table_p = WeightHParams(
         shape=[self.ngram_vocab_size, self.ngram_emb_dim, self.num_heads],
         init=self.params_init,
-        tensor_split_dims_mapping=self.weight_split_dims_mapping,
+        tensor_split_dims_mapping=self.weight_split_dims_mapping,  # pyrefly: ignore[bad-argument-type]
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
     )
 
@@ -1197,7 +1197,7 @@ class BregmanNgrammer(base_layer.BaseLayer):
 
     # Apply paddings back.
     if paddings is not None:
-      input_embs *= (1 - paddings_4d)
+      input_embs *= (1 - paddings_4d)  # pyrefly: ignore[unbound-name]
 
     # Merge heads.
     if merge_heads:
@@ -1322,7 +1322,7 @@ class NgrammerStub(base_layer.BaseLayer):
     output_embs = self(
         input_ids=jnp.array(),  # unused  # pytype: disable=missing-parameter  # jnp-type
         input_embs=desired_step,
-        merge_heads=merge_heads,
+        merge_heads=merge_heads,  # pyrefly: ignore[bad-argument-type]
     )
     # Get output at step of shape [B, D] or [B, N, H].
     return jnp.squeeze(output_embs, axis=1)

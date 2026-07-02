@@ -193,16 +193,16 @@ class BregmanPCA(base_layer.BaseLayer):
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
     )
     mean = WeightHParams(
-        shape=[1] + input_dims,
+        shape=[1] + input_dims,  # pyrefly: ignore[bad-argument-type]
         init=WeightInit.Constant(0.0),
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
     )
     components = WeightHParams(
-        shape=[self.num_components] + input_dims,
+        shape=[self.num_components] + input_dims,  # pyrefly: ignore[bad-argument-type]
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
     )
     components_momentum = WeightHParams(
-        shape=[self.num_components] + input_dims,
+        shape=[self.num_components] + input_dims,  # pyrefly: ignore[bad-argument-type]
         init=WeightInit.Constant(0.0),
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
     )
@@ -336,8 +336,8 @@ class BregmanPCA(base_layer.BaseLayer):
       )
       components_momentum = (self.components_beta * components_momentum) + (
           1.0 - self.components_beta
-      ) * components_grad * apply_update
-      components -= base_lr * self.components_lr * components_momentum
+      ) * components_grad * apply_update  # pyrefly: ignore[unbound-name]
+      components -= base_lr * self.components_lr * components_momentum  # pyrefly: ignore[unbound-name]
       self.update_var('mean', mean)
       self.update_var('components', components)
     bregman_loss = self.bregman_loss_fn(coefficients, components, mean, inputs)

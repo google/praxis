@@ -113,7 +113,7 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32
+            segment_ids, source_segment_ids, dtype=np.float32  # pyrefly: ignore[bad-argument-type, unbound-name]
         )  # pytype: disable=wrong-arg-types
         cross_attention_mask = jnp.minimum(cross_attention_mask,
                                            cross_segment_mask)
@@ -160,7 +160,7 @@ class TransformersTest(test_utils.TestCase):
     tf_outputs, _ = tf_transformer_layer.FProp(
         tf_initial_vars,
         tf.constant(npy_inputs, dtype=tf.float32),
-        paddings=test_utils.to_tf_nmap(npy_paddings),
+        paddings=test_utils.to_tf_nmap(npy_paddings),  # pyrefly: ignore[bad-argument-type]
         segment_mask=tf_segment_mask,
         aux_vec=tf_cross_inputs,
         aux_paddings=tf_cross_paddings,
@@ -226,7 +226,7 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32
+            segment_ids, source_segment_ids, dtype=np.float32  # pyrefly: ignore[bad-argument-type, unbound-name]
         )  # pytype: disable=wrong-arg-types
         cross_attention_mask = jnp.minimum(cross_attention_mask,
                                            cross_segment_mask)
@@ -263,7 +263,7 @@ class TransformersTest(test_utils.TestCase):
         attention_mask_t = attention_mask[:, :, t, :]
         cross_attention_mask_t = cross_attention_mask
         if cross_attention:
-          cross_attention_mask_t = cross_attention_mask[:, :, t, :]
+          cross_attention_mask_t = cross_attention_mask[:, :, t, :]  # pyrefly: ignore[unsupported-operation]
           cross_attention_mask_t = np.expand_dims(
               cross_attention_mask_t, axis=2)
         encoded, decoder_state = transformer_layer.apply(
@@ -327,7 +327,7 @@ class TransformersTest(test_utils.TestCase):
     if packed_input:
       source_segment_ids = np.random.randint(0, 3, [batch_size, cross_seq_len])
       cross_segment_mask = attentions.segment_mask(
-          segment_ids, source_segment_ids, dtype=np.float32
+          segment_ids, source_segment_ids, dtype=np.float32  # pyrefly: ignore[bad-argument-type, unbound-name]
       )  # pytype: disable=wrong-arg-types
       cross_attention_mask = jnp.minimum(cross_attention_mask,
                                          cross_segment_mask)
@@ -636,7 +636,7 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32
+            segment_ids, source_segment_ids, dtype=np.float32  # pyrefly: ignore[bad-argument-type, unbound-name]
         )  # pytype: disable=wrong-arg-types
 
     with base_layer.JaxContext.new_context():
@@ -750,7 +750,7 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32
+            segment_ids, source_segment_ids, dtype=np.float32  # pyrefly: ignore[bad-argument-type, unbound-name]
         )  # pytype: disable=wrong-arg-types
         tf_cross_segment_mask = batch_major_attention.SegmentMask(
             segment_ids, source_segment_ids)
@@ -817,8 +817,8 @@ class TransformersTest(test_utils.TestCase):
       tf_cross_segment_mask = test_utils.to_tf_nmap(tf_cross_segment_mask)
     tf_output, _ = tf_stacked_transformer_layer.FProp(
         tf_initial_vars,
-        test_utils.to_tf_nmap(npy_inputs),
-        paddings=test_utils.to_tf_nmap(npy_paddings),
+        test_utils.to_tf_nmap(npy_inputs),  # pyrefly: ignore[bad-argument-type]
+        paddings=test_utils.to_tf_nmap(npy_paddings),  # pyrefly: ignore[bad-argument-type]
         segment_mask=tf_segment_mask,
         aux_vec=tf_cross_inputs,
         aux_paddings=tf_cross_paddings,
@@ -883,7 +883,7 @@ class TransformersTest(test_utils.TestCase):
             0, 3, [batch_size, cross_seq_len]
         )
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32
+            segment_ids, source_segment_ids, dtype=np.float32  # pyrefly: ignore[bad-argument-type]
         )  # pytype: disable=wrong-arg-types
 
     with base_layer.JaxContext.new_context():
@@ -969,7 +969,7 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32
+            segment_ids, source_segment_ids, dtype=np.float32  # pyrefly: ignore[bad-argument-type, unbound-name]
         )  # pytype: disable=wrong-arg-types
 
     with base_layer.JaxContext.new_context():
@@ -1184,7 +1184,7 @@ class TransformersTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=np.float32
+            segment_ids, source_segment_ids, dtype=np.float32  # pyrefly: ignore[bad-argument-type, unbound-name]
         )  # pytype: disable=wrong-arg-types
 
     if use_custom_attention:
@@ -1193,7 +1193,7 @@ class TransformersTest(test_utils.TestCase):
               'float32'
           )
       ) * py_utils.get_large_negative_number(
-          np.float32
+          np.float32  # pyrefly: ignore[bad-argument-type]
       )  # pytype: disable=wrong-arg-types
       custom_attention_mask = jnp.minimum(
           custom_attention_mask, attentions.convert_paddings_to_mask(paddings)
@@ -1247,7 +1247,7 @@ class TransformersTest(test_utils.TestCase):
         cross_segment_mask_t = cross_segment_mask
         segment_pos_t = None
         if segment_mask is not None:
-          segment_pos_t = segment_pos[:, t]
+          segment_pos_t = segment_pos[:, t]  # pyrefly: ignore[unsupported-operation]
         if cross_segment_mask is not None:
           cross_segment_mask_t = cross_segment_mask[:, :, t, :]
         if custom_attention_mask is not None:
@@ -1431,7 +1431,7 @@ class TransformersTest(test_utils.TestCase):
     tf_output = tf_ffwd.FProp(
         tf_initial_vars,
         tf.constant(npy_inputs, dtype=tf.float32),
-        paddings=test_utils.to_tf_nmap(npy_paddings))
+        paddings=test_utils.to_tf_nmap(npy_paddings))  # pyrefly: ignore[bad-argument-type]
     np_outputs = test_utils.to_np(outputs)
     tf_np_outputs = test_utils.to_np(tf_output)
     self.assertAllClose(tf_np_outputs, np_outputs, atol=1e-5)
@@ -1563,7 +1563,7 @@ class TransformersTest(test_utils.TestCase):
     cross_attention_mask = attentions.convert_paddings_to_mask(cross_paddings)
     source_segment_ids = np.random.randint(0, 3, [batch_size, cross_seq_len])
     cross_segment_mask = attentions.segment_mask(
-        segment_ids, source_segment_ids, dtype=np.float32
+        segment_ids, source_segment_ids, dtype=np.float32  # pyrefly: ignore[bad-argument-type]
     )  # pytype: disable=wrong-arg-types
     cross_attention_mask = jnp.minimum(cross_attention_mask, cross_segment_mask)
     with base_layer.JaxContext.new_context():

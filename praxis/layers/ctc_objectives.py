@@ -262,12 +262,12 @@ def ctc_loss_with_alignments(
   # (frames, batch) -> (batch, frames)
   alignment = jnp.transpose(alignment, (1, 0))
 
-  return (
+  return (  # pyrefly: ignore[bad-return]
       per_seq_loss,
       CtcAlignments(  # type: ignore  # jnp-types
-          alignment=alignment,
-          logalpha_phi=logalpha_phi,
-          logalpha_emit=logalpha_emit,
+          alignment=alignment,  # pyrefly: ignore[bad-argument-type]
+          logalpha_phi=logalpha_phi,  # pyrefly: ignore[bad-argument-type]
+          logalpha_emit=logalpha_emit,  # pyrefly: ignore[bad-argument-type]
           logbeta_phi=logbeta_phi,
           logbeta_emit=logbeta_emit,
           state_logprobs=state_logprobs,

@@ -263,7 +263,7 @@ class LstmCellSimple(BaseRnnCell):
     if self.reset_cell_state:
       state0 = self._reset_state(state0, inputs)
 
-    concat = jnp.concatenate(inputs.act + [state0.m], 1)
+    concat = jnp.concatenate(inputs.act + [state0.m], 1)  # pyrefly: ignore[unsupported-operation]
     xmw = jnp.einsum('bd,dc->bc', concat, self.theta.wm)
     gates = self._gates_preprocess(xmw)
     state1 = self._gates_internal(state0, *gates)
@@ -357,7 +357,7 @@ class LstmCellSimple(BaseRnnCell):
         inputs.padding,
         self.zo_prob,
         self.do_eval,
-        c_random_uniform,
+        c_random_uniform,  # pyrefly: ignore[bad-argument-type]
     )
     new_m = _zoneout_helper(
         state0.m,
@@ -365,7 +365,7 @@ class LstmCellSimple(BaseRnnCell):
         inputs.padding,
         self.zo_prob,
         self.do_eval,
-        m_random_uniform,
+        m_random_uniform,  # pyrefly: ignore[bad-argument-type]
     )
 
     return NestedMap(m=new_m, c=new_c)
@@ -504,7 +504,7 @@ class CifgLstmCellSimple(LstmCellSimple):
     assert self.forget_gate_bias == 0.0
     return self._gates_unpack(self.theta.b)
 
-  def _gates_internal(
+  def _gates_internal(  # pyrefly: ignore[bad-override]
       self, state0: NestedMap, i_i: JTensor, f_g: JTensor, o_g: JTensor
   ) -> NestedMap:
     forget_gate = jax.nn.sigmoid(f_g) * state0.c

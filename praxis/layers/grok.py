@@ -165,7 +165,7 @@ def GrokStackedTransformerHParams(
   moe_p.moe_load_balance_loss_weight = moe_load_balance_loss_weight
   moe_p.gating_func = moe_gating_func
   moe_p.moe_gating_embedding_level = moe_gating_embedding_level
-  p.transformer_layer_params_tpl.tr_atten_tpl = pax_fiddle.Config(
+  p.transformer_layer_params_tpl.tr_atten_tpl = pax_fiddle.Config(  # pyrefly: ignore[missing-attribute]
       multi_query_attention.MultiQueryDotProductAttention,
       num_kv_heads=attention_num_groups,
   )

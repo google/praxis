@@ -333,7 +333,7 @@ class GroupedQueryAttention(base_layer.BaseLayer):
     """
     extend_value = jnp.expand_dims(value, axis=1)
     indices = [0] * extend_value.ndim
-    indices[1] = time_step.astype(jnp.int32)
+    indices[1] = time_step.astype(jnp.int32)  # pyrefly: ignore[unsupported-operation]
     state = self.get_decode_state(name)
     assert state is not None
     new_state = jax.lax.dynamic_update_slice(
@@ -452,7 +452,7 @@ def apply_rope(
   fraction = 2 * jnp.arange(0, half_embedding_dim) / embedding_dim
   timescale = min_timescale * (max_timescale / min_timescale) ** fraction
   timescale = jnp.expand_dims(timescale, axis=tuple(range(inputs.ndim - 1)))
-  position = jnp.expand_dims(position, axis=tuple(range(2, inputs.ndim)))
+  position = jnp.expand_dims(position, axis=tuple(range(2, inputs.ndim)))  # pyrefly: ignore[bad-argument-type]
   sinusoid_inp = position / timescale
   sin = jnp.sin(sinusoid_inp)
   cos = jnp.cos(sinusoid_inp)

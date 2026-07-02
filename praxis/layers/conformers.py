@@ -171,11 +171,11 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
   # pyformat:enable
   residual_weight: float = 1.0
   input_weight: float = 1.0
-  self_atten_tpl: LayerTpl = template_field(DotProductAttentionWithContext)
-  norm_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  self_atten_tpl: LayerTpl = template_field(DotProductAttentionWithContext)  # pyrefly: ignore[bad-assignment]
+  norm_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
   pre_layer_norm: bool | None = True
   residual_dropout_prob: float = 0.0
-  residual_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
+  residual_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)  # pyrefly: ignore[bad-assignment]
   norm_policy: str | None = None
 
   def _create_self_atten(self):
@@ -235,7 +235,7 @@ class SelfAttentionWithNormAndResidual(base_layer.BaseLayer):
     # If full attention mask is computed for LocalSelfAttention then
     # it can introduce additional jit computation as in b/259460599.
     if issubclass(
-        fdl.get_callable(self.self_atten_tpl),
+        fdl.get_callable(self.self_atten_tpl),  # pyrefly: ignore[bad-argument-type]
         (
             DotProductAttentionWithContext,
             DotProductAttentionWithContextXL,
@@ -332,7 +332,7 @@ class Conformer(base_layer.BaseLayer):
   model_dims: int = 512
   kernel_size: int = 32
   ff_activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.Swish)
+      template_field(activations.Swish)  # pyrefly: ignore[bad-assignment]
   )
   ff_residual_weight: float = 0.5
   ffn_dim_multiplier: int = 4
@@ -344,16 +344,16 @@ class Conformer(base_layer.BaseLayer):
   ffn_residual_dropout: float | None = None
   atten_dropout: float | None = None
   ffn_relu_dropout: float | None = None
-  fflayer_start_tpl: LayerTpl | None = template_field(
+  fflayer_start_tpl: LayerTpl | None = template_field(  # pyrefly: ignore[bad-assignment]
       transformers.TransformerFeedForward
   )
-  trans_atten_tpl: LayerTpl = template_field(SelfAttentionWithNormAndResidual)
-  lconv_tpl: LayerTpl | None = template_field(convolutions.LightConv1D)
-  fflayer_end_tpl: LayerTpl | None = template_field(
+  trans_atten_tpl: LayerTpl = template_field(SelfAttentionWithNormAndResidual)  # pyrefly: ignore[bad-assignment]
+  lconv_tpl: LayerTpl | None = template_field(convolutions.LightConv1D)  # pyrefly: ignore[bad-assignment]
+  fflayer_end_tpl: LayerTpl | None = template_field(  # pyrefly: ignore[bad-assignment]
       transformers.TransformerFeedForward
   )
   fflayer_weight_sharing: bool = False
-  final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  final_ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
 
   def _dropout_prob(self, prob: float | None) -> float:
     if self.dropout_prob is not None:

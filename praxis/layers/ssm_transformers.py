@@ -55,7 +55,7 @@ class SSMTransformer(transformers.Transformer):
     ssm_step_size: The step size for SSM discretization.
     decode_num_samples: How many decoding samples for each example
   """
-  ssm_tpl: LayerTpl = template_field(ssm.SSM)
+  ssm_tpl: LayerTpl = template_field(ssm.SSM)  # pyrefly: ignore[bad-assignment]
   ssm_nheads: int = 0
   ssm_dim: int = 0
   ssm_l_max: int = 0
@@ -232,7 +232,7 @@ class SSMTransformer(transformers.Transformer):
         atten_output_normalized = atten_output
 
       cross_atten_output, _ = self.cross_attention(
-          atten_output_normalized,
+          atten_output_normalized,  # pyrefly: ignore[unbound-name]
           cross_inputs,
           cross_inputs,
           atten_mask=cross_attention_mask)
@@ -302,7 +302,7 @@ class SSMTransformer(transformers.Transformer):
     elif self.norm_policy == 'pre':
       inputs_normalized = self.layer_norm(inputs)
 
-    assert inputs_normalized.ndim == 2 or inputs_normalized.ndim == 3
+    assert inputs_normalized.ndim == 2 or inputs_normalized.ndim == 3  # pyrefly: ignore[unbound-name]
     if inputs_normalized.ndim == 2:  # [B, D]
       atten_output = self.ssm.extend_step(
           inputs_normalized)
@@ -331,7 +331,7 @@ class SSMTransformer(transformers.Transformer):
         atten_output_normalized = atten_output
 
       cross_atten_output = self.cross_attention.extend_step(
-          atten_output_normalized,
+          atten_output_normalized,  # pyrefly: ignore[unbound-name]
           atten_mask=jnp.squeeze(cross_attention_mask, 2),
           time_step=time_step,
           segment_pos=segment_pos,
@@ -361,7 +361,7 @@ class SSMGated(SSMTransformer):
   Attributes:
     gss_fflayer_tpl: Params for the Gated SSM feedforward layers.
   """
-  gss_fflayer_tpl: LayerTpl = template_field(linears.FeedForward)
+  gss_fflayer_tpl: LayerTpl = template_field(linears.FeedForward)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
 
@@ -554,7 +554,7 @@ class SSMGated(SSMTransformer):
         atten_output_normalized = atten_output
 
       cross_atten_output, _ = self.cross_attention(
-          atten_output_normalized,
+          atten_output_normalized,  # pyrefly: ignore[unbound-name]
           cross_inputs,
           cross_inputs,
           atten_mask=cross_attention_mask)
@@ -626,14 +626,14 @@ class SSMGated(SSMTransformer):
     elif self.norm_policy == 'pre':
       inputs_normalized = self.layer_norm(inputs)
 
-    assert inputs_normalized.ndim == 2 or inputs_normalized.ndim == 3
+    assert inputs_normalized.ndim == 2 or inputs_normalized.ndim == 3  # pyrefly: ignore[unbound-name]
     v = self.gss_ffn_v(inputs_normalized)
     u = self.gss_ffn_u(inputs_normalized)
     if u.ndim == 2:  # [B, D]
       y = self.ssm.extend_step(u)
     elif u.ndim == 3:  # [B, L, D]
       y = self.ssm(u)
-    atten_output = self.gss_ffn_uc(y)
+    atten_output = self.gss_ffn_uc(y)  # pyrefly: ignore[unbound-name]
 
     if self.norm_policy == 'primer_hybrid':
       atten_output = self.post_layer_norm(atten_output)
@@ -657,7 +657,7 @@ class SSMGated(SSMTransformer):
         atten_output_normalized = atten_output
 
       cross_atten_output = self.cross_attention.extend_step(
-          atten_output_normalized,
+          atten_output_normalized,  # pyrefly: ignore[unbound-name]
           atten_mask=jnp.squeeze(cross_attention_mask, 2),
           time_step=time_step,
           segment_pos=segment_pos,

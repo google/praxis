@@ -160,7 +160,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       f32 precision.
   """
   num_stages: int = 1
-  single_stage_body: LayerTpl | None = base_layer.template_field(None)
+  single_stage_body: LayerTpl | None = base_layer.template_field(None)  # pyrefly: ignore[bad-assignment]
   num_microbatches: int | None = None
   microbatch_size: int | None = None
   unpack_summaries: bool = True

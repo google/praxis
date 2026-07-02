@@ -43,7 +43,7 @@ class Einsum(base_layer.BaseLayer):
   eqn: str = ''
   w_shape: Sequence[int] = ()
   use_bias: bool = False
-  einsum_op_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  einsum_op_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     operands, out = self.eqn.split('->')

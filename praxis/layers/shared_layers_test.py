@@ -33,9 +33,9 @@ template_field = base_layer.template_field
 
 
 class FooShared(base_layer.BaseLayer):
-  linear1: linears.Linear = base_layer.instance_field(linears.Linear)
-  linear2: linears.Linear = base_layer.instance_field(linears.Linear)
-  linear_private_tpl: LayerTpl = template_field(linears.Linear)
+  linear1: linears.Linear = base_layer.instance_field(linears.Linear)  # pyrefly: ignore[bad-assignment]
+  linear2: linears.Linear = base_layer.instance_field(linears.Linear)  # pyrefly: ignore[bad-assignment]
+  linear_private_tpl: LayerTpl = template_field(linears.Linear)  # pyrefly: ignore[bad-assignment]
 
   def setup(self):
     # Note submodule name must be unique.
@@ -124,8 +124,8 @@ class SharedLayersTest(test_utils.TestCase):
 
 class SimpleShared01(base_layer.BaseLayer):
   """A layer to test weight sharing."""
-  sub1_tpl: LayerTpl = template_field(None)
-  sub2_tpl: LayerTpl = template_field(None)
+  sub1_tpl: LayerTpl = template_field(None)  # pyrefly: ignore[bad-assignment]
+  sub2_tpl: LayerTpl = template_field(None)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     self.create_child('sub1', self.sub1_tpl)

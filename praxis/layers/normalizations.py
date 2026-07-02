@@ -373,7 +373,7 @@ class LayerNorm(BaseNormalization):
     var = jnp.mean(jnp.square(inputs - mean), axis=[-1], keepdims=True)
     normed_inputs = (inputs - mean) * jax.lax.rsqrt(var + self.epsilon)
     if self.reductions_in_fp32:
-      normed_inputs = normed_inputs.astype(inputs_dtype)
+      normed_inputs = normed_inputs.astype(inputs_dtype)  # pyrefly: ignore[unbound-name]
     if self.use_scale:
       scale = self.theta.scale if self.direct_scale else (1 + self.theta.scale)
       normed_inputs *= scale
@@ -511,7 +511,7 @@ class GroupNorm(BaseNormalization):
 
     asserts.in_set(self.input_rank, (3, 4, 5))
 
-    shape = [1] * (self.input_rank - 1) + [self.dim]
+    shape = [1] * (self.input_rank - 1) + [self.dim]  # pyrefly: ignore[unsupported-operation]
     pc = WeightHParams(
         shape,
         init=WeightInit.Constant(0.0),
@@ -569,7 +569,7 @@ class GroupNorm(BaseNormalization):
     x = jnp.reshape(
         inputs,
         list(inputs.shape[:-1]) + [self._num_groups, self._group_size])
-    expanded_rank = self.input_rank + 1
+    expanded_rank = self.input_rank + 1  # pyrefly: ignore[unsupported-operation]
     all_dims = list(range(expanded_rank))
     if paddings is None or not self.cumulative:
       # Skips batch and num_groups.
@@ -661,7 +661,7 @@ class SpectralNorm(BaseNormalization):
     for _ in range(self.n_power_iteration):
       v = py_utils.l2_normalize(w @ u)
       u = py_utils.l2_normalize(v @ w)
-    v = jax.lax.stop_gradient(v)
+    v = jax.lax.stop_gradient(v)  # pyrefly: ignore[unbound-name]
     u = jax.lax.stop_gradient(u)
 
     if not self.do_eval:

@@ -96,7 +96,7 @@ class Repeat(base_layer.BaseLayer):
     positional_args_as_scan_carry: Passing positional args as scan carry instead
       of broadcast args.
   """
-  sub_tpl: LayerTpl | None = base_layer.template_field(None)
+  sub_tpl: LayerTpl | None = base_layer.template_field(None)  # pyrefly: ignore[bad-assignment]
   x_times: int = 0
   unpack_summaries: bool = False
   checkpoint_policy: AutodiffCheckpointType = AutodiffCheckpointType.SAVE_NOTHING
@@ -160,7 +160,7 @@ class Repeat(base_layer.BaseLayer):
 
     def split_dims(tree: pytypes.PyTree) -> pytypes.PyTree:
       return jax.tree.map(
-          lambda x: jnp.reshape(x, tuple(nd_shape) + x.shape[1:]), tree
+          lambda x: jnp.reshape(x, tuple(nd_shape) + x.shape[1:]), tree  # pyrefly: ignore[bad-argument-type]
       )
 
     mapped_fn = nn.map_variables(
@@ -256,7 +256,7 @@ class Repeat(base_layer.BaseLayer):
       asserts.assert_same_structure(layer_in, layer_out)
       to_stack = layer_out
       if per_layer_kwargs is not None or reversed_per_layer_kwargs is not None:
-        layer_out = (layer_out, idx + 1)
+        layer_out = (layer_out, idx + 1)  # pyrefly: ignore[unbound-name]
       if self.collect_intermediate_outputs or self.return_intermediate_outputs:
         return layer_out, to_stack
       else:
@@ -271,7 +271,7 @@ class Repeat(base_layer.BaseLayer):
 
     scan_fn = nn.scan(
         rematted_body_fn,
-        variable_axes=SCAN_VARIABLE_AXES,
+        variable_axes=SCAN_VARIABLE_AXES,  # pyrefly: ignore[bad-argument-type]
         split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
         length=self.x_times,
         metadata_params={
@@ -389,7 +389,7 @@ class Repeat(base_layer.BaseLayer):
 
     scan_fn = nn.scan(
         body_fn,
-        variable_axes=SCAN_VARIABLE_AXES,
+        variable_axes=SCAN_VARIABLE_AXES,  # pyrefly: ignore[bad-argument-type]
         split_rngs={RANDOM: True},
         length=self.x_times,
     )
@@ -439,7 +439,7 @@ class Repeat(base_layer.BaseLayer):
 
     scan_fn = nn.scan(
         body_fn,
-        variable_axes=SCAN_VARIABLE_AXES,
+        variable_axes=SCAN_VARIABLE_AXES,  # pyrefly: ignore[bad-argument-type]
         split_rngs={PARAMS: self.is_initializing(), RANDOM: True},
         length=self.x_times,
     )
@@ -565,7 +565,7 @@ class Repeat(base_layer.BaseLayer):
     scan_fn = nn.scan(
         body_fn,
         in_axes=0,  # scan over axis 0 for layer_states
-        variable_axes=SCAN_VARIABLE_AXES,
+        variable_axes=SCAN_VARIABLE_AXES,  # pyrefly: ignore[bad-argument-type]
         split_rngs={RANDOM: True},
         length=self.x_times,
     )
@@ -616,7 +616,7 @@ class Repeat(base_layer.BaseLayer):
 
     scan_fn = nn.scan(
         body_fn,
-        variable_axes=SCAN_VARIABLE_AXES,
+        variable_axes=SCAN_VARIABLE_AXES,  # pyrefly: ignore[bad-argument-type]
         split_rngs={RANDOM: True},
         length=self.x_times,
     )
@@ -665,7 +665,7 @@ class Repeat(base_layer.BaseLayer):
 
     scan_fn = nn.scan(
         body_fn,
-        variable_axes=SCAN_VARIABLE_AXES,
+        variable_axes=SCAN_VARIABLE_AXES,  # pyrefly: ignore[bad-argument-type]
         split_rngs={RANDOM: True},
         length=self.x_times,
     )
@@ -708,7 +708,7 @@ class Repeat(base_layer.BaseLayer):
 
     scan_fn = nn.scan(
         body_fn,
-        variable_axes=SCAN_VARIABLE_AXES,
+        variable_axes=SCAN_VARIABLE_AXES,  # pyrefly: ignore[bad-argument-type]
         split_rngs={RANDOM: True},
         length=self.x_times,
     )

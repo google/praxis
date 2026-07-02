@@ -142,7 +142,7 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
     elif len(input_shapes) == 2:
       seq_len = input_shapes[0]
     self.assertEqual(features.shape,
-                     (exp_params.batch_size, seq_len, exp_params.hidden_dim))
+                     (exp_params.batch_size, seq_len, exp_params.hidden_dim))  # pyrefly: ignore[unbound-name]
 
   @parameterized.named_parameters(('pooled_exit_layer', True),
                                   ('no_pooled_exit_layer', False))
@@ -198,7 +198,7 @@ class VitTest(test_utils.TestCase, parameterized.TestCase):
                                    (1, emb_dims))
     resized_emb_expected = resized_emb_expected[np.newaxis, :, :]
 
-    self.assertAllClose(resized_emb, test_utils.to_np(resized_emb_expected))
+    self.assertAllClose(resized_emb, test_utils.to_np(resized_emb_expected))  # pyrefly: ignore[bad-argument-type]
 
   @parameterized.product(
       pooled=[False, True],

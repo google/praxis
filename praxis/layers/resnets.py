@@ -51,12 +51,12 @@ class ResNetBlock(base_layer.BaseLayer):
   """
   input_dim: int = 0
   output_dim: int = 0
-  conv_params: LayerTpl = template_field(convolutions.ConvBNAct)
+  conv_params: LayerTpl = template_field(convolutions.ConvBNAct)  # pyrefly: ignore[bad-assignment]
   kernel_size: int = 3
   stride: int = 1
   activation_tpl: pax_fiddle.Config[
       activations.BaseActivation
-  ] = template_field(activations.ReLU)
+  ] = template_field(activations.ReLU)  # pyrefly: ignore[bad-assignment]
   residual_droppath_prob: float = 0.0
   zero_init_residual: bool = False
 
@@ -312,18 +312,18 @@ class ResNet(base_layer.BaseLayer):
     entry_max_pool: Apply max pooling after entry layer.
   """
   # pylint: disable=g-long-lambda
-  conv_params: LayerTpl = pax_fiddle.fdl_field(
+  conv_params: LayerTpl = pax_fiddle.fdl_field(  # pyrefly: ignore[bad-assignment]
       default_factory=_res_net_conv_params_default
   )
   # pylint: enable=g-long-lambda
-  block_params: LayerTpl = template_field(ResNetBlock)
+  block_params: LayerTpl = template_field(ResNetBlock)  # pyrefly: ignore[bad-assignment]
   strides: Sequence[int] = (1, 2, 2, 2)
   channels: Sequence[int] = (256, 512, 1024, 2048)
   blocks: Sequence[int] = (3, 4, 6, 3)
   kernels: Sequence[int] = (3, 3, 3, 3)
   entryflow_conv_kernel: Sequence[int] = (7, 7, 3)
   entryflow_conv_stride: Sequence[int] = (2, 2)
-  output_spatial_pooling_params: LayerTpl | None = pax_fiddle.fdl_field(
+  output_spatial_pooling_params: LayerTpl | None = pax_fiddle.fdl_field(  # pyrefly: ignore[bad-assignment]
       default_factory=_res_net_output_spatial_pooling_params_default
   )
   return_block_features: bool = False

@@ -173,7 +173,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     self.create_variable(
         'random_proj',
         WeightHParams(
-            shape=[self.latent_dim * self.stack_ratio, self.projection_dim],
+            shape=[self.latent_dim * self.stack_ratio, self.projection_dim],  # pyrefly: ignore[unsupported-operation]
             init=self.params_init,
             dtype=jnp.float32,
             collections=[
@@ -208,7 +208,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     self.create_variable(
         'random_codebook',
         WeightHParams(
-            shape=codebook_shape,
+            shape=codebook_shape,  # pyrefly: ignore[bad-argument-type]
             init=self.codebook_init,
             dtype=jnp.float32,
             mesh_shape=self.mesh_shape,
@@ -297,22 +297,22 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     if base_layer.is_running_under_pmap():
       pplx, entropy, _ = objectives.batch_pplx_entropy_from_codes(
           c,
-          self.num_latent_classes,
+          self.num_latent_classes,  # pyrefly: ignore[bad-argument-type]
           paddings=paddings,
           data_parallel_axis=base_layer.PMAP_PARALLEL_AXIS_NAME,
       )
       codebook_coverage = objectives.batch_codebook_coverage(
           c,
-          self.num_latent_classes,
+          self.num_latent_classes,  # pyrefly: ignore[bad-argument-type]
           paddings=paddings,
           data_parallel_axis=base_layer.PMAP_PARALLEL_AXIS_NAME,
       )
     else:
       pplx, entropy, _ = objectives.batch_pplx_entropy_from_codes(
-          c, self.num_latent_classes, paddings=paddings
+          c, self.num_latent_classes, paddings=paddings  # pyrefly: ignore[bad-argument-type]
       )
       codebook_coverage = objectives.batch_codebook_coverage(
-          c, self.num_latent_classes, paddings=paddings
+          c, self.num_latent_classes, paddings=paddings  # pyrefly: ignore[bad-argument-type]
       )
 
     codebook_num_covered_codes = codebook_coverage * self.num_latent_classes
@@ -331,7 +331,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
     b, t = z_codes.shape[:2]
     latent = jnp.einsum(
         'btgc,cgd->btgd',
-        jax.nn.one_hot(z_codes, self.num_latent_classes),
+        jax.nn.one_hot(z_codes, self.num_latent_classes),  # pyrefly: ignore[bad-argument-type]
         self._get_codebook(),
     )
     # Stops the gradient to keep the codebook frozen.
@@ -374,7 +374,7 @@ class VectorQuantizer(base_layer.BaseLayer):
   normalize_codebook: bool = True
   normalize_latent_per_group: bool = True
 
-  params_init: WeightInit = base_layer.instance_field(WeightInit.UniformSqrtDim)
+  params_init: WeightInit = base_layer.instance_field(WeightInit.UniformSqrtDim)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     assert self.num_latent_classes
@@ -467,7 +467,7 @@ class VectorQuantizer(base_layer.BaseLayer):
     loss_z = (z_q - jax.lax.stop_gradient(z))**2
     loss_z = jnp.sum(jnp.mean(loss_z, -1)) / normalizer
     # loss_z = py_utils.check_numerics(loss_z, 'loss_z has NaN.')
-    loss = loss_z + self.beta * loss_c
+    loss = loss_z + self.beta * loss_c  # pyrefly: ignore[unsupported-operation]
 
     # Straight-through estimator.
     # Doesn't look like this line does anyhing besides stopping gradient ??
@@ -477,20 +477,20 @@ class VectorQuantizer(base_layer.BaseLayer):
     if base_layer.is_running_under_pmap():
       pplx, entropy, _ = objectives.batch_pplx_entropy_from_codes(
           z_codes,
-          c,
+          c,  # pyrefly: ignore[bad-argument-type]
           paddings=paddings,
           data_parallel_axis=base_layer.PMAP_PARALLEL_AXIS_NAME)
       codebook_coverage = objectives.batch_codebook_coverage(
           z_codes,
-          c,
+          c,  # pyrefly: ignore[bad-argument-type]
           paddings=paddings,
           data_parallel_axis=base_layer.PMAP_PARALLEL_AXIS_NAME)
     else:
       pplx, entropy, _ = objectives.batch_pplx_entropy_from_codes(
-          z_codes, c, paddings=paddings)
+          z_codes, c, paddings=paddings)  # pyrefly: ignore[bad-argument-type]
       codebook_coverage = objectives.batch_codebook_coverage(
-          z_codes, c, paddings=paddings)
-    codebook_num_covered_words = codebook_coverage * c**g
+          z_codes, c, paddings=paddings)  # pyrefly: ignore[bad-argument-type]
+    codebook_num_covered_words = codebook_coverage * c**g  # pyrefly: ignore[unsupported-operation]
 
     return py_utils.NestedMap(
         z_q=z_q,
@@ -507,7 +507,7 @@ class VectorQuantizer(base_layer.BaseLayer):
     b, t = z_codes.shape[:2]
     latent = jnp.einsum(
         'btgc,cgd->btgd',
-        jax.nn.one_hot(z_codes, self.num_latent_classes),
+        jax.nn.one_hot(z_codes, self.num_latent_classes),  # pyrefly: ignore[bad-argument-type]
         self._get_latent_embedding(),
     )
     return jnp.reshape(latent, [b, t, -1])

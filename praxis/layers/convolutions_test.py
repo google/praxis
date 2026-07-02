@@ -556,7 +556,7 @@ class ConvolutionsTest(test_utils.TestCase):
           (length - kernel_size + 1 + stride - 1) // stride
       )
     self.assertAllClose(
-        expect_output_padding[:, : output_padding.shape[1]],
+        expect_output_padding[:, : output_padding.shape[1]],  # pyrefly: ignore[unbound-name]
         to_np(output_padding),
     )
 

@@ -609,7 +609,7 @@ class RelativeBias(base_layer.BaseLayer):
     Returns:
       relative_bias: A JTensor with shape [1, N, 1, S].
     """
-    query_segment_pos = jnp.zeros([1], jnp.int32) + time_step
+    query_segment_pos = jnp.zeros([1], jnp.int32) + time_step  # pyrefly: ignore[unsupported-operation]
     key_segment_pos = jnp.arange(seq_length, dtype=jnp.int32)
     relative_bias = self(
         query_segment_pos=query_segment_pos[jnp.newaxis, :],
@@ -646,7 +646,7 @@ class AttentionProjection(base_layer.BaseLayer):
   attention_combine_dims: bool = False
   use_nhd_shape: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
-  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -675,7 +675,7 @@ class AttentionProjection(base_layer.BaseLayer):
             elif axes is not None:
               h_sharding += tuple(axes)
           wt = [wp.wt[0], h_sharding]
-      assert len(wt) == 2
+      assert len(wt) == 2  # pyrefly: ignore[unbound-name]
     else:
       wt = wp.wt
 
@@ -806,7 +806,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
   use_bias: bool = True
   attention_combine_dims: bool = False
   explicit_fan_in_fan_out_axes: bool = False  # TODO(b/232864754) switch to True
-  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     # Sharding has the same convention of AttentionProjection, which doesn't
@@ -835,7 +835,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
       if self.attention_combine_dims:
         bias_split_dims_mapping = [None, wt[1]]
       else:
-        bias_split_dims_mapping = [None, wt[1], wt[2]]
+        bias_split_dims_mapping = [None, wt[1], wt[2]]  # pyrefly: ignore[bad-index]
     else:
       weight_split_dims_mapping = None
       bias_split_dims_mapping = None
@@ -915,7 +915,7 @@ class CombinedQKVProjectionLayer(base_layer.BaseLayer):
     if self.use_bias:
       # Add newaxis to bias weight for each batch dim since ret is K...NH
       # and theta.b is KNH. Need to reshape theta.b to K...NH
-      ret += jnp.expand_dims(b, list(range(1, batch_dims_rank + 1)))
+      ret += jnp.expand_dims(b, list(range(1, batch_dims_rank + 1)))  # pyrefly: ignore[unbound-name]
     # Split into three projections.
     query_proj, key_proj, value_proj = ret
     query_proj = checkpoint_name(query_proj, 'query_proj')
@@ -1034,7 +1034,7 @@ class CausalDepthwiseConv1D(base_layer.BaseLayer):
     outputs = get_single_slice_at_index(start_index=step)
     outputs *= self.theta.dconv_0
     if segment_pos is None:
-      segment_pos = step
+      segment_pos = step  # pyrefly: ignore[bad-assignment]
     else:
       new_shape = [segment_pos.shape[0]] + [1] * (inputs.ndim - 1)
       segment_pos = jnp.reshape(segment_pos, new_shape)
@@ -1042,11 +1042,11 @@ class CausalDepthwiseConv1D(base_layer.BaseLayer):
     for i in range(1, self.kernel_size):
       if use_where:
         prev_slice = jnp.where(
-            jnp.greater_equal(segment_pos - i, 0),
+            jnp.greater_equal(segment_pos - i, 0),  # pyrefly: ignore[unsupported-operation]
             get_single_slice_at_index(step - i),
             jnp.zeros_like(outputs),
         )
-      elif segment_pos >= i:
+      elif segment_pos >= i:  # pyrefly: ignore[unsupported-operation]
         prev_slice = get_single_slice_at_index(start_index=step - i)
       else:
         break
@@ -1153,14 +1153,14 @@ class DotProductAttention(base_layer.BaseLayer):
   hidden_dim: int = 0
   num_heads: int = 1
   dim_per_head: int | None = None
-  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
+  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)  # pyrefly: ignore[bad-assignment]
   atten_dropout_prob: float = 0.0
-  proj_tpl: LayerTpl = template_field(AttentionProjection)
+  proj_tpl: LayerTpl = template_field(AttentionProjection)  # pyrefly: ignore[bad-assignment]
   dconv_qkv: bool = False
   dconv_kernel_size: int = 3
   internal_gshard_gaussian_init: bool = False
   combine_qkv: bool = False
-  combined_qkv_proj_tpl: LayerTpl = template_field(CombinedQKVProjectionLayer)
+  combined_qkv_proj_tpl: LayerTpl = template_field(CombinedQKVProjectionLayer)  # pyrefly: ignore[bad-assignment]
   use_bias: bool = True
   output_proj_use_nhd_shape: bool = False
   internal_enable_query_scale: bool = True
@@ -1172,21 +1172,21 @@ class DotProductAttention(base_layer.BaseLayer):
   # by initializing rotary_position_emb_tpl = None.
   use_rotary_position_emb: bool = False
   consolidate_rope_key_state: bool = False
-  rotary_position_emb_tpl: LayerTpl | None = template_field(
+  rotary_position_emb_tpl: LayerTpl | None = template_field(  # pyrefly: ignore[bad-assignment]
       embedding_softmax.RotaryPositionalEmbedding
   )
   cast_rotary_position_emb: bool = True
-  relative_bias_tpl: LayerTpl | None = template_field(None)
+  relative_bias_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
   attention_extra_logit: float | None = None
-  ngrammer_tpl: LayerTpl | None = template_field(None)
+  ngrammer_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
   decode_cache: bool = True
   attention_mask_summary: bool = False
   zero_fully_masked: bool = False
-  qk_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
-  pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
-  per_dim_scale_tpl: LayerTpl = template_field(PerDimScale)
-  causal_depthwise_conv1d_tpl: LayerTpl = template_field(CausalDepthwiseConv1D)
-  ln_tpl: LayerTpl | None = template_field(None)
+  qk_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
+  pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
+  per_dim_scale_tpl: LayerTpl = template_field(PerDimScale)  # pyrefly: ignore[bad-assignment]
+  causal_depthwise_conv1d_tpl: LayerTpl = template_field(CausalDepthwiseConv1D)  # pyrefly: ignore[bad-assignment]
+  ln_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
   decoding_maybe_shard_projections: bool = False
 
   # SPMD partition related params.
@@ -1313,7 +1313,7 @@ class DotProductAttention(base_layer.BaseLayer):
 
     if self.use_rotary_position_emb:
       self._create_rotary_position_emb(
-          self.rotary_position_emb_tpl, dim_per_head
+          self.rotary_position_emb_tpl, dim_per_head  # pyrefly: ignore[bad-argument-type]
       )
 
     if self.relative_bias_tpl is not None:
@@ -1830,7 +1830,7 @@ class DotProductAttention(base_layer.BaseLayer):
     else:
       extend_value = value
     indices = [0] * extend_value.ndim
-    indices[time_dim] = time_step.astype(jnp.int32)
+    indices[time_dim] = time_step.astype(jnp.int32)  # pyrefly: ignore[unsupported-operation]
     state = self.get_decode_state(name)
     assert state is not None
     new_state = jax.lax.dynamic_update_slice(
@@ -1906,10 +1906,10 @@ class DotProductAttention(base_layer.BaseLayer):
           query_proj, [ap.bld[0], ap.blnh[2], ap.blnh[3]], self.mesh_axis_names
       )
       key_proj = base_layer.maybe_shard(
-          key_proj, [ap.bld[0], ap.blnh[2], ap.blnh[3]], self.mesh_axis_names
+          key_proj, [ap.bld[0], ap.blnh[2], ap.blnh[3]], self.mesh_axis_names  # pyrefly: ignore[unbound-name]
       )
       value_proj = base_layer.maybe_shard(
-          value_proj, [ap.bld[0], ap.blnh[2], ap.blnh[3]], self.mesh_axis_names
+          value_proj, [ap.bld[0], ap.blnh[2], ap.blnh[3]], self.mesh_axis_names  # pyrefly: ignore[unbound-name]
       )
       query_proj = self._shard_bnh(query_proj)
       key_proj = self._shard_bnh(key_proj)
@@ -1929,8 +1929,8 @@ class DotProductAttention(base_layer.BaseLayer):
       # No need to update key_state at this point if consolidate_rope_key_state
       # is set.
       if not (self.use_rotary_position_emb and self.consolidate_rope_key_state):
-        key_state = _extend_decode_state_and_shard(key_state_name, key_proj)
-      value_state = _extend_decode_state_and_shard(value_state_name, value_proj)
+        key_state = _extend_decode_state_and_shard(key_state_name, key_proj)  # pyrefly: ignore[unbound-name]
+      value_state = _extend_decode_state_and_shard(value_state_name, value_proj)  # pyrefly: ignore[unbound-name]
 
     # Apply depth-wise convolution as in Primer.
     # Paper: https://arxiv.org/abs/2109.08668.
@@ -1946,10 +1946,10 @@ class DotProductAttention(base_layer.BaseLayer):
       )
       if not is_cross_attention:
         key_proj = self.dconv_k.extend_step(
-            key_state, axis=time_dim, step=time_step, segment_pos=segment_pos
+            key_state, axis=time_dim, step=time_step, segment_pos=segment_pos  # pyrefly: ignore[unbound-name]
         )
         value_proj = self.dconv_v.extend_step(
-            value_state, axis=time_dim, step=time_step, segment_pos=segment_pos
+            value_state, axis=time_dim, step=time_step, segment_pos=segment_pos  # pyrefly: ignore[unbound-name]
         )
 
         # Update queries, keys and values post dconv in cache.
@@ -1996,7 +1996,7 @@ class DotProductAttention(base_layer.BaseLayer):
     )
     if self.decoding_maybe_shard_projections:
       encoded = base_layer.maybe_shard(
-          encoded, [ap.bld[0], ap.blnh[2], ap.blnh[3]], self.mesh_axis_names
+          encoded, [ap.bld[0], ap.blnh[2], ap.blnh[3]], self.mesh_axis_names  # pyrefly: ignore[unbound-name]
       )
     # TODO(yonghui): return atten_probs back to the caller.
 
@@ -2448,7 +2448,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
       rb_batched = relative_bias.shape[0] > 1
     if rb_batched:
       relative_bias = jnp.reshape(
-          relative_bias, batch_dims + relative_bias.shape[1:]
+          relative_bias, batch_dims + relative_bias.shape[1:]  # pyrefly: ignore[bad-argument-type, missing-attribute]
       )
     am_batched = (
         not isinstance(atten_mask.shape[0], int) or atten_mask.shape[0] > 1
@@ -2545,9 +2545,9 @@ class DotProductAttentionWithLPB(DotProductAttention):
     # Of shape [b, ..., n, s]
     key_dtype = self.get_decode_state(key_state_name).dtype
     if self.attention_extra_logit is None:
-      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key_dtype)
+      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key_dtype)  # pyrefly: ignore[bad-argument-type]
     else:
-      probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(
+      probs = jnp.exp(self._log_softmax_with_extra_logit(padded_logits)).astype(  # pyrefly: ignore[bad-argument-type]
           key_dtype
       )
 
@@ -2586,13 +2586,13 @@ class DotProductAttentionWithLPB(DotProductAttention):
           fully_masked,
           fully_masked.shape + (1,) * (encoded.ndim - fully_masked.ndim),
       )
-      encoded *= 1 - fully_masked
+      encoded *= 1 - fully_masked  # pyrefly: ignore[unsupported-operation]
 
-    return encoded, probs
+    return encoded, probs  # pyrefly: ignore[bad-return]
 
   # TODO(b/247837331): Separate extend n steps from extend_step API if there
   # are  more use cases to run scoring right after decoding.
-  def extend_step(
+  def extend_step(  # pyrefly: ignore[bad-override]
       self,
       query_vec: JTensor,
       *,
@@ -3035,7 +3035,7 @@ class DotProductAttentionXL(DotProductAttention):
     encoded = self._shard_bnh(encoded)
     return encoded, probs
 
-  def init_states(
+  def init_states(  # pyrefly: ignore[bad-override]
       self,
       target_batch_size: int,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
       target_max_length: int,
@@ -3262,14 +3262,14 @@ class LocalSelfAttention(DotProductAttention):
     # -> [B, U, C, N, H]
     key_block_context = extract_block_context(
         key,
-        block_size=block_size,
-        left_context=self.left_context,
-        right_context=self.right_context,
+        block_size=block_size,  # pyrefly: ignore[bad-argument-type]
+        left_context=self.left_context,  # pyrefly: ignore[bad-argument-type]
+        right_context=self.right_context,  # pyrefly: ignore[bad-argument-type]
     )
     _, u, c, _, _ = key_block_context.shape
 
     # -> [B, U, W, N, H]
-    query_blocks = convert_to_block(query, block_size=block_size)
+    query_blocks = convert_to_block(query, block_size=block_size)  # pyrefly: ignore[bad-argument-type]
     _, _, w, _, _ = query_blocks.shape
 
     # Avoids large values when dtype is float64, which causes numerical issues.
@@ -3284,10 +3284,10 @@ class LocalSelfAttention(DotProductAttention):
       mask = atten_mask[:, 0, 0, :]
       mask_block_context = extract_block_context(  # pytype: disable=wrong-arg-types  # jax-ndarray
           mask,
-          block_size=block_size,
-          left_context=self.left_context,
-          right_context=self.right_context,
-          padding_val=minus_inf,
+          block_size=block_size,  # pyrefly: ignore[bad-argument-type]
+          left_context=self.left_context,  # pyrefly: ignore[bad-argument-type]
+          right_context=self.right_context,  # pyrefly: ignore[bad-argument-type]
+          padding_val=minus_inf,  # pyrefly: ignore[bad-argument-type]
       )
 
       # -> [B, N, U, W, C]
@@ -3299,16 +3299,16 @@ class LocalSelfAttention(DotProductAttention):
 
       # -> [B, U, W, S]
       mask_block_context = convert_to_block(  # pytype: disable=wrong-arg-types  # jax-ndarray
-          atten_mask[:, 0], block_size=block_size, padding_val=minus_inf
+          atten_mask[:, 0], block_size=block_size, padding_val=minus_inf  # pyrefly: ignore[bad-argument-type]
       )
       mask_block_context = jnp.reshape(mask_block_context, [b * u * w, s])
       # -> [B, U, W, U, C]
       mask_block_context = extract_block_context(  # pytype: disable=wrong-arg-types  # jax-ndarray
           mask_block_context,
-          block_size=block_size,
-          left_context=self.left_context,
-          right_context=self.right_context,
-          padding_val=minus_inf,
+          block_size=block_size,  # pyrefly: ignore[bad-argument-type]
+          left_context=self.left_context,  # pyrefly: ignore[bad-argument-type]
+          right_context=self.right_context,  # pyrefly: ignore[bad-argument-type]
+          padding_val=minus_inf,  # pyrefly: ignore[bad-argument-type]
       )
       mask_block_context = jnp.reshape(mask_block_context, [b, u, w, u, c])
       mask_block_context = jnp.einsum('buwuc->buwc', mask_block_context)
@@ -3321,9 +3321,9 @@ class LocalSelfAttention(DotProductAttention):
     # -> [U, W, C]
     local_causal_mask = _make_local_mask(
         seq_len=s,
-        block_size=block_size,
-        left_context=self.left_context,
-        right_context=self.right_context,
+        block_size=block_size,  # pyrefly: ignore[bad-argument-type]
+        left_context=self.left_context,  # pyrefly: ignore[bad-argument-type]
+        right_context=self.right_context,  # pyrefly: ignore[bad-argument-type]
     )
     mask = jnp.minimum(mask, (1.0 - local_causal_mask) * minus_inf)
 
@@ -3347,9 +3347,9 @@ class LocalSelfAttention(DotProductAttention):
 
     value_block_context = extract_block_context(
         value,
-        block_size=block_size,
-        left_context=self.left_context,
-        right_context=self.right_context,
+        block_size=block_size,  # pyrefly: ignore[bad-argument-type]
+        left_context=self.left_context,  # pyrefly: ignore[bad-argument-type]
+        right_context=self.right_context,  # pyrefly: ignore[bad-argument-type]
     )
 
     # Compute the attention context vector.
@@ -3402,19 +3402,19 @@ class LocalSelfAttention(DotProductAttention):
     asserts.eq(atten_mask.shape[-1], s)
     l = self.left_context
     # right_context can be non-zero if is_cross_attention is True.
-    f = self.left_context + self.right_context
+    f = self.left_context + self.right_context  # pyrefly: ignore[unsupported-operation]
 
     # Avoids large values when dtype is float64, which causes numerical issues.
     minus_inf = py_utils.get_large_negative_number(
         jnp.float32 if atten_mask.dtype == jnp.float64 else atten_mask.dtype
     )
 
-    key = _padded_slice(key, time_step + 1 - l, f, 1, 0.0)
-    value = _padded_slice(value, time_step + 1 - l, f, 1, 0.0)
-    atten_mask = _padded_slice(atten_mask, time_step + 1 - l, f, -1, minus_inf)
+    key = _padded_slice(key, time_step + 1 - l, f, 1, 0.0)  # pyrefly: ignore[bad-argument-type, unsupported-operation]
+    value = _padded_slice(value, time_step + 1 - l, f, 1, 0.0)  # pyrefly: ignore[bad-argument-type, unsupported-operation]
+    atten_mask = _padded_slice(atten_mask, time_step + 1 - l, f, -1, minus_inf)  # pyrefly: ignore[bad-argument-type, unsupported-operation]
 
     b, f, n, h = key.shape
-    asserts.eq(f, self.left_context + self.right_context)
+    asserts.eq(f, self.left_context + self.right_context)  # pyrefly: ignore[unsupported-operation]
     base_layer.assert_has_shape(value, [b, f, n, h])
     base_layer.assert_has_shape(query, [b, n, h])
     base_layer.assert_has_shape(atten_mask, [-1, 1, f])
@@ -3425,7 +3425,7 @@ class LocalSelfAttention(DotProductAttention):
       asserts.eq(relative_bias.shape[-1], s)
       relative_bias = _padded_slice(
           relative_bias,
-          time_step + 1 - l,
+          time_step + 1 - l,  # pyrefly: ignore[bad-argument-type, unsupported-operation]
           f,
           -1,
           0.0,
@@ -3459,7 +3459,7 @@ class LocalSelfAttention(DotProductAttention):
     encoded = self._shard_bnh(encoded)
     return encoded, probs
 
-  def init_states(
+  def init_states(  # pyrefly: ignore[bad-override]
       self,
       target_batch_size: int,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
       target_max_length: int,
@@ -3491,7 +3491,7 @@ class LocalSelfAttentionXL(LocalSelfAttention):
     n = self.num_heads
     l = self.left_context
     r = self.right_context
-    f = l + r
+    f = l + r  # pyrefly: ignore[unsupported-operation]
     # term a and c
     if self.use_bias:
       term_ac = jnp.einsum('BUWNH,BUCNH->BNUWC', query + self.theta.u, key)
@@ -3556,8 +3556,8 @@ class LocalSelfAttentionRelativeBias(LocalSelfAttention):
     # Conceptually, num_positions =
     #   [- (L - 1) - (W - 1), ..., 0, ..., (W - 1) + R]
     w = self.block_size
-    c = w + self.left_context + self.right_context - 1
-    num_positions = c + w - 1
+    c = w + self.left_context + self.right_context - 1  # pyrefly: ignore[unsupported-operation]
+    num_positions = c + w - 1  # pyrefly: ignore[unsupported-operation]
 
     pc = WeightHParams(shape=[self.num_heads, num_positions])
     self.create_variable('pos_emb_compressed', pc)

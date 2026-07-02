@@ -72,7 +72,7 @@ class _InternalBaseFlaxAdapter(base_layer.BaseLayer):
     def call_fn(module, *args, **kwargs):
       # axis_rules context manager is used to map activation sharding logical
       # axes to mesh axes names that pjit expects.
-      with flax_partitioning.axis_rules(self.logical_axes_rules):
+      with flax_partitioning.axis_rules(self.logical_axes_rules):  # pyrefly: ignore[bad-argument-type]
         return unbound_method(module, *args, **kwargs)
 
     if not self.is_initializing():
@@ -129,7 +129,7 @@ class DirectFlaxModuleAdapter(_InternalBaseFlaxAdapter):
     cld: Child Flax module.
   """
 
-  cld: nn.Module | None = pax_fiddle.instance_field(None)
+  cld: nn.Module | None = pax_fiddle.instance_field(None)  # pyrefly: ignore[bad-assignment, bad-override]
 
 
 class FlaxModuleAdapterBase(_InternalBaseFlaxAdapter, metaclass=abc.ABCMeta):
@@ -148,7 +148,7 @@ class FlaxModuleAdapterBase(_InternalBaseFlaxAdapter, metaclass=abc.ABCMeta):
 
   def setup(self) -> None:
     # Construct the child, which can be an arbitrary nn.Module.
-    self.cld: nn.Module = self._build_wrapped_module()
+    self.cld: nn.Module = self._build_wrapped_module()  # pyrefly: ignore[read-only]
     super().setup()
 
   @abc.abstractmethod

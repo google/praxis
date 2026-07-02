@@ -138,7 +138,7 @@ class CtcTest(test_utils.TestCase):
     inputs = [logprobs, logprob_paddings, labels, label_paddings]
 
     jax_per_seq = optax.ctc_loss(*inputs)
-    tf_per_seq = tf_ctc_loss(*inputs)
+    tf_per_seq = tf_ctc_loss(*inputs)  # pyrefly: ignore[bad-argument-type]
     self.assertAllClose(jax_per_seq.squeeze(), tf_per_seq.squeeze())
 
 

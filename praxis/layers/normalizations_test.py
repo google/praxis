@@ -64,7 +64,7 @@ class NormalizationsTest(test_utils.TestCase):
     keepdims = True
 
     jax_mean, jax_variance = normalizations.compute_moments(
-        inputs, paddings, reduce_over_dims=reduce_over_dims, keepdims=keepdims)
+        inputs, paddings, reduce_over_dims=reduce_over_dims, keepdims=keepdims)  # pyrefly: ignore[bad-argument-type]
 
     tf_mean, tf_variance = bn_layers.ComputeMoments(
         inputs, paddings, reduce_over_dims=reduce_over_dims, keepdims=keepdims)

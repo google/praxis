@@ -295,15 +295,15 @@ class TransformerFeedForward(base_layer.BaseLayer):
   has_bias: bool = True
   apply_padding_first: bool = False
   activation_tpl: pax_fiddle.Config[activations_lib.BaseActivation] = (
-      template_field(activations_lib.ReLU)
+      template_field(activations_lib.ReLU)  # pyrefly: ignore[bad-assignment]
   )
   use_gated_activation: bool = False
-  fflayer_tpl: LayerTpl = template_field(linears.FeedForward)
-  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  fflayer_tpl: LayerTpl = template_field(linears.FeedForward)  # pyrefly: ignore[bad-assignment]
+  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
   residual_dropout_prob: float = 0.0
-  relu_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
+  relu_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)  # pyrefly: ignore[bad-assignment]
   relu_dropout_prob: float = 0.0
-  residual_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
+  residual_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)  # pyrefly: ignore[bad-assignment]
   add_skip_connection: bool = True
   residual_weight: float = 1.0
   residual_droppath_prob: float = 0.0
@@ -635,13 +635,13 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
   input_dims: int = 0
   hidden_dims: int = 0
   apply_padding_first: bool = False
-  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
   activation_tpl: pax_fiddle.Config[activations_lib.BaseActivation] = (
-      template_field(activations_lib.ReLU)
+      template_field(activations_lib.ReLU)  # pyrefly: ignore[bad-assignment]
   )
-  relu_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
+  relu_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)  # pyrefly: ignore[bad-assignment]
   relu_dropout_prob: float = 0.0
-  residual_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
+  residual_dropout_tpl: LayerTpl = template_field(stochastics.Dropout)  # pyrefly: ignore[bad-assignment]
   residual_dropout_prob: float = 0.0
   add_skip_connection: bool = True
   residual_weight: float = 1.0
@@ -661,8 +661,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
   gating_logit_cap: float = 0.0
   moe_gating_embedding_level: str = 'token'
   use_gated_activation: bool = False
-  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
-  einsum_gated_tpl: LayerTpl = template_field(base_ops.EinsumGatedOp)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
+  einsum_gated_tpl: LayerTpl = template_field(base_ops.EinsumGatedOp)  # pyrefly: ignore[bad-assignment]
 
   # SPMD partition related params.
   # M - model_dim, for both inputs and outputs
@@ -1051,7 +1051,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
 
     if self._is_ffn1_gated:
       hidden0, hidden1 = self.gated_ffn1_einsum(
-          'egcm,emh->egch', expert_inputs, theta_wi, theta_wi_gated
+          'egcm,emh->egch', expert_inputs, theta_wi, theta_wi_gated  # pyrefly: ignore[unbound-name]
       )
       if self.gating_func in ['top2', 'expert_choice_v2']:
         self._count_dead_neurons(hidden1, dispatch_tensor)
@@ -1093,8 +1093,8 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
   def __call__(
       self,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
       inputs: JTensor,
-      paddings: JTensor = None,
-      segment_ids: JTensor = None,
+      paddings: JTensor = None,  # pyrefly: ignore[bad-function-definition]
+      segment_ids: JTensor = None,  # pyrefly: ignore[bad-function-definition]
   ) -> JTensor:
     """Layer-norm, route, feed-forward, combine, residual.
 
@@ -1226,20 +1226,20 @@ class Transformer(base_layer.BaseLayer):
   hidden_dims: int = 0
   num_heads: int | None = None
   dim_per_head: int | None = None
-  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
+  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)  # pyrefly: ignore[bad-assignment]
   atten_dropout_prob: float = 0.0
   residual_dropout_prob: float = 0.0
   relu_dropout_prob: float = 0.0
   residual_droppath_prob: float = 0.0
   use_cross_attention: bool = False
   allow_skip_cross_attention: bool = False
-  cross_atten_tpl: LayerTpl | None = template_field(None)
-  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  cross_atten_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
+  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
   norm_policy: str = 'pre'
-  tr_atten_tpl: LayerTpl = template_field(attentions.DotProductAttention)
+  tr_atten_tpl: LayerTpl = template_field(attentions.DotProductAttention)  # pyrefly: ignore[bad-assignment]
   packed_input: bool = False
-  tr_fflayer_tpl: LayerTpl = template_field(TransformerFeedForward)
-  ngrammer_tpl: LayerTpl | None = template_field(None)
+  tr_fflayer_tpl: LayerTpl = template_field(TransformerFeedForward)  # pyrefly: ignore[bad-assignment]
+  ngrammer_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
 
   # This function can be overridden by subclasses.
   def _setup_attention(self, atten_tpl: LayerTpl, name: str) -> None:
@@ -1440,7 +1440,7 @@ class Transformer(base_layer.BaseLayer):
         atten_output_normalized = atten_output
 
       cross_atten_output, cross_atten_probs = self.cross_attention(
-          atten_output_normalized,
+          atten_output_normalized,  # pyrefly: ignore[unbound-name]
           cross_inputs,
           cross_inputs,
           atten_mask=cross_attention_mask,
@@ -1570,7 +1570,7 @@ class Transformer(base_layer.BaseLayer):
         atten_output_normalized = atten_output
 
       cross_atten_output = self.cross_attention.extend_step(
-          atten_output_normalized,
+          atten_output_normalized,  # pyrefly: ignore[unbound-name]
           atten_mask=jnp.squeeze(cross_attention_mask, 2),
           time_step=time_step,
           segment_pos=segment_pos,
@@ -1696,17 +1696,17 @@ class StackedTransformer(base_layer.BaseLayer):
   input_dropout_prob: float = 0.0
   gating_func: str = 'top2'
   unadjusted_expert_capacity_factor: float = 2.0
-  transformer_layer_params_tpl: LayerTpl | Sequence[LayerTpl] = template_field(
+  transformer_layer_params_tpl: LayerTpl | Sequence[LayerTpl] = template_field(  # pyrefly: ignore[bad-assignment]
       Transformer
   )
   packed_input: bool = False
   fold_padding_with_segment_mask: bool = False
-  moe_layer_tpl: LayerTpl | None = template_field(TransformerFeedForwardMoe)
+  moe_layer_tpl: LayerTpl | None = template_field(TransformerFeedForwardMoe)  # pyrefly: ignore[bad-assignment]
   num_experts: int = 0
   num_groups: int = 1
   min_group_size: int | None = None
   moe_layers: Sequence[int] | None = ()
-  ngrammer_tpls: Sequence[LayerTpl] | None = template_field(None)
+  ngrammer_tpls: Sequence[LayerTpl] | None = template_field(None)  # pyrefly: ignore[bad-assignment]
   remat: bool = False
   checkpoint_policy: AutodiffCheckpointType = (
       AutodiffCheckpointType.SAVE_DOT_EXCEPT_LOGITS_FFN1
@@ -1985,7 +1985,7 @@ class StackedTransformer(base_layer.BaseLayer):
           cross_attention_mask=cross_attention_mask,
       )
       decoder_input = decoder_output
-    return decoder_output
+    return decoder_output  # pyrefly: ignore[unbound-name]
 
   def transform_decode_state(
       self, transform_fn: base_layer.DecodeStateTransformFn
@@ -2045,7 +2045,7 @@ class StackedTransformerRepeated(base_layer.BaseLayer):
       layers available for flax capture_intermediates.
   """
 
-  block: LayerTpl = template_field(StackedTransformer)
+  block: LayerTpl = template_field(StackedTransformer)  # pyrefly: ignore[bad-assignment]
   x_times: int = 0
   checkpoint_policy: repeats.AutodiffCheckpointType = (
       repeats.AutodiffCheckpointType.SAVE_NOTHING
@@ -2244,7 +2244,7 @@ class PipelinedTransformer(base_layer.BaseLayer):
       f32 precision.
   """
 
-  pipeline_stage: LayerTpl = template_field(StackedTransformer)
+  pipeline_stage: LayerTpl = template_field(StackedTransformer)  # pyrefly: ignore[bad-assignment]
   circular_repeat: int = 1
   num_pipeline_stages: int | None = None
   num_pipeline_microbatches: int | None = None

@@ -427,12 +427,12 @@ class LanguageModelTest(test_utils.TestCase):
     if fprop_for_prefix:
       total_len = p.seqlen + p.max_decode_steps
       expected_output_ids = test_utils.to_np(
-          py_utils.pad_or_trim_to(
+          py_utils.pad_or_trim_to(  # pyrefly: ignore[bad-argument-type]
               jnp.array(expected_output_ids), [1, 1, total_len], pad_val=0
           )
       ).astype(np.int32)
       expected_prefix_ids = test_utils.to_np(
-          py_utils.pad_or_trim_to(
+          py_utils.pad_or_trim_to(  # pyrefly: ignore[bad-argument-type]
               jnp.array(expected_prefix_ids), [1, 1, total_len], pad_val=0
           )
       ).astype(np.int32)
@@ -499,13 +499,13 @@ class LanguageModelTest(test_utils.TestCase):
     if fprop_for_prefix:
       total_len = p.seqlen + p.max_decode_steps
       expected_output_ids = test_utils.to_np(
-          py_utils.pad_or_trim_to(
+          py_utils.pad_or_trim_to(  # pyrefly: ignore[bad-argument-type]
               jnp.array(expected_output_ids), [1, 1, total_len], pad_val=0
           )
       ).astype(np.int32)
       if not vanilla_sample_decode:
         expected_prefix_ids = test_utils.to_np(
-            py_utils.pad_or_trim_to(
+            py_utils.pad_or_trim_to(  # pyrefly: ignore[bad-argument-type]
                 jnp.array(expected_prefix_ids), [1, 1, total_len], pad_val=0
             )
         ).astype(np.int32)
@@ -1747,12 +1747,12 @@ class TransformerLmDpoTest(test_utils.TestCase):
     labels = jnp.concatenate((input_ids[:, 1:], input_ids[:, :1]), axis=1)
     weights = jnp.ones([batch_size, seq_len])
     lm_input = models.DPOExampleHalf(
-        inputs=input_ids,
-        inputs_indicator=jnp.ones([batch_size, seq_len]),
-        labels=models.Labels(class_ids=labels, class_weights=weights),
-        paddings=jnp.zeros([batch_size, seq_len]),
-        segment_ids=jnp.ones([batch_size, seq_len]),
-        segment_pos=jnp.tile(jnp.arange(0, seq_len), [batch_size, 1]),
+        inputs=input_ids,  # pyrefly: ignore[bad-argument-type]
+        inputs_indicator=jnp.ones([batch_size, seq_len]),  # pyrefly: ignore[bad-argument-type]
+        labels=models.Labels(class_ids=labels, class_weights=weights),  # pyrefly: ignore[bad-argument-type]
+        paddings=jnp.zeros([batch_size, seq_len]),  # pyrefly: ignore[bad-argument-type]
+        segment_ids=jnp.ones([batch_size, seq_len]),  # pyrefly: ignore[bad-argument-type]
+        segment_pos=jnp.tile(jnp.arange(0, seq_len), [batch_size, 1]),  # pyrefly: ignore[bad-argument-type]
     )
 
     input_batch = _flatten_input_data(lm_input)

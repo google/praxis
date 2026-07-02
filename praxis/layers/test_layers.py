@@ -146,7 +146,7 @@ class TestModel01(base_model.BaseModel):
     in_normed = self.bn(input_batch.inputs)
     return jnp.einsum('bi,io->bo', in_normed, self.theta.var01)
 
-  def compute_loss(
+  def compute_loss(  # pyrefly: ignore[bad-override]
       self,
       predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
       input_batch: NestedMap,
@@ -172,7 +172,7 @@ class TestLinearRegressionModel(base_model.BaseModel):
   """
   input_dims: int = 0
   output_dims: int = 0
-  linear_p: LayerTpl = template_field(linears.Linear)
+  linear_p: LayerTpl = template_field(linears.Linear)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     params = self.linear_p.clone()
@@ -211,7 +211,7 @@ class TestBatchNormalizationModel(base_model.BaseModel):
     with base_layer.JaxContext.new_context(hparams=params):
       return self.bn(input_batch.inputs)
 
-  def compute_loss(
+  def compute_loss(  # pyrefly: ignore[bad-override]
       self,
       predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
       input_batch: NestedMap,
@@ -229,7 +229,7 @@ class TestSpmdModel(base_model.BaseModel):
   Attributes:
     xformer_ffw: Parameterization of the feedforward layer.
   """
-  xformer_ffw: LayerTpl = template_field(transformers.TransformerFeedForward)
+  xformer_ffw: LayerTpl = template_field(transformers.TransformerFeedForward)  # pyrefly: ignore[bad-assignment]
 
   def setup(self):
     self.create_child('ffwd', self.xformer_ffw)
@@ -237,7 +237,7 @@ class TestSpmdModel(base_model.BaseModel):
   def compute_predictions(self, input_batch: NestedMap) -> JTensor:
     return self.ffwd(input_batch.inputs)
 
-  def compute_loss(
+  def compute_loss(  # pyrefly: ignore[bad-override]
       self,
       predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
       input_batch: NestedMap,

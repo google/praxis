@@ -100,7 +100,7 @@ class Conv2D(base_layer.BaseLayer):
   tf_equivalent_padding: bool = False
   is_causal: bool = False
   weight_norm_tpl: pax_fiddle.Config[normalizations.BaseNormalization] = (
-      template_field(normalizations.IdentityNorm)
+      template_field(normalizations.IdentityNorm)  # pyrefly: ignore[bad-assignment]
   )
 
   @classmethod
@@ -509,9 +509,9 @@ class ConvBNAct(Conv2D):
     activation_tpl: Activation function to use.
   """
 
-  batch_norm_tpl: LayerTpl | None = template_field(normalizations.BatchNorm)
+  batch_norm_tpl: LayerTpl | None = template_field(normalizations.BatchNorm)  # pyrefly: ignore[bad-assignment]
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.ReLU)
+      template_field(activations.ReLU)  # pyrefly: ignore[bad-assignment]
   )
 
   def setup(self) -> None:
@@ -808,16 +808,16 @@ class LightConv1D(base_layer.BaseLayer):
   input_dims: int | None = None
   kernel_size: int | None = None
   conv_activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.Swish)
+      template_field(activations.Swish)  # pyrefly: ignore[bad-assignment]
   )
   dropout_prob: float = 0.0
-  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
 
-  linear_start_tpl: LayerTpl = template_field(linears.FeedForward)
-  depthwise_conv_tpl: LayerTpl = template_field(DepthwiseConv1D)
-  conv_norm_layer_tpl: LayerTpl = template_field(normalizations.BatchNorm)
-  linear_end_tpl: LayerTpl = template_field(linears.FeedForward)
-  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
+  linear_start_tpl: LayerTpl = template_field(linears.FeedForward)  # pyrefly: ignore[bad-assignment]
+  depthwise_conv_tpl: LayerTpl = template_field(DepthwiseConv1D)  # pyrefly: ignore[bad-assignment]
+  conv_norm_layer_tpl: LayerTpl = template_field(normalizations.BatchNorm)  # pyrefly: ignore[bad-assignment]
+  linear_end_tpl: LayerTpl = template_field(linears.FeedForward)  # pyrefly: ignore[bad-assignment]
+  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)  # pyrefly: ignore[bad-assignment]
   is_causal: bool = False
   use_2d_conv_norm: bool = False
 

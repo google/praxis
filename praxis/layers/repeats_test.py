@@ -98,7 +98,7 @@ class FeedForwardWithPadding(FeedForward):
     self.update_var('step', self.get_var('step') + 1)
     out = jnp.einsum('...y,yz->...z', inputs, self.theta.w)
     out = jax.nn.sigmoid(out)
-    out = py_utils.apply_padding(out, paddings)
+    out = py_utils.apply_padding(out, paddings)  # pyrefly: ignore[bad-argument-type]
     return out, paddings
 
 

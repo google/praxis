@@ -57,7 +57,7 @@ class OneHeadedAttentionProjection(base_layer.BaseLayer):
   input_dim: int = 0
   output_dim: int = 0
   use_bias: bool = True
-  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     wp = self.weight_split_dims_mapping
@@ -193,10 +193,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   num_heads: int = 1
   num_kv_heads: int = 1
   dim_per_head: int | None = None
-  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)
+  dropout_tpl: LayerTpl = template_field(stochastics.Dropout)  # pyrefly: ignore[bad-assignment]
   atten_dropout_prob: float = 0.0
-  proj_tpl: LayerTpl = template_field(attentions.AttentionProjection)
-  headless_proj_tpl: LayerTpl = template_field(OneHeadedAttentionProjection)
+  proj_tpl: LayerTpl = template_field(attentions.AttentionProjection)  # pyrefly: ignore[bad-assignment]
+  headless_proj_tpl: LayerTpl = template_field(OneHeadedAttentionProjection)  # pyrefly: ignore[bad-assignment]
   internal_gshard_gaussian_init: bool = False
   use_bias: bool = True
   output_proj_use_nhd_shape: bool = False
@@ -205,16 +205,16 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
   # TODO(b/300717814): Remove redundant `use_rotary_position_emb` field.
   use_rotary_position_emb: bool = False
   consolidate_rope_key_state: bool = False
-  rotary_position_emb_tpl: LayerTpl = template_field(
+  rotary_position_emb_tpl: LayerTpl = template_field(  # pyrefly: ignore[bad-assignment]
       embedding_softmax.RotaryPositionalEmbedding
   )
-  relative_bias_tpl: LayerTpl | None = template_field(None)
+  relative_bias_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
   attention_extra_logit: float | None = None
   dconv_qkv: bool = False
   combine_qkv: bool = False
   decode_cache: bool = True
-  qk_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
-  pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  qk_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
+  pv_einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
   scale_query_by_dim_per_head: bool = False
   chunked_attn_num_seq_split: int = 1
   local_window_size: tuple[int, int] | None = None
@@ -793,10 +793,10 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       # the padding is to handle the case where there is no enough data in the
       # sequence for local window size, we add padding value for the missing
       # data.
-      key = attentions._padded_slice(key, time_step + 1 - l, f, 1, 0.0)  # pylint: disable=protected-access
-      value = attentions._padded_slice(value, time_step + 1 - l, f, 1, 0.0)  # pylint: disable=protected-access
+      key = attentions._padded_slice(key, time_step + 1 - l, f, 1, 0.0)  # pylint: disable=protected-access  # pyrefly: ignore[bad-argument-type, unsupported-operation]
+      value = attentions._padded_slice(value, time_step + 1 - l, f, 1, 0.0)  # pylint: disable=protected-access  # pyrefly: ignore[bad-argument-type, unsupported-operation]
       atten_mask = attentions._padded_slice(  # pylint: disable=protected-access
-          atten_mask, time_step + 1 - l, f, -1, minus_inf
+          atten_mask, time_step + 1 - l, f, -1, minus_inf  # pyrefly: ignore[bad-argument-type, unsupported-operation]
       )
 
       b, f, h = key.shape
@@ -819,7 +819,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       if self.local_window_size is not None:
         relative_bias = attentions._padded_slice(  # pylint: disable=protected-access
             relative_bias,
-            time_step - self.local_window_size[0],
+            time_step - self.local_window_size[0],  # pyrefly: ignore[bad-argument-type, unsupported-operation]
             self.local_window_size[0] + 1 + self.local_window_size[1],
             -1,
             0.0,
@@ -862,7 +862,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     else:
       new_context_params = base_layer.JaxContext.HParams()
     if n_sharding is not None:
-      new_context_params.mesh_axes_transpose = {n_sharding: None}
+      new_context_params.mesh_axes_transpose = {n_sharding: None}  # pyrefly: ignore[bad-assignment]
     return base_layer.JaxContext.new_context(hparams=new_context_params)
 
   def __call__(
@@ -986,7 +986,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     encoded = self._shard_bld(encoded)
     encoded = checkpoint_name(encoded, 'out_proj')
 
-    return encoded, atten_probs
+    return encoded, atten_probs  # pyrefly: ignore[bad-return]
 
   def init_states(self, target_batch_size: int, target_max_length: int) -> None:
     """Initializes cache for autoregressive cached decoding.
@@ -1037,7 +1037,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     else:
       extend_value = value
     indices = [0] * extend_value.ndim
-    indices[time_dim] = time_step.astype(jnp.int32)
+    indices[time_dim] = time_step.astype(jnp.int32)  # pyrefly: ignore[unsupported-operation]
     state = self.get_decode_state(name)
     assert state is not None
     new_state = jax.lax.dynamic_update_slice(state,
@@ -1128,8 +1128,8 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     value_state_name = 'value_state'
     key_state_name = 'key_state'
     if not is_cross_attention:
-      _extend_decode_state_and_shard_blh(value_state_name, value_proj)
-      _extend_decode_state_and_shard_blh(key_state_name, key_proj)
+      _extend_decode_state_and_shard_blh(value_state_name, value_proj)  # pyrefly: ignore[unbound-name]
+      _extend_decode_state_and_shard_blh(key_state_name, key_proj)  # pyrefly: ignore[unbound-name]
 
     if self.use_rotary_position_emb:
       key_state_name = (
@@ -1294,8 +1294,8 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
     if relative_bias is not None:
       rb_batched = relative_bias.shape[0] > 1
     if rb_batched:
-      relative_bias = jnp.reshape(relative_bias,
-                                  batch_dims + relative_bias.shape[1:])
+      relative_bias = jnp.reshape(relative_bias,  # pyrefly: ignore[bad-argument-type]
+                                  batch_dims + relative_bias.shape[1:])  # pyrefly: ignore[missing-attribute]
     am_batched = atten_mask.shape[0] > 1
     if am_batched:
       atten_mask = jnp.reshape(atten_mask, batch_dims + atten_mask.shape[1:])
@@ -1384,10 +1384,10 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
     # Of shape [b, ..., n, s]
     key_dtype = self.get_decode_state(key_state_name).dtype
     if self.attention_extra_logit is None:
-      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key_dtype)
+      probs = jax.nn.softmax(padded_logits, axis=-1).astype(key_dtype)  # pyrefly: ignore[bad-argument-type]
     else:
       probs = jnp.exp(
-          self._log_softmax_with_extra_logit(padded_logits)).astype(key_dtype)
+          self._log_softmax_with_extra_logit(padded_logits)).astype(key_dtype)  # pyrefly: ignore[bad-argument-type]
 
     # Compute the attention context.
     def _post_softmax(layer, batched, ps, non_batched, states):
@@ -1423,7 +1423,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
     else:
       extend_value = value
     indices = [0] * extend_value.ndim
-    indices[time_dim] = time_step.astype(jnp.int32)
+    indices[time_dim] = time_step.astype(jnp.int32)  # pyrefly: ignore[unsupported-operation]
     state = self.get_decode_state(name)
     assert state is not None
     new_state = jax.lax.dynamic_update_slice(state,
@@ -1750,7 +1750,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
           if not is_cross_attention:
             key_proj = jax.vmap(_get_rotary, in_axes=1, out_axes=1)(k, pos)
         if not is_cross_attention:
-          key_proj = jnp.squeeze(key_proj, axis=-2)
+          key_proj = jnp.squeeze(key_proj, axis=-2)  # pyrefly: ignore[bad-argument-type]
         return query_proj, key_proj
 
       query_proj, key_proj = _vmap_no_state(_rotary)(self,

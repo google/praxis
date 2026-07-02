@@ -184,7 +184,7 @@ class ConformerTest(test_utils.TestCase):
 
     # Convert paddings to atten_mask:
     atten_mask_padding = attentions.convert_paddings_to_mask(
-        paddings, np.float32
+        paddings, np.float32  # pyrefly: ignore[bad-argument-type]
     )  # pytype: disable=wrong-arg-types
     rev_padding_mask = jnp.transpose(atten_mask_padding, (0, 1, 3, 2))
     atten_mask_padding = jnp.minimum(atten_mask_padding, rev_padding_mask)
@@ -290,7 +290,7 @@ class ConformerTest(test_utils.TestCase):
 
     # Convert paddings to atten_mask for LocalSelfAttentionXL:
     atten_mask_padding = attentions.convert_paddings_to_mask(
-        paddings, np.float32
+        paddings, np.float32  # pyrefly: ignore[bad-argument-type]
     )  # pytype: disable=wrong-arg-types
 
     # Emulate local attention for DotProductAttentionXL.

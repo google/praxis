@@ -76,7 +76,7 @@ class Linear(base_layer.BaseLayer):
   input_dims: int = 0
   output_dims: int = 0
   weight_init: WeightInit | None = None
-  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
@@ -176,11 +176,11 @@ class FeedForward(base_layer.BaseLayer):
   input_dims: int = 0
   output_dims: int = 0
   has_bias: bool = True
-  linear_tpl: LayerTpl = template_field(Linear)
-  bias_tpl: LayerTpl = template_field(Bias)
+  linear_tpl: LayerTpl = template_field(Linear)  # pyrefly: ignore[bad-assignment]
+  bias_tpl: LayerTpl = template_field(Bias)  # pyrefly: ignore[bad-assignment]
   activation_tpl: pax_fiddle.Config[
       activations.BaseActivation
-  ] = template_field(activations.ReLU)
+  ] = template_field(activations.ReLU)  # pyrefly: ignore[bad-assignment]
   weight_init: WeightInit | None = None
   bias_init: float | None = 0.0
   checkpoint_str: str | None = None
@@ -245,7 +245,7 @@ class MLPBlock(base_layer.BaseLayer):
   num_layers: int = 3
   hidden_dims: int = 128
   activate_final: bool = True
-  ff_tpl: LayerTpl = template_field(FeedForward)
+  ff_tpl: LayerTpl = template_field(FeedForward)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
 

@@ -55,7 +55,7 @@ class Dropout(base_layer.BaseLayer):
 
   def _dropout(self, inputs: JTensor, noise_shape: list[int]) -> JTensor:
     if noise_shape is None:
-      noise_shape = inputs.shape
+      noise_shape = inputs.shape  # pyrefly: ignore[bad-assignment]
     prng_key = self.next_prng_key()
     keep_prob = self.keep_prob
     assert keep_prob > 0.0
@@ -97,7 +97,7 @@ class Dropout(base_layer.BaseLayer):
           raise ValueError('Invalid broadcasted dim {}'.format(dim))
         noise_shape[dim] = 1
 
-    ret = self._dropout(inputs, noise_shape)
+    ret = self._dropout(inputs, noise_shape)  # pyrefly: ignore[bad-argument-type]
     return ret
 
 

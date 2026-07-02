@@ -292,9 +292,9 @@ class LanguageModel(base_model.BaseModel):
       Lambada dataset.
   """
 
-  lm_tpl: LayerTpl = template_field(transformer_models.TransformerLm)
+  lm_tpl: LayerTpl = template_field(transformer_models.TransformerLm)  # pyrefly: ignore[bad-assignment]
   return_predictions: bool = False
-  decoder_tpl: DecoderHParams = base_layer.instance_field(GreedyDecoderHParams)
+  decoder_tpl: DecoderHParams = base_layer.instance_field(GreedyDecoderHParams)  # pyrefly: ignore[bad-assignment]
   model_type: LanguageModelType = LanguageModelType.CAUSAL
   count_tokens: bool = False
   apply_eval_sample_weights: bool = False
@@ -453,7 +453,7 @@ class LanguageModel(base_model.BaseModel):
       # Change prefix to be right-aligned.
       fprop_input_ids, fprop_input_paddings = (
           sample_decode.right_align_prefix_ids(
-              input_batch.ids, prefix_lengths, self.fprop_dtype
+              input_batch.ids, prefix_lengths, self.fprop_dtype  # pyrefly: ignore[bad-argument-type]
           )
       )
       fprop_segment_pos = sample_decode.right_align_segment_position(
@@ -471,11 +471,11 @@ class LanguageModel(base_model.BaseModel):
       # Init input ids and paddings for extend_step.
       input_ids = jnp.pad(
           fprop_input_ids,
-          [[0, 0], [0, first_max_decode_steps]],
+          [[0, 0], [0, first_max_decode_steps]],  # pyrefly: ignore[bad-argument-type]
       )
       input_paddings = jnp.pad(
           fprop_input_paddings,
-          [[0, 0], [0, first_max_decode_steps]],
+          [[0, 0], [0, first_max_decode_steps]],  # pyrefly: ignore[bad-argument-type]
           constant_values=1.0,
       )
       if causal_attention_mask is not None:
@@ -649,8 +649,8 @@ class LanguageModel(base_model.BaseModel):
             decode_data.seqlen,
             beam_size=decoder_params.beam_size,
             fprop_dtype=self.fprop_dtype,
-            max_decode_steps=decoder_params.max_decode_steps,
-            eos_id=decoder_params.eos_id,
+            max_decode_steps=decoder_params.max_decode_steps,  # pyrefly: ignore[bad-argument-type]
+            eos_id=decoder_params.eos_id,  # pyrefly: ignore[bad-argument-type]
             length_norm_alpha=decoder_params.length_norm_alpha,
         )
         if decoder_params.process_result_fn is not None:
@@ -788,7 +788,7 @@ class LanguageModel(base_model.BaseModel):
             prefix_paddings=decode_data.fprop_input_paddings,
             temperature=temperature,
             gumbel_prng_key=gumbel_prng_key,
-            max_decode_steps=decoder_params.max_decode_steps,
+            max_decode_steps=decoder_params.max_decode_steps,  # pyrefly: ignore[bad-argument-type]
             eos_id=eos_id,
             decode_loop_mesh_axes_transpose=decode_mesh_transpose,
             model_var_pspecs=lm_var_pspecs,
@@ -836,13 +836,13 @@ class LanguageModel(base_model.BaseModel):
             controlled_decoding=decoder_params.controlled_decoding,
             decode_loop_mesh_axes_transpose=decode_mesh_transpose,
             model_var_pspecs=lm_var_pspecs,
-            sort_samples=decoder_params.sort_samples,
+            sort_samples=decoder_params.sort_samples,  # pyrefly: ignore[bad-argument-type]
             top_k_recall_target=decoder_params.top_k_recall_target,
             use_top_k_for_logprobs=decoder_params.use_top_k_for_logprobs,
             return_entropy_score=return_entropy_score,
             process_result_fn=decoder_params.process_result_fn,
             optimize_eos=decoder_params.optimize_eos,
-            sample_constraint=decoder_params.sample_constraint,
+            sample_constraint=decoder_params.sample_constraint,  # pyrefly: ignore[bad-argument-type]
             enforce_sample_constraints=enforce_sample_constraints,
             num_per_token_logprobs=num_per_token_logprobs,
             early_exit=decoder_params.early_exit,
@@ -875,7 +875,7 @@ class LanguageModel(base_model.BaseModel):
           max_prefix_len=max_prefix_len,
           max_decode_steps=decoder_params.max_decode_steps,
           prefix_lengths=decode_data.prefix_lengths,
-          eos_id=decoder_params.eos_id,
+          eos_id=decoder_params.eos_id,  # pyrefly: ignore[bad-argument-type]
           decode_loop_mesh_axes_transpose=decode_mesh_transpose,
           model_var_pspecs=lm_var_pspecs,
           process_result_fn=decoder_params.process_result_fn,
@@ -1012,7 +1012,7 @@ class LanguageModelContinuousBatching(LanguageModel):
   def sample_init_decode_state(
       self, decode_data: NestedMap, decoder_params: DecoderHParams
   ) -> NestedMap:
-    max_prefix_len = decoder_params.seqlen - decoder_params.max_decode_steps
+    max_prefix_len = decoder_params.seqlen - decoder_params.max_decode_steps  # pyrefly: ignore[unsupported-operation]
 
     def transform_decode_state_fn(mdl, transform_fn):
       mdl.transform_decode_state(transform_fn)
@@ -1025,7 +1025,7 @@ class LanguageModelContinuousBatching(LanguageModel):
         top_k=getattr(decoder_params, 'k', 1),
         top_p=getattr(decoder_params, 'p', None),
         prefix_lengths=decode_data.prefix_lengths,
-        eos_id=decoder_params.eos_id,
+        eos_id=decoder_params.eos_id,  # pyrefly: ignore[bad-argument-type]
         transform_state_fn=transform_decode_state_fn,
     )
     return decode_state
@@ -1105,9 +1105,9 @@ class LanguageModelContinuousBatching(LanguageModel):
         extend_step_fn=extend_step_fn,
         decode_state=prefill_decode_state,
         max_prefix_len=max_prefix_len,
-        eos_id=decoder_params.eos_id,
+        eos_id=decoder_params.eos_id,  # pyrefly: ignore[bad-argument-type]
         decode_loop_mesh_axes_transpose=decoder_params.decode_loop_mesh_axes_transpose,
-        max_decode_steps=decoder_params.max_decode_steps,
+        max_decode_steps=decoder_params.max_decode_steps,  # pyrefly: ignore[bad-argument-type]
     )
     return prefill_decode_state
 
@@ -1249,9 +1249,9 @@ class LanguageModelContinuousBatching(LanguageModel):
         extend_step_fn=extend_step_fn,
         decode_state=decode_state,
         max_prefix_len=max_prefix_len,
-        eos_id=decoder_params.eos_id,
+        eos_id=decoder_params.eos_id,  # pyrefly: ignore[bad-argument-type]
         decode_loop_mesh_axes_transpose=decode_mesh_transpose,
-        max_decode_steps=decoder_params.max_decode_steps,
+        max_decode_steps=decoder_params.max_decode_steps,  # pyrefly: ignore[bad-argument-type]
     )
     return decode_state
 
@@ -1271,7 +1271,7 @@ class DPOExampleHalf:
   paddings: Int32[ArrayT, 'B T']
   segment_ids: Int32[ArrayT, 'B T']  # Packing is currently unsupported.
   segment_pos: Int32[ArrayT, 'B T']  # Packing is currently unsupported.
-  inputs_indicator: Int32[ArrayT, 'B T'] = None
+  inputs_indicator: Int32[ArrayT, 'B T'] = None  # pyrefly: ignore[bad-assignment]
   causal_attention_mask: Int32[ArrayT, 'B T'] | None = None
 
   def as_xformer_lm_input(self) -> dict[str, ArrayT | NestedMap]:
@@ -1295,26 +1295,26 @@ class DPOExample:
   def from_feature_converter(cls, example: Mapping[str, JTensor]):
     return cls(
         y_w=DPOExampleHalf(
-            inputs=example['y_w/inputs'],
-            inputs_indicator=example['y_w/inputs_indicator'],
+            inputs=example['y_w/inputs'],  # pyrefly: ignore[bad-argument-type]
+            inputs_indicator=example['y_w/inputs_indicator'],  # pyrefly: ignore[bad-argument-type]
             labels=Labels(
-                class_ids=example['y_w/labels/ids'],
-                class_weights=example['y_w/labels/weights'],
+                class_ids=example['y_w/labels/ids'],  # pyrefly: ignore[bad-argument-type]
+                class_weights=example['y_w/labels/weights'],  # pyrefly: ignore[bad-argument-type]
             ),
-            paddings=example['y_w/paddings'],
-            segment_ids=example['y_w/segment_ids'],
-            segment_pos=example['y_w/segment_pos'],
+            paddings=example['y_w/paddings'],  # pyrefly: ignore[bad-argument-type]
+            segment_ids=example['y_w/segment_ids'],  # pyrefly: ignore[bad-argument-type]
+            segment_pos=example['y_w/segment_pos'],  # pyrefly: ignore[bad-argument-type]
         ),
         y_l=DPOExampleHalf(
-            inputs=example['y_l/inputs'],
-            inputs_indicator=example['y_l/inputs_indicator'],
+            inputs=example['y_l/inputs'],  # pyrefly: ignore[bad-argument-type]
+            inputs_indicator=example['y_l/inputs_indicator'],  # pyrefly: ignore[bad-argument-type]
             labels=Labels(
-                class_ids=example['y_l/labels/ids'],
-                class_weights=example['y_l/labels/weights'],
+                class_ids=example['y_l/labels/ids'],  # pyrefly: ignore[bad-argument-type]
+                class_weights=example['y_l/labels/weights'],  # pyrefly: ignore[bad-argument-type]
             ),
-            paddings=example['y_l/paddings'],
-            segment_ids=example['y_l/segment_ids'],
-            segment_pos=example['y_l/segment_pos'],
+            paddings=example['y_l/paddings'],  # pyrefly: ignore[bad-argument-type]
+            segment_ids=example['y_l/segment_ids'],  # pyrefly: ignore[bad-argument-type]
+            segment_pos=example['y_l/segment_pos'],  # pyrefly: ignore[bad-argument-type]
         ),
     )
 
@@ -1338,12 +1338,12 @@ class LanguageModelDPO(base_model.BaseModel):
     model_type: The type of language model based on the tokens visibility.
   """
 
-  ref_mdl: transformer_models.TransformerLm = pax_fiddle.instance_field(
+  ref_mdl: transformer_models.TransformerLm = pax_fiddle.instance_field(  # pyrefly: ignore[bad-assignment]
       transformer_models.TransformerLm
   )
   """The reference model. Not back-proped into."""
 
-  mdl: transformer_models.TransformerLm = pax_fiddle.instance_field(
+  mdl: transformer_models.TransformerLm = pax_fiddle.instance_field(  # pyrefly: ignore[bad-assignment]
       transformer_models.TransformerLm
   )
   """The model to be optimized."""
@@ -1351,7 +1351,7 @@ class LanguageModelDPO(base_model.BaseModel):
   beta: float = 0.1
   """kl divergence regularization weight."""
 
-  token_counter: embedding_softmax.TokenCounter = pax_fiddle.instance_field(
+  token_counter: embedding_softmax.TokenCounter = pax_fiddle.instance_field(  # pyrefly: ignore[bad-assignment]
       embedding_softmax.TokenCounter
   )
   """Simple counter for tracking the number of tokens; used for fine-tuning."""
@@ -1365,17 +1365,17 @@ class LanguageModelDPO(base_model.BaseModel):
           '`apply_eval_sample_weights` enabled, but the input batch does not '
           'provide the necessary `eval_sample_weights` field.'
       )
-      batch.weights = _merge_per_token_and_per_example_weights(
+      batch.weights = _merge_per_token_and_per_example_weights(  # pyrefly: ignore[missing-attribute]
           batch.weights, batch.eval_sample_weights
       )
 
-    self.token_counter(batch.inputs, batch.paddings)
+    self.token_counter(batch.inputs, batch.paddings)  # pyrefly: ignore[bad-argument-type]
 
     match self.model_type:
       case LanguageModelType.BIDIRECTIONAL:
-        batch.causal_attention_mask = jnp.zeros_like(batch.inputs)
+        batch.causal_attention_mask = jnp.zeros_like(batch.inputs)  # pyrefly: ignore[bad-argument-type, bad-assignment]
       case LanguageModelType.PREFIX:
-        batch.causal_attention_mask = 1 - batch.inputs_indicator
+        batch.causal_attention_mask = 1 - batch.inputs_indicator  # pyrefly: ignore[bad-assignment, unsupported-operation]
       case LanguageModelType.CAUSAL:
         batch.causal_attention_mask = None
 
@@ -1396,10 +1396,10 @@ class LanguageModelDPO(base_model.BaseModel):
 
     # Ref = reference policy; pi = current policy.
     return NestedMap(
-        y_l_ref=self.ref_mdl(**y_l.as_xformer_lm_input()),
-        y_l_pi=self.mdl(**y_l.as_xformer_lm_input()),
-        y_w_ref=self.ref_mdl(**y_w.as_xformer_lm_input()),
-        y_w_pi=self.mdl(**y_w.as_xformer_lm_input()),
+        y_l_ref=self.ref_mdl(**y_l.as_xformer_lm_input()),  # pyrefly: ignore[bad-argument-type]
+        y_l_pi=self.mdl(**y_l.as_xformer_lm_input()),  # pyrefly: ignore[bad-argument-type]
+        y_w_ref=self.ref_mdl(**y_w.as_xformer_lm_input()),  # pyrefly: ignore[bad-argument-type]
+        y_w_pi=self.mdl(**y_w.as_xformer_lm_input()),  # pyrefly: ignore[bad-argument-type]
     )
 
   def compute_loss(
@@ -1420,11 +1420,11 @@ class SequenceModel(base_model.BaseModel):
       amount of prob mass to all other tokens.
   """
 
-  model_tpl: LayerTpl = template_field(
+  model_tpl: LayerTpl = template_field(  # pyrefly: ignore[bad-assignment]
       transformer_models.TransformerEncoderDecoder
   )
   return_predictions: bool = False
-  decoder_tpl: DecoderHParams = base_layer.instance_field(GreedyDecoderHParams)
+  decoder_tpl: DecoderHParams = base_layer.instance_field(GreedyDecoderHParams)  # pyrefly: ignore[bad-assignment]
   label_smoothing_prob: float | None = None
 
   def setup(self) -> None:
@@ -1643,7 +1643,7 @@ class SequenceModel(base_model.BaseModel):
           eos_id=decoder_params.eos_id,
           cf_guidance_scale=decoder_params.cf_guidance_scale,
           controlled_decoding=decoder_params.controlled_decoding,
-          sort_samples=decoder_params.sort_samples,
+          sort_samples=decoder_params.sort_samples,  # pyrefly: ignore[bad-argument-type]
           top_k_recall_target=decoder_params.top_k_recall_target,
           use_top_k_for_logprobs=decoder_params.use_top_k_for_logprobs,
           return_entropy_score=False,
@@ -1675,7 +1675,7 @@ class SequenceModel(base_model.BaseModel):
           input_batch.tgt.paddings,
           decoder_params.seqlen,
           prefix_lengths=prefix_lengths,
-          eos_id=decoder_params.eos_id,
+          eos_id=decoder_params.eos_id,  # pyrefly: ignore[bad-argument-type]
           fprop_fn=fprop_fn,
           transform_state_fn=transform_decode_state_fn,
       )
@@ -1807,23 +1807,23 @@ class DPOExampleSeq2Seq:
   def from_feature_converter(cls, example: Mapping[str, JTensor]):
     return cls(
         y_w=DPOExampleHalfSeq2Seq(
-            inputs=example['inputs'],
-            input_paddings=example['input_paddings'],
-            targets=example['targets_w'],
-            target_paddings=example['targets_w/paddings'],
+            inputs=example['inputs'],  # pyrefly: ignore[bad-argument-type]
+            input_paddings=example['input_paddings'],  # pyrefly: ignore[bad-argument-type]
+            targets=example['targets_w'],  # pyrefly: ignore[bad-argument-type]
+            target_paddings=example['targets_w/paddings'],  # pyrefly: ignore[bad-argument-type]
             labels=Labels(
-                class_ids=example['targets_w/labels/ids'],
-                class_weights=example['targets_w/labels/weights'],
+                class_ids=example['targets_w/labels/ids'],  # pyrefly: ignore[bad-argument-type]
+                class_weights=example['targets_w/labels/weights'],  # pyrefly: ignore[bad-argument-type]
             ),
         ),
         y_l=DPOExampleHalfSeq2Seq(
-            inputs=example['inputs'],
-            input_paddings=example['input_paddings'],
-            targets=example['targets_l'],
-            target_paddings=example['targets_l/paddings'],
+            inputs=example['inputs'],  # pyrefly: ignore[bad-argument-type]
+            input_paddings=example['input_paddings'],  # pyrefly: ignore[bad-argument-type]
+            targets=example['targets_l'],  # pyrefly: ignore[bad-argument-type]
+            target_paddings=example['targets_l/paddings'],  # pyrefly: ignore[bad-argument-type]
             labels=Labels(
-                class_ids=example['targets_l/labels/ids'],
-                class_weights=example['targets_l/labels/weights'],
+                class_ids=example['targets_l/labels/ids'],  # pyrefly: ignore[bad-argument-type]
+                class_weights=example['targets_l/labels/weights'],  # pyrefly: ignore[bad-argument-type]
             ),
         ),
     )
@@ -1839,7 +1839,7 @@ class SequenceModelDPO(base_model.BaseModel):
       amount of prob mass to all other tokens.
   """
 
-  model_tpl: LayerTpl = template_field(
+  model_tpl: LayerTpl = template_field(  # pyrefly: ignore[bad-assignment]
       transformer_models.TransformerEncoderDecoder
   )
   beta: float = 0.1
@@ -1897,8 +1897,8 @@ class ClassificationModel(base_model.BaseModel):
       pass to the classification network.
   """
 
-  network_tpl: LayerTpl = template_field(resnets.ResNet)
-  softmax_tpl: LayerTpl = template_field(embedding_softmax.FullSoftmax)
+  network_tpl: LayerTpl = template_field(resnets.ResNet)  # pyrefly: ignore[bad-assignment]
+  softmax_tpl: LayerTpl = template_field(embedding_softmax.FullSoftmax)  # pyrefly: ignore[bad-assignment]
   input_field: str = 'image'
   label_field: str = 'label_probs'
 
@@ -2015,7 +2015,7 @@ class ClassificationModel(base_model.BaseModel):
     """Computes predictions and runs metrics."""
     label_probs = input_batch[self.label_field]
     predictions = self.compute_predictions(input_batch)
-    losses, _ = self.compute_loss(predictions, input_batch)
+    losses, _ = self.compute_loss(predictions, input_batch)  # pyrefly: ignore[bad-argument-type]
 
     per_example_out = NestedMap()
     eval_metrics = NestedMap()
@@ -2044,7 +2044,7 @@ class BertModel(base_model.BaseModel):
       training, even if pre-generated masks exist in the training examples.
   """
 
-  lm_tpl: LayerTpl = template_field(transformer_models.TransformerLm)
+  lm_tpl: LayerTpl = template_field(transformer_models.TransformerLm)  # pyrefly: ignore[bad-assignment]
   label_smoothing_prob: float | None = None
   mask_token_id: int = 0
   force_mask_generation: bool = False
@@ -2152,8 +2152,8 @@ class ClassificationMLPModel(base_model.BaseModel):
     softmax_tpl: Input softmax_tpl embedding lookup layer.
   """
 
-  mlp_tpl: LayerTpl = template_field(linears.MLPBlock)
-  softmax_tpl: LayerTpl = template_field(
+  mlp_tpl: LayerTpl = template_field(linears.MLPBlock)  # pyrefly: ignore[bad-assignment]
+  softmax_tpl: LayerTpl = template_field(  # pyrefly: ignore[bad-assignment]
       embedding_softmax.SharedEmbeddingSoftmax
   )
 

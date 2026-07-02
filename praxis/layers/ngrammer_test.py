@@ -48,7 +48,7 @@ class NgrammerTest(test_utils.TestCase):
   )
   def test_get_bigram_ids(self, vocab_size):
     ids = np.random.randint(vocab_size, size=(2, 16), dtype=np.int64)
-    ngram_ids = ngrammer.get_bigram_ids(ids, vocab_size)
+    ngram_ids = ngrammer.get_bigram_ids(ids, vocab_size)  # pyrefly: ignore[bad-argument-type]
     np_ngram_ids = to_np(ngram_ids)
     self.assertLess(np.max(np_ngram_ids), vocab_size**2)
 
@@ -205,7 +205,7 @@ class NgrammerTest(test_utils.TestCase):
                             [batch_size, seq_len, num_heads, dim_per_head])
     for i in range(num_heads):
       input_ids_per_head = inputs[:, :, i]
-      ngram_ids_per_head = ngrammer.get_bigram_ids(input_ids_per_head,
+      ngram_ids_per_head = ngrammer.get_bigram_ids(input_ids_per_head,  # pyrefly: ignore[bad-argument-type]
                                                    unigram_vocab_size)
       ngram_ids_per_head *= (i + 1)
       ngram_ids_per_head += (i + 1)
@@ -221,7 +221,7 @@ class NgrammerTest(test_utils.TestCase):
       else:
         input_embs_ln = ngrammer_layer.emb_layer_norm[i](input_embs[:, :, i, :])
         ngram_embs_slice = ngram_embs[:, :, i, :] - input_embs_ln
-      self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))
+      self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))  # pyrefly: ignore[bad-argument-type]
 
   @parameterized.parameters(
       (16, 8, 2, 32, True),
@@ -271,7 +271,7 @@ class NgrammerTest(test_utils.TestCase):
                             [batch_size, seq_len, num_heads, dim_per_head])
     for i in range(num_heads):
       input_ids_per_head = inputs
-      ngram_ids_per_head = ngrammer.get_bigram_ids(input_ids_per_head,
+      ngram_ids_per_head = ngrammer.get_bigram_ids(input_ids_per_head,  # pyrefly: ignore[bad-argument-type]
                                                    unigram_vocab_size)
       ngram_ids_per_head *= (i + 1)
       ngram_ids_per_head += (i + 1)
@@ -287,7 +287,7 @@ class NgrammerTest(test_utils.TestCase):
       else:
         input_embs_ln = ngrammer_layer.emb_layer_norm[i](input_embs[:, :, i, :])
         ngram_embs_slice = ngram_embs[:, :, i, :] - input_embs_ln
-      self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))
+      self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))  # pyrefly: ignore[bad-argument-type]
 
   @parameterized.parameters(
       (8, 2, 4, 32, True, True),
@@ -357,7 +357,7 @@ class NgrammerTest(test_utils.TestCase):
       input_ids_per_head = cluster_ids[:, :, i]
       pair_ids_per_head = None
       if use_attention_scores:
-        pair_ids_per_head = pair_ids[:, i, :]
+        pair_ids_per_head = pair_ids[:, i, :]  # pyrefly: ignore[unsupported-operation]
       ngram_ids_per_head = ngrammer.get_bigram_ids(
           input_ids_per_head, num_clusters, pair_ids=pair_ids_per_head)
       ngram_ids_per_head *= (i + 1)
@@ -376,7 +376,7 @@ class NgrammerTest(test_utils.TestCase):
         input_embs_ln = vq_ngrammer_layer.ngram_layer.emb_layer_norm[i](
             input_embs[:, :, i, :])
         ngram_embs_slice = ngram_embs[:, :, i, :] - input_embs_ln
-      self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))
+      self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))  # pyrefly: ignore[bad-argument-type]
 
   @parameterized.parameters(
       (8, 2, 4, 32, True, True),
@@ -434,7 +434,7 @@ class NgrammerTest(test_utils.TestCase):
       for step in range(seq_len):
         attention_score = None
         if use_attention_scores:
-          attention_score = attention_scores[:, :, step, :]
+          attention_score = attention_scores[:, :, step, :]  # pyrefly: ignore[unsupported-operation]
         ngram_embs_extend_step = vq_ngrammer_layer.extend_step(
             input_embs, step=step, attention_score=attention_score)
         self.assertAllClose(
@@ -628,7 +628,7 @@ class NgrammerTest(test_utils.TestCase):
       else:
         ngram_embs_slice = ngram_embs[:, :, i, :] - input_embs[:, :, i, :]
         ngram_embs_slice *= (1 - paddings[:, :, np.newaxis])
-      self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))
+      self.assertAllClose(to_np(ngram_embs_slice), to_np(ngram_embs_expected))  # pyrefly: ignore[bad-argument-type]
 
 
 if __name__ == '__main__':

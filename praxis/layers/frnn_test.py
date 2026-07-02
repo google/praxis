@@ -66,7 +66,7 @@ class FRNNTest(test_utils.TestCase):
     )
     input_lens = np.random.randint(1, seqlen + 1, size=batch)
     sequence_mask = self._sequence_mask(
-        input_lens, maxlen=seqlen, dtype=jnp.float32
+        input_lens, maxlen=seqlen, dtype=jnp.float32  # pyrefly: ignore[bad-argument-type]
     )
     padding = 1.0 - sequence_mask
     padding = padding[:, :, None]
@@ -271,7 +271,7 @@ class FRNNTest(test_utils.TestCase):
       self.assertAllClose(frnn_state.m, stack_frnn_state[ii].m)
       self.assertAllClose(frnn_state.c, stack_frnn_state[ii].c)
       num_input_nodes = output_dim
-    self.assertAllClose(stack_frnn_act, frnn_act)
+    self.assertAllClose(stack_frnn_act, frnn_act)  # pyrefly: ignore[unbound-name]
 
   @parameterized.parameters(
       (jax_rnn_cell.LstmCellSimple, False, 1),

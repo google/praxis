@@ -75,7 +75,7 @@ class TokenCounter(base_layer.BaseLayer):
         'approx_total_tokens_mm', approx_total_tokens_mm, trainable=False
     )
 
-  def __call__(self, inputs: JTensor, paddings: JTensor) -> JTensor:
+  def __call__(self, inputs: JTensor, paddings: JTensor) -> JTensor:  # pyrefly: ignore[bad-return]
     """Track total non-padding tokens.
 
     Args:
@@ -114,8 +114,8 @@ class Embedding(base_layer.BaseLayer):
   lookup_style: str = 'index'
   scale_sqrt_depth: bool = False
   set_nan_for_oob_id: bool = False
-  array_lookup: base_ops.ArrayLookup = instance_field(base_ops.ArrayLookup)
-  einsum: base_ops.EinsumOp = instance_field(base_ops.EinsumOp)
+  array_lookup: base_ops.ArrayLookup = instance_field(base_ops.ArrayLookup)  # pyrefly: ignore[bad-assignment]
+  einsum: base_ops.EinsumOp = instance_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
@@ -203,12 +203,12 @@ class FullSoftmax(base_layer.BaseLayer):
   input_dims: int = 0
   num_classes: int = 0
   soft_cap_logits: float | None = 0.0
-  bi_tempered_loss_tpl: LayerTpl | None = template_field(None)
+  bi_tempered_loss_tpl: LayerTpl | None = template_field(None)  # pyrefly: ignore[bad-assignment]
   label_smoothing_prob: float = 0.0
   label_smoothing_apply_for_eval: bool = True
   z_loss_weight: float = 0.0
   bias_init: float | None = 0.0
-  feed_forward_tpl: LayerTpl | None = template_field(linears.FeedForward)
+  feed_forward_tpl: LayerTpl | None = template_field(linears.FeedForward)  # pyrefly: ignore[bad-assignment]
   scale_before_logits: bool = False
   chunk_size: int | None = None
 
@@ -316,7 +316,7 @@ class FullSoftmax(base_layer.BaseLayer):
       )
     else:
       per_example_xent, per_example_argmax = self._compute_xent_scan(
-          inputs, class_ids
+          inputs, class_ids  # pyrefly: ignore[bad-argument-type]
       )
       logits = log_probs = None
 
@@ -339,7 +339,7 @@ class FullSoftmax(base_layer.BaseLayer):
 
     if logits is not None:
       logits = logits.astype(inputs.dtype)
-      log_probs = log_probs.astype(inputs.dtype)
+      log_probs = log_probs.astype(inputs.dtype)  # pyrefly: ignore[missing-attribute]
 
     output_nmap = NestedMap(
         logits=logits,
@@ -359,7 +359,7 @@ class FullSoftmax(base_layer.BaseLayer):
           / total_weight
       )
     if self.z_loss_weight > 0.0:
-      output_nmap['z_loss'] = z_loss
+      output_nmap['z_loss'] = z_loss  # pyrefly: ignore[unbound-name]
     return output_nmap
 
   @nn.nowrap
@@ -392,7 +392,7 @@ class FullSoftmax(base_layer.BaseLayer):
 
     if class_probabilities is None:
       class_probabilities = jax.nn.one_hot(
-          jnp.squeeze(class_ids, axis=-1), self.num_classes, dtype=jnp.float32
+          jnp.squeeze(class_ids, axis=-1), self.num_classes, dtype=jnp.float32  # pyrefly: ignore[bad-argument-type]
       )
       if self.label_smoothing_prob > 0.0:
         # Label smoothing reduce the probability of the label from 1 to
@@ -444,8 +444,8 @@ class FullSoftmax(base_layer.BaseLayer):
       return None, (per_example_xent, per_example_argmax)
 
     seqlen = inputs.shape[1]
-    input_chunk = chunk.chunk(inputs, chunk_size=self.chunk_size)
-    class_ids = chunk.chunk(class_ids, chunk_size=self.chunk_size)
+    input_chunk = chunk.chunk(inputs, chunk_size=self.chunk_size)  # pyrefly: ignore[bad-argument-type]
+    class_ids = chunk.chunk(class_ids, chunk_size=self.chunk_size)  # pyrefly: ignore[bad-argument-type]
     # Workaround: flax lazy init doesn't work in scan, so init all sublayers.
     step_fn(None, (input_chunk[0, :1], class_ids[0, :1]))
     _, (per_example_xent, per_example_argmax) = jax.lax.scan(
@@ -467,8 +467,8 @@ class SharedEmbeddingSoftmax(FullSoftmax):
 
   lookup_style: str = 'index'
   scale_sqrt_depth: bool = False
-  array_lookup_tpl: LayerTpl = template_field(base_ops.ArrayLookup)
-  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  array_lookup_tpl: LayerTpl = template_field(base_ops.ArrayLookup)  # pyrefly: ignore[bad-assignment]
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     super().setup()
@@ -523,9 +523,9 @@ class NClassMajorSharedEmbeddingSoftmax(SharedEmbeddingSoftmax):
   """
 
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.Identity)
+      template_field(activations.Identity)  # pyrefly: ignore[bad-assignment]
   )
-  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
   use_bias: bool = True
 
   def setup(self) -> None:
@@ -627,7 +627,7 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
   num_classes: int = 0
   soft_cap_logits: float | None = 0.0
   bias_init: float | None = 0.0
-  feed_forward_tpl: LayerTpl | None = template_field(linears.FeedForward)
+  feed_forward_tpl: LayerTpl | None = template_field(linears.FeedForward)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     if self.feed_forward_tpl:
@@ -721,7 +721,7 @@ class SigmoidCrossEntropy(base_layer.BaseLayer):
             'check this is what you intended to do.'
         )
       class_probabilities = jax.nn.one_hot(
-          jnp.squeeze(class_ids, axis=-1), self.num_classes, dtype=jnp.float32
+          jnp.squeeze(class_ids, axis=-1), self.num_classes, dtype=jnp.float32  # pyrefly: ignore[bad-argument-type]
       )
       class_probabilities = jax.lax.stop_gradient(class_probabilities)
 
@@ -932,7 +932,7 @@ class GShardSharedEmbeddingSoftmax(base_layer.BaseLayer):
 
     if class_probabilities is None:
       class_probabilities = jax.nn.one_hot(
-          jnp.squeeze(class_ids, axis=-1), self.num_classes, dtype=jnp.float32
+          jnp.squeeze(class_ids, axis=-1), self.num_classes, dtype=jnp.float32  # pyrefly: ignore[bad-argument-type]
       )
 
     class_probabilities_prior_to_label_smoothing = None
@@ -1266,7 +1266,7 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     # jax.lax.iota, rather than jnp.arange.
     prefix_position = jax.lax.iota(dtype=jnp.int32, size=seq_length)
     # [B, 1]
-    position = jnp.broadcast_to(position, [inputs_shape[0]])[:, jnp.newaxis]
+    position = jnp.broadcast_to(position, [inputs_shape[0]])[:, jnp.newaxis]  # pyrefly: ignore[bad-argument-type]
     # [B, P]
     prefix_position = position - jnp.flip(prefix_position)[jnp.newaxis, :]
     prefix_position = jnp.where(
@@ -1290,8 +1290,8 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
 
   max_seq_length: int = 10_240
   lookup_style: str = 'matmul'
-  array_lookup_tpl: LayerTpl = template_field(base_ops.ArrayLookup)
-  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)
+  array_lookup_tpl: LayerTpl = template_field(base_ops.ArrayLookup)  # pyrefly: ignore[bad-assignment]
+  einsum_tpl: LayerTpl = template_field(base_ops.EinsumOp)  # pyrefly: ignore[bad-assignment]
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):
     """Represents how intermediate values should be partitioned across a mesh.
@@ -1350,7 +1350,7 @@ class TrainablePositionalEmbedding(PositionalEmbedding):
     if self.lookup_style == 'index':
       embs = self.array_lookup(jnp.asarray(pos_emb_var), (position,))
     elif self.lookup_style == 'matmul':
-      one_hot_ids = jax.nn.one_hot(position, seq_length, dtype=self.fprop_dtype)
+      one_hot_ids = jax.nn.one_hot(position, seq_length, dtype=self.fprop_dtype)  # pyrefly: ignore[bad-argument-type]
       embs = self.einsum('...y,yz->...z', one_hot_ids, pos_emb_var)
     else:
       raise ValueError('Unknown lookup style.')

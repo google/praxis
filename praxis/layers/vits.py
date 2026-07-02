@@ -198,7 +198,7 @@ class VitEntryLayers(base_layer.BaseLayer):
   cls_emb_init: WeightInit = dataclasses.field(
       default_factory=lambda: WeightInit.Constant(0.0)
   )
-  pos_emb_tpl: LayerTpl | None = template_field(
+  pos_emb_tpl: LayerTpl | None = template_field(  # pyrefly: ignore[bad-assignment]
       embedding_softmax.TrainablePositionalEmbedding
   )
   input_fc_has_bias: bool = True
@@ -276,8 +276,8 @@ class VitEntryLayers(base_layer.BaseLayer):
       pos_emb = self.pos_emb(seq_length=num_pos_embed)
       # Only support image shape and 2d pos_emb_shape for pos interpolation.
       if len(inputs.shape) == 4 and len(self.pos_emb_shapes) == 2:
-        row_patch_count = height // self.patch_size
-        col_patch_count = width // self.patch_size
+        row_patch_count = height // self.patch_size  # pyrefly: ignore[unbound-name]
+        col_patch_count = width // self.patch_size  # pyrefly: ignore[unbound-name]
         if self.pos_emb_shapes != (row_patch_count, col_patch_count):
           pos_emb = interpolate_embedding_2d(
               pos_emb, self.pos_emb_shapes, (row_patch_count, col_patch_count)
@@ -324,8 +324,8 @@ class VitExitLayers(base_layer.BaseLayer):
   pre_ln: bool = True
   output_fc_tanh: bool = True
   output_fc_has_bias: bool = True
-  pooling_tpl: LayerTpl = template_field(poolings.GlobalPooling)
-  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)
+  pooling_tpl: LayerTpl = template_field(poolings.GlobalPooling)  # pyrefly: ignore[bad-assignment]
+  ln_tpl: LayerTpl = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
 
@@ -400,11 +400,11 @@ class VisionTransformer(base_layer.BaseLayer):
       devices on the entry and exit layers. This is a convenient way to shard
       small entry/exit layers.
   """
-  entry_layers_tpl: LayerTpl = template_field(VitEntryLayers)
-  transformer_layers_tpl: LayerTpl = template_field(
+  entry_layers_tpl: LayerTpl = template_field(VitEntryLayers)  # pyrefly: ignore[bad-assignment]
+  transformer_layers_tpl: LayerTpl = template_field(  # pyrefly: ignore[bad-assignment]
       transformers.StackedTransformer
   )
-  exit_layers_tpl: LayerTpl = template_field(VitExitLayers)
+  exit_layers_tpl: LayerTpl = template_field(VitExitLayers)  # pyrefly: ignore[bad-assignment]
   full_data_parallel_on_entry_exit: bool = False
 
   class ActivationSharding(base_layer.BaseLayer.ActivationSharding):

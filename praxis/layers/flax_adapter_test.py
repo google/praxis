@@ -112,11 +112,11 @@ class DirectMixLayer(base_layer.BaseLayer):
   def __call__(self, x: JTensor) -> tuple[JTensor, JTensor, JTensor]:
     # Call cnn_p1 twice to verify this doesn't break initialization.
     # pylint: disable=not-callable
-    out1 = self.cnn_p1(
+    out1 = self.cnn_p1(  # pyrefly: ignore[not-callable]
         x, use_running_average=self.use_running_average
-    ) + self.cnn_p1(x / 2.0, use_running_average=self.use_running_average)
-    out2 = self.cnn_p2(x, use_running_average=self.use_running_average)
-    out = self.bn(out1 + out2)
+    ) + self.cnn_p1(x / 2.0, use_running_average=self.use_running_average)  # pyrefly: ignore[not-callable]
+    out2 = self.cnn_p2(x, use_running_average=self.use_running_average)  # pyrefly: ignore[not-callable]
+    out = self.bn(out1 + out2)  # pyrefly: ignore[not-callable]
     # pylint: enable=not-callable
     return out1, out2, out
 

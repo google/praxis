@@ -742,7 +742,7 @@ class PostInitParamsTest(test_utils.TestCase):
     x = jnp.ones((batch, time, dim))
     ffwd = FeedForward(name='ffw', output_dims=4 * dim)
     v = ffwd.abstract_init_with_mdl_config(x)
-    self.assertEqual(Bias, v['bias']['_hparams'].cls)
+    self.assertEqual(Bias, v['bias']['_hparams'].cls)  # pyrefly: ignore[bad-index]
 
   def test_auto_param_inheritance(self):
     batch, time, dim = 1, 2, 3
@@ -760,10 +760,10 @@ class PostInitParamsTest(test_utils.TestCase):
     v = ffwd.abstract_init_with_mdl_config(x)
     # default initialization is properly propagated through to the children
     # layers.
-    self.assertEqual(2.0, v['linear']['_hparams'].params_init.scale)
-    self.assertEqual(2.0, v['bias']['_hparams'].params_init.scale)
-    self.assertEqual(jnp.float64, v['linear']['_hparams'].dtype)
-    self.assertEqual(jnp.float64, v['linear']['_hparams'].fprop_dtype)
+    self.assertEqual(2.0, v['linear']['_hparams'].params_init.scale)  # pyrefly: ignore[bad-index]
+    self.assertEqual(2.0, v['bias']['_hparams'].params_init.scale)  # pyrefly: ignore[bad-index]
+    self.assertEqual(jnp.float64, v['linear']['_hparams'].dtype)  # pyrefly: ignore[bad-index]
+    self.assertEqual(jnp.float64, v['linear']['_hparams'].fprop_dtype)  # pyrefly: ignore[bad-index]
 
   def test_instance_field(self):
     class ChildLayer(base_layer.BaseLayer):
@@ -774,7 +774,7 @@ class PostInitParamsTest(test_utils.TestCase):
 
     class ParentLayer(base_layer.BaseLayer):
       # instance fields:
-      a: base_layer.BaseLayer = base_layer.instance_field(ChildLayer)
+      a: base_layer.BaseLayer = base_layer.instance_field(ChildLayer)  # pyrefly: ignore[bad-assignment]
 
       def __call__(self):
         self.a()
@@ -850,12 +850,12 @@ class PostInitParamsTest(test_utils.TestCase):
     print('post_init_config', configs)
 
     # configs are properly propagated down.
-    self.assertEqual(3.0, configs['c']['a']['_hparams'].params_init.scale)
-    self.assertEqual(3.0, configs['c']['b']['_hparams'].params_init.scale)
-    self.assertEqual(jnp.bfloat16, configs['c']['a']['_hparams'].dtype)
-    self.assertEqual(jnp.float16, configs['c']['a']['_hparams'].fprop_dtype)
-    self.assertEqual(jnp.bfloat16, configs['c']['b']['_hparams'].dtype)
-    self.assertEqual(jnp.float16, configs['c']['b']['_hparams'].fprop_dtype)
+    self.assertEqual(3.0, configs['c']['a']['_hparams'].params_init.scale)  # pyrefly: ignore[bad-index]
+    self.assertEqual(3.0, configs['c']['b']['_hparams'].params_init.scale)  # pyrefly: ignore[bad-index]
+    self.assertEqual(jnp.bfloat16, configs['c']['a']['_hparams'].dtype)  # pyrefly: ignore[bad-index]
+    self.assertEqual(jnp.float16, configs['c']['a']['_hparams'].fprop_dtype)  # pyrefly: ignore[bad-index]
+    self.assertEqual(jnp.bfloat16, configs['c']['b']['_hparams'].dtype)  # pyrefly: ignore[bad-index]
+    self.assertEqual(jnp.float16, configs['c']['b']['_hparams'].fprop_dtype)  # pyrefly: ignore[bad-index]
 
     l2_init_vars = l2.init({'params': jax.random.PRNGKey(123456)})
     out = l2.apply(l2_init_vars)

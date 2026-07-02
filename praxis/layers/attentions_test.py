@@ -89,7 +89,7 @@ class BlockUtilsTest(test_utils.TestCase, parameterized.TestCase):
   def test_extract_block_context(self, block_size, left_context, right_context):
     x = np.random.random([2, 6, 2, 3, 4])
     x_context = attentions.extract_block_context(
-        x, block_size, left_context, right_context
+        x, block_size, left_context, right_context  # pyrefly: ignore[bad-argument-type]
     )
     # Check shape.
     batch_size = x.shape[0]
@@ -181,7 +181,7 @@ class MaskUtilsTest(test_utils.TestCase, parameterized.TestCase):
     padding = jnp.asarray(get_padding_from_length(length))
 
     mask = attentions.limited_context_mask(
-        left_context, right_context, padding.shape[1], np.float32
+        left_context, right_context, padding.shape[1], np.float32  # pyrefly: ignore[bad-argument-type]
     )  # pytype: disable=wrong-arg-types
 
     # Merge the above mask with paddings:
@@ -207,7 +207,7 @@ class MaskUtilsTest(test_utils.TestCase, parameterized.TestCase):
 
   def test_mask(self):
     a = np.random.randint(0, 6, size=[2, 50])
-    jax_mask = attentions.causal_segment_mask(a, jnp.float32)
+    jax_mask = attentions.causal_segment_mask(a, jnp.float32)  # pyrefly: ignore[bad-argument-type]
     tf_mask = batch_major_attention.CausalSegmentMask(a, tf.float32)
     self.assertAllClose(test_utils.to_np(jax_mask), test_utils.to_np(tf_mask))
 
@@ -216,7 +216,7 @@ class MaskUtilsTest(test_utils.TestCase, parameterized.TestCase):
     causal_mask = np.zeros([2, 5])
     # Only enable causal mask for the last 2 token positions.
     causal_mask[:, 3:] = 1
-    jax_mask = attentions.causal_segment_mask(a, jnp.float32, causal_mask)
+    jax_mask = attentions.causal_segment_mask(a, jnp.float32, causal_mask)  # pyrefly: ignore[bad-argument-type]
     mask = np.array(jax_mask)
     mask[mask < 0] = -1
     mask = mask.astype(np.int32)
@@ -488,7 +488,7 @@ class AttentionsTest(test_utils.TestCase):
     key_vec = query_vec
     value_vec = query_vec
     fake_query_vec = jnp.zeros_like(query_vec)
-    atten_mask = attentions.causal_mask(query_vec)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
     segment_pos = np.tile(np.arange(source_max_length), (target_batch_size, 1))
 
     starting_index = 0
@@ -905,7 +905,7 @@ class AttentionsTest(test_utils.TestCase):
     key_vec = query_vec
     value_vec = query_vec
     fake_query_vec = jnp.zeros_like(query_vec)
-    atten_mask = attentions.causal_mask(query_vec)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
     segment_pos = np.tile(np.arange(source_max_length), (target_batch_size, 1))
 
     starting_index = 0
@@ -1289,7 +1289,7 @@ class AttentionsTest(test_utils.TestCase):
 
     # -> [B, U, C, ...]
     key_block_context = attentions.extract_block_context(
-        key_vec,
+        key_vec,  # pyrefly: ignore[bad-argument-type]
         block_size=block_size,
         left_context=left_context,
         right_context=right_context,
@@ -1372,7 +1372,7 @@ class AttentionsTest(test_utils.TestCase):
 
     # -> [B, U, C, ...]
     key_block_context = attentions.extract_block_context(
-        key_vec,
+        key_vec,  # pyrefly: ignore[bad-argument-type]
         block_size=block_size,
         left_context=left_context,
         right_context=right_context,
@@ -1514,7 +1514,7 @@ class AttentionsTest(test_utils.TestCase):
     segment_pos = np.random.randint(
         0, source_max_length, [target_batch_size, source_max_length]
     ).astype('int32')
-    atten_mask = attentions.causal_mask(query_vec)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -1590,7 +1590,7 @@ class AttentionsTest(test_utils.TestCase):
         size=[target_batch_size, source_max_length, mdl_dim]
     ).astype(np.float32)
     fake_input = jnp.zeros_like(inputs)
-    atten_mask = attentions.causal_mask(inputs)
+    atten_mask = attentions.causal_mask(inputs)  # pyrefly: ignore[bad-argument-type]
     segment_pos = np.random.randint(
         0, source_max_length, [target_batch_size, source_max_length]
     ).astype('int32')
@@ -1983,7 +1983,7 @@ class AttentionsTest(test_utils.TestCase):
     )
     key_vec = query_vec
     value_vec = query_vec
-    atten_mask = attentions.causal_mask(query_vec)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
     prefix_paddings = py_utils.sequence_paddings(
         [prefix_len] * target_batch_size, source_max_length
     )
@@ -2072,8 +2072,8 @@ class AttentionsTest(test_utils.TestCase):
     prefix = query_vec[:, 0:prefix_len, :]
     key_vec = query_vec
     value_vec = query_vec
-    atten_mask = attentions.causal_mask(query_vec)
-    prefix_atten_mask = attentions.causal_mask(prefix)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
+    prefix_atten_mask = attentions.causal_mask(prefix)  # pyrefly: ignore[bad-argument-type]
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -2191,8 +2191,8 @@ class AttentionsTest(test_utils.TestCase):
     prefix = query_vec[:, 0:prefix_len, :]
     key_vec = query_vec
     value_vec = query_vec
-    atten_mask = attentions.causal_mask(query_vec)
-    prefix_atten_mask = attentions.causal_mask(prefix)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
+    prefix_atten_mask = attentions.causal_mask(prefix)  # pyrefly: ignore[bad-argument-type]
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -2275,8 +2275,8 @@ class AttentionsTest(test_utils.TestCase):
     prefix = query_vec[:, 0:prefix_len, :]
     key_vec = query_vec
     value_vec = query_vec
-    atten_mask = attentions.causal_mask(query_vec)
-    prefix_atten_mask = attentions.causal_mask(prefix)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
+    prefix_atten_mask = attentions.causal_mask(prefix)  # pyrefly: ignore[bad-argument-type]
     suffix_len = 8
 
     with base_layer.JaxContext.new_context():
@@ -2401,7 +2401,7 @@ class AttentionsTest(test_utils.TestCase):
         size=[target_batch_size, source_max_length, mdl_dim]
     ).astype(np.float32)
     fake_query_vec = jnp.zeros_like(query_vec)
-    atten_mask = attentions.causal_mask(query_vec)
+    atten_mask = attentions.causal_mask(query_vec)  # pyrefly: ignore[bad-argument-type]
     segment_pos = np.tile(np.arange(source_max_length), (target_batch_size, 1))
 
     with base_layer.JaxContext.new_context():

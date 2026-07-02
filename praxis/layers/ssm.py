@@ -59,7 +59,7 @@ def make_hippo(n, hippo_type):
   elif hippo_type == "LagT":
     amat = jnp.ones([n, n])
     amat = jnp.tril(amat)
-  return -amat
+  return -amat  # pyrefly: ignore[unbound-name]
 
 
 def make_nplr_hippo(n, hippo_type):
@@ -76,7 +76,7 @@ def make_nplr_hippo(n, hippo_type):
     pmat = jnp.ones(n) * jnp.sqrt(0.5)
     # HiPPO also specifies the B matrix
     bmat = jnp.ones(n)
-  return nhippo, pmat, bmat
+  return nhippo, pmat, bmat  # pyrefly: ignore[unbound-name]
 
 
 def make_dplr_hippo(n, hippo_type):
@@ -366,7 +366,7 @@ class S5(SSM):
     wp = self.weight_split_dims_mapping
 
     # We freeze the step_size without training, because it behaves better.
-    self.ss = self.step_size
+    self.ss = self.step_size  # pyrefly: ignore[bad-assignment]
     self.dmat = self.create_variable(
         "D",
         WeightHParams(

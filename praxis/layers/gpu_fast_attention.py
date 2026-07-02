@@ -150,7 +150,7 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
   def _blnh_pspec(self):
     """Return sharding annotations to tensors of shape [b, l, n, h]."""
     ap = self.activation_split_dims_mapping
-    return base_layer.to_partition_spec(ap.blnh, self.mesh_axis_names)
+    return base_layer.to_partition_spec(ap.blnh, self.mesh_axis_names)  # pyrefly: ignore[bad-argument-type]
 
   def _bnh_pspec(self):
     """Return sharding annotations to tensors of shape [b, n, h]."""
@@ -159,11 +159,11 @@ class GpuTritonFusedDotProductAttention(attentions.DotProductAttention):
 
   def _get_mesh(self) -> jax.sharding.Mesh:
     device_mesh = py_utils.create_device_mesh(
-        self.ici_mesh_shape,
+        self.ici_mesh_shape,  # pyrefly: ignore[bad-argument-type]
         self.dcn_mesh_shape,
         contiguous_submeshes=self.contiguous_submeshes,
     )
-    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)
+    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)  # pyrefly: ignore[bad-argument-type]
     return mesh
 
   def _dot_atten(
@@ -395,11 +395,11 @@ class GpuTritonFusedGroupedQueryAttention(
 
   def _get_mesh(self) -> jax.sharding.Mesh:
     device_mesh = py_utils.create_device_mesh(
-        self.ici_mesh_shape,
+        self.ici_mesh_shape,  # pyrefly: ignore[bad-argument-type]
         self.dcn_mesh_shape,
         contiguous_submeshes=self.contiguous_submeshes,
     )
-    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)
+    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)  # pyrefly: ignore[bad-argument-type]
     return mesh
 
   def _atten_context(
@@ -461,11 +461,11 @@ class GpuTritonFusedMultiQueryDotProductAttention(
 
   def _get_mesh(self) -> jax.sharding.Mesh:
     device_mesh = py_utils.create_device_mesh(
-        self.ici_mesh_shape,
+        self.ici_mesh_shape,  # pyrefly: ignore[bad-argument-type]
         self.dcn_mesh_shape,
         contiguous_submeshes=self.contiguous_submeshes,
     )
-    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)
+    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)  # pyrefly: ignore[bad-argument-type]
     return mesh
 
   def _atten_context(
@@ -578,7 +578,7 @@ class GpuTritonFusedMultiQueryDotProductAttention(
     query = self._scale_query(query)
 
     blnh_pspec = base_layer.to_partition_spec(
-        self.activation_split_dims_mapping.blnh, self.mesh_axis_names
+        self.activation_split_dims_mapping.blnh, self.mesh_axis_names  # pyrefly: ignore[bad-argument-type]
     )
     bnh_pspec = jax.sharding.PartitionSpec(
         blnh_pspec[0], blnh_pspec[2], blnh_pspec[3]
@@ -614,13 +614,13 @@ class GpuTritonFusedLayerNorm(normalizations.LayerNorm):
     """Return sharding annotations to tensors of shape [b, l, e]."""
     # TODO(zhangqiaorjc): Avoid hardcode batch dim sharding..
     return base_layer.to_partition_spec(
-        [('replica', 'data'), None, None], self.mesh_axis_names
+        [('replica', 'data'), None, None], self.mesh_axis_names  # pyrefly: ignore[bad-argument-type]
     )
 
   def _replicated_pspec(self):
     """Return sharding annotations to weight tensor."""
     # TODO(zhangqiaorjc): Avoid hardcode batch dim sharding..
-    return base_layer.to_partition_spec([None], self.mesh_axis_names)
+    return base_layer.to_partition_spec([None], self.mesh_axis_names)  # pyrefly: ignore[bad-argument-type]
 
   def __call__(
       self, inputs: JTensor, paddings: JTensor | None = None
@@ -646,11 +646,11 @@ class GpuTritonFusedLayerNorm(normalizations.LayerNorm):
 
     # TODO(zhangqiaorjc): Pass a mesh from caller.
     device_mesh = py_utils.create_device_mesh(
-        self.ici_mesh_shape,
+        self.ici_mesh_shape,  # pyrefly: ignore[bad-argument-type]
         self.dcn_mesh_shape,
         contiguous_submeshes=self.contiguous_submeshes,
     )
-    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)
+    mesh = jax.sharding.Mesh(device_mesh, self.mesh_axis_names)  # pyrefly: ignore[bad-argument-type]
 
     # TODO(zhangqiaorjc): Use hparam instead of env var.
     bwd_pass_impl = os.getenv(

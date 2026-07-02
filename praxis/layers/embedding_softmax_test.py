@@ -204,7 +204,7 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     if use_class_ids and label_smoothing_prob > 0:
       class_probabilities = np.zeros([8, 10, 50])
       index = np.indices([8, 10])
-      class_probabilities[index[0], index[1], np.squeeze(class_ids, 2)] = 1
+      class_probabilities[index[0], index[1], np.squeeze(class_ids, 2)] = 1  # pyrefly: ignore[no-matching-overload]
       class_probabilities = class_probabilities * (1 - label_smoothing_prob) + (
           1 - class_probabilities
       ) * label_smoothing_prob / (p.num_classes - 1)

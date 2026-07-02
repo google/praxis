@@ -58,9 +58,9 @@ class MultitaskResidualAdapter(base_layer.BaseLayer):
   input_dims: int = 0
   bottleneck_dims: int = 0
   num_tasks: int = 1
-  norm_tpl: LayerTpl | None = template_field(normalizations.LayerNorm)
+  norm_tpl: LayerTpl | None = template_field(normalizations.LayerNorm)  # pyrefly: ignore[bad-assignment]
   activation_tpl: pax_fiddle.Config[activations.BaseActivation] = (
-      template_field(activations.ReLU)
+      template_field(activations.ReLU)  # pyrefly: ignore[bad-assignment]
   )
 
   def setup(self) -> None:
@@ -197,7 +197,7 @@ class AdaptedTransformerFeedForward(transformers.TransformerFeedForward):
     mode: sequential or parallel.
   """
 
-  adapter_tpl: LayerTpl = template_field(None)
+  adapter_tpl: LayerTpl = template_field(None)  # pyrefly: ignore[bad-assignment]
   mode: str = 'sequential'
 
   def setup(self):

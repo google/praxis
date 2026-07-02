@@ -528,7 +528,7 @@ class TransformerModelsTest(test_utils.TestCase):
     input_emb = np.random.uniform(
         size=(batch_size, seq_len, num_heads * dim_per_head)
     ).astype(np.float32)
-    segment_mask = attentions.causal_mask(input_emb)
+    segment_mask = attentions.causal_mask(input_emb)  # pyrefly: ignore[bad-argument-type]
     segment_mask = jnp.tile(segment_mask, (batch_size, 1, 1, 1))
     segment_pos = jnp.stack([jnp.arange(seq_len)] * batch_size)
     context_params = base_layer.JaxContext.HParams(do_eval=True)
@@ -1552,7 +1552,7 @@ class TransformerModelsTest(test_utils.TestCase):
     input_emb = np.random.uniform(
         size=(batch_size, seq_len, num_heads * dim_per_head)
     ).astype(np.float32)
-    segment_mask = attentions.causal_mask(input_emb)
+    segment_mask = attentions.causal_mask(input_emb)  # pyrefly: ignore[bad-argument-type]
     segment_mask = jnp.tile(segment_mask, (batch_size, 1, 1, 1))
     segment_pos = jnp.stack([jnp.arange(seq_len)] * batch_size)
     context_params = base_layer.JaxContext.HParams(do_eval=True)

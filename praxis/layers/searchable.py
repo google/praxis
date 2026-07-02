@@ -41,7 +41,7 @@ class AutoMLSelect(base_layer.BaseLayer):
       They layers must have the same shapes of input and output.
   """
 
-  search_options_tpl: Sequence[LayerTpl] | None = template_field(None)
+  search_options_tpl: Sequence[LayerTpl] | None = template_field(None)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     if not self.search_options_tpl:
