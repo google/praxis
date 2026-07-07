@@ -56,7 +56,7 @@ def _default_pmap_sharding(shape, sharded_dim=0, devices=None):
     pmap_devices = np.array(devices)
   mesh = jax.sharding.Mesh(pmap_devices, ('_pmap',))
   spec_list = [None] * len(shape)
-  spec_list[sharded_dim] = '_pmap'
+  spec_list[sharded_dim] = '_pmap'  # pyrefly: ignore[unsupported-operation]
   return jax.sharding.NamedSharding(
       mesh, jax.sharding.PartitionSpec(*spec_list)
   )

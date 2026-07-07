@@ -488,7 +488,7 @@ class LingvoInputAdaptor(BaseInput):
     self._initialize()
 
   @classmethod
-  def get_batch_size(
+  def get_batch_size(  # pyrefly: ignore[bad-override]
       cls,
       params: pax_fiddle.Config[LingvoInputAdaptor] | LingvoInputAdaptor,
   ) -> int:
@@ -506,7 +506,7 @@ class LingvoInputAdaptor(BaseInput):
     """Updates file random seed to use different seeds for different hosts."""
     if hasattr(self.input, 'file_random_seed') and self.input.file_random_seed:
       # Make sure each host uses a different random seed.
-      self.input.file_random_seed += self.infeed_host_index
+      self.input.file_random_seed += self.infeed_host_index  # pyrefly: ignore[missing-attribute]
 
   def _initialize(self) -> None:
     """Initializes the relevant fields of this adaptor input."""
@@ -641,7 +641,7 @@ class LingvoInputAdaptorNewBatchSize(LingvoInputAdaptor):
     self._current_batch_index = 0
 
   @classmethod
-  def get_batch_size(
+  def get_batch_size(  # pyrefly: ignore[bad-override]
       cls, params: pax_fiddle.Config[BaseInput] | BaseInput
   ) -> int:
     assert params.batch_size is not None
@@ -744,7 +744,7 @@ class LingvoEvalAdaptor(LingvoInputAdaptor):
         self.name,
         eval_set_size,
     )
-    global_batch_size = self.batch_size * self.num_infeed_hosts
+    global_batch_size = self.batch_size * self.num_infeed_hosts  # pyrefly: ignore[unsupported-operation]
     if eval_set_size % global_batch_size == 0:
       return ds
     total_size = (eval_set_size // global_batch_size + 1) * global_batch_size
@@ -999,7 +999,7 @@ class MultiInput(BaseInput):
       self._inputs[input_name] = instantiate(input_params)
 
   @classmethod
-  def get_batch_size(
+  def get_batch_size(  # pyrefly: ignore[bad-override]
       cls, params: pax_fiddle.Config[MultiInput] | MultiInput
   ) -> int:
     assert params.input_to_params
@@ -1091,7 +1091,7 @@ class DatasetInputSpecsProvider(BaseInputSpecsProvider):
     # Instantiate the input pipeline and get the specs.
     # In practice, we typically use it only once at model
     # initialization time.
-    input_pipeline: BaseInput = instantiate(self.input_p)
+    input_pipeline: BaseInput = instantiate(self.input_p)  # pyrefly: ignore[bad-argument-type]
     dataset = input_pipeline.dataset
     if (
         dataset

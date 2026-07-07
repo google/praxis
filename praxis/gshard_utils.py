@@ -28,10 +28,10 @@ def remove_dim(
 ) -> pytypes.SplitDimsMapping:
   """Returns a copy of split_dims_mapping with dimension 'dim' removed."""
   if dim < 0:
-    num_dims = len(split_dims_mapping)
+    num_dims = len(split_dims_mapping)  # pyrefly: ignore[bad-argument-type]
     dim = num_dims + dim
-  assert dim >= 0 and dim < len(split_dims_mapping)
-  return list(split_dims_mapping[:dim]) + list(split_dims_mapping[dim + 1 :])
+  assert dim >= 0 and dim < len(split_dims_mapping)  # pyrefly: ignore[bad-argument-type]
+  return list(split_dims_mapping[:dim]) + list(split_dims_mapping[dim + 1 :])  # pyrefly: ignore[unsupported-operation]
 
 
 def cum_sum(elements, axis=0, exclusive=False, reverse=False):
@@ -229,7 +229,7 @@ def top2_gating_on_logits(
     # expert by getting rid of the 1st expert already selected above. To do so,
     # we set a very negative value to the logit corresponding to the 1st expert.
     # Then we sample from the softmax distribution using the Gumbel max trick.
-    prng_key, subkey = jax.random.split(prng_key)
+    prng_key, subkey = jax.random.split(prng_key)  # pyrefly: ignore[bad-argument-type]
     noise = jax.random.uniform(subkey, logits.shape, dtype=logits.dtype)
     # Generates standard Gumbel(0, 1) noise, GSE tensor.
     noise = -jnp.log(-jnp.log(noise))
@@ -326,7 +326,7 @@ def top2_gating_on_logits(
     # dispatch to second-best expert. Otherwise, we dispatch with probability
     # proportional to (gate_2 / threshold).
     #
-    prng_key, subkey = jax.random.split(prng_key)
+    prng_key, subkey = jax.random.split(prng_key)  # pyrefly: ignore[bad-argument-type]
     sampled_2 = jnp.less(
         jax.random.uniform(subkey, gate_2.shape, dtype=gate_2.dtype),
         gate_2 / max(second_expert_threshold, 1e-9),

@@ -61,9 +61,9 @@ class Person:
 
 @dataclasses.dataclass
 class Vehicle:
-  wheel_tpl: pax_fiddle.Config[Wheel] = pax_fiddle.template_field(Wheel)
+  wheel_tpl: pax_fiddle.Config[Wheel] = pax_fiddle.template_field(Wheel)  # pyrefly: ignore[bad-assignment]
   num_wheels: int = 4
-  owner: Person = pax_fiddle.instance_field(Person)
+  owner: Person = pax_fiddle.instance_field(Person)  # pyrefly: ignore[bad-assignment]
   wheels: list[Wheel] | None = None  # Initialized by setup.
 
   def setup(self):
@@ -77,16 +77,16 @@ class Vehicle:
 @dataclasses.dataclass
 class ColoredVehicle(Vehicle):
   color: str = "white"
-  wheel_tpl: pax_fiddle.Config[Wheel] = pax_fiddle.template_field(
+  wheel_tpl: pax_fiddle.Config[Wheel] = pax_fiddle.template_field(  # pyrefly: ignore[bad-assignment]
       lambda: ColoredWheel(color="red")  # override color
   )
 
 
 @dataclasses.dataclass
 class Fleet:
-  vehicle_tpl: pax_fiddle.Config[Vehicle] = pax_fiddle.template_field(Vehicle)
+  vehicle_tpl: pax_fiddle.Config[Vehicle] = pax_fiddle.template_field(Vehicle)  # pyrefly: ignore[bad-assignment]
   num_vehicles: int = 1
-  manager: Person = pax_fiddle.instance_field(Person)
+  manager: Person = pax_fiddle.instance_field(Person)  # pyrefly: ignore[bad-assignment]
   vehicles: list[Vehicle] | None = None  # Initialized by setup.
 
   def setup(self):
@@ -336,8 +336,8 @@ class SubFieldAndTemplateFieldTest(testing.TestCase):
   def test_instance_field_empty_container_default_factory(self):
     @dataclasses.dataclass
     class TestCls:
-      items: list[Any] = pax_fiddle.instance_field(list)
-      tags: dict[str, Any] = pax_fiddle.instance_field(dict)
+      items: list[Any] = pax_fiddle.instance_field(list)  # pyrefly: ignore[bad-assignment]
+      tags: dict[str, Any] = pax_fiddle.instance_field(dict)  # pyrefly: ignore[bad-assignment]
 
     cfg = pax_fiddle.Config(TestCls)
     self.assertDagEqual(cfg, pax_fiddle.Config(TestCls, items=[], tags={}))
@@ -364,8 +364,8 @@ class AdditionalTag(fdl.Tag):
 @dataclasses.dataclass
 class ATaggedType:
   untagged: str
-  tagged: str = pax_fiddle.field(tags=SampleTag, default="tagged")
-  double_tagged: str = pax_fiddle.field(
+  tagged: str = pax_fiddle.field(tags=SampleTag, default="tagged")  # pyrefly: ignore[bad-assignment]
+  double_tagged: str = pax_fiddle.field(  # pyrefly: ignore[bad-assignment]
       tags=(AdditionalTag, SampleTag), default_factory=lambda: "other_field"
   )
 
@@ -377,7 +377,7 @@ class ATaggedType:
 
 @dataclasses.dataclass
 class AnotherTaggedType:
-  tagged: str = pax_fiddle.field(tags=AdditionalTag, default="tagged")
+  tagged: str = pax_fiddle.field(tags=AdditionalTag, default="tagged")  # pyrefly: ignore[bad-assignment]
 
 
 def sample_fn():
@@ -391,10 +391,10 @@ def nested_structure():
 
 @dataclasses.dataclass
 class AnAutoconfigType:
-  tagged_type: ATaggedType = pax_fiddle.field(
+  tagged_type: ATaggedType = pax_fiddle.field(  # pyrefly: ignore[bad-assignment]
       default_factory=ATaggedType.default
   )
-  another_default: dict[str, Any] = pax_fiddle.field(
+  another_default: dict[str, Any] = pax_fiddle.field(  # pyrefly: ignore[bad-assignment]
       default_factory=nested_structure
   )
 
@@ -409,7 +409,7 @@ class AnAutoconfigType:
 @dataclasses.dataclass
 class AncestorType:
   # We might want to make this more compact.
-  child: AnAutoconfigType = pax_fiddle.field(
+  child: AnAutoconfigType = pax_fiddle.field(  # pyrefly: ignore[bad-assignment]
       default_factory=AnAutoconfigType.default
   )
 
@@ -418,7 +418,7 @@ class AncestorType:
 class Parent:
   """A class w/ a field that uses configurable_factory=True."""
 
-  child: AnAutoconfigType = pax_fiddle.field(
+  child: AnAutoconfigType = pax_fiddle.field(  # pyrefly: ignore[bad-assignment]
       default_factory=AnAutoconfigType, configurable_factory=True
   )
   y: int = 0
@@ -426,10 +426,10 @@ class Parent:
 
 @dataclasses.dataclass
 class ParentPair:
-  first: Parent = pax_fiddle.field(
+  first: Parent = pax_fiddle.field(  # pyrefly: ignore[bad-assignment]
       default_factory=Parent, configurable_factory=True
   )
-  second: Parent = pax_fiddle.field(
+  second: Parent = pax_fiddle.field(  # pyrefly: ignore[bad-assignment]
       default_factory=Parent, configurable_factory=True
   )
 
@@ -453,12 +453,12 @@ class A:
 
 @dataclasses.dataclass
 class B:
-  a: A = pax_fiddle.field(default_factory=A, configurable_factory=True)
+  a: A = pax_fiddle.field(default_factory=A, configurable_factory=True)  # pyrefly: ignore[bad-assignment]
 
 
 @dataclasses.dataclass
 class C:
-  b: B = pax_fiddle.field(default_factory=B, configurable_factory=True)
+  b: B = pax_fiddle.field(default_factory=B, configurable_factory=True)  # pyrefly: ignore[bad-assignment]
 
   @pax_fiddle.auto_config
   @classmethod
@@ -473,7 +473,7 @@ class C:
 
 @dataclasses.dataclass
 class D:
-  c_factory: Callable[..., C] = pax_fiddle.field(default_factory=C.factory)
+  c_factory: Callable[..., C] = pax_fiddle.field(default_factory=C.factory)  # pyrefly: ignore[bad-assignment]
 
   @pax_fiddle.auto_config
   @classmethod
@@ -483,7 +483,7 @@ class D:
 
 @dataclasses.dataclass
 class D2:
-  c_factory: Callable[..., C] = pax_fiddle.field(default_factory=C.factory2)
+  c_factory: Callable[..., C] = pax_fiddle.field(default_factory=C.factory2)  # pyrefly: ignore[bad-assignment]
 
   @pax_fiddle.auto_config
   @classmethod
@@ -493,7 +493,7 @@ class D2:
 
 @dataclasses.dataclass
 class E:
-  d_factory: Callable[..., D2] = pax_fiddle.field(default_factory=D2.factory)
+  d_factory: Callable[..., D2] = pax_fiddle.field(default_factory=D2.factory)  # pyrefly: ignore[bad-assignment]
 
 
 class DataclassFieldExpansionTest(testing.TestCase):
@@ -558,8 +558,8 @@ class DataclassFieldExpansionTest(testing.TestCase):
   def test_mandatory_fields(self):
     @dataclasses.dataclass
     class TwoMandatoryFieldsDataclass:
-      foo: int = pax_fiddle.field(tags=SampleTag)
-      bar: int
+      foo: int = pax_fiddle.field(tags=SampleTag)  # pyrefly: ignore[bad-assignment]
+      bar: int  # pyrefly: ignore[bad-class-definition]
 
     instance = TwoMandatoryFieldsDataclass(3, 4)
     self.assertEqual(instance.foo, 3)
@@ -667,7 +667,7 @@ class DataclassFieldExpansionTest(testing.TestCase):
 
       @dataclasses.dataclass
       class Test:
-        fn: Callable[[], object] = pax_fiddle.field(default_factory=make_fn)
+        fn: Callable[[], object] = pax_fiddle.field(default_factory=make_fn)  # pyrefly: ignore[bad-assignment]
 
       with self.assertRaisesRegex(ValueError, "Unable to safely replace"):
         pax_fiddle.Partial(Test)
@@ -710,7 +710,7 @@ class DataclassFieldExpansionTest(testing.TestCase):
       cfg = pax_fiddle.Config(ParentWithOptionalChild)
       self.assertIsNone(cfg.child)
       pax_fiddle.update_callable(cfg, Parent)
-      self.assertEqual(fdl.get_callable(cfg.child), AnAutoconfigType)
+      self.assertEqual(fdl.get_callable(cfg.child), AnAutoconfigType)  # pyrefly: ignore[bad-argument-type]
 
     with self.subTest("do_not_overwrite_explicit_value"):
       # This example differs from the one above in that child is *explicitly*
@@ -745,7 +745,7 @@ class PaxConfigTest(testing.TestCase, parameterized.TestCase):
       self.assertEqual(cfg.owner.cls, Person)
 
     with self.subTest("write"):
-      cfg.cls = ColoredVehicle
+      cfg.cls = ColoredVehicle  # pyrefly: ignore[read-only]
       cfg.wheel_tpl.cls = ColoredWheel
       self.assertEqual(cfg.cls, ColoredVehicle)
       self.assertEqual(cfg.wheel_tpl.cls, ColoredWheel)
@@ -929,14 +929,14 @@ class LayerA(nn.Module):
 
 
 class LayerB(nn.Module):
-  a: LayerA = pax_fiddle.instance_field(LayerA)
+  a: LayerA = pax_fiddle.instance_field(LayerA)  # pyrefly: ignore[bad-assignment]
 
   def __call__(self):
     return self.a()
 
 
 class LayerC(nn.Module):
-  b_tpl: pax_fiddle.Config = pax_fiddle.template_field(LayerB)
+  b_tpl: pax_fiddle.Config = pax_fiddle.template_field(LayerB)  # pyrefly: ignore[bad-assignment]
 
   def setup(self):
     self.b = pax_fiddle.build(self.b_tpl)
@@ -1065,7 +1065,7 @@ class BuildTest(testing.TestCase, parameterized.TestCase):
 
 
 class LayerE(base_layer.BaseLayer):
-  tpl: pax_fiddle.Config[LayerD] = base_layer.template_field(LayerD)
+  tpl: pax_fiddle.Config[LayerD] = base_layer.template_field(LayerD)  # pyrefly: ignore[bad-assignment]
 
 
 class DaglishTest(testing.TestCase, parameterized.TestCase):
@@ -1176,17 +1176,17 @@ def fake_encoder_decoder_fixture():
 @dataclasses.dataclass
 class ClassWithEncoderDecoder:
   other: Any
-  encoder_decoder: FakeEncoderDecoder = pax_fiddle.field(
+  encoder_decoder: FakeEncoderDecoder = pax_fiddle.field(  # pyrefly: ignore[bad-assignment]
       default_factory=fake_encoder_decoder_fixture
   )
 
 
 @dataclasses.dataclass
 class ClassWithTwoEncoderDecoders:
-  encoder_decoder_a: FakeEncoderDecoder = pax_fiddle.field(
+  encoder_decoder_a: FakeEncoderDecoder = pax_fiddle.field(  # pyrefly: ignore[bad-assignment]
       default_factory=fake_encoder_decoder_fixture
   )
-  encoder_decoder_b: FakeEncoderDecoder = pax_fiddle.field(
+  encoder_decoder_b: FakeEncoderDecoder = pax_fiddle.field(  # pyrefly: ignore[bad-assignment]
       default_factory=fake_encoder_decoder_fixture
   )
 

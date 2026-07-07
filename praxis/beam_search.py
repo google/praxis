@@ -386,7 +386,7 @@ def beam_search_after_prefix_fprop(
     )
     _, topk_indices, final_topk_value, final_topk_indices = (
         decoder_utils.two_stage_topk(
-            logprobs, val.hyp_scores, topk_terminal_ids, tokens_per_beam
+            logprobs, val.hyp_scores, topk_terminal_ids, tokens_per_beam  # pyrefly: ignore[bad-argument-type]
         )
     )
     # update scores with or without EOS depending on early_exit.
@@ -473,7 +473,7 @@ def beam_search_after_prefix_fprop(
   result.original_lengths = prefix_lengths
   result.prefix_lengths = prefix_lengths
   result.prefix_ids = prefix_ids
-  del (
+  del (  # pyrefly: ignore[unsupported-delete]
       result.end_ids,
       result.end_decode_lengths,
       result.end_scores_norm,

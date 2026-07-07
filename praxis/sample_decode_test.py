@@ -54,7 +54,7 @@ class TestNextTokenSampler(sample_decode.BaseNextTokenSampler):
       per_example_top_k,
       gumbel_prng_key,
   ):
-    del (
+    del (  # pyrefly: ignore[unsupported-delete]
         mdl,
         temperature,
         decode_loop_state,
@@ -89,7 +89,7 @@ class TestNextTokenSamplerWithAdditionalState(
       per_example_top_k,
       gumbel_prng_key,
   ):
-    del (
+    del (  # pyrefly: ignore[unsupported-delete]
         mdl,
         temperature,
         per_example_top_p,
@@ -140,7 +140,7 @@ class TestModelWithLogits(base_model.BaseModel):
         (self.batch_size * self.num_samples,),
     )
     time_step = segment_pos[0] + 1
-    logits_at_t = self.logits[time_step, :, :]
+    logits_at_t = self.logits[time_step, :, :]  # pyrefly: ignore[unsupported-operation]
     self.add_summary('logits', logits_at_t)
     self.add_summary('time_step', time_step)
     return logits_at_t

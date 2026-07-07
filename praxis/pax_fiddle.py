@@ -146,7 +146,7 @@ def field(
   metadata = {
       **metadata,
       _FIDDLE_DATACLASS_METADATA_KEY: FieldMetadata(
-          tags=tags, buildable_initializer=buildable_initializer
+          tags=tags, buildable_initializer=buildable_initializer  # pyrefly: ignore[bad-argument-type]
       ),
   }
   return dataclasses.field(
@@ -160,7 +160,7 @@ fdl_field = field
 
 def field_has_tag(
     dc_field: dataclasses.Field,  # pylint: disable=g-bare-generic
-    tag: type(fdl.Tag),
+    tag: type(fdl.Tag),  # pyrefly: ignore[invalid-annotation]
 ) -> bool:
   """Returns True if buildables will attach `tag` to the corresponding arg.
 
@@ -385,8 +385,8 @@ class PaxConfig(Generic[_T], fdl.Config[_T], CloneAndSetMixin):
     if self.dcn_mesh_shape is None:
       return self.ici_mesh_shape
     else:
-      assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)
-      return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
+      assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)  # pyrefly: ignore[bad-argument-type]
+      return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]  # pyrefly: ignore[bad-argument-type]
 
   def copy_fields_from(
       self,
@@ -419,7 +419,7 @@ class PaxConfig(Generic[_T], fdl.Config[_T], CloneAndSetMixin):
     }
     self_fields = {
         field.name: field
-        for field in dataclasses.fields(self.__fn_or_cls__)
+        for field in dataclasses.fields(self.__fn_or_cls__)  # pyrefly: ignore[bad-argument-type]
         if field.init and field.name != 'parent'
     }
 
@@ -619,7 +619,7 @@ def instance_field(
 
 
 def template_field(
-    template: Optional[Callable[..., Any]] = dataclasses.MISSING,
+    template: Optional[Callable[..., Any]] = dataclasses.MISSING,  # pyrefly: ignore[bad-function-definition]
     tags: TagOrTags = (),
 ) -> Union[dataclasses.Field[Any], Any]:
   """Dataclass field specification for a Fiddle-configurable template field.
@@ -758,7 +758,7 @@ def wrap_templates(buildable: Any) -> Any:
     new_arguments = {}
     for arg_name, arg_value in value.__arguments__.items():
       in_template_field = arg_name in template_args
-      new_arguments[arg_name] = state.call(arg_value, daglish.Attr(arg_name))
+      new_arguments[arg_name] = state.call(arg_value, daglish.Attr(arg_name))  # pyrefly: ignore[bad-argument-type]
       in_template_field = False
 
     return fdl.copy_with(value, **new_arguments)
@@ -875,7 +875,7 @@ def build_with_empty_flax_module_stack(buildable: Any) -> Any:
       arguments = {}
       for arg_name, arg_value in value.__arguments__.items():
         with empty_flax_module_stack():
-          arguments[arg_name] = state.call(arg_value, daglish.Attr(arg_name))
+          arguments[arg_name] = state.call(arg_value, daglish.Attr(arg_name))  # pyrefly: ignore[bad-argument-type]
       return building.call_buildable(
           value, arguments, current_path=state.current_path
       )
@@ -892,7 +892,7 @@ def _make_nested_maps_serializable():
       nested_map.NestedMap,
       flatten_fn=lambda x: (tuple(x.values()), tuple(x.keys())),
       unflatten_fn=lambda values, keys: nested_map.NestedMap(zip(keys, values)),
-      path_elements_fn=lambda x: [daglish.Key(key) for key in x.keys()],
+      path_elements_fn=lambda x: [daglish.Key(key) for key in x.keys()],  # pyrefly: ignore[bad-argument-type]
   )
 
 

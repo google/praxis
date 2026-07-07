@@ -42,7 +42,7 @@ class SimpleTestClass(base_hyperparams.BaseParameterizable):
 
   _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-  class HParams(base_hyperparams.BaseHyperParams):
+  class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
     a: int
     b: str = 'b'
 
@@ -57,7 +57,7 @@ class SimpleTestChild(SimpleTestClass):
 
   def __init__(self, hparams: base_hyperparams.BaseHyperParams,
                child: SimpleTestClass):
-    super().__init__(hparams)
+    super().__init__(hparams)  # pyrefly: ignore[bad-argument-type]
     self.child = child
 
 
@@ -65,7 +65,7 @@ class NestedTestClass(base_hyperparams.BaseParameterizable):
 
   _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-  class HParams(base_hyperparams.BaseHyperParams):
+  class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
     # Note: This is now no longer recommended; only Params should be fields of
     # Params.
     d: SimpleTestChild | None = None
@@ -82,7 +82,7 @@ class NestedNestedTestClass(base_hyperparams.BaseParameterizable):
 
   _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-  class HParams(base_hyperparams.BaseHyperParams):
+  class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
     tpl: NestedTestClass.HParams
 
 
@@ -97,9 +97,9 @@ class FiddleTestClass(base_hyperparams.BaseParameterizable):
 
   _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-  class HParams(base_hyperparams.BaseHyperParams):
-    f: fdl.Config = None
-    g: fdl.Config = None
+  class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
+    f: fdl.Config = None  # pyrefly: ignore[bad-assignment]
+    g: fdl.Config = None  # pyrefly: ignore[bad-assignment]
     h: float = 3.0
 
   params: base_hyperparams.BaseHyperParams
@@ -120,7 +120,7 @@ class NestedStructToTextTestClass(base_hyperparams.BaseParameterizable):
 
   _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-  class HParams(base_hyperparams.BaseHyperParams):
+  class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
     tpl: Any = base_hyperparams.sub_config_field(None)
     a: frozen_dict.FrozenDict | None = None
 
@@ -235,19 +235,19 @@ class HyperParamsTest(absltest.TestCase):
         d=SimpleTestChild.HParams(a=456, b='hello'), e=37)
     x.freeze()
     with self.assertRaises(AttributeError):
-      x.d.a = 100
+      x.d.a = 100  # pyrefly: ignore[missing-attribute]
     x.unfreeze()
-    x.d.a = 200
+    x.d.a = 200  # pyrefly: ignore[missing-attribute]
     self.assertEqual(200, x.d.a)
     x.freeze()
-    self.assertTrue(x._internal_frozen)
+    self.assertTrue(x._internal_frozen)  # pyrefly: ignore[missing-attribute]
     assert x.d is not None
-    self.assertTrue(x.d._internal_frozen)
+    self.assertTrue(x.d._internal_frozen)  # pyrefly: ignore[missing-attribute]
     x_clone = x.clone()
-    self.assertEqual(200, x_clone.d.a)
-    self.assertFalse(x_clone._internal_frozen)
-    x_clone.d.a = 300
-    self.assertEqual(300, x_clone.d.a)
+    self.assertEqual(200, x_clone.d.a)  # pyrefly: ignore[missing-attribute]
+    self.assertFalse(x_clone._internal_frozen)  # pyrefly: ignore[missing-attribute]
+    x_clone.d.a = 300  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(300, x_clone.d.a)  # pyrefly: ignore[missing-attribute]
     # pylint: enable=protected-access
 
   def test_copy_fields(self):
@@ -261,7 +261,7 @@ class HyperParamsTest(absltest.TestCase):
         tpl=NestedTestBehaveClass.HParams(
             e=0.0, d=SimpleTestChild.HParams(a=0, b='')))
     p_bb.copy_fields_from(p_b)
-    self.assertEqual(p_bb.cls, NestedNestedOverrideTestClass)
+    self.assertEqual(p_bb.cls, NestedNestedOverrideTestClass)  # pyrefly: ignore[missing-attribute]
     self.assertEqual(p_bb.tpl.cls, NestedTestClass)  # cls is overwritten too.
     self.assertEqual(p_bb.tpl.d.cls, SimpleTestChild)
     self.assertEqual(p_bb.tpl.e, e_new)
@@ -331,11 +331,11 @@ class HyperParamsTest(absltest.TestCase):
     self.assertIsInstance(obj.hparams.d, SimpleTestChild)
     self.assertIsInstance(obj.hparams.d.child, SimpleTestClass)
     self.assertEqual(obj.hparams.e, 3.0)
-    self.assertEqual(obj.hparams.d.hparams.a, 40)
-    self.assertEqual(obj.hparams.d.hparams.b, 'b')
-    self.assertEqual(obj.hparams.d.hparams.c, -1.3)
-    self.assertEqual(obj.hparams.d.child.hparams.a, 42)
-    self.assertEqual(obj.hparams.d.child.hparams.b, 'very_nested_b')
+    self.assertEqual(obj.hparams.d.hparams.a, 40)  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(obj.hparams.d.hparams.b, 'b')  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(obj.hparams.d.hparams.c, -1.3)  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(obj.hparams.d.child.hparams.a, 42)  # pyrefly: ignore[missing-attribute]
+    self.assertEqual(obj.hparams.d.child.hparams.b, 'very_nested_b')  # pyrefly: ignore[missing-attribute]
 
   def test_fiddle_serialization(self):
     p = SimpleTestClass.config(a=24)
@@ -377,7 +377,7 @@ class HyperParamsTest(absltest.TestCase):
 
         _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-        class HParams(base_hyperparams.BaseHyperParams):
+        class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
           foo: int = 0
 
         def __init__(self,
@@ -394,7 +394,7 @@ class HyperParamsTest(absltest.TestCase):
 
         _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-        class HParams(base_hyperparams.BaseHyperParams):
+        class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
           something: int = 42
 
         def __init__(self, p: base_hyperparams.BaseParameterizable.HParams):
@@ -406,15 +406,15 @@ class HyperParamsTest(absltest.TestCase):
 
       _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-      class HParams(base_hyperparams.BaseHyperParams):
-        a: list[str] = dataclasses.field(default_factory=lambda: [1, 2, 3])
+      class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
+        a: list[str] = dataclasses.field(default_factory=lambda: [1, 2, 3])  # pyrefly: ignore[bad-assignment]
 
     instance_1 = DefaultFactoryTestClass.make()
     instance_2 = DefaultFactoryTestClass.make()
-    self.assertEqual(instance_1.hparams.a, [1, 2, 3])
-    instance_1.hparams.a.append(4)
+    self.assertEqual(instance_1.hparams.a, [1, 2, 3])  # pyrefly: ignore[missing-attribute]
+    instance_1.hparams.a.append(4)  # pyrefly: ignore[missing-attribute]
     self.assertEqual(instance_1.hparams.a, [1, 2, 3, 4])
-    self.assertEqual(instance_2.hparams.a, [1, 2, 3])
+    self.assertEqual(instance_2.hparams.a, [1, 2, 3])  # pyrefly: ignore[missing-attribute]
 
   def test_fiddle_factory_integration(self):
 
@@ -422,19 +422,19 @@ class HyperParamsTest(absltest.TestCase):
 
       _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-      class HParams(base_hyperparams.BaseHyperParams):
+      class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
         foo_a: int = 0
 
     class Bar(base_hyperparams.BaseParameterizable):
 
       _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-      class HParams(base_hyperparams.BaseHyperParams):
+      class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
         foo_tpl: base_hyperparams.BaseHyperParams = (
             base_hyperparams.sub_config_field(Foo.HParams))
 
     field, = [
-        field for field in dataclasses.fields(Bar.HParams)
+        field for field in dataclasses.fields(Bar.HParams)  # pyrefly: ignore[bad-argument-type]
         if field.name == 'foo_tpl'
     ]
     self.assertIsInstance(field.default_factory,
@@ -442,7 +442,7 @@ class HyperParamsTest(absltest.TestCase):
     cfg = Bar.HParams.config()
     cfg.foo_tpl.foo_a = 1
     bar_params = pax_fiddle.build(cfg)
-    self.assertEqual(bar_params.foo_tpl.foo_a, 1)
+    self.assertEqual(bar_params.foo_tpl.foo_a, 1)  # pyrefly: ignore[missing-attribute]
 
   def test_hparams_special_attributes(self):
 
@@ -450,7 +450,7 @@ class HyperParamsTest(absltest.TestCase):
 
       _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-      class HParams(base_hyperparams.BaseHyperParams):
+      class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
         """Test."""
         foo_a: int = 0
 
@@ -473,11 +473,11 @@ class HyperParamsTest(absltest.TestCase):
 
       _USE_DEPRECATED_HPARAMS_BASE_PARAMETERIZABLE = True
 
-      class HParams(base_hyperparams.BaseHyperParams):
+      class HParams(base_hyperparams.BaseHyperParams):  # pyrefly: ignore[bad-override]
         a_tpl: Any = base_hyperparams.sub_config_field(CustomSubConfigField())
 
     field, = (
-        field for field in dataclasses.fields(Foo.HParams)
+        field for field in dataclasses.fields(Foo.HParams)  # pyrefly: ignore[bad-argument-type]
         if field.name == 'a_tpl')
     self.assertTrue(field.metadata.get('custom'))
 
@@ -538,7 +538,7 @@ class CheckpointLoadingRules(NamedTuple):
 
 class CheckPointRuleTest(base_hyperparams.FiddleBaseParameterizable):
   init_from_checkpoint_rules: dict[str, CheckpointLoadingRules] = (
-      pax_fiddle.instance_field(default_factory=dict)
+      pax_fiddle.instance_field(default_factory=dict)  # pyrefly: ignore[bad-assignment]
   )
 
 
@@ -792,7 +792,7 @@ class NestedStructToTextTestCase(absltest.TestCase):
     # nested_struct_to_text, so this test ensures that the 'parent' field is
     # ignored when traversing Flax modules.
     class LayerWithSublayer(base_layer.BaseLayer):
-      sub_layer: base_layer.BaseLayer = pax_fiddle.instance_field(
+      sub_layer: base_layer.BaseLayer = pax_fiddle.instance_field(  # pyrefly: ignore[bad-assignment]
           FiddleToTextTestClass
       )
 
@@ -825,7 +825,7 @@ class NestedStructToTextTestCase(absltest.TestCase):
     with self.assertRaisesRegex(
         ValueError, 'A circular reference chain is detected'
     ):
-      nested_struct_to_text(p, lambda key, val: None)
+      nested_struct_to_text(p, lambda key, val: None)  # pyrefly: ignore[bad-argument-type]
 
 
 if __name__ == '__main__':

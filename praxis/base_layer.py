@@ -732,9 +732,9 @@ def init_var(
     if len(shape) < 2:
       return scale * jrandom.normal(prng_key, shape, init_dtype)
     elif len(shape) == 2:
-      return scaled_orthogonal(prng_key, shape, init_dtype)
+      return scaled_orthogonal(prng_key, shape, init_dtype)  # pyrefly: ignore[bad-argument-type]
     else:
-      return scaled_delta_orthogonal(prng_key, shape, init_dtype)
+      return scaled_delta_orthogonal(prng_key, shape, init_dtype)  # pyrefly: ignore[bad-argument-type]
   if method in [
       'gaussian', 'gaussian_sqrt_dim', 'gaussian_sqrt_fanin',
       'gaussian_sqrt_fanout', 'gaussian_sqrt_fanavg'
@@ -758,7 +758,7 @@ def init_var(
     return scale * jrandom.truncated_normal(
         prng_key, lower=-2.0, upper=2.0, shape=shape, dtype=init_dtype)
   elif method in ['constant']:
-    if jnp.issubdtype(init_dtype, jnp.integer) and not isinstance(scale, int):
+    if jnp.issubdtype(init_dtype, jnp.integer) and not isinstance(scale, int):  # pyrefly: ignore[bad-argument-type]
       raise ValueError(
           'An integer scale must be provided when initializing an '
           f'integer variable (of type {init_dtype}), but got {scale=}'
@@ -770,7 +770,7 @@ def init_var(
       return scale + jnp.zeros(shape=shape, dtype=init_dtype)
   elif method in ['xavier']:
     fan_in, fan_out = get_fan_in_fan_out(shape, fan_in_axes, fan_out_axes)
-    limit = scale * math.sqrt(6. / (fan_in + fan_out))
+    limit = scale * math.sqrt(6. / (fan_in + fan_out))  # pyrefly: ignore[unsupported-operation]
     return limit * jrandom.uniform(
         prng_key, shape, init_dtype, minval=-1.0, maxval=1.0)
   elif method in ['uniform_unit_scaling']:
@@ -815,7 +815,7 @@ def var_init_scale(var_p: WeightHParams, var_key: str | None = None) -> float:
     fan_in_axes = var_p.fan_in_axes
     fan_out_axes = var_p.fan_out_axes
     fan_in, fan_out = get_fan_in_fan_out(var_p.shape, fan_in_axes, fan_out_axes)
-    scale *= 1.0 / math.sqrt(fan_in)
+    scale *= 1.0 / math.sqrt(fan_in)  # pyrefly: ignore[bad-argument-type]
     logging.info(
         '%s sqrt_fanin fan_in: %d fan_out %d scale %f',
         var_key if var_key else 'unset_var_key',
@@ -828,7 +828,7 @@ def var_init_scale(var_p: WeightHParams, var_key: str | None = None) -> float:
     fan_in_axes = var_p.fan_in_axes
     fan_out_axes = var_p.fan_out_axes
     fan_in, fan_out = get_fan_in_fan_out(var_p.shape, fan_in_axes, fan_out_axes)
-    scale *= math.sqrt(6.0 / (fan_in + fan_out))
+    scale *= math.sqrt(6.0 / (fan_in + fan_out))  # pyrefly: ignore[unsupported-operation]
     logging.info(
         '%s xavier fan_in: %d fan_out %d scale %f',
         var_key if var_key else 'unset_var_key',
@@ -1243,7 +1243,7 @@ class JaxContext:
     # model weights.
     self._root_scope_to_shared_layers_map: dict[
         Any, dict[str, _SharedLayerCacheEntry]
-    ] = collections.defaultdict(lambda: collections.defaultdict(lambda: None))
+    ] = collections.defaultdict(lambda: collections.defaultdict(lambda: None))  # pyrefly: ignore[bad-assignment]
 
   @property
   def summary_dict(self) -> _SummaryDict:
@@ -1255,7 +1255,7 @@ class JaxContext:
 
   @property
   def do_eval(self) -> bool:
-    return self.hparams.do_eval
+    return self.hparams.do_eval  # pyrefly: ignore[bad-return]
 
   @property
   def summary_verbosity(self) -> int:
@@ -1574,7 +1574,7 @@ class _FiddleHParamsClassStub(
     return (
         isinstance(instance, pax_fiddle.Config)
         and isinstance(fdl.get_callable(instance), type)
-        and issubclass(fdl.get_callable(instance), cls.fiddle_base_layer_cls)
+        and issubclass(fdl.get_callable(instance), cls.fiddle_base_layer_cls)  # pyrefly: ignore[bad-argument-type]
     )
 
   def __to_sub_config_field__(cls):
@@ -1692,7 +1692,7 @@ class BaseLayer(nn.Module):
 
   dtype: jnp.dtype = jnp.float32
   fprop_dtype: jnp.dtype | None = None
-  params_init: WeightInit = instance_field(default_param_init)
+  params_init: WeightInit = instance_field(default_param_init)  # pyrefly: ignore[bad-assignment]
   skip_lp_regularization: bool | None = None
   ici_mesh_shape: Sequence[int] | None = None
   dcn_mesh_shape: Sequence[int] | None = None
@@ -1702,21 +1702,21 @@ class BaseLayer(nn.Module):
   # TODO(b/249483164): Change these to use instance_field rather than
   # template_field after the Fiddle migration.
   weight_split_dims_mapping: pax_fiddle.Config[BaseLayer.WeightSharding] = (
-      template_field(WeightSharding)
+      template_field(WeightSharding)  # pyrefly: ignore[bad-assignment]
   )
   activation_split_dims_mapping: pax_fiddle.Config[
       BaseLayer.ActivationSharding
-  ] = template_field(ActivationSharding)
+  ] = template_field(ActivationSharding)  # pyrefly: ignore[bad-assignment]
 
   @property
   def mesh_shape(self):
     if self.ici_mesh_shape is not None:
-      assert len(self.ici_mesh_shape) == len(self.mesh_axis_names)
+      assert len(self.ici_mesh_shape) == len(self.mesh_axis_names)  # pyrefly: ignore[bad-argument-type]
     if self.dcn_mesh_shape is None:
       return self.ici_mesh_shape
     else:
-      assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)
-      return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]
+      assert len(self.ici_mesh_shape) == len(self.dcn_mesh_shape)  # pyrefly: ignore[bad-argument-type]
+      return [i * d for i, d in zip(self.ici_mesh_shape, self.dcn_mesh_shape)]  # pyrefly: ignore[bad-argument-type]
 
   def get_shard_count_on_dim(
       self, dim_sharding: str | Sequence[str] | None
@@ -1775,9 +1775,9 @@ class BaseLayer(nn.Module):
     assert isinstance(source, (pax_fiddle.Config, BaseLayer)), source
     assert isinstance(target, (pax_fiddle.Config, BaseLayer)), target
     if isinstance(source, pax_fiddle.Config):
-      assert issubclass(fdl.get_callable(source), BaseLayer), source
+      assert issubclass(fdl.get_callable(source), BaseLayer), source  # pyrefly: ignore[bad-argument-type]
     if isinstance(target, pax_fiddle.Config):
-      assert issubclass(fdl.get_callable(target), BaseLayer), target
+      assert issubclass(fdl.get_callable(target), BaseLayer), target  # pyrefly: ignore[bad-argument-type]
 
     def _setattr(attr_name, value):
       if isinstance(target, BaseLayer):
@@ -1854,7 +1854,7 @@ class BaseLayer(nn.Module):
       cls.__annotations__['weight_split_dims_mapping'] = pax_fiddle.Config[
           cls.WeightSharding
       ]
-      cls.weight_split_dims_mapping = template_field(cls.WeightSharding)
+      cls.weight_split_dims_mapping = template_field(cls.WeightSharding)  # pyrefly: ignore[bad-assignment]
     if 'ActivationSharding' in cls.__dict__:
       if not issubclass(cls.ActivationSharding, BaseLayer.ActivationSharding):
         raise ValueError(
@@ -1868,7 +1868,7 @@ class BaseLayer(nn.Module):
       cls.__annotations__['activation_split_dims_mapping'] = pax_fiddle.Config[
           cls.ActivationSharding
       ]
-      cls.activation_split_dims_mapping = template_field(cls.ActivationSharding)
+      cls.activation_split_dims_mapping = template_field(cls.ActivationSharding)  # pyrefly: ignore[bad-assignment]
 
   def __post_init__(self):
     try:
@@ -2415,7 +2415,7 @@ class BaseLayer(nn.Module):
     if var_hparams.dtype is None:
       var_hparams.dtype = self.dtype
 
-    full_name = self.scope.path_text + '/' + name
+    full_name = self.scope.path_text + '/' + name  # pyrefly: ignore[missing-attribute]
     if self.mesh_shape is not None:
       if (len([dim for dim in var_hparams.shape if dim > 1]) > 1 and
           var_hparams.tensor_split_dims_mapping is None):
@@ -2434,13 +2434,13 @@ class BaseLayer(nn.Module):
     if (self.skip_lp_regularization and
         WeightHParamsCollection.SKIP_LP_REGULARIZATION
         not in var_hparams.collections):
-      var_hparams.collections = var_hparams.collections + [
+      var_hparams.collections = var_hparams.collections + [  # pyrefly: ignore[unsupported-operation]
           WeightHParamsCollection.SKIP_LP_REGULARIZATION
       ]
 
     if (not trainable) and (WeightHParamsCollection.NON_TRAINABLE
                             not in var_hparams.collections):
-      var_hparams.collections = var_hparams.collections + [
+      var_hparams.collections = var_hparams.collections + [  # pyrefly: ignore[unsupported-operation]
           WeightHParamsCollection.NON_TRAINABLE
       ]
 
@@ -2498,10 +2498,10 @@ class BaseLayer(nn.Module):
       The created sub layer, or makes the sub layer an assess of this layer.
     """
     self._check_child_layername_conflict(name)
-    child = self._create_child(name, params, skip_clone=skip_clone)
+    child = self._create_child(name, params, skip_clone=skip_clone)  # pyrefly: ignore[bad-argument-type]
     if self._state.in_setup:
       setattr(self, name, child)
-    return child
+    return child  # pyrefly: ignore[bad-return]
 
   @nn.nowrap
   def create_children(
@@ -2564,7 +2564,7 @@ class BaseLayer(nn.Module):
       p = params.clone()
     self.copy_base_hparams(self, p)  # mutates p in place.
     p.name = name
-    child = instantiate_layer(p, self.scope.root)
+    child = instantiate_layer(p, self.scope.root)  # pyrefly: ignore[missing-attribute]
     self._private_children[name] = child
     return child
 
@@ -2751,13 +2751,13 @@ def compatible_hparams(
 class _WrapperLayer(BaseLayer):
   """A simple wrapper layer."""
 
-  cld_tpl: pax_fiddle.Config[BaseLayer] | None = template_field(None)
+  cld_tpl: pax_fiddle.Config[BaseLayer] | None = template_field(None)  # pyrefly: ignore[bad-assignment]
 
   def setup(self) -> None:
     # create child under the name space of 'name'.
     # This implicitly set p.cld.name to name as well.
-    self.create_child(self.name, self.cld_tpl)
-    self.cld = getattr(self, self.name)
+    self.create_child(self.name, self.cld_tpl)  # pyrefly: ignore[bad-argument-type]
+    self.cld = getattr(self, self.name)  # pyrefly: ignore[bad-argument-type]
 
 
 def get_template_fields(template: pax_fiddle.Config) -> list[str]:

@@ -65,7 +65,7 @@ class DecoderUtilsTest(test_utils.TestCase):
     ]
     topk_value, topk_indices, final_topk_value, final_topk_indices = (
         decoder_utils.two_stage_topk(
-            jnp.array(logits, dtype=np.float32), hyp_scores, terminal_ids
+            jnp.array(logits, dtype=np.float32), hyp_scores, terminal_ids  # pyrefly: ignore[bad-argument-type]
         )
     )
 

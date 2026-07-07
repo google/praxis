@@ -101,7 +101,7 @@ class Polynomial(BaseSchedule):
       f_x = ratio**self.power
     elif self.origin == 'limit':
       f_x = 1 - (1 - ratio) ** self.power
-    y = y0 + f_x * (y1 - y0)
+    y = y0 + f_x * (y1 - y0)  # pyrefly: ignore[unbound-name]
     return jnp.where(x < x0, y0, jnp.where(x >= x1, y1, y))
 
 
@@ -385,8 +385,8 @@ class PiecewiseConstant(BaseSchedule):
 
   def value_at(self, step: jax.Array) -> jax.Array:
     # Map the step/boundaries to jnp.float32.
-    boundaries = [jnp.array(v, dtype=jnp.float32) for v in self.boundaries]
-    values = [jnp.array(v, dtype=jnp.float32) for v in self.values]
+    boundaries = [jnp.array(v, dtype=jnp.float32) for v in self.boundaries]  # pyrefly: ignore[not-iterable]
+    values = [jnp.array(v, dtype=jnp.float32) for v in self.values]  # pyrefly: ignore[not-iterable]
     step = step.astype(jnp.float32)
     if not boundaries:
       assert len(values) == 1
@@ -582,20 +582,20 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
 
   def __post_init__(self):
     super().__post_init__()
-    assert len(self.boundaries) >= 1 and len(self.boundaries) == len(
-        self.values
+    assert len(self.boundaries) >= 1 and len(self.boundaries) == len(  # pyrefly: ignore[bad-argument-type]
+        self.values  # pyrefly: ignore[bad-argument-type]
     )
     self.p0 = instantiate(
         pax_fiddle.Config(
             Linear,
             start=(0, 0.0),
-            limit=(self.boundaries[0], self.values[0]),
+            limit=(self.boundaries[0], self.values[0]),  # pyrefly: ignore[unsupported-operation]
         )
     )
     # Offset the boundaries, since each schedule passed to
     # optax.join_schedules() will receive a step count indicating the number
     # of steps since the previous boundary transition.
-    boundaries_pc = [b - self.boundaries[0] for b in self.boundaries[1:]]
+    boundaries_pc = [b - self.boundaries[0] for b in self.boundaries[1:]]  # pyrefly: ignore[unsupported-operation]
     self.p1 = instantiate(
         pax_fiddle.Config(
             PiecewiseConstant, boundaries=boundaries_pc, values=self.values
@@ -605,7 +605,7 @@ class LinearRampupPiecewiseConstant(BaseSchedule):
   def value_at(self, step: jax.Array) -> jax.Array:
     return jnp.array(
         optax.join_schedules(
-            [self.p0.value_at, self.p1.value_at], self.boundaries[:1]
+            [self.p0.value_at, self.p1.value_at], self.boundaries[:1]  # pyrefly: ignore[unsupported-operation]
         )(step),
         jnp.float32,
     )
@@ -628,20 +628,20 @@ class PiecewiseSchedule(BaseSchedule):
   def __post_init__(self):
     super().__post_init__()
     prev_boundary = 0
-    for boundary in self.boundaries:
+    for boundary in self.boundaries:  # pyrefly: ignore[not-iterable]
       if boundary < prev_boundary:
         raise ValueError('Invalid boundary %s < %s' % (boundary, prev_boundary))
       prev_boundary = boundary
-    if len(self.schedules) != len(self.boundaries) + 1:
+    if len(self.schedules) != len(self.boundaries) + 1:  # pyrefly: ignore[bad-argument-type]
       raise ValueError(
           'len(schedules) != len(boundaries) + 1: %s vs %s'
-          % (len(self.schedules), len(self.boundaries))
+          % (len(self.schedules), len(self.boundaries))  # pyrefly: ignore[bad-argument-type]
       )
 
   def value_at(self, step: jax.Array) -> jax.Array:
     return jnp.array(
         optax.join_schedules(
-            [s.value_at for s in self.schedules], self.boundaries
+            [s.value_at for s in self.schedules], self.boundaries  # pyrefly: ignore[bad-argument-type, not-iterable]
         )(step),
         jnp.float32,
     )
@@ -663,21 +663,21 @@ class CycleSchedule(BaseSchedule):
 
   def __post_init__(self):
     super().__post_init__()
-    if len(self.schedules) != len(self.steps):
+    if len(self.schedules) != len(self.steps):  # pyrefly: ignore[bad-argument-type]
       raise ValueError(
           'len(schedules) != len(steps): %s vs %s'
-          % (len(self.schedules), len(self.steps))
+          % (len(self.schedules), len(self.steps))  # pyrefly: ignore[bad-argument-type]
       )
     boundaries = [0]
-    for step in self.steps:
+    for step in self.steps:  # pyrefly: ignore[not-iterable]
       boundaries.append(boundaries[-1] + step)
     self._period = boundaries[-1]
     self._boundaries = boundaries[1:-1]
 
   def value_at(self, step: jax.Array) -> jax.Array:
     relative_step = jnp.mod(step, self._period)
-    output = self.schedules[0].value_at(step)
-    for boundary, schedule in zip(self._boundaries, self.schedules[1:]):
+    output = self.schedules[0].value_at(step)  # pyrefly: ignore[unsupported-operation]
+    for boundary, schedule in zip(self._boundaries, self.schedules[1:]):  # pyrefly: ignore[unsupported-operation]
       output = jnp.where(
           relative_step < boundary, output, schedule.value_at(step)
       )

@@ -92,7 +92,7 @@ def _run_transformation(
         {param_name: jnp.array(fake_update)}, opt_state, mdl_vars
     )
     mdl_vars = optax.apply_updates(mdl_vars, updates)
-  return mdl_vars[param_name]
+  return mdl_vars[param_name]  # pyrefly: ignore[bad-index]
 
 
 class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
@@ -114,7 +114,7 @@ class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
       mdl_vars = optax.apply_updates(mdl_vars, updates)
     expected_var_value = -0.561
     self.assertEqual(
-        mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32)
+        mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32)  # pyrefly: ignore[bad-index]
     )
 
   def test_static_accumulator(self):
@@ -141,7 +141,7 @@ class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
     # Each accumulated update averages to 2.0.
     expected_var_value = -1.0 * num_steps // num_sub_batches * 2.0
     self.assertEqual(
-        mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32))
+        mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32))  # pyrefly: ignore[bad-index]
 
   def test_ewc_regularization(self):
     opt_tpl = pax_fiddle.Config(
@@ -166,7 +166,7 @@ class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
       mdl_vars = optax.apply_updates(mdl_vars, updates)
     expected_var_value = -4.25
     self.assertEqual(
-        mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32))
+        mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32))  # pyrefly: ignore[bad-index]
 
   def test_ewc_regularization_extra_args(self):
     opt_tpl = pax_fiddle.Config(
@@ -193,7 +193,7 @@ class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
       mdl_vars = optax.apply_updates(mdl_vars, updates)
     expected_var_value = -4.25
     self.assertEqual(
-        mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32)
+        mdl_vars['var'], jnp.array(expected_var_value, dtype=jnp.float32)  # pyrefly: ignore[bad-index]
     )
 
   @parameterized.named_parameters(
@@ -233,7 +233,7 @@ class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
 
     var_weight_hparams = jax.tree.map(
         lambda v: base_layer.WeightHParams(
-            v.shape, mesh_shape=mesh_shape, tensor_split_dims_mapping=[-1, 1]
+            v.shape, mesh_shape=mesh_shape, tensor_split_dims_mapping=[-1, 1]  # pyrefly: ignore[bad-argument-type]
         ),
         mdl_vars,
     )
@@ -274,8 +274,8 @@ class OptimizersTest(test_utils.TestCase, parameterized.TestCase):
       # t=2: v=-3.5, g=3, p=0 -> v = v - g - 0.5 * (v - p) = -4.25
       expected_var_value = -4.25
 
-    self.assertAllClose(mdl_vars['lm']['w'], expected_var_value)
-    self.assertAllClose(mdl_vars['ffn'], expected_var_value)
+    self.assertAllClose(mdl_vars['lm']['w'], expected_var_value)  # pyrefly: ignore[bad-index]
+    self.assertAllClose(mdl_vars['ffn'], expected_var_value)  # pyrefly: ignore[bad-index]
 
 
 class OptimizersRegularizationTest(parameterized.TestCase):
@@ -359,7 +359,7 @@ class CustomMaskedTest(test_utils.TestCase, parameterized.TestCase):
 
     opt_state = masked_opt.init(var_weight_hparams)
     # Should succeed
-    _ = optimizers.partition_params(masked_opt, var_weight_hparams, opt_state)
+    _ = optimizers.partition_params(masked_opt, var_weight_hparams, opt_state)  # pyrefly: ignore[bad-argument-type]
 
     num_steps = 3
     for t in range(num_steps):

@@ -97,7 +97,7 @@ def convert_to_boxed_params(
       tensor_split_dims_mapping = None
     else:
       tensor_split_dims_mapping = list(
-          flax_partitioning.logical_to_mesh_axes(
+          flax_partitioning.logical_to_mesh_axes(  # pyrefly: ignore[bad-argument-type]
               tuple(logical_axes), logical_axes_rules
           )
       )
@@ -117,7 +117,7 @@ def convert_to_boxed_params(
         x_param.shape,
         None,
         x_param.dtype,
-        collections=collections,
+        collections=collections,  # pyrefly: ignore[bad-argument-type]
         mesh_shape=mesh_shape,
         tensor_split_dims_mapping=tensor_split_dims_mapping,
     )

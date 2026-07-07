@@ -453,7 +453,7 @@ def sample_decode(
       model,
       decode_loop_mesh_axes_transpose,
       model_var_pspecs,
-      transform_state_fn,
+      transform_state_fn,  # pyrefly: ignore[bad-argument-type]
   )
   with decoder_utils.maybe_decode_mesh_transpose(
       model, decode_loop_mesh_axes_transpose
@@ -469,13 +469,13 @@ def sample_decode(
           first_max_decode_steps if fprop_for_prefix else seq_len - 1
       )
 
-      transform_state_fn(model, decoder_utils.pad_state_fn(pad_state_sizes))
+      transform_state_fn(model, decoder_utils.pad_state_fn(pad_state_sizes))  # pyrefly: ignore[bad-argument-type]
     result = sample_decode_after_fprop(
         model,
         extend_step_fn,
         transform_state_fn,
         lazy_broadcast_prefix_fn,
-        next_token_sampler,
+        next_token_sampler,  # pyrefly: ignore[bad-argument-type]
         prefix_ids,
         prefix_paddings,
         seq_len,
@@ -484,8 +484,8 @@ def sample_decode(
         fprop_for_prefix,
         temperature,
         gumbel_prng_key,
-        per_example_top_p,
-        per_example_top_k,
+        per_example_top_p,  # pyrefly: ignore[bad-argument-type]
+        per_example_top_k,  # pyrefly: ignore[bad-argument-type]
         max_prefix_len,
         max_decode_steps,
         per_example_max_decode_steps,
@@ -744,7 +744,7 @@ def sample_decode_after_fprop(
       # We need to exclude the last token from prefix, and instead move it to
       # the multi-sample suffix. This is because the last token only as an Input
       # ID, but not an output ID (label), and we need to start decoding from it.
-      transform_state_fn(model, decoder_utils.slice_state_fn(0, -1))
+      transform_state_fn(model, decoder_utils.slice_state_fn(0, -1))  # pyrefly: ignore[not-callable]
       first_decode_steps = min(max_decode_steps)
       if controlled_decoding:
         if controlled_decoding.interval:
@@ -796,12 +796,12 @@ def sample_decode_after_fprop(
     )
   last_decode_steps = max(max_decode_steps) if max_decode_steps else seq_len
   per_example_max_decode_steps = (
-      last_decode_steps
+      last_decode_steps  # pyrefly: ignore[bad-assignment]
       if per_example_max_decode_steps is None
       else per_example_max_decode_steps
   )
   per_example_max_decode_steps = jnp.minimum(
-      per_example_max_decode_steps, last_decode_steps
+      per_example_max_decode_steps, last_decode_steps  # pyrefly: ignore[bad-argument-type]
   )
   if (
       cf_guidance_scale is not None
@@ -1141,7 +1141,7 @@ def sample_decode_after_fprop(
         outfeed_tensors = jax.tree.map(
             lambda x: split_batch_dim(x, 0, num_samples), outfeed_tensors
         )
-        outfeed_tensors.prefix_lengths = jnp.zeros_like(original_prefix_lengths)
+        outfeed_tensors.prefix_lengths = jnp.zeros_like(original_prefix_lengths)  # pyrefly: ignore[bad-argument-type]
 
         result_callback.callback_fn(outfeed_tensors)
 
@@ -1182,10 +1182,10 @@ def sample_decode_after_fprop(
     for i in range(len(decode_buckets)):
       if i > 0:
         pad_size = decode_buckets[i] - decode_buckets[i - 1]
-        transform_state_fn(
+        transform_state_fn(  # pyrefly: ignore[not-callable]
             model, _condense_state(controlled_decoding.block_num_samples)
         )
-        lazy_broadcast_prefix_fn(
+        lazy_broadcast_prefix_fn(  # pyrefly: ignore[not-callable]
             model,
             controlled_decoding.block_num_samples,  # num_suffix_samples
             pad_size,  # suffix_length
@@ -1204,7 +1204,7 @@ def sample_decode_after_fprop(
     for i in range(len(max_decode_steps)):
       if i > 0:
         pad_size = max_decode_steps[i] - max_decode_steps[i - 1]
-        transform_state_fn(model, decoder_utils.pad_state_fn(pad_size))
+        transform_state_fn(model, decoder_utils.pad_state_fn(pad_size))  # pyrefly: ignore[not-callable]
       result = nn.while_loop(
           get_cond_func(max_decode_steps[i]),
           loop_body,
@@ -1275,14 +1275,14 @@ def sample_decode_after_fprop(
     # Now merge back the summaries.
     if model.is_mutable_collection(base_layer.SUMMARIES):
       # recursively merge two dictionaries.
-      reinsert_collection(model, base_layer.SUMMARIES, model_summaries_copy)
+      reinsert_collection(model, base_layer.SUMMARIES, model_summaries_copy)  # pyrefly: ignore[unbound-name]
 
   if result_callback is not None and result_callback.done_fn is not None:
     result_callback.done_fn()
 
   if optimize_eos:
     result = decoder_utils.collect_results_to_optimize_eos(
-        result, decode_length_shift=max_prefix_len
+        result, decode_length_shift=max_prefix_len  # pyrefly: ignore[bad-argument-type]
     )
 
   if return_result_for_suffix_score:
@@ -1297,7 +1297,7 @@ def sample_decode_after_fprop(
 
   if fprop_for_prefix:
     prefix_ids = decoder_utils.left_align_tensor(
-        prefix_ids, prefix_lengths, max_prefix_len
+        prefix_ids, prefix_lengths, max_prefix_len  # pyrefly: ignore[bad-argument-type]
     )
 
   # We manually pad out the ids not belonging to the prefix because some
@@ -1317,14 +1317,14 @@ def sample_decode_after_fprop(
 
     # Change output_ids to left align.
     result.output_ids = decoder_utils.left_align_tensor(
-        result.output_ids, prefix_lengths, max_prefix_len
+        result.output_ids, prefix_lengths, max_prefix_len  # pyrefly: ignore[bad-argument-type]
     )
     result.logprobs = decoder_utils.left_align_tensor(
-        result.logprobs, prefix_lengths, max_prefix_len
+        result.logprobs, prefix_lengths, max_prefix_len  # pyrefly: ignore[bad-argument-type]
     )
     if hasattr(result, 'entropy'):
       result.entropy = decoder_utils.left_align_tensor(
-          result.entropy, prefix_lengths, max_prefix_len
+          result.entropy, prefix_lengths, max_prefix_len  # pyrefly: ignore[bad-argument-type]
       )
 
   del result.start_step, result.step, result.done, result.has_eos
@@ -1701,21 +1701,21 @@ def sample_init_decode_state(
   # set up decoding parameters
   if transform_state_fn:
     pad_state_sizes = max_decode_steps
-    transform_state_fn(model, decoder_utils.pad_state_fn(pad_state_sizes))
+    transform_state_fn(model, decoder_utils.pad_state_fn(pad_state_sizes))  # pyrefly: ignore[bad-argument-type]
 
   batch_size = prefix_ids.shape[0]
   # If prefix length is not specified, set it to 0.
   if prefix_lengths is None:
     prefix_lengths = jnp.zeros([batch_size], dtype=jnp.int32)
 
-  seq_len = max_prefix_len + max_decode_steps
+  seq_len = max_prefix_len + max_decode_steps  # pyrefly: ignore[unsupported-operation]
   output_ids = jnp.zeros(shape=(batch_size,), dtype=jnp.int32)
 
   # initialize decode state
   decode_state = NestedMap()
 
   # Update output_ids with last tokens of prefix_ids.
-  output_ids = output_ids.at[:].set(prefix_ids[:, max_prefix_len - 1])
+  output_ids = output_ids.at[:].set(prefix_ids[:, max_prefix_len - 1])  # pyrefly: ignore[unsupported-operation]
 
   assert max_prefix_len is not None
   start_step = max_prefix_len - 1
@@ -1764,10 +1764,10 @@ def sample_decoding_step(
       model, decode_loop_mesh_axes_transpose
   ):
     if isinstance(eos_id, int):
-      eos_id = [eos_id]
+      eos_id = [eos_id]  # pyrefly: ignore[bad-assignment]
 
     per_example_max_decode_steps = jnp.minimum(
-        decode_state.per_example_max_decode_steps, max_decode_steps
+        decode_state.per_example_max_decode_steps, max_decode_steps  # pyrefly: ignore[bad-argument-type]
     )
     temperature = decode_state.temperature
     if isinstance(temperature, JTensor):

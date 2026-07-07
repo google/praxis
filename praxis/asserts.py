@@ -129,7 +129,7 @@ def _retrieve_argnames(assert_name: str) -> list[str] | None:
   """
   # Retrieve the code line as a string with the assert's call.
   frame = inspect.stack()[2].frame
-  code_context = inspect.getframeinfo(frame).code_context[0].strip()
+  code_context = inspect.getframeinfo(frame).code_context[0].strip()  # pyrefly: ignore[unsupported-operation]
   first_p = code_context.find(f'{assert_name}(') + len(assert_name) + 1
   if first_p == -1:
     return None
@@ -201,7 +201,7 @@ def none(
   else:
     if value_str is None:
       arguments = _retrieve_argnames('none')
-      value_str = _get_value_str(value, arguments)
+      value_str = _get_value_str(value, arguments)  # pyrefly: ignore[bad-argument-type]
     error_msg = f'`{value_str}` must be `None`.'
   raise exception_type(error_msg)
 
@@ -231,7 +231,7 @@ def not_none(
   else:
     if value_str is None:
       arguments = _retrieve_argnames('not_none')
-      value_str = _get_value_str(value, arguments)
+      value_str = _get_value_str(value, arguments)  # pyrefly: ignore[bad-argument-type]
     error_msg = f'`{value_str}` must not be `None`.'
   raise exception_type(error_msg)
 
@@ -269,9 +269,9 @@ def eq(
     if value_str1 is None or value_str2 is None:
       arguments = _retrieve_argnames('eq')
       if value_str1 is None:
-        value_str1 = _get_value_str(value1, arguments, index=0)
+        value_str1 = _get_value_str(value1, arguments, index=0)  # pyrefly: ignore[bad-argument-type]
       if value_str2 is None:
-        value_str2 = _get_value_str(value2, arguments, index=1)
+        value_str2 = _get_value_str(value2, arguments, index=1)  # pyrefly: ignore[bad-argument-type]
     error_msg = f'`{value_str1}` must be equal to `{value_str2}`.'
   raise exception_type(error_msg)
 
@@ -309,9 +309,9 @@ def ne(
     if value_str1 is None or value_str2 is None:
       arguments = _retrieve_argnames('ne')
       if value_str1 is None:
-        value_str1 = _get_value_str(value1, arguments, index=0)
+        value_str1 = _get_value_str(value1, arguments, index=0)  # pyrefly: ignore[bad-argument-type]
       if value_str2 is None:
-        value_str2 = _get_value_str(value2, arguments, index=1)
+        value_str2 = _get_value_str(value2, arguments, index=1)  # pyrefly: ignore[bad-argument-type]
     error_msg = f'`{value_str1}` must not be equal to `{value_str2}`.'
   raise exception_type(error_msg)
 
@@ -345,7 +345,7 @@ def instance(
   else:
     if value_str is None:
       arguments = _retrieve_argnames('instance')
-      value_str = _get_value_str(value, arguments)
+      value_str = _get_value_str(value, arguments)  # pyrefly: ignore[bad-argument-type]
     error_msg = f'`{value_str}` must be of type `{instances}`.'
   raise exception_type(error_msg)
 
@@ -379,7 +379,7 @@ def subclass(
   else:
     if value_str is None:
       arguments = _retrieve_argnames('subclasses')
-      value_str = _get_value_str(value, arguments)
+      value_str = _get_value_str(value, arguments)  # pyrefly: ignore[bad-argument-type]
     error_msg = f'`{value_str}` must be a subclass of `{subclasses}`.'
   raise exception_type(error_msg)
 
@@ -417,9 +417,9 @@ def le(
     if value_str1 is None or value_str2 is None:
       arguments = _retrieve_argnames('le')
       if value_str1 is None:
-        value_str1 = _get_value_str(value1, arguments, index=0)
+        value_str1 = _get_value_str(value1, arguments, index=0)  # pyrefly: ignore[bad-argument-type]
       if value_str2 is None:
-        value_str2 = _get_value_str(value2, arguments, index=1)
+        value_str2 = _get_value_str(value2, arguments, index=1)  # pyrefly: ignore[bad-argument-type]
     error_msg = f'`{value_str1}` must be less than or equal to `{value_str2}`.'
   raise exception_type(error_msg)
 
@@ -457,9 +457,9 @@ def lt(
     if value_str1 is None or value_str2 is None:
       arguments = _retrieve_argnames('lt')
       if value_str1 is None:
-        value_str1 = _get_value_str(value1, arguments, index=0)
+        value_str1 = _get_value_str(value1, arguments, index=0)  # pyrefly: ignore[bad-argument-type]
       if value_str2 is None:
-        value_str2 = _get_value_str(value2, arguments, index=1)
+        value_str2 = _get_value_str(value2, arguments, index=1)  # pyrefly: ignore[bad-argument-type]
     error_msg = f'`{value_str1}` must be strictly less than `{value_str2}`.'
   raise exception_type(error_msg)
 
@@ -497,9 +497,9 @@ def ge(
     if value_str1 is None or value_str2 is None:
       arguments = _retrieve_argnames('ge')
       if value_str1 is None:
-        value_str1 = _get_value_str(value1, arguments, index=0)
+        value_str1 = _get_value_str(value1, arguments, index=0)  # pyrefly: ignore[bad-argument-type]
       if value_str2 is None:
-        value_str2 = _get_value_str(value2, arguments, index=1)
+        value_str2 = _get_value_str(value2, arguments, index=1)  # pyrefly: ignore[bad-argument-type]
     error_msg = (
         f'`{value_str1}` must be greater than or equal to `{value_str2}`.'
     )
@@ -539,9 +539,9 @@ def gt(
     if value_str1 is None or value_str2 is None:
       arguments = _retrieve_argnames('gt')
       if value_str1 is None:
-        value_str1 = _get_value_str(value1, arguments, index=0)
+        value_str1 = _get_value_str(value1, arguments, index=0)  # pyrefly: ignore[bad-argument-type]
       if value_str2 is None:
-        value_str2 = _get_value_str(value2, arguments, index=1)
+        value_str2 = _get_value_str(value2, arguments, index=1)  # pyrefly: ignore[bad-argument-type]
     error_msg = f'`{value_str1}` must be strictly greater than `{value_str2}`.'
   raise exception_type(error_msg)
 
@@ -586,7 +586,7 @@ def in_set(
   else:
     if value_str is None:
       arguments = _retrieve_argnames('in_set')
-      value_str = _get_value_str(value, arguments)
+      value_str = _get_value_str(value, arguments)  # pyrefly: ignore[bad-argument-type]
     error_msg = f'`{value_str}` must be within `{elements}`.'
   raise exception_type(error_msg)
 
@@ -635,7 +635,7 @@ def between(
   else:
     if value_str is None:
       arguments = _retrieve_argnames('between')
-      value_str = _get_value_str(value, arguments)
+      value_str = _get_value_str(value, arguments)  # pyrefly: ignore[bad-argument-type]
     left_bracket = '(' if left_strict else '['
     right_bracket = ')' if right_strict else ']'
     error_msg = (

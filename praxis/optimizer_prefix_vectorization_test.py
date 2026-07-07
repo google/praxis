@@ -40,7 +40,7 @@ class OptimizerPrefixVectorizationTest(test_utils.TestCase):
       return jax.tree.map(lambda u, s: u + s, updates, state), state
 
     grad_tx = optax.GradientTransformationExtraArgs(
-        init=_opt_init, update=_opt_update
+        init=_opt_init, update=_opt_update  # pyrefly: ignore[bad-argument-type]
     )
 
     grads = base_layer.NestedMap(
@@ -66,7 +66,7 @@ class OptimizerPrefixVectorizationTest(test_utils.TestCase):
 
     state = grad_tx.init(variables)
     logging.info(state)
-    opt_states_pspec = opt_vec.partition_params(grad_tx, var_hparams, state)
+    opt_states_pspec = opt_vec.partition_params(grad_tx, var_hparams, state)  # pyrefly: ignore[bad-argument-type]
     logging.info('opt_states_pspec=%s', opt_states_pspec)
     # Computed update is 0 + state, and state is sum of each variable.
     update, _ = grad_tx.update(

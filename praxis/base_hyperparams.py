@@ -274,13 +274,13 @@ def nested_struct_to_text(obj_to_visit: Any,
     if isinstance(val, BaseHyperParams):
       return _SortedDict({
           f.name: get_repr(getattr(val, f.name))
-          for f in dataclasses.fields(val)
+          for f in dataclasses.fields(val)  # pyrefly: ignore[bad-argument-type]
           if hasattr(val, f.name)
       })
     if dataclasses.is_dataclass(val) and not isinstance(val, type):
       return str(val)
     if _is_named_tuple(val):
-      return _SortedDict({k: get_repr(v) for k, v in val._asdict().items()})
+      return _SortedDict({k: get_repr(v) for k, v in val._asdict().items()})  # pyrefly: ignore[missing-attribute]
     if isinstance(val, (list, tuple)):
       return type(val)([get_repr(v) for v in val])
     if isinstance(val, (int, float, bool, str, enum.Enum)):
@@ -290,14 +290,14 @@ def nested_struct_to_text(obj_to_visit: Any,
     # TODO(b/227382805): Add better support for NumPy/JNP dtype?
     if isinstance(val, message.Message):
       proto_str = text_format.MessageToString(val, as_one_line=True)
-      return 'proto/%s/%s/%s' % (inspect.getmodule(val).__name__,
+      return 'proto/%s/%s/%s' % (inspect.getmodule(val).__name__,  # pyrefly: ignore[missing-attribute]
                                  type(val).__name__, proto_str)
     if isinstance(val, StrOverride):
       return str(val)
     if isinstance(val, type):
-      return 'type/' + inspect.getmodule(val).__name__ + '/' + val.__qualname__
+      return 'type/' + inspect.getmodule(val).__name__ + '/' + val.__qualname__  # pyrefly: ignore[missing-attribute]
     if callable(val) and hasattr(val, '__qualname__'):
-      return f'callable/{inspect.getmodule(val).__name__}/{val.__qualname__}'
+      return f'callable/{inspect.getmodule(val).__name__}/{val.__qualname__}'  # pyrefly: ignore[missing-attribute]
     if isinstance(val, fdl.Buildable):
       return repr(val)
     return type(val).__name__
@@ -416,7 +416,7 @@ class BaseHyperParams:
   def config(cls: Type[BaseHyperParamsSelf],
              **kwargs: Any) -> pax_fiddle.Config[BaseHyperParamsSelf]:
     cfg = pax_fiddle.Config(cls, **kwargs)
-    _fill_sub_config_fields(cfg, dataclasses.fields(cls))
+    _fill_sub_config_fields(cfg, dataclasses.fields(cls))  # pyrefly: ignore[bad-argument-type]
     return cfg
 
   @classmethod
@@ -519,7 +519,7 @@ class BaseHyperParams:
     if hasattr(self, '_internal_frozen') and self._internal_frozen:  # pytype: disable=attribute-error
       raise AttributeError(f'This HParam object is frozen: {self}')
     matching_fields = [
-        field for field in dataclasses.fields(self) if field.name == name
+        field for field in dataclasses.fields(self) if field.name == name  # pyrefly: ignore[bad-argument-type]
     ]
     if not matching_fields:
       qualname = self.__class__.__qualname__
@@ -532,7 +532,7 @@ class BaseHyperParams:
   def __post_init__(self) -> None:
     # If _internal_frozen is True, this object is frozen.
     object.__setattr__(self, '_internal_frozen', False)
-    for field in dataclasses.fields(self):
+    for field in dataclasses.fields(self):  # pyrefly: ignore[bad-argument-type]
       name = field.name
       attr_value = getattr(self, name)
       # We make a copy, otherwise, it is possible that all instances points to
@@ -601,7 +601,7 @@ class BaseHyperParams:
       else:
         setattr(self, name, attr_value)
 
-    for name in source.__dataclass_fields__:
+    for name in source.__dataclass_fields__:  # pyrefly: ignore[missing-attribute]
       if not hasattr(self, name):
         if (missing_fields_in_self is None or
             name not in missing_fields_in_self):
@@ -691,10 +691,10 @@ def sub_config_field(
   elif sub_config_cls is not None:
     if hasattr(sub_config_cls, '__to_sub_config_field__'):
       return sub_config_cls.__to_sub_config_field__()
-    assert issubclass(sub_config_cls, BaseHyperParams), sub_config_cls
-    lazy_ref = lambda: sub_config_cls
+    assert issubclass(sub_config_cls, BaseHyperParams), sub_config_cls  # pyrefly: ignore[bad-argument-type]
+    lazy_ref = lambda: sub_config_cls  # pyrefly: ignore[bad-assignment]
   return dataclasses.field(
-      default_factory=SubConfigFactory(_get_class=lazy_ref))
+      default_factory=SubConfigFactory(_get_class=lazy_ref))  # pyrefly: ignore[bad-argument-type]
 
 
 BaseParameterizableSelf = TypeVar(
@@ -743,7 +743,7 @@ class BaseParameterizable:
   @property
   def hparams(self) -> BaseParameterizable.HParams:
     """Returns the hyper-parameters upon which this instance is built."""
-    return self._hparams
+    return self._hparams  # pyrefly: ignore[bad-return]
 
   @classmethod
   def make(cls: Type[BaseParameterizableSelf],
@@ -785,7 +785,7 @@ class BaseParameterizable:
   def config(cls: Type[BaseParameterizableSelf],
              **kwargs) -> pax_fiddle.Config[BaseParameterizableSelf]:
     cfg = pax_fiddle.Config(cls.make, **kwargs)
-    _fill_sub_config_fields(cfg, dataclasses.fields(cls.HParams))
+    _fill_sub_config_fields(cfg, dataclasses.fields(cls.HParams))  # pyrefly: ignore[bad-argument-type]
     return cfg
 
   @classmethod
@@ -881,7 +881,7 @@ class FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
         isinstance(instance, pax_fiddle.Config)
         and isinstance(fdl.get_callable(instance), type)
         and issubclass(
-            fdl.get_callable(instance), cls.fiddle_base_parameterizable_cls
+            fdl.get_callable(instance), cls.fiddle_base_parameterizable_cls  # pyrefly: ignore[bad-argument-type]
         )
     )
 
@@ -1164,7 +1164,7 @@ def _add_precise_signature_to_make(
     make_copy = types.FunctionType(make_fn.__code__, make_fn.__globals__,
                                    make_fn.__name__, make_fn.__defaults__,
                                    make_fn.__closure__)
-    cls.make = classmethod(make_copy)
+    cls.make = classmethod(make_copy)  # pyrefly: ignore[bad-assignment]
 
   cls.make.__func__.__signature__ = manufactured_sig  # pytype: disable=attribute-error
 

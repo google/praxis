@@ -211,7 +211,7 @@ def extract_elements_matching_subset_structure(
           f'{subset} of subset which are not contained in '
           f'{superset}.'
       )
-    return type(subset)(
+    return type(subset)(  # pyrefly: ignore[no-matching-overload]
         extract_elements_matching_subset_structure(sub, sup)
         for sub, sup in zip(subset, superset)
     )

@@ -275,7 +275,7 @@ def right_align_tensors(
 
     # Slice out the right align tensor.
     start_indices = [0] * len(x.shape)
-    start_indices[0] = length
+    start_indices[0] = length  # pyrefly: ignore[unsupported-operation]
     sizes = list(x.shape)
     sizes[0] = seq_len
     return jax.lax.dynamic_slice(padded, start_indices, sizes)

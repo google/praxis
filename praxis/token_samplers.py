@@ -418,7 +418,7 @@ def sample_from_top_p_given_top_k(
       top_p_logits,
       top_k_indices,
       temperature,
-      decode_loop_state,
+      decode_loop_state,  # pyrefly: ignore[bad-argument-type]
   )
 
   return (
@@ -491,7 +491,7 @@ def sample_from_top_k_and_top_p(
       top_p_logits,
       top_k_indices,
       temperature,
-      decode_loop_state,
+      decode_loop_state,  # pyrefly: ignore[bad-argument-type]
   )
 
   return (
@@ -630,7 +630,7 @@ class DefaultNextTokenSampler(BaseNextTokenSampler):
   global_normalize: bool = False
   top_k_recall_target: float = 1.0
   use_top_k_for_logprobs: bool = False
-  logits_sampler: BaseLogitsSampler = pax_fiddle.instance_field(
+  logits_sampler: BaseLogitsSampler = pax_fiddle.instance_field(  # pyrefly: ignore[bad-assignment]
       DefaultCategoricalLogitsSampler
   )
 

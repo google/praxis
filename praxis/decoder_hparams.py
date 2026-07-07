@@ -159,7 +159,7 @@ class SampleDecoderHParams(DecoderHParams):
   p: float | JTensor | None = None
   next_token_sampler_tpl: pax_fiddle.Config[
       sample_decode.BaseNextTokenSampler
-  ] = pax_fiddle.template_field(sample_decode.DefaultNextTokenSampler)
+  ] = pax_fiddle.template_field(sample_decode.DefaultNextTokenSampler)  # pyrefly: ignore[bad-assignment]
   sample_constraint: (
       pax_fiddle.Config[sample_decode.BaseSampleTerminationConstraint] | None
   ) = None

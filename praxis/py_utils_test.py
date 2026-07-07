@@ -45,7 +45,7 @@ class PyUtilsTest(test_utils.TestCase):
   def test_reshard_empty_array(self):
     batch_size = 128
     empty_inputs = np.ones(shape=(batch_size, 0))
-    sharded_inputs = py_utils.reshard(empty_inputs)
+    sharded_inputs = py_utils.reshard(empty_inputs)  # pyrefly: ignore[bad-argument-type]
     # Check the shape of returned inputs.
     num_devices = jax.local_device_count()
     self.assertEqual(
@@ -210,14 +210,14 @@ class PyUtilsTest(test_utils.TestCase):
   @parameterized.parameters(jnp.int32, jnp.float32, jnp.bool_)
   def test_sequence_mask(self, dtype):
     lengths = np.array([0, 1, 2, 3])
-    mask = py_utils.sequence_mask(lengths, maxlen=4, dtype=dtype)
+    mask = py_utils.sequence_mask(lengths, maxlen=4, dtype=dtype)  # pyrefly: ignore[bad-argument-type]
     expected = np.tri(4, k=-1, dtype=dtype)
     self.assertAllClose(mask, expected)
 
   @parameterized.parameters(jnp.int32, jnp.float32, jnp.bool_)
   def test_sequence_paddings(self, dtype):
     lengths = np.array([0, 1, 2, 3])
-    paddings = py_utils.sequence_paddings(lengths, maxlen=4, dtype=dtype)
+    paddings = py_utils.sequence_paddings(lengths, maxlen=4, dtype=dtype)  # pyrefly: ignore[bad-argument-type]
     expected = (1 - np.tri(4, k=-1)).astype(dtype)
     self.assertAllClose(paddings, expected)
 
@@ -353,7 +353,7 @@ class PyUtilsTest(test_utils.TestCase):
       time.sleep(1)
     end_time = time.time()
     self.assertGreaterEqual(period.start, start_time)
-    self.assertLessEqual(period.end, end_time)
+    self.assertLessEqual(period.end, end_time)  # pyrefly: ignore[no-matching-overload]
     self.assertGreater(period.elapsed, 0.9)
 
     with py_utils.timeit(min_elapsed=1.0) as period:
@@ -404,7 +404,7 @@ class PyUtilsTest(test_utils.TestCase):
   def test_pad_or_trim_to_trim(self, dst):
     src = (2, 3)
     x = np.random.uniform(0, 1, src).astype(np.float32)
-    y = py_utils.pad_or_trim_to(x, dst)
+    y = py_utils.pad_or_trim_to(x, dst)  # pyrefly: ignore[bad-argument-type]
     assert y is not None
     self.assertSequenceEqual(y.shape, dst)
     self.assertAllClose(y, x[: dst[0], : dst[1]])
@@ -418,7 +418,7 @@ class PyUtilsTest(test_utils.TestCase):
     src = (2, 3)
     pad_value = 42.0
     x = np.random.uniform(0, 1, src).astype(np.float32)
-    y = py_utils.pad_or_trim_to(x, dst, pad_value)
+    y = py_utils.pad_or_trim_to(x, dst, pad_value)  # pyrefly: ignore[bad-argument-type]
     assert y is not None
     self.assertSequenceEqual(y.shape, dst)
     self.assertAllClose(y[: src[0], : src[1]], x)

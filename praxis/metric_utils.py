@@ -47,7 +47,7 @@ def top_k_accuracy(
   if label_ids is None and label_probs is None:
     raise ValueError("One of label_ids and label_probs should be given.")
   if label_ids is None:
-    label_ids = jnp.argmax(label_probs, axis=-1)
+    label_ids = jnp.argmax(label_probs, axis=-1)  # pyrefly: ignore[bad-argument-type]
   if weights is None:
     weights = jnp.ones(logits.shape[:-1])
 

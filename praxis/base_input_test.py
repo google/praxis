@@ -83,7 +83,7 @@ class TestInput(base_input.BaseInput):
     if self.shuffle:
       d = d.shuffle(10, seed=self.input_random_seed).repeat(-1)
     if self.reset_for_eval:
-      d = d.take(self.batch_size * 2)
+      d = d.take(self.batch_size * 2)  # pyrefly: ignore[unsupported-operation]
     d = d.map(self._to_nested_map)
 
     # Sets drop_remainder=True to fix the batch dimension size, to be used in

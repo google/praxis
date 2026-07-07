@@ -102,8 +102,8 @@ def partition_params(
     if isinstance(opt_states, dict):
       opt_states_pspec = NestedMap()
       for prefix, group in opt_states.items():
-        opt_states_pspec[prefix] = optimizers.partition_params(
-            grad_tx=grad_tx.original_grad_tx,
+        opt_states_pspec[prefix] = optimizers.partition_params(  # pyrefly: ignore[unsupported-operation]
+            grad_tx=grad_tx.original_grad_tx,  # pyrefly: ignore[missing-attribute]
             var_weight_hparams=var_weight_hparams,
             opt_states=group,
         )
@@ -113,7 +113,7 @@ def partition_params(
       # when creating prefix vectorization, opt_states will not contain a
       # dictionary with single 'no_prefix' key. But we still want to call
       # tree_map_params on the original transformation.
-      grad_tx = grad_tx.original_grad_tx
+      grad_tx = grad_tx.original_grad_tx  # pyrefly: ignore[missing-attribute]
   return optimizers.partition_params(
       grad_tx,
       var_weight_hparams,
@@ -198,7 +198,7 @@ def _get_var_param_repeat_prefix_key(var_param: base_layer.WeightHParams,
 
   shape_str = '.'.join(str(d) for d in var_param.repeat_prefix)
   sharding_str = '.'.join(
-      _encode_sharding_dim(d, repeat_prefix_sep) for d in sharding_prefix)
+      _encode_sharding_dim(d, repeat_prefix_sep) for d in sharding_prefix)  # pyrefly: ignore[bad-argument-type]
 
   # If optimizer_prefix is None or all `-1`'s then we omit the prefix string in
   # order to maintain backward compatibility.
@@ -206,7 +206,7 @@ def _get_var_param_repeat_prefix_key(var_param: base_layer.WeightHParams,
     return f'p{repeat_prefix_sep}{shape_str}{repeat_prefix_sep}{sharding_str}'
 
   optimizer_str = '.'.join(
-      _encode_sharding_dim(d, repeat_prefix_sep) for d in optimizer_prefix)
+      _encode_sharding_dim(d, repeat_prefix_sep) for d in optimizer_prefix)  # pyrefly: ignore[bad-argument-type]
   return (
       f'p{repeat_prefix_sep}{shape_str}{repeat_prefix_sep}{sharding_str}' +
       f'{repeat_prefix_sep}{optimizer_str}')
@@ -290,14 +290,14 @@ def _init_with_vectorized_repeat_prefix(
 
   """init function for vectorized optimizers based on var_hparams."""
 
-  vmap_groups = _group_by_repeat_prefix(var_vals, var_hparams,
+  vmap_groups = _group_by_repeat_prefix(var_vals, var_hparams,  # pyrefly: ignore[bad-argument-type]
                                         repeat_prefix_sep)
   results = NestedMap()
   for prefix, group in vmap_groups.items():
     shape_prefix, _, optimizer_prefix = (
         _parse_var_param_repeat_prefix_key(prefix, repeat_prefix_sep))
     results[prefix] = _vectorize_on_prefix_dims(
-        tx.init, num_dim=len(shape_prefix), optimizer_prefix=optimizer_prefix)(
+        tx.init, num_dim=len(shape_prefix), optimizer_prefix=optimizer_prefix)(  # pyrefly: ignore[bad-argument-type]
             group)
 
   if has_no_prefix(results) and not force_prefix_structure:
@@ -316,9 +316,9 @@ def _update_with_vectorized_repeat_prefix(
     force_prefix_structure: bool = False,
 ) -> tuple[NestedJTensor, optax.OptState]:
   """update function for vectorized optimizers based on var_hparams."""
-  grouped_updates = _group_by_repeat_prefix(updates, var_hparams,
+  grouped_updates = _group_by_repeat_prefix(updates, var_hparams,  # pyrefly: ignore[bad-argument-type]
                                             repeat_prefix_sep)
-  grouped_old_vars = _group_by_repeat_prefix(old_vars, var_hparams,
+  grouped_old_vars = _group_by_repeat_prefix(old_vars, var_hparams,  # pyrefly: ignore[bad-argument-type]
                                              repeat_prefix_sep)
   update_results = NestedMap()
   state_results = NestedMap()
@@ -339,8 +339,8 @@ def _update_with_vectorized_repeat_prefix(
         prefix, repeat_prefix_sep)
     new_updates, new_state, bwd_summaries = _vectorize_on_prefix_dims(
         functools.partial(pure_tx_update, tx.update),
-        num_dim=len(shape_prefix), optimizer_prefix=optimizer_prefix)(
-            group, grouped_state[prefix], grouped_old_vars[prefix])
+        num_dim=len(shape_prefix), optimizer_prefix=optimizer_prefix)(  # pyrefly: ignore[bad-argument-type]
+            group, grouped_state[prefix], grouped_old_vars[prefix])  # pyrefly: ignore[bad-index]
     # re-dispatch the summaries to the out-context
     assert isinstance(bwd_summaries, dict), repr(bwd_summaries)
     for k, v in bwd_summaries.items():
@@ -387,7 +387,7 @@ def _init_partition_spec_with_vectorized_repeat_prefix(
 
   # Use the same grouping as _init_with_vectorized_repeat_prefix, in order to
   # produce compatible tree structures.
-  vmap_groups = _group_by_repeat_prefix(var_hparams, var_hparams,
+  vmap_groups = _group_by_repeat_prefix(var_hparams, var_hparams,  # pyrefly: ignore[bad-argument-type]
                                         repeat_prefix_sep)
   results = NestedMap()
   for prefix, group in vmap_groups.items():
@@ -410,7 +410,7 @@ class _PrefixVectorizationTransform(optax.GradientTransformationExtraArgs):
       original_grad_tx: optax.GradientTransformation,
   ):
     self = super().__new__(cls, init, update)  # pylint: disable=too-many-function-args
-    self.original_grad_tx: optax.GradientTransformation = original_grad_tx
+    self.original_grad_tx: optax.GradientTransformation = original_grad_tx  # pyrefly: ignore[bad-assignment, missing-attribute]
     return self
 
 
@@ -436,7 +436,7 @@ def get_transformations_with_vectorized_repeat_prefix(
         tx,
         updates,
         state,
-        params,
+        params,  # pyrefly: ignore[bad-argument-type]
         var_hparams,
         repeat_prefix_sep,
         force_prefix_structure=force_prefix_structure,
@@ -453,9 +453,9 @@ def get_transformations_with_vectorized_repeat_prefix(
 
   if isinstance(tx, ShardedGradientTransformation):
     return ShardedGradientTransformation(
-        init=_init, update=_update, init_partition_spec=_init_partition_spec)
+        init=_init, update=_update, init_partition_spec=_init_partition_spec)  # pyrefly: ignore[bad-argument-type]
   else:
     assert isinstance(tx, optax.GradientTransformation)
     return _PrefixVectorizationTransform(
-        init=_init, update=_update, original_grad_tx=tx
+        init=_init, update=_update, original_grad_tx=tx  # pyrefly: ignore[bad-argument-type]
     )

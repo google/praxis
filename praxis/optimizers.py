@@ -156,7 +156,7 @@ def partition_params(
     )
 
   opt_states_pspec = optax.tree_map_params(
-      grad_tx,
+      grad_tx,  # pyrefly: ignore[bad-argument-type]
       sharding_function,
       opt_states,
       var_weight_hparams,
@@ -228,7 +228,7 @@ def sharded_sgd(
     return sgd.update(updates, state)
 
   return ShardedGradientTransformation(
-      init=init_fn,
+      init=init_fn,  # pyrefly: ignore[bad-argument-type]
       update=update_fn,
       init_partition_spec=init_partition_spec_fn)
 
@@ -277,7 +277,7 @@ def sharded_adagrad(learning_rate_fn: optax.Schedule,
     return adagrad.update(updates, state)
 
   return ShardedGradientTransformation(
-      init=init_fn,
+      init=init_fn,  # pyrefly: ignore[bad-argument-type]
       update=update_fn,
       init_partition_spec=init_partition_spec_fn)
 
@@ -357,13 +357,13 @@ class _ShardedAdamHelper:
     """Updates momentum values."""
     beta1_decay = self.bias_corrected_decay(step, beta1)
     beta2_decay = self.bias_corrected_decay(step, beta2)
-    m = (1.0 - beta1_decay) * update + beta1_decay * moments.m
-    v = (1.0 - beta2_decay) * (update**2) + beta2_decay * moments.v
+    m = (1.0 - beta1_decay) * update + beta1_decay * moments.m  # pyrefly: ignore[unsupported-operation]
+    v = (1.0 - beta2_decay) * (update**2) + beta2_decay * moments.v  # pyrefly: ignore[unsupported-operation]
     return _AdamOptState(m=m, v=v)
 
   def clip_update(self, update: JTensor, clip_threshold: float) -> JTensor:
     mean_update = self.inf_to_nan(reduce_rms(update))
-    clip_threshold = jnp.array(clip_threshold, dtype=update.dtype)
+    clip_threshold = jnp.array(clip_threshold, dtype=update.dtype)  # pyrefly: ignore[bad-assignment]
     denom = jnp.maximum(1.0, mean_update / clip_threshold)
     return update / denom
 
@@ -400,7 +400,7 @@ class _ShardedLionHelper(_ShardedAdamHelper):
                      moments: _LionOptState,
                      beta2: float) -> _LionOptState:
     """Updates momentum value."""
-    m = (1. - beta2) * update + beta2 * moments.m
+    m = (1. - beta2) * update + beta2 * moments.m  # pyrefly: ignore[unsupported-operation]
     return _LionOptState(m=m)
 
 
@@ -498,7 +498,7 @@ def sharded_masked(
     if callable(init_partition_spec):
       return init_partition_spec(mdl_vars)
 
-  grad_tx = optax.masked(inner, mask)
+  grad_tx = optax.masked(inner, mask)  # pyrefly: ignore[bad-argument-type]
   if not hasattr(inner, 'init_partition_spec'):
     return grad_tx
   else:
@@ -563,10 +563,10 @@ def apply_lp_regularizer(
         )
 
       if var_lp_mask is None:
-        updates = jax.tree.map(fn, updates, params)
+        updates = jax.tree.map(fn, updates, params)  # pyrefly: ignore[unbound-name]
       else:
         updates = jax.tree.map(
-            fn,
+            fn,  # pyrefly: ignore[unbound-name]
             updates,
             params,
             var_lp_mask,
@@ -577,13 +577,13 @@ def apply_lp_regularizer(
 
   if use_optax_gradient_transformations:
     return optax.GradientTransformationExtraArgs(
-        init=count_init_fn, update=update_fn
+        init=count_init_fn, update=update_fn  # pyrefly: ignore[bad-argument-type]
     )
 
   return ShardedGradientTransformation(
-      init=count_init_fn,
-      update=update_fn,
-      init_partition_spec=count_init_partition_spec_fn)
+      init=count_init_fn,  # pyrefly: ignore[bad-argument-type]
+      update=update_fn,  # pyrefly: ignore[bad-argument-type]
+      init_partition_spec=count_init_partition_spec_fn)  # pyrefly: ignore[bad-argument-type]
 
 
 def apply_decoupled_weight_decay(
@@ -639,12 +639,12 @@ def apply_decoupled_weight_decay(
 
   if use_optax_gradient_transformations:
     return optax.GradientTransformationExtraArgs(
-        init=count_init_fn, update=update_fn
+        init=count_init_fn, update=update_fn  # pyrefly: ignore[bad-argument-type]
     )
   return ShardedGradientTransformation(
-      init=count_init_fn,
-      update=update_fn,
-      init_partition_spec=count_init_partition_spec_fn)
+      init=count_init_fn,  # pyrefly: ignore[bad-argument-type]
+      update=update_fn,  # pyrefly: ignore[bad-argument-type]
+      init_partition_spec=count_init_partition_spec_fn)  # pyrefly: ignore[bad-argument-type]
 
 
 def sharded_adam(
@@ -736,7 +736,7 @@ def sharded_adam(
     return updates, updated_states
 
   return ShardedGradientTransformation(
-      init=init_fn,
+      init=init_fn,  # pyrefly: ignore[bad-argument-type]
       update=update_fn,
       init_partition_spec=init_partition_spec_fn)
 
@@ -816,7 +816,7 @@ def sharded_lion(learning_rate_fn: optax.Schedule, beta1: float,
     return updates, updated_states
 
   return ShardedGradientTransformation(
-      init=init_fn, update=update_fn, init_partition_spec=init_partition_spec_fn
+      init=init_fn, update=update_fn, init_partition_spec=init_partition_spec_fn  # pyrefly: ignore[bad-argument-type]
   )
 
 
@@ -889,10 +889,10 @@ def apply_ema_weights(
         ema=jax.tree.map(_infer_ema_pspec, params))
 
   if use_optax_gradient_transformations:
-    return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)
+    return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)  # pyrefly: ignore[bad-argument-type]
   return ShardedGradientTransformation(
       init=init_fn,
-      update=update_fn,
+      update=update_fn,  # pyrefly: ignore[bad-argument-type]
       init_partition_spec=init_partition_spec_fn)
 
 
@@ -1009,9 +1009,9 @@ def apply_ewc_regularization(
       )
 
   if use_optax_gradient_transformations:
-    return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)
+    return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)  # pyrefly: ignore[bad-argument-type]
   return ShardedGradientTransformation(
-      init=init_fn, update=update_fn, init_partition_spec=init_partition_spec_fn
+      init=init_fn, update=update_fn, init_partition_spec=init_partition_spec_fn  # pyrefly: ignore[bad-argument-type]
   )
 
 
@@ -1098,7 +1098,7 @@ class OptaxOptimizer(base_hyperparams.FiddleBaseParameterizable):
   _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
-    self._lr_schedule_inst = instantiate(self.lr_schedule)
+    self._lr_schedule_inst = instantiate(self.lr_schedule)  # pyrefly: ignore[bad-argument-type]
     # Should not mix L1, L2 regularizer and weight decay together.
     if self.l2_regularizer_weight and self.l1_regularizer_weight:
       raise ValueError('Should not mix L1 and L2 regularization.')
@@ -1140,14 +1140,14 @@ class OptaxOptimizer(base_hyperparams.FiddleBaseParameterizable):
 
     transformations = [
         apply_lp_regularizer(
-            var_lp_mask=var_lp_mask,
+            var_lp_mask=var_lp_mask,  # pyrefly: ignore[bad-argument-type]
             regularizer_weight=self.l1_regularizer_weight,
             p=1.0,
             skip_lp_1d_vectors=self.skip_lp_1d_vectors,
             use_optax_gradient_transformations=True,
         ),
         apply_lp_regularizer(
-            var_lp_mask=var_lp_mask,
+            var_lp_mask=var_lp_mask,  # pyrefly: ignore[bad-argument-type]
             regularizer_weight=self.l2_regularizer_weight,
             p=2.0,
             skip_lp_1d_vectors=self.skip_lp_1d_vectors,
@@ -1155,8 +1155,8 @@ class OptaxOptimizer(base_hyperparams.FiddleBaseParameterizable):
         ),
         self.grad_tx,
         apply_decoupled_weight_decay(
-            self.get_learning_rate,
-            var_wd_mask=var_lp_mask,
+            self.get_learning_rate,  # pyrefly: ignore[bad-argument-type]
+            var_wd_mask=var_lp_mask,  # pyrefly: ignore[bad-argument-type]
             regularizer_weight=self.decoupled_weight_decay,
             use_optax_gradient_transformations=True,
         ),
@@ -1164,9 +1164,9 @@ class OptaxOptimizer(base_hyperparams.FiddleBaseParameterizable):
     if self.ewc_regularizer_weight > 0.0:
       transformations.append(
           apply_ewc_regularization(
-              self.get_learning_rate,
+              self.get_learning_rate,  # pyrefly: ignore[bad-argument-type]
               ewc_regularizer_weight=self.ewc_regularizer_weight,
-              ewc_weight_per_var=self.ewc_weight_per_var,
+              ewc_weight_per_var=self.ewc_weight_per_var,  # pyrefly: ignore[bad-argument-type]
               use_optax_gradient_transformations=True,
           )
       )
@@ -1179,7 +1179,7 @@ class OptaxOptimizer(base_hyperparams.FiddleBaseParameterizable):
               decay=self.ema_decay, use_optax_gradient_transformations=True
           )
       )
-    return optax.chain(*transformations)
+    return optax.chain(*transformations)  # pyrefly: ignore[bad-argument-type]
 
   def get_learning_rate(self, step_count: JTensor) -> JTensor:
     """Get the learning rate of this optimizer at a particular step."""
@@ -1239,7 +1239,7 @@ class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
   _lr_schedule_inst: Any = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
-    self._lr_schedule_inst = instantiate(self.lr_schedule)
+    self._lr_schedule_inst = instantiate(self.lr_schedule)  # pyrefly: ignore[bad-argument-type]
     # Should not mix L1, L2 regularizer and weight decay together.
     if self.l2_regularizer_weight and self.l1_regularizer_weight:
       raise ValueError('Should not mix L1 and L2 regularization.')
@@ -1283,30 +1283,30 @@ class BaseOptimizer(base_hyperparams.FiddleBaseParameterizable):
 
     optax_list = [
         apply_lp_regularizer(
-            var_lp_mask=var_lp_mask,
+            var_lp_mask=var_lp_mask,  # pyrefly: ignore[bad-argument-type]
             regularizer_weight=self.l1_regularizer_weight,
             p=1.0,
             skip_lp_1d_vectors=self.skip_lp_1d_vectors,
         ),
         apply_lp_regularizer(
-            var_lp_mask=var_lp_mask,
+            var_lp_mask=var_lp_mask,  # pyrefly: ignore[bad-argument-type]
             regularizer_weight=self.l2_regularizer_weight,
             p=2.0,
             skip_lp_1d_vectors=self.skip_lp_1d_vectors,
         ),
-        self._get_raw_grad_transformation(self.get_learning_rate),
+        self._get_raw_grad_transformation(self.get_learning_rate),  # pyrefly: ignore[bad-argument-type]
         apply_decoupled_weight_decay(
-            self.get_learning_rate,
-            var_wd_mask=var_lp_mask,
+            self.get_learning_rate,  # pyrefly: ignore[bad-argument-type]
+            var_wd_mask=var_lp_mask,  # pyrefly: ignore[bad-argument-type]
             regularizer_weight=self.decoupled_weight_decay,
         ),
     ]
     if self.ewc_regularizer_weight > 0.0:
       optax_list.append(
           apply_ewc_regularization(
-              self.get_learning_rate,
+              self.get_learning_rate,  # pyrefly: ignore[bad-argument-type]
               ewc_regularizer_weight=self.ewc_regularizer_weight,
-              ewc_weight_per_var=self.ewc_weight_per_var,
+              ewc_weight_per_var=self.ewc_weight_per_var,  # pyrefly: ignore[bad-argument-type]
           )
       )
     if self.ema_decay > 0.0 and include_ema:
@@ -1687,11 +1687,11 @@ class DistributedShampoo(BaseOptimizer):
   skip_preconditioning_dim_size_gt: int = 4096
   clip_by_scaled_gradient_norm: float | None = None
   best_effort_shape_interpretation: bool = True
-  tensor_split_dims_mapping: Sequence[int] = pax_fiddle.instance_field(
+  tensor_split_dims_mapping: Sequence[int] = pax_fiddle.instance_field(  # pyrefly: ignore[bad-assignment]
       default_factory=lambda: [-1, 1, -1]
   )
   tensor_split_dims_mapping_for_inverse_pth_root: Sequence[int] = (
-      pax_fiddle.instance_field(default_factory=lambda: [-1, 1, -1])
+      pax_fiddle.instance_field(default_factory=lambda: [-1, 1, -1])  # pyrefly: ignore[bad-assignment]
   )
   best_effort_memory_usage_reduction: bool = False
   relative_matrix_epsilon: bool = True
@@ -1789,7 +1789,7 @@ class DistributedShampoo(BaseOptimizer):
       return new_params, new_state
 
     return optax.GradientTransformation(grad_transformation.init,
-                                        wrapped_update_fn)
+                                        wrapped_update_fn)  # pyrefly: ignore[bad-argument-type]
 
   def _shampoo_transformation(self, lr):
     return distributed_shampoo_optimizer(
@@ -1991,7 +1991,7 @@ class ShardedDistributedShampoo(DistributedShampoo):
 
     return ShardedGradientTransformation(
         init=fns.init_fn,
-        update=_wrapped_update_fn,
+        update=_wrapped_update_fn,  # pyrefly: ignore[bad-argument-type]
         init_partition_spec=functools.partial(
             self.init_partition_spec_fn,
             fns.pspec_fn,
@@ -2110,7 +2110,7 @@ def adafactor_decay_rate_adam(beta2: float, step_counter: JTensor) -> JTensor:
     The decay rate as a scalar JTensor.
   """
   step = step_counter
-  beta2 = jnp.array(beta2, dtype=jnp.float32)
+  beta2 = jnp.array(beta2, dtype=jnp.float32)  # pyrefly: ignore[bad-assignment]
   t = step + 1.
   return beta2 * (1. - jnp.power(beta2, t - 1.)) / (1. - jnp.power(beta2, t))
 
@@ -2127,7 +2127,7 @@ def adafactor_decay_rate_pow(exponent: float, step_counter: JTensor) -> JTensor:
     The decay rate as a scalar JTensor.
   """
   step = step_counter
-  exponent = jnp.array(exponent, dtype=jnp.float32)
+  exponent = jnp.array(exponent, dtype=jnp.float32)  # pyrefly: ignore[bad-assignment]
   return 1. - jnp.power((step + 1.), -exponent)
 
 
@@ -2745,7 +2745,7 @@ def sharded_adafactor(
     return updates, updated_states
 
   return ShardedGradientTransformation(
-      init=init_fn, update=update_fn, init_partition_spec=init_partition_spec_fn
+      init=init_fn, update=update_fn, init_partition_spec=init_partition_spec_fn  # pyrefly: ignore[bad-argument-type]
   )
 
 
@@ -3001,8 +3001,8 @@ def sharded_static_accumulation(
         count=new_count)
 
   return ShardedGradientTransformation(
-      init=init_fn,
-      update=update_fn,
+      init=init_fn,  # pyrefly: ignore[bad-argument-type]
+      update=update_fn,  # pyrefly: ignore[bad-argument-type]
       init_partition_spec=init_partition_spec,
   )
 

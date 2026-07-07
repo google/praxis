@@ -84,8 +84,8 @@ class Linear(base_layer.BaseLayer):
 
 
 class MultipleLinearLayer(base_layer.BaseLayer):
-  linear1: AddBias | None = pax_fiddle.instance_field(Linear)
-  linear2_tpl: pax_fiddle.Config[Linear] = pax_fiddle.template_field(Linear)
+  linear1: AddBias | None = pax_fiddle.instance_field(Linear)  # pyrefly: ignore[bad-assignment]
+  linear2_tpl: pax_fiddle.Config[Linear] = pax_fiddle.template_field(Linear)  # pyrefly: ignore[bad-assignment]
 
   def setup(self):
     self.create_child('linear2', self.linear2_tpl)
@@ -94,7 +94,7 @@ class MultipleLinearLayer(base_layer.BaseLayer):
     self.create_child('linear_dangling', self.linear2_tpl)
 
   def __call__(self, x: base_layer.JTensor) -> base_layer.JTensor:
-    return self.linear2(self.linear1(x))
+    return self.linear2(self.linear1(x))  # pyrefly: ignore[not-callable]
 
 
 class QuantizedSubChannelFFN(base_layer.BaseLayer):
@@ -370,14 +370,14 @@ class BaseLayerTest(test_utils.TestCase):
   def test_copy_base_hparams(self):
 
     class ChildLayer(base_layer.BaseLayer):
-      params_init: base_layer.WeightInit = base_layer.instance_field(
+      params_init: base_layer.WeightInit = base_layer.instance_field(  # pyrefly: ignore[bad-assignment]
           lambda: base_layer.WeightInit.Uniform(0.5)  # override default
       )
 
     class ParentLayer(base_layer.BaseLayer):
       child: Any = None
-      child_tpl: pax_fiddle.Config = base_layer.template_field(ChildLayer)
-      params_init: base_layer.WeightInit = base_layer.instance_field(
+      child_tpl: pax_fiddle.Config = base_layer.template_field(ChildLayer)  # pyrefly: ignore[bad-assignment]
+      params_init: base_layer.WeightInit = base_layer.instance_field(  # pyrefly: ignore[bad-assignment]
           base_layer.WeightInit.Gaussian)
 
     source = pax_fiddle.Config(
@@ -408,11 +408,11 @@ class BaseLayerTest(test_utils.TestCase):
 
     class ParentLayer(base_layer.BaseLayer):
       # instance fields:
-      a: base_layer.BaseLayer = base_layer.instance_field(ChildLayer)
-      bs: list[base_layer.BaseLayer] = base_layer.instance_field(list)
+      a: base_layer.BaseLayer = base_layer.instance_field(ChildLayer)  # pyrefly: ignore[bad-assignment]
+      bs: list[base_layer.BaseLayer] = base_layer.instance_field(list)  # pyrefly: ignore[bad-assignment]
       # template fields:
-      x_tpl: LayerTpl = base_layer.template_field(ChildLayer)
-      y_tpls: list[LayerTpl] = base_layer.template_field(list)
+      x_tpl: LayerTpl = base_layer.template_field(ChildLayer)  # pyrefly: ignore[bad-assignment]
+      y_tpls: list[LayerTpl] = base_layer.template_field(list)  # pyrefly: ignore[bad-assignment]
 
       def setup(self):
         self.create_child('x', self.x_tpl)
@@ -547,9 +547,9 @@ class BaseLayerTest(test_utils.TestCase):
 
     class FiddleParent(base_layer.BaseLayer):
 
-      child_tpl: pax_fiddle.Config = base_layer.template_field(FiddleChild)
-      child_tpl_list: list[pax_fiddle.Config] = base_layer.template_field(None)
-      child_tpl_dict: dict[str, pax_fiddle.Config] = base_layer.template_field(
+      child_tpl: pax_fiddle.Config = base_layer.template_field(FiddleChild)  # pyrefly: ignore[bad-assignment]
+      child_tpl_list: list[pax_fiddle.Config] = base_layer.template_field(None)  # pyrefly: ignore[bad-assignment]
+      child_tpl_dict: dict[str, pax_fiddle.Config] = base_layer.template_field(  # pyrefly: ignore[bad-assignment]
           None
       )
       child_instance_list: list[base_layer.BaseLayer] | None = None
@@ -656,7 +656,7 @@ class BaseLayerTest(test_utils.TestCase):
         ici_mesh_shape=[1, 2],
         dcn_mesh_shape=[3, 4],
         mesh_axis_names=['a', 'b'],
-        parent=flax_core.Scope({}),
+        parent=flax_core.Scope({}),  # pyrefly: ignore[bad-argument-type]
         name='my_layer')
 
     hparams_stub = layer.hparams

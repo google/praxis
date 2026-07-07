@@ -322,7 +322,7 @@ class BeamSearchTest(test_utils.TestCase):
     for indexes_list in target_logprob_indexes:
       logprobs_list = [1., 1.]
       for index in indexes_list:
-        logprobs_list.append(logprobs[index[0]][index[1]])
+        logprobs_list.append(logprobs[index[0]][index[1]])  # pyrefly: ignore[bad-argument-type]
       while len(logprobs_list) < seq_len:
         logprobs_list.append(1.)
       target_logprobs.append(logprobs_list)
