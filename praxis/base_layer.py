@@ -50,7 +50,7 @@ try:
   from jax.extend.core import unsafe_get_axis_names_DO_NOT_USE
 except ImportError:
   # JAX v0.9.2 or older
-  from jax.core import unsafe_get_axis_names_DO_NOT_USE
+  from jax.core import unsafe_get_axis_names_DO_NOT_USE  # pytype: disable=import-error
 
 FLAGS = flags.FLAGS
 

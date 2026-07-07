@@ -571,7 +571,7 @@ def in_set(
   try:
     if value in elements:
       return
-  except jax.core.InconclusiveDimensionOperation:
+  except jax.errors.InconclusiveDimensionOperation:
     # In jax2tf context, comparisons like `b == 1` will raise an
     # InconclusiveDimensionOperation which we should regard as False.
     for e in elements:
