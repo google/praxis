@@ -115,15 +115,10 @@ pytype_strict_library(
     deps = [
         ":attentions",
         ":grouped_query_attention",
-        ":multi_query_attention",
-        ":normalizations",
         # Implicit jax dependency.
-        # Implicit Pallas GPU Ops dependency.  # BC internal suffix.
-        # Implicit Pallas Triton dependency.  # BC internal suffix.
         # Implicit numpy dependency.
         "//praxis:asserts",
         "//praxis:base_layer",
-        "//praxis:py_utils",
         "//praxis:pytypes",
     ],
 )
