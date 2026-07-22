@@ -2568,7 +2568,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
         [],
         [],
         [value_state_name],
-        sum,
+        sum,  # pyrefly: ignore[bad-argument-type]
     )
 
     if self.zero_fully_masked:
@@ -2584,7 +2584,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
       fully_masked = jnp.squeeze(fully_masked, axis=len(batch_dims))
       fully_masked = jnp.reshape(
           fully_masked,
-          fully_masked.shape + (1,) * (encoded.ndim - fully_masked.ndim),
+          fully_masked.shape + (1,) * (encoded.ndim - fully_masked.ndim),  # pyrefly: ignore[missing-attribute]
       )
       encoded *= 1 - fully_masked  # pyrefly: ignore[unsupported-operation]
 

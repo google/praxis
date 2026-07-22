@@ -169,19 +169,19 @@ def GrokStackedTransformerHParams(
       multi_query_attention.MultiQueryDotProductAttention,
       num_kv_heads=attention_num_groups,
   )
-  tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl
+  tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl  # pyrefly: ignore[missing-attribute]
   tr_atten_tpl.combine_qkv = False
   tr_atten_tpl.proj_tpl.use_bias = True
 
   if use_fp8:
-    p.transformer_layer_params_tpl.tr_atten_tpl.proj_tpl.einsum_tpl = (
+    p.transformer_layer_params_tpl.tr_atten_tpl.proj_tpl.einsum_tpl = (  # pyrefly: ignore[missing-attribute]
         pax_fiddle.Config(fp8_ops.Fp8EinsumOp)
     )
     if combine_qkv:
-      p.transformer_layer_params_tpl.tr_atten_tpl.combined_qkv_proj_tpl.einsum_tpl = pax_fiddle.Config(
+      p.transformer_layer_params_tpl.tr_atten_tpl.combined_qkv_proj_tpl.einsum_tpl = pax_fiddle.Config(  # pyrefly: ignore[missing-attribute]
           fp8_ops.Fp8EinsumOp
       )
-    p.transformer_layer_params_tpl.tr_fflayer_tpl.fflayer_tpl.linear_tpl.einsum_tpl = pax_fiddle.Config(
+    p.transformer_layer_params_tpl.tr_fflayer_tpl.fflayer_tpl.linear_tpl.einsum_tpl = pax_fiddle.Config(  # pyrefly: ignore[missing-attribute]
         fp8_ops.Fp8EinsumOp
     )
     p.moe_layer_tpl.einsum_tpl = pax_fiddle.Config(fp8_ops.Fp8EinsumOp)

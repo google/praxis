@@ -238,7 +238,7 @@ class HyperParamsTest(absltest.TestCase):
       x.d.a = 100  # pyrefly: ignore[missing-attribute]
     x.unfreeze()
     x.d.a = 200  # pyrefly: ignore[missing-attribute]
-    self.assertEqual(200, x.d.a)
+    self.assertEqual(200, x.d.a)  # pyrefly: ignore[missing-attribute]
     x.freeze()
     self.assertTrue(x._internal_frozen)  # pyrefly: ignore[missing-attribute]
     assert x.d is not None

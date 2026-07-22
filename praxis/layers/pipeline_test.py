@@ -372,7 +372,7 @@ class PipelinedTransformerTest(test_utils.TestCase):
     paddings = jnp.asarray(npy_paddings)
     segment_mask = None
     segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-    segment_mask = attentions.segment_mask(segment_ids, dtype=jnp.float32)
+    segment_mask = attentions.segment_mask(segment_ids, dtype=jnp.float32)  # pyrefly: ignore[bad-argument-type]
 
     cross_inputs = None
     cross_paddings = None
@@ -488,7 +488,7 @@ class PipelinedTransformerTest(test_utils.TestCase):
     segment_mask = None
     if packed_input:
       segment_ids = np.random.randint(0, 3, [batch_size, seq_len])
-      segment_mask = attentions.segment_mask(segment_ids, dtype=jnp.float32)
+      segment_mask = attentions.segment_mask(segment_ids, dtype=jnp.float32)  # pyrefly: ignore[bad-argument-type]
 
     cross_inputs = None
     cross_paddings = None
@@ -505,7 +505,7 @@ class PipelinedTransformerTest(test_utils.TestCase):
         source_segment_ids = np.random.randint(0, 3,
                                                [batch_size, cross_seq_len])
         cross_segment_mask = attentions.segment_mask(
-            segment_ids, source_segment_ids, dtype=jnp.float32
+            segment_ids, source_segment_ids, dtype=jnp.float32  # pyrefly: ignore[bad-argument-type, unbound-name]
         )
 
     def init(key, *args, **kwargs):

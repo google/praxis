@@ -1400,7 +1400,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
     # Use sum as result combiner since the time dimension is a contracting dim.
     encoded = self._run_with_all_decode_state_chunks(_post_softmax, [], probs,  # pytype: disable=wrong-arg-types  # jax-ndarray
                                                      am_tdim, [], [],
-                                                     [value_state_name], sum)
+                                                     [value_state_name], sum)  # pyrefly: ignore[bad-argument-type]
     return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
 
   @nn.nowrap
