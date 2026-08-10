@@ -16,7 +16,7 @@
 """A generic flax.nn.Module adapter layers."""
 
 import abc
-from dataclasses import field
+import dataclasses
 import functools
 import typing
 from typing import Callable
@@ -43,14 +43,14 @@ class _InternalBaseFlaxAdapter(base_layer.BaseLayer):
       ('output', 'data')]
     var_collection_map: Optional collection map for specific variables. Key is
       collection's name and value is a list of
-      base_layer.WeightHParamsCollection. e.g {"my_variables": [
+      base_layer.WeightHParamsCollection. e.g. {"my_variables": [
       WeightHParamsCollection.NON_TRAINABLE,
       WeightHParamsCollection.DISALLOW_BFLOAT16_CONVERSION]}.
   """
 
   logical_axes_rules: LogicalAxisRules | None = None
   var_collection_map: dict[str, list[base_layer.WeightHParamsCollection]] = (
-      field(default_factory=dict)
+      dataclasses.field(default_factory=dict)
   )
 
   if typing.TYPE_CHECKING:
@@ -106,16 +106,14 @@ class _InternalBaseFlaxAdapter(base_layer.BaseLayer):
     # Note that `__func__` retrieves the unbound method that takes module as
     # the first argument.
     return self._call_with_boxed_params_init(
-        self.cld.__call__.__func__, *args, **kwargs  # pytype: disable=attribute-error
+        self.cld.__call__.__func__, *args, **kwargs
     )
 
   def call_method(self, method_name: str, *args, **kwargs):
     # Note that `__func__` retrieves the unbound method that takes module as
     # the first argument.
     func = getattr(self.cld, method_name)
-    return self._call_with_boxed_params_init(
-        func.__func__, *args, **kwargs  # pytype: disable=attribute-error
-    )
+    return self._call_with_boxed_params_init(func.__func__, *args, **kwargs)
 
 
 class DirectFlaxModuleAdapter(_InternalBaseFlaxAdapter):
@@ -173,19 +171,22 @@ class FlaxModuleAdapter(FlaxModuleAdapterBase):
 
 
 class EncoderDecoderFlaxModuleAdaptor(FlaxModuleAdapter):
-  """Similar to FlaxModuleAdapter, but it also have encode/decode methods."""
+  """Similar to FlaxModuleAdapter, but it also has encode/decode methods."""
 
   def encode(self, *args, **kwargs):
+    assert hasattr(self.cld, "encode")
     return self._call_with_boxed_params_init(
-        self.cld.encode.__func__, *args, **kwargs  # pytype: disable=attribute-error
+        self.cld.encode.__func__, *args, **kwargs
     )
 
   def decode(self, *args, **kwargs):
+    assert hasattr(self.cld, "decode")
     return self._call_with_boxed_params_init(
-        self.cld.decode.__func__, *args, **kwargs  # pytype: disable=attribute-error
+        self.cld.decode.__func__, *args, **kwargs
     )
 
   def compute_logits(self, *args, **kwargs):
+    assert hasattr(self.cld, "compute_logits")
     return self._call_with_boxed_params_init(
-        self.cld.compute_logits.__func__, *args, **kwargs  # pytype: disable=attribute-error
+        self.cld.compute_logits.__func__, *args, **kwargs
     )
