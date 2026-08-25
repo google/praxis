@@ -432,7 +432,7 @@ class PyUtilsTest(test_utils.TestCase):
   def test_pad_or_trim_to_mix(self, src, dst):
     pad_value = 42.0
     x = np.random.uniform(0, 1, src).astype(np.float32)
-    y = py_utils.pad_or_trim_to(x, dst, pad_value)
+    y = py_utils.pad_or_trim_to(x, dst, pad_value)  # pyrefly: ignore[bad-argument-type]
     assert y is not None
     self.assertSequenceEqual(y.shape, dst)
     self.assertAllClose(y[:2, :2], x[:2, :2])

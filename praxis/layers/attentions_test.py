@@ -1430,7 +1430,7 @@ class AttentionsTest(test_utils.TestCase):
     jax_np_out = test_utils.to_np(jax_dconv_out)
     outputs = inputs
     for _ in range(1, kernel_size):
-      inputs = attentions.shift_1d(inputs, offset=1, axis=axis)
+      inputs = attentions.shift_1d(inputs, offset=1, axis=axis)  # pyrefly: ignore[bad-argument-type]
       outputs += inputs
     self.assertArraysEqual(jax_np_out, outputs)
 

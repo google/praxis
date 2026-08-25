@@ -36,7 +36,7 @@ class ChunkTest(test_utils.TestCase):
   )
   def test_chunk(self, in_shape, axis, chunk_size, chunk_shape):
     x = np.random.normal(1.0, 0.5, in_shape)
-    chunk_x = chunk.chunk(x, chunk_size=chunk_size, axis=axis)
+    chunk_x = chunk.chunk(x, chunk_size=chunk_size, axis=axis)  # pyrefly: ignore[bad-argument-type]
     self.assertArraysEqual(chunk_x.shape, chunk_shape)
 
     out_x = chunk.unchunk(chunk_x, axis=axis, seqlen=x.shape[axis])

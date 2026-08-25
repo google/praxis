@@ -444,7 +444,8 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
 
     weight = np.random.normal(1.5, 2.0, w_shape).astype(np.float32)
     reduced_weight, scale, _ = operations.reduce_einsum_weight_precision(
-        eqn, weight)
+        eqn, weight
+    )  # pyrefly: ignore[bad-argument-type]
     self.assertEqual(scale.shape, expected_scale_shape)
     if expand_dims:
       scale = jnp.expand_dims(scale, expand_dims)
@@ -456,7 +457,7 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
     )
     for use_symmetric in [True, False]:
       weight_nudged = operations.fakequant_einsum(
-          eqn, weight, use_symmetric=use_symmetric
+          eqn, weight, use_symmetric=use_symmetric  # pyrefly: ignore[bad-argument-type]
       )
       self.assertAllClose(weight, weight_nudged, rtol=0.02, atol=0.02)
 
@@ -560,10 +561,12 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
       per_channel=True,
   ):
     activation = np.random.normal(1.5, 2.0, x_shape).astype(np.float32)
-    reduced_activation, scale, _ = (
-        operations.reduce_einsum_activation_precision(
-            eqn, activation, per_channel=per_channel, squeeze=squeeze
-        )
+    (
+        reduced_activation,
+        scale,
+        _,
+    ) = operations.reduce_einsum_activation_precision(
+        eqn, activation, per_channel=per_channel, squeeze=squeeze  # pyrefly: ignore[bad-argument-type]
     )
     self.assertEqual(scale.shape, expected_scale_shape)
     if expand_dims:
