@@ -359,7 +359,7 @@ class NgrammerTest(test_utils.TestCase):
       if use_attention_scores:
         pair_ids_per_head = pair_ids[:, i, :]  # pyrefly: ignore[unsupported-operation]
       ngram_ids_per_head = ngrammer.get_bigram_ids(
-          input_ids_per_head, num_clusters, pair_ids=pair_ids_per_head)
+          input_ids_per_head, num_clusters, pair_ids=pair_ids_per_head)  # pyrefly: ignore[bad-argument-type]
       ngram_ids_per_head *= (i + 1)
       ngram_ids_per_head += (i + 1)
       ngram_embs_expected = vq_ngrammer_layer.ngram_layer.ngram_table[

@@ -444,7 +444,7 @@ class ReducePrecisionEinsumTest(test_utils.TestCase):
 
     weight = np.random.normal(1.5, 2.0, w_shape).astype(np.float32)
     reduced_weight, scale, _ = operations.reduce_einsum_weight_precision(
-        eqn, weight
+        eqn, weight  # pyrefly: ignore[bad-argument-type]
     )  # pyrefly: ignore[bad-argument-type]
     self.assertEqual(scale.shape, expected_scale_shape)
     if expand_dims:
