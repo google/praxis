@@ -194,14 +194,14 @@ class WeightQuantizationParams:
   use_symmetric: bool = True
   add_scale_eps: bool | None = True
   dequant_upfront: bool = False
-  dtype: jnp.dtype = jnp.int8
+  dtype: jnp.dtype = jnp.int8  # pyrefly: ignore[bad-assignment]
   quant_loss_weight: float | None = None
   optimize_clipping_per_channel: bool = False
   sub_channels: int | None = None
-  calculation_dtype: jnp.dtype = jnp.float32
+  calculation_dtype: jnp.dtype = jnp.float32  # pyrefly: ignore[bad-assignment]
   use_step_count: bool = False
   use_int4_packed_weights: bool = True
-  int4_packed_weights_container_dtype: jnp.dtype = jnp.int32
+  int4_packed_weights_container_dtype: jnp.dtype = jnp.int32  # pyrefly: ignore[bad-assignment]
   vn_scale: float | None = None
   vn_start_step: int = 0
   vn_noise_type: str = 'uniform'
@@ -235,8 +235,8 @@ class QuantizedTrainingParams:
   cast_bits_fwd: int | None = None
   cast_bits_bwd: int | None = None
   random_rounding_bwd: bool = True
-  einsum_output_dtype: jnp.dtype = jnp.bfloat16
-  einsum_scale_output_dtype: jnp.dtype = jnp.float32
+  einsum_output_dtype: jnp.dtype = jnp.bfloat16  # pyrefly: ignore[bad-assignment]
+  einsum_scale_output_dtype: jnp.dtype = jnp.float32  # pyrefly: ignore[bad-assignment]
   bwd_output_dtype: jnp.dtype | None = None
 
 

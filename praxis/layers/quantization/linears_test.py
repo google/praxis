@@ -301,7 +301,7 @@ class QuantizedLinearTest(test_utils.TestCase):
             mode=QuantizationMode.INFERENCE,
             weight_params=quantization_hparams.WeightQuantizationParams(
                 precision=4,
-                dtype=jnp.int4,
+                dtype=jnp.int4,  # pyrefly: ignore[bad-argument-type]
                 use_int4_packed_weights=False,
             ),
             act_params=quantization_hparams.ActQuantizationParams(precision=4),
@@ -331,8 +331,8 @@ class QuantizedLinearTest(test_utils.TestCase):
             weight_params=quantization_hparams.WeightQuantizationParams(
                 precision=4,
                 use_int4_packed_weights=True,
-                dtype=jnp.int8,
-                int4_packed_weights_container_dtype=jnp.int32,
+                dtype=jnp.int8,  # pyrefly: ignore[bad-argument-type]
+                int4_packed_weights_container_dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
             ),
         ),
     )
@@ -361,14 +361,14 @@ class QuantizedLinearTest(test_utils.TestCase):
       s = jax.random.uniform(
           prng_key, shape=[p_int32_packed.output_dims], dtype=jnp.float32
       )
-      packed_4bit_in_int32 = qutils.pack_4bit(w, 0, packed_dtype=jnp.int32)
-      packed_4bit_in_int8 = qutils.pack_4bit(w, 0, packed_dtype=jnp.int8)
+      packed_4bit_in_int32 = qutils.pack_4bit(w, 0, packed_dtype=jnp.int32)  # pyrefly: ignore[bad-argument-type]
+      packed_4bit_in_int8 = qutils.pack_4bit(w, 0, packed_dtype=jnp.int8)  # pyrefly: ignore[bad-argument-type]
       self.assertArraysEqual(
           w,
-          qutils.unpack_4bit(packed_4bit_in_int32, 0, jnp.int8),
+          qutils.unpack_4bit(packed_4bit_in_int32, 0, jnp.int8),  # pyrefly: ignore[bad-argument-type]
       )
       self.assertArraysEqual(
-          w, qutils.unpack_4bit(packed_4bit_in_int8, 0, jnp.int8)
+          w, qutils.unpack_4bit(packed_4bit_in_int8, 0, jnp.int8)  # pyrefly: ignore[bad-argument-type]
       )
 
       # Same weights packed in different format
@@ -521,7 +521,7 @@ class QuantizeLinearTest(test_utils.TestCase):
                 precision=precision,
                 use_symmetric=use_symmetric,
                 use_int4_packed_weights=use_int4_packed_weights,
-                dtype=jnp.int8,
+                dtype=jnp.int8,  # pyrefly: ignore[bad-argument-type]
                 int4_packed_weights_container_dtype=int4_packed_weights_container_dtype,
             ),
         ),
@@ -708,7 +708,7 @@ class SubChannelLinearTest(test_utils.TestCase):
             weight_params=quantization_hparams.WeightQuantizationParams(
                 precision=num_bits,
                 use_int4_packed_weights=True,
-                int4_packed_weights_container_dtype=jnp.int32,
+                int4_packed_weights_container_dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
                 block_size=block_size,
                 use_symmetric=use_symmetric,
             ),

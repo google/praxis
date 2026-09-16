@@ -107,7 +107,7 @@ class VQNgrammer(ngrammer.VQNgrammer):
     if self.unigram_vocab_size:
       input_id_to_cluster_id_cache = WeightHParams(
           shape=[self.unigram_vocab_size, self.num_heads],
-          dtype=jnp.int32,
+          dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
           init=base_layer.WeightInit.Constant(0),
       )
       self.create_variable(

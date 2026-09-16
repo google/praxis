@@ -137,7 +137,7 @@ class QuantizationLayer(base_layer.BaseLayer):
           weight_params,
           scale_shape,
           scale_hparams=scale_hparams,
-          dtype=dtype,
+          dtype=dtype,  # pyrefly: ignore[bad-argument-type]
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
     elif self.quantization.mode == QuantizationMode.CALIB:
@@ -145,7 +145,7 @@ class QuantizationLayer(base_layer.BaseLayer):
       stats = base_layer.WeightHParams(
           shape=[1],
           init=base_layer.WeightInit.Constant(0),
-          dtype=jnp.bfloat16,
+          dtype=jnp.bfloat16,  # pyrefly: ignore[bad-argument-type]
       )
       self.create_variable('framestat', stats, trainable=False)
       self.create_variable(weight_name, weight_params)
@@ -167,7 +167,7 @@ class QuantizationLayer(base_layer.BaseLayer):
       step_count_pc = base_layer.WeightHParams(
           shape=[],
           init=base_layer.WeightInit.Constant(0),
-          dtype=jnp.int32,
+          dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
       )
       self.create_variable('step_count', step_count_pc, trainable=False)
 

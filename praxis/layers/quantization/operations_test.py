@@ -1121,7 +1121,7 @@ class CustomEinsumTest(test_utils.TestCase):
     params = quantization_hparams.QuantizedTrainingParams()
     params.bits_fwd = None
     params.bits_bwd = None
-    params.einsum_output_dtype = jnp.bfloat16  # match dtype of float grad
+    params.einsum_output_dtype = jnp.bfloat16  # match dtype of float grad  # pyrefly: ignore[bad-assignment]
     custom_grads_float = jax.grad(_custom_loss, argnums=[0, 1])(
         x, w, eqn=eqn, prng_key=prng_key, params=params  # pyrefly: ignore[unbound-name]
     )
@@ -1136,8 +1136,8 @@ class CustomEinsumTest(test_utils.TestCase):
     # Validate that int8 can be executed
     params.bits_fwd = 8
     params.bits_bwd = 8
-    params.einsum_output_dtype = jnp.bfloat16
-    params.einsum_scale_output_dtype = jnp.float32
+    params.einsum_output_dtype = jnp.bfloat16  # pyrefly: ignore[bad-assignment]
+    params.einsum_scale_output_dtype = jnp.float32  # pyrefly: ignore[bad-assignment]
     einsum_output = operations.custom_einsum(
         x, w, eqn=eqn, prng_key=prng_key, params=params  # pyrefly: ignore[bad-argument-type]
     )
@@ -1160,8 +1160,8 @@ class CustomEinsumTest(test_utils.TestCase):
     params = quantization_hparams.QuantizedTrainingParams()
     params.bits_fwd = 8
     params.bits_bwd = 8
-    params.einsum_output_dtype = jnp.bfloat16
-    params.einsum_scale_output_dtype = jnp.bfloat16
+    params.einsum_output_dtype = jnp.bfloat16  # pyrefly: ignore[bad-assignment]
+    params.einsum_scale_output_dtype = jnp.bfloat16  # pyrefly: ignore[bad-assignment]
     custom_grads_int8 = jax.grad(_custom_loss, argnums=[0, 1])(
         x, w, eqn=eqn, prng_key=prng_key, params=params
     )

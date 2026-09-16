@@ -274,8 +274,8 @@ class SharedEmbeddingSoftmaxTest(test_utils.TestCase):
             precision=precision,
             use_symmetric=use_symmetric,
             use_int4_packed_weights=not use_native_types,
-            dtype=dtype,
-            int4_packed_weights_container_dtype=jnp.int8,
+            dtype=dtype,  # pyrefly: ignore[bad-argument-type]
+            int4_packed_weights_container_dtype=jnp.int8,  # pyrefly: ignore[bad-argument-type]
         ),
     )
     f_p = pax_fiddle.Config(

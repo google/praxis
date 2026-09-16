@@ -971,7 +971,7 @@ class DotProductAttention(  # pytype: disable=signature-mismatch
     if self.zero_fully_masked:
       # Return zeros for tokens which don't attend anything.
       fully_masked = jnp.all(
-          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,  # pyrefly: ignore[bad-argument-type]
           axis=-1,
       )[:, 0, :, jnp.newaxis, jnp.newaxis]
       encoded *= 1 - fully_masked

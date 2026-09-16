@@ -117,7 +117,7 @@ def einsum_eqn_to_dimension_numbers(
 
 
 def pack_4bit(
-    x: JTensor, pack_dim: int, packed_dtype: jnp.dtype = jnp.int32
+    x: JTensor, pack_dim: int, packed_dtype: jnp.dtype = jnp.int32  # pyrefly: ignore[bad-function-definition]
 ) -> JTensor:
   """Pack int8 or uint8 tensor where its values are actually int4 or uint4, to int32 or int8 nibble format along pack_dim.
 
@@ -253,13 +253,13 @@ def bits_to_dtype(bits: int, signed: bool = True) -> jnp.dtype:
   """Returns the smallest int dtype that can represent a specific precision."""
   assert 1 <= bits <= 32, f'{bits=} must be between 1 and 32'
   if bits <= 4:
-    return jnp.int4 if signed else jnp.uint4
+    return jnp.int4 if signed else jnp.uint4  # pyrefly: ignore[bad-return]
   elif bits <= 8:
-    return jnp.int8 if signed else jnp.uint8
+    return jnp.int8 if signed else jnp.uint8  # pyrefly: ignore[bad-return]
   elif bits <= 16:
-    return jnp.int16 if signed else jnp.uint16
+    return jnp.int16 if signed else jnp.uint16  # pyrefly: ignore[bad-return]
   else:
-    return jnp.int32 if signed else jnp.uint32
+    return jnp.int32 if signed else jnp.uint32  # pyrefly: ignore[bad-return]
 
 
 def get_smallest_matching_dtype(lhs: JTensor, rhs: JTensor) -> jnp.dtype:
@@ -293,7 +293,7 @@ def get_smallest_matching_dtype(lhs: JTensor, rhs: JTensor) -> jnp.dtype:
       else:
         # Since i64 support is usually disabled, just match XLA's behavior of
         # truncating ui32 to i32.
-        return jnp.int32
+        return jnp.int32  # pyrefly: ignore[bad-return]
 
 
 def get_packed_shape(shape: Sequence[int], pack_dim: int, packing_factor: int):

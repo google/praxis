@@ -813,7 +813,7 @@ def eqn_to_activation_contract_dims(eqn: str) -> list[int]:
 def reduce_einsum_weight_precision(
     eqn: str | None,
     t: JTensor,
-    calculation_dtype: jnp.dtype = jnp.bfloat16,
+    calculation_dtype: jnp.dtype = jnp.bfloat16,  # pyrefly: ignore[bad-function-definition]
     squeeze: bool = True,
     need_gradient: bool = False,
     bits: int = 8,
@@ -991,7 +991,7 @@ def fakequant_einsum(
     eqn: str,
     t: JTensor,
     bits: int = 8,
-    calculation_dtype: jnp.dtype = jnp.float32,
+    calculation_dtype: jnp.dtype = jnp.float32,  # pyrefly: ignore[bad-function-definition]
     use_symmetric: bool = True,
     block_size: int = 0,
     use_fp: bool = False,
@@ -1351,7 +1351,7 @@ def fakequant_vn(
     step: JTensor | None = None,
     do_eval: bool = False,
     bits: int = 8,
-    calculation_dtype: jnp.dtype = jnp.bfloat16,
+    calculation_dtype: jnp.dtype = jnp.bfloat16,  # pyrefly: ignore[bad-function-definition]
     use_symmetric: bool = True,
 ):
   """Add variational noise to weight w.

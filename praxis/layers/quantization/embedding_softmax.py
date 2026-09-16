@@ -64,7 +64,7 @@ class Embedding(embedding_softmax.Embedding):
           'emb_var',
           pc,
           [self.num_classes],
-          dtype=jnp.int8,
+          dtype=jnp.int8,  # pyrefly: ignore[bad-argument-type]
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
     else:
@@ -420,7 +420,7 @@ class NClassMajorSharedEmbeddingSoftmax(
           'w',
           pc,
           [self.num_classes],
-          dtype=dtype,
+          dtype=dtype,  # pyrefly: ignore[bad-argument-type]
           use_symmetric=self.quantization.weight_params.use_symmetric,
       )
     elif self.quantization.mode == QuantizationMode.MATERIALIZE:
