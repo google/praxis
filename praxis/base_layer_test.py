@@ -430,7 +430,7 @@ class BaseLayerTest(test_utils.TestCase):
     @pax_fiddle.auto_config
     def make_model():
       return ParentLayer(
-          dtype=jnp.int64,
+          dtype=jnp.int64,  # pyrefly: ignore[bad-argument-type]
           ici_mesh_shape=(1,),
           dcn_mesh_shape=(2,),
           params_init=base_layer.WeightInit.Gaussian(2.0),
@@ -445,7 +445,7 @@ class BaseLayerTest(test_utils.TestCase):
               pax_fiddle.Config(
                   ParentLayer,
                   dcn_mesh_shape=(6,),
-                  a=ChildLayer(dtype=jnp.float16),
+                  a=ChildLayer(dtype=jnp.float16),  # pyrefly: ignore[bad-argument-type]
                   y_tpls=[
                       pax_fiddle.Config(
                           ChildLayer, dtype=jnp.float16, dcn_mesh_shape=(7,)
@@ -652,7 +652,7 @@ class BaseLayerTest(test_utils.TestCase):
 
     layer = Layer(
         x=3,
-        fprop_dtype=jnp.float16,
+        fprop_dtype=jnp.float16,  # pyrefly: ignore[bad-argument-type]
         ici_mesh_shape=[1, 2],
         dcn_mesh_shape=[3, 4],
         mesh_axis_names=['a', 'b'],
@@ -768,16 +768,16 @@ class BaseLayerTest(test_utils.TestCase):
       self.assertEqual(layer.fprop_dtype, jnp.float32)
 
     with self.subTest('override_dtype'):
-      layer = base_layer.BaseLayer(dtype=jnp.float16)
+      layer = base_layer.BaseLayer(dtype=jnp.float16)  # pyrefly: ignore[bad-argument-type]
       self.assertEqual(layer.dtype, jnp.float16)
       self.assertEqual(layer.fprop_dtype, jnp.float16)
 
     with self.subTest('override_fprop_dtype'):
-      layer = base_layer.BaseLayer(fprop_dtype=jnp.float64)
+      layer = base_layer.BaseLayer(fprop_dtype=jnp.float64)  # pyrefly: ignore[bad-argument-type]
       self.assertEqual(layer.fprop_dtype, jnp.float64)
 
     with self.subTest('override_both'):
-      layer = base_layer.BaseLayer(dtype=jnp.float16, fprop_dtype=jnp.float64)
+      layer = base_layer.BaseLayer(dtype=jnp.float16, fprop_dtype=jnp.float64)  # pyrefly: ignore[bad-argument-type]
       self.assertEqual(layer.fprop_dtype, jnp.float64)
 
     with self.subTest('frozen_during_post_init'):

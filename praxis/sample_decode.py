@@ -936,7 +936,7 @@ def sample_decode_after_fprop(
     if optimize_eos:
       assert eos_id
       next_token_logits = logits.at[:, eos_id].set(
-          py_utils.get_large_negative_number(jnp.float32)
+          py_utils.get_large_negative_number(jnp.float32)  # pyrefly: ignore[bad-argument-type]
       )
     else:
       next_token_logits = logits

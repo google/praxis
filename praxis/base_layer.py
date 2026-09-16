@@ -634,7 +634,7 @@ def get_fan_in_fan_out(
 
 def scaled_orthogonal(key: JTensor,
                       shape: Sequence[int],
-                      dtype: jnp.dtype = jnp.float32):
+                      dtype: jnp.dtype = jnp.float32):  # pyrefly: ignore[bad-function-definition]
   """Scaled orthogonal initialization."""
   scale = max(np.sqrt(float(shape[-2]) / shape[-1]), 1)
   ortho_init = jax.nn.initializers.orthogonal(
@@ -644,7 +644,7 @@ def scaled_orthogonal(key: JTensor,
 
 def scaled_delta_orthogonal(key: JTensor,
                             shape: Sequence[int],
-                            dtype: jnp.dtype = jnp.float32):
+                            dtype: jnp.dtype = jnp.float32):  # pyrefly: ignore[bad-function-definition]
   """Delta orthogonal kernels; see arXiv:1806.05393 / arxiv:2110.01765."""
   if len(shape) not in [3, 4, 5]:
     raise ValueError(
@@ -1690,7 +1690,7 @@ class BaseLayer(nn.Module):
 
     out: SplitDimsMapping = None
 
-  dtype: jnp.dtype = jnp.float32
+  dtype: jnp.dtype = jnp.float32  # pyrefly: ignore[bad-assignment]
   fprop_dtype: jnp.dtype | None = None
   params_init: WeightInit = instance_field(default_param_init)  # pyrefly: ignore[bad-assignment]
   skip_lp_regularization: bool | None = None
@@ -2263,7 +2263,7 @@ class BaseLayer(nn.Module):
       name: str,
       weight_hparams: WeightHParams,
       scale_shape: Sequence[int] = [],
-      dtype: jnp.dtype = jnp.int8,
+      dtype: jnp.dtype = jnp.int8,  # pyrefly: ignore[bad-function-definition]
       use_symmetric: bool = True,
       scale_hparams: WeightHParams | None = None,
   ):
@@ -2354,7 +2354,7 @@ class BaseLayer(nn.Module):
     self.create_variable(name=name, var_hparams=weight_hparams)
     sparsity_weight_hparams = copy.deepcopy(weight_hparams)
     sparsity_weight_hparams.init = WeightInit.Constant(False)
-    sparsity_weight_hparams.dtype = jnp.bool_
+    sparsity_weight_hparams.dtype = jnp.bool_  # pyrefly: ignore[bad-assignment]
     self.create_variable(
         name=name + SPARSITY_NAME_POSTFIX,
         var_hparams=sparsity_weight_hparams,

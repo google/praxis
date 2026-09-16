@@ -482,7 +482,7 @@ class CombinedQKVProjectionFQTest(quantization_test_util.QuantizationTestCase):
         mode=QuantizationMode.TRAINING,
         weight_params=quantization_hparams.WeightQuantizationParams(
             use_symmetric=is_weight_symmetric,
-            calculation_dtype=jnp.bfloat16,
+            calculation_dtype=jnp.bfloat16,  # pyrefly: ignore[bad-argument-type]
         ),
     )
     p_f = pax_fiddle.Config(
@@ -541,7 +541,7 @@ class CombinedQKVProjectionFQTest(quantization_test_util.QuantizationTestCase):
         mode=QuantizationMode.MATERIALIZE,
         weight_params=quantization_hparams.WeightQuantizationParams(
             use_symmetric=is_weight_symmetric,
-            calculation_dtype=jnp.bfloat16,
+            calculation_dtype=jnp.bfloat16,  # pyrefly: ignore[bad-argument-type]
         ),
     )
 

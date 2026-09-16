@@ -215,7 +215,7 @@ class TokenSamplersTest(test_utils.TestCase):
         top_k_indices,
         np.array([[1, 2], [4, 0], [1, 0], [0, 2]], dtype=np.int32),
     )
-    large_neg = py_utils.get_large_negative_number(jnp.float32)
+    large_neg = py_utils.get_large_negative_number(jnp.float32)  # pyrefly: ignore[bad-argument-type]
     self.assertAllClose(
         top_p_logits,
         np.array(

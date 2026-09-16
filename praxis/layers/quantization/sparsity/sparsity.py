@@ -413,7 +413,7 @@ def dtype_bitwidth(dtype: jnp.dtype) -> int:
 
 
 def is_optimized_offset(
-    order: str, offset: int, input_dtype: jnp.dtype = jnp.float32
+    order: str, offset: int, input_dtype: jnp.dtype = jnp.float32  # pyrefly: ignore[bad-function-definition]
 ) -> bool:
   nz_packing = 32 // dtype_bitwidth(input_dtype)
   stride_multiple = 8 * nz_packing

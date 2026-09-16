@@ -317,7 +317,7 @@ class SampleDecodeHelperTest(test_utils.TestCase):
 
     (right_align_prefix_ids, right_align_prefix_paddings) = (
         sample_decode.right_align_prefix_ids(
-            prefix_ids, prefix_lengths, jnp.int32
+            prefix_ids, prefix_lengths, jnp.int32  # pyrefly: ignore[bad-argument-type]
         )
     )
 

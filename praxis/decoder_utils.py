@@ -738,7 +738,7 @@ def collect_results_to_optimize_eos(
   eos_logprobs = jnp.where(
       jnp.arange(new_result.eos_logprobs.shape[1]) <= result.start_step,
       jnp.ones_like(new_result.eos_logprobs)
-      * py_utils.get_large_negative_number(jnp.float32),
+      * py_utils.get_large_negative_number(jnp.float32),  # pyrefly: ignore[bad-argument-type]
       new_result.eos_logprobs,
   )
   end_logprobs = (

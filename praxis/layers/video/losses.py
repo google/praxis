@@ -94,7 +94,7 @@ class VQGANLoss(base_layer.BaseLayer):
     decay_factor_hparams = base_layer.WeightHParams(
         shape=[],
         init=base_layer.WeightInit.Constant(0.0),
-        dtype=jnp.float32,
+        dtype=jnp.float32,  # pyrefly: ignore[bad-argument-type]
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
     )
 

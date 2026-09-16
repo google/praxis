@@ -114,7 +114,7 @@ def count_init_partition_spec_fn(
       count=WeightHParams(
           shape=[],
           init=None,
-          dtype=jnp.int32,
+          dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
           collections=None,
           tensor_split_dims_mapping=[],
       )
@@ -150,7 +150,7 @@ def partition_params(
         # In practice, those are small arrays, so this shouldn't be a problem.
         shape=params.shape,
         init=None,
-        dtype=jnp.int32,
+        dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
         collections=None,
         tensor_split_dims_mapping=[],
     )
@@ -207,7 +207,7 @@ def sharded_sgd(
 
   def init_partition_spec_fn(mdl_params):
     count = WeightHParams(
-        shape=[], init=None, dtype=jnp.int32, collections=None)
+        shape=[], init=None, dtype=jnp.int32, collections=None)  # pyrefly: ignore[bad-argument-type]
 
     if momentum is None:
       return (optax.EmptyState(), optax.ScaleByScheduleState(count=count))  # pytype: disable=wrong-arg-types  # numpy-scalars
@@ -259,7 +259,7 @@ def sharded_adagrad(learning_rate_fn: optax.Schedule,
 
   def init_partition_spec_fn(mdl_params):
     count = WeightHParams(
-        shape=[], init=None, dtype=jnp.int32, collections=None)
+        shape=[], init=None, dtype=jnp.int32, collections=None)  # pyrefly: ignore[bad-argument-type]
 
     def _opt_state_sharding_spec(var_hparams: WeightHParams) -> WeightHParams:
       """Returns optimizer sharding spec for one particular variable."""
@@ -392,7 +392,7 @@ class _ShardedLionHelper(_ShardedAdamHelper):
 
   def init_opt_state(self,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
                      var_hparams: WeightHParams,
-                     m_dtype: jnp.dtype = jnp.float32) -> _LionOptState:
+                     m_dtype: jnp.dtype = jnp.float32) -> _LionOptState:  # pyrefly: ignore[bad-function-definition]
     """Returns optimizer state for one particular variable."""
     return _LionOptState(m=jnp.zeros_like(var_hparams, dtype=m_dtype))  # pytype: disable=wrong-arg-types  # jnp-type
 
@@ -695,7 +695,7 @@ def sharded_adam(
   def init_partition_spec_fn(mdl_params):
     slot_vars = jax.tree.map(helper.opt_state_sharding_spec, mdl_params)
     count = WeightHParams(
-        shape=[], init=None, dtype=jnp.int32, collections=None)
+        shape=[], init=None, dtype=jnp.int32, collections=None)  # pyrefly: ignore[bad-argument-type]
 
     return NestedMap(
         count=count,
@@ -777,7 +777,7 @@ def sharded_lion(learning_rate_fn: optax.Schedule, beta1: float,
   def init_partition_spec_fn(mdl_params):
     slot_vars = jax.tree.map(helper.opt_state_sharding_spec, mdl_params)
     count = WeightHParams(
-        shape=[], init=None, dtype=jnp.int32, collections=None)
+        shape=[], init=None, dtype=jnp.int32, collections=None)  # pyrefly: ignore[bad-argument-type]
 
     return NestedMap(count=count, m=jax.tree.map(lambda x: x.m, slot_vars))
 
@@ -883,7 +883,7 @@ def apply_ema_weights(
         count=WeightHParams(
             shape=[],
             init=None,
-            dtype=jnp.int32,
+            dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
             collections=None,
             tensor_split_dims_mapping=[]),
         ema=jax.tree.map(_infer_ema_pspec, params))
@@ -992,7 +992,7 @@ def apply_ewc_regularization(
           count=WeightHParams(
               shape=[],
               init=None,
-              dtype=jnp.int32,
+              dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
               collections=None,
               tensor_split_dims_mapping=[]),
           pretrain_vars=jax.tree.map(_infer_ewc_pspec, params),
@@ -1002,7 +1002,7 @@ def apply_ewc_regularization(
           count=WeightHParams(
               shape=[],
               init=None,
-              dtype=jnp.int32,
+              dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
               collections=None,
               tensor_split_dims_mapping=[],
           )
@@ -1550,7 +1550,7 @@ class Lion(BaseOptimizer):
   beta2: float = 0.99
   clip_threshold: float = 1.0
   weight_decay: float = 0.0
-  m_dtype: jnp.dtype = jnp.bfloat16
+  m_dtype: jnp.dtype = jnp.bfloat16  # pyrefly: ignore[bad-assignment]
 
   def _get_raw_grad_transformation(
       self, lr: optax.Schedule) -> ShardedGradientTransformation:
@@ -2401,7 +2401,7 @@ class _ShardedAdafactorHelper:
         output_m_scale = WeightHParams(
             shape=scale_shape,
             init=None,
-            dtype=jnp.float32,
+            dtype=jnp.float32,  # pyrefly: ignore[bad-argument-type]
             collections=None,
             mesh_shape=var_param.mesh_shape,
             tensor_split_dims_mapping=m_scale_split_dims_mapping)
@@ -2409,7 +2409,7 @@ class _ShardedAdafactorHelper:
         output_m = WeightHParams(
             shape=shape,
             init=None,
-            dtype=jnp.float32,
+            dtype=jnp.float32,  # pyrefly: ignore[bad-argument-type]
             collections=None,
             mesh_shape=var_param.mesh_shape,
             tensor_split_dims_mapping=tensor_split_dims_mapping)
@@ -2430,7 +2430,7 @@ class _ShardedAdafactorHelper:
       output_vr = WeightHParams(
           output_vr_shape,
           init=None,
-          dtype=jnp.float32,
+          dtype=jnp.float32,  # pyrefly: ignore[bad-argument-type]
           collections=None,
           mesh_shape=var_param.mesh_shape,
           tensor_split_dims_mapping=vr_split_dims_mapping)
@@ -2439,7 +2439,7 @@ class _ShardedAdafactorHelper:
       output_vc = WeightHParams(
           output_vc_shape,
           init=None,
-          dtype=jnp.float32,
+          dtype=jnp.float32,  # pyrefly: ignore[bad-argument-type]
           collections=None,
           mesh_shape=var_param.mesh_shape,
           tensor_split_dims_mapping=vc_split_dims_mapping)
@@ -2708,7 +2708,7 @@ def sharded_adafactor(
     count = WeightHParams(
         shape=[],
         init=None,
-        dtype=jnp.int32,
+        dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
         collections=None,
         tensor_split_dims_mapping=[],
     )
@@ -2922,7 +2922,7 @@ def sharded_static_accumulation(
     count = WeightHParams(
         shape=[],
         init=None,
-        dtype=jnp.int32,
+        dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
         collections=None,
         mesh_shape=mesh_shape,
         tensor_split_dims_mapping=[])
