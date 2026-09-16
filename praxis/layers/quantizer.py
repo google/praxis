@@ -175,7 +175,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
         WeightHParams(
             shape=[self.latent_dim * self.stack_ratio, self.projection_dim],  # pyrefly: ignore[unsupported-operation]
             init=self.params_init,
-            dtype=jnp.float32,
+            dtype=jnp.float32,  # pyrefly: ignore[bad-argument-type]
             collections=[
                 base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
             ],
@@ -186,7 +186,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
         WeightHParams(
             shape=[self.projection_dim],
             init=WeightInit.Constant(0.0),
-            dtype=jnp.float32,
+            dtype=jnp.float32,  # pyrefly: ignore[bad-argument-type]
             collections=[
                 base_layer.WeightHParamsCollection.SKIP_LP_REGULARIZATION
             ],
@@ -210,7 +210,7 @@ class RandomVectorQuantizer(base_layer.BaseLayer):
         WeightHParams(
             shape=codebook_shape,  # pyrefly: ignore[bad-argument-type]
             init=self.codebook_init,
-            dtype=jnp.float32,
+            dtype=jnp.float32,  # pyrefly: ignore[bad-argument-type]
             mesh_shape=self.mesh_shape,
             tensor_split_dims_mapping=wt,
             collections=[
@@ -388,7 +388,7 @@ class VectorQuantizer(base_layer.BaseLayer):
             self.num_groups,
             self.latent_dim // self.num_groups,
         ],
-        dtype=jnp.float32,
+        dtype=jnp.float32,  # pyrefly: ignore[bad-argument-type]
     )
 
     # [C, D]

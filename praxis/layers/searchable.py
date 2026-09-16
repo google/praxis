@@ -49,7 +49,7 @@ class AutoMLSelect(base_layer.BaseLayer):
     decision = WeightHParams(
         shape=[],
         init=WeightInit.Constant(0),
-        dtype=jnp.uint8,
+        dtype=jnp.uint8,  # pyrefly: ignore[bad-argument-type]
         mesh_shape=self.mesh_shape
     )
     self.create_children('search_options', self.search_options_tpl)

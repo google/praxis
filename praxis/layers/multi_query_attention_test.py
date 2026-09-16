@@ -967,7 +967,7 @@ class MultiQueryAttentionTest(test_utils.TestCase):
       windowed_atten_mask = upper_triangular_mask * lower_triangular_mask
       windowed_atten_mask = jnp.where(
           1 - windowed_atten_mask,
-          py_utils.get_large_negative_number(jnp.float32),
+          py_utils.get_large_negative_number(jnp.float32),  # pyrefly: ignore[bad-argument-type]
           0,
       )
     combined_atten_mask = jnp.minimum(atten_mask, windowed_atten_mask)

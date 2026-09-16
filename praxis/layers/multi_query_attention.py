@@ -540,7 +540,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
 
     if self.zero_fully_masked:
       fully_masked = jnp.all(
-          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,  # pyrefly: ignore[bad-argument-type]
           axis=-1,
       )[:, 0, :, jnp.newaxis, jnp.newaxis]
       encoded *= 1 - fully_masked
@@ -623,7 +623,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
 
     if self.zero_fully_masked:
       fully_masked = jnp.all(
-          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,  # pyrefly: ignore[bad-argument-type]
           axis=-1,
       )[:, 0, :, jnp.newaxis, jnp.newaxis]
       full_encoded *= 1 - fully_masked
@@ -725,7 +725,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       )
       if self.zero_fully_masked:
         fully_masked = jnp.all(
-            atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+            atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,  # pyrefly: ignore[bad-argument-type]
             axis=-1,
         )[..., jnp.newaxis]
         encoded *= 1 - fully_masked
@@ -753,7 +753,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
         probs = jnp.reshape(probs, (b, n, -1))
         if self.zero_fully_masked:
           fully_masked = jnp.all(
-              atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+              atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,  # pyrefly: ignore[bad-argument-type]
               axis=-1,
           )[..., jnp.newaxis]
           encoded *= 1 - fully_masked
@@ -787,7 +787,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       f = self.local_window_size[0] + 1 + self.local_window_size[1]
 
       minus_inf = py_utils.get_large_negative_number(
-          jnp.float32 if atten_mask.dtype == jnp.float64 else atten_mask.dtype
+          jnp.float32 if atten_mask.dtype == jnp.float64 else atten_mask.dtype  # pyrefly: ignore[bad-argument-type]
       )
 
       # the padding is to handle the case where there is no enough data in the

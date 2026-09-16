@@ -75,7 +75,7 @@ class FeedForward(base_layer.BaseLayer):
     )
     self.create_variable(
         'step',
-        WeightHParams(shape=[], dtype=jnp.int32, init=WeightInit.Constant(0)),
+        WeightHParams(shape=[], dtype=jnp.int32, init=WeightInit.Constant(0)),  # pyrefly: ignore[bad-argument-type]
         trainable=False)
 
   def __call__(self, inputs, paddings=None):

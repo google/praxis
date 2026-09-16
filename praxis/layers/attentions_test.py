@@ -202,7 +202,7 @@ class MaskUtilsTest(test_utils.TestCase, parameterized.TestCase):
         expect[b, 0, t1, start_p:end_p] = 1.0
     self.assertAllClose(
         test_utils.to_np(result),
-        (1.0 - expect) * py_utils.get_large_negative_number(jnp.float32),
+        (1.0 - expect) * py_utils.get_large_negative_number(jnp.float32),  # pyrefly: ignore[bad-argument-type]
     )
 
   def test_mask(self):
@@ -495,7 +495,7 @@ class AttentionsTest(test_utils.TestCase):
     if simulate_packed:
       starting_index = dconv_kernel_size
       atten_mask = atten_mask.at[:, :, :, :starting_index].set(
-          py_utils.get_large_negative_number(jnp.float32)
+          py_utils.get_large_negative_number(jnp.float32)  # pyrefly: ignore[bad-argument-type]
       )
       segment_pos = jnp.maximum(segment_pos - starting_index, 0)
 

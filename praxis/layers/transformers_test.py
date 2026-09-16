@@ -1320,7 +1320,7 @@ class TransformersTest(test_utils.TestCase):
     inputs = jnp.asarray(npy_inputs)
     npy_paddings = np.zeros([batch_size, seq_len]).astype('float32')
     paddings = jnp.asarray(npy_paddings)
-    ninf = py_utils.get_large_negative_number(jnp.float32)
+    ninf = py_utils.get_large_negative_number(jnp.float32)  # pyrefly: ignore[bad-argument-type]
     segment_mask = jnp.stack([
         jnp.array([[0, ninf, ninf, ninf], [0, 0, ninf, ninf], [0, 0, 0, ninf],
                    [0, 0, 0, 0]],

@@ -189,7 +189,7 @@ class BregmanPCA(base_layer.BaseLayer):
         shape=[],
         # TODO(eamid): switch to an int32 step counter.
         init=WeightInit.Constant(0.0),
-        dtype=jnp.float32,
+        dtype=jnp.float32,  # pyrefly: ignore[bad-argument-type]
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC],
     )
     mean = WeightHParams(

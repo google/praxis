@@ -43,7 +43,7 @@ SCAN_SPLIT_RNGS = {PARAMS: False, RANDOM: True}
 def reset_mask(
     segment_ids: JTensor,
     paddings: JTensor | None = None,
-    dtype: jnp.dtype = jnp.float32,
+    dtype: jnp.dtype = jnp.float32,  # pyrefly: ignore[bad-function-definition]
 ) -> JTensor:
   """Computes reset mask.
 

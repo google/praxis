@@ -679,7 +679,7 @@ class VQNgrammer(base_layer.BaseLayer):
     if self.unigram_vocab_size:
       input_id_to_cluster_id_cache = WeightHParams(
           shape=[self.unigram_vocab_size, self.num_heads],
-          dtype=jnp.int32,
+          dtype=jnp.int32,  # pyrefly: ignore[bad-argument-type]
           init=base_layer.WeightInit.Constant(0),
       )
       self.create_variable('input_id_to_cluster_id_cache',
@@ -700,7 +700,7 @@ class VQNgrammer(base_layer.BaseLayer):
     )
     self.create_child('ngram_layer', ngram_layer_p)
     count_pc = WeightHParams(
-        shape=[], init=base_layer.WeightInit.Constant(0), dtype=jnp.int32
+        shape=[], init=base_layer.WeightInit.Constant(0), dtype=jnp.int32  # pyrefly: ignore[bad-argument-type]
     )
     if self._should_full_update_cache():
       self.create_variable('count', count_pc, trainable=False)

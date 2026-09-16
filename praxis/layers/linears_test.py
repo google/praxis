@@ -750,8 +750,8 @@ class PostInitParamsTest(test_utils.TestCase):
     ffwd = FeedForward(
         name='ffw',
         output_dims=4 * dim,
-        dtype=jnp.float64,
-        fprop_dtype=jnp.float64,
+        dtype=jnp.float64,  # pyrefly: ignore[bad-argument-type]
+        fprop_dtype=jnp.float64,  # pyrefly: ignore[bad-argument-type]
         dcn_mesh_shape=(2,),
         ici_mesh_shape=(1,),
         mesh_axis_names=('name',),
@@ -783,8 +783,8 @@ class PostInitParamsTest(test_utils.TestCase):
     @pax_fiddle.auto_config
     def make_model():
       return ParentLayer(
-          dtype=jnp.int64,
-          fprop_dtype=jnp.bfloat16,
+          dtype=jnp.int64,  # pyrefly: ignore[bad-argument-type]
+          fprop_dtype=jnp.bfloat16,  # pyrefly: ignore[bad-argument-type]
           ici_mesh_shape=(1,),
           dcn_mesh_shape=(2,),
           params_init=base_layer.WeightInit.Gaussian(2.0),
@@ -841,8 +841,8 @@ class PostInitParamsTest(test_utils.TestCase):
         return self.c()
 
     l2 = L2(
-        dtype=jnp.bfloat16,
-        fprop_dtype=jnp.float16,
+        dtype=jnp.bfloat16,  # pyrefly: ignore[bad-argument-type]
+        fprop_dtype=jnp.float16,  # pyrefly: ignore[bad-argument-type]
         params_init=base_layer.WeightInit.Gaussian(3.0),
     )
 

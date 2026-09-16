@@ -61,7 +61,7 @@ class BiTemperedLoss(base_layer.BaseLayer):
     count = WeightHParams(
         shape=[],
         init=WeightInit.Constant(0.0),
-        dtype=jnp.float32,
+        dtype=jnp.float32,  # pyrefly: ignore[bad-argument-type]
         collections=[base_layer.WeightHParamsCollection.REQUIRES_MEAN_SYNC])
     self.create_variable('count', count, trainable=False)
 

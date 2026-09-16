@@ -1095,7 +1095,7 @@ class PositionalEmbedding2D(base_layer.BaseLayer):
   num_append_cls_tokens: int = 0
 
   def _compute_1d_embeddings(
-      self, position: JTensor, hidden_dim: int, dtype: jnp.dtype = jnp.float32
+      self, position: JTensor, hidden_dim: int, dtype: jnp.dtype = jnp.float32  # pyrefly: ignore[bad-function-definition]
   ):
     position = position.astype(dtype)
     half_hid = hidden_dim // 2
@@ -1113,8 +1113,8 @@ class PositionalEmbedding2D(base_layer.BaseLayer):
     dim = self.embedding_dims
     h_seq = jnp.arange(-self.h / 2, self.h / 2)
     w_seq = jnp.arange(-self.w / 2, self.w / 2)
-    pos_emb_h = self._compute_1d_embeddings(h_seq, dim // 2, dtype=jnp.float32)
-    pos_emb_w = self._compute_1d_embeddings(w_seq, dim // 2, dtype=jnp.float32)
+    pos_emb_h = self._compute_1d_embeddings(h_seq, dim // 2, dtype=jnp.float32)  # pyrefly: ignore[bad-argument-type]
+    pos_emb_w = self._compute_1d_embeddings(w_seq, dim // 2, dtype=jnp.float32)  # pyrefly: ignore[bad-argument-type]
     pos_emb_2d = jnp.concatenate(
         [
             jnp.tile(pos_emb_h[:, None, :], [1, self.w, 1]),

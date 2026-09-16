@@ -54,7 +54,7 @@ def limited_context_mask(
     left_context: int | None,
     right_context: int | None,
     time_size: int,
-    dtype: jnp.dtype = jnp.float32,
+    dtype: jnp.dtype = jnp.float32,  # pyrefly: ignore[bad-function-definition]
     column_time_size: int | None = None,
 ) -> JTensor:
   """Generates a logit mask from window configuration.
@@ -111,7 +111,7 @@ def causal_mask(input_t: JTensor) -> JTensor:
 def segment_mask(
     segment_ids: JTensor,
     source_segment_ids: JTensor | None = None,
-    dtype: jnp.dtype = jnp.float32,
+    dtype: jnp.dtype = jnp.float32,  # pyrefly: ignore[bad-function-definition]
 ) -> JTensor:
   """Computes (non-causal) segment mask.
 
@@ -175,7 +175,7 @@ def merge_masks(a: JTensor, b: JTensor) -> JTensor:
 
 def causal_segment_mask(
     segment_ids: JTensor,
-    dtype: jnp.dtype = jnp.float32,
+    dtype: jnp.dtype = jnp.float32,  # pyrefly: ignore[bad-function-definition]
     causal_attention_mask: JTensor | None = None,
 ) -> JTensor:
   """Computes the masks which combines causal masking and segment masks.
@@ -204,7 +204,7 @@ def causal_segment_mask(
 
 
 def convert_paddings_to_mask(
-    paddings: JTensor, dtype: jnp.dtype = jnp.float32
+    paddings: JTensor, dtype: jnp.dtype = jnp.float32  # pyrefly: ignore[bad-function-definition]
 ) -> JTensor:
   """Converts binary paddings to a logit mask ready to add to attention matrix.
 
@@ -1558,7 +1558,7 @@ class DotProductAttention(base_layer.BaseLayer):
     if self.zero_fully_masked:
       # Return zeros for tokens which don't attend anything.
       fully_masked = jnp.all(
-          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,  # pyrefly: ignore[bad-argument-type]
           axis=-1,
       )[:, 0, :, jnp.newaxis, jnp.newaxis]
       encoded *= 1 - fully_masked
@@ -1650,7 +1650,7 @@ class DotProductAttention(base_layer.BaseLayer):
     if self.zero_fully_masked:
       # Return zeros for tokens which don't attend anything.
       fully_masked = jnp.all(
-          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,  # pyrefly: ignore[bad-argument-type]
           axis=-1,
       )[..., jnp.newaxis]
       encoded *= 1 - fully_masked
@@ -2574,7 +2574,7 @@ class DotProductAttentionWithLPB(DotProductAttention):
     if self.zero_fully_masked:
       # Return zeros for tokens which don't attend anything.
       fully_masked = jnp.all(
-          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,
+          atten_mask < py_utils.get_large_negative_number(jnp.float32) / 2,  # pyrefly: ignore[bad-argument-type]
           axis=-1,
       )
       if not am_batched:
@@ -3274,7 +3274,7 @@ class LocalSelfAttention(DotProductAttention):
 
     # Avoids large values when dtype is float64, which causes numerical issues.
     minus_inf = py_utils.get_large_negative_number(
-        jnp.float32 if atten_mask.dtype == jnp.float64 else atten_mask.dtype
+        jnp.float32 if atten_mask.dtype == jnp.float64 else atten_mask.dtype  # pyrefly: ignore[bad-argument-type]
     )
 
     if atten_mask.shape[2] == 1:
@@ -3406,7 +3406,7 @@ class LocalSelfAttention(DotProductAttention):
 
     # Avoids large values when dtype is float64, which causes numerical issues.
     minus_inf = py_utils.get_large_negative_number(
-        jnp.float32 if atten_mask.dtype == jnp.float64 else atten_mask.dtype
+        jnp.float32 if atten_mask.dtype == jnp.float64 else atten_mask.dtype  # pyrefly: ignore[bad-argument-type]
     )
 
     key = _padded_slice(key, time_step + 1 - l, f, 1, 0.0)  # pyrefly: ignore[bad-argument-type, unsupported-operation]
