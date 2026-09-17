@@ -28,6 +28,7 @@ from praxis import pytypes
 from praxis.layers.quantization import optimization
 from praxis.layers.quantization import quantization_hparams
 from praxis.layers.quantization import utils
+from flax.linen import fp8_ops
 
 
 JTensor = pytypes.JTensor
@@ -601,11 +602,12 @@ def einsum(
     w_dequantized = _dequantize(w, scale, zp, eqn_to_weight_contract_dims(eqn))
     return jnp.einsum(eqn, x_dequantized, w_dequantized)
 
+  use_fp8 = False
   if (
       jax.dtypes.scalar_type_of(w.dtype) == float
       and jnp.finfo(w.dtype).bits == 8
   ):
-    w = w.astype(jnp.bfloat16)
+    use_fp8 = True # w stay as fp8
 
   if x.dtype in INT_TYPES and w.dtype in INT_TYPES:
     assert not swap_xw, 'No need to swap x and w when both are int types.'
@@ -626,10 +628,18 @@ def einsum(
     if swap_xw:
       ret = jnp.einsum(eqn_normalized, w, x)
     else:
-      ret = jnp.einsum(eqn_normalized, x, w)
+      dot_general_with_precision = lambda lhs, rhs, dimension_numbers, \
+      precision=None, preferred_element_type=jnp.bfloat16: lax.dot_general(
+          lhs,
+          rhs,
+          dimension_numbers=dimension_numbers,
+          precision=precision,
+          preferred_element_type=jnp.bfloat16, #TODO: use proper type
+      )
+      ret = jnp.einsum(eqn_normalized, x, w, preferred_element_type=jnp.bfloat16)
 
   if scale_act is not None:
-    if scale_act.ndim == 0:
+    if scale_act.ndim == 0 or use_fp8:
       scale *= scale_act
     else:
       ret *= jnp.expand_dims(scale_act, _get_expand_dims_lhs(eqn))
