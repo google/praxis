@@ -58,7 +58,7 @@ Tag = fdl.Tag
 TaggedValue = fdl.TaggedValue
 
 
-TagOrTags = Union[type(fdl.Tag), Collection[type(fdl.Tag)]]
+TagOrTags = Union[type(fdl.Tag), Collection[type(fdl.Tag)]]  # pyrefly: ignore[invalid-annotation]
 _T = TypeVar('_T')
 TypeOrCallableProducingT = Union[Callable[..., _T], Type[_T]]
 
@@ -414,7 +414,7 @@ class PaxConfig(Generic[_T], fdl.Config[_T], CloneAndSetMixin):
 
     source_fields = {
         field.name: field
-        for field in dataclasses.fields(source.__fn_or_cls__)
+        for field in dataclasses.fields(source.__fn_or_cls__)  # pyrefly: ignore[bad-argument-type]
         if field.init and field.name != 'parent'
     }
     self_fields = {
@@ -510,7 +510,7 @@ class FieldMetadata:
       when creating a `fdl.Buildable` of the enclosing type.
   """
 
-  tags: Collection[type(fdl.Tag)]
+  tags: Collection[type(fdl.Tag)]  # pyrefly: ignore[invalid-annotation]
   buildable_initializer: Optional[Callable[[], Any]]
 
 
