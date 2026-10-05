@@ -210,7 +210,7 @@ def sharded_sgd(
         shape=[], init=None, dtype=jnp.int32, collections=None)  # pyrefly: ignore[bad-argument-type]
 
     if momentum is None:
-      return (optax.EmptyState(), optax.ScaleByScheduleState(count=count))  # pytype: disable=wrong-arg-types  # numpy-scalars
+      return (optax.EmptyState(), optax.ScaleByScheduleState(count=count))  # pyrefly: ignore[bad-argument-type]
 
     def _opt_state_sharding_spec(var_hparams: WeightHParams) -> WeightHParams:
       """Returns optimizer sharding spec for one particular variable."""
@@ -220,8 +220,10 @@ def sharded_sgd(
       return m_var_hparams
 
     momentum_sharding = jax.tree.map(_opt_state_sharding_spec, mdl_params)
-    return (optax.TraceState(trace=momentum_sharding),
-            optax.ScaleByScheduleState(count=count))  # pytype: disable=wrong-arg-types  # numpy-scalars
+    return (
+        optax.TraceState(trace=momentum_sharding),
+        optax.ScaleByScheduleState(count=count),  # pyrefly: ignore[bad-argument-type]
+    )
 
   def update_fn(updates, state, params=None):
     del params
@@ -269,8 +271,10 @@ def sharded_adagrad(learning_rate_fn: optax.Schedule,
       return s_var_hparams
 
     scale_by_rss_sharding = jax.tree.map(_opt_state_sharding_spec, mdl_params)
-    return (optax.ScaleByRssState(sum_of_squares=scale_by_rss_sharding),
-            optax.ScaleByScheduleState(count=count))  # pytype: disable=wrong-arg-types  # numpy-scalars
+    return (
+        optax.ScaleByRssState(sum_of_squares=scale_by_rss_sharding),
+        optax.ScaleByScheduleState(count=count),  # pyrefly: ignore[bad-argument-type]
+    )
 
   def update_fn(updates, state, params=None):
     del params
@@ -320,7 +324,8 @@ class _ShardedAdamHelper:
   def init_opt_state(self, var_hparams: WeightHParams) -> _AdamOptState:
     """Returns optimizer state for one particular variable."""
     return _AdamOptState(
-        m=jnp.zeros_like(var_hparams), v=jnp.zeros_like(var_hparams))  # pytype: disable=wrong-arg-types  # jnp-type
+        m=jnp.zeros_like(var_hparams), v=jnp.zeros_like(var_hparams)  # pyrefly: ignore[bad-argument-type]
+    )
 
   def inf_to_nan(self, array: JTensor):
     """Converting Infinity values to the more sticky NaN."""
@@ -382,23 +387,30 @@ class _LionOptState:
 class _ShardedLionHelper(_ShardedAdamHelper):
   """A helper class facilitates the creation of sharded_lion_optimizer."""
 
-  def opt_state_sharding_spec(self,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
-                              var_hparams: WeightHParams) -> _LionOptState:
+  def opt_state_sharding_spec(  # pyrefly: ignore[bad-override]
+      self, var_hparams: WeightHParams
+  ) -> _LionOptState:
     """Returns optimizer sharding spec for one particular variable."""
     m_var_hparams = copy.deepcopy(var_hparams)
     m_var_hparams.init = None
     # m simply share the same sharding.
     return _LionOptState(m=m_var_hparams)
 
-  def init_opt_state(self,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
-                     var_hparams: WeightHParams,
-                     m_dtype: jnp.dtype = jnp.float32) -> _LionOptState:  # pyrefly: ignore[bad-function-definition]
+  def init_opt_state(  # pyrefly: ignore[bad-override]
+      self,
+      var_hparams: WeightHParams,
+      m_dtype: jnp.dtype = jnp.float32,  # pyrefly: ignore[bad-function-definition]
+  ) -> _LionOptState:
     """Returns optimizer state for one particular variable."""
-    return _LionOptState(m=jnp.zeros_like(var_hparams, dtype=m_dtype))  # pytype: disable=wrong-arg-types  # jnp-type
+    return _LionOptState(m=jnp.zeros_like(var_hparams, dtype=m_dtype))  # pyrefly: ignore[bad-argument-type]
 
-  def update_moments(self, step: JTensor, update: JTensor,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
-                     moments: _LionOptState,
-                     beta2: float) -> _LionOptState:
+  def update_moments(  # pyrefly: ignore[bad-override]
+      self,
+      step: JTensor,
+      update: JTensor,
+      moments: _LionOptState,
+      beta2: float,
+  ) -> _LionOptState:
     """Updates momentum value."""
     m = (1. - beta2) * update + beta2 * moments.m  # pyrefly: ignore[unsupported-operation]
     return _LionOptState(m=m)
@@ -1762,7 +1774,7 @@ class DistributedShampoo(BaseOptimizer):
     def wrapped_update_fn(grads, state, params=None):
       new_params, new_state = grad_transformation.update(grads, state, params)
       if self.summarize_training_metrics:
-        param_stats = new_state.stats  # pytype: disable=attribute-error  # numpy-scalars
+        param_stats = new_state.stats
 
         # Construct an almost parallel-structured pytree with key prefixes to
         # annotate per-parameter metrics for the summary name. Frustratingly,
@@ -1959,17 +1971,18 @@ class ShardedDistributedShampoo(DistributedShampoo):
     return jax.tree.map(_weight_param_from_pspec_shape_dtype,
                         partition_spec_opt_state, shapes_and_dtypes)
 
-  def _get_raw_grad_transformation(  # pytype: disable=signature-mismatch  # overriding-return-type-checks
-      self, lr: optax.Schedule) -> ShardedGradientTransformation:
+  def _get_raw_grad_transformation(  # pyrefly: ignore[bad-override]
+      self, lr: optax.Schedule
+  ) -> ShardedGradientTransformation:
     result = self._shampoo_transformation(lr)
     # TODO(rohananil): Refactor after PartitionSpec layering is finalized in
     # the JAX ecosystem.
-    fns = result.init(None)  # pytype: disable=wrong-arg-types  # numpy-scalars
+    fns = result.init(None)
 
     def _wrapped_update_fn(grads, state, params):
       new_params, new_state = result.update(grads, state, params)
       if self.summarize_training_metrics:
-        local_stats = new_state.stats.local_stats  # pytype: disable=attribute-error  # numpy-scalars
+        local_stats = new_state.stats.local_stats
         var_keys, _ = jax.tree_util.tree_flatten(
             py_utils.extract_prefixed_keys_from_nested_map(local_stats))
         var_keys = [x for x in var_keys if 'inverse_pth_root_errors' in x]
@@ -2302,13 +2315,14 @@ class _ShardedAdafactorHelper:
 
   def to_state(self, count, result_tree):
     """Maps from a tree of (factored) values to separate trees of values."""
-    return ShardedAdafactorState(  # pytype: disable=wrong-arg-types  # jax-ndarray
+    return ShardedAdafactorState(
         count=count,
         m=jax.tree.map(lambda o: o.m, result_tree),
         m_scale=jax.tree.map(lambda o: o.m_scale, result_tree),
         vr=jax.tree.map(lambda o: o.vr, result_tree),
         vc=jax.tree.map(lambda o: o.vc, result_tree),
-        v=jax.tree.map(lambda o: o.v, result_tree))
+        v=jax.tree.map(lambda o: o.v, result_tree),
+    )
 
   def init(self, param):
     """Initializes the optimizer state for a given param."""
@@ -2331,7 +2345,7 @@ class _ShardedAdafactorHelper:
         output_m = jnp.zeros(shape, dtype=jnp.float32)
     if self.should_use_factored_second_moment_estimate(shape):
       factored_dims = self.factored_second_moment_dims(shape)
-      vr_axis, vc_axis = factored_dims  # pytype: disable=attribute-error
+      vr_axis, vc_axis = factored_dims
       output_vr_shape = list(shape).copy()
       del output_vr_shape[vr_axis]
       output_vc_shape = list(shape).copy()
@@ -2415,7 +2429,7 @@ class _ShardedAdafactorHelper:
             tensor_split_dims_mapping=tensor_split_dims_mapping)
     if self.should_use_factored_second_moment_estimate(shape):
       factored_dims = self.factored_second_moment_dims(shape)
-      vr_axis, vc_axis = factored_dims  # pytype: disable=attribute-error
+      vr_axis, vc_axis = factored_dims
       # TODO(shafey): Fix logic for updating sharding annotations.
       if sharding_specified:
         vr_split_dims_mapping = gshard_utils.remove_dim(
@@ -2550,7 +2564,7 @@ class _ShardedAdafactorHelper:
     old_val = param
 
     if self._multiply_by_parameter_scale:
-      update_scale *= self.parameter_scale(old_val).astype(update_scale.dtype)  # pytype: disable=attribute-error  # numpy-scalars
+      update_scale *= self.parameter_scale(old_val).astype(update_scale.dtype)  # pyrefly: ignore[missing-attribute]
       if self._per_var_learning_summary:
         # Add summary for this var.
         base_layer.add_global_summary(
@@ -2936,10 +2950,11 @@ def sharded_static_accumulation(
       state: NestedJTensor,
       params: NestedJTensor | None = None,
   ):
-    new_accumulated_update = jax.tree.map(lambda acc, x: acc + x,
-                                          state.accumulated_update, updates)  # pytype: disable=attribute-error  # jax-ndarray
+    new_accumulated_update = jax.tree.map(
+        lambda acc, x: acc + x, state.accumulated_update, updates  # pyrefly: ignore[missing-attribute]
+    )
 
-    new_count = state.count + 1  # pytype: disable=attribute-error  # jax-ndarray
+    new_count = state.count + 1  # pyrefly: ignore[missing-attribute]
     should_emit = new_count >= num_sub_batches
     new_count = lax.cond(should_emit, lambda: jnp.array(0, dtype=jnp.int32),
                          lambda: new_count)
@@ -2948,7 +2963,8 @@ def sharded_static_accumulation(
       averaged_updated = jax.tree.map(lambda acc: acc / num_sub_batches,
                                       new_accumulated_update)
       emission_updates, emission_base_state = base_tx.update(
-          averaged_updated, state.base_state, params)  # pytype: disable=attribute-error  # jax-ndarray
+          averaged_updated, state.base_state, params  # pyrefly: ignore[missing-attribute]
+      )
       return (emission_updates,
               jax.tree.map(lambda u: jnp.zeros_like(u, dtype=jnp.float32),
                            updates), emission_base_state)
@@ -2959,7 +2975,7 @@ def sharded_static_accumulation(
         return (
             jax.tree.map(jnp.zeros_like, updates),
             new_accumulated_update,
-            state.base_state,  # pytype: disable=attribute-error # jax-ndarray
+            state.base_state,  # pyrefly: ignore[missing-attribute]
         )
 
       new_updates, new_accumulated_update, new_base_state = lax.cond(
@@ -2991,7 +3007,7 @@ def sharded_static_accumulation(
           [
               jax.tree.map(jnp.zeros_like, updates),
               new_accumulated_update,
-              state.base_state,  # pytype: disable=attribute-error  # jax-ndarray
+              state.base_state,  # pyrefly: ignore[missing-attribute]
           ],
       )
 

@@ -51,7 +51,7 @@ instance_field = base_layer.instance_field
 template_field = base_layer.template_field
 
 
-class AttentionProjection(  # pytype: disable=signature-mismatch
+class AttentionProjection(
     attentions.AttentionProjection,
     quantizer.QuantizationLayer,
     sparsifier.SparsityBaseLayer,
@@ -490,7 +490,7 @@ class AttentionProjectionLoRA(AttentionProjection):
     return out
 
 
-class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
+class CombinedQKVProjectionLayer(
     attentions.CombinedQKVProjectionLayer,
     quantizer.QuantizationLayer,
     sparsifier.SparsityBaseLayer,
@@ -805,7 +805,7 @@ class CombinedQKVProjectionLayer(  # pytype: disable=signature-mismatch
     return {base_layer.PARAMS: ret_params}
 
 
-class DotProductAttention(  # pytype: disable=signature-mismatch
+class DotProductAttention(
     attentions.DotProductAttention, quantizer.QuantizationLayer
 ):
   """Dot-product attention with multiple attention heads.

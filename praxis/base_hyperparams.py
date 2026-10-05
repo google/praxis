@@ -516,7 +516,7 @@ class BaseHyperParams:
   # Note: This will go away when we migrate more completely to fiddle and can
   # set frozen=True.
   def __setattr__(self, name: str, value: Any) -> None:
-    if hasattr(self, '_internal_frozen') and self._internal_frozen:  # pytype: disable=attribute-error
+    if hasattr(self, '_internal_frozen') and self._internal_frozen:
       raise AttributeError(f'This HParam object is frozen: {self}')
     matching_fields = [
         field for field in dataclasses.fields(self) if field.name == name  # pyrefly: ignore[bad-argument-type]
@@ -544,7 +544,7 @@ class BaseHyperParams:
 
   def freeze(self):
     object.__setattr__(self, '_internal_frozen', True)
-    fields = self.__dataclass_fields__  # pytype: disable=attribute-error
+    fields = self.__dataclass_fields__  # pyrefly: ignore[missing-attribute]
     for name in fields:
       attr_value = getattr(self, name)
       # recursively freeze all HyperParams
@@ -553,7 +553,7 @@ class BaseHyperParams:
 
   def unfreeze(self):
     object.__setattr__(self, '_internal_frozen', False)
-    fields = self.__dataclass_fields__  # pytype: disable=attribute-error
+    fields = self.__dataclass_fields__  # pyrefly: ignore[missing-attribute]
     for name in fields:
       attr_value = getattr(self, name)
       # recursively unfreeze all HyperParams
@@ -584,7 +584,7 @@ class BaseHyperParams:
       raise TypeError(
           'Can only copy fields to BaseHyperParams from another '
           'BaseHyperParams.  (Copying from Fiddle Config not supported yet).')
-    fields = self.__dataclass_fields__  # pytype: disable=attribute-error
+    fields = self.__dataclass_fields__  # pyrefly: ignore[missing-attribute]
     for name in fields:
       # Skip the field in self but not in source.
       if not hasattr(source, name) and hasattr(self, name):
@@ -871,7 +871,7 @@ class FiddleHParamsClassStub(type, OverrideSubConfigFieldProtocol):
     }
     bases = ()
     # pylint: disable=unused-variable, redefined-outer-name
-    return super().__new__(cls, name, bases, namespace)  # pytype: disable=wrong-arg-count
+    return super().__new__(cls, name, bases, namespace)
 
   def __init__(cls, fiddle_base_parameterizable_cls):
     pass
@@ -1002,7 +1002,7 @@ class FiddleBaseParameterizableBase:
   @functools.cached_property
   def _fields(self) -> set[str]:
     """Returns a list of hyperparameter field names for `self`."""
-    return set(field.name for field in dataclasses.fields(self) if field.init)  # pytype: disable=wrong-arg-types  # re-none
+    return set(field.name for field in dataclasses.fields(self) if field.init)
 
   def __init_subclass__(cls, **kwargs):
     super().__init_subclass__(**kwargs)
@@ -1026,11 +1026,9 @@ class FiddleBaseParameterizableBase:
       )
 
 
-# pytype: disable=not-supported-yet
 # This disable is needed because the decorator has to match the existing
 # decorator of the decorator for FiddleBaseParameterizableBase.
 @dataclass_transform(field_specifiers=(kw_only_dataclasses.field,))
-# pytype: enable=not-supported-yet
 class FiddleBaseParameterizable(FiddleBaseParameterizableBase):
   """A wrapper for FiddleBaseParameterizableBase.
 
@@ -1160,17 +1158,17 @@ def _add_precise_signature_to_make(
     # Make a copy of the underlying function to avoid mutating some other class.
     # We use this approach to ensure it's not a closure which makes it
     # pickle-able.
-    make_fn = cls.make.__func__  # pytype: disable=attribute-error
+    make_fn = cls.make.__func__
     make_copy = types.FunctionType(make_fn.__code__, make_fn.__globals__,
                                    make_fn.__name__, make_fn.__defaults__,
                                    make_fn.__closure__)
     cls.make = classmethod(make_copy)  # pyrefly: ignore[bad-assignment]
 
-  cls.make.__func__.__signature__ = manufactured_sig  # pytype: disable=attribute-error
+  cls.make.__func__.__signature__ = manufactured_sig  # pyrefly: ignore[missing-attribute]
 
   # Make docs available to fiddleviz.
   # TODO(b/...): Glue the separate docstrings together somehow?
-  cls.make.__func__.__doc__ = cls.__doc__  # pytype: disable=attribute-error
+  cls.make.__func__.__doc__ = cls.__doc__
 
 
 def instantiate(

@@ -857,7 +857,7 @@ def set_transformer_quantization(
         rank,
         quantize_self_attention,
         quantize_cross_attention,
-    )  # pytype: disable=wrong-arg-types  # py310-upgrade
+    )
 
   if quantize_embedding_softmax or quantize_ngrammer_embedding:
     lm_or_encdec_tpls = utils.find_target_tpl(
@@ -873,14 +873,14 @@ def set_transformer_quantization(
             act_quantization_params,
             transposed_embedding_softmax,
             softmax_only,
-        )  # pytype: disable=wrong-arg-types  # py310-upgrade
+        )
       if quantize_ngrammer_embedding:
         _quantize_ngrammer_embedding_weights(
             lm_or_encdec_tpl,  # pyrefly: ignore[bad-argument-type]
             quantization_type,
             mode,
             weight_quantization_params,
-        )  # pytype: disable=wrong-arg-types  # py310-upgrade
+        )
 
 
 def set_transformer_mixed_precision_quantization(
@@ -983,7 +983,7 @@ def set_transformer_mixed_precision_quantization(
           act_params,
           quantize_self_attention,
           quantize_cross_attention,
-      )  # pytype: disable=wrong-arg-types  # py310-upgrade
+      )
   # Embedding
   lm_or_encdec_tpls = utils.find_target_tpl(
       config, [layers.TransformerLm, layers.TransformerEncoderDecoder]
@@ -1000,7 +1000,7 @@ def set_transformer_mixed_precision_quantization(
           act_quantization_params=act_params,
           transposed_embedding_softmax=transposed_embedding_softmax,
           softmax_only=True,
-      )  # pytype: disable=wrong-arg-types  # py310-upgrade
+      )
   if TransformerLayer.EMBEDDING_NGRAMMER in num_bits:
     weight_params = _build_weight_params(TransformerLayer.EMBEDDING_NGRAMMER)
     for lm_or_encdec_tpl in lm_or_encdec_tpls:
@@ -1009,7 +1009,7 @@ def set_transformer_mixed_precision_quantization(
           quantization_type,
           mode,
           weight_params,
-      )  # pytype: disable=wrong-arg-types  # py310-upgrade
+      )
 
 
 def set_diffusion_quantization(

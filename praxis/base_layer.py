@@ -50,7 +50,7 @@ try:
   from jax.extend.core import unsafe_get_axis_names_DO_NOT_USE
 except ImportError:
   # JAX v0.9.2 or older
-  from jax.core import unsafe_get_axis_names_DO_NOT_USE  # pytype: disable=import-error
+  from jax.core import unsafe_get_axis_names_DO_NOT_USE  # pyrefly: ignore[missing-module-attribute]
 
 FLAGS = flags.FLAGS
 
@@ -1565,7 +1565,7 @@ class _FiddleHParamsClassStub(
     }
     bases = ()
     # pylint: disable=unused-variable
-    return super().__new__(cls, name, bases, namespace)  # pytype: disable=wrong-arg-count
+    return super().__new__(cls, name, bases, namespace)
 
   def __init__(cls, fiddle_base_layer_cls):
     pass
@@ -2190,8 +2190,9 @@ class BaseLayer(nn.Module):
         AUX_LOSS,
         name,
         AuxLossStruct(value, weight),
-        init_fn=lambda: AuxLossStruct(0.0, 0.0),  # pytype: disable=wrong-arg-types  # jax-ndarray
-        reduce_fn=reduce_fn)
+        init_fn=lambda: AuxLossStruct(0.0, 0.0),  # pyrefly: ignore[bad-argument-type]
+        reduce_fn=reduce_fn,
+    )
 
   @nn.nowrap
   def next_prng_key(self, name=RANDOM):
@@ -2769,7 +2770,7 @@ def get_template_fields(template: pax_fiddle.Config) -> list[str]:
     template: The HParams or fdl.Config whose field names should be returned.
   """
   if isinstance(template, pax_fiddle.Config):
-    return list(  # pytype: disable=bad-return-type
+    return list(  # pyrefly: ignore[bad-return]
         fdl.ordered_arguments(
             template,
             include_defaults=True,

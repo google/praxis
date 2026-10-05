@@ -69,7 +69,7 @@ Chain = chain_lib.Chain
 
 def chain(*layers_tpl: Any, **kwargs: Any) -> Config[Chain]:
   """Parameterizes Chain passing output from one layer to the next."""
-  return Config(  # pytype: disable=wrong-arg-types  # use-fiddle-overlay
+  return Config(
       Chain,
       layers=_name_layers_uniquely(layers_tpl),
       **kwargs_with_name('chain', **kwargs),
@@ -180,7 +180,7 @@ class AddResidual(chain_lib.Chain):
 
 def add_residual(*layers: Any, **kwargs: Any) -> Config[AddResidual]:
   """`Config(AddResidual)`; stacks `layers` and adds a residual."""
-  return Config(  # pytype: disable=wrong-arg-types  # use-fiddle-overlay
+  return Config(
       AddResidual,
       layers=_name_layers_uniquely(layers),
       **kwargs_with_name('add_residual', **kwargs),
@@ -206,7 +206,7 @@ class DictToArgs(BaseLayer):
       outputs.append(val)
     if len(outputs) > 1:
       return tuple(outputs)
-    return outputs[0]  # pytype: disable=bad-return-type  # jax-ndarray
+    return outputs[0]
 
 
 def dict_to_args(*keys: str, **kwargs: Any) -> Config[DictToArgs]:

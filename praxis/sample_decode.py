@@ -192,7 +192,7 @@ def right_align_prefix_ids(
       jnp.ones_like(prefix_iota, dtype=paddings_dtype),
       jnp.zeros_like(prefix_iota, dtype=paddings_dtype),
   )
-  return right_align_ids, prefix_paddings  # pytype: disable=bad-return-type  # jax-ndarray
+  return right_align_ids, prefix_paddings  # pyrefly: ignore[bad-return]
 
 
 def _condense_state(block_num_samples) -> base_layer.DecodeStateTransformFn:
@@ -682,11 +682,11 @@ def sample_decode_after_fprop(
         x_expected_shape = (original_batch_size // 2,)
       else:
         x_expected_shape = (original_batch_size,)
-      if x.shape[0] != x_expected_shape[0]:  # pytype: disable=attribute-error
+      if x.shape[0] != x_expected_shape[0]:
         raise ValueError(
             f'Dynamic {name} should have shape: '
             f'{x_expected_shape}, but it has shape: '
-            f'{x.shape}.'  # pytype: disable=attribute-error
+            f'{x.shape}.'
         )
       x = jnp.repeat(x, axis=0, repeats=num_samples)
       return x

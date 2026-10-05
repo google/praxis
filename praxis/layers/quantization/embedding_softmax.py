@@ -682,6 +682,6 @@ class NClassMajorSharedEmbeddingSoftmax(
         child_res = child.quantize_weight()
       for child_target in child_res:
         if child_target not in params_dict:
-          params_dict[child_target] = {}  # pytype: disable=unsupported-operands
+          params_dict[child_target] = {}  # pyrefly: ignore[unsupported-operation]
         params_dict[child_target][name] = child_res[child_target]
     return params_dict

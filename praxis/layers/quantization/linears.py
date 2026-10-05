@@ -45,7 +45,7 @@ instance_field = base_layer.instance_field
 template_field = base_layer.template_field
 
 
-class Linear(  # pytype: disable=signature-mismatch
+class Linear(
     linears.Linear, quantizer.QuantizationLayer, sparsifier.SparsityBaseLayer
 ):
   """Quantized and low-rank Linear layer without bias.

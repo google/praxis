@@ -36,7 +36,7 @@ JTensor = pytypes.JTensor
 NestedJTensor = pytypes.NestedJTensor
 
 
-class OneHeadedAttentionProjection(  # pytype: disable=signature-mismatch
+class OneHeadedAttentionProjection(
     multi_query_attention.OneHeadedAttentionProjection,
     quantizer.QuantizationLayer,
 ):
@@ -214,7 +214,7 @@ class OneHeadedAttentionProjection(  # pytype: disable=signature-mismatch
       q_w = utils.pack_4bit(q_w, self._PACK_4BIT_DIM)
 
     if self.quantization.weight_params.use_symmetric:
-      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}  # pytype: disable=bad-return-type  # jax-ndarray
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s}}
     else:
       zp_name = 'w' + base_layer.QUANTIZED_ZP_NAME_POSTFIX
-      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}  # pytype: disable=bad-return-type  # jax-ndarray
+      return {base_layer.PARAMS: {'w': q_w, scale_name: q_s, zp_name: zp}}

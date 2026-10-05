@@ -146,12 +146,12 @@ def field(
   metadata = {
       **metadata,
       _FIDDLE_DATACLASS_METADATA_KEY: FieldMetadata(
-          tags=tags, buildable_initializer=buildable_initializer  # pyrefly: ignore[bad-argument-type]
+          tags=tags, buildable_initializer=buildable_initializer
       ),
   }
   return dataclasses.field(
       default_factory=default_factory, metadata=metadata, **kwargs
-  )  # pytype: disable=wrong-keyword-args
+  )
 
 
 # Temporary alias for backwards compatibility:
@@ -558,7 +558,7 @@ def auto_config(
       config_cls=PaxConfig,
       partial_cls=PaxPartial,
       arg_factory_cls=PaxArgFactory,
-  )  # pytype: disable=wrong-arg-types
+  )
   auto_config_kwargs['experimental_result_must_contain_buildable'] = False
 
   def make_auto_config(fn):

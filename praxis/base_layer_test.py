@@ -572,8 +572,8 @@ class BaseLayerTest(test_utils.TestCase):
         pax_fiddle.Config(FiddleChild, x=12),
     ]
     p.child_tpl_dict = {'x': pax_fiddle.Config(FiddleChild, x=12)}
-    p.child_instance_list = p.child_tpl_list  # pytype: disable=annotation-type-mismatch  # use-fiddle-overlay
-    p.child_instance_dict = p.child_tpl_dict  # pytype: disable=annotation-type-mismatch  # use-fiddle-overlay
+    p.child_instance_list = p.child_tpl_list
+    p.child_instance_dict = p.child_tpl_dict
     layer = p.Instantiate()
 
     hyper_params = layer.abstract_init_with_mdl_config()
@@ -839,11 +839,11 @@ class BaseLayerTest(test_utils.TestCase):
     layer_p = pax_fiddle.Config(SimpleBaseLayer)
     with self.assertRaisesRegex(
         TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
-      SimpleBaseLayer(layer_p)  # pytype: disable=wrong-arg-types  # jnp-type
+      SimpleBaseLayer(layer_p)  # pyrefly: ignore[bad-argument-type]
 
     with self.assertRaisesRegex(
         TypeError, r'Please use `layer_p\.Instantiate\(\)` instead'):
-      SimpleBaseLayer('foo')  # pytype: disable=wrong-arg-types  # jnp-type
+      SimpleBaseLayer('foo')  # pyrefly: ignore[bad-argument-type]
 
   def test_get_fan_in_fan_out(self):
     self.assertEqual((None, None), base_layer.get_fan_in_fan_out(shape=[]))

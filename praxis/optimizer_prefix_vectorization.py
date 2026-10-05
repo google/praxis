@@ -178,7 +178,7 @@ def _decode_sharding_dim(d: str) -> str | Sequence[str] | int | None:
   if len(d) == 1:
     return ()
   tuple_elements = [_decode_sharding_dim(e) for e in d[1:].split(',')]
-  return tuple(tuple_elements)  # pytype: disable=bad-return-type  # always-use-return-annotations
+  return tuple(tuple_elements)  # pyrefly: ignore[bad-return]
 
 
 def _get_var_param_repeat_prefix_key(var_param: base_layer.WeightHParams,

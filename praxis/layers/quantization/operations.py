@@ -1428,7 +1428,7 @@ def fakequant_vn(
     if wp.stop_scale_gradient:
       scale = jax.lax.stop_gradient(scale)
 
-    return w + scale.astype(w.dtype) * noises  # pytype: disable=attribute-error
+    return w + scale.astype(w.dtype) * noises
 
 
 def factorize_weight(var: JTensor, rank: int) -> tuple[JTensor, JTensor]:

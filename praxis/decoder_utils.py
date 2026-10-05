@@ -495,7 +495,7 @@ def maybe_reshard_mdl_for_decode(
   """Reshards model variables if mesh_transpose is given."""
   if mesh_transpose is None or model.is_initializing():
     return model
-  lm_vars = flax_core.unfreeze(model.variables)  # pytype: disable=wrong-arg-types
+  lm_vars = flax_core.unfreeze(model.variables)  # pyrefly: ignore[bad-argument-type]
   assert model_var_pspecs is not None
 
   def _annotate():

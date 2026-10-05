@@ -237,9 +237,9 @@ class UtilsTest(test_utils.TestCase):
         ),
     ]
     if sequence_of_inputs:
-      targets = utils.find_target_tpl(outer_p, [Target, Target])  # pytype: disable=wrong-arg-types
+      targets = utils.find_target_tpl(outer_p, [Target, Target])  # pyrefly: ignore[bad-argument-type]
     else:
-      targets = utils.find_target_tpl(outer_p, Target)  # pytype: disable=wrong-arg-types
+      targets = utils.find_target_tpl(outer_p, Target)  # pyrefly: ignore[bad-argument-type]
     # NOTE(yinzhong): fdl.Config is not hashable or sortable, so we have to
     # build before comparing.
     self.assertSameElements(

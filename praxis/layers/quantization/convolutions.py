@@ -29,7 +29,7 @@ instance_field = base_layer.instance_field
 JTensor = pytypes.JTensor
 
 
-class Conv2D(convolutions.Conv2D, quantizer.QuantizationLayer):  # pytype: disable=signature-mismatch
+class Conv2D(convolutions.Conv2D, quantizer.QuantizationLayer):
   """Conv2D with support of SAME/VALID paddings."""
 
   _PACK_4BIT_DIM = 0

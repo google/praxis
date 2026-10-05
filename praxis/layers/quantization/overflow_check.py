@@ -116,7 +116,7 @@ class CombinedQKVProjectionLayerOverflowCheck(
 
   def extend_step(self, inputs: JTensor, *, time_step: JTensor) -> JTensor:
     del time_step  # Not used.
-    return self.__call__(inputs)  # pytype: disable=bad-return-type  # jax-ndarray
+    return self.__call__(inputs)  # pyrefly: ignore[bad-return]
 
 
 class OneHeadedAttentionProjectionOverflowCheck(
