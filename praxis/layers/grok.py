@@ -129,7 +129,7 @@ def GrokStackedTransformerHParams(
         normalizations.RmsNorm
     )
     p.transformer_layer_params_tpl.ln_tpl.direct_scale = True
-  tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl  # pytype: disable=attribute-error  # enable-nested-classes
+  tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl  # pyrefly: ignore[missing-attribute]
   assert fdl.get_callable(tr_atten_tpl) == attentions.DotProductAttention
   tr_atten_tpl.attention_extra_logit = attention_extra_logit
   tr_atten_tpl.use_bias = True

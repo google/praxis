@@ -127,7 +127,7 @@ def GlamStackedTransformerHParams(
         normalizations.RmsNorm
     )
     p.transformer_layer_params_tpl.ln_tpl.direct_scale = True
-  tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl  # pytype: disable=attribute-error  # enable-nested-classes
+  tr_atten_tpl = p.transformer_layer_params_tpl.tr_atten_tpl  # pyrefly: ignore[missing-attribute]
   assert fdl.get_callable(tr_atten_tpl) == attentions.DotProductAttention
   tr_atten_tpl.attention_extra_logit = attention_extra_logit
   tr_atten_tpl.use_bias = False
@@ -149,7 +149,7 @@ def GlamStackedTransformerHParams(
     tr_atten_tpl.combined_qkv_proj_tpl.use_bias = False
     tr_atten_tpl.combined_qkv_proj_tpl.attention_combine_dims = True
   # Non-MoE ffn setup
-  ff_tpl = p.transformer_layer_params_tpl.tr_fflayer_tpl  # pytype: disable=attribute-error  # enable-nested-classes
+  ff_tpl = p.transformer_layer_params_tpl.tr_fflayer_tpl  # pyrefly: ignore[missing-attribute]
   assert fdl.get_callable(ff_tpl) == transformers.TransformerFeedForward
   ff_tpl.input_dims = model_dim
   ff_tpl.hidden_dims = ff_dim

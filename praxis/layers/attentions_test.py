@@ -182,7 +182,7 @@ class MaskUtilsTest(test_utils.TestCase, parameterized.TestCase):
 
     mask = attentions.limited_context_mask(
         left_context, right_context, padding.shape[1], np.float32  # pyrefly: ignore[bad-argument-type]
-    )  # pytype: disable=wrong-arg-types
+    )
 
     # Merge the above mask with paddings:
     padding_mask = attentions.convert_paddings_to_mask(padding)
@@ -757,7 +757,7 @@ class AttentionsTest(test_utils.TestCase):
     segment_ids = np.random.randint(
         0, 2, size=[target_batch_size, target_max_length]
     ).astype(np.int32)
-    atten_mask = attentions.causal_segment_mask(segment_ids, np.float32)  # pytype: disable=wrong-arg-types
+    atten_mask = attentions.causal_segment_mask(segment_ids, np.float32)  # pyrefly: ignore[bad-argument-type]
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -833,7 +833,7 @@ class AttentionsTest(test_utils.TestCase):
         size=[target_batch_size, source_max_length, mdl_dim]
     ).astype(np.float32)
     paddings = np.zeros([target_batch_size, source_max_length], dtype=np.int32)
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pyrefly: ignore[bad-argument-type]
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -1005,7 +1005,7 @@ class AttentionsTest(test_utils.TestCase):
     paddings = np.zeros(
         [target_batch_size, source_max_length], dtype=np.float32
     )
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pyrefly: ignore[bad-argument-type]
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -1108,7 +1108,7 @@ class AttentionsTest(test_utils.TestCase):
     paddings = range(source_max_length)[-target_batch_size:]
     paddings = [[0] * l + [1] * (source_max_length - l) for l in paddings]
     paddings = np.array(paddings)
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pyrefly: ignore[bad-argument-type]
     if is_full:
       atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
 
@@ -1194,7 +1194,7 @@ class AttentionsTest(test_utils.TestCase):
         for p in padding_zone
     ]
     paddings = np.array(paddings)
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pyrefly: ignore[bad-argument-type]
 
     with base_layer.JaxContext.new_context():
       prng_key = jax.random.PRNGKey(seed=123)
@@ -1269,7 +1269,7 @@ class AttentionsTest(test_utils.TestCase):
     paddings = range(source_max_length)[-target_batch_size:]
     paddings = [[0] * l + [1] * (source_max_length - l) for l in paddings]
     paddings = np.array(paddings)
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pyrefly: ignore[bad-argument-type]
     if is_full:
       atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
 
@@ -1352,7 +1352,7 @@ class AttentionsTest(test_utils.TestCase):
     paddings = range(source_max_length)[-target_batch_size:]
     paddings = [[0] * l + [1] * (source_max_length - l) for l in paddings]
     paddings = np.array(paddings)
-    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pytype: disable=wrong-arg-types
+    atten_mask = attentions.convert_paddings_to_mask(paddings, np.float32)  # pyrefly: ignore[bad-argument-type]
     if is_full:
       atten_mask = jnp.tile(atten_mask, [1, 1, source_max_length, 1])
 
@@ -1430,7 +1430,7 @@ class AttentionsTest(test_utils.TestCase):
     jax_np_out = test_utils.to_np(jax_dconv_out)
     outputs = inputs
     for _ in range(1, kernel_size):
-      inputs = attentions.shift_1d(inputs, offset=1, axis=axis)  # pyrefly: ignore[bad-argument-type]
+      inputs = attentions.shift_1d(inputs, offset=1, axis=axis)
       outputs += inputs
     self.assertArraysEqual(jax_np_out, outputs)
 

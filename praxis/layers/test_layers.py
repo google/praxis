@@ -148,7 +148,7 @@ class TestModel01(base_model.BaseModel):
 
   def compute_loss(  # pyrefly: ignore[bad-override]
       self,
-      predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
+      predictions: JTensor,
       input_batch: NestedMap,
   ) -> tuple[NestedMap, NestedMap]:
     del input_batch
@@ -213,7 +213,7 @@ class TestBatchNormalizationModel(base_model.BaseModel):
 
   def compute_loss(  # pyrefly: ignore[bad-override]
       self,
-      predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
+      predictions: JTensor,
       input_batch: NestedMap,
   ) -> tuple[NestedMap, NestedMap]:
     targets = input_batch.targets
@@ -239,7 +239,7 @@ class TestSpmdModel(base_model.BaseModel):
 
   def compute_loss(  # pyrefly: ignore[bad-override]
       self,
-      predictions: JTensor,  # pytype: disable=signature-mismatch  # jax-ndarray
+      predictions: JTensor,
       input_batch: NestedMap,
   ) -> tuple[NestedMap, NestedMap]:
     loss = jnp.mean(jnp.square(predictions))

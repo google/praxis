@@ -115,7 +115,7 @@ class GpuCudnnFusedDotProductAttention(attentions.DotProductAttention):
         implementation='cudnn',
     )
     encoded = self._shard_blnh(encoded)
-    return encoded, None  # pytype: disable=bad-return-type
+    return encoded, None  # pyrefly: ignore[bad-return]
 
 
 class GpuCudnnFusedGroupedQueryAttention(
@@ -164,4 +164,4 @@ class GpuCudnnFusedGroupedQueryAttention(
     )
     encoded = self._shard_blnh(encoded, sh.btnh)
 
-    return encoded, None  # pytype: disable=bad-return-type  # jax-ndarray
+    return encoded, None  # pyrefly: ignore[bad-return]

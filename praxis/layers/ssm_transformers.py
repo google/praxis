@@ -252,7 +252,7 @@ class SSMTransformer(transformers.Transformer):
 
     # Apply FFN layer
     output = self.ff_layer(atten_output, paddings=paddings)
-    return output, None  # pytype: disable=bad-return-type  # jax-ndarray
+    return output, None  # pyrefly: ignore[bad-return]
 
   def extend_step(
       self,
@@ -576,7 +576,7 @@ class SSMGated(SSMTransformer):
     atten_output = self.gss_ffn_uco(atten_output)
     output = self.gss_ffn_o(atten_output * v)
 
-    return output, None  # pytype: disable=bad-return-type  # jax-ndarray
+    return output, None  # pyrefly: ignore[bad-return]
 
   def extend_step(
       self,

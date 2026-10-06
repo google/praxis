@@ -541,7 +541,7 @@ def build_vision_transformer_hparams_for_test(
       num_layers=num_xformer_layers,
   )
   p_tfm = p_stacked_tfm.transformer_layer_params_tpl
-  p_tfm.tr_atten_tpl.internal_enable_per_dim_scale = False  # pytype: disable=attribute-error  # enable-nested-classes
+  p_tfm.tr_atten_tpl.internal_enable_per_dim_scale = False
 
   p_exit = pax_fiddle.Config(
       VitExitLayers, name='exit', hidden_dim=model_dims, output_dim=model_dims

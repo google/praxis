@@ -205,7 +205,7 @@ class BatchNorm(BaseNormalization):
     else:
       beta = self.theta.beta
       gamma = self.theta.gamma + 1.0
-    return beta, gamma  # pytype: disable=bad-return-type  # jax-ndarray
+    return beta, gamma  # pyrefly: ignore[bad-return]
 
   def compute_and_update_moments(
       self, inputs: JTensor, paddings: JTensor

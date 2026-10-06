@@ -532,7 +532,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     if self.stream_io:
       stream_buf_idx = loop_iteration % (num_microbatches // self.num_stages)
       stream_slice = jax.tree.map(
-          lambda x: x[:, stream_buf_idx], loop_state.stream  # pytype: disable=attribute-error  # jax-ndarray
+          lambda x: x[:, stream_buf_idx], loop_state.stream  # pyrefly: ignore[missing-attribute]
       )
       inputs = stream_slice
     else:
@@ -558,7 +558,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
     if self.stream_io:
       stream_buf_idx = loop_iteration % (num_microbatches // L)
       stream_slice = jax.tree.map(
-          lambda x: x[:, stream_buf_idx], old_state.stream  # pytype: disable=attribute-error  # jax-ndarray
+          lambda x: x[:, stream_buf_idx], old_state.stream  # pyrefly: ignore[missing-attribute]
       )
 
       def _updated_stream(x, sslice, out):
@@ -574,9 +574,9 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
         return jax.lax.dynamic_update_slice_in_dim(
             x, sslice, stream_buf_idx, axis=1)
 
-      new_state.stream = jax.tree.map(  # pytype: disable=attribute-error  # jax-ndarray
+      new_state.stream = jax.tree.map(
           _updated_stream,
-          old_state.stream,  # pytype: disable=attribute-error  # jax-ndarray
+          old_state.stream,  # pyrefly: ignore[missing-attribute]
           stream_slice,
           body_outputs,
       )
@@ -599,7 +599,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       for col in var_tree:
         if col in owg_mask and var_tree[col]:
           new_vars[col] = jax.tree.map(
-              lambda m, x: jax.lax.convert_element_type(x, nn.fp8_ops.fm32)  # pytype: disable=wrong-arg-types
+              lambda m, x: jax.lax.convert_element_type(x, nn.fp8_ops.fm32)
               if m
               else x,
               owg_mask[col],
@@ -646,7 +646,7 @@ class LayerwiseShardablePipelined(base_layer.BaseLayer):
       bf16_vars_to_convert = {
           PARAMS: jax.tree.map(
               lambda x: x.dtype == jnp.bfloat16,
-              flax_core.unfreeze(self.variables[PARAMS]),  # pytype: disable=wrong-arg-types
+              flax_core.unfreeze(self.variables[PARAMS]),  # pyrefly: ignore[bad-argument-type]
           )
       }
 
@@ -1210,7 +1210,7 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
     state = super()._get_init_loop_state(microbatched_inputs, num_microbatches)
     if self._async_circular_transfer(num_microbatches):
       state.last_iter_result = state.shift  # type: ignore  # jax-ndarray
-      state.circular_inputs = jax.tree.map(  # pytype: disable=not-writable  # jax-ndarray
+      state.circular_inputs = jax.tree.map(  # pyrefly: ignore[missing-attribute]
           lambda x: jnp.zeros((self.num_stages,) + x.shape, x.dtype),
           microbatched_inputs,
       )
@@ -1231,11 +1231,11 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
       # (circular_inputs).
       circular_slice = jax.tree.map(
           lambda x: x[:, loop_iteration % num_microbatches],
-          loop_state.circular_inputs,  # pytype: disable=attribute-error  # jax-ndarray
+          loop_state.circular_inputs,  # pyrefly: ignore[missing-attribute]
       )
     else:
       # shift is a circular buffer in this case.
-      circular_slice = loop_state.shift  # pytype: disable=attribute-error  # jax-ndarray
+      circular_slice = loop_state.shift  # pyrefly: ignore[missing-attribute]
     return jax.tree.map(
         lambda x, c: jnp.where(loop_iteration < num_microbatches, x, c),
         inputs,
@@ -1271,14 +1271,14 @@ class CircularLayerwiseShardablePipelined(LayerwiseShardablePipelined):
         return jax.lax.dynamic_update_slice_in_dim(
             inp_buf, rotated, offset, axis=1)
 
-      new_state.circular_inputs = jax.tree.map(  # pytype: disable=not-writable  # jax-ndarray
+      new_state.circular_inputs = jax.tree.map(  # pyrefly: ignore[missing-attribute]
           _rotate_right_and_update,
-          old_state.last_iter_result,  # pytype: disable=attribute-error  # jax-ndarray
-          old_state.circular_inputs,  # pytype: disable=attribute-error  # jax-ndarray
+          old_state.last_iter_result,  # pyrefly: ignore[missing-attribute]
+          old_state.circular_inputs,  # pyrefly: ignore[missing-attribute]
       )
-      new_state.last_iter_result = body_outputs  # pytype: disable=not-writable  # jax-ndarray
+      new_state.last_iter_result = body_outputs  # pyrefly: ignore[missing-attribute]
     else:
-      new_state.shift = jax.tree.map(_rotate_right, body_outputs)  # pytype: disable=not-writable  # jax-ndarray
+      new_state.shift = jax.tree.map(_rotate_right, body_outputs)  # pyrefly: ignore[missing-attribute]
     return new_state
 
   def _unpack_summary(self, key: str, vectorized_summary: JTensor):

@@ -368,7 +368,7 @@ class LanguageModel(base_model.BaseModel):
 
     return predictions
 
-  def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
+  def compute_loss(  # pyrefly: ignore[bad-override]
       self, predictions: NestedMap, input_batch: NestedMap
   ) -> tuple[Union[WeightedScalars, Metrics], dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
@@ -1941,7 +1941,7 @@ class ClassificationModel(base_model.BaseModel):
         example_weights=example_weights,
     )
 
-  def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
+  def compute_loss(  # pyrefly: ignore[bad-override]
       self, predictions: NestedMap, input_batch: NestedMap
   ) -> tuple[Union[WeightedScalars, Metrics], dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
@@ -2021,7 +2021,7 @@ class ClassificationModel(base_model.BaseModel):
     eval_metrics = NestedMap()
 
     eval_metrics.accuracy = clu_metrics.Accuracy.from_model_output(
-        logits=predictions.softmax_output.logits,  # pytype: disable=attribute-error  # jax-ndarray
+        logits=predictions.softmax_output.logits,  # pyrefly: ignore[missing-attribute]
         labels=jnp.argmax(label_probs, axis=-1),
     )
     return losses, per_example_out, eval_metrics
@@ -2093,7 +2093,7 @@ class BertModel(base_model.BaseModel):
     lm_out.augmented_pos = augmented_pos
     return lm_out
 
-  def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
+  def compute_loss(  # pyrefly: ignore[bad-override]
       self, predictions: NestedMap, input_batch: NestedMap
   ) -> tuple[Union[WeightedScalars, Metrics], dict[str, Any]]:
     """Computes the loss and other metrics for the given predictions.
@@ -2176,7 +2176,7 @@ class ClassificationMLPModel(base_model.BaseModel):
     )
     return predictions
 
-  def compute_loss(  # pytype: disable=signature-mismatch  # jax-ndarray
+  def compute_loss(  # pyrefly: ignore[bad-override]
       self, predictions: NestedMap, input_batch: NestedMap
   ) -> tuple[Union[WeightedScalars, Metrics], dict[str, Any]]:
     labels = input_batch.labels

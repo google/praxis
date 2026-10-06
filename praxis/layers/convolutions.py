@@ -562,7 +562,7 @@ class ConvBNActWithPadding(ConvBNAct):
 
   def __call__(
       self, inputs: JTensor, paddings: JTensor
-  ) -> tuple[JTensor, JTensor]:  # pytype:disable=signature-mismatch
+  ) -> tuple[JTensor, JTensor]:
     """Forward prop which applies conv-bn-activation with time paddings.
 
     Args:

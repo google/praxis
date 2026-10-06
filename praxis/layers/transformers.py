@@ -1091,7 +1091,7 @@ class TransformerFeedForwardMoe(base_layer.BaseLayer):
     return combined_output, aux_loss
 
   def __call__(
-      self,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
+      self,
       inputs: JTensor,
       paddings: JTensor = None,  # pyrefly: ignore[bad-function-definition]
       segment_ids: JTensor = None,  # pyrefly: ignore[bad-function-definition]
@@ -1465,7 +1465,7 @@ class Transformer(base_layer.BaseLayer):
 
     # Apply FFN layer
     output = self.ff_layer(atten_output, paddings=paddings)
-    return output, atten_probs  # pytype: disable=bad-return-type  # jax-ndarray
+    return output, atten_probs  # pyrefly: ignore[bad-return]
 
   def extend_step(
       self,

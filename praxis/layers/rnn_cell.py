@@ -229,7 +229,7 @@ class LstmCellSimple(BaseRnnCell):
     state.c = inputs.reset_mask * state.c
     return state
 
-  def get_output(self, state: NestedMap) -> JTensor:  # pytype: disable=signature-mismatch  # jax-ndarray
+  def get_output(self, state: NestedMap) -> JTensor:  # pyrefly: ignore[bad-override]
     return state.m
 
   def __call__(self, state0: NestedMap, inputs: NestedMap) -> NestedMap:
@@ -263,7 +263,7 @@ class LstmCellSimple(BaseRnnCell):
     if self.reset_cell_state:
       state0 = self._reset_state(state0, inputs)
 
-    concat = jnp.concatenate(inputs.act + [state0.m], 1)  # pyrefly: ignore[unsupported-operation]
+    concat = jnp.concatenate(inputs.act + [state0.m], 1)
     xmw = jnp.einsum('bd,dc->bc', concat, self.theta.wm)
     gates = self._gates_preprocess(xmw)
     state1 = self._gates_internal(state0, *gates)

@@ -1062,7 +1062,7 @@ class TransformerLm(base_layer.BaseLayer):
             segment_ids, inputs.dtype, causal_attention_mask
         )
 
-    self.update_decode_state('time_step', start_time_step)  # pytype: disable=wrong-arg-types  # jax-ndarray
+    self.update_decode_state('time_step', start_time_step)  # pyrefly: ignore[bad-argument-type]
     output = self.transformer(
         inputs, paddings, segment_mask=segment_mask, segment_pos=segment_pos
     )
@@ -2130,7 +2130,7 @@ class TransformerEncoderDecoder(base_layer.BaseLayer):
       )
     # Update caches for decode state.
     if self.is_mutable_collection(base_layer.DECODE_CACHE):
-      self.update_decode_state('time_step', start_time_step)  # pytype: disable=wrong-arg-types  # jax-ndarray
+      self.update_decode_state('time_step', start_time_step)  # pyrefly: ignore[bad-argument-type]
       self.update_decode_state('input_paddings', input_paddings)
     output = self.decoder(
         target_emb,

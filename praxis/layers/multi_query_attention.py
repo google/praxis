@@ -631,7 +631,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     full_encoded = checkpoint_name(full_encoded, 'context')
     full_encoded = self._shard_blnh(full_encoded)
     full_probs = None
-    return full_encoded, full_probs  # pytype: disable=bad-return-type  # jax-ndarray
+    return full_encoded, full_probs  # pyrefly: ignore[bad-return]
 
   def _dot_atten(
       self,
@@ -844,7 +844,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
       encoded = self.pv_einsum('BNS,BSH->BNH', probs, value)
     else:
       encoded = self.pv_einsum('BNTS,BSH->BTNH', probs, value)
-    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
+    return encoded, probs
 
   def _context_for_kv_vmap(self):
     # Transpose the sharding on num_heads to None, so that the inner n // nk dim
@@ -986,7 +986,7 @@ class MultiQueryDotProductAttention(base_layer.BaseLayer):
     encoded = self._shard_bld(encoded)
     encoded = checkpoint_name(encoded, 'out_proj')
 
-    return encoded, atten_probs  # pyrefly: ignore[bad-return]
+    return encoded, atten_probs
 
   def init_states(self, target_batch_size: int, target_max_length: int) -> None:
     """Initializes cache for autoregressive cached decoding.
@@ -1398,10 +1398,10 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
       return self._shard_blnh(self.pv_einsum('BNTS,BSH->BTNH', ps, v))
 
     # Use sum as result combiner since the time dimension is a contracting dim.
-    encoded = self._run_with_all_decode_state_chunks(_post_softmax, [], probs,  # pytype: disable=wrong-arg-types  # jax-ndarray
-                                                     am_tdim, [], [],
-                                                     [value_state_name], sum)  # pyrefly: ignore[bad-argument-type]
-    return encoded, probs  # pytype: disable=bad-return-type  # jax-ndarray
+    encoded = self._run_with_all_decode_state_chunks(
+        _post_softmax, [], probs, am_tdim, [], [], [value_state_name], sum  # pyrefly: ignore[bad-argument-type]
+    )
+    return encoded, probs  # pyrefly: ignore[bad-return]
 
   @nn.nowrap
   def extend_decode_state(self, name: str, value: JTensor, time_step: JTensor,
@@ -1625,7 +1625,7 @@ class MultiQueryDotProductAttentionLPB(MultiQueryDotProductAttention):
       self,
       query_vec: JTensor,
       *,
-      atten_mask: JTensor,  # pytype: disable=signature-mismatch  # overriding-parameter-name-checks
+      atten_mask: JTensor,
       time_step: JTensor,
       segment_pos: JTensor | None,
       is_cross_attention: bool = False,

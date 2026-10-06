@@ -91,7 +91,7 @@ class TokenCounter(base_layer.BaseLayer):
       new_approx_total_tokens_mm = approx_total_tokens_mm.astype(
           jnp.float32
       ) + batch_total_mm.astype(jnp.float32)
-      self.update_var('approx_total_tokens_mm', new_approx_total_tokens_mm)  # pytype: disable=bad-return-type  # jax-ndarray
+      self.update_var('approx_total_tokens_mm', new_approx_total_tokens_mm)
 
 
 class Embedding(base_layer.BaseLayer):
@@ -1180,7 +1180,7 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     super().setup()
 
   def __call__(
-      self,  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
+      self,
       inputs: JTensor,
       position: JTensor | None = None,
   ) -> JTensor:
