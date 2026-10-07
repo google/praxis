@@ -909,7 +909,7 @@ class LingvoLazyEvalAdaptor(LingvoInputAdaptor):
     self._num_batches_emitted += 1
     # Number of valid samples this batch has.
     num_valid_samples = min(self.batch_size, remaining_samples)
-    if 'eval_sample_weights' not in ret:
+    if 'eval_sample_weights' not in ret:  # pyrefly: ignore[unsupported-operation]
       raise ValueError('eval_sample_weights must be included in the data')
     # Sets the weight of invalid samples to 0.
     ret.eval_sample_weights[num_valid_samples:] = 0.0  # pyrefly: ignore[missing-attribute]
