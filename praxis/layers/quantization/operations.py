@@ -396,7 +396,15 @@ def custom_einsum(
     # custom_vjp can not have str argument because of xla/jax limitations
     # it will generate error: type <class 'str'> is not a valid JAX type
     # so moved "eqn: str" up.
-    return jnp.einsum(eqn, x, w)
+    preferred_element_type = (
+        params.einsum_scale_output_dtype
+        if params.bits_fwd is not None
+        else params.einsum_output_dtype
+    )
+    res = jnp.einsum(eqn, x, w, preferred_element_type=preferred_element_type)
+    if params.bwd_output_dtype is not None:
+      res = res.astype(params.bwd_output_dtype)
+    return res
 
   @jax.jit
   def _custom_einsum_bwd(res: Any, g: Any):
