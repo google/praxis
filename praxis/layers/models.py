@@ -1366,7 +1366,7 @@ class LanguageModelDPO(base_model.BaseModel):
           'provide the necessary `eval_sample_weights` field.'
       )
       batch.weights = _merge_per_token_and_per_example_weights(  # pyrefly: ignore[missing-attribute]
-          batch.weights, batch.eval_sample_weights
+          batch.weights, batch.eval_sample_weights  # pyrefly: ignore[missing-attribute]
       )
 
     self.token_counter(batch.inputs, batch.paddings)  # pyrefly: ignore[bad-argument-type]

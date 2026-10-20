@@ -568,7 +568,7 @@ class RelativeBias(base_layer.BaseLayer):
       relative_position = jnp.expand_dims(
           key_segment_pos, -2
       ) - jnp.expand_dims(query_segment_pos, -1)
-    relative_bucket = self._relative_position_bucket(relative_position)
+    relative_bucket = self._relative_position_bucket(relative_position)  # pyrefly: ignore[bad-argument-type]
 
     relative_bucket_one_hot = jax.nn.one_hot(
         relative_bucket,

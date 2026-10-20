@@ -60,7 +60,7 @@ class TestInput(base_input.BaseInput):
 
   def reset(self):
     if self.reset_for_eval:
-      self._iter = iter(self.dataset)
+      self._iter = iter(self.dataset)  # pyrefly: ignore[no-matching-overload]
 
   def _to_nested_map(self, x) -> py_utils.NestedMap:
     t = tf.ones(shape=[4], dtype=tf.int32) * tf.cast(x, dtype=tf.int32)
@@ -105,7 +105,7 @@ class TestInputCheckpointable(TestInput):
 
   def reset(self):
     if self.reset_for_eval:
-      self._iter = iter(self.dataset)
+      self._iter = iter(self.dataset)  # pyrefly: ignore[no-matching-overload]
       self._state = 0
 
   def _get_state_internal(self) -> bytes:
@@ -113,7 +113,7 @@ class TestInputCheckpointable(TestInput):
 
   def _set_state_internal(self, state: bytes):
     self._state = int(state.decode())
-    self._iter = iter(self.dataset.skip(self._state))
+    self._iter = iter(self.dataset.skip(self._state))  # pyrefly: ignore[missing-attribute]
 
 
 class LingvoInput(base_input_generator.BaseInputGeneratorFromFiles):

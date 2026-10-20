@@ -2353,7 +2353,7 @@ class AttentionsTest(test_utils.TestCase):
           updated_vars,
           max_prefix_len,
           decoder_utils.right_align_state_fn(
-              max_prefix_len + decode_lengths - prefix_lengths
+              max_prefix_len + decode_lengths - prefix_lengths  # pyrefly: ignore[bad-argument-type]
           ),
           method=layer.right_align_decode_state_with_prefix,
           mutable=[base_layer.DECODE_CACHE, base_layer.PREFIX_DECODE_CACHE],
