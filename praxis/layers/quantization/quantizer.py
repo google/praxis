@@ -43,6 +43,7 @@ QuantizationType = quantization_hparams.QuantizationType
 QuantizationParams = quantization_hparams.QuantizationParams
 instance_field = base_layer.instance_field
 WeightQuantizationParams = quantization_hparams.WeightQuantizationParams
+QUANTIZED_SCALE_ACT_NAME_POSTFIX = '_quantized_act_scale'
 
 
 class QuantizationLayer(base_layer.BaseLayer):
@@ -131,6 +132,7 @@ class QuantizationLayer(base_layer.BaseLayer):
           jax.dtypes.scalar_type_of(dtype) == float
           and jnp.finfo(dtype).bits == 8
       ):
+        weight_params.dtype=dtype
         dtype = jnp.int8
       self.create_quantized_variable(
           weight_name,
@@ -219,6 +221,14 @@ class QuantizationLayer(base_layer.BaseLayer):
       else:
         return jnp.einsum(eqn, x, w)
 
+    use_fp8 = False
+    dtype = self.quantization.weight_params.dtype
+    if (
+          jax.dtypes.scalar_type_of(dtype) == float
+          and jnp.finfo(dtype).bits == 8
+    ):
+      use_fp8 = True
+
     # Optionally create step count.
     step_count = None
     if self.quantization.weight_params.use_step_count:
@@ -249,28 +259,29 @@ class QuantizationLayer(base_layer.BaseLayer):
         x = x.astype(jnp.int8)
         logging.info('Static activation quantization is not supported yet.')
       elif self.quantization.act_params is not None:
-        act_params = self.quantization.act_params
-        x, scale_act, zp_act = operations.reduce_einsum_activation_precision(
-            eqn,
-            x,
-            bits=act_params.precision,
-            per_channel=act_params.per_channel,
-            symmetric=act_params.symmetric,
-            percentile=act_params.clipping_coeff,
-        )
-        if act_params.precision <= 8:
-          if act_params.symmetric:
-            # TODO(rybakov): add support for asymmetric too.
-            x = x.astype(jnp.int8)
+        if not use_fp8:
+          act_params = self.quantization.act_params
+          x, scale_act, zp_act = operations.reduce_einsum_activation_precision(
+              eqn,
+              x,
+              bits=act_params.precision,
+              per_channel=act_params.per_channel,
+              symmetric=act_params.symmetric,
+              percentile=act_params.clipping_coeff,
+          )
+          if act_params.precision <= 8 and act_params.symmetric:
+            if act_params.symmetric:
+              # TODO(rybakov): add support for asymmetric too.
+              x = x.astype(jnp.int8)
+        else:
+          # per-tensor quant
+          scale_act = self.get_quantized_act_scale(weight_name)
+          x = fp8_ops_linen.quantize(x, jnp.float8_e4m3fn, scale_act, jnp.bfloat16)
 
-      dtype = self.quantization.weight_params.dtype
-      if (
-          jax.dtypes.scalar_type_of(dtype) == float
-          and jnp.finfo(dtype).bits == 8
-      ):
+      if use_fp8: #
+        # cast from int8 to fp8
         w = jax.lax.bitcast_convert_type(w, dtype)
-        # cast to bf16 since bf16 x fp8 is not supported.
-        w = w.astype(jnp.bfloat16)
+
       out = operations.einsum(
           eqn,
           x,
