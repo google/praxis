@@ -39,7 +39,7 @@ class Chain(base_layer.BaseLayer):
     outputs = layer(args[:num_args])
     args = outputs + args[len(outputs):]  # replace leading arguments
 
-  That is, `*args` is processed like a stack (leading arguments are poped and
+  That is, `*args` is processed like a stack (leading arguments are popped and
   replaced). This stack logic is implemented in `call_chained_layer()`.
 
   `**kwargs` are passed straight-through the chain; unmodified. Further kwargs
