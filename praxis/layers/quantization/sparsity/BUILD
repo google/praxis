@@ -17,24 +17,28 @@
 #   Sparsity related layers. The public API is defined in __init__.py.
 
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
-load("//praxis:praxis.bzl", "pytype_strict_library", "pytype_strict_test")
+load("//praxis:praxis.bzl", "pytype_strict_test")
+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
 
 package(default_visibility = JAX_VISIBILITY)
 
-pytype_strict_library(
+py_library(
     name = "layers",
     srcs = ["__init__.py"],
+    type_checking = True,
 )
 
-pytype_strict_library(
+py_library(
     name = "sparsity_hparams",
     srcs = ["sparsity_hparams.py"],
+    type_checking = True,
     deps = [":sparsity_modes"],
 )
 
-pytype_strict_library(
+py_library(
     name = "sparsity",
     srcs = ["sparsity.py"],
+    type_checking = True,
     deps = [
         ":sparsity_hparams",
         # Implicit jax dependency.
@@ -55,9 +59,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "sparsity_modes",
     srcs = ["sparsity_modes.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:pytypes",
@@ -104,9 +109,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "sparsifier",
     srcs = ["sparsifier.py"],
+    type_checking = True,
     deps = [
         ":sparsity",
         ":sparsity_hparams",

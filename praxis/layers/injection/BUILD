@@ -17,15 +17,17 @@
 #   Praxis layers. The public API is defined in __init__.py.
 
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
-load("//praxis:praxis.bzl", "pytype_strict_library", "pytype_strict_test")
+load("//praxis:praxis.bzl", "pytype_strict_test")
+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
 
 package(default_visibility = JAX_VISIBILITY)
 
 licenses(["notice"])
 
-pytype_strict_library(
+py_library(
     name = "fp8_nvidia_gpu",
     srcs = ["fp8_nvidia_gpu.py"],
+    type_checking = True,
     deps = [
         # Implicit flax.core dependency.
         # Implicit jax dependency.

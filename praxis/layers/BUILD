@@ -16,7 +16,8 @@
 # Description:
 #   Praxis layers. The public API is defined in __init__.py.
 
-load("//praxis:praxis.bzl", "pytype_strict_library", "pytype_strict_test")
+load("//praxis:praxis.bzl", "pytype_strict_test")
+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
 
 licenses(["notice"])
@@ -26,9 +27,10 @@ package(
     default_visibility = JAX_VISIBILITY,
 )
 
-pytype_strict_library(
+py_library(
     name = "layers",
     srcs = ["__init__.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":adapters",
@@ -67,9 +69,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "activations",
     srcs = ["activations.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -91,9 +94,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "adapters",
     srcs = ["adapters.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":normalizations",
@@ -108,9 +112,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "gpu_fast_attention",
     srcs = ["gpu_fast_attention.py"],
+    type_checking = True,
     visibility = JAX_VISIBILITY,
     deps = [
         ":attentions",
@@ -123,9 +128,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "attentions",
     srcs = ["attentions.py"],
+    type_checking = True,
     deps = [
         ":base_ops",
         ":embedding_softmax",
@@ -142,9 +148,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "grouped_query_attention",
     srcs = ["grouped_query_attention.py"],
+    type_checking = True,
     deps = [
         ":einsum",
         ":sharding",
@@ -174,9 +181,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "augmentations",
     srcs = ["augmentations.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -185,9 +193,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "base_ops",
     srcs = ["base_ops.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -195,9 +204,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "bregman",
     srcs = ["bregman.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -205,9 +215,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "chunk",
     srcs = ["chunk.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:pytypes",
@@ -227,9 +238,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "convolutions",
     srcs = ["convolutions.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":linears",
@@ -243,9 +255,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "einsum",
     srcs = ["einsum.py"],
+    type_checking = True,
     deps = [
         ":base_ops",
         "//praxis:base_layer",
@@ -271,9 +284,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "embedding_softmax",
     srcs = ["embedding_softmax.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":base_ops",
@@ -289,9 +303,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "frnn",
     srcs = ["frnn.py"],
+    type_checking = True,
     deps = [
         ":rnn_cell",
         # Implicit flax.core dependency.
@@ -303,9 +318,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "glam",
     srcs = ["glam.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":attentions",
@@ -319,9 +335,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "linears",
     srcs = ["linears.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":base_ops",
@@ -333,9 +350,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "losses",
     srcs = ["losses.py"],
+    type_checking = True,
     deps = [
         # Implicit jax_bitempered_loss dependency.
         # Implicit jax dependency.
@@ -344,9 +362,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "models",
     srcs = ["models.py"],
+    type_checking = True,
     deps = [
         ":augmentations",
         ":embedding_softmax",
@@ -373,9 +392,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "ngrammer",
     srcs = ["ngrammer.py"],
+    type_checking = True,
     deps = [
         ":bregman",
         ":embedding_softmax",
@@ -390,9 +410,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "normalizations",
     srcs = ["normalizations.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:asserts",
@@ -402,12 +423,13 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "objectives",
     srcs = [
         "ctc_objectives.py",
         "quantizer_objectives.py",
     ],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -416,9 +438,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "ssm",
     srcs = ["ssm.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -427,9 +450,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "ssm_transformers",
     srcs = ["ssm_transformers.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":checkpoint_policy",
@@ -470,9 +494,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "stats",
     srcs = ["stats.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:py_utils",
@@ -493,9 +518,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "pipeline",
     srcs = ["pipeline.py"],
+    type_checking = True,
     deps = [
         ":checkpoint_policy",
         # Implicit flax.core dependency.
@@ -507,9 +533,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "poolings",
     srcs = ["poolings.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:asserts",
@@ -519,9 +546,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "quantizer",
     srcs = ["quantizer.py"],
+    type_checking = True,
     deps = [
         ":linears",
         ":objectives",
@@ -533,9 +561,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "repeats",
     srcs = ["repeats.py"],
+    type_checking = True,
     deps = [
         ":checkpoint_policy",
         # Implicit flax.core dependency.
@@ -570,9 +599,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "mobilenet",
     srcs = ["mobilenet.py"],
+    type_checking = True,
     deps = [
         "//praxis:base_layer",
         "//praxis:pax_fiddle",
@@ -587,9 +617,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "resnets",
     srcs = ["resnets.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":convolutions",
@@ -603,9 +634,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "spectrum_augmenter",
     srcs = ["spectrum_augmenter.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -630,9 +662,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "rnn_cell",
     srcs = ["rnn_cell.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:asserts",
@@ -642,9 +675,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "vanillanets",
     srcs = ["vanillanets.py"],
+    type_checking = True,
     deps = [
         ":convolutions",
         ":poolings",
@@ -672,9 +706,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "stochastics",
     srcs = ["stochastics.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -683,18 +718,20 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "sequential",
     srcs = ["sequential.py"],
+    type_checking = True,
     deps = [
         "//praxis:base_layer",
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "test_layers",
     testonly = True,
     srcs = ["test_layers.py"],
+    type_checking = True,
     deps = [
         ":linears",
         ":normalizations",
@@ -752,9 +789,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "conformers",
     srcs = ["conformers.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":attentions",
@@ -771,17 +809,19 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "checkpoint_policy",
     srcs = ["checkpoint_policy.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "transformers",
     srcs = ["transformers.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":attentions",
@@ -805,9 +845,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "transformer_models",
     srcs = ["transformer_models.py"],
+    type_checking = True,
     deps = [
         ":attentions",
         ":embedding_softmax",
@@ -1299,9 +1340,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "flax_adapter",
     srcs = ["flax_adapter.py"],
+    type_checking = True,
     deps = [
         # Implicit flax.core dependency.
         "//praxis:base_layer",
@@ -1330,9 +1372,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "vits",
     srcs = ["vits.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":embedding_softmax",
@@ -1352,9 +1395,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "multi_query_attention",
     srcs = ["multi_query_attention.py"],
+    type_checking = True,
     deps = [
         ":attentions",
         ":base_ops",
@@ -1414,9 +1458,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "searchable",
     srcs = ["searchable.py"],
+    type_checking = True,
     deps = [
         # Implicit flax.core dependency.
         # Implicit jax dependency.
@@ -1442,9 +1487,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "sharding",
     srcs = ["sharding.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -1452,9 +1498,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "grok",
     srcs = ["grok.py"],
+    type_checking = True,
     deps = [
         ":activations",
         ":attentions",

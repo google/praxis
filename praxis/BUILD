@@ -19,7 +19,8 @@
 # Internal license-related bzl load
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
-load("//praxis:praxis.bzl", "pytype_strict_library", "pytype_strict_test")
+load("//praxis:praxis.bzl", "pytype_strict_test")
+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
 
 package(default_visibility = JAX_VISIBILITY)
 
@@ -27,18 +28,20 @@ licenses(["notice"])
 
 exports_files(["LICENSE"])
 
-pytype_strict_library(
+py_library(
     name = "asserts",
     srcs = ["asserts.py"],
+    type_checking = True,
     deps = [
         ":py_utils",
         # Implicit jax dependency.
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "base_hyperparams",
     srcs = ["base_hyperparams.py"],
+    type_checking = True,
     deps = [
         ":lazy_loader",
         ":pax_fiddle",
@@ -53,9 +56,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "base_input",
     srcs = ["base_input.py"],
+    type_checking = True,
     deps = [
         ":base_hyperparams",
         ":lazy_loader",
@@ -72,9 +76,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "base_layer",
     srcs = ["base_layer.py"],
+    type_checking = True,
     deps = [
         ":asserts",
         ":base_hyperparams",
@@ -92,9 +97,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "base_model",
     srcs = ["base_model.py"],
+    type_checking = True,
     deps = [
         ":base_input",
         ":base_layer",
@@ -104,9 +110,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "beam_search",
     srcs = ["beam_search.py"],
+    type_checking = True,
     deps = [
         ":base_layer",
         ":decoder_hparams",
@@ -117,9 +124,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "decoder_hparams",
     srcs = ["decoder_hparams.py"],
+    type_checking = True,
     deps = [
         ":base_hyperparams",
         ":decoder_utils",
@@ -129,9 +137,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "decoder_utils",
     srcs = ["decoder_utils.py"],
+    type_checking = True,
     deps = [
         ":base_layer",
         ":py_utils",
@@ -141,9 +150,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "flat_beam_search",
     srcs = ["flat_beam_search.py"],
+    type_checking = True,
     deps = [
         ":base_layer",
         ":decoder_utils",
@@ -153,9 +163,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "flax_utils",
     srcs = ["flax_utils.py"],
+    type_checking = True,
     deps = [
         ":base_layer",
         ":pytypes",
@@ -164,9 +175,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "gshard_utils",
     srcs = ["gshard_utils.py"],
+    type_checking = True,
     deps = [
         ":pytypes",
         # Implicit absl.logging dependency.
@@ -175,17 +187,19 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "lazy_loader",
     srcs = ["lazy_loader.py"],
+    type_checking = True,
     deps = [
         # Implicit absl.logging dependency.
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "lingvo_lib",
     srcs = ["lingvo_lib.py"],
+    type_checking = True,
     deps = [
         ":lazy_loader",
         # Implicit lingvo.core.cluster dependency.
@@ -196,17 +210,19 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "metric_utils",
     srcs = ["metric_utils.py"],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "optimizer_prefix_vectorization",
     srcs = ["optimizer_prefix_vectorization.py"],
+    type_checking = True,
     deps = [
         ":base_layer",
         ":optimizers",
@@ -232,9 +248,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "optimizers",
     srcs = ["optimizers.py"],
+    type_checking = True,
     deps = [
         ":asserts",
         ":base_hyperparams",
@@ -251,9 +268,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "py_utils",
     srcs = ["py_utils.py"],
+    type_checking = True,
     deps = [
         ":lingvo_lib",
         ":pytypes",
@@ -268,9 +286,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "pytypes",
     srcs = ["pytypes.py"],
+    type_checking = True,
     deps = [
         ":lingvo_lib",
         # Implicit absl.logging dependency.
@@ -298,9 +317,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "sample_decode",
     srcs = ["sample_decode.py"],
+    type_checking = True,
     deps = [
         ":asserts",
         ":base_hyperparams",
@@ -314,9 +334,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "schedules",
     srcs = ["schedules.py"],
+    type_checking = True,
     deps = [
         ":base_hyperparams",
         ":pax_fiddle",
@@ -325,9 +346,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "token_samplers",
     srcs = ["token_samplers.py"],
+    type_checking = True,
     deps = [
         ":base_hyperparams",
         ":base_layer",
@@ -339,10 +361,11 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "test_utils",
     testonly = True,
     srcs = ["test_utils.py"],
+    type_checking = True,
     deps = [
         ":base_layer",
         ":py_utils",
@@ -356,9 +379,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "pax_fiddle",
     srcs = ["pax_fiddle.py"],
+    type_checking = True,
     deps = [
         # Implicit fiddle dependency.
         # Implicit fiddle.building dependency.
@@ -373,9 +397,10 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "fiddle_tags",
     srcs = ["fiddle_tags.py"],
+    type_checking = True,
     deps = [
         # Implicit fiddle dependency.
     ],
@@ -610,9 +635,10 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "trees",
     srcs = ["trees.py"],
+    type_checking = True,
     deps = [
         ":pytypes",
         # Implicit jax dependency.

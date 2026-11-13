@@ -17,15 +17,17 @@ load("//praxis:build-visibility.bzl", "JAX_VISIBILITY")
 
 # Description:
 #   video related layers. The public API is defined in __init__.py.
-load("//praxis:praxis.bzl", "pytype_strict_library", "pytype_strict_test")
+load("//praxis:praxis.bzl", "pytype_strict_test")
+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
 
 package(default_visibility = JAX_VISIBILITY)
 
-pytype_strict_library(
+py_library(
     name = "enc_dec_3dcnn",
     srcs = [
         "enc_dec_3dcnn.py",
     ],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -56,11 +58,12 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "losses",
     srcs = [
         "losses.py",
     ],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         "//praxis:base_layer",
@@ -89,11 +92,12 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "quantizer",
     srcs = [
         "quantizer.py",
     ],
+    type_checking = True,
     deps = [
         # Implicit jax dependency.
         # Implicit numpy dependency.
@@ -120,11 +124,12 @@ pytype_strict_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "vqvae",
     srcs = [
         "vqvae.py",
     ],
+    type_checking = True,
     deps = [
         ":enc_dec_3dcnn",
         ":quantizer",
