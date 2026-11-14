@@ -601,7 +601,7 @@ class EmbeddingSoftmaxTest(test_utils.TestCase):
     inputs = jnp.asarray(npy_input)
     class_weights = np.random.normal(1.5, 2.0, [8, 10, 1])
     with base_layer.JaxContext.new_context():
-      prng_key = jax.random.PRNGKey(seed=123)
+      prng_key = jax.random.PRNGKey(seed=1234)
       initial_vars = softmax_layer.init(
           prng_key, inputs, class_weights, class_ids=class_ids
       )
