@@ -1266,7 +1266,8 @@ class RotaryPositionalEmbedding(PositionalEmbedding):
     # jax.lax.iota, rather than jnp.arange.
     prefix_position = jax.lax.iota(dtype=jnp.int32, size=seq_length)
     # [B, 1]
-    position = jnp.broadcast_to(position, [inputs_shape[0]])[:, jnp.newaxis]  # pyrefly: ignore[bad-argument-type]
+    assert position is not None
+    position = jnp.broadcast_to(position, [inputs_shape[0]])[:, jnp.newaxis]
     # [B, P]
     prefix_position = position - jnp.flip(prefix_position)[jnp.newaxis, :]
     prefix_position = jnp.where(
